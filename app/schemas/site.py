@@ -1,9 +1,8 @@
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
 
-from pydantic import BaseModel, Field, ConfigDict, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from app.schemas.common import JsonData
-
 
 SiteUnreadMessage = Union[
     tuple[Optional[str], Optional[str], Optional[str]],
@@ -59,6 +58,13 @@ class Site(BaseModel):
     downloader: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SitePriorityUpdate(BaseModel):
+    """站点批量优先级更新项。"""
+
+    id: int = Field(..., description="Persistent site ID returned by site.list.")
+    pri: int = Field(..., description="Replacement site search priority value.")
 
 
 class SiteStatistic(BaseModel):

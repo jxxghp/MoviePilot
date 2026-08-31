@@ -359,6 +359,7 @@ SCHEMA_EXPORTS = {
     'SiteEventData': ('app.schemas.event', 'SiteEventData'),
     'SiteIconData': ('app.schemas.site', 'SiteIconData'),
     'SiteMappingData': ('app.schemas.site', 'SiteMappingData'),
+    'SitePriorityUpdate': ('app.schemas.site', 'SitePriorityUpdate'),
     'SiteStatistic': ('app.schemas.site', 'SiteStatistic'),
     'SiteUnreadMessage': ('app.schemas.site', 'SiteUnreadMessage'),
     'SiteUserData': ('app.schemas.site', 'SiteUserData'),

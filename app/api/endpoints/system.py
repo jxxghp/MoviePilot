@@ -7,7 +7,7 @@ from typing import Annotated, Any, Optional, Union
 
 import anyio
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
-from fastapi import Body, Depends, Header, HTTPException, Request, Response
+from fastapi import Body, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
@@ -620,15 +620,43 @@ async def set_setting(
 
 @router.get(  # type: ignore[misc]
     "/settings",
-    summary="统一查询系统设置",
+    summary="Discover or read registered system settings",
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def query_settings(
-    setting_key: Optional[str] = None,
-    group: Optional[str] = "all",
-    keyword: Optional[str] = None,
-    include_values: Optional[bool] = None,
-    show_secrets: bool = False,
+    setting_key: Annotated[
+        Optional[str],
+        Query(
+            description=(
+                "Exact setting key. Accepts Settings field names such as APP_DOMAIN or LLM_MODEL, "
+                "SystemConfigKey values or enum names such as Downloaders or MediaServers, and "
+                "aliases that resolve to one unique setting. Omit it to discover settings."
+            )
+        ),
+    ] = None,
+    group: Annotated[
+        Optional[str],
+        Query(
+            description=(
+                "Discovery group used when setting_key is omitted. Supported groups are all, settings, systemconfig, downloaders, "
+                "media_servers, notifications, notification_switches, storages, directories, "
+                "search_sites, subscribe_sites, site_auth, ai_agent, filter_rules, "
+                "subscribe_defaults, plugins, customization, transfer, scraping, and misc."
+            )
+        ),
+    ] = "all",
+    keyword: Annotated[
+        Optional[str],
+        Query(description="Case-insensitive substring used to discover matching keys, groups, or labels."),
+    ] = None,
+    include_values: Annotated[
+        Optional[bool],
+        Query(description="Return full values. Defaults to true for one exact key and false for discovery results."),
+    ] = None,
+    show_secrets: Annotated[
+        bool,
+        Query(description="Return unredacted secret values. Defaults to false and remains confirmation-protected."),
+    ] = False,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
@@ -652,7 +680,7 @@ async def query_settings(
 
 @router.post(  # type: ignore[misc]
     "/settings",
-    summary="统一更新系统设置",
+    summary="Update one registered system setting",
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def update_settings(

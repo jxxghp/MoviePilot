@@ -96,13 +96,28 @@ class ActionSpec:
         }
 
 
-ITEM_ID = ArgumentSpec("item_id", "string", "当前媒体服务器返回的 provider 原生条目 ID。")
-PARENT = ArgumentSpec("parent", "string|integer", "媒体库或父条目 ID；Navidrome 可省略并使用 music。")
-OFFSET = ArgumentSpec("offset", "integer", "列表起始偏移，必须大于等于 0。", default=0)
-LIMIT = ArgumentSpec("limit", "integer", "返回条数，范围 1..200。", default=DEFAULT_LIMIT)
+ITEM_ID = ArgumentSpec("item_id", "string", "Provider-native item ID returned by the selected media server.")
+PARENT = ArgumentSpec("parent", "string|integer", "Library or parent item ID; Navidrome may omit it and use music.")
+OFFSET = ArgumentSpec("offset", "integer", "Zero-based list offset.", default=0)
+LIMIT = ArgumentSpec("limit", "integer", "Number of items to return, from 1 to 200.", default=DEFAULT_LIMIT)
 
 
 ACTIONS: dict[str, ActionSpec] = {
+    "instances.list": ActionSpec(
+        "List configured media-server instances without connection secrets.",
+        "safe_read",
+    ),
+    "capabilities.list": ActionSpec(
+        "List supported media-server actions and their complete argument contracts.",
+        "safe_read",
+        arguments=(
+            ArgumentSpec(
+                "action_name",
+                "string",
+                "Optional exact action name used to return one capability contract.",
+            ),
+        ),
+    ),
     "server.statistics": ActionSpec("Read media counts and provider statistics.", "safe_read"),
     "server.users.count": ActionSpec(
         "Read provider user count.",
@@ -118,21 +133,21 @@ ACTIONS: dict[str, ActionSpec] = {
         "List visible provider libraries.",
         "safe_read",
         arguments=(
-            ArgumentSpec("hidden", "boolean", "仅返回配置为同步范围的媒体库。", default=False),
-            ArgumentSpec("username", "string", "按用户名读取可见媒体库；仅 Emby、Jellyfin、ZSpace 支持。"),
+            ArgumentSpec("hidden", "boolean", "Return only libraries configured for synchronization.", default=False),
+            ArgumentSpec("username", "string", "Read libraries visible to this username; supported by Emby, Jellyfin, and ZSpace."),
         ),
     ),
     "items.list": ActionSpec(
         "Page items below one library or parent.",
         "safe_read",
         arguments=(PARENT, OFFSET, LIMIT),
-        argument_rules=("除 Navidrome 外必须提供 parent；Navidrome 忽略 parent。",),
+        argument_rules=("parent is required except for Navidrome, which ignores it.",),
     ),
     "items.count": ActionSpec(
         "Count items below one library or parent.",
         "safe_read",
         arguments=(PARENT,),
-        argument_rules=("除 Navidrome 外必须提供 parent；Navidrome 省略时使用 music。",),
+        argument_rules=("parent is required except for Navidrome, which defaults to music.",),
     ),
     "items.detail": ActionSpec(
         "Read one provider item by native ID.",
@@ -144,8 +159,8 @@ ACTIONS: dict[str, ActionSpec] = {
         "safe_read",
         ("emby", "jellyfin", "plex", "zspace", "ugreen", "trimemedia"),
         (
-            ArgumentSpec("title", "string", "电影标题。", required=True),
-            ArgumentSpec("year", "string|integer", "可选发行年份。"),
+            ArgumentSpec("title", "string", "Movie title.", required=True),
+            ArgumentSpec("year", "string|integer", "Optional release year."),
         ),
     ),
     "items.music.search": ActionSpec(
@@ -153,11 +168,11 @@ ACTIONS: dict[str, ActionSpec] = {
         "safe_read",
         ("emby", "jellyfin", "plex", "zspace", "ugreen", "navidrome"),
         (
-            ArgumentSpec("title", "string", "歌曲、专辑或音乐条目标题。"),
-            ArgumentSpec("artist", "string", "艺人名称。"),
-            ArgumentSpec("album", "string", "专辑名称；title、artist、album 至少提供一项。"),
+            ArgumentSpec("title", "string", "Track, album, or music-item title."),
+            ArgumentSpec("artist", "string", "Artist name."),
+            ArgumentSpec("album", "string", "Album name; provide title, artist, or album."),
         ),
-        ("title、artist、album 至少提供一项。",),
+        ("Provide at least one of title, artist, and album.",),
     ),
     "items.season_episodes": ActionSpec(
         "Read native episode coverage for one series and optional season.",
@@ -165,21 +180,21 @@ ACTIONS: dict[str, ActionSpec] = {
         ("emby", "jellyfin", "plex", "zspace", "ugreen", "trimemedia"),
         (
             ITEM_ID,
-            ArgumentSpec("title", "string", "剧集标题；与 item_id 至少提供一项。"),
-            ArgumentSpec("year", "string|integer", "可选首播年份。"),
-            ArgumentSpec("season", "integer", "可选季号。"),
+            ArgumentSpec("title", "string", "Series title; provide it or item_id."),
+            ArgumentSpec("year", "string|integer", "Optional premiere year."),
+            ArgumentSpec("season", "integer", "Optional season number."),
         ),
-        ("item_id 与 title 至少提供一项。",),
+        ("Provide at least one of item_id and title.",),
     ),
     "activity.latest": ActionSpec(
         "Read recently added provider items.",
         "safe_read",
-        arguments=(LIMIT, ArgumentSpec("username", "string", "按用户名读取；仅 Emby、Jellyfin、ZSpace 支持。")),
+        arguments=(LIMIT, ArgumentSpec("username", "string", "Read for this username; supported by Emby, Jellyfin, and ZSpace.")),
     ),
     "activity.resume": ActionSpec(
         "Read in-progress/resumable provider items.",
         "safe_read",
-        arguments=(LIMIT, ArgumentSpec("username", "string", "按用户名读取；仅 Emby、Jellyfin、ZSpace 支持。")),
+        arguments=(LIMIT, ArgumentSpec("username", "string", "Read for this username; supported by Emby, Jellyfin, and ZSpace.")),
     ),
     "activity.backdrops": ActionSpec(
         "Read recent provider backdrop images.",
@@ -187,7 +202,7 @@ ACTIONS: dict[str, ActionSpec] = {
         ("ugreen", "trimemedia"),
         (
             LIMIT,
-            ArgumentSpec("remote", "boolean", "返回 provider 可远程访问的图片地址。", default=False),
+            ArgumentSpec("remote", "boolean", "Return provider URLs that are remotely accessible.", default=False),
         ),
     ),
     "playback.sessions": ActionSpec("Read active playback sessions.", "safe_read", ("emby", "jellyfin", "plex")),
@@ -200,7 +215,7 @@ ACTIONS: dict[str, ActionSpec] = {
         "Trigger a provider library scan.",
         "external_side_effect",
         arguments=(
-            ArgumentSpec("scan_mode", "string|integer", "UGREEN 原生扫描模式；其他 provider 必须省略。"),
+            ArgumentSpec("scan_mode", "string|integer", "UGREEN-native scan mode; omit it for every other provider."),
         ),
     ),
     "metadata.refresh": ActionSpec(
@@ -211,7 +226,7 @@ ACTIONS: dict[str, ActionSpec] = {
             ArgumentSpec(
                 "items",
                 "object[]",
-                "刷新条目；每项支持 title:string、year:string|integer、type:电影|电视剧|音乐、category:string、target_path:string。",
+                "Items to refresh. Each item supports title:string, year:string|integer, type using the exact MoviePilot media-type value, category:string, and target_path:string.",
                 required=True,
             ),
         ),
@@ -615,6 +630,25 @@ def call_action(server_name: Optional[str], action: str, arguments: Mapping[str,
     if spec is None:
         raise ValueError(f"未知 media server action: {action}")
     _validate_action_arguments(action, spec, arguments)
+    if action == "instances.list":
+        return {
+            "success": True,
+            "server": None,
+            "provider": None,
+            "action": action,
+            "effect": spec.effect,
+            "data": list_instances()["instances"],
+        }
+    if action == "capabilities.list":
+        capabilities = list_capabilities(server_name, arguments.get("action_name"))
+        return {
+            "success": True,
+            "server": capabilities["server"],
+            "provider": capabilities["provider"],
+            "action": action,
+            "effect": spec.effect,
+            "data": capabilities["actions"],
+        }
     config = _select_config(server_name)
     provider = str(config.type or "").lower()
     if provider not in spec.providers:

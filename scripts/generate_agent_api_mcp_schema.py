@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.agent.policy.api import API_OPERATION_ROUTES, API_OPERATION_SPECS  # noqa: E402
-from app.agent.policy.api_mcp_contract import build_api_mcp_input_schema  # noqa: E402
+from app.agent.policy.mcp import build_api_mcp_input_schema  # noqa: E402
 from app.api.apiv1 import api_router  # noqa: E402
 
 OUTPUT_PATH = PROJECT_ROOT / "app/agent/policy/api_mcp_schema.json"

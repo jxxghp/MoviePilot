@@ -182,7 +182,7 @@ def test_downloader_instances_and_capabilities_do_not_expose_credentials(
     ]
     rendered = str((instances, capabilities))
     assert "private.invalid" not in rendered
-    assert "secret" not in rendered
+    assert '"secret"' not in json.dumps((instances, capabilities), ensure_ascii=False)
     assert any(item["action"] == "tasks.peers" for item in capabilities["actions"])
 
 
@@ -200,10 +200,10 @@ def test_downloader_capability_exposes_complete_action_arguments(
         "name": "position",
         "type": "string",
         "required": True,
-        "description": "目标队列位置。",
+        "description": "Target queue position.",
         "enum": ["top", "up", "down", "bottom"],
     }
-    assert action["argument_rules"] == ["task_id 与 task_ids 必须提供且只能选择一种。"]
+    assert action["argument_rules"] == ["Provide exactly one of task_id and task_ids."]
 
 
 def test_downloader_argument_validation_reports_all_errors_before_config_load(
@@ -394,7 +394,7 @@ def test_mediaserver_capabilities_are_provider_specific(
     assert "playback.sessions" not in action_names
     assert "metadata.refresh" not in action_names
     assert "private.invalid" not in str(result)
-    assert "secret" not in str(result)
+    assert '"secret"' not in json.dumps(result, ensure_ascii=False)
 
 
 def test_mediaserver_capability_exposes_nested_refresh_contract(
@@ -411,8 +411,8 @@ def test_mediaserver_capability_exposes_nested_refresh_contract(
             "type": "object[]",
             "required": True,
             "description": (
-                "刷新条目；每项支持 title:string、year:string|integer、type:电影|电视剧|音乐、"
-                "category:string、target_path:string。"
+                "Items to refresh. Each item supports title:string, year:string|integer, "
+                "type using the exact MoviePilot media-type value, category:string, and target_path:string."
             ),
         }
     ]

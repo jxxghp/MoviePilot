@@ -116,7 +116,7 @@ class MoviePilotApiExecutor:
         *,
         path_params: Mapping[str, Any] | None = None,
         query: Mapping[str, Any] | None = None,
-        body: Mapping[str, Any] | None = None,
+        body: Any = None,
     ) -> str:
         """执行白名单 operation，并把响应转换为稳定 JSON 文本。"""
         route = resolve_api_route(operation_id)
@@ -125,10 +125,12 @@ class MoviePilotApiExecutor:
         path = self._render_path(route, path_params or {})
         url = f"{self._resolve_base_url()}{path}"
         query_data = dict(query or {})
-        body_data = dict(body or {})
-        if route.method == "GET" and body_data:
+        body_data = dict(body) if isinstance(body, Mapping) else body
+        if route.method == "GET" and body_data is not None:
+            if not isinstance(body_data, Mapping):
+                raise ApiExecutionError("GET operation 的 body 必须是 JSON 对象")
             query_data.update(body_data)
-            body_data = {}
+            body_data = None
         request = self._request_factory(
             headers=self._build_headers(),
             timeout=30,
@@ -140,7 +142,7 @@ class MoviePilotApiExecutor:
                 method=route.method,
                 url=url,
                 params=query_data or None,
-                json=body_data or None,
+                json=body_data,
                 raise_exception=True,
             )
             if response is None:

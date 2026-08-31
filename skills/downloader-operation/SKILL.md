@@ -1,6 +1,6 @@
 ---
 name: downloader-operation
-version: 2
+version: 3
 description: >-
   Use this skill when the user asks to inspect, diagnose, or directly control a
   configured qBittorrent, Transmission, or rTorrent instance. It exposes
@@ -122,82 +122,184 @@ instances remain ambiguous, the result lists the valid client names.
 
 ## Complete Action Contract
 
-In the tables below, `*` means required. Every listed field belongs inside the
-single `--arguments` JSON object. Do not send fields that are not listed.
+This is the complete Downloader Operation action contract. It comes directly from the script `ACTIONS` registry and matches the external MCP `tools/list` oneOf branches.
+A field name ending in `*` is required. Put every action parameter in the `arguments` object.
 
-Shared rules:
+| action | Purpose and argument summary |
+| :--- | :--- |
+| `capabilities.list` | List supported downloader actions and their complete argument contracts.; arguments: `action_name` |
+| `instances.list` | List configured downloader instances without connection secrets.; no arguments |
+| `session.content_layout` | Read qBittorrent's default torrent content layout.; no arguments |
+| `session.details` | Read Transmission session configuration and capacity details.; no arguments |
+| `session.speed_limits.get` | Read global speed limits.; no arguments |
+| `session.speed_limits.set` | Set global speed limits in KB/s.; arguments: `download_limit`, `upload_limit` |
+| `session.stats` | Read provider transfer/session statistics.; no arguments |
+| `tasks.add.direct` | Submit a magnet, URL, or local torrent file directly to the provider.; arguments: `content*`, `torrent_file`, `paused`, `download_dir`, `tags`, `category` |
+| `tasks.category.set` | Set qBittorrent category.; arguments: `task_id*`, `category*` |
+| `tasks.delete` | Delete tasks and optionally their data.; arguments: `task_id`, `task_ids`, `delete_files` |
+| `tasks.files` | List files and priorities for one task.; arguments: `task_id*`, `offset`, `limit` |
+| `tasks.files.selection.set` | Select wanted and unwanted files within one task.; arguments: `task_id*`, `wanted_file_ids`, `unwanted_file_ids` |
+| `tasks.force_start.set` | Enable or disable qBittorrent force-start for tasks.; arguments: `task_id`, `task_ids`, `enabled*` |
+| `tasks.list` | List and filter downloader tasks.; arguments: `task_id`, `task_ids`, `status`, `tags`, `offset`, `limit` |
+| `tasks.location.set` | Move or retarget one task to a provider-side path.; arguments: `task_id*`, `location*` |
+| `tasks.peers` | Read qBittorrent peer synchronization data.; arguments: `task_id*` |
+| `tasks.properties.set` | Set task speed, ratio, or seeding-time limits.; arguments: `task_id*`, `upload_limit`, `download_limit`, `ratio_limit`, `seeding_time_limit` |
+| `tasks.queue.move` | Move tasks to top, up, down, or bottom of the queue.; arguments: `task_id`, `task_ids`, `position*` |
+| `tasks.reannounce` | Force tracker reannounce.; arguments: `task_id`, `task_ids` |
+| `tasks.recheck` | Force data verification for tasks.; arguments: `task_id`, `task_ids` |
+| `tasks.start` | Start or resume one or more tasks.; arguments: `task_id`, `task_ids` |
+| `tasks.stop` | Pause one or more tasks.; arguments: `task_id`, `task_ids` |
+| `tasks.tags.get` | Read task tags or labels.; arguments: `task_id*` |
+| `tasks.tags.set` | Set or add task tags/labels.; arguments: `task_id`, `task_ids`, `tags*` |
+| `tasks.trackers` | List trackers for one task.; arguments: `task_id*` |
+| `tasks.trackers.update` | Add or replace task trackers.; arguments: `task_id*`, `trackers*` |
 
-- Task batch actions require exactly one of `task_id:string` or
-  `task_ids:string[]`.
-- Paged reads accept `offset:integer=0` and `limit:integer=50`; `offset` must be
-  non-negative and `limit` is clamped to `1..200`.
-- Speed values are numbers in `KB/s`. A value of `0` means unlimited.
-- Task IDs, file indexes, tags, tracker URLs, and provider paths must come from
-  the selected downloader or the user's explicit input; never invent them.
+### `capabilities.list`
+List supported downloader actions and their complete argument contracts. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+- `action_name` (string): Optional exact action name used to return one capability contract.
 
-### Task reads
+### `instances.list`
+List configured downloader instances without connection secrets. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+- `arguments`: `{}`
 
-| Action | Function and providers | `--arguments` fields |
-|---|---|---|
-| `tasks.list` | List/filter tasks; all | `task_id:string` or `task_ids:string[]`; `status:string`; `tags:string\|string[]`; `offset:integer=0`; `limit:integer=50` |
-| `tasks.files` | List files and priorities for one task; all | `task_id*:string`; `offset:integer=0`; `limit:integer=50` |
-| `tasks.trackers` | List tracker URLs; qBittorrent, Transmission | `task_id*:string` |
-| `tasks.tags.get` | Read tags/labels for one task; all | `task_id*:string` |
-| `tasks.peers` | Read peer synchronization data; qBittorrent | `task_id*:string` |
+### `session.content_layout`
+Read qBittorrent's default torrent content layout. Effect: `safe_read`. Providers: `qbittorrent`.
+- `arguments`: `{}`
 
-### Task control
+### `session.details`
+Read Transmission session configuration and capacity details. Effect: `safe_read`. Providers: `transmission`.
+- `arguments`: `{}`
 
-| Action | Function and effect | `--arguments` fields |
-|---|---|---|
-| `tasks.start` | Start/resume tasks; reversible write | exactly one of `task_id:string`, `task_ids:string[]` |
-| `tasks.stop` | Pause tasks; reversible write | exactly one of `task_id:string`, `task_ids:string[]` |
-| `tasks.recheck` | Force data verification; external side effect | exactly one of `task_id:string`, `task_ids:string[]` |
-| `tasks.reannounce` | Force tracker reannounce; qBittorrent/Transmission, external side effect | exactly one of `task_id:string`, `task_ids:string[]` |
-| `tasks.queue.move` | Move queue position; qBittorrent/Transmission, reversible write | exactly one of `task_id:string`, `task_ids:string[]`; `position*:string` = `top\|up\|down\|bottom` |
-| `tasks.force_start.set` | Toggle force-start; qBittorrent, reversible write | exactly one of `task_id:string`, `task_ids:string[]`; `enabled*:boolean` |
-| `tasks.files.selection.set` | Select files within one task; reversible write | `task_id*:string`; `wanted_file_ids:integer[]`; `unwanted_file_ids:integer[]`; at least one list, with no overlapping index |
-| `tasks.properties.set` | Set per-task limits; reversible write | `task_id*:string`; at least one of `upload_limit:number`, `download_limit:number`, `ratio_limit:number`, `seeding_time_limit:integer` minutes. rTorrent supports only speed fields |
-| `tasks.location.set` | Move/retarget data to a downloader-side path; external side effect | `task_id*:string`; `location*:string` |
-| `tasks.category.set` | Set a non-empty category; qBittorrent, reversible write | `task_id*:string`; `category*:string` |
-| `tasks.tags.set` | Set/add tags or labels; reversible write | exactly one of `task_id:string`, `task_ids:string[]`; `tags*:string[]` |
-| `tasks.trackers.update` | Add/replace trackers; qBittorrent/Transmission, reversible write | `task_id*:string`; `trackers*:string[]` of URLs |
-| `tasks.delete` | Delete tasks and optionally data; destructive write | exactly one of `task_id:string`, `task_ids:string[]`; `delete_files:boolean=false` |
-| `tasks.add.direct` | Submit directly to provider, bypassing MoviePilot orchestration; external side effect | `content*:string` magnet/URL/path; `torrent_file:boolean=false`; `paused:boolean=false`; `download_dir:string`; `tags:string[]`; `category:string` (qBittorrent only) |
+### `session.speed_limits.get`
+Read global speed limits. Effect: `safe_read`. Providers: `qbittorrent, transmission`.
+- `arguments`: `{}`
 
-### Session operations
+### `session.speed_limits.set`
+Set global speed limits in KB/s. Effect: `reversible_write`. Providers: `qbittorrent, transmission`.
+- `download_limit` (number): Global download limit in KB/s; 0 or omission means unlimited.
+- `upload_limit` (number): Global upload limit in KB/s; 0 or omission means unlimited.
 
-| Action | Function and providers | `--arguments` fields |
-|---|---|---|
-| `session.stats` | Read transfer/session statistics; all | none (`{}`) |
-| `session.speed_limits.get` | Read global download/upload limits; qBittorrent, Transmission | none (`{}`) |
-| `session.speed_limits.set` | Set global limits; qBittorrent, Transmission | at least one of `download_limit:number`, `upload_limit:number`; use explicit `0` to clear a limit |
-| `session.details` | Read Transmission session configuration/capacity; Transmission | none (`{}`) |
-| `session.content_layout` | Read default torrent content layout; qBittorrent | none (`{}`) |
+### `session.stats`
+Read provider transfer/session statistics. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+- `arguments`: `{}`
 
-Examples:
+### `tasks.add.direct`
+Submit a magnet, URL, or local torrent file directly to the provider. Effect: `external_side_effect`. Providers: `qbittorrent, transmission, rtorrent`.
+- `content*` (string): Magnet URI, torrent URL, or a local torrent path when torrent_file=true.
+- `torrent_file` (boolean; default `False`): Interpret content as a local torrent-file path.
+- `paused` (boolean; default `False`): Add the task in a paused state.
+- `download_dir` (string): Provider-side save path.
+- `tags` (string[]): Tags to assign to the new task.
+- `category` (string): qBittorrent category; ignored by other providers.
 
-```bash
-# Read one task's files.
-python skills/downloader-operation/scripts/mp-downloader.py call \
-  --client "main-qb" \
-  --action tasks.files \
-  --arguments '{"task_id":"exact-provider-hash","offset":0,"limit":50}'
+### `tasks.category.set`
+Set qBittorrent category. Effect: `reversible_write`. Providers: `qbittorrent`.
+- `task_id*` (string): One provider-native task hash or ID.
+- `category*` (string): Non-empty qBittorrent category name.
 
-# Limit one task to 2048 KB/s download and 512 KB/s upload.
-python skills/downloader-operation/scripts/mp-downloader.py call \
-  --client "main-qb" \
-  --action tasks.properties.set \
-  --arguments '{"task_id":"exact-provider-hash","download_limit":2048,"upload_limit":512}'
-```
+### `tasks.delete`
+Delete tasks and optionally their data. Effect: `destructive_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): One provider-native task hash or ID.
+- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
+- `delete_files` (boolean; default `False`): Also permanently delete the task data files.
+- Rule: Provide exactly one of task_id and task_ids.
 
-Before deleting data, confirm the exact client, tasks, and `delete_files=true`.
-Before a direct add, confirm the exact magnet/URL or local torrent file, client,
-paused state, provider path, tags, and category.
+### `tasks.files`
+List files and priorities for one task. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id*` (string): One provider-native task hash or ID.
+- `offset` (integer; default `0`): Zero-based list offset.
+- `limit` (integer; default `50`): Number of items to return, from 1 to 200.
 
-For `tasks.files.selection.set`, pass provider file indexes from `tasks.files`
-through `wanted_file_ids` and/or `unwanted_file_ids`; never infer indexes from
-filenames alone. `session.details` is Transmission-only and
-`session.content_layout` is qBittorrent-only.
+### `tasks.files.selection.set`
+Select wanted and unwanted files within one task. Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id*` (string): One provider-native task hash or ID.
+- `wanted_file_ids` (integer[]): Provider file indexes to download; provide this or unwanted_file_ids.
+- `unwanted_file_ids` (integer[]): Provider file indexes to skip; provide this or wanted_file_ids.
+- Rule: Provide wanted_file_ids or unwanted_file_ids, and never place one index in both lists.
+
+### `tasks.force_start.set`
+Enable or disable qBittorrent force-start for tasks. Effect: `reversible_write`. Providers: `qbittorrent`.
+- `task_id` (string): One provider-native task hash or ID.
+- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
+- `enabled*` (boolean): Whether force-start is enabled.
+- Rule: Provide exactly one of task_id and task_ids.
+
+### `tasks.list`
+List and filter downloader tasks. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): One provider-native task hash or ID.
+- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
+- `status` (string): Filter by the provider-native task status.
+- `tags` (string|string[]): Return only tasks that contain all specified tags.
+- `offset` (integer; default `0`): Zero-based list offset.
+- `limit` (integer; default `50`): Number of items to return, from 1 to 200.
+
+### `tasks.location.set`
+Move or retarget one task to a provider-side path. Effect: `external_side_effect`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id*` (string): One provider-native task hash or ID.
+- `location*` (string): New provider-side save path.
+
+### `tasks.peers`
+Read qBittorrent peer synchronization data. Effect: `safe_read`. Providers: `qbittorrent`.
+- `task_id*` (string): One provider-native task hash or ID.
+
+### `tasks.properties.set`
+Set task speed, ratio, or seeding-time limits. Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id*` (string): One provider-native task hash or ID.
+- `upload_limit` (number): Upload limit in KB/s; 0 means unlimited.
+- `download_limit` (number): Download limit in KB/s; 0 means unlimited.
+- `ratio_limit` (number): Share-ratio limit; unsupported by rTorrent.
+- `seeding_time_limit` (integer): Seeding-time limit in minutes; unsupported by rTorrent.
+
+### `tasks.queue.move`
+Move tasks to top, up, down, or bottom of the queue. Effect: `reversible_write`. Providers: `qbittorrent, transmission`.
+- `task_id` (string): One provider-native task hash or ID.
+- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
+- `position*` (string; allowed values `top,up,down,bottom`): Target queue position.
+- Rule: Provide exactly one of task_id and task_ids.
+
+### `tasks.reannounce`
+Force tracker reannounce. Effect: `external_side_effect`. Providers: `qbittorrent, transmission`.
+- `task_id` (string): One provider-native task hash or ID.
+- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
+- Rule: Provide exactly one of task_id and task_ids.
+
+### `tasks.recheck`
+Force data verification for tasks. Effect: `external_side_effect`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): One provider-native task hash or ID.
+- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
+- Rule: Provide exactly one of task_id and task_ids.
+
+### `tasks.start`
+Start or resume one or more tasks. Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): One provider-native task hash or ID.
+- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
+- Rule: Provide exactly one of task_id and task_ids.
+
+### `tasks.stop`
+Pause one or more tasks. Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): One provider-native task hash or ID.
+- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
+- Rule: Provide exactly one of task_id and task_ids.
+
+### `tasks.tags.get`
+Read task tags or labels. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id*` (string): One provider-native task hash or ID.
+
+### `tasks.tags.set`
+Set or add task tags/labels. Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): One provider-native task hash or ID.
+- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
+- `tags*` (string[]): Tags or labels to set or add.
+- Rule: Provide exactly one of task_id and task_ids.
+
+### `tasks.trackers`
+List trackers for one task. Effect: `safe_read`. Providers: `qbittorrent, transmission`.
+- `task_id*` (string): One provider-native task hash or ID.
+
+### `tasks.trackers.update`
+Add or replace task trackers. Effect: `reversible_write`. Providers: `qbittorrent, transmission`.
+- `task_id*` (string): One provider-native task hash or ID.
+- `trackers*` (string[]): Tracker URL list.
 
 ## Verification
 

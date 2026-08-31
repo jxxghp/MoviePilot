@@ -20,9 +20,17 @@ from app.runtime.settings import get_runtime_setting
 class DownloaderOperationInput(BaseModel):
     """下载器操作工具的运行时输入模型。"""
 
-    client: Optional[str] = Field(default=None, description="下载器实例名；省略时使用默认或唯一实例。")
-    action: str = Field(description="固定下载器 action；MCP inputSchema 会按 action 展示精确枚举和参数。")
-    arguments: Dict[str, Any] = Field(default_factory=dict, description="当前 action 的结构化参数对象。")
+    client: Optional[str] = Field(
+        default=None,
+        description="Configured downloader instance name; omit it to use the default or only enabled instance.",
+    )
+    action: str = Field(
+        description="Exact downloader action. Select one action branch from the MCP input schema.",
+    )
+    arguments: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Structured arguments declared by the selected downloader action.",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -30,14 +38,36 @@ class DownloaderOperationInput(BaseModel):
 class MediaServerOperationInput(BaseModel):
     """媒体服务器操作工具的运行时输入模型。"""
 
-    server: Optional[str] = Field(default=None, description="媒体服务器实例名；省略时使用唯一启用实例。")
-    action: str = Field(description="固定媒体服务器 action；MCP inputSchema 会按 action 展示精确枚举和参数。")
-    arguments: Dict[str, Any] = Field(default_factory=dict, description="当前 action 的结构化参数对象。")
+    server: Optional[str] = Field(
+        default=None,
+        description="Configured media-server instance name; omit it to use the only enabled instance.",
+    )
+    action: str = Field(
+        description="Exact media-server action. Select one action branch from the MCP input schema.",
+    )
+    arguments: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Structured arguments declared by the selected media-server action.",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
 
-@lru_cache(maxsize=2)
+class DatabaseOperationInput(BaseModel):
+    """数据库操作工具的运行时输入模型。"""
+
+    action: str = Field(
+        description="Exact database action. Select one action branch from the MCP input schema.",
+    )
+    arguments: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Structured arguments declared by the selected database action.",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+@lru_cache(maxsize=3)
 def _load_action_contracts(script_path: str) -> dict[str, Any]:
     """从固定 Skill 脚本加载无配置副作用的 action 注册表。"""
     namespace = runpy.run_path(script_path)
@@ -105,18 +135,23 @@ def _metadata_refresh_items_schema() -> dict[str, Any]:
         "items": {
             "type": "object",
             "properties": {
-                "title": {"type": "string", "description": "媒体标题。"},
+                "title": {"type": "string", "description": "Media title used for recognition."},
                 "year": {
                     "anyOf": [{"type": "string"}, {"type": "integer"}],
-                    "description": "媒体年份。",
+                    "description": "Release or premiere year used to disambiguate the title.",
                 },
                 "type": {
                     "type": "string",
                     "enum": ["电影", "电视剧", "音乐"],
-                    "description": "MoviePilot 媒体类型。",
+                    "description": (
+                        "Exact MoviePilot media-type literal: 电影 (movie), 电视剧 (TV), or 音乐 (music)."
+                    ),
                 },
-                "category": {"type": "string", "description": "媒体分类。"},
-                "target_path": {"type": "string", "description": "媒体文件或目录路径。"},
+                "category": {"type": "string", "description": "Optional MoviePilot library category."},
+                "target_path": {
+                    "type": "string",
+                    "description": "Media file or directory path whose metadata should be refreshed.",
+                },
             },
             "additionalProperties": False,
         },
@@ -163,6 +198,11 @@ def _add_action_argument_rules(action: str, schema: dict[str, Any]) -> None:
         ]
     if action == "items.season_episodes":
         schema["anyOf"] = [{"required": ["item_id"]}, {"required": ["title"]}]
+    if action in {"query", "write"}:
+        schema["oneOf"] = [
+            {"required": ["sql"], "not": {"required": ["file"]}},
+            {"required": ["file"], "not": {"required": ["sql"]}},
+        ]
 
 
 def _build_arguments_schema(action: str, spec: Any) -> dict[str, Any]:
@@ -177,7 +217,7 @@ def _build_arguments_schema(action: str, spec: Any) -> dict[str, Any]:
         properties["items"]["description"] = contract["arguments"][0]["description"]
     schema: dict[str, Any] = {
         "type": "object",
-        "description": "；".join(contract.get("argument_rules") or []),
+        "description": " ".join(contract.get("argument_rules") or []),
         "properties": properties,
         "required": list(contract.get("required_arguments") or []),
         "additionalProperties": False,
@@ -189,8 +229,8 @@ def _build_arguments_schema(action: str, spec: Any) -> dict[str, Any]:
 def _build_mcp_input_schema(
     *,
     actions: dict[str, Any],
-    selector_name: str,
-    selector_description: str,
+    selector_name: Optional[str],
+    selector_description: Optional[str],
     title: str,
 ) -> dict[str, Any]:
     """构建按 action 分支且可由外部 MCP Client 直接发现的输入合同。"""
@@ -198,6 +238,15 @@ def _build_mcp_input_schema(
     branches = []
     for action in action_names:
         contract = actions[action].to_dict(action)
+        properties = {
+            "action": {"type": "string", "const": action},
+            "arguments": _build_arguments_schema(action, actions[action]),
+        }
+        if selector_name:
+            properties[selector_name] = {
+                "type": "string",
+                "description": selector_description or "",
+            }
         branches.append(
             {
                 "type": "object",
@@ -206,27 +255,28 @@ def _build_mcp_input_schema(
                     f"{contract['description']} Effect: {contract['effect']}. "
                     f"Providers: {', '.join(contract['providers'])}."
                 ),
-                "properties": {
-                    selector_name: {"type": "string", "description": selector_description},
-                    "action": {"type": "string", "const": action},
-                    "arguments": _build_arguments_schema(action, actions[action]),
-                },
+                "properties": properties,
                 "required": ["action", "arguments"],
                 "additionalProperties": False,
             }
         )
+    properties = {
+        "action": {"type": "string", "enum": action_names},
+        "arguments": {
+            "type": "object",
+            "description": "Arguments must match the oneOf branch selected by action.",
+        },
+    }
+    if selector_name:
+        properties[selector_name] = {
+            "type": "string",
+            "description": selector_description or "",
+        }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": title,
         "type": "object",
-        "properties": {
-            selector_name: {"type": "string", "description": selector_description},
-            "action": {"type": "string", "enum": action_names},
-            "arguments": {
-                "type": "object",
-                "description": "参数必须匹配所选 action 的 oneOf 分支。",
-            },
-        },
+        "properties": properties,
         "required": ["action", "arguments"],
         "oneOf": branches,
     }
@@ -283,18 +333,21 @@ class _ServiceOperationTool(MoviePilotTool):
     """固定 Skill 脚本的 MCP-only 安全包装基类。"""
 
     require_admin: bool = True
+    tags: list[str] = [ToolTag.Admin]
     _relative_script: ClassVar[str]
-    _selector_name: ClassVar[str]
-    _selector_flag: ClassVar[str]
+    _selector_name: ClassVar[Optional[str]]
+    _selector_flag: ClassVar[Optional[str]]
     _blocking_bucket: ClassVar[str]
 
     def get_mcp_input_schema(self) -> dict[str, Any]:
         """返回保留 action 条件分支的完整 MCP JSON Schema。"""
         root_path = Path(get_runtime_setting("ROOT_PATH"))
         actions = _load_action_contracts(str(root_path / self._relative_script))
-        selector_description = self.args_schema.model_json_schema()["properties"][self._selector_name][
-            "description"
-        ]
+        selector_description = None
+        if self._selector_name:
+            selector_description = self.args_schema.model_json_schema()["properties"][self._selector_name][
+                "description"
+            ]
         return _build_mcp_input_schema(
             actions=actions,
             selector_name=self._selector_name,
@@ -383,9 +436,135 @@ class MediaServerOperationTool(_ServiceOperationTool):
         )
 
 
+def _run_database_script(arguments: Dict[str, Any], *, root_path: Path) -> dict[str, Any]:
+    """不经 shell 调用数据库 Skill 脚本，并返回结构化结果。"""
+    script_path = root_path / "skills/database-operation/scripts/mp-db.py"
+    action = str(arguments.get("action") or "")
+    action_arguments = arguments.get("arguments") or {}
+    if not isinstance(action_arguments, dict):
+        raise ValueError("数据库 action arguments 必须是对象")
+
+    contracts = _load_action_contracts(str(script_path))
+    contract = contracts.get(action)
+    if contract is None:
+        raise ValueError(f"未知数据库 action: {action}")
+    contract_data = contract.to_dict(action)
+    declared_arguments = {item["name"]: item for item in contract_data["arguments"]}
+    unknown_arguments = sorted(set(action_arguments) - set(declared_arguments))
+    if unknown_arguments:
+        raise ValueError(f"数据库 action 存在未知参数: {', '.join(unknown_arguments)}")
+    missing_arguments = [
+        name
+        for name in contract_data["required_arguments"]
+        if name not in action_arguments
+    ]
+    if missing_arguments:
+        raise ValueError(f"数据库 action 缺少必填参数: {', '.join(missing_arguments)}")
+    if action in {"query", "write"}:
+        has_sql = bool(action_arguments.get("sql"))
+        has_file = bool(action_arguments.get("file"))
+        if has_sql == has_file:
+            raise ValueError("数据库 query/write 必须在 sql 与 file 中二选一")
+        for field_name in ("sql", "file"):
+            if field_name in action_arguments and (
+                not isinstance(action_arguments[field_name], str)
+                or not action_arguments[field_name].strip()
+            ):
+                raise ValueError(f"数据库参数 {field_name} 必须是非空 string")
+    if action == "schema" and (
+        not isinstance(action_arguments.get("table_name"), str)
+        or not action_arguments["table_name"].strip()
+    ):
+        raise ValueError("数据库参数 table_name 必须是非空 string")
+    if action == "query":
+        limit = action_arguments.get("limit", 100)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+            raise ValueError("数据库参数 limit 必须是 1 到 200 的 integer")
+        write_flag = action_arguments.get("write", False)
+        if not isinstance(write_flag, bool):
+            raise ValueError("数据库参数 write 必须是 boolean")
+
+    command = [sys.executable, str(script_path), action]
+    if action == "schema":
+        command.append(str(action_arguments.get("table_name") or ""))
+    elif action in {"query", "write"}:
+        sql = action_arguments.get("sql")
+        sql_file = action_arguments.get("file")
+        if sql:
+            command.append(str(sql))
+        if sql_file:
+            command.extend(["--file", str(sql_file)])
+        if action == "query":
+            command.extend(["--limit", str(action_arguments.get("limit", 100))])
+            if action_arguments.get("write") is True:
+                command.append("--write")
+
+    completed = subprocess.run(
+        command,
+        cwd=root_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        error_text = completed.stderr.strip() or completed.stdout.strip() or "数据库脚本执行失败"
+        return {"success": False, "error": "database_operation_failed", "message": error_text}
+    return _parse_script_payload(completed.stdout)
+
+
+class DatabaseOperationTool(_ServiceOperationTool):
+    """外部 HTTP/MCP 调用 MoviePilot 数据库 Skill 的结构化工具。"""
+
+    name: str = "database_operation"
+    description: str = (
+        "Inspect or explicitly modify the configured MoviePilot database. The input schema "
+        "contains exact branches for tables, schema, query, and write, including field types, "
+        "defaults, mutually exclusive SQL sources, and safety rules."
+    )
+    tags: list[str] = [ToolTag.Admin]
+    args_schema: Type[BaseModel] = DatabaseOperationInput
+    _relative_script = "skills/database-operation/scripts/mp-db.py"
+    _selector_name = None
+    _selector_flag = None
+    _blocking_bucket = "db"
+
+    def get_mcp_input_schema(self) -> dict[str, Any]:
+        """返回数据库 action 的完整 MCP JSON Schema。"""
+        root_path = Path(get_runtime_setting("ROOT_PATH"))
+        actions = _load_action_contracts(str(root_path / self._relative_script))
+        return _build_mcp_input_schema(
+            actions=actions,
+            selector_name=None,
+            selector_description=None,
+            title=self.name,
+        )
+
+    async def run(
+        self,
+        action: str,
+        arguments: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        执行一次数据库 Skill 操作。
+
+        :param action: tables、schema、query 或 write
+        :param arguments: 当前 action 的结构化参数
+        :return: 结构化数据库结果
+        """
+        payload = await self.run_blocking(
+            self._blocking_bucket,
+            _run_database_script,
+            root_path=Path(get_runtime_setting("ROOT_PATH")),
+            arguments={"action": action, "arguments": arguments or {}},
+        )
+        return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
 __all__ = [
     "DownloaderOperationInput",
     "DownloaderOperationTool",
+    "DatabaseOperationInput",
+    "DatabaseOperationTool",
     "MediaServerOperationInput",
     "MediaServerOperationTool",
 ]

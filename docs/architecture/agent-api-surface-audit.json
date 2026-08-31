@@ -1,0 +1,4973 @@
+{
+  "disposition_counts": {
+    "alternate-auth-duplicate": 11,
+    "consolidated": 72,
+    "gateway": 200,
+    "provider-skill": 11,
+    "stream_or_binary": 10,
+    "transport_or_identity": 66,
+    "ui_presentation": 5
+  },
+  "dynamic_gateway_routes": [
+    {
+      "method": "GET",
+      "operation_ids": [
+        "media.person.credits"
+      ],
+      "path": "/api/v1/{source}/person/credits/{person_id}",
+      "reason": "The executor validates and expands this bounded source placeholder to one of tmdb, douban, bangumi, or anilist before calling the corresponding concrete OpenAPI route."
+    }
+  ],
+  "gateway_http_route_count": 201,
+  "gateway_operation_count": 203,
+  "matched_gateway_http_route_count": 200,
+  "openapi_operation_count": 375,
+  "operations": [
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/anilist/credits/{anilist_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询 AniList 配音演员",
+      "tags": [
+        "anilist"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/anilist/discover",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "探索 AniList 动画",
+      "tags": [
+        "anilist"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/anilist/person/credits/{person_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询 AniList 人物作品",
+      "tags": [
+        "anilist"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/anilist/person/{person_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询 AniList 人物详情",
+      "tags": [
+        "anilist"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/anilist/popular-this-season",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询 AniList 本季热门榜",
+      "tags": [
+        "anilist"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/anilist/recommend/{anilist_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询 AniList 相关推荐",
+      "tags": [
+        "anilist"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/anilist/trending",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询 AniList 当前趋势榜",
+      "tags": [
+        "anilist"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/anilist/{anilist_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询 AniList 动画详情",
+      "tags": [
+        "anilist"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/anthropic/v1/messages",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "Anthropic compatible messages",
+      "tags": [
+        "anthropic"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/auth/exchange",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "兑换插件认证登录票据",
+      "tags": [
+        "auth"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/auth/providers",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "查询登录认证提供方",
+      "tags": [
+        "auth"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/bangumi/credits/{bangumiid}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询Bangumi演职员表",
+      "tags": [
+        "bangumi"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/bangumi/person/credits/{person_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "人物参演作品",
+      "tags": [
+        "bangumi"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/bangumi/person/{person_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "人物详情",
+      "tags": [
+        "bangumi"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/bangumi/recommend/{bangumiid}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询Bangumi推荐",
+      "tags": [
+        "bangumi"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/bangumi/{bangumiid}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询Bangumi详情",
+      "tags": [
+        "bangumi"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "dashboard.cpu"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/cpu",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取当前CPU使用率",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "alternate-auth-duplicate",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/cpu2",
+      "reason": "API-token compatibility duplicate; the Agent uses the corresponding bearer-authenticated operation with its persisted user identity.",
+      "summary": "获取当前CPU使用率（API_TOKEN）",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "dashboard.downloader"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/downloader",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "下载器信息",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "alternate-auth-duplicate",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/downloader2",
+      "reason": "API-token compatibility duplicate; the Agent uses the corresponding bearer-authenticated operation with its persisted user identity.",
+      "summary": "下载器信息（API_TOKEN）",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "dashboard.memory"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/memory",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取当前应用与系统内存信息",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "alternate-auth-duplicate",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/memory2",
+      "reason": "API-token compatibility duplicate; the Agent uses the corresponding bearer-authenticated operation with its persisted user identity.",
+      "summary": "获取当前应用与系统内存信息（API_TOKEN）",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "dashboard.network"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/network",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取当前网络流量",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "alternate-auth-duplicate",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/network2",
+      "reason": "API-token compatibility duplicate; the Agent uses the corresponding bearer-authenticated operation with its persisted user identity.",
+      "summary": "获取当前网络流量（API_TOKEN）",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "dashboard.processes"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/processes",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "进程信息",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "scheduler.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/schedule",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "后台服务",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "scheduler.progress"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/schedule/{job_id}/progress",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "后台服务进度",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "alternate-auth-duplicate",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/schedule2",
+      "reason": "API-token compatibility duplicate; the Agent uses the corresponding bearer-authenticated operation with its persisted user identity.",
+      "summary": "后台服务（API_TOKEN）",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "alternate-auth-duplicate",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/schedule2/{job_id}/progress",
+      "reason": "API-token compatibility duplicate; the Agent uses the corresponding bearer-authenticated operation with its persisted user identity.",
+      "summary": "后台服务进度（API_TOKEN）",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "dashboard.media.statistics"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/statistic",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "媒体数量统计",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "alternate-auth-duplicate",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/statistic2",
+      "reason": "API-token compatibility duplicate; the Agent uses the corresponding bearer-authenticated operation with its persisted user identity.",
+      "summary": "媒体数量统计（API_TOKEN）",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "dashboard.storage"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/storage",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "本地存储空间",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "alternate-auth-duplicate",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/storage2",
+      "reason": "API-token compatibility duplicate; the Agent uses the corresponding bearer-authenticated operation with its persisted user identity.",
+      "summary": "本地存储空间（API_TOKEN）",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "dashboard.system"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/system",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "系统摘要信息",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "dashboard.transfer.statistics"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/dashboard/transfer",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "文件整理统计",
+      "tags": [
+        "dashboard"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/discover/bangumi",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "探索Bangumi",
+      "tags": [
+        "discover"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/discover/douban_movies",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "探索豆瓣电影",
+      "tags": [
+        "discover"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/discover/douban_tvs",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "探索豆瓣剧集",
+      "tags": [
+        "discover"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/discover/source",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "获取探索数据源",
+      "tags": [
+        "discover"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/discover/tmdb_movies",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "探索TMDB电影",
+      "tags": [
+        "discover"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/discover/tmdb_tvs",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "探索TMDB剧集",
+      "tags": [
+        "discover"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/douban/credits/{doubanid}/{type_name}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣演员阵容",
+      "tags": [
+        "douban"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/douban/person/credits/{person_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "人物参演作品",
+      "tags": [
+        "douban"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/douban/person/{person_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "人物详情",
+      "tags": [
+        "douban"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/douban/recommend/{doubanid}/{type_name}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣推荐电影/电视剧",
+      "tags": [
+        "douban"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/douban/{doubanid}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询豆瓣详情",
+      "tags": [
+        "douban"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "download.tasks.active"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/download/",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "正在下载",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "POST",
+      "operation_ids": [
+        "download.add"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/download/",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation download.add.",
+      "summary": "添加下载（含媒体信息）",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "download.add"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/download/add",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "添加下载（不含媒体信息）",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "download.clients"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/download/clients",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询可用下载器",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "download.paths"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/download/paths",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询可用下载路径",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "downloader-operation",
+      "path": "/api/v1/download/start/{hashString}",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "开始任务",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "downloader-operation",
+      "path": "/api/v1/download/stop/{hashString}",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "暂停任务",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "downloader-operation",
+      "path": "/api/v1/download/subtitle",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "下载字幕",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "DELETE",
+      "operation_ids": [],
+      "owner": "downloader-operation",
+      "path": "/api/v1/download/{hashString}",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "删除下载任务",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "PATCH",
+      "operation_ids": [],
+      "owner": "downloader-operation",
+      "path": "/api/v1/download/{hashString}",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "高级更新下载任务",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "download.history.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/history/download",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除下载历史记录",
+      "tags": [
+        "history"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "download.history.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/history/download",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询下载历史记录",
+      "tags": [
+        "history"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "transfer.history.clear"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/history/empty/transfer",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "清空整理记录",
+      "tags": [
+        "history"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "transfer.history.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/history/transfer",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除整理记录",
+      "tags": [
+        "history"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "transfer.history"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/history/transfer",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询整理记录",
+      "tags": [
+        "history"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "transfer.history.redo_batch"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/history/transfer/ai-redo",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "智能助手批量重新整理",
+      "tags": [
+        "history"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "transfer.history.redo"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/history/transfer/{history_id}/ai-redo",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "智能助手重新整理",
+      "tags": [
+        "history"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/llm/manage",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "LLM提供商统一管理",
+      "tags": [
+        "llm"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/llm/provider-auth/callback/{provider_id}",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "LLM提供商OAuth回调",
+      "tags": [
+        "llm"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/login/access-token",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "获取token",
+      "tags": [
+        "login"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/login/initialization",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "查询首次初始化状态",
+      "tags": [
+        "login"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/login/initialization",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "完成首次初始化",
+      "tags": [
+        "login"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/login/wallpaper",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "登录页面电影海报",
+      "tags": [
+        "login"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/login/wallpapers",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "登录页面电影海报列表",
+      "tags": [
+        "login"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "DELETE",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mcp",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "终止 MCP 会话",
+      "tags": [
+        "mcp"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mcp",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "MCP JSON-RPC 端点",
+      "tags": [
+        "mcp"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mcp/tools",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "列出所有可用工具",
+      "tags": [
+        "mcp"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mcp/tools/call",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "调用工具",
+      "tags": [
+        "mcp"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mcp/tools/{tool_name}",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "获取工具详情",
+      "tags": [
+        "mcp"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mcp/tools/{tool_name}/schema",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "获取工具参数Schema",
+      "tags": [
+        "mcp"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "media.categories"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/category",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询自动分类配置",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "media.category.config.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/category/config",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取分类策略配置",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "media.category.config.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/category/config",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "保存分类策略配置",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "media.episode_group.seasons"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/group/seasons/{episode_group}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询剧集组季信息",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "media.episode_groups"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/groups/{tmdbid}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询媒体剧集组",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "media.recognize"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/recognize",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "识别媒体信息（种子）",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "alternate-auth-duplicate",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/recognize2",
+      "reason": "API-token compatibility duplicate; the Agent uses the corresponding bearer-authenticated operation with its persisted user identity.",
+      "summary": "识别种子媒体信息（API_TOKEN）",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "media.recognize_file"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/recognize_file",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "识别媒体信息（文件）",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "alternate-auth-duplicate",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/recognize_file2",
+      "reason": "API-token compatibility duplicate; the Agent uses the corresponding bearer-authenticated operation with its persisted user identity.",
+      "summary": "识别文件媒体信息（API_TOKEN）",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "media.scrape"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/scrape/{storage}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "刮削媒体信息",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "media.person.search",
+        "media.search"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/search",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "搜索媒体/人物信息",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "media.seasons"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/seasons",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询媒体季信息",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "media.sources"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/source",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取媒体数据源",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "media.detail"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/media/{media_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询媒体详情",
+      "tags": [
+        "media"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "mediaserver-operation",
+      "path": "/api/v1/mediaserver/clients",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "查询可用媒体服务器",
+      "tags": [
+        "mediaserver"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "library.exists"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/mediaserver/exists",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询本地是否存在（数据库）",
+      "tags": [
+        "mediaserver"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "mediaserver-operation",
+      "path": "/api/v1/mediaserver/exists_remote",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "查询已存在的剧集信息（媒体服务器）",
+      "tags": [
+        "mediaserver"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "library.latest"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/mediaserver/latest",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "最新入库条目",
+      "tags": [
+        "mediaserver"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "mediaserver-operation",
+      "path": "/api/v1/mediaserver/library",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "媒体库列表",
+      "tags": [
+        "mediaserver"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "mediaserver-operation",
+      "path": "/api/v1/mediaserver/notexists",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "查询媒体库缺失信息（媒体服务器）",
+      "tags": [
+        "mediaserver"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "mediaserver-operation",
+      "path": "/api/v1/mediaserver/play/{itemid}",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "在线播放",
+      "tags": [
+        "mediaserver"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "mediaserver-operation",
+      "path": "/api/v1/mediaserver/playing",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "正在播放条目",
+      "tags": [
+        "mediaserver"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "回调请求验证",
+      "tags": [
+        "message"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "接收用户消息",
+      "tags": [
+        "message"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/callback",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "Web 智能助手按钮回调",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "slash.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/message/agent/commands",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取 Web 智能助手可用命令",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "slash.run"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/message/agent/commands/run",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "执行 Agent 斜杠命令",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/file/{file_id}",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "下载 Web 智能助手附件",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/mcp/servers",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "查询 Agent MCP 服务器配置",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/mcp/servers",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "保存 Agent MCP 服务器配置",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/mcp/servers/test",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "测试 Agent MCP 服务器",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/sessions",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "获取 Agent 历史会话",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "DELETE",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/sessions/{session_id}",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "删除 Agent 历史会话",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/sessions/{session_id}",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "获取 Agent 历史会话详情",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "PUT",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/sessions/{session_id}/display",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "保存 Agent 展示会话",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/sessions/{session_id}/stop",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "停止 Web 智能助手当前任务",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/stream",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "Web智能助手流式对话",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/agent/upload",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "上传 Web 智能助手附件",
+      "tags": [
+        "agent"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "DELETE",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/notification",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "清理通知消息",
+      "tags": [
+        "message"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/notification",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "获取通知消息",
+      "tags": [
+        "message"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/web",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "获取WEB消息",
+      "tags": [
+        "message"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/web",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "接收WEB消息",
+      "tags": [
+        "message"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/webpush/send",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "发送webpush通知",
+      "tags": [
+        "message"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/message/webpush/subscribe",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "客户端webpush通知订阅",
+      "tags": [
+        "message"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mfa/otp/disable",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "关闭当前用户的 OTP 验证",
+      "tags": [
+        "mfa"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mfa/otp/generate",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "生成 OTP 验证 URI",
+      "tags": [
+        "mfa"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mfa/otp/verify",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "绑定并验证 OTP",
+      "tags": [
+        "mfa"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mfa/passkey/authenticate/finish",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "完成 PassKey 认证",
+      "tags": [
+        "mfa"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mfa/passkey/authenticate/start",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "开始 PassKey 认证",
+      "tags": [
+        "mfa"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mfa/passkey/delete",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "删除 PassKey",
+      "tags": [
+        "mfa"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mfa/passkey/list",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "获取当前用户的 PassKey 列表",
+      "tags": [
+        "mfa"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mfa/passkey/register/finish",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "完成注册 PassKey",
+      "tags": [
+        "mfa"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/mfa/passkey/register/start",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "开始注册 PassKey",
+      "tags": [
+        "mfa"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "music.album.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/music/album/{album_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询音乐专辑详情",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "music.album.related"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/music/album/{album_id}/related",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询关联音乐专辑",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "music.artist.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/music/artist/{artist_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询音乐艺术家详情",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "music.artist.albums"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/music/artist/{artist_id}/albums",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询艺术家的专辑列表",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "music.artist.related"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/music/artist/{artist_id}/related",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询关联艺术家",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "music.cache.clear"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/music/cache",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "清空音乐识别缓存",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "music.cache.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/music/cache",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询音乐识别缓存",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "music.cache.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/music/cache/{cache_key}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除指定音乐识别缓存",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "music.explore"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/music/explore",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "探索音乐",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "music.recognize"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/music/recognize",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "识别音乐元数据详情",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/notification/config",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "保存通知渠道并同步登录缓存",
+      "tags": [
+        "notification"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/notification/manage",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "通知渠道统一管理",
+      "tags": [
+        "notification"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/openai/v1/chat/completions",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "OpenAI compatible chat completions",
+      "tags": [
+        "openai"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/openai/v1/models",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "OpenAI compatible models",
+      "tags": [
+        "openai"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/openai/v1/responses",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "OpenAI compatible responses",
+      "tags": [
+        "openai"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.installed",
+        "plugin.market"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "所有插件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "plugin.clone"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/clone/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "创建插件分身",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/plugin/dashboard/meta",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "获取所有插件仪表板元信息",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/plugin/dashboard/{plugin_id}",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "获取插件仪表板配置",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/plugin/dashboard/{plugin_id}/{key}",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "获取插件仪表板配置",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/plugin/file/{plugin_id}/{filepath}",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "获取插件静态文件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.folders.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/folders",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取插件文件夹配置",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "plugin.folders.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/folders",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "保存插件文件夹配置",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "plugin.folder.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/folders/{folder_name}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除插件文件夹",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "plugin.folder.create"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/folders/{folder_name}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "创建插件文件夹",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "plugin.folder.plugins.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/folders/{folder_name}/plugins",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新文件夹中的插件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.config.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/form/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取插件表单页面",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.history"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/history/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取插件更新说明",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.install"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/install/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "安装插件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.installed"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/installed",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation plugin.installed.",
+      "summary": "已安装插件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/plugin/page/{plugin_id}",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "获取插件数据页面",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.ratings"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/rating",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "批量查询插件评分",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.rating"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/rating/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询插件评分",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "plugin.rating.submit"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/rating/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "提交插件评分",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.releases"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/releases/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取插件Release版本",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.reload"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/reload/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "重新加载插件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/plugin/remotes",
+      "reason": "Health, bootstrap, federation, or external webhook transport endpoint; it is not recursively callable as an Agent business action.",
+      "summary": "获取插件联邦组件列表",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.reset"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/reset/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "重置插件配置及数据",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.runtime.status"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/runtime",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "插件运行时收敛状态",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.capabilities"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/runtime/capabilities",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询插件运行能力",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.data"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/runtime/{plugin_id}/data",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询插件持久化数据",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/plugin/sidebar_nav",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "获取插件侧栏导航项",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.source.options"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/source/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取插件来源身份",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "plugin.source.change"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/source/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "切换插件来源",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "plugin.source.install"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/source/{plugin_id}/install",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "按明确来源安装插件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.source.options"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/source/{plugin_id}/options",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation plugin.source.options.",
+      "summary": "获取插件来源候选",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.statistics"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/statistic",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "插件安装统计",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "plugin.uninstall"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "卸载插件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.config.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/{plugin_id}",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation plugin.config.get.",
+      "summary": "获取插件配置",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "plugin.config.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新插件配置",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "recommendation.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/agent",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "统一获取 Agent 推荐结果",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/bangumi_calendar",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "Bangumi每日放送",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/douban_movie_hot",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣热门电影",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/douban_movie_top250",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣电影TOP250",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/douban_movies",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣电影",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/douban_showing",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣正在热映",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/douban_tv_animation",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣动画剧集",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/douban_tv_hot",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣热门电视剧",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/douban_tv_weekly_chinese",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣国产剧集周榜",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/douban_tv_weekly_global",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣全球剧集周榜",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/douban_tvs",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣剧集",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/music_douban",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "豆瓣音乐推荐",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/music_weekly",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "ListenBrainz 本周热门音乐",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/source",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "获取推荐数据源",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/tmdb_movies",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "TMDB电影",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/tmdb_trending",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "TMDB流行趋势",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/recommend/tmdb_tvs",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "TMDB剧集",
+      "tags": [
+        "recommend"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "filter.builtin"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/rule/builtin",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询内置过滤规则",
+      "tags": [
+        "rule"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "filter.custom"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/rule/custom",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询自定义过滤规则",
+      "tags": [
+        "rule"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "filter.custom.add"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/rule/custom",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "新增自定义过滤规则",
+      "tags": [
+        "rule"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "filter.custom.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/rule/custom/{rule_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除自定义过滤规则",
+      "tags": [
+        "rule"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "filter.custom.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/rule/custom/{rule_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新自定义过滤规则",
+      "tags": [
+        "rule"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "filter.groups"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/rule/groups",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询过滤规则组",
+      "tags": [
+        "rule"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "filter.group.add"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/rule/groups",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "新增过滤规则组",
+      "tags": [
+        "rule"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "filter.group.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/rule/groups/{name}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除过滤规则组",
+      "tags": [
+        "rule"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "filter.group.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/rule/groups/{name}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新过滤规则组",
+      "tags": [
+        "rule"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "search.results"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/search/last",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation search.results.",
+      "summary": "查询搜索结果",
+      "tags": [
+        "search"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "search.results"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/search/last/context",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询上次搜索上下文",
+      "tags": [
+        "search"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "search.torrents"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/search/media/{media_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "精确搜索资源",
+      "tags": [
+        "search"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "search.torrents"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/search/media/{media_id}/stream",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation search.torrents.",
+      "summary": "渐进式精确搜索资源",
+      "tags": [
+        "search"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "search.recommend"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/search/recommend",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "AI推荐资源",
+      "tags": [
+        "search"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subtitle.search.media"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/search/subtitle/media/{media_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "精确搜索字幕",
+      "tags": [
+        "search"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "subtitle.search.media"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/search/subtitle/media/{media_id}/stream",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation subtitle.search.media.",
+      "summary": "渐进式精确搜索字幕",
+      "tags": [
+        "search"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subtitle.search.title"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/search/subtitle/title",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "模糊搜索字幕",
+      "tags": [
+        "search"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "subtitle.search.title"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/search/subtitle/title/stream",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation subtitle.search.title.",
+      "summary": "渐进式模糊搜索字幕",
+      "tags": [
+        "search"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "search.title"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/search/title",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "模糊搜索资源",
+      "tags": [
+        "search"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "search.title"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/search/title/stream",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation search.title.",
+      "summary": "渐进式模糊搜索资源",
+      "tags": [
+        "search"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "site.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation site.list.",
+      "summary": "所有站点",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "site.add"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "新增站点",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "site.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新站点",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/agent",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询 Agent 可用站点",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.auth.options"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/auth",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询认证站点",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "site.authenticate"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/auth",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "用户站点认证",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.category"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/category/{site_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "站点分类",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "site.cookie.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/cookie/{site_id}",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation site.cookie.update.",
+      "summary": "更新站点Cookie&UA",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "site.cookie.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/cookie/{site_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新站点Cookie&UA",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.cookiecloud.sync"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/cookiecloud",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "CookieCloud同步",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "site.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/domain/{site_url}",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation site.list.",
+      "summary": "站点详情",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/site/icon/{site_id}",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "站点图标",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.mapping"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/mapping",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取站点域名到名称的映射",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.searchable"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/media/{media_type}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "按媒体类型获取可搜索站点",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "site.priorities.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/priorities",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "批量更新站点优先级",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.reset"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/reset",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "重置站点",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.resource"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/resource/{site_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "站点资源",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.rss"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/rss",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "所有订阅站点",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.statistics"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/statistic",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "所有站点统计信息",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.statistic"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/statistic/{site_url}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "特定站点统计信息",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.supporting"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/supporting",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取支持的站点列表",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.test"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/test/{site_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "连接测试",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.userdata.latest"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/userdata/latest",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询所有站点最新用户数据",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "site.userdata"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/userdata/{site_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询某站点用户数据",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "site.userdata.refresh"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/userdata/{site_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新站点用户数据",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "site.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/{site_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除站点",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "site.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/{site_id}",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation site.list.",
+      "summary": "站点详情",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "storage.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/storage/agent/list",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询 Agent 可用目录和文件",
+      "tags": [
+        "storage"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "storage.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/storage/delete",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除文件或目录",
+      "tags": [
+        "storage"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "storage.settings"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/storage/directories",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询目录配置",
+      "tags": [
+        "storage"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/storage/download",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "下载文件",
+      "tags": [
+        "storage"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/storage/image",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "预览图片",
+      "tags": [
+        "storage"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "POST",
+      "operation_ids": [
+        "storage.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/storage/list",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation storage.list.",
+      "summary": "所有目录和文件",
+      "tags": [
+        "storage"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "storage.manage"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/storage/manage",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "网盘存储统一管理",
+      "tags": [
+        "storage"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "storage.mkdir"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/storage/mkdir",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "创建目录",
+      "tags": [
+        "storage"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "storage.rename"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/storage/rename",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "重命名文件或目录",
+      "tags": [
+        "storage"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询所有订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "subscription.add"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "新增订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "subscription.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.metadata.refresh"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/check",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "刷新订阅 TMDB 信息",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.files"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/files/{subscribe_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "订阅相关文件信息",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "subscription.follow.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/follow",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "取消Follow订阅分享人",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.follow.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/follow",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询已Follow的订阅分享人",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "subscription.follow.add"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/follow",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "Follow订阅分享人",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "subscription.fork"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/fork",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "复用订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "subscription.history.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/history/{history_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除订阅历史",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.history"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/history/{mtype}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询订阅历史",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/list",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation subscription.list.",
+      "summary": "查询所有订阅（API_TOKEN）",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "subscription.delete_by_media"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/media/{media_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.find"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/media/{media_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.popular"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/popular",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "热门订阅（基于用户共享数据）",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.refresh"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/refresh",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "刷新订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.reset"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/reset/{subid}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "重置订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.search_all"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/search",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "搜索所有订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.search"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/search/{subscribe_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "搜索订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/subscribe/seerr",
+      "reason": "Health, bootstrap, federation, or external webhook transport endpoint; it is not recursively callable as an Agent business action.",
+      "summary": "OverSeerr/JellySeerr通知订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "subscription.share"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/share",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "分享订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.share.statistics"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/share/statistics",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询订阅分享统计",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "subscription.share.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/share/{share_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除分享",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.shares"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/shares",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询分享的订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "subscription.status.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/status/{subid}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新订阅状态",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.user.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/user/{username}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "用户订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "subscription.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/{subscribe_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除订阅",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "subscription.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/subscribe/{subscribe_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "订阅详情",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/system/cache/image",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "图片缓存",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "database.backups.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/database/backups",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询受管数据库备份",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "database.backups.create"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/database/backups",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "立即创建数据库备份",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "database.backups.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/database/backups/{name}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除受管数据库备份",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "database.backups.verify"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/database/backups/{name}/verify",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "校验受管数据库备份",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "config.system.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/env",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation config.system.get.",
+      "summary": "查询系统配置",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "POST",
+      "operation_ids": [
+        "config.system.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/env",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation config.system.update.",
+      "summary": "更新系统配置",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "config.system.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/global",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation config.system.get.",
+      "summary": "查询非敏感系统设置",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "config.user.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/global/user",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询用户相关系统设置",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "config.identifiers.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/identifiers",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询自定义识别词",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "config.identifiers.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/identifiers",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新自定义识别词",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/system/img/{proxy}",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "图片代理",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/system/logging",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "实时日志",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/system/logging/download/{name}",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "下载日志",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/system/message",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "实时消息",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "system.module.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/modulelist",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询已加载的模块ID列表",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "system.module.test"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/moduletest/{moduleid}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "模块可用性测试",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "system.network.test"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/nettest",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "测试网络连通性",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "system.network.targets"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/nettest/targets",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取网络测试目标",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/system/ping",
+      "reason": "Health, bootstrap, federation, or external webhook transport endpoint; it is not recursively callable as an Agent business action.",
+      "summary": "服务存活检测",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/system/progress/{process_type}",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "实时进度",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "system.restart"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/restart",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "重启系统",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "filter.test"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/ruletest",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "过滤规则测试",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "scheduler.run"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/runscheduler",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "运行服务",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "alternate-auth-duplicate",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/runscheduler2",
+      "reason": "API-token compatibility duplicate; the Agent uses the corresponding bearer-authenticated operation with its persisted user identity.",
+      "summary": "运行服务（API_TOKEN）",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "plugin.market.sync_wiki"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/setting/PLUGIN_MARKET/sync-wiki",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "从Wiki同步插件市场仓库",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "config.public.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/setting/public/{key}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询公开系统设置",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "config.system.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/setting/{key}",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation config.system.get.",
+      "summary": "查询系统设置",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "POST",
+      "operation_ids": [
+        "config.system.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/setting/{key}",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation config.system.update.",
+      "summary": "更新系统设置",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "config.system.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/settings",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "Discover or read registered system settings",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "config.system.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/settings",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "Update one registered system setting",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "system.update.check"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/update/check",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "立即检查系统更新",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "system.update.download"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/update/download",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "后台下载系统更新",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "system.update.install"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/update/install",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "确认重启安装系统更新",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "system.update.status"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/update/status",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询系统更新状态",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "system.upgrade.dev"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/upgrade",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "Dev 更新并重启系统",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "system.usage.statistics"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/usage/statistic",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询安装版本统计报表",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "system.versions"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/versions",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询Github所有Release版本",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "DELETE",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/tmdb/cache",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "清空 TheMovieDb 识别缓存",
+      "tags": [
+        "tmdb"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/tmdb/cache",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "查询 TheMovieDb 识别缓存",
+      "tags": [
+        "tmdb"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "DELETE",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/tmdb/cache/{cache_key}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "删除指定 TheMovieDb 识别缓存",
+      "tags": [
+        "tmdb"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/tmdb/collection/{collection_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "系列合集详情",
+      "tags": [
+        "tmdb"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/tmdb/credits/{tmdbid}/{type_name}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "演员阵容",
+      "tags": [
+        "tmdb"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/tmdb/person/credits/{person_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "人物参演作品",
+      "tags": [
+        "tmdb"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/tmdb/person/{person_id}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "人物详情",
+      "tags": [
+        "tmdb"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/tmdb/recommend/{tmdbid}/{type_name}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "推荐电影/电视剧",
+      "tags": [
+        "tmdb"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/tmdb/seasons/{tmdbid}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "TMDB所有季",
+      "tags": [
+        "tmdb"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/tmdb/similar/{tmdbid}/{type_name}",
+      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "summary": "类似电影/电视剧",
+      "tags": [
+        "tmdb"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "media.episode_schedule"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/tmdb/{tmdbid}/{season}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "TMDB季所有集",
+      "tags": [
+        "tmdb"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "torrent.cache.clear"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/torrent/cache",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "清理种子缓存",
+      "tags": [
+        "torrent"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "torrent.cache.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/torrent/cache",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取种子缓存",
+      "tags": [
+        "torrent"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "torrent.cache.refresh"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/torrent/cache/refresh",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "刷新种子缓存",
+      "tags": [
+        "torrent"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "torrent.cache.reidentify"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/torrent/cache/reidentify/{domain}/{torrent_hash}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "重新识别种子",
+      "tags": [
+        "torrent"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "torrent.cache.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/torrent/cache/{domain}/{torrent_hash}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除指定种子缓存",
+      "tags": [
+        "torrent"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "transfer.episode_format.recommend"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/transfer/episode-format/recommend",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "推荐集数定位模板",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "transfer.file"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/transfer/manual",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "手动转移",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "transfer.manual_history"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/transfer/manual/history",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询手动转移成功历史",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "transfer.target_path"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/transfer/manual/target-path",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "匹配手动转移目的路径",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "transfer.name"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/transfer/name",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询整理后的名称",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "scheduler.run"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/transfer/now",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation scheduler.run.",
+      "summary": "立即执行下载器文件整理",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "transfer.queue.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/transfer/queue",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "从整理队列中删除任务",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "transfer.queue"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/transfer/queue",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询整理队列",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "transfer.manual_reviews"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/transfer/tasks/manual-reviews",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "分页查询 durable 整理人工复核任务",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "transfer.manual_review"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/transfer/tasks/{task_id}/manual-review",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询 durable 整理人工复核详情",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "transfer.manual_review.resolve"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/transfer/tasks/{task_id}/manual-review",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "人工判定整理步骤的外部执行结果",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/user/",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "所有用户",
+      "tags": [
+        "user"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/user/",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "新增用户",
+      "tags": [
+        "user"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "PUT",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/user/",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "更新用户",
+      "tags": [
+        "user"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/user/avatar/{user_id}",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "上传用户头像",
+      "tags": [
+        "user"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/user/config/{key}",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "查询用户配置",
+      "tags": [
+        "user"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/user/config/{key}",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "更新用户配置",
+      "tags": [
+        "user"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/user/current",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "当前登录用户信息",
+      "tags": [
+        "user"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "PUT",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/user/current",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "更新当前用户资料",
+      "tags": [
+        "user"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "DELETE",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/user/id/{user_id}",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "删除用户",
+      "tags": [
+        "user"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "DELETE",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/user/name/{user_name}",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "删除用户",
+      "tags": [
+        "user"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/user/{username}",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "用户详情",
+      "tags": [
+        "user"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/webhook/",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "Webhook消息响应",
+      "tags": [
+        "webhook"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/webhook/",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "Webhook消息响应",
+      "tags": [
+        "webhook"
+      ]
+    },
+    {
+      "disposition": "consolidated",
+      "method": "GET",
+      "operation_ids": [
+        "workflow.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation workflow.list.",
+      "summary": "所有工作流",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "workflow.create"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "创建工作流",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "workflow.actions"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/actions",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "所有动作",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "workflow.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/agent",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询 Agent 可用工作流",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "workflow.event_types"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/event_types",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "获取所有事件类型",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "workflow.fork"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/fork",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "复用工作流",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "workflow.plugin.actions"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/plugin/actions",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询插件动作",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "workflow.share"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/share",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "分享工作流",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "workflow.share.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/share/{share_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除分享",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "workflow.shares"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/shares",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询分享的工作流",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "workflow.delete"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/{workflow_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "删除工作流",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "workflow.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/{workflow_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "工作流详情",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "workflow.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/{workflow_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新工作流",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "workflow.pause"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/{workflow_id}/pause",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "停用工作流",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "workflow.reset"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/{workflow_id}/reset",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "重置工作流",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "workflow.run"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/{workflow_id}/run",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "执行工作流",
+      "tags": [
+        "workflow"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "workflow.start"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/workflow/{workflow_id}/start",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "启用工作流",
+      "tags": [
+        "workflow"
+      ]
+    }
+  ]
+}

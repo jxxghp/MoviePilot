@@ -25,141 +25,142 @@ class SettingSpec:
     source: str
     group: str
     label: str
+    declared_type: str = "unknown"
     systemconfig_key: Optional[SystemConfigKey] = None
 
 
 SYSTEMCONFIG_SETTING_METADATA = {
     SystemConfigKey.Downloaders.value: {
         "group": "downloaders",
-        "label": "下载器配置",
+        "label": "Downloader configurations",
     },
     SystemConfigKey.MediaServers.value: {
         "group": "media_servers",
-        "label": "媒体服务器配置",
+        "label": "Media-server configurations",
     },
     SystemConfigKey.Notifications.value: {
         "group": "notifications",
-        "label": "消息通知配置",
+        "label": "Notification-channel configurations",
     },
     SystemConfigKey.NotificationSwitchs.value: {
         "group": "notification_switches",
-        "label": "通知场景开关",
+        "label": "Notification-scenario switches",
     },
     SystemConfigKey.Directories.value: {
         "group": "directories",
-        "label": "目录配置",
+        "label": "Directory configurations",
     },
     SystemConfigKey.Storages.value: {
         "group": "storages",
-        "label": "存储配置",
+        "label": "Storage configurations",
     },
     SystemConfigKey.IndexerSites.value: {
         "group": "search_sites",
-        "label": "搜索站点范围",
+        "label": "Search-site scope",
     },
     SystemConfigKey.RssSites.value: {
         "group": "subscribe_sites",
-        "label": "订阅站点范围",
+        "label": "Subscription-site scope",
     },
     SystemConfigKey.UserSiteAuthParams.value: {
         "group": "site_auth",
-        "label": "站点认证参数",
+        "label": "Site authentication parameters",
     },
     SystemConfigKey.AIAgentConfig.value: {
         "group": "ai_agent",
-        "label": "AI 智能体配置",
+        "label": "AI Agent configuration",
     },
     SystemConfigKey.AIAgentMcpServers.value: {
         "group": "ai_agent",
-        "label": "AI 智能体外部 MCP 服务器",
+        "label": "AI Agent external MCP servers",
     },
     SystemConfigKey.CustomIdentifiers.value: {
         "group": "custom_identifiers",
-        "label": "自定义识别词",
+        "label": "Custom recognition identifiers",
     },
     SystemConfigKey.EpisodeFormatRuleTable.value: {
         "group": "transfer",
-        "label": "集数定位规则词表",
+        "label": "Episode-position rule table",
     },
     SystemConfigKey.CustomReleaseGroups.value: {
         "group": "customization",
-        "label": "自定义制作组/字幕组",
+        "label": "Custom release and subtitle groups",
     },
     SystemConfigKey.Customization.value: {
         "group": "customization",
-        "label": "自定义占位符",
+        "label": "Custom placeholders",
     },
     SystemConfigKey.TransferExcludeWords.value: {
         "group": "transfer",
-        "label": "整理屏蔽词",
+        "label": "Transfer exclusion words",
     },
     SystemConfigKey.TorrentsPriority.value: {
         "group": "filter_rules",
-        "label": "种子优先级规则",
+        "label": "Torrent-priority rules",
     },
     SystemConfigKey.CustomFilterRules.value: {
         "group": "filter_rules",
-        "label": "用户自定义规则",
+        "label": "User-defined filter rules",
     },
     SystemConfigKey.UserFilterRuleGroups.value: {
         "group": "filter_rules",
-        "label": "用户规则组",
+        "label": "User filter-rule groups",
     },
     SystemConfigKey.SearchFilterRuleGroups.value: {
         "group": "filter_rules",
-        "label": "搜索默认过滤规则组",
+        "label": "Default search filter-rule groups",
     },
     SystemConfigKey.SubscribeFilterRuleGroups.value: {
         "group": "filter_rules",
-        "label": "订阅默认过滤规则组",
+        "label": "Default subscription filter-rule groups",
     },
     SystemConfigKey.BestVersionFilterRuleGroups.value: {
         "group": "filter_rules",
-        "label": "洗版默认过滤规则组",
+        "label": "Default upgrade filter-rule groups",
     },
     SystemConfigKey.SubscribeDefaultParams.value: {
         "group": "subscribe_defaults",
-        "label": "订阅默认参数",
+        "label": "Default subscription parameters",
     },
     SystemConfigKey.DefaultMovieSubscribeConfig.value: {
         "group": "subscribe_defaults",
-        "label": "默认电影订阅规则",
+        "label": "Default movie subscription rules",
     },
     SystemConfigKey.DefaultTvSubscribeConfig.value: {
         "group": "subscribe_defaults",
-        "label": "默认电视剧订阅规则",
+        "label": "Default TV subscription rules",
     },
     SystemConfigKey.DefaultMusicSubscribeConfig.value: {
         "group": "subscribe_defaults",
-        "label": "默认音乐订阅规则",
+        "label": "Default music subscription rules",
     },
     SystemConfigKey.UserInstalledPlugins.value: {
         "group": "plugins",
-        "label": "已安装插件列表",
+        "label": "Installed plugin list",
     },
     SystemConfigKey.PluginFolders.value: {
         "group": "plugins",
-        "label": "插件文件夹分组配置",
+        "label": "Plugin folder grouping",
     },
     SystemConfigKey.PluginInstallReport.value: {
         "group": "plugins",
-        "label": "插件安装统计",
+        "label": "Plugin installation report",
     },
     SystemConfigKey.NotificationSendTime.value: {
         "group": "notifications",
-        "label": "通知发送时间",
+        "label": "Notification delivery time",
     },
     SystemConfigKey.NotificationTemplates.value: {
         "group": "notifications",
-        "label": "通知模板",
+        "label": "Notification templates",
     },
     SystemConfigKey.ScrapingSwitchs.value: {
         "group": "scraping",
-        "label": "刮削开关设置",
+        "label": "Metadata-scraping switches",
     },
     SystemConfigKey.FollowSubscribers.value: {
         "group": "subscribe_sites",
-        "label": "Follow 订阅分享者",
+        "label": "Followed subscription publishers",
     },
 }
 
@@ -258,6 +259,12 @@ def _resolve_core_setting_group(key: str) -> str:
     return "settings"
 
 
+def _format_declared_type(annotation: Any) -> str:
+    """把 Pydantic 字段注解转换为稳定且便于 Agent 阅读的类型文本。"""
+    rendered = str(annotation).replace("typing.", "")
+    return rendered.replace("<class '", "").replace("'>", "")
+
+
 def _build_specs() -> tuple[dict[str, SettingSpec], dict[str, SettingSpec]]:
     core_specs = {
         key: SettingSpec(
@@ -265,8 +272,9 @@ def _build_specs() -> tuple[dict[str, SettingSpec], dict[str, SettingSpec]]:
             source="settings",
             group=_resolve_core_setting_group(key),
             label=key,
+            declared_type=_format_declared_type(field.annotation),
         )
-        for key in Settings.model_fields.keys()
+        for key, field in Settings.model_fields.items()
     }
     system_specs = {}
     for item in SystemConfigKey:
@@ -276,6 +284,11 @@ def _build_specs() -> tuple[dict[str, SettingSpec], dict[str, SettingSpec]]:
             source="systemconfig",
             group=metadata.get("group", "misc"),
             label=metadata.get("label", item.value),
+            declared_type=(
+                "list[object]"
+                if item.value in LIST_ITEM_MATCH_FIELD_DEFAULTS
+                else "JSON-compatible value"
+            ),
             systemconfig_key=item,
         )
     return core_specs, system_specs
@@ -429,6 +442,29 @@ class SystemSettingsService:
             summary["value_preview"] = value
         return summary
 
+    @staticmethod
+    def _definition(spec: SettingSpec, value: Any, *, sensitive: bool) -> dict[str, Any]:
+        """返回当前设置值形状、持久化位置和允许的更新操作。"""
+        default_match_field = get_default_list_match_field(spec.key)
+        if isinstance(value, list) or (value is None and default_match_field):
+            update_operations = ["replace", "upsert_list_item", "remove_list_item"]
+            value_shape = "list"
+        elif isinstance(value, dict):
+            update_operations = ["replace", "merge_dict"]
+            value_shape = "object"
+        else:
+            update_operations = ["replace"]
+            value_shape = type(value).__name__ if value is not None else "unknown"
+        return {
+            "declared_type": spec.declared_type,
+            "value_shape": value_shape,
+            "nullable": value is None,
+            "sensitive": sensitive,
+            "update_operations": update_operations,
+            "default_match_field": default_match_field,
+            "persistence": "app.env" if spec.source == "settings" else "database:systemconfig",
+        }
+
     def query(
         self,
         *,
@@ -466,6 +502,11 @@ class SystemSettingsService:
                 "source": spec.source,
                 "group": spec.group,
                 "label": spec.label,
+                "definition": self._definition(
+                    spec,
+                    value,
+                    sensitive=should_redact_setting(spec, value),
+                ),
                 **self._summarize(response_value, redacted=redacted),
             }
             if should_include_values:

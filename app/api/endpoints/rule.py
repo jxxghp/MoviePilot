@@ -1,11 +1,14 @@
 """过滤规则和规则组管理 API。"""
 
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
-from fastapi import Depends
+from fastapi import Depends, Query
 
 from app.api.context import get_host_runtime
-from app.api.dependencies.auth import get_current_active_superuser_async
+from app.api.dependencies.auth import (
+    get_current_active_superuser_async,
+    get_current_active_user_async,
+)
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.filtering import FilterRuleService
@@ -43,8 +46,16 @@ def _service(runtime: HostRuntime) -> FilterRuleService:
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def query_builtin_rules(
-    rule_ids: Optional[list[str]] = None,
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    rule_ids: Annotated[
+        Optional[list[str]],
+        Query(
+            description=(
+                "Exact built-in rule IDs to return. Repeat rule_ids in the query string; "
+                "omit it to list every built-in rule."
+            )
+        ),
+    ] = None,
+    _: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> _SchemaResponse[Any]:
     """返回内置规则及规则串语法。"""
     return _SchemaResponse(
@@ -59,9 +70,17 @@ async def query_builtin_rules(
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def query_custom_rules(
-    rule_ids: Optional[list[str]] = None,
+    rule_ids: Annotated[
+        Optional[list[str]],
+        Query(
+            description=(
+                "Exact custom rule IDs to return. Repeat rule_ids in the query string; "
+                "omit it to list every custom rule."
+            )
+        ),
+    ] = None,
     include_group_refs: bool = True,
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> _SchemaResponse[Any]:
     """返回自定义规则和可选规则组引用。"""
     return _SchemaResponse(
@@ -79,9 +98,17 @@ async def query_custom_rules(
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def query_rule_groups(
-    group_names: Optional[list[str]] = None,
+    group_names: Annotated[
+        Optional[list[str]],
+        Query(
+            description=(
+                "Exact rule-group names to return. Repeat group_names in the query string; "
+                "omit it to list every group."
+            )
+        ),
+    ] = None,
     include_usage: bool = True,
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    _: ApiPrincipal = Depends(get_current_active_user_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
     """返回规则组、解析层级和可选引用位置。"""

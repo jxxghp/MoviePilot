@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,8 @@ from app.agent.middleware.skills import (
     _alist_skills,
 )
 from app.agent.tools.tags import ToolTag
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -103,6 +106,21 @@ async def test_skill_tool_caps_large_result_before_model_context(tmp_path):
     assert payload["success"] is True
     assert payload["truncated"] is True
     assert "Skill 内容已截断" in payload["content"]
+
+
+@pytest.mark.anyio
+async def test_bundled_moviepilot_api_skill_loads_complete_contract() -> None:
+    """内置 API Skill 的完整 operation 合同必须在运行时上限内且不截断。"""
+    middleware = SkillsMiddleware(sources=[str(PROJECT_ROOT / "skills")])
+
+    result = await middleware.tools[0].ainvoke({"name": "moviepilot-api"})
+    payload = json.loads(result)
+
+    assert len(result) <= MAX_SKILL_RESULT_CHARS
+    assert payload["success"] is True
+    assert payload["truncated"] is False
+    assert len(payload["skill"]["allowed_api_operations"]) == 203
+    assert "### `workflow.update`" in payload["content"]
 
 
 @pytest.mark.anyio

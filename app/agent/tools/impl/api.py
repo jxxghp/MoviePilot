@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, PrivateAttr
 
 from app.agent.api.executor import ApiExecutionContext, ApiExecutionError, MoviePilotApiExecutor
 from app.agent.policy.api import resolve_api_operation
+from app.agent.policy.contracts import PrincipalRole
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.schemas.types import NotificationChannel
@@ -31,20 +32,24 @@ class MoviePilotApiInput(BaseModel):  # type: ignore[misc]
     operation_id: str = Field(
         ...,
         description=(
-            "稳定的 MoviePilot API operation ID。先根据领域 Skill 选择操作，不要传入 URL、认证头或 API Token。"
+            "Exact allowlisted MoviePilot operation ID selected from the loaded domain Skill. "
+            "Never supply a URL, authentication header, or API token."
         ),
     )
     path_params: Dict[str, Any] = Field(
         default_factory=dict,
-        description="路径参数；仅填当前 operation 声明的参数。",
+        description="Route placeholder values declared by the selected operation.",
     )
     query: Dict[str, Any] = Field(
         default_factory=dict,
-        description="查询参数；仅填当前 operation 声明的参数。",
+        description="Query-string fields declared by the selected operation.",
     )
-    body: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="JSON 请求体；字段由当前 operation 的 Skill 合同定义。",
+    body: Any = Field(
+        default=None,
+        description=(
+            "JSON request value declared by the selected operation and its loaded Skill contract. "
+            "Most operations use an object; a oneOf branch may require an exact scalar."
+        ),
     )
 
 
@@ -66,9 +71,9 @@ class MoviePilotApiTool(MoviePilotTool):
         ToolTag.Plugin,
     ]
     description: str = (
-        "调用经过白名单审核的 MoviePilot 业务 API。使用领域 Skill 获取 operation_id、"
-        "参数和失败处理；外部 MCP tools/list 会为每个 operation 提供完整 oneOf 参数合同；"
-        "不能调用任意 URL、命令或认证接口。"
+        "Call allowlisted MoviePilot business APIs. Use the domain Skill to select operation_id, "
+        "parameters, and failure handling. External MCP tools/list exposes one complete oneOf "
+        "branch per operation. Arbitrary URLs, commands, and authentication endpoints are forbidden."
     )
     require_admin: bool = False
     args_schema: Type[BaseModel] = MoviePilotApiInput
@@ -96,24 +101,42 @@ class MoviePilotApiTool(MoviePilotTool):
         """返回包含全部白名单 operation 精确参数的 MCP JSON Schema。"""
         return deepcopy(_load_api_mcp_input_schema())
 
-    async def _resolve_api_identity(self) -> tuple[str, Optional[str], bool]:
-        """把 Web 或渠道身份解析为真实 MoviePilot 用户身份。"""
+    async def _resolve_superuser_integration_identity(
+        self,
+    ) -> tuple[str, Optional[str], bool]:
+        """为已验证的管理员集成解析一个真实持久化超级管理员身份。"""
+        from app.application.security.auth import build_superuser_token_payload
+
+        payload = await self.run_blocking(
+            "db",
+            build_superuser_token_payload,
+        )
+        if payload.sub is None:
+            raise ApiExecutionError("管理员集成身份没有持久化用户 ID")
+        return str(payload.sub), payload.username, bool(payload.super_user)
+
+    async def _resolve_api_identity(
+        self,
+        *,
+        require_system_admin: bool = False,
+    ) -> tuple[str, Optional[str], bool]:
+        """把 Web、渠道或集成身份解析为真实 MoviePilot API 用户身份。"""
         raw_user_id = str(self._user_id or "")
         if self._source == "api" and bool(self._agent_context.get("is_admin")):
-            from app.application.security.auth import build_superuser_token_payload
-
-            payload = await self.run_blocking(
-                "db",
-                build_superuser_token_payload,
-            )
-            if payload.sub is None:
-                raise ApiExecutionError("管理员集成身份没有持久化用户 ID")
-            return str(payload.sub), payload.username, bool(payload.super_user)
+            return await self._resolve_superuser_integration_identity()
         direct_user_channels = {
             NotificationChannel.Web.value,
             NotificationChannel.WebAgent.value,
         }
         is_direct_user_channel = self._channel in direct_user_channels
+        if (
+            require_system_admin
+            and bool(self._agent_context.get("is_admin"))
+            and not is_direct_user_channel
+        ):
+            # 通知渠道管理员延续旧管理员工具语义，但只在管理员 operation
+            # 上借用系统管理员集成身份；普通 operation 仍解析其绑定用户。
+            return await self._resolve_superuser_integration_identity()
         if self._data is None:
             if is_direct_user_channel and raw_user_id.isdigit():
                 return raw_user_id, self._username, bool(self._agent_context.get("is_admin"))
@@ -154,11 +177,19 @@ class MoviePilotApiTool(MoviePilotTool):
             raise ApiExecutionError("当前 Agent 身份未绑定有效的 MoviePilot 用户")
         return str(user.id), user.name, bool(user.is_superuser)
 
-    async def _get_executor(self) -> MoviePilotApiExecutor:
-        """返回注入执行器，未注入时按当前可信 Agent 身份创建。"""
-        if self._executor is None:
-            user_id, username, is_admin = await self._resolve_api_identity()
-            self._executor = MoviePilotApiExecutor(
+    async def _get_executor(
+        self,
+        *,
+        require_system_admin: bool = False,
+    ) -> tuple[MoviePilotApiExecutor, bool]:
+        """返回当前 operation 的执行器及其管理员身份事实。"""
+        if self._executor is not None:
+            return self._executor, await self.is_admin_user()
+        user_id, username, is_admin = await self._resolve_api_identity(
+            require_system_admin=require_system_admin,
+        )
+        return (
+            MoviePilotApiExecutor(
                 context=ApiExecutionContext(
                     user_id=user_id,
                     username=username,
@@ -167,15 +198,16 @@ class MoviePilotApiTool(MoviePilotTool):
                     channel=self._channel,
                     source=self._source,
                 )
-            )
-        return self._executor
+            ),
+            is_admin,
+        )
 
     async def run(  # type: ignore[override]
         self,
         operation_id: str,
         path_params: Optional[Dict[str, Any]] = None,
         query: Optional[Dict[str, Any]] = None,
-        body: Optional[Dict[str, Any]] = None,
+        body: Any = None,
         **kwargs: Any,
     ) -> str:
         """
@@ -198,9 +230,20 @@ class MoviePilotApiTool(MoviePilotTool):
                 },
                 ensure_ascii=False,
             )
-
         try:
-            executor = await self._get_executor()
+            requires_system_admin = spec.required_role is PrincipalRole.SYSTEM_ADMIN
+            executor, is_admin = await self._get_executor(
+                require_system_admin=requires_system_admin,
+            )
+            if requires_system_admin and not is_admin:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "permission_denied",
+                        "message": "This MoviePilot API operation requires a system administrator.",
+                    },
+                    ensure_ascii=False,
+                )
             return await executor.execute(
                 operation_id,
                 path_params=path_params,

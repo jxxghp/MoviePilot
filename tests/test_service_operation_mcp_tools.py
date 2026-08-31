@@ -2,10 +2,14 @@
 
 import asyncio
 import json
+import threading
 from unittest.mock import patch
 
+import pytest
+
 from app.agent.tools.factory import MoviePilotToolFactory
-from app.agent.tools.impl.service_operation import (
+from app.agent.tools.impl.service import (
+    DatabaseOperationTool,
     DownloaderOperationTool,
     MediaServerOperationTool,
 )
@@ -32,7 +36,7 @@ def test_downloader_mcp_schema_exposes_every_action_argument_and_rule() -> None:
     assert arguments["properties"]["task_ids"] == {
         "type": "array",
         "items": {"type": "string"},
-        "description": "多个任务的 provider 原生 hash 或 ID；与 task_id 二选一。",
+        "description": "Multiple provider-native task hashes or IDs; mutually exclusive with task_id.",
         "minItems": 1,
     }
     assert arguments["properties"]["position"]["enum"] == ["top", "up", "down", "bottom"]
@@ -66,6 +70,30 @@ def test_mediaserver_mcp_schema_exposes_nested_refresh_item_fields() -> None:
         "target_path",
     }
     assert item_schema["additionalProperties"] is False
+
+
+def test_database_mcp_schema_exposes_all_actions_and_sql_sources() -> None:
+    """数据库 MCP 工具应直接暴露四个 action 及 SQL/file 约束。"""
+    tool = DatabaseOperationTool(session_id="session", user_id="api_user")
+    schema = tool.get_mcp_input_schema()
+
+    assert schema["properties"]["action"]["enum"] == [
+        "query",
+        "schema",
+        "tables",
+        "write",
+    ]
+    query_arguments = _branch(schema, "query")["properties"]["arguments"]
+    assert set(query_arguments["properties"]) == {"sql", "file", "limit", "write"}
+    assert query_arguments["properties"]["limit"]["default"] == 100
+    assert query_arguments["properties"]["limit"]["minimum"] == 1
+    assert query_arguments["oneOf"] == [
+        {"required": ["sql"], "not": {"required": ["file"]}},
+        {"required": ["file"], "not": {"required": ["sql"]}},
+    ]
+    assert _branch(schema, "schema")["properties"]["arguments"]["required"] == [
+        "table_name"
+    ]
 
 
 def test_direct_manager_preserves_service_operation_mcp_schema() -> None:
@@ -102,14 +130,50 @@ def test_factory_only_adds_service_operation_tools_for_external_manager() -> Non
     external_names = {tool.name for tool in external}
     assert "downloader_operation" not in internal_names
     assert "mediaserver_operation" not in internal_names
-    assert {"downloader_operation", "mediaserver_operation"}.issubset(external_names)
+    assert {
+        "downloader_operation",
+        "mediaserver_operation",
+        "database_operation",
+    }.issubset(external_names)
+
+
+def test_database_operation_tool_calls_fixed_script_once() -> None:
+    """数据库 MCP tools/call 应只执行一次固定脚本并返回 JSON envelope。"""
+    tool = DatabaseOperationTool(session_id="session", user_id="api_user")
+    with patch(
+        "app.agent.tools.impl.service._run_database_script",
+        return_value={"tables": ["agentchat"]},
+    ) as runner:
+        result = asyncio.run(tool.run(action="tables", arguments={}))
+
+    assert json.loads(result) == {"tables": ["agentchat"]}
+    runner.assert_called_once()
+    assert runner.call_args.kwargs["arguments"] == {
+        "action": "tables",
+        "arguments": {},
+    }
+
+
+def test_database_operation_rejects_invalid_nested_arguments_before_script() -> None:
+    """数据库工具应在连接数据库前一次性拒绝错误的嵌套参数。"""
+    tool = DatabaseOperationTool(session_id="session", user_id="api_user")
+    with patch("app.agent.tools.impl.service.subprocess.run") as runner:
+        with pytest.raises(ValueError, match="sql 与 file"):
+            asyncio.run(
+                tool.run(
+                    action="query",
+                    arguments={"sql": "SELECT 1", "file": "query.sql"},
+                )
+            )
+
+    runner.assert_not_called()
 
 
 def test_service_operation_tool_calls_fixed_script_once() -> None:
     """一次 MCP tools/call 应只执行一次固定脚本并返回其 JSON envelope。"""
     tool = DownloaderOperationTool(session_id="session", user_id="api_user")
     with patch(
-        "app.agent.tools.impl.service_operation._run_service_script",
+        "app.agent.tools.impl.service._run_service_script",
         return_value={"success": True, "action": "tasks.list", "data": {"items": []}},
     ) as runner:
         result = asyncio.run(
@@ -128,3 +192,42 @@ def test_service_operation_tool_calls_fixed_script_once() -> None:
         action="tasks.list",
         arguments={"limit": 20},
     )
+
+
+def test_service_operation_sync_script_does_not_block_event_loop() -> None:
+    """同步 provider 脚本必须在分域线程池运行，不能阻塞 Agent event loop。"""
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_runner(**_kwargs) -> dict:
+        """模拟尚未返回的同步第三方 SDK 调用。"""
+        started.set()
+        release.wait(timeout=1)
+        return {"success": True, "data": {}}
+
+    async def exercise() -> None:
+        """在同步脚本运行期间验证 loop 仍能调度其它协程。"""
+        tool = DownloaderOperationTool(session_id="session", user_id="api_user")
+        with patch(
+            "app.agent.tools.impl.service._run_service_script",
+            side_effect=slow_runner,
+        ):
+            task = asyncio.create_task(
+                tool.run(action="tasks.list", arguments={"limit": 1})
+            )
+            try:
+                for _ in range(50):
+                    if started.is_set():
+                        break
+                    await asyncio.sleep(0.002)
+                assert started.is_set()
+                assert await asyncio.wait_for(
+                    asyncio.sleep(0, result="loop-responsive"),
+                    timeout=0.1,
+                ) == "loop-responsive"
+                assert task.done() is False
+            finally:
+                release.set()
+            assert json.loads(await task)["success"] is True
+
+    asyncio.run(exercise())

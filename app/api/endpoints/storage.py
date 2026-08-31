@@ -10,6 +10,7 @@ from starlette.responses import FileResponse, Response
 from app.api.dependencies.auth import (
     get_current_active_manage_user,
     get_current_active_superuser,
+    get_current_active_user,
 )
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
@@ -123,6 +124,16 @@ def list_files(
     :param _: token
     :return: 所有目录和文件
     """
+    return _list_files(fileitem=fileitem, sort=sort, keyword=keyword)
+
+
+def _list_files(
+    *,
+    fileitem: _SchemaFileItem,
+    sort: Optional[str],
+    keyword: Optional[str],
+) -> List[_SchemaFileItem]:
+    """执行目录查询、通配符过滤和稳定排序，供管理端与 Agent 安全入口复用。"""
     file_list = StorageChain().list_files(fileitem)
     if file_list:
         if keyword:
@@ -132,7 +143,22 @@ def list_files(
             file_list.sort(key=lambda x: text_tools.natural_sort_key(x.name or ""))
         else:
             file_list.sort(key=lambda x: x.modify_time or -math.inf, reverse=True)
-    return file_list
+    return file_list or []
+
+
+@router.post(
+    "/agent/list",
+    summary="查询 Agent 可用目录和文件",
+    response_model=List[_SchemaFileItem],
+)
+def list_agent_files(
+    fileitem: _SchemaFileItem,
+    sort: Optional[str] = "updated_at",
+    keyword: Optional[str] = None,
+    _: Any = Depends(get_current_active_user),
+) -> List[_SchemaFileItem]:
+    """保留旧 Agent 普通用户目录读取能力，不开放创建、改名或删除入口。"""
+    return _list_files(fileitem=fileitem, sort=sort, keyword=keyword)
 
 
 @router.post("/mkdir", summary="创建目录", response_model=_SchemaResponse[None])

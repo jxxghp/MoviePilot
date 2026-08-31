@@ -83,21 +83,40 @@ class ActionSpec:
         }
 
 
-TASK_ID = ArgumentSpec("task_id", "string", "单个任务的 provider 原生 hash 或 ID。")
-TASK_IDS = ArgumentSpec("task_ids", "string[]", "多个任务的 provider 原生 hash 或 ID；与 task_id 二选一。")
-OFFSET = ArgumentSpec("offset", "integer", "列表起始偏移，必须大于等于 0。", default=0)
-LIMIT = ArgumentSpec("limit", "integer", "返回条数，范围 1..200。", default=DEFAULT_LIMIT)
+TASK_ID = ArgumentSpec("task_id", "string", "One provider-native task hash or ID.")
+TASK_IDS = ArgumentSpec(
+    "task_ids",
+    "string[]",
+    "Multiple provider-native task hashes or IDs; mutually exclusive with task_id.",
+)
+OFFSET = ArgumentSpec("offset", "integer", "Zero-based list offset.", default=0)
+LIMIT = ArgumentSpec("limit", "integer", "Number of items to return, from 1 to 200.", default=DEFAULT_LIMIT)
 
 
 ACTIONS: dict[str, ActionSpec] = {
+    "instances.list": ActionSpec(
+        "List configured downloader instances without connection secrets.",
+        "safe_read",
+    ),
+    "capabilities.list": ActionSpec(
+        "List supported downloader actions and their complete argument contracts.",
+        "safe_read",
+        arguments=(
+            ArgumentSpec(
+                "action_name",
+                "string",
+                "Optional exact action name used to return one capability contract.",
+            ),
+        ),
+    ),
     "tasks.list": ActionSpec(
         "List and filter downloader tasks.",
         "safe_read",
         arguments=(
             TASK_ID,
             TASK_IDS,
-            ArgumentSpec("status", "string", "按 provider 原生任务状态过滤。"),
-            ArgumentSpec("tags", "string|string[]", "只返回同时包含这些标签的任务。"),
+            ArgumentSpec("status", "string", "Filter by the provider-native task status."),
+            ArgumentSpec("tags", "string|string[]", "Return only tasks that contain all specified tags."),
             OFFSET,
             LIMIT,
         ),
@@ -112,10 +131,12 @@ ACTIONS: dict[str, ActionSpec] = {
         "reversible_write",
         arguments=(
             ArgumentSpec("task_id", "string", TASK_ID.description, required=True),
-            ArgumentSpec("wanted_file_ids", "integer[]", "要下载的 provider 文件索引；与 unwanted_file_ids 至少提供一项。"),
-            ArgumentSpec("unwanted_file_ids", "integer[]", "跳过的 provider 文件索引；与 wanted_file_ids 至少提供一项。"),
+            ArgumentSpec("wanted_file_ids", "integer[]", "Provider file indexes to download; provide this or unwanted_file_ids."),
+            ArgumentSpec("unwanted_file_ids", "integer[]", "Provider file indexes to skip; provide this or wanted_file_ids."),
         ),
-        argument_rules=("wanted_file_ids 与 unwanted_file_ids 至少提供一项，且同一索引不能同时出现。",),
+        argument_rules=(
+            "Provide wanted_file_ids or unwanted_file_ids, and never place one index in both lists.",
+        ),
     ),
     "tasks.trackers": ActionSpec(
         "List trackers for one task.",
@@ -138,13 +159,13 @@ ACTIONS: dict[str, ActionSpec] = {
         "Start or resume one or more tasks.",
         "reversible_write",
         arguments=(TASK_ID, TASK_IDS),
-        argument_rules=("task_id 与 task_ids 必须提供且只能选择一种。",),
+        argument_rules=("Provide exactly one of task_id and task_ids.",),
     ),
     "tasks.stop": ActionSpec(
         "Pause one or more tasks.",
         "reversible_write",
         arguments=(TASK_ID, TASK_IDS),
-        argument_rules=("task_id 与 task_ids 必须提供且只能选择一种。",),
+        argument_rules=("Provide exactly one of task_id and task_ids.",),
     ),
     "tasks.delete": ActionSpec(
         "Delete tasks and optionally their data.",
@@ -152,22 +173,22 @@ ACTIONS: dict[str, ActionSpec] = {
         arguments=(
             TASK_ID,
             TASK_IDS,
-            ArgumentSpec("delete_files", "boolean", "同时永久删除任务数据文件。", default=False),
+            ArgumentSpec("delete_files", "boolean", "Also permanently delete the task data files.", default=False),
         ),
-        argument_rules=("task_id 与 task_ids 必须提供且只能选择一种。",),
+        argument_rules=("Provide exactly one of task_id and task_ids.",),
     ),
     "tasks.recheck": ActionSpec(
         "Force data verification for tasks.",
         "external_side_effect",
         arguments=(TASK_ID, TASK_IDS),
-        argument_rules=("task_id 与 task_ids 必须提供且只能选择一种。",),
+        argument_rules=("Provide exactly one of task_id and task_ids.",),
     ),
     "tasks.reannounce": ActionSpec(
         "Force tracker reannounce.",
         "external_side_effect",
         ("qbittorrent", "transmission"),
         (TASK_ID, TASK_IDS),
-        ("task_id 与 task_ids 必须提供且只能选择一种。",),
+        ("Provide exactly one of task_id and task_ids.",),
     ),
     "tasks.queue.move": ActionSpec(
         "Move tasks to top, up, down, or bottom of the queue.",
@@ -179,12 +200,12 @@ ACTIONS: dict[str, ActionSpec] = {
             ArgumentSpec(
                 "position",
                 "string",
-                "目标队列位置。",
+                "Target queue position.",
                 required=True,
                 enum=("top", "up", "down", "bottom"),
             ),
         ),
-        ("task_id 与 task_ids 必须提供且只能选择一种。",),
+        ("Provide exactly one of task_id and task_ids.",),
     ),
     "tasks.force_start.set": ActionSpec(
         "Enable or disable qBittorrent force-start for tasks.",
@@ -193,19 +214,19 @@ ACTIONS: dict[str, ActionSpec] = {
         (
             TASK_ID,
             TASK_IDS,
-            ArgumentSpec("enabled", "boolean", "是否启用强制开始。", required=True),
+            ArgumentSpec("enabled", "boolean", "Whether force-start is enabled.", required=True),
         ),
-        ("task_id 与 task_ids 必须提供且只能选择一种。",),
+        ("Provide exactly one of task_id and task_ids.",),
     ),
     "tasks.properties.set": ActionSpec(
         "Set task speed, ratio, or seeding-time limits.",
         "reversible_write",
         arguments=(
             ArgumentSpec("task_id", "string", TASK_ID.description, required=True),
-            ArgumentSpec("upload_limit", "number", "上传限速，单位 KB/s；0 表示不限速。"),
-            ArgumentSpec("download_limit", "number", "下载限速，单位 KB/s；0 表示不限速。"),
-            ArgumentSpec("ratio_limit", "number", "分享率上限；rTorrent 不支持。"),
-            ArgumentSpec("seeding_time_limit", "integer", "做种时间上限，单位分钟；rTorrent 不支持。"),
+            ArgumentSpec("upload_limit", "number", "Upload limit in KB/s; 0 means unlimited."),
+            ArgumentSpec("download_limit", "number", "Download limit in KB/s; 0 means unlimited."),
+            ArgumentSpec("ratio_limit", "number", "Share-ratio limit; unsupported by rTorrent."),
+            ArgumentSpec("seeding_time_limit", "integer", "Seeding-time limit in minutes; unsupported by rTorrent."),
         ),
     ),
     "tasks.location.set": ActionSpec(
@@ -213,7 +234,7 @@ ACTIONS: dict[str, ActionSpec] = {
         "external_side_effect",
         arguments=(
             ArgumentSpec("task_id", "string", TASK_ID.description, required=True),
-            ArgumentSpec("location", "string", "下载器侧的新保存路径。", required=True),
+            ArgumentSpec("location", "string", "New provider-side save path.", required=True),
         ),
     ),
     "tasks.category.set": ActionSpec(
@@ -222,7 +243,7 @@ ACTIONS: dict[str, ActionSpec] = {
         ("qbittorrent",),
         (
             ArgumentSpec("task_id", "string", TASK_ID.description, required=True),
-            ArgumentSpec("category", "string", "非空分类名称。", required=True),
+            ArgumentSpec("category", "string", "Non-empty qBittorrent category name.", required=True),
         ),
     ),
     "tasks.tags.set": ActionSpec(
@@ -231,9 +252,9 @@ ACTIONS: dict[str, ActionSpec] = {
         arguments=(
             TASK_ID,
             TASK_IDS,
-            ArgumentSpec("tags", "string[]", "要设置或添加的标签列表。", required=True),
+            ArgumentSpec("tags", "string[]", "Tags or labels to set or add.", required=True),
         ),
-        argument_rules=("task_id 与 task_ids 必须提供且只能选择一种。",),
+        argument_rules=("Provide exactly one of task_id and task_ids.",),
     ),
     "tasks.trackers.update": ActionSpec(
         "Add or replace task trackers.",
@@ -241,19 +262,19 @@ ACTIONS: dict[str, ActionSpec] = {
         ("qbittorrent", "transmission"),
         (
             ArgumentSpec("task_id", "string", TASK_ID.description, required=True),
-            ArgumentSpec("trackers", "string[]", "Tracker URL 列表。", required=True),
+            ArgumentSpec("trackers", "string[]", "Tracker URL list.", required=True),
         ),
     ),
     "tasks.add.direct": ActionSpec(
         "Submit a magnet, URL, or local torrent file directly to the provider.",
         "external_side_effect",
         arguments=(
-            ArgumentSpec("content", "string", "Magnet、torrent URL，或 torrent_file=true 时的本地种子文件路径。", required=True),
-            ArgumentSpec("torrent_file", "boolean", "将 content 解释为本地种子文件路径。", default=False),
-            ArgumentSpec("paused", "boolean", "以暂停状态添加任务。", default=False),
-            ArgumentSpec("download_dir", "string", "下载器侧保存路径。"),
-            ArgumentSpec("tags", "string[]", "添加到任务的标签。"),
-            ArgumentSpec("category", "string", "qBittorrent 分类；其他 provider 忽略。"),
+            ArgumentSpec("content", "string", "Magnet URI, torrent URL, or a local torrent path when torrent_file=true.", required=True),
+            ArgumentSpec("torrent_file", "boolean", "Interpret content as a local torrent-file path.", default=False),
+            ArgumentSpec("paused", "boolean", "Add the task in a paused state.", default=False),
+            ArgumentSpec("download_dir", "string", "Provider-side save path."),
+            ArgumentSpec("tags", "string[]", "Tags to assign to the new task."),
+            ArgumentSpec("category", "string", "qBittorrent category; ignored by other providers."),
         ),
     ),
     "session.stats": ActionSpec("Read provider transfer/session statistics.", "safe_read"),
@@ -263,8 +284,8 @@ ACTIONS: dict[str, ActionSpec] = {
         "reversible_write",
         ("qbittorrent", "transmission"),
         (
-            ArgumentSpec("download_limit", "number", "全局下载限速，单位 KB/s；0 或省略表示不限速。"),
-            ArgumentSpec("upload_limit", "number", "全局上传限速，单位 KB/s；0 或省略表示不限速。"),
+            ArgumentSpec("download_limit", "number", "Global download limit in KB/s; 0 or omission means unlimited."),
+            ArgumentSpec("upload_limit", "number", "Global upload limit in KB/s; 0 or omission means unlimited."),
         ),
     ),
     "session.details": ActionSpec(
@@ -758,6 +779,25 @@ def call_action(client_name: Optional[str], action: str, arguments: Mapping[str,
     if spec is None:
         raise ValueError(f"未知 downloader action: {action}")
     _validate_action_arguments(action, spec, arguments)
+    if action == "instances.list":
+        return {
+            "success": True,
+            "client": None,
+            "provider": None,
+            "action": action,
+            "effect": spec.effect,
+            "data": list_instances()["instances"],
+        }
+    if action == "capabilities.list":
+        capabilities = list_capabilities(client_name, arguments.get("action_name"))
+        return {
+            "success": True,
+            "client": capabilities["client"],
+            "provider": capabilities["provider"],
+            "action": action,
+            "effect": spec.effect,
+            "data": capabilities["actions"],
+        }
     config = _select_config(client_name)
     provider = str(config.type or "").lower()
     if provider not in spec.providers:

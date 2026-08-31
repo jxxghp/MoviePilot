@@ -86,6 +86,9 @@ to make the directory tree look symmetrical.
 | `app/agent/lifecycle.py` | Runtime generation admission, initialization, idle-session collection and bounded manager shutdown |
 | `app/agent/tasks.py` | Background prompts, durable scheduled-task execution and heartbeat wakeups |
 | `app/agent/orchestrator.py` | One `MoviePilotAgent` execution instance: prompt/tool/middleware assembly, model invocation, streaming and per-agent state |
+| `app/agent/policy/api.py` | Fixed `moviepilot_api` operation registry, HTTP route templates and per-operation authorization/effect policy; no arbitrary URL or method input |
+| `app/agent/policy/mcp.py` | Generated external MCP input-contract builder for the fixed API registry; owns exact English oneOf parameter projection, not runtime authorization |
+| `app/agent/tools/impl/service.py` | Admin-only external MCP wrappers for downloader, media-server and database Skill scripts; synchronous scripts run only through the Agent blocking executor |
 
 `app.agent.AgentManager` remains the stable plugin-facing import and resolves lazily to
 `app.agent.manager.AgentManager`. Historical symbols formerly imported from
@@ -93,6 +96,9 @@ to make the directory tree look symmetrical.
 orchestrator must not re-export manager/session implementations. The package root
 uses a reviewed symbol whitelist and must not restore an unbounded `__getattr__`
 forwarder.
+
+The policy and service modules above are host-internal owners. They are not SDK or
+Compat surfaces, and retired multiword module paths must not be restored as aliases.
 
 Application services may use domain rules and runtime contracts. They own the
 persistence Protocol needed by a use case, but must not import `app.db`,

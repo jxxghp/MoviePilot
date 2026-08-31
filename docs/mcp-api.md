@@ -37,6 +37,118 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 
 MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。如果客户端缓存了工具列表，插件状态变化后需要让客户端重新请求 `tools/list`；无法手动刷新的客户端应重新连接 MCP 服务或新建会话。
 
+## 3.1 结构化 Agent 工具与完整参数合同
+
+`tools/list` 会为以下四个正式入口返回可直接校验的 JSON Schema。每个入口都按 operation/action 生成 `oneOf` 分支，分支中包含必填字段、类型、默认值、枚举、嵌套对象和互斥/至少一项等跨字段规则；外部 MCP 客户端可以在一次 `tools/call` 中完成参数构造，不需要猜测 URL、HTTP 方法或第三方 SDK 参数。
+
+| MCP 工具 | 用途 | 参数合同来源 |
+| :--- | :--- | :--- |
+| `moviepilot_api` | MoviePilot 产品业务 API：媒体、搜索、订阅、下载、整理、站点、存储、调度、工作流、插件、过滤规则和系统配置 | `skills/moviepilot-api/SKILL.md`；运行时 schema 为 `app/agent/policy/api_mcp_schema.json` |
+| `downloader_operation` | qBittorrent、Transmission、rTorrent 原生任务、队列、文件、限速、标签和会话操作 | `skills/downloader-operation/SKILL.md` 与 `skills/downloader-operation/scripts/mp-downloader.py` 的 `ACTIONS` |
+| `mediaserver_operation` | Emby、Jellyfin、Plex、ZSpace、UGREEN、TrimeMedia、Navidrome 原生媒体库、搜索、播放、扫描和刷新操作 | `skills/mediaserver-operation/SKILL.md` 与 `skills/mediaserver-operation/scripts/mp-mediaserver.py` 的 `ACTIONS` |
+| `database_operation` | MoviePilot 配置数据库表清单、实时 schema、只读 SQL 和明确授权写入 | `skills/database-operation/SKILL.md` 与 `skills/database-operation/scripts/mp-db.py` 的 `ACTIONS` |
+
+这四个工具都要求管理员级 MCP 集成身份；`tools/list` 的可见性不等于绕过业务权限或写操作确认。下载器和媒体服务器工具会在一次调用内自动选择默认/唯一实例；实例不明确时，错误结果会列出可复用的精确实例名。数据库工具不接受任意连接串或凭据，脚本从 MoviePilot 运行时配置读取数据库连接。
+
+`app/agent/policy/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。
+
+当前完整 FastAPI OpenAPI 包含 375 个 HTTP 操作，其中 203 个稳定业务操作进入
+`moviepilot_api`，使用 201 个固定路由模板：200 条 OpenAPI 路由直接匹配，另有 1 条只允许
+`tmdb`、`douban`、`bangumi`、`anilist` 四个来源的受限人物作品动态路由。每个 operation
+均同时具备固定 method/path、角色权限、副作用等级、确认与恢复策略、结果敏感性、英文用途说明，
+以及可直接提交的 path/query/body JSON Schema；Skill front matter、正文 operation 章节、运行时
+注册表和 MCP `tools/list` 的 203 个 `oneOf` 分支必须完全一致。
+
+数量不相等是明确的安全与语义边界，而不是漏生成。当前 375 条路由均被审计并锁定为以下一种
+归属，审计生成器不再提供“未归类”兜底：
+
+| 归属 | 数量 | Agent 使用方式 |
+| :--- | ---: | :--- |
+| `gateway` | 200 | 通过 `moviepilot_api` 的稳定 operation 和精确参数合同调用 |
+| `consolidated` | 72 | 通过同领域聚合 operation 调用，不复制数据源或前端专用路由 |
+| `provider-skill` | 11 | 通过下载器或媒体服务器 Skill 调用第三方 provider API |
+| `alternate-auth-duplicate` | 11 | 使用对应 bearer-authenticated gateway operation，不暴露 API_TOKEN 兼容副本 |
+| `transport_or_identity` | 66 | 由登录、令牌、MCP、会话、回调、健康检查等宿主传输/身份边界拥有 |
+| `stream_or_binary` | 10 | 由直接客户端处理流式日志、消息、文件、图片等非结构化响应 |
+| `ui_presentation` | 5 | 由前端或插件渲染面拥有，不作为业务 Agent operation |
+
+逐路由归属见 `docs/architecture/agent-api-surface-audit.md`，并由
+`tests/test_agent_api_surface_audit.py` 对当前 OpenAPI、固定注册表、MCP schema、英文 Skill
+合同及全部非网关归属做漂移检查。任何新增端点必须先明确归属；对 Agent 开放时还必须补齐
+operation ID、权限、副作用、确认、恢复、结果敏感性及精确参数说明。
+
+### `moviepilot_api` 调用形状
+
+```json
+{
+  "name": "moviepilot_api",
+  "arguments": {
+    "operation_id": "subscription.list",
+    "path_params": {},
+    "query": {"page": 1, "count": 20},
+    "body": {}
+  }
+}
+```
+
+只允许传 `tools/list` 对应 operation 分支中声明的 `path_params`、`query` 和 `body` 字段。不得传 URL、认证头、API Token 或任意 HTTP 方法。
+
+### `downloader_operation` / `mediaserver_operation` 调用形状
+
+```json
+{
+  "name": "downloader_operation",
+  "arguments": {
+    "client": "main-qb",
+    "action": "tasks.list",
+    "arguments": {
+      "status": "downloading",
+      "offset": 0,
+      "limit": 20
+    }
+  }
+}
+```
+
+媒体服务器将顶层实例字段改为 `server`，其余结构相同。`client`/`server` 可省略；具体 action 的 `arguments` 必须严格匹配对应 `oneOf` 分支。
+
+### `database_operation` 调用形状
+
+```json
+{
+  "name": "database_operation",
+  "arguments": {
+    "action": "query",
+    "arguments": {
+      "sql": "SELECT title, year FROM downloadhistory ORDER BY id DESC",
+      "limit": 20,
+      "write": false
+    }
+  }
+}
+```
+
+数据库 action 参数为：
+
+- `tables`：无参数，列出当前数据库实际表。
+- `schema`：必填 `table_name`，必须使用 `tables` 返回的精确名称。
+- `query`：`sql` 与 `file` 二选一；可选 `limit`（默认 100）和 `write`（默认 false）。默认只允许 `SELECT`、`WITH`、`EXPLAIN`。
+- `write`：`sql` 与 `file` 二选一，只允许单条写入或结构变更语句；必须已有明确授权。
+
+数据库 ORM 当前维护的完整表清单与字段基线见 `skills/database-operation/SKILL.md` 的 `Core Tables`；运行时仍应先调用 `schema`，因为实际部署可能存在迁移差异或插件表。
+
+### 系统设置、配置变量与数据库配置
+
+系统设置统一使用 `moviepilot_api`，不需要恢复旧的 `query_system_settings` / `update_system_settings` 工具：
+
+- `config.system.get` 同时查询 `Settings` 运行配置变量和 `SystemConfigKey` 数据库配置。可用 `setting_key` 精确读取，或用 `group` + `keyword` 发现键；单项默认返回完整值，多项默认只返回摘要。
+- 每个发现结果都返回动态 `definition`：声明类型、当前值形状、是否可空/敏感、允许的更新操作、列表默认匹配字段和持久化位置。Agent 应先发现定义，再按返回的精确键和形状调用更新。
+- `config.system.update` 支持 `replace`、`merge_dict`、`upsert_list_item`、`remove_list_item`。`Settings` 字段会执行类型转换并持久化到 `app.env`；`SystemConfigKey` 会经配置服务写入数据库并发布配置变更事件。
+- 敏感值默认脱敏；只有管理员明确要求时才传 `query.show_secrets=true`，并继续受宿主确认和保护输出策略约束。
+- `database_operation` 直接修改 `systemconfig` 只用于受控数据修复。普通配置修改不得绕过键注册、类型转换、插件 mutation 门禁和事件通知。
+
+`skills/moviepilot-api/SKILL.md` 只维护稳定的发现与更新流程，不复制当前版本全部 `Settings` / `SystemConfigKey` 清单。真实键、类型和值形状由 `config.system.get` 运行时发现；MCP `tools/list` 的 `config.system.get/update` 分支负责说明发现参数和更新请求结构。
+
 ---
 
 ## 4. 客户端配置示例

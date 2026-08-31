@@ -1,10 +1,10 @@
 # MoviePilot Agent 工具体系重构计划
 
-> 状态：COMPLETE
+> 状态：IN PROGRESS — 本地验收已通过，提交推送与远端 CI 收口
 >
 > 建立日期：2026-08-31
 >
-> 当前基线：v3@6ee47795629f
+> 当前基线：v3@871632af257a663abc159c516acc027a81ab2314
 >
 > 关联目标：本线程已建立的 Agent 工具体系重构 Goal
 
@@ -35,13 +35,13 @@
 | 工厂固定工具元组 | 82 个 | 12 个原生工具；默认再追加 send_local_file 与 moviepilot_api，共 14 个 |
 | 工具目录默认行为 | LLM_MAX_TOOLS=0，默认将完整目录绑定到主模型 | 默认完整目录已收敛为 14 个；按钮选择和语音发送仅在渠道能力满足时条件注入 |
 | 默认固定目录体积 | 工具名称、描述和 JSON Schema 合计约 113 KB | 实测 23,865 bytes，约下降 79% |
-| API Skill | skills/moviepilot-api/SKILL.md 通过任意 method/path 调用 | moviepilot_api 只接受 59 个固定 operation ID；Skill 以 allowed-api-operations 强制收敛 |
+| API Skill | skills/moviepilot-api/SKILL.md 通过任意 method/path 调用 | moviepilot_api 只接受 203 个固定 operation ID；Skill 与 MCP oneOf 逐 operation 暴露精确英文参数合同 |
 | API 身份 | API Token 映射为管理员级集成身份，不等于 Agent 当前用户/渠道身份 | Web/渠道身份绑定到真实用户；HTTP/MCP 管理入口绑定持久化超级用户，不接受模型注入 Token |
 | 下载器/媒体服务器 | 依赖内置低层 Agent 工具或有限 REST operation | downloader-operation 与 mediaserver-operation Skill 通过固定脚本调用已配置 provider API |
 | MCP/HTTP 工具管理 | 存在旧业务工具与同名 first-wins 选择空间 | 与主 Agent 共用严格唯一新目录；重名直接以 TOOL_IDENTITY_AMBIGUOUS 失败 |
 | 退役代码 | 旧实现仍位于 app/agent/tools/impl | 77 个退役文件已直接删除，其中 72 个工具模块、5 个辅助模块 |
-| 架构图 | 982 个宿主模块、8,430 条内部依赖边 | 917 个宿主模块、7,671 条内部依赖边，Application/Chain 具体 Adapter 直连仍为 0 |
-| 工作区状态 | 基线提交 6ee47795629f，与 origin/v3 对齐，初始工作区干净 | 重构与验证已完成，尚未提交或推送 |
+| 架构图 | 982 个宿主模块、8,430 条内部依赖边 | 919 个宿主模块、7,680 条内部依赖边，Application/Chain 具体 Adapter 直连仍为 0 |
+| 工作区状态 | 基线提交 871632af，与 origin/v3 对齐，初始工作区干净 | 生产改动、生成合同、静态检查、全量测试和固定 80% 覆盖率门禁已完成；提交、推送和远端 CI 尚待完成 |
 
 ## 3. 目标工具分层
 
@@ -82,7 +82,7 @@
 
 - 工厂固定工具元组由 82 个降为 12 个原生工具。
 - 默认运行目录再追加 send_local_file 与单一 moviepilot_api 网关，共 14 个固定工具。
-- 其中 13 个是原生能力，1 个是 59-operation 结构化 API 网关。
+- 其中 13 个是原生能力，1 个是 203-operation 结构化 API 网关。
 - ask_user_choice、send_voice_message、Skill、渠道、子 Agent、插件和外部 MCP 工具仍按运行时条件注入，不计入 14 个默认固定工具。
 - 77 个退役实现/辅助文件直接删除，不保留 Agent 或 MCP 兼容副本。
 
@@ -133,6 +133,7 @@ provider 动态返回 namespaced action、参数约束、副作用等级及是�
 | L6 原生工具收敛 | VERIFIED | L4,L5 | Agent 任务和人格工具合并为 action 工具；宿主/会话/渠道原生能力边界固定 |
 | L7 第三方服务 Skill 化 | VERIFIED | L5 | 下载器和媒体服务器能力发现、受控脚本、Skill、策略和离线测试完成；重复低层 Agent API operation 已删除 |
 | L8 收口与交付 | VERIFIED | L6,L7 | 旧代码、文档与架构基线已收口；静态检查和锁定全量测试已完成 |
+| L9 全 API 面审计与最终交付 | ACTIVE | L8 | 375 个 OpenAPI 操作逐路由归属、203 个网关合同与 72 个退出工具映射均由测试锁定；完成全量测试、80% 覆盖率门禁、提交推送和远端 CI 终态 |
 
 ## 5. L2 受控 API 网关约束
 
@@ -278,12 +279,40 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 - CLI scheduler list/run 已改用 scheduler.list 与 scheduler.run operation，不再调用已删除工具名
 - 工具目录构造、Agent 图、HTTP/MCP direct 调用均强制唯一身份；同名插件/MCP 工具直接失败，不采用 first-wins
 - docs/mcp-api.md、docs/cli.md、命令规则、内置 Skill 文档和 Schema 导出清单已同步新合同
-- 宿主架构基线已更新：模块 982 降至 917，内部依赖边 8,430 降至 7,671，未新增 Application/Chain 到具体 Adapter 的直连
+- 宿主架构基线在 L8 首次更新为 917 个模块、7,671 条内部依赖边；L9 新增固定 API MCP 合同与外部服务工具 owner 后为 919 个模块、7,680 条内部依赖边，未新增 Application/Chain 到具体 Adapter 的直连
 - 受影响 Python 文件通过 Ruff、compileall 和 Pylint `--errors-only`；Schema 导出、架构基线与 `git diff --check` 均通过
 - 最终架构/OpenAPI/i18n/事件/package-root 回归 84 passed；Agent/MCP/CLI/Skill/架构大回归 1066 passed、插件与架构边界专项 124 passed、provider/gateway 专项 33 passed
 - 完整锁定测试 `uv run --locked --no-sync python tests/run.py` 完成：7554 passed、9 skipped、2 failed
 - 两个失败仅为 `test_release_supply_chain.py::test_release_promotes_latest_only_after_both_versioned_images` 与 `test_resource_v3.py::test_v3_release_workflows_use_main_wiki_and_isolated_images`；均已在未改动的 `v3@6ee47795629f` 干净 detached worktree 复现，属于本次重构前已有的发布工作流基线问题
 - Agent 工具重构范围内没有遗留失败；L1-L8 全部退出，正式方案不保留旧工具、MCP 兼容或运行时切换开关
 - 当前变更尚未提交或推送
+
+### 2026-08-31：Skill/MCP 自描述合同与系统设置收口
+
+- 下载器 24 个 provider action 加 `instances.list` / `capabilities.list` 两个发现 action、媒体服务器 17 个 provider action 加同样两个发现 action、MoviePilot API 203 个 operation 均从运行时合同生成完整英文参数说明；外部 MCP `tools/list` 保留相同 oneOf、必填、类型、默认值、枚举和跨字段约束
+- 新增 admin-only `database_operation` MCP 工具，暴露 `tables`、`schema`、`query`、`write` 四个 action；内置 Agent 仍按需加载 `database-operation` Skill，不增加常驻业务工具
+- 数据库 Skill 已覆盖 27 张 ORM 表、`alembic_version` 和全部字段基线；每张表均说明用途、适合查询的场景和写入边界，运行时仍以 `tables` / `schema` 实际结果为准
+- Skill 文档生成器会对数据库说明与 ORM 元数据做双向缺项校验；新增、删除或改名表但未同步说明时生成直接失败，避免文档再次出现漏表或只有字段没有语义的问题
+- 系统设置继续由 `config.system.get/update` 统一承载，不恢复旧配置工具；Skill 不再复制易漂移的 `Settings` / `SystemConfigKey` 全量清单，而是要求先动态发现 `definition`（声明类型、当前形状、敏感性、允许操作、列表匹配字段和持久化位置），再按精确键更新
+- `Settings` 更新执行类型转换并持久化到 `app.env`；`SystemConfigKey` 通过配置服务写入数据库，保留插件 mutation 门禁、敏感值脱敏和配置变更事件
+- `app/agent/policy/api_mcp_schema.json` 明确为 OpenAPI + 固定 operation 合同生成的 MCP `tools/list` 制品，禁止手工维护；所有 operation、模型和字段必须具备具体英文说明，抽象占位文本或中文说明会由测试拒绝
+- API 权限保持双层硬门禁：`moviepilot_api` 按 operation 的 `required_role` 在发起 HTTP 前拒绝非管理员，最终 FastAPI 端点继续用真实当前用户令牌执行 superuser/manage/user 级鉴权；下载器、媒体服务器、数据库外部工具整体为 admin-only
+- 异步边界复核：内置 Skill 脚本经 asyncio subprocess 执行；外部服务/数据库 MCP 工具把同步脚本放入 downloader、mediaserver、db 分域线程池；`moviepilot_api` 使用异步 HTTP，不阻塞 Agent event loop
+- 当前阶段进入最终验证：聚焦 Agent/Skill/MCP 回归、全量锁定测试、80% 固定覆盖率 CI、提交推送与远端终态确认
+
+### 2026-08-31 至 2026-09-01：L9 全 API 面审计与真实调用验证
+
+- 从当前 FastAPI OpenAPI 生成 375 个 HTTP 操作的完整清单；每个路由明确归类为 `gateway`、`provider-skill`、`consolidated`、`alternate-auth-duplicate`、`transport_or_identity`、`stream_or_binary` 或 `ui_presentation`，生成器对任何未归类端点直接失败
+- `moviepilot_api` 扩展为 203 个稳定 operation，除 10 个音乐识别、探索、专辑、艺术家和缓存操作外，继续覆盖仪表盘、媒体发现与识别、站点全生命周期、订阅协作、存储维护、整理队列、工作流、种子缓存、数据库备份、规则与网络测试、插件运行管理、当前用户公开配置和使用统计；音乐支持艺术家到作品、作品到艺术家的双向浏览
+- 新增 `tests/test_agent_api_surface_audit.py`，逐项校验 OpenAPI 清单、固定路由、生成审计文档、MCP `oneOf`、英文字段说明和 Skill operation 章节完全一致
+- 将历史删除提交中的 72 个业务工具冻结为替代映射测试，逐项证明其 owner 是 203-operation API、下载器/媒体服务器 action 或统一 `agent_task` / `persona` 原生工具，并确认旧模块物理文件不存在
+- 实际执行数据库脚本 `tables` / `schema` / `SELECT 1`、下载器与媒体服务器 `instances` / `capabilities`，并直接运行三个结构化 service tool；本机未配置 provider 实例时返回空实例而不是配置读取错误
+- 通过临时本地 HTTP 服务实际执行 `MoviePilotApiTool -> MoviePilotApiExecutor -> GET /api/v1/site/agent` 完整链路，验证返回成功且普通用户投影不包含 cookie、API key、token 或 RSS 等认证字段
+- 修复完整 API Skill 超过原 64 KiB 运行时返回上限而被截断的问题：结果上限调整为 256 KiB，并以真实内置 Skill 加载测试确认 203 个 operation 均可见且 `truncated=false`
+- Skill 生成器同步 YAML `allowed-api-operations` 与正文目录，避免“文档有参数但运行时未授权”的双事实源漂移；MCP schema、Skill front matter、正文和注册表数量及集合完全一致
+- 为站点优先级、插件目录和工作流路径 ID 等原先不精确的输入补充类型模型或端点约束；固定路由占位符与 path schema 名称、required 状态由测试逐项校验
+- 受影响 Agent/Skill/MCP/OpenAPI/音乐/架构回归 247 passed；修复全量发现的工作流管理员门禁、插件分页默认值、模块命名治理、服务工具标签和 Schema 导出清单后，专项回归 40 passed
+- 完整锁定测试最终通过：7,614 passed、9 skipped；覆盖率按 CI 相同的 8 分片采集并合并，Application 81.88%、Domain 81.01%，通过固定 80% 门禁
+- 当前活动叶子保持 L9；下一步完成提交前差异审查、提交推送并检查远端 CI 终态
 
 本文件作为本次重构的持续记录，保留阶段状态、实际变更、验证结果、提交状态与已知基线边界。

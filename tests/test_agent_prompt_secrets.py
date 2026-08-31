@@ -73,6 +73,8 @@ def test_agent_prompt_delegates_explicit_secret_reads_to_host_confirmation() -> 
 
     assert "config.system.get" in prompt
     assert "show_secrets" in prompt
+    assert "query.show_secrets=true" in prompt
+    assert "body.show_secrets=true" not in prompt
     assert "do not refuse" in prompt
     assert "host verifies administrator authority" in prompt
     assert "Never expose or repeat the secret" in prompt

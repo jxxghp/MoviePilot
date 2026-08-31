@@ -49,6 +49,7 @@ BUILTIN_LEGACY_SHADOW_INVENTORY = frozenset(
         "moviepilot_api",
         "downloader_operation",
         "mediaserver_operation",
+        "database_operation",
     }
 )
 

@@ -149,17 +149,47 @@ class SystemEnvironmentUpdateData(BaseModel):
 class SystemSettingsUpdateRequest(BaseModel):  # type: ignore[misc]
     """统一系统设置更新请求。"""
 
-    setting_key: str
-    value: Any = None
+    setting_key: str = Field(
+        description=(
+            "Exact setting key. Accepts a Settings field name, a SystemConfigKey value or enum name, "
+            "or an alias that resolves to one unique setting. Call config.system.get with group or "
+            "keyword first when the key is unknown."
+        )
+    )
+    value: Any = Field(
+        default=None,
+        description=(
+            "New value or list item. For replace, send the complete value. For merge_dict, send the "
+            "object fragment to merge. For upsert_list_item or remove_list_item, send one object or scalar item."
+        ),
+    )
     operation: Literal[
         "replace",
         "merge_dict",
         "upsert_list_item",
         "remove_list_item",
-    ] = "replace"
-    remove_keys: list[str] = Field(default_factory=list)
-    match_field: Optional[str] = None
-    match_value: Any = None
+    ] = Field(
+        default="replace",
+        description=(
+            "replace overwrites the complete value; merge_dict shallow-merges an object; "
+            "upsert_list_item inserts or replaces one matched list item; remove_list_item removes one matched list item."
+        ),
+    )
+    remove_keys: list[str] = Field(
+        default_factory=list,
+        description="Object keys to remove after merge_dict applies the supplied value.",
+    )
+    match_field: Optional[str] = Field(
+        default=None,
+        description=(
+            "Object field used to match a list item. Downloaders, MediaServers, Notifications, Directories, "
+            "and Storages default to name; NotificationSwitchs defaults to type. Supply it for other object lists."
+        ),
+    )
+    match_value: Any = Field(
+        default=None,
+        description="Value compared against match_field. If omitted, use value[match_field]; scalar lists use value directly.",
+    )
 
 
 class CustomIdentifiersUpdateRequest(BaseModel):  # type: ignore[misc]

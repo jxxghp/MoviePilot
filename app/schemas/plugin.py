@@ -405,19 +405,26 @@ class PluginFolderConfigData(BaseModel):
     """新版插件文件夹配置（对象格式，含展示配置与插件列表）。"""
 
     # 文件夹内插件 ID 列表
-    plugins: List[str] = Field(default_factory=list)
+    plugins: List[str] = Field(
+        default_factory=list,
+        description="Ordered installed plugin IDs assigned to this folder.",
+    )
     # 文件夹排序值
-    order: Optional[int] = None
+    order: Optional[int] = Field(default=None, description="Folder display-order value.")
     # 文件夹图标
-    icon: Optional[str] = None
+    icon: Optional[str] = Field(default=None, description="Optional folder icon name.")
     # 文件夹颜色
-    color: Optional[str] = None
+    color: Optional[str] = Field(default=None, description="Optional folder foreground color.")
     # 文件夹渐变
-    gradient: Optional[str] = None
+    gradient: Optional[str] = Field(default=None, description="Optional folder gradient definition.")
     # 文件夹背景
-    background: Optional[str] = None
+    background: Optional[str] = Field(default=None, description="Optional folder background color or style.")
     # 是否显示图标（前端字段为驼峰命名）
-    show_icon: Optional[bool] = Field(default=None, alias="showIcon")
+    show_icon: Optional[bool] = Field(
+        default=None,
+        alias="showIcon",
+        description="Whether the frontend should display the folder icon.",
+    )
 
 
 class PluginFoldersData(RootModel[Dict[str, Union[List[str], PluginFolderConfigData]]]):

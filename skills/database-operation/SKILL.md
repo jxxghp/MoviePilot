@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 5
+version: 6
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -9,6 +9,7 @@ description: >-
   include data statistics, counts, aggregations, inspecting or fixing records,
   cleanup requests, and questions like "how many downloads", "show site stats",
   "delete old records", or "why is this subscription stuck".
+allowed-tools: execute_command
 ---
 
 # Database Operation
@@ -37,6 +38,20 @@ Use this skill as the final fallback for data access or mutation. It may run
 `SELECT`, `INSERT`, `UPDATE`, `DELETE`, and schema-changing statements through
 the bundled script, but broad or destructive writes still require explicit user
 authorization.
+
+System settings have two managed sources and should not normally be edited here:
+
+- Runtime `Settings` variables are queried and updated by `moviepilot-api`
+  operations `config.system.get` / `config.system.update`; updates perform type
+  conversion and persist to `app.env`.
+- `SystemConfigKey` values are stored in the database `systemconfig` table, but
+  the same API operations must be preferred because they enforce registered
+  keys, plugin mutation admission, value normalization, secret redaction, and
+  configuration-change events.
+
+Use direct SQL against `systemconfig` only for an explicitly authorized repair
+when the managed API cannot complete the operation. Inspect the exact row first,
+avoid broad writes, and verify the managed API can read the repaired value.
 
 ## Commands
 
@@ -99,71 +114,185 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 
 ## Core Tables
 
-### downloadhistory
-Key columns: `id`, `path`, `type`, `title`, `year`, `media_source`, `media_id`, `music_type`, `seasons`, `episodes`, `downloader`, `download_hash`, `torrent_name`, `torrent_site`, `userid`, `username`, `date`, `media_category`
+`tables` returns the tables that exist in the current instance. The catalog below covers every MoviePilot ORM table plus Alembic metadata. Always treat the live `schema <table>` result as authoritative.
 
-### downloadfiles
-Key columns: `id`, `downloader`, `download_hash`, `fullpath`, `savepath`, `filepath`, `torrentname`, `state`
+### `agentchat`
+- Purpose: Stores Web Agent and messaging-channel session indexes, titles, previews, and message snapshots.
+- Useful queries: Tracing Agent history or context restoration by user, session, or update time.
+- Write boundary: Owned by the Agent conversation service; do not rewrite message JSON, counters, or ownership.
+- Columns: `id`, `session_id`, `client_session_id`, `user_id`, `username`, `channel`, `source`, `original_chat_id`, `title`, `preview`, `agent_messages`, `display_messages`, `message_count`, `created_at`, `updated_at`
 
-### transferhistory
+### `agenttask`
+- Purpose: Stores one-shot or recurring Agent task definitions, triggers, and the latest execution summary.
+- Useful queries: Inspecting task ownership, enablement, cron/run_at settings, and the latest result.
+- Write boundary: Create, update, enable, disable, or delete tasks through the Agent task API.
+- Columns: `id`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `enabled`, `user_id`, `username`, `session_id`, `channel`, `source`, `original_chat_id`, `last_status`, `last_run_at`, `last_result`, `last_run_id`, `run_count`, `created_at`, `updated_at`
 
-Music rows persist actual `audio_format`, `audio_lossless`, `bit_depth`, `sample_rate`, and `bitrate` values read during organization. Bitrate uses bps and sample rate uses Hz.
-Key columns: `id`, `src`, `dest`, `mode`, `type`, `category`, `title`, `year`, `media_source`, `media_id`, `music_type`, `seasons`, `episodes`, `download_hash`, `status`, `errmsg`, `date`
+### `agenttaskrun`
+- Purpose: Stores the input snapshot, status, timestamps, and result of each Agent task execution.
+- Useful queries: Auditing one run or correlating a failure with task_id, run_id, and trigger source.
+- Write boundary: Execution evidence owned by the task runner; never fabricate rows or edit run status.
+- Columns: `id`, `run_id`, `task_id`, `trigger_source`, `name`, `content`, `trigger_type`, `cron_expression`, `run_at`, `user_id`, `username`, `session_id`, `channel`, `message_source`, `original_chat_id`, `status`, `started_at`, `finished_at`, `result`
 
-### downloadfailure
+### `alembic_version`
+- Purpose: Records the Alembic migration revision currently applied to the database.
+- Useful queries: Diagnosing startup migration failures or a database/code revision mismatch.
+- Write boundary: Never edit it directly; advance or roll back revisions only through Alembic.
+- Columns: `version_num`
 
-Key columns: `id`, `fingerprint`, `type`, `title`, `year`, `media_source`, `media_id`, `seasons`, `episodes`, `site`, `torrent_id`, `downloader`, `error_message`, `retry_count`, `next_retry_at`
+### `downloadfailure`
+- Purpose: Stores stable fingerprints, media/torrent context, errors, and retry scheduling for failed downloads.
+- Useful queries: Analyzing failure causes, retry counts, next retry time, and affected media or sites.
+- Write boundary: Owned by download-failure compensation; retry or clean records through its business API.
+- Columns: `id`, `fingerprint`, `type`, `title`, `year`, `media_source`, `media_id`, `seasons`, `episodes`, `site`, `site_name`, `torrent_id`, `torrent_name`, `torrent_size`, `downloader`, `source`, `error_message`, `retry_count`, `first_failed_at`, `last_failed_at`, `next_retry_at`
 
-### subscribe
+### `downloadfiles`
+- Purpose: Maps downloader task hashes to full paths, save directories, relative files, and active state.
+- Useful queries: Finding task files by downloader/download_hash or diagnosing savepath associations.
+- Write boundary: Maintained by download and transfer flows; do not manually change state or path mappings.
+- Columns: `id`, `downloader`, `download_hash`, `fullpath`, `savepath`, `filepath`, `torrentname`, `state`
 
-Music filters use `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, and `min_sample_rate`. Quality upgrades reuse `current_priority` and persist the current exact values in `current_audio_format`, `current_bitrate`, `current_bit_depth`, and `current_sample_rate`.
-Key columns: `id`, `name`, `year`, `type`, `media_source`, `media_id`, `music_type`, `season`, `total_episode`, `start_episode`, `lack_episode`, `state`, `filter`, `include`, `exclude`, `quality`, `resolution`, `sites`, `best_version`, `best_version_full`, `date`, `username`
+### `downloadhistory`
+- Purpose: Stores media identity, torrent, downloader, user, and recognition context for submitted downloads.
+- Useful queries: Reviewing download history or tracing a media identity or hash back to its source.
+- Write boundary: Written by the download use case; delete or correct records through the download-history API.
+- Columns: `id`, `path`, `type`, `title`, `year`, `media_source`, `media_id`, `music_type`, `seasons`, `episodes`, `image`, `poster`, `downloader`, `download_hash`, `torrent_name`, `torrent_description`, `torrent_site`, `userid`, `username`, `channel`, `date`, `note`, `media_category`, `episode_group`, `custom_words`
 
-### subscribehistory
+### `mediaserveritem`
+- Purpose: Stores the local index and canonical media identity projected from media-server libraries.
+- Useful queries: Checking library presence, server/library/path placement, and season information.
+- Write boundary: This is a rebuildable projection; writes and cleanup belong to media-server synchronization.
+- Columns: `id`, `server`, `library`, `item_id`, `item_type`, `title`, `original_title`, `year`, `media_source`, `media_id`, `path`, `seasoninfo`, `note`, `lst_mod_date`
 
-Completed music subscriptions retain both audio filters and the final current-quality snapshot for auditing.
-Key columns: `id`, `name`, `year`, `type`, `media_source`, `media_id`, `music_type`, `season`, `total_episode`, `start_episode`, `date`, `username`
+### `message`
+- Purpose: Stores inbound and outbound messages, channels, content, attachments, users, and timestamps.
+- Useful queries: Paging notification history, distinguishing direction, or tracing duplicates by source.
+- Write boundary: Written by messaging and notification services; clean it through the message API or retention job.
+- Columns: `id`, `channel`, `source`, `mtype`, `title`, `text`, `image`, `link`, `userid`, `reg_time`, `action`, `note`
 
-### user
-Key columns: `id`, `name`, `email`, `is_active`, `is_superuser`, `permissions`, `settings`
+### `outboxmessage`
+- Purpose: Stores externally visible side-effect intents committed atomically with business transactions.
+- Useful queries: Diagnosing pending/processing/failed state, leases, attempts, and the last error.
+- Write boundary: Owned by the Outbox Dispatcher state machine; never mark completion or delete undelivered events manually.
+- Columns: `id`, `event_key`, `topic`, `payload_version`, `payload`, `status`, `attempt`, `next_retry_at`, `lease_until`, `last_error`, `created_at`, `completed_at`
 
-### site
-Key columns: `id`, `name`, `domain`, `url`, `pri`, `cookie`, `proxy`, `is_active`, `downloader`, `limit_interval`, `limit_count`
+### `passkey`
+- Purpose: Stores WebAuthn/PassKey credentials, public keys, signature counters, and activation state.
+- Useful queries: Authorized authentication diagnostics such as ownership, activation, and last use.
+- Write boundary: Security-sensitive; manage it only through the PassKey API and never disclose credential material.
+- Columns: `id`, `user_id`, `credential_id`, `public_key`, `sign_count`, `name`, `aaguid`, `created_at`, `last_used_at`, `is_active`, `transports`
 
-### siteuserdata
-Key columns: `id`, `domain`, `name`, `username`, `user_level`, `bonus`, `upload`, `download`, `ratio`, `seeding`, `leeching`, `seeding_size`, `updated_day`
+### `plugindata`
+- Purpose: Stores plugin-owned JSON values isolated by plugin_id and key.
+- Useful queries: Diagnosing persistence or migration issues for one explicitly identified plugin and key.
+- Write boundary: The plugin owns these values; prefer plugin capabilities or the plugin-data API.
+- Columns: `id`, `plugin_id`, `key`, `value`
 
-### sitestatistic
-Key columns: `id`, `domain`, `success`, `fail`, `seconds`, `lst_state`, `lst_mod_date`
+### `pluginidentity`
+- Purpose: Stores trusted source, payload source, version, receipt, and CAS revision for a physical plugin package.
+- Useful queries: Auditing source binding, package generation, payload application, or identity conflicts.
+- Write boundary: Plugin supply-chain state owned exclusively by installation and update transactions.
+- Columns: `id`, `plugin_id`, `normalized_plugin_id`, `trusted_source_type`, `trusted_source_key`, `binding_basis`, `payload_source_type`, `payload_source_key`, `declared_version`, `package_generation`, `declared_metadata`, `payload_receipt`, `revision`, `created_at`, `updated_at`, `bound_at`, `payload_applied_at`
 
-### mediaserveritem
-Key columns: `id`, `server`, `library`, `item_id`, `item_type`, `title`, `original_title`, `year`, `media_source`, `media_id`, `path`
+### `plugininstallation`
+- Purpose: Stores plugin installation phase, membership target, identity revisions, and backup state.
+- Useful queries: Diagnosing interrupted installations, rollback conditions, and package or backup presence.
+- Write boundary: Owned by the plugin installation state machine; never advance phase or overwrite evidence manually.
+- Columns: `id`, `transaction_id`, `plugin_id`, `phase`, `membership_before`, `membership_target`, `identity_before_revision`, `identity_target_revision`, `package_existed`, `persistent_backup_existed`, `created_at`, `updated_at`, `schema_version`
 
-The media-bearing tables above store one primary identity only. Treat
-`media_source` and `media_id` as an atomic pair: both are null for an unknown
-identity, or both contain a valid source enum value and its native ID. Do not
-write source-specific identity columns back into these tables.
+### `site`
+- Purpose: Stores private-tracker URLs, RSS, credentials, rate limits, proxy state, and downloader binding.
+- Useful queries: Inspecting enablement, domain, rate limits, or downloader binding with minimal credential exposure.
+- Write boundary: Contains cookies, API keys, and tokens; manage it through the site API.
+- Columns: `id`, `name`, `domain`, `url`, `pri`, `rss`, `cookie`, `ua`, `apikey`, `token`, `proxy`, `filter`, `render`, `public`, `note`, `limit_interval`, `limit_count`, `limit_seconds`, `timeout`, `is_active`, `lst_mod_date`, `downloader`
 
-### systemconfig
-Key columns: `id`, `key`, `value`
+### `siteicon`
+- Purpose: Caches site names, domains, icon URLs, and Base64 icon content.
+- Useful queries: Diagnosing missing icons, incorrect domain mapping, or cache generation.
+- Write boundary: Rebuildable cache owned by site-icon synchronization; direct writes are not recommended.
+- Columns: `id`, `name`, `domain`, `url`, `base64`
 
-### userconfig
-Key columns: `id`, `username`, `key`, `value`
+### `sitestatistic`
+- Purpose: Aggregates site request successes, failures, durations, latest state, and diagnostic notes.
+- Useful queries: Comparing site availability, failure rate, and the most recent access state.
+- Write boundary: Accumulated by site access statistics; never edit counters to conceal runtime behavior.
+- Columns: `id`, `domain`, `success`, `fail`, `seconds`, `lst_state`, `lst_mod_date`, `note`
 
-### plugindata
-Key columns: `id`, `plugin_id`, `key`, `value`
+### `siteuserdata`
+- Purpose: Stores tracker account level, traffic, ratio, seeding, and unread-message data.
+- Useful queries: Inspecting account state, traffic trends, seeding volume, and the latest collection error.
+- Write boundary: A site-scraping projection refreshed by synchronization; do not edit it directly.
+- Columns: `id`, `domain`, `name`, `username`, `userid`, `user_level`, `join_at`, `bonus`, `upload`, `download`, `ratio`, `seeding`, `leeching`, `seeding_size`, `leeching_size`, `seeding_info`, `message_unread`, `message_unread_contents`, `err_msg`, `updated_day`, `updated_time`
 
-### message
-Key columns: `id`, `channel`, `source`, `mtype`, `title`, `text`, `image`, `link`, `userid`, `reg_time`
+### `subscribe`
+- Purpose: Stores active movie, TV, or music subscriptions, filters, progress, and download targets.
+- Useful queries: Inspecting state, missing episodes/tracks, quality rules, site scope, and match progress.
+- Write boundary: Create, update, search, or delete through the subscription API to preserve state-machine consistency.
+- Columns: `id`, `name`, `year`, `type`, `keyword`, `media_source`, `media_id`, `music_type`, `total_tracks`, `season`, `poster`, `backdrop`, `vote`, `description`, `filter`, `include`, `exclude`, `quality`, `resolution`, `effect`, `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, `min_sample_rate`, `total_episode`, `start_episode`, `lack_episode`, `note`, `state`, `last_update`, `date`, `username`, `sites`, `downloader`, `best_version`, `best_version_full`, `current_priority`, `current_audio_format`, `current_bitrate`, `current_bit_depth`, `current_sample_rate`, `episode_priority`, `save_path`, `search_imdbid`, `manual_total_episode`, `custom_words`, `media_category`, `filter_groups`, `episode_group`
 
-### workflow
-Key columns: `id`, `name`, `description`, `timer`, `trigger_type`, `event_type`, `state`, `run_count`, `actions`, `flows`, `last_time`
+### `subscribehistory`
+- Purpose: Stores snapshots of completed or archived subscriptions and their final filter state.
+- Useful queries: Auditing historical subscriptions, media identity, completion criteria, and filter configuration.
+- Write boundary: Generated by subscription completion and archival; restore or delete through its business API.
+- Columns: `id`, `name`, `year`, `type`, `keyword`, `media_source`, `media_id`, `music_type`, `total_tracks`, `season`, `poster`, `backdrop`, `vote`, `description`, `filter`, `include`, `exclude`, `quality`, `resolution`, `effect`, `audio_quality`, `audio_format`, `min_bitrate`, `min_bit_depth`, `min_sample_rate`, `total_episode`, `start_episode`, `date`, `username`, `sites`, `best_version`, `best_version_full`, `current_priority`, `current_audio_format`, `current_bitrate`, `current_bit_depth`, `current_sample_rate`, `episode_priority`, `save_path`, `search_imdbid`, `custom_words`, `media_category`, `filter_groups`, `episode_group`
 
-### passkey
-Key columns: `id`, `user_id`, `credential_id`, `public_key`, `name`, `created_at`, `last_used_at`, `is_active`
+### `systemconfig`
+- Purpose: Stores JSON business configuration values keyed by SystemConfigKey.
+- Useful queries: Verifying the physical value only when the managed settings API behaves unexpectedly.
+- Write boundary: Use config.system.get/update first; direct writes bypass validation, events, and plugin admission.
+- Columns: `id`, `key`, `value`
 
-### siteicon
-Key columns: `id`, `name`, `domain`, `url`, `base64`
+### `transferexecutionstep`
+- Purpose: Stores intent, attempt identity, state, and result evidence for each durable transfer operation.
+- Useful queries: Diagnosing stuck, failed, or repeated steps by task_id or operation_id.
+- Write boundary: Owned by the transfer execution state machine and lease CAS; never force state transitions manually.
+- Columns: `id`, `task_id`, `operation_id`, `checkpoint_fingerprint`, `ordinal`, `phase`, `kind`, `state`, `attempt_token`, `attempt_count`, `intent_version`, `intent_payload`, `result_version`, `result_payload`, `last_error`, `prepared_at`, `started_at`, `completed_at`, `updated_at`
+
+### `transferhistory`
+- Purpose: Stores transfer source, destination, mode, media identity, download linkage, and outcome.
+- Useful queries: Reviewing success/failure history, destination paths, media classification, and download linkage.
+- Write boundary: Written by transfer settlement; delete or retry through transfer-history business APIs.
+- Columns: `id`, `transfer_task_id`, `transfer_settlement_revision`, `src`, `src_storage`, `src_fileitem`, `dest`, `dest_storage`, `dest_fileitem`, `mode`, `type`, `category`, `title`, `year`, `media_source`, `media_id`, `music_type`, `total_tracks`, `audio_format`, `audio_lossless`, `bit_depth`, `sample_rate`, `bitrate`, `seasons`, `episodes`, `image`, `downloader`, `download_hash`, `status`, `errmsg`, `date`, `files`, `episode_group`
+
+### `transferpending`
+- Purpose: Durably stores pending transfer input, plans, checkpoints, leases, retries, and manual review state.
+- Useful queries: Diagnosing restart recovery, expired leases, retry_wait, terminal failures, or manual review.
+- Write boundary: Core durable state machine advanced only by planning, execution, retry, and review services.
+- Columns: `id`, `task_id`, `storage`, `src_path`, `created_at`, `state`, `updated_at`, `last_error`, `input_version`, `planning_input`, `input_fingerprint`, `checkpoint_version`, `checkpoint_payload`, `planned_at`, `lease_owner`, `lease_token`, `lease_expires_at`, `heartbeat_at`, `attempt_count`, `execution_state`, `execution_version`, `execution_payload`, `execution_fingerprint`, `retry_generation`, `retry_count`, `retry_due_at`, `retry_requested_by`, `retry_reason`, `settlement_revision`, `terminal_history_id`, `manual_review_revision`, `reviewed_at`, `reviewed_by`, `review_reason`, `review_decision`
+
+### `transfersettlementreceipt`
+- Purpose: Stores immutable terminal settlement receipts with contiguous revisions per transfer task.
+- Useful queries: Verifying that history, pending deletion, and execution fingerprints were settled reliably.
+- Write boundary: Idempotency and audit evidence; append revisions only and never overwrite or delete old receipts.
+- Columns: `id`, `task_id`, `history_id`, `settlement_revision`, `outcome`, `execution_fingerprint`, `lease_token`, `history_status`, `src`, `src_storage`, `pending_deleted`, `error`, `created_at`, `updated_at`
+
+### `user`
+- Purpose: Stores user accounts, password hashes, administrator state, OTP, permissions, and preferences.
+- Useful queries: Authorized diagnostics of account state, permissions, or authentication configuration.
+- Write boundary: Security-sensitive; manage through user, permission, password, and two-factor APIs.
+- Columns: `id`, `name`, `email`, `hashed_password`, `is_active`, `is_superuser`, `avatar`, `is_otp`, `otp_secret`, `permissions`, `settings`
+
+### `userconfig`
+- Purpose: Stores per-user JSON configuration isolated by username and key.
+- Useful queries: Inspecting UI preferences, message clear cursors, or other personalized state.
+- Write boundary: Modify through the owning user or messaging API to preserve key semantics.
+- Columns: `id`, `username`, `key`, `value`
+
+### `workflow`
+- Purpose: Stores workflow definitions, triggers, action graphs, execution context, and runtime state.
+- Useful queries: Inspecting scheduled/event workflows, pause state, current action, run count, and failures.
+- Write boundary: Create, modify, run, pause, or reset through the workflow API.
+- Columns: `id`, `name`, `description`, `timer`, `trigger_type`, `event_type`, `event_conditions`, `state`, `current_action`, `result`, `run_count`, `actions`, `flows`, `context`, `execution_config`, `execution_state`, `add_time`, `last_time`
+
+## Database Action Contract
+
+- `tables`: `arguments={}` lists current database tables.
+- `schema`: `arguments={"table_name":"downloadhistory"}`; table_name must come from `tables`.
+- `query`: `arguments={"sql":"SELECT ...","limit":100,"write":false}`; provide exactly one of sql and file. SELECT/WITH/EXPLAIN are allowed by default.
+- `write`: `arguments={"sql":"UPDATE ... WHERE ..."}`; provide exactly one of sql and file and only one statement.
+- `file` is a local SQL path readable by the MoviePilot process. MCP clients normally send `sql` directly.
+
+Use the live `schema` result instead of guessing columns from older documentation. Treat `media_source` and `media_id` as one atomic identity pair.
 
 ## Common Queries
 

@@ -4,7 +4,7 @@ from typing import Annotated, Any, Dict, List, Optional
 
 import aiofiles
 from anyio import Path as AsyncPath
-from fastapi import Depends, Header, HTTPException, Security
+from fastapi import Depends, Header, HTTPException, Query, Security
 from starlette import status
 from starlette.responses import StreamingResponse
 
@@ -38,7 +38,7 @@ from app.application.plugin.folders import (
     remove_plugin_from_folders,
 )
 from app.application.plugin.gateway import get_plugin_install_service
-from app.application.plugin.management import get_plugin_snapshot
+from app.application.plugin.management import get_plugin_snapshot, search_plugin_candidates
 from app.application.plugin.rating import (
     PluginNotInstalledError,
     get_plugin_rating_service,
@@ -183,14 +183,19 @@ async def all_plugins(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     state: Optional[str] = "all",
     force: bool = False,
+    query: Optional[str] = None,
+    max_results: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> List[_SchemaPlugin]:
     """
-    查询所有插件清单，包括本地插件和在线插件，插件状态：installed, market, all
+    查询插件清单，并支持 Agent 使用关键字和有界结果完成精确选择。
     """
-    return await get_plugin_catalog_query().query(
+    plugins = await get_plugin_catalog_query().query(
         state=state or "all",
         force=force,
     )
+    if query:
+        plugins = [item["plugin"] for item in search_plugin_candidates(query, plugins)]
+    return plugins[:max_results]
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
@@ -775,11 +780,14 @@ async def get_plugin_folders(
 
 
 @router.post("/folders", summary="保存插件文件夹配置", response_model=_SchemaResponse[None])
-async def save_plugin_folders(folders: dict, _: ApiPrincipal = Depends(get_current_active_superuser_async)) -> Any:
+async def save_plugin_folders(
+    folders: _SchemaPluginFoldersData,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> Any:
     """
     保存插件文件夹分组配置
     """
-    result = await get_plugin_folder_service().save(folders)
+    result = await get_plugin_folder_service().save(folders.root)
     return _SchemaResponse(success=result.success, message=result.message)
 
 

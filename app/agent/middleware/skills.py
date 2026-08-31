@@ -33,8 +33,9 @@ from app.agent.skills.metadata import (
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 
-# 模型返回上限独立于领域层的磁盘读取上限，避免异常内容撑爆上下文。
-MAX_SKILL_RESULT_CHARS = 64 * 1024
+# 模型返回上限独立于领域层的磁盘读取上限；需要容纳完整的内置 API
+# 合同，同时继续阻止接近 1 MiB 磁盘上限的异常 Skill 撑满上下文。
+MAX_SKILL_RESULT_CHARS = 256 * 1024
 SKILL_CONTENT_TRUNCATION_SUFFIX = "\n...(Skill 内容已截断)"
 
 

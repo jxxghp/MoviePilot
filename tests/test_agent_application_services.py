@@ -188,9 +188,24 @@ async def test_save_system_config_and_settings_service(monkeypatch):
     assert filter_config.async_set.await_count == 1
     secret = service.query(setting_key=SystemConfigKey.Downloaders.value, include_values=True)
     assert secret["settings"][0]["value"][0]["token"] == "***"
+    definition = secret["settings"][0]["definition"]
+    assert definition == {
+        "declared_type": "list[object]",
+        "value_shape": "list",
+        "nullable": False,
+        "sensitive": True,
+        "update_operations": ["replace", "upsert_list_item", "remove_list_item"],
+        "default_match_field": "name",
+        "persistence": "database:systemconfig",
+    }
     shown = service.query(setting_key=SystemConfigKey.Downloaders.value, include_values=True, show_secrets=True)
     assert shown["settings"][0]["value"][0]["token"] == "secret"
     assert service.query(group="ai_agent")["include_values"] is False
+    runtime_definition = service.query(setting_key="LLM_MODEL")["settings"][0]["definition"]
+    assert runtime_definition["declared_type"]
+    assert runtime_definition["value_shape"] == "str"
+    assert runtime_definition["update_operations"] == ["replace"]
+    assert runtime_definition["persistence"] == "app.env"
     spec = settings_module.resolve_setting_spec(SystemConfigKey.Downloaders.value)
     assert spec
     assert service._prepare_next_value(spec, {"name": "old", "x": 1}, {"name": "old", "y": 2}, "merge_dict", ["x"], None, None) == {"name": "old", "y": 2}

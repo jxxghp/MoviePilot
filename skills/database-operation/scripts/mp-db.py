@@ -1,24 +1,17 @@
 #!/usr/bin/env python3
-"""
-MoviePilot 数据库操作脚本。
-
-脚本从项目配置读取数据库连接参数，不要求 Agent 在提示词中接触数据库密码。
-默认只允许查询语句；写操作必须显式传入 --write。
-"""
-
-from __future__ import annotations
+"""Controlled MoviePilot database helper used by the database-operation Skill."""
 
 import argparse
 import json
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
-
 
 SCRIPT_PATH = Path(__file__).resolve()
 PROJECT_ROOT = SCRIPT_PATH.parents[3]
@@ -31,6 +24,115 @@ WRITE_KEYWORD_RE = re.compile(
     re.IGNORECASE,
 )
 SELECT_STATEMENT_RE = re.compile(r"^\s*(select|with|explain)\b", re.IGNORECASE)
+
+
+@dataclass(frozen=True, slots=True)
+class ArgumentSpec:
+    """Describe one public database action argument."""
+
+    name: str
+    type: str
+    description: str
+    required: bool = False
+    default: Any = None
+    has_default: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the public argument contract used by the MCP schema generator."""
+        result = {
+            "name": self.name,
+            "type": self.type,
+            "description": self.description,
+            "required": self.required,
+        }
+        if self.has_default:
+            result["default"] = self.default
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class ActionSpec:
+    """Describe one stable database helper action."""
+
+    description: str
+    effect: str
+    arguments: tuple[ArgumentSpec, ...] = ()
+    argument_rules: tuple[str, ...] = ()
+
+    @property
+    def required(self) -> tuple[str, ...]:
+        """Return required argument names for this action."""
+        return tuple(argument.name for argument in self.arguments if argument.required)
+
+    def to_dict(self, name: str) -> dict[str, Any]:
+        """Return the implementation-independent public action contract."""
+        return {
+            "action": name,
+            "description": self.description,
+            "effect": self.effect,
+            "providers": ["sqlite", "postgresql"],
+            "required_arguments": list(self.required),
+            "arguments": [argument.to_dict() for argument in self.arguments],
+            "argument_rules": list(self.argument_rules),
+        }
+
+
+ACTIONS: dict[str, ActionSpec] = {
+    "tables": ActionSpec(
+        "List all tables visible to the configured MoviePilot database.",
+        "safe_read",
+    ),
+    "schema": ActionSpec(
+        "Show columns and nullability for one database table.",
+        "safe_read",
+        arguments=(
+            ArgumentSpec(
+                "table_name",
+                "string",
+                "Exact database table name returned by the tables action.",
+                required=True,
+            ),
+        ),
+    ),
+    "query": ActionSpec(
+        "Run one bounded SQL query, optionally enabling the explicit write mode.",
+        "safe_read",
+        arguments=(
+            ArgumentSpec("sql", "string", "One SQL statement; mutually exclusive with file."),
+            ArgumentSpec("file", "string", "Local SQL file path; mutually exclusive with sql."),
+            ArgumentSpec(
+                "limit",
+                "integer",
+                "Maximum row count appended to a plain SELECT that has no LIMIT.",
+                default=100,
+                has_default=True,
+            ),
+            ArgumentSpec(
+                "write",
+                "boolean",
+                "Allow query to execute a write statement; use true only with explicit authorization.",
+                default=False,
+                has_default=True,
+            ),
+        ),
+        argument_rules=(
+            "Provide exactly one of sql and file.",
+            "Only SELECT, WITH, and EXPLAIN are allowed unless write=true.",
+        ),
+    ),
+    "write": ActionSpec(
+        "Run one explicitly authorized SQL write or schema statement.",
+        "destructive_write",
+        arguments=(
+            ArgumentSpec("sql", "string", "One data-write or schema-change statement; mutually exclusive with file."),
+            ArgumentSpec("file", "string", "Local SQL file path; mutually exclusive with sql."),
+        ),
+        argument_rules=(
+            "Provide exactly one of sql and file.",
+            "Multiple SQL statements in one call are rejected.",
+        ),
+    ),
+}
 
 
 def _ensure_project_import() -> None:

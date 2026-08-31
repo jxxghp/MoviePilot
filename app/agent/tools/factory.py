@@ -17,7 +17,11 @@ from app.agent.tools.impl.search_web import SearchWebTool
 from app.agent.tools.impl.send_local_file import SendLocalFileTool
 from app.agent.tools.impl.send_message import SendMessageTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
-from app.agent.tools.impl.service_operation import DownloaderOperationTool, MediaServerOperationTool
+from app.agent.tools.impl.service import (
+    DatabaseOperationTool,
+    DownloaderOperationTool,
+    MediaServerOperationTool,
+)
 from app.agent.tools.impl.write_file import WriteFileTool
 from app.application.agent import AgentDataContext
 from app.application.plugin.runtime import get_plugin_manager
@@ -65,6 +69,7 @@ class MoviePilotToolFactory:
     EXTERNAL_SERVICE_TOOL_CLASSES: tuple[Type[MoviePilotTool], ...] = (
         DownloaderOperationTool,
         MediaServerOperationTool,
+        DatabaseOperationTool,
     )
 
     # 这些通用工具需要始终保留，避免大工具集裁剪后让 Agent 丢失基础的

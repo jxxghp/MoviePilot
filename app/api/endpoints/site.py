@@ -1,4 +1,4 @@
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from fastapi import Depends, HTTPException
 
@@ -9,6 +9,7 @@ from app.api.dependencies.auth import (
     get_current_active_manage_user_async,
     get_current_active_superuser,
     get_current_active_superuser_async,
+    get_current_active_user_async,
 )
 from app.api.dependencies.site import (
     get_site_mutation_command,
@@ -38,6 +39,7 @@ from app.schemas.site import SiteCategory as _SchemaSiteCategory
 from app.schemas.site import SiteCookieUpdate as _SchemaSiteCookieUpdate
 from app.schemas.site import SiteIconData as _SchemaSiteIconData
 from app.schemas.site import SiteMappingData as _SchemaSiteMappingData
+from app.schemas.site import SitePriorityUpdate as _SchemaSitePriorityUpdate
 from app.schemas.site import SiteStatistic as _SchemaSiteStatistic
 from app.schemas.site import SiteUserData as _SchemaSiteUserData
 from app.schemas.system import TorrentInfo as _SchemaTorrentInfo
@@ -46,6 +48,39 @@ from app.schemas.types import MediaType, SystemConfigKey
 from app.schemas.workflow import Site as _SchemaSite
 
 router = ResponseAPIRouter()
+
+
+def _project_agent_site(site: Any, *, include_secrets: bool) -> dict[str, JsonData]:
+    """构造旧 Agent 查询语义的站点安全投影，普通用户不返回认证凭据。"""
+    projected: dict[str, JsonData] = {
+        "id": site.id,
+        "name": site.name,
+        "domain": site.domain,
+        "url": site.url,
+        "pri": site.pri,
+        "is_active": site.is_active,
+        "downloader": site.downloader,
+        "ua": site.ua,
+        "proxy": site.proxy,
+        "filter": site.filter,
+        "render": site.render,
+        "public": site.public,
+        "note": site.note,
+        "limit_interval": site.limit_interval,
+        "limit_count": site.limit_count,
+        "limit_seconds": site.limit_seconds,
+        "timeout": site.timeout,
+    }
+    if include_secrets:
+        projected.update(
+            {
+                "rss": site.rss,
+                "cookie": site.cookie,
+                "apikey": site.apikey,
+                "token": site.token,
+            }
+        )
+    return projected
 
 
 def _indexer_supports_media_type(indexer: dict, media_type: MediaType) -> bool:
@@ -93,6 +128,36 @@ async def read_sites(
     获取站点列表
     """
     return await query.list_ordered()
+
+
+@router.get(
+    "/agent",
+    summary="查询 Agent 可用站点",
+    response_model=List[_SchemaJsonObject],
+)
+async def read_agent_sites(
+    status: Literal["active", "inactive", "all"] = "all",
+    name: Optional[str] = None,
+    query: SiteQueryService = Depends(get_site_query_service),
+    current_user: Any = Depends(get_current_active_user_async),
+) -> List[dict[str, JsonData]]:
+    """按旧 Agent 过滤语义返回站点，非超级管理员自动剔除认证字段。"""
+    sites = await query.list_ordered()
+    results = []
+    for site in sites:
+        if status == "active" and not site.is_active:
+            continue
+        if status == "inactive" and site.is_active:
+            continue
+        if name and name.lower() not in (site.name or "").lower():
+            continue
+        results.append(
+            _project_agent_site(
+                site,
+                include_secrets=bool(current_user.is_superuser),
+            )
+        )
+    return results
 
 
 @router.get(
@@ -208,14 +273,14 @@ async def reset(
     "/priorities", summary="批量更新站点优先级", response_model=_SchemaResponse[None]
 )
 async def update_sites_priority(
-    priorities: List[Dict[str, JsonData]],
+    priorities: List[_SchemaSitePriorityUpdate],
     command: SiteMutationCommand = Depends(get_site_mutation_command),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
 ) -> Any:
     """
     批量更新站点优先级
     """
-    result = await command.update_priorities(priorities)
+    result = await command.update_priorities([priority.model_dump() for priority in priorities])
     return _SchemaResponse(success=result.success, message=result.message)
 
 
