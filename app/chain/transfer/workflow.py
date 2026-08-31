@@ -712,8 +712,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         if should_reorganize:
                             if not reorganize:
                                 durable_retry = self._request_durable_transfer_retry(
-                                    transferd,
-                                    requested_by="manual_reorganize",
+                                    transferd, requested_by="manual_reorganize",
                                 )
                                 if durable_retry is not None:
                                     accepted, message = durable_retry

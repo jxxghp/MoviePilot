@@ -80,6 +80,10 @@ class TransferExecutionLeaseLostError(TransferExecutionError):
     """表示持久化写入时任务租约已失效或已被其他 worker 接管。"""
 
 
+class TransferPlanningRejectedError(ValueError):
+    """规划输入缺少业务必需信息且继续自动重试不会改变结果。"""
+
+
 def _canonical_json(payload: Mapping[str, Any]) -> str:
     """生成稳定操作身份使用的规范 JSON。"""
     return json.dumps(

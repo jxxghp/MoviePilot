@@ -11,13 +11,13 @@ from app.application.transfer.execution import (
     TransferExecutionState,
     TransferOperationObservation,
     TransferOperationObservationState,
+    TransferPlanningRejectedError,
     TransferStepResult,
 )
 from app.application.transfer.workflow import (
     TransferLeaseLostError,
     TransferPlanCheckpoint,
     TransferPlanningInput,
-    TransferPlanningRejectedError,
     TransferPlanningStateError,
     TransferProviderInvocationSnapshot,
     TransferProviderReference,
@@ -42,6 +42,38 @@ from app.schemas.types import (
 from app.schemas.workflow import FileItem
 
 from .execution import _DurableTransferStepRunner, _TransferRetryExhausted
+
+
+def _build_planning_rejection_checkpoint(
+        task: TransferTask,
+        *,
+        error: str,
+        planning_input: TransferPlanningInput,
+) -> TransferPlanCheckpoint:
+    """把确定性的宿主规划错误冻结为可重放的零步骤失败计划。"""
+    meta_kind = planning_input.options.get("_meta_kind")
+    mediainfo_kind = planning_input.options.get("_mediainfo_kind")
+    source_path = task.fileitem.path
+    return TransferPlanCheckpoint(
+        planning_input=planning_input,
+        target_storage=task.fileitem.storage,
+        root_target_path=source_path,
+        final_target_path=source_path,
+        resolved_transfer_type=(
+            task.transfer_type or planning_input.requested_transfer_type or "copy"
+        ),
+        items=(),
+        resolved_meta=planning_input.meta,
+        resolved_meta_kind=meta_kind if isinstance(meta_kind, str) else None,
+        resolved_mediainfo=planning_input.mediainfo,
+        resolved_mediainfo_kind=(
+            mediainfo_kind if isinstance(mediainfo_kind, str) else None
+        ),
+        resolved_episodes_info=planning_input.episodes_info,
+        need_notify=planning_input.need_notify,
+        overwrite_mode=planning_input.overwrite_mode,
+        rejection_error=error,
+    )
 
 
 class TransferPlanningOwner(_TransferOwnerBase):
@@ -275,7 +307,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
             )
         planning_input = task.planning_input or self._TransferChain__build_planning_input(task)
         task.bind_planning_input(planning_input)
-        checkpoint = self._TransferChain__build_planning_rejection_checkpoint(
+        checkpoint = _build_planning_rejection_checkpoint(
             task,
             error=error,
             planning_input=planning_input,
@@ -287,41 +319,6 @@ class TransferPlanningOwner(_TransferOwnerBase):
         )
         task.bind_plan_checkpoint(persisted)
         return self._plan_checkpoint_and_execute(task)
-
-    def _TransferChain__build_planning_rejection_checkpoint(
-            self,
-            task: TransferTask,
-            *,
-            error: str,
-            planning_input: TransferPlanningInput,
-    ) -> TransferPlanCheckpoint:
-        """把确定性的宿主规划错误冻结为可重放的零步骤失败计划。"""
-        source_path = task.fileitem.path
-        resolved_transfer_type = (
-            task.transfer_type
-            or planning_input.requested_transfer_type
-            or "copy"
-        )
-        return TransferPlanCheckpoint(
-            planning_input=planning_input,
-            target_storage=task.fileitem.storage,
-            root_target_path=source_path,
-            final_target_path=source_path,
-            resolved_transfer_type=resolved_transfer_type,
-            items=(),
-            resolved_meta=self._TransferChain__json_snapshot(task.meta),
-            resolved_meta_kind=(type(task.meta).__name__ if task.meta else None),
-            resolved_mediainfo=self._TransferChain__json_snapshot(task.mediainfo),
-            resolved_mediainfo_kind=(
-                type(task.mediainfo).__name__ if task.mediainfo else None
-            ),
-            resolved_episodes_info=tuple(
-                self._TransferChain__json_snapshot(item) for item in (task.episodes_info or [])
-            ),
-            need_notify=planning_input.need_notify,
-            overwrite_mode=planning_input.overwrite_mode,
-            rejection_error=error,
-        )
 
     def _TransferChain__execute_planning_rejection(
             self,
@@ -711,7 +708,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 ),
             )
         except TransferPlanningRejectedError as error:
-            return self._TransferChain__build_planning_rejection_checkpoint(
+            return _build_planning_rejection_checkpoint(
                 task,
                 error=str(error),
                 planning_input=planning_input,

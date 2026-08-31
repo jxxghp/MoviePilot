@@ -19,6 +19,7 @@ from app.application.transfer.execution import (
     TransferExecutionSnapshot,
     TransferExecutionState,
     TransferExecutionStep,
+    TransferPlanningRejectedError,
     TransferSettlementResult,
     TransferStepState,
 )
@@ -1356,7 +1357,7 @@ def test_host_planning_value_error_commits_rejection_instead_of_retrying():
         kwargs["checkpoint"],
     )
     chain = _chain(repository=repository)
-    chain.plan_transfer.side_effect = transfer_application.TransferPlanningRejectedError(
+    chain.plan_transfer.side_effect = TransferPlanningRejectedError(
         "未识别到文件集数"
     )
 

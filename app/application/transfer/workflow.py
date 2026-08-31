@@ -705,10 +705,6 @@ class TransferAdmissionConflictError(ValueError):
     """同一源文件以不同规划输入重复准入时抛出的冲突错误。"""
 
 
-class TransferPlanningRejectedError(ValueError):
-    """规划输入缺少业务必需信息且继续自动重试不会改变结果。"""
-
-
 class TransferPlanningStateError(RuntimeError):
     """计划检查点无法从当前持久状态推进时抛出的状态错误。"""
 
