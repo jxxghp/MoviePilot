@@ -145,9 +145,9 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 
 ## CI 与 PR
 
-- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境。独立 `architecture` job 先运行宿主依赖、运行契约和基线 CLI 快速门禁；全量测试再通过 `tests/run.py --shard N/TOTAL` 稳定分到 4 个 pytest job。每个分片都有独立进程和临时 `CONFIG_DIR`，不共用 SQLite 或进程级状态。
+- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境。独立 `architecture` job 先运行宿主依赖、运行契约和基线 CLI 快速门禁；全量测试再通过 `tests/run.py --shard N/TOTAL` 稳定分到 4 个 pytest job。每个分片都有独立进程和临时 `CONFIG_DIR`，不共用 SQLite 或进程级状态。Coverage 另以 8 个并行分片采集数据，由单一报告 job 合并后检查低水位。
 - **跨仓观察**：`.github/workflows/architecture-observe.yml` 每周或手工检出官方插件仓最新 `main`，使用 `--check-plugins` 比较公开导入、Hook 和动态 API 契约。它只上传 `official-plugin-architecture-report.json`，不会自动刷新 fixture；语义变化必须人工审查后显式执行 `--write-plugins`。
 - **静态检查**：`.github/workflows/pylint.yml` 对指向 `v3` 的 PR、推送和手工触发运行 Pylint。PR/推送改动到的 Python 文件是硬门禁；`app/` 全量扫描保留为建议性 JSON 构建工件，存量告警不会掩盖或阻塞本次增量治理。
 - **PR 本地验证**：提交前运行受影响测试和适用的静态检查。涉及依赖或锁文件、共享测试基建、数据库、启动链、跨模块生命周期、兼容层或大范围行为变化时，运行 `uv run --locked --no-sync python tests/run.py` 完成本地全量；需要断点、输出顺序或测试污染诊断时使用 `--serial`。所有测试都应确认受影响路径通过且 socket 探针无真实出站，验证说明准确标注执行范围。若存在无关失败，必须在当前 `upstream/v3` 基线上独立复现并在 PR 中如实说明；不得静默扩大当前 PR 去修复基线问题。纯文档变更执行适用的文本、结构和 diff 检查，CI 继续运行全量门禁。
-- **覆盖率门禁**：`Coverage Report` job 会在 `v3` 的 PR、push 和手工触发中通过 `tests/run.py --serial` 跑串行全量，先上传 JSON / XML 工件，再只读检查 Application 与 Domain 的 Ubuntu/Python 3.14 canonical 低水位。覆盖率下降会阻塞，提升或等比例快照变化也必须显式刷新 fixture；macOS 本地报告只用于诊断，不直接作为可提交基线。
+- **覆盖率门禁**：`Coverage Shard` jobs 会在 `v3` 的 PR、push 和手工触发中通过 `tests/run.py --shard N/8` 并行采集覆盖率数据，`Coverage Report` 再合并全部分片并只读检查 Application 与 Domain 的 Ubuntu/Python 3.14 canonical 低水位，同时上传 JSON / XML 工件。覆盖率下降会阻塞，提升或等比例快照变化也必须显式刷新 fixture；macOS 本地报告只用于诊断，不直接作为可提交基线。
 - 复现 CI 使用 `uv sync --locked`；主程序运行依赖位于 `[project].dependencies`，pytest 与覆盖率工具位于默认 `dev` 依赖组。
