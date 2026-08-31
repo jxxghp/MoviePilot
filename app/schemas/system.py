@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 from datetime import datetime as _DateTime
-from typing import Optional, Any, Literal
+from typing import Any, Literal, Optional
 from uuid import uuid4 as _uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.common import JsonData as _JsonData
 from app.schemas.context import MediaInfo, MetaInfo, TorrentInfo
 from app.schemas.rule import FilterRuleGroup
 
@@ -97,9 +98,9 @@ class NotificationConf(BaseModel):
     # 类型 telegram/wechat/feishu/vocechat/synologychat/slack/webpush/qqbot
     type: Optional[str] = None
     # 配置
-    config: Optional[dict] = Field(default_factory=dict)
+    config: Optional[dict[str, _JsonData]] = Field(default_factory=dict)
     # 场景开关
-    switchs: Optional[list] = Field(default_factory=list)
+    switchs: Optional[list["NotificationSwitchConf"]] = Field(default_factory=list)
     # 是否启用
     enabled: Optional[bool] = False
 
