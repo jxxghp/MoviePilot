@@ -8,7 +8,6 @@ import weakref
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any, Dict, Literal, Optional, Tuple, Union, overload
-from urllib.parse import quote, unquote
 
 import chardet
 import httpx
@@ -266,29 +265,12 @@ async def aclose_shared_async_transports() -> None:
         _pending_eviction_tasks.difference_update(pending_evictions)
 
 
-def _url_decode_if_latin(original: str) -> str:
-    """
-    解码URL编码的字符串，只解码文本，二进制数据保持不变
-    :param original: URL编码字符串
-    :return: 解码后的字符串或原始二进制数据
-    """
-    try:
-        # 先解码
-        decoded = unquote(original, encoding="latin-1")
-        # 再完整编码
-        fully_encoded = quote(decoded, safe="")
-        # 验证
-        decoded_again = unquote(fully_encoded, encoding="latin-1")
-        if decoded_again == decoded:
-            return decoded
-    except Exception:
-        pass
-    return original
-
-
 def cookie_parse(cookies_str: str, array: bool = False) -> Union[list, dict]:
     """
-    解析cookie，转化为字典或者数组
+    将 Cookie 请求头字符串解析为字典或浏览器 Cookie 数组。
+
+    Cookie 值属于不透明数据，百分号编码可能是签名的一部分，必须保持浏览器原值。
+
     :param cookies_str: cookie字符串
     :param array: 是否转化为数组
     :return: 字典或者数组
@@ -301,8 +283,7 @@ def cookie_parse(cookies_str: str, array: bool = False) -> Union[list, dict]:
     for cookie in cookies:
         cstr = cookie.split("=", 1)  # 只分割第一个=，因为value可能包含=
         if len(cstr) > 1:
-            # URL解码Cookie值（但保留Cookie名不解码）
-            cookie_dict[cstr[0].strip()] = _url_decode_if_latin(cstr[1].strip())
+            cookie_dict[cstr[0].strip()] = cstr[1].strip()
     if array:
         return [{"name": k, "value": v} for k, v in cookie_dict.items()]
     return cookie_dict
