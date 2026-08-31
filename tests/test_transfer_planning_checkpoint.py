@@ -23,7 +23,7 @@ from app.application.transfer.execution import (
     TransferStepState,
 )
 from app.application.transfer.workflow import TransferTask
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending

@@ -7,7 +7,7 @@ from app.application.transfer.execution import (
     TransferFailureDiscardResult,
     TransferRetryRequestResult,
 )
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.schemas.types import NotificationChannel
 
 

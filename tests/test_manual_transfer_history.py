@@ -13,7 +13,7 @@ from app.application.history import (
     max_failed_retries,
     record_transfer_failure,
 )
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.db.adapters.history.transfer import TransactionalTransferHistoryRepository
 from app.db.session import SessionFactory, async_session_scope
 from app.runtime.config import settings

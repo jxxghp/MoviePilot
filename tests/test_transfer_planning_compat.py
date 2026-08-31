@@ -8,7 +8,7 @@ import pytest
 
 from app.application.transfer.workflow import TransferTask
 from app.chain.base import ChainBase
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.file import FileItem
