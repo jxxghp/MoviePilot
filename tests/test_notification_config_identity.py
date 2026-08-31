@@ -20,6 +20,17 @@ def test_notification_config_normalizes_names_and_rejects_duplicates():
         )
 
 
+def test_notification_channel_switches_keep_string_list_contract():
+    """渠道场景开关仍按消息类型名称列表存储并参与匹配。"""
+    config = NotificationConf(
+        name="Alpha",
+        type="telegram",
+        switchs=["资源下载"],
+    )
+
+    assert config.switchs == ["资源下载"]
+
+
 def test_reconcile_cached_states_migrates_renamed_identity_and_cleans_removed(monkeypatch):
     values = {}
 

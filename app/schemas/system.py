@@ -98,8 +98,8 @@ class NotificationConf(BaseModel):
     type: Optional[str] = None
     # 配置
     config: Optional[dict[str, Any]] = Field(default_factory=dict)
-    # 场景开关
-    switchs: Optional[list["NotificationSwitchConf"]] = Field(default_factory=list)
+    # 场景开关名称列表；NotificationSwitchConf 属于全局通知范围配置，不是渠道字段。
+    switchs: Optional[list[str]] = Field(default_factory=list)
     # 是否启用
     enabled: Optional[bool] = False
 
