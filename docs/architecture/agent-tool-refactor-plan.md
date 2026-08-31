@@ -1,6 +1,6 @@
 # MoviePilot Agent 工具体系重构计划
 
-> 状态：IN PROGRESS — 全量能力与本地门禁已通过，等待最终修复提交和远端 CI 终态
+> 状态：COMPLETE — API/Skill/MCP 全面收口，固定 80% 覆盖率与远端 CI 已通过
 >
 > 建立日期：2026-08-31
 >
@@ -41,7 +41,7 @@
 | MCP/HTTP 工具管理 | 存在旧业务工具与同名 first-wins 选择空间 | 与主 Agent 共用严格唯一新目录；重名直接以 TOOL_IDENTITY_AMBIGUOUS 失败 |
 | 退役代码 | 旧实现仍位于 app/agent/tools/impl | 77 个退役文件已直接删除，其中 72 个工具模块、5 个辅助模块 |
 | 架构图 | 982 个宿主模块、8,430 条内部依赖边 | 919 个宿主模块、7,680 条内部依赖边，Application/Chain 具体 Adapter 直连仍为 0 |
-| 工作区状态 | 基线提交 871632af，与 origin/v3 对齐，初始工作区干净 | 主体提交 `6d4d7331d` 与复杂度修复 `28298c485` 已推送；生产改动、生成合同、静态检查、全量测试和固定 80% 覆盖率门禁已完成，正在提交 Ruff/mypy 低水位收口并等待远端 CI 终态 |
+| 工作区状态 | 基线提交 871632af，与 origin/v3 对齐，初始工作区干净 | 最终提交 `3106984df` 已推送并与 `origin/v3` 对齐；生产改动、生成合同、静态检查、全量测试、固定 80% 覆盖率和远端 CI 均已通过 |
 
 ## 3. 目标工具分层
 
@@ -321,5 +321,13 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 - 第三次推送 `e5722ed98` 的远端 Pylint 成功；Unit Tests 的功能分片与覆盖率分片均通过，但 Architecture Contract Gate 在文档合同测试中发现优化清单仍写着旧的 `9,606 / 576` 量化指标
 - 已将 `docs/architecture/optimization-checklist.md` 同步为 `9,605 / 574`，本地 `test_architecture_contract_baseline.py` 与 `test_architecture_baseline_cli.py` 共 45 项通过，并确认 `baseline.py --check-host` 成功
 - 当前活动叶子保持 L9；下一步提交文档指标修复，等待所有远端工作流终态成功后更新为 COMPLETE
+
+### 2026-08-31：最终提交与远端门禁完成
+
+- 文档合同修复提交 `3106984dfc586aa171bbe9bd52307d19c6ef14f3` 已推送到 `origin/v3`，本地 HEAD 与远端一致，工作区无未提交变更
+- Unit Tests 工作流 `33421990027` 已终态成功：Architecture Contract Gate、4 个功能分片、8 个覆盖率分片和 Coverage Report 全部通过
+- Pylint 工作流 `33421989865` 已终态成功；架构质量门禁、Ruff/mypy ratchet、复杂度、异步阻塞、Task owner、服务定位和启动性能检查均成功
+- 全量 Agent API 面审计、Skill/MCP 参数合同、下载器/媒体服务器/数据库真实只读调用、音乐双向浏览能力和固定 80% 覆盖率要求均已完成
+- 本次重构正式完成：旧 Agent 工具代码、旧 MCP 兼容路径和运行时切换开关均不保留；后续新增 API 必须同步注册表、Skill、MCP schema、审计清单和测试
 
 本文件作为本次重构的持续记录，保留阶段状态、实际变更、验证结果、提交状态与已知基线边界。
