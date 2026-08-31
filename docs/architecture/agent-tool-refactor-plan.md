@@ -318,6 +318,8 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 - 已对新增 Pydantic/ResponseAPIRouter 边界使用精确错误码抑制，补齐 service tool 的 ClassVar 与可选 selector 类型；未通过覆盖基线隐藏任何新增 mypy 错误
 - Ruff 低水位由 576 降至 574，mypy 低水位由 9,606 降至 9,605；mypy、复杂度 v1/v2、并发、异步阻塞、TaskRegistry owner、服务定位和启动性能全部本地通过
 - API/Skill/MCP/provider 专项 86 passed，架构与质量门禁专项 127 passed；生成器重建后工作区合同无额外差异
-- 当前活动叶子保持 L9；下一步提交本轮低水位修复，等待所有远端工作流终态成功后更新为 COMPLETE
+- 第三次推送 `e5722ed98` 的远端 Pylint 成功；Unit Tests 的功能分片与覆盖率分片均通过，但 Architecture Contract Gate 在文档合同测试中发现优化清单仍写着旧的 `9,606 / 576` 量化指标
+- 已将 `docs/architecture/optimization-checklist.md` 同步为 `9,605 / 574`，本地 `test_architecture_contract_baseline.py` 与 `test_architecture_baseline_cli.py` 共 45 项通过，并确认 `baseline.py --check-host` 成功
+- 当前活动叶子保持 L9；下一步提交文档指标修复，等待所有远端工作流终态成功后更新为 COMPLETE
 
 本文件作为本次重构的持续记录，保留阶段状态、实际变更、验证结果、提交状态与已知基线边界。
