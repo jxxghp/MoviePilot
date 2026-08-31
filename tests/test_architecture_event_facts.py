@@ -71,7 +71,7 @@ def test_collect_event_consumers_resolves_canonical_instances_and_aliases(
     """Canonical singleton、构造器、模块和简单赋值别名都应可证明。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.runtime.events import EventManager as Bus, eventmanager as global_bus
 from app.schemas.types import EventType as Events, ChainEventType as ChainEvents
 import app.runtime.events as runtime_events
@@ -102,7 +102,7 @@ runtime_events.eventmanager.add_event_listener(
     listener,
 )
 existing.add_event_listener(Events.Gamma, listener, 11)
-''',
+""",
     )
 
     assert dynamic == []
@@ -135,7 +135,7 @@ def test_collect_event_consumers_only_counts_applied_register_decorators(
     """register 只有装饰声明或立即应用到 handler 时才形成 consumer。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 
@@ -150,7 +150,7 @@ def immediate(event):
     pass
 
 eventmanager.register(EventType.Gamma, priority=8)(immediate)
-''',
+""",
     )
 
     assert dynamic == []
@@ -167,7 +167,7 @@ def test_collect_event_consumers_expands_enum_and_partial_dynamic_lists(
     """register 的 enum/list 静态成员和未知成员必须分别保留。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType, ChainEventType
 
@@ -181,7 +181,7 @@ def all_broadcast(event):
 @eventmanager.register(selected, priority=5)
 def selected_events(event):
     pass
-''',
+""",
     )
 
     assert set(static) == {
@@ -211,7 +211,7 @@ def test_collect_event_consumers_ignores_unknown_receivers_and_internal_delegati
     """同名 API 和 EventManager 实现内部转调都不是独立 consumer 声明。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.schemas.types import EventType
 
 registry.register(EventType.Alpha)
@@ -220,7 +220,7 @@ registry.add_event_listener(EventType.Beta, handler)
 class EventManager:
     def register(self, event):
         self.add_event_listener(event, handler)
-''',
+""",
         module_name="app.runtime.events",
     )
 
@@ -234,7 +234,7 @@ def test_collect_event_consumers_respects_shadowing_and_rebinding(
     """参数遮蔽、局部重绑和模块最终重绑不得伪造 manager provenance。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.runtime.events import eventmanager as bus
 from app.schemas.types import EventType
 
@@ -259,7 +259,7 @@ def final_global_binding():
 
 original_bus = bus
 bus = object()
-''',
+""",
     )
 
     assert dynamic == []
@@ -274,7 +274,7 @@ def test_collect_event_consumers_handles_type_checking_runtime_else(
     """TYPE_CHECKING body 只用于类型，else 才是运行期 provenance。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from typing import TYPE_CHECKING
 from app.schemas.types import EventType
 
@@ -288,7 +288,7 @@ def listener(event):
 
 type_bus.add_event_listener(EventType.Alpha, listener)
 runtime_bus.add_event_listener(EventType.Beta, listener)
-''',
+""",
     )
 
     assert dynamic == []
@@ -301,7 +301,7 @@ def test_collect_event_consumers_requires_canonical_type_checking_provenance(
     """只有未遮蔽的 typing.TYPE_CHECKING 才能裁剪运行期分支。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from typing import TYPE_CHECKING as TC
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
@@ -330,7 +330,7 @@ def shadowed(TC):
 TYPE_CHECKING = True
 if TYPE_CHECKING:
     eventmanager.add_event_listener(EventType.Alpha, rebound_only)
-''',
+""",
     )
 
     assert dynamic == []
@@ -339,9 +339,7 @@ if TYPE_CHECKING:
         "EventType.Beta",
         "EventType.Gamma",
     }
-    assert [item["handler"] for item in static["EventType.Alpha"]] == [
-        "rebound_only"
-    ]
+    assert [item["handler"] for item in static["EventType.Alpha"]] == ["rebound_only"]
     assert static["EventType.Beta"][0]["handler"] == "runtime_only"
     assert static["EventType.Gamma"][0]["handler"] == "shadowed_only"
 
@@ -352,7 +350,7 @@ def test_collect_event_consumers_respects_compound_scope_targets(
     """循环、异常和推导式目标必须遮蔽同名 EventManager alias。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.runtime.events import eventmanager as bus
 from app.schemas.types import EventType
 
@@ -373,7 +371,7 @@ def scoped(values):
     [bus.add_event_listener(EventType.Beta, listener) for bus in values]
 
 bus.add_event_listener(EventType.Gamma, listener)
-''',
+""",
     )
 
     assert dynamic == []
@@ -386,7 +384,7 @@ def test_collect_event_consumers_merges_try_exception_entry_states(
     """异常 handler 必须从 try 内所有可能抛出点的合并状态开始。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 
@@ -409,7 +407,7 @@ try:
     raise RuntimeError
 except RuntimeError:
     bus.add_event_listener(EventType.Beta, listener)
-''',
+""",
     )
 
     assert dynamic == []
@@ -422,7 +420,7 @@ def test_collect_event_consumers_models_while_with_match_and_delete_bindings(
     """复合语句目标和 del 必须遵循 Python 的绑定及路径语义。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from contextlib import nullcontext
 from app.runtime.events import eventmanager as bus
 from app.schemas.types import EventType
@@ -468,7 +466,7 @@ def deleted_name_is_local():
     global_bus.add_event_listener(EventType.Beta, listener)
     bus.add_event_listener(EventType.Alpha, listener)
     del bus
-''',
+""",
     )
 
     assert dynamic == []
@@ -482,7 +480,7 @@ def test_collect_event_consumers_writes_walrus_to_containing_scope(
     """推导式海象绑定属于包含函数，普通外层 alias 仍可读取。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.runtime.events import eventmanager as bus
 from app.schemas.types import EventType
 
@@ -502,7 +500,7 @@ def retained(values):
 def eager_iterable():
     [value for value in ((bus := global_bus),)]
     bus.add_event_listener(EventType.Gamma, listener)
-''',
+""",
     )
 
     assert dynamic == []
@@ -515,7 +513,7 @@ def test_collect_event_consumers_uses_late_bound_function_closures(
     """嵌套函数和 lambda 必须读取包含函数的最终 cell provenance。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.runtime.events import eventmanager as global_bus
 from app.schemas.types import EventType
 
@@ -536,7 +534,7 @@ def retained():
         bus.add_event_listener(EventType.Beta, listener)
     callback = lambda: bus.add_event_listener(EventType.Gamma, listener)
     return nested, callback
-''',
+""",
     )
 
     assert dynamic == []
@@ -549,7 +547,7 @@ def test_collect_event_consumers_validates_decorator_factory_application(
     """保存后的 factory 仅在合法单参数应用时形成 consumer。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 
@@ -568,7 +566,7 @@ unused()
 unused(handler=positional)
 unused(positional, keyword)
 unused(positional, f=keyword)
-''',
+""",
     )
 
     assert dynamic == []
@@ -583,7 +581,7 @@ def test_collect_event_consumers_validates_real_event_manager_signatures(
     """两种注册 API 只接受各自真实且完整的参数绑定。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 
@@ -616,7 +614,7 @@ def wrong_keyword(event):
 @eventmanager.register()
 def missing_event(event):
     pass
-''',
+""",
     )
 
     assert dynamic == []
@@ -631,7 +629,7 @@ def test_collect_event_consumers_keeps_only_proven_dynamic_registrations(
     """只有 receiver 已证明而事件值未知时才进入 dynamic facts。"""
     static, dynamic = _collect(
         tmp_path,
-        '''
+        """
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 
@@ -640,7 +638,7 @@ def register_runtime(name, handler):
     eventmanager.add_event_listener(event_type=event_type, handler=handler)
     unrelated.add_event_listener(event_type, handler)
     unrelated.register(event_type)(handler)
-''',
+""",
     )
 
     assert static == {}
@@ -654,14 +652,14 @@ def test_collect_event_consumers_excludes_plugin_modules(tmp_path: Path) -> None
     """即使调用方误传插件模块，collector 也不得读取其注册事实。"""
     host_path = tmp_path / "host.py"
     plugin_path = tmp_path / "plugin.py"
-    source = '''
+    source = """
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 
 @eventmanager.register(EventType.Alpha)
 def handler(event):
     pass
-'''
+"""
     host_path.write_text(source, encoding="utf-8")
     plugin_path.write_text(source.replace("Alpha", "Beta"), encoding="utf-8")
 
@@ -690,7 +688,7 @@ def test_collect_event_facts_resolves_producer_receivers_and_bound_aliases(
     """Producer 仅接受 canonical receiver，并保留方法与 qualname。"""
     facts = _collect_facts(
         tmp_path,
-        '''
+        """
 from app.runtime.events import EventManager, eventmanager
 from app.schemas.types import ChainEventType, EventType
 import app.runtime.events as runtime_events
@@ -708,7 +706,7 @@ async def publish():
     await runtime_events.eventmanager.async_send_event(
         etype=schema_types.EventType.Beta,
     )
-''',
+""",
     )
 
     assert facts["consumers"] == []
@@ -745,10 +743,7 @@ async def publish():
         "fingerprint",
     }
     assert all(set(fact) == producer_keys for fact in facts["producers"])
-    assert all(
-        fact["fingerprint"] == fingerprint_event_fact(fact)
-        for fact in facts["producers"]
-    )
+    assert all(fact["fingerprint"] == fingerprint_event_fact(fact) for fact in facts["producers"])
 
 
 def test_collect_event_facts_scopes_injected_ports_to_owning_classes(
@@ -757,7 +752,7 @@ def test_collect_event_facts_scopes_injected_ports_to_owning_classes(
     """构造注入端口可沿继承使用，但不得证明无关类的同名字段。"""
     facts = _collect_facts(
         tmp_path,
-        '''
+        """
 from typing import Protocol
 from app.runtime.events import EventManager as CanonicalEventManager
 from app.schemas.types import EventType
@@ -802,7 +797,7 @@ class FakeManagerOwner:
 
     def emit(self):
         self.manager.send_event(EventType.Beta)
-''',
+""",
     )
 
     assert facts["consumers"] == []
@@ -822,7 +817,7 @@ def test_collect_event_facts_separates_static_dynamic_and_invalid_producers(
     """有限 IfExp 展开，运行期值与伪 enum 成员分别标记。"""
     facts = _collect_facts(
         tmp_path,
-        '''
+        """
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 
@@ -836,15 +831,12 @@ eventmanager.send_event()
 eventmanager.send_event(event_type=EventType.Alpha)
 eventmanager.send_event(EventType.Alpha, etype=EventType.Beta)
 eventmanager.send_event(EventType.Alpha, unknown=True)
-''',
+""",
     )
 
     producers = facts["producers"]
     assert len(producers) == 3
-    assert [
-        (fact["events"], fact["dynamic"], fact["invalid"])
-        for fact in producers
-    ] == [
+    assert [(fact["events"], fact["dynamic"], fact["invalid"]) for fact in producers] == [
         (["EventType.Alpha", "EventType.Beta"], False, False),
         ([], True, False),
         ([], False, True),
@@ -857,7 +849,7 @@ def test_collect_event_facts_accepts_only_event_manager_internal_producers(
     """EventManager 内部 self 可生产事件，但注册委托不重复计 consumer。"""
     facts = _collect_facts(
         tmp_path,
-        '''
+        """
 from app.schemas.types import EventType
 
 class EventManager:
@@ -866,7 +858,7 @@ class EventManager:
 
     def register(self, handler):
         self.add_event_listener(EventType.Beta, handler)
-''',
+""",
         module_name="app.runtime.events",
     )
 
@@ -881,7 +873,7 @@ def test_collect_event_facts_tracks_chain_base_context_event_manager(
     """ChainBase 迁入 canonical base 模块后仍应识别上下文注入的事件管理器。"""
     facts = _collect_facts(
         tmp_path,
-        '''
+        """
 from app.schemas.types import EventType
 
 class ChainBase:
@@ -890,7 +882,7 @@ class ChainBase:
 
     def publish(self):
         self.eventmanager.send_event(EventType.Alpha)
-''',
+""",
         module_name="app.chain.base",
     )
 
@@ -908,31 +900,31 @@ def test_collect_event_facts_tracks_relative_imported_chain_owner(
     owner_path = tmp_path / "owner.py"
     facade_path = tmp_path / "facade.py"
     base_path.write_text(
-        '''
+        """
 class ChainBase:
     def __init__(self, context):
         self.eventmanager = context.event_manager
-''',
+""",
         encoding="utf-8",
     )
     owner_path.write_text(
-        '''
+        """
 from app.schemas.types import EventType
 
 class SettlementOwner:
     def publish(self):
         self.eventmanager.send_event(EventType.Alpha)
-''',
+""",
         encoding="utf-8",
     )
     facade_path.write_text(
-        '''
+        """
 from app.chain.base import ChainBase
 from .owner import SettlementOwner
 
 class TransferChain(SettlementOwner, ChainBase):
     pass
-''',
+""",
         encoding="utf-8",
     )
 
@@ -961,15 +953,15 @@ def test_collect_event_facts_tracks_runtime_type_checking_base_alias(
     contract_path = tmp_path / "contract.py"
     owner_path = tmp_path / "owner.py"
     base_path.write_text(
-        '''
+        """
 class ChainBase:
     def __init__(self, context):
         self.eventmanager = context.event_manager
-''',
+""",
         encoding="utf-8",
     )
     contract_path.write_text(
-        '''
+        """
 from typing import TYPE_CHECKING
 from app.chain.base import ChainBase
 
@@ -980,18 +972,18 @@ if TYPE_CHECKING:
         pass
 else:
     _OwnerBase = _RuntimeBase
-''',
+""",
         encoding="utf-8",
     )
     owner_path.write_text(
-        '''
+        """
 from app.schemas.types import EventType
 from .contract import _OwnerBase
 
 class SettlementOwner(_OwnerBase):
     def publish(self):
         self.eventmanager.send_event(EventType.Alpha)
-''',
+""",
         encoding="utf-8",
     )
 
@@ -1020,15 +1012,15 @@ def test_collect_event_facts_rejects_shadowed_type_checking_base_alias(
     contract_path = tmp_path / "contract.py"
     owner_path = tmp_path / "owner.py"
     base_path.write_text(
-        '''
+        """
 class ChainBase:
     def __init__(self, context):
         self.eventmanager = context.event_manager
-''',
+""",
         encoding="utf-8",
     )
     contract_path.write_text(
-        '''
+        """
 from typing import TYPE_CHECKING
 from app.chain.base import ChainBase
 
@@ -1037,18 +1029,18 @@ if TYPE_CHECKING:
     _OwnerBase = ChainBase
 else:
     _OwnerBase = object
-''',
+""",
         encoding="utf-8",
     )
     owner_path.write_text(
-        '''
+        """
 from app.schemas.types import EventType
 from .contract import _OwnerBase
 
 class SettlementOwner(_OwnerBase):
     def publish(self):
         self.eventmanager.send_event(EventType.Alpha)
-''',
+""",
         encoding="utf-8",
     )
 
@@ -1068,14 +1060,14 @@ def test_collect_event_facts_consumer_schema_and_fingerprint_are_stable(
     tmp_path: Path,
 ) -> None:
     """Consumer 使用完整字段名，摘要排除 line 且覆盖全部治理字段。"""
-    source = '''
+    source = """
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 
 @eventmanager.register(EventType.Alpha, priority=3)
 def handler(event):
     pass
-'''
+"""
     fact = _collect_facts(tmp_path, source)["consumers"][0]
     assert set(fact) == {
         "caller",
@@ -1114,7 +1106,7 @@ def test_collect_event_facts_excludes_all_plugin_facts(tmp_path: Path) -> None:
     """误传插件路径时 producer 与 consumer 都不得进入宿主事实。"""
     host_path = tmp_path / "host_facts.py"
     plugin_path = tmp_path / "plugin_facts.py"
-    source = '''
+    source = """
 from app.runtime.events import eventmanager
 from app.schemas.types import EventType
 
@@ -1123,7 +1115,7 @@ eventmanager.send_event(EventType.Alpha)
 @eventmanager.register(EventType.Beta)
 def handler(event):
     pass
-'''
+"""
     host_path.write_text(source, encoding="utf-8")
     plugin_path.write_text(source.replace("Alpha", "Gamma"), encoding="utf-8")
 
@@ -1142,7 +1134,7 @@ def handler(event):
 
 
 def test_collect_event_facts_matches_current_host_inventory() -> None:
-    """统一事实覆盖当前 90 个 producer 调用与 17 个 consumer 调用。"""
+    """统一事实覆盖当前 86 个 producer 调用与 17 个 consumer 调用。"""
     from scripts.architecture.baseline import (
         _event_enum_members,
         discover_modules,
@@ -1150,19 +1142,16 @@ def test_collect_event_facts_matches_current_host_inventory() -> None:
 
     facts = collect_event_facts(
         discover_modules(),
-        {
-            enum_name: _event_enum_members(enum_name)
-            for enum_name in ("EventType", "ChainEventType")
-        },
+        {enum_name: _event_enum_members(enum_name) for enum_name in ("EventType", "ChainEventType")},
     )
     producers = facts["producers"]
     consumers = facts["consumers"]
 
-    assert len(producers) == 90
-    assert sum(not fact["dynamic"] and not fact["invalid"] for fact in producers) == 89
+    assert len(producers) == 86
+    assert sum(not fact["dynamic"] and not fact["invalid"] for fact in producers) == 85
     assert sum(fact["dynamic"] for fact in producers) == 1
     assert sum(fact["invalid"] for fact in producers) == 0
-    assert sum(len(fact["events"]) for fact in producers) == 91
+    assert sum(len(fact["events"]) for fact in producers) == 87
     assert len(consumers) == 17
     assert sum(not fact["dynamic"] and not fact["invalid"] for fact in consumers) == 16
     assert sum(fact["dynamic"] for fact in consumers) == 1

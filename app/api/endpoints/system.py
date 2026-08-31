@@ -32,6 +32,7 @@ from app.application.network import get_configured_network_test_service
 from app.application.rules import RuleHelper
 from app.application.scheduling import get_scheduler
 from app.application.security.url import SecurityUtils
+from app.application.settings import SystemSettingsService
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.system import LogFileData, LogNotFoundError
 from app.chain.media import MediaChain
@@ -52,6 +53,7 @@ from app.schemas.common import JsonObjectList as _SchemaJsonObjectList
 from app.schemas.common import TimeData as _SchemaTimeData
 from app.schemas.common import ValueData as _SchemaValueData
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.system import CustomIdentifiersUpdateRequest as _SchemaCustomIdentifiersUpdateRequest
 from app.schemas.system import DatabaseBackupArtifactData as _SchemaDatabaseBackupArtifactData
 from app.schemas.system import DatabaseBackupVerificationData as _SchemaDatabaseBackupVerificationData
 from app.schemas.system import NetTestTarget as _SchemaNetTestTarget
@@ -60,6 +62,7 @@ from app.schemas.system import PluginMarketSyncRequest as _SchemaPluginMarketSyn
 from app.schemas.system import RuleTestData as _SchemaRuleTestData
 from app.schemas.system import SystemEnvironmentUpdateData as _SchemaSystemEnvironmentUpdateData
 from app.schemas.system import SystemModuleListData as _SchemaSystemModuleListData
+from app.schemas.system import SystemSettingsUpdateRequest as _SchemaSystemSettingsUpdateRequest
 from app.schemas.system import SystemUpdateStatus as _SchemaSystemUpdateStatus
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import SystemConfigKey
@@ -108,20 +111,14 @@ def _verify_log_resource_superuser(
     return token_payload
 
 
-async def _build_log_zip_response(
-    name: str, runtime: HostRuntime
-) -> StreamingResponse:
+async def _build_log_zip_response(name: str, runtime: HostRuntime) -> StreamingResponse:
     """读取受限日志条目并生成兼容 ZIP 响应。"""
     try:
         entries = await runtime.system.collect_logs(name)
     except LogNotFoundError as error:
         raise HTTPException(status_code=404, detail="Not Found") from error
-    zip_data, zip_stem = await anyio.to_thread.run_sync(
-        _build_log_zip_data, name, entries
-    )
-    headers = {
-        "Content-Disposition": f'attachment; filename="{zip_stem}.zip"'
-    }
+    zip_data, zip_stem = await anyio.to_thread.run_sync(_build_log_zip_data, name, entries)
+    headers = {"Content-Disposition": f'attachment; filename="{zip_stem}.zip"'}
     return StreamingResponse(
         iter([zip_data]),
         media_type="application/zip",
@@ -129,9 +126,7 @@ async def _build_log_zip_response(
     )
 
 
-def _build_log_zip_data(
-    name: str, entries: list[LogFileData]
-) -> tuple[bytes, str]:
+def _build_log_zip_data(name: str, entries: list[LogFileData]) -> tuple[bytes, str]:
     """只负责把应用服务提供的日志内容编码为 ZIP framing。"""
     zip_buffer = io.BytesIO()
     filename_time = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -143,8 +138,6 @@ def _build_log_zip_data(
 
     zip_buffer.seek(0)
     return zip_buffer.getvalue(), zip_stem
-
-
 
 
 async def fetch_image(
@@ -234,11 +227,7 @@ async def proxy_img(
     图片代理，可选是否使用代理服务器，支持 HTTP 缓存
     """
     allowed_domains = set(get_runtime_settings().get("SECURITY_IMAGE_DOMAINS", []))
-    cookies = (
-        MediaServerChain().get_image_cookies(server=None, image_url=imgurl)
-        if use_cookies
-        else None
-    )
+    cookies = MediaServerChain().get_image_cookies(server=None, image_url=imgurl) if use_cookies else None
     return await fetch_image(
         url=imgurl,
         proxy=proxy,
@@ -370,9 +359,7 @@ async def list_database_backups(
 ) -> list[_SchemaDatabaseBackupArtifactData]:
     """列出当前备份目录中的正式制品，不触发内容校验。"""
     try:
-        artifacts = await run_in_threadpool_to_completion(
-            get_database_governance().list_backups
-        )
+        artifacts = await run_in_threadpool_to_completion(get_database_governance().list_backups)
     except Exception as error:
         logger.exception("读取数据库备份列表失败")
         raise HTTPException(status_code=500, detail="读取数据库备份列表失败，请查看日志") from error
@@ -389,9 +376,7 @@ async def create_database_backup(
 ) -> _SchemaDatabaseBackupArtifactData:
     """创建、校验并原子发布当前活动数据库的一致快照。"""
     try:
-        artifact = await run_in_threadpool_to_completion(
-            get_database_governance().create_backup
-        )
+        artifact = await run_in_threadpool_to_completion(get_database_governance().create_backup)
     except DatabaseBackupInProgressError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except Exception as error:
@@ -465,9 +450,7 @@ async def get_env_setting(
     """
     查询系统环境变量，包括当前版本号（仅管理员）
     """
-    info = get_runtime_settings().snapshot(
-        exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY"}
-    )
+    info = get_runtime_settings().snapshot(exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY"})
     info.update(
         {
             "VERSION": get_app_version(),
@@ -568,9 +551,7 @@ async def get_progress(
     summary="查询公开系统设置",
     response_model=_SchemaResponse[_SchemaValueData],
 )
-async def get_public_setting(
-    key: str, _: ApiPrincipal = Depends(get_current_active_user_async)
-) -> _SchemaResponse:
+async def get_public_setting(key: str, _: ApiPrincipal = Depends(get_current_active_user_async)) -> _SchemaResponse:
     """
     查询普通用户可读取的非敏感系统设置
     """
@@ -598,9 +579,7 @@ async def sync_plugin_market_from_wiki(
     """
     从 Wiki 插件文档同步插件市场仓库地址。
     """
-    result = await runtime.system.sync_plugin_market(
-        request.wiki_url if request else None
-    )
+    result = await runtime.system.sync_plugin_market(request.wiki_url if request else None)
     return _SchemaResponse(
         success=result.success,
         message=result.message,
@@ -613,9 +592,7 @@ async def sync_plugin_market_from_wiki(
     summary="查询系统设置",
     response_model=_SchemaResponse[_SchemaValueData],
 )
-async def get_setting(
-    key: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)
-) -> _SchemaResponse:
+async def get_setting(key: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)) -> _SchemaResponse:
     """
     查询系统设置（仅管理员）
     """
@@ -639,6 +616,103 @@ async def set_setting(
     """
     result = await runtime.system.update_setting(key, value)
     return _SchemaResponse(success=result.success, message=result.message)
+
+
+@router.get(
+    "/settings",
+    summary="统一查询系统设置",
+    response_model=_SchemaResponse[_SchemaJsonObject],
+)
+async def query_settings(
+    setting_key: Optional[str] = None,
+    group: Optional[str] = "all",
+    keyword: Optional[str] = None,
+    include_values: Optional[bool] = None,
+    show_secrets: bool = False,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> _SchemaResponse:
+    """按登记元数据查询设置，并默认对敏感值递归脱敏。"""
+    try:
+        data = SystemSettingsService(
+            get_runtime_settings(),
+            get_configured_system_config(),
+            runtime.system.publish_config_changed,
+        ).query(
+            setting_key=setting_key,
+            group=group,
+            keyword=keyword,
+            include_values=include_values,
+            show_secrets=show_secrets,
+        )
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(success=True, data=data)
+
+
+@router.post(
+    "/settings",
+    summary="统一更新系统设置",
+    response_model=_SchemaResponse[_SchemaJsonObject],
+)
+async def update_settings(
+    payload: _SchemaSystemSettingsUpdateRequest,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> _SchemaResponse:
+    """按替换、字典合并或列表项操作更新一个登记设置。"""
+    try:
+        data = await SystemSettingsService(
+            get_runtime_settings(),
+            get_configured_system_config(),
+            runtime.system.publish_config_changed,
+        ).update(**payload.model_dump())
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+
+
+@router.get(
+    "/identifiers",
+    summary="查询自定义识别词",
+    response_model=_SchemaResponse[_SchemaJsonObject],
+)
+async def query_custom_identifiers(
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> _SchemaResponse:
+    """返回完整的自定义识别词列表。"""
+    identifiers = get_configured_system_config().get(SystemConfigKey.CustomIdentifiers) or []
+    return _SchemaResponse(
+        success=True,
+        data={"count": len(identifiers), "identifiers": identifiers},
+    )
+
+
+@router.post(
+    "/identifiers",
+    summary="更新自定义识别词",
+    response_model=_SchemaResponse[_SchemaJsonObject],
+)
+async def update_custom_identifiers(
+    payload: _SchemaCustomIdentifiersUpdateRequest,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> _SchemaResponse:
+    """完整替换自定义识别词并清理识别解析缓存。"""
+    identifiers = [item for item in payload.identifiers if item is not None]
+    data = await SystemSettingsService(
+        get_runtime_settings(),
+        get_configured_system_config(),
+        runtime.system.publish_config_changed,
+    ).update(
+        setting_key=SystemConfigKey.CustomIdentifiers.value,
+        value=identifiers or None,
+    )
+    from app.domain.metainfo import clear_rust_parse_options_cache
+
+    clear_rust_parse_options_cache()
+    data.update({"count": len(identifiers), "identifiers": identifiers})
+    return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
 @router.get(
@@ -695,13 +769,9 @@ async def _get_logging_impl(
         except LogNotFoundError as error:
             raise HTTPException(status_code=404, detail="Not Found") from error
         except Exception as error:
-            return Response(
-                content=f"读取日志文件失败: {error}", media_type="text/plain"
-            )
+            return Response(content=f"读取日志文件失败: {error}", media_type="text/plain")
     try:
-        source = await runtime.system.follow_log(
-            resolved_logfile, length or 50, request.is_disconnected
-        )
+        source = await runtime.system.follow_log(resolved_logfile, length or 50, request.is_disconnected)
     except LogNotFoundError as error:
         raise HTTPException(status_code=404, detail="Not Found") from error
 
@@ -724,7 +794,15 @@ async def _get_logging_impl(
     summary="实时日志",
     response_model=None,
     response_class=StreamingResponse,
-    responses={200: {"description": "实时日志流或完整日志文本", "content": {"text/event-stream": {"schema": {"type": "string"}}, "text/plain": {"schema": {"type": "string"}}}}},
+    responses={
+        200: {
+            "description": "实时日志流或完整日志文本",
+            "content": {
+                "text/event-stream": {"schema": {"type": "string"}},
+                "text/plain": {"schema": {"type": "string"}},
+            },
+        }
+    },
 )
 async def get_logging(
     request: Request,
@@ -745,11 +823,7 @@ async def get_logging(
     responses={
         200: {
             "description": "日志 ZIP 文件",
-            "content": {
-                "application/zip": {
-                    "schema": {"type": "string", "format": "binary"}
-                }
-            },
+            "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}},
         }
     },
 )
@@ -935,9 +1009,7 @@ def modulelist(_: _SchemaTokenPayload = Depends(verify_token)):
     return _SchemaResponse(success=True, data={"modules": modules})
 
 
-@router.get(
-    "/moduletest/{moduleid}", summary="模块可用性测试", response_model=_SchemaResponse[None]
-)
+@router.get("/moduletest/{moduleid}", summary="模块可用性测试", response_model=_SchemaResponse[None])
 def moduletest(moduleid: str, _: _SchemaTokenPayload = Depends(verify_token)):
     """
     模块可用性测试接口
@@ -1006,9 +1078,7 @@ def download_system_update(
 ):
     """启动后台下载并立即返回当前状态（仅管理员）。"""
     result = runtime.system.download_update()
-    return _SchemaResponse(
-        success=result.success, data=result.data, message=result.message
-    )
+    return _SchemaResponse(success=result.success, data=result.data, message=result.message)
 
 
 @router.post(
@@ -1039,9 +1109,7 @@ def run_scheduler(jobid: str, _: ApiPrincipal = Depends(get_current_active_super
     return _SchemaResponse(success=True)
 
 
-@router.get(
-    "/runscheduler2", summary="运行服务（API_TOKEN）", response_model=_SchemaResponse[None]
-)
+@router.get("/runscheduler2", summary="运行服务（API_TOKEN）", response_model=_SchemaResponse[None])
 def run_scheduler2(jobid: str, _: Annotated[str, Depends(verify_apitoken)]):
     """
     执行命令（API_TOKEN认证）

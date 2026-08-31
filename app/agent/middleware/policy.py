@@ -16,16 +16,13 @@ from app.agent.policy.orchestrator import (
     AgentToolPolicyOrchestrator,
     call_policy_hook,
 )
+from app.agent.policy.registry import requests_system_setting_secrets
 from app.agent.tools.catalog import ToolCatalogSnapshot
-from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
-
+from app.agent.tools.impl.api import MoviePilotApiTool
 
 POLICY_DENIED_MESSAGE = "当前宿主策略不允许执行该工具。"
 POLICY_UNAVAILABLE_MESSAGE = "宿主策略暂时不可用，未执行该工具。"
-TOOL_TIMEOUT_MESSAGE = (
-    "工具执行超时，已停止等待结果；"
-    "若工具包含外部写操作，操作可能仍在继续，请先确认实际状态再重试。"
-)
+TOOL_TIMEOUT_MESSAGE = "工具执行超时，已停止等待结果；若工具包含外部写操作，操作可能仍在继续，请先确认实际状态再重试。"
 
 
 class AgentPolicyMiddleware(AgentMiddleware):
@@ -47,11 +44,7 @@ class AgentPolicyMiddleware(AgentMiddleware):
         self.context = context
         self.orchestrator = orchestrator
         self.catalog = catalog
-        self._tools = {
-            tool.name: tool
-            for tool in (tools or [])
-            if getattr(tool, "name", None)
-        }
+        self._tools = {tool.name: tool for tool in (tools or []) if getattr(tool, "name", None)}
 
     @hook_config(can_jump_to=["end"])
     async def aafter_model(self, state: dict[str, Any], runtime: Any) -> Any:
@@ -67,9 +60,9 @@ class AgentPolicyMiddleware(AgentMiddleware):
             arguments = tool_call.get("args")
             tool = self._tools.get(tool_call.get("name"))
             if (
-                isinstance(tool, QuerySystemSettingsTool)
+                isinstance(tool, MoviePilotApiTool)
                 and isinstance(arguments, dict)
-                and arguments.get("show_secrets") is True
+                and requests_system_setting_secrets(arguments)
             ):
                 sensitive_call = tool_call
                 sensitive_tool = tool
@@ -92,10 +85,7 @@ class AgentPolicyMiddleware(AgentMiddleware):
 
         paused_messages = [
             ToolMessage(
-                content=(
-                    "本轮工具调用已暂停，未执行任何操作；"
-                    "请等待用户确认或取消敏感设置读取。"
-                ),
+                content=("本轮工具调用已暂停，未执行任何操作；请等待用户确认或取消敏感设置读取。"),
                 tool_call_id=str(tool_call.get("id") or ""),
                 name=str(tool_call.get("name") or "unknown"),
             )
@@ -153,10 +143,7 @@ class AgentPolicyMiddleware(AgentMiddleware):
         )
         if enforce_decision and observation is None:
             return False, POLICY_UNAVAILABLE_MESSAGE
-        if (
-                enforce_decision
-                and observation.decision.allowed is False
-        ):
+        if enforce_decision and observation.decision.allowed is False:
             return False, POLICY_DENIED_MESSAGE
         try:
             result = await handler()

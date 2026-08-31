@@ -110,6 +110,17 @@
     "模块不支持测试": "Module does not support testing",
     "网络请求失败": "Network request failed",
     "TMDB请求失败": "TMDB request failed",
+    "无效的媒体类型": "Invalid media type",
+    "ListenBrainz 来源只支持音乐媒体类型": "The ListenBrainz source only supports music media",
+    "无效的音乐实体类型": "Invalid music entity type",
+    "无效的榜单周期": "Invalid chart range",
+    "无效的榜单排序": "Invalid chart sort order",
+    "新发行结果只支持专辑": "Fresh release results only support albums",
+    "无效的新发行排序": "Invalid fresh release sort order",
+    "past 和 future 不能同时为 false": "past and future cannot both be false",
+    "音乐推荐需使用 ListenBrainz 来源": "Music recommendations require a ListenBrainz source",
+    "directory_type 无效": "Invalid directory_type",
+    "storage_type 无效": "Invalid storage_type",
     "媒体服务器请求失败": "Media server request failed",
     "附件保存失败": "Failed to save attachment",
     "通知配置保存成功": "Notification configuration saved successfully",
@@ -443,6 +454,10 @@
     "订阅日历预缓存完成": "Subscription calendar precache completed"
   },
   "message_patterns": [
+    {
+      "source": "不支持的推荐来源: {source}",
+      "target": "Unsupported recommendation source: {source}"
+    },
     {
       "source": "工具 '{tool}' 未找到",
       "target": "Tool '{tool}' was not found"

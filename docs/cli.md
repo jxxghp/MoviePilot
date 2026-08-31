@@ -108,6 +108,19 @@ moviepilot tool list
 moviepilot tool show <tool_name>
 ```
 
+工具目录使用最终统一模式：MoviePilot 业务能力通过 `moviepilot_api` 的固定
+`operation_id` 调用，不再列出或接受 `query_schedulers`、`run_scheduler` 等旧业务
+工具名。对象、数组和布尔参数使用 JSON：
+
+```shell
+moviepilot tool show moviepilot_api
+moviepilot tool run moviepilot_api operation_id=scheduler.list
+moviepilot tool run moviepilot_api operation_id=scheduler.run 'query={"job_id":"site-sync"}'
+```
+
+下载器和媒体服务器的 provider 原生高级能力不注册成永久工具；内置 Agent 按需
+加载 `downloader-operation` 或 `mediaserver-operation` Skill，并调用各自固定脚本。
+
 ## 完整命令清单
 
 ```text
@@ -528,23 +541,24 @@ moviepilot tool list
 查看单个工具的参数说明：
 
 ```shell
-moviepilot tool show query_schedulers
-moviepilot tool show search_torrents
+moviepilot tool show moviepilot_api
+moviepilot tool show agent_task
 ```
 
 运行工具：
 
 ```shell
-moviepilot tool run query_schedulers
-moviepilot tool run search_torrents media_type=movie media_source=themoviedb media_id=12345
+moviepilot tool run moviepilot_api operation_id=scheduler.list
+moviepilot tool run moviepilot_api operation_id=media.search 'query={"title":"流浪地球","type":"media"}'
 ```
 
 说明：
 
 - `tool list` 用于动态发现当前服务可调用的工具
 - `tool show` 会输出参数名、类型和描述
-- `tool run` 参数格式固定为 `key=value`
-- 涉及精确媒体身份的通用工具统一使用 `media_source` + `media_id`；内置来源使用工具 Schema 中的 `MediaSource` 常量，插件可以注册符合 Schema 格式的扩展来源，两个字段必须成对传递并复用搜索结果。TMDB 等单数据源专属工具按各自 Schema 保留原生 ID 参数
+- `tool run` 参数格式固定为 `key=value`；对象、数组、布尔值和 `null` 使用合法 JSON
+- MoviePilot 业务能力统一通过 `moviepilot_api` 的固定 `operation_id` 调用；不接受任意 URL、method、认证头或 Token，也不兼容旧业务工具名
+- 涉及精确媒体身份的 operation 统一使用 `media_source` + `media_id`，两个字段必须成对传递并复用搜索结果
 - `read_file`、`write_file`、`edit_file` 和 `execute_command`
   属于内置 Agent 的本地敏感能力，不通过 MCP/`moviepilot tool` 暴露；插件开发时
   由 Agent 按当前用户权限直接调用这些工具。

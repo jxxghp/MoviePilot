@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 
-from app.agent.tools.impl.delete_transfer_history import DeleteTransferHistoryTool
 from app.api.endpoints import history as history_endpoint
 from app.application.configuration import ApiRuntimeConfig
 from app.application.transfer.execution import (
@@ -139,9 +137,7 @@ def test_single_ai_redo_requests_durable_retry_without_agent(monkeypatch) -> Non
     monkeypatch.setattr(
         history_endpoint,
         "_start_ai_redo_task",
-        lambda **_kwargs: (_ for _ in ()).throw(
-            AssertionError("durable 重试不得启动 Agent")
-        ),
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("durable 重试不得启动 Agent")),
     )
     completed_progress: list[dict] = []
     monkeypatch.setattr(
@@ -193,9 +189,7 @@ def test_single_ai_redo_reports_manual_review_rejection(monkeypatch) -> None:
     monkeypatch.setattr(
         history_endpoint,
         "build_manual_redo_prompt",
-        lambda _history: (_ for _ in ()).throw(
-            AssertionError("拒绝后不得生成 Agent 提示词")
-        ),
+        lambda _history: (_ for _ in ()).throw(AssertionError("拒绝后不得生成 Agent 提示词")),
     )
 
     response = asyncio.run(
@@ -239,18 +233,18 @@ def test_batch_ai_redo_returns_completed_progress_for_durable_tasks(monkeypatch)
     monkeypatch.setattr(
         history_endpoint,
         "_start_batch_ai_redo_task",
-        lambda **_kwargs: (_ for _ in ()).throw(
-            AssertionError("全 durable 批量不得启动 Agent")
-        ),
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("全 durable 批量不得启动 Agent")),
     )
 
     response = asyncio.run(
         history_endpoint.batch_ai_redo_transfer_history(
             BatchTransferHistoryRedoRequest(history_ids=[18, 19]),
-            query=_HistoryQuery([
-                TransferHistory(id=18, transfer_task_id="task-18"),
-                TransferHistory(id=19, transfer_task_id="task-19"),
-            ]),
+            query=_HistoryQuery(
+                [
+                    TransferHistory(id=18, transfer_task_id="task-18"),
+                    TransferHistory(id=19, transfer_task_id="task-19"),
+                ]
+            ),
             runtime_config=_runtime(ai_enabled=False),
             task_registry=object(),
             execution_repository=repository,
@@ -356,10 +350,12 @@ def test_batch_ai_redo_sends_only_legacy_records_after_durable_acceptance(
     response = asyncio.run(
         history_endpoint.batch_ai_redo_transfer_history(
             BatchTransferHistoryRedoRequest(history_ids=[24, 25]),
-            query=_HistoryQuery([
-                TransferHistory(id=24, transfer_task_id="task-24"),
-                TransferHistory(id=25),
-            ]),
+            query=_HistoryQuery(
+                [
+                    TransferHistory(id=24, transfer_task_id="task-24"),
+                    TransferHistory(id=25),
+                ]
+            ),
             runtime_config=_runtime(),
             task_registry=object(),
             execution_repository=repository,
@@ -372,65 +368,3 @@ def test_batch_ai_redo_sends_only_legacy_records_after_durable_acceptance(
     assert response.data["history_ids"] == [24, 25]
     assert prompted == [[25]]
     assert started[0]["history_ids"] == [25]
-
-
-def test_agent_delete_tool_requests_retry_before_any_destructive_action(monkeypatch) -> None:
-    """Agent 工具命中 durable 历史时保留目标、历史和失败证据。"""
-    history = SimpleNamespace(
-        id=31,
-        transfer_task_id="task-31",
-        dest_fileitem={"path": "/library/demo.mkv"},
-    )
-    delete_calls: list[int] = []
-
-    class _HistoryPort:
-        """提供 durable 历史并观察是否发生删除。"""
-
-        async def async_get(self, history_id: int) -> object:
-            """返回 durable 历史。"""
-            assert history_id == 31
-            return history
-
-        async def async_delete(self, history_id: int) -> None:
-            """记录不应发生的历史删除。"""
-            delete_calls.append(history_id)
-
-    retry_calls: list[dict] = []
-    monkeypatch.setattr(
-        "app.agent.tools.impl.delete_transfer_history._request_transfer_retry",
-        lambda _repository, **kwargs: retry_calls.append(kwargs)
-        or _retry_result(
-            accepted=False,
-            state=TransferExecutionState.MANUAL_REVIEW,
-            message="人工复核任务必须先完成专门判定",
-        ),
-    )
-    monkeypatch.setattr(
-        "app.agent.tools.impl.delete_transfer_history.StorageChain",
-        lambda: (_ for _ in ()).throw(
-            AssertionError("durable 目标文件不得删除")
-        ),
-    )
-
-    result = asyncio.run(
-        DeleteTransferHistoryTool(
-            session_id="redo-session",
-            user_id="10001",
-            data=SimpleNamespace(
-                transfer_history=_HistoryPort(),
-                transfer_execution=SimpleNamespace(),
-            ),
-        ).run(history_id=31)
-    )
-
-    assert "未登记重试" in result
-    assert "state=manual_review" in result
-    assert "不要调用 transfer_file" in result
-    assert retry_calls == [
-        {
-            "history_id": 31,
-            "task_id": "task-31",
-            "user_id": "10001",
-        }
-    ]
-    assert delete_calls == []

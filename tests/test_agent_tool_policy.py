@@ -17,6 +17,7 @@ from app.agent.policy import (
     DEFAULT_TOOL_POLICY_REGISTRY,
     ActionEffect,
     AuthSource,
+    ConfirmationMode,
     MigrationState,
     PolicyPrincipal,
     PrincipalRole,
@@ -28,8 +29,8 @@ from app.agent.policy import (
 )
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.factory import MoviePilotToolFactory
+from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.ask_user_choice import AskUserChoiceTool
-from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.impl.send_local_file import SendLocalFileTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
 from app.agent.tools.manager import MoviePilotToolsManager
@@ -92,9 +93,9 @@ class _FailingTool(_EchoTool):
 
 
 class _AdminSafeReadTool(_EchoTool):
-    """复用 safe-read 名称并保留旧 require_admin 门禁的测试工具。"""
+    """声明管理员门禁的动态测试工具。"""
 
-    name: str = "list_slash_commands"
+    name: str = "admin_test_tool"
     require_admin: bool = True
 
     def __init__(self, events: list[str], **kwargs):
@@ -128,15 +129,13 @@ def _interactive_context(*, is_admin: bool = True) -> ToolPolicyContext:
 
 def test_builtin_policy_inventory_covers_every_fixed_tool() -> None:
     """固定内置工具 inventory 必须随工厂入口同步。"""
-    fixed_tool_names = {
-        _tool_class_name(tool_class)
-        for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES
-    }
+    fixed_tool_names = {_tool_class_name(tool_class) for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES}
     fixed_tool_names.update(
         {
             _tool_class_name(AskUserChoiceTool),
             _tool_class_name(SendLocalFileTool),
             _tool_class_name(SendVoiceMessageTool),
+            _tool_class_name(MoviePilotApiTool),
         }
     )
 
@@ -146,13 +145,13 @@ def test_builtin_policy_inventory_covers_every_fixed_tool() -> None:
 def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
     """SAFE_READ 仅用于明确例外，其他固定和动态工具默认 shadow。"""
     safe_policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
-        tool_name="query_personas",
-        arguments={},
+        tool_name="persona",
+        arguments={"action": "list"},
         requires_admin=False,
     )
     admin_safe_policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
-        tool_name="list_slash_commands",
-        arguments={},
+        tool_name="moviepilot_api",
+        arguments={"operation_id": "scheduler.list"},
         requires_admin=True,
     )
     shadow_policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
@@ -172,7 +171,7 @@ def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
 
     assert admin_safe_policy.effect is ActionEffect.SAFE_READ
     assert admin_safe_policy.required_role is PrincipalRole.SYSTEM_ADMIN
-    assert admin_safe_policy.migration_state is MigrationState.LEGACY_SHADOW
+    assert admin_safe_policy.migration_state is MigrationState.ENFORCED
 
     assert shadow_policy.migration_state is MigrationState.LEGACY_SHADOW
     assert shadow_policy.effect is ActionEffect.UNKNOWN
@@ -184,25 +183,31 @@ def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
 
 
 @pytest.mark.parametrize("show_secrets", [None, False])
-def test_system_settings_without_secret_values_stays_legacy_shadow(
+def test_system_settings_without_secret_values_is_enforced_read(
     show_secrets,
 ) -> None:
     """普通设置读取维持既有兼容路径，不增加确认。"""
     policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
-        tool_name="query_system_settings",
-        arguments={"show_secrets": show_secrets},
+        tool_name="moviepilot_api",
+        arguments={
+            "operation_id": "config.system.get",
+            "body": {"show_secrets": show_secrets},
+        },
         requires_admin=True,
     )
 
-    assert policy.migration_state is MigrationState.LEGACY_SHADOW
-    assert policy.effect is ActionEffect.UNKNOWN
+    assert policy.migration_state is MigrationState.ENFORCED
+    assert policy.effect is ActionEffect.SAFE_READ
 
 
 def test_system_settings_secret_read_has_enforced_sensitive_policy() -> None:
     """显式读取密钥只能进入宿主强制确认策略。"""
     policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
-        tool_name="query_system_settings",
-        arguments={"show_secrets": True},
+        tool_name="moviepilot_api",
+        arguments={
+            "operation_id": "config.system.get",
+            "body": {"show_secrets": True},
+        },
         requires_admin=True,
     )
 
@@ -213,6 +218,23 @@ def test_system_settings_secret_read_has_enforced_sensitive_policy() -> None:
     assert policy.result_sensitivity is ResultSensitivity.SECRET
     assert policy.background_allowed is False
     assert policy.subagent_allowed is False
+
+
+def test_system_settings_secret_read_query_cannot_bypass_confirmation() -> None:
+    """GET 查询参数不能绕过敏感设置读取的确认策略。"""
+    policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+        tool_name="moviepilot_api",
+        arguments={
+            "operation_id": "config.system.get",
+            "query": {"show_secrets": True},
+        },
+        requires_admin=True,
+    )
+
+    assert policy.effect is ActionEffect.SENSITIVE_READ
+    assert policy.required_role is PrincipalRole.SYSTEM_ADMIN
+    assert policy.confirmation is ConfirmationMode.REQUIRED
+    assert policy.result_sensitivity is ResultSensitivity.SECRET
 
 
 def test_legacy_shadow_decision_allows_without_claiming_enforcement() -> None:
@@ -232,14 +254,17 @@ def test_legacy_shadow_decision_allows_without_claiming_enforcement() -> None:
 
 
 def test_sensitive_policy_stays_shadow_in_generic_orchestrator() -> None:
-    """敏感读取在通用编排器中保持明确的兼容 shadow 语义。"""
-    tool = QuerySystemSettingsTool(session_id="session-1", user_id="admin")
+    """API 敏感读取在通用编排器中等待交互入口完成确认。"""
+    tool = MoviePilotApiTool(session_id="session-1", user_id="1")
     tool.set_agent_context({"is_admin": True})
 
     observation = DEFAULT_TOOL_POLICY_ORCHESTRATOR.start(
         context=_interactive_context(),
         tool=tool,
-        arguments={"setting_key": "COOKIECLOUD_KEY", "show_secrets": True},
+        arguments={
+            "operation_id": "config.system.get",
+            "body": {"setting_key": "COOKIECLOUD_KEY", "show_secrets": True},
+        },
     )
 
     assert observation.policy.migration_state is MigrationState.ENFORCED
@@ -330,12 +355,16 @@ def test_policy_context_maps_trusted_host_origins() -> None:
         assert context.principal_type is expected_principal
         assert context.auth_source is expected_auth_source
 
-    subagent_context = agent_module.MoviePilotAgent(
-        session_id="subagent-session",
-        user_id="user-1",
-        channel=NotificationChannel.Telegram.value,
-        source="telegram",
-    )._build_policy_context().for_subagent()
+    subagent_context = (
+        agent_module.MoviePilotAgent(
+            session_id="subagent-session",
+            user_id="user-1",
+            channel=NotificationChannel.Telegram.value,
+            source="telegram",
+        )
+        ._build_policy_context()
+        .for_subagent()
+    )
     assert subagent_context.origin is ToolOrigin.SUBAGENT
     assert subagent_context.principal_type is PrincipalType.SUBAGENT
     assert subagent_context.auth_source is AuthSource.INTERNAL
@@ -385,12 +414,8 @@ def test_middleware_observation_failure_does_not_replace_success(
 ) -> None:
     """shadow start/finish 故障不能阻止 handler 或替换成功结果。"""
     orchestrator = MagicMock()
-    orchestrator.start.return_value = SimpleNamespace(
-        decision=SimpleNamespace(allowed=True)
-    )
-    getattr(orchestrator, failed_phase).side_effect = RuntimeError(
-        f"policy-{failed_phase}-failure"
-    )
+    orchestrator.start.return_value = SimpleNamespace(decision=SimpleNamespace(allowed=True))
+    getattr(orchestrator, failed_phase).side_effect = RuntimeError(f"policy-{failed_phase}-failure")
     middleware = AgentPolicyMiddleware(
         context=_interactive_context(),
         orchestrator=orchestrator,
@@ -416,9 +441,7 @@ def test_middleware_observation_failure_does_not_replace_success(
 def test_middleware_fail_observation_does_not_mask_tool_error() -> None:
     """shadow fail hook 故障后仍必须抛出原始工具异常。"""
     orchestrator = MagicMock()
-    orchestrator.start.return_value = SimpleNamespace(
-        decision=SimpleNamespace(allowed=True)
-    )
+    orchestrator.start.return_value = SimpleNamespace(decision=SimpleNamespace(allowed=True))
     orchestrator.fail.side_effect = RuntimeError("policy-fail-hook-failure")
     middleware = AgentPolicyMiddleware(
         context=_interactive_context(),
@@ -442,9 +465,7 @@ def test_middleware_fail_observation_does_not_mask_tool_error() -> None:
 def test_middleware_keeps_shadow_observation_without_enforcing_decision() -> None:
     """普通 ToolNode 不得因 shadow 观测决策改变既有行为。"""
     orchestrator = MagicMock()
-    orchestrator.start.return_value = SimpleNamespace(
-        decision=SimpleNamespace(allowed=False)
-    )
+    orchestrator.start.return_value = SimpleNamespace(decision=SimpleNamespace(allowed=False))
     middleware = AgentPolicyMiddleware(
         context=_interactive_context(),
         orchestrator=orchestrator,
@@ -453,9 +474,7 @@ def test_middleware_keeps_shadow_observation_without_enforcing_decision() -> Non
         tool=_EchoTool(session_id="session-1", user_id="user-1"),
         tool_call={"id": "call-1", "name": "policy_echo", "args": {"query": "same"}},
     )
-    handler = AsyncMock(
-        return_value=ToolMessage(content="same", tool_call_id="call-1")
-    )
+    handler = AsyncMock(return_value=ToolMessage(content="same", tool_call_id="call-1"))
 
     result = asyncio.run(middleware.awrap_tool_call(request, handler))
 
@@ -556,12 +575,12 @@ def test_policy_hook_hostile_error_type_is_fail_open() -> None:
         ),
     ],
 )
-def test_agent_admin_safe_read_keeps_legacy_authorization_authority(
+def test_agent_admin_dynamic_tool_keeps_existing_authorization_authority(
     legacy_admin: bool,
     expected_result: str,
     expected_run_count: int,
 ) -> None:
-    """渠道管理员与普通用户结果保持旧门禁语义，policy 只做 shadow passthrough。"""
+    """动态工具仍由既有管理员门禁决定是否进入 handler。"""
     events: list[str] = []
     observations = []
     original_start = DEFAULT_TOOL_POLICY_ORCHESTRATOR.start
@@ -608,7 +627,7 @@ def test_agent_admin_safe_read_keeps_legacy_authorization_authority(
     assert result.content == expected_result
     assert events.count("run") == expected_run_count
     assert len(observations) == 1
-    assert observations[0].policy.effect is ActionEffect.SAFE_READ
+    assert observations[0].policy.effect is ActionEffect.UNKNOWN
     assert observations[0].policy.migration_state is MigrationState.LEGACY_SHADOW
     assert observations[0].decision.allowed is True
     assert observations[0].decision.shadow is True
@@ -630,13 +649,9 @@ def test_direct_non_admin_safe_read_rejects_before_policy_or_schema() -> None:
     )
     manager.tools = [tool]
 
-    result = json.loads(
-        asyncio.run(manager.call_tool(tool.name, {"query": "same"}))
-    )
+    result = json.loads(asyncio.run(manager.call_tool(tool.name, {"query": "same"})))
 
-    assert result == {
-        "error": "抱歉，您没有执行此工具的权限。只有系统管理员才能执行工具操作。"
-    }
+    assert result == {"error": "抱歉，您没有执行此工具的权限。只有系统管理员才能执行工具操作。"}
     assert events == []
     orchestrator.start.assert_not_called()
 
@@ -648,9 +663,7 @@ def test_direct_manager_observation_failure_does_not_replace_success(
     """direct manager 的 shadow start/finish 故障不能改写真实返回值。"""
     orchestrator = MagicMock()
     orchestrator.start.return_value = object()
-    getattr(orchestrator, failed_phase).side_effect = RuntimeError(
-        f"policy-{failed_phase}-failure"
-    )
+    getattr(orchestrator, failed_phase).side_effect = RuntimeError(f"policy-{failed_phase}-failure")
     tool = _EchoTool(session_id="session-1", user_id="user-1")
     manager = MoviePilotToolsManager(
         is_admin=True,
@@ -736,7 +749,16 @@ def test_direct_manager_and_agent_middleware_share_policy_resolution() -> None:
 def test_agent_middleware_secret_setting_result_stays_out_of_receipt_logs() -> None:
     """Agent ToolNode 可接收管理员请求的原值，但策略回执不得记录该值。"""
     secret_marker = "middleware-secret-setting-marker"
-    tool = QuerySystemSettingsTool(session_id="session-1", user_id="admin")
+    executor = AsyncMock()
+    executor.execute.return_value = json.dumps(
+        {"success": True, "data": {"value": secret_marker}},
+        ensure_ascii=False,
+    )
+    tool = MoviePilotApiTool(
+        session_id="session-1",
+        user_id="1",
+        executor=executor,
+    )
     tool.set_agent_context({"is_admin": True})
     middleware = AgentPolicyMiddleware(context=_interactive_context())
     request = SimpleNamespace(
@@ -744,38 +766,31 @@ def test_agent_middleware_secret_setting_result_stays_out_of_receipt_logs() -> N
         tool_call={
             "id": "call-secret-setting",
             "name": tool.name,
-            "args": {"setting_key": "COOKIECLOUD_KEY", "show_secrets": True},
+            "args": {
+                "operation_id": "config.system.get",
+                "body": {
+                    "setting_key": "COOKIECLOUD_KEY",
+                    "show_secrets": True,
+                },
+            },
         },
     )
     mock_logger = MagicMock()
 
     async def _handler(_request):
         result = await tool._arun(
-            setting_key="COOKIECLOUD_KEY",
-            show_secrets=True,
+            operation_id="config.system.get",
+            body={"setting_key": "COOKIECLOUD_KEY", "show_secrets": True},
         )
         return ToolMessage(content=result, tool_call_id="call-secret-setting")
 
-    with (
-        patch.object(
-            QuerySystemSettingsTool,
-            "_load_setting_value",
-            return_value=secret_marker,
-        ),
-        patch("app.agent.policy.orchestrator.logger", mock_logger),
-    ):
+    with patch("app.agent.policy.orchestrator.logger", mock_logger):
         result = asyncio.run(middleware.awrap_tool_call(request, _handler))
 
     assert secret_marker in result.content
-    logged = "\n".join(
-        str(call)
-        for call in (
-            mock_logger.debug.call_args_list + mock_logger.info.call_args_list
-        )
-    )
+    logged = "\n".join(str(call) for call in (mock_logger.debug.call_args_list + mock_logger.info.call_args_list))
     assert secret_marker not in logged
-    assert '"value": "***"' in logged
-    assert '"value_preview": "***"' in logged
+    assert '"protected_result": "***"' in logged
 
 
 def test_main_agent_registers_policy_middleware_as_outermost() -> None:
@@ -828,19 +843,13 @@ def test_main_agent_preserves_activity_log_middleware_order() -> None:
 
     middlewares = captured["middleware"]
     policy_index = next(
-        index
-        for index, middleware in enumerate(middlewares)
-        if isinstance(middleware, AgentPolicyMiddleware)
+        index for index, middleware in enumerate(middlewares) if isinstance(middleware, AgentPolicyMiddleware)
     )
     memory_index = next(
-        index
-        for index, middleware in enumerate(middlewares)
-        if isinstance(middleware, MemoryMiddleware)
+        index for index, middleware in enumerate(middlewares) if isinstance(middleware, MemoryMiddleware)
     )
     activity_index = next(
-        index
-        for index, middleware in enumerate(middlewares)
-        if isinstance(middleware, ActivityLogMiddleware)
+        index for index, middleware in enumerate(middlewares) if isinstance(middleware, ActivityLogMiddleware)
     )
     compaction_index = next(
         index

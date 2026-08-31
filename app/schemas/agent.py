@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Literal, Optional, Union
 
 from langchain_core.messages import BaseMessage
-from pydantic import BaseModel, Field, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.schemas.common import JsonData
 
@@ -19,7 +19,7 @@ class ConversationMemory(BaseModel):
 
     model_config = ConfigDict()
 
-    @field_serializer('updated_at', when_used='json')
+    @field_serializer("updated_at", when_used="json")
     def serialize_datetime(self, value: datetime) -> str:
         return value.isoformat()
 
@@ -34,7 +34,7 @@ class AgentState(BaseModel):
 
     model_config = ConfigDict()
 
-    @field_serializer('last_activity', when_used='json')
+    @field_serializer("last_activity", when_used="json")
     def serialize_datetime(self, value: datetime) -> str:
         return value.isoformat()
 
@@ -65,9 +65,7 @@ class AgentMcpServerConfig(BaseModel):
     id: str = Field(..., description="服务器唯一 ID")
     name: str = Field(..., description="服务器显示名称")
     enabled: bool = Field(default=True, description="是否启用")
-    transport: Literal["stdio", "sse", "http", "streamable_http"] = Field(
-        default="stdio", description="MCP 传输协议"
-    )
+    transport: Literal["stdio", "sse", "http", "streamable_http"] = Field(default="stdio", description="MCP 传输协议")
     description: Optional[str] = Field(None, description="服务器说明")
     command: Optional[str] = Field(None, description="stdio 启动命令")
     args: list[str] = Field(default_factory=list, description="stdio 启动参数")
@@ -82,9 +80,7 @@ class AgentMcpServerConfig(BaseModel):
 class AgentMcpServersSaveRequest(BaseModel):
     """Agent 外部 MCP 服务器保存请求。"""
 
-    servers: list[AgentMcpServerConfig] = Field(
-        default_factory=list, description="MCP 服务器配置列表"
-    )
+    servers: list[AgentMcpServerConfig] = Field(default_factory=list, description="MCP 服务器配置列表")
 
 
 class AgentMcpServerTestRequest(BaseModel):
@@ -282,6 +278,21 @@ class AgentWebCommandInfo(BaseModel):
     category: str = Field(default="其他", description="命令分类")
     type: str = Field(default="", description="命令类型")
     pid: Optional[str | int] = Field(default=None, description="插件 ID")
+
+
+class AgentCommandRunRequest(BaseModel):
+    """通过 Agent API 触发斜杠命令的请求。"""
+
+    command: str = Field(description="要执行的完整斜杠命令")
+
+
+class AgentCommandRunData(BaseModel):
+    """斜杠命令进入事件队列后的稳定回执。"""
+
+    message: str = Field(description="命令触发结果")
+    command: str = Field(description="规范化后的完整命令")
+    command_desc: str = Field(default="", description="命令说明")
+    plugin_id: Optional[str] = Field(default=None, description="命令所属插件 ID")
 
 
 class AgentChatSessionSummary(BaseModel):

@@ -3,14 +3,10 @@
 import asyncio
 import hashlib
 import json
-from types import SimpleNamespace
-from unittest.mock import patch
 
 from app.agent.tools.impl.edit_file import EditFileTool
-from app.agent.tools.impl.list_directory import ListDirectoryTool
 from app.agent.tools.impl.read_file import MAX_READ_SIZE, ReadFileTool
 from app.agent.tools.impl.write_file import WriteFileTool
-from app.chain.storage import StorageChain
 
 
 def _make_admin_tool(tool_class):
@@ -26,15 +22,11 @@ def test_edit_file_rejects_ambiguous_match_by_default(tmp_path):
     file_path.write_text("enabled = False\nenabled = False\n", encoding="utf-8")
     tool = _make_admin_tool(EditFileTool)
 
-    result = asyncio.run(
-        tool.run(str(file_path), "enabled = False", "enabled = True")
-    )
+    result = asyncio.run(tool.run(str(file_path), "enabled = False", "enabled = True"))
 
     assert "匹配到 2 处" in result
     assert "replace_all=true" in result
-    assert file_path.read_text(encoding="utf-8") == (
-        "enabled = False\nenabled = False\n"
-    )
+    assert file_path.read_text(encoding="utf-8") == ("enabled = False\nenabled = False\n")
 
 
 def test_edit_file_replace_all_requires_explicit_flag(tmp_path):
@@ -43,9 +35,7 @@ def test_edit_file_replace_all_requires_explicit_flag(tmp_path):
     file_path.write_text("old\nold\n", encoding="utf-8")
     tool = _make_admin_tool(EditFileTool)
 
-    result = asyncio.run(
-        tool.run(str(file_path), "old", "new", replace_all=True)
-    )
+    result = asyncio.run(tool.run(str(file_path), "old", "new", replace_all=True))
 
     assert "替换了 2 处" in result
     assert file_path.read_text(encoding="utf-8") == "new\nnew\n"
@@ -129,9 +119,7 @@ def test_read_file_can_return_sha256_metadata(tmp_path):
 
     assert payload["content"] == "插件内容"
     assert payload["size_bytes"] == len("插件内容".encode("utf-8"))
-    assert payload["sha256"] == hashlib.sha256(
-        "插件内容".encode("utf-8")
-    ).hexdigest()
+    assert payload["sha256"] == hashlib.sha256("插件内容".encode("utf-8")).hexdigest()
     assert payload["truncated"] is False
 
 
@@ -145,9 +133,7 @@ def test_read_file_returns_line_range_hint_when_truncated(tmp_path):
     exact_result = asyncio.run(tool.ainvoke({"file_path": str(file_path)}))
     file_path.write_text(f"{exact_content}b", encoding="utf-8")
     truncated_result = asyncio.run(tool.ainvoke({"file_path": str(file_path)}))
-    metadata_result = asyncio.run(
-        tool.run(str(file_path), include_metadata=True)
-    )
+    metadata_result = asyncio.run(tool.run(str(file_path), include_metadata=True))
     metadata = json.loads(metadata_result)
 
     assert exact_result == exact_content
@@ -158,33 +144,3 @@ def test_read_file_returns_line_range_hint_when_truncated(tmp_path):
     assert "tool_result_truncated" not in truncated_result
     assert metadata["truncated"] is True
     assert "行号范围" in metadata["truncation_message"]
-
-
-def test_list_directory_returns_paged_items_with_next_offset(tmp_path):
-    """目录工具应返回可继续查询的分页元数据。"""
-    items = [
-        SimpleNamespace(
-            name=f"file-{index:03d}.txt",
-            type="file",
-            path=str(tmp_path / f"file-{index:03d}.txt"),
-            size=100,
-            modify_time=None,
-            extension=".txt",
-        )
-        for index in range(120)
-    ]
-    tool = _make_admin_tool(ListDirectoryTool)
-
-    with patch.object(StorageChain, "list_files", return_value=items):
-        result = asyncio.run(
-            tool.run(str(tmp_path), limit=50, offset=50)
-        )
-
-    payload = json.loads(result)
-    assert payload["total_count"] == 120
-    assert payload["returned_count"] == 50
-    assert payload["offset"] == 50
-    assert payload["limit"] == 50
-    assert payload["has_more"] is True
-    assert payload["next_offset"] == 100
-    assert payload["items"][0]["name"] == "file-050.txt"

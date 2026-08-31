@@ -19,9 +19,7 @@ from app.schemas.types import SystemConfigKey
 if TYPE_CHECKING:
     from app.application.rules import AsyncRuleGroupMutationService
 
-PLUGIN_MARKET_WIKI_URL = (
-    "https://raw.githubusercontent.com/jxxghp/MoviePilot-Wiki/main/plugin.md"
-)
+PLUGIN_MARKET_WIKI_URL = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Wiki/main/plugin.md"
 _DATABASE_BACKUP_SETTING_KEYS = {
     "DB_BACKUP_ENABLE",
     "DB_BACKUP_CRON",
@@ -209,6 +207,14 @@ class SystemService:
         self._plugin_mutation = plugin_mutation
         self._rule_group_mutation = rule_group_mutation
 
+    async def publish_config_changed(
+        self,
+        key: Any,
+        value: JsonData = None,
+    ) -> None:
+        """发布一项已经持久化完成的系统配置变更。"""
+        await self._events.publish(key, value)
+
     async def read_log(self, logfile: str) -> str:
         """读取日志并按旧接口语义倒序返回。"""
         text = await self._logs.read(logfile)
@@ -261,9 +267,7 @@ class SystemService:
         if fetched.status_code is None:
             return SystemOperationResult(False, "无法访问 Wiki 插件仓库清单")
         if fetched.status_code != 200:
-            return SystemOperationResult(
-                False, f"访问 Wiki 插件仓库清单失败，状态码：{fetched.status_code}"
-            )
+            return SystemOperationResult(False, f"访问 Wiki 插件仓库清单失败，状态码：{fetched.status_code}")
         if not fetched.repos:
             return SystemOperationResult(False, "未在 Wiki 中识别到插件仓库地址")
         local_repos = self._split_repos(self.settings.get("PLUGIN_MARKET", ""))
@@ -348,9 +352,7 @@ class SystemService:
     def upgrade(self, mode: str | None) -> SystemOperationResult:
         """仅保留兼容的开发分支更新入口。"""
         if str(mode or "").strip().lower() != "dev":
-            return SystemOperationResult(
-                False, "Release 更新请使用 /system/update/check、download 和 install 接口"
-            )
+            return SystemOperationResult(False, "Release 更新请使用 /system/update/check、download 和 install 接口")
         if not self._control.can_restart():
             return SystemOperationResult(False, "当前运行环境不支持升级操作！")
         success, message = self._control.upgrade_dev()
@@ -391,10 +393,8 @@ class SystemService:
         cron = str(env.get("DB_BACKUP_CRON", self.settings.get("DB_BACKUP_CRON")) or "").strip()
         if cron:
             try:
-                TimerUtils.normalize_schedule_trigger(
-                    "cron", cron, self.settings.get("TZ")
-                )
-            except (TypeError, ValueError):
+                TimerUtils.normalize_schedule_trigger("cron", cron, self.settings.get("TZ"))
+            except TypeError, ValueError:
                 return "数据库备份周期格式不正确"
         backup_path = env.get("DB_BACKUP_PATH", self.settings.get("DB_BACKUP_PATH"))
         if backup_path is not None and not isinstance(backup_path, str):
@@ -408,7 +408,7 @@ class SystemService:
                 return f"{label}必须是大于等于 0 的整数"
             try:
                 converted = int(value)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 return f"{label}必须是大于等于 0 的整数"
             if converted < 0 or str(value).strip() != str(converted):
                 return f"{label}必须是大于等于 0 的整数"

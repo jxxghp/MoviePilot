@@ -12,12 +12,11 @@ import app.agent.tools.factory as tool_factory_module
 import app.application.agent as agent_services
 from app.agent.memory import MemoryManager
 from app.agent.tools.factory import MoviePilotToolFactory
-from app.agent.tools.impl.delete_rule_group import DeleteRuleGroupTool
-from app.agent.tools.impl.query_agent_tasks import QueryAgentTasksTool
-from app.agent.tools.impl.update_custom_filter_rule import UpdateCustomFilterRuleTool
+from app.agent.tools.impl.agent_task import AgentTaskTool
 from app.agent.tools.manager import MoviePilotToolsManager
 from app.application.agent import AgentDataContext
 from app.application.agenttask import AgentTaskRepository, AgentTaskSnapshot
+from app.application.filtering import FilterRuleService
 from app.db.adapters.agent import TransactionalAgentTaskRepository
 from app.db.session import SessionFactory
 from app.scheduler import Scheduler
@@ -51,7 +50,7 @@ def test_agent_tool_receives_exact_data_context() -> None:
     """内置工具只能消费构造时注入的同一上下文，不再查询全局注册表。"""
     repository = TransactionalAgentTaskRepository(SessionFactory)
     context = _context(repository)
-    tool = QueryAgentTasksTool(session_id="session", user_id="user", data=context)
+    tool = AgentTaskTool(session_id="session", user_id="user", data=context)
 
     assert tool.data is context
     assert tool.data.tasks is repository
@@ -61,9 +60,7 @@ def test_agent_tool_receives_exact_data_context() -> None:
 async def test_delete_rule_group_uses_injected_atomic_mutation_scope(monkeypatch) -> None:
     """Agent 删除规则组必须一次提交定义和全部引用并在释放作用域后广播。"""
     mutation = MagicMock()
-    mutation.apply = AsyncMock(
-        return_value=SimpleNamespace(to_dict=lambda: {"subscribes": []})
-    )
+    mutation.apply = AsyncMock(return_value=SimpleNamespace(to_dict=lambda: {"subscribes": []}))
 
     @asynccontextmanager
     async def mutation_scope():
@@ -75,19 +72,15 @@ async def test_delete_rule_group_uses_injected_atomic_mutation_scope(monkeypatch
         async_rule_group_mutation_scope=mutation_scope,
     )
     monkeypatch.setattr(
-        "app.agent.tools.impl.delete_rule_group.get_rule_groups",
+        "app.application.filtering.get_rule_groups",
         lambda: [FilterRuleGroup(name="old", rule_string="4K")],
     )
     publish = AsyncMock()
-    monkeypatch.setattr(
-        "app.agent.tools.impl.delete_rule_group.publish_rule_config_changed",
-        publish,
-    )
-    tool = DeleteRuleGroupTool(session_id="session", user_id="user", data=context)
+    service = FilterRuleService(context.subscriptions, mutation_scope, publish)
 
-    result = await tool.run(name="old")
+    result = await service.delete_group("old")
 
-    assert '"success": true' in result
+    assert result["count"] == 0
     mutation.apply.assert_awaited_once_with(
         [],
         expected_rule_groups=[{"name": "old", "rule_string": "4K"}],
@@ -114,39 +107,28 @@ async def test_custom_rule_rename_commits_rule_and_group_definitions_together(
         async_rule_group_mutation_scope=mutation_scope,
     )
     monkeypatch.setattr(
-        "app.agent.tools.impl.update_custom_filter_rule.get_custom_rules",
+        "app.application.filtering.get_custom_rules",
         lambda: [CustomRule(id="OLD", name="旧规则", include="old")],
     )
     monkeypatch.setattr(
-        "app.agent.tools.impl.update_custom_filter_rule.get_rule_groups",
+        "app.application.filtering.get_rule_groups",
         lambda: [FilterRuleGroup(name="group", rule_string="OLD & 4K")],
     )
     publish = AsyncMock()
-    save = AsyncMock()
-    monkeypatch.setattr(
-        "app.agent.tools.impl.update_custom_filter_rule.publish_rule_config_changed",
-        publish,
-    )
-    monkeypatch.setattr(
-        "app.agent.tools.impl.update_custom_filter_rule.save_system_config",
-        save,
-    )
-    tool = UpdateCustomFilterRuleTool(
-        session_id="session",
-        user_id="user",
-        data=context,
+    service = FilterRuleService(context.subscriptions, mutation_scope, publish)
+
+    result = await service.update_custom(
+        current_rule_id="OLD",
+        new_rule_id="NEW",
     )
 
-    result = await tool.run(current_rule_id="OLD", new_rule_id="NEW")
-
-    assert '"success": true' in result
+    assert result["custom_rule"]["id"] == "NEW"
     mutation.apply.assert_awaited_once_with(
         [{"name": "group", "rule_string": "NEW & 4K"}],
         expected_rule_groups=[{"name": "group", "rule_string": "OLD & 4K"}],
         custom_rules=[{"id": "NEW", "name": "旧规则", "include": "old"}],
         expected_custom_rules=[{"id": "OLD", "name": "旧规则", "include": "old"}],
     )
-    save.assert_not_awaited()
     assert publish.await_count == 2
 
 
@@ -222,7 +204,7 @@ def test_tool_factory_injects_context_only_into_builtin_tools(monkeypatch) -> No
     monkeypatch.setattr(
         MoviePilotToolFactory,
         "_get_builtin_tool_classes",
-        classmethod(lambda _cls, _channel=None: [QueryAgentTasksTool]),
+        classmethod(lambda _cls, _channel=None: [AgentTaskTool]),
     )
     monkeypatch.setattr(tool_factory_module, "_get_plugin_agent_tools", lambda: [])
 
@@ -241,9 +223,7 @@ def test_tool_manager_reassembly_invalidates_factory_catalog() -> None:
     first = _context(TransactionalAgentTaskRepository(SessionFactory))
     second = _context(TransactionalAgentTaskRepository(SessionFactory))
     manager = MoviePilotToolsManager(data=first)
-    manager.tools = [
-        QueryAgentTasksTool(session_id="session", user_id="user", data=first)
-    ]
+    manager.tools = [AgentTaskTool(session_id="session", user_id="user", data=first)]
     manager._catalog_materialized = True
     manager._catalog_managed_by_factory = True
 

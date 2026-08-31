@@ -2,9 +2,9 @@ import shutil
 import tempfile
 import textwrap
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-from pathlib import Path
 
 from app.agent.runtime import AgentRuntimeManager
 
@@ -15,9 +15,7 @@ class TestAgentRuntimeConfig(unittest.TestCase):
         self.addCleanup(self._tempdir.cleanup)
         self.temp_root = Path(self._tempdir.name)
         self.agent_root = self.temp_root / "agent"
-        self.defaults_root = (
-            Path(__file__).resolve().parents[1] / "app" / "agent" / "defaults"
-        )
+        self.defaults_root = Path(__file__).resolve().parents[1] / "app" / "agent" / "defaults"
 
     def _manager(self) -> AgentRuntimeManager:
         return AgentRuntimeManager(
@@ -48,30 +46,11 @@ class TestAgentRuntimeConfig(unittest.TestCase):
             [persona.persona_id for persona in runtime_config.available_personas],
         )
         self.assertTrue((self.agent_root / "runtime" / "CURRENT_PERSONA.md").exists())
-        self.assertTrue(
-            (
-                self.agent_root
-                / "runtime"
-                / "personas"
-                / "default"
-                / "PERSONA.md"
-            ).exists()
-        )
-        self.assertTrue(
-            (
-                self.agent_root
-                / "runtime"
-                / "subagents"
-                / "general-purpose"
-                / "SUBAGENT.md"
-            ).exists()
-        )
+        self.assertTrue((self.agent_root / "runtime" / "personas" / "default" / "PERSONA.md").exists())
+        self.assertTrue((self.agent_root / "runtime" / "subagents" / "general-purpose" / "SUBAGENT.md").exists())
         self.assertIn(
             "media-researcher",
-            [
-                subagent.subagent_id
-                for subagent in runtime_config.available_subagents
-            ],
+            [subagent.subagent_id for subagent in runtime_config.available_subagents],
         )
 
     def test_legacy_root_markdown_is_migrated_to_memory_directory(self):
@@ -110,13 +89,7 @@ class TestAgentRuntimeConfig(unittest.TestCase):
         obsolete_runtime.parent.mkdir(parents=True, exist_ok=True)
         obsolete_runtime.write_text("# Obsolete Tasks\n", encoding="utf-8")
 
-        obsolete_persona = (
-            self.agent_root
-            / "runtime"
-            / "personas"
-            / "default"
-            / "AGENT_PROFILE.md"
-        )
+        obsolete_persona = self.agent_root / "runtime" / "personas" / "default" / "AGENT_PROFILE.md"
         obsolete_persona.parent.mkdir(parents=True, exist_ok=True)
         obsolete_persona.write_text("# Obsolete Persona\n", encoding="utf-8")
 
@@ -136,7 +109,7 @@ class TestAgentRuntimeConfig(unittest.TestCase):
 
         self.assertIn("<agent_persona>", sections)
         self.assertIn("Active persona: `default`", sections)
-        self.assertIn("query_personas", sections)
+        self.assertIn("`persona` with `action=list`", sections)
         self.assertNotIn("Available personas:", sections)
         self.assertNotIn("Available subagents:", sections)
         self.assertNotIn("`media-researcher`", sections)
@@ -202,9 +175,4 @@ class TestAgentRuntimeConfig(unittest.TestCase):
         manager.invalidate_cache()
         runtime_config = manager.load_runtime_config()
 
-        self.assertTrue(
-            any(
-                "professional, concise, restrained" in warning
-                for warning in runtime_config.warnings
-            )
-        )
+        self.assertTrue(any("professional, concise, restrained" in warning for warning in runtime_config.warnings))

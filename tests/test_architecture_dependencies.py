@@ -409,13 +409,8 @@ def test_application_torrent_uses_same_named_single_word_package() -> None:
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
             for node in ast.walk(tree):
-                if (
-                    isinstance(node, ast.ImportFrom)
-                    and node.module == "app.application.torrent"
-                ):
-                    root_imports.append(
-                        f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
-                    )
+                if isinstance(node, ast.ImportFrom) and node.module == "app.application.torrent":
+                    root_imports.append(f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}")
     assert root_imports == []
 
 
@@ -433,9 +428,7 @@ def test_host_module_package_roots_only_export_capability_entrypoints() -> None:
         tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "app.modules._base":
-                root_imports.append(
-                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
-                )
+                root_imports.append(f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}")
     assert root_imports == []
 
     for package_name, expected_exports in HOST_MODULE_PACKAGE_EXPORTS.items():
@@ -554,7 +547,6 @@ def test_workflow_query_consumers_do_not_reach_raw_oper():
     """API、Agent、共享服务和运行时管理器只消费统一快照查询服务。"""
     consumer_paths = (
         "app/api/dependencies/workflow.py",
-        "app/agent/tools/impl/query_workflows.py",
         "app/application/server/share.py",
         "app/workflow/__init__.py",
     )
@@ -768,8 +760,6 @@ def test_download_history_ports_are_typed_detached_and_canonically_injected():
     consumer_paths = (
         *sorted((APP_ROOT / "chain" / "download").glob("*.py")),
         *sorted((APP_ROOT / "chain" / "transfer").glob("*.py")),
-        APP_ROOT / "agent" / "tools" / "impl" / "query_download_tasks.py",
-        APP_ROOT / "agent" / "tools" / "impl" / "delete_download_history.py",
         APP_ROOT / "application" / "transfer" / "workflow.py",
     )
     for path in consumer_paths:
@@ -1269,7 +1259,6 @@ def test_user_chain_and_agent_ports_are_typed_and_orm_free():
         APP_ROOT / "chain" / "interaction.py",
         APP_ROOT / "chain" / "_messaging.py",
         APP_ROOT / "agent" / "orchestrator.py",
-        APP_ROOT / "agent" / "tools" / "impl" / "add_subscribe.py",
         APP_ROOT / "modules" / "feishu" / "feishu.py",
     ]
     violations: list[str] = []
@@ -1404,7 +1393,6 @@ def test_canonical_service_config_consumers_use_application_directory():
         *(APP_ROOT / "scheduler").glob("*.py"),
         APP_ROOT / "agent" / "llm" / "capability.py",
         APP_ROOT / "agent" / "tools" / "base.py",
-        APP_ROOT / "agent" / "tools" / "impl" / "query_library_latest.py",
         APP_ROOT / "api" / "endpoints" / "mediaserver.py",
     ]
     violations: list[str] = []
@@ -1437,9 +1425,8 @@ def test_plugin_components_do_not_reexport_legacy_abi_names():
                         violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.name}")
                 elif isinstance(node, ast.ClassDef):
                     is_canonical_manager = path == manager_path and node.name == "PluginManager"
-                    if (
-                        not is_canonical_manager
-                        and (node.name in PLUGIN_LEGACY_ABI_NAMES or node.name.endswith("Oper"))
+                    if not is_canonical_manager and (
+                        node.name in PLUGIN_LEGACY_ABI_NAMES or node.name.endswith("Oper")
                     ):
                         violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.name}")
                 elif isinstance(node, ast.ImportFrom):
@@ -2384,10 +2371,7 @@ def test_plugin_market_construction_is_owned_by_startup_composition():
         filename=str(initializer_path),
     )
     initializer_imports = {
-        alias.name
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.ImportFrom)
-        for alias in node.names
+        alias.name for node in ast.walk(initializer_tree) if isinstance(node, ast.ImportFrom) for alias in node.names
     }
     assert "compose_plugin_market" in initializer_imports
     forbidden_names = {
@@ -2399,9 +2383,7 @@ def test_plugin_market_construction_is_owned_by_startup_composition():
     }
     assert forbidden_names.isdisjoint(initializer_imports)
     assert not any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in forbidden_names
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in forbidden_names
         for node in ast.walk(initializer_tree)
     )
 
@@ -2413,9 +2395,7 @@ def test_plugin_market_construction_is_owned_by_startup_composition():
     composition_calls = [
         node.func.id
         for node in ast.walk(composition_tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in forbidden_names
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in forbidden_names
     ]
     assert composition_calls.count("PluginMarketTransport") == 1
     assert composition_calls.count("PluginPackageSourceClient") == 1
@@ -2462,16 +2442,10 @@ def test_domain_initializer_delegates_construction_to_composition():
         filename=str(initializer_path),
     )
     imported_modules = {
-        node.module
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(initializer_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
     assert imported_modules == {"app.startup.composition.domain"}
-    calls = [
-        ast.unparse(node.func)
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.Call)
-    ]
+    calls = [ast.unparse(node.func) for node in ast.walk(initializer_tree) if isinstance(node, ast.Call)]
     assert calls == ["compose_domain_dependencies"]
 
     composition_path = APP_ROOT / "startup" / "composition" / "domain.py"
@@ -2480,9 +2454,7 @@ def test_domain_initializer_delegates_construction_to_composition():
         filename=str(composition_path),
     )
     composition_imports = {
-        node.module
-        for node in ast.walk(composition_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(composition_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
     assert "app.adapters.network.resolver" in composition_imports
     assert "app.adapters.system.host" in composition_imports
@@ -2497,16 +2469,10 @@ def test_network_initializer_delegates_construction_to_composition():
         filename=str(initializer_path),
     )
     imported_modules = {
-        node.module
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(initializer_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
     assert imported_modules == {"app.startup.composition.network"}
-    calls = {
-        ast.unparse(node.func)
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.Call)
-    }
+    calls = {ast.unparse(node.func) for node in ast.walk(initializer_tree) if isinstance(node, ast.Call)}
     assert calls == {
         "configure_chain_network_composition",
         "reset_chain_network_composition",
@@ -2518,9 +2484,7 @@ def test_network_initializer_delegates_construction_to_composition():
         filename=str(composition_path),
     )
     composition_imports = {
-        node.module
-        for node in ast.walk(composition_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(composition_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
     assert "app.adapters.network.http" in composition_imports
     assert "app.adapters.system.host" in composition_imports
@@ -2535,16 +2499,10 @@ def test_site_initializer_delegates_construction_to_composition():
         filename=str(initializer_path),
     )
     imported_modules = {
-        node.module
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(initializer_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
     assert imported_modules == {"app.startup.composition.site"}
-    calls = {
-        ast.unparse(node.func)
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.Call)
-    }
+    calls = {ast.unparse(node.func) for node in ast.walk(initializer_tree) if isinstance(node, ast.Call)}
     assert calls == {
         "configure_site_access_composition",
         "reset_site_access_composition",
@@ -2556,9 +2514,7 @@ def test_site_initializer_delegates_construction_to_composition():
         filename=str(composition_path),
     )
     composition_imports = {
-        node.module
-        for node in ast.walk(composition_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(composition_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
     assert "app.adapters.external.cookiecloud" in composition_imports
     assert "app.adapters.network.browser" in composition_imports
@@ -2573,16 +2529,10 @@ def test_chain_initializer_delegates_construction_to_composition():
         filename=str(initializer_path),
     )
     imported_modules = {
-        node.module
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(initializer_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
     assert imported_modules == {"app.startup.composition.chain"}
-    calls = {
-        ast.unparse(node.func)
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.Call)
-    }
+    calls = {ast.unparse(node.func) for node in ast.walk(initializer_tree) if isinstance(node, ast.Call)}
     assert calls == {
         "configure_chain_port_composition",
         "reset_chain_port_composition",
@@ -2594,9 +2544,7 @@ def test_chain_initializer_delegates_construction_to_composition():
         filename=str(composition_path),
     )
     composition_imports = {
-        node.module
-        for node in ast.walk(composition_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(composition_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
     assert "app.adapters.external.server" in composition_imports
     assert "app.adapters.system.host" in composition_imports
@@ -2611,16 +2559,10 @@ def test_cache_initializer_delegates_construction_to_composition():
         filename=str(initializer_path),
     )
     imported_modules = {
-        node.module
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(initializer_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
     assert imported_modules == {"app.startup.composition.cache"}
-    calls = [
-        ast.unparse(node.func)
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.Call)
-    ]
+    calls = [ast.unparse(node.func) for node in ast.walk(initializer_tree) if isinstance(node, ast.Call)]
     assert calls == ["configure_cache_composition"]
 
 
@@ -2632,19 +2574,13 @@ def test_resource_initializer_delegates_construction_to_composition():
         filename=str(initializer_path),
     )
     imported_modules = {
-        node.module
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(initializer_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
     assert imported_modules == {
         "app.runtime.capabilities.runtime",
         "app.startup.composition.resource",
     }
-    constructors = {
-        ast.unparse(node.func)
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.Call)
-    }
+    constructors = {ast.unparse(node.func) for node in ast.walk(initializer_tree) if isinstance(node, ast.Call)}
     assert constructors == {
         "configure_managed_resource_composition",
         "stop_managed_resource_composition",
@@ -2660,21 +2596,16 @@ def test_modules_initializer_consumes_doh_and_workflow_composition():
         filename=str(initializer_path),
     )
     imported_modules = {
-        node.module
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
+        node.module for node in ast.walk(initializer_tree) if isinstance(node, ast.ImportFrom) and node.module
     }
     assert "app.adapters.network.doh" not in imported_modules
     assert "app.db.adapters.workflow" not in imported_modules
-    calls = {
-        ast.unparse(node.func)
-        for node in ast.walk(initializer_tree)
-        if isinstance(node, ast.Call)
-    }
+    calls = {ast.unparse(node.func) for node in ast.walk(initializer_tree) if isinstance(node, ast.Call)}
     assert "DohHelper" not in calls
     assert "TransactionalWorkflowExecutionService" not in calls
     assert "configure_doh_composition" in calls
     assert "configure_workflow_execution_composition" in calls
+
 
 def test_system_api_business_orchestration_is_owned_by_application_service():
     """System API 只保留传输映射，不得重新拥有日志、设置或更新实现。"""
@@ -2683,21 +2614,14 @@ def test_system_api_business_orchestration_is_owned_by_application_service():
         endpoint_path.read_text(encoding="utf-8-sig"),
         filename=str(endpoint_path),
     )
-    imported = {
-        node.module
-        for node in ast.walk(endpoint_tree)
-        if isinstance(node, ast.ImportFrom) and node.module
-    }
+    imported = {node.module for node in ast.walk(endpoint_tree) if isinstance(node, ast.ImportFrom) and node.module}
     direct_adapters = {
         module
         for module in imported
-        if module.startswith("app.adapters")
-        and module != "app.adapters.web.security.access"
+        if module.startswith("app.adapters") and module != "app.adapters.web.security.access"
     }
     endpoint_functions = {
-        node.name
-        for node in endpoint_tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        node.name for node in endpoint_tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     retired_helpers = {
         "_collect_named_log_files",
@@ -2722,19 +2646,17 @@ def test_system_api_business_orchestration_is_owned_by_application_service():
         filename=str(application_path),
     )
     assert not any(
-        isinstance(node, ast.ImportFrom)
-        and node.module
-        and node.module.startswith("app.adapters")
+        isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("app.adapters")
         for node in ast.walk(application_tree)
     )
 
-    composition_source = (
-        APP_ROOT / "startup" / "composition" / "system.py"
-    ).read_text(encoding="utf-8-sig")
+    composition_source = (APP_ROOT / "startup" / "composition" / "system.py").read_text(encoding="utf-8-sig")
     assert "def compose_system_service(" in composition_source
-    assert "system=compose_system_service(" in (
-        APP_ROOT / "startup" / "composition" / "runtime.py"
-    ).read_text(encoding="utf-8-sig")
+    assert "system=compose_system_service(" in (APP_ROOT / "startup" / "composition" / "runtime.py").read_text(
+        encoding="utf-8-sig"
+    )
+
+
 PROCESS_LEVEL_ROOTS = (
     "app.api",
     "app.chain",

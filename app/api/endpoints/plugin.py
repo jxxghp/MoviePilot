@@ -13,7 +13,11 @@ from app.adapters.web.security.access import (
     verify_resource_token,
     verify_token,
 )
-from app.api.context import get_background_task_registry, resolve_background_task_registry
+from app.api.context import (
+    get_background_task_registry,
+    get_host_runtime,
+    resolve_background_task_registry,
+)
 from app.api.dependencies.auth import (
     get_current_active_superuser,
     get_current_active_superuser_async,
@@ -27,12 +31,14 @@ from app.application.commands import init_commands
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
 from app.application.plugin.catalog import get_plugin_catalog_query
 from app.application.plugin.config import PluginConfigCommand
+from app.application.plugin.data import PluginDataQueryService
 from app.application.plugin.folders import (
     add_clone_to_plugin_folder,
     get_plugin_folder_service,
     remove_plugin_from_folders,
 )
 from app.application.plugin.gateway import get_plugin_install_service
+from app.application.plugin.management import get_plugin_snapshot
 from app.application.plugin.rating import (
     PluginNotInstalledError,
     get_plugin_rating_service,
@@ -72,6 +78,7 @@ from app.schemas.plugin import PluginSourceOptions as _SchemaPluginSourceOptions
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import SystemConfigKey
+from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
 _plugin_release_refresh_tasks: set[asyncio.Task] = set()
@@ -100,9 +107,7 @@ async def _refresh_plugin_release_versions(plugin_id: str, repo_url: str) -> Non
         logger.warning(f"后台刷新插件 {plugin_id} Release 列表失败：{e}")
 
 
-def _schedule_plugin_release_refresh(
-    plugin_id: str, repo_url: str, task_registry: TaskRegistry | None = None
-) -> None:
+def _schedule_plugin_release_refresh(plugin_id: str, repo_url: str, task_registry: TaskRegistry | None = None) -> None:
     """
     保留后台任务引用，避免任务被回收，同时让 helper 负责同仓库强刷合并。
     """
@@ -150,7 +155,7 @@ def _is_plugin_auth_remote_file(plugin_id: str, filepath: str) -> bool:
         expected_prefix = f"plugin/file/{normalized_plugin_id}/"
         if not remote_path_lower.startswith(expected_prefix):
             continue
-        remote_file = remote_path[len(expected_prefix):]
+        remote_file = remote_path[len(expected_prefix) :]
         remote_dir = remote_file.rsplit("/", 1)[0] if "/" in remote_file else ""
         if path == remote_file or (remote_dir and path.startswith(f"{remote_dir}/")):
             return True
@@ -209,18 +214,11 @@ async def runtime_status(
     statuses = plugin_manager.get_plugin_runtime_statuses()
     installed_plugin_ids = {
         plugin_id.lower()
-        for plugin_id in (
-            get_configured_system_config().get(
-                SystemConfigKey.UserInstalledPlugins
-            )
-            or []
-        )
+        for plugin_id in (get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins) or [])
     }
     restart_requirements = {
         plugin_id: distributions
-        for plugin_id, distributions in (
-            plugin_manager.get_plugin_restart_requirements().items()
-        )
+        for plugin_id, distributions in (plugin_manager.get_plugin_restart_requirements().items())
         if plugin_id.lower() in installed_plugin_ids
     }
     pending = {
@@ -321,10 +319,7 @@ async def plugin_ratings(
     """
     requested_ids = plugin_ids.split(",") if plugin_ids is not None else None
     ratings = await get_plugin_rating_service().ratings(requested_ids)
-    return {
-        plugin_id: _SchemaPluginRating.model_validate(rating)
-        for plugin_id, rating in ratings.items()
-    }
+    return {plugin_id: _SchemaPluginRating.model_validate(rating) for plugin_id, rating in ratings.items()}
 
 
 @router.get(
@@ -368,12 +363,8 @@ async def rate_plugin(
     return _SchemaResponse(success=True, data=rating)
 
 
-@router.get(
-    "/reload/{plugin_id}", summary="重新加载插件", response_model=_SchemaResponse[None]
-)
-def reload_plugin(
-    plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)
-) -> Any:
+@router.get("/reload/{plugin_id}", summary="重新加载插件", response_model=_SchemaResponse[None])
+def reload_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)) -> Any:
     """
     重新加载插件
     """
@@ -470,11 +461,7 @@ async def get_plugin_source_options(
         for candidate in inspection.online_candidates
     ]
     if inspection.local_candidate is not None:
-        candidates.append(
-            _SchemaPluginSourceCandidate.model_validate(
-                inspection.local_candidate.public_dict()
-            )
-        )
+        candidates.append(_SchemaPluginSourceCandidate.model_validate(inspection.local_candidate.public_dict()))
     return _SchemaResponse(
         success=True,
         data=_SchemaPluginSourceOptions(
@@ -482,11 +469,7 @@ async def get_plugin_source_options(
             inventory_complete=inspection.inventory_complete,
             selection_status=inspection.selection.status.value,
             selection_reason=inspection.selection.reason,
-            identity=(
-                _plugin_source_identity_schema(inspection.identity)
-                if inspection.identity is not None
-                else None
-            ),
+            identity=(_plugin_source_identity_schema(inspection.identity) if inspection.identity is not None else None),
             candidates=candidates,
         ),
     )
@@ -583,9 +566,7 @@ def plugin_sidebar_nav(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     summary="获取插件表单页面",
     response_model=_SchemaJsonObject,
 )
-def plugin_form(
-    plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)
-) -> dict:
+def plugin_form(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)) -> dict:
     """
     根据插件ID获取插件配置表单或Vue组件URL
     """
@@ -619,9 +600,7 @@ def plugin_form(
     summary="获取插件数据页面",
     response_model=_SchemaJsonObject,
 )
-def plugin_page(
-    plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)
-) -> dict:
+def plugin_page(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)) -> dict:
     """
     根据插件ID获取插件数据页面
     """
@@ -686,9 +665,7 @@ def plugin_dashboard(
     return plugin_dashboard_by_key(plugin_id, "", user_agent)
 
 
-@router.get(
-    "/reset/{plugin_id}", summary="重置插件配置及数据", response_model=_SchemaResponse[None]
-)
+@router.get("/reset/{plugin_id}", summary="重置插件配置及数据", response_model=_SchemaResponse[None])
 def reset_plugin(
     plugin_id: str,
     _: ApiPrincipal = Depends(get_current_active_superuser),
@@ -710,9 +687,7 @@ def reset_plugin(
         200: {
             "description": "插件静态资源",
             "content": {
-                "application/octet-stream": {
-                    "schema": {"type": "string", "format": "binary"}
-                },
+                "application/octet-stream": {"schema": {"type": "string", "format": "binary"}},
                 "application/javascript": {"schema": {"type": "string"}},
                 "text/css": {"schema": {"type": "string"}},
             },
@@ -729,17 +704,12 @@ async def plugin_static_file(
     """
     # 基础安全检查
     if ".." in filepath or ".." in plugin_id:
-        logger.warning(
-            f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}"
-        )
+        logger.warning(f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     source_plugin_id = get_plugin_manager().get_plugin_source_id(plugin_id)
     plugin_base_dir = (
-        AsyncPath(get_api_runtime_config_snapshot().root_path)
-        / "app"
-        / "plugins"
-        / source_plugin_id.lower()
+        AsyncPath(get_api_runtime_config_snapshot().root_path) / "app" / "plugins" / source_plugin_id.lower()
     )
     plugin_file_path = plugin_base_dir / filepath.lstrip("/")
 
@@ -747,24 +717,16 @@ async def plugin_static_file(
         resolved_base = await plugin_base_dir.resolve()
         resolved_file = await plugin_file_path.resolve()
     except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
 
     if not resolved_file.is_relative_to(resolved_base):
-        logger.warning(
-            f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}"
-        )
+        logger.warning(f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     if not await plugin_file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"{plugin_file_path} 不存在"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{plugin_file_path} 不存在")
     if not await plugin_file_path.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=f"{plugin_file_path} 不是文件"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{plugin_file_path} 不是文件")
 
     # 判断 MIME 类型
     response_type, _ = mimetypes.guess_type(str(plugin_file_path))
@@ -788,9 +750,7 @@ async def plugin_static_file(
         return StreamingResponse(
             file_generator(),
             media_type=response_type,
-            headers={
-                "Content-Disposition": f"inline; filename={plugin_file_path.name}"
-            },
+            headers={"Content-Disposition": f"inline; filename={plugin_file_path.name}"},
         )
     except Exception as e:
         logger.error(
@@ -815,9 +775,7 @@ async def get_plugin_folders(
 
 
 @router.post("/folders", summary="保存插件文件夹配置", response_model=_SchemaResponse[None])
-async def save_plugin_folders(
-    folders: dict, _: ApiPrincipal = Depends(get_current_active_superuser_async)
-) -> Any:
+async def save_plugin_folders(folders: dict, _: ApiPrincipal = Depends(get_current_active_superuser_async)) -> Any:
     """
     保存插件文件夹分组配置
     """
@@ -825,12 +783,8 @@ async def save_plugin_folders(
     return _SchemaResponse(success=result.success, message=result.message)
 
 
-@router.post(
-    "/folders/{folder_name}", summary="创建插件文件夹", response_model=_SchemaResponse[None]
-)
-async def create_plugin_folder(
-    folder_name: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)
-) -> Any:
+@router.post("/folders/{folder_name}", summary="创建插件文件夹", response_model=_SchemaResponse[None])
+async def create_plugin_folder(folder_name: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)) -> Any:
     """
     创建新的插件文件夹
     """
@@ -838,12 +792,8 @@ async def create_plugin_folder(
     return _SchemaResponse(success=result.success, message=result.message)
 
 
-@router.delete(
-    "/folders/{folder_name}", summary="删除插件文件夹", response_model=_SchemaResponse[None]
-)
-async def delete_plugin_folder(
-    folder_name: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)
-) -> Any:
+@router.delete("/folders/{folder_name}", summary="删除插件文件夹", response_model=_SchemaResponse[None])
+async def delete_plugin_folder(folder_name: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)) -> Any:
     """
     删除插件文件夹
     """
@@ -868,9 +818,7 @@ async def update_folder_plugins(
     return _SchemaResponse(success=result.success, message=result.message)
 
 
-@router.post(
-    "/clone/{plugin_id}", summary="创建插件分身", response_model=_SchemaResponse[None]
-)
+@router.post("/clone/{plugin_id}", summary="创建插件分身", response_model=_SchemaResponse[None])
 def clone_plugin(
     plugin_id: str,
     clone_data: _SchemaPluginCloneRequest,
@@ -904,13 +852,85 @@ def clone_plugin(
 
 
 @router.get(
+    "/runtime/capabilities",
+    summary="查询插件运行能力",
+    response_model=_SchemaResponse[_SchemaJsonObject],
+)
+async def plugin_capabilities(
+    plugin_id: Optional[str] = None,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> _SchemaResponse:
+    """查询运行中插件注册的命令、动作和定时服务。"""
+    manager = get_plugin_manager()
+    data: dict[str, Any] = {}
+    commands = manager.get_plugin_commands(pid=plugin_id) or []
+    if commands:
+        data["commands"] = [
+            {
+                "cmd": command.get("cmd"),
+                "desc": command.get("desc"),
+                "plugin_id": command.get("pid"),
+                **({"data": command.get("data")} if command.get("data") else {}),
+            }
+            for command in commands
+        ]
+    actions = manager.get_plugin_actions(pid=plugin_id) or []
+    if actions:
+        data["actions"] = [
+            {
+                "plugin_id": group.get("plugin_id"),
+                "plugin_name": group.get("plugin_name"),
+                "actions": [{"id": item.get("id"), "name": item.get("name")} for item in group.get("actions", [])],
+            }
+            for group in actions
+        ]
+    services = manager.get_plugin_services(pid=plugin_id) or []
+    if services:
+        data["services"] = [
+            {
+                "id": service.get("id"),
+                "name": service.get("name"),
+                **({"trigger": str(service.get("trigger"))} if service.get("trigger") else {}),
+                **(
+                    {"trigger_kwargs": {key: str(value) for key, value in service.get("kwargs", {}).items()}}
+                    if service.get("kwargs")
+                    else {}
+                ),
+            }
+            for service in services
+        ]
+    return _SchemaResponse(success=True, data=data)
+
+
+@router.get(
+    "/runtime/{plugin_id}/data",
+    summary="查询插件持久化数据",
+    response_model=_SchemaResponse[_SchemaJsonObject],
+)
+async def plugin_data(
+    plugin_id: str,
+    key: Optional[str] = None,
+    max_chars: Optional[int] = None,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> _SchemaResponse:
+    """读取插件单键或全部持久化数据，并对大结果进行裁剪。"""
+    try:
+        data = await PluginDataQueryService(
+            runtime.agent.plugin_data,
+            get_plugin_snapshot,
+        ).query(plugin_id, key=key, max_chars=max_chars)
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(success=True, data=data)
+
+
+@router.get(
     "/{plugin_id}",
     summary="获取插件配置",
     response_model=_SchemaJsonObject,
 )
-async def plugin_config(
-    plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)
-) -> dict:
+async def plugin_config(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)) -> dict:
     """
     根据插件ID获取插件配置信息
     """
@@ -932,9 +952,7 @@ def set_plugin_config(
 
 
 @router.delete("/{plugin_id}", summary="卸载插件", response_model=_SchemaResponse[None])
-def uninstall_plugin(
-    plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)
-) -> Any:
+def uninstall_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)) -> Any:
     """
     卸载插件
     """

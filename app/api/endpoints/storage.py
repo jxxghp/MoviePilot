@@ -14,6 +14,7 @@ from app.api.dependencies.auth import (
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.configuration import get_api_runtime_config_snapshot
+from app.application.directory import DirectoryHelper
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer.facade import TransferChain
@@ -21,18 +22,74 @@ from app.foundation import text as text_tools
 from app.runtime.progress import ProgressHelper
 from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
 from app.schemas.types import ProgressKey
 from app.schemas.workflow import FileItem as _SchemaFileItem
 
 router = ResponseAPIRouter()
 
 
-@router.post(
-    "/manage", summary="网盘存储统一管理", response_model=_SchemaResponse[Dict[str, Any]]
+@router.get(
+    "/directories",
+    summary="查询目录配置",
+    response_model=_SchemaResponse[list[_SchemaTransferDirectoryConf]],
 )
-def manage(
-    request: _SchemaManageRequest, _: ApiPrincipal = Depends(get_current_active_superuser)
-) -> Any:
+def directory_settings(
+    directory_type: str = "all",
+    storage_type: str = "all",
+    name: Optional[str] = None,
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+) -> _SchemaResponse:
+    """按用途、存储类型和名称筛选目录配置。"""
+    helper = DirectoryHelper()
+    if directory_type == "download":
+        directories = helper.get_download_dirs()
+    elif directory_type == "library":
+        directories = helper.get_library_dirs()
+    elif directory_type == "all":
+        directories = helper.get_dirs()
+    else:
+        return _SchemaResponse(success=False, message="directory_type 无效")
+    results = []
+    for directory in directories:
+        if storage_type == "local":
+            if directory_type == "download" and directory.storage != "local":
+                continue
+            if directory_type == "library" and directory.library_storage != "local":
+                continue
+        elif storage_type == "remote":
+            if directory_type == "download" and directory.storage == "local":
+                continue
+            if directory_type == "library" and directory.library_storage == "local":
+                continue
+        elif storage_type != "all":
+            return _SchemaResponse(success=False, message="storage_type 无效")
+        if name and name.lower() not in (directory.name or "").lower():
+            continue
+        results.append(
+            {
+                "name": directory.name,
+                "priority": directory.priority,
+                "storage": directory.storage,
+                "download_path": directory.download_path,
+                "library_path": directory.library_path,
+                "library_storage": directory.library_storage,
+                "media_type": directory.media_type,
+                "media_category": directory.media_category,
+                "monitor_type": directory.monitor_type,
+                "monitor_mode": directory.monitor_mode,
+                "transfer_type": directory.transfer_type,
+                "overwrite_mode": directory.overwrite_mode,
+                "renaming": directory.renaming,
+                "scraping": directory.scraping,
+                "notify": directory.notify,
+            }
+        )
+    return _SchemaResponse(success=True, data=results)
+
+
+@router.post("/manage", summary="网盘存储统一管理", response_model=_SchemaResponse[Dict[str, Any]])
+def manage(request: _SchemaManageRequest, _: ApiPrincipal = Depends(get_current_active_superuser)) -> Any:
     """
     网盘存储统一管理入口
 
@@ -99,9 +156,7 @@ def mkdir(
 
 
 @router.post("/delete", summary="删除文件或目录", response_model=_SchemaResponse[None])
-def delete(
-    fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)
-) -> Any:
+def delete(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)) -> Any:
     """
     删除文件或目录
     :param fileitem: 文件项
@@ -121,18 +176,12 @@ def delete(
     responses={
         200: {
             "description": "文件内容",
-            "content": {
-                "application/octet-stream": {
-                    "schema": {"type": "string", "format": "binary"}
-                }
-            },
+            "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
         },
         404: {"model": _SchemaResponse[None], "description": "文件下载失败"},
     },
 )
-def download(
-    fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)
-) -> Any:
+def download(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)) -> Any:
     """
     下载文件或目录
     :param fileitem: 文件项
@@ -153,15 +202,11 @@ def download(
     responses={
         200: {
             "description": "图片内容",
-            "content": {
-                "image/jpeg": {"schema": {"type": "string", "format": "binary"}}
-            },
+            "content": {"image/jpeg": {"schema": {"type": "string", "format": "binary"}}},
         }
     },
 )
-def image(
-    fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)
-) -> Any:
+def image(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)) -> Any:
     """
     下载文件或目录
     :param fileitem: 文件项
@@ -196,9 +241,7 @@ def rename(
         transferchain = TransferChain()
         runtime_config = get_api_runtime_config_snapshot()
         media_exts = (
-            runtime_config.media_extensions
-            + runtime_config.subtitle_extensions
-            + runtime_config.audio_extensions
+            runtime_config.media_extensions + runtime_config.subtitle_extensions + runtime_config.audio_extensions
         )
         # 递归修改目录内文件（智能识别命名）
         sub_files: List[_SchemaFileItem] = StorageChain().list_files(fileitem)
@@ -210,9 +253,7 @@ def rename(
             handled = 0
             for sub_file in sub_files:
                 handled += 1
-                progress.update(
-                    value=handled / total * 100, text=f"正在处理 {sub_file.name} ..."
-                )
+                progress.update(value=handled / total * 100, text=f"正在处理 {sub_file.name} ...")
                 if sub_file.type == "dir":
                     continue
                 if not sub_file.extension:
@@ -226,25 +267,15 @@ def rename(
                 )
                 if not context or not context.media_info:
                     progress.end()
-                    return _SchemaResponse(
-                        success=False, message=f"{sub_path.name} 未识别到媒体信息"
-                    )
-                new_path = transferchain.recommend_name(
-                    meta=context.meta_info, mediainfo=context.media_info
-                )
+                    return _SchemaResponse(success=False, message=f"{sub_path.name} 未识别到媒体信息")
+                new_path = transferchain.recommend_name(meta=context.meta_info, mediainfo=context.media_info)
                 if not new_path:
                     progress.end()
-                    return _SchemaResponse(
-                        success=False, message=f"{sub_path.name} 未识别到新名称"
-                    )
-                ret: _SchemaResponse = rename(
-                    fileitem=sub_file, new_name=Path(new_path).name, recursive=False
-                )
+                    return _SchemaResponse(success=False, message=f"{sub_path.name} 未识别到新名称")
+                ret: _SchemaResponse = rename(fileitem=sub_file, new_name=Path(new_path).name, recursive=False)
                 if not ret.success:
                     progress.end()
-                    return _SchemaResponse(
-                        success=False, message=f"{sub_path.name} 重命名失败！"
-                    )
+                    return _SchemaResponse(success=False, message=f"{sub_path.name} 重命名失败！")
             progress.end()
     # 重命名自己
     result = StorageChain().rename_file(fileitem, new_name)

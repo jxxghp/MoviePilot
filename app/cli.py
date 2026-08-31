@@ -24,12 +24,12 @@ from app.runtime.state import SystemHelper
 from app.runtime.version import get_app_version, get_frontend_version
 from app.startup.composition.database import build_database_governance
 
-BACKEND_RUNTIME_FILE = get_runtime_setting('TEMP_PATH') / "moviepilot.runtime.json"
-BACKEND_STDIO_LOG_FILE = get_runtime_setting('LOG_PATH') / "moviepilot.stdout.log"
-BACKEND_APP_LOG_FILE = get_runtime_setting('LOG_PATH') / "moviepilot.log"
-FRONTEND_RUNTIME_FILE = get_runtime_setting('TEMP_PATH') / "moviepilot.frontend.runtime.json"
-FRONTEND_STDIO_LOG_FILE = get_runtime_setting('LOG_PATH') / "moviepilot.frontend.stdout.log"
-FRONTEND_DIR = get_runtime_setting('ROOT_PATH') / "public"
+BACKEND_RUNTIME_FILE = get_runtime_setting("TEMP_PATH") / "moviepilot.runtime.json"
+BACKEND_STDIO_LOG_FILE = get_runtime_setting("LOG_PATH") / "moviepilot.stdout.log"
+BACKEND_APP_LOG_FILE = get_runtime_setting("LOG_PATH") / "moviepilot.log"
+FRONTEND_RUNTIME_FILE = get_runtime_setting("TEMP_PATH") / "moviepilot.frontend.runtime.json"
+FRONTEND_STDIO_LOG_FILE = get_runtime_setting("LOG_PATH") / "moviepilot.frontend.stdout.log"
+FRONTEND_DIR = get_runtime_setting("ROOT_PATH") / "public"
 FRONTEND_SERVICE_FILE = FRONTEND_DIR / "service.js"
 FRONTEND_VERSION_FILE = FRONTEND_DIR / "version.txt"
 HEALTH_PATH = "/api/v1/system/global"
@@ -46,13 +46,13 @@ MASKED_FIELDS = {
 }
 MASKED_SUFFIXES = ("_TOKEN", "_PASSWORD", "_SECRET", "_API_KEY")
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
-PREPARED_UPDATE_ROOT = get_runtime_setting('TEMP_PATH') / "moviepilot-update"
+PREPARED_UPDATE_ROOT = get_runtime_setting("TEMP_PATH") / "moviepilot-update"
 PREPARED_UPDATE_MANIFEST = PREPARED_UPDATE_ROOT / "install.json"
 PREPARED_UPDATE_STATE = PREPARED_UPDATE_ROOT / "state.json"
 
 
 def _repo_root() -> Path:
-    return get_runtime_setting('ROOT_PATH')
+    return get_runtime_setting("ROOT_PATH")
 
 
 def _read_json_file(path: Path) -> Optional[Dict[str, Any]]:
@@ -60,7 +60,7 @@ def _read_json_file(path: Path) -> Optional[Dict[str, Any]]:
         return None
     try:
         return json.loads(path.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return None
 
 
@@ -83,7 +83,7 @@ def _get_process(runtime: Optional[Dict[str, Any]] = None) -> Optional[psutil.Pr
 
     try:
         process = psutil.Process(int(pid))
-    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+    except psutil.NoSuchProcess, psutil.AccessDenied, ValueError:
         return None
 
     try:
@@ -91,7 +91,7 @@ def _get_process(runtime: Optional[Dict[str, Any]] = None) -> Optional[psutil.Pr
             return None
         if not process.is_running() or process.status() == psutil.STATUS_ZOMBIE:
             return None
-    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+    except psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess:
         return None
 
     return process
@@ -114,21 +114,21 @@ def _frontend_runtime() -> Optional[Dict[str, Any]]:
 
 def _backend_base_url(runtime: Optional[Dict[str, Any]] = None) -> str:
     runtime = runtime or _backend_runtime() or {}
-    host = runtime.get("host") or get_runtime_setting('HOST')
-    port = runtime.get("port") or get_runtime_setting('PORT')
+    host = runtime.get("host") or get_runtime_setting("HOST")
+    port = runtime.get("port") or get_runtime_setting("PORT")
     return f"http://{_client_host(host)}:{port}"
 
 
 def _frontend_base_url(runtime: Optional[Dict[str, Any]] = None) -> str:
     runtime = runtime or _frontend_runtime() or {}
-    host = runtime.get("host") or get_runtime_setting('HOST')
-    port = runtime.get("port") or get_runtime_setting('NGINX_PORT')
+    host = runtime.get("host") or get_runtime_setting("HOST")
+    port = runtime.get("port") or get_runtime_setting("NGINX_PORT")
     return f"http://{_client_host(host)}:{port}"
 
 
 def _runtime_api_token(runtime: Optional[Dict[str, Any]] = None) -> str:
     runtime = runtime or _backend_runtime() or {}
-    return runtime.get("api_token") or get_runtime_setting('API_TOKEN')
+    return runtime.get("api_token") or get_runtime_setting("API_TOKEN")
 
 
 def _http_request(
@@ -178,7 +178,9 @@ def _http_request(
         raise click.ClickException(f"无法连接到本地服务：{exc.reason}") from exc
 
 
-def _backend_health(runtime: Optional[Dict[str, Any]] = None, timeout: float = 2.0) -> tuple[bool, Optional[Dict[str, Any]]]:
+def _backend_health(
+    runtime: Optional[Dict[str, Any]] = None, timeout: float = 2.0
+) -> tuple[bool, Optional[Dict[str, Any]]]:
     try:
         response = _http_request(
             "GET",
@@ -198,7 +200,9 @@ def _backend_health(runtime: Optional[Dict[str, Any]] = None, timeout: float = 2
     return True, payload
 
 
-def _frontend_health(runtime: Optional[Dict[str, Any]] = None, timeout: float = 2.0) -> tuple[bool, Optional[Dict[str, Any]]]:
+def _frontend_health(
+    runtime: Optional[Dict[str, Any]] = None, timeout: float = 2.0
+) -> tuple[bool, Optional[Dict[str, Any]]]:
     runtime = runtime or _frontend_runtime() or {}
     url = f"{_frontend_base_url(runtime)}{FRONTEND_HEALTH_PATH}"
     request = Request(url=url, headers={"Accept": "text/plain"}, method="GET")
@@ -206,7 +210,7 @@ def _frontend_health(runtime: Optional[Dict[str, Any]] = None, timeout: float = 
         with urlopen(request, timeout=timeout) as response:
             raw = response.read().decode("utf-8", errors="replace").strip()
             return response.status == 200, {"version": raw}
-    except (HTTPError, URLError):
+    except HTTPError, URLError:
         return False, None
 
 
@@ -229,7 +233,7 @@ def _git_current_branch() -> Optional[str]:
             cwd=str(_repo_root()),
             text=True,
         ).strip()
-    except (OSError, subprocess.CalledProcessError):
+    except OSError, subprocess.CalledProcessError:
         return None
     return branch or None
 
@@ -237,7 +241,7 @@ def _git_current_branch() -> Optional[str]:
 def _auto_update_mode() -> str:
     if SystemHelper.consume_one_shot_dev_update():
         return "dev"
-    return str(get_runtime_setting('MOVIEPILOT_AUTO_UPDATE') or "").strip().lower()
+    return str(get_runtime_setting("MOVIEPILOT_AUTO_UPDATE") or "").strip().lower()
 
 
 def _file_sha256(path: Path) -> str:
@@ -266,18 +270,18 @@ def _local_update_env() -> dict[str, str]:
     """构造本地更新子进程使用的包缓存、代理和认证环境。"""
     update_env = os.environ.copy()
     package_cache_root = Path(
-        update_env.get("PACKAGE_CACHE_ROOT", "").strip() or get_runtime_setting('PACKAGE_CACHE_PATH')
+        update_env.get("PACKAGE_CACHE_ROOT", "").strip() or get_runtime_setting("PACKAGE_CACHE_PATH")
     )
     update_env.setdefault("PACKAGE_CACHE_ROOT", str(package_cache_root))
     update_env.setdefault("UV_CACHE_DIR", str(package_cache_root / "uv"))
-    if get_runtime_setting('PIP_PROXY'):
-        update_env["PIP_PROXY"] = get_runtime_setting('PIP_PROXY')
-    if get_runtime_setting('PROXY_HOST'):
-        update_env["PROXY_HOST"] = get_runtime_setting('PROXY_HOST')
+    if get_runtime_setting("PIP_PROXY"):
+        update_env["PIP_PROXY"] = get_runtime_setting("PIP_PROXY")
+    if get_runtime_setting("PROXY_HOST"):
+        update_env["PROXY_HOST"] = get_runtime_setting("PROXY_HOST")
         for key in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
-            update_env[key] = get_runtime_setting('PROXY_HOST')
-    if get_runtime_setting('GITHUB_TOKEN'):
-        update_env.setdefault("GITHUB_TOKEN", get_runtime_setting('GITHUB_TOKEN'))
+            update_env[key] = get_runtime_setting("PROXY_HOST")
+    if get_runtime_setting("GITHUB_TOKEN"):
+        update_env.setdefault("GITHUB_TOKEN", get_runtime_setting("GITHUB_TOKEN"))
     return update_env
 
 
@@ -294,15 +298,9 @@ def _apply_prepared_release_update() -> bool:
         frontend_archive = Path(str(manifest.get("frontend_archive") or ""))
         if not version or not frontend_version:
             raise RuntimeError("更新包清单缺少版本信息")
-        if (
-            not backend_archive.is_file()
-            or _file_sha256(backend_archive) != manifest.get("backend_sha256")
-        ):
+        if not backend_archive.is_file() or _file_sha256(backend_archive) != manifest.get("backend_sha256"):
             raise RuntimeError("后端更新包校验失败")
-        if (
-            not frontend_archive.is_file()
-            or _file_sha256(frontend_archive) != manifest.get("frontend_sha256")
-        ):
+        if not frontend_archive.is_file() or _file_sha256(frontend_archive) != manifest.get("frontend_sha256"):
             raise RuntimeError("前端更新包校验失败")
 
         update_command = [
@@ -321,7 +319,7 @@ def _apply_prepared_release_update() -> bool:
             "--venv",
             str(_repo_root() / "venv"),
             "--config-dir",
-            str(get_runtime_setting('CONFIG_PATH')),
+            str(get_runtime_setting("CONFIG_PATH")),
         ]
         click.echo(f"安装已下载并校验的 MoviePilot {version} 更新包")
         result = subprocess.run(
@@ -390,7 +388,7 @@ def _best_effort_auto_update() -> None:
         "--venv",
         str(_repo_root() / "venv"),
         "--config-dir",
-        str(get_runtime_setting('CONFIG_PATH')),
+        str(get_runtime_setting("CONFIG_PATH")),
     ]
 
     click.echo(f"检测到 MOVIEPILOT_AUTO_UPDATE={mode}，启动前执行本地自动更新")
@@ -425,7 +423,9 @@ def _ensure_frontend_not_running_alone(timeout: int) -> None:
         _stop_frontend_service(timeout=timeout, force=True)
 
 
-def _managed_backend_status() -> tuple[str, Optional[Dict[str, Any]], Optional[psutil.Process], Optional[Dict[str, Any]]]:
+def _managed_backend_status() -> tuple[
+    str, Optional[Dict[str, Any]], Optional[psutil.Process], Optional[Dict[str, Any]]
+]:
     runtime = _backend_runtime()
     process = _get_process(runtime)
     if process:
@@ -443,7 +443,9 @@ def _managed_backend_status() -> tuple[str, Optional[Dict[str, Any]], Optional[p
     return "stopped", None, None, None
 
 
-def _managed_frontend_status() -> tuple[str, Optional[Dict[str, Any]], Optional[psutil.Process], Optional[Dict[str, Any]]]:
+def _managed_frontend_status() -> tuple[
+    str, Optional[Dict[str, Any]], Optional[psutil.Process], Optional[Dict[str, Any]]
+]:
     runtime = _frontend_runtime()
     process = _get_process(runtime)
     if process:
@@ -632,8 +634,22 @@ def _format_tool_detail(tool: Dict[str, Any]) -> None:
             click.echo(f"  {field_name.ljust(name_width)}  {field_type.ljust(type_width)}  {field_desc}")
 
 
-def _parse_key_value_pairs(items: Iterable[str]) -> Dict[str, str]:
-    payload: Dict[str, str] = {}
+def _parse_tool_argument_value(value: str) -> Any:
+    """解析工具参数中的结构化 JSON，同时保留普通字符串语义。"""
+    stripped = value.strip()
+    if (stripped.startswith("{") and stripped.endswith("}")) or (stripped.startswith("[") and stripped.endswith("]")):
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError as error:
+            raise click.ClickException(f"工具参数 JSON 格式错误：{error.msg}") from error
+    if stripped in {"true", "false", "null"}:
+        return json.loads(stripped)
+    return value
+
+
+def _parse_key_value_pairs(items: Iterable[str]) -> Dict[str, Any]:
+    """解析 tool run 的 key=value 参数，并支持对象、数组和布尔 JSON。"""
+    payload: Dict[str, Any] = {}
     for item in items:
         if "=" not in item:
             raise click.ClickException(f"参数必须是 key=value 形式：{item}")
@@ -641,17 +657,24 @@ def _parse_key_value_pairs(items: Iterable[str]) -> Dict[str, str]:
         key = key.strip()
         if not key:
             raise click.ClickException(f"参数名不能为空：{item}")
-        payload[key] = value
+        payload[key] = _parse_tool_argument_value(value)
     return payload
 
 
+def _unwrap_api_data(result: Any) -> Any:
+    """从结构化 MoviePilot API 响应中提取 data。"""
+    if not isinstance(result, dict) or "success" not in result:
+        return result
+    if not result.get("success"):
+        raise click.ClickException(result.get("message") or "MoviePilot API 调用失败")
+    return result.get("data")
+
+
 def _ensure_local_api_token() -> bool:
-    if get_runtime_setting('API_TOKEN') and len(str(get_runtime_setting('API_TOKEN')).strip()) >= 16:
+    if get_runtime_setting("API_TOKEN") and len(str(get_runtime_setting("API_TOKEN")).strip()) >= 16:
         return False
 
-    result, message = get_runtime_settings().update(
-        "API_TOKEN", get_runtime_setting('API_TOKEN') or ""
-    )
+    result, message = get_runtime_settings().update("API_TOKEN", get_runtime_setting("API_TOKEN") or "")
     if result is False:
         raise click.ClickException(message or "初始化 API_TOKEN 失败")
     return result is True
@@ -691,12 +714,8 @@ def _spawn_backend_process(*, safe: bool = False) -> subprocess.Popen:
         "PYTHONUNBUFFERED": "1",
         "MOVIEPILOT_DISABLE_CONSOLE_LOG": "1",
         "MOVIEPILOT_STDIO_LOG_FILE": str(BACKEND_STDIO_LOG_FILE),
-        "MOVIEPILOT_STDIO_LOG_MAX_BYTES": str(
-            max(int(get_runtime_setting('LOG_MAX_FILE_SIZE') or 0), 1) * 1024 * 1024
-        ),
-        "MOVIEPILOT_STDIO_LOG_BACKUP_COUNT": str(
-            max(int(get_runtime_setting('LOG_BACKUP_COUNT') or 0), 0)
-        ),
+        "MOVIEPILOT_STDIO_LOG_MAX_BYTES": str(max(int(get_runtime_setting("LOG_MAX_FILE_SIZE") or 0), 1) * 1024 * 1024),
+        "MOVIEPILOT_STDIO_LOG_BACKUP_COUNT": str(max(int(get_runtime_setting("LOG_BACKUP_COUNT") or 0), 0)),
     }
     if safe:
         backend_env["MOVIEPILOT_SAFE_MODE"] = "true"
@@ -742,7 +761,7 @@ def _spawn_frontend_process(backend_port: int) -> subprocess.Popen:
         env={
             **os.environ,
             "PORT": str(backend_port),
-            "NGINX_PORT": str(get_runtime_setting('NGINX_PORT')),
+            "NGINX_PORT": str(get_runtime_setting("NGINX_PORT")),
         },
     )
 
@@ -762,7 +781,9 @@ def _wait_until_backend_ready(runtime: Dict[str, Any], timeout: int) -> Dict[str
             return payload or {}
         time.sleep(1)
 
-    raise click.ClickException(f"后端进程已启动，但在 {timeout} 秒内未通过健康检查，请执行 `moviepilot logs --stdio` 查看启动日志")
+    raise click.ClickException(
+        f"后端进程已启动，但在 {timeout} 秒内未通过健康检查，请执行 `moviepilot logs --stdio` 查看启动日志"
+    )
 
 
 def _wait_until_frontend_ready(runtime: Dict[str, Any], timeout: int) -> Dict[str, Any]:
@@ -780,7 +801,9 @@ def _wait_until_frontend_ready(runtime: Dict[str, Any], timeout: int) -> Dict[st
             return payload or {}
         time.sleep(1)
 
-    raise click.ClickException(f"前端进程已启动，但在 {timeout} 秒内未通过健康检查，请执行 `moviepilot logs --frontend` 查看前端日志")
+    raise click.ClickException(
+        f"前端进程已启动，但在 {timeout} 秒内未通过健康检查，请执行 `moviepilot logs --frontend` 查看前端日志"
+    )
 
 
 def _start_backend_service(timeout: int, safe: bool = False) -> Dict[str, Any]:
@@ -788,7 +811,9 @@ def _start_backend_service(timeout: int, safe: bool = False) -> Dict[str, Any]:
     if state in {"running", "starting"} and runtime and process:
         return {"status": state, "runtime": runtime, "process": process, "health": health_payload, "started": False}
     if state == "running-unmanaged":
-        raise click.ClickException("检测到本地端口上已有 MoviePilot 后端正在运行，但不是由当前 CLI 管理，请先手动停止它")
+        raise click.ClickException(
+            "检测到本地端口上已有 MoviePilot 后端正在运行，但不是由当前 CLI 管理，请先手动停止它"
+        )
 
     _ensure_local_api_token()
     _clear_json_file(BACKEND_RUNTIME_FILE)
@@ -797,9 +822,9 @@ def _start_backend_service(timeout: int, safe: bool = False) -> Dict[str, Any]:
     runtime = {
         "pid": process.pid,
         "create_time": ps_process.create_time(),
-        "host": get_runtime_setting('HOST'),
-        "port": get_runtime_setting('PORT'),
-        "api_token": get_runtime_setting('API_TOKEN'),
+        "host": get_runtime_setting("HOST"),
+        "port": get_runtime_setting("PORT"),
+        "api_token": get_runtime_setting("API_TOKEN"),
         "started_at": int(time.time()),
         "python": sys.executable,
         "stdio_log": str(BACKEND_STDIO_LOG_FILE),
@@ -815,7 +840,9 @@ def _start_frontend_service(timeout: int, backend_port: int) -> Dict[str, Any]:
     if state in {"running", "starting"} and runtime and process:
         return {"status": state, "runtime": runtime, "process": process, "health": health_payload, "started": False}
     if state == "running-unmanaged":
-        raise click.ClickException("检测到本地端口上已有 MoviePilot 前端正在运行，但不是由当前 CLI 管理，请先手动停止它")
+        raise click.ClickException(
+            "检测到本地端口上已有 MoviePilot 前端正在运行，但不是由当前 CLI 管理，请先手动停止它"
+        )
 
     _clear_json_file(FRONTEND_RUNTIME_FILE)
     process = _spawn_frontend_process(backend_port=backend_port)
@@ -823,8 +850,8 @@ def _start_frontend_service(timeout: int, backend_port: int) -> Dict[str, Any]:
     runtime = {
         "pid": process.pid,
         "create_time": ps_process.create_time(),
-        "host": get_runtime_setting('HOST'),
-        "port": get_runtime_setting('NGINX_PORT'),
+        "host": get_runtime_setting("HOST"),
+        "port": get_runtime_setting("NGINX_PORT"),
         "backend_port": backend_port,
         "started_at": int(time.time()),
         "node": str(_frontend_node_binary()),
@@ -848,7 +875,9 @@ def _terminate_process(runtime_file: Path, timeout: int, force: bool, component_
         process.wait(timeout=timeout)
     except psutil.TimeoutExpired:
         if not force:
-            raise click.ClickException(f"{component_name} 在 {timeout} 秒内没有退出，可重新执行 `moviepilot stop --force` 强制终止")
+            raise click.ClickException(
+                f"{component_name} 在 {timeout} 秒内没有退出，可重新执行 `moviepilot stop --force` 强制终止"
+            )
         process.kill()
         process.wait(timeout=10)
 
@@ -946,9 +975,7 @@ def database_verify(name: str) -> None:
     if not result.valid:
         detail = f"：{result.detail}" if result.detail else ""
         raise click.ClickException(f"数据库备份校验未通过（{result.method}）{detail}")
-    click.echo(
-        f"数据库备份校验通过：name={name} method={result.method}"
-    )
+    click.echo(f"数据库备份校验通过：name={name} method={result.method}")
 
 
 @database.command("restore", context_settings=CONTEXT_SETTINGS)
@@ -996,9 +1023,19 @@ def start(timeout: int, safe: bool) -> None:
     backend_version = ((backend_health.get("data") or {}) if isinstance(backend_health, dict) else {}).get(
         "BACKEND_VERSION", get_app_version()
     )
-    frontend_version = ((frontend_result.get("health") or {}) if isinstance(frontend_result.get("health"), dict) else {}).get("version") or _installed_frontend_version() or "unknown"
+    frontend_version = (
+        ((frontend_result.get("health") or {}) if isinstance(frontend_result.get("health"), dict) else {}).get(
+            "version"
+        )
+        or _installed_frontend_version()
+        or "unknown"
+    )
 
-    click.echo("MoviePilot 已启动" if backend_result.get("started") or frontend_result.get("started") else "MoviePilot 已在运行")
+    click.echo(
+        "MoviePilot 已启动"
+        if backend_result.get("started") or frontend_result.get("started")
+        else "MoviePilot 已在运行"
+    )
     click.echo(f"Backend PID: {backend_result['process'].pid}")
     click.echo(f"Backend URL: {_backend_base_url(backend_runtime)}")
     click.echo(f"Frontend PID: {frontend_result['process'].pid}")
@@ -1036,7 +1073,9 @@ def restart(start_timeout: int, stop_timeout: int, force: bool) -> None:
     _stop_backend_service(timeout=stop_timeout, force=force)
     _best_effort_auto_update()
     backend_result = _start_backend_service(timeout=start_timeout)
-    frontend_result = _start_frontend_service(timeout=start_timeout, backend_port=int(backend_result["runtime"]["port"]))
+    frontend_result = _start_frontend_service(
+        timeout=start_timeout, backend_port=int(backend_result["runtime"]["port"])
+    )
     click.echo("MoviePilot 已重启")
     click.echo(f"Backend URL: {_backend_base_url(backend_result['runtime'])}")
     click.echo(f"Frontend URL: {_frontend_base_url(frontend_result['runtime'])}")
@@ -1079,12 +1118,20 @@ def status() -> None:
         if installed_frontend:
             click.echo(f"  Installed Version: {installed_frontend}")
     elif frontend_state == "running-unmanaged":
-        frontend_version = ((frontend_health or {}).get("version") if isinstance(frontend_health, dict) else None) or _installed_frontend_version() or "unknown"
+        frontend_version = (
+            ((frontend_health or {}).get("version") if isinstance(frontend_health, dict) else None)
+            or _installed_frontend_version()
+            or "unknown"
+        )
         click.echo("  running (unmanaged)")
         click.echo(f"  URL: {_frontend_base_url()}")
         click.echo(f"  Version: {frontend_version}")
     else:
-        frontend_version = ((frontend_health or {}).get("version") if isinstance(frontend_health, dict) else None) or _installed_frontend_version() or "unknown"
+        frontend_version = (
+            ((frontend_health or {}).get("version") if isinstance(frontend_health, dict) else None)
+            or _installed_frontend_version()
+            or "unknown"
+        )
         click.echo(f"  {'running' if frontend_state == 'running' else 'starting'}")
         click.echo(f"  PID: {frontend_process.pid}")
         click.echo(f"  URL: {_frontend_base_url(frontend_runtime)}")
@@ -1140,7 +1187,7 @@ def config() -> None:
 @config.command("path", context_settings=CONTEXT_SETTINGS)
 def config_path() -> None:
     """显示配置路径"""
-    config_path = get_runtime_setting('CONFIG_PATH')
+    config_path = get_runtime_setting("CONFIG_PATH")
     click.echo(f"Config Dir: {config_path}")
     click.echo(f"Env File: {config_path / 'app.env'}")
     click.echo(f"Frontend Dir: {FRONTEND_DIR}")
@@ -1183,7 +1230,11 @@ def config_set(key: str, value: str) -> None:
 
     backend_state, _, _, _ = _managed_backend_status()
     frontend_state, _, _, _ = _managed_frontend_status()
-    if backend_state in {"running", "starting", "running-unmanaged"} or frontend_state in {"running", "starting", "running-unmanaged"}:
+    if backend_state in {"running", "starting", "running-unmanaged"} or frontend_state in {
+        "running",
+        "starting",
+        "running-unmanaged",
+    }:
         click.echo("检测到服务正在运行，新配置将在重启前后端服务后生效")
 
 
@@ -1279,11 +1330,13 @@ def scheduler() -> None:
 
 @scheduler.command("list", context_settings=CONTEXT_SETTINGS)
 def scheduler_list() -> None:
-    """列出调度任务"""
-    result = _call_tool(
-        "query_schedulers",
-        {},
-        runtime=_backend_runtime(),
+    """通过统一 API 网关列出调度任务。"""
+    result = _unwrap_api_data(
+        _call_tool(
+            "moviepilot_api",
+            {"operation_id": "scheduler.list"},
+            runtime=_backend_runtime(),
+        )
     )
     if isinstance(result, list):
         for item in result:
@@ -1295,11 +1348,16 @@ def scheduler_list() -> None:
 @scheduler.command("run", context_settings=CONTEXT_SETTINGS)
 @click.argument("job_id")
 def scheduler_run(job_id: str) -> None:
-    """立即执行某个调度任务"""
-    result = _call_tool(
-        "run_scheduler",
-        {"job_id": job_id},
-        runtime=_backend_runtime(),
+    """通过统一 API 网关立即执行某个调度任务。"""
+    result = _unwrap_api_data(
+        _call_tool(
+            "moviepilot_api",
+            {
+                "operation_id": "scheduler.run",
+                "query": {"job_id": job_id},
+            },
+            runtime=_backend_runtime(),
+        )
     )
     if isinstance(result, (dict, list)):
         _print_json(result)
@@ -1315,9 +1373,7 @@ def version() -> None:
     healthy_backend, payload = _backend_health(runtime=_backend_runtime())
     if healthy_backend:
         data = (payload or {}).get("data") or {}
-        click.echo(
-            f"Backend Service: {data.get('BACKEND_VERSION', get_app_version())}"
-        )
+        click.echo(f"Backend Service: {data.get('BACKEND_VERSION', get_app_version())}")
     else:
         click.echo("Backend Service: not running")
 

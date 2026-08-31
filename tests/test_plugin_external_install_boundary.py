@@ -11,8 +11,8 @@ from pydantic import ValidationError
 from app.adapters.external import market
 from app.adapters.external.market import PluginHelper
 from app.adapters.system.plugin.package import PluginPackageManager
-from app.agent.tools.impl import _plugin_tool_utils
 from app.api.endpoints import plugin as plugin_endpoint
+from app.application.plugin import management as plugin_management
 from app.runtime.config import global_vars
 from app.schemas.plugin import (
     PluginSourceChangeRequest,
@@ -112,8 +112,7 @@ async def test_package_manager_captures_native_state_only_when_dependency_instal
         ("requirements.txt", "demo>=1\n"),
         (
             "pyproject.toml",
-            '[project]\nname = "demo"\nversion = "1.0.0"\n'
-            'dependencies = ["demo>=1"]\n',
+            '[project]\nname = "demo"\nversion = "1.0.0"\ndependencies = ["demo>=1"]\n',
         ),
     ],
 )
@@ -209,8 +208,7 @@ async def test_dependency_observer_is_not_called_without_manifest(
         ("requirements.txt", "\n# no dependencies\n"),
         (
             "pyproject.toml",
-            '[project]\nname = "demo"\nversion = "1.0.0"\n'
-            "dependencies = []\n",
+            '[project]\nname = "demo"\nversion = "1.0.0"\ndependencies = []\n',
         ),
     ],
 )
@@ -689,12 +687,12 @@ async def test_agent_install_uses_application_gateway(
         )
     )
     monkeypatch.setattr(
-        _plugin_tool_utils,
+        plugin_management,
         "get_plugin_install_service",
         lambda: gateway,
     )
 
-    result = await _plugin_tool_utils.install_plugin_runtime(
+    result = await plugin_management.install_plugin_runtime(
         "DemoPlugin",
         REPO_URL,
         force=False,

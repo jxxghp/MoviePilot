@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
-from app.agent.tools.impl._filter_rule_utils import normalize_media_type
+from app.application.filtering import normalize_media_type
 from app.application.rules import RuleHelper
 from app.chain.subscribe import SubscribeChain
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
@@ -38,9 +38,7 @@ def test_music_rule_group_matches_music_media(monkeypatch):
 def test_music_rule_group_filters_music_torrents(monkeypatch):
     """音乐专属规则组被选中后应实际过滤音乐资源。"""
     helper = RuleHelper()
-    groups = [
-        FilterRuleGroup(name="music", rule_string="FLAC", media_type=MediaType.MUSIC.value)
-    ]
+    groups = [FilterRuleGroup(name="music", rule_string="FLAC", media_type=MediaType.MUSIC.value)]
     monkeypatch.setattr(helper, "get_rule_groups", lambda: groups)
     module = FilterModule()
     module.rulehelper = helper

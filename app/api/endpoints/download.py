@@ -1,5 +1,6 @@
 from typing import Annotated, Any, List, Optional, Union
 
+import anyio
 from fastapi import Body, Depends
 
 from app.adapters.web.security.access import verify_token
@@ -9,6 +10,7 @@ from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
+from app.application.download.tasks import DownloadTaskMutationService
 from app.application.security.url import SecurityUtils
 from app.application.site.query import (
     SiteQueryService,
@@ -24,6 +26,8 @@ from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.download import DownloadAddedData as _SchemaDownloadAddedData
 from app.schemas.download import DownloadDirectory as _SchemaDownloadDirectory
+from app.schemas.download import DownloadTaskUpdateData as _SchemaDownloadTaskUpdateData
+from app.schemas.download import DownloadTaskUpdateRequest as _SchemaDownloadTaskUpdateRequest
 from app.schemas.download import SubtitleDownloadData as _SchemaSubtitleDownloadData
 from app.schemas.file import FileURI as _SchemaFileURI
 from app.schemas.response import Response as _SchemaResponse
@@ -93,7 +97,7 @@ def _build_unrecognized_media_info(
         )
     try:
         media_type = MediaType(torrent.category)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         media_type = MediaType.from_agent(torrent.category)
     if media_type == MediaType.COLLECTION:
         media_type = MediaType.MOVIE
@@ -121,14 +125,22 @@ def _resolve_add_media(
     """校验媒体身份并为无媒体信息下载构建识别上下文。"""
     normalized_music_type = normalize_music_type(music_type, allow_artist=False)
     if music_type is not None and not normalized_music_type:
-        return None, None, _SchemaResponse(
-            success=False,
-            message="音乐实体类型无效，仅支持 recording 或 album",
+        return (
+            None,
+            None,
+            _SchemaResponse(
+                success=False,
+                message="音乐实体类型无效，仅支持 recording 或 album",
+            ),
         )
     if (media_source is None) != (media_id is None):
-        return None, None, _SchemaResponse(
-            success=False,
-            message="媒体来源和媒体 ID 必须同时提供",
+        return (
+            None,
+            None,
+            _SchemaResponse(
+                success=False,
+                message="媒体来源和媒体 ID 必须同时提供",
+            ),
         )
     is_music = (
         torrent_in.category in (MediaType.MUSIC, MediaType.MUSIC.value, "music")
@@ -136,9 +148,13 @@ def _resolve_add_media(
         or normalized_music_type is not None
     )
     if is_music and media_source and not is_music_media_source(media_source):
-        return None, None, _SchemaResponse(
-            success=False,
-            message="音乐下载只能使用音乐元数据源",
+        return (
+            None,
+            None,
+            _SchemaResponse(
+                success=False,
+                message="音乐下载只能使用音乐元数据源",
+            ),
         )
     if is_music and not normalized_music_type:
         normalized_music_type = MUSIC_ENTITY_RECORDING
@@ -166,23 +182,29 @@ def _resolve_add_media(
     if mediainfo:
         return metainfo, mediainfo, None
     if not allow_unrecognized:
-        return metainfo, None, _SchemaResponse(
-            success=False,
-            message="无法识别媒体信息",
-            data=_SchemaDownloadAddedData(requires_confirmation=True),
+        return (
+            metainfo,
+            None,
+            _SchemaResponse(
+                success=False,
+                message="无法识别媒体信息",
+                data=_SchemaDownloadAddedData(requires_confirmation=True),
+            ),
         )
-    return metainfo, _build_unrecognized_media_info(
-        torrent_in,
+    return (
         metainfo,
-        is_music=is_music,
-        music_type=normalized_music_type,
-    ), None
+        _build_unrecognized_media_info(
+            torrent_in,
+            metainfo,
+            is_music=is_music,
+            music_type=normalized_music_type,
+        ),
+        None,
+    )
 
 
 @router.get("/", summary="正在下载", response_model=List[_SchemaDownloaderTorrent])
-def current(
-    name: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)
-) -> Any:
+def current(name: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询正在下载的任务
     """
@@ -218,9 +240,7 @@ def download(
     # 手动下载始终使用选择的下载器
     torrentinfo.site_downloader = downloader
     # 上下文
-    context = Context(
-        meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo
-    )
+    context = Context(meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo)
     did = DownloadChain().download_single(
         context=context,
         username=current_user.name,
@@ -266,9 +286,7 @@ def add(
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())
     # 上下文
-    context = Context(
-        meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo
-    )
+    context = Context(meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo)
 
     did = DownloadChain().download_single(
         context=context,
@@ -349,6 +367,39 @@ def stop(
     return _SchemaResponse(success=True if ret else False)
 
 
+@router.patch(
+    "/{hashString}",
+    summary="高级更新下载任务",
+    response_model=_SchemaResponse[_SchemaDownloadTaskUpdateData],
+)
+async def update_task(
+    hashString: str,
+    payload: _SchemaDownloadTaskUpdateRequest,
+    _: ApiPrincipal = Depends(get_current_active_user),
+) -> _SchemaResponse:
+    """执行下载任务启停、标签、限速、Tracker 和保存位置修改。"""
+    chain = DownloadChain()
+    service = DownloadTaskMutationService(
+        list_torrents=chain.list_torrents,
+        set_tags=chain.set_torrents_tag,
+        set_downloading=chain.set_downloading,
+        update_torrent=chain.update_torrent,
+    )
+    try:
+        data = await anyio.to_thread.run_sync(
+            lambda: service.update(
+                hash_value=hashString,
+                **payload.model_dump(),
+            )
+        )
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(
+        success=all(item.get("success") for item in data["results"]),
+        data=data,
+    )
+
+
 @router.get(
     "/clients",
     summary="查询可用下载器",
@@ -360,17 +411,11 @@ async def clients(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     downloaders: List[dict] = get_configured_system_config().get(SystemConfigKey.Downloaders)
     if downloaders:
-        return [
-            {"name": d.get("name"), "type": d.get("type")}
-            for d in downloaders
-            if d.get("enabled")
-        ]
+        return [{"name": d.get("name"), "type": d.get("type")} for d in downloaders if d.get("enabled")]
     return []
 
 
-@router.get(
-    "/paths", summary="查询可用下载路径", response_model=List[_SchemaDownloadDirectory]
-)
+@router.get("/paths", summary="查询可用下载路径", response_model=List[_SchemaDownloadDirectory])
 def paths(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     查询可直接用于下载接口 save_path 参数的下载路径

@@ -1,12 +1,13 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
 
 class DownloadTask(BaseModel):
     """
-     下载任务
+    下载任务
     """
+
     download_id: Optional[str] = Field(default=None, description="任务ID")
     downloader: Optional[str] = Field(default=None, description="下载器")
     path: Optional[str] = Field(default=None, description="下载路径")
@@ -41,3 +42,34 @@ class SubtitleDownloadData(BaseModel):
     """字幕下载结果。"""
 
     files: list[str] = Field(default_factory=list, description="已保存字幕文件列表")
+
+
+class DownloadTaskUpdateRequest(BaseModel):
+    """下载任务高级修改请求。"""
+
+    action: Optional[Literal["start", "stop"]] = None
+    tags: Optional[list[str]] = None
+    downloader: Optional[str] = None
+    download_limit: Optional[float] = None
+    upload_limit: Optional[float] = None
+    trackers: Optional[list[str]] = None
+    save_path: Optional[str] = None
+    category: Optional[str] = None
+    ratio_limit: Optional[float] = None
+    seeding_time_limit: Optional[int] = None
+
+
+class DownloadTaskMutationResult(BaseModel):
+    """下载任务单个修改动作的执行结果。"""
+
+    operation: str = Field(description="修改动作")
+    success: bool = Field(description="动作是否成功")
+    message: str = Field(description="动作结果说明")
+
+
+class DownloadTaskUpdateData(BaseModel):
+    """一次下载任务高级修改的聚合结果。"""
+
+    hash: str = Field(description="下载任务 Hash")
+    downloader: str = Field(description="实际使用的下载器实例")
+    results: list[DownloadTaskMutationResult] = Field(default_factory=list, description="各修改动作结果")

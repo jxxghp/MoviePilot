@@ -1,11 +1,12 @@
 ---
 name: generate-identifiers
-version: 3
+version: 4
 description: >-
   Use this skill when a user provides a torrent name or file name and wants to fix recognition issues,
   or asks to add/manage custom identifiers (自定义识别词).
   This skill generates identifier rules based on the WordsMatcher preprocessing logic,
-  checks for duplicates against existing rules, and saves them via MCP tools.
+  checks for duplicates against existing rules, and saves them through the
+  structured MoviePilot API gateway.
   Because custom identifiers are global, generated rules must default to conservative,
   sample-specific regex patterns instead of broad matches unless the user explicitly wants global cleanup.
   Applicable scenarios include:
@@ -14,7 +15,8 @@ description: >-
   3) The user needs episode offset rules for series with non-standard numbering;
   4) The user wants to force recognition of a specific media by source-native ID;
   5) The user wants TV recognition to use a specific TMDB episode group.
-allowed-tools: query_custom_identifiers update_custom_identifiers recognize_media
+allowed-tools: moviepilot_api
+allowed-api-operations: config.identifiers.get config.identifiers.update media.recognize
 ---
 
 # Generate Custom Identifiers (生成自定义识别词)
@@ -23,10 +25,10 @@ This skill helps generate custom identifier rules for MoviePilot's media recogni
 
 ## Prerequisites
 
-You need the following tools:
-- `query_custom_identifiers` - Query all existing custom identifier rules
-- `update_custom_identifiers` - Save the updated identifier list (replaces the full list)
-- `recognize_media` - Test recognition of a torrent title or file path (optional, for verification)
+Use these `moviepilot_api` operations:
+- `config.identifiers.get` - Query all existing custom identifier rules
+- `config.identifiers.update` - Save the updated identifier list (replaces the full list)
+- `media.recognize` - Test recognition of a torrent title or file path (optional)
 
 ## Supported Rule Formats
 
@@ -150,10 +152,10 @@ Write the rule using the appropriate format. Ensure:
 
 ### Step 3: Query Existing Identifiers
 
-Use the `query_custom_identifiers` tool to get all current rules:
+Use `moviepilot_api` with `operation_id=config.identifiers.get` to get all current rules:
 
 ```
-query_custom_identifiers()
+{"operation_id": "config.identifiers.get"}
 ```
 
 ### Step 4: Check for Duplicates
@@ -165,22 +167,24 @@ Compare each new rule against the existing identifiers:
 
 ### Step 5: Save the Updated Identifiers
 
-Merge new non-duplicate rules into the existing list, then use `update_custom_identifiers` to save the **complete** list:
+Merge new non-duplicate rules into the existing list, then use
+`operation_id=config.identifiers.update` to save the **complete** list:
 
 ```
-update_custom_identifiers(
-    identifiers=["existing rule 1", "existing rule 2", "# new comment", "new rule"]
-)
+{
+  "operation_id": "config.identifiers.update",
+  "body": {"identifiers": ["existing rule 1", "existing rule 2", "# new comment", "new rule"]}
+}
 ```
 
 **CRITICAL**: Always include ALL existing rules in the list. This tool replaces the entire list.
 
 ### Step 6: Verify (Optional)
 
-If the user wants to verify the rule works, use `recognize_media` to test:
+If the user wants to verify the rule works, use `media.recognize` to test:
 
 ```
-recognize_media(title="the torrent title to test")
+{"operation_id": "media.recognize", "query": {"title": "the torrent title to test"}}
 ```
 
 ### Step 7: Report

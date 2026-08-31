@@ -60,7 +60,4 @@ def test_manual_redo_tasks_stop_after_durable_retry_result():
         task = definition.task_types[task_name]
         instructions = [*task.steps, *task.task_rules]
         assert any("persistent retry scheduler" in item for item in instructions)
-        assert any(
-            "do not call `transfer_file`" in item.lower()
-            for item in instructions
-        )
+        assert any("do not call `transfer.file`" in item.lower() for item in instructions)

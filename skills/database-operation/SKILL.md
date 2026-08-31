@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 4
+version: 5
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -27,8 +27,8 @@ Prefer safer product surfaces first:
 
 | Request | Preferred skill |
 |---|---|
-| Normal local MoviePilot product operation exposed as an MCP tool | `moviepilot-cli` |
-| Direct REST endpoint call | `moviepilot-api` |
+| Normal MoviePilot product operation | `moviepilot-api` structured operations |
+| Operation outside the structured API catalog | A more specific Skill or explicit unsupported result |
 | Slash commands or plugin/system command dispatch | `command-dispatch` |
 | Manual file organization | `organize-files` |
 | Retry failed transfer history records | `transfer-failed-retry` |

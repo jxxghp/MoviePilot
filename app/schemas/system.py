@@ -62,7 +62,7 @@ class MediaServerConf(BaseModel):
                 return None
         try:
             return int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
 
@@ -144,6 +144,28 @@ class SystemEnvironmentUpdateData(BaseModel):
 
     success_updates: dict[str, tuple[Optional[bool], str]] = Field(default_factory=dict)
     failed_updates: dict[str, tuple[Optional[bool], str]] = Field(default_factory=dict)
+
+
+class SystemSettingsUpdateRequest(BaseModel):
+    """统一系统设置更新请求。"""
+
+    setting_key: str
+    value: Any = None
+    operation: Literal[
+        "replace",
+        "merge_dict",
+        "upsert_list_item",
+        "remove_list_item",
+    ] = "replace"
+    remove_keys: list[str] = Field(default_factory=list)
+    match_field: Optional[str] = None
+    match_value: Any = None
+
+
+class CustomIdentifiersUpdateRequest(BaseModel):
+    """完整替换自定义识别词的请求。"""
+
+    identifiers: list[str] = Field(default_factory=list)
 
 
 class SystemUpdateStatus(BaseModel):

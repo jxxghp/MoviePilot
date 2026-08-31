@@ -30,8 +30,7 @@ class McpExternalTool(MoviePilotTool):
             session_id=session_id,
             user_id=user_id,
             name=spec.agent_tool_name,
-            description=spec.description
-            or f"Call external MCP tool {spec.name} on {spec.server.name}.",
+            description=spec.description or f"Call external MCP tool {spec.name} on {spec.server.name}.",
             args_schema=spec.input_schema,
             require_admin=spec.server.require_admin,
         )
@@ -127,17 +126,3 @@ async def create_external_mcp_tools(
         )
         tools.append(tool)
     return tools
-
-
-def select_legacy_mcp_tools(
-    tools: list[McpExternalTool],
-) -> list[McpExternalTool]:
-    """保留跨服务器同名工具历史上的 first-wins 执行顺序。"""
-    selected = []
-    seen_names = set()
-    for tool in tools:
-        if tool.name in seen_names:
-            continue
-        selected.append(tool)
-        seen_names.add(tool.name)
-    return selected

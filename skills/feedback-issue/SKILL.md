@@ -1,6 +1,6 @@
 ---
 name: feedback-issue
-version: 8
+version: 9
 description: >-
   Use this skill ONLY when the user EXPLICITLY requests filing an
   upstream issue for MoviePilot core, frontend, or an installed plugin,
@@ -11,7 +11,7 @@ description: >-
   A bare problem report is not enough: diagnose locally first. This
   skill uses its own scripts under `scripts/`; it does not add or call
   dedicated Agent tools for collect / prepare / submit.
-allowed-tools: read_file list_directory write_file execute_command
+allowed-tools: read_file write_file execute_command
 ---
 
 # Feedback Issue (问题反馈)

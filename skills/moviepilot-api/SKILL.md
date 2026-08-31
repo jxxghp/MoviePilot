@@ -1,738 +1,170 @@
 ---
 name: moviepilot-api
-version: 14
+version: 16
 description: >-
-  Use this skill when you need to call MoviePilot REST API endpoints directly
-  with the bundled Python client. Covers MoviePilot HTTP endpoints across media
-  search, downloads, subscriptions, library management, site management, system
-  administration, plugins, workflows, and more. Prefer `moviepilot-cli` for
-  normal local MCP tool workflows; use this skill when the user explicitly asks
-  for HTTP API access, when an endpoint is not exposed as an MCP tool, or when
-  running in an environment where direct REST calls are the appropriate bridge.
+  Use this skill for MoviePilot product operations such as media search, torrent
+  search, downloads, subscriptions, library checks, sites, storage, workflows,
+  schedulers, plugins, filter rules, and system settings. It authorizes the
+  structured moviepilot_api gateway only; it does not authorize arbitrary HTTP,
+  legacy Agent tools, MCP compatibility commands, authentication headers, or API
+  tokens.
+allowed-tools: moviepilot_api
+allowed-api-operations: >-
+  media.search media.person.search media.person.credits media.recognize media.scrape
+  media.episode_schedule media.detail subscription.add subscription.update
+  subscription.search subscription.list subscription.shares subscription.popular
+  subscription.history subscription.delete download.add download.history.delete
+  transfer.history.delete site.list site.update site.userdata site.test site.cookie.update
+  recommendation.list library.exists
+  storage.settings storage.list transfer.history transfer.file scheduler.list scheduler.run
+  workflow.list workflow.run plugin.installed plugin.market plugin.capabilities
+  plugin.config.get plugin.config.update plugin.reload plugin.install plugin.uninstall
+  slash.list config.identifiers.get config.identifiers.update search.torrents search.results
+  filter.builtin filter.custom filter.groups filter.custom.add
+  filter.custom.update filter.custom.delete filter.group.add filter.group.update
+  filter.group.delete plugin.data config.system.get config.system.update slash.run
 ---
 
-# MoviePilot REST API
+# MoviePilot API
 
-> All script paths are relative to this skill file.
+Use `moviepilot_api` for normal MoviePilot business operations. The tool accepts
+only `operation_id`, `path_params`, `query`, and `body`. The host chooses the
+fixed HTTP method and path, creates the current user's authentication token,
+applies authorization and confirmation policy, and returns the API response.
 
-Use `scripts/mp-api.py` to call any MoviePilot REST API endpoint directly.
+Never provide a URL, method, authentication header, API key, or access token.
+Never fall back to a retired tool name or `moviepilot tool` MCP command. If an
+operation is not listed in this skill, do not simulate it through arbitrary HTTP;
+use a more specific skill or explain that the structured operation is unavailable.
+Use `downloader-operation` for downloader instances, task inspection and native
+task control. Use `mediaserver-operation` for libraries, items, playback sessions,
+scans, refreshes and other native media-server capabilities.
 
-Generic media requests use one stable identity contract: `media_source` is a
-`MediaSource` enum value and `media_id` is that source's native ID. Supply the
-pair together and keep it unchanged across detail, search, subscription,
-download, transfer, scraping, and library checks. Source-specific IDs exposed
-by `MediaInfo` are mapping metadata, not alternate generic request parameters.
-Native IDs remain valid on explicitly source-owned endpoints under `/tmdb`,
-`/douban`, `/bangumi`, and `/anilist`.
+## Calling Contract
 
-## Scope And Boundaries
+Call the gateway with this shape:
 
-This skill is the REST API bridge. It is implemented as a Python script and is
-useful when the agent needs endpoint-level coverage beyond the local
-`moviepilot tool` MCP CLI.
-
-Choose other skills first when they match more precisely:
-
-| Request | Preferred skill |
-|---|---|
-| Normal local MoviePilot product operation exposed as an MCP tool | `moviepilot-cli` |
-| Direct SQL query or database update | `database-operation` |
-| Restart, version check, or upgrade | `moviepilot-update` |
-| Slash commands or plugin/system command dispatch | `command-dispatch` |
-| Browser-only state, site login pages, screenshots, cookies | `browser-use` |
-
-Do not use this skill just because MoviePilot is mentioned. Use it when the
-task specifically needs a REST endpoint, token-query endpoint, or API behavior
-that the CLI/MCP tools do not expose.
-
-## Setup
-
-When the script runs inside the MoviePilot project, it imports `app.runtime.config.settings` and reads `settings.HOST`, `settings.PORT`, and `settings.API_TOKEN` directly. Do not ask the user for `API_TOKEN`, and do not copy API keys into the prompt.
-
-Configuration priority:
-
-1. CLI flags: `--host`, `--apikey`
-2. Environment variables: `MP_HOST`, `MP_API_KEY`
-3. Local MoviePilot settings
-4. Legacy config file: `~/.config/moviepilot_api/config`
-
-Use `configure` only as a legacy fallback outside the MoviePilot project, and avoid it in normal agent workflows because it persists a long-lived API key to disk.
-
-## How to Call APIs
-
-### General syntax
-
-```
-python scripts/mp-api.py <METHOD> <PATH> [key=value ...] [--json '<body>']
+```json
+{
+  "operation_id": "media.search",
+  "path_params": {},
+  "query": {"title": "流浪地球", "type": "media"},
+  "body": {}
+}
 ```
 
-### Authentication
-
-- By default, the script auto-loads the local key and sends it via the `X-API-KEY` header.
-- For endpoints suffixed with `2` (e.g. `/api/v1/dashboard/statistic2`), use `--token-param` to send the key as `?token=`.
-- Both methods validate against the same `API_TOKEN` value.
-- Never print, summarize, or ask the user to paste the API key unless the script is being used outside the local project and no safer configuration source is available.
-
-### API versions and response envelopes
-
-- `/api/v1` is the only MoviePilot application REST API version; the former
-  `/api/v2` wrapping layer is no longer available.
-- Every ordinary JSON endpoint returns exactly
-  `{"success":<boolean>,"message":<string>,"data":<endpoint data>}`. Only the
-  `data` schema varies between endpoints, and the concrete envelope is visible
-  in `/docs` and `/api/v1/openapi.json`.
-- HTTP errors keep their status code and use `success=false`; validation errors
-  include their structured details in `data`.
-- Send `X-MoviePilot-Locale: zh-CN|zh-TW|en-US` or `Accept-Language` when the
-  response message must match a specific language. The backend returns the
-  translated text directly in `message` and falls back to the original text
-  when no translation exists.
-- SSE, files, images, HTML, empty responses, OAuth2 login, and OpenAI,
-  Anthropic, or MCP JSON-RPC protocol endpoints keep their protocol-native
-  response body and explicit OpenAPI declaration.
-
-### Examples
-
-```bash
-# GET with query params
-python scripts/mp-api.py GET /api/v1/media/search title="Avatar" type="media"
-
-# POST with JSON body
-python scripts/mp-api.py POST /api/v1/download/add --json '{"torrent_in":{"title":"Avatar.2009","enclosure":"abc1234:1"},"media_source":"themoviedb","media_id":"19995"}'
-
-# DELETE
-python scripts/mp-api.py DELETE /api/v1/subscribe/123
-
-# Endpoints that require ?token= auth
-python scripts/mp-api.py GET /api/v1/dashboard/statistic2 --token-param
-
-# Uniform v1 JSON response envelope
-python scripts/mp-api.py GET /api/v1/dashboard/cpu
-```
-
-## Complete API Reference
-
-All endpoints are under the base URL `{MP_HOST}`. Path parameters are shown as `{param}`.
-
----
-
-### Media Search (13 endpoints)
-
-When recognition omits `media_source`, MoviePilot uses TMDB exclusively for video and MusicBrainz exclusively for music. A miss does not trigger another metadata source. Providing `media_source`, or the complete `media_source` + `media_id` pair, keeps recognition strict to that manually selected source.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/media/search` | Search by title. Params: `title` (required), `type=media|music|collection|person`, `page`, `count`, optional repeated `media_source`; each type accepts only its supported `MediaSource` values. Comma-separated input is legacy compatibility only |
-| GET | `/api/v1/media/recognize` | Recognize media from a torrent title or a media file path. Params: `title` (required), `subtitle`, `custom_words`, optional `media_source`; media file paths also use parent-directory metadata such as title and year |
-| GET | `/api/v1/media/recognize2` | Recognize media from a torrent title or media file path (API_TOKEN auth, use `--token-param`). Params: `title`, `subtitle`, `custom_words`, optional `media_source`; media file paths also use parent-directory metadata |
-| GET | `/api/v1/media/recognize_file` | Recognize media from file path. Params: `path` (required), optional `media_source` |
-| GET | `/api/v1/media/recognize_file2` | Recognize file (API_TOKEN auth). Params: `path`, optional `media_source` |
-| POST | `/api/v1/media/scrape/{storage}` | Scrape media metadata. Body: FileItem JSON. Optional params: paired `media_source` + `media_id`, `type_name` (`电影`/`电视剧`/`音乐`), `music_type` |
-| GET | `/api/v1/media/category/config` | Get category strategy config |
-| POST | `/api/v1/media/category/config` | Save category strategy config. Body: CategoryConfig |
-| GET | `/api/v1/media/category` | Get auto-categorization config |
-| GET | `/api/v1/media/group/seasons/{episode_group}` | Get episode group seasons. TMDB-only endpoint |
-| GET | `/api/v1/media/groups/{tmdbid}` | Get media episode groups. TMDB-only endpoint, so the native ID parameter is intentional |
-| GET | `/api/v1/media/seasons` | Get media season info. Use `media_source` + `media_id`, or title discovery with `title` and optional `year`; optional `season` narrows the result |
-| GET | `/api/v1/media/{media_id}` | Get media detail by native ID. Required params: `media_source`, `type_name` (`电影`/`电视剧`) |
-
-### TMDB (8 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/tmdb/seasons/{tmdbid}` | All seasons for a TMDB title |
-| GET | `/api/v1/tmdb/similar/{tmdbid}/{type_name}` | Similar movies/TV shows |
-| GET | `/api/v1/tmdb/recommend/{tmdbid}/{type_name}` | Recommended movies/TV shows |
-| GET | `/api/v1/tmdb/collection/{collection_id}` | Collection details. Params: `page`, `count` |
-| GET | `/api/v1/tmdb/credits/{tmdbid}/{type_name}` | Cast and crew. Params: `page` |
-| GET | `/api/v1/tmdb/person/{person_id}` | Person details |
-| GET | `/api/v1/tmdb/person/credits/{person_id}` | Person's filmography. Params: `page` |
-| GET | `/api/v1/tmdb/{tmdbid}/{season}` | All episodes of a season. Params: `episode_group` |
-
-### Douban (5 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/douban/{doubanid}` | Douban media detail |
-| GET | `/api/v1/douban/person/{person_id}` | Person detail |
-| GET | `/api/v1/douban/person/credits/{person_id}` | Person filmography. Params: `page` |
-| GET | `/api/v1/douban/credits/{doubanid}/{type_name}` | Cast info (type_name: movie/tv) |
-| GET | `/api/v1/douban/recommend/{doubanid}/{type_name}` | Recommendations |
-
-### Bangumi (5 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/bangumi/{bangumiid}` | Bangumi detail |
-| GET | `/api/v1/bangumi/credits/{bangumiid}` | Cast. Params: `page`, `count` |
-| GET | `/api/v1/bangumi/recommend/{bangumiid}` | Recommendations. Params: `page`, `count` |
-| GET | `/api/v1/bangumi/person/{person_id}` | Person detail |
-| GET | `/api/v1/bangumi/person/credits/{person_id}` | Person filmography. Params: `page`, `count` |
-
-### AniList (8 endpoints)
-
-AniList endpoints prefer the `anilist-chinese` proxy and fall back to official AniList GraphQL plus the project's daily translation dataset when the public proxy is unavailable. Media titles prefer the provided Chinese title and fall back to the native-language title.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/anilist/trending` | TRENDING NOW. Params: `page`, `count` |
-| GET | `/api/v1/anilist/popular-this-season` | POPULAR THIS SEASON. Params: `page`, `count` |
-| GET | `/api/v1/anilist/discover` | Explore anime. Params: `search`, `genre`, `format`, `season`, `season_year`, `status`, `country`, `sort`, `page`, `count` |
-| GET | `/api/v1/anilist/{anilist_id}` | AniList media detail |
-| GET | `/api/v1/anilist/credits/{anilist_id}` | Japanese voice cast. Params: `page`, `count` |
-| GET | `/api/v1/anilist/recommend/{anilist_id}` | Recommendations. Params: `page`, `count` |
-| GET | `/api/v1/anilist/person/{person_id}` | Staff detail |
-| GET | `/api/v1/anilist/person/credits/{person_id}` | Staff anime credits. Params: `page`, `count` |
-
-### Music (6 entity endpoints plus unified search)
-
-Music uses the independent `MusicMeta` / `MusicInfo` contract and a
-source-native MusicBrainz identity. `music_type=recording` is one track,
-`album` is a multi-track collection, and `artist` is browse-only. MoviePilot
-searches, recognizes, subscribes to, downloads, organizes, scrapes, and checks
-music on configured music-capable media servers; it does not manage playlists.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/media/search` | Search tracks, albums, or artists with `type=music` or a music `media_source`. Params: `title`, `type`, `count`, repeated enum `media_source` |
-| POST | `/api/v1/music/recognize` | Resolve music metadata. Body: `media_source`, `media_id` |
-| GET | `/api/v1/music/explore` | Explore by `media_source`: MusicBrainz supports `mode=chart|fresh`; Douban Music always uses official tag categories with `tags` and `douban_sort=U|S|R|O`. Other params: `entity`, `range_name`, `sort_by`, `sort`, `days`, `past`, `future`, `min_listen_count`, `with_cover`, `page`, `count` |
-| GET | `/api/v1/music/album/{album_id}` | Album detail with tracks and releases. Params: `media_source` |
-| GET | `/api/v1/music/album/{album_id}/related` | Related albums for the selected source. Params: `media_source`, `count` |
-| GET | `/api/v1/music/artist/{artist_id}` | Browse artist detail. Params: `media_source` |
-| GET | `/api/v1/music/artist/{artist_id}/albums` | Browse artist albums/EPs/singles. Params: `media_source`, `page`, `count`, `album_type` |
-| GET | `/api/v1/music/artist/{artist_id}/related` | Browse related artists. Params: `media_source`, `count` |
-
-Music acquisition rules:
-
-- Reuse `media_source`, `media_id`, and `music_type` from search/detail results. Never substitute a same-name entity.
-- Subscribe/download one recording as one track. Subscribe/download one album as a complete multi-track pack.
-- Album torrent validation compares supported audio files with `total_tracks`; incomplete resources do not complete the subscription.
-- Artist IDs are never subscription, torrent, download, transfer, or library-existence targets.
-- `/api/v1/media/scrape/{storage}` writes configured music tags/covers and resolves lyrics from existing sidecars, embedded tags, plugins, LRCLIB, optional authorized Musixmatch, and TheAudioDB plain-text fallback. The default upgrade policy keeps `.lyricsfile.yaml` plus compatible `.lrc` output and never replaces higher-quality synchronized lyrics with plain text. Album lyrics requests have a batch deadline and provider cooldowns; external metadata, cover, exploration, statistics, and lyrics requests use bounded caches in their owning modules/helpers.
-
-### Search / Torrents / Subtitles (11 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/search/media/{media_id}` | Search torrents by native ID. Required param: `media_source`; other params: `mtype`, `area`, `season`, `sites`, `music_type` |
-| GET | `/api/v1/search/media/{media_id}/stream` | Stream torrent search by native ID with SSE. Required param: `media_source`; other params match the non-streaming endpoint |
-| GET | `/api/v1/search/title` | Fuzzy search torrents by keyword. Params: `keyword`, `page`, `sites`, optional `mtype=音乐` |
-| GET | `/api/v1/search/title/stream` | Stream fuzzy torrent search with SSE. Params: `keyword`, `page`, `sites`, optional `mtype=音乐` |
-| GET | `/api/v1/search/subtitle/title` | Fuzzy search site subtitles by keyword. Params: `keyword`, `page`, `sites` |
-| GET | `/api/v1/search/subtitle/title/stream` | Stream fuzzy site subtitle search with SSE. Params: `keyword`, `page`, `sites` |
-| GET | `/api/v1/search/subtitle/media/{media_id}` | Exact subtitle search by native ID. Required param: `media_source`; other params: `mtype`, `season`, `episode`, `sites` |
-| GET | `/api/v1/search/subtitle/media/{media_id}/stream` | Stream exact subtitle search by native ID with SSE. Required param: `media_source`; other params match the non-streaming endpoint |
-| GET | `/api/v1/search/last` | Get latest search results |
-| GET | `/api/v1/search/last/context` | Get latest search results with replayable params. `params.result_type` is `torrent` or `subtitle` |
-| POST | `/api/v1/search/recommend` | AI recommended resources. Body: `filtered_indices`, `check_only`, `force` |
-
-Streaming search sends `{"type":"heartbeat"}` every 15 seconds without business events; use it only to keep the connection alive. Final `replace` payloads above 48 items are batched: the first event uses `type=replace`, later events use `type=append`, and every batch includes `replace_batch=true`, zero-based `batch_index`, `batch_count`, and final `total_items`. Collect all batches in order and replace the visible result atomically. After a `replace`, the final `done` event omits duplicate `items`.
-
-### Download (8 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/download/` | List active downloads. Params: `name` (downloader name); linked history adds media type and source `site_name` |
-| POST | `/api/v1/download/` | Add download (with media info). Body: JSON |
-| POST | `/api/v1/download/add` | Add download without media info. Body: `torrent_in`, optional paired `media_source` + `media_id`, `music_type`, `downloader`, `save_path`; an unrecognized video or music resource returns `data.requires_confirmation=true`, and the same request may be retried with `allow_unrecognized=true` after explicit user confirmation |
-| POST | `/api/v1/download/subtitle` | Download subtitle file to the recognized media download directory. Body: `subtitle_in`, required `media_source` + `media_id`, optional `save_path` |
-| GET | `/api/v1/download/start/{hashString}` | Resume download task |
-| GET | `/api/v1/download/stop/{hashString}` | Pause download task |
-| GET | `/api/v1/download/clients` | List available download clients |
-| DELETE | `/api/v1/download/{hashString}` | Delete download task. Params: `name` |
-
-### Subscribe (28 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/subscribe/` | List all subscriptions |
-| POST | `/api/v1/subscribe/` | Add subscription. An explicit identity is always `media_source` + `media_id`; music also requires `type=音乐` and `music_type=recording|album` |
-| PUT | `/api/v1/subscribe/` | Update subscription. Body: Subscribe JSON |
-| GET | `/api/v1/subscribe/list` | List subscriptions (API_TOKEN auth, use `--token-param`) |
-| GET | `/api/v1/subscribe/{subscribe_id}` | Subscription detail |
-| DELETE | `/api/v1/subscribe/{subscribe_id}` | Delete subscription |
-| PUT | `/api/v1/subscribe/status/{subid}` | Update subscription status. Params: `state` (required) |
-| GET | `/api/v1/subscribe/media/{media_id}` | Query subscription by native ID. Required param: `media_source`; optional params: `season`, `title`, `music_type` |
-| DELETE | `/api/v1/subscribe/media/{media_id}` | Delete subscription by native ID. Required param: `media_source`; optional params: `season`, `music_type` |
-| GET | `/api/v1/subscribe/refresh` | Refresh all subscriptions |
-| GET | `/api/v1/subscribe/reset/{subid}` | Reset subscription |
-| GET | `/api/v1/subscribe/check` | Refresh subscription TMDB info |
-| GET | `/api/v1/subscribe/search` | Search all subscriptions |
-| GET | `/api/v1/subscribe/search/{subscribe_id}` | Search specific subscription |
-| POST | `/api/v1/subscribe/seerr` | Overseerr/Jellyseerr notification subscription |
-| GET | `/api/v1/subscribe/history/{mtype}` | Subscription history. Params: `page`, `count` |
-| DELETE | `/api/v1/subscribe/history/{history_id}` | Delete subscription history |
-| GET | `/api/v1/subscribe/popular` | Popular subscriptions. Params: `stype` (required), `page`, `count`, `min_sub`, `genre_id`, `min_rating`, `max_rating`, `sort_type` |
-| GET | `/api/v1/subscribe/user/{username}` | User's subscriptions |
-| GET | `/api/v1/subscribe/files/{subscribe_id}` | Subscription related files |
-| POST | `/api/v1/subscribe/share` | Share subscription. Body: SubscribeShare JSON |
-| DELETE | `/api/v1/subscribe/share/{share_id}` | Delete shared subscription |
-| POST | `/api/v1/subscribe/fork` | Fork shared subscription. Body: SubscribeShare JSON |
-| GET | `/api/v1/subscribe/follow` | List followed share users |
-| POST | `/api/v1/subscribe/follow` | Follow a share user. Params: `share_uid` |
-| DELETE | `/api/v1/subscribe/follow` | Unfollow a share user. Params: `share_uid` |
-| GET | `/api/v1/subscribe/shares` | List shared subscriptions. Params: `name`, `page`, `count`, `genre_id`, `min_rating`, `max_rating`, `sort_type` |
-| GET | `/api/v1/subscribe/share/statistics` | Share statistics |
-
-### Site (26 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/site/` | List all sites |
-| GET | `/api/v1/site/media/{media_type}` | List configured active sites compatible with `movie`, `tv`, or `music` searches |
-| POST | `/api/v1/site/` | Add site. Body: Site JSON |
-| PUT | `/api/v1/site/` | Update site. Body: Site JSON |
-| GET | `/api/v1/site/{site_id}` | Site detail by ID |
-| DELETE | `/api/v1/site/{site_id}` | Delete site |
-| GET | `/api/v1/site/domain/{site_url}` | Site detail by domain |
-| GET | `/api/v1/site/cookiecloud` | Sync CookieCloud |
-| GET | `/api/v1/site/reset` | Reset sites |
-| POST | `/api/v1/site/priorities` | Batch update site priorities. Body: array |
-| POST | `/api/v1/site/cookie/{site_id}` | Update site cookie & UA. Body: `SiteCookieUpdate` JSON |
-| GET | `/api/v1/site/cookie/{site_id}` | Legacy update site cookie & UA. Params: `username`, `password`, `code` |
-| POST | `/api/v1/site/userdata/{site_id}` | Refresh site user data |
-| GET | `/api/v1/site/userdata/{site_id}` | Get site user data. Params: `workdate` |
-| GET | `/api/v1/site/userdata/latest` | All sites latest user data |
-| GET | `/api/v1/site/test/{site_id}` | Test site connection |
-| GET | `/api/v1/site/icon/{site_id}` | Site icon |
-| GET | `/api/v1/site/category/{site_id}` | Site categories |
-| GET | `/api/v1/site/resource/{site_id}` | Site resources. Params: `keyword`, `cat`, `page` |
-| GET | `/api/v1/site/statistic/{site_url}` | Specific site statistics |
-| GET | `/api/v1/site/statistic` | All site statistics |
-| GET | `/api/v1/site/rss` | RSS subscription sites |
-| GET | `/api/v1/site/auth` | Check authenticated sites |
-| POST | `/api/v1/site/auth` | Authenticate a site. Body: SiteAuth |
-| GET | `/api/v1/site/mapping` | Site domain-to-name mapping |
-| GET | `/api/v1/site/supporting` | Supported site list |
-
-### History (5 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/history/download` | Download history, newest first. Params: `page`, `count`. `poster` is the poster image; legacy `image` is the backdrop image. |
-| DELETE | `/api/v1/history/download` | Delete download history. Body: DownloadHistory JSON |
-| GET | `/api/v1/history/transfer` | Transfer history, including `src_storage` and `dest_storage` for path labels. Params: `title`, `page`, `count`, `status` |
-| DELETE | `/api/v1/history/transfer` | Delete transfer history. Params: `deletesrc`, `deletedest`. Body: TransferHistory |
-| GET | `/api/v1/history/empty/transfer` | Clear all transfer history |
-
-### Media Server (8 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/mediaserver/play/{itemid}` | Play media online |
-| GET | `/api/v1/mediaserver/exists` | Check if media exists in the local library database. A completed miss is `success=true` with an empty `data.item`. Params: `media_source` + `media_id`, or `title` discovery; optional `year`, `mtype`, `season` |
-| POST | `/api/v1/mediaserver/exists_remote` | Check existing episodes (remote). Body: MediaInfo JSON |
-| POST | `/api/v1/mediaserver/notexists` | Check missing episodes (remote). Body: MediaInfo JSON |
-| GET | `/api/v1/mediaserver/latest` | Latest library items. Params: `server` (required), `count` |
-| GET | `/api/v1/mediaserver/playing` | Currently playing. Params: `server` (required), `count` |
-| GET | `/api/v1/mediaserver/library` | Library list. Params: `server` (required), `hidden` |
-| GET | `/api/v1/mediaserver/clients` | Available media servers |
-
-### Notification (1 endpoint)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/v1/notification/manage` | Unified notification-channel management. Body: ManageRequest JSON `{target, action, params}`; `target` is the channel name, `action` is one of `status`, `refresh_qrcode`, `logout`, `test_connection`, `migrate_cache`, `params` carries channel-specific form fields passed through to the channel module |
-
-### Storage / Files (7 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/v1/storage/manage` | Unified storage management. Body: ManageRequest JSON `{target, action, params}`; `target` is the storage type, `action` is one of `save_config` (config in `params.conf`), `reset_config`, `generate_qrcode`, `generate_auth_url`, `check_login` (`params.ck`/`params.t`), `usage`, `support_transtype` |
-| POST | `/api/v1/storage/list` | List directory contents. Params: `sort`. Body: FileItem JSON |
-| POST | `/api/v1/storage/mkdir` | Create directory. Params: `name` (required). Body: FileItem |
-| POST | `/api/v1/storage/delete` | Delete file or directory. Body: FileItem JSON |
-| POST | `/api/v1/storage/download` | Download file. Body: FileItem JSON |
-| POST | `/api/v1/storage/image` | Preview image. Body: FileItem JSON |
-| POST | `/api/v1/storage/rename` | Rename file/dir. Params: `new_name` (required), `recursive`. Body: FileItem |
-
-### Transfer (7 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/transfer/name` | Preview transfer name. Params: `path` (required), `filetype` (required) |
-| GET | `/api/v1/transfer/queue` | Transfer queue |
-| DELETE | `/api/v1/transfer/queue` | Remove from transfer queue. Body: FileItem JSON |
-| POST | `/api/v1/transfer/manual/target-path` | Match the manual transfer target from source path and directory configuration. Body: ManualTransferItem JSON; this endpoint does not recognize media |
-| POST | `/api/v1/transfer/manual/history` | Query successful transfer-history summary for selected files or directories. Body: ManualTransferItem JSON |
-| POST | `/api/v1/transfer/manual` | Manual transfer. Params: `background`. Body: ManualTransferItem JSON; optional `media_source` + `media_id` select recognition and scraping source; music directories default to `music_type=album` and files to `music_type=recording` when omitted; matching failed history is cleared automatically, while `reorganize=true` removes matched successful history and old non-move targets before retrying |
-| GET | `/api/v1/transfer/now` | Run immediate transfer |
-
-### Dashboard (19 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/dashboard/statistic` | Media statistics. Params: `name` |
-| GET | `/api/v1/dashboard/statistic2` | Media statistics (API_TOKEN, use `--token-param`) |
-| GET | `/api/v1/dashboard/storage` | Local storage space |
-| GET | `/api/v1/dashboard/storage2` | Local storage space (API_TOKEN) |
-| GET | `/api/v1/dashboard/processes` | Process info |
-| GET | `/api/v1/dashboard/system` | Host name, operating system, MoviePilot runtime, and backend version |
-| GET | `/api/v1/dashboard/downloader` | Downloader info. Params: `name` |
-| GET | `/api/v1/dashboard/downloader2` | Downloader info (API_TOKEN) |
-| GET | `/api/v1/dashboard/schedule` | Scheduled services |
-| GET | `/api/v1/dashboard/schedule2` | Scheduled services (API_TOKEN) |
-| GET | `/api/v1/dashboard/schedule/{job_id}/progress` | Scheduled service real-time progress |
-| GET | `/api/v1/dashboard/schedule2/{job_id}/progress` | Scheduled service real-time progress (API_TOKEN) |
-| GET | `/api/v1/dashboard/transfer` | Transfer statistics. Params: `days` |
-| GET | `/api/v1/dashboard/cpu` | CPU usage |
-| GET | `/api/v1/dashboard/cpu2` | CPU usage (API_TOKEN) |
-| GET | `/api/v1/dashboard/memory` | Memory usage |
-| GET | `/api/v1/dashboard/memory2` | Memory usage (API_TOKEN) |
-| GET | `/api/v1/dashboard/network` | Network traffic |
-| GET | `/api/v1/dashboard/network2` | Network traffic (API_TOKEN) |
-
-### Plugin (25 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/plugin/` | List plugins. Params: `state` (installed/market/all), `force` |
-| GET | `/api/v1/plugin/installed` | List installed plugins |
-| GET | `/api/v1/plugin/statistic` | Plugin install statistics |
-| GET | `/api/v1/plugin/rating` | Batch plugin ratings. Params: comma-separated `plugin_ids` |
-| GET | `/api/v1/plugin/rating/{plugin_id}` | Get average rating, rating count, and this installation's rating |
-| POST | `/api/v1/plugin/rating/{plugin_id}` | Rate an installed plugin. Body: `{"rating": 4.5}`; range 0.1-5.0 |
-| GET | `/api/v1/plugin/install/{plugin_id}` | Install plugin. Params: `repo_url`, `force` |
-| GET | `/api/v1/plugin/reload/{plugin_id}` | Reload plugin |
-| GET | `/api/v1/plugin/reset/{plugin_id}` | Reset plugin config & data |
-| GET | `/api/v1/plugin/{plugin_id}` | Get plugin config |
-| PUT | `/api/v1/plugin/{plugin_id}` | Update plugin config. Body: JSON object |
-| DELETE | `/api/v1/plugin/{plugin_id}` | Uninstall plugin |
-| POST | `/api/v1/plugin/clone/{plugin_id}` | Clone plugin. Body: JSON object |
-| GET | `/api/v1/plugin/form/{plugin_id}` | Plugin form page |
-| GET | `/api/v1/plugin/page/{plugin_id}` | Plugin data page |
-| GET | `/api/v1/plugin/remotes` | Plugin federation list. Params: `token` (required) |
-| GET | `/api/v1/plugin/dashboard/meta` | All plugin dashboard metadata |
-| GET | `/api/v1/plugin/dashboard/{plugin_id}/{key}` | Plugin dashboard by key |
-| GET | `/api/v1/plugin/dashboard/{plugin_id}` | Plugin dashboard |
-| GET | `/api/v1/plugin/file/{plugin_id}/{filepath}` | Plugin static file |
-| GET | `/api/v1/plugin/folders` | Plugin folder config |
-| POST | `/api/v1/plugin/folders` | Save plugin folder config |
-| POST | `/api/v1/plugin/folders/{folder_name}` | Create plugin folder |
-| DELETE | `/api/v1/plugin/folders/{folder_name}` | Delete plugin folder |
-| PUT | `/api/v1/plugin/folders/{folder_name}/plugins` | Update folder plugins. Body: array |
-
-### Workflow (16 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/workflow/` | List all workflows |
-| POST | `/api/v1/workflow/` | Create workflow. Body: Workflow JSON |
-| GET | `/api/v1/workflow/{workflow_id}` | Workflow detail |
-| PUT | `/api/v1/workflow/{workflow_id}` | Update workflow. Body: Workflow JSON |
-| DELETE | `/api/v1/workflow/{workflow_id}` | Delete workflow |
-| POST | `/api/v1/workflow/{workflow_id}/run` | Run workflow. Params: `from_begin` |
-| POST | `/api/v1/workflow/{workflow_id}/start` | Enable workflow |
-| POST | `/api/v1/workflow/{workflow_id}/pause` | Disable workflow |
-| POST | `/api/v1/workflow/{workflow_id}/reset` | Reset workflow |
-| GET | `/api/v1/workflow/actions` | List all actions |
-| GET | `/api/v1/workflow/plugin/actions` | Plugin actions. Params: `plugin_id` |
-| GET | `/api/v1/workflow/event_types` | List event types |
-| POST | `/api/v1/workflow/share` | Share workflow. Body: WorkflowShare JSON |
-| DELETE | `/api/v1/workflow/share/{share_id}` | Delete shared workflow |
-| POST | `/api/v1/workflow/fork` | Fork shared workflow. Body: WorkflowShare JSON |
-| GET | `/api/v1/workflow/shares` | List shared workflows. Params: `name`, `page`, `count` |
-
-### System (28 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/system/env` | Get system configuration, including runtime versions and Rust acceleration availability/enabled status |
-| POST | `/api/v1/system/env` | Update system configuration. Body: JSON object |
-| GET | `/api/v1/system/ping` | Check service availability for authenticated users |
-| GET | `/api/v1/system/setting/public/{key}` | Get allowlisted non-sensitive system setting for authenticated users |
-| GET | `/api/v1/system/setting/{key}` | Get system setting |
-| POST | `/api/v1/system/setting/{key}` | Update system setting |
-| POST | `/api/v1/system/setting/PLUGIN_MARKET/sync-wiki` | Sync plugin market repository URLs from the MoviePilot Wiki and merge with local `PLUGIN_MARKET` |
-| GET | `/api/v1/system/global` | Non-sensitive settings. Params: `token` (required) |
-| GET | `/api/v1/system/global/user` | User-related settings |
-| GET | `/api/v1/system/restart` | Restart system |
-| POST | `/api/v1/system/upgrade` | Retained Dev update and restart. Body: `"dev"` |
-| GET | `/api/v1/system/update/status` | Get Release check, download, or install state |
-| POST | `/api/v1/system/update/check` | Check the latest stable v3 GitHub Release |
-| POST | `/api/v1/system/update/download` | Start verified Release packages downloading in the background |
-| POST | `/api/v1/system/update/install` | Confirm restart and install the prepared Release packages |
-| GET | `/api/v1/system/runscheduler` | Run scheduled service. Params: `jobid` (required) |
-| GET | `/api/v1/system/runscheduler2` | Run scheduler (API_TOKEN, use `--token-param`). Params: `jobid` |
-| GET | `/api/v1/system/modulelist` | List loaded modules |
-| GET | `/api/v1/system/moduletest/{moduleid}` | Test module availability |
-| GET | `/api/v1/system/versions` | List all GitHub releases |
-| GET | `/api/v1/system/ruletest` | Test filter rule. Params: `title` (required), `rulegroup_name` (required), `subtitle` |
-| GET | `/api/v1/system/nettest` | Test network connectivity. Params: `url` (required), `proxy` (required), `include` |
-| GET | `/api/v1/system/llm-models` | List LLM models. Params: `provider` (required), `api_key` (required), `base_url` |
-| GET | `/api/v1/system/progress/{process_type}` | Real-time progress (SSE) |
-| GET | `/api/v1/system/message` | Real-time messages (SSE). Params: `role` |
-| GET | `/api/v1/system/logging` | Real-time logs (SSE). Params: `length`, `logfile` |
-| GET | `/api/v1/system/img/{proxy}` | Image proxy. Params: `imgurl` (required), `cache`, `use_cookies` |
-| GET | `/api/v1/system/cache/image` | Cached image. Params: `url` (required) |
-
-### Discover (6 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/discover/source` | Discover data sources |
-| GET | `/api/v1/discover/bangumi` | Discover Bangumi. Params: `type`, `cat`, `sort`, `year`, `page`, `count` |
-| GET | `/api/v1/discover/douban_movies` | Discover Douban movies. Params: `sort`, `tags`, `page`, `count` |
-| GET | `/api/v1/discover/douban_tvs` | Discover Douban TV. Params: `sort`, `tags`, `page`, `count` |
-| GET | `/api/v1/discover/tmdb_movies` | Discover TMDB movies. Params: `sort_by`, `with_genres`, `with_original_language`, `page` |
-| GET | `/api/v1/discover/tmdb_tvs` | Discover TMDB TV. Params: same as movies |
-
-### Recommend (18 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/recommend/source` | Recommendation data sources |
-| GET | `/api/v1/recommend/bangumi_calendar` | Bangumi daily schedule. Params: `page`, `count` |
-| GET | `/api/v1/recommend/music_weekly` | ListenBrainz weekly site-wide music chart. Params: `page`, `count` |
-| GET | `/api/v1/recommend/music_douban` | Douban new album chart. Params: `page`, `count` |
-| GET | `/api/v1/recommend/douban_showing` | Douban now showing. Params: `page`, `count` |
-| GET | `/api/v1/recommend/douban_movies` | Douban movies. Params: `sort`, `tags`, `page`, `count` |
-| GET | `/api/v1/recommend/douban_tvs` | Douban TV. Params: `sort`, `tags`, `page`, `count` |
-| GET | `/api/v1/recommend/douban_movie_top250` | Douban Top 250 movies. Params: `page`, `count` |
-| GET | `/api/v1/recommend/douban_tv_weekly_chinese` | Douban Chinese TV weekly. Params: `page`, `count` |
-| GET | `/api/v1/recommend/douban_tv_weekly_global` | Douban Global TV weekly. Params: `page`, `count` |
-| GET | `/api/v1/recommend/douban_tv_animation` | Douban animation. Params: `page`, `count` |
-| GET | `/api/v1/recommend/douban_movie_hot` | Douban hot movies. Params: `page`, `count` |
-| GET | `/api/v1/recommend/douban_tv_hot` | Douban hot TV. Params: `page`, `count` |
-| GET | `/api/v1/recommend/tmdb_movies` | TMDB movies. Params: `sort_by`, `with_genres`, `page` |
-| GET | `/api/v1/recommend/tmdb_tvs` | TMDB TV. Params: `sort_by`, `with_genres`, `page` |
-| GET | `/api/v1/recommend/tmdb_trending` | TMDB trending. Params: `page` |
-
-### Torrent Cache (5 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/torrent/cache` | Get torrent cache |
-| DELETE | `/api/v1/torrent/cache` | Clear torrent cache |
-| DELETE | `/api/v1/torrent/cache/{domain}/{torrent_hash}` | Delete specific torrent cache |
-| POST | `/api/v1/torrent/cache/refresh` | Refresh torrent cache |
-| POST | `/api/v1/torrent/cache/reidentify/{domain}/{torrent_hash}` | Re-identify torrent. Optional paired params: `media_source`, `media_id`; music may also pass `music_type` |
-
-### Recognition Cache (3 endpoints)
-
-The list endpoint returns local cache totals plus `shared_recognized` and
-`shared_recognize_enabled` for the persisted successful shared-recognition count.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/tmdb/cache` | Get TheMovieDb recognition cache statistics |
-| DELETE | `/api/v1/tmdb/cache/{cache_key}` | Delete one URL-encoded TheMovieDb recognition cache key |
-| DELETE | `/api/v1/tmdb/cache` | Clear TheMovieDb recognition cache |
-
-### Message (8 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/v1/message/` | Receive user message. Params: `token`, `source` |
-| GET | `/api/v1/message/` | Callback verification. Params: `token`, `echostr`, `msg_signature`, `timestamp`, `nonce`, `source` |
-| POST | `/api/v1/message/web` | Send web message. Params: `text` (required) |
-| GET | `/api/v1/message/web` | Get web messages. Params: `page`, `count` |
-| GET | `/api/v1/message/notification` | Get notification history. Params: `page`, `count`; server filters cleared history |
-| DELETE | `/api/v1/message/notification` | Mark notification history as cleared. Params: `scope` (`all`, `system`, `media`) |
-| POST | `/api/v1/message/webpush/subscribe` | WebPush subscribe. Body: Subscription JSON |
-| POST | `/api/v1/message/webpush/send` | Send WebPush notification. Body: SubscriptionMessage JSON |
-
-### User (10 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/user/` | List all users |
-| POST | `/api/v1/user/` | Create user. Body: UserCreate JSON |
-| PUT | `/api/v1/user/` | Update user. Body: UserUpdate JSON |
-| GET | `/api/v1/user/current` | Current logged-in user |
-| GET | `/api/v1/user/{username}` | User detail |
-| DELETE | `/api/v1/user/id/{user_id}` | Delete user by ID |
-| DELETE | `/api/v1/user/name/{user_name}` | Delete user by username |
-| POST | `/api/v1/user/avatar/{user_id}` | Upload avatar. Body: multipart/form-data; original filename is returned in `data.filename` |
-| GET | `/api/v1/user/config/{key}` | Get user config |
-| POST | `/api/v1/user/config/{key}` | Update user config |
-
-### Login (3 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/v1/login/access-token` | Get JWT access token. Body: form (username, password) |
-| GET | `/api/v1/login/wallpaper` | Login page wallpaper; URL is returned in `data` |
-| GET | `/api/v1/login/wallpapers` | Login page wallpaper list |
-
-### MCP Tools (6 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/v1/mcp` | MCP JSON-RPC 2.0 endpoint |
-| DELETE | `/api/v1/mcp` | Terminate MCP session |
-| GET | `/api/v1/mcp/tools` | List all exposed tools |
-| POST | `/api/v1/mcp/tools/call` | Call a tool. Body: `{"tool_name":"...","arguments":{...}}` |
-| GET | `/api/v1/mcp/tools/{tool_name}` | Get tool definition |
-| GET | `/api/v1/mcp/tools/{tool_name}/schema` | Get tool input schema |
-
-The exposed tool list is dynamic: it includes tools declared by enabled plugins
-and is refreshed lazily after plugin startup, shutdown, reload, or configuration
-activation. Clients that cache MCP metadata must request `tools/list` again or
-reconnect after a plugin lifecycle change.
-
-### Agent MCP Client (3 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/message/agent/mcp/servers` | List external MCP servers configured for the built-in Agent. Superuser login required |
-| POST | `/api/v1/message/agent/mcp/servers` | Save external MCP servers for the built-in Agent. Body: `{"servers":[...]}` |
-| POST | `/api/v1/message/agent/mcp/servers/test` | Test one external MCP server and return discovered tools. Body: `{"server":{...}}` |
-
-### Webhook (2 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/webhook/` | Webhook message (GET). Params: `token`, `source` |
-| POST | `/api/v1/webhook/` | Webhook message (POST). Params: `token`, `source` |
-
-### Servarr Compatibility -- /api/v3 (16 endpoints)
-
-Radarr/Sonarr compatible API for integration with external tools.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v3/system/status` | System status |
-| GET | `/api/v3/qualityProfile` | Quality profiles |
-| GET | `/api/v3/rootfolder` | Root folders |
-| GET | `/api/v3/tag` | Tags |
-| GET | `/api/v3/languageprofile` | Languages |
-| GET | `/api/v3/movie` | All subscribed movies |
-| POST | `/api/v3/movie` | Add movie subscription. Body: RadarrMovie JSON |
-| GET | `/api/v3/movie/lookup` | Search movie. Params: `term` (format: `tmdb:123`) |
-| GET | `/api/v3/movie/{mid}` | Movie detail |
-| DELETE | `/api/v3/movie/{mid}` | Delete movie subscription |
-| GET | `/api/v3/series` | All TV series |
-| POST | `/api/v3/series` | Add TV subscription. Body: SonarrSeries JSON |
-| PUT | `/api/v3/series` | Update TV subscription. Body: SonarrSeries JSON |
-| GET | `/api/v3/series/lookup` | Search TV. Params: `term` (format: `tvdb:123`) |
-| GET | `/api/v3/series/{tid}` | TV detail |
-| DELETE | `/api/v3/series/{tid}` | Delete TV subscription |
-
-### CookieCloud -- /cookiecloud (5 endpoints)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/cookiecloud/` | Root |
-| POST | `/cookiecloud/` | Root |
-| POST | `/cookiecloud/update` | Upload cookie data. Body: CookieData JSON |
-| GET | `/cookiecloud/get/{uuid}` | Download encrypted data |
-| POST | `/cookiecloud/get/{uuid}` | Download encrypted data (POST) |
-
----
-
-## Common Workflows
-
-### Search and download a movie
-
-```bash
-# 1. Search TMDB for the movie
-python scripts/mp-api.py GET /api/v1/media/search title="Inception" type="media"
-
-# 2. Get media detail with the exact identity returned by search
-python scripts/mp-api.py GET /api/v1/media/27205 media_source="themoviedb" type_name="电影"
-
-# 3. Search torrents
-python scripts/mp-api.py GET /api/v1/search/media/27205 media_source="themoviedb" mtype="movie"
-
-# 4. Get latest search results
-python scripts/mp-api.py GET /api/v1/search/last
-
-# 5. Add download
-python scripts/mp-api.py POST /api/v1/download/add --json '{"torrent_in":{"title":"<title_from_search>","enclosure":"<url_from_search>"},"media_source":"themoviedb","media_id":"27205"}'
-```
-
-### Search and subscribe to one recording or complete album
-
-```bash
-# 1. Search MusicBrainz entities through the unified media search
-python scripts/mp-api.py GET /api/v1/media/search title="Artist - Title" type="music" count=20
-
-# 2a. For an album, inspect its complete track list before subscribing
-python scripts/mp-api.py GET /api/v1/music/album/<album_mbid> media_source="musicbrainz"
-
-# 2b. Check the exact entity subscription separately; music_type prevents recording/album ambiguity
-python scripts/mp-api.py GET /api/v1/subscribe/media/<mbid> media_source="musicbrainz" music_type="album"
-
-# 3. Add one exact album subscription. REST enum values use the localized MediaType value.
-python scripts/mp-api.py POST /api/v1/subscribe/ --json '{"name":"Album Title","type":"音乐","music_type":"album","media_source":"musicbrainz","media_id":"<album_mbid>"}'
-
-# For one track, use that track's recording MBID and music_type=recording instead.
-```
-
-Do not create an artist subscription. Select a recording or album from the artist catalog first. For an album manual download, use one matched album resource; the download layer rejects resources whose audio-file list does not cover `total_tracks`.
-
-### Search and download subtitles
-
-```bash
-# 1. Search site subtitles by keyword
-python scripts/mp-api.py GET /api/v1/search/subtitle/title keyword="Inception" sites="1,2"
-
-# 2. Restore the last subtitle search with replayable params
-python scripts/mp-api.py GET /api/v1/search/last/context
-
-# 3. Download a subtitle result to the recognized media directory
-python scripts/mp-api.py POST /api/v1/download/subtitle --json '{"subtitle_in":{"title":"Inception.2010.1080p.chs","enclosure":"https://example.com/downloadsubs.php?torrentid=1&subid=2","site_name":"Example"},"media_source":"themoviedb","media_id":"27205"}'
-```
-
-### Add a subscription
-
-```bash
-# 1. Search for the show
-python scripts/mp-api.py GET /api/v1/media/search title="Breaking Bad" type="media"
-
-# 2. Check if already subscribed
-python scripts/mp-api.py GET /api/v1/subscribe/media/1396 media_source="themoviedb"
-
-# 3. Check if already in library
-python scripts/mp-api.py GET /api/v1/mediaserver/exists media_source="themoviedb" media_id=1396 mtype="tv"
-
-# 4. Add subscription
-python scripts/mp-api.py POST /api/v1/subscribe/ --json '{"name":"Breaking Bad","year":"2008","type":"电视剧","media_source":"themoviedb","media_id":"1396"}'
-```
-
-### System monitoring
-
-```bash
-# CPU, memory, network
-python scripts/mp-api.py GET /api/v1/dashboard/cpu
-python scripts/mp-api.py GET /api/v1/dashboard/memory
-python scripts/mp-api.py GET /api/v1/dashboard/network
-
-# Storage
-python scripts/mp-api.py GET /api/v1/dashboard/storage
-
-# Active downloads
-python scripts/mp-api.py GET /api/v1/download/
-
-# Run a scheduled task
-python scripts/mp-api.py GET /api/v1/system/runscheduler jobid="subscribe_search_all"
-```
-
-### Site management
-
-```bash
-# List all sites
-python scripts/mp-api.py GET /api/v1/site/
-
-# Test site connectivity
-python scripts/mp-api.py GET /api/v1/site/test/1
-
-# Get site user data
-python scripts/mp-api.py GET /api/v1/site/userdata/1
-
-# Sync CookieCloud
-python scripts/mp-api.py GET /api/v1/site/cookiecloud
-```
-
-## Error Handling
-
-| Scenario | Action |
-|----------|--------|
-| HTTP 401 | API key is invalid or missing. Verify local settings with `moviepilot doctor`; only use `--apikey` as an external fallback. |
-| HTTP 403 | Insufficient permissions. The API key grants superuser access; check if the endpoint requires special auth. |
-| HTTP 404 | Endpoint or resource not found. Verify the path and path parameters. |
-| HTTP 422 | Validation error. Check required parameters and JSON body format. |
-| Connection error | Verify `--host` URL is reachable. Check if MoviePilot is running. |
-| Missing config | Run inside the MoviePilot project, or set `MP_HOST` and `MP_API_KEY` in the process environment. |
+- Put route placeholders such as `subscribe_id`, `hashString`, `plugin_id`,
+  `workflow_id`, `media_id`, `storage`, `rule_id`, and `name` in `path_params`.
+- Put GET filters and control values in `query`. The gateway also accepts GET
+  values in `body`, but use `query` consistently except for the protected secret
+  flow below.
+- Put POST, PUT, and PATCH request models in `body`.
+- Preserve the exact source-native `media_source` + `media_id` returned by a
+  search or detail response. For music, also preserve
+  `music_type=recording|album|artist`; an artist is browse-only.
+- Treat `success=false`, HTTP error data, empty results, and validation errors as
+  real outcomes. Do not claim success without checking the response.
+
+## Operation Catalog
+
+### Media and search
+
+| Operation | Parameters | Purpose |
+|---|---|---|
+| `media.search` | query: `title`, `type`, `page`, `count`, `media_source` | Search video, music, collection, or media entities |
+| `media.person.search` | query: `title`, `type=person`, paging/source | Search people |
+| `media.person.credits` | path: `source`, `person_id`; query: paging | Read TMDB or Douban credits |
+| `media.recognize` | query: `title`, optional `subtitle`, `custom_words`, `media_source` | Recognize a title or file path |
+| `media.detail` | path: `media_id`; query: `media_source`, `type_name`, music fields when applicable | Read exact media detail |
+| `media.episode_schedule` | path: `tmdbid`, `season`; query: optional episode group | Read TMDB season episodes |
+| `recommendation.list` | query: source/category/paging fields | Read the unified recommendation feed |
+| `search.torrents` | path: `media_id`; query: `media_source`, `mtype`, `season`, `sites`, `music_type` | Search site resources |
+| `search.results` | query: result filters | Read and filter the latest search context |
+| `media.scrape` | path: `storage`; query: identity/type; body: file item | Scrape metadata, artwork, and configured music lyrics |
+
+After `search.torrents`, present the returned filter choices before narrowing
+results. Reuse `search.results` instead of repeating the same search. Obtain
+explicit consent before `download.add` or another external side effect.
+
+### Subscriptions and downloads
+
+| Operation | Parameters | Purpose |
+|---|---|---|
+| `subscription.list` | query filters | List subscriptions |
+| `subscription.add` | body: subscribe model | Create a subscription |
+| `subscription.update` | body: updated subscribe model | Update a subscription |
+| `subscription.search` | path: `subscribe_id` | Trigger/search one subscription |
+| `subscription.delete` | path: `subscribe_id` | Permanently remove a subscription |
+| `subscription.history` | path: `mtype`; query paging | Read subscription history |
+| `subscription.shares` | query paging | Read shared subscriptions |
+| `subscription.popular` | query paging/type | Read popular subscriptions |
+| `download.add` | body: torrent input and optional media identity/client/path | Add a download |
+| `download.history.delete` | query/body accepted by endpoint | Delete download history |
+
+Before adding a download or subscription, check `library.exists` and
+`subscription.list` when duplicate risk exists. Deletions and file removal need
+explicit confirmation.
+
+### Library, storage, and transfer
+
+| Operation | Parameters | Purpose |
+|---|---|---|
+| `library.exists` | query: exact media identity and type | Check library presence |
+| `storage.settings` | none | Read configured download/library storage roots |
+| `storage.list` | body: storage/path/paging/sort fields | List a local or remote storage directory |
+| `transfer.history` | query filters and paging | Read transfer history |
+| `transfer.file` | body: manual-transfer model | Organize a file or directory |
+| `transfer.history.delete` | query/body accepted by endpoint | Submit durable retry or delete legacy history |
+
+For transfer retries, preserve durable scheduler evidence. If history deletion
+returns a durable retry decision, stop and report it; only an actually deleted
+legacy record may be followed by `transfer.file`.
+
+Downloader task state and media-server library browsing deliberately do not pass
+through this gateway. Discover the configured instance and its live capability
+set with the matching provider-operation skill before calling the fixed helper.
+
+### Sites, workflows, and schedulers
+
+| Operation | Parameters | Purpose |
+|---|---|---|
+| `site.list` | query filters | List configured sites |
+| `site.userdata` | path: `site_id` | Read site account data |
+| `site.test` | path: `site_id` | Test site connectivity/login |
+| `site.update` | body: site model | Update site configuration |
+| `site.cookie.update` | path: `site_id`; body: credentials/2FA fields | Refresh site authentication |
+| `scheduler.list` | none | List system/plugin/workflow schedules |
+| `scheduler.run` | query: `job_id` | Run one scheduler job |
+| `workflow.list` | query filters | List workflows |
+| `workflow.run` | path: `workflow_id`; body/query endpoint fields | Run one workflow |
+
+Scheduler `job_id` values are strings and are unrelated to autonomous Agent
+task IDs. Test and credential updates are external side effects and require the
+appropriate authorization/confirmation.
+
+### Plugins, rules, and configuration
+
+| Operation | Parameters | Purpose |
+|---|---|---|
+| `plugin.installed` / `plugin.market` | query filters | List installed or market plugins |
+| `plugin.capabilities` | query: optional plugin ID | Read commands, actions, services, and Agent capabilities |
+| `plugin.config.get` / `plugin.config.update` | path: `plugin_id`; update body | Read or update plugin configuration |
+| `plugin.data` | path: `plugin_id`; query: key/limit/offset | Read bounded plugin data previews |
+| `plugin.install` / `plugin.reload` / `plugin.uninstall` | path: `plugin_id` | Manage plugin lifecycle |
+| `filter.builtin` / `filter.custom` / `filter.groups` | none or query filters | Read filter definitions |
+| `filter.custom.add` / `filter.custom.update` / `filter.custom.delete` | update/delete path: `rule_id`; body for writes | Manage custom filter rules |
+| `filter.group.add` / `filter.group.update` / `filter.group.delete` | update/delete path: `name`; body for writes | Manage filter groups |
+| `config.identifiers.get` / `config.identifiers.update` | update body | Read or replace custom identifiers |
+| `config.system.get` / `config.system.update` | query/body for read; update body | Read or update system settings |
+| `slash.list` / `slash.run` | run body: `command` | Discover or dispatch system/plugin slash commands |
+
+For a raw credential explicitly requested by an administrator, call
+`config.system.get` with `body.show_secrets=true` and the narrowest
+`body.setting_key` or `body.group`. The host pauses the turn for confirmation and
+delivers the value through a protected channel. Never repeat the secret in a
+normal response.
+
+Plugin install, reload, uninstall, configuration writes, rule writes, system
+setting writes, identifier writes, scheduler/workflow runs, and slash commands
+are state changes. Inspect current state first and confirm unless the user's
+request already explicitly authorizes the exact action.

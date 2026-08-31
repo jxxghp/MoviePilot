@@ -7,15 +7,15 @@ import langchain.agents as langchain_agents
 if not hasattr(langchain_agents, "create_agent"):
     langchain_agents.create_agent = lambda *args, **kwargs: None
 
-from app.agent.orchestrator import _ThinkTagStripper
 from app.agent.callback import StreamingHandler
 from app.agent.middleware.subagents import is_subagent_stream_metadata
+from app.agent.orchestrator import _ThinkTagStripper
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
 from app.api.endpoints.openai import _get_openai_streaming_handler_type
 from app.runtime.config import settings
 from app.schemas.message import Message, MessageResponse
-from app.schemas.types import NotificationChannel, MessageType
+from app.schemas.types import MessageType, NotificationChannel
 
 
 def test_think_tag_stripper_waits_for_partial_open_tag():
@@ -126,6 +126,7 @@ class TestAgentToolStreaming:
 
     def test_permission_failure_adds_boundary_newline(self):
         """校验权限拦截时在流式缓冲中补齐工具边界换行。"""
+
         async def _run():
             tool = AdminOnlyDummyTool(session_id="session-1", user_id="10001")
             handler = StreamingHandler()
@@ -147,6 +148,7 @@ class TestAgentToolStreaming:
 
     def test_permission_failure_skips_newline_when_buffer_empty(self):
         """校验缓冲为空时权限拦截不会补多余的换行。"""
+
         async def _run():
             tool = AdminOnlyDummyTool(session_id="session-1", user_id="10001")
             handler = StreamingHandler()
@@ -163,6 +165,7 @@ class TestAgentToolStreaming:
 
     def test_permission_failure_reuses_existing_newline(self):
         """校验缓冲已以换行结尾时权限拦截不再补换行。"""
+
         async def _run():
             tool = AdminOnlyDummyTool(session_id="session-1", user_id="10001")
             handler = StreamingHandler()
@@ -202,6 +205,7 @@ class TestAgentToolStreaming:
 
     def test_non_verbose_tool_summary_is_inserted_before_next_text(self):
         """校验工具摘要插入在后续文本之前。"""
+
         async def _run():
             tool = DummyTool(session_id="session-1", user_id="10001")
             handler = StreamingHandler()
@@ -221,6 +225,7 @@ class TestAgentToolStreaming:
 
     def test_non_verbose_tool_summary_aggregates_multiple_categories(self):
         """校验非详细模式按工具类别聚合摘要。"""
+
         async def _run():
             handler = StreamingHandler()
             await handler.start_streaming()
@@ -272,6 +277,7 @@ class TestAgentToolStreaming:
 
     def test_non_verbose_tool_summary_counts_subagents(self):
         """校验非详细模式统计子代理调用次数。"""
+
         async def _run():
             handler = StreamingHandler()
             await handler.start_streaming()
@@ -294,6 +300,7 @@ class TestAgentToolStreaming:
 
     def test_non_verbose_tool_summary_describes_skill_lookup(self):
         """校验非详细模式单独描述 Skill 说明查询。"""
+
         async def _run():
             handler = StreamingHandler()
             await handler.start_streaming()
@@ -301,12 +308,12 @@ class TestAgentToolStreaming:
             handler.record_tool_call(
                 tool_name="skill",
                 tool_message="Loads the full instructions for a MoviePilot skill",
-                tool_kwargs={"name": "moviepilot-cli"},
+                tool_kwargs={"name": "moviepilot-api"},
             )
             handler.record_tool_call(
                 tool_name="skill",
                 tool_message="Loads the full instructions for a MoviePilot skill",
-                tool_kwargs={"name": "moviepilot-cli"},
+                tool_kwargs={"name": "moviepilot-api"},
             )
             handler.record_tool_call(
                 tool_name="query_activity_log",
@@ -321,6 +328,7 @@ class TestAgentToolStreaming:
 
     def test_non_verbose_tool_summary_counts_subagent_batch_tasks(self):
         """校验批量子代理控制工具按子任务数统计。"""
+
         async def _run():
             handler = StreamingHandler()
             await handler.start_streaming()
@@ -344,14 +352,13 @@ class TestAgentToolStreaming:
 
     def test_subagent_stream_metadata_is_suppressed(self):
         """校验子代理流式元数据会被识别并抑制。"""
-        assert is_subagent_stream_metadata(
-            {"metadata": {"ls_agent_type": "subagent"}}
-        )
+        assert is_subagent_stream_metadata({"metadata": {"ls_agent_type": "subagent"}})
         assert is_subagent_stream_metadata({"lc_agent_name": "media-researcher"})
         assert not is_subagent_stream_metadata({"lc_agent_name": "main"})
 
     def test_openai_streaming_handler_flushes_pending_summary_to_queue(self):
         """校验 OpenAI 流式处理器将待发送摘要推入队列。"""
+
         async def _run():
             handler = _get_openai_streaming_handler_type()()
             queue: asyncio.Queue = asyncio.Queue()
@@ -383,9 +390,7 @@ class TestAgentToolStreaming:
         handler._streaming_enabled = True
         handler.emit("hello")
 
-        with patch(
-            "app.agent.callback.run_in_threadpool", new_callable=AsyncMock
-        ) as run_in_threadpool_mock:
+        with patch("app.agent.callback.run_in_threadpool", new_callable=AsyncMock) as run_in_threadpool_mock:
             run_in_threadpool_mock.return_value = MessageResponse(
                 message_id=1,
                 chat_id=2,
@@ -409,9 +414,12 @@ class TestAgentToolStreaming:
         handler._channel = NotificationChannel.Telegram.value
         handler._source = "telegram"
         handler.record_tool_call(
-            tool_name="list_directory",
+            tool_name="moviepilot_api",
             tool_message="查看目录",
-            tool_kwargs={"path": "/tmp"},
+            tool_kwargs={
+                "operation_id": "storage.list",
+                "body": {"path": "/tmp"},
+            },
         )
         handler.flush_pending_tool_summary()
         text = handler._buffer
@@ -467,25 +475,19 @@ class TestAgentToolStreaming:
         handler._sent_text = "hello"
         handler.emit("hello world")
 
-        with patch(
-            "app.agent.callback.run_in_threadpool", new_callable=AsyncMock
-        ) as run_in_threadpool_mock:
+        with patch("app.agent.callback.run_in_threadpool", new_callable=AsyncMock) as run_in_threadpool_mock:
             run_in_threadpool_mock.return_value = True
 
             asyncio.run(handler._flush())
 
         assert run_in_threadpool_mock.await_count == 1
         assert run_in_threadpool_mock.await_args.args[0].__name__ == "edit_message"
-        assert (
-            run_in_threadpool_mock.await_args.kwargs["metadata"][
-                "telegram_rich_message"
-            ]
-            == "hello world"
-        )
+        assert run_in_threadpool_mock.await_args.kwargs["metadata"]["telegram_rich_message"] == "hello world"
         assert handler._sent_text == "hello world"
 
     def test_stop_streaming_waits_inflight_initial_flush_before_final_edit(self):
         """校验停止流式输出会等待首条消息发送完成再编辑。"""
+
         async def _run():
             handler = StreamingHandler()
             handler._channel = NotificationChannel.Feishu.value
@@ -558,12 +560,10 @@ class TestAgentToolStreaming:
         handler._buffer = "hello"
         handler._streaming_enabled = True
 
-        with patch(
-            "app.agent.callback.run_in_threadpool", new_callable=AsyncMock
-        ) as run_in_threadpool_mock, patch.object(
-            handler, "_cancel_flush_task", new_callable=AsyncMock
-        ), patch.object(
-            handler, "_flush", new_callable=AsyncMock
+        with (
+            patch("app.agent.callback.run_in_threadpool", new_callable=AsyncMock) as run_in_threadpool_mock,
+            patch.object(handler, "_cancel_flush_task", new_callable=AsyncMock),
+            patch.object(handler, "_flush", new_callable=AsyncMock),
         ):
             asyncio.run(handler.stop_streaming())
 
@@ -577,9 +577,7 @@ class TestAgentToolStreaming:
         handler._streaming_enabled = True
         handler.emit("hello")
 
-        with patch(
-            "app.agent.callback.run_in_threadpool", new_callable=AsyncMock
-        ) as run_in_threadpool_mock:
+        with patch("app.agent.callback.run_in_threadpool", new_callable=AsyncMock) as run_in_threadpool_mock:
             asyncio.run(handler._flush())
 
         run_in_threadpool_mock.assert_not_awaited()
@@ -594,9 +592,7 @@ class TestAgentToolStreaming:
         handler.set_dispatch_policy(allow_dispatch_without_context=True)
         handler.emit("hello")
 
-        with patch(
-            "app.agent.callback.run_in_threadpool", new_callable=AsyncMock
-        ) as run_in_threadpool_mock:
+        with patch("app.agent.callback.run_in_threadpool", new_callable=AsyncMock) as run_in_threadpool_mock:
             run_in_threadpool_mock.return_value = MessageResponse(
                 message_id=1,
                 chat_id=2,
@@ -622,9 +618,7 @@ class TestAgentToolStreaming:
         handler._streaming_enabled = True
         handler.emit("hello")
 
-        with patch(
-            "app.agent.callback.run_in_threadpool", new_callable=AsyncMock
-        ) as run_in_threadpool_mock:
+        with patch("app.agent.callback.run_in_threadpool", new_callable=AsyncMock) as run_in_threadpool_mock:
             run_in_threadpool_mock.return_value = MessageResponse(
                 message_id="om_stream",
                 chat_id="oc_origin",
@@ -640,6 +634,7 @@ class TestAgentToolStreaming:
 
     def test_verbose_background_tool_call_does_not_post_message(self):
         """校验详细模式后台工具调用不会主动发送工具消息。"""
+
         async def _run():
             tool = DummyTool(session_id="session-1", user_id="10001")
             handler = StreamingHandler()
@@ -649,9 +644,7 @@ class TestAgentToolStreaming:
 
             with (
                 patch.object(settings, "AI_AGENT_VERBOSE", True),
-                patch.object(
-                    DummyTool, "send_tool_message", new_callable=AsyncMock
-                ) as send_tool_message,
+                patch.object(DummyTool, "send_tool_message", new_callable=AsyncMock) as send_tool_message,
             ):
                 result = await tool._arun()
                 buffered_message = await handler.take()
@@ -665,6 +658,7 @@ class TestAgentToolStreaming:
 
     def test_verbose_background_dispatch_tool_call_can_post_message(self):
         """校验允许后台派发时详细模式工具调用可以发送消息。"""
+
         async def _run():
             tool = DummyTool(session_id="session-1", user_id="10001")
             handler = StreamingHandler()
@@ -676,9 +670,7 @@ class TestAgentToolStreaming:
 
             with (
                 patch.object(settings, "AI_AGENT_VERBOSE", True),
-                patch.object(
-                    DummyTool, "send_tool_message", new_callable=AsyncMock
-                ) as send_tool_message,
+                patch.object(DummyTool, "send_tool_message", new_callable=AsyncMock) as send_tool_message,
             ):
                 result = await tool._arun()
                 buffered_message = await handler.take()
@@ -723,9 +715,7 @@ class TestAgentToolStreaming:
             return result, synthesize_speech, send_message
 
         for channel in (NotificationChannel.Telegram, NotificationChannel.Feishu, NotificationChannel.WebAgent):
-            result, synthesize_speech, send_message = asyncio.run(
-                _run(channel)
-            )
+            result, synthesize_speech, send_message = asyncio.run(_run(channel))
             notification = send_message.await_args.args[-1]
 
             assert result == "语音回复已发送"
@@ -744,9 +734,7 @@ class TestAgentToolStreaming:
         async def _run():
             """运行不支持语音输出渠道的语音发送工具。"""
             tool = SendVoiceMessageTool(session_id="session-1", user_id="10001")
-            tool.set_message_attr(
-                channel=NotificationChannel.Slack.value, source="slack-main", username="tester"
-            )
+            tool.set_message_attr(channel=NotificationChannel.Slack.value, source="slack-main", username="tester")
 
             with (
                 patch.object(settings, "LLM_SUPPORT_AUDIO_OUTPUT", True),

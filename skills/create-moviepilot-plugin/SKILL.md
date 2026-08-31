@@ -1,6 +1,6 @@
 ---
 name: create-moviepilot-plugin
-version: 4
+version: 5
 description: >-
   Use this skill when the user asks to create, modify, debug, validate, or
   scaffold a MoviePilot local plugin. Covers MoviePilot V2 plugin development,
@@ -11,7 +11,8 @@ description: >-
   sidebar pages, commands, services, workflow actions, agent tools, and local
   install/reload flows. Also use for Chinese requests mentioning 编写插件、本地插件源,
   插件开发, V2插件, 插件市场, 本地安装插件, 插件热加载, 前端联邦, 侧栏入口, Vue插件页面.
-allowed-tools: list_directory read_file write_file edit_file apply_patch execute_command search_web browse_webpage query_system_settings update_system_settings query_market_plugins install_plugin reload_plugin query_installed_plugins
+allowed-tools: read_file write_file edit_file apply_patch execute_command search_web browse_webpage moviepilot_api
+allowed-api-operations: config.system.get config.system.update plugin.market plugin.installed plugin.install plugin.reload
 ---
 
 # Create MoviePilot Plugin
@@ -37,9 +38,8 @@ a local plugin source and installed into the running MoviePilot instance.
 ## Code Tool Workflow
 
 - Use `execute_command(action="run")` with `rg` and narrow globs or paths to
-  locate plugin classes, extension points, tests, and package entries. Use
-  `list_directory` only when inspecting one known folder or a configured remote
-  storage backend.
+  locate plugin classes, extension points, tests, package entries, and directory
+  contents.
 - Read the relevant implementation and adjacent example before editing.
 - If `read_file` reports truncation, continue with smaller `start_line` and
   `end_line` ranges until all relevant sections have been inspected.
@@ -92,21 +92,23 @@ a local plugin source and installed into the running MoviePilot instance.
    - Do not silently default to either mode just because one seems easier.
 3. Inspect existing plugins before creating a new one:
    - Local runtime examples: `app/plugins/<plugin>/__init__.py`
-   - Market/local source candidates: use `query_market_plugins` when the
-     running instance is available.
-   - Installed plugin candidates: use `query_installed_plugins`; its summaries
+   - Market/local source candidates: call `moviepilot_api` with
+     `operation_id=plugin.market` when the running instance is available.
+   - Installed plugin candidates: use `operation_id=plugin.installed`; its summaries
      include `repo_url` when the source can be matched from a local plugin
      repository or plugin market metadata.
    - For Vue federation examples, prefer current compliant plugins such as
      `MoviePilot-Plugins/plugins.v2/agenttokens/` and the frontend example
      `MoviePilot-Frontend/examples/plugin-component/`.
 4. Determine the target source path:
-   - Query `PLUGIN_LOCAL_REPO_PATHS` with `query_system_settings` when possible.
+   - Query `PLUGIN_LOCAL_REPO_PATHS` with `operation_id=config.system.get` when possible.
    - If exactly one local plugin repository is configured, prefer that path.
    - If several are configured, choose the one the user named; otherwise ask
      which repository to use.
    - If none is configured, set it before writing plugin code:
-     `update_system_settings(setting_key="PLUGIN_LOCAL_REPO_PATHS", value="local-plugins", operation="replace")`.
+     call `operation_id=config.system.update` with a body containing
+     `setting_key="PLUGIN_LOCAL_REPO_PATHS"`, `value="local-plugins"`, and
+     `operation="replace"`.
      `local-plugins` is resolved relative to the MoviePilot root by the local
      plugin source loader. Create that source directory and write the plugin
      under it; do not write new plugin source directly into `app/plugins/`
@@ -476,13 +478,16 @@ Vue API calls:
 ## Local Install And Reload
 
 1. After writing files in a configured local plugin repository, call
-   `query_market_plugins(query="<PluginID>", force_refresh=True)` to confirm the
+   `moviepilot_api` with `operation_id=plugin.market` and query fields
+   `query="<PluginID>"`, `force_refresh=true` to confirm the
    local source is visible.
-2. Install or reinstall with `install_plugin(plugin_id="<PluginID>", force=True)`.
+2. Install or reinstall with `operation_id=plugin.install`, path parameter
+   `plugin_id="<PluginID>"`, and `query.force=true`.
    The install flow copies the source into `app/plugins/<plugin_id_lower>/`.
 3. If `PLUGIN_AUTO_RELOAD` or development mode is enabled, Python source changes
    in an installed local plugin can auto-sync and reload. If it is not enabled,
-   call `reload_plugin(plugin_id="<PluginID>")` after editing runtime files.
+   call `operation_id=plugin.reload` with path parameter `plugin_id` after
+   editing runtime files.
 4. When `requirements.txt` changes, reinstall with `force=True`; reloading alone
    does not install new dependencies.
 

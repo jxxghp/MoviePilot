@@ -1752,7 +1752,6 @@
           "64006f45841531463b1489576e1aee24ae1b50a2509a9773bc2149415f2c7d18"
         ],
         "producer_fingerprints": [
-          "10f78c4b6c0daa39dfd425d5b1f58f0c3be5ed2e2c92c5fe88e73ae78ffae6f7",
           "f022ca0218b956cfd193695721ddc60343030bf15baa2d7bb0a2e9ccacce6bba"
         ]
       },
@@ -1764,9 +1763,7 @@
           "c53927bd5752ec004ac403f6dc07fca7b253f0db152fc773643972d7c3bf5d34"
         ],
         "producer_fingerprints": [
-          "36d3234c5f3cd7317c34d6ee71bc065946ea0e981dd2377589f73e54ebaf8703",
-          "5fe23577466054d66cb12b34d4df8834f8933596be0cbc84e4cbfc22694b3c03",
-          "cdf41d4446e65b14d457621594f04b3e6bfce252e7701cb4be862b2259e97700"
+          "36d3234c5f3cd7317c34d6ee71bc065946ea0e981dd2377589f73e54ebaf8703"
         ]
       },
       "EventType.DownloadAdded": {
@@ -1868,7 +1865,6 @@
         ],
         "producer_fingerprints": [
           "7ccc7af8b1102056372e6450bf3ee6f9067aa984e3e655fd5061d16eec327097",
-          "91ddcfd5135b306415aa58956f7d25c8e9d98811bee06128d341bd6a711a05c8",
           "9ca1f49946d2bcfdf0bbb3559e1a129ee1506ceb7773a0efcd374784df99474f"
         ]
       },
@@ -1963,11 +1959,11 @@
         ]
       }
     },
-    "fact_count": 107,
+    "fact_count": 103,
     "invalid_consumer_count": 0,
     "invalid_producer_count": 0,
-    "producer_call_count": 90,
-    "producer_event_reference_count": 91,
+    "producer_call_count": 86,
+    "producer_event_reference_count": 87,
     "producers": [
       {
         "caller": "app.agent.orchestrator",
@@ -1991,54 +1987,6 @@
         "invalid": false,
         "method": "send_event",
         "qualname": "MoviePilotAgent._send_agent_tokens_usage_event",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.agent.tools.impl._filter_rule_utils",
-        "dynamic": false,
-        "events": [
-          "EventType.ConfigChanged"
-        ],
-        "fingerprint": "5fe23577466054d66cb12b34d4df8834f8933596be0cbc84e4cbfc22694b3c03",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "publish_rule_config_changed",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.agent.tools.impl.run_slash_command",
-        "dynamic": false,
-        "events": [
-          "EventType.CommandExcute"
-        ],
-        "fingerprint": "10f78c4b6c0daa39dfd425d5b1f58f0c3be5ed2e2c92c5fe88e73ae78ffae6f7",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "RunSlashCommandTool.run",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.agent.tools.impl.update_site",
-        "dynamic": false,
-        "events": [
-          "EventType.SiteUpdated"
-        ],
-        "fingerprint": "91ddcfd5135b306415aa58956f7d25c8e9d98811bee06128d341bd6a711a05c8",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "UpdateSiteTool.run",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.agent.tools.impl.update_system_settings",
-        "dynamic": false,
-        "events": [
-          "EventType.ConfigChanged"
-        ],
-        "fingerprint": "cdf41d4446e65b14d457621594f04b3e6bfce252e7701cb4be862b2259e97700",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "UpdateSystemSettingsTool.run",
         "receiver_kind": "canonical_singleton"
       },
       {
@@ -3051,7 +2999,7 @@
       }
     ],
     "static_consumer_count": 16,
-    "static_producer_call_count": 89
+    "static_producer_call_count": 85
   },
   "event_specs": {
     "ChainEventType.AgentLLMProvider": {

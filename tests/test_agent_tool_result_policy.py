@@ -16,15 +16,13 @@ from pydantic import (
     ValidationError,
     field_validator,
 )
-from pydantic_core import PydanticCustomError
 from pydantic.dataclasses import dataclass as pydantic_dataclass
+from pydantic_core import PydanticCustomError
 
 import app.agent.policy.sanitizer as sanitizer_module
 from app.agent.policy import sanitize_for_host, summarize_error, summarize_input, summarize_result
 from app.agent.tools.base import MoviePilotTool, serialize_tool_result_for_agent
-from app.agent.tools.impl.query_system_settings import QuerySystemSettingsTool
 from app.agent.tools.manager import MoviePilotToolsManager
-
 
 SECRET_MARKER = "nested-secret-marker-8472"
 
@@ -85,17 +83,13 @@ class _ValidationAliasedCredentialResult(BaseModel):
 class _ChoiceAliasedCredentialResult(BaseModel):
     """模拟敏感名称位于后续 choice 的 Pydantic 字段。"""
 
-    credential: str = Field(
-        validation_alias=AliasChoices("credentialLabel", "apiKey")
-    )
+    credential: str = Field(validation_alias=AliasChoices("credentialLabel", "apiKey"))
 
 
 class _PathAliasedCredentialResult(BaseModel):
     """模拟通过带整数索引的嵌套路径接收凭据的 Pydantic 字段。"""
 
-    credential: str = Field(
-        validation_alias=AliasPath("payload", 0, "clientSecret")
-    )
+    credential: str = Field(validation_alias=AliasPath("payload", 0, "clientSecret"))
 
 
 class _ChoicePathAliasedCredentialResult(BaseModel):
@@ -425,19 +419,11 @@ def test_sanitizer_rejects_hostile_named_tuple_metadata_without_protocols() -> N
         _AliasedCredentialResult(apiKey=SECRET_MARKER),
         _ValidationAliasedCredentialResult(apiToken=SECRET_MARKER),
         _ChoiceAliasedCredentialResult(apiKey=SECRET_MARKER),
-        _PathAliasedCredentialResult(
-            payload=[{"clientSecret": SECRET_MARKER}]
-        ),
-        _ChoicePathAliasedCredentialResult(
-            payload={"refreshToken": SECRET_MARKER}
-        ),
+        _PathAliasedCredentialResult(payload=[{"clientSecret": SECRET_MARKER}]),
+        _ChoicePathAliasedCredentialResult(payload={"refreshToken": SECRET_MARKER}),
         _SerializationAliasedCredentialResult(credential=SECRET_MARKER),
-        _HostileAliasedCredentialResult.model_validate(
-            {"apiKey": SECRET_MARKER}
-        ),
-        _HostilePathAliasedCredentialResult.model_validate(
-            {"payload": {"clientSecret": SECRET_MARKER}}
-        ),
+        _HostileAliasedCredentialResult.model_validate({"apiKey": SECRET_MARKER}),
+        _HostilePathAliasedCredentialResult.model_validate({"payload": {"clientSecret": SECRET_MARKER}}),
     ],
 )
 def test_recursive_sanitizer_redacts_pydantic_secret_aliases(
@@ -452,9 +438,7 @@ def test_recursive_sanitizer_redacts_pydantic_secret_aliases(
 
 def test_recursive_sanitizer_preserves_pydantic_metadata_alias() -> None:
     """非敏感 Pydantic 外部别名不应遮蔽 metadata 值。"""
-    assert sanitize_for_host(_AliasedMetadataResult(tokenCount=12)) == {
-        "count": 12
-    }
+    assert sanitize_for_host(_AliasedMetadataResult(tokenCount=12)) == {"count": 12}
 
 
 @pytest.mark.parametrize(
@@ -488,9 +472,7 @@ def test_pydantic_alias_path_limit_applies_before_iteration() -> None:
                 yield part
 
     alias = AliasPath("placeholder")
-    alias.path = _TrackingPath(
-        ["metadata"] * (sanitizer_module._MAX_ITEMS + 1)
-    )
+    alias.path = _TrackingPath(["metadata"] * (sanitizer_module._MAX_ITEMS + 1))
 
     assert sanitizer_module._pydantic_alias_names(alias) is None
     assert _TrackingPath.yielded_parts == 0
@@ -504,10 +486,13 @@ def test_pydantic_alias_choices_share_one_part_budget() -> None:
     )
     budget = [sanitizer_module._MAX_ITEMS]
 
-    assert sanitizer_module._pydantic_alias_names(
-        alias,
-        _budget=budget,
-    ) is None
+    assert (
+        sanitizer_module._pydantic_alias_names(
+            alias,
+            _budget=budget,
+        )
+        is None
+    )
     assert budget == [0]
 
     class _OversizedAliasResult(BaseModel):
@@ -515,9 +500,7 @@ def test_pydantic_alias_choices_share_one_part_budget() -> None:
 
         credential: str = Field(validation_alias=alias)
 
-    sanitized = sanitize_for_host(
-        _OversizedAliasResult.model_construct(credential=SECRET_MARKER)
-    )
+    sanitized = sanitize_for_host(_OversizedAliasResult.model_construct(credential=SECRET_MARKER))
 
     assert sanitized == {"credential": "***"}
     assert SECRET_MARKER not in str(sanitized)
@@ -676,10 +659,7 @@ def test_sanitizer_redacts_escaped_quoted_secret_keys_with_spaces(
 ) -> None:
     """转义 JSON 片段中的空格分隔凭据名必须复用结构化判敏语义。"""
     wrapper = "\\" * escape_layers + quote
-    source = (
-        f"payload={{{wrapper}{field_name}{wrapper}:"
-        f"{wrapper}{SECRET_MARKER}{wrapper}}}"
-    )
+    source = f"payload={{{wrapper}{field_name}{wrapper}:{wrapper}{SECRET_MARKER}{wrapper}}}"
 
     sanitized = str(sanitize_for_host(source))
 
@@ -698,10 +678,7 @@ def test_sanitizer_redacts_quoted_secret_keys_with_leading_whitespace(
 ) -> None:
     """quoted key 的前导横向空白不得绕过凭据名识别。"""
     wrapper = "\\" * escape_layers + quote
-    source = (
-        f"payload={{{wrapper}{leading_whitespace}api key{wrapper}:"
-        f"{wrapper}{SECRET_MARKER}{wrapper}}}"
-    )
+    source = f"payload={{{wrapper}{leading_whitespace}api key{wrapper}:{wrapper}{SECRET_MARKER}{wrapper}}}"
 
     outputs = (
         str(sanitize_for_host(source)),
@@ -716,7 +693,7 @@ def test_sanitizer_redacts_quoted_secret_keys_with_leading_whitespace(
 
 def test_sanitizer_preserves_escaped_quoted_metadata_key_with_spaces() -> None:
     """空格分隔的 metadata key 不应因 quoted-key 支持而被误判。"""
-    source = r'payload=\"{\\\"token count\\\":12}\"'
+    source = r"payload=\"{\\\"token count\\\":12}\""
 
     assert sanitize_for_host(source) == source
 
@@ -787,9 +764,7 @@ def test_sanitizer_preserves_noncredential_basic_metadata(source: str) -> None:
 def test_sanitizer_fails_closed_for_truncated_basic_auth_token() -> None:
     """Basic token 在文本上限内未闭合时遮蔽整个已保留前缀。"""
     prefix = "log: Basic "
-    token = base64.b64encode(
-        b"alice:" + b"x" * sanitizer_module._MAX_TEXT_CHARS
-    ).decode()
+    token = base64.b64encode(b"alice:" + b"x" * sanitizer_module._MAX_TEXT_CHARS).decode()
     source = prefix + token
 
     sanitized = str(sanitize_for_host(source))
@@ -800,9 +775,7 @@ def test_sanitizer_fails_closed_for_truncated_basic_auth_token() -> None:
 
 def test_sanitizer_fails_closed_for_truncated_basic_auth_in_tuple_key() -> None:
     """tuple renderer 的内部截断事实必须传给 Basic token 脱敏。"""
-    token = base64.b64encode(
-        b"alice:" + b"x" * sanitizer_module._MAX_TEXT_CHARS
-    ).decode()
+    token = base64.b64encode(b"alice:" + b"x" * sanitizer_module._MAX_TEXT_CHARS).decode()
     payload = {("Authorization", f"Basic {token}"): "ok"}
 
     sanitized = sanitize_for_host(payload)
@@ -822,8 +795,7 @@ def test_sanitizer_fails_closed_for_truncated_basic_auth_in_tuple_key() -> None:
             "url=https://example.invalid/cb?authToken=***&status=ok#done",
         ),
         (
-            f"url=https://example.invalid/cb?authToken={SECRET_MARKER}"
-            f"&refreshToken={SECRET_MARKER}#done",
+            f"url=https://example.invalid/cb?authToken={SECRET_MARKER}&refreshToken={SECRET_MARKER}#done",
             "url=https://example.invalid/cb?authToken=***&refreshToken=***#done",
         ),
         (
@@ -844,15 +816,15 @@ def test_sanitizer_fails_closed_for_truncated_basic_auth_in_tuple_key() -> None:
         ),
         (
             'authToken=""',
-            'authToken=***',
+            "authToken=***",
         ),
         (
-            'url=https://example.invalid/cb?authToken=&status=ok',
-            'url=https://example.invalid/cb?authToken=***&status=ok',
+            "url=https://example.invalid/cb?authToken=&status=ok",
+            "url=https://example.invalid/cb?authToken=***&status=ok",
         ),
         (
             'authToken="unterminated',
-            'authToken=***',
+            "authToken=***",
         ),
     ],
 )
@@ -868,8 +840,7 @@ def test_sanitizer_preserves_nested_assignment_boundaries(
     ("source", "expected"),
     [
         (
-            f"database_url=postgresql://alice:{SECRET_MARKER}"
-            "@example.invalid/media",
+            f"database_url=postgresql://alice:{SECRET_MARKER}@example.invalid/media",
             "database_url=postgresql://***@example.invalid/media",
         ),
         (
@@ -877,29 +848,23 @@ def test_sanitizer_preserves_nested_assignment_boundaries(
             "endpoint=https://***@example.invalid/path",
         ),
         (
-            f"dsn=postgresql://alice:{SECRET_MARKER}%40tail"
-            "@[2001:db8::1]:5432/media?sslmode=require",
+            f"dsn=postgresql://alice:{SECRET_MARKER}%40tail@[2001:db8::1]:5432/media?sslmode=require",
             "dsn=postgresql://***@[2001:db8::1]:5432/media?sslmode=require",
         ),
         (
-            f"primary=https://alice:{SECRET_MARKER}@one.invalid/a "
-            f"secondary=redis://:{SECRET_MARKER}-two@two.invalid/0",
-            "primary=https://***@one.invalid/a "
-            "secondary=redis://***@two.invalid/0",
+            f"primary=https://alice:{SECRET_MARKER}@one.invalid/a secondary=redis://:{SECRET_MARKER}-two@two.invalid/0",
+            "primary=https://***@one.invalid/a secondary=redis://***@two.invalid/0",
         ),
         (
-            f"https://alice:{SECRET_MARKER}@one.invalid,"
-            f"redis://:{SECRET_MARKER}-two@two.invalid/0",
+            f"https://alice:{SECRET_MARKER}@one.invalid,redis://:{SECRET_MARKER}-two@two.invalid/0",
             "https://***@one.invalid,redis://***@two.invalid/0",
         ),
         (
-            f"https://alice:{SECRET_MARKER}@one.invalid;"
-            f"redis://:{SECRET_MARKER}-two@two.invalid/0",
+            f"https://alice:{SECRET_MARKER}@one.invalid;redis://:{SECRET_MARKER}-two@two.invalid/0",
             "https://***@one.invalid;redis://***@two.invalid/0",
         ),
         (
-            f"https://alice:{SECRET_MARKER}@one.invalid|"
-            f"redis://:{SECRET_MARKER}-two@two.invalid/0",
+            f"https://alice:{SECRET_MARKER}@one.invalid|redis://:{SECRET_MARKER}-two@two.invalid/0",
             "https://***@one.invalid|redis://***@two.invalid/0",
         ),
     ],
@@ -916,9 +881,9 @@ def test_sanitizer_redacts_slash_escaped_uri_userinfo(
     """嵌入诊断文本中的 slash-escaped URI 仍须清理 userinfo。"""
     separator = ":" + "\\" * escape_layers + "/" + "\\" * escape_layers + "/"
     source = (
-        r'payload={\"dsn\":\"postgresql'
+        r"payload={\"dsn\":\"postgresql"
         f"{separator}alice:{SECRET_MARKER}@example.invalid/media"
-        r'\"}'
+        r"\"}"
     )
 
     sanitized = str(sanitize_for_host(source))
@@ -936,10 +901,7 @@ def test_sanitizer_preserves_slash_escaped_uri_without_userinfo() -> None:
 
 def test_sanitizer_redacts_truncated_uri_with_unresolved_userinfo() -> None:
     """截断点前无法确认 authority 结束时按敏感内容处理。"""
-    source = (
-        f"dsn=postgresql://alice:{SECRET_MARKER}"
-        f"{'x' * (16 * 1024)}@example.invalid/media"
-    )
+    source = f"dsn=postgresql://alice:{SECRET_MARKER}{'x' * (16 * 1024)}@example.invalid/media"
 
     summaries = (
         summarize_input(source),
@@ -956,11 +918,7 @@ def test_sanitizer_redacts_truncated_uri_after_early_at_sign() -> None:
     """截断 authority 内的早期 `@` 不能证明 userinfo 已完整结束。"""
     trailing_secret = "truncated-uri-tail-secret-5931"
     prefix = f"https://user:{SECRET_MARKER}@{trailing_secret}"
-    source = (
-        prefix
-        + "x" * (16 * 1024 - len(prefix))
-        + "@example.invalid/media"
-    )
+    source = prefix + "x" * (16 * 1024 - len(prefix)) + "@example.invalid/media"
 
     summaries = (
         summarize_input(source),
@@ -978,7 +936,7 @@ def test_sanitizer_redacts_truncated_uri_after_early_at_sign() -> None:
     "source",
     [
         'payload="{\\"apiKey\\":\\"' + SECRET_MARKER + '\\"}"',
-        rf'payload=\"{{\\\"apiKey\\\":\\\"{SECRET_MARKER}\\\"}}\"',
+        rf"payload=\"{{\\\"apiKey\\\":\\\"{SECRET_MARKER}\\\"}}\"",
     ],
 )
 def test_sanitizer_redacts_escaped_json_secret_fields(source: str) -> None:
@@ -992,11 +950,7 @@ def test_sanitizer_redacts_escaped_json_secret_fields(source: str) -> None:
 
 def test_sanitizer_preserves_tail_after_escaped_json_secret() -> None:
     """转义 JSON 凭据中的分隔符不应截断脱敏或吞掉后续字段。"""
-    source = (
-        'payload="{\\"apiKey\\":\\"'
-        f"{SECRET_MARKER},still-secret"
-        '\\",\\"status\\":\\"ok\\"}"'
-    )
+    source = f'payload="{{\\"apiKey\\":\\"{SECRET_MARKER},still-secret\\",\\"status\\":\\"ok\\"}}"'
 
     sanitized = str(sanitize_for_host(source))
 
@@ -1011,10 +965,7 @@ def test_sanitizer_handles_trailing_backslashes_before_secret_quote(
     escape_layers: int,
 ) -> None:
     """凭据值末尾的 literal backslash 不得吞掉后续敏感字段。"""
-    payload = (
-        '{"authToken":"first-secret\\\\",'
-        '"refreshToken":"second-secret","status":"ok"}'
-    )
+    payload = '{"authToken":"first-secret\\\\","refreshToken":"second-secret","status":"ok"}'
     for _ in range(escape_layers):
         escaped_payload = payload.replace("\\", "\\\\").replace('"', '\\"')
         payload = f'"{escaped_payload}"'
@@ -1045,7 +996,7 @@ def test_sanitizer_preserves_uri_without_userinfo() -> None:
 
 @pytest.mark.parametrize(
     "unit",
-    ["a=", "a.", "a://host/", "\\", "\\\""],
+    ["a=", "a.", "a://host/", "\\", '\\"'],
 )
 def test_sanitizer_assignment_scan_scales_at_text_limit(unit: str) -> None:
     """赋值链和无头字段链在宿主文本上限内保持近似线性扫描。"""
@@ -1101,12 +1052,8 @@ def test_sanitizer_bounds_oversized_mapping_key_normalization() -> None:
             return self.pattern.sub(replacement, value)
 
     padding = "x" * (2 * 1024 * 1024)
-    secret_pattern = _TrackingPattern(
-        sanitizer_module._ACRONYM_BOUNDARY_PATTERN
-    )
-    camel_pattern = _TrackingPattern(
-        sanitizer_module._CAMEL_CASE_BOUNDARY_PATTERN
-    )
+    secret_pattern = _TrackingPattern(sanitizer_module._ACRONYM_BOUNDARY_PATTERN)
+    camel_pattern = _TrackingPattern(sanitizer_module._CAMEL_CASE_BOUNDARY_PATTERN)
     payload = {
         f"secret-prefix-{padding}AuthToken": SECRET_MARKER,
         f"metadata-prefix-{padding}tokenCount": 12,
@@ -1220,12 +1167,7 @@ def test_sanitizer_budget_bounds_container_item_expansion() -> None:
 
     shared: object = {"label": "visible"}
     for level in range(7):
-        node = _CountingMapping(
-            {
-                f"field{level}_{index}ApiKey": SECRET_MARKER
-                for index in range(97)
-            }
-        )
+        node = _CountingMapping({f"field{level}_{index}ApiKey": SECRET_MARKER for index in range(97)})
         node.update({f"child{index}": shared for index in range(3)})
         shared = node
 
@@ -1255,10 +1197,7 @@ def test_camel_case_secret_assignment_is_redacted_from_host_summaries() -> None:
     "container_value",
     [
         f"['{SECRET_MARKER}', 'second-list-secret']",
-        (
-            "{'primary': '"
-            f"{SECRET_MARKER}', 'nested': ['second-dict-secret', {{'ok': true}}]}}"
-        ),
+        (f"{{'primary': '{SECRET_MARKER}', 'nested': ['second-dict-secret', {{'ok': true}}]}}"),
         f"('{SECRET_MARKER}', ('second-tuple-secret', 2))",
     ],
 )
@@ -1277,10 +1216,7 @@ def test_sanitizer_redacts_complete_unquoted_secret_container_assignment(
 
 def test_sanitizer_fails_closed_for_unclosed_secret_container_assignment() -> None:
     """未闭合的凭据容器无法确认边界时遮蔽剩余文本。"""
-    source = (
-        f"password=['{SECRET_MARKER}', 'unclosed-container-secret', "
-        "operation=connect"
-    )
+    source = f"password=['{SECRET_MARKER}', 'unclosed-container-secret', operation=connect"
 
     sanitized = str(sanitize_for_host(source))
 
@@ -1291,10 +1227,7 @@ def test_sanitizer_fails_closed_for_unclosed_secret_container_assignment() -> No
 
 def test_sanitizer_redacts_secret_tail_after_closed_assignment_container() -> None:
     """容器闭合符不代表凭据值结束，尾随内容也必须遮蔽。"""
-    source = (
-        f"password=['{SECRET_MARKER}']tail-container-secret, "
-        "operation=connect"
-    )
+    source = f"password=['{SECRET_MARKER}']tail-container-secret, operation=connect"
 
     sanitized = str(sanitize_for_host(source))
 
@@ -1325,10 +1258,7 @@ def test_sanitizer_ignores_escaped_assignment_container_closers(
     [
         f"password=prefix[{SECRET_MARKER}, second-prefix-secret], status=ok",
         f"password=call({SECRET_MARKER}, second-call-secret), status=ok",
-        (
-            "password=\\["
-            f"{SECRET_MARKER}, second-escaped-open-secret], status=ok"
-        ),
+        (f"password=\\[{SECRET_MARKER}, second-escaped-open-secret], status=ok"),
     ],
 )
 def test_sanitizer_tracks_containers_after_unquoted_value_prefix(
@@ -1354,8 +1284,7 @@ def test_sanitizer_tracks_containers_after_unquoted_value_prefix(
             "password=***, status=ok",
         ),
         (
-            f'message="password=prefix\'{SECRET_MARKER}, second-inner-secret\'"; '
-            "status=ok",
+            f"message=\"password=prefix'{SECRET_MARKER}, second-inner-secret'\"; status=ok",
             'message="password=***"; status=ok',
         ),
     ],
@@ -1380,10 +1309,7 @@ def test_sanitizer_tracks_escaped_quoted_fragments_inside_secret_value(
 ) -> None:
     """多层 slash-escaped quoted fragment 的内部逗号仍属于凭据值。"""
     wrapper = "\\" * escape_layers + quote
-    source = (
-        f"password=prefix{wrapper}{SECRET_MARKER}, second-escaped-secret"
-        f"{wrapper}, status=ok"
-    )
+    source = f"password=prefix{wrapper}{SECRET_MARKER}, second-escaped-secret{wrapper}, status=ok"
 
     sanitized = str(sanitize_for_host(source))
 
@@ -1394,9 +1320,7 @@ def test_sanitizer_tracks_escaped_quoted_fragments_inside_secret_value(
 
 def test_sanitizer_redacts_unquoted_multiword_secret_in_error_summary() -> None:
     """异常中的无引号多词凭据必须净化到可靠分隔符。"""
-    summary = summarize_error(
-        RuntimeError("password=alpha beta; operation=connect")
-    )
+    summary = summarize_error(RuntimeError("password=alpha beta; operation=connect"))
 
     assert "alpha" not in summary
     assert "beta" not in summary
@@ -1426,9 +1350,7 @@ def test_pydantic_validation_error_is_safe_across_host_entry_points() -> None:
 def test_pydantic_validation_error_excludes_dynamic_metadata() -> None:
     """动态错误位置、类型、消息和上下文均不得成为宿主诊断文本。"""
     with pytest.raises(ValidationError) as location_exc_info:
-        _DynamicSecretLocationInput(
-            payload={SECRET_MARKER: "not-an-integer"}
-        )
+        _DynamicSecretLocationInput(payload={SECRET_MARKER: "not-an-integer"})
     with pytest.raises(ValidationError) as custom_exc_info:
         _CustomSecretValidationInput(value=SECRET_MARKER)
 
@@ -1573,9 +1495,7 @@ def test_sanitizer_reads_exception_args_without_custom_string_protocol() -> None
 def test_sanitizer_bounds_json_shaped_text_before_parsing() -> None:
     """超过文本上限的 JSON 外形输入不得触发完整解析。"""
     secret_marker = "oversized-json-secret-9056"
-    source = (
-        '{"password":"' + secret_marker + '","padding":"' + "x" * 20000 + '"}'
-    )
+    source = '{"password":"' + secret_marker + '","padding":"' + "x" * 20000 + '"}'
 
     with patch(
         "app.agent.policy.sanitizer.json.loads",
@@ -1702,69 +1622,6 @@ def test_direct_manager_logs_are_sanitized_but_result_is_unchanged() -> None:
     logged = _logged_text(mock_logger)
     assert SECRET_MARKER not in logged
     assert "visible" in logged
-
-
-def test_direct_secret_setting_result_is_returned_without_entering_policy_logs() -> None:
-    """管理员显式读取凭据时，原值只返回调用方，不进入宿主策略日志。"""
-    tool = QuerySystemSettingsTool(session_id="session-1", user_id="admin")
-    tool.set_agent_context({"is_admin": True})
-    manager = MoviePilotToolsManager(is_admin=True)
-    manager.tools = [tool]
-    mock_logger = MagicMock()
-
-    with (
-        patch.object(
-            QuerySystemSettingsTool,
-            "_load_setting_value",
-            return_value=SECRET_MARKER,
-        ),
-        patch("app.agent.tools.manager.logger", mock_logger),
-        patch("app.agent.policy.orchestrator.logger", mock_logger),
-    ):
-        result = asyncio.run(
-            manager.call_tool(
-                tool.name,
-                {"setting_key": "API_TOKEN", "show_secrets": True},
-            )
-        )
-
-    assert SECRET_MARKER in result
-    logged = _logged_text(mock_logger)
-    assert SECRET_MARKER not in logged
-    assert '"value": "***"' in logged
-    assert '"value_preview": "***"' in logged
-
-
-def test_oversized_direct_secret_setting_result_stays_out_of_policy_logs() -> None:
-    """超长管理员读取结果仍只返回调用方，不进入 direct 策略回执。"""
-    secret_marker = "oversized-direct-secret-marker"
-    secret_value = secret_marker + "x" * sanitizer_module._MAX_TEXT_CHARS
-    tool = QuerySystemSettingsTool(session_id="session-1", user_id="admin")
-    tool.set_agent_context({"is_admin": True})
-    manager = MoviePilotToolsManager(is_admin=True)
-    manager.tools = [tool]
-    mock_logger = MagicMock()
-
-    with (
-        patch.object(
-            QuerySystemSettingsTool,
-            "_load_setting_value",
-            return_value=secret_value,
-        ),
-        patch("app.agent.tools.manager.logger", mock_logger),
-        patch("app.agent.policy.orchestrator.logger", mock_logger),
-    ):
-        result = asyncio.run(
-            manager.call_tool(
-                tool.name,
-                {"setting_key": "API_TOKEN", "show_secrets": True},
-            )
-        )
-
-    assert secret_marker in result
-    logged = _logged_text(mock_logger)
-    assert secret_marker not in logged
-    assert '"value_preview": ***' in logged
 
 
 def test_tool_error_does_not_echo_secret_to_logs_or_result() -> None:

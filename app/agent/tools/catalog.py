@@ -84,9 +84,7 @@ class ToolCatalogSnapshot:
         object.__setattr__(
             self,
             "_by_name",
-            MappingProxyType(
-                {name: tuple(matches) for name, matches in by_name.items()}
-            ),
+            MappingProxyType({name: tuple(matches) for name, matches in by_name.items()}),
         )
 
     @classmethod
@@ -105,9 +103,7 @@ class ToolCatalogSnapshot:
                 raise ToolCatalogError("工具缺少稳定名称")
             source = str(getattr(tool, "_agent_tool_source", "builtin"))
             schema_digest = _schema_digest(tool)
-            description_digest = hashlib.sha256(
-                str(getattr(tool, "description", "") or "").encode("utf-8")
-            ).hexdigest()
+            description_digest = hashlib.sha256(str(getattr(tool, "description", "") or "").encode("utf-8")).hexdigest()
             implementation = _implementation_identity(tool)
             revision = ToolRevision(
                 implementation=implementation,
@@ -139,9 +135,7 @@ class ToolCatalogSnapshot:
     @property
     def collisions(self) -> Mapping[str, tuple[ToolCatalogEntry, ...]]:
         """返回所有同名工具，不按注册顺序隐式选胜者。"""
-        return MappingProxyType(
-            {name: entries for name, entries in self._by_name.items() if len(entries) > 1}
-        )
+        return MappingProxyType({name: entries for name, entries in self._by_name.items() if len(entries) > 1})
 
     @property
     def signature(self) -> tuple[Any, ...]:
@@ -167,15 +161,18 @@ class ToolCatalogSnapshot:
             raise ToolIdentityAmbiguousError("TOOL_IDENTITY_AMBIGUOUS")
         return entries[0] if entries else None
 
+    def require_unique(self) -> "ToolCatalogSnapshot":
+        """拒绝任何同名身份，保证目录可直接交给执行图。"""
+        if self.collisions:
+            names = ", ".join(sorted(self.collisions))
+            raise ToolIdentityAmbiguousError(f"TOOL_IDENTITY_AMBIGUOUS: {names}")
+        return self
+
     def select(self, tools: list[Any]) -> "ToolCatalogSnapshot":
         """为子图保留所选工具名的全部候选身份与 revision 语义。"""
-        selected_names = {
-            str(getattr(tool, "name", "") or "") for tool in tools
-        }
+        selected_names = {str(getattr(tool, "name", "") or "") for tool in tools}
         return ToolCatalogSnapshot(
-            entries=tuple(
-                entry for entry in self.entries if entry.name in selected_names
-            ),
+            entries=tuple(entry for entry in self.entries if entry.name in selected_names),
             plugin_revision=self.plugin_revision,
             factory_revision=self.factory_revision,
         )

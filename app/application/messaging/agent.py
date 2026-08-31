@@ -30,7 +30,7 @@ import aiofiles  # type: ignore[import-untyped]
 
 from app.application import agent as agent_application
 from app.application.agent import is_audio_input_available, transcribe_audio
-from app.application.commands import get_command, get_commands
+from app.application.commands import dispatch_command, get_command, get_commands
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
@@ -1253,7 +1253,7 @@ async def terminate_web_agent_audio_process(
         return
     try:
         await process.communicate()
-    except (OSError, ProcessLookupError):
+    except OSError, ProcessLookupError:
         pass
 
 
@@ -1703,6 +1703,24 @@ def build_web_agent_command_items() -> list[dict[str, Any]]:
             }
         )
     return sorted(items, key=lambda item: (item["category"], item["command"]))
+
+
+def dispatch_web_agent_command(
+    command: str,
+    *,
+    user_id: str,
+    channel: Optional[NotificationChannel],
+    source: Optional[str],
+    publish_event: Callable[[Any, dict[str, Any]], Any],
+) -> dict[str, Any]:
+    """经消息应用边界校验并触发一条 Agent 斜杠命令。"""
+    return dispatch_command(
+        command,
+        user_id=user_id,
+        channel=channel,
+        source=source,
+        publish_event=publish_event,
+    )
 
 
 def extract_web_agent_slash_command(text: str) -> Optional[str]:

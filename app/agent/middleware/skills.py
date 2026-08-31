@@ -3,8 +3,7 @@ import re
 import shutil
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Annotated, Any, List, Optional
-from typing import NotRequired, TypedDict
+from typing import Annotated, Any, List, NotRequired, Optional, TypedDict
 
 import yaml  # noqa
 from anyio import Path as AsyncPath
@@ -14,10 +13,11 @@ from langchain.agents.middleware.types import (
     ContextT,
     ModelRequest,
     ModelResponse,
+    PrivateStateAttr,  # noqa
     ResponseT,
     ToolCallRequest,
 )
-from langchain.agents.middleware.types import PrivateStateAttr  # noqa
+from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from langgraph.runtime import Runtime
@@ -25,12 +25,12 @@ from pydantic import BaseModel, Field
 
 from app.agent.middleware.utils import append_to_system_message
 from app.agent.policy.sanitizer import sanitize_for_host, summarize_error
-from app.agent.tools.tags import ToolTag
 from app.agent.skills.metadata import (
     MAX_SKILL_FILE_SIZE,
     SkillMetadata,
     parse_skill_metadata,
 )
+from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 
 # 模型返回上限独立于领域层的磁盘读取上限，避免异常内容撑爆上下文。
@@ -102,9 +102,7 @@ async def _alist_skills(source_path: AsyncPath) -> list[SkillMetadata]:
                 stat.st_size,
             )
             continue
-        skill_content = (await skill_md_path.read_bytes()).decode(
-            "utf-8", errors="replace"
-        )
+        skill_content = (await skill_md_path.read_bytes()).decode("utf-8", errors="replace")
 
         # 解析元数据
         skill_metadata = parse_skill_metadata(
@@ -123,11 +121,7 @@ def _list_skills(source_path: Path) -> list[SkillMetadata]:
     if not source_path.exists():
         return []
 
-    skill_dirs = [
-        path
-        for path in source_path.iterdir()
-        if path.is_dir() and (path / "SKILL.md").is_file()
-    ]
+    skill_dirs = [path for path in source_path.iterdir() if path.is_dir() and (path / "SKILL.md").is_file()]
     if not skill_dirs:
         return []
 
@@ -143,9 +137,7 @@ def _list_skills(source_path: Path) -> list[SkillMetadata]:
                 skill_md_path.stat().st_size,
             )
             continue
-        skill_content = skill_md_path.read_bytes().decode(
-            "utf-8", errors="replace"
-        )
+        skill_content = skill_md_path.read_bytes().decode("utf-8", errors="replace")
         skill_metadata = parse_skill_metadata(
             content=skill_content,
             skill_path=str(skill_md_path),
@@ -199,7 +191,7 @@ def _extract_version(skill_md: Path) -> int:
         return 0
     try:
         return int(raw)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return 0
 
 
@@ -237,9 +229,7 @@ def _sync_bundled_skills(bundled_dir: Path, target_dir: Path) -> None:
             # 目标不存在，直接复制
             try:
                 shutil.copytree(str(skill_src), str(skill_dst))
-                logger.info(
-                    "已自动复制内置技能 '%s' -> '%s'", skill_src.name, skill_dst
-                )
+                logger.info("已自动复制内置技能 '%s' -> '%s'", skill_src.name, skill_dst)
             except Exception as e:
                 logger.warning(
                     "复制内置技能 '%s' 失败: %s",
@@ -285,6 +275,22 @@ class _SkillToolProvider:
     def __init__(self, *, sources: list[str]) -> None:
         """初始化 Skill 工具数据源。"""
         self._sources = sources
+        self._allowed_api_operations: set[str] = set()
+        self._api_scope_declared = False
+
+    @property
+    def api_scope_declared(self) -> bool:
+        """返回当前会话是否加载过声明 API 操作范围的 Skill。"""
+        return self._api_scope_declared
+
+    def reset_api_scope(self) -> None:
+        """在新一轮 Agent 执行前清除上轮 Skill 的 API 操作范围。"""
+        self._allowed_api_operations.clear()
+        self._api_scope_declared = False
+
+    def is_api_operation_allowed(self, operation_id: str) -> bool:
+        """判断 operation ID 是否位于当前已加载 Skill 的联合授权范围。"""
+        return operation_id in self._allowed_api_operations
 
     @staticmethod
     def _normalize_name(value: object) -> str:
@@ -299,10 +305,7 @@ class _SkillToolProvider:
             skill.get("id"),
             skill.get("name"),
         ]
-        return any(
-            cls._normalize_name(candidate) == normalized_query
-            for candidate in candidates
-        )
+        return any(cls._normalize_name(candidate) == normalized_query for candidate in candidates)
 
     async def _find_skill(self, name: str) -> Optional[SkillMetadata]:
         """从中间件配置的 skills 目录中查找指定技能。"""
@@ -354,10 +357,7 @@ class _SkillToolProvider:
             candidate = json.dumps(
                 {
                     **truncated_payload,
-                    "content": (
-                        original_content[:middle]
-                        + SKILL_CONTENT_TRUNCATION_SUFFIX
-                    ),
+                    "content": (original_content[:middle] + SKILL_CONTENT_TRUNCATION_SUFFIX),
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -384,6 +384,10 @@ class _SkillToolProvider:
                 )
 
             content, truncated = await self._read_skill_content(skill["path"])
+            declared_operations = skill.get("allowed_api_operations", [])
+            if declared_operations:
+                self._api_scope_declared = True
+                self._allowed_api_operations.update(declared_operations)
             return self._serialize_skill_payload(
                 {
                     "success": True,
@@ -393,6 +397,7 @@ class _SkillToolProvider:
                         "description": skill.get("description"),
                         "path": skill.get("path"),
                         "allowed_tools": skill.get("allowed_tools", []),
+                        "allowed_api_operations": declared_operations,
                     },
                     "content": content,
                     "truncated": truncated,
@@ -414,10 +419,7 @@ def _format_skill_tool_catalog(skills: list[SkillMetadata]) -> str:
     """渲染 Skill 工具描述中的可用技能目录。"""
     if not skills:
         return "(No skills are currently available.)"
-    return "\n".join(
-        f"- {skill['id']}: {skill['name']} - {skill['description']}"
-        for skill in skills
-    )
+    return "\n".join(f"- {skill['id']}: {skill['name']} - {skill['description']}" for skill in skills)
 
 
 class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # noqa
@@ -458,9 +460,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
                 coroutine=self._skill_provider.load_skill,
                 name=SKILL_TOOL_NAME,
                 description=SKILL_TOOL_DESCRIPTION.format(
-                    skills_catalog=_format_skill_tool_catalog(
-                        self._load_skills_metadata()
-                    )
+                    skills_catalog=_format_skill_tool_catalog(self._load_skills_metadata())
                 ),
                 args_schema=SkillToolInput,
                 tags=[ToolTag.Read, ToolTag.Skill],
@@ -487,15 +487,11 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
                 all_skills[skill["name"]] = skill
         return list(all_skills.values())
 
-    def _refresh_skill_tool_description(
-        self, skills: list[SkillMetadata]
-    ) -> None:
+    def _refresh_skill_tool_description(self, skills: list[SkillMetadata]) -> None:
         """刷新 skill 工具描述中的可用技能目录。"""
         if not self.tools:
             return
-        self.tools[0].description = SKILL_TOOL_DESCRIPTION.format(
-            skills_catalog=_format_skill_tool_catalog(skills)
-        )
+        self.tools[0].description = SKILL_TOOL_DESCRIPTION.format(skills_catalog=_format_skill_tool_catalog(skills))
 
     @staticmethod
     def _format_skills_list(skills: list[SkillMetadata]) -> str:
@@ -512,6 +508,8 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
             lines.append(desc_line)
             if skill["allowed_tools"]:
                 lines.append(f"  -> Allowed tools: {', '.join(skill['allowed_tools'])}")
+            if skill["allowed_api_operations"]:
+                lines.append(f"  -> Allowed API operations: {', '.join(skill['allowed_api_operations'])}")
 
         return "\n".join(lines)
 
@@ -524,9 +522,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
             skills_list=skills_list,
         )
 
-        new_system_message = append_to_system_message(
-            request.system_message, skills_section
-        )
+        new_system_message = append_to_system_message(request.system_message, skills_section)
 
         return request.override(system_message=new_system_message)
 
@@ -538,6 +534,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         首次加载时，会先将内置技能同步到用户目录（如不存在）。
         """
         self._sync_bundled_skills()
+        self._skill_provider.reset_api_scope()
 
         all_skills: dict[str, SkillMetadata] = {}
 
@@ -558,9 +555,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
     async def awrap_model_call(
         self,
         request: ModelRequest[ContextT],
-        handler: Callable[
-            [ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]
-        ],
+        handler: Callable[[ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]],
     ) -> ModelResponse[ResponseT]:
         """在模型调用时注入技能文档。"""
         modified_request = self.modify_request(request)
@@ -574,19 +569,38 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         """在 skill 工具执行时记录聚合摘要。"""
         tool = request.tool
         tool_name = getattr(tool, "name", None)
-        if tool_name != SKILL_TOOL_NAME:
-            return await handler(request)
-
         tool_call = request.tool_call or {}
         tool_args = tool_call.get("args") or {}
         if not isinstance(tool_args, dict):
             tool_args = {}
+
+        if tool_name == "moviepilot_api":
+            operation_id = str(tool_args.get("operation_id") or "")
+            if not self._skill_provider.is_api_operation_allowed(operation_id):
+                logger.warning(f"Skill API 操作范围拒绝调用: operation={sanitize_for_host(operation_id)}")
+                return ToolMessage(
+                    content=json.dumps(
+                        {
+                            "success": False,
+                            "error": "skill_operation_denied",
+                            "message": (
+                                "当前已加载 Skill 未授权该 MoviePilot API 操作，"
+                                "请先加载声明了该 operation 的领域 Skill。"
+                            ),
+                        },
+                        ensure_ascii=False,
+                    ),
+                    tool_call_id=str(tool_call.get("id") or ""),
+                    name="moviepilot_api",
+                )
+
+        if tool_name != SKILL_TOOL_NAME:
+            return await handler(request)
+
         logged_args = sanitize_for_host(tool_args)
         if not isinstance(logged_args, dict):
             logged_args = {}
-        logger.info(
-            f"开始执行 Skill 工具: name={logged_args.get('name') or '-'}"
-        )
+        logger.info(f"开始执行 Skill 工具: name={logged_args.get('name') or '-'}")
         if self.stream_handler and getattr(self.stream_handler, "is_streaming", False):
             self.stream_handler.record_tool_call(
                 tool_name=SKILL_TOOL_NAME,

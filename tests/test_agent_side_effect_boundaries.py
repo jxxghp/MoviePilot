@@ -81,11 +81,11 @@ def test_timeout_marks_unknown_external_state_for_write_tools() -> None:
 
 def test_timeout_does_not_mark_safe_reads_for_reconciliation() -> None:
     """只读工具超时不应伪造外部副作用终态。"""
-    tool = type("SafeReadTool", (), {"name": "query_personas", "args_schema": None})()
+    tool = type("SafeReadTool", (), {"name": "persona", "args_schema": None})()
     observation = DEFAULT_TOOL_POLICY_ORCHESTRATOR.start(
         context=_policy_context(),
         tool=tool,
-        arguments={},
+        arguments={"action": "list"},
     )
 
     receipt = DEFAULT_TOOL_POLICY_ORCHESTRATOR.fail(
@@ -137,9 +137,7 @@ async def test_terminal_manager_close_waits_for_starting_session() -> None:
     manager._start_pipe_session = _start_session
     manager._terminate_session = AsyncMock()
 
-    start_task = asyncio.create_task(
-        manager.start(command="sleep", use_pty=False)
-    )
+    start_task = asyncio.create_task(manager.start(command="sleep", use_pty=False))
     await start_entered.wait()
     close_task = asyncio.create_task(manager.close())
     await asyncio.sleep(0)
@@ -199,9 +197,7 @@ async def test_terminal_manager_cancellation_terminates_unregistered_session() -
     lock_holder = asyncio.create_task(_hold_registration_lock())
     manager._start_pipe_session = _start_session
     manager._terminate_session = AsyncMock(side_effect=_terminate_session)
-    start_task = asyncio.create_task(
-        manager.start(command="sleep", use_pty=False)
-    )
+    start_task = asyncio.create_task(manager.start(command="sleep", use_pty=False))
     await registration_locked.wait()
     await asyncio.sleep(0)
 
@@ -296,9 +292,7 @@ async def test_agent_cache_replacement_closes_previous_subagent_middleware() -> 
     agent = MoviePilotAgent(session_id="session-1", user_id="user-1")
     old_middleware = SimpleNamespace(close=AsyncMock())
     new_middleware = SimpleNamespace(close=AsyncMock())
-    catalog = ToolCatalogSnapshot.from_tools(
-        [], plugin_revision=0, factory_revision="factory-v1"
-    )
+    catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     agent._subagent_middlewares = (old_middleware,)
 
     await agent._cache_agent(
@@ -327,9 +321,7 @@ async def test_agent_execution_failure_closes_cached_subagent_middleware() -> No
     agent._should_stream = lambda: False
     agent._create_agent = AsyncMock(return_value=graph)
     agent._dispatch_execution_notice = AsyncMock()
-    agent.stream_handler = SimpleNamespace(
-        stop_streaming=AsyncMock(return_value=(False, ""))
-    )
+    agent.stream_handler = SimpleNamespace(stop_streaming=AsyncMock(return_value=(False, "")))
 
     result, _ = await agent._execute_agent([])
 

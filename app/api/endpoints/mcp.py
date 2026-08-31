@@ -46,16 +46,10 @@ def list_exposed_tools():
     """
     获取 MCP 可见工具列表
     """
-    return [
-        tool
-        for tool in moviepilot_tool_manager.list_tools()
-        if tool.name not in MCP_HIDDEN_TOOLS
-    ]
+    return [tool for tool in moviepilot_tool_manager.list_tools() if tool.name not in MCP_HIDDEN_TOOLS]
 
 
-def create_jsonrpc_response(
-    request_id: Union[str, int, None], result: Any
-) -> Dict[str, Any]:
+def create_jsonrpc_response(request_id: Union[str, int, None], result: Any) -> Dict[str, Any]:
     """
     创建 JSON-RPC 成功响应
     """
@@ -93,9 +87,7 @@ async def _dispatch_jsonrpc_method(
             return Response(status_code=204)
         return JSONResponse(
             status_code=400,
-            content=create_jsonrpc_error(
-                request_id, -32600, "initialized must be a notification"
-            ),
+            content=create_jsonrpc_error(request_id, -32600, "initialized must be a notification"),
         )
     if method == "tools/list":
         result = await handle_tools_list()
@@ -105,11 +97,7 @@ async def _dispatch_jsonrpc_method(
         return JSONResponse(content=create_jsonrpc_response(request_id, result))
     if method == "ping":
         return JSONResponse(content=create_jsonrpc_response(request_id, {}))
-    return JSONResponse(
-        content=create_jsonrpc_error(
-            request_id, -32601, f"Method not found: {method}"
-        )
-    )
+    return JSONResponse(content=create_jsonrpc_error(request_id, -32601, f"Method not found: {method}"))
 
 
 @router.post(
@@ -120,9 +108,7 @@ async def _dispatch_jsonrpc_method(
         RAW_RESPONSE_OPENAPI_KEY: True,
         "requestBody": {
             "required": True,
-            "content": {
-                "application/json": {"schema": _SchemaMCP_JSONRPC_REQUEST_SCHEMA}
-            },
+            "content": {"application/json": {"schema": _SchemaMCP_JSONRPC_REQUEST_SCHEMA}},
         },
     },
     responses={
@@ -182,9 +168,7 @@ async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
     protocol_version = params.get("protocolVersion")
     client_info = params.get("clientInfo", {})
 
-    logger.info(
-        f"MCP 初始化请求: 客户端={client_info.get('name')}, 协议版本={protocol_version}"
-    )
+    logger.info(f"MCP 初始化请求: 客户端={client_info.get('name')}, 协议版本={protocol_version}")
 
     # 版本协商：选择客户端和服务器都支持的版本
     negotiated_version = MCP_PROTOCOL_VERSION
@@ -194,9 +178,7 @@ async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
         logger.info(f"使用客户端协议版本: {negotiated_version}")
     else:
         # 客户端版本不支持，使用服务器默认版本
-        logger.warning(
-            f"协议版本不匹配: 客户端={protocol_version}, 使用服务器版本={negotiated_version}"
-        )
+        logger.warning(f"协议版本不匹配: 客户端={protocol_version}, 使用服务器版本={negotiated_version}")
 
     return {
         "protocolVersion": negotiated_version,
@@ -279,7 +261,7 @@ async def delete_mcp_session(
     return Response(status_code=204)
 
 
-# ==================== 兼容的 RESTful API 端点 ====================
+# ==================== HTTP 工具管理端点 ====================
 
 
 @router.get(
@@ -318,9 +300,7 @@ async def list_tools(_: Annotated[str, Depends(verify_apikey)]) -> Any:
     summary="调用工具",
     response_model=_SchemaResponse[_SchemaToolCallData],
 )
-async def call_tool(
-    request: _SchemaToolCallRequest, _: Annotated[str, Depends(verify_apikey)] = None
-) -> Any:
+async def call_tool(request: _SchemaToolCallRequest, _: Annotated[str, Depends(verify_apikey)] = None) -> Any:
     """
     调用指定的工具
 
@@ -331,9 +311,7 @@ async def call_tool(
         if request.tool_name in MCP_HIDDEN_TOOLS:
             raise ValueError(f"工具 '{request.tool_name}' 未找到")
 
-        result_text = await moviepilot_tool_manager.call_tool(
-            request.tool_name, request.arguments
-        )
+        result_text = await moviepilot_tool_manager.call_tool(request.tool_name, request.arguments)
 
         return _SchemaResponse(
             success=True,
@@ -349,9 +327,7 @@ async def call_tool(
     summary="获取工具详情",
     response_model=_SchemaMcpToolInfo,
 )
-async def get_tool_info(
-    tool_name: str, _: Annotated[str, Depends(verify_apikey)]
-) -> Any:
+async def get_tool_info(tool_name: str, _: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
     获取指定工具的详细信息
 
@@ -384,9 +360,7 @@ async def get_tool_info(
     summary="获取工具参数Schema",
     response_model=_SchemaMcpJsonSchema,
 )
-async def get_tool_schema(
-    tool_name: str, _: Annotated[str, Depends(verify_apikey)]
-) -> Any:
+async def get_tool_schema(tool_name: str, _: Annotated[str, Depends(verify_apikey)]) -> Any:
     """
     获取指定工具的参数Schema（JSON Schema格式）
 

@@ -10,7 +10,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent.contracts import ReplyMode
 from app.agent.mcp import AgentMcpToolSpec
-from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.orchestrator import MoviePilotAgent, _CompiledAgentBundle
 from app.agent.tools.catalog import (
     ToolCatalogSnapshot,
@@ -55,9 +54,7 @@ class _CapturingAgent:
 async def test_create_agent_reuses_cached_graph_when_signature_matches():
     """构造签名一致时应直接复用已编译 Agent 图。"""
     cached_graph = object()
-    catalog = ToolCatalogSnapshot.from_tools(
-        [], plugin_revision=0, factory_revision="factory-v1"
-    )
+    catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     agent = MoviePilotAgent(session_id="cache-hit", user_id="user-1")
     agent._compiled_agent_bundle = _CompiledAgentBundle(
         signature=("sig",),
@@ -71,17 +68,22 @@ async def test_create_agent_reuses_cached_graph_when_signature_matches():
         catalog_checked_at=datetime.now(),
     )
 
-    with patch.object(
-        agent,
-        "_agent_bundle_signature",
-        new=AsyncMock(return_value=("sig",)),
-    ), patch(
-        "app.agent.orchestrator._get_plugin_tools_revision",
-        return_value=0,
-    ), patch(
-        "app.agent.orchestrator.agent_mcp_manager.config_signature",
-        return_value="mcp-config",
-    ), patch("app.agent.orchestrator.create_agent") as create_agent:
+    with (
+        patch.object(
+            agent,
+            "_agent_bundle_signature",
+            new=AsyncMock(return_value=("sig",)),
+        ),
+        patch(
+            "app.agent.orchestrator._get_plugin_tools_revision",
+            return_value=0,
+        ),
+        patch(
+            "app.agent.orchestrator.agent_mcp_manager.config_signature",
+            return_value="mcp-config",
+        ),
+        patch("app.agent.orchestrator.create_agent") as create_agent,
+    ):
         graph = await agent._create_agent(streaming=False)
 
     assert graph is cached_graph
@@ -93,9 +95,7 @@ async def test_create_agent_reuses_cached_graph_when_signature_matches():
 async def test_fresh_catalog_cache_hit_skips_tool_and_mcp_discovery() -> None:
     """目录仍在 freshness 窗口内时，缓存命中不得重建工具或访问 MCP。"""
     cached_graph = object()
-    catalog = ToolCatalogSnapshot.from_tools(
-        [], plugin_revision=0, factory_revision="factory-v1"
-    )
+    catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     agent = MoviePilotAgent(session_id="catalog-cache-hit", user_id="user-1")
     agent._compiled_agent_bundle = _CompiledAgentBundle(
         signature=("sig",),
@@ -109,23 +109,29 @@ async def test_fresh_catalog_cache_hit_skips_tool_and_mcp_discovery() -> None:
         catalog_checked_at=datetime.now(),
     )
 
-    with patch.object(
-        agent,
-        "_agent_bundle_signature",
-        new=AsyncMock(return_value=("sig",)),
-    ), patch.object(
-        agent,
-        "_initialize_local_tool_catalogs",
-        side_effect=AssertionError("tool catalog rebuilt"),
-    ), patch(
-        "app.agent.orchestrator._get_plugin_tools_revision",
-        return_value=0,
-    ), patch(
-        "app.agent.orchestrator.agent_mcp_manager.config_signature",
-        return_value="mcp-config",
-    ), patch(
-        "app.agent.orchestrator.agent_mcp_manager.list_enabled_tool_specs",
-        new=AsyncMock(side_effect=AssertionError("MCP discovery called")),
+    with (
+        patch.object(
+            agent,
+            "_agent_bundle_signature",
+            new=AsyncMock(return_value=("sig",)),
+        ),
+        patch.object(
+            agent,
+            "_initialize_local_tool_catalogs",
+            side_effect=AssertionError("tool catalog rebuilt"),
+        ),
+        patch(
+            "app.agent.orchestrator._get_plugin_tools_revision",
+            return_value=0,
+        ),
+        patch(
+            "app.agent.orchestrator.agent_mcp_manager.config_signature",
+            return_value="mcp-config",
+        ),
+        patch(
+            "app.agent.orchestrator.agent_mcp_manager.list_enabled_tool_specs",
+            new=AsyncMock(side_effect=AssertionError("MCP discovery called")),
+        ),
     ):
         graph = await agent._create_agent(streaming=False)
 
@@ -137,9 +143,7 @@ async def test_fresh_catalog_cache_hit_skips_tool_and_mcp_discovery() -> None:
 async def test_expired_unchanged_catalog_renews_freshness() -> None:
     """过期目录复核后若签名未变，应续期缓存而不是每轮重复 discovery。"""
     cached_graph = object()
-    catalog = ToolCatalogSnapshot.from_tools(
-        [], plugin_revision=0, factory_revision="factory-v1"
-    )
+    catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     expired_at = datetime.now() - timedelta(minutes=5)
     agent = MoviePilotAgent(session_id="catalog-refresh", user_id="user-1")
     agent._compiled_agent_bundle = _CompiledAgentBundle(
@@ -160,53 +164,68 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
     )
     temporary_middleware = SimpleNamespace(close=AsyncMock())
 
-    with patch.object(
-        agent,
-        "_agent_bundle_signature",
-        new=AsyncMock(return_value=("sig",)),
-    ), patch.object(
-        agent,
-        "_initialize_local_tool_catalogs",
-        return_value=(catalog, catalog),
-    ), patch.object(
-        agent,
-        "_initialize_mcp_tools",
-        new=AsyncMock(return_value=[]),
-    ), patch.object(
-        agent,
-        "_initialize_subagent_mcp_tools",
-        new=AsyncMock(return_value=[]),
-    ), patch.object(
-        agent,
-        "_initialize_llm",
-        new=AsyncMock(return_value=fake_llm),
-    ), patch.object(
-        agent,
-        "_sync_model_profile",
-    ), patch(
-        "app.agent.orchestrator.ServerToolRegistry.resolve_web_search",
-        return_value=SimpleNamespace(use_local_web_search=True),
-    ), patch(
-        "app.agent.orchestrator.LLMHelper.get_server_tools",
-        return_value=[],
-    ), patch(
-        "app.agent.orchestrator.prompt_manager.get_agent_prompt",
-        return_value="prompt",
-    ), patch(
-        "app.agent.orchestrator.SkillsMiddleware",
-        return_value=SimpleNamespace(name="skills", tools=[]),
-    ), patch(
-        "app.agent.orchestrator.create_subagent_middlewares",
-        return_value=([temporary_middleware], []),
-    ), patch(
-        "app.agent.orchestrator._get_plugin_tools_revision",
-        return_value=0,
-    ), patch(
-        "app.agent.orchestrator.agent_mcp_manager.config_signature",
-        return_value="mcp-config",
-    ), patch(
-        "app.agent.orchestrator.agent_mcp_manager.list_enabled_tool_specs",
-        new=AsyncMock(return_value=[]),
+    with (
+        patch.object(
+            agent,
+            "_agent_bundle_signature",
+            new=AsyncMock(return_value=("sig",)),
+        ),
+        patch.object(
+            agent,
+            "_initialize_local_tool_catalogs",
+            return_value=(catalog, catalog),
+        ),
+        patch.object(
+            agent,
+            "_initialize_mcp_tools",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch.object(
+            agent,
+            "_initialize_subagent_mcp_tools",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch.object(
+            agent,
+            "_initialize_llm",
+            new=AsyncMock(return_value=fake_llm),
+        ),
+        patch.object(
+            agent,
+            "_sync_model_profile",
+        ),
+        patch(
+            "app.agent.orchestrator.ServerToolRegistry.resolve_web_search",
+            return_value=SimpleNamespace(use_local_web_search=True),
+        ),
+        patch(
+            "app.agent.orchestrator.LLMHelper.get_server_tools",
+            return_value=[],
+        ),
+        patch(
+            "app.agent.orchestrator.prompt_manager.get_agent_prompt",
+            return_value="prompt",
+        ),
+        patch(
+            "app.agent.orchestrator.SkillsMiddleware",
+            return_value=SimpleNamespace(name="skills", tools=[]),
+        ),
+        patch(
+            "app.agent.orchestrator.create_subagent_middlewares",
+            return_value=([temporary_middleware], []),
+        ),
+        patch(
+            "app.agent.orchestrator._get_plugin_tools_revision",
+            return_value=0,
+        ),
+        patch(
+            "app.agent.orchestrator.agent_mcp_manager.config_signature",
+            return_value="mcp-config",
+        ),
+        patch(
+            "app.agent.orchestrator.agent_mcp_manager.list_enabled_tool_specs",
+            new=AsyncMock(return_value=[]),
+        ),
     ):
         graph = await agent._create_agent(streaming=False)
 
@@ -218,9 +237,7 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
 @pytest.mark.anyio
 async def test_create_agent_cancellation_closes_temporary_subagent_middleware() -> None:
     """构图取消时必须释放尚未被缓存接管的子代理控制器。"""
-    catalog = ToolCatalogSnapshot.from_tools(
-        [], plugin_revision=0, factory_revision="factory-v1"
-    )
+    catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     fake_llm = SimpleNamespace(
         _llm_type="openai-chat",
         model="fake",
@@ -234,61 +251,75 @@ async def test_create_agent_cancellation_closes_temporary_subagent_middleware() 
         signature_started.set()
         await __import__("asyncio").Future()
 
-    with patch.object(
-        agent,
-        "_resolve_llm_runtime_config",
-        new=AsyncMock(return_value={"provider": "openai", "model": "fake"}),
-    ), patch.object(
-        agent,
-        "_initialize_local_tool_catalogs",
-        return_value=(catalog, catalog),
-    ), patch.object(
-        agent,
-        "_initialize_mcp_tools",
-        new=AsyncMock(return_value=[]),
-    ), patch.object(
-        agent,
-        "_initialize_subagent_mcp_tools",
-        new=AsyncMock(return_value=[]),
-    ), patch.object(
-        agent,
-        "_initialize_llm",
-        new=AsyncMock(return_value=fake_llm),
-    ), patch.object(
-        agent,
-        "_sync_model_profile",
-    ), patch.object(
-        agent,
-        "_agent_bundle_signature",
-        new=_wait_for_signature,
-    ), patch(
-        "app.agent.orchestrator._get_plugin_tools_revision",
-        return_value=0,
-    ), patch(
-        "app.agent.orchestrator.agent_mcp_manager.config_signature",
-        return_value="mcp-config",
-    ), patch(
-        "app.agent.orchestrator.agent_mcp_manager.list_enabled_tool_specs",
-        new=AsyncMock(return_value=[]),
-    ), patch(
-        "app.agent.orchestrator.ServerToolRegistry.resolve_web_search",
-        return_value=SimpleNamespace(use_local_web_search=True),
-    ), patch(
-        "app.agent.orchestrator.LLMHelper.get_server_tools",
-        return_value=[],
-    ), patch(
-        "app.agent.orchestrator.prompt_manager.get_agent_prompt",
-        return_value="prompt",
-    ), patch(
-        "app.agent.orchestrator.SkillsMiddleware",
-        return_value=SimpleNamespace(name="skills", tools=[]),
-    ), patch(
-        "app.agent.orchestrator.create_subagent_middlewares",
-        return_value=([temporary_middleware], []),
+    with (
+        patch.object(
+            agent,
+            "_resolve_llm_runtime_config",
+            new=AsyncMock(return_value={"provider": "openai", "model": "fake"}),
+        ),
+        patch.object(
+            agent,
+            "_initialize_local_tool_catalogs",
+            return_value=(catalog, catalog),
+        ),
+        patch.object(
+            agent,
+            "_initialize_mcp_tools",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch.object(
+            agent,
+            "_initialize_subagent_mcp_tools",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch.object(
+            agent,
+            "_initialize_llm",
+            new=AsyncMock(return_value=fake_llm),
+        ),
+        patch.object(
+            agent,
+            "_sync_model_profile",
+        ),
+        patch.object(
+            agent,
+            "_agent_bundle_signature",
+            new=_wait_for_signature,
+        ),
+        patch(
+            "app.agent.orchestrator._get_plugin_tools_revision",
+            return_value=0,
+        ),
+        patch(
+            "app.agent.orchestrator.agent_mcp_manager.config_signature",
+            return_value="mcp-config",
+        ),
+        patch(
+            "app.agent.orchestrator.agent_mcp_manager.list_enabled_tool_specs",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.agent.orchestrator.ServerToolRegistry.resolve_web_search",
+            return_value=SimpleNamespace(use_local_web_search=True),
+        ),
+        patch(
+            "app.agent.orchestrator.LLMHelper.get_server_tools",
+            return_value=[],
+        ),
+        patch(
+            "app.agent.orchestrator.prompt_manager.get_agent_prompt",
+            return_value="prompt",
+        ),
+        patch(
+            "app.agent.orchestrator.SkillsMiddleware",
+            return_value=SimpleNamespace(name="skills", tools=[]),
+        ),
+        patch(
+            "app.agent.orchestrator.create_subagent_middlewares",
+            return_value=([temporary_middleware], []),
+        ),
     ):
-        create_task = __import__("asyncio").create_task(
-            agent._create_agent(streaming=False)
-        )
+        create_task = __import__("asyncio").create_task(agent._create_agent(streaming=False))
         await signature_started.wait()
         create_task.cancel()
         with pytest.raises(__import__("asyncio").CancelledError):
@@ -355,12 +386,8 @@ async def test_agent_bundle_signature_changes_with_tool_catalog() -> None:
     """工具目录 revision 必须参与会话内 Agent 图缓存签名。"""
     agent = MoviePilotAgent(session_id="tool-revision", user_id="user-1")
     runtime_config = {"provider": "openai", "model": "gpt-test"}
-    first_catalog = ToolCatalogSnapshot.from_tools(
-        [], plugin_revision=1, factory_revision="factory-v1"
-    )
-    second_catalog = ToolCatalogSnapshot.from_tools(
-        [], plugin_revision=2, factory_revision="factory-v1"
-    )
+    first_catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=1, factory_revision="factory-v1")
+    second_catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=2, factory_revision="factory-v1")
 
     with patch.object(
         agent,
@@ -383,10 +410,10 @@ async def test_agent_bundle_signature_changes_with_tool_catalog() -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("max_tools", [0, 5])
-async def test_graph_keeps_mcp_first_winner_and_catalogs_all_collisions(
+async def test_graph_rejects_mcp_and_skill_name_collisions(
     max_tools: int,
 ) -> None:
-    """主图与子图保持 MCP first-wins，严格目录覆盖全部客户端工具。"""
+    """主图和子图都必须在编译前拒绝同名 MCP/Skill 身份。"""
     servers = [
         AgentMcpServerConfig(
             id=server_id,
@@ -416,9 +443,7 @@ async def test_graph_keeps_mcp_first_winner_and_catalogs_all_collisions(
         user_id="user",
         specs=specs,
     )
-    empty_catalog = ToolCatalogSnapshot.from_tools(
-        [], plugin_revision=0, factory_revision="factory-v1"
-    )
+    empty_catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     fake_llm = SimpleNamespace(
         _llm_type="openai-chat",
         model="fake",
@@ -565,42 +590,14 @@ async def test_graph_keeps_mcp_first_winner_and_catalogs_all_collisions(
     with ExitStack() as stack:
         for patcher in patchers:
             stack.enter_context(patcher)
-        await agent._create_agent(streaming=False)
+        with pytest.raises(
+            ToolIdentityAmbiguousError,
+            match="TOOL_IDENTITY_AMBIGUOUS: shared_echo",
+        ):
+            await agent._create_agent(streaming=False)
 
-    assert captured["agent_tools"] == [main_tools[0], skill_tool, activity_tool]
-    assert captured["subagent_tools"] == [subagent_tools[0]]
-    if max_tools:
-        assert captured["selection_tools"] == [
-            main_tools[0],
-            skill_tool,
-            activity_tool,
-            subagent_task_tool,
-        ]
-        assert captured["middlewares"][-3].name == "selector"
-    else:
-        assert "selection_tools" not in captured
-    assert captured["middlewares"][-2].name == "FinalRequestCompactionMiddleware"
-    assert captured["middlewares"][-1].name == "usage"
-    policy_middleware = next(
-        middleware
-        for middleware in captured["middlewares"]
-        if isinstance(middleware, AgentPolicyMiddleware)
-    )
-    assert [
-        entry.source
-        for entry in policy_middleware.catalog.collisions["shared_echo"]
-    ] == ["mcp:one", "mcp:two", "middleware:skills"]
-    assert (
-        policy_middleware.catalog.resolve_unique("query_activity_log").tool
-        is activity_tool
-    )
-    assert policy_middleware.catalog.resolve_unique("task").tool is subagent_task_tool
-    with pytest.raises(ToolIdentityAmbiguousError, match="TOOL_IDENTITY_AMBIGUOUS"):
-        policy_middleware.catalog.resolve_unique("shared_echo")
-    assert [
-        entry.source
-        for entry in captured["subagent_catalog"].collisions["shared_echo"]
-    ] == ["mcp:one", "mcp:two"]
+    assert "agent_tools" not in captured
+    assert "subagent_tools" not in captured
 
 
 @pytest.mark.anyio
@@ -612,9 +609,7 @@ async def test_execute_agent_sends_only_latest_message_on_cache_hit():
     agent._tool_context = {"user_reply_sent": False}
     agent._streamed_output = ""
     agent._should_stream = lambda: False
-    agent.stream_handler = SimpleNamespace(
-        stop_streaming=AsyncMock(return_value=(False, ""))
-    )
+    agent.stream_handler = SimpleNamespace(stop_streaming=AsyncMock(return_value=(False, "")))
 
     async def _create_agent(streaming=False):
         """模拟缓存命中后的 Agent 创建结果。"""

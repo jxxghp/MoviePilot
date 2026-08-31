@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = PROJECT_ROOT / "skills"
 CORE_PROMPT_PATH = PROJECT_ROOT / "app/agent/prompt/System Core Prompt.txt"
@@ -22,16 +21,20 @@ def _frontmatter_value(content: str, key: str) -> str:
 def test_modified_builtin_skills_have_incremented_versions() -> None:
     """本次修改过的内置技能必须递增版本，确保用户端同步更新。"""
     expected_versions = {
-        "database-operation": "4",
-        "moviepilot-api": "14",
-        "moviepilot-cli": "8",
+        "browser-use": "2",
+        "command-dispatch": "2",
+        "database-operation": "5",
+        "feedback-issue": "9",
+        "moviepilot-api": "16",
         "moviepilot-update": "4",
-        "organize-files": "3",
-        "transfer-failed-retry": "4",
-        "generate-identifiers": "3",
-        "create-moviepilot-plugin": "4",
-        "create-moviepilot-skill": "2",
-        "publish-moviepilot-plugin": "2",
+        "organize-files": "5",
+        "transfer-failed-retry": "5",
+        "generate-identifiers": "4",
+        "create-moviepilot-plugin": "5",
+        "create-moviepilot-skill": "3",
+        "publish-moviepilot-plugin": "3",
+        "downloader-operation": "1",
+        "mediaserver-operation": "1",
     }
 
     for skill_name, expected_version in expected_versions.items():
@@ -40,30 +43,21 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         assert _frontmatter_value(content, "version") == expected_version
 
 
-def test_moviepilot_cli_skill_uses_local_tool_boundary() -> None:
-    """CLI 技能应只描述本地 MCP tool 边界，不再默认使用旧 Node 脚本。"""
-    content = _read_skill("moviepilot-cli")
-
-    assert "moviepilot tool" in content
-    assert "scripts/mp-cli.js" not in content
-    assert "Use `scripts/mp-cli.js`" not in content
-    assert "node scripts/mp-cli.js" not in content
-    assert "any request involving movies" not in content
-    assert "whenever the user explicitly mentions MoviePilot" not in content
-    assert "Do not ask the user" in content
-    assert "moviepilot-api" in content
-    assert "database-operation" in content
+def test_retired_moviepilot_cli_skill_is_removed() -> None:
+    """正式 API 方案不得保留旧 MCP CLI Skill。"""
+    assert not (SKILLS_ROOT / "moviepilot-cli" / "SKILL.md").exists()
 
 
-def test_api_and_database_skills_declare_fallback_boundaries() -> None:
-    """API 和数据库技能应明确各自兜底边界，避免抢占普通产品操作。"""
+def test_api_and_database_skills_declare_final_boundaries() -> None:
+    """API Skill 应成为产品操作入口，数据库仍是显式最终兜底。"""
     api_content = _read_skill("moviepilot-api")
     db_content = _read_skill("database-operation")
 
-    assert "REST API bridge" in api_content
-    assert "Do not use this skill just because MoviePilot is mentioned" in api_content
-    assert "moviepilot-cli" in api_content
-    assert "Direct SQL query or database update" in api_content
+    assert "allowed-tools: moviepilot_api" in api_content
+    assert "allowed-api-operations:" in api_content
+    assert "Never provide a URL, method, authentication header, API key" in api_content
+    assert "retired tool name" in api_content
+    assert "moviepilot tool" in api_content
 
     assert "direct SQL boundary" in db_content
     assert "Use this skill as the final fallback" in db_content

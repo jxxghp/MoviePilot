@@ -18,6 +18,7 @@ from app.agent.policy.contracts import (
     PolicyDecision,
     PolicyObservation,
     RecoveryMode,
+    ResultSensitivity,
     ToolInvocation,
     ToolPolicyContext,
 )
@@ -29,7 +30,6 @@ from app.agent.policy.sanitizer import (
     summarize_result,
 )
 from app.runtime.log import logger
-
 
 _HookResult = TypeVar("_HookResult")
 
@@ -45,10 +45,7 @@ def call_policy_hook(
         return hook(*args, **kwargs)
     except Exception as error:
         try:
-            logger.warning(
-                f"Agent工具策略观测失败: phase={phase}, "
-                f"error_type={stable_type_name(error)}"
-            )
+            logger.warning(f"Agent工具策略观测失败: phase={phase}, error_type={stable_type_name(error)}")
         except Exception:
             pass
         return None
@@ -63,7 +60,7 @@ def _normalize_policy_arguments(tool: Any, arguments: Mapping[str, Any]) -> dict
     try:
         validated = args_schema.model_validate(raw_arguments)
         return validated.model_dump(mode="json")
-    except (AttributeError, TypeError, ValueError, ValidationError):
+    except AttributeError, TypeError, ValueError, ValidationError:
         # 实际 handler 仍负责既有参数错误语义；策略观测按原始值保守处理。
         return raw_arguments
 
@@ -147,7 +144,10 @@ class AgentToolPolicyOrchestrator:
     @staticmethod
     def finish(observation: PolicyObservation, result: Any) -> ExecutionReceipt:
         """生成成功回执 envelope，并只记录脱敏结果摘要。"""
-        result_summary = summarize_result(_result_payload(result))
+        if observation.policy.result_sensitivity is ResultSensitivity.SECRET:
+            result_summary = '{"protected_result": "***"}'
+        else:
+            result_summary = summarize_result(_result_payload(result))
         receipt = ExecutionReceipt(
             invocation_id=observation.invocation.invocation_id,
             tool_name=observation.invocation.tool_name,
@@ -191,8 +191,8 @@ class AgentToolPolicyOrchestrator:
     def fail(observation: PolicyObservation, error: BaseException) -> ExecutionReceipt:
         """生成失败回执 envelope，不把异常中的凭据写入日志。"""
         error_summary = summarize_error(error)
-        external_may_continue, needs_reconcile = (
-            AgentToolPolicyOrchestrator._uncertain_external_state(observation, error)
+        external_may_continue, needs_reconcile = AgentToolPolicyOrchestrator._uncertain_external_state(
+            observation, error
         )
         receipt = ExecutionReceipt(
             invocation_id=observation.invocation.invocation_id,

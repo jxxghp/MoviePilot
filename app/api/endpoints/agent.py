@@ -3,7 +3,16 @@ import mimetypes
 import uuid
 from typing import Any, AsyncIterator, Optional
 
-from fastapi import Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import (
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, StreamingResponse
 
 from app.agent.mcp import agent_mcp_manager
@@ -26,12 +35,15 @@ from app.application.messaging.chat import (
     get_configured_agent_chat_persistence,
     get_configured_agent_chat_service,
 )
+from app.runtime.events import eventmanager
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger
 from app.schemas.agent import AgentChatDisplaySaveRequest as _SchemaAgentChatDisplaySaveRequest
 from app.schemas.agent import AgentChatSessionDetail as _SchemaAgentChatSessionDetail
 from app.schemas.agent import AgentChatSessionSummary as _SchemaAgentChatSessionSummary
 from app.schemas.agent import AgentChatUploadAttachment as _SchemaAgentChatUploadAttachment
+from app.schemas.agent import AgentCommandRunData as _SchemaAgentCommandRunData
+from app.schemas.agent import AgentCommandRunRequest as _SchemaAgentCommandRunRequest
 from app.schemas.agent import AgentMcpServerListData as _SchemaAgentMcpServerListData
 from app.schemas.agent import AgentMcpServersSaveRequest as _SchemaAgentMcpServersSaveRequest
 from app.schemas.agent import AgentMcpServerTestRequest as _SchemaAgentMcpServerTestRequest
@@ -42,6 +54,7 @@ from app.schemas.agent import AgentWebCommandInfo as _SchemaAgentWebCommandInfo
 from app.schemas.message import AgentWebChatRequest as _SchemaAgentWebChatRequest
 from app.schemas.message import AgentWebChoiceRequest as _SchemaAgentWebChoiceRequest
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.types import NotificationChannel
 
 router = ResponseAPIRouter()
 
@@ -296,6 +309,36 @@ async def list_web_agent_commands(
         success=True,
         data=web_agent_application.build_web_agent_command_items(),
     )
+
+
+@router.post(
+    "/commands/run",
+    summary="执行 Agent 斜杠命令",
+    response_model=_SchemaResponse[_SchemaAgentCommandRunData],
+)
+async def run_agent_command(
+    payload: _SchemaAgentCommandRunRequest,
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+    agent_channel: Optional[str] = Header(None, alias="X-MoviePilot-Agent-Channel"),
+    agent_source: Optional[str] = Header(None, alias="X-MoviePilot-Agent-Source"),
+) -> _SchemaResponse:
+    """以当前认证用户和宿主透传渠道触发已注册命令。"""
+    _ensure_superuser(current_user)
+    try:
+        channel = NotificationChannel(agent_channel) if agent_channel else None
+    except ValueError:
+        channel = None
+    try:
+        data = web_agent_application.dispatch_web_agent_command(
+            payload.command,
+            user_id=str(current_user.id),
+            channel=channel,
+            source=agent_source,
+            publish_event=eventmanager.send_event,
+        )
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
 @router.get(

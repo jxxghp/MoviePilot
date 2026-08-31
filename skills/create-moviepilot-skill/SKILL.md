@@ -1,6 +1,6 @@
 ---
 name: create-moviepilot-skill
-version: 2
+version: 3
 description: >-
   Use this skill when the user asks to create, scaffold, update, or review a
   MoviePilot agent skill. This includes adding a new built-in skill under the
@@ -8,7 +8,7 @@ description: >-
   `SKILL.md` frontmatter and workflow instructions, choosing `allowed-tools`,
   adding helper scripts when needed, and bumping the built-in skill `version`
   so changes can sync into `config/agent/skills`.
-allowed-tools: list_directory read_file write_file edit_file apply_patch execute_command
+allowed-tools: read_file write_file edit_file apply_patch execute_command
 ---
 
 # Create MoviePilot Skill
@@ -74,7 +74,7 @@ name: create-moviepilot-skill
 version: 1
 description: >-
   Explain what the skill does and exactly when to use it.
-allowed-tools: list_directory read_file write_file edit_file execute_command
+allowed-tools: read_file write_file edit_file execute_command
 ---
 ```
 

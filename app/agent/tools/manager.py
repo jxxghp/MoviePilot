@@ -123,9 +123,13 @@ class MoviePilotToolsManager:
             self._plugin_agent_tools_revision = -1
             self._catalog_materialized = False
             self._catalog_managed_by_factory = False
+            from app.agent.tools.catalog import ToolCatalogError
+
+            if isinstance(e, ToolCatalogError):
+                raise
 
     def _load_tools(self) -> None:
-        """兼容显式刷新入口，并保证外部调用仍原子发布完整目录。"""
+        """显式刷新工具目录，并保证外部调用原子发布完整快照。"""
         with self._tools_lock:
             self._load_tools_locked()
 
@@ -151,16 +155,10 @@ class MoviePilotToolsManager:
         from app.application.plugin.runtime import get_plugin_manager
 
         plugin_manager = get_plugin_manager()
-        if (
-            self._plugin_agent_tools_revision
-            == plugin_manager.get_plugin_agent_tools_revision()
-        ):
+        if self._plugin_agent_tools_revision == plugin_manager.get_plugin_agent_tools_revision():
             return
         with self._tools_lock:
-            if (
-                self._plugin_agent_tools_revision
-                == plugin_manager.get_plugin_agent_tools_revision()
-            ):
+            if self._plugin_agent_tools_revision == plugin_manager.get_plugin_agent_tools_revision():
                 return
             self._load_tools_locked()
 
@@ -207,7 +205,8 @@ class MoviePilotToolsManager:
         """
         self._ensure_tools_current()
         with self._tools_lock:
-            tools = list(self.tools)
+            catalog = self._get_strict_catalog_locked()
+            tools = catalog.tools if catalog is not None else []
         tools_list = []
         for tool in tools:
             if getattr(tool, "_require_admin", False) and not self.is_admin:
@@ -232,41 +231,31 @@ class MoviePilotToolsManager:
         return tools_list
 
     def get_tool(self, tool_name: str) -> Optional[Any]:
-        """
-        获取指定工具实例
-
-        Args:
-            tool_name: 工具名称
-
-        Returns:
-            工具实例，如果未找到返回None
-        """
-        self._ensure_tools_current()
-        with self._tools_lock:
-            return next(
-                (tool for tool in self.tools if tool.name == tool_name),
-                None,
-            )
+        """按唯一身份获取工具；同名冲突时稳定失败。"""
+        return self.get_strict_tool(tool_name)
 
     def get_strict_tool(self, tool_name: str) -> Optional[Any]:
         """按当前目录唯一身份解析严格调用，重名时稳定失败。"""
         self._ensure_tools_current()
         with self._tools_lock:
-            if self.catalog is None or [
-                id(tool) for tool in self.catalog.tools
-            ] != [id(tool) for tool in self.tools]:
-                from app.agent.loader import get_tool_factory
-                from app.agent.tools.catalog import ToolCatalogSnapshot
-
-                self.catalog = ToolCatalogSnapshot.from_tools(
-                    self.tools,
-                    plugin_revision=self._plugin_agent_tools_revision,
-                    factory_revision=get_tool_factory().catalog_factory_revision(),
-                )
-            if self.catalog is None:
+            catalog = self._get_strict_catalog_locked()
+            if catalog is None:
                 return None
-            entry = self.catalog.resolve_unique(tool_name)
+            entry = catalog.resolve_unique(tool_name)
             return entry.tool if entry else None
+
+    def _get_strict_catalog_locked(self) -> Optional[ToolCatalogSnapshot]:
+        """在 manager 锁内建立并校验唯一、可执行的当前工具目录。"""
+        if self.catalog is None or [id(tool) for tool in self.catalog.tools] != [id(tool) for tool in self.tools]:
+            from app.agent.loader import get_tool_factory
+            from app.agent.tools.catalog import ToolCatalogSnapshot
+
+            self.catalog = ToolCatalogSnapshot.from_tools(
+                self.tools,
+                plugin_revision=self._plugin_agent_tools_revision,
+                factory_revision=get_tool_factory().catalog_factory_revision(),
+            )
+        return self.catalog.require_unique() if self.catalog is not None else None
 
     @staticmethod
     def _resolve_field_schema(field_info: Dict[str, Any]) -> Dict[str, Any]:
@@ -299,13 +288,13 @@ class MoviePilotToolsManager:
         if field_type == "integer" and isinstance(value, str):
             try:
                 return int(value)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 logger.warning(f"无法将参数 {key}='{value}' 转换为整数，返回 None")
                 return None
         if field_type == "number" and isinstance(value, str):
             try:
                 return float(value)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 logger.warning(f"无法将参数 {key}='{value}' 转换为浮点数，返回 None")
                 return None
         if field_type == "boolean":
@@ -333,9 +322,7 @@ class MoviePilotToolsManager:
         ]
 
     @staticmethod
-    def _normalize_arguments(
-        tool_instance: Any, arguments: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _normalize_arguments(tool_instance: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         根据工具的参数schema规范化参数类型
 
@@ -373,15 +360,11 @@ class MoviePilotToolsManager:
             # 数组类型：将字符串解析为列表
             if field_type == "array" and isinstance(value, str):
                 item_type = field_info.get("items", {}).get("type", "string")
-                normalized[key] = MoviePilotToolsManager._parse_array_string(
-                    value, key, item_type
-                )
+                normalized[key] = MoviePilotToolsManager._parse_array_string(value, key, item_type)
                 continue
 
             # 根据类型进行转换
-            normalized[key] = MoviePilotToolsManager._normalize_scalar_value(
-                field_type, value, key
-            )
+            normalized[key] = MoviePilotToolsManager._normalize_scalar_value(field_type, value, key)
 
         return normalized
 
@@ -403,12 +386,10 @@ class MoviePilotToolsManager:
         Returns:
             工具执行结果（字符串）
         """
-        tool_instance = self.get_tool(tool_name)
+        tool_instance = self.get_strict_tool(tool_name)
 
         if not tool_instance:
-            error_msg = json.dumps(
-                {"error": f"工具 '{tool_name}' 未找到"}, ensure_ascii=False
-            )
+            error_msg = json.dumps({"error": f"工具 '{tool_name}' 未找到"}, ensure_ascii=False)
             return error_msg
 
         from app.agent.policy.orchestrator import call_policy_hook
@@ -497,9 +478,7 @@ class MoviePilotToolsManager:
 
         if "properties" in schema:
             for field_name, field_info in schema["properties"].items():
-                resolved_field_info = MoviePilotToolsManager._resolve_field_schema(
-                    field_info
-                )
+                resolved_field_info = MoviePilotToolsManager._resolve_field_schema(field_info)
                 # 转换字段类型
                 field_type = resolved_field_info.get("type", "string")
                 field_description = resolved_field_info.get("description", "")

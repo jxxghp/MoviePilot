@@ -8,7 +8,6 @@ import sys
 import threading
 import time
 from types import SimpleNamespace
-from unittest.mock import patch
 
 
 def _run_isolated(script: str) -> dict:
@@ -198,6 +197,7 @@ print(json.dumps({
 def test_manager_first_catalog_use_is_single_flight(monkeypatch) -> None:
     """并发首次查询只能在 manager 锁内建立一次会话工具快照。"""
     from app.agent import loader as runtime_loader
+    from app.agent.tools.catalog import ToolCatalogSnapshot
     from app.agent.tools.manager import MoviePilotToolsManager
 
     calls: list[tuple[str, str]] = []
@@ -215,7 +215,11 @@ def test_manager_first_catalog_use_is_single_flight(monkeypatch) -> None:
         def create_catalog(cls, **kwargs):
             calls.append((kwargs["session_id"], kwargs["user_id"]))
             time.sleep(0.05)
-            return SimpleNamespace(tools=[fake_tool], plugin_revision=0)
+            return ToolCatalogSnapshot.from_tools(
+                [fake_tool],
+                plugin_revision=0,
+                factory_revision="test-factory",
+            )
 
     monkeypatch.setattr(runtime_loader, "get_tool_factory", lambda: _Factory)
     manager = MoviePilotToolsManager(session_id="session", user_id="user")
@@ -236,18 +240,20 @@ def test_manager_first_catalog_use_is_single_flight(monkeypatch) -> None:
     assert manager.catalog is not None
 
 
-def test_legacy_explicit_tool_refresh_keeps_atomic_catalog_contract(
+def test_explicit_tool_refresh_keeps_atomic_catalog_contract(
     monkeypatch,
 ) -> None:
-    """插件显式刷新旧入口应继续发布同一次构造的完整目录快照。"""
+    """插件显式刷新入口应发布同一次构造的完整严格目录快照。"""
     from app.agent import loader as runtime_loader
+    from app.agent.tools.catalog import ToolCatalogSnapshot
     from app.agent.tools.manager import MoviePilotToolsManager
 
     calls: list[int] = []
     fake_tool = SimpleNamespace(name="plugin_tool")
-    fake_catalog = SimpleNamespace(
-        tools=[fake_tool],
+    fake_catalog = ToolCatalogSnapshot.from_tools(
+        [fake_tool],
         plugin_revision=9,
+        factory_revision="test-factory",
     )
 
     class _Factory:

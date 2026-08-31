@@ -107,6 +107,17 @@
     "模块不支持测试": "模块不支持测试",
     "网络请求失败": "网络请求失败",
     "TMDB请求失败": "TMDB请求失败",
+    "无效的媒体类型": "无效的媒体类型",
+    "ListenBrainz 来源只支持音乐媒体类型": "ListenBrainz 来源只支持音乐媒体类型",
+    "无效的音乐实体类型": "无效的音乐实体类型",
+    "无效的榜单周期": "无效的榜单周期",
+    "无效的榜单排序": "无效的榜单排序",
+    "新发行结果只支持专辑": "新发行结果只支持专辑",
+    "无效的新发行排序": "无效的新发行排序",
+    "past 和 future 不能同时为 false": "past 和 future 不能同时为 false",
+    "音乐推荐需使用 ListenBrainz 来源": "音乐推荐需使用 ListenBrainz 来源",
+    "directory_type 无效": "directory_type 无效",
+    "storage_type 无效": "storage_type 无效",
     "媒体服务器请求失败": "媒体服务器请求失败",
     "不支持的媒体类型": "不支持的媒体类型",
     "豆瓣网络连接失败": "豆瓣网络连接失败",
@@ -121,6 +132,10 @@
     "TheMovieDb 识别缓存清理完成": "TheMovieDb 识别缓存清理完成"
   },
   "message_patterns": [
+    {
+      "source": "不支持的推荐来源: {source}",
+      "target": "不支持的推荐来源: {source}"
+    },
     {
       "source": "无法连接Qbittorrent下载器：{name}",
       "target": "无法连接Qbittorrent下载器：{name}"

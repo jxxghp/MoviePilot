@@ -7,12 +7,12 @@ from unittest.mock import patch
 import pytest
 
 from app.agent.tools.base import MoviePilotTool
+from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.manager import MoviePilotToolsManager
-from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.api.endpoints import mcp
-from app.runtime.extensions.plugin.manager import PluginManager
 from app.foundation.singleton import Singleton
+from app.runtime.extensions.plugin.manager import PluginManager
 
 
 class DemoPluginTool(MoviePilotTool):
@@ -79,9 +79,7 @@ def test_mcp_refreshes_tools_after_plugin_lifecycle_change(
                 }
             )
         )
-        assert call_result == {
-            "content": [{"type": "text", "text": "plugin-ok"}]
-        }
+        assert call_result == {"content": [{"type": "text", "text": "plugin-ok"}]}
 
         plugin_manager.running_plugins.pop("DemoPlugin")
         plugin_manager.clear_plugin_agent_tools_cache()
@@ -99,8 +97,8 @@ def test_mcp_refreshes_tools_after_plugin_lifecycle_change(
         assert "未找到" in missing_payload["error"]
 
 
-def test_direct_manager_preserves_legacy_lookup_and_exposes_strict_resolution() -> None:
-    """普通 direct 调用保留 first-wins，严格调用可拒绝同名身份。"""
+def test_direct_manager_rejects_ambiguous_tool_identity() -> None:
+    """HTTP/MCP direct 调用不得保留 first-wins 执行路径。"""
     first = DemoPluginTool(session_id="session", user_id="user")
     second = DemoPluginTool(session_id="session", user_id="user")
     manager = MoviePilotToolsManager(session_id="session", user_id="user")
@@ -111,9 +109,11 @@ def test_direct_manager_preserves_legacy_lookup_and_exposes_strict_resolution() 
         factory_revision=MoviePilotToolFactory.catalog_factory_revision(),
     )
 
-    assert manager.get_tool("demo_plugin_tool") is first
+    with pytest.raises(RuntimeError, match="TOOL_IDENTITY_AMBIGUOUS"):
+        manager.list_tools()
+    with pytest.raises(RuntimeError, match="TOOL_IDENTITY_AMBIGUOUS"):
+        manager.get_tool("demo_plugin_tool")
     with pytest.raises(RuntimeError, match="TOOL_IDENTITY_AMBIGUOUS"):
         manager.get_strict_tool("demo_plugin_tool")
-
-    result = asyncio.run(manager.call_tool("demo_plugin_tool", {}))
-    assert result == "plugin-ok"
+    with pytest.raises(RuntimeError, match="TOOL_IDENTITY_AMBIGUOUS"):
+        asyncio.run(manager.call_tool("demo_plugin_tool", {}))

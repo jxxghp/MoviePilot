@@ -21,20 +21,8 @@ from app.agent.middleware.selection import ToolSelectorMiddleware
 from app.agent.orchestrator import MoviePilotAgent
 from app.agent.session import _MessageTask
 from app.agent.tools.factory import MoviePilotToolFactory
-from app.agent.tools.impl.create_agent_task import (
-    CreateAgentTaskInput,
-    CreateAgentTaskTool,
-)
-from app.agent.tools.impl.delete_agent_task import DeleteAgentTaskTool
-from app.agent.tools.impl.query_agent_tasks import QueryAgentTasksTool
-from app.agent.tools.impl.query_schedulers import QuerySchedulersTool
-from app.agent.tools.impl.run_agent_task import RunAgentTaskTool
-from app.agent.tools.impl.run_scheduler import RunSchedulerTool
+from app.agent.tools.impl.agent_task import AgentTaskInput, AgentTaskTool
 from app.agent.tools.impl.send_message import SendMessageTool
-from app.agent.tools.impl.update_agent_task import (
-    UpdateAgentTaskInput,
-    UpdateAgentTaskTool,
-)
 from app.agent.tools.tags import ToolTag
 from app.chain.agent import AgentChain
 from app.db import SessionFactory
@@ -103,17 +91,13 @@ def isolate_scheduler_main_loop() -> Generator[None, None, None]:
 def _future_time(minutes: int = 10) -> str:
     """生成系统时区内的未来时间字符串。"""
     timezone = pytz.timezone(settings.TZ)
-    return (datetime.now(timezone) + timedelta(minutes=minutes)).isoformat(
-        timespec="seconds"
-    )
+    return (datetime.now(timezone) + timedelta(minutes=minutes)).isoformat(timespec="seconds")
 
 
 def _past_time(minutes: int = 10) -> str:
     """生成系统时区内的过去时间字符串。"""
     timezone = pytz.timezone(settings.TZ)
-    return (datetime.now(timezone) - timedelta(minutes=minutes)).isoformat(
-        timespec="seconds"
-    )
+    return (datetime.now(timezone) - timedelta(minutes=minutes)).isoformat(timespec="seconds")
 
 
 def _invalid_time() -> str:
@@ -201,88 +185,35 @@ def test_timer_utils_validates_date_and_cron_triggers() -> None:
         )
 
 
-def test_agent_task_tools_are_registered_with_relative_delay_schema() -> None:
-    """工具工厂应公开完整任务管理工具，并声明相对分钟参数。"""
-    tool_names = {
-        tool_class.model_fields["name"].default
-        for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES
-    }
-    assert {
-        "create_agent_task",
-        "query_agent_tasks",
-        "update_agent_task",
-        "run_agent_task",
-        "delete_agent_task",
-    }.issubset(tool_names)
-    agent_task_tool_names = {
-        "create_agent_task",
-        "query_agent_tasks",
-        "update_agent_task",
-        "run_agent_task",
-        "delete_agent_task",
-    }
-    assert [
-        tool_class.model_fields["name"].default
-        for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES
-        if tool_class.model_fields["name"].default in agent_task_tool_names
-    ] == [
-        "create_agent_task",
-        "query_agent_tasks",
-        "update_agent_task",
-        "run_agent_task",
-        "delete_agent_task",
-    ]
-    assert "delay_minutes" in CreateAgentTaskInput.model_json_schema()["properties"]
+def test_agent_task_tool_is_registered_with_action_schema() -> None:
+    """工具工厂应只公开一个带动作和相对分钟参数的任务工具。"""
+    tool_names = {tool_class.model_fields["name"].default for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES}
+    assert "agent_task" in tool_names
+    schema = AgentTaskInput.model_json_schema()["properties"]
+    assert "action" in schema
+    assert "delay_minutes" in schema
 
-    agent_task_tools = [
-        _build_tool(tool_class, "admin-user")
-        for tool_class in (
-            CreateAgentTaskTool,
-            QueryAgentTasksTool,
-            UpdateAgentTaskTool,
-            RunAgentTaskTool,
-            DeleteAgentTaskTool,
-        )
-    ]
-    assert all(ToolTag.AgentTask.value in tool.tags for tool in agent_task_tools)
-    assert all(ToolTag.Scheduler.value not in tool.tags for tool in agent_task_tools)
-    scheduler_tool = _build_tool(QuerySchedulersTool, "admin-user")
-    assert ToolTag.Scheduler.value in scheduler_tool.tags
-    assert ToolTag.AgentTask.value not in scheduler_tool.tags
-    runtime_scheduler_tools = [
-        scheduler_tool,
-        _build_tool(RunSchedulerTool, "admin-user"),
-    ]
-    all_scheduler_tools = [*agent_task_tools, *runtime_scheduler_tools]
+    agent_task_tool = _build_tool(AgentTaskTool, "admin-user")
+    assert ToolTag.AgentTask.value in agent_task_tool.tags
+    assert ToolTag.Scheduler.value not in agent_task_tool.tags
     tool_groups = dict(
         ToolSelectorMiddleware._build_tool_groups(
-            available_tools=all_scheduler_tools,
-            valid_tool_names=[tool.name for tool in all_scheduler_tools],
+            available_tools=[agent_task_tool],
+            valid_tool_names=[agent_task_tool.name],
         )
     )
-    assert tool_groups[ToolTag.AgentTask.value] == [
-        "create_agent_task",
-        "query_agent_tasks",
-        "update_agent_task",
-        "run_agent_task",
-        "delete_agent_task",
-    ]
-    assert tool_groups[ToolTag.Scheduler.value] == [
-        "query_schedulers",
-        "run_scheduler",
-    ]
+    assert tool_groups == {}
 
 
 def test_agent_prompt_declares_scheduler_tool_boundaries() -> None:
     """核心提示应明确自主任务与运行时调度服务的工具和 ID 边界。"""
     project_root = Path(__file__).resolve().parents[1]
-    core_prompt = (project_root / "app/agent/prompt/System Core Prompt.txt").read_text(
-        encoding="utf-8"
-    )
+    core_prompt = (project_root / "app/agent/prompt/System Core Prompt.txt").read_text(encoding="utf-8")
 
-    assert "Manage existing autonomous tasks with `query_agent_tasks`" in core_prompt
-    assert "`run_agent_task`" in core_prompt
-    assert "Use `query_schedulers` and `run_scheduler` only" in core_prompt
+    assert "use `agent_task` with `action=create`" in core_prompt
+    assert "`action=list|update|run|delete`" in core_prompt
+    assert "scheduler.list" in core_prompt
+    assert "scheduler.run" in core_prompt
     assert "integer `task_id`" in core_prompt
     assert "string `job_id`" in core_prompt
 
@@ -355,9 +286,7 @@ def test_scheduler_registers_and_removes_agent_task_job() -> None:
     scheduler._scheduler.start(paused=True)
     try:
         scheduler_items = scheduler.list()
-        agent_scheduler_item = next(
-            item for item in scheduler_items if item.id == job_id
-        )
+        agent_scheduler_item = next(item for item in scheduler_items if item.id == job_id)
         assert agent_scheduler_item.name == task.name
         assert agent_scheduler_item.provider == "[Agent]"
 
@@ -380,18 +309,21 @@ def test_stale_agent_task_generation_cannot_remove_replacement_job() -> None:
     new_generation = scheduler._jobs[job_id]["_generation"]
 
     assert new_generation > old_generation
-    assert scheduler._remove_agent_task_job_generation(
-        task.id,
-        old_generation,
-        "old-run",
-    ) is False
+    assert (
+        scheduler._remove_agent_task_job_generation(
+            task.id,
+            old_generation,
+            "old-run",
+        )
+        is False
+    )
     assert scheduler._jobs[job_id]["_generation"] == new_generation
     assert scheduler._scheduler.get_job(job_id) is not None
 
 
 @pytest.mark.anyio
 async def test_date_task_reload_job_is_removed_after_run_finishes(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """运行中重载生成的同一次任务副本必须随 date 终态一起移除。"""
     task = _add_agent_task("date", _future_time(), "date-reload-active")
@@ -451,21 +383,27 @@ def test_finished_date_task_cannot_remove_reenabled_job() -> None:
     assert run is not None
     outcome = oper.finish_run_outcome(run.run_id, success=True, result="完成")
     assert outcome.date_task_disabled is True
-    assert oper.update(
-        task.id,
-        {"enabled": True, "last_status": "waiting"},
-    ) is True
+    assert (
+        oper.update(
+            task.id,
+            {"enabled": True, "last_status": "waiting"},
+        )
+        is True
+    )
     scheduler.update_agent_task_job(task.id)
     replacement_generation = scheduler._jobs[job_id]["_generation"]
     assert replacement_generation > original_generation
     assert scheduler._jobs[job_id]["_agent_task_run_id"] == run.run_id
     assert scheduler._jobs[job_id]["_agent_task_status"] == "waiting"
 
-    assert scheduler._remove_agent_task_job_generation(
-        task.id,
-        original_generation,
-        run.run_id,
-    ) is False
+    assert (
+        scheduler._remove_agent_task_job_generation(
+            task.id,
+            original_generation,
+            run.run_id,
+        )
+        is False
+    )
     assert scheduler._jobs[job_id]["_generation"] == replacement_generation
     assert scheduler._scheduler.get_job(job_id) is not None
 
@@ -475,7 +413,7 @@ def test_finished_date_task_cannot_remove_reenabled_job() -> None:
     [_past_time, _future_time, _invalid_time],
 )
 def test_scheduler_restart_keeps_interrupted_date_task_manual_only(
-        run_time_factory,
+    run_time_factory,
 ) -> None:
     """重启不得自动补跑结果未知的一次任务，但必须保留显式重跑入口。"""
     task = _add_agent_task("date", run_time_factory(), "restart-date")
@@ -506,7 +444,7 @@ def test_scheduler_restart_keeps_interrupted_date_task_manual_only(
 
 @pytest.mark.anyio
 async def test_interrupted_date_task_manual_run_disables_and_removes_job(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """用户显式重跑中断的一次任务后，应按原有单次任务语义正常收口。"""
     task = _add_agent_task("date", _past_time(), "restart-date-manual")
@@ -562,8 +500,8 @@ async def test_scheduler_propagates_scheduled_trigger_source(monkeypatch) -> Non
 @pytest.mark.parametrize("run_time_factory", [_future_time, _invalid_time])
 @pytest.mark.anyio
 async def test_interrupted_date_task_enable_toggle_stays_manual_only(
-        monkeypatch,
-        run_time_factory,
+    monkeypatch,
+    run_time_factory,
 ) -> None:
     """暂停或恢复中断的一次任务不得重新注册原自动触发。"""
     task = _add_agent_task("date", run_time_factory(), "interrupted-toggle")
@@ -578,14 +516,14 @@ async def test_interrupted_date_task_enable_toggle_stays_manual_only(
         "app.application.scheduling._scheduler_class",
         lambda: scheduler,
     )
-    tool = _build_tool(UpdateAgentTaskTool, task.user_id)
+    tool = _build_tool(AgentTaskTool, task.user_id)
 
-    paused = json.loads(await tool.run(task_id=task.id, enabled=False))
+    paused = json.loads(await tool.run(action="update", task_id=task.id, enabled=False))
     assert paused["enabled"] is False
     assert paused["last_status"] == "interrupted"
     assert paused["next_run_at"] is None
 
-    resumed = json.loads(await tool.run(task_id=task.id, enabled=True))
+    resumed = json.loads(await tool.run(action="update", task_id=task.id, enabled=True))
     job_id = scheduler._get_agent_task_job_id(task.id)
     assert resumed["enabled"] is True
     assert resumed["last_status"] == "interrupted"
@@ -610,7 +548,8 @@ async def test_interrupted_date_task_new_trigger_rearms_schedule(monkeypatch) ->
         lambda: scheduler,
     )
     updated = json.loads(
-        await _build_tool(UpdateAgentTaskTool, task.user_id).run(
+        await _build_tool(AgentTaskTool, task.user_id).run(
+            action="update",
             task_id=task.id,
             trigger_type="date",
             delay_minutes=20,
@@ -627,7 +566,7 @@ async def test_interrupted_date_task_new_trigger_rearms_schedule(monkeypatch) ->
 
 @pytest.mark.anyio
 async def test_interrupted_date_task_rejects_past_trigger_while_pausing(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """中断的一次任务即使同时暂停，也只能用新的未来时间离开中断状态。"""
     task = _add_agent_task("date", _future_time(), "interrupted-past-reschedule")
@@ -642,10 +581,11 @@ async def test_interrupted_date_task_rejects_past_trigger_while_pausing(
         "app.application.scheduling._scheduler_class",
         lambda: scheduler,
     )
-    tool = _build_tool(UpdateAgentTaskTool, task.user_id)
+    tool = _build_tool(AgentTaskTool, task.user_id)
 
     with pytest.raises(ValueError, match="必须晚于当前时间"):
         await tool.run(
+            action="update",
             task_id=task.id,
             trigger_type="date",
             trigger=_past_time(),
@@ -661,12 +601,12 @@ async def test_interrupted_date_task_rejects_past_trigger_while_pausing(
 def test_interrupted_date_task_requires_explicit_reschedule_value() -> None:
     """仅重复 date 类型不构成重新排期，必须同时提供新的触发值。"""
     with pytest.raises(ValueError, match="必须提供 trigger 或 delay_minutes"):
-        UpdateAgentTaskInput(task_id=1, trigger_type="date")
+        AgentTaskInput(action="update", task_id=1, trigger_type="date")
 
 
 @pytest.mark.anyio
 async def test_expired_date_task_rejects_enable_without_reschedule(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """普通单次任务恢复启用时仍需校验现有触发时间，避免过期补跑。"""
     task = _add_agent_task("date", _past_time(), "expired-enable")
@@ -682,7 +622,8 @@ async def test_expired_date_task_rejects_enable_without_reschedule(
     )
 
     with pytest.raises(ValueError, match="必须晚于当前时间"):
-        await _build_tool(UpdateAgentTaskTool, task.user_id).run(
+        await _build_tool(AgentTaskTool, task.user_id).run(
+            action="update",
             task_id=task.id,
             enabled=True,
         )
@@ -729,7 +670,7 @@ def test_scheduler_restart_keeps_unstarted_date_task_misfire_behavior() -> None:
 
 @pytest.mark.parametrize("success", [True, False])
 def test_scheduler_restart_keeps_finished_date_task_misfire_behavior(
-        success: bool,
+    success: bool,
 ) -> None:
     """已有单次任务终态仍沿用原调度语义，不被中断策略扩大影响。"""
     task = _add_agent_task("date", _past_time(), f"restart-finished-{success}")
@@ -742,9 +683,7 @@ def test_scheduler_restart_keeps_finished_date_task_misfire_behavior(
     scheduler.init_agent_task_jobs()
 
     recovered = oper.get(task.id)
-    runtime_job = scheduler._scheduler.get_job(
-        scheduler._get_agent_task_job_id(task.id)
-    )
+    runtime_job = scheduler._scheduler.get_job(scheduler._get_agent_task_job_id(task.id))
     assert recovered.last_status == ("success" if success else "failed")
     assert runtime_job is not None
     assert runtime_job.misfire_grace_time is None
@@ -776,7 +715,7 @@ async def test_scheduler_config_reload_does_not_interrupt_running_agent_task() -
 
 @pytest.mark.anyio
 async def test_scheduler_config_reload_preserves_active_agent_task(
-        monkeypatch,
+    monkeypatch,
 ) -> None:
     """配置热重载只替换后续计划，已开始的 AgentTask 仍按真实结果收口。"""
     task = _add_agent_task("cron", "0 * * * *", "reload-active")
@@ -803,11 +742,13 @@ async def test_scheduler_config_reload_preserves_active_agent_task(
     monkeypatch.setattr(
         scheduler,
         "init",
-        Mock(side_effect=lambda **_kwargs: setattr(
-            scheduler,
-            "_lifecycle_state",
-            "running",
-        )),
+        Mock(
+            side_effect=lambda **_kwargs: setattr(
+                scheduler,
+                "_lifecycle_state",
+                "running",
+            )
+        ),
     )
 
     job_id = scheduler._get_agent_task_job_id(task.id)
@@ -932,55 +873,6 @@ async def test_dashboard_schedule_keeps_agent_tasks(monkeypatch) -> None:
 
 
 @pytest.mark.anyio
-async def test_scheduler_tools_exclude_agent_tasks(monkeypatch) -> None:
-    """运行时调度查询应过滤 Agent 任务，并把两类查询边界写入工具描述。"""
-    scheduler = SimpleNamespace(
-        list=lambda: [
-            ScheduleInfo(
-                id="subscribe_search_all",
-                name="订阅搜索",
-                provider="[系统]",
-                status="等待",
-                next_run="10 分钟后",
-            ),
-            ScheduleInfo(
-                id="agent-task-7",
-                name="检查资源",
-                provider="[Agent]",
-                status="等待",
-                next_run="20 分钟后",
-            ),
-        ]
-    )
-    monkeypatch.setattr("app.scheduler.Scheduler", lambda: scheduler)
-    monkeypatch.setattr(
-        "app.application.scheduling._scheduler_class",
-        lambda: scheduler,
-    )
-    tool = _build_tool(QuerySchedulersTool, "admin-user")
-
-    result = json.loads(await tool.run())
-
-    assert [item["id"] for item in result] == ["subscribe_search_all"]
-    assert tool.require_admin is True
-    assert "excludes user-created autonomous agent tasks" in tool.description
-    agent_query_tool = _build_tool(QueryAgentTasksTool, "admin-user")
-    assert "owned by the current user" in agent_query_tool.description
-
-
-@pytest.mark.anyio
-async def test_run_scheduler_rejects_agent_task_job_id() -> None:
-    """run_scheduler 不应接受 Agent 任务的运行时 job_id。"""
-    tool = _build_tool(RunSchedulerTool, "admin-user")
-    tool._run_scheduler_sync = Mock()
-
-    result = await tool.run(job_id="agent-task-7")
-
-    assert "run_agent_task" in result
-    tool._run_scheduler_sync.assert_not_called()
-
-
-@pytest.mark.anyio
 async def test_agent_task_tools_manage_persistent_schedule(monkeypatch) -> None:
     """Agent 管理工具应完成创建、查询、暂停、修改和删除闭环。"""
     user_id = f"user-{uuid4().hex}"
@@ -991,39 +883,44 @@ async def test_agent_task_tools_manage_persistent_schedule(monkeypatch) -> None:
         lambda: fake_scheduler,
     )
 
-    create_tool = _build_tool(CreateAgentTaskTool, user_id)
-    created = json.loads(await create_tool.ainvoke({
-        "name": "十分钟后检查",
-        "content": "检查示例电影是否有资源，不要自动下载",
-        "trigger_type": "date",
-        "delay_minutes": 10,
-    }))
+    task_tool = _build_tool(AgentTaskTool, user_id)
+    created = json.loads(
+        await task_tool.ainvoke(
+            {
+                "action": "create",
+                "name": "十分钟后检查",
+                "content": "检查示例电影是否有资源，不要自动下载",
+                "trigger_type": "date",
+                "delay_minutes": 10,
+            }
+        )
+    )
     task_id = created["id"]
     assert created["enabled"] is True
-    assert datetime.fromisoformat(created["run_at"]) > datetime.now(
-        pytz.timezone(settings.TZ)
-    )
+    assert datetime.fromisoformat(created["run_at"]) > datetime.now(pytz.timezone(settings.TZ))
     assert created["next_run_at"] == "2099-01-01T00:00:00+08:00"
     assert fake_scheduler.updated == [task_id]
 
-    query_tool = _build_tool(QueryAgentTasksTool, user_id)
-    queried = json.loads(await query_tool.run(task_id=task_id))
+    queried = json.loads(await task_tool.run(action="list", task_id=task_id))
     assert queried["total"] == 1
     assert queried["tasks"][0]["content"].startswith("检查示例电影")
 
-    update_tool = _build_tool(UpdateAgentTaskTool, user_id)
-    delayed_update = json.loads(await update_tool.ainvoke({
-        "task_id": task_id,
-        "trigger_type": "date",
-        "delay_minutes": 20,
-    }))
-    assert delayed_update["trigger_type"] == "date"
-    assert datetime.fromisoformat(delayed_update["run_at"]) > datetime.now(
-        pytz.timezone(settings.TZ)
+    delayed_update = json.loads(
+        await task_tool.ainvoke(
+            {
+                "action": "update",
+                "task_id": task_id,
+                "trigger_type": "date",
+                "delay_minutes": 20,
+            }
+        )
     )
+    assert delayed_update["trigger_type"] == "date"
+    assert datetime.fromisoformat(delayed_update["run_at"]) > datetime.now(pytz.timezone(settings.TZ))
 
     updated = json.loads(
-        await update_tool.run(
+        await task_tool.run(
+            action="update",
             task_id=task_id,
             content="检查示例电影是否有 4K 资源，不要自动下载",
             trigger_type="cron",
@@ -1037,16 +934,16 @@ async def test_agent_task_tools_manage_persistent_schedule(monkeypatch) -> None:
 
     assert AgentTaskOper().mark_running(task_id)
     updated_jobs = list(fake_scheduler.updated)
-    running_update = await update_tool.run(task_id=task_id, enabled=False)
+    running_update = await task_tool.run(action="update", task_id=task_id, enabled=False)
     assert running_update == f"Agent 定时任务 {task_id} 正在执行，请稍后再修改"
     assert fake_scheduler.updated == updated_jobs
     AgentTaskOper().finish(task_id, success=True, result="完成")
 
-    run_result = await _build_tool(RunAgentTaskTool, user_id).run(task_id=task_id)
+    run_result = await task_tool.run(action="run", task_id=task_id)
     assert f"Agent 定时任务 {task_id} 已提交立即执行" in run_result
     assert fake_scheduler.started == [task_id]
 
-    deleted = await _build_tool(DeleteAgentTaskTool, user_id).run(task_id=task_id)
+    deleted = await task_tool.run(action="delete", task_id=task_id)
     assert deleted == f"Agent 定时任务 {task_id} 已删除"
     assert fake_scheduler.removed == [task_id]
 
@@ -1076,9 +973,9 @@ async def test_run_agent_task_enforces_owner_and_enabled_state(monkeypatch) -> N
     )
 
     other_user_result = await _build_tool(
-        RunAgentTaskTool,
+        AgentTaskTool,
         "another-user",
-    ).run(task_id=task.id)
+    ).run(action="run", task_id=task.id)
     assert "不存在或不属于当前用户" in other_user_result
     assert fake_scheduler.started == []
 
@@ -1088,9 +985,9 @@ async def test_run_agent_task_enforces_owner_and_enabled_state(monkeypatch) -> N
         payload={"enabled": False},
     )
     disabled_result = await _build_tool(
-        RunAgentTaskTool,
+        AgentTaskTool,
         owner_id,
-    ).run(task_id=task.id)
+    ).run(action="run", task_id=task.id)
     assert "已暂停" in disabled_result
     assert fake_scheduler.started == []
 
@@ -1261,17 +1158,11 @@ async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() 
 
     async def wait_until_all_tasks_running() -> None:
         """按真实时间等待异步数据库 worker 完成两个任务的认领。"""
-        while not all(
-            AgentTaskOper().get(task.id).last_status == "running"
-            for task in tasks
-        ):
+        while not all(AgentTaskOper().get(task.id).last_status == "running" for task in tasks):
             await asyncio.sleep(0.01)
 
     manager._process_message_internal = block_current_task
-    executions = [
-        asyncio.create_task(manager.execute_scheduled_task(task.id))
-        for task in tasks
-    ]
+    executions = [asyncio.create_task(manager.execute_scheduled_task(task.id)) for task in tasks]
     await asyncio.wait_for(started.wait(), timeout=1)
     await asyncio.wait_for(wait_until_all_tasks_running(), timeout=2)
     assert all(AgentTaskOper().get(task.id).last_status == "running" for task in tasks)
@@ -1279,10 +1170,7 @@ async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() 
     await manager.close()
     results = await asyncio.gather(*executions, return_exceptions=True)
 
-    assert all(
-        result == (False, "Agent 定时任务执行失败：AgentManager 已关闭")
-        for result in results
-    )
+    assert all(result == (False, "Agent 定时任务执行失败：AgentManager 已关闭") for result in results)
     for task in tasks:
         completed = AgentTaskOper().get(task.id)
         assert completed.last_status == "failed"
@@ -1427,15 +1315,11 @@ async def test_background_agent_does_not_repeat_tool_message() -> None:
     )
     agent._tool_context = {"user_reply_sent": True}
     agent._streamed_output = ""
-    agent.stream_handler = SimpleNamespace(
-        stop_streaming=AsyncMock(return_value=(False, ""))
-    )
+    agent.stream_handler = SimpleNamespace(stop_streaming=AsyncMock(return_value=(False, "")))
     agent._should_stream = lambda: False
     completed_agent = SimpleNamespace(
         ainvoke=AsyncMock(return_value=None),
-        get_state=lambda _config: SimpleNamespace(
-            values={"messages": [AIMessage(content="消息已发送")]}
-        ),
+        get_state=lambda _config: SimpleNamespace(values={"messages": [AIMessage(content="消息已发送")]}),
     )
     agent._create_agent = AsyncMock(return_value=completed_agent)
     agent.send_agent_message = AsyncMock()

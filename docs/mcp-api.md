@@ -106,7 +106,7 @@ MoviePilot 的内置 Agent 也可以作为 MCP Client 连接外部 MCP 服务器
 | -32603 | Internal error | 服务器内部错误 |
 
 ## 6. RESTful API
-所有工具相关的API端点都在 `/api/v1/mcp` 路径下（保持向后兼容）。
+HTTP 工具管理端点统一位于 `/api/v1/mcp`，并与标准 MCP JSON-RPC 端点共享同一最终工具目录。
 
 ### 相关 REST 端点
 
@@ -304,39 +304,85 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 
 获取所有可用的MCP工具列表。
 
-内置工具的 `inputSchema` 只包含实际执行业务所需的参数，不包含用于解释调用原因的通用 `explanation` 参数，以减少 Agent 上下文消耗。插件工具的参数结构由插件自身声明。
+MCP、HTTP 工具管理接口、本地 CLI 和内置 Agent 都从同一严格目录生成工具列表。
+旧业务工具名不再注册，也没有 MCP 别名或兼容目录；例如
+`search_media`、`add_subscribe`、`query_download_tasks`、`query_schedulers`
+会直接返回工具不存在。插件工具仍由插件的 `get_agent_tools()` 动态声明，重名会让目录
+构造失败，不采用 first-wins 覆盖。
 
-`send_message` 新增可选的 `rich_message` 字符串参数，用于传入一份完整的 GitHub 风格 Markdown 正文。Telegram 渠道会把它转换为 Bot API Rich Message，支持标题、列表、表格、引用、代码块和链接，并按 Rich Message 限制自动分段；没有使用该参数时继续走原有普通消息链路。广播到其它通知渠道时，同一正文会作为普通 `text` 回退。`rich_message` 是完整正文，不应再同时传 `message`、`title` 或 `image_url` 表达同一份内容。内置 Agent 在 Telegram 会话中的普通回复、流式首发和后续流式编辑都会优先使用该富文本链路。
-
-内置 Agent 的本地文件与命令工具 `read_file`、`write_file`、`edit_file`、
-`apply_patch`、`execute_command` 不通过 MCP 暴露。这些工具在 Agent 运行时执行独立的
-用户权限与路径边界检查；MCP 隐藏列表只负责收敛接口暴露面，不替代权限控制。
-其中 `read_file` 单次最多返回 50KB 文件内容；超出时会截断并提示 Agent 使用
-`start_line`、`end_line` 指定更小的行号范围继续读取。
-
-媒体相关 MCP 工具以 `media_source` + 来源原生 `media_id` 传递精确身份；内置来源使用 `MediaSource` 常量，插件来源使用注册的稳定扩展标识。`query_media_detail`、`search_torrents`、`query_library_exists` 必须提供完整字段对；`add_subscribe`、`transfer_file`、`scrape_metadata` 在显式指定身份时也必须成对提供。`search_media` 和 `recognize_media` 是按标题或路径发现身份的入口，其结果中的字段对可直接用于后续工具。音乐调用还使用 `media_type=music` 与 `music_type=recording|album|artist`；其中艺术家只允许搜索和详情浏览。工具响应中的专用 ID 仅是跨源映射辅助输出，不应再作为上述通用工具的输入。TMDB 专用的 `query_episode_schedule` 仍使用 `tmdb_id`，因为它直接调用单一 TMDB 剧集接口。
-
-Agent 音乐流程与影视共用同一采集管线，但实体边界不同：单曲通过 `music_type=recording` 按一个文件处理；专辑通过 `music_type=album` 类似电视剧整季包，按一个目录/资源处理并校验总曲目数；艺术家不是采集目标。`add_subscribe` / `update_subscribe` 支持音乐音质筛选字段和 `best_version` 音质洗版；`query_subscribes` 会返回筛选条件及当前音质快照。`scrape_metadata(media_type="music")` 会按策略写音频标签、封面和歌词，并返回歌词新增、升级、已存在、防降级保护、未匹配、预算耗尽和失败数量。
-
-`get_search_results` 可使用 `title_pattern` 对种子标题执行正则筛选，也可使用 `content_pattern` 联合匹配种子标题、简介和标签。`title_pattern` 保持仅匹配标题的兼容语义；需要在结果中查看种子简介时，传入 `include_description=true`；需要查看种子标签时，传入 `include_labels=true`。两种正则参数与站点、分辨率等结构化筛选条件同时传入时按 AND 关系组合。
-
-#### Agent 自主定时任务工具
-
-以下工具用于管理会在指定时间重新唤醒 Agent 的持久化任务，均为管理员级工具：
+固定目录按职责收敛为：
 
 | 工具 | 说明 |
 | :--- | :--- |
-| `create_agent_task` | 创建单次或周期任务，并保存任务内容及当前用户、会话上下文 |
-| `query_agent_tasks` | 查询任务配置、启用状态、下次执行时间及最近执行结果 |
-| `update_agent_task` | 修改任务内容或触发器，也可通过 `enabled` 暂停、恢复任务 |
-| `run_agent_task` | 使用整数 `task_id` 将当前用户已启用的任务提交为立即执行 |
-| `delete_agent_task` | 永久删除任务并立即移除运行时调度 |
+| `moviepilot_api` | 通过固定 `operation_id` 调用受控 MoviePilot 业务 API；不接受 URL、HTTP method、认证头或 Token |
+| `agent_task` | 通过 `action=create|list|update|run|delete` 管理自主任务 |
+| `persona` | 通过 `action=list|switch|update` 管理 Agent 人格 |
+| `send_message`、`send_local_file` | 当前目录中可用的消息和文件发送能力；实际渠道能力仍由运行时校验 |
+| `browse_webpage`、`recognize_captcha` | 浏览和验证码等非 MoviePilot 业务 API 能力 |
+| `query_doctor_report` | 只读系统诊断 |
+
+`read_file`、`write_file`、`edit_file`、`apply_patch`、`execute_command` 和
+`search_web` 不通过 MCP 暴露。隐藏列表只负责收敛接口暴露面，不替代各工具自身的
+权限、路径和网络边界。
+
+下载器和媒体服务器的第三方原生高级能力不注册成永久 MCP 工具。内置 Agent 按需
+加载 `downloader-operation` 或 `mediaserver-operation` Skill，通过固定脚本读取本机
+配置、发现 provider 能力并调用受控 action；脚本不接受任意 URL、认证信息或任意
+SDK method。普通 MCP 客户端如需这些 provider 原生能力，应使用对应第三方服务的
+正式 API，而不是依赖已删除的 MoviePilot 旧工具名。
+
+`send_message` 新增可选的 `rich_message` 字符串参数，用于传入一份完整的 GitHub 风格 Markdown 正文。Telegram 渠道会把它转换为 Bot API Rich Message，支持标题、列表、表格、引用、代码块和链接，并按 Rich Message 限制自动分段；没有使用该参数时继续走原有普通消息链路。广播到其它通知渠道时，同一正文会作为普通 `text` 回退。`rich_message` 是完整正文，不应再同时传 `message`、`title` 或 `image_url` 表达同一份内容。内置 Agent 在 Telegram 会话中的普通回复、流式首发和后续流式编辑都会优先使用该富文本链路。
+
+`moviepilot_api` 的模型可见输入固定为：
+
+```json
+{
+  "operation_id": "media.search",
+  "path_params": {},
+  "query": {"title": "流浪地球", "type": "media"},
+  "body": {}
+}
+```
+
+宿主按 `operation_id` 决定固定 method 与 path，使用真实持久化管理员身份为
+API KEY 集成签发短期本机令牌，并按 operation 执行权限、确认、结果脱敏和恢复策略。
+调用方不能注入 host、URL、认证头或 API Token。
+
+当前业务 operation 分组如下；完整参数合同以 `skills/moviepilot-api/SKILL.md` 和
+各 REST 请求模型为准：
+
+| 领域 | Operation ID |
+| :--- | :--- |
+| 媒体/搜索 | `media.search`、`media.person.search`、`media.person.credits`、`media.recognize`、`media.scrape`、`media.episode_schedule`、`media.detail`、`search.torrents`、`search.results`、`recommendation.list` |
+| 订阅 | `subscription.add`、`subscription.update`、`subscription.search`、`subscription.list`、`subscription.shares`、`subscription.popular`、`subscription.history`、`subscription.delete` |
+| 下载/历史 | `download.add`、`download.history.delete`、`transfer.history.delete` |
+| 媒体库/存储/转移 | `library.exists`、`storage.settings`、`storage.list`、`transfer.history`、`transfer.file` |
+| 站点 | `site.list`、`site.update`、`site.userdata`、`site.test`、`site.cookie.update` |
+| 调度/工作流 | `scheduler.list`、`scheduler.run`、`workflow.list`、`workflow.run` |
+| 插件 | `plugin.installed`、`plugin.market`、`plugin.capabilities`、`plugin.config.get`、`plugin.config.update`、`plugin.reload`、`plugin.install`、`plugin.uninstall`、`plugin.data` |
+| 规则/配置/命令 | `filter.builtin`、`filter.custom`、`filter.groups`、`filter.custom.add`、`filter.custom.update`、`filter.custom.delete`、`filter.group.add`、`filter.group.update`、`filter.group.delete`、`config.identifiers.get`、`config.identifiers.update`、`config.system.get`、`config.system.update`、`slash.list`、`slash.run` |
+
+`download.list`、`download.update`、`download.delete`、`downloaders.list` 和
+`library.latest` 已从 Agent operation 目录删除，避免与 provider Skill 重复。供前端和
+其它宿主使用的普通 REST 端点仍然保留。
+
+#### Agent 自主定时任务与人格
+
+`agent_task` 是唯一的自主任务工具，要求管理员权限：
+
+| Action | 说明 |
+| :--- | :--- |
+| `create` | 创建单次或周期任务，并保存任务内容及当前用户、会话上下文 |
+| `list` | 查询任务配置、启用状态、下次执行时间及最近执行结果 |
+| `update` | 修改任务内容或触发器，也可通过 `enabled` 暂停、恢复任务 |
+| `run` | 使用整数 `task_id` 将当前用户已启用的任务提交为立即执行 |
+| `delete` | 永久删除任务并立即移除运行时调度 |
 
 `trigger_type=date` 表示单次执行：“30 分钟后检查”这类相对时间传 `delay_minutes=30`，由后端计算精确时间；固定时间则传 ISO 8601 `trigger`，支持精确到秒。`trigger_type=cron` 使用标准五段 cron（分、时、日、月、周），适合周期检查。未显式携带时区的时间按 MoviePilot 的 `TZ` 配置解释。任务由内存调度器精确触发，配置持久化到数据库，服务重启后会自动恢复；触发后 Agent 在原会话中执行 `content`，执行过程及最终结果均不绑定创建任务时的消息渠道，而是通过 MoviePilot 已配置的通知渠道广播。如果 Agent 在执行过程中已通过消息工具发送完整结果，任务结束时不会再次发送相同的最终回复。
 
-服务重启时仍处于运行中的任务会显示为 `interrupted`，表示上次结果未知且可能已有部分操作。中断的一次任务不会自动补跑，暂停后恢复也仍保留中断状态；需要先核对实际结果，再用 `run_agent_task` 明确立即重跑，或通过 `update_agent_task` 提供新的 `trigger_type` 与未来触发时间重新安排。
+服务重启时仍处于运行中的任务会显示为 `interrupted`，表示上次结果未知且可能已有部分操作。中断的一次任务不会自动补跑，暂停后恢复也仍保留中断状态；需要先核对实际结果，再用 `agent_task(action="run")` 明确立即重跑，或通过 `agent_task(action="update")` 提供新的 `trigger_type` 与未来触发时间重新安排。
 
-Agent 自主任务工具使用数据库中的整数 `task_id`。`query_schedulers` 与 `run_scheduler` 仅面向系统、插件和工作流注册的运行时定时服务，使用字符串 `job_id`，不会返回或执行 `agent-task-*`。两类 ID 不可混用；需要立即执行自主任务时，应先通过 `query_agent_tasks` 确认归属和状态，再调用 `run_agent_task`。立即执行只提交任务，不在当前工具调用内等待结果，从而避免同一 Agent 会话互相等待；执行结果仍按上述通知规则广播。
+Agent 自主任务使用数据库中的整数 `task_id`。`scheduler.list` 与 `scheduler.run` operation 仅面向系统、插件和工作流注册的运行时定时服务，使用字符串 `job_id`，不会返回或执行 `agent-task-*`。两类 ID 不可混用；需要立即执行自主任务时，应先通过 `agent_task(action="list")` 确认归属和状态，再调用 `agent_task(action="run")`。立即执行只提交任务，不在当前工具调用内等待结果，从而避免同一 Agent 会话互相等待；执行结果仍按上述通知规则广播。
 
 上述过滤只约束 Agent 工具，避免模型混用两类任务。前端系统设置和仪表盘使用的 `/api/v1/dashboard/schedule` 仍返回完整运行时列表，其中包含 `provider=[Agent]` 的自主任务；前端通过 `/api/v1/system/runscheduler` 立即执行这类列表项的行为也保持不变。
 
@@ -344,8 +390,9 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
 
 ```json
 {
-  "tool_name": "create_agent_task",
+  "tool_name": "agent_task",
   "arguments": {
+    "action": "create",
     "name": "检查电影资源",
     "content": "搜索电影《示例电影》是否已有可下载资源，并报告站点、版本和大小；不要自动下载。",
     "trigger_type": "date",
@@ -356,6 +403,11 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
 
 创建每天 20:30 执行的周期任务时，使用 `trigger_type=cron` 和 `trigger="30 20 * * *"`。
 
+`persona` 使用 `action=list|switch|update`。`list` 可按 `query` 过滤；
+`switch` 必须提供 `persona_id`；`update` 只有管理员可用，支持替换 label、
+description、aliases、instructions，或通过 `append_instructions` 追加规则。旧的
+`query_personas`、`switch_persona` 和 `update_persona_definition` 不再注册。
+
 **认证**: 需要API KEY，在请求头中添加 `X-API-KEY: <api_key>` 或在查询参数中添加 `apikey=<api_key>`
 
 **响应示例**:
@@ -365,17 +417,17 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
   "message": "",
   "data": [
     {
-      "name": "add_subscribe",
-      "description": "Add media subscription to create automated download rules...",
+      "name": "moviepilot_api",
+      "description": "调用经过白名单审核的 MoviePilot 业务 API...",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "title": {
+          "operation_id": {
             "type": "string",
-            "description": "The title of the media to subscribe to"
+            "description": "稳定的 MoviePilot API operation ID"
           }
         },
-        "required": ["title", "media_type"]
+        "required": ["operation_id"]
       }
     }
   ]
@@ -397,11 +449,13 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
 **请求体**:
 ```json
 {
-  "tool_name": "add_subscribe",
+  "tool_name": "moviepilot_api",
   "arguments": {
-    "title": "流浪地球",
-    "year": "2019",
-    "media_type": "movie"
+    "operation_id": "media.search",
+    "query": {
+      "title": "流浪地球",
+      "type": "media"
+    }
   }
 }
 ```
@@ -412,7 +466,7 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
   "success": true,
   "message": "",
   "data": {
-    "result": "成功添加订阅：流浪地球 (2019)"
+    "result": "{\"success\":true,\"message\":\"\",\"data\":[...]}"
   }
 }
 ```
@@ -443,17 +497,17 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
   "success": true,
   "message": "",
   "data": {
-    "name": "add_subscribe",
-    "description": "Add media subscription to create automated download rules...",
+    "name": "moviepilot_api",
+    "description": "调用经过白名单审核的 MoviePilot 业务 API...",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "title": {
+        "operation_id": {
           "type": "string",
-          "description": "The title of the media to subscribe to"
+          "description": "稳定的 MoviePilot API operation ID"
         }
       },
-      "required": ["title", "media_type"]
+      "required": ["operation_id"]
     }
   }
 }
@@ -478,16 +532,16 @@ Agent 自主任务工具使用数据库中的整数 `task_id`。`query_scheduler
   "data": {
     "type": "object",
     "properties": {
-      "title": {
+      "operation_id": {
         "type": "string",
-        "description": "The title of the media to subscribe to"
+        "description": "稳定的 MoviePilot API operation ID"
       },
-      "year": {
-        "type": "string",
-        "description": "Release year of the media"
+      "query": {
+        "type": "object",
+        "description": "固定 operation 的查询参数"
       }
     },
-    "required": ["title", "year", "media_type"]
+    "required": ["operation_id"]
   }
 }
 ```

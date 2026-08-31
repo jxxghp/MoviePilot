@@ -93,7 +93,7 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 982 / 8,430 | `dependency-baseline.json` 当前快照 |
+| 宿主 Python 模块 / 内部依赖边 | 917 / 7,671 | `dependency-baseline.json` 当前快照 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -204,8 +204,8 @@ S4/ARCH-110/111 的取消不撤销现有防回退门禁。后续按路线图的 
 - 架构总览此前仍记录 811 模块、6,572 条边和 1 个 SCC，已经落后于当前基线。
 - Event consumer 扫描曾把任意同名 `.register()` 调用当成事件注册；S0-L2.5 已改为证明
   canonical EventManager receiver，10 个动态误报归零并保留唯一 workflow 动态注册。
-- S0-L2.6 已将 producer/consumer 合并为逐调用事实源；本轮统一 Transfer 事件发送点后为
-  90 个 producer（89 静态、1 动态）与
+- S0-L2.6 已将 producer/consumer 合并为逐调用事实源；本轮删除重复 Agent Tool 事件发送点后为
+  86 个 producer（85 静态、1 动态）与
   17 个 consumer（16 静态、1 动态）；consumer 由不可自动写入的精确人工 policy 管理。
 
 **目标与步骤**

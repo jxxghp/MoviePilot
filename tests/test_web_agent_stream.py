@@ -558,7 +558,10 @@ def test_web_agent_tool_summary_is_emitted_before_following_text():
         output_callback=outputs.append,
     )
 
-    agent.stream_handler.record_tool_call("query_download_tasks")
+    agent.stream_handler.record_tool_call(
+        "moviepilot_api",
+        tool_kwargs={"operation_id": "scheduler.list"},
+    )
     agent._handle_stream_text("查询完成。")
 
     assert outputs == ["（查询了 1 次数据）\n\n", "查询完成。"]

@@ -9,7 +9,7 @@ from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
 from app.agent.orchestrator import AgentManager
-from app.agent.tools.impl.query_agent_tasks import QueryAgentTasksTool
+from app.agent.tools.impl.agent_task import AgentTaskTool
 from app.db import base as db_base
 from app.db.adapters.agent import TransactionalAgentTaskRepository
 from app.db.engine import get_engine
@@ -39,14 +39,12 @@ def _add_task(prefix: str, *, trigger_type: str = "cron") -> AgentTask:
     )
 
 
-def _build_query_tool(user_id: str) -> QueryAgentTasksTool:
+def _build_query_tool(user_id: str) -> AgentTaskTool:
     """构造绑定当前 owner 的任务查询工具。"""
-    tool = QueryAgentTasksTool(
+    tool = AgentTaskTool(
         session_id=f"session-{user_id}",
         user_id=user_id,
-        data=SimpleNamespace(
-            tasks=TransactionalAgentTaskRepository(SessionFactory)
-        ),
+        data=SimpleNamespace(tasks=TransactionalAgentTaskRepository(SessionFactory)),
     )
     tool._message_context = {"username": "admin"}
     return tool
@@ -57,10 +55,12 @@ def test_begin_run_claims_once_and_preserves_snapshot() -> None:
     task = _add_task("run-claim")
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        runs = list(executor.map(
-            lambda source: AgentTaskOper().begin_run(task.id, source),
-            ("scheduled", "manual"),
-        ))
+        runs = list(
+            executor.map(
+                lambda source: AgentTaskOper().begin_run(task.id, source),
+                ("scheduled", "manual"),
+            )
+        )
 
     created = [run for run in runs if run]
     assert len(created) == 1
@@ -91,16 +91,15 @@ def test_begin_run_uses_configuration_committed_before_atomic_claim(monkeypatch)
     result = {}
 
     def pause_before_claim(
-            _connection,
-            _cursor,
-            statement,
-            _parameters,
-            _context,
-            _executemany,
+        _connection,
+        _cursor,
+        statement,
+        _parameters,
+        _context,
+        _executemany,
     ) -> None:
-        if (
-                current_thread().name == "agent-task-claim"
-                and statement.lstrip().upper().startswith("UPDATE AGENTTASK SET")
+        if current_thread().name == "agent-task-claim" and statement.lstrip().upper().startswith(
+            "UPDATE AGENTTASK SET"
         ):
             claim_ready.set()
             assert update_done.wait(timeout=5)
@@ -150,9 +149,7 @@ def test_agenttaskrun_oper_reuses_explicit_query_session(db, monkeypatch):
     monkeypatch.setattr(
         db_base,
         "run_sync_transaction",
-        lambda _operation: (_ for _ in ()).throw(
-            AssertionError("不应创建额外同步事务")
-        ),
+        lambda _operation: (_ for _ in ()).throw(AssertionError("不应创建额外同步事务")),
     )
 
     oper = AgentTaskOper(db.session)
@@ -174,12 +171,17 @@ def test_begin_run_rolls_back_task_claim_when_run_insert_fails() -> None:
     first_task = _add_task("run-rollback-first")
     second_task = _add_task("run-rollback-second")
     run_id = uuid4().hex
-    assert AgentTaskOper().begin_run(
-        task_id=first_task.id,
-        run_id=run_id,
-        trigger_source="scheduled",
-        started_at="2026-08-13 20:00:00",
-    ).run_id == run_id
+    assert (
+        AgentTaskOper()
+        .begin_run(
+            task_id=first_task.id,
+            run_id=run_id,
+            trigger_source="scheduled",
+            started_at="2026-08-13 20:00:00",
+        )
+        .run_id
+        == run_id
+    )
 
     with pytest.raises(IntegrityError):
         AgentTaskOper().begin_run(
@@ -203,14 +205,16 @@ def test_finish_run_finalizes_once_under_concurrency() -> None:
     assert run
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(
-            lambda value: AgentTaskOper().finish_run(
-                run.run_id,
-                success=True,
-                result=value,
-            ),
-            ("结果 A", "结果 B"),
-        ))
+        results = list(
+            executor.map(
+                lambda value: AgentTaskOper().finish_run(
+                    run.run_id,
+                    success=True,
+                    result=value,
+                ),
+                ("结果 A", "结果 B"),
+            )
+        )
 
     assert sorted(results) == [False, True]
     completed = AgentTaskOper().get(task.id)
@@ -230,9 +234,11 @@ def test_stale_finish_cannot_overwrite_latest_run_projection() -> None:
     assert first
 
     with SessionFactory() as db:
-        db.query(AgentTask).filter(AgentTask.id == task.id).update({
-            "last_status": "interrupted",
-        })
+        db.query(AgentTask).filter(AgentTask.id == task.id).update(
+            {
+                "last_status": "interrupted",
+            }
+        )
         db.commit()
     second = oper.begin_run(task.id, "manual")
     assert second
@@ -262,10 +268,12 @@ def test_interruption_requires_matching_running_run() -> None:
     run = oper.begin_run(task.id)
     assert run
     with SessionFactory() as db:
-        db.query(AgentTaskRun).filter(AgentTaskRun.run_id == run.run_id).update({
-            "status": "success",
-            "result": "已收口",
-        })
+        db.query(AgentTaskRun).filter(AgentTaskRun.run_id == run.run_id).update(
+            {
+                "status": "success",
+                "result": "已收口",
+            }
+        )
         db.commit()
 
     assert not oper.mark_interrupted(task.id, "不得覆盖")
@@ -279,10 +287,12 @@ def test_interruption_supports_legacy_running_task_without_run() -> None:
     """升级前遗留的 running 投影没有 run 指针时仍需兼容对账。"""
     task = _add_task("run-interrupt-legacy")
     with SessionFactory() as db:
-        db.query(AgentTask).filter(AgentTask.id == task.id).update({
-            "last_status": "running",
-            "last_run_id": None,
-        })
+        db.query(AgentTask).filter(AgentTask.id == task.id).update(
+            {
+                "last_status": "running",
+                "last_run_id": None,
+            }
+        )
         db.commit()
 
     oper = AgentTaskOper()
@@ -357,15 +367,20 @@ async def test_query_task_returns_owner_scoped_ten_recent_runs(monkeypatch) -> N
         "app.application.scheduling.get_agent_task_next_run",
         lambda _task_id: None,
     )
-    detail = json.loads(await _build_query_tool(task.user_id).run(task_id=task.id))
+    detail = json.loads(await _build_query_tool(task.user_id).run(action="list", task_id=task.id))
     assert detail["total"] == 1
     assert [run["run_id"] for run in detail["tasks"][0]["recent_runs"]] == expected[:10]
     assert all(run["task_id"] == task.id for run in detail["tasks"][0]["recent_runs"])
 
-    listing = json.loads(await _build_query_tool(task.user_id).run())
+    listing = json.loads(await _build_query_tool(task.user_id).run(action="list"))
     assert listing["total"] == 1
     assert "recent_runs" not in listing["tasks"][0]
-    hidden = json.loads(await _build_query_tool(other.user_id).run(task_id=task.id))
+    hidden = json.loads(
+        await _build_query_tool(other.user_id).run(
+            action="list",
+            task_id=task.id,
+        )
+    )
     assert hidden == {"total": 0, "tasks": []}
 
 

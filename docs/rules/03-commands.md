@@ -216,12 +216,12 @@ moviepilot config describe API_TOKEN --show-secrets
 moviepilot tool list
 
 # Show tool parameters
-moviepilot tool show query_schedulers
-moviepilot tool show search_torrents
+moviepilot tool show moviepilot_api
+moviepilot tool show agent_task
 
 # Run a tool directly
-moviepilot tool run query_schedulers
-moviepilot tool run search_torrents media_type=movie media_source=themoviedb media_id=12345
+moviepilot tool run moviepilot_api operation_id=scheduler.list
+moviepilot tool run moviepilot_api operation_id=media.search 'query={"title":"流浪地球","type":"media"}'
 
 # List scheduled tasks
 moviepilot scheduler list
@@ -230,9 +230,12 @@ moviepilot scheduler list
 moviepilot scheduler run subscribe_refresh
 ```
 
-**Media identity rule:** Generic media tools use the complete `media_source` +
-`media_id` pair returned by media search. Built-in sources use `MediaSource`
-constants; plugins may register a schema-valid extension identifier. A
+**Tool catalog rule:** MoviePilot business operations use `moviepilot_api` with a
+fixed `operation_id`; old business tool names are not registered. Structured
+`query`, `body`, arrays, and booleans are passed as JSON values in `key=value`
+arguments. Media operations use the complete `media_source` + `media_id` pair
+returned by media search. Built-in sources use `MediaSource` constants; plugins
+may register a schema-valid extension identifier. A
 source-owned tool such as `query_episode_schedule` may retain its native ID
 parameter because its schema and implementation are single-source.
 

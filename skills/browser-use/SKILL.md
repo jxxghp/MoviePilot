@@ -1,6 +1,6 @@
 ---
 name: browser-use
-version: 1
+version: 2
 description: >-
   Use this skill when the user asks the agent to open, browse, inspect, extract
   content from, click through, fill forms on, screenshot, or verify a web page
@@ -8,7 +8,8 @@ description: >-
   interaction, such as checking a site page, confirming a JavaScript-rendered
   result, testing login state, capturing visible errors, or updating and
   validating tracker site cookies.
-allowed-tools: browse_webpage recognize_captcha search_web query_sites update_site_cookie test_site update_site
+allowed-tools: browse_webpage recognize_captcha search_web moviepilot_api
+allowed-api-operations: site.list site.cookie.update site.test site.update
 ---
 
 # Browser Use
@@ -48,13 +49,13 @@ dedicated tool can complete the task more directly and safely.
   target URL. It supports DDGS-backed `search_engine` (`auto`, `duckduckgo`,
   `google`, `brave`, etc.) and `site_url` for limiting results to a specified
   domain or URL path. It uses the configured system proxy by default.
-- `query_sites` - Get MoviePilot site IDs before site-specific operations.
+- `site.list` through `moviepilot_api` - Get site IDs before site-specific operations.
   Non-admin callers receive a safe view without Cookie, RSS, Token, or API Key
   fields.
-- `update_site_cookie` - Update a configured site's Cookie and User-Agent using
+- `site.cookie.update` - Update a configured site's Cookie and User-Agent using
   username, password, and optional two-step code.
-- `test_site` - Verify configured site connectivity and login status.
-- `update_site` - Update existing site settings when the user explicitly asks.
+- `site.test` - Verify configured site connectivity and login status.
+- `site.update` - Update existing site settings when the user explicitly asks.
 
 ## Core Workflow
 
@@ -68,7 +69,7 @@ Examples:
 
 - Query downloads, subscriptions, media, sites, or library state with the
   existing MoviePilot skills/tools.
-- Use `query_sites`, `update_site_cookie`, and `test_site` for configured
+- Use `site.list`, `site.cookie.update`, and `site.test` through `moviepilot_api` for configured
   tracker sites before manually browsing their pages.
 
 ### 2. Find Or Open The Target
@@ -149,7 +150,7 @@ Before finalizing, verify the outcome with one of:
 
 - `get_content` for text or data changes.
 - `screenshot` for visual state.
-- `test_site` for MoviePilot configured tracker connectivity.
+- `site.test` through `moviepilot_api` for MoviePilot configured tracker connectivity.
 
 Report the result with the final URL, observed status, and any remaining
 uncertainty. If the page failed, include the visible error text and the action
@@ -159,11 +160,11 @@ that failed.
 
 ### Diagnose A Configured Site
 
-1. Use `query_sites` to find the site ID.
-2. Use `test_site` with the site ID.
+1. Use `site.list` to find the site ID.
+2. Use `site.test` with path parameter `site_id`.
 3. If the site fails and the user provided credentials, use
-   `update_site_cookie`.
-4. Run `test_site` again to confirm.
+   `site.cookie.update`.
+4. Run `site.test` again to confirm.
 5. Use `browse_webpage` only if the failure message is unclear or the user asks
    to inspect the visible page.
 
@@ -173,7 +174,7 @@ Use the dedicated cookie tool instead of manually logging in through the
 browser:
 
 ```text
-update_site_cookie site_identifier=<id> username="..." password="..." two_step_code="..."
+moviepilot_api operation_id=site.cookie.update path_params.site_id=<id> body.username="..." body.password="..." body.two_step_code="..."
 ```
 
 Ask for missing username, password, or two-step code only when required for the
@@ -236,16 +237,16 @@ User: `打开这个网页看看报什么错`
 
 User: `帮我看看某个站点是不是登录失效了`
 
-1. `query_sites`
-2. `test_site site_identifier=<id>`
+1. `moviepilot_api` with `operation_id=site.list`
+2. `moviepilot_api` with `operation_id=site.test` and `path_params.site_id=<id>`
 3. If needed, ask whether to update Cookie.
 
 User: `帮我更新某站 Cookie`
 
-1. `query_sites`
+1. `moviepilot_api` with `operation_id=site.list`
 2. Ask for missing credentials or two-step code.
-3. `update_site_cookie`
-4. `test_site`
+3. `moviepilot_api` with `operation_id=site.cookie.update`
+4. `moviepilot_api` with `operation_id=site.test`
 
 User: `这个页面按钮点一下后截图给我看`
 

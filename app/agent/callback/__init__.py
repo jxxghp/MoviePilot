@@ -3,22 +3,20 @@ import re
 import threading
 from typing import Any, Optional, Tuple
 
-from app.runtime.execution import run_in_threadpool
 from app.agent.policy.sanitizer import sanitize_for_host
 from app.chain.base import ChainBase
+from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.schemas.message import Message, MessageResponse
-from app.schemas.notification import ChannelCapabilityManager, ChannelCapability
-from app.schemas.types import NotificationChannel, MessageType
+from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
+from app.schemas.types import MessageType, NotificationChannel
 
 
 class _StreamChain(ChainBase):
     pass
 
 
-_PATCH_FILE_HEADER_PATTERN = re.compile(
-    r"\*\*\* (?:Add|Update|Delete) File:\s*(\S+)"
-)
+_PATCH_FILE_HEADER_PATTERN = re.compile(r"\*\*\* (?:Add|Update|Delete) File:\s*(\S+)")
 
 
 def _extract_first_patch_path(patch: Optional[str]) -> Optional[str]:
@@ -81,9 +79,7 @@ class StreamingHandler:
         # 本轮已写入缓冲区的工具摘要行，供 Telegram 富文本渲染时做区分样式
         self._tool_summaries: set[str] = set()
 
-    def set_dispatch_policy(
-        self, allow_dispatch_without_context: bool = False
-    ) -> None:
+    def set_dispatch_policy(self, allow_dispatch_without_context: bool = False) -> None:
         """
         设置在缺少渠道上下文时是否仍允许向默认通知渠道分发消息。
         后台 DISPATCH 任务允许，CAPTURE_ONLY 必须禁止。
@@ -229,10 +225,8 @@ class StreamingHandler:
         # 从渠道能力中获取单条消息最大长度
         try:
             channel_enum = NotificationChannel(self._channel)
-            self._max_message_length = ChannelCapabilityManager.get_max_message_length(
-                channel_enum
-            )
-        except (ValueError, KeyError):
+            self._max_message_length = ChannelCapabilityManager.get_max_message_length(channel_enum)
+        except ValueError, KeyError:
             self._max_message_length = 0
 
         # 启动异步定时刷新任务
@@ -276,12 +270,8 @@ class StreamingHandler:
         # 检查是否所有缓冲内容都已发送
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
-            current_msg_text = self._buffer[self._msg_start_offset:]
-            all_sent = (
-                self._message_response is not None
-                and self._sent_text
-                and current_msg_text == self._sent_text
-            )
+            current_msg_text = self._buffer[self._msg_start_offset :]
+            all_sent = self._message_response is not None and self._sent_text and current_msg_text == self._sent_text
             # 保留最终文本用于返回（返回完整 buffer 内容，包含所有分段消息）
             final_text = self._buffer if all_sent else ""
             # 重置状态
@@ -386,14 +376,10 @@ class StreamingHandler:
             return "file_write", tool_kwargs.get("file_path")
         if tool_name == "apply_patch":
             return "file_write", _extract_first_patch_path(tool_kwargs.get("patch"))
-        if tool_name in {"list_directory", "query_directory_settings"}:
-            return "directory", tool_kwargs.get("path")
         if tool_name == "browse_webpage":
             return (
                 "web_browse",
-                tool_kwargs.get("url")
-                or tool_kwargs.get("target_url")
-                or tool_kwargs.get("path"),
+                tool_kwargs.get("url") or tool_kwargs.get("target_url") or tool_kwargs.get("path"),
             )
         if tool_name == "execute_command":
             return (
@@ -402,22 +388,47 @@ class StreamingHandler:
             )
         if tool_name == "ask_user_choice":
             return "interaction", tool_kwargs.get("message")
-        if tool_name.startswith("search_") or tool_name in {"get_search_results"}:
+        if tool_name == "moviepilot_api":
+            operation_id = str(tool_kwargs.get("operation_id") or "")
+            if operation_id in {"storage.settings", "storage.list"}:
+                body = tool_kwargs.get("body")
+                target = body.get("path") if isinstance(body, dict) else None
+                return "directory", target
+            if operation_id in {
+                "media.search",
+                "media.person.search",
+                "search.torrents",
+                "search.results",
+                "recommendation.list",
+            }:
+                query = tool_kwargs.get("query")
+                target = query.get("title") if isinstance(query, dict) else None
+                return "search", target
+            if operation_id.endswith((".list", ".get", ".exists", ".history", ".detail")) or operation_id in {
+                "media.episode_schedule",
+                "plugin.data",
+                "filter.builtin",
+                "filter.custom",
+                "filter.groups",
+                "site.userdata",
+                "search.results",
+            }:
+                return "data_query", None
+            return "action", None
+        if tool_name == "agent_task":
+            return ("data_query", None) if tool_kwargs.get("action") == "list" else ("action", None)
+        if tool_name == "persona":
+            return ("data_query", None) if tool_kwargs.get("action") == "list" else ("action", None)
+        if tool_name.startswith("search_"):
             return (
                 "search",
-                tool_kwargs.get("query")
-                or tool_kwargs.get("title")
-                or tool_kwargs.get("keyword"),
+                tool_kwargs.get("query") or tool_kwargs.get("title") or tool_kwargs.get("keyword"),
             )
         if tool_name.startswith("query_") or tool_name.startswith("list_") or tool_name.startswith("get_"):
             return "data_query", None
         if tool_name.startswith(("add_", "update_", "delete_", "modify_", "run_")):
             return "action", None
         if tool_name in {
-            "recognize_media",
-            "scrape_metadata",
-            "transfer_file",
-            "test_site",
             "send_message",
             "send_local_file",
             "send_voice_message",
@@ -438,9 +449,7 @@ class StreamingHandler:
         if "搜索" in tool_message or "search" in tool_message_lower:
             return (
                 "search",
-                tool_kwargs.get("query")
-                or tool_kwargs.get("title")
-                or tool_kwargs.get("keyword"),
+                tool_kwargs.get("query") or tool_kwargs.get("title") or tool_kwargs.get("keyword"),
             )
         if "网页" in tool_message or "browser" in tool_message_lower or "webpage" in tool_message_lower:
             return "web_browse", tool_kwargs.get("url")
@@ -516,10 +525,8 @@ class StreamingHandler:
             return False
         try:
             channel_enum = NotificationChannel(self._channel)
-            return ChannelCapabilityManager.supports_capability(
-                channel_enum, ChannelCapability.MESSAGE_EDITING
-            )
-        except (ValueError, KeyError):
+            return ChannelCapabilityManager.supports_capability(channel_enum, ChannelCapability.MESSAGE_EDITING)
+        except ValueError, KeyError:
             return False
 
     def _get_rich_message(self, text: str) -> Optional[str]:
@@ -539,10 +546,7 @@ class StreamingHandler:
         """
         if not self._tool_summaries or not text:
             return text
-        return "\n".join(
-            f"> {line}" if line in self._tool_summaries else line
-            for line in text.split("\n")
-        )
+        return "\n".join(f"> {line}" if line in self._tool_summaries else line for line in text.split("\n"))
 
     async def _flush_loop(self):
         """
@@ -567,11 +571,7 @@ class StreamingHandler:
         否则最终刷新会误以为尚未发送过消息，从而再次发送一条新消息。
         """
         current_task = asyncio.current_task()
-        if (
-            self._flush_task
-            and not self._flush_task.done()
-            and self._flush_task is not current_task
-        ):
+        if self._flush_task and not self._flush_task.done() and self._flush_task is not current_task:
             try:
                 await self._flush_task
             except asyncio.CancelledError:
@@ -587,14 +587,11 @@ class StreamingHandler:
         """
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
-            current_text = self._buffer[self._msg_start_offset:]
+            current_text = self._buffer[self._msg_start_offset :]
             if not current_text or current_text == self._sent_text:
                 # 没有新内容需要刷新
                 return
-            if (
-                (not self._channel or not self._source)
-                and not self._allow_dispatch_without_context
-            ):
+            if (not self._channel or not self._source) and not self._allow_dispatch_without_context:
                 logger.debug("流式输出缺少渠道上下文，当前模式禁止外发消息")
                 return
 
@@ -623,28 +620,19 @@ class StreamingHandler:
                     self._message_response = response
                     with self._lock:
                         self._sent_text = current_text
-                    logger.debug(
-                        f"流式输出初始消息已发送: message_id={response.message_id}"
-                    )
+                    logger.debug(f"流式输出初始消息已发送: message_id={response.message_id}")
                 else:
-                    logger.debug(
-                        "流式输出初始消息发送失败或未返回message_id，降级为非流式输出"
-                    )
+                    logger.debug("流式输出初始消息发送失败或未返回message_id，降级为非流式输出")
                     self._streaming_enabled = False
             else:
                 # 检查当前消息内容是否超过长度限制
-                if (
-                    self._max_message_length
-                    and len(current_text) > self._max_message_length
-                ):
+                if self._max_message_length and len(current_text) > self._max_message_length:
                     # 消息过长，冻结当前消息（保持最后一次成功编辑的内容）
                     # 将 offset 移动到已发送文本之后，开启新消息
-                    logger.debug(
-                        f"流式消息长度 {len(current_text)} 超过限制 {self._max_message_length}，启用新消息"
-                    )
+                    logger.debug(f"流式消息长度 {len(current_text)} 超过限制 {self._max_message_length}，启用新消息")
                     with self._lock:
                         self._msg_start_offset += len(self._sent_text)
-                        current_text = self._buffer[self._msg_start_offset:]
+                        current_text = self._buffer[self._msg_start_offset :]
                     self._message_response = None
                     self._sent_text = ""
 
@@ -670,9 +658,7 @@ class StreamingHandler:
                             self._message_response = response
                             with self._lock:
                                 self._sent_text = current_text
-                            logger.debug(
-                                f"流式输出新消息已发送: message_id={response.message_id}"
-                            )
+                            logger.debug(f"流式输出新消息已发送: message_id={response.message_id}")
                         else:
                             logger.debug("流式输出新消息发送失败，降级为非流式输出")
                             self._streaming_enabled = False
@@ -680,7 +666,7 @@ class StreamingHandler:
                     # 后续更新：编辑已有消息
                     try:
                         channel_enum = NotificationChannel(self._channel)
-                    except (ValueError, KeyError):
+                    except ValueError, KeyError:
                         return
 
                     metadata = dict(self._message_response.metadata or {})

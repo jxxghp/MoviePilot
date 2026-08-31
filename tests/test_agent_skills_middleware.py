@@ -22,7 +22,12 @@ def anyio_backend():
     return "asyncio"
 
 
-def _write_skill(root, skill_id: str, name: str | None = None) -> None:
+def _write_skill(
+    root,
+    skill_id: str,
+    name: str | None = None,
+    allowed_api_operations: str = "",
+) -> None:
     """写入测试用 Skill 文件。"""
     skill_dir = root / skill_id
     skill_dir.mkdir()
@@ -31,6 +36,7 @@ def _write_skill(root, skill_id: str, name: str | None = None) -> None:
 name: {name or skill_id}
 description: test skill {skill_id}
 allowed-tools: "read_file execute_command"
+{f'allowed-api-operations: "{allowed_api_operations}"' if allowed_api_operations else ""}
 ---
 # {skill_id}
 
@@ -48,38 +54,37 @@ async def test_alist_skills_sorts_skill_directories_by_name(tmp_path):
 
     skills = await _alist_skills(AsyncPath(str(tmp_path)))
 
-    assert ["a-skill", "m-skill", "z-skill"] == [
-        skill["id"] for skill in skills
-    ]
+    assert ["a-skill", "m-skill", "z-skill"] == [skill["id"] for skill in skills]
 
 
 def test_skills_middleware_exposes_skill_tool(tmp_path):
     """SkillsMiddleware 应以中间件工具形式暴露 skill。"""
-    _write_skill(tmp_path, "moviepilot-cli")
+    _write_skill(tmp_path, "moviepilot-api")
 
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
 
     assert [tool.name for tool in middleware.tools] == [SKILL_TOOL_NAME]
     assert ToolTag.Read in middleware.tools[0].tags
     assert ToolTag.Skill in middleware.tools[0].tags
-    assert "moviepilot-cli" in middleware.tools[0].description
+    assert "moviepilot-api" in middleware.tools[0].description
 
 
 @pytest.mark.anyio
 async def test_skill_tool_loads_skill_by_id_and_name(tmp_path):
     """skill 工具应支持按 id 或 name 加载完整 SKILL.md。"""
-    _write_skill(tmp_path, "moviepilot-cli", name="MoviePilot CLI")
+    _write_skill(tmp_path, "moviepilot-api", name="MoviePilot API")
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     skill_tool = middleware.tools[0]
 
-    by_id = json.loads(await skill_tool.ainvoke({"name": "moviepilot-cli"}))
-    by_name = json.loads(await skill_tool.ainvoke({"name": "MoviePilot CLI"}))
+    by_id = json.loads(await skill_tool.ainvoke({"name": "moviepilot-api"}))
+    by_name = json.loads(await skill_tool.ainvoke({"name": "MoviePilot API"}))
 
     assert by_id["success"] is True
-    assert by_id["skill"]["id"] == "moviepilot-cli"
-    assert "# moviepilot-cli" in by_id["content"]
+    assert by_id["skill"]["id"] == "moviepilot-api"
+    assert "# moviepilot-api" in by_id["content"]
+    assert by_id["skill"]["allowed_api_operations"] == []
     assert by_name["success"] is True
-    assert by_name["skill"]["name"] == "MoviePilot CLI"
+    assert by_name["skill"]["name"] == "MoviePilot API"
 
 
 @pytest.mark.anyio
@@ -112,9 +117,83 @@ async def test_skill_tool_returns_not_found_for_unknown_skill(tmp_path):
     assert "missing-skill" in result["message"]
 
 
+@pytest.mark.anyio
+async def test_skill_operation_scope_is_enforced_for_api_gateway(tmp_path):
+    """声明 API 操作范围的 Skill 只能调用联合授权范围内的 operation。"""
+    _write_skill(
+        tmp_path,
+        "media-skill",
+        allowed_api_operations="media.search media.detail",
+    )
+    middleware = SkillsMiddleware(sources=[str(tmp_path)])
+    skill_tool = middleware.tools[0]
+    await skill_tool.ainvoke({"name": "media-skill"})
+
+    denied_request = SimpleNamespace(
+        tool=SimpleNamespace(name="moviepilot_api"),
+        tool_call={
+            "id": "call-1",
+            "args": {"operation_id": "subscription.delete"},
+        },
+    )
+    handler = AsyncMock(return_value="should-not-run")
+
+    result = await middleware.awrap_tool_call(denied_request, handler)
+
+    assert result.name == "moviepilot_api"
+    assert "skill_operation_denied" in result.content
+    handler.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_api_gateway_requires_skill_declared_operation(tmp_path):
+    """未加载声明 operation 的 Skill 时 API 网关必须默认拒绝。"""
+    _write_skill(tmp_path, "plain-skill")
+    middleware = SkillsMiddleware(sources=[str(tmp_path)])
+    await middleware.tools[0].ainvoke({"name": "plain-skill"})
+    request = SimpleNamespace(
+        tool=SimpleNamespace(name="moviepilot_api"),
+        tool_call={
+            "id": "call-default-deny",
+            "args": {"operation_id": "media.search"},
+        },
+    )
+    handler = AsyncMock(return_value="should-not-run")
+
+    result = await middleware.awrap_tool_call(request, handler)
+
+    assert "skill_operation_denied" in result.content
+    handler.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_skill_operation_scope_allows_declared_api_operation(tmp_path):
+    """声明范围内的 API operation 应继续进入真实工具 handler。"""
+    _write_skill(
+        tmp_path,
+        "media-skill",
+        allowed_api_operations="media.search",
+    )
+    middleware = SkillsMiddleware(sources=[str(tmp_path)])
+    await middleware.tools[0].ainvoke({"name": "media-skill"})
+    request = SimpleNamespace(
+        tool=SimpleNamespace(name="moviepilot_api"),
+        tool_call={
+            "id": "call-2",
+            "args": {"operation_id": "media.search"},
+        },
+    )
+    handler = AsyncMock(return_value="allowed")
+
+    result = await middleware.awrap_tool_call(request, handler)
+
+    assert result == "allowed"
+    handler.assert_awaited_once_with(request)
+
+
 def test_modify_request_instructs_model_to_use_skill_tool_without_paths(tmp_path):
     """系统提示应要求通过 skill 工具加载，而不是直接暴露文件读取路径。"""
-    _write_skill(tmp_path, "moviepilot-cli")
+    _write_skill(tmp_path, "moviepilot-api")
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     skills_metadata = middleware._load_skills_metadata()
     request = ModelRequest(
@@ -129,7 +208,7 @@ def test_modify_request_instructs_model_to_use_skill_tool_without_paths(tmp_path
     system_content = str(modified.system_message.content)
 
     assert "`skill` tool" in system_content
-    assert "moviepilot-cli" in system_content
+    assert "moviepilot-api" in system_content
     assert "Read `" not in system_content
     assert str(tmp_path) not in system_content
 
@@ -137,7 +216,7 @@ def test_modify_request_instructs_model_to_use_skill_tool_without_paths(tmp_path
 @pytest.mark.anyio
 async def test_skill_tool_call_records_streaming_summary(tmp_path):
     """skill 工具执行时应记录流式聚合摘要。"""
-    _write_skill(tmp_path, "moviepilot-cli")
+    _write_skill(tmp_path, "moviepilot-api")
     calls = []
     stream_handler = SimpleNamespace(
         is_streaming=True,
@@ -151,7 +230,7 @@ async def test_skill_tool_call_records_streaming_summary(tmp_path):
         tool=SimpleNamespace(name=SKILL_TOOL_NAME),
         tool_call={
             "args": {
-                "name": "moviepilot-cli",
+                "name": "moviepilot-api",
             }
         },
     )
@@ -168,7 +247,7 @@ async def test_skill_tool_call_records_streaming_summary(tmp_path):
             "tool_name": SKILL_TOOL_NAME,
             "tool_message": "Skill loaded",
             "tool_kwargs": {
-                "name": "moviepilot-cli",
+                "name": "moviepilot-api",
             },
         }
     ]
@@ -216,9 +295,7 @@ async def test_skill_provider_error_does_not_echo_secret(tmp_path):
         patch.object(
             middleware._skill_provider,
             "_find_skill",
-            new=AsyncMock(
-                side_effect=RuntimeError(f"DATABASE_PASSWORD={secret_marker}")
-            ),
+            new=AsyncMock(side_effect=RuntimeError(f"DATABASE_PASSWORD={secret_marker}")),
         ),
         patch("app.agent.middleware.skills.logger", mock_logger),
     ):
