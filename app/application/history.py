@@ -593,22 +593,14 @@ class DownloadHistoryWritePort(Protocol):
         ...
 
 
-class DownloadHistoryRepository(
-    DownloadHistoryQueryPort,
-    DownloadHistoryWritePort,
-    Protocol,
-):
+class DownloadHistoryRepository(DownloadHistoryQueryPort, DownloadHistoryWritePort, Protocol):
     """组合宿主所需全部下载历史查询和变更能力。"""
 
 
 class AsyncDownloadHistoryQueryRepository(Protocol):
     """下载历史只读用例需要的最小异步持久化端口。"""
 
-    async def async_list_by_page(
-        self,
-        page: int = 1,
-        count: int = 30,
-    ) -> list[DownloadHistorySnapshot]:
+    async def async_list_by_page(self, page: int = 1, count: int = 30) -> list[DownloadHistorySnapshot]:
         """按下载时间倒序分页读取历史记录。"""
         ...
 

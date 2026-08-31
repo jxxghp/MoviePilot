@@ -4,9 +4,8 @@ from typing import Annotated, Any, Dict, List, Optional
 
 import aiofiles
 from anyio import Path as AsyncPath
-from fastapi import Depends, Header, HTTPException, Query, Security
+from fastapi import Depends, Header, HTTPException, Query, Response, Security
 from starlette import status
-from starlette.responses import Response as StarletteResponse
 from starlette.responses import StreamingResponse
 
 from app.adapters.web.security.access import (
@@ -25,11 +24,7 @@ from app.api.dependencies.auth import (
 )
 from app.api.dependencies.plugin import get_plugin_config_command
 from app.api.principal import ApiPrincipal
-from app.api.response import (
-    COLLECTION_TOTAL_HEADER,
-    COLLECTION_TOTAL_OPENAPI_KEY,
-    ResponseAPIRouter,
-)
+from app.api.response import COLLECTION_TOTAL_HEADER, COLLECTION_TOTAL_OPENAPI_KEY, ResponseAPIRouter
 from app.application.commands import init_commands
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
 from app.application.plugin.catalog import get_plugin_catalog_query
@@ -176,9 +171,7 @@ def _verify_plugin_static_file_access(
 
 
 @router.get(
-    "/",
-    summary="所有插件",
-    response_model=List[_SchemaPlugin],
+    "/", summary="所有插件", response_model=List[_SchemaPlugin],
     openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def all_plugins(
@@ -187,15 +180,10 @@ async def all_plugins(
     force: bool = False,
     query: Optional[str] = None,
     max_results: Annotated[int, Query(ge=1, le=200)] = 50,
-    response: StarletteResponse = None,
+    response: Response = None,
 ) -> List[_SchemaPlugin]:
-    """
-    查询插件清单，并支持 Agent 使用关键字和有界结果完成精确选择。
-    """
-    plugins = await get_plugin_catalog_query().query(
-        state=state or "all",
-        force=force,
-    )
+    """查询插件清单，并支持 Agent 使用关键字和有界结果完成精确选择。"""
+    plugins = await get_plugin_catalog_query().query(state=state or "all", force=force)
     if query:
         plugins = [item["plugin"] for item in search_plugin_candidates(query, plugins)]
     if response is not None:
