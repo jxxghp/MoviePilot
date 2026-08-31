@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.agent.tools.impl.query_download_tasks import QueryDownloadTasksTool
-from app.schemas.transfer import DownloadTaskMedia, DownloaderTorrent
+from app.schemas.transfer import DownloaderTorrent, DownloadTaskMedia
 from app.schemas.types import MediaSource
 
 
