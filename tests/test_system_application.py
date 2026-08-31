@@ -222,6 +222,34 @@ async def test_update_setting_routes_runtime_and_persistent_values() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("persisted_result", "expected_success", "publishes_event"),
+    [(True, True, True), (None, True, False), (False, False, False)],
+)
+async def test_update_setting_preserves_persistent_write_result(
+    persisted_result: bool | None,
+    expected_success: bool,
+    publishes_event: bool,
+) -> None:
+    """通用系统配置写入只把明确 False 映射为失败并抑制失败事件。"""
+    service, dependencies = _build_service()
+    dependencies.settings.contains.return_value = False
+    dependencies.system_config.async_set.return_value = persisted_result
+
+    result = await service.update_setting(
+        SystemConfigKey.IndexerSites.value, [1, None, 2]
+    )
+
+    assert result.success is expected_success
+    if publishes_event:
+        dependencies.events.publish.assert_awaited_once_with(
+            SystemConfigKey.IndexerSites.value, [1, 2]
+        )
+    else:
+        dependencies.events.publish.assert_not_awaited()
+
+
+@pytest.mark.anyio
 async def test_update_setting_applies_rule_groups_and_reports_mutation_rejection() -> None:
     """规则组使用原子 mutation，插件写入拒绝应转换为稳定结果。"""
     service, dependencies = _build_service()
