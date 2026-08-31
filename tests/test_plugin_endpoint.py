@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from starlette.responses import Response
 
 from app import schemas
 from app.api.endpoints import plugin as plugin_endpoint
@@ -240,9 +241,19 @@ def test_market_endpoint_reads_source_preserving_candidates_for_bound_update():
         "app.api.endpoints.plugin.get_plugin_catalog_query",
         return_value=query,
     ):
-        result = asyncio.run(plugin_endpoint.all_plugins(None, "market", False))
+        response = Response()
+        result = asyncio.run(
+            plugin_endpoint.all_plugins(
+                None,
+                "market",
+                False,
+                max_results=1,
+                response=response,
+            )
+        )
 
     assert [plugin.id for plugin in result] == ["DemoPlugin"]
+    assert response.headers["X-Total-Count"] == "1"
     assert result[0].update_candidate is not None
     assert result[0].update_candidate.version == "2.0.0"
     assert result[0].update_candidate.is_bound is True

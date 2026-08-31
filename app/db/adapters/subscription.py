@@ -471,6 +471,22 @@ class TransactionalSubscriptionHistoryRepository:
             )
             return [_project_history(record) for record in records]
 
+    async def async_count_by_type(self, mtype: str) -> int:
+        """在短 Session 内统计指定媒体类型的历史数量。"""
+        async with self._async_session() as session:
+            return await SubscribeHistoryOper(session).async_count_by_type(mtype)
+
+    async def async_count_by_type_and_username(
+        self,
+        mtype: str,
+        username: str,
+    ) -> int:
+        """在短 Session 内统计指定媒体类型和 owner 的历史数量。"""
+        async with self._async_session() as session:
+            return await SubscribeHistoryOper(
+                session
+            ).async_count_by_type_and_username(mtype, username)
+
 
 class SessionSubscriptionRepository:
     """复用调用方 Session，负责订阅查询投影和暂存且不提交。"""

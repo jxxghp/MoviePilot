@@ -42,7 +42,8 @@ def _route_contract(route: APIRoute) -> tuple[Any, ...]:
             (
                 dependency.dependency,
                 dependency.use_cache,
-                tuple(dependency.scopes or ()),
+                tuple(getattr(dependency, "scopes", ()) or ()),
+                getattr(dependency, "scope", None),
             )
             for dependency in route.dependencies
         ),

@@ -109,6 +109,20 @@ def test_history_queries_reuse_explicit_sessions(db, monkeypatch):
             assert await SubscribeHistory.async_list_by_type_and_username(
                 session, MediaType.TV.value, "alice", page=1, count=10
             )
+            assert await SubscribeHistory.async_count_by_type(
+                session,
+                MediaType.TV.value,
+            ) == 1
+            assert await SubscribeHistory.async_count_by_type_and_username(
+                session,
+                MediaType.TV.value,
+                "alice",
+            ) == 1
+            assert await SubscribeHistory.async_count_by_type_and_username(
+                session,
+                MediaType.TV.value,
+                "bob",
+            ) == 0
             assert await SubscribeHistory.async_exists(
                 session, MediaSource.TMDB, "8501", season=1
             ) is not None

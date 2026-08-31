@@ -149,6 +149,8 @@ Call the gateway with this shape:
 
 The operations, HTTP methods, routes, and path/query/body fields below exactly match external MCP `tools/list`.
 A field name ending in `*` is required. Omit an empty bucket or send `{}`. Referenced body models are expanded below.
+For collection operations, `data` keeps its existing list or page-object shape. The gateway may add a sibling `collection` object with `result_count`, optional exact `total_count`, `page`, and `count`; it never replaces the list body with a new wrapper.
+If an endpoint or external source does not expose a total, `collection.total_count` is omitted instead of being guessed from the current page.
 
 ### `config.identifiers.get`
 `GET /api/v1/system/identifiers`; policy effect: `safe_read`.
@@ -223,15 +225,17 @@ Purpose: Read current MoviePilot process and host memory utilization.
 ### `dashboard.network`
 `GET /api/v1/dashboard/network`; policy effect: `safe_read`.
 Purpose: Read the current host network receive and transmit counters.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `dashboard.processes`
 `GET /api/v1/dashboard/processes`; policy effect: `safe_read`.
 Purpose: List host processes visible to the MoviePilot runtime.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `dashboard.storage`
@@ -251,8 +255,9 @@ Purpose: Read MoviePilot host, runtime, platform, and uptime summary information
 ### `dashboard.transfer.statistics`
 `GET /api/v1/dashboard/transfer`; policy effect: `safe_read`.
 Purpose: Read aggregate file-transfer counts grouped by time period.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: `days` (integer|null; default `7`): Recommendation time window in days.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `days` (integer|null; default `7`): Recommendation time window in days.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `database.backups.create`
@@ -272,8 +277,9 @@ Purpose: Delete one exact managed database backup artifact.
 ### `database.backups.list`
 `GET /api/v1/system/database/backups`; policy effect: `safe_read`.
 Purpose: List managed database backup artifacts without exposing host paths.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `database.backups.verify`
@@ -293,8 +299,9 @@ Purpose: Submit one torrent to MoviePilot's normal download workflow.
 ### `download.clients`
 `GET /api/v1/download/clients`; policy effect: `safe_read`.
 Purpose: List enabled downloader instance names and provider types without credentials.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `download.history.delete`
@@ -307,6 +314,7 @@ Purpose: Delete one MoviePilot download-history record.
 ### `download.history.list`
 `GET /api/v1/history/download`; policy effect: `safe_read`.
 Purpose: Page MoviePilot download-history records in reverse chronological order.
+- `response`: `data` remains a list and the endpoint's documented pagination or limit defaults remain in effect. `collection.result_count` reports the returned items and `collection.total_count` reports the exact total.
 - `path_params`: none
 - `query`: `count` (integer|null; default `30`): Maximum number of records to return on the requested page.; `page` (integer|null; default `1`): One-based result page number.
 - `body`: none
@@ -314,15 +322,17 @@ Purpose: Page MoviePilot download-history records in reverse chronological order
 ### `download.paths`
 `GET /api/v1/download/paths`; policy effect: `safe_read`.
 Purpose: List configured downloader save-path URIs that may be passed to download.add.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `download.tasks.active`
 `GET /api/v1/download/`; policy effect: `safe_read`.
 Purpose: List currently downloading MoviePilot tasks with their canonical media context.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `filter.builtin`
@@ -405,6 +415,7 @@ Purpose: Check configured media servers for one canonical media identity.
 ### `library.latest`
 `GET /api/v1/mediaserver/latest`; policy effect: `safe_read`.
 Purpose: List recently added items from one configured media-server instance for the current user.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `count` (integer|null; default `20`): Maximum number of records to return on the requested page.; `server*` (string): Exact configured media-server instance name returned by the media-server instance list.
 - `body`: none
@@ -440,27 +451,31 @@ Purpose: Read canonical media details from one selected metadata source.
 ### `media.episode_group.seasons`
 `GET /api/v1/media/group/seasons/{episode_group}`; policy effect: `safe_read`.
 Purpose: List seasons defined by one exact TMDB episode-group identity.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: `episode_group*` (string): TMDB episode-group identifier used for alternate episode ordering.
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `media.episode_groups`
 `GET /api/v1/media/groups/{tmdbid}`; policy effect: `safe_read`.
 Purpose: List alternate TMDB episode groups available for one TV media identity.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: `tmdbid*` (integer): TMDB media ID returned by media search or detail.
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `media.episode_schedule`
 `GET /api/v1/tmdb/{tmdbid}/{season}`; policy effect: `safe_read`.
 Purpose: Read TMDB episode release information for one season.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: `season*` (integer): Season number used by the media, search, subscription, or transfer operation.; `tmdbid*` (integer): TMDB media ID returned by media search or detail.
-- `query`: `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `media.person.credits`
 `GET /api/v1/{source}/person/credits/{person_id}`; policy effect: `safe_read`.
 Purpose: Read one person's credits from the selected metadata source.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: `person_id*` (integer): Source-native person ID.; `source*` (string(douban,tmdb,bangumi,anilist)): Metadata source that owns the person ID.
 - `query`: `count` (integer; default `20`; minimum `1`; maximum `50`): Page size used by Bangumi and AniList; other sources ignore it.; `page` (integer; default `1`; minimum `1`): One-based result page number.
 - `body`: none
@@ -468,6 +483,7 @@ Purpose: Read one person's credits from the selected metadata source.
 ### `media.person.search`
 `GET /api/v1/media/search`; policy effect: `safe_read`.
 Purpose: Search people across selected metadata sources.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `count` (integer; default `8`): Maximum number of records to return on the requested page.; `media_source` (array<MediaSource>; default `[]`): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer; default `1`): One-based result page number.; `title*` (string): Media, torrent, subscription, or history title used by the operation.; `type*` (string=person): Literal person, selecting person search instead of media search.
 - `body`: none
@@ -496,6 +512,7 @@ Purpose: Generate or refresh metadata for one storage item.
 ### `media.search`
 `GET /api/v1/media/search`; policy effect: `safe_read`.
 Purpose: Search canonical media across selected metadata sources.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `count` (integer; default `8`): Maximum number of records to return on the requested page.; `media_source` (array<MediaSource>; default `[]`): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer; default `1`): One-based result page number.; `title*` (string): Media, torrent, subscription, or history title used by the operation.; `type` (string|null; default `media`): MoviePilot media or storage item type required by the selected operation.
 - `body`: none
@@ -503,15 +520,17 @@ Purpose: Search canonical media across selected metadata sources.
 ### `media.seasons`
 `GET /api/v1/media/seasons`; policy effect: `safe_read`.
 Purpose: List seasons for one exact media identity or a title-and-year fallback.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `season` (integer): Season number used by the media, search, subscription, or transfer operation.; `title` (string|null): Media, torrent, subscription, or history title used by the operation.; `year` (string): Release or premiere year used to disambiguate the media title.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `season` (integer): Season number used by the media, search, subscription, or transfer operation.; `title` (string|null): Media, torrent, subscription, or history title used by the operation.; `year` (string): Release or premiere year used to disambiguate the media title.
 - `body`: none
 
 ### `media.sources`
 `GET /api/v1/media/source`; policy effect: `safe_read`.
 Purpose: List metadata sources currently registered for MoviePilot media operations.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `music.album.get`
@@ -524,6 +543,7 @@ Purpose: Read one album's details, tracks, releases, and aligned artist names an
 ### `music.album.related`
 `GET /api/v1/music/album/{album_id}/related`; policy effect: `safe_read`.
 Purpose: Browse albums related to one source-native album identity.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: `album_id*` (string): Source-native album ID returned by music search, exploration, or artist-album browsing.
 - `query`: `count` (integer; default `24`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.
 - `body`: none
@@ -531,6 +551,7 @@ Purpose: Browse albums related to one source-native album identity.
 ### `music.artist.albums`
 `GET /api/v1/music/artist/{artist_id}/albums`; policy effect: `safe_read`.
 Purpose: Browse one artist's albums, singles, EPs, or another exact release-group type.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: `artist_id*` (string): Source-native artist ID returned by music search or an album detail response.
 - `query`: `album_type` (string|null): MusicBrainz release-group type filter: album, single, ep, broadcast, other, compilation, soundtrack, live, or remix.; `count` (integer; default `30`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer; default `1`; minimum `1`): One-based result page number.
 - `body`: none
@@ -545,6 +566,7 @@ Purpose: Read one artist's canonical details from the selected music metadata so
 ### `music.artist.related`
 `GET /api/v1/music/artist/{artist_id}/related`; policy effect: `safe_read`.
 Purpose: Browse artists related to one source-native artist identity.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: `artist_id*` (string): Source-native artist ID returned by music search or an album detail response.
 - `query`: `count` (integer; default `24`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.
 - `body`: none
@@ -573,6 +595,7 @@ Purpose: Inspect the administrator-only MusicBrainz recognition cache and summar
 ### `music.explore`
 `GET /api/v1/music/explore`; policy effect: `safe_read`.
 Purpose: Browse MusicBrainz charts or fresh releases, or Douban Music tag categories.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `count` (integer; default `30`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `days` (integer; default `14`; minimum `1`; maximum `90`): Fresh-release lookback/lookahead window, from 1 through the endpoint maximum.; `douban_sort` (string; default `U`): Douban Music order: U comprehensive, S rating, R newest, or O hottest.; `entity` (string; default `recording`): Chart entity: recording for tracks or album for release groups. Fresh results are albums.; `future` (boolean; default `True`): Include releases after today in fresh mode.; `media_source` (MediaSource): Music exploration source. Use musicbrainz for chart/fresh modes or doubanmusic for tag browsing.; `min_listen_count` (integer; default `0`; minimum `0`): Minimum ListenBrainz listen count in chart mode.; `mode` (string; default `chart`): MusicBrainz mode: chart reads listening charts; fresh reads new album releases.; `page` (integer; default `1`; minimum `1`): One-based result page number.; `past` (boolean; default `True`): Include releases before today in fresh mode.; `range_name` (string; default `this_month`): ListenBrainz chart range: this_week, this_month, this_year, week, month, or year.; `sort` (string; default `release_date`): Fresh-release order accepted by the current ListenBrainz implementation.; `sort_by` (string; default `listen_count.desc`): ListenBrainz chart order: listen_count.desc or listen_count.asc.; `tags` (string; default ``): Comma-separated Douban Music tags used only when media_source is doubanmusic.; `with_cover` (boolean; default `False`): Keep only results with cover artwork when true.
 - `body`: none
@@ -671,6 +694,7 @@ Purpose: Install or update one plugin from an approved source.
 ### `plugin.installed`
 `GET /api/v1/plugin/`; policy effect: `safe_read`.
 Purpose: List installed plugins and their runtime status.
+- `response`: `data` remains a list and the endpoint's documented pagination or limit defaults remain in effect. `collection.result_count` reports the returned items and `collection.total_count` reports the exact total.
 - `path_params`: none
 - `query`: `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer; default `50`; minimum `1`; maximum `200`): Maximum number of plugin catalog results to return, from 1 to 200.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=installed): Literal installed, selecting only installed plugin catalog entries.
 - `body`: none
@@ -678,6 +702,7 @@ Purpose: List installed plugins and their runtime status.
 ### `plugin.market`
 `GET /api/v1/plugin/`; policy effect: `safe_read`.
 Purpose: List plugins available from configured marketplaces.
+- `response`: `data` remains a list and the endpoint's documented pagination or limit defaults remain in effect. `collection.result_count` reports the returned items and `collection.total_count` reports the exact total.
 - `path_params`: none
 - `query`: `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer; default `50`; minimum `1`; maximum `200`): Maximum number of plugin catalog results to return, from 1 to 200.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=market): Literal market, selecting only market plugin catalog entries.
 - `body`: none
@@ -776,6 +801,7 @@ Purpose: Uninstall one plugin and remove it from the installed set.
 ### `recommendation.list`
 `GET /api/v1/recommend/agent`; policy effect: `safe_read`.
 Purpose: Read personalized media or music recommendations.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `days` (integer; default `14`): Recommendation time window in days.; `fresh_sort` (string; default `release_date`): Freshness ordering used by the recommendation source.; `future` (boolean; default `True`): Include future recommendation periods when supported.; `media_type` (string; default `all`): MoviePilot media type used to filter recommendations or rule groups.; `min_listen_count` (integer; default `0`): Minimum listen count required for a music recommendation.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `page` (integer; default `1`): One-based result page number.; `past` (boolean; default `True`): Include past recommendation periods when supported.; `range_name` (string; default `this_month`): Named recommendation time range.; `sort_by` (string; default `listen_count.desc`): Recommendation field used for ordering results.; `source` (string; default `tmdb_trending`): Exact metadata or recommendation source selected by the operation.; `with_cover` (boolean; default `False`): Require recommendation results to include cover artwork.
 - `body`: none
@@ -783,8 +809,9 @@ Purpose: Read personalized media or music recommendations.
 ### `scheduler.list`
 `GET /api/v1/dashboard/schedule`; policy effect: `safe_read`.
 Purpose: List registered scheduler jobs and their current state.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `scheduler.progress`
@@ -818,6 +845,7 @@ Purpose: Read the most recent torrent-search context and result set.
 ### `search.title`
 `GET /api/v1/search/title`; policy effect: `external_side_effect`.
 Purpose: Search torrent sites directly from a free-form title and optional media filters.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `mtype` (string|null): MoviePilot media type or subscription-history category required by the operation.; `page` (integer|null; default `0`): One-based result page number.; `sites` (string|null): Exact site IDs included in the search or subscription scope.
 - `body`: none
@@ -825,8 +853,9 @@ Purpose: Search torrent sites directly from a free-form title and optional media
 ### `search.torrents`
 `GET /api/v1/search/media/{media_id}`; policy effect: `safe_read`.
 Purpose: Search torrent sites for one canonical media identity.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.
-- `query`: `area` (string|null; default `title`): Optional region filter applied by the torrent search workflow.; `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `mtype` (string|null): MoviePilot media type or subscription-history category required by the operation.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `season` (string|null): Season number used by the media, search, subscription, or transfer operation.; `sites` (string|null): Exact site IDs included in the search or subscription scope.
+- `query`: `area` (string|null; default `title`): Optional region filter applied by the torrent search workflow.; `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `mtype` (string|null): MoviePilot media type or subscription-history category required by the operation.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `season` (string|null): Season number used by the media, search, subscription, or transfer operation.; `sites` (string|null): Exact site IDs included in the search or subscription scope.
 - `body`: none
 
 ### `site.add`
@@ -853,8 +882,9 @@ Purpose: Authenticate a supported site account and persist the resulting site au
 ### `site.category`
 `GET /api/v1/site/category/{site_id}`; policy effect: `safe_read`.
 Purpose: List torrent categories supported by one configured site.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: `site_id*` (integer): Persistent site ID returned by site.list.
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `site.cookie.update`
@@ -881,8 +911,9 @@ Purpose: Delete one configured site by persistent site ID.
 ### `site.list`
 `GET /api/v1/site/agent`; policy effect: `safe_read`.
 Purpose: List configured sites with status/name filters; authentication fields are returned only to a superuser.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `status` (string(active,inactive,all); default `all`): Transfer success status used to filter history or describe a record.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `status` (string(active,inactive,all); default `all`): Transfer success status used to filter history or describe a record.
 - `body`: none
 
 ### `site.mapping`
@@ -909,6 +940,7 @@ Purpose: Delete all configured sites and start a fresh CookieCloud synchronizati
 ### `site.resource`
 `GET /api/v1/site/resource/{site_id}`; policy effect: `external_side_effect`.
 Purpose: Browse torrent resources from one configured site with category and keyword filters.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: `site_id*` (integer): Persistent site ID returned by site.list.
 - `query`: `cat` (string|null): Exact site category identifier returned by site.category.; `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `mtype` (string|null): MoviePilot media type or subscription-history category required by the operation.; `page` (integer|null; default `0`): One-based result page number.
 - `body`: none
@@ -916,15 +948,17 @@ Purpose: Browse torrent resources from one configured site with category and key
 ### `site.rss`
 `GET /api/v1/site/rss`; policy effect: `safe_read`.
 Purpose: List configured sites selected for RSS subscription processing.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `site.searchable`
 `GET /api/v1/site/media/{media_type}`; policy effect: `safe_read`.
 Purpose: List active configured sites supporting one exact media type.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: `media_type*` (string): MoviePilot media type used to filter recommendations or rule groups.
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `site.statistic`
@@ -937,8 +971,9 @@ Purpose: Read account and traffic statistics for one exact configured site domai
 ### `site.statistics`
 `GET /api/v1/site/statistic`; policy effect: `safe_read`.
 Purpose: Read the latest account and traffic statistics for all configured sites.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `site.supporting`
@@ -965,15 +1000,17 @@ Purpose: Update one configured site's complete settings.
 ### `site.userdata`
 `GET /api/v1/site/userdata/{site_id}`; policy effect: `safe_read`.
 Purpose: Read the latest account statistics collected from one site.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: `site_id*` (integer): Persistent site ID returned by site.list.
-- `query`: `workdate` (string|null): Date used when retrieving one site's historical user statistics.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `workdate` (string|null): Date used when retrieving one site's historical user statistics.
 - `body`: none
 
 ### `site.userdata.latest`
 `GET /api/v1/site/userdata/latest`; policy effect: `safe_read`.
 Purpose: Read the latest collected account statistics for every configured site.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `site.userdata.refresh`
@@ -986,8 +1023,9 @@ Purpose: Refresh and return account statistics for one configured site.
 ### `slash.list`
 `GET /api/v1/message/agent/commands`; policy effect: `safe_read`.
 Purpose: List slash commands that the Agent may dispatch.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `slash.run`
@@ -1007,8 +1045,9 @@ Purpose: Delete one exact file or directory from a configured storage provider.
 ### `storage.list`
 `POST /api/v1/storage/agent/list`; policy effect: `safe_read`.
 Purpose: List files or directories from one configured storage location.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `sort` (string|null; default `updated_at`): Storage-list sort field or ordering expression.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `sort` (string|null; default `updated_at`): Storage-list sort field or ordering expression.
 - `body`: `basename` (string|null): Base filename without its parent path.; `children` (array<FileItem-Input>|null): Child storage items nested below this item.; `drive_id` (string|null): Provider-native storage drive identifier.; `extension` (string|null): Filename extension, including or excluding the leading dot as returned by storage.; `fileid` (string|null): Provider-native storage item identifier.; `modify_time` (number|null): Storage item modification timestamp.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `parent_fileid` (string|null): Provider-native identifier of the parent storage directory.; `path` (string|null; default `/`): Storage or history path represented by this record.; `pickcode` (string|null): 115 storage pickcode associated with the item.; `size` (integer|null): File or torrent size in bytes.; `storage` (string|null; default `local`): Configured storage name or storage type used by the operation.; `thumbnail` (string|null): Thumbnail URL returned by the storage provider.; `type` (string|null): MoviePilot media or storage item type required by the selected operation.; `url` (string|null): Site, storage, or torrent URL represented by this field.
 
 ### `storage.manage`
@@ -1035,8 +1074,9 @@ Purpose: Rename one exact storage item, optionally applying media-aware recursiv
 ### `storage.settings`
 `GET /api/v1/storage/directories`; policy effect: `safe_read`.
 Purpose: Read configured directory or storage settings.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: `directory_type` (string; default `all`): Directory configuration subtype to return.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `storage_type` (string; default `all`): Configured storage provider type to return.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `directory_type` (string; default `all`): Directory configuration subtype to return.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `storage_type` (string; default `all`): Configured storage provider type to return.
 - `body`: none
 
 ### `subscription.add`
@@ -1091,8 +1131,9 @@ Purpose: Stop following one subscription-sharing user by exact share user ID.
 ### `subscription.follow.list`
 `GET /api/v1/subscribe/follow`; policy effect: `safe_read`.
 Purpose: List subscription-sharing user IDs followed by the current user.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `subscription.fork`
@@ -1112,6 +1153,7 @@ Purpose: Read one accessible subscription by persistent subscription ID.
 ### `subscription.history`
 `GET /api/v1/subscribe/history/{mtype}`; policy effect: `safe_read`.
 Purpose: List completed or archived subscription records.
+- `response`: `data` remains a list and the endpoint's documented pagination or limit defaults remain in effect. `collection.result_count` reports the returned items and `collection.total_count` reports the exact total.
 - `path_params`: `mtype*` (string): MoviePilot media type or subscription-history category required by the operation.
 - `query`: `count` (integer|null; default `30`): Maximum number of records to return on the requested page.; `page` (integer|null; default `1`): One-based result page number.
 - `body`: none
@@ -1126,8 +1168,9 @@ Purpose: Delete one accessible subscription-history record.
 ### `subscription.list`
 `GET /api/v1/subscribe/`; policy effect: `safe_read`.
 Purpose: List active subscriptions.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `subscription.metadata.refresh`
@@ -1140,6 +1183,7 @@ Purpose: Start a system-wide refresh of subscription TMDB metadata.
 ### `subscription.popular`
 `GET /api/v1/subscribe/popular`; policy effect: `safe_read`.
 Purpose: List globally popular subscriptions with filters and pagination.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `count` (integer|null; default `30`): Maximum number of records to return on the requested page.; `genre_id` (integer|null): Genre identifier used to filter shared or popular subscriptions.; `max_rating` (number|null): Maximum rating used to filter shared or popular subscriptions.; `min_rating` (number|null): Minimum rating used to filter shared or popular subscriptions.; `min_sub` (integer|null): Minimum subscriber count used to filter popular subscriptions.; `page` (integer|null; default `1`): One-based result page number.; `sort_type` (string|null): Ascending or descending order used by shared or popular subscriptions.; `stype*` (string): Popular-subscription category requested by the endpoint.
 - `body`: none
@@ -1189,13 +1233,15 @@ Purpose: Delete one shared-subscription publication by share ID.
 ### `subscription.share.statistics`
 `GET /api/v1/subscribe/share/statistics`; policy effect: `safe_read`.
 Purpose: Read aggregate contribution and reuse counts for subscription sharers.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `subscription.shares`
 `GET /api/v1/subscribe/shares`; policy effect: `safe_read`.
 Purpose: List shared subscriptions with filters and pagination.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `count` (integer|null; default `30`): Maximum number of records to return on the requested page.; `genre_id` (integer|null): Genre identifier used to filter shared or popular subscriptions.; `max_rating` (number|null): Maximum rating used to filter shared or popular subscriptions.; `min_rating` (number|null): Minimum rating used to filter shared or popular subscriptions.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `page` (integer|null; default `1`): One-based result page number.; `sort_type` (string|null): Ascending or descending order used by shared or popular subscriptions.
 - `body`: none
@@ -1217,20 +1263,23 @@ Purpose: Update one existing movie, TV, or music subscription.
 ### `subscription.user.list`
 `GET /api/v1/subscribe/user/{username}`; policy effect: `safe_read`.
 Purpose: List public subscriptions owned by one accessible MoviePilot username.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: `username*` (string): MoviePilot or site username required by the selected operation.
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `subtitle.search.media`
 `GET /api/v1/search/subtitle/media/{media_id}`; policy effect: `external_side_effect`.
 Purpose: Search subtitle providers for one canonical media identity and optional season or episode.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.
-- `query`: `episode` (string|null): Episode number used to narrow a subtitle or media search.; `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `mtype` (string|null): MoviePilot media type or subscription-history category required by the operation.; `season` (string|null): Season number used by the media, search, subscription, or transfer operation.; `sites` (string|null): Exact site IDs included in the search or subscription scope.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `episode` (string|null): Episode number used to narrow a subtitle or media search.; `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `mtype` (string|null): MoviePilot media type or subscription-history category required by the operation.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `season` (string|null): Season number used by the media, search, subscription, or transfer operation.; `sites` (string|null): Exact site IDs included in the search or subscription scope.
 - `body`: none
 
 ### `subtitle.search.title`
 `GET /api/v1/search/subtitle/title`; policy effect: `external_side_effect`.
 Purpose: Search subtitle providers from a free-form title and optional media filters.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `page` (integer|null; default `0`): One-based result page number.; `sites` (string|null): Exact site IDs included in the search or subscription scope.
 - `body`: none
@@ -1252,8 +1301,9 @@ Purpose: Run the built-in availability test for one loaded MoviePilot module.
 ### `system.network.targets`
 `GET /api/v1/system/nettest/targets`; policy effect: `safe_read`.
 Purpose: List approved built-in network-test targets without exposing their request URLs.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `system.network.test`
@@ -1315,8 +1365,9 @@ Purpose: Read the installation version and runtime usage report available to the
 ### `system.versions`
 `GET /api/v1/system/versions`; policy effect: `safe_read`.
 Purpose: List available MoviePilot GitHub releases.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `torrent.cache.clear`
@@ -1371,6 +1422,7 @@ Purpose: Run MoviePilot's manual file-transfer and organization workflow.
 ### `transfer.history`
 `GET /api/v1/history/transfer`; policy effect: `safe_read`.
 Purpose: List file-transfer history with filters and pagination.
+- `response`: structured page object; items stay in `data.list` and the exact total stays in `data.total`.
 - `path_params`: none
 - `query`: `count` (integer|null; default `30`): Maximum number of records to return on the requested page.; `page` (integer|null; default `1`): One-based result page number.; `status` (boolean|null): Transfer success status used to filter history or describe a record.; `title` (string|null): Media, torrent, subscription, or history title used by the operation.
 - `body`: none
@@ -1427,6 +1479,7 @@ Purpose: Record the authorized decision for one durable transfer manual-review o
 ### `transfer.manual_reviews`
 `GET /api/v1/transfer/tasks/manual-reviews`; policy effect: `safe_read`.
 Purpose: Page durable transfer tasks awaiting manual review or retry recovery.
+- `response`: structured page object; items stay in `data.items` and the exact total stays in `data.total`.
 - `path_params`: none
 - `query`: `page` (integer; default `1`; minimum `1`): One-based result page number.; `page_size` (integer; default `30`; minimum `1`; maximum `100`): Maximum records returned on one page.; `state` (string(manual_review,retry_wait); default `manual_review`): Current site, subscription, marketplace, or transfer state filter.
 - `body`: none
@@ -1441,8 +1494,9 @@ Purpose: Preview the organized destination name for one source path and media id
 ### `transfer.queue`
 `GET /api/v1/transfer/queue`; policy effect: `safe_read`.
 Purpose: List items waiting in the file-transfer queue.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `transfer.queue.delete`
@@ -1462,8 +1516,9 @@ Purpose: Resolve the configured transfer destination for supplied source storage
 ### `workflow.actions`
 `GET /api/v1/workflow/actions`; policy effect: `safe_read`.
 Purpose: List built-in workflow action definitions and their parameter contracts.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `workflow.create`
@@ -1483,8 +1538,9 @@ Purpose: Delete one configured workflow by persistent workflow ID.
 ### `workflow.event_types`
 `GET /api/v1/workflow/event_types`; policy effect: `safe_read`.
 Purpose: List event types that can trigger workflows.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: none
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
 ### `workflow.fork`
@@ -1504,8 +1560,9 @@ Purpose: Read one complete configured workflow definition.
 ### `workflow.list`
 `GET /api/v1/workflow/agent`; policy effect: `safe_read`.
 Purpose: List configured workflows and their execution state.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `state` (string(W,R,P,S,F,all); default `all`): Current site, subscription, marketplace, or transfer state filter.; `trigger_type` (string(timer,event,manual,all); default `all`): Workflow trigger filter: timer, event, manual, or all.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `state` (string(W,R,P,S,F,all); default `all`): Current site, subscription, marketplace, or transfer state filter.; `trigger_type` (string(timer,event,manual,all); default `all`): Workflow trigger filter: timer, event, manual, or all.
 - `body`: none
 
 ### `workflow.pause`
@@ -1518,8 +1575,9 @@ Purpose: Disable automatic execution of one configured workflow.
 ### `workflow.plugin.actions`
 `GET /api/v1/workflow/plugin/actions`; policy effect: `safe_read`.
 Purpose: List workflow actions contributed by installed plugins, optionally filtered by plugin ID.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total.
 - `path_params`: none
-- `query`: `plugin_id` (string): Exact installed or marketplace plugin ID.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `plugin_id` (string): Exact installed or marketplace plugin ID.
 - `body`: none
 
 ### `workflow.reset`
@@ -1553,6 +1611,7 @@ Purpose: Delete one shared-workflow publication by share ID.
 ### `workflow.shares`
 `GET /api/v1/workflow/shares`; policy effect: `safe_read`.
 Purpose: List shared workflows with name and pagination filters.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `count` (integer|null; default `30`): Maximum number of records to return on the requested page.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `page` (integer|null; default `1`): One-based result page number.
 - `body`: none

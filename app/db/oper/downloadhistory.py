@@ -311,6 +311,11 @@ class DownloadHistoryOper(DbOper):
             )
         )
 
+    async def async_count(self) -> int:
+        """异步统计全部下载历史记录。"""
+        count = await self._execute_async_query(DownloadHistory.async_count)
+        return int(count or 0)
+
     async def async_delete_history(self, historyid: int):
         """
         异步删除下载记录。

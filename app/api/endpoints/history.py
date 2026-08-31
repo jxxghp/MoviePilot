@@ -3,7 +3,7 @@ import time
 from collections.abc import Coroutine
 from typing import Any, Callable, List, Optional
 
-from fastapi import Depends
+from fastapi import Depends, Response
 
 from app.adapters.web.security.access import verify_token
 from app.agent.contracts import ReplyMode
@@ -27,7 +27,11 @@ from app.api.dependencies.history import (
     get_transfer_execution_repository,
     get_transfer_history_mutation_command,
 )
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    ResponseAPIRouter,
+)
 from app.application.agent import get_running_agent_manager
 from app.application.configuration import ApiRuntimeConfig
 from app.application.history import (
@@ -343,17 +347,24 @@ def _submit_legacy_batch_ai_redo(
     "/download",
     summary="查询下载历史记录",
     response_model=List[_SchemaDownloadHistory],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def download_history(
     page: Optional[int] = 1,
     count: Optional[int] = 30,
     query: HistoryQueryService = Depends(get_history_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
+    response: Response = None,
 ) -> Any:
     """
     按下载时间倒序查询下载历史记录
     """
-    return await query.list_download(page=page, count=count)
+    results = await query.list_download(page=page, count=count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count_download()
+        )
+    return results
 
 
 @router.delete(

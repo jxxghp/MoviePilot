@@ -6,6 +6,7 @@ import aiofiles
 from anyio import Path as AsyncPath
 from fastapi import Depends, Header, HTTPException, Query, Security
 from starlette import status
+from starlette.responses import Response as StarletteResponse
 from starlette.responses import StreamingResponse
 
 from app.adapters.web.security.access import (
@@ -24,7 +25,11 @@ from app.api.dependencies.auth import (
 )
 from app.api.dependencies.plugin import get_plugin_config_command
 from app.api.principal import ApiPrincipal
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    ResponseAPIRouter,
+)
 from app.application.commands import init_commands
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
 from app.application.plugin.catalog import get_plugin_catalog_query
@@ -170,13 +175,19 @@ def _verify_plugin_static_file_access(
     verify_resource_token(resource_token)
 
 
-@router.get("/", summary="所有插件", response_model=List[_SchemaPlugin])
+@router.get(
+    "/",
+    summary="所有插件",
+    response_model=List[_SchemaPlugin],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
+)
 async def all_plugins(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     state: Optional[str] = "all",
     force: bool = False,
     query: Optional[str] = None,
     max_results: Annotated[int, Query(ge=1, le=200)] = 50,
+    response: StarletteResponse = None,
 ) -> List[_SchemaPlugin]:
     """
     查询插件清单，并支持 Agent 使用关键字和有界结果完成精确选择。
@@ -187,6 +198,8 @@ async def all_plugins(
     )
     if query:
         plugins = [item["plugin"] for item in search_plugin_candidates(query, plugins)]
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(len(plugins))
     return plugins[:max_results]
 
 

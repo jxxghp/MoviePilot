@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
+from starlette.responses import Response
 
 from app.api.endpoints.subscribe import create_subscribe
 from app.application.outbox import ClaimedOutboxMessage
@@ -762,18 +763,25 @@ class TestSubscribeEndpoint:
                 count=2,
                 query=_subscription_query(repository, history_repository),
                 current_user=_EndpointUser(name="alice", is_superuser=False),
+                response=(regular_response := Response()),
             )
         )
         assert [history.id for history in regular_result] == [8]
+        assert regular_response.headers["X-Total-Count"] == "1"
         history_repository.async_list_by_type_and_username.assert_awaited_once_with(
             MediaType.MOVIE.value,
             "alice",
             1,
             2,
         )
+        history_repository.async_count_by_type_and_username.assert_awaited_once_with(
+            MediaType.MOVIE.value,
+            "alice",
+        )
         history_repository.async_list_by_type.assert_not_awaited()
 
         history_repository.async_list_by_type_and_username.reset_mock()
+        history_repository.async_count_by_type_and_username.reset_mock()
         history_repository.async_list_by_type.reset_mock()
         superuser_result = asyncio.run(
             subscribe_history(
@@ -782,13 +790,18 @@ class TestSubscribeEndpoint:
                 count=3,
                 query=_subscription_query(repository, history_repository),
                 current_user=_EndpointUser(name="admin", is_superuser=True),
+                response=(superuser_response := Response()),
             )
         )
         assert [history.id for history in superuser_result] == [8, 9, 10]
+        assert superuser_response.headers["X-Total-Count"] == "3"
         history_repository.async_list_by_type.assert_awaited_once_with(
             MediaType.MOVIE.value,
             1,
             3,
+        )
+        history_repository.async_count_by_type.assert_awaited_once_with(
+            MediaType.MOVIE.value
         )
         history_repository.async_list_by_type_and_username.assert_not_awaited()
 
@@ -1357,6 +1370,10 @@ class _SubscriptionHistoryRepositoryFake:
         self.async_get = AsyncMock(side_effect=self._async_get)
         self.async_list_by_type = AsyncMock(side_effect=self._async_list_by_type)
         self.async_list_by_type_and_username = AsyncMock(side_effect=self._async_list_by_type_and_username)
+        self.async_count_by_type = AsyncMock(side_effect=self._async_count_by_type)
+        self.async_count_by_type_and_username = AsyncMock(
+            side_effect=self._async_count_by_type_and_username
+        )
         self.stage_delete = AsyncMock(side_effect=self._stage_delete)
 
     async def _async_get(self, history_id: int) -> SubscriptionHistorySnapshot | None:
@@ -1385,6 +1402,21 @@ class _SubscriptionHistoryRepositoryFake:
         rows = [row for row in self.rows.values() if row.type == mtype and row.username == username]
         start = (page - 1) * count
         return rows[start : start + count]
+
+    async def _async_count_by_type(self, mtype: str) -> int:
+        """异步统计指定类型的历史快照。"""
+        return sum(row.type == mtype for row in self.rows.values())
+
+    async def _async_count_by_type_and_username(
+        self,
+        mtype: str,
+        username: str,
+    ) -> int:
+        """异步统计指定类型和 owner 的历史快照。"""
+        return sum(
+            row.type == mtype and row.username == username
+            for row in self.rows.values()
+        )
 
     async def _stage_delete(self, history_id: int) -> None:
         """暂存删除等价为从内存集合移除历史快照。"""

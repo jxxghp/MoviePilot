@@ -13,7 +13,10 @@ from app.api.dependencies.auth import (
     get_current_active_user,
 )
 from app.api.principal import ApiPrincipal
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_PAGINATION_OPENAPI_KEY,
+    ResponseAPIRouter,
+)
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.directory import DirectoryHelper
 from app.chain.media import MediaChain
@@ -109,7 +112,12 @@ def manage(request: _SchemaManageRequest, _: ApiPrincipal = Depends(get_current_
     )
 
 
-@router.post("/list", summary="所有目录和文件", response_model=List[_SchemaFileItem])
+@router.post(
+    "/list",
+    summary="所有目录和文件",
+    response_model=List[_SchemaFileItem],
+    openapi_extra={COLLECTION_PAGINATION_OPENAPI_KEY: True},
+)
 def list_files(
     fileitem: _SchemaFileItem,
     sort: Optional[str] = "updated_at",
@@ -150,6 +158,7 @@ def _list_files(
     "/agent/list",
     summary="查询 Agent 可用目录和文件",
     response_model=List[_SchemaFileItem],
+    openapi_extra={COLLECTION_PAGINATION_OPENAPI_KEY: True},
 )
 def list_agent_files(
     fileitem: _SchemaFileItem,

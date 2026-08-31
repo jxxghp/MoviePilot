@@ -35,6 +35,12 @@ class MoviePilotApiExecutor:
 
     _ALLOWED_SOURCES = frozenset({"tmdb", "douban", "bangumi", "anilist"})
     _ALLOWED_DOWNLOAD_ACTIONS = frozenset({"start", "stop"})
+    _COLLECTION_HEADERS = {
+        "x-result-count": "result_count",
+        "x-total-count": "total_count",
+        "x-page": "page",
+        "x-page-size": "count",
+    }
 
     def __init__(
         self,
@@ -110,6 +116,34 @@ class MoviePilotApiExecutor:
             headers["X-MoviePilot-Agent-Source"] = self._context.source
         return headers
 
+    @classmethod
+    def _attach_collection_metadata(
+        cls,
+        payload: Any,
+        headers: Mapping[str, Any],
+    ) -> Any:
+        """把 REST 数量响应头投影为 Agent 可直接读取的附加集合元数据。"""
+        if not isinstance(payload, Mapping):
+            return payload
+        normalized_headers = {
+            str(name).lower(): value
+            for name, value in headers.items()
+        }
+        collection = {}
+        for header_name, field_name in cls._COLLECTION_HEADERS.items():
+            raw_value = normalized_headers.get(header_name)
+            if raw_value is None:
+                continue
+            try:
+                collection[field_name] = int(raw_value)
+            except (TypeError, ValueError):
+                continue
+        if not collection:
+            return payload
+        result = dict(payload)
+        result["collection"] = collection
+        return result
+
     async def execute(
         self,
         operation_id: str,
@@ -150,6 +184,7 @@ class MoviePilotApiExecutor:
             try:
                 payload = response.json()
                 status_code = response.status_code
+                response_headers = dict(response.headers)
             finally:
                 await response.aclose()
         except ApiExecutionError:
@@ -162,6 +197,7 @@ class MoviePilotApiExecutor:
                 {"success": False, "error": "api_error", "status_code": status_code, "data": payload},
                 ensure_ascii=False,
             )
+        payload = self._attach_collection_metadata(payload, response_headers)
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 

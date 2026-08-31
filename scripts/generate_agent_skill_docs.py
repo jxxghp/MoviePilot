@@ -265,6 +265,8 @@ def _render_api_docs() -> str:
         "",
         "The operations, HTTP methods, routes, and path/query/body fields below exactly match external MCP `tools/list`.",
         "A field name ending in `*` is required. Omit an empty bucket or send `{}`. Referenced body models are expanded below.",
+        "For collection operations, `data` keeps its existing list or page-object shape. The gateway may add a sibling `collection` object with `result_count`, optional exact `total_count`, `page`, and `count`; it never replaces the list body with a new wrapper.",
+        "If an endpoint or external source does not expose a total, `collection.total_count` is omitted instead of being guessed from the current page.",
         "",
     ]
     for operation_id in sorted(API_OPERATION_ROUTES):
@@ -283,6 +285,33 @@ def _render_api_docs() -> str:
                 f"Purpose: {description.split(' Method:', 1)[0].strip()}",
             ]
         )
+        collection_contract = branch.get("x-moviepilot-collection")
+        if isinstance(collection_contract, Mapping):
+            if collection_contract.get("body_shape") == "page_object":
+                lines.append(
+                    "- `response`: structured page object; items stay in "
+                    f"`{collection_contract['items_field']}` and the exact total stays in "
+                    f"`{collection_contract['total_count_field']}`."
+                )
+            elif collection_contract.get("total_count_field"):
+                if collection_contract.get("default_pagination") == "unpaginated":
+                    lines.append(
+                        "- `response`: `data` remains a list; omitting both `page` and `count` "
+                        "keeps the complete legacy result. `collection.result_count` reports the "
+                        "returned items and `collection.total_count` reports the exact pre-pagination total."
+                    )
+                else:
+                    lines.append(
+                        "- `response`: `data` remains a list and the endpoint's documented pagination "
+                        "or limit defaults remain in effect. `collection.result_count` reports the "
+                        "returned items and `collection.total_count` reports the exact total."
+                    )
+            else:
+                lines.append(
+                    "- `response`: `data` remains a list and `collection.result_count` reports "
+                    "the returned items. `collection.total_count` is omitted because this endpoint "
+                    "or its upstream source does not expose a total."
+                )
         for bucket in ("path_params", "query", "body"):
             bucket_schema = branch["properties"].get(bucket)
             if not isinstance(bucket_schema, Mapping):

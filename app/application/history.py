@@ -612,6 +612,10 @@ class AsyncDownloadHistoryQueryRepository(Protocol):
         """按下载时间倒序分页读取历史记录。"""
         ...
 
+    async def async_count(self) -> int:
+        """返回下载历史记录总数。"""
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class ManualTransferHistory:
@@ -699,6 +703,10 @@ class HistoryQueryService:
         """分页读取下载历史并转换为稳定的接口 DTO。"""
         records = await self._download_repository.async_list_by_page(page, count)
         return [DownloadHistory.model_validate(record) for record in records]
+
+    async def count_download(self) -> int:
+        """返回下载历史精确总数，供分页 API 通过附加元数据报告。"""
+        return await self._download_repository.async_count()
 
     async def list_transfer(
         self,

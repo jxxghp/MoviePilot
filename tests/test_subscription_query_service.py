@@ -1,11 +1,39 @@
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from app.application.subscription.contract import SubscriptionIdentity
 from app.application.subscription.query import SubscriptionQueryService
 from app.chain.subscribe import SubscribeChain
 from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
+
+
+@pytest.mark.asyncio
+async def test_subscription_history_count_preserves_owner_scope() -> None:
+    """订阅历史总数必须复用列表的媒体类型和 owner 范围。"""
+    repository = Mock()
+    history_repository = AsyncMock()
+    history_repository.async_count_by_type.return_value = 8
+    history_repository.async_count_by_type_and_username.return_value = 3
+    service = SubscriptionQueryService(
+        repository,
+        history_repository=history_repository,
+    )
+
+    assert await service.count_history(MediaType.MOVIE.value) == 8
+    assert await service.count_history(
+        MediaType.MOVIE.value,
+        username="alice",
+    ) == 3
+    history_repository.async_count_by_type.assert_awaited_once_with(
+        MediaType.MOVIE.value
+    )
+    history_repository.async_count_by_type_and_username.assert_awaited_once_with(
+        MediaType.MOVIE.value,
+        "alice",
+    )
 
 
 def test_subscription_query_service_builds_complete_exists_identity() -> None:

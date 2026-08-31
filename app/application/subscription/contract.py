@@ -444,6 +444,18 @@ class SubscriptionHistoryQueryPort(Protocol):
         """异步按类型和用户分页读取订阅历史快照。"""
         ...
 
+    async def async_count_by_type(self, mtype: str) -> int:
+        """异步统计指定媒体类型的订阅历史。"""
+        ...
+
+    async def async_count_by_type_and_username(
+        self,
+        mtype: str,
+        username: str,
+    ) -> int:
+        """异步统计指定媒体类型和用户的订阅历史。"""
+        ...
+
 
 class SubscriptionWritePort(Protocol):
     """独立短事务订阅新增端口。"""

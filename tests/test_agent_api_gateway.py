@@ -119,6 +119,53 @@ def test_mcp_tools_list_preserves_all_moviepilot_api_operation_branches() -> Non
     assert operation_ids == set(API_OPERATION_ROUTES)
 
 
+def test_mcp_collection_contract_distinguishes_exact_and_unavailable_totals() -> None:
+    """MCP 必须说明缺省全量、精确总数和外部无总数三种集合语义。"""
+    schema = MoviePilotApiTool(session_id="session", user_id="api_user").get_mcp_input_schema()
+    branches = {
+        item["properties"]["operation_id"]["const"]: item
+        for item in schema["oneOf"]
+    }
+
+    subscription = branches["subscription.list"]
+    subscription_query = subscription["properties"]["query"]["properties"]
+    assert "default" not in subscription_query["page"]
+    assert "default" not in subscription_query["count"]
+    assert subscription["x-moviepilot-collection"] == {
+        "body_shape": "list",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count",
+        "default_pagination": "unpaginated",
+    }
+
+    storage = branches["storage.list"]
+    assert {"page", "count"}.issubset(storage["properties"]["query"]["properties"])
+    assert storage["x-moviepilot-collection"]["total_count_field"] == (
+        "collection.total_count"
+    )
+
+    for operation_id in (
+        "subscription.history",
+        "download.history.list",
+        "plugin.installed",
+        "plugin.market",
+    ):
+        local_page = branches[operation_id]["x-moviepilot-collection"]
+        assert local_page["total_count_field"] == "collection.total_count"
+        assert local_page["default_pagination"] == "endpoint-defined"
+        assert "defaults remain in effect" in branches[operation_id]["description"]
+
+    media_search = branches["media.search"]["x-moviepilot-collection"]
+    assert media_search["result_count_field"] == "collection.result_count"
+    assert media_search["total_count_field"] is None
+    assert "does not expose a total" in branches["media.search"]["description"]
+
+    transfer = branches["transfer.history"]["x-moviepilot-collection"]
+    assert transfer["body_shape"] == "page_object"
+    assert transfer["items_field"] == "data.list"
+    assert transfer["total_count_field"] == "data.total"
+
+
 def test_filter_read_parameters_are_query_fields_not_get_request_bodies() -> None:
     """规则读取筛选列表必须作为 query 参数公开，避免 Agent 构造无语义 GET body。"""
     schema = MoviePilotApiTool(session_id="session", user_id="api_user").get_mcp_input_schema()

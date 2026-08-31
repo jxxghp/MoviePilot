@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Float, Index, Integer, String, or_, select
+from sqlalchemy import JSON, Float, Index, Integer, String, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -152,6 +152,32 @@ class SubscribeHistory(Base):
             ).offset((page - 1) * count).limit(count)
         )
         return list(result.scalars().all())
+
+    @classmethod
+    async def async_count_by_type(cls, db: AsyncSession, mtype: str) -> int:
+        """统计指定媒体类型的订阅历史。"""
+        result = await db.execute(
+            select(func.count(cls.id)).where(cls.type == mtype)
+        )
+        return int(result.scalar() or 0)
+
+    @classmethod
+    async def async_count_by_type_and_username(
+        cls,
+        db: AsyncSession,
+        mtype: str,
+        username: str,
+    ) -> int:
+        """统计指定媒体类型和 owner 的订阅历史。"""
+        if not username:
+            return 0
+        result = await db.execute(
+            select(func.count(cls.id)).where(
+                cls.type == mtype,
+                cls.username == username,
+            )
+        )
+        return int(result.scalar() or 0)
 
     @classmethod
     def _identity_condition(

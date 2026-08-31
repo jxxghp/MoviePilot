@@ -219,6 +219,11 @@ class TransactionalDownloadHistoryRepository:
             )
             return [_project_history(record) for record in records]
 
+    async def async_count(self) -> int:
+        """在独立异步 Session 内统计下载历史总数。"""
+        async with self._async_session() as session:
+            return await DownloadHistoryOper(session).async_count()
+
     def add(
         self,
         history: DownloadHistoryWrite,

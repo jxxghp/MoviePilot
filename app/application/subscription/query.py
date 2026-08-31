@@ -121,6 +121,22 @@ class SubscriptionQueryService:
             result.append(item)
         return result
 
+    async def count_history(
+        self,
+        mtype: str,
+        *,
+        username: Optional[str] = None,
+    ) -> int:
+        """按与历史列表相同的 owner 范围返回精确总数。"""
+        if self._history_repository is None:
+            raise RuntimeError("订阅历史查询端口未注册")
+        if username:
+            return await self._history_repository.async_count_by_type_and_username(
+                mtype,
+                username,
+            )
+        return await self._history_repository.async_count_by_type(mtype)
+
     @staticmethod
     def _matches_music_type(
         record: SubscriptionSnapshot,

@@ -4916,7 +4916,7 @@
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "Select the oneOf branch matching operation_id and send exactly its documented fields.",
+  "description": "Select the oneOf branch matching operation_id and send exactly its documented fields. Collection branches also describe their additive output metadata in x-moviepilot-collection.",
   "oneOf": [
     {
       "additionalProperties": false,
@@ -5206,35 +5206,115 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the current host network receive and transmit counters. Method: GET. Path: /api/v1/dashboard/network. Effect: safe_read.",
+      "description": "Read the current host network receive and transmit counters. Method: GET. Path: /api/v1/dashboard/network. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "dashboard.network",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for dashboard.network. Read the current host network receive and transmit counters. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "dashboard.network",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "List host processes visible to the MoviePilot runtime. Method: GET. Path: /api/v1/dashboard/processes. Effect: safe_read.",
+      "description": "List host processes visible to the MoviePilot runtime. Method: GET. Path: /api/v1/dashboard/processes. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "dashboard.processes",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for dashboard.processes. List host processes visible to the MoviePilot runtime. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "dashboard.processes",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -5270,7 +5350,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read aggregate file-transfer counts grouped by time period. Method: GET. Path: /api/v1/dashboard/transfer. Effect: safe_read.",
+      "description": "Read aggregate file-transfer counts grouped by time period. Method: GET. Path: /api/v1/dashboard/transfer. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "dashboard.transfer.statistics",
@@ -5281,6 +5361,20 @@
           "additionalProperties": false,
           "description": "Filters and control values for dashboard.transfer.statistics. Read aggregate file-transfer counts grouped by time period. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "days": {
               "anyOf": [
                 {
@@ -5293,6 +5387,19 @@
               "default": 7,
               "description": "Recommendation time window in days.",
               "title": "Days"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
             }
           },
           "type": "object"
@@ -5302,7 +5409,13 @@
         "operation_id"
       ],
       "title": "dashboard.transfer.statistics",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -5354,19 +5467,59 @@
     },
     {
       "additionalProperties": false,
-      "description": "List managed database backup artifacts without exposing host paths. Method: GET. Path: /api/v1/system/database/backups. Effect: safe_read.",
+      "description": "List managed database backup artifacts without exposing host paths. Method: GET. Path: /api/v1/system/database/backups. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "database.backups.list",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for database.backups.list. List managed database backup artifacts without exposing host paths. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "database.backups.list",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -5423,19 +5576,59 @@
     },
     {
       "additionalProperties": false,
-      "description": "List enabled downloader instance names and provider types without credentials. Method: GET. Path: /api/v1/download/clients. Effect: safe_read.",
+      "description": "List enabled downloader instance names and provider types without credentials. Method: GET. Path: /api/v1/download/clients. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "download.clients",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for download.clients. List enabled downloader instance names and provider types without credentials. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "download.clients",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -5460,7 +5653,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Page MoviePilot download-history records in reverse chronological order. Method: GET. Path: /api/v1/history/download. Effect: safe_read.",
+      "description": "Page MoviePilot download-history records in reverse chronological order. Method: GET. Path: /api/v1/history/download. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "download.history.list",
@@ -5505,27 +5698,73 @@
         "operation_id"
       ],
       "title": "download.history.list",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "List configured downloader save-path URIs that may be passed to download.add. Method: GET. Path: /api/v1/download/paths. Effect: safe_read.",
+      "description": "List configured downloader save-path URIs that may be passed to download.add. Method: GET. Path: /api/v1/download/paths. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "download.paths",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for download.paths. List configured downloader save-path URIs that may be passed to download.add. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "download.paths",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "List currently downloading MoviePilot tasks with their canonical media context. Method: GET. Path: /api/v1/download/. Effect: safe_read.",
+      "description": "List currently downloading MoviePilot tasks with their canonical media context. Method: GET. Path: /api/v1/download/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "download.tasks.active",
@@ -5536,6 +5775,20 @@
           "additionalProperties": false,
           "description": "Filters and control values for download.tasks.active. List currently downloading MoviePilot tasks with their canonical media context. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "name": {
               "anyOf": [
                 {
@@ -5547,6 +5800,19 @@
               ],
               "description": "Human-readable name of the site, storage item, subscription, or rule group.",
               "title": "Name"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
             }
           },
           "type": "object"
@@ -5556,7 +5822,13 @@
         "operation_id"
       ],
       "title": "download.tasks.active",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -6011,7 +6283,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List recently added items from one configured media-server instance for the current user. Method: GET. Path: /api/v1/mediaserver/latest. Effect: safe_read.",
+      "description": "List recently added items from one configured media-server instance for the current user. Method: GET. Path: /api/v1/mediaserver/latest. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "library.latest",
@@ -6052,7 +6324,13 @@
         "query"
       ],
       "title": "library.latest",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
@@ -6162,7 +6440,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List seasons defined by one exact TMDB episode-group identity. Method: GET. Path: /api/v1/media/group/seasons/{episode_group}. Effect: safe_read.",
+      "description": "List seasons defined by one exact TMDB episode-group identity. Method: GET. Path: /api/v1/media/group/seasons/{episode_group}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "media.episode_group.seasons",
@@ -6183,6 +6461,40 @@
             "episode_group"
           ],
           "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for media.episode_group.seasons. List seasons defined by one exact TMDB episode-group identity. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
@@ -6190,11 +6502,17 @@
         "path_params"
       ],
       "title": "media.episode_group.seasons",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "List alternate TMDB episode groups available for one TV media identity. Method: GET. Path: /api/v1/media/groups/{tmdbid}. Effect: safe_read.",
+      "description": "List alternate TMDB episode groups available for one TV media identity. Method: GET. Path: /api/v1/media/groups/{tmdbid}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "media.episode_groups",
@@ -6215,6 +6533,40 @@
             "tmdbid"
           ],
           "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for media.episode_groups. List alternate TMDB episode groups available for one TV media identity. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
@@ -6222,11 +6574,17 @@
         "path_params"
       ],
       "title": "media.episode_groups",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "Read TMDB episode release information for one season. Method: GET. Path: /api/v1/tmdb/{tmdbid}/{season}. Effect: safe_read.",
+      "description": "Read TMDB episode release information for one season. Method: GET. Path: /api/v1/tmdb/{tmdbid}/{season}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "media.episode_schedule",
@@ -6258,6 +6616,20 @@
           "additionalProperties": false,
           "description": "Filters and control values for media.episode_schedule. Read TMDB episode release information for one season. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "episode_group": {
               "anyOf": [
                 {
@@ -6269,6 +6641,19 @@
               ],
               "description": "TMDB episode-group identifier used for alternate episode ordering.",
               "title": "Episode Group"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
             }
           },
           "type": "object"
@@ -6279,11 +6664,17 @@
         "path_params"
       ],
       "title": "media.episode_schedule",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "Read one person's credits from the selected metadata source. Method: GET. Path: /api/v1/{source}/person/credits/{person_id}. Effect: safe_read.",
+      "description": "Read one person's credits from the selected metadata source. Method: GET. Path: /api/v1/{source}/person/credits/{person_id}. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "media.person.credits",
@@ -6341,11 +6732,17 @@
         "path_params"
       ],
       "title": "media.person.credits",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
-      "description": "Search people across selected metadata sources. Method: GET. Path: /api/v1/media/search. Effect: safe_read.",
+      "description": "Search people across selected metadata sources. Method: GET. Path: /api/v1/media/search. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "media.person.search",
@@ -6400,7 +6797,13 @@
         "query"
       ],
       "title": "media.person.search",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
@@ -6615,7 +7018,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Search canonical media across selected metadata sources. Method: GET. Path: /api/v1/media/search. Effect: safe_read.",
+      "description": "Search canonical media across selected metadata sources. Method: GET. Path: /api/v1/media/search. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "media.search",
@@ -6677,11 +7080,17 @@
         "query"
       ],
       "title": "media.search",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
-      "description": "List seasons for one exact media identity or a title-and-year fallback. Method: GET. Path: /api/v1/media/seasons. Effect: safe_read.",
+      "description": "List seasons for one exact media identity or a title-and-year fallback. Method: GET. Path: /api/v1/media/seasons. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "media.seasons",
@@ -6692,6 +7101,20 @@
           "additionalProperties": false,
           "description": "Filters and control values for media.seasons. List seasons for one exact media identity or a title-and-year fallback. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "media_id": {
               "anyOf": [
                 {
@@ -6715,6 +7138,19 @@
               ],
               "description": "Metadata source identifier. Preserve the exact value returned with media_id.",
               "title": "Media Source"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
             },
             "season": {
               "description": "Season number used by the media, search, subscription, or transfer operation.",
@@ -6746,23 +7182,69 @@
         "operation_id"
       ],
       "title": "media.seasons",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "List metadata sources currently registered for MoviePilot media operations. Method: GET. Path: /api/v1/media/source. Effect: safe_read.",
+      "description": "List metadata sources currently registered for MoviePilot media operations. Method: GET. Path: /api/v1/media/source. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "media.sources",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for media.sources. List metadata sources currently registered for MoviePilot media operations. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "media.sources",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -6809,7 +7291,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Browse albums related to one source-native album identity. Method: GET. Path: /api/v1/music/album/{album_id}/related. Effect: safe_read.",
+      "description": "Browse albums related to one source-native album identity. Method: GET. Path: /api/v1/music/album/{album_id}/related. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "music.album.related",
@@ -6856,11 +7338,17 @@
         "path_params"
       ],
       "title": "music.album.related",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
-      "description": "Browse one artist's albums, singles, EPs, or another exact release-group type. Method: GET. Path: /api/v1/music/artist/{artist_id}/albums. Effect: safe_read.",
+      "description": "Browse one artist's albums, singles, EPs, or another exact release-group type. Method: GET. Path: /api/v1/music/artist/{artist_id}/albums. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "music.artist.albums",
@@ -6927,7 +7415,13 @@
         "path_params"
       ],
       "title": "music.artist.albums",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
@@ -6974,7 +7468,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Browse artists related to one source-native artist identity. Method: GET. Path: /api/v1/music/artist/{artist_id}/related. Effect: safe_read.",
+      "description": "Browse artists related to one source-native artist identity. Method: GET. Path: /api/v1/music/artist/{artist_id}/related. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "music.artist.related",
@@ -7021,7 +7515,13 @@
         "path_params"
       ],
       "title": "music.artist.related",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
@@ -7089,7 +7589,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Browse MusicBrainz charts or fresh releases, or Douban Music tag categories. Method: GET. Path: /api/v1/music/explore. Effect: safe_read.",
+      "description": "Browse MusicBrainz charts or fresh releases, or Douban Music tag categories. Method: GET. Path: /api/v1/music/explore. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "music.explore",
@@ -7208,7 +7708,13 @@
         "operation_id"
       ],
       "title": "music.explore",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
@@ -7704,7 +8210,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List installed plugins and their runtime status. Method: GET. Path: /api/v1/plugin/. Effect: safe_read.",
+      "description": "List installed plugins and their runtime status. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "plugin.installed",
@@ -7758,11 +8264,17 @@
         "query"
       ],
       "title": "plugin.installed",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "List plugins available from configured marketplaces. Method: GET. Path: /api/v1/plugin/. Effect: safe_read.",
+      "description": "List plugins available from configured marketplaces. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "plugin.market",
@@ -7816,7 +8328,13 @@
         "query"
       ],
       "title": "plugin.market",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -8244,7 +8762,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read personalized media or music recommendations. Method: GET. Path: /api/v1/recommend/agent. Effect: safe_read.",
+      "description": "Read personalized media or music recommendations. Method: GET. Path: /api/v1/recommend/agent. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "recommendation.list",
@@ -8341,23 +8859,69 @@
         "operation_id"
       ],
       "title": "recommendation.list",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
-      "description": "List registered scheduler jobs and their current state. Method: GET. Path: /api/v1/dashboard/schedule. Effect: safe_read.",
+      "description": "List registered scheduler jobs and their current state. Method: GET. Path: /api/v1/dashboard/schedule. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "scheduler.list",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for scheduler.list. List registered scheduler jobs and their current state. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "scheduler.list",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -8461,7 +9025,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Search torrent sites directly from a free-form title and optional media filters. Method: GET. Path: /api/v1/search/title. Effect: external_side_effect.",
+      "description": "Search torrent sites directly from a free-form title and optional media filters. Method: GET. Path: /api/v1/search/title. Effect: external_side_effect. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "search.title",
@@ -8529,11 +9093,17 @@
         "operation_id"
       ],
       "title": "search.title",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
-      "description": "Search torrent sites for one canonical media identity. Method: GET. Path: /api/v1/search/media/{media_id}. Effect: safe_read.",
+      "description": "Search torrent sites for one canonical media identity. Method: GET. Path: /api/v1/search/media/{media_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "search.torrents",
@@ -8572,6 +9142,20 @@
               "description": "Optional region filter applied by the torrent search workflow.",
               "title": "Area"
             },
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "media_source": {
               "$ref": "#/$defs/MediaSource",
               "description": "Metadata source identifier. Preserve the exact value returned with media_id."
@@ -8599,6 +9183,19 @@
               ],
               "description": "Music identity level: recording, album, or artist where supported.",
               "title": "Music Type"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
             },
             "season": {
               "anyOf": [
@@ -8637,7 +9234,13 @@
         "query"
       ],
       "title": "search.torrents",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -8699,7 +9302,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List torrent categories supported by one configured site. Method: GET. Path: /api/v1/site/category/{site_id}. Effect: safe_read.",
+      "description": "List torrent categories supported by one configured site. Method: GET. Path: /api/v1/site/category/{site_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "site.category",
@@ -8720,6 +9323,40 @@
             "site_id"
           ],
           "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for site.category. List torrent categories supported by one configured site. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
@@ -8727,7 +9364,13 @@
         "path_params"
       ],
       "title": "site.category",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -8816,7 +9459,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List configured sites with status/name filters; authentication fields are returned only to a superuser. Method: GET. Path: /api/v1/site/agent. Effect: safe_read.",
+      "description": "List configured sites with status/name filters; authentication fields are returned only to a superuser. Method: GET. Path: /api/v1/site/agent. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "site.list",
@@ -8827,6 +9470,20 @@
           "additionalProperties": false,
           "description": "Filters and control values for site.list. List configured sites with status/name filters; authentication fields are returned only to a superuser. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "name": {
               "anyOf": [
                 {
@@ -8838,6 +9495,19 @@
               ],
               "description": "Human-readable name of the site, storage item, subscription, or rule group.",
               "title": "Name"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
             },
             "status": {
               "default": "all",
@@ -8858,7 +9528,13 @@
         "operation_id"
       ],
       "title": "site.list",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -8919,7 +9595,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Browse torrent resources from one configured site with category and keyword filters. Method: GET. Path: /api/v1/site/resource/{site_id}. Effect: external_side_effect.",
+      "description": "Browse torrent resources from one configured site with category and keyword filters. Method: GET. Path: /api/v1/site/resource/{site_id}. Effect: external_side_effect. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "site.resource",
@@ -9003,27 +9679,73 @@
         "path_params"
       ],
       "title": "site.resource",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
-      "description": "List configured sites selected for RSS subscription processing. Method: GET. Path: /api/v1/site/rss. Effect: safe_read.",
+      "description": "List configured sites selected for RSS subscription processing. Method: GET. Path: /api/v1/site/rss. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "site.rss",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for site.rss. List configured sites selected for RSS subscription processing. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "site.rss",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "List active configured sites supporting one exact media type. Method: GET. Path: /api/v1/site/media/{media_type}. Effect: safe_read.",
+      "description": "List active configured sites supporting one exact media type. Method: GET. Path: /api/v1/site/media/{media_type}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "site.searchable",
@@ -9044,6 +9766,40 @@
             "media_type"
           ],
           "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for site.searchable. List active configured sites supporting one exact media type. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
@@ -9051,7 +9807,13 @@
         "path_params"
       ],
       "title": "site.searchable",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -9087,19 +9849,59 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the latest account and traffic statistics for all configured sites. Method: GET. Path: /api/v1/site/statistic. Effect: safe_read.",
+      "description": "Read the latest account and traffic statistics for all configured sites. Method: GET. Path: /api/v1/site/statistic. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "site.statistics",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for site.statistics. Read the latest account and traffic statistics for all configured sites. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "site.statistics",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -9172,7 +9974,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the latest account statistics collected from one site. Method: GET. Path: /api/v1/site/userdata/{site_id}. Effect: safe_read.",
+      "description": "Read the latest account statistics collected from one site. Method: GET. Path: /api/v1/site/userdata/{site_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "site.userdata",
@@ -9198,6 +10000,33 @@
           "additionalProperties": false,
           "description": "Filters and control values for site.userdata. Read the latest account statistics collected from one site. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            },
             "workdate": {
               "anyOf": [
                 {
@@ -9219,23 +10048,69 @@
         "path_params"
       ],
       "title": "site.userdata",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "Read the latest collected account statistics for every configured site. Method: GET. Path: /api/v1/site/userdata/latest. Effect: safe_read.",
+      "description": "Read the latest collected account statistics for every configured site. Method: GET. Path: /api/v1/site/userdata/latest. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "site.userdata.latest",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for site.userdata.latest. Read the latest collected account statistics for every configured site. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "site.userdata.latest",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -9271,19 +10146,59 @@
     },
     {
       "additionalProperties": false,
-      "description": "List slash commands that the Agent may dispatch. Method: GET. Path: /api/v1/message/agent/commands. Effect: safe_read.",
+      "description": "List slash commands that the Agent may dispatch. Method: GET. Path: /api/v1/message/agent/commands. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "slash.list",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for slash.list. List slash commands that the Agent may dispatch. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "slash.list",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -9329,7 +10244,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List files or directories from one configured storage location. Method: POST. Path: /api/v1/storage/agent/list. Effect: safe_read.",
+      "description": "List files or directories from one configured storage location. Method: POST. Path: /api/v1/storage/agent/list. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "body": {
           "$ref": "#/$defs/FileItem-Input",
@@ -9344,6 +10259,20 @@
           "additionalProperties": false,
           "description": "Filters and control values for storage.list. List files or directories from one configured storage location. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "keyword": {
               "anyOf": [
                 {
@@ -9355,6 +10284,19 @@
               ],
               "description": "Case-insensitive substring used to discover settings or filter storage entries.",
               "title": "Keyword"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
             },
             "sort": {
               "anyOf": [
@@ -9378,7 +10320,13 @@
         "body"
       ],
       "title": "storage.list",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -9490,7 +10438,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read configured directory or storage settings. Method: GET. Path: /api/v1/storage/directories. Effect: safe_read.",
+      "description": "Read configured directory or storage settings. Method: GET. Path: /api/v1/storage/directories. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "storage.settings",
@@ -9501,6 +10449,20 @@
           "additionalProperties": false,
           "description": "Filters and control values for storage.settings. Read configured directory or storage settings. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "directory_type": {
               "default": "all",
               "description": "Directory configuration subtype to return.",
@@ -9519,6 +10481,19 @@
               "description": "Human-readable name of the site, storage item, subscription, or rule group.",
               "title": "Name"
             },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            },
             "storage_type": {
               "default": "all",
               "description": "Configured storage provider type to return.",
@@ -9533,7 +10508,13 @@
         "operation_id"
       ],
       "title": "storage.settings",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -9846,19 +10827,59 @@
     },
     {
       "additionalProperties": false,
-      "description": "List subscription-sharing user IDs followed by the current user. Method: GET. Path: /api/v1/subscribe/follow. Effect: safe_read.",
+      "description": "List subscription-sharing user IDs followed by the current user. Method: GET. Path: /api/v1/subscribe/follow. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "subscription.follow.list",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for subscription.follow.list. List subscription-sharing user IDs followed by the current user. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "subscription.follow.list",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -9915,7 +10936,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List completed or archived subscription records. Method: GET. Path: /api/v1/subscribe/history/{mtype}. Effect: safe_read.",
+      "description": "List completed or archived subscription records. Method: GET. Path: /api/v1/subscribe/history/{mtype}. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "subscription.history",
@@ -9976,7 +10997,13 @@
         "path_params"
       ],
       "title": "subscription.history",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -10012,19 +11039,59 @@
     },
     {
       "additionalProperties": false,
-      "description": "List active subscriptions. Method: GET. Path: /api/v1/subscribe/. Effect: safe_read.",
+      "description": "List active subscriptions. Method: GET. Path: /api/v1/subscribe/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "subscription.list",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for subscription.list. List active subscriptions. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "subscription.list",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -10044,7 +11111,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List globally popular subscriptions with filters and pagination. Method: GET. Path: /api/v1/subscribe/popular. Effect: safe_read.",
+      "description": "List globally popular subscriptions with filters and pagination. Method: GET. Path: /api/v1/subscribe/popular. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "subscription.popular",
@@ -10158,7 +11225,13 @@
         "query"
       ],
       "title": "subscription.popular",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
@@ -10311,23 +11384,63 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read aggregate contribution and reuse counts for subscription sharers. Method: GET. Path: /api/v1/subscribe/share/statistics. Effect: safe_read.",
+      "description": "Read aggregate contribution and reuse counts for subscription sharers. Method: GET. Path: /api/v1/subscribe/share/statistics. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "subscription.share.statistics",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for subscription.share.statistics. Read aggregate contribution and reuse counts for subscription sharers. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "subscription.share.statistics",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "List shared subscriptions with filters and pagination. Method: GET. Path: /api/v1/subscribe/shares. Effect: safe_read.",
+      "description": "List shared subscriptions with filters and pagination. Method: GET. Path: /api/v1/subscribe/shares. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "subscription.shares",
@@ -10432,7 +11545,13 @@
         "operation_id"
       ],
       "title": "subscription.shares",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
@@ -10505,7 +11624,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List public subscriptions owned by one accessible MoviePilot username. Method: GET. Path: /api/v1/subscribe/user/{username}. Effect: safe_read.",
+      "description": "List public subscriptions owned by one accessible MoviePilot username. Method: GET. Path: /api/v1/subscribe/user/{username}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "subscription.user.list",
@@ -10526,6 +11645,40 @@
             "username"
           ],
           "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for subscription.user.list. List public subscriptions owned by one accessible MoviePilot username. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
@@ -10533,11 +11686,17 @@
         "path_params"
       ],
       "title": "subscription.user.list",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "Search subtitle providers for one canonical media identity and optional season or episode. Method: GET. Path: /api/v1/search/subtitle/media/{media_id}. Effect: external_side_effect.",
+      "description": "Search subtitle providers for one canonical media identity and optional season or episode. Method: GET. Path: /api/v1/search/subtitle/media/{media_id}. Effect: external_side_effect. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "subtitle.search.media",
@@ -10563,6 +11722,20 @@
           "additionalProperties": false,
           "description": "Filters and control values for subtitle.search.media. Search subtitle providers for one canonical media identity and optional season or episode. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "episode": {
               "anyOf": [
                 {
@@ -10590,6 +11763,19 @@
               ],
               "description": "MoviePilot media type or subscription-history category required by the operation.",
               "title": "Mtype"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
             },
             "season": {
               "anyOf": [
@@ -10628,11 +11814,17 @@
         "query"
       ],
       "title": "subtitle.search.media",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
-      "description": "Search subtitle providers from a free-form title and optional media filters. Method: GET. Path: /api/v1/search/subtitle/title. Effect: external_side_effect.",
+      "description": "Search subtitle providers from a free-form title and optional media filters. Method: GET. Path: /api/v1/search/subtitle/title. Effect: external_side_effect. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "subtitle.search.title",
@@ -10688,7 +11880,13 @@
         "operation_id"
       ],
       "title": "subtitle.search.title",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,
@@ -10740,19 +11938,59 @@
     },
     {
       "additionalProperties": false,
-      "description": "List approved built-in network-test targets without exposing their request URLs. Method: GET. Path: /api/v1/system/nettest/targets. Effect: safe_read.",
+      "description": "List approved built-in network-test targets without exposing their request URLs. Method: GET. Path: /api/v1/system/nettest/targets. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "system.network.targets",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for system.network.targets. List approved built-in network-test targets without exposing their request URLs. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "system.network.targets",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -10933,19 +12171,59 @@
     },
     {
       "additionalProperties": false,
-      "description": "List available MoviePilot GitHub releases. Method: GET. Path: /api/v1/system/versions. Effect: safe_read.",
+      "description": "List available MoviePilot GitHub releases. Method: GET. Path: /api/v1/system/versions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "system.versions",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for system.versions. List available MoviePilot GitHub releases. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "system.versions",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -11182,7 +12460,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List file-transfer history with filters and pagination. Method: GET. Path: /api/v1/history/transfer. Effect: safe_read.",
+      "description": "List file-transfer history with filters and pagination. Method: GET. Path: /api/v1/history/transfer. Effect: safe_read. Collection response: items stay in data.list and the exact total stays in data.total.",
       "properties": {
         "operation_id": {
           "const": "transfer.history",
@@ -11251,7 +12529,13 @@
         "operation_id"
       ],
       "title": "transfer.history",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "page_object",
+        "default_pagination": "endpoint-defined",
+        "items_field": "data.list",
+        "total_count_field": "data.total"
+      }
     },
     {
       "additionalProperties": false,
@@ -11468,7 +12752,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Page durable transfer tasks awaiting manual review or retry recovery. Method: GET. Path: /api/v1/transfer/tasks/manual-reviews. Effect: safe_read.",
+      "description": "Page durable transfer tasks awaiting manual review or retry recovery. Method: GET. Path: /api/v1/transfer/tasks/manual-reviews. Effect: safe_read. Collection response: items stay in data.items and the exact total stays in data.total.",
       "properties": {
         "operation_id": {
           "const": "transfer.manual_reviews",
@@ -11512,7 +12796,13 @@
         "operation_id"
       ],
       "title": "transfer.manual_reviews",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "page_object",
+        "default_pagination": "endpoint-defined",
+        "items_field": "data.items",
+        "total_count_field": "data.total"
+      }
     },
     {
       "additionalProperties": false,
@@ -11554,19 +12844,59 @@
     },
     {
       "additionalProperties": false,
-      "description": "List items waiting in the file-transfer queue. Method: GET. Path: /api/v1/transfer/queue. Effect: safe_read.",
+      "description": "List items waiting in the file-transfer queue. Method: GET. Path: /api/v1/transfer/queue. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "transfer.queue",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for transfer.queue. List items waiting in the file-transfer queue. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "transfer.queue",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -11612,19 +12942,59 @@
     },
     {
       "additionalProperties": false,
-      "description": "List built-in workflow action definitions and their parameter contracts. Method: GET. Path: /api/v1/workflow/actions. Effect: safe_read.",
+      "description": "List built-in workflow action definitions and their parameter contracts. Method: GET. Path: /api/v1/workflow/actions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "workflow.actions",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for workflow.actions. List built-in workflow action definitions and their parameter contracts. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "workflow.actions",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -11681,19 +13051,59 @@
     },
     {
       "additionalProperties": false,
-      "description": "List event types that can trigger workflows. Method: GET. Path: /api/v1/workflow/event_types. Effect: safe_read.",
+      "description": "List event types that can trigger workflows. Method: GET. Path: /api/v1/workflow/event_types. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "workflow.event_types",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for workflow.event_types. List event types that can trigger workflows. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
         }
       },
       "required": [
         "operation_id"
       ],
       "title": "workflow.event_types",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -11750,7 +13160,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List configured workflows and their execution state. Method: GET. Path: /api/v1/workflow/agent. Effect: safe_read.",
+      "description": "List configured workflows and their execution state. Method: GET. Path: /api/v1/workflow/agent. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "workflow.list",
@@ -11761,6 +13171,20 @@
           "additionalProperties": false,
           "description": "Filters and control values for workflow.list. List configured workflows and their execution state. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "name": {
               "anyOf": [
                 {
@@ -11772,6 +13196,19 @@
               ],
               "description": "Human-readable name of the site, storage item, subscription, or rule group.",
               "title": "Name"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
             },
             "state": {
               "default": "all",
@@ -11807,7 +13244,13 @@
         "operation_id"
       ],
       "title": "workflow.list",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -11843,7 +13286,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List workflow actions contributed by installed plugins, optionally filtered by plugin ID. Method: GET. Path: /api/v1/workflow/plugin/actions. Effect: safe_read.",
+      "description": "List workflow actions contributed by installed plugins, optionally filtered by plugin ID. Method: GET. Path: /api/v1/workflow/plugin/actions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
       "properties": {
         "operation_id": {
           "const": "workflow.plugin.actions",
@@ -11854,6 +13297,33 @@
           "additionalProperties": false,
           "description": "Filters and control values for workflow.plugin.actions. List workflow actions contributed by installed plugins, optionally filtered by plugin ID. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            },
             "plugin_id": {
               "description": "Exact installed or marketplace plugin ID.",
               "title": "Plugin Id",
@@ -11867,7 +13337,13 @@
         "operation_id"
       ],
       "title": "workflow.plugin.actions",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -12008,7 +13484,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List shared workflows with name and pagination filters. Method: GET. Path: /api/v1/workflow/shares. Effect: safe_read.",
+      "description": "List shared workflows with name and pagination filters. Method: GET. Path: /api/v1/workflow/shares. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "workflow.shares",
@@ -12065,7 +13541,13 @@
         "operation_id"
       ],
       "title": "workflow.shares",
-      "type": "object"
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
     },
     {
       "additionalProperties": false,

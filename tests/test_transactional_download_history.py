@@ -157,11 +157,13 @@ def test_transactional_repository_rolls_back_history_and_files_on_commit_failure
 def test_transactional_repository_async_query_and_delete(db) -> None:
     """异步分页返回脱离 Session 的快照，删除由独立事务提交。"""
     repository = _repository()
+    baseline_count = asyncio.run(repository.async_count())
     history_id = repository.add(_history_write(download_hash="typed-async-hash"))
 
     async def exercise() -> list[DownloadHistorySnapshot]:
         """在同一事件循环中执行异步分页和删除。"""
         records = await repository.async_list_by_page(count=10)
+        assert await repository.async_count() == baseline_count + 1
         await repository.async_delete(history_id)
         return records
 

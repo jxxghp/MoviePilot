@@ -754,6 +754,12 @@ def _person_credits_operation(openapi: Mapping[str, Any]) -> dict[str, Any]:
     for source_path in source_paths.values():
         if source_path not in paths:
             raise ValueError(f"OpenAPI 缺少人物作品端点: {source_path}")
+    representative = paths[source_paths["douban"]].get("get")
+    responses = (
+        deepcopy(representative.get("responses"))
+        if isinstance(representative, Mapping)
+        else {}
+    )
     return {
         "summary": "Read person credits",
         "parameters": [
@@ -785,6 +791,7 @@ def _person_credits_operation(openapi: Mapping[str, Any]) -> dict[str, Any]:
                 "description": "Page size used by Bangumi and AniList; other sources ignore it.",
             },
         ],
+        "responses": responses,
     }
 
 
@@ -874,6 +881,145 @@ def _apply_operation_overrides(
     return body_schema, None
 
 
+def _resolve_openapi_schema(
+    schema: Mapping[str, Any],
+    components: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """解析响应中使用的本地 OpenAPI 引用与可空联合。"""
+    reference = schema.get("$ref")
+    if isinstance(reference, str) and reference.startswith("#/components/schemas/"):
+        resolved = components.get(reference.rsplit("/", 1)[-1])
+        if isinstance(resolved, Mapping):
+            return _resolve_openapi_schema(resolved, components)
+    alternatives = schema.get("anyOf")
+    if isinstance(alternatives, list):
+        for alternative in alternatives:
+            if not isinstance(alternative, Mapping):
+                continue
+            resolved = _resolve_openapi_schema(alternative, components)
+            if resolved.get("type") != "null":
+                return resolved
+    return schema
+
+
+def _response_data_schema(
+    operation: Mapping[str, Any],
+    components: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """读取统一响应的 data schema，供 MCP 标注集合输出合同。"""
+    responses = operation.get("responses")
+    if not isinstance(responses, Mapping):
+        return {}
+    success = responses.get("200") or responses.get(200)
+    if not isinstance(success, Mapping):
+        return {}
+    content = success.get("content")
+    if not isinstance(content, Mapping):
+        return {}
+    media = content.get("application/json")
+    if not isinstance(media, Mapping):
+        return {}
+    raw_schema = media.get("schema")
+    if not isinstance(raw_schema, Mapping):
+        return {}
+    response_schema = _resolve_openapi_schema(raw_schema, components)
+    properties = response_schema.get("properties")
+    if not isinstance(properties, Mapping):
+        return response_schema
+    data_schema = properties.get("data")
+    if not isinstance(data_schema, Mapping):
+        return response_schema
+    return _resolve_openapi_schema(data_schema, components)
+
+
+def _collection_response_contract(
+    operation: Mapping[str, Any],
+    components: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """从 OpenAPI 响应声明提取列表或结构化分页结果的机器可读合同。"""
+    responses = operation.get("responses")
+    success = responses.get("200") if isinstance(responses, Mapping) else None
+    if not isinstance(success, Mapping) and isinstance(responses, Mapping):
+        success = responses.get(200)
+    headers = success.get("headers") if isinstance(success, Mapping) else None
+    header_names = {
+        str(name).lower()
+        for name in headers
+    } if isinstance(headers, Mapping) else set()
+    data_schema = _response_data_schema(operation, components)
+    if data_schema.get("type") == "array":
+        has_total = "x-total-count" in header_names
+        parameters = operation.get("parameters")
+        query_parameters = {
+            str(parameter.get("name")): parameter
+            for parameter in parameters
+            if isinstance(parameter, Mapping)
+            and parameter.get("in") == "query"
+        } if isinstance(parameters, list) else {}
+        compatibility_parameters = [
+            query_parameters.get("page"),
+            query_parameters.get("count"),
+        ]
+        defaults_to_unpaginated = all(
+            isinstance(parameter, Mapping)
+            and not parameter.get("required", False)
+            and isinstance(parameter.get("schema"), Mapping)
+            and "default" not in parameter["schema"]
+            for parameter in compatibility_parameters
+        )
+        return {
+            "body_shape": "list",
+            "result_count_field": "collection.result_count",
+            "total_count_field": "collection.total_count" if has_total else None,
+            "default_pagination": (
+                "unpaginated"
+                if defaults_to_unpaginated
+                else "endpoint-defined"
+            ),
+        }
+    data_properties = data_schema.get("properties")
+    if not isinstance(data_properties, Mapping) or "total" not in data_properties:
+        return None
+    items_field = next(
+        (name for name in ("items", "list") if name in data_properties),
+        None,
+    )
+    if items_field is None:
+        return None
+    return {
+        "body_shape": "page_object",
+        "items_field": f"data.{items_field}",
+        "total_count_field": "data.total",
+        "default_pagination": "endpoint-defined",
+    }
+
+
+def _collection_response_guidance(contract: Mapping[str, Any]) -> str:
+    """把集合输出合同转换为 oneOf 分支中的英文自描述说明。"""
+    if contract.get("body_shape") == "page_object":
+        return (
+            f" Collection response: items stay in {contract['items_field']} and the exact total "
+            f"stays in {contract['total_count_field']}."
+        )
+    if contract.get("total_count_field"):
+        if contract.get("default_pagination") != "unpaginated":
+            return (
+                " Collection response: data remains a list and the endpoint's documented "
+                "pagination or limit defaults remain in effect. Successful gateway output adds "
+                "collection.result_count and the exact collection.total_count."
+            )
+        return (
+            " Collection response: data remains a list; omit both page and count to preserve the "
+            "legacy complete result. Successful gateway output adds collection.result_count and "
+            "the exact collection.total_count."
+        )
+    return (
+        " Collection response: data remains a list and successful gateway output adds "
+        "collection.result_count. collection.total_count is omitted when the endpoint or its "
+        "upstream source does not expose a total."
+    )
+
+
 def build_api_mcp_input_schema(
     *,
     openapi: Mapping[str, Any],
@@ -954,25 +1100,36 @@ def build_api_mcp_input_schema(
                 required.append("body")
 
         spec = spec_by_id[operation_id]
-        branches.append(
-            {
+        collection_contract = _collection_response_contract(operation, components)
+        collection_guidance = (
+            _collection_response_guidance(collection_contract)
+            if collection_contract is not None
+            else ""
+        )
+        branch = {
                 "type": "object",
                 "title": operation_id,
                 "description": (
                     f"{summary} Method: {route.method}. Path: {route.path}. "
-                    f"Effect: {spec.effect.value}."
+                    f"Effect: {spec.effect.value}.{collection_guidance}"
                 ),
                 "properties": properties,
                 "required": required,
                 "additionalProperties": False,
             }
-        )
+        if collection_contract is not None:
+            branch["x-moviepilot-collection"] = collection_contract
+        branches.append(branch)
 
     schema: dict[str, Any] = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "moviepilot_api",
         "type": "object",
-        "description": "Select the oneOf branch matching operation_id and send exactly its documented fields.",
+        "description": (
+            "Select the oneOf branch matching operation_id and send exactly its documented fields. "
+            "Collection branches also describe their additive output metadata in "
+            "x-moviepilot-collection."
+        ),
         "properties": {
             "operation_id": {"type": "string", "enum": sorted(routes)},
             "path_params": {"type": "object"},

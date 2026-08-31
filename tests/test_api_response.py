@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -18,6 +19,8 @@ from starlette.responses import StreamingResponse
 
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.api.response import (
+    COLLECTION_PAGINATION_OPENAPI_KEY,
+    COLLECTION_TOTAL_OPENAPI_KEY,
     RAW_RESPONSE_OPENAPI_KEY,
     ResponseAPIRoute,
     ResponseAPIRouter,
@@ -28,17 +31,16 @@ from app.factory import (
     localized_validation_exception_handler,
     persistence_unavailable_handler,
 )
+from app.runtime.config import settings
+from app.runtime.localization import LocaleHelper
+from app.schemas.common import JsonData
 from app.schemas.exception import (
     AgentChatPersistenceUnavailableError,
     DatabaseWorkerClosedError,
     DatabaseWorkerOverloadedError,
     PersistenceUnavailableError,
 )
-from app.runtime.localization import LocaleHelper
-from app.runtime.config import settings
-from app.schemas.common import JsonData
 from app.schemas.response import Response
-
 
 pytestmark = pytest.mark.anyio
 
@@ -100,6 +102,18 @@ def api_app() -> FastAPI:
     async def get_items() -> list[Item]:
         """返回需要自动封装的业务数据。"""
         return [Item(id=1)]
+
+    @app.get("/many-items", response_model=list[Item])
+    async def get_many_items() -> list[Item]:
+        """返回用于验证兼容分页行为的完整业务列表。"""
+        return [Item(id=index) for index in range(1, 6)]
+
+    @app.get("/native-page", response_model=list[Item])
+    async def get_native_page(page: int = 1, count: int = 2) -> list[Item]:
+        """模拟已经由端点自身执行分页的列表查询。"""
+        items = [Item(id=index) for index in range(1, 6)]
+        start = (page - 1) * count
+        return items[start : start + count]
 
     @app.get("/wrapped", response_model=Response[Item])
     async def get_wrapped_response() -> Response[Item]:
@@ -187,6 +201,138 @@ async def test_route_wraps_data_and_keeps_existing_response(api_app: FastAPI):
         "message": "模块不支持测试",
         "data": {"id": 2},
     }
+
+
+async def test_legacy_collection_defaults_to_complete_unpaginated_result(api_app: FastAPI):
+    """新增分页参数省略时必须保留原完整列表和精确总数。"""
+    async with make_client(api_app) as client:
+        response = await client.get("/many-items")
+
+    assert response.json()["data"] == [
+        {"id": 1},
+        {"id": 2},
+        {"id": 3},
+        {"id": 4},
+        {"id": 5},
+    ]
+    assert response.headers["X-Total-Count"] == "5"
+    assert response.headers["X-Result-Count"] == "5"
+    assert "X-Page" not in response.headers
+    assert "X-Page-Size" not in response.headers
+
+
+async def test_legacy_collection_paginates_only_when_explicitly_requested(api_app: FastAPI):
+    """显式传入任一兼容分页参数后才切片，并保持 data 仍为列表。"""
+    async with make_client(api_app) as client:
+        page_response = await client.get("/many-items", params={"page": 2, "count": 2})
+        count_response = await client.get("/many-items", params={"count": 3})
+
+    assert page_response.json()["data"] == [{"id": 3}, {"id": 4}]
+    assert page_response.headers["X-Total-Count"] == "5"
+    assert page_response.headers["X-Result-Count"] == "2"
+    assert page_response.headers["X-Page"] == "2"
+    assert page_response.headers["X-Page-Size"] == "2"
+    assert count_response.json()["data"] == [{"id": 1}, {"id": 2}, {"id": 3}]
+    assert count_response.headers["X-Page"] == "1"
+    assert count_response.headers["X-Page-Size"] == "3"
+
+
+async def test_native_pagination_is_not_double_sliced_or_given_a_fake_total(api_app: FastAPI):
+    """端点已有分页时只报告当前窗口，不再次切片或伪造全局总数。"""
+    async with make_client(api_app) as client:
+        response = await client.get("/native-page", params={"page": 2, "count": 2})
+
+    assert response.json()["data"] == [{"id": 3}, {"id": 4}]
+    assert "X-Total-Count" not in response.headers
+    assert response.headers["X-Result-Count"] == "2"
+    assert response.headers["X-Page"] == "2"
+    assert response.headers["X-Page-Size"] == "2"
+
+
+async def test_legacy_collection_pagination_validation_uses_standard_error_shape(api_app: FastAPI):
+    """兼容分页非法值必须复用标准 422 错误响应而不是静默修正。"""
+    async with make_client(api_app) as client:
+        response = await client.get("/many-items", params={"page": 0})
+
+    assert response.status_code == 422
+    assert response.json()["success"] is False
+
+
+def test_collection_openapi_declares_optional_compatibility_parameters_and_headers(
+    api_app: FastAPI,
+):
+    """OpenAPI 必须区分缺省全量的新增参数与原生分页默认值。"""
+    openapi = api_app.openapi()
+    legacy = openapi["paths"]["/many-items"]["get"]
+    native = openapi["paths"]["/native-page"]["get"]
+    legacy_query = {
+        parameter["name"]: parameter["schema"]
+        for parameter in legacy["parameters"]
+        if parameter["in"] == "query"
+    }
+    native_query = {
+        parameter["name"]: parameter["schema"]
+        for parameter in native["parameters"]
+        if parameter["in"] == "query"
+    }
+
+    assert "default" not in legacy_query["page"]
+    assert "default" not in legacy_query["count"]
+    assert native_query["page"]["default"] == 1
+    assert native_query["count"]["default"] == 2
+    assert set(legacy["responses"]["200"]["headers"]) == {
+        "X-Total-Count",
+        "X-Result-Count",
+        "X-Page",
+        "X-Page-Size",
+    }
+    assert set(native["responses"]["200"]["headers"]) == {
+        "X-Result-Count",
+        "X-Page",
+        "X-Page-Size",
+    }
+
+
+def test_every_host_collection_route_declares_compatible_count_contract():
+    """所有宿主列表接口必须报告当前数量，并区分缺省全量与原生分页。"""
+    app = FastAPI()
+    from app.api.apiv1 import api_router
+
+    app.include_router(api_router, prefix="/api/v1")
+    openapi = app.openapi()
+    window_parameters = {"page", "count", "limit", "offset", "page_size", "max_results"}
+
+    for prefix, route in _v1_compat_routes():
+        if not ResponseAPIRoute._is_collection_response_model(route.response_model):
+            continue
+        method = sorted(route.methods)[0].lower()
+        operation = openapi["paths"][f"/api/v1{prefix}"][method]
+        headers = operation["responses"]["200"].get("headers", {})
+        assert "X-Result-Count" in headers, prefix
+        if (route.openapi_extra or {}).get(COLLECTION_TOTAL_OPENAPI_KEY):
+            assert "X-Total-Count" in headers, prefix
+
+        endpoint_parameters = set(inspect.signature(route.endpoint).parameters)
+        has_native_window = bool(endpoint_parameters & window_parameters)
+        compatible_method = (
+            "GET" in route.methods
+            or bool(
+                (route.openapi_extra or {}).get(
+                    COLLECTION_PAGINATION_OPENAPI_KEY
+                )
+            )
+        )
+        if not compatible_method or has_native_window:
+            continue
+        query_parameters = {
+            parameter["name"]: parameter["schema"]
+            for parameter in operation.get("parameters", [])
+            if parameter.get("in") == "query"
+        }
+        assert {"page", "count"}.issubset(query_parameters), prefix
+        assert "default" not in query_parameters["page"], prefix
+        assert "default" not in query_parameters["count"], prefix
+        assert "X-Total-Count" in headers, prefix
 
 
 async def test_explicit_none_and_stream_keep_native_protocol(api_app: FastAPI):

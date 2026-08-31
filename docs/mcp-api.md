@@ -93,6 +93,13 @@ operation ID、权限、副作用、确认、恢复、结果敏感性及精确�
 
 只允许传 `tools/list` 对应 operation 分支中声明的 `path_params`、`query` 和 `body` 字段。不得传 URL、认证头、API Token 或任意 HTTP 方法。
 
+查询结果的兼容分页合同如下：
+
+- 原先返回完整列表、没有分页参数的接口会在 OpenAPI、Skill 和 MCP `oneOf` 中新增可选 `page` / `count`；`page` 必须不小于 1，`count` 范围为 1 到 200。两者都省略时仍返回原来的完整列表，不启用分页；显式传入任一参数时才切片，缺失的 `page` 按 1、缺失的 `count` 按 50 处理。
+- REST 响应的 `data` 保持原列表结构，不改成 `{items,total}`。`X-Result-Count` 报告本次实际返回数量；仅当 MoviePilot 已经取得完整筛选结果时，才增加精确的 `X-Total-Count`。原有结构化分页接口继续在既有 `data.total` 与 `data.items` / `data.list` 中返回总数。
+- `moviepilot_api` 把这些响应头投影为响应中的附加 `collection` 对象：`result_count` 为本次返回数量，`total_count` 仅在精确可知时出现，`page` / `count` 在可用时出现。`collection` 是附加元数据，不替换或改写 `data`。
+- 已经由第三方接口原生分页或限量、但上游没有返回总数的查询不会伪造 `total_count`；Agent 应以 `result_count` 判断当前页是否为空，并按原接口的分页参数继续读取。
+
 ### `downloader_operation` / `mediaserver_operation` 调用形状
 
 ```json

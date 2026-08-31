@@ -1,7 +1,7 @@
 from typing import Annotated, Any, List, Optional
 
 import cn2an
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request, Response
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.web.security.access import (
@@ -26,7 +26,11 @@ from app.api.dependencies.subscription import (
     get_subscription_query_service,
 )
 from app.api.principal import ApiPrincipal
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    ResponseAPIRouter,
+)
 from app.application.configuration import (
     get_api_runtime_config_snapshot,
     get_configured_system_config,
@@ -537,7 +541,10 @@ async def seerr_subscribe(
 
 
 @router.get(
-    "/history/{mtype}", summary="查询订阅历史", response_model=List[_SchemaSubscribe]
+    "/history/{mtype}",
+    summary="查询订阅历史",
+    response_model=List[_SchemaSubscribe],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def subscribe_history(
     mtype: str,
@@ -545,16 +552,23 @@ async def subscribe_history(
     count: Optional[int] = 30,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
+    response: Response = None,
 ) -> Any:
     """
     查询电影、电视剧或音乐订阅历史
     """
-    return await query.list_history(
+    username = None if current_user.is_superuser else current_user.name
+    results = await query.list_history(
         mtype,
         page=page,
         count=count,
-        username=None if current_user.is_superuser else current_user.name,
+        username=username,
     )
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count_history(mtype, username=username)
+        )
+    return results
 
 
 @router.delete(
