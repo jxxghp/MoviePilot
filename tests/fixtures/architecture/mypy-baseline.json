@@ -897,8 +897,8 @@
     "type-arg": 3
   },
   "app/api/endpoints/notification.py": {
-    "misc": 1,
-    "no-untyped-def": 1
+    "misc": 2,
+    "no-untyped-def": 2
   },
   "app/api/endpoints/openai.py": {
     "attr-defined": 1,
@@ -1803,7 +1803,7 @@
   },
   "app/modules/__init__.py": {
     "assignment": 1,
-    "attr-defined": 3,
+    "attr-defined": 4,
     "empty-body": 4,
     "misc": 3,
     "no-any-return": 1,
@@ -2856,17 +2856,17 @@
     "empty-body": 1,
     "no-any-return": 1,
     "no-untyped-call": 1,
-    "no-untyped-def": 3,
+    "no-untyped-def": 4,
     "type-arg": 2,
     "union-attr": 1
   },
   "app/modules/wechatclawbot/wechatclawbot.py": {
     "arg-type": 2,
-    "assignment": 1,
+    "assignment": 2,
     "comparison-overlap": 3,
     "no-any-return": 3,
     "no-untyped-def": 4,
-    "type-arg": 1,
+    "type-arg": 2,
     "union-attr": 1
   },
   "app/modules/zspace/__init__.py": {
@@ -3197,7 +3197,7 @@
   "app/schemas/system.py": {
     "assignment": 1,
     "misc": 15,
-    "type-arg": 6
+    "type-arg": 4
   },
   "app/schemas/tmdb.py": {
     "misc": 5
