@@ -579,9 +579,6 @@
   "app/schemas/response.py": {
     "I001": 1
   },
-  "app/schemas/site.py": {
-    "I001": 1
-  },
   "app/schemas/subscribe.py": {
     "I001": 1
   },
@@ -994,9 +991,6 @@
     "I001": 1
   },
   "tests/test_site_adapter_collector.py": {
-    "I001": 1
-  },
-  "tests/test_skill_scripts_security.py": {
     "I001": 1
   },
   "tests/test_skills_command.py": {

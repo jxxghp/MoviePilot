@@ -1,6 +1,6 @@
 # MoviePilot Agent 工具体系重构计划
 
-> 状态：IN PROGRESS — 本地验收已通过，提交推送与远端 CI 收口
+> 状态：IN PROGRESS — 全量能力与本地门禁已通过，等待最终修复提交和远端 CI 终态
 >
 > 建立日期：2026-08-31
 >
@@ -41,7 +41,7 @@
 | MCP/HTTP 工具管理 | 存在旧业务工具与同名 first-wins 选择空间 | 与主 Agent 共用严格唯一新目录；重名直接以 TOOL_IDENTITY_AMBIGUOUS 失败 |
 | 退役代码 | 旧实现仍位于 app/agent/tools/impl | 77 个退役文件已直接删除，其中 72 个工具模块、5 个辅助模块 |
 | 架构图 | 982 个宿主模块、8,430 条内部依赖边 | 919 个宿主模块、7,680 条内部依赖边，Application/Chain 具体 Adapter 直连仍为 0 |
-| 工作区状态 | 基线提交 871632af，与 origin/v3 对齐，初始工作区干净 | 生产改动、生成合同、静态检查、全量测试和固定 80% 覆盖率门禁已完成；提交、推送和远端 CI 尚待完成 |
+| 工作区状态 | 基线提交 871632af，与 origin/v3 对齐，初始工作区干净 | 主体提交 `6d4d7331d` 与复杂度修复 `28298c485` 已推送；生产改动、生成合同、静态检查、全量测试和固定 80% 覆盖率门禁已完成，正在提交 Ruff/mypy 低水位收口并等待远端 CI 终态 |
 
 ## 3. 目标工具分层
 
@@ -314,6 +314,10 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 - 受影响 Agent/Skill/MCP/OpenAPI/音乐/架构回归 247 passed；修复全量发现的工作流管理员门禁、插件分页默认值、模块命名治理、服务工具标签和 Schema 导出清单后，专项回归 40 passed
 - 完整锁定测试最终通过：7,614 passed、9 skipped；覆盖率按 CI 相同的 8 分片采集并合并，Application 81.88%、Domain 81.01%，通过固定 80% 门禁
 - 首次推送 `6d4d7331d` 的远端 Pylint 成功；Architecture Contract Gate 在 complexity v2 发现 `plugin.py` 从 999 行增长到 1007 行，合并三个短 import 后恢复到 999 行，本地两套复杂度门禁及 49 项相关回归均通过
-- 当前活动叶子保持 L9；下一步完成提交前差异审查、提交推送并检查远端 CI 终态
+- 第二次推送 `28298c485` 的远端 Pylint 成功；Architecture Contract Gate 识别出两处 Ruff 导入排序债务下降尚未固化，以及新增 service tool/Agent 投影端点未显式处理 mypy 既有基础设施告警
+- 已对新增 Pydantic/ResponseAPIRouter 边界使用精确错误码抑制，补齐 service tool 的 ClassVar 与可选 selector 类型；未通过覆盖基线隐藏任何新增 mypy 错误
+- Ruff 低水位由 576 降至 574，mypy 低水位由 9,606 降至 9,605；mypy、复杂度 v1/v2、并发、异步阻塞、TaskRegistry owner、服务定位和启动性能全部本地通过
+- API/Skill/MCP/provider 专项 86 passed，架构与质量门禁专项 127 passed；生成器重建后工作区合同无额外差异
+- 当前活动叶子保持 L9；下一步提交本轮低水位修复，等待所有远端工作流终态成功后更新为 COMPLETE
 
 本文件作为本次重构的持续记录，保留阶段状态、实际变更、验证结果、提交状态与已知基线边界。

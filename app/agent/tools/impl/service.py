@@ -17,7 +17,7 @@ from app.agent.tools.tags import ToolTag
 from app.runtime.settings import get_runtime_setting
 
 
-class DownloaderOperationInput(BaseModel):
+class DownloaderOperationInput(BaseModel):  # type: ignore[misc]
     """下载器操作工具的运行时输入模型。"""
 
     client: Optional[str] = Field(
@@ -35,7 +35,7 @@ class DownloaderOperationInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class MediaServerOperationInput(BaseModel):
+class MediaServerOperationInput(BaseModel):  # type: ignore[misc]
     """媒体服务器操作工具的运行时输入模型。"""
 
     server: Optional[str] = Field(
@@ -53,7 +53,7 @@ class MediaServerOperationInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class DatabaseOperationInput(BaseModel):
+class DatabaseOperationInput(BaseModel):  # type: ignore[misc]
     """数据库操作工具的运行时输入模型。"""
 
     action: str = Field(
@@ -300,7 +300,7 @@ def _parse_script_payload(stdout: str) -> dict[str, Any]:
 def _run_service_script(
     *,
     relative_script: str,
-    selector_flag: str,
+    selector_flag: Optional[str],
     selector_value: Optional[str],
     action: str,
     arguments: Dict[str, Any],
@@ -317,7 +317,7 @@ def _run_service_script(
         "--arguments",
         json.dumps(arguments, ensure_ascii=False, separators=(",", ":")),
     ]
-    if selector_value:
+    if selector_value and selector_flag:
         command.extend([selector_flag, selector_value])
     completed = subprocess.run(
         command,
@@ -386,12 +386,12 @@ class DownloaderOperationTool(_ServiceOperationTool):
     )
     tags: list[str] = [ToolTag.Download]
     args_schema: Type[BaseModel] = DownloaderOperationInput
-    _relative_script = "skills/downloader-operation/scripts/mp-downloader.py"
-    _selector_name = "client"
-    _selector_flag = "--client"
-    _blocking_bucket = "downloader"
+    _relative_script: ClassVar[str] = "skills/downloader-operation/scripts/mp-downloader.py"
+    _selector_name: ClassVar[Optional[str]] = "client"
+    _selector_flag: ClassVar[Optional[str]] = "--client"
+    _blocking_bucket: ClassVar[str] = "downloader"
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         action: str,
         arguments: Optional[Dict[str, Any]] = None,
@@ -417,12 +417,12 @@ class MediaServerOperationTool(_ServiceOperationTool):
     )
     tags: list[str] = [ToolTag.Media]
     args_schema: Type[BaseModel] = MediaServerOperationInput
-    _relative_script = "skills/mediaserver-operation/scripts/mp-mediaserver.py"
-    _selector_name = "server"
-    _selector_flag = "--server"
-    _blocking_bucket = "mediaserver"
+    _relative_script: ClassVar[str] = "skills/mediaserver-operation/scripts/mp-mediaserver.py"
+    _selector_name: ClassVar[Optional[str]] = "server"
+    _selector_flag: ClassVar[Optional[str]] = "--server"
+    _blocking_bucket: ClassVar[str] = "mediaserver"
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         action: str,
         arguments: Optional[Dict[str, Any]] = None,
@@ -523,10 +523,10 @@ class DatabaseOperationTool(_ServiceOperationTool):
     )
     tags: list[str] = [ToolTag.Admin]
     args_schema: Type[BaseModel] = DatabaseOperationInput
-    _relative_script = "skills/database-operation/scripts/mp-db.py"
-    _selector_name = None
-    _selector_flag = None
-    _blocking_bucket = "db"
+    _relative_script: ClassVar[str] = "skills/database-operation/scripts/mp-db.py"
+    _selector_name: ClassVar[Optional[str]] = None
+    _selector_flag: ClassVar[Optional[str]] = None
+    _blocking_bucket: ClassVar[str] = "db"
 
     def get_mcp_input_schema(self) -> dict[str, Any]:
         """返回数据库 action 的完整 MCP JSON Schema。"""
@@ -539,7 +539,7 @@ class DatabaseOperationTool(_ServiceOperationTool):
             title=self.name,
         )
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         action: str,
         arguments: Optional[Dict[str, Any]] = None,

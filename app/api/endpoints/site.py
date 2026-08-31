@@ -130,7 +130,7 @@ async def read_sites(
     return await query.list_ordered()
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/agent",
     summary="查询 Agent 可用站点",
     response_model=List[_SchemaJsonObject],

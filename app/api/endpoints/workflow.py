@@ -43,7 +43,7 @@ async def list_workflows(
     return await query.list()
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/agent",
     summary="查询 Agent 可用工作流",
     response_model=List[_SchemaJsonObject],

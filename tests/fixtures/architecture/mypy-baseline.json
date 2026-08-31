@@ -519,7 +519,7 @@
     "no-any-return": 5,
     "no-untyped-call": 1,
     "no-untyped-def": 2,
-    "type-arg": 11
+    "type-arg": 10
   },
   "app/api/endpoints/recommend.py": {
     "attr-defined": 2,

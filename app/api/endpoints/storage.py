@@ -146,7 +146,7 @@ def _list_files(
     return file_list or []
 
 
-@router.post(
+@router.post(  # type: ignore[misc]
     "/agent/list",
     summary="查询 Agent 可用目录和文件",
     response_model=List[_SchemaFileItem],

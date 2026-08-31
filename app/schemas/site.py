@@ -60,7 +60,7 @@ class Site(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class SitePriorityUpdate(BaseModel):
+class SitePriorityUpdate(BaseModel):  # type: ignore[misc]
     """站点批量优先级更新项。"""
 
     id: int = Field(..., description="Persistent site ID returned by site.list.")
