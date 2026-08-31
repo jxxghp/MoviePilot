@@ -239,6 +239,7 @@ class ChainRuntimeConfig:
     music_rename_format: str = ""
     tmdb_image_domain: str = "image.tmdb.org"
     wallpaper: str = "bing"
+    wallpaper_image_url: Optional[str] = None
     customize_wallpaper_api_url: Optional[str] = None
     security_image_suffixes: tuple[str, ...] = ()
     cache_path: Path = Path(".")

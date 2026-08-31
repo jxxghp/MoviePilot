@@ -260,6 +260,7 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         music_rename_format=settings.RENAME_FORMAT(MediaType.MUSIC),
         tmdb_image_domain=settings.TMDB_IMAGE_DOMAIN,
         wallpaper=settings.WALLPAPER,
+        wallpaper_image_url=settings.WALLPAPER_IMAGE_URL,
         customize_wallpaper_api_url=settings.CUSTOMIZE_WALLPAPER_API_URL,
         security_image_suffixes=tuple(settings.SECURITY_IMAGE_SUFFIXES),
         cache_path=settings.CACHE_PATH,
