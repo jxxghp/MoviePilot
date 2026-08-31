@@ -132,13 +132,21 @@ jobs:
       matrix:
         include:
           - shard: '1/8'
+            index: '1'
           - shard: '2/8'
+            index: '2'
           - shard: '3/8'
+            index: '3'
           - shard: '4/8'
+            index: '4'
           - shard: '5/8'
+            index: '5'
           - shard: '6/8'
+            index: '6'
           - shard: '7/8'
+            index: '7'
           - shard: '8/8'
+            index: '8'
 
     steps:
       - name: Checkout code
@@ -163,7 +171,7 @@ jobs:
       - name: Upload coverage data
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-data-${{ matrix.shard }}
+          name: coverage-data-${{ matrix.index }}
           path: .coverage.*
           include-hidden-files: true
           if-no-files-found: error

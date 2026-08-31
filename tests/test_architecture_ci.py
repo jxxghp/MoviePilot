@@ -95,7 +95,8 @@ def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
     assert "workflow_dispatch" in workflow["on"]
     assert shard_job["runs-on"] == "ubuntu-latest"
     assert shard_job["timeout-minutes"] == 15
-    assert [item["shard"] for item in shard_job["strategy"]["matrix"]["include"]] == [
+    shard_matrix = shard_job["strategy"]["matrix"]["include"]
+    assert [item["shard"] for item in shard_matrix] == [
         "1/8",
         "2/8",
         "3/8",
@@ -105,6 +106,7 @@ def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
         "7/8",
         "8/8",
     ]
+    assert [item["index"] for item in shard_matrix] == [str(index) for index in range(1, 9)]
     assert report_job["needs"] == "coverage-shard"
     assert report_job["runs-on"] == "ubuntu-latest"
     assert report_job["timeout-minutes"] == 10
@@ -122,6 +124,7 @@ def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
         step for step in shard_steps if step.get("name") == "Upload coverage data"
     )
     assert upload_data_step["with"]["path"] == ".coverage.*"
+    assert upload_data_step["with"]["name"] == "coverage-data-${{ matrix.index }}"
     assert upload_data_step["with"]["include-hidden-files"] is True
 
     download_step = next(
