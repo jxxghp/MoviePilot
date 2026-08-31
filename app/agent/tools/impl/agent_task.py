@@ -2,9 +2,9 @@
 
 import json
 from datetime import datetime, timedelta
-from typing import Literal, Optional, Type
+from typing import Literal, Optional, Type, cast
 
-import pytz
+import pytz  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, model_validator
 
 from app.agent.tools.base import MoviePilotTool
@@ -17,7 +17,7 @@ AgentTaskAction = Literal["create", "list", "update", "run", "delete"]
 AgentTaskTriggerType = Literal["date", "cron"]
 
 
-class AgentTaskInput(BaseModel):
+class AgentTaskInput(BaseModel):  # type: ignore[misc]
     """统一管理 Agent 自主定时任务的输入参数。"""
 
     action: AgentTaskAction = Field(
@@ -65,7 +65,7 @@ class AgentTaskInput(BaseModel):
         description=("For list, optionally filter by enabled state. For update, set false to pause or true to resume."),
     )
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[misc]
     def validate_action(self) -> "AgentTaskInput":
         """按动作校验必填字段和触发参数组合。"""
         if self.name is not None:
@@ -122,12 +122,14 @@ class AgentTaskInput(BaseModel):
             if self.trigger is None or self.delay_minutes is not None:
                 raise ValueError("cron 任务必须提供 trigger，且不能提供 delay_minutes")
         if normalize_exact and self.trigger_type is not None:
-            self.trigger_type, self.trigger = TimerUtils.normalize_schedule_trigger(
+            normalized_type, normalized_trigger = TimerUtils.normalize_schedule_trigger(
                 trigger_type=self.trigger_type,
-                trigger_value=self.trigger,
+                trigger_value=self.trigger,  # type: ignore[arg-type]
                 timezone_name=get_runtime_setting("TZ"),
                 require_future=True,
             )
+            self.trigger_type = cast(AgentTaskTriggerType, normalized_type)
+            self.trigger = normalized_trigger
 
 
 class AgentTaskTool(MoviePilotTool):
@@ -173,6 +175,8 @@ class AgentTaskTool(MoviePilotTool):
             )
         if payload.trigger_type is None:
             raise ValueError("Agent 定时任务缺少 trigger_type")
+        if trigger_value is None:
+            raise ValueError("date 任务必须提供 trigger 或 delay_minutes")
         _, normalized = TimerUtils.normalize_schedule_trigger(
             trigger_type=payload.trigger_type,
             trigger_value=trigger_value,
@@ -358,7 +362,7 @@ class AgentTaskTool(MoviePilotTool):
             remove_agent_task_job(task_id)
         return deleted
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         action: AgentTaskAction,
         task_id: Optional[int] = None,

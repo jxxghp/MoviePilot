@@ -13,7 +13,7 @@ from app.runtime.log import logger
 PersonaAction = Literal["list", "switch", "update"]
 
 
-class PersonaInput(BaseModel):
+class PersonaInput(BaseModel):  # type: ignore[misc]
     """查询、切换或更新 Agent 人格的统一输入参数。"""
 
     action: PersonaAction = Field(
@@ -53,7 +53,7 @@ class PersonaInput(BaseModel):
         description="Create a new runtime persona when update cannot resolve one.",
     )
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[misc]
     def validate_action(self) -> "PersonaInput":
         """按动作校验目标人格和更新字段。"""
         if self.query is not None:
@@ -100,7 +100,7 @@ class PersonaTool(MoviePilotTool):
         target = kwargs.get("persona_id") or kwargs.get("query")
         return f"{action_name}: {target}" if target else action_name
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         action: PersonaAction,
         query: Optional[str] = None,

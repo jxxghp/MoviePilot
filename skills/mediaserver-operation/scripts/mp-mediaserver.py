@@ -118,8 +118,13 @@ def _ensure_project_import() -> None:
 def _load_configs() -> list[Any]:
     """读取并校验本机媒体服务器配置。"""
     _ensure_project_import()
+    from app.db.oper.systemconfig import SystemConfigOper
     from app.runtime.extensions.service import ServiceConfigHelper
+    from app.runtime.extensions.service import configure_service_config_reader
 
+    system_config = SystemConfigOper()
+    system_config.load_snapshot()
+    configure_service_config_reader(system_config.get)
     return ServiceConfigHelper.get_mediaserver_configs()
 
 

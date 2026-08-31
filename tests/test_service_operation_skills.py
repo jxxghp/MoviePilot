@@ -67,6 +67,54 @@ def _mediaserver_config(provider: str = "emby") -> SimpleNamespace:
     )
 
 
+def test_downloader_load_configs_bootstraps_runtime_service_reader(
+    downloader_module: ModuleType,
+    monkeypatch,
+) -> None:
+    """独立脚本必须先从数据库加载快照，再读取下载器服务配置。"""
+    import app.db.oper.systemconfig as systemconfig_module
+    import app.runtime.extensions.service as service_module
+
+    system_config = MagicMock()
+    configured_configs = [_downloader_config()]
+    helper = MagicMock()
+    helper.get_downloader_configs.return_value = configured_configs
+    configure_reader = MagicMock()
+    monkeypatch.setattr(systemconfig_module, "SystemConfigOper", MagicMock(return_value=system_config))
+    monkeypatch.setattr(service_module, "ServiceConfigHelper", helper)
+    monkeypatch.setattr(service_module, "configure_service_config_reader", configure_reader)
+
+    assert downloader_module._load_configs() == configured_configs
+
+    system_config.load_snapshot.assert_called_once_with()
+    configure_reader.assert_called_once_with(system_config.get)
+    helper.get_downloader_configs.assert_called_once_with()
+
+
+def test_mediaserver_load_configs_bootstraps_runtime_service_reader(
+    mediaserver_module: ModuleType,
+    monkeypatch,
+) -> None:
+    """独立脚本必须先从数据库加载快照，再读取媒体服务器服务配置。"""
+    import app.db.oper.systemconfig as systemconfig_module
+    import app.runtime.extensions.service as service_module
+
+    system_config = MagicMock()
+    configured_configs = [_mediaserver_config()]
+    helper = MagicMock()
+    helper.get_mediaserver_configs.return_value = configured_configs
+    configure_reader = MagicMock()
+    monkeypatch.setattr(systemconfig_module, "SystemConfigOper", MagicMock(return_value=system_config))
+    monkeypatch.setattr(service_module, "ServiceConfigHelper", helper)
+    monkeypatch.setattr(service_module, "configure_service_config_reader", configure_reader)
+
+    assert mediaserver_module._load_configs() == configured_configs
+
+    system_config.load_snapshot.assert_called_once_with()
+    configure_reader.assert_called_once_with(system_config.get)
+    helper.get_mediaserver_configs.assert_called_once_with()
+
+
 def test_downloader_instances_and_capabilities_do_not_expose_credentials(
     downloader_module: ModuleType,
     monkeypatch,

@@ -39,7 +39,7 @@ def directory_settings(
     storage_type: str = "all",
     name: Optional[str] = None,
     _: ApiPrincipal = Depends(get_current_active_superuser),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """按用途、存储类型和名称筛选目录配置。"""
     helper = DirectoryHelper()
     if directory_type == "download":
@@ -88,7 +88,7 @@ def directory_settings(
     return _SchemaResponse(success=True, data=results)
 
 
-@router.post("/manage", summary="网盘存储统一管理", response_model=_SchemaResponse[Dict[str, Any]])
+@router.post("/manage", summary="网盘存储统一管理", response_model=_SchemaResponse[Dict[str, Any]])  # type: ignore[misc]
 def manage(request: _SchemaManageRequest, _: ApiPrincipal = Depends(get_current_active_superuser)) -> Any:
     """
     网盘存储统一管理入口
@@ -272,7 +272,11 @@ def rename(
                 if not new_path:
                     progress.end()
                     return _SchemaResponse(success=False, message=f"{sub_path.name} 未识别到新名称")
-                ret: _SchemaResponse = rename(fileitem=sub_file, new_name=Path(new_path).name, recursive=False)
+                ret: _SchemaResponse[Any] = rename(
+                    fileitem=sub_file,
+                    new_name=Path(new_path).name,
+                    recursive=False,
+                )
                 if not ret.success:
                     progress.end()
                     return _SchemaResponse(success=False, message=f"{sub_path.name} 重命名失败！")

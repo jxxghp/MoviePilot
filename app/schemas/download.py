@@ -44,7 +44,7 @@ class SubtitleDownloadData(BaseModel):
     files: list[str] = Field(default_factory=list, description="已保存字幕文件列表")
 
 
-class DownloadTaskUpdateRequest(BaseModel):
+class DownloadTaskUpdateRequest(BaseModel):  # type: ignore[misc]
     """下载任务高级修改请求。"""
 
     action: Optional[Literal["start", "stop"]] = None
@@ -59,7 +59,7 @@ class DownloadTaskUpdateRequest(BaseModel):
     seeding_time_limit: Optional[int] = None
 
 
-class DownloadTaskMutationResult(BaseModel):
+class DownloadTaskMutationResult(BaseModel):  # type: ignore[misc]
     """下载任务单个修改动作的执行结果。"""
 
     operation: str = Field(description="修改动作")
@@ -67,7 +67,7 @@ class DownloadTaskMutationResult(BaseModel):
     message: str = Field(description="动作结果说明")
 
 
-class DownloadTaskUpdateData(BaseModel):
+class DownloadTaskUpdateData(BaseModel):  # type: ignore[misc]
     """一次下载任务高级修改的聚合结果。"""
 
     hash: str = Field(description="下载任务 Hash")

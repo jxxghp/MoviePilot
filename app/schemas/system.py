@@ -62,7 +62,7 @@ class MediaServerConf(BaseModel):
                 return None
         try:
             return int(value)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None
 
 
@@ -146,7 +146,7 @@ class SystemEnvironmentUpdateData(BaseModel):
     failed_updates: dict[str, tuple[Optional[bool], str]] = Field(default_factory=dict)
 
 
-class SystemSettingsUpdateRequest(BaseModel):
+class SystemSettingsUpdateRequest(BaseModel):  # type: ignore[misc]
     """统一系统设置更新请求。"""
 
     setting_key: str
@@ -162,7 +162,7 @@ class SystemSettingsUpdateRequest(BaseModel):
     match_value: Any = None
 
 
-class CustomIdentifiersUpdateRequest(BaseModel):
+class CustomIdentifiersUpdateRequest(BaseModel):  # type: ignore[misc]
     """完整替换自定义识别词的请求。"""
 
     identifiers: list[str] = Field(default_factory=list)

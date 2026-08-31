@@ -280,13 +280,13 @@ class AgentWebCommandInfo(BaseModel):
     pid: Optional[str | int] = Field(default=None, description="插件 ID")
 
 
-class AgentCommandRunRequest(BaseModel):
+class AgentCommandRunRequest(BaseModel):  # type: ignore[misc]
     """通过 Agent API 触发斜杠命令的请求。"""
 
     command: str = Field(description="要执行的完整斜杠命令")
 
 
-class AgentCommandRunData(BaseModel):
+class AgentCommandRunData(BaseModel):  # type: ignore[misc]
     """斜杠命令进入事件队列后的稳定回执。"""
 
     message: str = Field(description="命令触发结果")

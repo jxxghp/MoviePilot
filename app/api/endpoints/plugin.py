@@ -851,7 +851,7 @@ def clone_plugin(
         return _SchemaResponse(success=False, message=f"创建插件分身失败：{str(e)}")
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/runtime/capabilities",
     summary="查询插件运行能力",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -859,7 +859,7 @@ def clone_plugin(
 async def plugin_capabilities(
     plugin_id: Optional[str] = None,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """查询运行中插件注册的命令、动作和定时服务。"""
     manager = get_plugin_manager()
     data: dict[str, Any] = {}
@@ -902,7 +902,7 @@ async def plugin_capabilities(
     return _SchemaResponse(success=True, data=data)
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/runtime/{plugin_id}/data",
     summary="查询插件持久化数据",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -913,7 +913,7 @@ async def plugin_data(
     max_chars: Optional[int] = None,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """读取插件单键或全部持久化数据，并对大结果进行裁剪。"""
     try:
         data = await PluginDataQueryService(

@@ -146,6 +146,30 @@ async def test_skill_operation_scope_is_enforced_for_api_gateway(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_api_gateway_auto_loads_builtin_moviepilot_skill(tmp_path):
+    """直接调用 API 网关时应自动加载内置 MoviePilot API Skill。"""
+    _write_skill(
+        tmp_path,
+        "moviepilot-api",
+        allowed_api_operations="subscription.list",
+    )
+    middleware = SkillsMiddleware(sources=[str(tmp_path)])
+    request = SimpleNamespace(
+        tool=SimpleNamespace(name="moviepilot_api"),
+        tool_call={
+            "id": "call-auto-load",
+            "args": {"operation_id": "subscription.list"},
+        },
+    )
+    handler = AsyncMock(return_value="allowed-after-auto-load")
+
+    result = await middleware.awrap_tool_call(request, handler)
+
+    assert result == "allowed-after-auto-load"
+    handler.assert_awaited_once_with(request)
+
+
+@pytest.mark.anyio
 async def test_api_gateway_requires_skill_declared_operation(tmp_path):
     """未加载声明 operation 的 Skill 时 API 网关必须默认拒绝。"""
     _write_skill(tmp_path, "plain-skill")

@@ -39,7 +39,7 @@ class FilterRuleGroup(BaseModel):
     category: Optional[str] = None
 
 
-class CustomFilterRuleCreateRequest(BaseModel):
+class CustomFilterRuleCreateRequest(BaseModel):  # type: ignore[misc]
     """新增自定义过滤规则请求。"""
 
     rule_id: str
@@ -51,7 +51,7 @@ class CustomFilterRuleCreateRequest(BaseModel):
     publish_time: Optional[str] = None
 
 
-class CustomFilterRuleUpdateRequest(BaseModel):
+class CustomFilterRuleUpdateRequest(BaseModel):  # type: ignore[misc]
     """更新自定义过滤规则请求。"""
 
     new_rule_id: Optional[str] = None
@@ -63,7 +63,7 @@ class CustomFilterRuleUpdateRequest(BaseModel):
     publish_time: Optional[str] = None
 
 
-class FilterRuleGroupCreateRequest(BaseModel):
+class FilterRuleGroupCreateRequest(BaseModel):  # type: ignore[misc]
     """新增过滤规则组请求。"""
 
     name: str
@@ -72,7 +72,7 @@ class FilterRuleGroupCreateRequest(BaseModel):
     category: Optional[str] = None
 
 
-class FilterRuleGroupUpdateRequest(BaseModel):
+class FilterRuleGroupUpdateRequest(BaseModel):  # type: ignore[misc]
     """更新过滤规则组请求。"""
 
     new_name: Optional[str] = None

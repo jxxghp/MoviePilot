@@ -62,7 +62,7 @@ async def _fetch_listenbrainz_chart(
     min_listen_count: int,
     with_cover: bool,
     entity: Optional[str],
-) -> List[Any] | _SchemaResponse:
+) -> List[Any] | _SchemaResponse[Any]:
     """校验榜单参数并获取 ListenBrainz 榜单结果。"""
     if range_name not in LISTENBRAINZ_CHART_RANGES:
         return _SchemaResponse(success=False, message="无效的榜单周期")
@@ -90,7 +90,7 @@ async def _fetch_listenbrainz_fresh(
     past: bool,
     future: bool,
     with_cover: bool,
-) -> List[Any] | _SchemaResponse:
+) -> List[Any] | _SchemaResponse[Any]:
     """校验新发行参数并获取 ListenBrainz 新发行结果。"""
     if music_type not in {None, MUSIC_ENTITY_ALBUM}:
         return _SchemaResponse(success=False, message="新发行结果只支持专辑")
@@ -128,7 +128,7 @@ async def _recommend_listenbrainz(
     future: bool,
     min_listen_count: int,
     with_cover: bool,
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """执行 ListenBrainz 推荐分支并统一转换音乐结果。"""
     if media_type not in {"all", "music"}:
         return _SchemaResponse(
@@ -265,7 +265,7 @@ def source(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     return []
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/agent",
     summary="统一获取 Agent 推荐结果",
     response_model=_SchemaResponse[list[_SchemaAgentRecommendationItem]],
@@ -284,7 +284,7 @@ async def agent_recommendations(
     min_listen_count: int = 0,
     with_cover: bool = False,
     _: _SchemaTokenPayload = Depends(verify_token),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """按稳定来源标识返回有界影视、动画或音乐推荐结果。"""
     page = max(1, page)
     count = 20

@@ -311,7 +311,7 @@ async def list_web_agent_commands(
     )
 
 
-@router.post(
+@router.post(  # type: ignore[misc]
     "/commands/run",
     summary="执行 Agent 斜杠命令",
     response_model=_SchemaResponse[_SchemaAgentCommandRunData],
@@ -321,7 +321,7 @@ async def run_agent_command(
     current_user: ApiPrincipal = Depends(get_current_active_user),
     agent_channel: Optional[str] = Header(None, alias="X-MoviePilot-Agent-Channel"),
     agent_source: Optional[str] = Header(None, alias="X-MoviePilot-Agent-Source"),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """以当前认证用户和宿主透传渠道触发已注册命令。"""
     _ensure_superuser(current_user)
     try:

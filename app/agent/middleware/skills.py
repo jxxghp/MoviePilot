@@ -161,6 +161,7 @@ When the user's request matches a skill description, call the `skill` tool with 
 """
 
 SKILL_TOOL_NAME = "skill"
+MOVIEPILOT_API_SKILL_NAME = "moviepilot-api"
 SKILL_TOOL_DESCRIPTION = """Loads the full instructions for a MoviePilot skill by name or id.
 
 Available skills:
@@ -291,6 +292,15 @@ class _SkillToolProvider:
     def is_api_operation_allowed(self, operation_id: str) -> bool:
         """判断 operation ID 是否位于当前已加载 Skill 的联合授权范围。"""
         return operation_id in self._allowed_api_operations
+
+    async def ensure_api_operation_allowed(self, operation_id: str) -> bool:
+        """在 API 网关首次调用时自动加载内置网关 Skill 并校验操作范围。"""
+        if not operation_id:
+            return False
+        if self.is_api_operation_allowed(operation_id):
+            return True
+        await self.load_skill(MOVIEPILOT_API_SKILL_NAME)
+        return self.is_api_operation_allowed(operation_id)
 
     @staticmethod
     def _normalize_name(value: object) -> str:
@@ -576,7 +586,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
 
         if tool_name == "moviepilot_api":
             operation_id = str(tool_args.get("operation_id") or "")
-            if not self._skill_provider.is_api_operation_allowed(operation_id):
+            if not await self._skill_provider.ensure_api_operation_allowed(operation_id):
                 logger.warning(f"Skill API 操作范围拒绝调用: operation={sanitize_for_host(operation_id)}")
                 return ToolMessage(
                     content=json.dumps(
@@ -616,4 +626,4 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         return result
 
 
-__all__ = ["SKILL_TOOL_NAME", "SkillMetadata", "SkillsMiddleware"]
+__all__ = ["MOVIEPILOT_API_SKILL_NAME", "SKILL_TOOL_NAME", "SkillMetadata", "SkillsMiddleware"]

@@ -24,7 +24,7 @@ def set_custom_separator(separator: str | None) -> None:
         separator = None
     if separator is not None and not isinstance(separator, str):
         raise TypeError("custom separator must be a string or None")
-    CustomizationMatcher().custom_separator = separator
+    CustomizationMatcher().custom_separator = separator  # type: ignore[no-untyped-call]
 
 
 class CustomizationMatcher(metaclass=Singleton):

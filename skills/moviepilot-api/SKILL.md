@@ -31,6 +31,10 @@ Use `moviepilot_api` for normal MoviePilot business operations. The tool accepts
 only `operation_id`, `path_params`, `query`, and `body`. The host chooses the
 fixed HTTP method and path, creates the current user's authentication token,
 applies authorization and confirmation policy, and returns the API response.
+When the gateway is called directly, the host automatically loads this Skill's
+operation scope before enforcing the allowlist; explicitly loading the Skill is
+still preferred so the model receives the full parameter and failure-handling
+contract before it calls the gateway.
 
 Never provide a URL, method, authentication header, API key, or access token.
 Never fall back to a retired tool name or `moviepilot tool` MCP command. If an

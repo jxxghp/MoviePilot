@@ -12,7 +12,7 @@ from app.agent.tools.tags import ToolTag
 from app.schemas.types import NotificationChannel
 
 
-class MoviePilotApiInput(BaseModel):
+class MoviePilotApiInput(BaseModel):  # type: ignore[misc]
     """MoviePilot API 网关的结构化输入参数。"""
 
     operation_id: str = Field(
@@ -73,7 +73,7 @@ class MoviePilotApiTool(MoviePilotTool):
         super().__init__(session_id=session_id, user_id=user_id, **kwargs)
         self._executor = executor
 
-    def get_tool_message(self, **kwargs) -> Optional[str]:
+    def get_tool_message(self, **kwargs: Any) -> Optional[str]:
         """生成结构化 API 调用提示。"""
         operation_id = kwargs.get("operation_id") or "未知操作"
         return f"调用 MoviePilot API：{operation_id}"
@@ -108,17 +108,21 @@ class MoviePilotApiTool(MoviePilotTool):
                 channel = NotificationChannel(self._channel)
             except ValueError:
                 channel = None
-            binding_keys = {
-                NotificationChannel.Telegram: ("telegram_userid",),
-                NotificationChannel.Discord: ("discord_userid",),
-                NotificationChannel.Wechat: ("wechat_userid",),
-                NotificationChannel.Feishu: ("feishu_userid", "feishu_openid"),
-                NotificationChannel.WechatClawBot: ("wechatclawbot_userid",),
-                NotificationChannel.Slack: ("slack_userid",),
-                NotificationChannel.VoceChat: ("vocechat_userid",),
-                NotificationChannel.SynologyChat: ("synologychat_userid",),
-                NotificationChannel.QQ: ("qq_userid", "qq_openid"),
-            }.get(channel)
+            binding_keys = (
+                {
+                    NotificationChannel.Telegram: ("telegram_userid",),
+                    NotificationChannel.Discord: ("discord_userid",),
+                    NotificationChannel.Wechat: ("wechat_userid",),
+                    NotificationChannel.Feishu: ("feishu_userid", "feishu_openid"),
+                    NotificationChannel.WechatClawBot: ("wechatclawbot_userid",),
+                    NotificationChannel.Slack: ("slack_userid",),
+                    NotificationChannel.VoceChat: ("vocechat_userid",),
+                    NotificationChannel.SynologyChat: ("synologychat_userid",),
+                    NotificationChannel.QQ: ("qq_userid", "qq_openid"),
+                }.get(channel)
+                if channel is not None
+                else None
+            )
             if binding_keys:
                 username = await self.run_blocking(
                     "db",
@@ -148,7 +152,7 @@ class MoviePilotApiTool(MoviePilotTool):
             )
         return self._executor
 
-    async def run(
+    async def run(  # type: ignore[override]
         self,
         operation_id: str,
         path_params: Optional[Dict[str, Any]] = None,

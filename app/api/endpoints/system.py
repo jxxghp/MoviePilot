@@ -618,7 +618,7 @@ async def set_setting(
     return _SchemaResponse(success=result.success, message=result.message)
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/settings",
     summary="统一查询系统设置",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -631,7 +631,7 @@ async def query_settings(
     show_secrets: bool = False,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """按登记元数据查询设置，并默认对敏感值递归脱敏。"""
     try:
         data = SystemSettingsService(
@@ -650,7 +650,7 @@ async def query_settings(
     return _SchemaResponse(success=True, data=data)
 
 
-@router.post(
+@router.post(  # type: ignore[misc]
     "/settings",
     summary="统一更新系统设置",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -659,7 +659,7 @@ async def update_settings(
     payload: _SchemaSystemSettingsUpdateRequest,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """按替换、字典合并或列表项操作更新一个登记设置。"""
     try:
         data = await SystemSettingsService(
@@ -672,14 +672,14 @@ async def update_settings(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/identifiers",
     summary="查询自定义识别词",
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
 async def query_custom_identifiers(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """返回完整的自定义识别词列表。"""
     identifiers = get_configured_system_config().get(SystemConfigKey.CustomIdentifiers) or []
     return _SchemaResponse(
@@ -688,7 +688,7 @@ async def query_custom_identifiers(
     )
 
 
-@router.post(
+@router.post(  # type: ignore[misc]
     "/identifiers",
     summary="更新自定义识别词",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -697,7 +697,7 @@ async def update_custom_identifiers(
     payload: _SchemaCustomIdentifiersUpdateRequest,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """完整替换自定义识别词并清理识别解析缓存。"""
     identifiers = [item for item in payload.identifiers if item is not None]
     data = await SystemSettingsService(

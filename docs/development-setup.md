@@ -200,7 +200,7 @@ uvx --from pip-audit pip-audit \
    并启动 4 个独立 pytest 进程；GitHub Actions 使用同一入口的 `--shard N/TOTAL`
    参数启动对应分片。需要单进程调试时使用 `python tests/run.py --serial`。Coverage job
    会在 `v3` 的 PR / push 中将同一全量入口切成 8 个并行分片，分别上传覆盖率数据，再由
-   单一报告 job 合并并检查 Application 与 Domain 的已提交低水位；它不是只在手工触发时
+   单一报告 job 合并并检查 Application 与 Domain 的固定 80% 基线；它不是只在手工触发时
    运行的建议性报告。每个 Coverage 分片预算为 15 分钟（其中测试 step 为 10 分钟），
    报告合并与 ratchet 预算为 10 分钟，用于容纳 Ubuntu Runner 的性能波动，不得通过跳过
    测试文件或覆盖率产物规避超时。
@@ -226,10 +226,9 @@ uvx --from pip-audit pip-audit \
    文件执行 Pylint 硬门禁；`app/` 全量结果作为建议性报告上传。最新官方插件仓通过每周
    或手工观察工作流检查，只上传语义差异报告，不会自动更新已提交基线。
 
-   Ruff/Mypy/Coverage 基线只允许收紧：新增诊断、类型错误增长或覆盖率下降都会被拒绝；
-   已有债务下降或覆盖率提升但 fixture 尚未同步时，门禁也会要求用对应脚本的 `--write`
-   显式固化新低水位。存在回退时 `--write` 会拒绝覆盖，不能用于放宽基线。Mypy 完整
-   ratchet 固定按 Linux/Python 3.14 分析；Coverage fixture 只接受 GitHub Actions 的
+   Ruff/Mypy 基线只允许收紧：新增诊断或类型错误增长都会被拒绝；覆盖率门禁固定要求
+   Application 与 Domain 均不低于 80%，不随运行时语句计数变化。Mypy 完整
+   ratchet 固定按 Linux/Python 3.14 分析；Coverage 检查只接受 GitHub Actions 的
    Ubuntu/Python 3.14、locked 依赖和串行全量测试工件，本机 macOS 报告仅用于诊断，
    不得直接写入并提交。受治零错误文件仍由 `mypy.ini` 的 `files=` 维护。
 

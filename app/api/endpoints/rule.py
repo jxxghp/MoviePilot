@@ -1,6 +1,6 @@
 """过滤规则和规则组管理 API。"""
 
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends
 
@@ -37,7 +37,7 @@ def _service(runtime: HostRuntime) -> FilterRuleService:
     )
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/builtin",
     summary="查询内置过滤规则",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -45,7 +45,7 @@ def _service(runtime: HostRuntime) -> FilterRuleService:
 async def query_builtin_rules(
     rule_ids: Optional[list[str]] = None,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """返回内置规则及规则串语法。"""
     return _SchemaResponse(
         success=True,
@@ -53,7 +53,7 @@ async def query_builtin_rules(
     )
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/custom",
     summary="查询自定义过滤规则",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -62,7 +62,7 @@ async def query_custom_rules(
     rule_ids: Optional[list[str]] = None,
     include_group_refs: bool = True,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """返回自定义规则和可选规则组引用。"""
     return _SchemaResponse(
         success=True,
@@ -73,7 +73,7 @@ async def query_custom_rules(
     )
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/groups",
     summary="查询过滤规则组",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -83,7 +83,7 @@ async def query_rule_groups(
     include_usage: bool = True,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """返回规则组、解析层级和可选引用位置。"""
     return _SchemaResponse(
         success=True,
@@ -94,7 +94,7 @@ async def query_rule_groups(
     )
 
 
-@router.post(
+@router.post(  # type: ignore[misc]
     "/custom",
     summary="新增自定义过滤规则",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -103,7 +103,7 @@ async def add_custom_rule(
     payload: _SchemaCustomFilterRuleCreateRequest,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """校验并新增一条自定义过滤规则。"""
     try:
         data = await _service(runtime).add_custom(**payload.model_dump())
@@ -112,7 +112,7 @@ async def add_custom_rule(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.put(
+@router.put(  # type: ignore[misc]
     "/custom/{rule_id}",
     summary="更新自定义过滤规则",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -122,7 +122,7 @@ async def update_custom_rule(
     payload: _SchemaCustomFilterRuleUpdateRequest,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """更新自定义规则并在改名时原子重写引用。"""
     try:
         data = await _service(runtime).update_custom(
@@ -134,7 +134,7 @@ async def update_custom_rule(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.delete(
+@router.delete(  # type: ignore[misc]
     "/custom/{rule_id}",
     summary="删除自定义过滤规则",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -143,7 +143,7 @@ async def delete_custom_rule(
     rule_id: str,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """删除一条未被规则组引用的自定义过滤规则。"""
     try:
         data = await _service(runtime).delete_custom(rule_id)
@@ -152,7 +152,7 @@ async def delete_custom_rule(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.post(
+@router.post(  # type: ignore[misc]
     "/groups",
     summary="新增过滤规则组",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -161,7 +161,7 @@ async def add_rule_group(
     payload: _SchemaFilterRuleGroupCreateRequest,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """新增一个已经完成语法与引用校验的规则组。"""
     try:
         data = await _service(runtime).add_group(**payload.model_dump())
@@ -170,7 +170,7 @@ async def add_rule_group(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.put(
+@router.put(  # type: ignore[misc]
     "/groups/{name}",
     summary="更新过滤规则组",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -180,7 +180,7 @@ async def update_rule_group(
     payload: _SchemaFilterRuleGroupUpdateRequest,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """更新规则组并原子重写全部名称引用。"""
     try:
         data = await _service(runtime).update_group(
@@ -192,7 +192,7 @@ async def update_rule_group(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.delete(
+@router.delete(  # type: ignore[misc]
     "/groups/{name}",
     summary="删除过滤规则组",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -201,7 +201,7 @@ async def delete_rule_group(
     name: str,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """删除规则组并原子清理全部全局和订阅引用。"""
     try:
         data = await _service(runtime).delete_group(name)

@@ -14,7 +14,7 @@ from app.agent.policy.contracts import (
 )
 
 # 这些非管理员读取在运行时解析为强制 SAFE_READ；管理员门禁仍沿用原有授权事实源。
-SAFE_READ_TOOL_NAMES = frozenset({})
+SAFE_READ_TOOL_NAMES: frozenset[str] = frozenset()
 
 
 def requests_system_setting_secrets(arguments: Mapping[str, Any]) -> bool:

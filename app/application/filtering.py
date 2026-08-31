@@ -4,7 +4,7 @@ import copy
 import re
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, cast
 
 from app.application.configuration import get_configured_system_config
 from app.application.rules import (
@@ -14,8 +14,7 @@ from app.application.rules import (
     RuleParser,
 )
 from app.application.subscription.contract import SubscriptionRepository
-from app.schemas.rule import CustomRule
-from app.schemas.system import FilterRuleGroup
+from app.schemas.rule import CustomRule, FilterRuleGroup
 from app.schemas.types import SystemConfigKey
 
 RULE_ID_PATTERN = re.compile(r"^[A-Za-z0-9]+$")
@@ -109,16 +108,18 @@ def validate_seeders(value: Optional[str]) -> Optional[str]:
     return value
 
 
-def get_builtin_rules() -> Dict[str, dict]:
+def get_builtin_rules() -> Dict[str, dict[str, Any]]:
     """返回内置规则的深拷贝，避免调用方误改共享常量。"""
     return copy.deepcopy(BUILTIN_RULE_SET)
 
 
 def get_custom_rules() -> list[CustomRule]:
+    """读取当前配置中的自定义规则。"""
     return RuleHelper().get_custom_rules()
 
 
 def get_rule_groups() -> list[FilterRuleGroup]:
+    """读取当前配置中的过滤规则组。"""
     return RuleHelper().get_rule_groups()
 
 
@@ -140,7 +141,7 @@ def extract_rule_tokens(rule_string: Optional[str]) -> list[str]:
     return list(dict.fromkeys(RULE_TOKEN_PATTERN.findall(rule_string)))
 
 
-def parse_rule_string(rule_string: str) -> dict:
+def parse_rule_string(rule_string: str) -> dict[str, Any]:
     """使用后端同款 RuleParser 解析规则串，并拆出每一层的元数据。"""
     normalized = normalize_optional_text(rule_string)
     if not normalized:
@@ -151,7 +152,7 @@ def parse_rule_string(rule_string: str) -> dict:
     if any(not level for level in levels):
         raise ValueError("rule_string 不能包含空层级，请检查 '>' 两侧内容")
 
-    parsed_levels = []
+    parsed_levels: list[dict[str, Any]] = []
     for index, level in enumerate(levels, start=1):
         try:
             parser.parse(level)
@@ -173,7 +174,7 @@ def parse_rule_string(rule_string: str) -> dict:
     }
 
 
-def validate_rule_string(rule_string: str, available_rule_ids: Iterable[str]) -> dict:
+def validate_rule_string(rule_string: str, available_rule_ids: Iterable[str]) -> dict[str, Any]:
     """校验规则串语法和引用规则是否都存在。"""
     parsed = parse_rule_string(rule_string)
     available_ids = set(available_rule_ids)
@@ -183,7 +184,7 @@ def validate_rule_string(rule_string: str, available_rule_ids: Iterable[str]) ->
     return parsed
 
 
-def serialize_builtin_rule(rule_id: str, payload: dict) -> dict:
+def serialize_builtin_rule(rule_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     """把内置规则整理成适合 Agent 阅读的结构。"""
     data = copy.deepcopy(payload)
     data["id"] = rule_id
@@ -191,16 +192,22 @@ def serialize_builtin_rule(rule_id: str, payload: dict) -> dict:
     return data
 
 
-def serialize_custom_rule(rule: CustomRule, group_refs: Optional[list[str]] = None) -> dict:
-    data = rule.model_dump(exclude_none=True)
+def serialize_custom_rule(
+    rule: CustomRule,
+    group_refs: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    data = cast(dict[str, Any], rule.model_dump(exclude_none=True))
     data["source"] = "custom"
     data["referenced_by_rule_groups"] = group_refs or []
     return data
 
 
-def serialize_rule_group(group: FilterRuleGroup, usage: Optional[dict] = None) -> dict:
+def serialize_rule_group(
+    group: FilterRuleGroup,
+    usage: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """查询时尽量附带解析结果，便于 Agent 理解优先级层级。"""
-    data = group.model_dump(exclude_none=True)
+    data = cast(dict[str, Any], group.model_dump(exclude_none=True))
     if group.rule_string:
         try:
             parsed = parse_rule_string(group.rule_string)
@@ -219,7 +226,7 @@ def serialize_rule_group(group: FilterRuleGroup, usage: Optional[dict] = None) -
     return data
 
 
-def default_rule_group_usage() -> dict:
+def default_rule_group_usage() -> dict[str, Any]:
     return {
         "used_in_global_search": False,
         "used_in_global_subscribe": False,
@@ -231,16 +238,18 @@ def default_rule_group_usage() -> dict:
 async def collect_rule_group_usages(
     repository: SubscriptionRepository,
     group_names: Optional[Iterable[str]] = None,
-) -> Dict[str, dict]:
+) -> Dict[str, dict[str, Any]]:
     """收集规则组在全局配置和订阅上的引用情况。"""
     target_names = set(group_names or [])
     search_groups = set(get_configured_system_config().get(SystemConfigKey.SearchFilterRuleGroups) or [])
     subscribe_groups = set(get_configured_system_config().get(SystemConfigKey.SubscribeFilterRuleGroups) or [])
     best_version_groups = set(get_configured_system_config().get(SystemConfigKey.BestVersionFilterRuleGroups) or [])
 
-    usage_map = {name: default_rule_group_usage() for name in target_names}
+    usage_map: dict[str, dict[str, Any]] = {
+        name: default_rule_group_usage() for name in target_names
+    }
 
-    def ensure_usage(name: str) -> dict:
+    def ensure_usage(name: str) -> dict[str, Any]:
         if name not in usage_map:
             usage_map[name] = default_rule_group_usage()
         return usage_map[name]
@@ -350,7 +359,7 @@ def normalize_rule_group(
     existing_groups: Iterable[FilterRuleGroup],
     available_rule_ids: Iterable[str],
     original_name: Optional[str] = None,
-) -> tuple[FilterRuleGroup, dict]:
+) -> tuple[FilterRuleGroup, dict[str, Any]]:
     """新增/更新规则组时统一校验名字、适用范围和规则串。"""
     normalized_name = normalize_optional_text(name)
     if not normalized_name:
@@ -442,12 +451,16 @@ class FilterRuleService:
         refs = (
             collect_custom_rule_group_refs(
                 get_rule_groups(),
-                [rule.id for rule in rules if rule.id],
+                [str(rule.id) for rule in rules if rule.id],
             )
             if include_group_refs
             else {}
         )
-        serialized = [serialize_custom_rule(rule, refs.get(rule.id)) for rule in rules]
+        serialized = [
+            serialize_custom_rule(rule, refs.get(str(rule_id)))
+            for rule in rules
+            if (rule_id := rule.id)
+        ]
         return {"count": len(serialized), "rules": serialized}
 
     async def query_groups(
@@ -464,12 +477,14 @@ class FilterRuleService:
         usage = (
             await collect_rule_group_usages(
                 self._subscriptions,
-                [group.name for group in groups if group.name],
+                [str(group.name) for group in groups if group.name],
             )
             if include_usage
             else {}
         )
-        serialized = [serialize_rule_group(group, usage.get(group.name)) for group in groups]
+        serialized = [
+            serialize_rule_group(group, usage.get(group.name or "")) for group in groups
+        ]
         return {
             "count": len(serialized),
             "rule_string_syntax": RULE_STRING_SYNTAX,
@@ -509,6 +524,8 @@ class FilterRuleService:
         current = next((rule for rule in rules if rule.id == current_rule_id), None)
         if current is None:
             raise ValueError(f"自定义过滤规则 '{current_rule_id}' 不存在")
+        if current.id is None or current.name is None:
+            raise ValueError("自定义过滤规则缺少 id 或 name")
         updated = normalize_custom_rule(
             rule_id=new_rule_id or current.id,
             name=name if name is not None else current.name,
@@ -555,6 +572,8 @@ class FilterRuleService:
                 rule_definitions,
                 self._publish_config_changed,
             )
+        if updated.id is None:
+            raise ValueError("更新后的自定义过滤规则缺少 id")
         refs = collect_custom_rule_group_refs(updated_groups, [updated.id]).get(updated.id, [])
         return {
             "message": f"已更新自定义过滤规则 {updated.id}",
@@ -600,6 +619,8 @@ class FilterRuleService:
             groups,
             available_ids,
         )
+        if new_group.name is None:
+            raise ValueError("新规则组缺少名称")
         expected = [group.model_dump(exclude_none=True) for group in groups]
         definitions = [*expected, new_group.model_dump(exclude_none=True)]
         async with self._mutation_scope() as mutation:
@@ -627,6 +648,8 @@ class FilterRuleService:
         current = next((group for group in groups if group.name == current_name), None)
         if current is None:
             raise ValueError(f"规则组 '{current_name}' 不存在")
+        if current.name is None:
+            raise ValueError("当前规则组缺少名称")
         available_ids = set(get_builtin_rules()) | set(build_custom_rule_map())
         updated, parsed = normalize_rule_group(
             new_name or current.name or "",
@@ -647,11 +670,14 @@ class FilterRuleService:
                 previous_name=current.name,
                 current_name=updated.name,
             )
+        updated_name = updated.name
+        if updated_name is None:
+            raise ValueError("更新后的规则组缺少名称")
         await self._publish_config_changed(SystemConfigKey.UserFilterRuleGroups, definitions)
-        usage = await collect_rule_group_usages(self._subscriptions, [updated.name])
+        usage = await collect_rule_group_usages(self._subscriptions, [updated_name])
         return {
-            "message": f"已更新规则组 {updated.name}",
-            "rule_group": serialize_rule_group(updated, usage.get(updated.name)),
+            "message": f"已更新规则组 {updated_name}",
+            "rule_group": serialize_rule_group(updated, usage.get(updated_name)),
             "parsed": parsed,
             "reference_updates": result.to_dict(),
         }

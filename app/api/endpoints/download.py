@@ -367,7 +367,7 @@ def stop(
     return _SchemaResponse(success=True if ret else False)
 
 
-@router.patch(
+@router.patch(  # type: ignore[misc]
     "/{hashString}",
     summary="高级更新下载任务",
     response_model=_SchemaResponse[_SchemaDownloadTaskUpdateData],
@@ -376,7 +376,7 @@ async def update_task(
     hashString: str,
     payload: _SchemaDownloadTaskUpdateRequest,
     _: ApiPrincipal = Depends(get_current_active_user),
-) -> _SchemaResponse:
+) -> _SchemaResponse[Any]:
     """执行下载任务启停、标签、限速、Tracker 和保存位置修改。"""
     chain = DownloadChain()
     service = DownloadTaskMutationService(

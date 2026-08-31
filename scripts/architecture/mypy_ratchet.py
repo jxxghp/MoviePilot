@@ -46,6 +46,10 @@ MYPY_PATH_MIGRATIONS = {
         ("app/chain/media.py",),
         ("app/chain/media/",),
     ),
+    "plugin-management": (
+        ("app/agent/tools/impl/_plugin_tool_utils.py",),
+        ("app/application/plugin/management.py",),
+    ),
 }
 
 # 形如 app/foo.py:12: error: 消息说明 [error-code]；个别错误可能缺代码。

@@ -175,8 +175,8 @@ def test_coverage_ratchet_aggregates_governed_packages() -> None:
     }
 
 
-def test_coverage_ratchet_rejects_regressions_and_stale_improvements() -> None:
-    """覆盖率下降必须修复，提升也必须及时固化为新低水位。"""
+def test_coverage_ratchet_enforces_fixed_eighty_percent_floor() -> None:
+    """覆盖率门禁只检查 Application 与 Domain 的固定 80% 基线。"""
     baseline = {
         "application": {"statements": 10, "covered_lines": 5, "percent": 50.0},
         "domain": {"statements": 20, "covered_lines": 15, "percent": 75.0},
@@ -185,57 +185,55 @@ def test_coverage_ratchet_rejects_regressions_and_stale_improvements() -> None:
     assert compare_coverage(
         baseline,
         {
-            "application": {"statements": 10, "covered_lines": 5, "percent": 50.0},
-            "domain": {"statements": 25, "covered_lines": 19, "percent": 76.0},
+            "application": {"statements": 100, "covered_lines": 79, "percent": 79.0},
+            "domain": {"statements": 25, "covered_lines": 20, "percent": 80.0},
         },
-    ) == ["domain: 覆盖率低水位未固化 75.00%->76.00%"]
+    ) == ["application: 行覆盖率低于固定基线 80.00%->79.00%"]
     assert compare_coverage(
         baseline,
         {
             "application": {
                 "statements": 10000,
-                "covered_lines": 4999,
-                "percent": 49.99,
+                "covered_lines": 7999,
+                "percent": 79.99,
             },
-            "domain": {"statements": 20, "covered_lines": 15, "percent": 75.0},
+            "domain": {"statements": 20, "covered_lines": 16, "percent": 80.0},
         },
-    ) == ["application: 行覆盖率下降 50.00%->49.99%"]
+    ) == ["application: 行覆盖率低于固定基线 80.00%->79.99%"]
 
 
-def test_coverage_ratchet_detects_regression_hidden_by_rounding() -> None:
-    """显示百分比相同时，真实覆盖比例下降仍必须失败。"""
+def test_coverage_ratchet_uses_exact_ratio_at_fixed_floor() -> None:
+    """固定基线比较使用真实计数，不受显示百分比四舍五入影响。"""
     baseline = {
         "application": {"statements": 10, "covered_lines": 5, "percent": 50.0},
         "domain": {"statements": 20, "covered_lines": 15, "percent": 75.0},
     }
     current = {
         "application": {
-            "statements": 100000,
-            "covered_lines": 49996,
-            "percent": 50.0,
+            "statements": 10000,
+            "covered_lines": 7999,
+            "percent": 79.99,
         },
-        "domain": {"statements": 20, "covered_lines": 15, "percent": 75.0},
+        "domain": {"statements": 20, "covered_lines": 16, "percent": 80.0},
     }
 
     assert compare_coverage(baseline, current) == [
-        "application: 行覆盖率下降 50.00%->50.00%"
+        "application: 行覆盖率低于固定基线 80.00%->79.99%"
     ]
 
 
-def test_coverage_ratchet_requires_equal_ratio_snapshot_to_be_persisted() -> None:
-    """真实比例持平但计数变化时也必须固化完整快照。"""
+def test_coverage_ratchet_ignores_snapshot_shape_changes_above_floor() -> None:
+    """达到固定基线后，语句计数变化不会制造快照同步噪音。"""
     baseline = {
         "application": {"statements": 10, "covered_lines": 5, "percent": 50.0},
         "domain": {"statements": 20, "covered_lines": 15, "percent": 75.0},
     }
     current = {
-        "application": {"statements": 20, "covered_lines": 10, "percent": 50.0},
-        "domain": {"statements": 20, "covered_lines": 15, "percent": 75.0},
+        "application": {"statements": 20, "covered_lines": 16, "percent": 80.0},
+        "domain": {"statements": 20, "covered_lines": 16, "percent": 80.0},
     }
 
-    assert compare_coverage(baseline, current) == [
-        "application: 覆盖率低水位未固化 50.00%->50.00%"
-    ]
+    assert compare_coverage(baseline, current) == []
 
 
 def test_coverage_ratchet_rejects_zero_statement_report() -> None:
@@ -361,17 +359,17 @@ def test_coverage_write_persists_improved_low_watermark(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """覆盖率持平或提升时，--write 应固化当前完整快照。"""
+    """达到固定基线时，--write 只固化标准 80% fixture。"""
     report_path = tmp_path / "coverage.json"
     baseline_path = tmp_path / "coverage-baseline.json"
     report_path.write_text(
         json.dumps({
             "files": {
                 "app/application/a.py": {
-                    "summary": {"num_statements": 10, "covered_lines": 5}
+                    "summary": {"num_statements": 10, "covered_lines": 8}
                 },
                 "app/domain/a.py": {
-                    "summary": {"num_statements": 20, "covered_lines": 15}
+                    "summary": {"num_statements": 20, "covered_lines": 16}
                 },
             }
         }),
@@ -399,8 +397,8 @@ def test_coverage_write_persists_improved_low_watermark(
 
     assert coverage_main() == 0
     assert json.loads(baseline_path.read_text(encoding="utf-8")) == {
-        "application": {"statements": 10, "covered_lines": 5, "percent": 50.0},
-        "domain": {"statements": 20, "covered_lines": 15, "percent": 75.0},
+        "application": {"statements": 100, "covered_lines": 80, "percent": 80.0},
+        "domain": {"statements": 100, "covered_lines": 80, "percent": 80.0},
     }
 
 
@@ -408,17 +406,17 @@ def test_coverage_write_persists_equal_ratio_snapshot(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """等比例计数变化不是回退，显式写入后应通过精确快照检查。"""
+    """固定基线不要求同步运行时的真实语句计数。"""
     report_path = tmp_path / "coverage.json"
     baseline_path = tmp_path / "coverage-baseline.json"
     report_path.write_text(
         json.dumps({
             "files": {
                 "app/application/a.py": {
-                    "summary": {"num_statements": 20, "covered_lines": 10}
+                    "summary": {"num_statements": 20, "covered_lines": 16}
                 },
                 "app/domain/a.py": {
-                    "summary": {"num_statements": 20, "covered_lines": 15}
+                    "summary": {"num_statements": 20, "covered_lines": 16}
                 },
             }
         }),
@@ -440,18 +438,22 @@ def test_coverage_write_persists_equal_ratio_snapshot(
     ]
 
     monkeypatch.setattr(sys, "argv", command)
-    assert coverage_main() == 1
+    assert coverage_main() == 0
     monkeypatch.setattr(sys, "argv", [*command, "--write"])
     assert coverage_main() == 0
     monkeypatch.setattr(sys, "argv", command)
     assert coverage_main() == 0
+    assert json.loads(baseline_path.read_text(encoding="utf-8")) == {
+        "application": {"statements": 100, "covered_lines": 80, "percent": 80.0},
+        "domain": {"statements": 100, "covered_lines": 80, "percent": 80.0},
+    }
 
 
-def test_coverage_legacy_zero_baseline_can_only_initialize_once(
+def test_coverage_fixed_baseline_replaces_legacy_zero_fixture(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """历史全零 fixture 只允许初始化，初始化后下降仍必须拒绝写入。"""
+    """历史全零 fixture 不改变固定 80% 门禁，写入后统一为标准 fixture。"""
     report_path = tmp_path / "coverage.json"
     baseline_path = tmp_path / "coverage-baseline.json"
     baseline_path.write_text(
@@ -464,10 +466,10 @@ def test_coverage_legacy_zero_baseline_can_only_initialize_once(
     report = {
         "files": {
             "app/application/a.py": {
-                "summary": {"num_statements": 10, "covered_lines": 5}
+                "summary": {"num_statements": 10, "covered_lines": 8}
             },
             "app/domain/a.py": {
-                "summary": {"num_statements": 20, "covered_lines": 15}
+                "summary": {"num_statements": 20, "covered_lines": 16}
             },
         }
     }
@@ -481,12 +483,16 @@ def test_coverage_legacy_zero_baseline_can_only_initialize_once(
     ]
 
     monkeypatch.setattr(sys, "argv", command)
-    assert coverage_main() == 1
+    assert coverage_main() == 0
     monkeypatch.setattr(sys, "argv", [*command, "--write"])
     assert coverage_main() == 0
+    assert json.loads(baseline_path.read_text(encoding="utf-8")) == {
+        "application": {"statements": 100, "covered_lines": 80, "percent": 80.0},
+        "domain": {"statements": 100, "covered_lines": 80, "percent": 80.0},
+    }
     initialized_bytes = baseline_path.read_bytes()
 
-    report["files"]["app/domain/a.py"]["summary"]["covered_lines"] = 14
+    report["files"]["app/domain/a.py"]["summary"]["covered_lines"] = 15
     report_path.write_text(json.dumps(report), encoding="utf-8")
     assert coverage_main() == 1
     assert baseline_path.read_bytes() == initialized_bytes

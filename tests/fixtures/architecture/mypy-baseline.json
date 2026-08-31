@@ -265,47 +265,10 @@
     "no-untyped-def": 1,
     "type-arg": 3
   },
-  "app/agent/tools/impl/_filter_rule_utils.py": {
-    "attr-defined": 1,
-    "no-any-return": 2,
-    "type-arg": 10
-  },
-  "app/agent/tools/impl/_plugin_tool_utils.py": {
-    "arg-type": 2,
-    "no-any-return": 2
-  },
   "app/agent/tools/impl/_terminal_session.py": {
     "assignment": 2,
     "attr-defined": 1,
     "type-arg": 2
-  },
-  "app/agent/tools/impl/_torrent_search_utils.py": {
-    "arg-type": 2,
-    "misc": 1,
-    "operator": 4,
-    "type-arg": 2,
-    "var-annotated": 1
-  },
-  "app/agent/tools/impl/add_custom_filter_rule.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/add_download_tasks.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/add_rule_group.py": {
-    "arg-type": 1,
-    "list-item": 1,
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/add_subscribe.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
   },
   "app/agent/tools/impl/apply_patch.py": {
     "arg-type": 5,
@@ -328,49 +291,6 @@
     "no-untyped-def": 12,
     "override": 1
   },
-  "app/agent/tools/impl/create_agent_task.py": {
-    "arg-type": 1,
-    "assignment": 1,
-    "import-untyped": 1,
-    "misc": 2,
-    "override": 1,
-    "type-arg": 1
-  },
-  "app/agent/tools/impl/delete_agent_task.py": {
-    "misc": 1,
-    "override": 1
-  },
-  "app/agent/tools/impl/delete_custom_filter_rule.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/delete_download_history.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/delete_download_tasks.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/delete_rule_group.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/delete_subscribe.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/delete_transfer_history.py": {
-    "attr-defined": 1,
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
   "app/agent/tools/impl/edit_file.py": {
     "arg-type": 1,
     "misc": 1,
@@ -385,177 +305,12 @@
     "no-untyped-def": 2,
     "type-arg": 3
   },
-  "app/agent/tools/impl/get_recommendations.py": {
-    "arg-type": 1,
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/get_search_results.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/install_plugin.py": {
-    "misc": 2,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/list_directory.py": {
-    "misc": 1,
-    "no-any-return": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/list_slash_commands.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
   "app/agent/tools/impl/mcp.py": {
     "arg-type": 3,
     "no-untyped-def": 3,
     "type-arg": 1
   },
-  "app/agent/tools/impl/query_agent_tasks.py": {
-    "misc": 1
-  },
-  "app/agent/tools/impl/query_builtin_filter_rules.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/query_custom_filter_rules.py": {
-    "arg-type": 1,
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/query_custom_identifiers.py": {
-    "misc": 1,
-    "no-untyped-call": 1,
-    "no-untyped-def": 3
-  },
-  "app/agent/tools/impl/query_directory_settings.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
   "app/agent/tools/impl/query_doctor_report.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/query_download_tasks.py": {
-    "arg-type": 1,
-    "misc": 1,
-    "no-any-return": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/query_downloaders.py": {
-    "misc": 1,
-    "no-untyped-call": 1,
-    "no-untyped-def": 3,
-    "type-arg": 1
-  },
-  "app/agent/tools/impl/query_episode_schedule.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/query_installed_plugins.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/query_library_exists.py": {
-    "attr-defined": 6,
-    "dict-item": 1,
-    "misc": 1,
-    "no-untyped-call": 1,
-    "no-untyped-def": 5,
-    "override": 1,
-    "type-arg": 4
-  },
-  "app/agent/tools/impl/query_library_latest.py": {
-    "misc": 2,
-    "no-untyped-def": 2,
-    "type-arg": 1
-  },
-  "app/agent/tools/impl/query_market_plugins.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/query_media_detail.py": {
-    "arg-type": 3,
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/query_personas.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/query_plugin_capabilities.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "type-arg": 1
-  },
-  "app/agent/tools/impl/query_plugin_config.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/query_plugin_data.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/query_popular_subscribes.py": {
-    "arg-type": 2,
-    "assignment": 1,
-    "misc": 1,
-    "no-untyped-call": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/query_rule_groups.py": {
-    "arg-type": 1,
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/query_schedulers.py": {
-    "misc": 1
-  },
-  "app/agent/tools/impl/query_site_userdata.py": {
-    "misc": 1,
-    "no-untyped-def": 3,
-    "override": 1,
-    "type-arg": 1
-  },
-  "app/agent/tools/impl/query_sites.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/query_subscribe_history.py": {
-    "arg-type": 1,
-    "misc": 1,
-    "no-untyped-def": 4,
-    "type-arg": 1
-  },
-  "app/agent/tools/impl/query_subscribe_shares.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/query_subscribes.py": {
-    "arg-type": 2,
-    "misc": 1,
-    "no-untyped-def": 2,
-    "union-attr": 1
-  },
-  "app/agent/tools/impl/query_system_settings.py": {
-    "attr-defined": 1,
-    "misc": 1,
-    "no-untyped-def": 6,
-    "type-arg": 1
-  },
-  "app/agent/tools/impl/query_transfer_history.py": {
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/query_workflows.py": {
     "misc": 1,
     "no-untyped-def": 2
   },
@@ -566,71 +321,6 @@
     "override": 1
   },
   "app/agent/tools/impl/recognize_captcha.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/recognize_media.py": {
-    "arg-type": 1,
-    "assignment": 1,
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/reload_plugin.py": {
-    "misc": 1,
-    "no-any-return": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/run_agent_task.py": {
-    "misc": 1,
-    "override": 1
-  },
-  "app/agent/tools/impl/run_scheduler.py": {
-    "misc": 1,
-    "override": 1
-  },
-  "app/agent/tools/impl/run_slash_command.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/run_workflow.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/scrape_metadata.py": {
-    "arg-type": 6,
-    "attr-defined": 1,
-    "misc": 1,
-    "no-untyped-call": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/search_media.py": {
-    "assignment": 1,
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/search_person.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/search_person_credits.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/search_subscribe.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "operator": 1,
-    "override": 1
-  },
-  "app/agent/tools/impl/search_torrents.py": {
     "misc": 1,
     "no-untyped-def": 2,
     "override": 1
@@ -659,94 +349,6 @@
     "misc": 1,
     "no-untyped-def": 2,
     "override": 1
-  },
-  "app/agent/tools/impl/switch_persona.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/test_site.py": {
-    "misc": 1,
-    "no-any-return": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/transfer_file.py": {
-    "attr-defined": 1,
-    "misc": 1,
-    "no-any-return": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/uninstall_plugin.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/update_agent_task.py": {
-    "import-untyped": 1,
-    "misc": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/update_custom_filter_rule.py": {
-    "arg-type": 5,
-    "list-item": 1,
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/update_custom_identifiers.py": {
-    "assignment": 1,
-    "misc": 1,
-    "no-untyped-def": 2
-  },
-  "app/agent/tools/impl/update_download_tasks.py": {
-    "arg-type": 1,
-    "misc": 1,
-    "no-untyped-def": 3,
-    "override": 1
-  },
-  "app/agent/tools/impl/update_persona_definition.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/update_plugin_config.py": {
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/update_rule_group.py": {
-    "arg-type": 3,
-    "list-item": 1,
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/update_site.py": {
-    "assignment": 7,
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/update_site_cookie.py": {
-    "misc": 1,
-    "no-any-return": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/update_subscribe.py": {
-    "arg-type": 1,
-    "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
-  },
-  "app/agent/tools/impl/update_system_settings.py": {
-    "attr-defined": 1,
-    "misc": 1,
-    "no-untyped-def": 5,
-    "override": 1,
-    "type-arg": 2
   },
   "app/agent/tools/impl/write_file.py": {
     "arg-type": 1,
@@ -945,8 +547,7 @@
   "app/api/endpoints/storage.py": {
     "assignment": 1,
     "attr-defined": 1,
-    "misc": 7,
-    "type-arg": 1
+    "misc": 7
   },
   "app/api/endpoints/subscribe.py": {
     "arg-type": 11,
@@ -1143,6 +744,10 @@
   },
   "app/application/plugin/config.py": {
     "type-arg": 3
+  },
+  "app/application/plugin/management.py": {
+    "arg-type": 2,
+    "no-any-return": 2
   },
   "app/application/rss.py": {
     "assignment": 5,
