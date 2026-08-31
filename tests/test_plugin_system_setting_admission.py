@@ -217,6 +217,28 @@ async def test_non_plugin_system_config_does_not_resolve_plugin_runtime(
 
 
 @pytest.mark.asyncio
+async def test_system_http_reports_persistent_write_failure(monkeypatch) -> None:
+    """通用系统配置持久化失败时 HTTP 响应和事件均不得伪造成功。"""
+    config = MagicMock()
+    config.async_set = AsyncMock(return_value=False)
+    send_event = AsyncMock()
+    monkeypatch.setattr(
+        "app.startup.composition.system.eventmanager.async_send_event", send_event
+    )
+
+    response = await system_endpoint.set_setting(
+        SystemConfigKey.Directories.value,
+        [],
+        None,
+        runtime=_runtime(config),
+    )
+
+    assert response.success is False
+    config.async_set.assert_awaited_once_with(SystemConfigKey.Directories.value, None)
+    send_event.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_rule_group_setting_reconciles_stale_references_when_unchanged(
     monkeypatch,
 ) -> None:

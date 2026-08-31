@@ -317,7 +317,8 @@ class SystemService:
                     success = await self._system_config.async_set(key, value)
                 if success:
                     await self._events.publish(key, event_value)
-                return SystemOperationResult(True)
+                # None 表示值未变化，仍是成功完成；只有明确 False 才代表持久化失败。
+                return SystemOperationResult(success is not False)
         except PluginMutationRejectedError as error:
             return SystemOperationResult(False, str(error))
 
