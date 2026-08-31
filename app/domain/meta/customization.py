@@ -18,6 +18,15 @@ def get_customization() -> object:
     return _customization_provider()
 
 
+def set_custom_separator(separator: str | None) -> None:
+    """设置自定义占位符输出分隔符；传入空值恢复宿主默认行为。"""
+    if separator == "":
+        separator = None
+    if separator is not None and not isinstance(separator, str):
+        raise TypeError("custom separator must be a string or None")
+    CustomizationMatcher().custom_separator = separator
+
+
 class CustomizationMatcher(metaclass=Singleton):
     """
     识别自定义占位符
