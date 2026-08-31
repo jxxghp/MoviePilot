@@ -9,6 +9,7 @@ import pytest
 
 from app import schemas
 from app.agent.contracts import ReplyMode
+
 # pylint: disable=no-name-in-module  # 旧公开入口由 runtime compat 惰性注入，Pylint 无法静态解析。
 from app.agent.orchestrator import agent_manager
 from app.agent.web import _get_web_agent_type

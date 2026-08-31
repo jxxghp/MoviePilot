@@ -18,9 +18,6 @@
   "app/adapters/web/plugin/routes.py": {
     "I001": 1
   },
-  "app/agent/callback/__init__.py": {
-    "I001": 1
-  },
   "app/agent/llm/capability.py": {
     "I001": 1
   },
@@ -36,13 +33,7 @@
   "app/agent/middleware/memory.py": {
     "I001": 1
   },
-  "app/agent/middleware/policy.py": {
-    "I001": 1
-  },
   "app/agent/middleware/selection.py": {
-    "I001": 1
-  },
-  "app/agent/middleware/skills.py": {
     "I001": 1
   },
   "app/agent/middleware/subagents.py": {
@@ -51,43 +42,7 @@
   "app/agent/middleware/utils.py": {
     "I001": 1
   },
-  "app/agent/policy/__init__.py": {
-    "I001": 1
-  },
-  "app/agent/policy/orchestrator.py": {
-    "I001": 1
-  },
-  "app/agent/policy/registry.py": {
-    "I001": 1
-  },
-  "app/agent/policy/sanitizer.py": {
-    "I001": 1
-  },
-  "app/agent/policy/secrets.py": {
-    "I001": 1
-  },
-  "app/agent/prompt/__init__.py": {
-    "I001": 1
-  },
-  "app/agent/runtime.py": {
-    "I001": 1
-  },
-  "app/agent/skills/metadata.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/_command_safety.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/_music_utils.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/_plugin_tool_utils.py": {
-    "I001": 3
-  },
-  "app/agent/tools/impl/_torrent_search_utils.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/add_custom_filter_rule.py": {
     "I001": 1
   },
   "app/agent/tools/impl/ask_user_choice.py": {
@@ -96,100 +51,16 @@
   "app/agent/tools/impl/browse_webpage.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/delete_custom_filter_rule.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/execute_command.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/get_recommendations.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/get_search_results.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/install_plugin.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/list_directory.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_builtin_filter_rules.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_custom_filter_rules.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_installed_plugins.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_library_exists.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_library_latest.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_market_plugins.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_media_detail.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_plugin_config.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_popular_subscribes.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_subscribe_shares.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/query_system_settings.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/recognize_captcha.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/recognize_media.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/reload_plugin.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/run_workflow.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/scrape_metadata.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/search_media.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/search_person_credits.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/search_torrents.py": {
     "I001": 1
   },
   "app/agent/tools/impl/send_local_file.py": {
     "I001": 1
   },
   "app/agent/tools/impl/send_voice_message.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/uninstall_plugin.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/update_custom_identifiers.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/update_download_tasks.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/update_plugin_config.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/update_system_settings.py": {
     "I001": 1
   },
   "app/application/downloader.py": {
@@ -690,9 +561,6 @@
   "app/runtime/state.py": {
     "I001": 1
   },
-  "app/schemas/agent.py": {
-    "I001": 1
-  },
   "app/schemas/common.py": {
     "I001": 1
   },
@@ -800,19 +668,10 @@
   "tests/test_acoustid_module.py": {
     "I001": 1
   },
-  "tests/test_agent_activity_log.py": {
-    "I001": 1
-  },
-  "tests/test_agent_lazy_runtime_boundary.py": {
-    "F401": 1
-  },
   "tests/test_agent_llm_capability.py": {
     "I001": 1
   },
   "tests/test_agent_recognize_captcha_tool.py": {
-    "I001": 1
-  },
-  "tests/test_agent_runtime.py": {
     "I001": 1
   },
   "tests/test_agent_session_status.py": {
@@ -827,20 +686,11 @@
   "tests/test_agent_tokens_events.py": {
     "I001": 1
   },
-  "tests/test_agent_tool_factory_cache.py": {
-    "I001": 1
-  },
   "tests/test_agent_tool_result_policy.py": {
-    "I001": 1
-  },
-  "tests/test_agent_tool_streaming.py": {
     "I001": 1
   },
   "tests/test_agent_tool_timeouts.py": {
     "I001": 1
-  },
-  "tests/test_agent_transfer_file_tool.py": {
-    "F401": 1
   },
   "tests/test_api_authorization.py": {
     "I001": 1
@@ -856,9 +706,6 @@
   },
   "tests/test_bangumi_media_type.py": {
     "F401": 1
-  },
-  "tests/test_builtin_skill_boundaries.py": {
-    "I001": 1
   },
   "tests/test_capability_registry.py": {
     "I001": 1
@@ -996,9 +843,6 @@
     "I001": 1
   },
   "tests/test_main_direct_execution.py": {
-    "I001": 1
-  },
-  "tests/test_mcp_plugin_tools.py": {
     "I001": 1
   },
   "tests/test_media_identity_cleanup_migration.py": {

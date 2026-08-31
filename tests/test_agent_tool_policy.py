@@ -12,6 +12,7 @@ from app.agent.middleware.activity import ActivityLogMiddleware
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.summarization import FinalRequestCompactionMiddleware
+
 # pylint: disable=no-name-in-module  # 策略包根通过 __getattr__ 惰性导出，Pylint 无法静态解析。
 from app.agent.policy import (
     DEFAULT_TOOL_POLICY_ORCHESTRATOR,
