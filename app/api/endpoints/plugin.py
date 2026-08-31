@@ -949,8 +949,6 @@ def set_plugin_config(
     """
     result = command.update(plugin_id, conf)
     return _SchemaResponse(success=result.success, message=result.message)
-
-
 @router.delete("/{plugin_id}", summary="卸载插件", response_model=_SchemaResponse[None])
 def uninstall_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)) -> Any:
     """

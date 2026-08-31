@@ -48,6 +48,7 @@ from app.runtime.tasks import get_task_registry
 from app.schemas.message import Message
 from app.schemas.types import NotificationChannel, ReplyMode
 
+__all__ = ["dispatch_command"]
 # Agent 选择按钮回调前缀（新旧两种格式都必须继续兼容）
 AGENT_CHOICE_PREFIX = "agent_interaction:choice:"
 LEGACY_AGENT_CHOICE_PREFIX = "agent_choice:"
@@ -1703,25 +1704,6 @@ def build_web_agent_command_items() -> list[dict[str, Any]]:
             }
         )
     return sorted(items, key=lambda item: (item["category"], item["command"]))
-
-
-def dispatch_web_agent_command(
-    command: str,
-    *,
-    user_id: str,
-    channel: Optional[NotificationChannel],
-    source: Optional[str],
-    publish_event: Callable[[Any, dict[str, Any]], Any],
-) -> dict[str, Any]:
-    """经消息应用边界校验并触发一条 Agent 斜杠命令。"""
-    return dispatch_command(
-        command,
-        user_id=user_id,
-        channel=channel,
-        source=source,
-        publish_event=publish_event,
-    )
-
 
 def extract_web_agent_slash_command(text: str) -> Optional[str]:
     """

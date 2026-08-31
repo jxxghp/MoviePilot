@@ -329,7 +329,7 @@ async def run_agent_command(
     except ValueError:
         channel = None
     try:
-        data = web_agent_application.dispatch_web_agent_command(
+        data = web_agent_application.dispatch_command(
             payload.command,
             user_id=str(current_user.id),
             channel=channel,
