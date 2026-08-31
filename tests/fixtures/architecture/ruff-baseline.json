@@ -714,6 +714,9 @@
   "app/schemas/site.py": {
     "I001": 1
   },
+  "app/schemas/subscribe.py": {
+    "I001": 1
+  },
   "app/schemas/types.py": {
     "I001": 1
   },

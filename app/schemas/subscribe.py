@@ -1,7 +1,7 @@
 import json
-from typing import Any, ClassVar, Dict, List, Literal, Optional
+from typing import Optional, List, Dict, Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MediaType
