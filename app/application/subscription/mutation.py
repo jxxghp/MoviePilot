@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Literal
 from uuid import uuid4
 
 from app.application.outbox import (
@@ -38,6 +39,9 @@ class SubscriptionActor:
 
     name: str
     is_superuser: bool
+
+
+SubscribeHistoryDeletionStatus = Literal["deleted", "not_found", "forbidden"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -327,18 +331,28 @@ class SubscriptionMutationService:
         actor: SubscriptionActor,
     ) -> bool:
         """删除当前主体可访问的订阅历史。"""
+        return (await self.delete_history_with_status(history_id, actor)) == "deleted"
+
+    async def delete_history_with_status(
+        self,
+        history_id: int,
+        actor: SubscriptionActor,
+    ) -> SubscribeHistoryDeletionStatus:
+        """删除订阅历史并返回可供 HTTP 层判断的结果状态。"""
         if self._history_repository is None:
             raise RuntimeError("订阅历史数据端口未配置")
         history = await self._history_repository.async_get(history_id)
+        if history is None:
+            return "not_found"
         if not self.can_access(history, actor):
-            return False
+            return "forbidden"
         try:
             await self._history_repository.stage_delete(history_id)
             await self._unit_of_work.commit()
         except Exception:
             await self._unit_of_work.rollback()
             raise
-        return True
+        return "deleted"
 
     @staticmethod
     def can_access(

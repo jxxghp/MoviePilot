@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.api.endpoints.subscribe import create_subscribe
@@ -151,10 +152,10 @@ class TestSubscribeEndpoint:
             assert getattr(result, "id", None) == expected_id
 
     def test_delete_subscribe_delegates_identity_without_database_access(self):
-        """按 ID 删除端点只映射用户身份，并保持不存在时也返回成功。"""
+        """按 ID 删除端点只映射用户身份，并返回已提交状态。"""
         from app.api.endpoints.subscribe import delete_subscribe
 
-        command = SimpleNamespace(execute=AsyncMock(return_value=False))
+        command = SimpleNamespace(execute_with_status=AsyncMock(return_value="deleted"))
         response = asyncio.run(
             delete_subscribe(
                 subscribe_id=7,
@@ -164,11 +165,32 @@ class TestSubscribeEndpoint:
         )
 
         assert response.success
-        command.execute.assert_awaited_once()
-        subscribe_id, actor = command.execute.await_args.args
+        assert response.data.status == "deleted"
+        command.execute_with_status.assert_awaited_once()
+        subscribe_id, actor = command.execute_with_status.await_args.args
         assert subscribe_id == 7
         assert actor.username == "alice"
         assert not actor.is_superuser
+
+    @pytest.mark.parametrize(
+        ("status", "expected_code"),
+        [("not_found", 404), ("forbidden", 403)],
+    )
+    def test_delete_subscribe_exposes_missing_and_forbidden_status(self, status, expected_code):
+        """按 ID 删除端点必须让调用方区分目标不存在与无权访问。"""
+        from app.api.endpoints.subscribe import delete_subscribe
+
+        command = SimpleNamespace(execute_with_status=AsyncMock(return_value=status))
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(
+                delete_subscribe(
+                    subscribe_id=7,
+                    command=command,
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
+            )
+
+        assert error.value.status_code == expected_code
 
     def test_manage_permission_does_not_allow_cross_user_update(self):
         """
@@ -770,10 +792,8 @@ class TestSubscribeEndpoint:
         )
         history_repository.async_list_by_type_and_username.assert_not_awaited()
 
-    def test_delete_subscribe_history_hides_other_from_regular_user(self):
-        """
-        普通用户删除他人订阅历史时按不存在处理。
-        """
+    def test_delete_subscribe_history_rejects_other_user(self):
+        """普通用户删除他人订阅历史时明确返回无权。"""
         from app.api.endpoints.subscribe import delete_subscribe_history
 
         other = _EndpointHistory(
@@ -785,15 +805,16 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake()
         history_repository = _SubscriptionHistoryRepositoryFake(other)
 
-        response = asyncio.run(
-            delete_subscribe_history(
-                history_id=11,
-                mutation=_subscription_mutation(repository, history_repository),
-                current_user=_EndpointUser(name="alice", is_superuser=False),
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(
+                delete_subscribe_history(
+                    history_id=11,
+                    mutation=_subscription_mutation(repository, history_repository),
+                    current_user=_EndpointUser(name="alice", is_superuser=False),
+                )
             )
-        )
 
-        assert response.success
+        assert error.value.status_code == 403
         history_repository.stage_delete.assert_not_awaited()
 
     def test_global_refresh_and_check_require_superuser(self):

@@ -4,7 +4,7 @@ import inspect
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Awaitable, Callable, Mapping, Optional, Protocol, cast
+from typing import Awaitable, Callable, Literal, Mapping, Optional, Protocol, cast
 from uuid import uuid4
 
 from app.application.outbox import (
@@ -33,6 +33,9 @@ class SubscribeDeletionActor:
 
     username: str
     is_superuser: bool
+
+
+SubscribeDeletionStatus = Literal["deleted", "not_found", "forbidden"]
 
 
 class AsyncUnitOfWork(Protocol):
@@ -91,12 +94,22 @@ class DeleteSubscribeCommand:
         """
         删除当前用户可访问的订阅。
 
-        返回 False 表示订阅不存在或无权访问；该结果由 API 映射为历史兼容的成功响应。
+        返回 False 表示订阅未删除；需要区分具体原因时使用 ``execute_with_status``。
         提交后的事件与上报保持原有顺序，任一副作用失败都会继续向调用方抛出。
         """
+        return (await self.execute_with_status(subscribe_id, actor)) == "deleted"
+
+    async def execute_with_status(
+        self,
+        subscribe_id: int,
+        actor: SubscribeDeletionActor,
+    ) -> SubscribeDeletionStatus:
+        """按权限删除订阅并返回可供 HTTP 层判断的结果状态。"""
         candidate = await self._repository.get_candidate(subscribe_id)
+        if candidate is None:
+            return "not_found"
         if not can_delete_subscribe(candidate, actor):
-            return False
+            return "forbidden"
         assert candidate is not None
 
         effects = _build_deletion_effects(
@@ -150,7 +163,7 @@ class DeleteSubscribeCommand:
         else:
             if report_result is False:
                 logger.warning("订阅删除统计上报未确认，将由后台重试")
-        return True
+        return "deleted"
 
 
 class SyncDeleteSubscribeCommand:
