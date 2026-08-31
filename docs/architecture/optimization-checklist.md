@@ -19,7 +19,7 @@
 | RES-002 | `DELIVERED`（R2） | 复杂度门禁漏扫私有方法、类/文件和 Scheduler；原生并发清单不完整 | `f7ca7e517`、`5cd5780d3`：完整宿主 AST、canonical owner/count、低水位与零增长门禁已落地 |
 | RES-003 | `DELIVERED`（R3） | Outbox after_commit 失败只有内存 pending 标记，重启不可恢复 | `9d06f91bb`：持久 intent、唯一 handler、claim/fencing、重启回放、幂等和失败观测完整闭环 |
 | RES-004 | `DELIVERED`（R4） | Startup initializer 与插件市场存在多套 Transport/Adapter/Manager 构造 | `7f5b8b469` 至 `046b0b305`：构造回收到 composition，兼容门面消费同一 owner，canonical 无重复正式实现 |
-| RES-005 | `DELIVERED`（R5） | 审计声明、机器门禁、CI 与远端交付状态需要重新校准 | 当前文档、生成 fixture 与规则一致；锁定全量 `7684 passed, 9 skipped`，Application/Domain 覆盖率为 `81.80%` / `81.03%`，Pylint `10.00/10`、架构/兼容、真实启动和最终 exact-head GitHub CI 闭环，远端 `0/0` |
+| RES-005 | `DELIVERED`（R5） | 审计声明、机器门禁、CI 与远端交付状态需要重新校准 | 当前文档、生成 fixture 与规则一致；锁定全量 `7684 passed, 9 skipped`，Application/Domain 覆盖率为 `81.86%` / `81.03%`，Pylint `10.00/10`、架构/兼容、真实启动和最终 exact-head GitHub CI 闭环，远端 `0/0` |
 R2 门禁现已完整覆盖私有、dunder、任意控制流嵌套方法、类、文件与
 `app/scheduler/`；`concurrency.py` 扫描完整宿主源码，按 canonical import/alias、
 TaskGroup、可证明的 loop/executor 来源和词法 owner 聚合数量。新增 owner、数量增长以及
@@ -101,9 +101,9 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 305,884 行 | 排除 `app/plugins/**`；61 个文件超过 1,000 行，11 个超过 2,000 行 |
 | 长方法 | 290 个超过 80 行 | AST 统计排除 `app/plugins/**`；65 个超过 150 行，21 个超过 250 行 |
-| 全量 mypy 历史债务 | 9,986 / 591 文件 | canonical `SearchChain` Facade 已补齐显式类型转发；strict frontier 当前覆盖 41 个文件，低水位只允许继续下降 |
+| 全量 mypy 历史债务 | 9,983 / 591 文件 | canonical `SearchChain` Facade 已补齐显式类型转发；strict frontier 当前覆盖 41 个文件，低水位只允许继续下降 |
 | Ruff 历史诊断 | 630 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率低水位 | Application 81.80%，Domain 81.03% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| 覆盖率低水位 | Application 81.86%，Domain 81.03% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
 
@@ -805,9 +805,11 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 # 广泛变更的最终本地回归
 uv run --locked --no-sync python tests/run.py
 
-# 需要覆盖率证据时按 CI 串行生成真实报告，再检查低水位
-uv run --locked --no-sync python -m coverage erase
-uv run --locked --no-sync python -m coverage run tests/run.py --serial
+# 需要覆盖率证据时按 CI 的 8 个分片采集并合并，再检查低水位
+for shard in 1/8 2/8 3/8 4/8 5/8 6/8 7/8 8/8; do
+  uv run --locked --no-sync python -m coverage run --parallel-mode tests/run.py --shard "$shard"
+done
+uv run --locked --no-sync python -m coverage combine
 uv run --locked --no-sync python -m coverage json
 uv run --locked --no-sync python scripts/architecture/coverage_ratchet.py
 

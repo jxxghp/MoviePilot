@@ -123,10 +123,30 @@ jobs:
         timeout-minutes: 10
         run: uv run --locked --no-sync python tests/run.py --shard "${{ matrix.shard }}"
 
-  coverage:
+  coverage-shard:
     runs-on: ubuntu-latest
-    name: Coverage Report
-    timeout-minutes: 20
+    name: Coverage Shard (${{ matrix.shard }})
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: '1/8'
+            index: '1'
+          - shard: '2/8'
+            index: '2'
+          - shard: '3/8'
+            index: '3'
+          - shard: '4/8'
+            index: '4'
+          - shard: '5/8'
+            index: '5'
+          - shard: '6/8'
+            index: '6'
+          - shard: '7/8'
+            index: '7'
+          - shard: '8/8'
+            index: '8'
 
     steps:
       - name: Checkout code
@@ -144,14 +164,55 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
-      - name: Generate coverage reports
-        timeout-minutes: 15
+      - name: Generate coverage data
+        timeout-minutes: 10
+        run: uv run --locked --no-sync python -m coverage run --parallel-mode tests/run.py --shard "${{ matrix.shard }}"
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-${{ matrix.index }}
+          path: .coverage.*
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  coverage-report:
+    runs-on: ubuntu-latest
+    name: Coverage Report
+    needs: coverage-shard
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: '3.14'
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-data-*
+          path: coverage-data
+          merge-multiple: true
+
+      - name: Combine coverage data and check ratchet
         run: |
-          uv run --locked --no-sync python -m coverage erase
-          uv run --locked --no-sync python -m coverage run tests/run.py --serial
+          uv run --locked --no-sync python -m coverage combine coverage-data
           uv run --locked --no-sync python -m coverage report
           uv run --locked --no-sync python -m coverage json
           uv run --locked --no-sync python -m coverage xml
+          uv run --locked --no-sync python scripts/architecture/coverage_ratchet.py
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
@@ -161,6 +222,3 @@ jobs:
             coverage.xml
             coverage.json
           retention-days: 7
-
-      - name: Check coverage ratchet
-        run: uv run --locked --no-sync python scripts/architecture/coverage_ratchet.py

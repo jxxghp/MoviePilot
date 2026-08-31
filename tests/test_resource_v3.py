@@ -146,10 +146,10 @@ def test_v3_release_workflows_use_main_wiki_and_isolated_images():
     assert "name: MoviePilot Builder v3" in build_workflow
     assert "      - v3" in build_workflow
     assert "          repository: jxxghp/MoviePilot-Wiki\n          ref: main" in build_workflow
+    assert "${{ secrets.DOCKER_USERNAME }}/moviepilot\n" in build_workflow
     assert "${{ secrets.DOCKER_USERNAME }}/moviepilot-v3" in build_workflow
     assert "ghcr.io/${{ github.repository }}-v3" in build_workflow
     assert "${{ secrets.DOCKER_USERNAME }}/moviepilot-v2" not in build_workflow
-    assert "${{ secrets.DOCKER_USERNAME }}/moviepilot\n" not in build_workflow
     assert "git tag -l 'v3.*'" in build_workflow
 
     assert "          repository: jxxghp/MoviePilot-Wiki\n          ref: main" in beta_workflow
