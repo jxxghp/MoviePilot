@@ -20,6 +20,7 @@ from pydantic.dataclasses import dataclass as pydantic_dataclass
 from pydantic_core import PydanticCustomError
 
 import app.agent.policy.sanitizer as sanitizer_module
+# pylint: disable=no-name-in-module  # 策略包根通过 __getattr__ 惰性导出，Pylint 无法静态解析。
 from app.agent.policy import sanitize_for_host, summarize_error, summarize_input, summarize_result
 from app.agent.tools.base import MoviePilotTool, serialize_tool_result_for_agent
 from app.agent.tools.manager import MoviePilotToolsManager

@@ -19,6 +19,7 @@ from app.application.agenttask import AgentTaskRepository, AgentTaskSnapshot
 from app.application.filtering import FilterRuleService
 from app.db.adapters.agent import TransactionalAgentTaskRepository
 from app.db.session import SessionFactory
+# pylint: disable=no-name-in-module  # Scheduler 由惰性稳定入口导出，Pylint 无法静态解析。
 from app.scheduler import Scheduler
 from app.schemas.rule import CustomRule
 from app.schemas.system import FilterRuleGroup

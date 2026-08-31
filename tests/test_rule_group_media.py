@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 from app.application.filtering import normalize_media_type
 from app.application.rules import RuleHelper
+# pylint: disable=no-name-in-module  # SubscribeChain 由惰性稳定入口导出，Pylint 无法静态解析。
 from app.chain.subscribe import SubscribeChain
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.modules.filter import FilterModule

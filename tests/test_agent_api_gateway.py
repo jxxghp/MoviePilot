@@ -3,6 +3,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+# pylint: disable=no-name-in-module  # 策略包根通过 __getattr__ 惰性导出，Pylint 无法静态解析。
 from app.agent.policy import (
     DEFAULT_TOOL_POLICY_REGISTRY,
     ActionEffect,

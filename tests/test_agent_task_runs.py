@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
+# pylint: disable=no-name-in-module  # 旧公开入口由 runtime compat 惰性注入，Pylint 无法静态解析。
 from app.agent.orchestrator import AgentManager
 from app.agent.tools.impl.agent_task import AgentTaskTool
 from app.db import base as db_base
