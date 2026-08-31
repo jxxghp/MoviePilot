@@ -84,7 +84,7 @@ def test_official_plugin_observation_is_scheduled_and_never_writes_fixture():
 
 
 def test_coverage_job_runs_full_suite_and_read_only_ratchet() -> None:
-    """PR 与推送的 Coverage job 必须串行采集全量报告并只读检查低水位。"""
+    """push/手动流程的 Coverage job 串行采集全量报告并只读检查低水位。"""
     workflow = _load_workflow("test.yml")
     coverage_job = workflow["jobs"]["coverage"]
     steps = coverage_job["steps"]
@@ -93,7 +93,7 @@ def test_coverage_job_runs_full_suite_and_read_only_ratchet() -> None:
     assert "workflow_dispatch" in workflow["on"]
     assert coverage_job["runs-on"] == "ubuntu-latest"
     assert coverage_job["timeout-minutes"] == 20
-    assert "if" not in coverage_job
+    assert coverage_job["if"] == "github.event_name != 'pull_request'"
 
     setup_step = next(step for step in steps if step.get("name") == "Set up uv")
     install_step = next(

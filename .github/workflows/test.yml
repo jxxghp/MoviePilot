@@ -127,6 +127,8 @@ jobs:
     runs-on: ubuntu-latest
     name: Coverage Report
     timeout-minutes: 20
+    # PR 先完成架构与分片功能门禁；全量 Coverage 保留在 push/手动流程，避免重复串行执行拖慢评审。
+    if: github.event_name != 'pull_request'
 
     steps:
       - name: Checkout code
