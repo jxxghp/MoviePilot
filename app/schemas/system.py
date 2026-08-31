@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime as _DateTime
-from typing import Optional, Any, Literal
-from uuid import uuid4
+from typing import Any, Literal, Optional
+from uuid import uuid4 as _uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -91,15 +91,15 @@ class NotificationConf(BaseModel):
     """
 
     # 稳定渠道身份；名称变化时保持不变，用于运行态凭据和跨页面引用。
-    id: str = Field(default_factory=lambda: str(uuid4()))
+    id: str = Field(default_factory=lambda: str(_uuid4()))
     # 名称
     name: Optional[str] = None
     # 类型 telegram/wechat/feishu/vocechat/synologychat/slack/webpush/qqbot
     type: Optional[str] = None
     # 配置
-    config: Optional[dict] = Field(default_factory=dict)
-    # 场景开关
-    switchs: Optional[list] = Field(default_factory=list)
+    config: Optional[dict[str, Any]] = Field(default_factory=dict)
+    # 场景开关名称列表；NotificationSwitchConf 属于全局通知范围配置，不是渠道字段。
+    switchs: Optional[list[str]] = Field(default_factory=list)
     # 是否启用
     enabled: Optional[bool] = False
 
