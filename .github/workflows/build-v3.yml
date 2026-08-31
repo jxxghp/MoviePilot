@@ -368,13 +368,6 @@ jobs:
         run: |
           ghcr_repository="${GITHUB_REPOSITORY,,}"
           for image in \
-            "${DOCKER_USERNAME}/moviepilot-v3" \
-            "ghcr.io/${ghcr_repository}-v3"; do
-            docker buildx imagetools create \
-              --tag "${image}:latest" \
-              "${image}:${app_version}"
-          done
-          for image in \
             "${DOCKER_USERNAME}/moviepilot-v3t" \
             "ghcr.io/${ghcr_repository}-v3t"; do
             docker buildx imagetools create \
