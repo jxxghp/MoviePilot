@@ -827,7 +827,7 @@
   "app/api/endpoints/douban.py": {
     "attr-defined": 1,
     "misc": 5,
-    "no-untyped-call": 3
+    "no-untyped-call": 2
   },
   "app/api/endpoints/download.py": {
     "arg-type": 7,
@@ -969,7 +969,7 @@
   "app/api/endpoints/tmdb.py": {
     "attr-defined": 1,
     "misc": 11,
-    "no-untyped-call": 4,
+    "no-untyped-call": 2,
     "operator": 4,
     "type-arg": 3
   },

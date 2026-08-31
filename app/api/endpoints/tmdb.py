@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Sequence
 
 from fastapi import Depends
 
@@ -17,6 +17,14 @@ from app.schemas.types import MediaType, SystemConfigKey
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
+
+
+def _paginate_medias(medias: Sequence[Any], page: int, count: int) -> list[Any]:
+    """按 browse 端点统一的页码协议切片媒体结果。"""
+    normalized_page = max(page, 1)
+    normalized_count = max(count, 1)
+    start = (normalized_page - 1) * normalized_count
+    return list(medias[start : start + normalized_count])
 
 
 @router.get(
@@ -93,7 +101,11 @@ async def tmdb_seasons(
     response_model=List[_SchemaMediaInfo],
 )
 async def tmdb_similar(
-    tmdbid: int, type_name: str, _: _SchemaTokenPayload = Depends(verify_token)
+    tmdbid: int,
+    type_name: str,
+    page: int = 1,
+    count: int = 20,
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据TMDBID查询类似电影/电视剧，type_name: 电影/电视剧
@@ -106,7 +118,7 @@ async def tmdb_similar(
     else:
         return []
     if medias:
-        return [media.to_dict() for media in medias]
+        return [media.to_dict() for media in _paginate_medias(medias, page, count)]
     return []
 
 
@@ -116,7 +128,11 @@ async def tmdb_similar(
     response_model=List[_SchemaMediaInfo],
 )
 async def tmdb_recommend(
-    tmdbid: int, type_name: str, _: _SchemaTokenPayload = Depends(verify_token)
+    tmdbid: int,
+    type_name: str,
+    page: int = 1,
+    count: int = 20,
+    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     根据TMDBID查询推荐电影/电视剧，type_name: 电影/电视剧
@@ -129,7 +145,7 @@ async def tmdb_recommend(
     else:
         return []
     if medias:
-        return [media.to_dict() for media in medias]
+        return [media.to_dict() for media in _paginate_medias(medias, page, count)]
     return []
 
 
