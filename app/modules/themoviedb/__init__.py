@@ -1736,7 +1736,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         :param episode_group:  剧集组
         """
         if episode_group:
-            season_info = await self.tmdb.async_get_tv_group_detail(episode_group, season=season)
+            season_info = await self.tmdb.async_get_tv_group_detail(group_id=episode_group, season=season)
         else:
             season_info = await self.tmdb.async_get_tv_season_detail(tmdbid=tmdbid, season=season)
         if not season_info or not season_info.get("episodes"):
