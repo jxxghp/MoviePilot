@@ -8,7 +8,14 @@ from app.sdk.cache import Cache, cached
 from app.sdk.config import settings
 from app.sdk.events import Event, eventmanager
 from app.sdk.logging import logger
-from app.sdk.media import MediaInfo, MetaBase, MetaInfo, MetaMusic, NfoReader
+from app.sdk.media import (
+    MediaInfo,
+    MetaBase,
+    MetaInfo,
+    MetaMusic,
+    NfoReader,
+    set_custom_separator,
+)
 from app.sdk.network import RequestUtils, RssHelper, SitesHelper
 from app.sdk.plugins import ModuleManager, PluginManager
 from app.sdk.services import NotificationHelper
@@ -22,6 +29,9 @@ PROJECT_ROOT = Path(__file__).parents[1]
 def test_sdk_exports_canonical_plugin_interfaces():
     """SDK 应复用 canonical 对象，不复制实现或制造第二套单例。"""
     from app.domain.context import MediaInfo as CanonicalMediaInfo
+    from app.domain.meta.customization import (
+        set_custom_separator as canonical_set_custom_separator,
+    )
     from app.domain.meta.metabase import MetaBase as CanonicalMetaBase
     from app.domain.meta.metamusic import MetaMusic as CanonicalMetaMusic
     from app.domain.metainfo import MetaInfo as CanonicalMetaInfo
@@ -51,6 +61,7 @@ def test_sdk_exports_canonical_plugin_interfaces():
     assert eventmanager is canonical_eventmanager
     assert logger is canonical_logger
     assert MediaInfo is CanonicalMediaInfo
+    assert set_custom_separator is canonical_set_custom_separator
     assert MetaBase is CanonicalMetaBase
     assert MetaInfo is CanonicalMetaInfo
     assert MetaMusic is CanonicalMetaMusic
