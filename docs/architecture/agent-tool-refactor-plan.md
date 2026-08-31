@@ -313,6 +313,7 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 - 为站点优先级、插件目录和工作流路径 ID 等原先不精确的输入补充类型模型或端点约束；固定路由占位符与 path schema 名称、required 状态由测试逐项校验
 - 受影响 Agent/Skill/MCP/OpenAPI/音乐/架构回归 247 passed；修复全量发现的工作流管理员门禁、插件分页默认值、模块命名治理、服务工具标签和 Schema 导出清单后，专项回归 40 passed
 - 完整锁定测试最终通过：7,614 passed、9 skipped；覆盖率按 CI 相同的 8 分片采集并合并，Application 81.88%、Domain 81.01%，通过固定 80% 门禁
+- 首次推送 `6d4d7331d` 的远端 Pylint 成功；Architecture Contract Gate 在 complexity v2 发现 `plugin.py` 从 999 行增长到 1007 行，合并三个短 import 后恢复到 999 行，本地两套复杂度门禁及 49 项相关回归均通过
 - 当前活动叶子保持 L9；下一步完成提交前差异审查、提交推送并检查远端 CI 终态
 
 本文件作为本次重构的持续记录，保留阶段状态、实际变更、验证结果、提交状态与已知基线边界。

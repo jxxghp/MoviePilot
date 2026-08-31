@@ -22,9 +22,7 @@ from app.api.dependencies.auth import (
     get_current_active_superuser,
     get_current_active_superuser_async,
 )
-from app.api.dependencies.plugin import (
-    get_plugin_config_command,
-)
+from app.api.dependencies.plugin import get_plugin_config_command
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.commands import init_commands
@@ -39,19 +37,13 @@ from app.application.plugin.folders import (
 )
 from app.application.plugin.gateway import get_plugin_install_service
 from app.application.plugin.management import get_plugin_snapshot, search_plugin_candidates
-from app.application.plugin.rating import (
-    PluginNotInstalledError,
-    get_plugin_rating_service,
-)
+from app.application.plugin.rating import PluginNotInstalledError, get_plugin_rating_service
 from app.application.plugin.release import get_plugin_release_service
 from app.application.plugin.routes import register_plugin_api, remove_plugin_api
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.plugin.transaction import get_plugin_persistence
 from app.application.scheduling import remove_plugin_job, update_plugin_job
-from app.runtime.extensions.plugin.contracts import (
-    PluginDashboardError,
-    PluginNotFoundError,
-)
+from app.runtime.extensions.plugin.contracts import PluginDashboardError, PluginNotFoundError
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
 from app.schemas.common import JsonObject as _SchemaJsonObject
