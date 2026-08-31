@@ -305,6 +305,26 @@ async def test_regular_user_cannot_delete_missing_other_or_legacy_subscribe(cand
 
 
 @pytest.mark.asyncio
+async def test_delete_with_status_distinguishes_missing_and_forbidden():
+    """HTTP 入口需要区分不存在与已存在但无权访问的订阅。"""
+    missing_calls = []
+    missing = _command(None, missing_calls)
+    assert await missing.execute_with_status(
+        7,
+        SubscribeDeletionActor(username="alice", is_superuser=False),
+    ) == "not_found"
+
+    forbidden_calls = []
+    forbidden = _command(_candidate("bob"), forbidden_calls)
+    assert await forbidden.execute_with_status(
+        7,
+        SubscribeDeletionActor(username="alice", is_superuser=False),
+    ) == "forbidden"
+    assert missing_calls == [("get", 7)]
+    assert forbidden_calls == [("get", 7)]
+
+
+@pytest.mark.asyncio
 async def test_superuser_can_delete_other_users_subscribe():
     """超级用户保留全局订阅删除权限。"""
     calls = []

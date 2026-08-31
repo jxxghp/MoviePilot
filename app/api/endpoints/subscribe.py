@@ -58,6 +58,7 @@ from app.schemas.common import IdData as _SchemaIdData
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
+from app.schemas.subscribe import SubscribeDeletionResult as _SchemaSubscribeDeletionResult
 from app.schemas.subscribe import SubscribeShare as _SchemaSubscribeShare
 from app.schemas.subscribe import SubscribeShareStatistics as _SchemaSubscribeShareStatistics
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -557,7 +558,9 @@ async def subscribe_history(
 
 
 @router.delete(
-    "/history/{history_id}", summary="删除订阅历史", response_model=_SchemaResponse[None]
+    "/history/{history_id}",
+    summary="删除订阅历史",
+    response_model=_SchemaResponse[_SchemaSubscribeDeletionResult],
 )
 async def delete_subscribe_history(
     history_id: int,
@@ -571,8 +574,15 @@ async def delete_subscribe_history(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
     )
-    await mutation.delete_history(history_id, actor)
-    return _SchemaResponse(success=True)
+    status = await mutation.delete_history_with_status(history_id, actor)
+    if status == "not_found":
+        raise HTTPException(status_code=404, detail="订阅历史不存在")
+    if status == "forbidden":
+        raise HTTPException(status_code=403, detail="无权删除该订阅历史")
+    return _SchemaResponse(
+        success=True,
+        data=_SchemaSubscribeDeletionResult(status="deleted"),
+    )
 
 
 @router.get(
@@ -833,7 +843,11 @@ async def read_subscribe(
     )
 
 
-@router.delete("/{subscribe_id}", summary="删除订阅", response_model=_SchemaResponse[None])
+@router.delete(
+    "/{subscribe_id}",
+    summary="删除订阅",
+    response_model=_SchemaResponse[_SchemaSubscribeDeletionResult],
+)
 async def delete_subscribe(
     subscribe_id: int,
     command: DeleteSubscribeCommand = Depends(get_delete_subscribe_command),
@@ -842,11 +856,18 @@ async def delete_subscribe(
     """
     删除订阅信息
     """
-    await command.execute(
+    status = await command.execute_with_status(
         subscribe_id,
         SubscribeDeletionActor(
             username=current_user.name,
             is_superuser=current_user.is_superuser,
         ),
     )
-    return _SchemaResponse(success=True)
+    if status == "not_found":
+        raise HTTPException(status_code=404, detail="订阅不存在")
+    if status == "forbidden":
+        raise HTTPException(status_code=403, detail="无权删除该订阅")
+    return _SchemaResponse(
+        success=True,
+        data=_SchemaSubscribeDeletionResult(status="deleted"),
+    )

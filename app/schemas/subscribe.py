@@ -1,5 +1,5 @@
 import json
-from typing import Optional, List, Dict, Any, ClassVar
+from typing import Optional, List, Dict, Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
@@ -361,3 +361,10 @@ class SubscrbieInfo(BaseModel):
     subscribe: Optional[Subscribe] = None
     # 集信息 {集号: {download: 文件路径，library: 文件路径, backdrop: url, title: 标题, description: 描述}}
     episodes: Optional[Dict[int, SubscribeEpisodeInfo]] = Field(default_factory=dict)
+
+
+class SubscribeDeletionResult(BaseModel):  # type: ignore[misc]
+    """订阅删除成功后的机器可判断结果。"""
+
+    # deleted 表示数据库事务已提交；不存在或无权限由 HTTP 状态码表达。
+    status: Literal["deleted"]
