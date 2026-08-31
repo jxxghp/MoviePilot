@@ -122,14 +122,17 @@ def _ensure_project_import() -> None:
 
 
 def _load_configs() -> list[Any]:
-    """读取并校验本机下载器配置。"""
+    """通过独立短会话读取并校验本机下载器配置。"""
     _ensure_project_import()
     from app.db.oper.systemconfig import SystemConfigOper
+    from app.db.session import SessionFactory
     from app.runtime.extensions.service import ServiceConfigHelper
     from app.runtime.extensions.service import configure_service_config_reader
 
     system_config = SystemConfigOper()
-    system_config.load_snapshot()
+    # Skill 在独立 CLI 进程中运行，没有 lifespan 为无会话 Oper 装配事务执行器。
+    with SessionFactory() as session:
+        system_config.load_snapshot(session)
     configure_service_config_reader(system_config.get)
     return ServiceConfigHelper.get_downloader_configs()
 

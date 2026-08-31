@@ -1,6 +1,8 @@
 """下载器与媒体服务器第三方 API Skill 测试。"""
 
 import importlib.util
+import json
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -71,22 +73,28 @@ def test_downloader_load_configs_bootstraps_runtime_service_reader(
     downloader_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """独立脚本必须先从数据库加载快照，再读取下载器服务配置。"""
+    """独立脚本必须用自有短会话加载快照，再读取下载器服务配置。"""
     import app.db.oper.systemconfig as systemconfig_module
+    import app.db.session as session_module
     import app.runtime.extensions.service as service_module
 
     system_config = MagicMock()
+    session = MagicMock()
+    session_factory = MagicMock()
+    session_factory.return_value.__enter__.return_value = session
     configured_configs = [_downloader_config()]
     helper = MagicMock()
     helper.get_downloader_configs.return_value = configured_configs
     configure_reader = MagicMock()
     monkeypatch.setattr(systemconfig_module, "SystemConfigOper", MagicMock(return_value=system_config))
+    monkeypatch.setattr(session_module, "SessionFactory", session_factory)
     monkeypatch.setattr(service_module, "ServiceConfigHelper", helper)
     monkeypatch.setattr(service_module, "configure_service_config_reader", configure_reader)
 
     assert downloader_module._load_configs() == configured_configs
 
-    system_config.load_snapshot.assert_called_once_with()
+    session_factory.assert_called_once_with()
+    system_config.load_snapshot.assert_called_once_with(session)
     configure_reader.assert_called_once_with(system_config.get)
     helper.get_downloader_configs.assert_called_once_with()
 
@@ -95,24 +103,58 @@ def test_mediaserver_load_configs_bootstraps_runtime_service_reader(
     mediaserver_module: ModuleType,
     monkeypatch,
 ) -> None:
-    """独立脚本必须先从数据库加载快照，再读取媒体服务器服务配置。"""
+    """独立脚本必须用自有短会话加载快照，再读取媒体服务器服务配置。"""
     import app.db.oper.systemconfig as systemconfig_module
+    import app.db.session as session_module
     import app.runtime.extensions.service as service_module
 
     system_config = MagicMock()
+    session = MagicMock()
+    session_factory = MagicMock()
+    session_factory.return_value.__enter__.return_value = session
     configured_configs = [_mediaserver_config()]
     helper = MagicMock()
     helper.get_mediaserver_configs.return_value = configured_configs
     configure_reader = MagicMock()
     monkeypatch.setattr(systemconfig_module, "SystemConfigOper", MagicMock(return_value=system_config))
+    monkeypatch.setattr(session_module, "SessionFactory", session_factory)
     monkeypatch.setattr(service_module, "ServiceConfigHelper", helper)
     monkeypatch.setattr(service_module, "configure_service_config_reader", configure_reader)
 
     assert mediaserver_module._load_configs() == configured_configs
 
-    system_config.load_snapshot.assert_called_once_with()
+    session_factory.assert_called_once_with()
+    system_config.load_snapshot.assert_called_once_with(session)
     configure_reader.assert_called_once_with(system_config.get)
     helper.get_mediaserver_configs.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "instances_key"),
+    [
+        ("skills/downloader-operation/scripts/mp-downloader.py", "instances"),
+        ("skills/mediaserver-operation/scripts/mp-mediaserver.py", "instances"),
+    ],
+)
+def test_service_operation_script_loads_configs_without_lifespan(
+    relative_path: str,
+    instances_key: str,
+) -> None:
+    """独立 CLI 子进程未启动 lifespan 时也应能从隔离数据库读取配置。"""
+    result = subprocess.run(
+        [sys.executable, str(PROJECT_ROOT / relative_path), "instances"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout or result.stderr
+    # SQLite 首次建引擎会先输出 journal mode 诊断，取随后固定 JSON envelope。
+    payload = json.loads(result.stdout[result.stdout.index("{") :])
+    assert payload["success"] is True
+    assert payload[instances_key] == []
 
 
 def test_downloader_instances_and_capabilities_do_not_expose_credentials(
