@@ -195,6 +195,8 @@ class WallpaperHelper(metaclass=Singleton):
             return self.get_mediaserver_wallpaper()
         elif wallpaper == "customize":
             return self.get_customize_wallpaper()
+        elif wallpaper == "static":
+            return self.get_static_wallpaper()
         elif wallpaper == "tmdb":
             return self.get_tmdb_wallpaper()
         return ''
@@ -210,9 +212,20 @@ class WallpaperHelper(metaclass=Singleton):
             return self.get_mediaserver_wallpapers(num)
         elif wallpaper == "customize":
             return self.get_customize_wallpapers()
+        elif wallpaper == "static":
+            return self.get_static_wallpapers()
         elif wallpaper == "tmdb":
             return self.get_tmdb_wallpapers(num)
         return []
+
+    def get_static_wallpaper(self) -> Optional[str]:
+        """原样返回前端可访问的静态壁纸地址。"""
+        return get_chain_runtime_config_snapshot().wallpaper_image_url
+
+    def get_static_wallpapers(self) -> List[str]:
+        """以单项列表返回静态壁纸，确保前端沿用统一的列表契约。"""
+        wallpaper = self.get_static_wallpaper()
+        return [wallpaper] if wallpaper else []
 
     @cached(maxsize=1, ttl=3600)
     def get_tmdb_wallpaper(self) -> Optional[str]:

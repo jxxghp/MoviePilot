@@ -470,6 +470,7 @@ SCHEMA_EXPORTS = {
     'json': ('app.schemas.subscribe', 'json'),
     'model_validator': ('app.schemas.transfer', 'model_validator'),
     're': ('app.schemas.file', 're'),
+    'uuid4': ('app.schemas.system', 'uuid4'),
 }
 
 SCHEMA_CONFLICTS = {
