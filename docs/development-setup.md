@@ -199,10 +199,11 @@ uvx --from pip-audit pip-audit \
    `python tests/run.py` 在本地默认把排序后的测试文件按向上取整的连续区间切成 4 片，
    并启动 4 个独立 pytest 进程；GitHub Actions 使用同一入口的 `--shard N/TOTAL`
    参数启动对应分片。需要单进程调试时使用 `python tests/run.py --serial`。Coverage job
-   会在 `v3` 的 PR / push 中串行运行同一全量入口，并检查 Application 与 Domain 的
-   已提交低水位；它不是只在手工触发时运行的建议性报告。该 job 总预算为 20 分钟，
-   其中全量测试及报告生成 step 预算为 15 分钟，用于容纳 Ubuntu Runner 的性能波动，
-   不得通过跳过测试文件或覆盖率产物规避超时。
+   会在 `v3` 的 PR / push 中将同一全量入口切成 8 个并行分片，分别上传覆盖率数据，再由
+   单一报告 job 合并并检查 Application 与 Domain 的已提交低水位；它不是只在手工触发时
+   运行的建议性报告。每个 Coverage 分片预算为 15 分钟（其中测试 step 为 10 分钟），
+   报告合并与 ratchet 预算为 10 分钟，用于容纳 Ubuntu Runner 的性能波动，不得通过跳过
+   测试文件或覆盖率产物规避超时。
 
 4. **运行架构与静态门禁**：主仓架构检查不依赖独立插件仓；官方插件兼容观察单独运行，
    任何检查命令都不会写入 fixture。

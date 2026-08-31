@@ -86,10 +86,10 @@ def test_invalid_shard_values_are_rejected(value: str) -> None:
 
 
 def test_workflow_uses_the_shared_runner_contract() -> None:
-    """CI 不得另行维护 shell 分片算法，覆盖率必须显式使用串行模式。"""
+    """CI 不得另行维护 shell 分片算法，Coverage 必须复用同一分片入口。"""
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert 'python tests/run.py --shard "${{ matrix.shard }}"' in workflow
-    assert "python -m coverage run tests/run.py --serial" in workflow
+    assert "python -m coverage run --parallel-mode tests/run.py --shard" in workflow
     assert "mapfile" not in workflow
     assert "SHARD_INDEX" not in workflow

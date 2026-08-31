@@ -83,52 +83,83 @@ def test_official_plugin_observation_is_scheduled_and_never_writes_fixture():
     )
 
 
-def test_coverage_job_runs_full_suite_and_read_only_ratchet() -> None:
-    """push/手动流程的 Coverage job 串行采集全量报告并只读检查低水位。"""
+def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
+    """Coverage 分片并行采集数据，再由单一报告 job 合并并检查全局低水位。"""
     workflow = _load_workflow("test.yml")
-    coverage_job = workflow["jobs"]["coverage"]
-    steps = coverage_job["steps"]
+    shard_job = workflow["jobs"]["coverage-shard"]
+    shard_steps = shard_job["steps"]
+    report_job = workflow["jobs"]["coverage-report"]
+    report_steps = report_job["steps"]
     assert workflow["on"]["pull_request"]["branches"] == ["v3"]
     assert workflow["on"]["push"]["branches"] == ["v3"]
     assert "workflow_dispatch" in workflow["on"]
-    assert coverage_job["runs-on"] == "ubuntu-latest"
-    assert coverage_job["timeout-minutes"] == 20
-    assert coverage_job["if"] == "github.event_name != 'pull_request'"
+    assert shard_job["runs-on"] == "ubuntu-latest"
+    assert shard_job["timeout-minutes"] == 15
+    assert [item["shard"] for item in shard_job["strategy"]["matrix"]["include"]] == [
+        "1/8",
+        "2/8",
+        "3/8",
+        "4/8",
+        "5/8",
+        "6/8",
+        "7/8",
+        "8/8",
+    ]
+    assert report_job["needs"] == "coverage-shard"
+    assert report_job["runs-on"] == "ubuntu-latest"
+    assert report_job["timeout-minutes"] == 10
 
-    setup_step = next(step for step in steps if step.get("name") == "Set up uv")
+    setup_step = next(step for step in shard_steps if step.get("name") == "Set up uv")
     install_step = next(
-        step for step in steps if step.get("name") == "Install dependencies"
+        step for step in shard_steps if step.get("name") == "Install dependencies"
     )
     generate_step = next(
-        step for step in steps if step.get("name") == "Generate coverage reports"
+        step for step in shard_steps if step.get("name") == "Generate coverage data"
     )
-    assert generate_step["timeout-minutes"] == 15
-    upload_step = next(
-        step for step in steps if step.get("name") == "Upload coverage report"
+    assert generate_step["timeout-minutes"] == 10
+    assert "coverage run --parallel-mode tests/run.py --shard" in generate_step["run"]
+    upload_data_step = next(
+        step for step in shard_steps if step.get("name") == "Upload coverage data"
     )
-    ratchet_step = next(
-        step for step in steps if step.get("name") == "Check coverage ratchet"
+    assert upload_data_step["with"]["path"] == ".coverage.*"
+    assert upload_data_step["with"]["include-hidden-files"] is True
+
+    download_step = next(
+        step for step in report_steps if step.get("name") == "Download coverage data"
+    )
+    assert download_step["uses"] == "actions/download-artifact@v8"
+    assert download_step["with"]["merge-multiple"] is True
+    report_step = next(
+        step
+        for step in report_steps
+        if step.get("name") == "Combine coverage data and check ratchet"
     )
     assert setup_step["with"]["python-version"] == "3.14"
     assert install_step["run"] == "uv sync --locked"
-    commands = generate_step["run"]
+    commands = report_step["run"]
     expected_commands = [
-        "python -m coverage erase",
-        "python -m coverage run tests/run.py --serial",
+        "python -m coverage combine coverage-data",
         "python -m coverage report",
         "python -m coverage json",
         "python -m coverage xml",
+        "scripts/architecture/coverage_ratchet.py",
     ]
     positions = [commands.index(command) for command in expected_commands]
     assert positions == sorted(positions)
-    assert ratchet_step["run"].endswith("scripts/architecture/coverage_ratchet.py")
-    assert steps.index(generate_step) < steps.index(upload_step) < steps.index(ratchet_step)
 
-    all_commands = _step_commands(workflow, "coverage")
+    all_commands = _step_commands(workflow, "coverage-shard") + _step_commands(
+        workflow, "coverage-report"
+    )
     assert "--write" not in all_commands
     assert "|| true" not in all_commands
-    assert all(step.get("continue-on-error") is not True for step in steps)
-    assert all("always()" not in str(step.get("if", "")) for step in steps)
+    assert all(
+        step.get("continue-on-error") is not True
+        for step in shard_steps + report_steps
+    )
+    assert all(
+        "always()" not in str(step.get("if", ""))
+        for step in shard_steps + report_steps
+    )
 
     coverage_config = configparser.ConfigParser()
     coverage_config.read(PROJECT_ROOT / ".coveragerc", encoding="utf-8")
@@ -175,7 +206,10 @@ def test_upload_artifact_actions_share_node24_major():
         "native-dependency-update.yml": ["actions/upload-artifact@v7"],
         "pylint.yml": ["actions/upload-artifact@v7"],
         "site-adapter-collector.yml": ["actions/upload-artifact@v7"],
-        "test.yml": ["actions/upload-artifact@v7"],
+        "test.yml": [
+            "actions/upload-artifact@v7",
+            "actions/upload-artifact@v7",
+        ],
     }
 
 
