@@ -363,7 +363,7 @@ class SubscrbieInfo(BaseModel):
     episodes: Optional[Dict[int, SubscribeEpisodeInfo]] = Field(default_factory=dict)
 
 
-class SubscribeDeletionResult(BaseModel):
+class SubscribeDeletionResult(BaseModel):  # type: ignore[misc]
     """订阅删除成功后的机器可判断结果。"""
 
     # deleted 表示数据库事务已提交；不存在或无权限由 HTTP 状态码表达。
