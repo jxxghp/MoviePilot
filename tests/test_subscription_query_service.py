@@ -5,7 +5,7 @@ import pytest
 
 from app.application.subscription.contract import SubscriptionIdentity
 from app.application.subscription.query import SubscriptionQueryService
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
 
