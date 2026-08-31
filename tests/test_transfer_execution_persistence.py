@@ -134,6 +134,56 @@ def _seed_pending(
         session.commit()
 
 
+def _seed_failed_receipt(
+        factory,
+        *,
+        task_id: str = "task-1",
+        execution_state: str = "failed",
+        settlement_revision: int = 1,
+) -> int:
+    """写入带失败历史和步骤证据的无租约 durable 终态任务。"""
+    _seed_pending(factory, task_id=task_id)
+    with factory() as session:
+        pending = session.scalar(
+            select(TransferPending).where(TransferPending.task_id == task_id)
+        )
+        assert pending is not None
+        history = TransferHistory(
+            transfer_task_id=task_id,
+            transfer_settlement_revision=settlement_revision,
+            src=f"/{task_id}.mkv",
+            src_storage="local",
+            status=False,
+            errmsg="terminal failure",
+        )
+        session.add(history)
+        session.flush()
+        pending.execution_state = execution_state
+        pending.settlement_revision = settlement_revision
+        pending.terminal_history_id = history.id
+        pending.lease_owner = None
+        pending.lease_token = None
+        pending.lease_expires_at = None
+        session.add(TransferExecutionStep(
+            task_id=task_id,
+            operation_id=f"operation-{task_id}",
+            checkpoint_fingerprint=_plan_fingerprint(task_id),
+            ordinal=0,
+            phase="transfer",
+            kind="materialize_target",
+            state="failed",
+            attempt_token=None,
+            attempt_count=1,
+            intent_version=1,
+            intent_payload={"path": f"/{task_id}.mkv"},
+            last_error="terminal failure",
+            prepared_at="2026-08-27 09:00:00",
+            updated_at="2026-08-27 09:30:00",
+        ))
+        session.commit()
+        return history.id
+
+
 def _repository(factory, token_values: list[str] | None = None):
     """构造固定时钟与可预测 attempt token 的执行命令。"""
     repository = TransactionalTransferExecutionRepository(
@@ -831,6 +881,81 @@ def test_user_retry_is_single_generation_and_rejects_manual_review(execution_sto
     assert not rejected.accepted
     assert rejected.state is TransferExecutionState.MANUAL_REVIEW
     assert "人工" in rejected.message
+
+
+def test_discard_failed_removes_execution_evidence_and_detaches_history(
+        execution_store,
+) -> None:
+    """放弃匹配的 FAILED 任务应删除执行证据，并把历史恢复为普通记录。"""
+    history_id = _seed_failed_receipt(execution_store)
+    _, command = _repository(execution_store)
+
+    result = command.discard_failed(
+        task_id="task-1",
+        history_id=history_id,
+        settlement_revision=1,
+    )
+
+    assert result.discarded is True
+    assert result.state is TransferExecutionState.FAILED
+    with execution_store() as session:
+        assert session.scalar(select(TransferPending)) is None
+        assert session.scalar(select(TransferExecutionStep)) is None
+        history = session.scalar(select(TransferHistory))
+        assert history is not None
+        assert history.id == history_id
+        assert history.transfer_task_id is None
+        assert history.transfer_settlement_revision is None
+
+
+@pytest.mark.parametrize("execution_state", ("retry_wait", "manual_review"))
+def test_discard_failed_rejects_nonfailed_execution_state(
+        execution_store,
+        execution_state,
+) -> None:
+    """等待重试和人工复核任务不得通过历史维护入口删除执行证据。"""
+    history_id = _seed_failed_receipt(
+        execution_store,
+        execution_state=execution_state,
+    )
+    _, command = _repository(execution_store)
+
+    result = command.discard_failed(
+        task_id="task-1",
+        history_id=history_id,
+        settlement_revision=1,
+    )
+
+    assert result.discarded is False
+    assert result.state is TransferExecutionState(execution_state)
+    with execution_store() as session:
+        assert session.scalar(select(TransferPending)) is not None
+        assert session.scalar(select(TransferExecutionStep)) is not None
+        history = session.scalar(select(TransferHistory))
+        assert history is not None
+        assert history.transfer_task_id == "task-1"
+
+
+def test_discard_failed_rejects_stale_settlement_revision(execution_store) -> None:
+    """陈旧页面携带的结算版本不能放弃已经变化的失败任务。"""
+    history_id = _seed_failed_receipt(execution_store, settlement_revision=3)
+    _, command = _repository(execution_store)
+
+    result = command.discard_failed(
+        task_id="task-1",
+        history_id=history_id,
+        settlement_revision=2,
+    )
+
+    assert result.discarded is False
+    assert "已变化" in result.message
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        history = session.scalar(select(TransferHistory))
+        assert pending is not None
+        assert pending.settlement_revision == 3
+        assert history is not None
+        assert history.transfer_settlement_revision == 3
 
 
 def test_manual_not_applied_decision_is_audited_and_schedules_same_step(

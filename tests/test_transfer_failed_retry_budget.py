@@ -10,7 +10,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from app import schemas
-from app.runtime.config import settings
 from app.application.history import (
     HistoryGateAction,
     TransferHistoryMutationCommand,
@@ -19,6 +18,7 @@ from app.application.history import (
     failed_retry_count,
     record_transfer_failure,
 )
+from app.runtime.config import settings
 
 
 def _reset_failed_retries(src_path, storage=None):
@@ -115,6 +115,7 @@ def test_delete_transfer_history_endpoint_clears_retry_count(monkeypatch):
     command = TransferHistoryMutationCommand(
         repository=repository,
         download_repository=Mock(),
+        transfer_execution_repository=Mock(),
         unit_of_work=Mock(),
         file_item_factory=lambda payload: SimpleNamespace(**payload),
         delete_media_file=Mock(return_value=True),

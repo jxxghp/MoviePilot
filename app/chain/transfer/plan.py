@@ -17,6 +17,7 @@ from app.application.transfer.workflow import (
     TransferLeaseLostError,
     TransferPlanCheckpoint,
     TransferPlanningInput,
+    TransferPlanningRejectedError,
     TransferPlanningStateError,
     TransferProviderInvocationSnapshot,
     TransferProviderReference,
@@ -274,13 +275,34 @@ class TransferPlanningOwner(_TransferOwnerBase):
             )
         planning_input = task.planning_input or self._TransferChain__build_planning_input(task)
         task.bind_planning_input(planning_input)
+        checkpoint = self._TransferChain__build_planning_rejection_checkpoint(
+            task,
+            error=error,
+            planning_input=planning_input,
+        )
+        persisted = self._TransferChain__persist_transfer_checkpoint(
+            task,
+            planning_input=planning_input,
+            checkpoint=checkpoint,
+        )
+        task.bind_plan_checkpoint(persisted)
+        return self._plan_checkpoint_and_execute(task)
+
+    def _TransferChain__build_planning_rejection_checkpoint(
+            self,
+            task: TransferTask,
+            *,
+            error: str,
+            planning_input: TransferPlanningInput,
+    ) -> TransferPlanCheckpoint:
+        """把确定性的宿主规划错误冻结为可重放的零步骤失败计划。"""
         source_path = task.fileitem.path
         resolved_transfer_type = (
             task.transfer_type
             or planning_input.requested_transfer_type
             or "copy"
         )
-        checkpoint = TransferPlanCheckpoint(
+        return TransferPlanCheckpoint(
             planning_input=planning_input,
             target_storage=task.fileitem.storage,
             root_target_path=source_path,
@@ -300,13 +322,6 @@ class TransferPlanningOwner(_TransferOwnerBase):
             overwrite_mode=planning_input.overwrite_mode,
             rejection_error=error,
         )
-        persisted = self._TransferChain__persist_transfer_checkpoint(
-            task,
-            planning_input=planning_input,
-            checkpoint=checkpoint,
-        )
-        task.bind_plan_checkpoint(persisted)
-        return self._plan_checkpoint_and_execute(task)
 
     def _TransferChain__execute_planning_rejection(
             self,
@@ -675,25 +690,32 @@ class TransferPlanningOwner(_TransferOwnerBase):
             source_oper: Any,
     ) -> TransferPlanCheckpoint:
         """在 provider 未接管时生成纯宿主计划，不执行任何文件写入。"""
-        checkpoint = cast(
-            Optional[TransferPlanCheckpoint],
-            self.plan_transfer(
-                fileitem=task.fileitem,
-                meta=cast(MetaBase, task.meta),
-                mediainfo=cast(Union[MediaInfo, MusicInfo], task.mediainfo),
-                target_directory=task.target_directory,
-                target_storage=task.target_storage,
-                target_path=task.target_path,
-                transfer_type=task.transfer_type,
-                episodes_info=task.episodes_info,
-                scrape=task.scrape,
-                library_type_folder=task.library_type_folder,
-                library_category_folder=task.library_category_folder,
-                source_oper=source_oper,
-                preview=bool(task.preview),
+        try:
+            checkpoint = cast(
+                Optional[TransferPlanCheckpoint],
+                self.plan_transfer(
+                    fileitem=task.fileitem,
+                    meta=cast(MetaBase, task.meta),
+                    mediainfo=cast(Union[MediaInfo, MusicInfo], task.mediainfo),
+                    target_directory=task.target_directory,
+                    target_storage=task.target_storage,
+                    target_path=task.target_path,
+                    transfer_type=task.transfer_type,
+                    episodes_info=task.episodes_info,
+                    scrape=task.scrape,
+                    library_type_folder=task.library_type_folder,
+                    library_category_folder=task.library_category_folder,
+                    source_oper=source_oper,
+                    preview=bool(task.preview),
+                    planning_input=planning_input,
+                ),
+            )
+        except TransferPlanningRejectedError as error:
+            return self._TransferChain__build_planning_rejection_checkpoint(
+                task,
+                error=str(error),
                 planning_input=planning_input,
-            ),
-        )
+            )
         if checkpoint is None:
             raise RuntimeError("文件整理模块未返回规划检查点")
         return checkpoint

@@ -91,6 +91,7 @@ def get_transfer_history_mutation_command(
     return TransferHistoryMutationCommand(
         repository=runtime.history.transfer_mutation_repository(db),
         download_repository=runtime.history.download_repository(db),
+        transfer_execution_repository=runtime.history.transfer_execution_repository,
         unit_of_work=runtime.persistence.sync_transaction(db),
         file_item_factory=lambda payload: _SchemaFileItem(**payload),
         file_exists=storage_chain.exists,

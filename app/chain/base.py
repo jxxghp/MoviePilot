@@ -951,7 +951,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         """调用文件管理模块生成无文件写入的冻结整理计划。"""
         return cast(
             "Optional[TransferPlanCheckpoint]",
-            self.run_module(
+            self.run_module_strict(
                 "plan_transfer",
                 fileitem=fileitem,
                 meta=meta,

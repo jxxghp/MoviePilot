@@ -710,20 +710,21 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                                 reorganize or not transferd.status
                         )
                         if should_reorganize:
-                            durable_retry = self._request_durable_transfer_retry(
-                                transferd,
-                                requested_by="manual_reorganize",
-                            )
-                            if durable_retry is not None:
-                                accepted, message = durable_retry
-                                if accepted:
-                                    logger.info(message)
-                                else:
-                                    all_success = False
-                                    logger.error(message)
-                                    err_msgs.append(message)
-                                # durable 历史只登记唯一调度重试，不在当前调用重新准入。
-                                continue
+                            if not reorganize:
+                                durable_retry = self._request_durable_transfer_retry(
+                                    transferd,
+                                    requested_by="manual_reorganize",
+                                )
+                                if durable_retry is not None:
+                                    accepted, message = durable_retry
+                                    if accepted:
+                                        logger.info(message)
+                                    else:
+                                        all_success = False
+                                        logger.error(message)
+                                        err_msgs.append(message)
+                                    # 普通失败重试仍由唯一 durable 调度器继续原计划。
+                                    continue
                             state, message = self._delete_manual_transfer_history(
                                 history=transferd,
                                 transfer_history_oper=transfer_history_oper,

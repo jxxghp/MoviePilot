@@ -205,7 +205,7 @@ def test_chain_base_plan_transfer_keeps_internal_dto_type_only():
     """规划入口运行时只做内部调度，不要求导入或重复导出 DTO。"""
     chain = object.__new__(ChainBase)
     checkpoint = Mock(name="checkpoint")
-    chain.run_module = Mock(return_value=checkpoint)
+    chain.run_module_strict = Mock(return_value=checkpoint)
     meta = Mock(name="meta")
     mediainfo = Mock(name="mediainfo")
 
@@ -216,7 +216,7 @@ def test_chain_base_plan_transfer_keeps_internal_dto_type_only():
     )
 
     assert returned is checkpoint
-    chain.run_module.assert_called_once_with(
+    chain.run_module_strict.assert_called_once_with(
         "plan_transfer",
         fileitem=_fileitem(),
         meta=meta,

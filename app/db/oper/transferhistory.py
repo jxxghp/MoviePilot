@@ -509,6 +509,23 @@ class TransferHistoryOper(DbOper):
         self._db.flush()
         return history
 
+    def stage_detach_failed_transfer_task(
+            self,
+            *,
+            history_id: int,
+            task_id: str,
+            settlement_revision: int,
+    ) -> int:
+        """在调用方事务内解除指定失败历史与 durable 任务的精确映射。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("整理失败回执解绑需要调用方提供同步 Session")
+        return TransferHistory.detach_failed_transfer_task(
+            self._db,
+            history_id=history_id,
+            task_id=task_id,
+            settlement_revision=settlement_revision,
+        )
+
     def update_download_hash(self, historyid, download_hash):
         """
         补充转移记录download_hash

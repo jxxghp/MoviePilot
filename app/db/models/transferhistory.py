@@ -628,6 +628,41 @@ class TransferHistory(Base):
         )
 
     @classmethod
+    def detach_failed_transfer_task(
+            cls,
+            db: Session,
+            *,
+            history_id: int,
+            task_id: str,
+            settlement_revision: int,
+    ) -> int:
+        """
+        解除指定失败回执与 durable 任务的精确映射。
+
+        :param db: 数据库会话
+        :param history_id: 失败终态历史标识
+        :param task_id: 稳定任务标识
+        :param settlement_revision: 失败回执结算版本
+        :return: 更新的历史数
+        """
+        if history_id <= 0 or not task_id or settlement_revision <= 0:
+            return 0
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.id == history_id,
+                cls.transfer_task_id == task_id,
+                cls.transfer_settlement_revision == settlement_revision,
+            )
+            .values(
+                transfer_task_id=None,
+                transfer_settlement_revision=None,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
     def replace_by_src(cls, db: Session, **kwargs) -> "TransferHistory":
         """
         用同源存储的新记录原子替换旧整理历史。

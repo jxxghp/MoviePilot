@@ -622,6 +622,61 @@ def test_manual_reorganize_removes_success_history_and_old_target(monkeypatch):
     assert planned == [fileitem.path]
 
 
+def test_explicit_durable_reorganize_discards_old_task_and_replans(monkeypatch):
+    """显式重新整理 durable 失败历史时不得登记原计划重试，应清理后重新规划。"""
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=12,
+        transfer_task_id="transfer-task-12",
+        transfer_settlement_revision=1,
+        status=False,
+        mode="copy",
+        dest_fileitem=None,
+        download_hash=None,
+        downloader=None,
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+    monkeypatch.setattr(
+        chain,
+        "_request_durable_transfer_retry",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("显式重新整理不得登记旧 durable 计划重试")
+        ),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_delete_manual_transfer_history",
+        lambda history, transfer_history_oper: deleted.append(
+            ("history", history.id)
+        ) or (True, ""),
+    )
+
+    state, message = TransferChain.do_transfer(
+        chain,
+        fileitem=fileitem,
+        background=False,
+        manual=True,
+        reorganize=True,
+    )
+
+    assert state is True
+    assert message == ""
+    assert deleted == [("history", 12)]
+    assert planned == [fileitem.path]
+
+
 def test_manual_reorganize_keeps_successful_move_target_as_source(monkeypatch):
     """成功移动后的目标是当前重整源，只能删历史记录，不能先删除文件。"""
     chain = make_transfer_chain()

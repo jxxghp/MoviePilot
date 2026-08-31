@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional, Protocol
 
+from app.application.transfer.execution import (
+    TransferExecutionCommand,
+    TransferExecutionRepository,
+)
 from app.schemas.common import JsonData
 from app.schemas.history import TransferHistoryDeleteResult, TransferHistoryDeleteStep
 
@@ -32,6 +36,11 @@ class TransferHistoryMutationRecord(Protocol):
     @property
     def transfer_task_id(self) -> Optional[str]:
         """返回持久整理任务标识。"""
+        ...
+
+    @property
+    def transfer_settlement_revision(self) -> Optional[int]:
+        """返回持久整理失败回执的结算版本。"""
         ...
 
     @property
@@ -132,6 +141,7 @@ class TransferHistoryMutationCommand:
         *,
         repository: TransferHistoryMutationRepository,
         download_repository: DownloadFileMutationRepository,
+        transfer_execution_repository: TransferExecutionRepository,
         unit_of_work: HistoryUnitOfWork,
         file_item_factory: Callable[[dict[str, JsonData]], Any],
         delete_media_file: Callable[[Any], bool],
@@ -142,6 +152,7 @@ class TransferHistoryMutationCommand:
         """保存历史事务、存储删除、事件和失败状态清理端口。"""
         self._repository = repository
         self._download_repository = download_repository
+        self._transfer_execution_repository = transfer_execution_repository
         self._unit_of_work = unit_of_work
         self._file_item_factory = file_item_factory
         self._file_exists = file_exists or (lambda _fileitem: True)
@@ -166,12 +177,28 @@ class TransferHistoryMutationCommand:
                 message="记录不存在",
             )
         if history.transfer_task_id:
-            return TransferHistoryDeleteResult(
-                source=TransferHistoryDeleteStep(status="not_requested"),
-                destination=TransferHistoryDeleteStep(status="not_requested"),
-                history="retained",
-                message="持久整理失败记录不可删除，请使用重试或人工复核入口",
+            settlement_revision = history.transfer_settlement_revision
+            if not settlement_revision:
+                return TransferHistoryDeleteResult(
+                    source=TransferHistoryDeleteStep(status="not_requested"),
+                    destination=TransferHistoryDeleteStep(status="not_requested"),
+                    history="retained",
+                    message="持久整理失败记录缺少结算版本，请刷新后重试",
+                )
+            discard = TransferExecutionCommand(
+                self._transfer_execution_repository
+            ).discard_failed(
+                task_id=history.transfer_task_id,
+                history_id=history_id,
+                settlement_revision=settlement_revision,
             )
+            if not discard.discarded:
+                return TransferHistoryDeleteResult(
+                    source=TransferHistoryDeleteStep(status="not_requested"),
+                    destination=TransferHistoryDeleteStep(status="not_requested"),
+                    history="retained",
+                    message=discard.message,
+                )
 
         destination_result = self._delete_file(
             history.dest_fileitem if delete_destination else None,

@@ -521,6 +521,23 @@ class TransferPendingOper(DbOper):
             )
         )
 
+    def stage_delete_terminal_failure(
+            self,
+            *,
+            task_id: str,
+            history_id: int,
+            settlement_revision: int,
+    ) -> int:
+        """暂存与指定失败回执精确匹配的无租约 pending 删除。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.delete_terminal_failure(
+                session,
+                task_id=task_id,
+                history_id=history_id,
+                settlement_revision=settlement_revision,
+            )
+        )
+
     def stage_delete_terminal_success(
             self,
             *,

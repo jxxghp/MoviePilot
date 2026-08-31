@@ -1059,6 +1059,7 @@ def test_receipt_replay_survives_real_history_command_cleanup(cleanup):
         command = TransferHistoryMutationCommand(
             repository=TransferHistoryOper(session),
             download_repository=Mock(),
+            transfer_execution_repository=Mock(),
             unit_of_work=SqlAlchemyUnitOfWork(session),
             file_item_factory=Mock(),
             delete_media_file=Mock(return_value=True),

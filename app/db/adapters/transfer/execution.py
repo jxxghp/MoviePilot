@@ -18,6 +18,7 @@ from app.application.transfer.execution import (
     TransferExecutionSnapshot,
     TransferExecutionState,
     TransferExecutionStep,
+    TransferFailureDiscardResult,
     TransferManualReviewDecision,
     TransferManualReviewPage,
     TransferManualReviewResult,
@@ -42,6 +43,7 @@ from app.db.models.transferexecutionstep import (
 )
 from app.db.models.transferpending import TransferPending
 from app.db.oper.transferexecutionstep import TransferExecutionStepOper
+from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.oper.transferpending import TransferPendingOper
 from app.db.uow import SqlAlchemyUnitOfWork
 
@@ -1193,6 +1195,110 @@ class TransactionalTransferExecutionRepository:
                 )
                 transaction.commit()
                 return result
+            except Exception:
+                self._rollback(transaction)
+                raise
+
+    def discard_failed(
+            self,
+            *,
+            task_id: str,
+            history_id: int,
+            settlement_revision: int,
+    ) -> TransferFailureDiscardResult:
+        """原子删除指定 FAILED pending、步骤证据并解除历史回执映射。"""
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                pending_oper = TransferPendingOper(session)
+                history_oper = TransferHistoryOper(session)
+                pending = pending_oper.get_by_task_id(task_id=task_id)
+                if pending is None:
+                    history = history_oper.get(history_id)
+                    if history is None or history.transfer_task_id is None:
+                        return TransferFailureDiscardResult(
+                            discarded=True,
+                            state=None,
+                            message="失败整理任务已由并发请求放弃",
+                        )
+                    return TransferFailureDiscardResult(
+                        discarded=False,
+                        state=None,
+                        message="未找到与失败历史匹配的整理任务，请刷新后重试",
+                    )
+
+                state = TransferExecutionState(pending.execution_state)
+                if state is not TransferExecutionState.FAILED:
+                    message = (
+                        "人工复核任务必须先完成专门判定"
+                        if state is TransferExecutionState.MANUAL_REVIEW
+                        else "整理任务当前状态不能放弃"
+                    )
+                    return TransferFailureDiscardResult(
+                        discarded=False,
+                        state=state,
+                        message=message,
+                    )
+                if pending.lease_owner is not None or pending.lease_token is not None:
+                    return TransferFailureDiscardResult(
+                        discarded=False,
+                        state=state,
+                        message="整理任务仍被执行器占用，不能放弃",
+                    )
+                if (
+                        pending.terminal_history_id != history_id
+                        or pending.settlement_revision != settlement_revision
+                ):
+                    return TransferFailureDiscardResult(
+                        discarded=False,
+                        state=state,
+                        message="整理任务失败回执已变化，请刷新后重试",
+                    )
+
+                deleted = pending_oper.stage_delete_terminal_failure(
+                    task_id=task_id,
+                    history_id=history_id,
+                    settlement_revision=settlement_revision,
+                )
+                if deleted != 1:
+                    session.expire_all()
+                    pending = pending_oper.get_by_task_id(task_id=task_id)
+                    history = history_oper.get(history_id)
+                    if pending is None and (
+                            history is None or history.transfer_task_id is None
+                    ):
+                        return TransferFailureDiscardResult(
+                            discarded=True,
+                            state=None,
+                            message="失败整理任务已由并发请求放弃",
+                        )
+                    return TransferFailureDiscardResult(
+                        discarded=False,
+                        state=(
+                            TransferExecutionState(pending.execution_state)
+                            if pending is not None
+                            else None
+                        ),
+                        message="整理任务状态已变化，未放弃失败任务",
+                    )
+
+                # PostgreSQL/启用外键的 SQLite 会级联删除；显式清理兼容独立测试库。
+                TransferExecutionStepOper(session).stage_delete_task(task_id=task_id)
+                detached = history_oper.stage_detach_failed_transfer_task(
+                    history_id=history_id,
+                    task_id=task_id,
+                    settlement_revision=settlement_revision,
+                )
+                if detached != 1:
+                    raise TransferExecutionConflictError(
+                        "失败整理任务删除后无法解除历史回执映射"
+                    )
+                transaction.commit()
+                return TransferFailureDiscardResult(
+                    discarded=True,
+                    state=TransferExecutionState.FAILED,
+                    message="已放弃失败整理任务",
+                )
             except Exception:
                 self._rollback(transaction)
                 raise

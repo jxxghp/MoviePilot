@@ -436,6 +436,15 @@ class TransferRetryRequestResult:
 
 
 @dataclass(frozen=True, slots=True)
+class TransferFailureDiscardResult:
+    """描述终态失败任务是否已解除历史绑定并删除执行证据。"""
+
+    discarded: bool
+    state: Optional[TransferExecutionState]
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
 class TransferManualReviewResult:
     """描述一次已持久审计的人工判定及后续调度状态。"""
 
@@ -594,6 +603,15 @@ class TransferExecutionRepository(Protocol):
             requested_by: str,
     ) -> TransferRetryRequestResult:
         """仅把 FAILED 终态转入到期可 claim 的 retry_wait。"""
+
+    def discard_failed(
+            self,
+            *,
+            task_id: str,
+            history_id: int,
+            settlement_revision: int,
+    ) -> TransferFailureDiscardResult:
+        """仅放弃与指定失败回执完全匹配的无租约 FAILED 任务。"""
 
     def resolve_manual_review(
             self,
@@ -810,6 +828,22 @@ class TransferExecutionCommand:
             requested_by=requested_by,
         )
 
+    def discard_failed(
+            self,
+            *,
+            task_id: str,
+            history_id: int,
+            settlement_revision: int,
+    ) -> TransferFailureDiscardResult:
+        """放弃确定失败任务，使对应历史恢复为普通可维护记录。"""
+        if not task_id or history_id <= 0 or settlement_revision <= 0:
+            raise ValueError("放弃失败整理任务缺少任务、历史或结算版本")
+        return self._repository.discard_failed(
+            task_id=task_id,
+            history_id=history_id,
+            settlement_revision=settlement_revision,
+        )
+
     def resolve_manual_review(
             self,
             *,
@@ -924,6 +958,7 @@ __all__ = [
     "TransferExecutionCommand",
     "TransferExecutionConflictError",
     "TransferExecutionError",
+    "TransferFailureDiscardResult",
     "TransferExecutionLeaseLostError",
     "TransferOperationObservation",
     "TransferOperationObservationState",

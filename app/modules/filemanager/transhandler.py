@@ -20,6 +20,7 @@ from app.application.transfer.workflow import (
     TransferPlanCheckpoint,
     TransferPlanItem,
     TransferPlanningInput,
+    TransferPlanningRejectedError,
 )
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
@@ -380,7 +381,7 @@ class TransHandler:
                         preview=preview,
                         skip_reason="未识别到文件集数，识别为特典/附加视频文件",
                     )
-                raise ValueError("未识别到文件集数")
+                raise TransferPlanningRejectedError("未识别到文件集数")
             planning_meta.end_season = None
             if planning_meta.total_season:
                 planning_meta.total_season = 1
