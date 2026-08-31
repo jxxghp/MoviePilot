@@ -47,7 +47,16 @@ class InvokePluginAction(BaseAction):
                 logger.error(f"插件不存在: {params.plugin_id}")
                 return context
             actions = plugin_actions[0].get("actions", [])
-            action = next((action for action in actions if action.get("action_id") == params.action_id), None)
+            # 插件公开动作契约使用 ``id``；读取旧插件声明时保留 action_id 回退，避免已保存工作流失效。
+            action = next(
+                (
+                    action
+                    for action in actions
+                    if (action.get("id") or action.get("action_id"))
+                    == params.action_id
+                ),
+                None,
+            )
             if not action or not action.get("func"):
                 logger.error(f"插件动作不存在: {params.plugin_id} - {params.action_id}")
                 return context
