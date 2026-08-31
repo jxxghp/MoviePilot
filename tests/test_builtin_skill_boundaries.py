@@ -33,8 +33,8 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "create-moviepilot-plugin": "5",
         "create-moviepilot-skill": "3",
         "publish-moviepilot-plugin": "3",
-        "downloader-operation": "1",
-        "mediaserver-operation": "1",
+        "downloader-operation": "2",
+        "mediaserver-operation": "2",
     }
 
     for skill_name, expected_version in expected_versions.items():

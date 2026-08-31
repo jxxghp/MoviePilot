@@ -47,6 +47,8 @@ BUILTIN_LEGACY_SHADOW_INVENTORY = frozenset(
         "persona",
         "write_file",
         "moviepilot_api",
+        "downloader_operation",
+        "mediaserver_operation",
     }
 )
 

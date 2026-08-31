@@ -17,6 +17,7 @@ from app.agent.tools.impl.search_web import SearchWebTool
 from app.agent.tools.impl.send_local_file import SendLocalFileTool
 from app.agent.tools.impl.send_message import SendMessageTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
+from app.agent.tools.impl.service_operation import DownloaderOperationTool, MediaServerOperationTool
 from app.agent.tools.impl.write_file import WriteFileTool
 from app.application.agent import AgentDataContext
 from app.application.plugin.runtime import get_plugin_manager
@@ -59,6 +60,12 @@ class MoviePilotToolFactory:
         BrowseWebpageTool,
         QueryDoctorReportTool,
     )
+    # 下载器与媒体服务器原生操作通过 Skill 按需提供给内置 Agent；只有外部
+    # HTTP/MCP 工具管理器需要常驻、自描述的结构化入口。
+    EXTERNAL_SERVICE_TOOL_CLASSES: tuple[Type[MoviePilotTool], ...] = (
+        DownloaderOperationTool,
+        MediaServerOperationTool,
+    )
 
     # 这些通用工具需要始终保留，避免大工具集裁剪后让 Agent 丢失基础的
     # 文件系统、命令执行、历史检索或交互确认能力。AskUserChoiceTool 仅在支持按钮
@@ -79,7 +86,10 @@ class MoviePilotToolFactory:
     @classmethod
     def catalog_factory_revision(cls) -> str:
         """返回当前内置工具工厂定义的稳定摘要。"""
-        identities = (f"{tool_class.__module__}.{tool_class.__qualname__}" for tool_class in cls.BUILTIN_TOOL_CLASSES)
+        identities = (
+            f"{tool_class.__module__}.{tool_class.__qualname__}"
+            for tool_class in (*cls.BUILTIN_TOOL_CLASSES, *cls.EXTERNAL_SERVICE_TOOL_CLASSES)
+        )
         return hashlib.sha256("\n".join(identities).encode("utf-8")).hexdigest()
 
     @staticmethod
@@ -141,6 +151,7 @@ class MoviePilotToolFactory:
         stream_handler: Callable = None,
         agent_context: dict = None,
         allow_message_tools: bool = True,
+        include_external_service_tools: bool = False,
         data: Optional[AgentDataContext] = None,
     ) -> List[MoviePilotTool]:
         """
@@ -152,6 +163,8 @@ class MoviePilotToolFactory:
         """
         tools = []
         tool_definitions = cls._get_builtin_tool_classes(channel)
+        if include_external_service_tools:
+            tool_definitions.extend(cls.EXTERNAL_SERVICE_TOOL_CLASSES)
         # 创建内置工具
         for ToolClass in tool_definitions:
             tool = ToolClass(session_id=session_id, user_id=user_id, data=data)

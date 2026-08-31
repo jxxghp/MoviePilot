@@ -1,0 +1,5148 @@
+{
+  "$defs": {
+    "AgentCommandRunRequest": {
+      "description": "通过 Agent API 触发斜杠命令的请求。",
+      "properties": {
+        "command": {
+          "description": "要执行的完整斜杠命令",
+          "title": "Command",
+          "type": "string"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "title": "AgentCommandRunRequest",
+      "type": "object"
+    },
+    "Body_add_api_v1_download_add_post": {
+      "properties": {
+        "allow_unrecognized": {
+          "default": false,
+          "title": "Allow Unrecognized",
+          "type": "boolean"
+        },
+        "downloader": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Downloader"
+        },
+        "media_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Media Id"
+        },
+        "media_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MediaSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "music_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "recording",
+                "album"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Music Type"
+        },
+        "save_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Save Path"
+        },
+        "torrent_in": {
+          "$ref": "#/$defs/TorrentInfo"
+        }
+      },
+      "required": [
+        "torrent_in"
+      ],
+      "title": "Body_add_api_v1_download_add_post",
+      "type": "object"
+    },
+    "CustomFilterRuleCreateRequest": {
+      "description": "新增自定义过滤规则请求。",
+      "properties": {
+        "exclude": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Exclude"
+        },
+        "include": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Include"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "publish_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Publish Time"
+        },
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "seeders": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Seeders"
+        },
+        "size_range": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Size Range"
+        }
+      },
+      "required": [
+        "rule_id",
+        "name"
+      ],
+      "title": "CustomFilterRuleCreateRequest",
+      "type": "object"
+    },
+    "CustomFilterRuleUpdateRequest": {
+      "description": "更新自定义过滤规则请求。",
+      "properties": {
+        "exclude": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Exclude"
+        },
+        "include": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Include"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "new_rule_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "New Rule Id"
+        },
+        "publish_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Publish Time"
+        },
+        "seeders": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Seeders"
+        },
+        "size_range": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Size Range"
+        }
+      },
+      "title": "CustomFilterRuleUpdateRequest",
+      "type": "object"
+    },
+    "CustomIdentifiersUpdateRequest": {
+      "description": "完整替换自定义识别词的请求。",
+      "properties": {
+        "identifiers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Identifiers",
+          "type": "array"
+        }
+      },
+      "title": "CustomIdentifiersUpdateRequest",
+      "type": "object"
+    },
+    "DownloadHistory-Input": {
+      "description": "下载历史记录",
+      "properties": {
+        "channel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Channel"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Date"
+        },
+        "download_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Download Hash"
+        },
+        "episode_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episode Group"
+        },
+        "episodes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episodes"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image"
+        },
+        "media_category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Media Category"
+        },
+        "media_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Media Id"
+        },
+        "media_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MediaSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "music_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Music Type"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonData-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Path"
+        },
+        "poster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Poster"
+        },
+        "seasons": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Seasons"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Title"
+        },
+        "torrent_description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Torrent Description"
+        },
+        "torrent_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Torrent Name"
+        },
+        "torrent_site": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Torrent Site"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Type"
+        },
+        "userid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Userid"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Username"
+        },
+        "year": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Year"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "DownloadHistory",
+      "type": "object"
+    },
+    "FileItem-Input": {
+      "description": "文件或目录条目，目录可递归包含子条目。",
+      "properties": {
+        "basename": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Basename"
+        },
+        "children": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/FileItem-Input"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Children"
+        },
+        "drive_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Drive Id"
+        },
+        "extension": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Extension"
+        },
+        "fileid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Fileid"
+        },
+        "modify_time": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Modify Time"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "parent_fileid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Fileid"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "/",
+          "title": "Path"
+        },
+        "pickcode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pickcode"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Size"
+        },
+        "storage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "local",
+          "title": "Storage"
+        },
+        "thumbnail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Thumbnail"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Type"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Url"
+        }
+      },
+      "title": "FileItem",
+      "type": "object"
+    },
+    "FilterRuleGroupCreateRequest": {
+      "description": "新增过滤规则组请求。",
+      "properties": {
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Category"
+        },
+        "media_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Media Type"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "rule_string": {
+          "title": "Rule String",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "rule_string"
+      ],
+      "title": "FilterRuleGroupCreateRequest",
+      "type": "object"
+    },
+    "FilterRuleGroupUpdateRequest": {
+      "description": "更新过滤规则组请求。",
+      "properties": {
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Category"
+        },
+        "media_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Media Type"
+        },
+        "new_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "New Name"
+        },
+        "rule_string": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule String"
+        }
+      },
+      "title": "FilterRuleGroupUpdateRequest",
+      "type": "object"
+    },
+    "JsonData-Input": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonData-Input"
+          },
+          "type": "object"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/JsonData-Input"
+          },
+          "type": "array"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ManualTransferItem": {
+      "description": "手动整理请求，媒体身份接受内置或插件来源与原生 ID。",
+      "properties": {
+        "episode_detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episode Detail"
+        },
+        "episode_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episode Format"
+        },
+        "episode_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episode Group"
+        },
+        "episode_offset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episode Offset"
+        },
+        "episode_part": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episode Part"
+        },
+        "fileitem": {
+          "$ref": "#/$defs/FileItem-Input"
+        },
+        "fileitems": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/FileItem-Input"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Fileitems"
+        },
+        "from_history": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "From History"
+        },
+        "library_category_folder": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Library Category Folder"
+        },
+        "library_type_folder": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Library Type Folder"
+        },
+        "logid": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Logid"
+        },
+        "logids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Logids"
+        },
+        "media_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Media Id"
+        },
+        "media_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MediaSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "min_filesize": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Min Filesize"
+        },
+        "music_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "recording",
+                "album"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Music Type"
+        },
+        "preview": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Preview"
+        },
+        "reorganize": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Reorganize"
+        },
+        "scrape": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Scrape"
+        },
+        "season": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Season"
+        },
+        "target_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Path"
+        },
+        "target_storage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Storage"
+        },
+        "transfer_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Transfer Type"
+        },
+        "type_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Type Name"
+        }
+      },
+      "title": "ManualTransferItem",
+      "type": "object"
+    },
+    "MediaSource": {
+      "description": "媒体主身份的数据来源，内置来源为常量，插件来源为动态扩展成员。",
+      "examples": [
+        "themoviedb",
+        "douban",
+        "bangumi",
+        "anilist",
+        "imdb",
+        "tvdb",
+        "musicbrainz",
+        "theaudiodb",
+        "doubanmusic",
+        "bilibili",
+        "mangguodiscover",
+        "migu",
+        "tencentvideodiscover",
+        "iqiyidiscover"
+      ],
+      "pattern": "^[a-z][a-z0-9._-]{0,63}$",
+      "title": "MediaSource",
+      "type": "string"
+    },
+    "MediaType": {
+      "enum": [
+        "电影",
+        "电视剧",
+        "音乐",
+        "系列",
+        "未知"
+      ],
+      "title": "MediaType",
+      "type": "string"
+    },
+    "Site-Input": {
+      "description": "站点配置及运行状态。",
+      "properties": {
+        "apikey": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Apikey"
+        },
+        "cookie": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cookie"
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Domain"
+        },
+        "downloader": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Downloader"
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Filter"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "is_active": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "title": "Is Active"
+        },
+        "limit_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Limit Count"
+        },
+        "limit_interval": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Limit Interval"
+        },
+        "limit_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Limit Seconds"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonData-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pri": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Pri"
+        },
+        "proxy": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Proxy"
+        },
+        "public": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Public"
+        },
+        "render": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Render"
+        },
+        "rss": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rss"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 15,
+          "title": "Timeout"
+        },
+        "token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Token"
+        },
+        "ua": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ua"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Url"
+        }
+      },
+      "title": "Site",
+      "type": "object"
+    },
+    "SiteCookieUpdate": {
+      "description": "站点 Cookie 与 UA 更新请求。",
+      "properties": {
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "二步验证码或密钥",
+          "title": "Code"
+        },
+        "password": {
+          "description": "站点登录密码",
+          "title": "Password",
+          "type": "string"
+        },
+        "username": {
+          "description": "站点登录用户名",
+          "title": "Username",
+          "type": "string"
+        }
+      },
+      "required": [
+        "username",
+        "password"
+      ],
+      "title": "SiteCookieUpdate",
+      "type": "object"
+    },
+    "Subscribe": {
+      "description": "订阅输入与响应模型，媒体身份必须为空对或完整有效对。",
+      "properties": {
+        "audio_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Audio Format"
+        },
+        "audio_quality": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Audio Quality"
+        },
+        "backdrop": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Backdrop"
+        },
+        "best_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Best Version"
+        },
+        "best_version_full": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Best Version Full"
+        },
+        "completed_episode": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completed Episode"
+        },
+        "current_audio_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Audio Format"
+        },
+        "current_bit_depth": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Bit Depth"
+        },
+        "current_bitrate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Bitrate"
+        },
+        "current_priority": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Priority"
+        },
+        "current_sample_rate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Sample Rate"
+        },
+        "custom_words": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Custom Words"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Date"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "downloader": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Downloader"
+        },
+        "effect": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Effect"
+        },
+        "episode_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episode Group"
+        },
+        "episode_priority": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episode Priority"
+        },
+        "exclude": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Exclude"
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Filter"
+        },
+        "filter_groups": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Filter Groups"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "include": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Include"
+        },
+        "keyword": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Keyword"
+        },
+        "lack_episode": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Lack Episode"
+        },
+        "last_update": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Update"
+        },
+        "media_category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Media Category"
+        },
+        "media_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Media Id"
+        },
+        "media_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MediaSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "min_bit_depth": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Min Bit Depth"
+        },
+        "min_bitrate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Min Bitrate"
+        },
+        "min_sample_rate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Min Sample Rate"
+        },
+        "music_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Music Type"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "poster": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Poster"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Quality"
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resolution"
+        },
+        "save_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Save Path"
+        },
+        "search_imdbid": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Search Imdbid"
+        },
+        "season": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Season"
+        },
+        "sites": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sites"
+        },
+        "start_episode": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Start Episode"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "State"
+        },
+        "total_episode": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Total Episode"
+        },
+        "total_tracks": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Total Tracks"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Type"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Username"
+        },
+        "vote": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0.0,
+          "title": "Vote"
+        },
+        "year": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Year"
+        }
+      },
+      "title": "Subscribe",
+      "type": "object"
+    },
+    "SystemSettingsUpdateRequest": {
+      "description": "统一系统设置更新请求。",
+      "properties": {
+        "match_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Match Field"
+        },
+        "match_value": {
+          "title": "Match Value"
+        },
+        "operation": {
+          "default": "replace",
+          "enum": [
+            "replace",
+            "merge_dict",
+            "upsert_list_item",
+            "remove_list_item"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "remove_keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Remove Keys",
+          "type": "array"
+        },
+        "setting_key": {
+          "title": "Setting Key",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        }
+      },
+      "required": [
+        "setting_key"
+      ],
+      "title": "SystemSettingsUpdateRequest",
+      "type": "object"
+    },
+    "TorrentInfo": {
+      "description": "搜索种子信息",
+      "properties": {
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Category"
+        },
+        "date_elapsed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Date Elapsed"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "downloadvolumefactor": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Downloadvolumefactor"
+        },
+        "enclosure": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Enclosure"
+        },
+        "freedate": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Freedate"
+        },
+        "freedate_diff": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Freedate Diff"
+        },
+        "grabs": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Grabs"
+        },
+        "hit_and_run": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Hit And Run"
+        },
+        "labels": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Labels"
+        },
+        "media_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Media Id"
+        },
+        "media_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MediaSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Page Url"
+        },
+        "peers": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Peers"
+        },
+        "pri_order": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Pri Order"
+        },
+        "pubdate": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pubdate"
+        },
+        "seeders": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Seeders"
+        },
+        "site": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Site"
+        },
+        "site_cookie": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Site Cookie"
+        },
+        "site_downloader": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Site Downloader"
+        },
+        "site_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Site Name"
+        },
+        "site_order": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0,
+          "title": "Site Order"
+        },
+        "site_proxy": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Site Proxy"
+        },
+        "site_ua": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Site Ua"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0.0,
+          "title": "Size"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Title"
+        },
+        "uploadvolumefactor": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Uploadvolumefactor"
+        },
+        "volume_factor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Volume Factor"
+        }
+      },
+      "title": "TorrentInfo",
+      "type": "object"
+    },
+    "TransferHistory-Input": {
+      "description": "文件整理历史记录",
+      "properties": {
+        "audio_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Audio Format"
+        },
+        "audio_lossless": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Audio Lossless"
+        },
+        "bit_depth": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Bit Depth"
+        },
+        "bitrate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Bitrate"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Category"
+        },
+        "date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Date"
+        },
+        "dest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dest"
+        },
+        "dest_fileitem": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonData-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dest_storage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Dest Storage"
+        },
+        "download_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Download Hash"
+        },
+        "episode_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episode Group"
+        },
+        "episodes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Episodes"
+        },
+        "errmsg": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Errmsg"
+        },
+        "files": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonData-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image"
+        },
+        "media_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Media Id"
+        },
+        "media_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MediaSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mode"
+        },
+        "music_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Music Type"
+        },
+        "sample_rate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sample Rate"
+        },
+        "seasons": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Seasons"
+        },
+        "src": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Src"
+        },
+        "src_fileitem": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonData-Input"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "src_storage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Src Storage"
+        },
+        "status": {
+          "default": true,
+          "title": "Status",
+          "type": "boolean"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Title"
+        },
+        "total_tracks": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Total Tracks"
+        },
+        "transfer_task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Transfer Task Id"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Type"
+        },
+        "year": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Year"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "TransferHistory",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Select the oneOf branch matching operation_id and send exactly its documented fields.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "查询自定义识别词 Method: GET. Path: /api/v1/system/identifiers. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "config.identifiers.get",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "config.identifiers.get",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "更新自定义识别词 Method: POST. Path: /api/v1/system/identifiers. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/CustomIdentifiersUpdateRequest"
+        },
+        "operation_id": {
+          "const": "config.identifiers.update",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "config.identifiers.update",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "统一查询系统设置 Method: GET. Path: /api/v1/system/settings. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "config.system.get",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "group": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "all",
+              "title": "Group"
+            },
+            "include_values": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Include Values"
+            },
+            "keyword": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            },
+            "setting_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Setting Key"
+            },
+            "show_secrets": {
+              "default": false,
+              "title": "Show Secrets",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "config.system.get",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "统一更新系统设置 Method: POST. Path: /api/v1/system/settings. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/SystemSettingsUpdateRequest"
+        },
+        "operation_id": {
+          "const": "config.system.update",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "config.system.update",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "添加下载（不含媒体信息） Method: POST. Path: /api/v1/download/add. Effect: external_side_effect.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/Body_add_api_v1_download_add_post"
+        },
+        "operation_id": {
+          "const": "download.add",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "download.add",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "删除下载历史记录 Method: DELETE. Path: /api/v1/history/download. Effect: destructive_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/DownloadHistory-Input"
+        },
+        "operation_id": {
+          "const": "download.history.delete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "download.history.delete",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询内置过滤规则 Method: GET. Path: /api/v1/rule/builtin. Effect: safe_read.",
+      "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule Ids"
+        },
+        "operation_id": {
+          "const": "filter.builtin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "filter.builtin",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询自定义过滤规则 Method: GET. Path: /api/v1/rule/custom. Effect: safe_read.",
+      "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule Ids"
+        },
+        "operation_id": {
+          "const": "filter.custom",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "include_group_refs": {
+              "default": true,
+              "title": "Include Group Refs",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "filter.custom",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "新增自定义过滤规则 Method: POST. Path: /api/v1/rule/custom. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/CustomFilterRuleCreateRequest"
+        },
+        "operation_id": {
+          "const": "filter.custom.add",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "filter.custom.add",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "删除自定义过滤规则 Method: DELETE. Path: /api/v1/rule/custom/{rule_id}. Effect: destructive_write.",
+      "properties": {
+        "operation_id": {
+          "const": "filter.custom.delete",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "rule_id": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "rule_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "filter.custom.delete",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "更新自定义过滤规则 Method: PUT. Path: /api/v1/rule/custom/{rule_id}. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/CustomFilterRuleUpdateRequest"
+        },
+        "operation_id": {
+          "const": "filter.custom.update",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "rule_id": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "rule_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "filter.custom.update",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "新增过滤规则组 Method: POST. Path: /api/v1/rule/groups. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/FilterRuleGroupCreateRequest"
+        },
+        "operation_id": {
+          "const": "filter.group.add",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "filter.group.add",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "删除过滤规则组 Method: DELETE. Path: /api/v1/rule/groups/{name}. Effect: destructive_write.",
+      "properties": {
+        "operation_id": {
+          "const": "filter.group.delete",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "filter.group.delete",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "更新过滤规则组 Method: PUT. Path: /api/v1/rule/groups/{name}. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/FilterRuleGroupUpdateRequest"
+        },
+        "operation_id": {
+          "const": "filter.group.update",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "filter.group.update",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询过滤规则组 Method: GET. Path: /api/v1/rule/groups. Effect: safe_read.",
+      "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group Names"
+        },
+        "operation_id": {
+          "const": "filter.groups",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "include_usage": {
+              "default": true,
+              "title": "Include Usage",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "filter.groups",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询本地是否存在（数据库） Method: GET. Path: /api/v1/mediaserver/exists. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "library.exists",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "media_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Media Id"
+            },
+            "media_source": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/MediaSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Media Source"
+            },
+            "mtype": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mtype"
+            },
+            "season": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "year": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "library.exists",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询媒体详情 Method: GET. Path: /api/v1/media/{media_id}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "media.detail",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "media_id": {
+              "title": "Media Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "media_id"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "media_source": {
+              "$ref": "#/$defs/MediaSource"
+            },
+            "type_name": {
+              "title": "Type Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "media_source",
+            "type_name"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "query"
+      ],
+      "title": "media.detail",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "TMDB季所有集 Method: GET. Path: /api/v1/tmdb/{tmdbid}/{season}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "media.episode_schedule",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "season": {
+              "title": "Season",
+              "type": "integer"
+            },
+            "tmdbid": {
+              "title": "Tmdbid",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "tmdbid",
+            "season"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "episode_group": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Episode Group"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "media.episode_schedule",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "读取人物作品 Method: GET. Path: /api/v1/{source}/person/credits/{person_id}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "media.person.credits",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "person_id": {
+              "description": "来源原生人物 ID。",
+              "type": "integer"
+            },
+            "source": {
+              "description": "人物数据来源。",
+              "enum": [
+                "douban",
+                "tmdb",
+                "bangumi",
+                "anilist"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "source",
+            "person_id"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "default": 20,
+              "description": "Bangumi 与 AniList 支持的每页条数；其他来源忽略。",
+              "maximum": 50,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "page": {
+              "default": 1,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "media.person.credits",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "搜索媒体/人物信息 Method: GET. Path: /api/v1/media/search. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "media.person.search",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "default": 8,
+              "title": "Count",
+              "type": "integer"
+            },
+            "media_source": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/MediaSource"
+              },
+              "title": "Media Source",
+              "type": "array"
+            },
+            "page": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "type": {
+              "const": "person",
+              "description": "人物搜索固定传 person。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "type"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "query"
+      ],
+      "title": "media.person.search",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "识别媒体信息（种子） Method: GET. Path: /api/v1/media/recognize. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "media.recognize",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "custom_words": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Custom Words"
+            },
+            "media_source": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/MediaSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Media Source"
+            },
+            "subtitle": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subtitle"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "title"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "query"
+      ],
+      "title": "media.recognize",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "刮削媒体信息 Method: POST. Path: /api/v1/media/scrape/{storage}. Effect: external_side_effect.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/FileItem-Input"
+        },
+        "operation_id": {
+          "const": "media.scrape",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "storage": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Storage"
+            }
+          },
+          "required": [
+            "storage"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "media_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Media Id"
+            },
+            "media_source": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/MediaSource"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Media Source"
+            },
+            "music_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Music Type"
+            },
+            "type_name": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/MediaType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type Name"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "media.scrape",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "搜索媒体/人物信息 Method: GET. Path: /api/v1/media/search. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "media.search",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "default": 8,
+              "title": "Count",
+              "type": "integer"
+            },
+            "media_source": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/MediaSource"
+              },
+              "title": "Media Source",
+              "type": "array"
+            },
+            "page": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "media",
+              "title": "Type"
+            }
+          },
+          "required": [
+            "title"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "query"
+      ],
+      "title": "media.search",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询插件运行能力 Method: GET. Path: /api/v1/plugin/runtime/capabilities. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.capabilities",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "plugin_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plugin Id"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "plugin.capabilities",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "获取插件配置 Method: GET. Path: /api/v1/plugin/{plugin_id}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.config.get",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "plugin_id": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.config.get",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "更新插件配置 Method: PUT. Path: /api/v1/plugin/{plugin_id}. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "additionalProperties": true,
+          "title": "Conf",
+          "type": "object"
+        },
+        "operation_id": {
+          "const": "plugin.config.update",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "plugin_id": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "plugin.config.update",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询插件持久化数据 Method: GET. Path: /api/v1/plugin/runtime/{plugin_id}/data. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.data",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "plugin_id": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Key"
+            },
+            "max_chars": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Chars"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.data",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "安装插件 Method: GET. Path: /api/v1/plugin/install/{plugin_id}. Effect: external_side_effect.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.install",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "plugin_id": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "force": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Force"
+            },
+            "release_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Release Version"
+            },
+            "repo_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "",
+              "title": "Repo Url"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.install",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "已安装插件 Method: GET. Path: /api/v1/plugin/installed. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.installed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "plugin.installed",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "所有插件 Method: GET. Path: /api/v1/plugin/. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.market",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "force": {
+              "default": false,
+              "title": "Force",
+              "type": "boolean"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "all",
+              "title": "State"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "plugin.market",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "重新加载插件 Method: GET. Path: /api/v1/plugin/reload/{plugin_id}. Effect: external_side_effect.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.reload",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "plugin_id": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.reload",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "卸载插件 Method: DELETE. Path: /api/v1/plugin/{plugin_id}. Effect: destructive_write.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.uninstall",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "plugin_id": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.uninstall",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "统一获取 Agent 推荐结果 Method: GET. Path: /api/v1/recommend/agent. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "recommendation.list",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "days": {
+              "default": 14,
+              "title": "Days",
+              "type": "integer"
+            },
+            "fresh_sort": {
+              "default": "release_date",
+              "title": "Fresh Sort",
+              "type": "string"
+            },
+            "future": {
+              "default": true,
+              "title": "Future",
+              "type": "boolean"
+            },
+            "media_type": {
+              "default": "all",
+              "title": "Media Type",
+              "type": "string"
+            },
+            "min_listen_count": {
+              "default": 0,
+              "title": "Min Listen Count",
+              "type": "integer"
+            },
+            "music_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Music Type"
+            },
+            "page": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "past": {
+              "default": true,
+              "title": "Past",
+              "type": "boolean"
+            },
+            "range_name": {
+              "default": "this_month",
+              "title": "Range Name",
+              "type": "string"
+            },
+            "sort_by": {
+              "default": "listen_count.desc",
+              "title": "Sort By",
+              "type": "string"
+            },
+            "source": {
+              "default": "tmdb_trending",
+              "title": "Source",
+              "type": "string"
+            },
+            "with_cover": {
+              "default": false,
+              "title": "With Cover",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "recommendation.list",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "后台服务 Method: GET. Path: /api/v1/dashboard/schedule. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "scheduler.list",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "scheduler.list",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "运行服务 Method: GET. Path: /api/v1/system/runscheduler. Effect: external_side_effect.",
+      "properties": {
+        "operation_id": {
+          "const": "scheduler.run",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "jobid": {
+              "title": "Jobid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "jobid"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "query"
+      ],
+      "title": "scheduler.run",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询上次搜索上下文 Method: GET. Path: /api/v1/search/last/context. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "search.results",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "search.results",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "精确搜索资源 Method: GET. Path: /api/v1/search/media/{media_id}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "search.torrents",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "media_id": {
+              "title": "Media Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "media_id"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "title",
+              "title": "Area"
+            },
+            "media_source": {
+              "$ref": "#/$defs/MediaSource"
+            },
+            "mtype": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mtype"
+            },
+            "music_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Music Type"
+            },
+            "season": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
+            },
+            "sites": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sites"
+            }
+          },
+          "required": [
+            "media_source"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "query"
+      ],
+      "title": "search.torrents",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "更新站点Cookie&UA Method: POST. Path: /api/v1/site/cookie/{site_id}. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/SiteCookieUpdate"
+        },
+        "operation_id": {
+          "const": "site.cookie.update",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "site_id": {
+              "title": "Site Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "site_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "site.cookie.update",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "所有站点 Method: GET. Path: /api/v1/site/. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "site.list",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "site.list",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "连接测试 Method: GET. Path: /api/v1/site/test/{site_id}. Effect: external_side_effect.",
+      "properties": {
+        "operation_id": {
+          "const": "site.test",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "site_id": {
+              "title": "Site Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "site_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "site.test",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "更新站点 Method: PUT. Path: /api/v1/site/. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/Site-Input"
+        },
+        "operation_id": {
+          "const": "site.update",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "site.update",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询某站点用户数据 Method: GET. Path: /api/v1/site/userdata/{site_id}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "site.userdata",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "site_id": {
+              "title": "Site Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "site_id"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "workdate": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workdate"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "site.userdata",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "获取 Web 智能助手可用命令 Method: GET. Path: /api/v1/message/agent/commands. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "slash.list",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "slash.list",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "执行 Agent 斜杠命令 Method: POST. Path: /api/v1/message/agent/commands/run. Effect: external_side_effect.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/AgentCommandRunRequest"
+        },
+        "operation_id": {
+          "const": "slash.run",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "slash.run",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "所有目录和文件 Method: POST. Path: /api/v1/storage/list. Effect: safe_read.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/FileItem-Input"
+        },
+        "operation_id": {
+          "const": "storage.list",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "keyword": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            },
+            "sort": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "updated_at",
+              "title": "Sort"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "storage.list",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询目录配置 Method: GET. Path: /api/v1/storage/directories. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "storage.settings",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "directory_type": {
+              "default": "all",
+              "title": "Directory Type",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "storage_type": {
+              "default": "all",
+              "title": "Storage Type",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "storage.settings",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "新增订阅 Method: POST. Path: /api/v1/subscribe/. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/Subscribe"
+        },
+        "operation_id": {
+          "const": "subscription.add",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "subscription.add",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "删除订阅 Method: DELETE. Path: /api/v1/subscribe/{subscribe_id}. Effect: destructive_write.",
+      "properties": {
+        "operation_id": {
+          "const": "subscription.delete",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "subscribe_id": {
+              "title": "Subscribe Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "subscribe_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "subscription.delete",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询订阅历史 Method: GET. Path: /api/v1/subscribe/history/{mtype}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "subscription.history",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "mtype": {
+              "title": "Mtype",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mtype"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 30,
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "subscription.history",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询所有订阅 Method: GET. Path: /api/v1/subscribe/. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "subscription.list",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "subscription.list",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "热门订阅（基于用户共享数据） Method: GET. Path: /api/v1/subscribe/popular. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "subscription.popular",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 30,
+              "title": "Count"
+            },
+            "genre_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Genre Id"
+            },
+            "max_rating": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Rating"
+            },
+            "min_rating": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Rating"
+            },
+            "min_sub": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Sub"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 1,
+              "title": "Page"
+            },
+            "sort_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort Type"
+            },
+            "stype": {
+              "title": "Stype",
+              "type": "string"
+            }
+          },
+          "required": [
+            "stype"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "query"
+      ],
+      "title": "subscription.popular",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "搜索订阅 Method: GET. Path: /api/v1/subscribe/search/{subscribe_id}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "subscription.search",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "subscribe_id": {
+              "title": "Subscribe Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "subscribe_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "subscription.search",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询分享的订阅 Method: GET. Path: /api/v1/subscribe/shares. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "subscription.shares",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 30,
+              "title": "Count"
+            },
+            "genre_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Genre Id"
+            },
+            "max_rating": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Rating"
+            },
+            "min_rating": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Rating"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 1,
+              "title": "Page"
+            },
+            "sort_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort Type"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "subscription.shares",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "更新订阅 Method: PUT. Path: /api/v1/subscribe/. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/Subscribe"
+        },
+        "operation_id": {
+          "const": "subscription.update",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "subscription.update",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "手动转移 Method: POST. Path: /api/v1/transfer/manual. Effect: external_side_effect.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/ManualTransferItem"
+        },
+        "operation_id": {
+          "const": "transfer.file",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "background": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Background"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "transfer.file",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "查询整理记录 Method: GET. Path: /api/v1/history/transfer. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "transfer.history",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 30,
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 1,
+              "title": "Page"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "transfer.history",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "删除整理记录 Method: DELETE. Path: /api/v1/history/transfer. Effect: destructive_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/TransferHistory-Input"
+        },
+        "operation_id": {
+          "const": "transfer.history.delete",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "deletedest": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Deletedest"
+            },
+            "deletesrc": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": false,
+              "title": "Deletesrc"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "transfer.history.delete",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "所有工作流 Method: GET. Path: /api/v1/workflow/. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "workflow.list",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "workflow.list",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "执行工作流 Method: POST. Path: /api/v1/workflow/{workflow_id}/run. Effect: external_side_effect.",
+      "properties": {
+        "operation_id": {
+          "const": "workflow.run",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "properties": {
+            "workflow_id": {
+              "title": "Workflow Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "workflow_id"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "from_begin": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": true,
+              "title": "From Begin"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "workflow.run",
+      "type": "object"
+    }
+  ],
+  "properties": {
+    "body": {
+      "type": "object"
+    },
+    "operation_id": {
+      "enum": [
+        "config.identifiers.get",
+        "config.identifiers.update",
+        "config.system.get",
+        "config.system.update",
+        "download.add",
+        "download.history.delete",
+        "filter.builtin",
+        "filter.custom",
+        "filter.custom.add",
+        "filter.custom.delete",
+        "filter.custom.update",
+        "filter.group.add",
+        "filter.group.delete",
+        "filter.group.update",
+        "filter.groups",
+        "library.exists",
+        "media.detail",
+        "media.episode_schedule",
+        "media.person.credits",
+        "media.person.search",
+        "media.recognize",
+        "media.scrape",
+        "media.search",
+        "plugin.capabilities",
+        "plugin.config.get",
+        "plugin.config.update",
+        "plugin.data",
+        "plugin.install",
+        "plugin.installed",
+        "plugin.market",
+        "plugin.reload",
+        "plugin.uninstall",
+        "recommendation.list",
+        "scheduler.list",
+        "scheduler.run",
+        "search.results",
+        "search.torrents",
+        "site.cookie.update",
+        "site.list",
+        "site.test",
+        "site.update",
+        "site.userdata",
+        "slash.list",
+        "slash.run",
+        "storage.list",
+        "storage.settings",
+        "subscription.add",
+        "subscription.delete",
+        "subscription.history",
+        "subscription.list",
+        "subscription.popular",
+        "subscription.search",
+        "subscription.shares",
+        "subscription.update",
+        "transfer.file",
+        "transfer.history",
+        "transfer.history.delete",
+        "workflow.list",
+        "workflow.run"
+      ],
+      "type": "string"
+    },
+    "path_params": {
+      "type": "object"
+    },
+    "query": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "operation_id"
+  ],
+  "title": "moviepilot_api",
+  "type": "object"
+}

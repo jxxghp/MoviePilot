@@ -108,6 +108,7 @@ class MoviePilotToolsManager:
                 username="API Client",
                 stream_handler=None,
                 agent_context={"is_admin": self.is_admin},
+                include_external_service_tools=True,
                 data=self._data,
             )
             self.catalog = catalog
@@ -211,14 +212,17 @@ class MoviePilotToolsManager:
         for tool in tools:
             if getattr(tool, "_require_admin", False) and not self.is_admin:
                 continue
-            # 获取工具的输入参数模型
-            args_schema = getattr(tool, "args_schema", None)
-            if args_schema:
-                # 将Pydantic模型转换为JSON Schema
-                input_schema = self._convert_to_json_schema(args_schema)
+            # MCP-only 复杂工具可以保留 oneOf、嵌套对象和跨字段约束；普通工具
+            # 继续沿用兼容投影，避免一次性改变已有外部合同。
+            schema_factory = getattr(tool, "get_mcp_input_schema", None)
+            if callable(schema_factory):
+                input_schema = schema_factory()
             else:
-                # 如果没有args_schema，使用基本信息
-                input_schema = {"type": "object", "properties": {}, "required": []}
+                args_schema = getattr(tool, "args_schema", None)
+                if args_schema:
+                    input_schema = self._convert_to_json_schema(args_schema)
+                else:
+                    input_schema = {"type": "object", "properties": {}, "required": []}
 
             tools_list.append(
                 ToolDefinition(

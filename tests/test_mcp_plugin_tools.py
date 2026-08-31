@@ -56,7 +56,7 @@ def test_mcp_refreshes_tools_after_plugin_lifecycle_change(
         MoviePilotToolFactory,
         "_get_builtin_tool_classes",
         return_value=[],
-    ):
+    ), patch.object(MoviePilotToolFactory, "EXTERNAL_SERVICE_TOOL_CLASSES", ()):
         tool_manager = MoviePilotToolsManager(
             session_id="mcp-plugin-test",
             user_id="api_user",

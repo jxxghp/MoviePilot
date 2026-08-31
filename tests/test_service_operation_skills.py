@@ -186,6 +186,88 @@ def test_downloader_instances_and_capabilities_do_not_expose_credentials(
     assert any(item["action"] == "tasks.peers" for item in capabilities["actions"])
 
 
+def test_downloader_capability_exposes_complete_action_arguments(
+    downloader_module: ModuleType,
+) -> None:
+    """单 action 能力查询应直接返回类型、必填性、默认值和枚举。"""
+    result = downloader_module.list_capabilities(None, "tasks.queue.move")
+
+    assert len(result["actions"]) == 1
+    action = result["actions"][0]
+    arguments = {item["name"]: item for item in action["arguments"]}
+    assert arguments["task_ids"]["type"] == "string[]"
+    assert arguments["position"] == {
+        "name": "position",
+        "type": "string",
+        "required": True,
+        "description": "目标队列位置。",
+        "enum": ["top", "up", "down", "bottom"],
+    }
+    assert action["argument_rules"] == ["task_id 与 task_ids 必须提供且只能选择一种。"]
+
+
+def test_downloader_argument_validation_reports_all_errors_before_config_load(
+    downloader_module: ModuleType,
+    monkeypatch,
+) -> None:
+    """下载器调用应一次返回全部可检测参数错误，且不连接配置或 provider。"""
+    load_configs = MagicMock()
+    monkeypatch.setattr(downloader_module, "_load_configs", load_configs)
+
+    with pytest.raises(ValueError) as error:
+        downloader_module.call_action(
+            None,
+            "tasks.queue.move",
+            {
+                "position": "sideways",
+                "task_id": "",
+                "task_ids": [],
+                "unexpected": True,
+            },
+        )
+
+    message = str(error.value)
+    assert "未知参数: unexpected" in message
+    assert "参数 position 仅支持: top, up, down, bottom" in message
+    assert "task_id 与 task_ids 必须提供且只能选择一种" in message
+    load_configs.assert_not_called()
+
+
+def test_downloader_ambiguous_instance_error_lists_reusable_names(
+    downloader_module: ModuleType,
+    monkeypatch,
+) -> None:
+    """实例歧义应直接返回可重试名称，避免额外 instances 探测。"""
+    first = _downloader_config()
+    first.name = "main"
+    first.default = False
+    second = _downloader_config("transmission")
+    second.name = "backup"
+    second.default = False
+    monkeypatch.setattr(downloader_module, "_load_configs", lambda: [first, second])
+
+    with pytest.raises(ValueError, match="main、backup"):
+        downloader_module._select_config(None)
+
+
+def test_downloader_call_uses_default_instance_without_discovery(
+    downloader_module: ModuleType,
+    monkeypatch,
+) -> None:
+    """省略 client 时应在同一次调用中选择默认实例并执行。"""
+    config = _downloader_config()
+    client = MagicMock()
+    client.get_torrents.return_value = ([], False)
+    monkeypatch.setattr(downloader_module, "_load_configs", lambda: [config])
+    monkeypatch.setattr(downloader_module, "_build_client", lambda _config: client)
+
+    result = downloader_module.call_action(None, "tasks.list", {"limit": 10})
+
+    assert result["success"] is True
+    assert result["client"] == "main"
+    client.get_torrents.assert_called_once_with(ids=None, status=None, tags=None)
+
+
 def test_downloader_task_list_is_paged_and_normalized(
     downloader_module: ModuleType,
     monkeypatch,
@@ -315,6 +397,86 @@ def test_mediaserver_capabilities_are_provider_specific(
     assert "secret" not in str(result)
 
 
+def test_mediaserver_capability_exposes_nested_refresh_contract(
+    mediaserver_module: ModuleType,
+) -> None:
+    """媒体服务器能力查询应直接描述嵌套刷新条目字段。"""
+    result = mediaserver_module.list_capabilities(None, "metadata.refresh")
+
+    action = result["actions"][0]
+    assert action["required_arguments"] == ["items"]
+    assert action["arguments"] == [
+        {
+            "name": "items",
+            "type": "object[]",
+            "required": True,
+            "description": (
+                "刷新条目；每项支持 title:string、year:string|integer、type:电影|电视剧|音乐、"
+                "category:string、target_path:string。"
+            ),
+        }
+    ]
+
+
+def test_mediaserver_argument_validation_reports_nested_errors_before_config_load(
+    mediaserver_module: ModuleType,
+    monkeypatch,
+) -> None:
+    """媒体服务器调用应一次返回顶层及嵌套参数错误，且不读取实例配置。"""
+    load_configs = MagicMock()
+    monkeypatch.setattr(mediaserver_module, "_load_configs", load_configs)
+
+    with pytest.raises(ValueError) as error:
+        mediaserver_module.call_action(
+            None,
+            "metadata.refresh",
+            {
+                "items": [{"type": "movie", "target_path": 42, "extra": True}],
+                "unexpected": True,
+            },
+        )
+
+    message = str(error.value)
+    assert "未知参数: unexpected" in message
+    assert "items[0] 未知字段: extra" in message
+    assert "items[0].type 仅支持: 电影、电视剧、音乐" in message
+    assert "items[0].target_path 必须是 string" in message
+    load_configs.assert_not_called()
+
+
+def test_mediaserver_ambiguous_instance_error_lists_reusable_names(
+    mediaserver_module: ModuleType,
+    monkeypatch,
+) -> None:
+    """媒体服务器歧义应直接返回可重试名称，避免额外 instances 探测。"""
+    first = _mediaserver_config()
+    first.name = "living-room"
+    second = _mediaserver_config("plex")
+    second.name = "study"
+    monkeypatch.setattr(mediaserver_module, "_load_configs", lambda: [first, second])
+
+    with pytest.raises(ValueError, match="living-room、study"):
+        mediaserver_module._select_config(None)
+
+
+def test_mediaserver_call_uses_only_instance_without_discovery(
+    mediaserver_module: ModuleType,
+    monkeypatch,
+) -> None:
+    """省略 server 时应在同一次调用中选择唯一实例并执行。"""
+    config = _mediaserver_config()
+    client = MagicMock()
+    client.get_medias_count.return_value = {"movie": 12}
+    monkeypatch.setattr(mediaserver_module, "_load_configs", lambda: [config])
+    monkeypatch.setattr(mediaserver_module, "_build_client", lambda _config: client)
+
+    result = mediaserver_module.call_action(None, "server.statistics", {})
+
+    assert result["success"] is True
+    assert result["server"] == "living-room"
+    client.get_medias_count.assert_called_once_with()
+
+
 def test_mediaserver_items_and_scan_use_fixed_public_methods(
     mediaserver_module: ModuleType,
     monkeypatch,
@@ -406,3 +568,36 @@ def test_skill_docs_forbid_arbitrary_network_and_preserve_high_level_workflows()
     assert "download.add" in downloader
     assert "arbitrary SDK methods" in mediaserver
     assert "library.exists" in mediaserver
+    assert "Do not routinely call `instances` or `capabilities`" in downloader
+    assert "Do not routinely call `instances` or `capabilities`" in mediaserver
+    assert "all detectable argument errors" in downloader
+    assert "all detectable argument errors" in mediaserver
+
+
+def test_service_operation_skill_docs_cover_every_action_and_argument(
+    downloader_module: ModuleType,
+    mediaserver_module: ModuleType,
+) -> None:
+    """Agent 加载 Skill 后应能直接看到每个 action 的功能和全部参数名。"""
+    pairs = (
+        (
+            downloader_module.ACTIONS,
+            PROJECT_ROOT / "skills/downloader-operation/SKILL.md",
+        ),
+        (
+            mediaserver_module.ACTIONS,
+            PROJECT_ROOT / "skills/mediaserver-operation/SKILL.md",
+        ),
+    )
+
+    for actions, path in pairs:
+        content = path.read_text(encoding="utf-8")
+        assert "## Complete Action Contract" in content
+        for action_name, spec in actions.items():
+            row = next(
+                (line for line in content.splitlines() if line.startswith(f"| `{action_name}` |")),
+                "",
+            )
+            assert row, f"{path} 缺少 {action_name} 的独立合同表格行"
+            for argument in spec.arguments:
+                assert f"`{argument.name}" in row

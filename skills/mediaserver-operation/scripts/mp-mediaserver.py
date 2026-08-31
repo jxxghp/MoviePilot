@@ -35,6 +35,37 @@ PROVIDER_CLASSES = {
     "trimemedia": "app.modules.trimemedia.trimemedia:TrimeMedia",
     "navidrome": "app.modules.navidrome.navidrome:Navidrome",
 }
+_UNSET = object()
+
+
+class OperationError(RuntimeError):
+    """可安全返回给 Agent 的媒体服务器操作错误。"""
+
+
+@dataclass(frozen=True, slots=True)
+class ArgumentSpec:
+    """描述一个 action 参数的公开调用合同。"""
+
+    name: str
+    type: str
+    description: str
+    required: bool = False
+    default: Any = _UNSET
+    enum: tuple[Any, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        """返回可直接交给 Agent 的参数 schema。"""
+        result: dict[str, Any] = {
+            "name": self.name,
+            "type": self.type,
+            "required": self.required,
+            "description": self.description,
+        }
+        if self.default is not _UNSET:
+            result["default"] = self.default
+        if self.enum:
+            result["enum"] = list(self.enum)
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,7 +75,13 @@ class ActionSpec:
     description: str
     effect: str
     providers: tuple[str, ...] = ALL_PROVIDERS
-    required: tuple[str, ...] = ()
+    arguments: tuple[ArgumentSpec, ...] = ()
+    argument_rules: tuple[str, ...] = ()
+
+    @property
+    def required(self) -> tuple[str, ...]:
+        """返回保持旧能力合同兼容的必填参数名。"""
+        return tuple(argument.name for argument in self.arguments if argument.required)
 
     def to_dict(self, name: str) -> dict[str, Any]:
         """返回不包含实现对象的公开能力描述。"""
@@ -54,7 +91,15 @@ class ActionSpec:
             "effect": self.effect,
             "providers": list(self.providers),
             "required_arguments": list(self.required),
+            "arguments": [argument.to_dict() for argument in self.arguments],
+            "argument_rules": list(self.argument_rules),
         }
+
+
+ITEM_ID = ArgumentSpec("item_id", "string", "当前媒体服务器返回的 provider 原生条目 ID。")
+PARENT = ArgumentSpec("parent", "string|integer", "媒体库或父条目 ID；Navidrome 可省略并使用 music。")
+OFFSET = ArgumentSpec("offset", "integer", "列表起始偏移，必须大于等于 0。", default=0)
+LIMIT = ArgumentSpec("limit", "integer", "返回条数，范围 1..200。", default=DEFAULT_LIMIT)
 
 
 ACTIONS: dict[str, ActionSpec] = {
@@ -69,41 +114,107 @@ ACTIONS: dict[str, ActionSpec] = {
         "safe_read",
         ("emby", "jellyfin", "zspace"),
     ),
-    "libraries.list": ActionSpec("List visible provider libraries.", "safe_read"),
-    "items.list": ActionSpec("Page items below one library or parent.", "safe_read"),
-    "items.count": ActionSpec("Count items below one library or parent.", "safe_read"),
-    "items.detail": ActionSpec("Read one provider item by native ID.", "safe_read", required=("item_id",)),
+    "libraries.list": ActionSpec(
+        "List visible provider libraries.",
+        "safe_read",
+        arguments=(
+            ArgumentSpec("hidden", "boolean", "仅返回配置为同步范围的媒体库。", default=False),
+            ArgumentSpec("username", "string", "按用户名读取可见媒体库；仅 Emby、Jellyfin、ZSpace 支持。"),
+        ),
+    ),
+    "items.list": ActionSpec(
+        "Page items below one library or parent.",
+        "safe_read",
+        arguments=(PARENT, OFFSET, LIMIT),
+        argument_rules=("除 Navidrome 外必须提供 parent；Navidrome 忽略 parent。",),
+    ),
+    "items.count": ActionSpec(
+        "Count items below one library or parent.",
+        "safe_read",
+        arguments=(PARENT,),
+        argument_rules=("除 Navidrome 外必须提供 parent；Navidrome 省略时使用 music。",),
+    ),
+    "items.detail": ActionSpec(
+        "Read one provider item by native ID.",
+        "safe_read",
+        arguments=(ArgumentSpec("item_id", "string", ITEM_ID.description, required=True),),
+    ),
     "items.movies.search": ActionSpec(
         "Search provider-native movie items by title and optional year.",
         "safe_read",
         ("emby", "jellyfin", "plex", "zspace", "ugreen", "trimemedia"),
-        ("title",),
+        (
+            ArgumentSpec("title", "string", "电影标题。", required=True),
+            ArgumentSpec("year", "string|integer", "可选发行年份。"),
+        ),
     ),
     "items.music.search": ActionSpec(
         "Search provider-native music by title, artist, or album.",
         "safe_read",
         ("emby", "jellyfin", "plex", "zspace", "ugreen", "navidrome"),
+        (
+            ArgumentSpec("title", "string", "歌曲、专辑或音乐条目标题。"),
+            ArgumentSpec("artist", "string", "艺人名称。"),
+            ArgumentSpec("album", "string", "专辑名称；title、artist、album 至少提供一项。"),
+        ),
+        ("title、artist、album 至少提供一项。",),
     ),
     "items.season_episodes": ActionSpec(
         "Read native episode coverage for one series and optional season.",
         "safe_read",
         ("emby", "jellyfin", "plex", "zspace", "ugreen", "trimemedia"),
+        (
+            ITEM_ID,
+            ArgumentSpec("title", "string", "剧集标题；与 item_id 至少提供一项。"),
+            ArgumentSpec("year", "string|integer", "可选首播年份。"),
+            ArgumentSpec("season", "integer", "可选季号。"),
+        ),
+        ("item_id 与 title 至少提供一项。",),
     ),
-    "activity.latest": ActionSpec("Read recently added provider items.", "safe_read"),
-    "activity.resume": ActionSpec("Read in-progress/resumable provider items.", "safe_read"),
+    "activity.latest": ActionSpec(
+        "Read recently added provider items.",
+        "safe_read",
+        arguments=(LIMIT, ArgumentSpec("username", "string", "按用户名读取；仅 Emby、Jellyfin、ZSpace 支持。")),
+    ),
+    "activity.resume": ActionSpec(
+        "Read in-progress/resumable provider items.",
+        "safe_read",
+        arguments=(LIMIT, ArgumentSpec("username", "string", "按用户名读取；仅 Emby、Jellyfin、ZSpace 支持。")),
+    ),
     "activity.backdrops": ActionSpec(
         "Read recent provider backdrop images.",
         "safe_read",
         ("ugreen", "trimemedia"),
+        (
+            LIMIT,
+            ArgumentSpec("remote", "boolean", "返回 provider 可远程访问的图片地址。", default=False),
+        ),
     ),
     "playback.sessions": ActionSpec("Read active playback sessions.", "safe_read", ("emby", "jellyfin", "plex")),
-    "playback.url": ActionSpec("Build the provider play URL for one item.", "safe_read", required=("item_id",)),
-    "library.scan": ActionSpec("Trigger a provider library scan.", "external_side_effect"),
+    "playback.url": ActionSpec(
+        "Build the provider play URL for one item.",
+        "safe_read",
+        arguments=(ArgumentSpec("item_id", "string", ITEM_ID.description, required=True),),
+    ),
+    "library.scan": ActionSpec(
+        "Trigger a provider library scan.",
+        "external_side_effect",
+        arguments=(
+            ArgumentSpec("scan_mode", "string|integer", "UGREEN 原生扫描模式；其他 provider 必须省略。"),
+        ),
+    ),
     "metadata.refresh": ActionSpec(
         "Refresh provider metadata for mapped items.",
         "external_side_effect",
         ("emby", "plex", "zspace", "ugreen", "trimemedia"),
-        ("items",),
+        (
+            ArgumentSpec(
+                "items",
+                "object[]",
+                "刷新条目；每项支持 title:string、year:string|integer、type:电影|电视剧|音乐、category:string、target_path:string。",
+                required=True,
+            ),
+        ),
     ),
 }
 
@@ -120,8 +231,7 @@ def _load_configs() -> list[Any]:
     _ensure_project_import()
     from app.db.oper.systemconfig import SystemConfigOper
     from app.db.session import SessionFactory
-    from app.runtime.extensions.service import ServiceConfigHelper
-    from app.runtime.extensions.service import configure_service_config_reader
+    from app.runtime.extensions.service import ServiceConfigHelper, configure_service_config_reader
 
     system_config = SystemConfigOper()
     # Skill 在独立 CLI 进程中运行，没有 lifespan 为无会话 Oper 装配事务执行器。
@@ -145,9 +255,12 @@ def _select_config(server_name: Optional[str]) -> Any:
             if config.name == server_name:
                 return config
         raise ValueError(f"未找到已启用媒体服务器实例: {server_name}")
+    if not enabled:
+        raise ValueError("没有已启用的媒体服务器实例")
     if len(enabled) == 1:
         return enabled[0]
-    raise ValueError("存在多个媒体服务器实例，请显式提供 --server")
+    names = "、".join(str(config.name) for config in enabled)
+    raise ValueError(f"存在多个媒体服务器实例，请用 --server 指定以下之一：{names}")
 
 
 def _build_client(config: Any) -> Any:
@@ -163,7 +276,7 @@ def _build_client(config: Any) -> Any:
     if client.is_inactive():
         client.reconnect()
     if client.is_inactive():
-        raise RuntimeError("媒体服务器连接不可用")
+        raise OperationError("媒体服务器连接不可用")
     return client
 
 
@@ -219,6 +332,101 @@ def _require(arguments: Mapping[str, Any], name: str) -> Any:
     if value is None or value == "" or value == []:
         raise ValueError(f"缺少必填参数: {name}")
     return value
+
+
+def _matches_argument_type(value: Any, declared_type: str) -> bool:
+    """判断 JSON 值是否符合公开参数合同中的紧凑类型表达式。"""
+    for candidate in declared_type.split("|"):
+        if candidate.endswith("[]"):
+            if isinstance(value, list) and all(
+                _matches_argument_type(item, candidate[:-2]) for item in value
+            ):
+                return True
+            continue
+        if candidate == "string" and isinstance(value, str):
+            return True
+        if candidate == "integer" and isinstance(value, int) and not isinstance(value, bool):
+            return True
+        if candidate == "boolean" and isinstance(value, bool):
+            return True
+        if candidate == "object" and isinstance(value, Mapping):
+            return True
+    return False
+
+
+def _validate_refresh_items(items: Any) -> list[str]:
+    """校验 metadata.refresh 的嵌套条目并返回全部错误。"""
+    if not isinstance(items, list):
+        return []
+    errors: list[str] = []
+    allowed_fields = {"title", "year", "type", "category", "target_path"}
+    allowed_types = {"电影", "电视剧", "音乐"}
+    for index, item in enumerate(items):
+        if not isinstance(item, Mapping):
+            continue
+        unknown = sorted(set(item) - allowed_fields)
+        if unknown:
+            errors.append(f"items[{index}] 未知字段: {', '.join(unknown)}")
+        if item.get("type") is not None and item.get("type") not in allowed_types:
+            errors.append(f"items[{index}].type 仅支持: 电影、电视剧、音乐")
+        for name in ("title", "category", "target_path"):
+            if item.get(name) is not None and not isinstance(item.get(name), str):
+                errors.append(f"items[{index}].{name} 必须是 string")
+        year = item.get("year")
+        if year is not None and not (
+            isinstance(year, str) or (isinstance(year, int) and not isinstance(year, bool))
+        ):
+            errors.append(f"items[{index}].year 必须是 string|integer")
+    return errors
+
+
+def _validate_action_arguments(action: str, spec: ActionSpec, arguments: Mapping[str, Any]) -> None:
+    """一次性校验 action 的全部参数，避免 Agent 按单个错误反复试调用。"""
+    errors: list[str] = []
+    argument_specs = {argument.name: argument for argument in spec.arguments}
+    unknown = sorted(set(arguments) - set(argument_specs))
+    if unknown:
+        errors.append(f"未知参数: {', '.join(unknown)}")
+    for name, argument in argument_specs.items():
+        value = arguments.get(name)
+        if argument.required and (value is None or value == "" or value == []):
+            errors.append(f"缺少必填参数: {name}")
+            continue
+        if value is not None and not _matches_argument_type(value, argument.type):
+            errors.append(f"参数 {name} 必须是 {argument.type}")
+        if value is not None and argument.enum and value not in argument.enum:
+            errors.append(f"参数 {name} 仅支持: {', '.join(map(str, argument.enum))}")
+
+    if action == "items.music.search" and not any(
+        arguments.get(name) for name in ("title", "artist", "album")
+    ):
+        errors.append("title、artist、album 至少提供一项")
+    if action == "items.season_episodes" and not any(
+        arguments.get(name) for name in ("item_id", "title")
+    ):
+        errors.append("item_id 与 title 至少提供一项")
+    if action == "metadata.refresh":
+        errors.extend(_validate_refresh_items(arguments.get("items")))
+    if errors:
+        raise ValueError("参数校验失败：" + "；".join(errors))
+
+
+def _validate_provider_arguments(action: str, provider: str, arguments: Mapping[str, Any]) -> None:
+    """校验需要知道 provider 后才能确定的条件参数。"""
+    errors: list[str] = []
+    if action in {"items.list", "items.count"} and provider != "navidrome" and not arguments.get("parent"):
+        errors.append(f"{provider} 的 {action} 必须提供 parent")
+    username_providers = {"emby", "jellyfin", "zspace"}
+    if (
+        action in {"libraries.list", "activity.latest", "activity.resume"}
+        and arguments.get("username") is not None
+        and provider not in username_providers
+    ):
+        errors.append(f"{provider} 的 {action} 不支持参数: username")
+    if action == "library.scan" and arguments.get("scan_mode") is not None and provider != "ugreen":
+        errors.append(f"{provider} 的 library.scan 不支持参数: scan_mode")
+    if errors:
+        raise ValueError("参数校验失败：" + "；".join(errors))
 
 
 def _limit(arguments: Mapping[str, Any]) -> int:
@@ -379,12 +587,20 @@ def list_instances() -> dict[str, Any]:
     return {"success": True, "instances": instances}
 
 
-def list_capabilities(server_name: Optional[str]) -> dict[str, Any]:
-    """返回全部或指定实例支持的 action 清单。"""
+def list_capabilities(server_name: Optional[str], action: Optional[str] = None) -> dict[str, Any]:
+    """返回全部或指定实例支持的 action 及完整参数合同。"""
     provider = None
     if server_name:
         provider = str(_select_config(server_name).type or "").lower()
-    actions = [spec.to_dict(name) for name, spec in ACTIONS.items() if provider is None or provider in spec.providers]
+    if action and action not in ACTIONS:
+        raise ValueError(f"未知 media server action: {action}")
+    actions = [
+        spec.to_dict(name)
+        for name, spec in ACTIONS.items()
+        if (not action or name == action) and (provider is None or provider in spec.providers)
+    ]
+    if action and not actions:
+        raise ValueError(f"{provider} 不支持 action: {action}")
     return {
         "success": True,
         "server": server_name,
@@ -398,15 +614,15 @@ def call_action(server_name: Optional[str], action: str, arguments: Mapping[str,
     spec = ACTIONS.get(action)
     if spec is None:
         raise ValueError(f"未知 media server action: {action}")
+    _validate_action_arguments(action, spec, arguments)
     config = _select_config(server_name)
     provider = str(config.type or "").lower()
     if provider not in spec.providers:
         raise ValueError(f"{provider} 不支持 action: {action}")
-    for name in spec.required:
-        _require(arguments, name)
+    _validate_provider_arguments(action, provider, arguments)
     result = _dispatch(_build_client(config), provider, action, arguments)
     if spec.effect != "safe_read" and result is False:
-        raise RuntimeError("媒体服务器 action 返回失败")
+        raise OperationError("媒体服务器 action 返回失败")
     return {
         "success": True,
         "server": config.name,
@@ -432,9 +648,10 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("instances", help="list configured instances")
     capabilities = subparsers.add_parser("capabilities", help="list allowed actions")
     capabilities.add_argument("--server")
+    capabilities.add_argument("--action")
     call = subparsers.add_parser("call", help="call one allowed action")
     call.add_argument("--server")
-    call.add_argument("--action", required=True, choices=sorted(ACTIONS))
+    call.add_argument("--action", required=True)
     call.add_argument("--arguments", default="{}")
     return parser
 
@@ -447,7 +664,7 @@ def main() -> int:
         if args.command == "instances":
             payload = list_instances()
         elif args.command == "capabilities":
-            payload = list_capabilities(args.server)
+            payload = list_capabilities(args.server, args.action)
         elif args.command == "call":
             payload = call_action(args.server, args.action, _parse_arguments(args.arguments))
         else:
@@ -457,7 +674,7 @@ def main() -> int:
         payload = {
             "success": False,
             "error_type": type(error).__name__,
-            "message": str(error) if isinstance(error, ValueError) else "媒体服务器调用失败",
+            "message": str(error) if isinstance(error, (ValueError, OperationError)) else "媒体服务器调用失败",
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 1

@@ -140,6 +140,10 @@ def test_builtin_policy_inventory_covers_every_fixed_tool() -> None:
             _tool_class_name(MoviePilotApiTool),
         }
     )
+    fixed_tool_names.update(
+        _tool_class_name(tool_class)
+        for tool_class in MoviePilotToolFactory.EXTERNAL_SERVICE_TOOL_CLASSES
+    )
 
     assert DEFAULT_TOOL_POLICY_REGISTRY.builtin_tool_inventory == fixed_tool_names
 

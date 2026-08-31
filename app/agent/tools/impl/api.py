@@ -1,6 +1,9 @@
 """MoviePilot 结构化 API 网关工具。"""
 
 import json
+from copy import deepcopy
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
 from pydantic import BaseModel, Field, PrivateAttr
@@ -10,6 +13,16 @@ from app.agent.policy.api import resolve_api_operation
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.schemas.types import NotificationChannel
+
+
+@lru_cache(maxsize=1)
+def _load_api_mcp_input_schema() -> dict[str, Any]:
+    """读取由业务 OpenAPI 生成并经漂移测试锁定的外部 MCP schema。"""
+    schema_path = Path(__file__).resolve().parents[2] / "policy" / "api_mcp_schema.json"
+    payload = json.loads(schema_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("oneOf"), list):
+        raise RuntimeError("moviepilot_api MCP schema 无效")
+    return payload
 
 
 class MoviePilotApiInput(BaseModel):  # type: ignore[misc]
@@ -54,7 +67,8 @@ class MoviePilotApiTool(MoviePilotTool):
     ]
     description: str = (
         "调用经过白名单审核的 MoviePilot 业务 API。使用领域 Skill 获取 operation_id、"
-        "参数和失败处理；不能调用任意 URL、命令或认证接口。"
+        "参数和失败处理；外部 MCP tools/list 会为每个 operation 提供完整 oneOf 参数合同；"
+        "不能调用任意 URL、命令或认证接口。"
     )
     require_admin: bool = False
     args_schema: Type[BaseModel] = MoviePilotApiInput
@@ -77,6 +91,10 @@ class MoviePilotApiTool(MoviePilotTool):
         """生成结构化 API 调用提示。"""
         operation_id = kwargs.get("operation_id") or "未知操作"
         return f"调用 MoviePilot API：{operation_id}"
+
+    def get_mcp_input_schema(self) -> dict[str, Any]:
+        """返回包含全部白名单 operation 精确参数的 MCP JSON Schema。"""
+        return deepcopy(_load_api_mcp_input_schema())
 
     async def _resolve_api_identity(self) -> tuple[str, Optional[str], bool]:
         """把 Web 或渠道身份解析为真实 MoviePilot 用户身份。"""
