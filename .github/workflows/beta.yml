@@ -114,8 +114,8 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: |
-            ${{ secrets.DOCKER_USERNAME }}/moviepilot-v3
-            ghcr.io/${{ github.repository }}-v3
+            ${{ secrets.DOCKER_USERNAME }}/moviepilot
+            ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=beta
 
