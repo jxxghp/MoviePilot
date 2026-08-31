@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 7680,
-  "edge_sha256": "e587b2c539a0100a96f73ec7daf1634671e2570e9c89114774fdcd26b9072aac",
+  "edge_count": 7684,
+  "edge_sha256": "62be4cd0bd17892f3679d8ffd108b54d6c886413290adb9c22e794b076084e03",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3039,6 +3039,9 @@
     "app.application.history -> app.schemas.media",
     "app.application.history -> app.schemas.transfer",
     "app.application.history -> app.schemas.types",
+    "app.application.historymutation -> app.application",
+    "app.application.historymutation -> app.application.transfer",
+    "app.application.historymutation -> app.application.transfer.execution",
     "app.application.historymutation -> app.schemas",
     "app.application.historymutation -> app.schemas.common",
     "app.application.historymutation -> app.schemas.history",
@@ -5125,6 +5128,7 @@
     "app.db.adapters.transfer.execution -> app.db.models.transferpending",
     "app.db.adapters.transfer.execution -> app.db.oper",
     "app.db.adapters.transfer.execution -> app.db.oper.transferexecutionstep",
+    "app.db.adapters.transfer.execution -> app.db.oper.transferhistory",
     "app.db.adapters.transfer.execution -> app.db.oper.transferpending",
     "app.db.adapters.transfer.execution -> app.db.uow",
     "app.db.adapters.user -> app.application",

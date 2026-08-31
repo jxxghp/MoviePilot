@@ -7994,10 +7994,10 @@
     }
   },
   "run_module": {
-    "call_count": 266,
+    "call_count": 265,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 215,
+    "method_count": 214,
     "methods": {
       "anilist_credits": [
         {
@@ -9243,13 +9243,6 @@
         }
       ],
       "obtain_specific_image": [
-        {
-          "caller": "app.chain.base",
-          "count": 1,
-          "mode": "sync"
-        }
-      ],
-      "plan_transfer": [
         {
           "caller": "app.chain.base",
           "count": 1,
