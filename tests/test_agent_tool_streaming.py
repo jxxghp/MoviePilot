@@ -11,7 +11,9 @@ from app.agent.callback import StreamingHandler
 from app.agent.middleware.subagents import is_subagent_stream_metadata
 from app.agent.orchestrator import _ThinkTagStripper
 from app.agent.tools.base import MoviePilotTool
+from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
+from app.agent.web import _get_web_agent_streaming_handler_type
 from app.api.endpoints.openai import _get_openai_streaming_handler_type
 from app.runtime.config import settings
 from app.schemas.message import Message, MessageResponse
@@ -456,6 +458,42 @@ class TestAgentToolStreaming:
 
         assert text == "前置内容\n\n⚙️ => run test tool\n\n"
         assert rich_message == "前置内容\n\n> ⚙️ => run test tool\n\n"
+
+    def test_verbose_web_api_tool_message_includes_major_parameters(self):
+        """Web Agent 啰嗦模式应实时输出 API operation 及其主要参数。"""
+
+        async def _run():
+            emitted = []
+            handler = _get_web_agent_streaming_handler_type()(emitted.append)
+            await handler.start_streaming(
+                channel=NotificationChannel.WebAgent.value,
+                source="web-agent",
+                user_id="1",
+                username="admin",
+            )
+            tool = MoviePilotApiTool(session_id="session-1", user_id="1")
+            tool.set_stream_handler(handler)
+
+            with (
+                patch.object(settings, "AI_AGENT_VERBOSE", True),
+                patch.object(MoviePilotApiTool, "run", new_callable=AsyncMock) as run_mock,
+            ):
+                run_mock.return_value = '{"success": true}'
+                result = await tool._arun(
+                    operation_id="subscription.list",
+                    query={"page": 1, "count": 20},
+                )
+            return result, "".join(emitted), handler._buffer
+
+        result, emitted, buffered = asyncio.run(_run())
+
+        expected = (
+            '\n\n⚙️ => 调用 MoviePilot API：subscription.list，主要参数：'
+            '{"query": {"page": 1, "count": 20}}\n\n'
+        )
+        assert result == '{"success": true}'
+        assert emitted == expected
+        assert buffered == expected
 
     def test_rich_message_keeps_body_text_unquoted_for_telegram(self):
         """校验 Telegram 富文本只转换工具摘要行，正文保持原样。"""

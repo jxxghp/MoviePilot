@@ -11,9 +11,13 @@ from pydantic import BaseModel, Field, PrivateAttr
 from app.agent.api.executor import ApiExecutionContext, ApiExecutionError, MoviePilotApiExecutor
 from app.agent.policy.api import resolve_api_operation
 from app.agent.policy.contracts import PrincipalRole
+from app.agent.policy.sanitizer import summarize_input
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.schemas.types import NotificationChannel
+
+_TOOL_MESSAGE_OPERATION_MAX_CHARS = 96
+_TOOL_MESSAGE_PARAMETER_MAX_CHARS = 320
 
 
 @lru_cache(maxsize=1)
@@ -100,9 +104,25 @@ class MoviePilotApiTool(MoviePilotTool):
         self._executor = executor
 
     def get_tool_message(self, **kwargs: Any) -> Optional[str]:
-        """生成结构化 API 调用提示。"""
-        operation_id = kwargs.get("operation_id") or "未知操作"
-        return f"调用 MoviePilot API：{operation_id}"
+        """生成包含脱敏、有界主要参数的结构化 API 调用提示。"""
+        operation_id = summarize_input(
+            kwargs.get("operation_id") or "未知操作",
+            max_chars=_TOOL_MESSAGE_OPERATION_MAX_CHARS,
+        )
+        message = f"调用 MoviePilot API：{operation_id}"
+        parameters = {
+            field_name: field_value
+            for field_name in ("path_params", "query", "body")
+            if (field_value := kwargs.get(field_name)) is not None
+            and not (isinstance(field_value, dict) and not field_value)
+        }
+        if not parameters:
+            return message
+        parameter_summary = summarize_input(
+            parameters,
+            max_chars=_TOOL_MESSAGE_PARAMETER_MAX_CHARS,
+        )
+        return f"{message}，主要参数：{parameter_summary}"
 
     def get_mcp_input_schema(self) -> dict[str, Any]:
         """返回包含全部白名单 operation 精确参数的 MCP JSON Schema。"""

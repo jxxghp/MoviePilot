@@ -73,6 +73,32 @@ def test_api_operation_registry_matches_migration_batches() -> None:
     }.issubset(API_OPERATION_ROUTES)
 
 
+def test_api_tool_message_displays_secret_safe_major_parameters() -> None:
+    """啰嗦模式提示应展示 API 主要参数，同时对设置凭据值脱敏。"""
+    tool = MoviePilotApiTool(session_id="session", user_id="api_user")
+
+    list_message = tool.get_tool_message(
+        operation_id="subscription.list",
+        query={"page": 1, "count": 20},
+    )
+    secret_message = tool.get_tool_message(
+        operation_id="config.system.update",
+        body={
+            "setting_key": "OPENAI_API_KEY",
+            "value": "sk-secret-value",
+            "operation": "replace",
+        },
+    )
+
+    assert list_message == (
+        '调用 MoviePilot API：subscription.list，主要参数：'
+        '{"query": {"page": 1, "count": 20}}'
+    )
+    assert "OPENAI_API_KEY" in secret_message
+    assert '"value": "***"' in secret_message
+    assert "sk-secret-value" not in secret_message
+
+
 def test_music_operations_expose_bidirectional_artist_album_navigation() -> None:
     """音乐 Skill 必须完整暴露作品到作者、作者到作品及关联浏览合同。"""
     schema = MoviePilotApiTool(session_id="session", user_id="api_user").get_mcp_input_schema()
