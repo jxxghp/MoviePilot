@@ -110,7 +110,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "command-dispatch": "2",
         "database-operation": "6",
         "feedback-issue": "9",
-        "moviepilot-api": "23",
+        "moviepilot-api": "24",
         "moviepilot-update": "5",
         "organize-files": "5",
         "transfer-failed-retry": "5",
@@ -142,6 +142,18 @@ def test_core_prompt_requires_read_skill_for_skill_documents() -> None:
     assert "Always use `read_skill`, never `read_file`, to load a skill's SKILL.md" in core_prompt
     assert "returns up to 512 KiB of the skill body" in core_prompt
     assert "do not use `read_file` to bypass the limit" in core_prompt
+
+
+def test_api_collection_counts_must_use_gateway_metadata_before_database() -> None:
+    """核心提示与 API Skill 必须阻止列表截断后错误回退数据库统计。"""
+    core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
+    api_skill = _read_skill("moviepilot-api")
+
+    assert "optional legacy pagination should use `page=1,count=1`" in core_prompt
+    assert "Do not query the database merely because" in core_prompt
+    assert 'send `query={"page":1,"count":1}`' in api_skill
+    assert "Never query the MoviePilot" in api_skill
+    assert "database merely to recover a total" in api_skill
 
 
 def test_every_retired_business_tool_has_a_live_precise_owner() -> None:

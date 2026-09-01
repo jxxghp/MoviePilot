@@ -5206,7 +5206,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the current host network receive and transmit counters. Method: GET. Path: /api/v1/dashboard/network. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "Read the current host network receive and transmit counters. Method: GET. Path: /api/v1/dashboard/network. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "dashboard.network",
@@ -5262,7 +5262,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List host processes visible to the MoviePilot runtime. Method: GET. Path: /api/v1/dashboard/processes. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List host processes visible to the MoviePilot runtime. Method: GET. Path: /api/v1/dashboard/processes. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "dashboard.processes",
@@ -5350,7 +5350,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read aggregate file-transfer counts grouped by time period. Method: GET. Path: /api/v1/dashboard/transfer. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "Read aggregate file-transfer counts grouped by time period. Method: GET. Path: /api/v1/dashboard/transfer. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "dashboard.transfer.statistics",
@@ -5467,7 +5467,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List managed database backup artifacts without exposing host paths. Method: GET. Path: /api/v1/system/database/backups. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List managed database backup artifacts without exposing host paths. Method: GET. Path: /api/v1/system/database/backups. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "database.backups.list",
@@ -5576,7 +5576,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List enabled downloader instance names and provider types without credentials. Method: GET. Path: /api/v1/download/clients. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List enabled downloader instance names and provider types without credentials. Method: GET. Path: /api/v1/download/clients. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "download.clients",
@@ -5653,7 +5653,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Page MoviePilot download-history records in reverse chronological order. Method: GET. Path: /api/v1/history/download. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "Page MoviePilot download-history records in reverse chronological order. Method: GET. Path: /api/v1/history/download. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count-only request, use the smallest valid page and read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "download.history.list",
@@ -5708,7 +5708,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List configured downloader save-path URIs that may be passed to download.add. Method: GET. Path: /api/v1/download/paths. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List configured downloader save-path URIs that may be passed to download.add. Method: GET. Path: /api/v1/download/paths. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "download.paths",
@@ -5764,7 +5764,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List currently downloading MoviePilot tasks with their canonical media context. Method: GET. Path: /api/v1/download/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List currently downloading MoviePilot tasks with their canonical media context. Method: GET. Path: /api/v1/download/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "download.tasks.active",
@@ -6440,7 +6440,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List seasons defined by one exact TMDB episode-group identity. Method: GET. Path: /api/v1/media/group/seasons/{episode_group}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List seasons defined by one exact TMDB episode-group identity. Method: GET. Path: /api/v1/media/group/seasons/{episode_group}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "media.episode_group.seasons",
@@ -6512,7 +6512,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List alternate TMDB episode groups available for one TV media identity. Method: GET. Path: /api/v1/media/groups/{tmdbid}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List alternate TMDB episode groups available for one TV media identity. Method: GET. Path: /api/v1/media/groups/{tmdbid}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "media.episode_groups",
@@ -6584,7 +6584,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read TMDB episode release information for one season. Method: GET. Path: /api/v1/tmdb/{tmdbid}/{season}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "Read TMDB episode release information for one season. Method: GET. Path: /api/v1/tmdb/{tmdbid}/{season}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "media.episode_schedule",
@@ -7090,7 +7090,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List seasons for one exact media identity or a title-and-year fallback. Method: GET. Path: /api/v1/media/seasons. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List seasons for one exact media identity or a title-and-year fallback. Method: GET. Path: /api/v1/media/seasons. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "media.seasons",
@@ -7192,7 +7192,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List metadata sources currently registered for MoviePilot media operations. Method: GET. Path: /api/v1/media/source. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List metadata sources currently registered for MoviePilot media operations. Method: GET. Path: /api/v1/media/source. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "media.sources",
@@ -8210,7 +8210,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List installed plugins and their runtime status. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List installed plugins and their runtime status. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count-only request, use the smallest valid page and read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "plugin.installed",
@@ -8301,7 +8301,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List plugins available from configured marketplaces. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List plugins available from configured marketplaces. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count-only request, use the smallest valid page and read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "plugin.market",
@@ -8923,7 +8923,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List registered scheduler jobs and their current state. Method: GET. Path: /api/v1/dashboard/schedule. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List registered scheduler jobs and their current state. Method: GET. Path: /api/v1/dashboard/schedule. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "scheduler.list",
@@ -9157,7 +9157,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Search torrent sites for one canonical media identity. Method: GET. Path: /api/v1/search/media/{media_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "Search torrent sites for one canonical media identity. Method: GET. Path: /api/v1/search/media/{media_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "search.torrents",
@@ -9356,7 +9356,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List torrent categories supported by one configured site. Method: GET. Path: /api/v1/site/category/{site_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List torrent categories supported by one configured site. Method: GET. Path: /api/v1/site/category/{site_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.category",
@@ -9513,7 +9513,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List configured sites with status/name filters; authentication fields are returned only to a superuser. Method: GET. Path: /api/v1/site/agent. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List configured sites with status/name filters; authentication fields are returned only to a superuser. Method: GET. Path: /api/v1/site/agent. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.list",
@@ -9743,7 +9743,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List configured sites selected for RSS subscription processing. Method: GET. Path: /api/v1/site/rss. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List configured sites selected for RSS subscription processing. Method: GET. Path: /api/v1/site/rss. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.rss",
@@ -9799,7 +9799,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List active configured sites supporting one exact media type. Method: GET. Path: /api/v1/site/media/{media_type}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List active configured sites supporting one exact media type. Method: GET. Path: /api/v1/site/media/{media_type}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.searchable",
@@ -9903,7 +9903,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the latest account and traffic statistics for all configured sites. Method: GET. Path: /api/v1/site/statistic. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "Read the latest account and traffic statistics for all configured sites. Method: GET. Path: /api/v1/site/statistic. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.statistics",
@@ -10028,7 +10028,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the latest account statistics collected from one site. Method: GET. Path: /api/v1/site/userdata/{site_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "Read the latest account statistics collected from one site. Method: GET. Path: /api/v1/site/userdata/{site_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.userdata",
@@ -10112,7 +10112,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the latest collected account statistics for every configured site. Method: GET. Path: /api/v1/site/userdata/latest. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "Read the latest collected account statistics for every configured site. Method: GET. Path: /api/v1/site/userdata/latest. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.userdata.latest",
@@ -10200,7 +10200,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List slash commands that the Agent may dispatch. Method: GET. Path: /api/v1/message/agent/commands. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List slash commands that the Agent may dispatch. Method: GET. Path: /api/v1/message/agent/commands. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "slash.list",
@@ -10298,7 +10298,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List files or directories from one configured storage location. Method: POST. Path: /api/v1/storage/agent/list. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List files or directories from one configured storage location. Method: POST. Path: /api/v1/storage/agent/list. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "body": {
           "$ref": "#/$defs/FileItem-Input",
@@ -10492,7 +10492,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read configured directory or storage settings. Method: GET. Path: /api/v1/storage/directories. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "Read configured directory or storage settings. Method: GET. Path: /api/v1/storage/directories. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "storage.settings",
@@ -10881,7 +10881,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List subscription-sharing user IDs followed by the current user. Method: GET. Path: /api/v1/subscribe/follow. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List subscription-sharing user IDs followed by the current user. Method: GET. Path: /api/v1/subscribe/follow. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subscription.follow.list",
@@ -10990,7 +10990,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List completed or archived subscription records. Method: GET. Path: /api/v1/subscribe/history/{mtype}. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List completed or archived subscription records. Method: GET. Path: /api/v1/subscribe/history/{mtype}. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count-only request, use the smallest valid page and read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subscription.history",
@@ -11093,7 +11093,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List active subscriptions. Method: GET. Path: /api/v1/subscribe/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List active subscriptions. Method: GET. Path: /api/v1/subscribe/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subscription.list",
@@ -11438,7 +11438,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read aggregate contribution and reuse counts for subscription sharers. Method: GET. Path: /api/v1/subscribe/share/statistics. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "Read aggregate contribution and reuse counts for subscription sharers. Method: GET. Path: /api/v1/subscribe/share/statistics. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subscription.share.statistics",
@@ -11678,7 +11678,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List public subscriptions owned by one accessible MoviePilot username. Method: GET. Path: /api/v1/subscribe/user/{username}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List public subscriptions owned by one accessible MoviePilot username. Method: GET. Path: /api/v1/subscribe/user/{username}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subscription.user.list",
@@ -11750,7 +11750,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Search subtitle providers for one canonical media identity and optional season or episode. Method: GET. Path: /api/v1/search/subtitle/media/{media_id}. Effect: external_side_effect. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "Search subtitle providers for one canonical media identity and optional season or episode. Method: GET. Path: /api/v1/search/subtitle/media/{media_id}. Effect: external_side_effect. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subtitle.search.media",
@@ -11992,7 +11992,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List approved built-in network-test targets without exposing their request URLs. Method: GET. Path: /api/v1/system/nettest/targets. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List approved built-in network-test targets without exposing their request URLs. Method: GET. Path: /api/v1/system/nettest/targets. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "system.network.targets",
@@ -12225,7 +12225,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List available MoviePilot GitHub releases. Method: GET. Path: /api/v1/system/versions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List available MoviePilot GitHub releases. Method: GET. Path: /api/v1/system/versions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "system.versions",
@@ -12514,7 +12514,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List file-transfer history with filters and pagination. Method: GET. Path: /api/v1/history/transfer. Effect: safe_read. Collection response: items stay in data.list and the exact total stays in data.total.",
+      "description": "List file-transfer history with filters and pagination. Method: GET. Path: /api/v1/history/transfer. Effect: safe_read. Collection response: items stay in data.list and the exact total stays in data.total. For a count-only request, use the smallest documented page and read that total; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "transfer.history",
@@ -12806,7 +12806,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Page durable transfer tasks awaiting manual review or retry recovery. Method: GET. Path: /api/v1/transfer/tasks/manual-reviews. Effect: safe_read. Collection response: items stay in data.items and the exact total stays in data.total.",
+      "description": "Page durable transfer tasks awaiting manual review or retry recovery. Method: GET. Path: /api/v1/transfer/tasks/manual-reviews. Effect: safe_read. Collection response: items stay in data.items and the exact total stays in data.total. For a count-only request, use the smallest documented page and read that total; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "transfer.manual_reviews",
@@ -12898,7 +12898,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List items waiting in the file-transfer queue. Method: GET. Path: /api/v1/transfer/queue. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List items waiting in the file-transfer queue. Method: GET. Path: /api/v1/transfer/queue. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "transfer.queue",
@@ -12996,7 +12996,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List built-in workflow action definitions and their parameter contracts. Method: GET. Path: /api/v1/workflow/actions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List built-in workflow action definitions and their parameter contracts. Method: GET. Path: /api/v1/workflow/actions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "workflow.actions",
@@ -13105,7 +13105,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List event types that can trigger workflows. Method: GET. Path: /api/v1/workflow/event_types. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List event types that can trigger workflows. Method: GET. Path: /api/v1/workflow/event_types. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "workflow.event_types",
@@ -13214,7 +13214,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List configured workflows and their execution state. Method: GET. Path: /api/v1/workflow/agent. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List configured workflows and their execution state. Method: GET. Path: /api/v1/workflow/agent. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "workflow.list",
@@ -13340,7 +13340,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List workflow actions contributed by installed plugins, optionally filtered by plugin ID. Method: GET. Path: /api/v1/workflow/plugin/actions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count.",
+      "description": "List workflow actions contributed by installed plugins, optionally filtered by plugin ID. Method: GET. Path: /api/v1/workflow/plugin/actions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "workflow.plugin.actions",

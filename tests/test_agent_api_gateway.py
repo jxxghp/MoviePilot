@@ -137,6 +137,8 @@ def test_mcp_collection_contract_distinguishes_exact_and_unavailable_totals() ->
         "total_count_field": "collection.total_count",
         "default_pagination": "unpaginated",
     }
+    assert "page=1 and count=1" in subscription["description"]
+    assert "do not query the database" in subscription["description"]
 
     storage = branches["storage.list"]
     assert {"page", "count"}.issubset(storage["properties"]["query"]["properties"])

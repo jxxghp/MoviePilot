@@ -266,6 +266,7 @@ def _render_api_docs() -> str:
         "The operations, HTTP methods, routes, and path/query/body fields below exactly match external MCP `tools/list`.",
         "A field name ending in `*` is required. Omit an empty bucket or send `{}`. Referenced body models are expanded below.",
         "For collection operations, `data` keeps its existing list or page-object shape. The gateway may add a sibling `collection` object with `result_count`, optional exact `total_count`, `page`, and `count`; it never replaces the list body with a new wrapper.",
+        "When a collection contract exposes an exact total, answer count or summary requests from that API metadata. For optional legacy pagination, send `page=1,count=1` and read `collection.total_count`; never query the database merely because item data or a tool preview was truncated.",
         "If an endpoint or external source does not expose a total, `collection.total_count` is omitted instead of being guessed from the current page.",
         "",
     ]
@@ -298,13 +299,18 @@ def _render_api_docs() -> str:
                     lines.append(
                         "- `response`: `data` remains a list; omitting both `page` and `count` "
                         "keeps the complete legacy result. `collection.result_count` reports the "
-                        "returned items and `collection.total_count` reports the exact pre-pagination total."
+                        "returned items and `collection.total_count` reports the exact pre-pagination "
+                        "total. For counts or summaries, send `page=1,count=1`, read "
+                        "`collection.total_count`, and do not fall back to a database query because "
+                        "the item preview was truncated."
                     )
                 else:
                     lines.append(
                         "- `response`: `data` remains a list and the endpoint's documented pagination "
                         "or limit defaults remain in effect. `collection.result_count` reports the "
-                        "returned items and `collection.total_count` reports the exact total."
+                        "returned items and `collection.total_count` reports the exact total. For a "
+                        "count-only request, use the smallest valid page and read that metadata instead "
+                        "of querying the database after item truncation."
                     )
             else:
                 lines.append(

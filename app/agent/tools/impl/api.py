@@ -72,8 +72,10 @@ class MoviePilotApiTool(MoviePilotTool):
     ]
     description: str = (
         "Call allowlisted MoviePilot business APIs. Use the domain Skill to select operation_id, "
-        "parameters, and failure handling. External MCP tools/list exposes one complete oneOf "
-        "branch per operation. Arbitrary URLs, commands, and authentication endpoints are forbidden."
+        "parameters, and failure handling. For collection counts, use the smallest documented "
+        "page and read collection.total_count instead of querying the database after item "
+        "truncation. External MCP tools/list exposes one complete oneOf branch per operation. "
+        "Arbitrary URLs, commands, and authentication endpoints are forbidden."
     )
     require_admin: bool = False
     args_schema: Type[BaseModel] = MoviePilotApiInput

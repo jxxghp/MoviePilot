@@ -140,8 +140,11 @@ class MoviePilotApiExecutor:
                 continue
         if not collection:
             return payload
-        result = dict(payload)
-        result["collection"] = collection
+        # 集合数据可能触发通用工具结果截断；把元数据放在 data 前面，确保预览仍保留精确总数。
+        result = {"collection": collection}
+        for key, value in payload.items():
+            if key != "collection":
+                result[key] = value
         return result
 
     async def execute(

@@ -41,7 +41,7 @@
 | MCP/HTTP 工具管理 | 存在旧业务工具与同名 first-wins 选择空间 | 与主 Agent 共用严格唯一新目录；重名直接以 TOOL_IDENTITY_AMBIGUOUS 失败 |
 | 退役代码 | 旧实现仍位于 app/agent/tools/impl | 77 个退役文件已直接删除，其中 72 个工具模块、5 个辅助模块 |
 | 架构图 | 982 个宿主模块、8,430 条内部依赖边 | 919 个宿主模块、7,688 条内部依赖边，Application/Chain 具体 Adapter 直连仍为 0 |
-| 工作区状态 | 基线提交 871632af，与 origin/v3 对齐，初始工作区干净 | L1-L9 已完成；L10 正在把上一轮响应层兼容分页改为端点显式输入和数据库查询下推，当前基线 `91e33277f` 与 `origin/v3` 对齐 |
+| 工作区状态 | 基线提交 871632af，与 origin/v3 对齐，初始工作区干净 | L1-L10 已完成并通过远端 CI；2026-09-01 继续修复集合总数在大结果截断预览中不可见的问题 |
 
 ## 3. 目标工具分层
 
@@ -356,5 +356,14 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 - Pylint 工作流 `33457912735` 已终态成功；变更文件质量检查与完整建议报告均成功
 - L10 正式完成：集合端点显式声明 `page/count`，数据库查询在 SQL 层完成筛选、稳定排序、分页与同条件精确计数；不传新增参数继续返回旧全量列表，外部来源没有总数时不伪造
 - MoviePilot Agent 工具体系重构父目标至此全部完成，后续查询端点必须继续维护 REST、OpenAPI、MCP、Skill 和数据库查询合同的一致性
+
+### 2026-09-01：集合总数截断可见性修复
+
+- Web Agent 实际调用 `subscription.list` 时未传分页，完整订阅列表超过通用工具结果 64KB 上限；此前网关把 `collection` 追加在 `data` 之后，截断预览只保留开头条目，导致 Agent 看不到已经由 API 返回的精确 `collection.total_count`，继而错误回退到数据库统计
+- 网关现将 `collection` 放在 `data` 前面，使 `X-Total-Count` 投影的精确总数在大结果预览中仍优先可见；列表响应和 REST `data` 结构均未改变
+- 核心提示、MCP oneOf、`moviepilot-api` Skill 和文档统一要求：数量或摘要查询使用最小分页窗口；兼容分页传 `page=1,count=1` 并读取 `collection.total_count`，不得因为条目或工具预览截断而改查数据库
+- `moviepilot-api` Skill 版本提升到 24；新增超大订阅结果回归，验证截断预览中总数早于 `data` 出现
+- 完整锁定测试已通过：4 个分片分别为 `1620 passed, 3 skipped`、`1860 passed, 4 skipped`、`1917 passed`、`2250 passed, 2 skipped`，合计 `7647 passed, 9 skipped`；变更文件 Pylint 为 `10.00/10`，Ruff、生成物幂等与 `git diff --check` 均通过
+- 当前未托管后端使用的 API 身份与工作区 CLI 配置不一致，真实 CLI 调用被既有 API key 校验拒绝；本轮未擅自重启正在运行的服务，运行进程需在代码部署并重载后再做在线会话复验
 
 本文件作为本次重构的持续记录，保留阶段状态、实际变更、验证结果、提交状态与已知基线边界。

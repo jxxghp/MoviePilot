@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agent.api.executor import ApiExecutionContext, MoviePilotApiExecutor
+from app.agent.tools.base import format_tool_result_for_agent
 
 
 def _execute_with_headers(headers: dict[str, str]) -> tuple[dict, AsyncMock]:
@@ -77,3 +78,43 @@ def test_executor_keeps_non_collection_payload_unchanged_without_headers() -> No
 
     assert result == {"success": True, "message": "", "data": [{"id": 1}]}
     close.assert_awaited_once()
+
+
+def test_executor_keeps_collection_total_visible_in_truncated_tool_preview() -> None:
+    """列表内容过大时，精确总数必须位于截断预览开头供 Agent 直接使用。"""
+    response = SimpleNamespace(
+        status_code=200,
+        headers={"X-Result-Count": "200", "X-Total-Count": "357"},
+        json=lambda: {
+            "success": True,
+            "message": "",
+            "data": [{"title": "x" * 1024} for _ in range(100)],
+        },
+        aclose=AsyncMock(),
+    )
+    request = AsyncMock(return_value=response)
+    request_factory = MagicMock(return_value=SimpleNamespace(request=request))
+    executor = MoviePilotApiExecutor(
+        context=ApiExecutionContext(
+            user_id="1",
+            username="admin",
+            is_admin=True,
+        ),
+        request_factory=request_factory,
+    )
+
+    with patch("app.agent.api.executor.create_access_token", return_value="token"):
+        raw_result = asyncio.run(executor.execute("subscription.list"))
+
+    result = json.loads(
+        format_tool_result_for_agent(raw_result, tool_name="moviepilot_api")
+    )
+
+    assert result["tool_result_truncated"] is True
+    assert result["content_preview"].startswith(
+        '{"collection": {"result_count": 200, "total_count": 357}'
+    )
+    assert result["content_preview"].index('"total_count": 357') < result[
+        "content_preview"
+    ].index('"data"')
+    response.aclose.assert_awaited_once()

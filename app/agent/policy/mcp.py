@@ -1003,19 +1003,25 @@ def _collection_response_guidance(contract: Mapping[str, Any]) -> str:
     if contract.get("body_shape") == "page_object":
         return (
             f" Collection response: items stay in {contract['items_field']} and the exact total "
-            f"stays in {contract['total_count_field']}."
+            f"stays in {contract['total_count_field']}. For a count-only request, use the smallest "
+            "documented page and read that total; do not query the database merely because item "
+            "data is truncated."
         )
     if contract.get("total_count_field"):
         if contract.get("default_pagination") != "unpaginated":
             return (
                 " Collection response: data remains a list and the endpoint's documented "
                 "pagination or limit defaults remain in effect. Successful gateway output adds "
-                "collection.result_count and the exact collection.total_count."
+                "collection.result_count and the exact collection.total_count. For a count-only "
+                "request, use the smallest valid page and read collection.total_count; do not "
+                "query the database merely because item data is truncated."
             )
         return (
             " Collection response: data remains a list; omit both page and count to preserve the "
             "legacy complete result. Successful gateway output adds collection.result_count and "
-            "the exact collection.total_count."
+            "the exact collection.total_count. For a count or summary, send page=1 and count=1, "
+            "then read collection.total_count; do not query the database merely because item data "
+            "is truncated."
         )
     return (
         " Collection response: data remains a list and successful gateway output adds "
