@@ -47,8 +47,27 @@ def _create_table() -> None:
     )
 
 
+def _is_current_schema_precreated() -> bool:
+    """识别首次启动时由当前 ORM 预先创建的待整理结构。"""
+    inspector = sa.inspect(op.get_bind())
+    if "transferexecutionstep" not in inspector.get_table_names():
+        return False
+
+    # 未标记的全新数据库会先由 metadata.create_all 创建当前 transferpending，
+    # 后续 transferexecutionstep 已带有指向 task_id 的外键；此时不能按 3.0.4
+    # 的旧字段集合删除父表，否则 PostgreSQL 会拒绝删除被依赖的父表。
+    return any(
+        foreign_key.get("referred_table") == _TABLE_NAME
+        and foreign_key.get("referred_columns") == ["task_id"]
+        and foreign_key.get("constrained_columns") == ["task_id"]
+        for foreign_key in inspector.get_foreign_keys("transferexecutionstep")
+    )
+
+
 def _validate_or_recreate_table() -> None:
     """校验中断升级留下的表结构，仅允许空残表自动重建。"""
+    if _is_current_schema_precreated():
+        return
     inspector = sa.inspect(op.get_bind())
     columns = inspector.get_columns(_TABLE_NAME)
     column_names = {column["name"] for column in columns}

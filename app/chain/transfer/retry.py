@@ -362,22 +362,24 @@ class FailedRetryMixin(_TransferOwnerBase):
         if not history:
             logger.error(f"整理记录不存在，ID：{logid}")
             return False, "整理记录不存在"
-        durable_retry = _request_durable_transfer_retry(
-            history,
-            requested_by="history_redo",
-            repository=self.transfer_execution_repository,
-        )
-        if durable_retry is not None:
-            return durable_retry
+        # 显式媒体身份代表用户要求重新规划；普通 /redo 才复用原 durable 计划。
+        explicit_identity = media_source is not None or media_id is not None
+        if explicit_identity and (not media_source or not media_id):
+            return False, "媒体重新识别需要同时提供 media_source 和 media_id"
+        if not explicit_identity:
+            durable_retry = _request_durable_transfer_retry(
+                history,
+                requested_by="history_redo",
+                repository=self.transfer_execution_repository,
+            )
+            if durable_retry is not None:
+                return durable_retry
         # 按源目录路径重新整理
         src_path = Path(history.src)
         if not src_path.exists():
             return False, f"源目录不存在：{src_path}"
         # 查询媒体信息
-        explicit_identity = media_source is not None or media_id is not None
-        if explicit_identity and (not media_source or not media_id):
-            return False, "媒体重新识别需要同时提供 media_source 和 media_id"
-        if mtype and media_source and media_id:
+        if explicit_identity:
             mediainfo = MediaChain().recognize_media(
                 mtype=mtype,
                 media_source=media_source,
@@ -433,7 +435,14 @@ class FailedRetryMixin(_TransferOwnerBase):
             logger.info(f"{src_path.name} 识别为：{mediainfo.title_year}")
 
         # 删除旧的已整理文件
-        if history.dest_fileitem:
+        if getattr(history, "transfer_task_id", None):
+            state, errmsg = self._delete_manual_transfer_history(
+                history=history,
+                transfer_history_oper=self.transfer_history_repository,
+            )
+            if not state:
+                return False, errmsg
+        elif history.dest_fileitem:
             if not isinstance(history.dest_fileitem, dict):
                 return False, "目标文件历史数据无效"
             # 解析目标文件对象
@@ -448,6 +457,8 @@ class FailedRetryMixin(_TransferOwnerBase):
                 fileitem=FileItem(**history.src_fileitem),
                 mediainfo=mediainfo,
                 mtype=mtype,
+                media_source=media_source,
+                media_id=media_id,
                 download_hash=history.download_hash,
                 force=True,
                 background=False,

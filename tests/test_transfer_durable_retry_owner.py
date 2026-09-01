@@ -8,7 +8,7 @@ from app.application.transfer.execution import (
     TransferRetryRequestResult,
 )
 from app.chain.transfer.facade import TransferChain
-from app.schemas.types import NotificationChannel
+from app.schemas.types import MediaSource, MediaType, NotificationChannel
 
 
 class _RetryCommand:
@@ -126,6 +126,83 @@ def test_durable_history_redo_only_requests_persistent_retry(monkeypatch):
             },
         )
     ]
+
+
+def test_explicit_history_redo_discards_failed_task_before_replanning(monkeypatch):
+    """显式 /redo 身份应先解除旧失败任务，再执行新的识别和整理。"""
+    repository = _install_discard_port(monkeypatch)
+    history = SimpleNamespace(
+        id=86,
+        transfer_task_id="transfer-task-86",
+        transfer_settlement_revision=5,
+        src="/downloads/source.mkv",
+        src_storage="local",
+        src_fileitem={
+            "storage": "local",
+            "path": "/downloads/source.mkv",
+            "type": "file",
+            "name": "source.mkv",
+        },
+        dest_fileitem=None,
+        download_hash=None,
+        media_source=None,
+        media_id=None,
+        episode_group=None,
+    )
+    deleted = []
+    planned = []
+    history_port = SimpleNamespace(
+        get=lambda history_id: history,
+        delete=lambda history_id: deleted.append(("history", history_id)),
+    )
+    chain = object.__new__(TransferChain)
+    chain.transfer_execution_repository = repository
+    chain.transfer_history_repository = history_port
+    chain.obtain_images = lambda **_kwargs: None
+    monkeypatch.setattr(
+        "app.chain.transfer.retry.Path.exists",
+        lambda _path: True,
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.retry.MediaChain",
+        lambda: SimpleNamespace(
+            recognize_media=lambda **_kwargs: SimpleNamespace(title_year="Test Show")
+        ),
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.records.clear_transfer_failures",
+        lambda *_args: None,
+    )
+
+    def fake_do_transfer(**kwargs):
+        """记录显式身份重整是否重新进入整理准入。"""
+        planned.append(kwargs)
+        return True, ""
+
+    monkeypatch.setattr(chain, "do_transfer", fake_do_transfer)
+
+    state, message = chain._re_transfer(
+        logid=86,
+        mtype=MediaType.TV,
+        media_source=MediaSource.TMDB,
+        media_id="286322",
+    )
+
+    assert state is True
+    assert message == ""
+    assert _DiscardCommand.calls == [
+        (
+            repository,
+            {
+                "task_id": "transfer-task-86",
+                "history_id": 86,
+                "settlement_revision": 5,
+            },
+        )
+    ]
+    assert deleted == [("history", 86)]
+    assert planned[0]["media_source"] == MediaSource.TMDB
+    assert planned[0]["media_id"] == "286322"
 
 
 def test_durable_manual_cleanup_discards_task_and_removes_old_state(monkeypatch):

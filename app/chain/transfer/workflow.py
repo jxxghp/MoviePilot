@@ -697,8 +697,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
 
                 # 自动整理按 app/application/history.py 的统一判定去重（失败记录放行重试、
                 # 成功但源文件已变化放行交 overwrite_mode 决断）；手动整理可清理失败记录，
-                # 或按用户确认清理成功记录。
-                if (not force or reorganize) and not preview:
+                # 或按用户确认清理成功记录；手动显式指定媒体身份时，先解除旧失败任务再重新规划。
+                if (not force or reorganize or (manual and (media_source is not None or media_id is not None))) and not preview:
                     transfer_history_oper = self.transfer_history_repository
                     transferd = self._get_manual_transfer_history(
                         fileitem=file_item,
@@ -710,7 +710,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                                 reorganize or not transferd.status
                         )
                         if should_reorganize:
-                            if not reorganize:
+                            if not reorganize and not (media_source is not None or media_id is not None):
                                 durable_retry = self._request_durable_transfer_retry(
                                     transferd, requested_by="manual_reorganize",
                                 )

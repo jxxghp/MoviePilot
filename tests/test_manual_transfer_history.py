@@ -18,6 +18,8 @@ from app.db.adapters.history.transfer import TransactionalTransferHistoryReposit
 from app.db.session import SessionFactory, async_session_scope
 from app.runtime.config import settings
 from app.schemas.transfer import ManualTransferItem
+from app.schemas.types import MediaSource, MediaType
+from tests.test_transfer_job_manager import FakeMedia
 from tests.test_transfer_sync_extra_files import (
     FakeMeta,
     make_fileitem,
@@ -674,6 +676,64 @@ def test_explicit_durable_reorganize_discards_old_task_and_replans(monkeypatch):
     assert state is True
     assert message == ""
     assert deleted == [("history", 12)]
+    assert planned == [fileitem.path]
+
+
+def test_manual_explicit_identity_replans_failed_durable_history(monkeypatch):
+    """手动指定媒体身份时，应清理失败 durable 任务而不是复用原计划重试。"""
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=13,
+        transfer_task_id="transfer-task-13",
+        transfer_settlement_revision=2,
+        status=False,
+        mode="copy",
+        dest_fileitem=None,
+        download_hash=None,
+        downloader=None,
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+    )
+    planned = []
+    deleted = []
+    _patch_transfer_planning(
+        monkeypatch,
+        chain,
+        fileitem,
+        history,
+        planned,
+        deleted,
+    )
+    monkeypatch.setattr(
+        chain,
+        "_request_durable_transfer_retry",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("新的媒体身份不得复用旧 durable 计划")
+        ),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_delete_manual_transfer_history",
+        lambda history, transfer_history_oper: deleted.append(
+            ("history", history.id)
+        ) or (True, ""),
+    )
+
+    state, message = TransferChain.do_transfer(
+        chain,
+        fileitem=fileitem,
+        mediainfo=FakeMedia(286322),
+        mtype=MediaType.TV,
+        media_source=MediaSource.TMDB,
+        media_id="286322",
+        background=False,
+        manual=True,
+    )
+
+    assert state is True
+    assert message == ""
+    assert deleted == [("history", 13)]
     assert planned == [fileitem.path]
 
 

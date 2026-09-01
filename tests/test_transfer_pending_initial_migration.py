@@ -65,6 +65,44 @@ def test_upgrade_recreates_empty_partial_table(monkeypatch) -> None:
         } == {"id", "storage", "src_path", "created_at"}
 
 
+def test_upgrade_keeps_current_schema_precreated_with_execution_fk(monkeypatch) -> None:
+    """首次初始化已由当前 ORM 建表时，旧迁移不得删除被步骤表依赖的父表。"""
+    engine = sa.create_engine("sqlite://")
+    with engine.connect() as connection:
+        connection.execute(sa.text("PRAGMA foreign_keys=ON"))
+        connection.commit()
+        with connection.begin():
+            connection.execute(sa.text(
+                "CREATE TABLE transferpending ("
+                "id INTEGER PRIMARY KEY, storage VARCHAR NOT NULL, "
+                "src_path VARCHAR NOT NULL, created_at VARCHAR, "
+                "task_id VARCHAR NOT NULL UNIQUE, execution_state VARCHAR NOT NULL)"
+            ))
+            connection.execute(sa.text(
+                "CREATE TABLE transferexecutionstep ("
+                "id INTEGER PRIMARY KEY, task_id VARCHAR NOT NULL, "
+                "FOREIGN KEY (task_id) REFERENCES transferpending(task_id) "
+                "ON DELETE CASCADE)"
+            ))
+            migration = _bind_migration(monkeypatch, connection)
+
+            migration.upgrade()
+
+            inspector = sa.inspect(connection)
+            assert "transferexecutionstep" in inspector.get_table_names()
+            assert "task_id" in {
+                column["name"]
+                for column in inspector.get_columns("transferpending")
+            }
+            index = next(
+                index
+                for index in inspector.get_indexes("transferpending")
+                if index["name"] == "ux_transferpending_storage_path"
+            )
+            assert index["column_names"] == ["storage", "src_path"]
+            assert index["unique"] == 1
+
+
 def test_upgrade_rejects_nonempty_partial_table(monkeypatch) -> None:
     """含数据残表无法可靠推断源身份时必须显式拒绝迁移。"""
     engine = sa.create_engine("sqlite://")
