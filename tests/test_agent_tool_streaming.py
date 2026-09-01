@@ -429,6 +429,34 @@ class TestAgentToolStreaming:
         assert text == "（查看了 1 个目录）\n\n"
         assert rich_message == "> （查看了 1 个目录）\n\n"
 
+    def test_verbose_tool_message_is_quoted_for_telegram(self):
+        """校验 Telegram 啰嗦模式逐条工具提示也使用引用块。"""
+
+        async def _run():
+            tool = DummyTool(session_id="session-1", user_id="10001")
+            handler = StreamingHandler()
+            handler._channel = NotificationChannel.Telegram.value
+            handler._source = "telegram"
+            handler._streaming_enabled = True
+            handler.emit("前置内容")
+            flush_task = asyncio.create_task(asyncio.sleep(60))
+            handler._flush_task = flush_task
+            tool.set_stream_handler(handler)
+
+            try:
+                with patch.object(settings, "AI_AGENT_VERBOSE", True):
+                    await tool._arun()
+                return handler._buffer, handler._get_rich_message(handler._buffer)
+            finally:
+                flush_task.cancel()
+                await asyncio.gather(flush_task, return_exceptions=True)
+                handler._flush_task = None
+
+        text, rich_message = asyncio.run(_run())
+
+        assert text == "前置内容\n\n⚙️ => run test tool\n\n"
+        assert rich_message == "前置内容\n\n> ⚙️ => run test tool\n\n"
+
     def test_rich_message_keeps_body_text_unquoted_for_telegram(self):
         """校验 Telegram 富文本只转换工具摘要行，正文保持原样。"""
         handler = StreamingHandler()

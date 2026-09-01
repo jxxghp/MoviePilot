@@ -76,7 +76,7 @@ class StreamingHandler:
         self._allow_dispatch_without_context = False
         # 非啰嗦模式下的待输出工具统计，等下一段文本到来时再统一补一句摘要
         self._pending_tool_stats: dict[str, dict[str, Any]] = {}
-        # 本轮已写入缓冲区的工具摘要行，供 Telegram 富文本渲染时做区分样式
+        # 本轮已写入缓冲区的工具展示行，供 Telegram 富文本渲染时做区分样式
         self._tool_summaries: set[str] = set()
 
     def set_dispatch_policy(self, allow_dispatch_without_context: bool = False) -> None:
@@ -107,6 +107,24 @@ class StreamingHandler:
                 emitted = emitted.lstrip("\n")
             self._buffer += emitted
             return emitted
+
+    def emit_tool_message(self, message: str) -> str:
+        """
+        将啰嗦模式的逐条工具提示写入缓冲区，并登记为独立展示行。
+
+        Telegram Rich Markdown 依赖登记结果把工具提示渲染成引用块；
+        其他渠道仍消费相同的纯文本缓冲内容。
+        """
+        normalized_message = str(message or "").strip()
+        if not normalized_message:
+            return ""
+
+        tool_message = f"⚙️ => {normalized_message}"
+        with self._lock:
+            self._tool_summaries.update(
+                line for line in tool_message.splitlines() if line
+            )
+        return self.emit(f"\n\n{tool_message}\n\n")
 
     async def take(self) -> str:
         """
@@ -539,7 +557,7 @@ class StreamingHandler:
 
     def _quote_tool_summary_lines(self, text: str) -> str:
         """
-        将缓冲区中的工具摘要整行转换为 Markdown 引用块。
+        将缓冲区中的工具展示行转换为 Markdown 引用块。
 
         富文本会把普通段落间的空行折叠成紧凑排版，引用块作为独立 block 类型
         渲染，保证工具执行信息在 Telegram 上始终与正文有可辨识的视觉分隔。

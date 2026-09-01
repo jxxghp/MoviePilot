@@ -53,6 +53,10 @@ else:
             """追加流式文本并返回实际追加内容。"""
             ...
 
+        def emit_tool_message(self, message: str) -> str:
+            """追加逐条工具提示并登记其展示语义。"""
+            ...
+
         async def take(self) -> str:
             """取出并清空当前缓冲内容。"""
             ...
@@ -434,7 +438,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                 if self._stream_handler.is_auto_flushing:
                     # 渠道支持编辑：工具消息追加到 buffer，由定时刷新推送
                     if tool_message:
-                        self._stream_handler.emit(f"\n\n⚙️ => {tool_message}\n\n")
+                        self._stream_handler.emit_tool_message(tool_message)
                 else:
                     allow_dispatch_without_context = self._agent_context.get(
                         "should_dispatch_reply", False
