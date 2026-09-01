@@ -1,5 +1,8 @@
 """站点与插件资源 provider fan-out owner。"""
 
+import asyncio
+import threading
+import time
 from concurrent.futures import FIRST_COMPLETED, Future, wait
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -18,6 +21,51 @@ from app.schemas.types import MediaType, ProgressKey, SystemConfigKey
 
 SiteIndexer = Dict[str, Any]
 SyncPending = dict[Future[Any], tuple[SiteIndexer, int, int]]
+
+_site_request_schedule_lock = threading.Lock()
+_site_next_request_at: Dict[str, float] = {}
+
+
+def _site_request_interval(site: SiteIndexer) -> float:
+    """读取站点管理中已有的单次访问间隔配置。"""
+    try:
+        return max(0.0, float(site.get("limit_seconds") or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _reserve_site_request(site: SiteIndexer) -> float:
+    """按站点原子预约请求起始时间，避免并发搜索绕过同一流控窗口。"""
+    interval = _site_request_interval(site)
+    if interval <= 0:
+        return 0.0
+    site_key = str(
+        site.get("id")
+        or site.get("domain")
+        or site.get("url")
+        or site.get("name")
+    )
+    now = time.monotonic()
+    with _site_request_schedule_lock:
+        request_at = max(now, _site_next_request_at.get(site_key, now))
+        _site_next_request_at[site_key] = request_at + interval
+    return max(0.0, request_at - now)
+
+
+def _wait_for_site_request(site: SiteIndexer) -> None:
+    """同步等待当前站点预约时间，不阻塞其他站点的线程任务。"""
+    delay = _reserve_site_request(site)
+    if delay > 0:
+        logger.info(f"{site.get('name')} 站点流控等待 {delay:.1f} 秒 ...")
+        time.sleep(delay)
+
+
+async def _async_wait_for_site_request(site: SiteIndexer) -> None:
+    """异步等待当前站点预约时间，让其他站点继续并发搜索。"""
+    delay = _reserve_site_request(site)
+    if delay > 0:
+        logger.info(f"{site.get('name')} 站点流控等待 {delay:.1f} 秒 ...")
+        await asyncio.sleep(delay)
 
 
 @dataclass(frozen=True)
@@ -115,12 +163,18 @@ class SearchProviderOwner(_SearchOwnerBase):
     ) -> None:
         """向进程共享线程 owner 提交一页，并登记该站点的续页位置。"""
         page_number = search_pages[page_index]
+
+        def search_site_page() -> List[TorrentInfo]:
+            _wait_for_site_request(site)
+            return self.search_site_torrents(
+                site=site,
+                keyword=search_keyword,
+                mtype=media_type,
+                page=page_number,
+            )
+
         future = ThreadHelper().submit(
-            self.search_site_torrents,
-            site=site,
-            keyword=search_keyword,
-            mtype=media_type,
-            page=page_number,
+            search_site_page,
         )
         pending[future] = (site, page_index, page_number)
 
@@ -536,6 +590,7 @@ class SearchProviderOwner(_SearchOwnerBase):
             page_number: int,
         ) -> List[TorrentInfo]:
             """在统一分页器调度下请求一页站点资源。"""
+            await _async_wait_for_site_request(site)
             return await self.async_search_site_torrents(
                 site=site,
                 keyword=search_keyword,
