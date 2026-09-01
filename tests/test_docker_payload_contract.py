@@ -75,7 +75,10 @@ def test_dockerfile_assigns_each_payload_to_an_independent_stage() -> None:
     assert positions == sorted(positions)
     for copy in copies:
         assert final.count(copy) == 1
-    assert "COPY --from=prepare_control /bundle/entrypoint.sh /entrypoint.sh" in final
+    assert "COPY --link --from=prepare_control /bundle/rootfs/ /" in final
+    assert final.count("--from=prepare_control ") == 1
+    assert "COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/" in final
+    assert final.count("COPY --from=ffmpeg ") == 1
     assert "RUN rm -rf /app/frontend-dist" in dockerfile
 
 

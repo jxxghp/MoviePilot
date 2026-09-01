@@ -268,17 +268,21 @@ FROM prepare_payload AS prepare_control
 WORKDIR /control
 
 COPY docker/ ./
-RUN mkdir -p /bundle/control /bundle/nginx /bundle/bin \
-    && find . -maxdepth 1 -type f -name '*.sh' ! -name 'launcher.sh' -exec cp -f -t /bundle/control {} + \
-    && cp -f launcher.sh /bundle/entrypoint.sh \
-    && cp -f nginx.common.conf /bundle/nginx/common.conf \
-    && cp -f nginx.template.conf /bundle/nginx/nginx.template.conf \
-    && cp -f docker_http_proxy.conf /bundle/nginx/docker_http_proxy.conf \
-    && printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'cd /app' 'exec "${VENV_PATH:-/opt/venv}/bin/python3" -m app.cli "$@"' > /bundle/bin/moviepilot \
-    && bash -n /bundle/entrypoint.sh \
-    && for control_script in /bundle/control/*.sh; do bash -n "${control_script}" || exit 1; done \
-    && chmod 755 /bundle/entrypoint.sh /bundle/bin/moviepilot \
-    && chmod 500 /bundle/control/*.sh
+RUN mkdir -p \
+    /bundle/rootfs/etc/nginx \
+    /bundle/rootfs/usr/local/bin \
+    /bundle/rootfs/usr/local/lib/moviepilot/control \
+    && find . -maxdepth 1 -type f -name '*.sh' ! -name 'launcher.sh' \
+    -exec cp -f -t /bundle/rootfs/usr/local/lib/moviepilot/control {} + \
+    && cp -f launcher.sh /bundle/rootfs/entrypoint.sh \
+    && cp -f nginx.common.conf /bundle/rootfs/etc/nginx/common.conf \
+    && cp -f nginx.template.conf /bundle/rootfs/etc/nginx/nginx.template.conf \
+    && cp -f docker_http_proxy.conf /bundle/rootfs/etc/nginx/docker_http_proxy.conf \
+    && printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'cd /app' 'exec "${VENV_PATH:-/opt/venv}/bin/python3" -m app.cli "$@"' > /bundle/rootfs/usr/local/bin/moviepilot \
+    && bash -n /bundle/rootfs/entrypoint.sh \
+    && for control_script in /bundle/rootfs/usr/local/lib/moviepilot/control/*.sh; do bash -n "${control_script}" || exit 1; done \
+    && chmod 755 /bundle/rootfs/entrypoint.sh /bundle/rootfs/usr/local/bin/moviepilot \
+    && chmod 500 /bundle/rootfs/usr/local/lib/moviepilot/control/*.sh
 
 # final 阶段: 安装运行时依赖和配置最终镜像
 FROM prepare_package AS final
@@ -287,8 +291,7 @@ ENV LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
     MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE="true"
 
 # 引入支持 amr 编码的静态 ffmpeg
-COPY --from=ffmpeg /ffmpeg /usr/local/bin/
-COPY --from=ffmpeg /ffprobe /usr/local/bin/
+COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
 COPY --from=rclone /usr/local/bin/rclone /usr/bin/rclone
 
 # python 环境
@@ -306,12 +309,7 @@ RUN playwright install-deps chromium \
     /var/tmp/*
 
 # 准备容器控制面和运行目录
-COPY --from=prepare_control /bundle/entrypoint.sh /entrypoint.sh
-COPY --from=prepare_control /bundle/control /usr/local/lib/moviepilot/control
-COPY --from=prepare_control /bundle/nginx/common.conf /etc/nginx/common.conf
-COPY --from=prepare_control /bundle/nginx/nginx.template.conf /etc/nginx/nginx.template.conf
-COPY --from=prepare_control /bundle/nginx/docker_http_proxy.conf /etc/nginx/docker_http_proxy.conf
-COPY --from=prepare_control /bundle/bin/moviepilot /usr/local/bin/moviepilot
+COPY --link --from=prepare_control /bundle/rootfs/ /
 
 RUN mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 918 \
