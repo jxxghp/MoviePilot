@@ -11,6 +11,7 @@ import yaml
 
 from app.adapters.system.host import SystemUtils
 from app.agent.llm.capability import AgentCapabilityManager
+from app.agent.shell import resolve_agent_shell
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.notification import (
@@ -265,6 +266,9 @@ class PromptManager:
             f"- 运行环境: {SystemUtils.platform} {'docker' if SystemUtils.is_docker() else ''}",
             "- 详细运行状态和数据库通过 `query_doctor_report` 或 `execute_command` 查询；配置值先加载对应 Skill，再通过 `moviepilot_api` 的配置 operation 查询。",
         ]
+        shell = resolve_agent_shell()
+        if shell:
+            info_lines.append(shell.prompt_guidance())
         path_lines = self._get_runtime_path_lines()
         if path_lines:
             info_lines.extend(

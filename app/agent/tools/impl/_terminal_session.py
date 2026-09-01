@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from app.agent.shell import build_agent_subprocess_env, resolve_agent_shell
 from app.agent.tools.impl._command_safety import validate_command_safety
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -163,15 +164,8 @@ class _TerminalSessionManager:
 
     @staticmethod
     def _build_env(env: Optional[dict[str, Any]]) -> dict[str, str]:
-        """合并环境变量，并把值稳定转换为字符串。"""
-        merged_env = os.environ.copy()
-        if not env:
-            return merged_env
-        for key, value in env.items():
-            if value is None:
-                continue
-            merged_env[str(key)] = str(value)
-        return merged_env
+        """合并环境变量，Windows 强制覆盖为 UTF-8 编解码。"""
+        return build_agent_subprocess_env(env)
 
     @staticmethod
     def _validate_command(command: str, *, confirmed: bool = False) -> None:
@@ -307,12 +301,21 @@ class _TerminalSessionManager:
         self, command: str, cwd: str, env: dict[str, str]
     ) -> _TerminalSession:
         """通过普通 stdin/stdout/stderr 管道启动命令会话。"""
-        process = await asyncio.create_subprocess_shell(
-            command,
-            cwd=cwd,
-            env=env,
-            **self._pipe_subprocess_kwargs(),
-        )
+        shell = resolve_agent_shell()
+        if shell:
+            process = await asyncio.create_subprocess_exec(
+                *shell.build_argv(command),
+                cwd=cwd,
+                env=env,
+                **self._pipe_subprocess_kwargs(),
+            )
+        else:
+            process = await asyncio.create_subprocess_shell(
+                command,
+                cwd=cwd,
+                env=env,
+                **self._pipe_subprocess_kwargs(),
+            )
         session = _TerminalSession(
             session_id=f"term_{uuid.uuid4().hex[:12]}",
             command=command,

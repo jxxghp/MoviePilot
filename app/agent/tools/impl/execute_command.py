@@ -14,17 +14,17 @@ from typing import Any, Literal, Optional, TextIO, Type
 
 from pydantic import BaseModel, Field
 
-from app.agent.tools.impl._command_safety import validate_command_safety
+from app.agent.shell import build_agent_subprocess_env, resolve_agent_shell
 from app.agent.tools.base import MoviePilotTool
-from app.agent.tools.tags import ToolTag
+from app.agent.tools.impl._command_safety import validate_command_safety
 from app.agent.tools.impl._terminal_session import (
     TERMINAL_DEFAULT_READ_BYTES,
     TERMINAL_MAX_READ_BYTES,
     TERMINAL_WAIT_DEFAULT_MS,
     get_terminal_session_manager,
 )
+from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
-
 
 DEFAULT_TIMEOUT_SECONDS = 60
 MAX_TIMEOUT_SECONDS = 300
@@ -466,11 +466,20 @@ class ExecuteCommandTool(MoviePilotTool):
         normalized_timeout, timeout_note = self._normalize_timeout(timeout)
 
         async with _command_semaphore:
-            process = await asyncio.create_subprocess_shell(
-                command,
-                cwd=cwd,
-                **self._subprocess_kwargs(),
-            )
+            shell = resolve_agent_shell()
+            if shell:
+                process = await asyncio.create_subprocess_exec(
+                    *shell.build_argv(command),
+                    cwd=cwd,
+                    env=build_agent_subprocess_env(),
+                    **self._subprocess_kwargs(),
+                )
+            else:
+                process = await asyncio.create_subprocess_shell(
+                    command,
+                    cwd=cwd,
+                    **self._subprocess_kwargs(),
+                )
             output = _CommandOutput(preview_limit_bytes=MAX_OUTPUT_PREVIEW_BYTES)
             wait_task = asyncio.create_task(process.wait())
             reader_tasks = [

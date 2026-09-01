@@ -12,6 +12,7 @@ from typing import Any, ClassVar, Dict, Optional, Type
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agent.shell import agent_text_subprocess_kwargs
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.settings import get_runtime_setting
@@ -325,6 +326,7 @@ def _run_service_script(
         capture_output=True,
         text=True,
         check=False,
+        **agent_text_subprocess_kwargs(),
     )
     return _parse_script_payload(completed.stdout)
 
@@ -505,6 +507,7 @@ def _run_database_script(arguments: Dict[str, Any], *, root_path: Path) -> dict[
         capture_output=True,
         text=True,
         check=False,
+        **agent_text_subprocess_kwargs(),
     )
     if completed.returncode != 0:
         error_text = completed.stderr.strip() or completed.stdout.strip() or "数据库脚本执行失败"
