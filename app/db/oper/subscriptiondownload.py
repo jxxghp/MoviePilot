@@ -43,6 +43,7 @@ class SubscriptionDownloadOper(DbOper):
                         resource_key=request.resource_key,
                         coverage=request.coverage,
                         mode=request.mode,
+                        delivery_scope=request.delivery_scope,
                         state="submitting",
                         attempt_count=1,
                         attempt_token=attempt_token,
@@ -100,6 +101,16 @@ class SubscriptionDownloadOper(DbOper):
             )
         ).scalar_one()
         return current, bool(updated and current.attempt_token == attempt_token)
+
+    def get(self, idempotency_key: str) -> Optional[SubscriptionDownloadSubmission]:
+        """按稳定幂等键读取提交记录。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("订阅下载提交查询需要调用方提供同步 Session")
+        return self._db.execute(
+            select(SubscriptionDownloadSubmission).where(
+                SubscriptionDownloadSubmission.idempotency_key == idempotency_key
+            )
+        ).scalars().first()
 
     def mark_accepted(
         self,

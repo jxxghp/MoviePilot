@@ -37,12 +37,14 @@ def _request(key: str = "key-1", task_id: str | None = "task-1") -> Subscription
     """构造固定身份的提交认领请求。"""
     return SubscriptionDownloadRequest(
         idempotency_key=key,
+        legacy_idempotency_key=None,
         subscription_id=7,
         task_id=task_id,
         logical_identity='{"subscription_id":7}',
         resource_key="example.com:id=42",
         coverage="episodes:E01-E03",
         mode="normal",
+        delivery_scope='{"download_uri":"local:/downloads","downloader":"auto"}',
     )
 
 
@@ -197,6 +199,173 @@ def test_download_chain_reuses_success_without_second_downloader_call(tmp_path) 
     assert first == second == "hash-1"
     chain.download.assert_called_once()
     chain._settle_download_success.assert_called_once()
+
+
+def test_download_chain_deduplicates_same_media_across_subscription_rows(tmp_path) -> None:
+    """同媒体同覆盖同交付目标的重复订阅只允许一个下载器提交。"""
+    repository, _factory = _repository(tmp_path)
+    chain = _download_chain(repository)
+    chain.download = MagicMock(return_value=("qb", "hash-cross-row", "Original", "accepted"))
+
+    first = chain.download_single(
+        context=_context(),
+        torrent_content=b"torrent",
+        episodes={1},
+        save_path="/downloads",
+        governance=SubscriptionDownloadGovernance(subscription_id=7, mode="normal"),
+    )
+    second = chain.download_single(
+        context=_context(),
+        torrent_content=b"torrent",
+        episodes={1},
+        save_path="/downloads",
+        governance=SubscriptionDownloadGovernance(subscription_id=8, mode="normal"),
+    )
+
+    assert first == second == "hash-cross-row"
+    chain.download.assert_called_once()
+    chain._settle_download_success.assert_called_once()
+
+
+def test_download_chain_keeps_distinct_delivery_targets_separate(tmp_path) -> None:
+    """不同保存目标属于独立产品意图，不得跨记录误去重。"""
+    repository, _factory = _repository(tmp_path)
+    chain = _download_chain(repository)
+    chain._resolve_media_download_dir.side_effect = (
+        lambda *, save_path, **_kwargs: ("local", Path(save_path), None)
+    )
+    chain.download = MagicMock(side_effect=[
+        ("qb", "hash-a", "Original", "accepted"),
+        ("qb", "hash-b", "Original", "accepted"),
+    ])
+
+    first = chain.download_single(
+        context=_context(),
+        torrent_content=b"torrent",
+        episodes={1},
+        save_path="/downloads/a",
+        governance=SubscriptionDownloadGovernance(subscription_id=7, mode="normal"),
+    )
+    second = chain.download_single(
+        context=_context(),
+        torrent_content=b"torrent",
+        episodes={1},
+        save_path="/downloads/b",
+        governance=SubscriptionDownloadGovernance(subscription_id=8, mode="normal"),
+    )
+
+    assert (first, second) == ("hash-a", "hash-b")
+    assert chain.download.call_count == 2
+
+
+def test_download_chain_keeps_distinct_downloaders_separate(tmp_path) -> None:
+    """不同下载器属于独立交付策略，不得跨记录误去重。"""
+    repository, _factory = _repository(tmp_path)
+    chain = _download_chain(repository)
+    chain.download = MagicMock(side_effect=[
+        ("qb-a", "hash-a", "Original", "accepted"),
+        ("qb-b", "hash-b", "Original", "accepted"),
+    ])
+
+    first = chain.download_single(
+        context=_context(),
+        torrent_content=b"torrent",
+        episodes={1},
+        save_path="/downloads",
+        downloader="qb-a",
+        governance=SubscriptionDownloadGovernance(subscription_id=7, mode="normal"),
+    )
+    second = chain.download_single(
+        context=_context(),
+        torrent_content=b"torrent",
+        episodes={1},
+        save_path="/downloads",
+        downloader="qb-b",
+        governance=SubscriptionDownloadGovernance(subscription_id=8, mode="normal"),
+    )
+
+    assert (first, second) == ("hash-a", "hash-b")
+    assert chain.download.call_count == 2
+
+
+def test_download_chain_keeps_distinct_episode_coverage_separate(tmp_path) -> None:
+    """跨记录仅复用精确覆盖，新增目标集不得被已有子集吞掉。"""
+    repository, _factory = _repository(tmp_path)
+    chain = _download_chain(repository)
+    chain.download = MagicMock(side_effect=[
+        ("qb", "hash-e1", "Original", "accepted"),
+        ("qb", "hash-e12", "Original", "accepted"),
+    ])
+
+    first = chain.download_single(
+        context=_context(),
+        torrent_content=b"torrent",
+        episodes={1},
+        save_path="/downloads",
+        governance=SubscriptionDownloadGovernance(subscription_id=7, mode="normal"),
+    )
+    second = chain.download_single(
+        context=_context(),
+        torrent_content=b"torrent",
+        episodes={1, 2},
+        save_path="/downloads",
+        governance=SubscriptionDownloadGovernance(subscription_id=8, mode="normal"),
+    )
+
+    assert (first, second) == ("hash-e1", "hash-e12")
+    assert chain.download.call_count == 2
+
+
+def test_download_chain_reuses_pre_004_ledger_key(tmp_path) -> None:
+    """键升级后仍应读取 003A 同记录成功账本，避免版本升级造成重复下载。"""
+    repository, _factory = _repository(tmp_path)
+    chain = _download_chain(repository)
+    governance = SubscriptionDownloadGovernance(subscription_id=7, mode="normal")
+    request = chain._build_subscription_download_request(
+        context=_context(),
+        episodes={1},
+        governance=governance,
+        delivery_scope=chain._subscription_delivery_scope(
+            downloader=None,
+            download_uri="local:/downloads",
+        ),
+    )
+    legacy = repository.claim(
+        SubscriptionDownloadRequest(
+            idempotency_key=request.legacy_idempotency_key or "",
+            legacy_idempotency_key=None,
+            subscription_id=7,
+            task_id=None,
+            logical_identity='{"subscription_id":7}',
+            resource_key=request.resource_key,
+            coverage=request.coverage,
+            mode=request.mode,
+            delivery_scope="legacy",
+        )
+    )
+    token = legacy.snapshot.attempt_token or ""
+    assert repository.mark_accepted(
+        idempotency_key=legacy.snapshot.idempotency_key,
+        attempt_token=token,
+        downloader="qb",
+        download_hash="legacy-ledger-hash",
+    )
+    assert repository.mark_succeeded(
+        idempotency_key=legacy.snapshot.idempotency_key,
+        attempt_token=token,
+    )
+    chain.download = MagicMock()
+
+    result = chain.download_single(
+        context=_context(),
+        torrent_content=b"torrent",
+        episodes={1},
+        save_path="/downloads",
+        governance=governance,
+    )
+
+    assert result == "legacy-ledger-hash"
+    chain.download.assert_not_called()
 
 
 def test_download_chain_freezes_when_local_settlement_fails(tmp_path) -> None:
@@ -456,6 +625,40 @@ def test_subscription_download_migration_is_idempotent_and_reversible(tmp_path, 
         assert "ix_subscriptiondownloadsubmission_task_state" in indexes
         migration.downgrade()
         assert "subscriptiondownloadsubmission" not in sa.inspect(connection).get_table_names()
+
+
+def test_subscription_delivery_scope_migration_is_idempotent_and_reversible(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """3.0.23 为存量提交填充兼容范围，并支持重复升级和完整回滚。"""
+    engine = create_engine(f"sqlite:///{tmp_path / 'delivery-migration.db'}")
+    base_migration = importlib.import_module("database.versions.e1b6d4f8a2c7_3_0_21")
+    migration = importlib.import_module("database.versions.a7d9e2c4f6b1_3_0_23")
+    with engine.begin() as connection:
+        operations = Operations(MigrationContext.configure(connection))
+        monkeypatch.setattr(base_migration, "op", operations)
+        monkeypatch.setattr(migration, "op", operations)
+        base_migration.upgrade()
+        connection.execute(sa.text(
+            "INSERT INTO subscriptiondownloadsubmission "
+            "(idempotency_key, subscription_id, logical_identity, resource_key, coverage, mode, "
+            "state, attempt_count, created_at, updated_at) VALUES "
+            "('legacy-key', 7, '{}', 'resource', 'full', 'normal', 'succeeded', 1, 'now', 'now')"
+        ))
+
+        migration.upgrade()
+        migration.upgrade()
+
+        assert connection.execute(sa.text(
+            "SELECT delivery_scope FROM subscriptiondownloadsubmission WHERE idempotency_key='legacy-key'"
+        )).scalar_one() == "legacy"
+        migration.downgrade()
+        columns = {
+            column["name"]
+            for column in sa.inspect(connection).get_columns("subscriptiondownloadsubmission")
+        }
+        assert "delivery_scope" not in columns
 
 
 def test_model_metadata_registers_submission_table() -> None:

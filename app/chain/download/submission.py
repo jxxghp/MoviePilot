@@ -425,6 +425,8 @@ class DownloadSubmissionOwner(_DownloadOwnerBase):
             context=context,
             episodes=episodes,
             governance=governance,
+            downloader=downloader or _site_downloader,
+            download_uri=file_uri.uri,
         )
         if duplicate_hash:
             if governance and governance.mark_started:

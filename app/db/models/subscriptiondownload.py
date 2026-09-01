@@ -19,6 +19,7 @@ class SubscriptionDownloadSubmission(Base):
     resource_key: Mapped[str] = mapped_column(Text, nullable=False)
     coverage: Mapped[str] = mapped_column(Text, nullable=False)
     mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    delivery_scope: Mapped[str] = mapped_column(Text, nullable=False, default="legacy")
     state: Mapped[str] = mapped_column(String(32), nullable=False)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     attempt_token: Mapped[Optional[str]] = mapped_column(String(64))

@@ -26,12 +26,14 @@ class SubscriptionDownloadRequest:
     """一次订阅下载提交认领所需的规范身份。"""
 
     idempotency_key: str
+    legacy_idempotency_key: Optional[str]
     subscription_id: int
     task_id: Optional[str]
     logical_identity: str
     resource_key: str
     coverage: str
     mode: str
+    delivery_scope: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +67,10 @@ class SubscriptionDownloadRepository(Protocol):
 
     def claim(self, request: SubscriptionDownloadRequest) -> SubscriptionDownloadClaim:
         """按唯一键认领提交；仅到期 retryable/cancelled 状态允许重新认领。"""
+        ...
+
+    def get(self, idempotency_key: str) -> Optional[SubscriptionDownloadSnapshot]:
+        """按幂等键读取现有提交，供键版本兼容检查。"""
         ...
 
     def mark_accepted(

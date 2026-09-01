@@ -30,8 +30,9 @@ class DownloadAdmissionOwner(_DownloadOwnerBase):
         context: Context,
         episodes: Optional[Set[int]],
         governance: SubscriptionDownloadGovernance,
+        delivery_scope: str,
     ) -> SubscriptionDownloadRequest:
-        """组合订阅、torrent、季集覆盖与模式生成规范幂等请求。"""
+        """组合逻辑媒体、资源、覆盖、模式和交付目标生成规范幂等请求。"""
         media = context.media_info
         meta = context.meta_info
         torrent = context.torrent_info
@@ -53,11 +54,11 @@ class DownloadAdmissionOwner(_DownloadOwnerBase):
         meta_season = getattr(meta, "season", None)
         logical_identity = json.dumps(
             {
-                "subscription_id": governance.subscription_id,
                 "media_key": str(media_key or ""),
                 "media_type": str(media_type_value or ""),
                 "season": media_season if media_season is not None else meta_season,
                 "episode_group": getattr(media, "episode_group", None),
+                "music_type": getattr(media, "music_type", None),
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -69,18 +70,44 @@ class DownloadAdmissionOwner(_DownloadOwnerBase):
                 "resource_key": resource_key,
                 "coverage": coverage,
                 "mode": governance.mode,
+                "delivery_scope": delivery_scope,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        legacy_logical_identity = json.dumps(
+            {
+                "subscription_id": governance.subscription_id,
+                "media_key": str(media_key or ""),
+                "media_type": str(media_type_value or ""),
+                "season": media_season if media_season is not None else meta_season,
+                "episode_group": getattr(media, "episode_group", None),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        legacy_canonical = json.dumps(
+            {
+                "logical_identity": legacy_logical_identity,
+                "resource_key": resource_key,
+                "coverage": coverage,
+                "mode": governance.mode,
             },
             ensure_ascii=False,
             sort_keys=True,
         )
         return SubscriptionDownloadRequest(
             idempotency_key=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+            legacy_idempotency_key=hashlib.sha256(
+                legacy_canonical.encode("utf-8")
+            ).hexdigest(),
             subscription_id=governance.subscription_id,
             task_id=governance.task_id,
             logical_identity=logical_identity,
             resource_key=resource_key,
             coverage=coverage,
             mode=governance.mode,
+            delivery_scope=delivery_scope,
         )
 
     def _claim_subscription_download(
@@ -89,6 +116,8 @@ class DownloadAdmissionOwner(_DownloadOwnerBase):
         context: Context,
         episodes: Optional[Set[int]],
         governance: Optional[SubscriptionDownloadGovernance],
+        downloader: Optional[str],
+        download_uri: str,
     ) -> tuple[Optional[SubscriptionDownloadClaim], Optional[str]]:
         """在下载器调用前认领唯一提交权，并返回已成功提交的历史 hash。"""
         if governance is None:
@@ -107,7 +136,19 @@ class DownloadAdmissionOwner(_DownloadOwnerBase):
             context=context,
             episodes=episodes,
             governance=governance,
+            delivery_scope=self._subscription_delivery_scope(
+                downloader=downloader,
+                download_uri=download_uri,
+            ),
         )
+        if request.legacy_idempotency_key:
+            legacy = repository.get(request.legacy_idempotency_key)
+            if legacy and legacy.state == "succeeded" and legacy.download_hash:
+                return None, legacy.download_hash
+            if legacy and legacy.state in {"submitting", "accepted", "reconcile_required"}:
+                raise DownloadReconciliationRequired(
+                    f"订阅下载提交 {legacy.idempotency_key} 当前为 {legacy.state}，需要先对账下载器"
+                )
         claim = repository.claim(request)
         snapshot = claim.snapshot
         if claim.acquired:
@@ -121,6 +162,22 @@ class DownloadAdmissionOwner(_DownloadOwnerBase):
                 f"订阅下载提交 {snapshot.idempotency_key} 当前为 {snapshot.state}，需要先对账下载器"
             )
         return claim, None
+
+    @staticmethod
+    def _subscription_delivery_scope(
+        *,
+        downloader: Optional[str],
+        download_uri: str,
+    ) -> str:
+        """规范化实际下载器和保存目标，限定跨记录去重的产品边界。"""
+        return json.dumps(
+            {
+                "downloader": downloader or "auto",
+                "download_uri": download_uri,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
 
     def _legacy_subscription_download_hash(
         self,

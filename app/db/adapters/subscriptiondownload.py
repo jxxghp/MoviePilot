@@ -68,6 +68,16 @@ class TransactionalSubscriptionDownloadRepository:
 
         return self._write(operation)
 
+    def get(self, idempotency_key: str) -> Optional[SubscriptionDownloadSnapshot]:
+        """读取一个已存在的提交快照。"""
+        return self._read(
+            lambda repository: (
+                _snapshot(record)
+                if (record := repository.get(idempotency_key)) is not None
+                else None
+            )
+        )
+
     def mark_accepted(
         self,
         *,
