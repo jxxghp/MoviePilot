@@ -43,6 +43,10 @@ _MODEL_EXPORTS = {
         "app.db.models.subscriptionsearch",
         "SubscriptionSearchTask",
     ),
+    "SubscriptionSiteBudget": (
+        "app.db.models.subscriptionsearch",
+        "SubscriptionSiteBudget",
+    ),
     "SystemConfig": ("app.db.models.systemconfig", "SystemConfig"),
     "TransferHistory": ("app.db.models.transferhistory", "TransferHistory"),
     "TransferExecutionStep": (

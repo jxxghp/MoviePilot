@@ -10,7 +10,9 @@ from app.application.subscription.execution import (
     SearchEnqueueResult,
     SearchTaskSnapshot,
 )
+from app.application.subscription.sitebudget import SiteBudgetClaim
 from app.db.models.subscriptionsearch import (
+    SubscriptionSiteBudget,
     SubscriptionSearchBatch,
     SubscriptionSearchTask,
 )
@@ -55,6 +57,7 @@ def _task(record: SubscriptionSearchTask) -> SearchTaskSnapshot:
         lease_token=record.lease_token,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        available_at=record.available_at,
         started_at=record.started_at,
         finished_at=record.finished_at,
         last_error=record.last_error,
@@ -91,6 +94,7 @@ class TransactionalSubscriptionSearchRepository:
         subscription_ids: tuple[int, ...],
         source: str,
         priority: int,
+        available_at: Optional[str] = None,
     ) -> SearchEnqueueResult:
         """创建批次并返回 single-flight 合并计数。"""
         def operation(repository: SubscriptionSearchOper) -> SearchEnqueueResult:
@@ -99,6 +103,7 @@ class TransactionalSubscriptionSearchRepository:
                 subscription_ids=subscription_ids,
                 source=source,
                 priority=priority,
+                available_at=available_at,
             )
             return SearchEnqueueResult(
                 batch=_batch(record),
@@ -165,5 +170,55 @@ class TransactionalSubscriptionSearchRepository:
         return self._read(
             lambda repository: (
                 _batch(record) if (record := repository.get_batch(batch_id)) is not None else None
+            )
+        )
+
+    def claim_site(
+        self,
+        *,
+        site_id: int,
+        owner: str,
+        lease_seconds: int,
+    ) -> SiteBudgetClaim:
+        """认领单站点预算并投影等待或租约事实。"""
+        def operation(repository: SubscriptionSearchOper) -> SiteBudgetClaim:
+            """在短事务中认领并复制站点预算状态。"""
+            record, acquired = repository.claim_site(
+                site_id=site_id,
+                owner=owner,
+                lease_seconds=lease_seconds,
+            )
+            retry_at = (
+                record.lease_expires_at
+                if record.lease_token and not acquired
+                else record.next_allowed_at
+            ) or record.next_allowed_at
+            return SiteBudgetClaim(
+                site_id=record.site_id,
+                acquired=acquired,
+                retry_at=retry_at,
+                consecutive_failures=record.consecutive_failures,
+                lease_token=record.lease_token if acquired else None,
+            )
+
+        return self._write(operation)
+
+    def finish_site(
+        self,
+        *,
+        site_id: int,
+        lease_token: str,
+        outcome: str,
+        next_allowed_at: str,
+        error: Optional[str] = None,
+    ) -> bool:
+        """释放站点租约并持久化间隔或冷却。"""
+        return self._write(
+            lambda repository: repository.finish_site(
+                site_id=site_id,
+                lease_token=lease_token,
+                outcome=outcome,
+                next_allowed_at=next_allowed_at,
+                error=error,
             )
         )

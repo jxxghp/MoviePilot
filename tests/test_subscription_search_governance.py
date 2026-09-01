@@ -73,6 +73,7 @@ def test_fallback_queue_executes_without_match_global_lock(tmp_path, monkeypatch
     """R/P 兜底搜索在持久队列中执行，不受日常 Match 长锁阻塞。"""
     subscribes = [_subscribe(1), _subscribe(2)]
     chain = _chain(tmp_path, subscribes)
+    monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
     processed = []
     monkeypatch.setattr(
         chain,
@@ -94,6 +95,7 @@ def test_fallback_queue_continues_after_one_subscription_failure(tmp_path, monke
     """单订阅异常不得中止批次后续任务，聚合终态必须暴露失败。"""
     subscribes = [_subscribe(3), _subscribe(4)]
     chain = _chain(tmp_path, subscribes)
+    monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
     processed = []
 
     def process(subscribe, _searchchain):

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import DbOper, execute_dml
 from app.db.models.subscriptionsearch import (
+    SubscriptionSiteBudget,
     SubscriptionSearchBatch,
     SubscriptionSearchTask,
 )
@@ -29,6 +30,7 @@ class SubscriptionSearchOper(DbOper):
         subscription_ids: tuple[int, ...],
         source: str,
         priority: int,
+        available_at: Optional[str],
     ) -> tuple[SubscriptionSearchBatch, int, int]:
         """创建批次，并以活动键合并同一订阅的重叠搜索入口。"""
         if not isinstance(self._db, Session):
@@ -58,6 +60,7 @@ class SubscriptionSearchOper(DbOper):
                 priority=priority,
                 position=position,
                 state="queued",
+                available_at=available_at or now,
                 created_at=now,
                 updated_at=now,
             )
@@ -76,6 +79,16 @@ class SubscriptionSearchOper(DbOper):
                         priority=case(
                             (SubscriptionSearchTask.priority < priority, priority),
                             else_=SubscriptionSearchTask.priority,
+                        ),
+                        available_at=case(
+                            (
+                                or_(
+                                    SubscriptionSearchTask.available_at.is_(None),
+                                    SubscriptionSearchTask.available_at > (available_at or now),
+                                ),
+                                available_at or now,
+                            ),
+                            else_=SubscriptionSearchTask.available_at,
                         ),
                         updated_at=now,
                     ),
@@ -101,6 +114,10 @@ class SubscriptionSearchOper(DbOper):
                 .where(
                     SubscriptionSearchTask.cancel_requested == 0,
                     or_(
+                        SubscriptionSearchTask.available_at.is_(None),
+                        SubscriptionSearchTask.available_at <= now,
+                    ),
+                    or_(
                         SubscriptionSearchTask.state == "queued",
                         and_(
                             SubscriptionSearchTask.state == "running",
@@ -113,6 +130,7 @@ class SubscriptionSearchOper(DbOper):
                 )
                 .order_by(
                     SubscriptionSearchTask.priority.desc(),
+                    SubscriptionSearchTask.available_at.asc(),
                     SubscriptionSearchTask.created_at.asc(),
                     SubscriptionSearchTask.position.asc(),
                     SubscriptionSearchTask.id.asc(),
@@ -128,6 +146,10 @@ class SubscriptionSearchOper(DbOper):
                 .where(
                     SubscriptionSearchTask.id == candidate.id,
                     SubscriptionSearchTask.cancel_requested == 0,
+                    or_(
+                        SubscriptionSearchTask.available_at.is_(None),
+                        SubscriptionSearchTask.available_at <= now,
+                    ),
                     or_(
                         SubscriptionSearchTask.state == "queued",
                         and_(
@@ -333,6 +355,143 @@ class SubscriptionSearchOper(DbOper):
         return self._db.execute(
             select(SubscriptionSearchBatch).where(SubscriptionSearchBatch.batch_id == batch_id)
         ).scalars().first()
+
+    def claim_site(
+        self,
+        *,
+        site_id: int,
+        owner: str,
+        lease_seconds: int,
+    ) -> tuple[SubscriptionSiteBudget, bool]:
+        """以 CAS 认领单站点租约，返回当前或已认领预算记录。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("订阅站点预算认领需要调用方提供同步 Session")
+        now = utc_now_text()
+        record = self._ensure_site_budget(site_id=site_id, now=now)
+        lease_busy = bool(
+            record.lease_token
+            and record.lease_expires_at
+            and record.lease_expires_at > now
+        )
+        if lease_busy or record.next_allowed_at > now:
+            return record, False
+        lease_token = uuid4().hex
+        lease_expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=max(1, lease_seconds))
+        ).isoformat(timespec="seconds")
+        updated = execute_dml(
+            self._db,
+            update(SubscriptionSiteBudget)
+            .where(
+                SubscriptionSiteBudget.id == record.id,
+                or_(
+                    SubscriptionSiteBudget.lease_token.is_(None),
+                    SubscriptionSiteBudget.lease_expires_at.is_(None),
+                    SubscriptionSiteBudget.lease_expires_at <= now,
+                ),
+                SubscriptionSiteBudget.next_allowed_at <= now,
+            )
+            .values(
+                lease_owner=owner,
+                lease_token=lease_token,
+                lease_expires_at=lease_expires_at,
+                updated_at=now,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+        if not updated:
+            self._db.expire_all()
+            current = self._db.execute(
+                select(SubscriptionSiteBudget).where(
+                    SubscriptionSiteBudget.site_id == site_id
+                )
+            ).scalar_one()
+            return current, False
+        self._db.flush()
+        self._db.expire_all()
+        claimed = self._db.execute(
+            select(SubscriptionSiteBudget).where(
+                SubscriptionSiteBudget.site_id == site_id,
+                SubscriptionSiteBudget.lease_token == lease_token,
+            )
+        ).scalar_one()
+        return claimed, True
+
+    def finish_site(
+        self,
+        *,
+        site_id: int,
+        lease_token: str,
+        outcome: str,
+        next_allowed_at: str,
+        error: Optional[str],
+    ) -> bool:
+        """释放当前站点租约，并按结果推进失败或恢复计数。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("订阅站点预算收口需要调用方提供同步 Session")
+        record = self._db.execute(
+            select(SubscriptionSiteBudget).where(
+                SubscriptionSiteBudget.site_id == site_id,
+                SubscriptionSiteBudget.lease_token == lease_token,
+            )
+        ).scalars().first()
+        if record is None:
+            return False
+        if outcome == "success":
+            failures = max(0, record.consecutive_failures - 1)
+            success_streak = record.success_streak + 1
+        elif outcome == "skipped":
+            failures = record.consecutive_failures
+            success_streak = record.success_streak
+        else:
+            failures = record.consecutive_failures + 1
+            success_streak = 0
+        now = utc_now_text()
+        return bool(execute_dml(
+            self._db,
+            update(SubscriptionSiteBudget)
+            .where(
+                SubscriptionSiteBudget.id == record.id,
+                SubscriptionSiteBudget.lease_token == lease_token,
+            )
+            .values(
+                lease_owner=None,
+                lease_token=None,
+                lease_expires_at=None,
+                next_allowed_at=next_allowed_at,
+                consecutive_failures=failures,
+                success_streak=success_streak,
+                last_outcome=outcome,
+                last_error=error,
+                updated_at=now,
+            ),
+            execution_options={"synchronize_session": False},
+        ))
+
+    def _ensure_site_budget(self, *, site_id: int, now: str) -> SubscriptionSiteBudget:
+        """并发安全地创建站点预算初始记录。"""
+        record = self._db.execute(
+            select(SubscriptionSiteBudget).where(
+                SubscriptionSiteBudget.site_id == site_id
+            )
+        ).scalars().first()
+        if record is not None:
+            return record
+        try:
+            with self._db.begin_nested():
+                self._db.add(SubscriptionSiteBudget(
+                    site_id=site_id,
+                    next_allowed_at=now,
+                    updated_at=now,
+                ))
+                self._db.flush()
+        except IntegrityError:
+            self._db.expire_all()
+        return self._db.execute(
+            select(SubscriptionSiteBudget).where(
+                SubscriptionSiteBudget.site_id == site_id
+            )
+        ).scalar_one()
 
     def _batch_cancel_requested(self, batch_id: str) -> bool:
         """在当前事务中读取批次取消标记。"""

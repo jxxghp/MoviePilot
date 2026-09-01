@@ -2,7 +2,7 @@
 
 import random
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional, cast
 from uuid import uuid4
 
@@ -15,6 +15,10 @@ from app.application.subscription.contract import (
 )
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.execution import SearchBatchSnapshot, SubscriptionSearchRepository
+from app.application.subscription.sitebudget import (
+    SubscriptionSearchCancelled,
+    SubscriptionSiteBudget,
+)
 from app.chain.media import MediaChain
 from app.chain.search.facade import SearchChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
@@ -209,6 +213,7 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
             subscription_ids=tuple(subscribe.id for subscribe in subscribes),
             source=source,
             priority=priority,
+            available_at=self._search_batch_available_at(source),
         )
         total = len(subscribes)
         if progress_callback:
@@ -293,6 +298,14 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                     )
                     continue
                 current = subscribe
+                searchchain.configure_subscription_site_budget(
+                    SubscriptionSiteBudget(
+                        repository=queue,
+                        owner=f"{owner}:{task.task_id}",
+                        cancelled=lambda task_id=task.task_id: queue.is_cancel_requested(task_id),
+                        stop_state=getattr(self, "stop_state", runtime_stop_state),
+                    )
+                )
                 try:
                     current = self._process_search_subscription(subscribe, searchchain)
                     if queue.is_cancel_requested(task.task_id):
@@ -308,6 +321,12 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                             state="completed",
                         )
                     processed.add(subscribe.id)
+                except SubscriptionSearchCancelled:
+                    queue.release_task(
+                        task_id=task.task_id,
+                        lease_token=task.lease_token,
+                        cancelled=True,
+                    )
                 except Exception as err:
                     logger.error(f"订阅 {subscribe.name} 搜索失败：{str(err)}", exc_info=True)
                     queue.finish_task(
@@ -317,6 +336,7 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                         error=str(err),
                     )
                 finally:
+                    searchchain.configure_subscription_site_budget(None)
                     if current and current.state == "N":
                         try:
                             self._SubscribeChain__apply_subscribe_update(
@@ -379,7 +399,17 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
             return "订阅搜索完成，部分任务失败"
         if batch.state == "cancelled":
             return "订阅搜索已取消"
+        if batch.state in {"queued", "running", "cancelling"}:
+            return "订阅搜索任务已排队"
         return "订阅搜索完成"
+
+    @staticmethod
+    def _search_batch_available_at(source: str) -> str:
+        """为自动兜底批次持久化一次全局启动抖动。"""
+        delay = random.randint(0, 60) if source == "fallback" else 0
+        return (
+            datetime.now(timezone.utc) + timedelta(seconds=delay)
+        ).isoformat(timespec="seconds")
 
     def cancel_search_batch(self, batch_id: str) -> bool:
         """请求取消持久搜索批次；未注入队列时返回失败。"""
@@ -491,6 +521,7 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
             custom_words=subscribe.custom_words.split("\n") if subscribe.custom_words else None,
             filter_params=self.get_params(subscribe),
         )
+        site_budget_failures = searchchain.consume_subscription_site_budget_failures()
         if not contexts:
             logger.warning(f"订阅 {subscribe.keyword or subscribe.name} 未搜索到资源")
             self.finish_subscribe_or_not(
@@ -499,11 +530,13 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                 mediainfo=mediainfo,
                 lefts=no_exists,
             )
+            self._raise_site_budget_failures(site_budget_failures)
             return subscribe
         matched = self._filter_search_contexts(subscribe, contexts)
         if not matched:
             logger.warning(f"订阅 {subscribe.name} 没有符合过滤条件的资源")
             self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, lefts=no_exists)
+            self._raise_site_budget_failures(site_budget_failures)
             return subscribe
         downloads, lefts = self._SubscribeChain__download_best_version_with_full_pack_first(
             contexts=matched,
@@ -524,7 +557,14 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                 downloads=downloads,
                 lefts=lefts,
             )
+        self._raise_site_budget_failures(site_budget_failures)
         return cast(Optional[SubscriptionSnapshot], current)
+
+    @staticmethod
+    def _raise_site_budget_failures(failures: tuple[str, ...]) -> None:
+        """在成功站点结果完成处理后暴露未执行站点的聚合失败。"""
+        if failures:
+            raise RuntimeError("；".join(failures))
 
     def _filter_search_contexts(
         self,

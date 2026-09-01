@@ -1,5 +1,6 @@
 """搜索处理链稳定 Facade。"""
 
+import threading
 from collections.abc import AsyncIterator, Callable
 from typing import Any, Optional, TypeVar, cast
 
@@ -15,6 +16,7 @@ from app.chain.search.result import SearchResultOwner
 from app.chain.search.site import SearchSiteOwner
 from app.chain.search.subtitle import SearchSubtitleOwner
 from app.chain.search.title import SearchTitleOwner
+from app.application.subscription.sitebudget import SubscriptionSiteBudget
 from app.domain.context import Context, MediaInfo, SubtitleInfo
 from app.runtime.events import Event, eventmanager
 from app.schemas.mediaserver import NotExistMediaInfo
@@ -39,6 +41,33 @@ class SearchChain(ChainBase):
     _SUBTITLE_RESULT_CACHE_KEY = "__subtitle_search_result__"
     _SEARCH_PARAMS_CACHE_KEY = "__search_params__"
     _AI_INDICES_CACHE_KEY = "__ai_recommend_indices__"
+
+    def configure_subscription_site_budget(
+        self,
+        budget: Optional[SubscriptionSiteBudget],
+    ) -> None:
+        """仅为订阅搜索启用或清除站点预算，不影响其它搜索入口。"""
+        self._subscription_site_budget = budget
+        self._subscription_site_budget_failures: list[str] = []
+        self._subscription_site_budget_failure_lock = threading.Lock()
+
+    def record_subscription_site_budget_failure(self, error: str) -> None:
+        """线程安全地记录一个未执行站点，供订阅任务暴露聚合失败。"""
+        lock = getattr(self, "_subscription_site_budget_failure_lock", None)
+        if lock is None:
+            return
+        with lock:
+            self._subscription_site_budget_failures.append(error)
+
+    def consume_subscription_site_budget_failures(self) -> tuple[str, ...]:
+        """读取并清空当前订阅搜索积累的站点预算失败。"""
+        lock = getattr(self, "_subscription_site_budget_failure_lock", None)
+        if lock is None:
+            return ()
+        with lock:
+            failures = tuple(self._subscription_site_budget_failures)
+            self._subscription_site_budget_failures.clear()
+        return failures
 
     # owner descriptor 经类访问后被 mypy 视为普通 Callable；运行时仍需取回原始
     # classmethod 函数，才能保持 SearchChain 的直接 MRO 与既有绑定语义。
@@ -456,6 +485,7 @@ class SearchChain(ChainBase):
     _async_indexers = SearchProviderOwner._async_indexers
     _torrent_keyword = staticmethod(SearchProviderOwner._torrent_keyword)
     _torrent_type = staticmethod(SearchProviderOwner._torrent_type)
+    _search_site_torrents_with_budget = SearchProviderOwner._search_site_torrents_with_budget
     _iter_provider_batches = SearchProviderOwner._iter_provider_batches
     _iter_provider_events = SearchProviderOwner._iter_provider_events
     _iter_torrent_events = SearchProviderOwner._iter_torrent_events

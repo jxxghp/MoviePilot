@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
+from app.application.subscription.sitebudget import SiteBudgetClaim
+
 
 @dataclass(frozen=True, slots=True)
 class SearchBatchSnapshot:
@@ -40,6 +42,7 @@ class SearchTaskSnapshot:
     lease_token: Optional[str]
     created_at: str
     updated_at: str
+    available_at: Optional[str] = None
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
     last_error: Optional[str] = None
@@ -63,8 +66,9 @@ class SubscriptionSearchRepository(Protocol):
         subscription_ids: tuple[int, ...],
         source: str,
         priority: int,
+        available_at: Optional[str] = None,
     ) -> SearchEnqueueResult:
-        """按订阅 ID 建立批次，并合并已存在的活动任务。"""
+        """按订阅 ID 建立批次，在启动抖动后合并活动任务。"""
         ...
 
     def claim_next(self, *, owner: str, lease_seconds: int = 900) -> Optional[SearchTaskSnapshot]:
@@ -102,4 +106,26 @@ class SubscriptionSearchRepository(Protocol):
 
     def get_batch(self, batch_id: str) -> Optional[SearchBatchSnapshot]:
         """按稳定批次 ID 返回当前聚合状态。"""
+        ...
+
+    def claim_site(
+        self,
+        *,
+        site_id: int,
+        owner: str,
+        lease_seconds: int,
+    ) -> SiteBudgetClaim:
+        """认领一个站点的唯一在途搜索预算。"""
+        ...
+
+    def finish_site(
+        self,
+        *,
+        site_id: int,
+        lease_token: str,
+        outcome: str,
+        next_allowed_at: str,
+        error: Optional[str] = None,
+    ) -> bool:
+        """释放站点预算并写入间隔、冷却和恢复状态。"""
         ...

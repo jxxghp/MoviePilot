@@ -50,6 +50,7 @@ class SubscriptionSearchTask(Base):
     lease_owner: Mapped[Optional[str]] = mapped_column(String(128))
     lease_token: Mapped[Optional[str]] = mapped_column(String(64))
     lease_expires_at: Mapped[Optional[str]] = mapped_column(String(40))
+    available_at: Mapped[Optional[str]] = mapped_column(String(40))
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
     started_at: Mapped[Optional[str]] = mapped_column(String(40))
@@ -63,10 +64,37 @@ class SubscriptionSearchTask(Base):
             "ix_subscriptionsearchtask_claim",
             "state",
             "priority",
+            "available_at",
             "lease_expires_at",
             "created_at",
             "id",
         ),
         Index("ix_subscriptionsearchtask_batch_position", "batch_id", "position", "id"),
         Index("ix_subscriptionsearchtask_subscription", "subscription_id", "created_at", "id"),
+    )
+
+
+class SubscriptionSiteBudget(Base):
+    """记录兜底搜索对单个站点的唯一租约、间隔与错误冷却。"""
+
+    id = get_id_column()
+    site_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    lease_owner: Mapped[Optional[str]] = mapped_column(String(128))
+    lease_token: Mapped[Optional[str]] = mapped_column(String(64))
+    lease_expires_at: Mapped[Optional[str]] = mapped_column(String(40))
+    next_allowed_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    success_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_outcome: Mapped[Optional[str]] = mapped_column(String(32))
+    last_error: Mapped[Optional[str]] = mapped_column(Text)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("site_id", name="uq_subscriptionsitebudget_site_id"),
+        Index(
+            "ix_subscriptionsitebudget_ready",
+            "next_allowed_at",
+            "lease_expires_at",
+            "site_id",
+        ),
     )
