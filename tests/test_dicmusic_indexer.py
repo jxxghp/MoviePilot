@@ -1,3 +1,4 @@
+from typing import Any, NoReturn
 from unittest.mock import patch
 
 import pytest
@@ -27,7 +28,7 @@ DICMUSIC_HTML = """
 """
 
 
-def _dicmusic_indexer() -> dict:
+def _dicmusic_indexer() -> dict[str, Any]:
     """构造与 DIC Music 资源配置一致的非分组 Gazelle 索引器。"""
     detail_selector = 'a[href*="torrents.php?id="][href*="torrentid="]'
     return {
@@ -78,7 +79,7 @@ def _dicmusic_indexer() -> dict:
     }
 
 
-def test_dicmusic_search_uses_complete_music_title_in_python_fallback():
+def test_dicmusic_search_uses_complete_music_title_in_python_fallback() -> None:
     """DIC Music Python 兜底解析应从非分组行保留完整音乐名。"""
     with patch(
         "app.modules.indexer.spider.rust_accel.parse_indexer_torrents",
@@ -94,15 +95,16 @@ def test_dicmusic_search_uses_complete_music_title_in_python_fallback():
     assert results[0]["enclosure"].endswith("torrents.php?action=download&id=456")
 
 
-@pytest.mark.skipif(
-    not rust_accel.is_available(),
-    reason="moviepilot_rust 扩展未安装",
-)
-def test_dicmusic_search_uses_complete_music_title_in_rust_parser(monkeypatch):
+def test_dicmusic_search_uses_complete_music_title_in_rust_parser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """DIC Music Rust 解析应与 Python 解析共享完整音乐名。"""
+    if not rust_accel.is_available():
+        pytest.skip("moviepilot_rust 扩展未安装")
+
     monkeypatch.setattr(rust_accel, "is_enabled", lambda: True)
 
-    def fail_python_fallback(*_args, **_kwargs):
+    def fail_python_fallback(*_args: object, **_kwargs: object) -> NoReturn:
         """Rust 解析异常回退时让测试显式失败。"""
         raise AssertionError("DIC Music Rust 解析不应回退 Python")
 
