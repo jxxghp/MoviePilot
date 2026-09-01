@@ -35,6 +35,14 @@ _MODEL_EXPORTS = {
         "app.db.models.subscribehistory",
         "SubscribeHistory",
     ),
+    "SubscriptionSearchBatch": (
+        "app.db.models.subscriptionsearch",
+        "SubscriptionSearchBatch",
+    ),
+    "SubscriptionSearchTask": (
+        "app.db.models.subscriptionsearch",
+        "SubscriptionSearchTask",
+    ),
     "SystemConfig": ("app.db.models.systemconfig", "SystemConfig"),
     "TransferHistory": ("app.db.models.transferhistory", "TransferHistory"),
     "TransferExecutionStep": (

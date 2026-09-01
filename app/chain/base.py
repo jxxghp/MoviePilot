@@ -58,6 +58,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         self.async_filecache = context.async_file_cache
         self.site_repository = context.site_repository
         self.subscription_repository = context.subscription_repository
+        self.subscription_search_repository = context.subscription_search_repository
         self.subscription_mutation_scope = context.subscription_mutation_scope
         self.sync_subscription_mutation_scope = context.sync_subscription_mutation_scope
         self.subscription_delete_scope = context.subscription_delete_scope

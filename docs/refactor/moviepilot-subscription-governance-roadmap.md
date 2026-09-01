@@ -1,7 +1,7 @@
 # MoviePilot 订阅执行治理
 
 > 状态：`active（2026-09-01 已由 MoviePilot v3 接管）`
-> 当前叶：`SUB-GOV-002A`
+> 当前叶：`SUB-GOV-002B`
 > 迁移来源：`V3-RDY-009A`、`V3-RDY-009A1`、`V3-RDY-009A1B`、
 > `V3-RDY-009A1C`、`V3-RDY-009A1D`
 > 适用范围：V3 订阅刷新、匹配、兜底搜索、下载提交与用户状态闭环
@@ -232,14 +232,14 @@ RSS/Spider 保持现有逐站点串行刷新，不通过并发化换取几秒收
 | `SUB-GOV-001C` | 将资源匹配与完成对账拆开；只有受候选影响的订阅进入匹配，完成对账独立保持新鲜语义 | 001B | `completed（2026-09-01）` |
 | `SUB-GOV-001D` | 引入单轮新鲜事实租约，评估稳定元数据复用、轻量季集查询和单媒体服务器事实合并 | 001C | `completed（2026-09-01）` |
 | `SUB-GOV-001E` | 若 001B–D 后仍有可重复等待热点，再通过隔离压测评估 2/4 worker 的有界准备；提交保持串行 | 001D | `not_activated（2026-09-01）` |
-| `SUB-GOV-002A` | 将 24 小时兜底搜索移出 Match/提交长锁，建立批次、订阅 single-flight、可取消等待和恢复游标 | 001C | `in_progress` |
-| `SUB-GOV-002B` | 为兜底搜索建立每站点并发、间隔和错误冷却预算；RSS/Spider 保持基线压力 | 002A | `pending` |
+| `SUB-GOV-002A` | 将 24 小时兜底搜索移出 Match/提交长锁，建立批次、订阅 single-flight、可取消等待和恢复游标 | 001C | `completed（2026-09-01）` |
+| `SUB-GOV-002B` | 为兜底搜索建立每站点并发、间隔和错误冷却预算；RSS/Spider 保持基线压力 | 002A | `in_progress` |
 | `SUB-GOV-002C` | 联合运行日常 Match、手工搜索和兜底搜索，验证公平性、锁等待、站点压力和失败恢复 | 001D, 002B | `pending` |
 | `SUB-GOV-003A` | 建立跨入口的订阅级下载幂等、下载器不确定终态和取消补偿 | 001C, 002A | `pending` |
 | `SUB-GOV-003B` | 后端提供订阅及批次业务状态，前端展示排队、匹配、搜索、提交、完成、失败和取消 | 002A, 003A | `pending` |
 | `SUB-GOV-004` | 多条订阅记录指向同一媒体时的跨记录季集去重和产品规则 | 003A | `pending（最低优先级）` |
 
-当前只激活 `SUB-GOV-002A`。001B–D 是日常 Match 主线；002A–C 是 24 小时兜底搜索主线；003A/B
+当前只激活 `SUB-GOV-002B`。001B–D 是日常 Match 主线；002A–C 是 24 小时兜底搜索主线；003A/B
 只有在前两条链路的身份和终态稳定后实施。每个叶子完成验收并更新本表后，才激活下一个满足依赖的叶子。
 
 ### 6.1 SUB-GOV-001A 验收证据
@@ -298,6 +298,21 @@ RSS/Spider 保持现有逐站点串行刷新，不通过并发化换取几秒收
 - 该样本证明本地 `S * C` 热点和同媒体重复识别已消除，但没有提供 001B–D 后相互独立的 provider/媒体服务器
   等待仍主导批次的同 revision 证据；因此不激活 2/4 worker，不引入共享客户端线程安全与提交排序风险；
 - 后续若受控生产形态证据再次显示准备等待占主导，可从本条件叶重新开启，但不得绕过 SiteBudget 和串行提交。
+
+### 6.6 SUB-GOV-002A 验收证据
+
+- 新增持久 `SubscriptionSearchBatch` 与 `SubscriptionSearchTask`，通过 Alembic `c1f4a8d2e6b9` 同时支持
+  SQLite/PostgreSQL；批次记录聚合终态，任务记录稳定位置、优先级、attempt、租约和取消标记；
+- 可空唯一 `active_key=subscription:<id>` 是订阅级 single-flight owner：手工/定向任务只提高已排队任务优先级，
+  不为同一订阅创建第二个活动任务；终态清空 active key，允许后续正常周期重新搜索；
+- 配置了正式队列的 Search 路径不再取得 Match 类级锁，也不再执行逐订阅 `60–300s` 随机休眠；单任务异常
+  独立标记 failed 并继续后续订阅，批次最终暴露聚合失败；
+- running 任务使用 token fencing 与 UTC 到期租约，进程重启后以相同 task identity、递增 attempt 恢复；停止时
+  可退回 queued，取消会立即终止未发请求任务并在运行任务返回租约边界时收口；
+- 新增 `subscribe_search_queue` durable 调度，启动后 10 秒首次恢复、之后每分钟消费，且使用独立消费者锁保持
+  单进程串行；它不创建 24 小时兜底批次，也不阻塞日常 Match；
+- 验证：队列/编排/调度专项 `43 passed`，迁移与声明式模型 `35 passed`，复杂度/并发/架构/迁移组合
+  `119 passed`，错误级 Pylint 为 0，Alembic 唯一 head 为 `c1f4a8d2e6b9`。
 
 ## 7. 上线前验证与验收
 

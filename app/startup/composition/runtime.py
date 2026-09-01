@@ -48,6 +48,7 @@ from app.startup.composition.context import (
 )
 
 if TYPE_CHECKING:
+    from app.application.subscription.execution import SubscriptionSearchRepository
     from app.application.messaging.message import MessageHelper, MessageQueueManager
     from app.startup.composition.agent import AgentComposition
     from app.startup.composition.configuration import ConfigurationComposition
@@ -67,6 +68,7 @@ class RuntimeDependencies:
     transfer_execution: TransferExecutionRepository
     message_helper: MessageHelper
     message_queue: MessageQueueManager
+    subscription_search: SubscriptionSearchRepository | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +105,7 @@ def compose_runtime_dependencies() -> RuntimeDependencies:
         TransactionalSubscriptionHistoryRepository,
         TransactionalSubscriptionRepository,
     )
+    from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
     from app.db.adapters.transfer.execution import (
         TransactionalTransferExecutionRepository,
     )
@@ -132,6 +135,7 @@ def compose_runtime_dependencies() -> RuntimeDependencies:
         transfer_execution=TransactionalTransferExecutionRepository(SessionFactory),
         message_helper=message_helper_factory(),
         message_queue=MessageQueueManager(auto_start=False),
+        subscription_search=TransactionalSubscriptionSearchRepository(SessionFactory),
     )
 
 

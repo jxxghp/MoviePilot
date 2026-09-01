@@ -17,6 +17,7 @@ class SchedulerServices:
     sync_mediaserver: JobCallable
     check_subscribe: JobCallable
     search_subscribe: JobCallable
+    resume_subscribe_search: JobCallable
     refresh_subscribe: JobCallable
     follow_subscribe: JobCallable
     process_transfer: JobCallable

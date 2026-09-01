@@ -25,6 +25,7 @@ if TYPE_CHECKING:
         site_repository: Any
         subscription_completion_scope: Callable[..., Any]
         subscription_repository: Any
+        subscription_search_repository: Any
         sync_subscription_delete_scope: Callable[..., Any]
         sync_subscription_mutation_scope: Callable[..., Any]
 
@@ -98,6 +99,7 @@ if TYPE_CHECKING:
         remote_list: Callable[..., Any]
         resolve_subscribe_missing: Callable[..., Any]
         reconcile_subscription_completion: Callable[..., Any]
+        resume_search_queue: Callable[..., Any]
 
     _SubscribeOwnerBase = _SubscribeOwnerHost
 else:

@@ -33,6 +33,7 @@ if TYPE_CHECKING:
         SubscriptionMutationScope,
         SyncSubscriptionMutationScope,
     )
+    from app.application.subscription.execution import SubscriptionSearchRepository
     from app.application.transfer.execution import TransferExecutionRepository
     from app.application.transfer.workflow import TransferAdmissionRepository
 
@@ -74,6 +75,7 @@ class ChainRuntimeContext:
     media_server_repository: MediaServerRepository
     download_failure_repository: DownloadFailureRepository
     user_repository: ChainUserRepository
+    subscription_search_repository: Optional[SubscriptionSearchRepository] = None
     legacy_transfer_command: Optional[LegacyTransferCommand] = None
     durable_event_writer: Optional[ChainDurableEventWriter] = None
     configuration: ChainRuntimeConfig = field(

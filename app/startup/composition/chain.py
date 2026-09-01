@@ -91,6 +91,7 @@ def build_chain_runtime_context(
         module_dispatcher_factory=ModuleInvocationDispatcher,
         site_repository=dependencies.site,
         subscription_repository=dependencies.subscription,
+        subscription_search_repository=dependencies.subscription_search,
         subscription_mutation_scope=subscription_mutation_scope,
         sync_subscription_mutation_scope=sync_subscription_mutation_scope,
         subscription_delete_scope=delete_subscribe_scope,

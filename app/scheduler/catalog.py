@@ -142,6 +142,13 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
                     "subscription",
                     kwargs={"state": "N"},
                 ),
+                JobSpec(
+                    "subscribe_search_queue",
+                    "恢复订阅搜索队列",
+                    services.resume_subscribe_search,
+                    "subscription",
+                    recovery=JobRecoveryPolicy.DURABLE_QUEUE,
+                ),
                 JobSpec("subscribe_refresh", "订阅刷新", services.refresh_subscribe, "subscription"),
                 JobSpec("subscribe_follow", "关注的订阅分享", services.follow_subscribe, "subscription"),
                 JobSpec(
@@ -246,6 +253,16 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             )
 
         # 新增订阅时搜索（5分钟检查一次）
+        self._scheduler.add_job(
+            self.start,
+            "interval",
+            id="subscribe_search_queue",
+            name="恢复订阅搜索队列",
+            minutes=1,
+            next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=10),
+            kwargs={"job_id": "subscribe_search_queue"},
+        )
+
         self._scheduler.add_job(
             self.start,
             "interval",
