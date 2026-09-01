@@ -105,6 +105,9 @@ class SubscriptionSearchOper(DbOper):
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索认领需要调用方提供同步 Session")
         now = utc_now_text()
+        fairness_before = (
+            datetime.now(timezone.utc) - timedelta(minutes=15)
+        ).isoformat(timespec="seconds")
         lease_expires_at = (
             datetime.now(timezone.utc) + timedelta(seconds=max(1, lease_seconds))
         ).isoformat(timespec="seconds")
@@ -129,6 +132,10 @@ class SubscriptionSearchOper(DbOper):
                     ),
                 )
                 .order_by(
+                    case(
+                        (SubscriptionSearchTask.created_at <= fairness_before, 1),
+                        else_=0,
+                    ).desc(),
                     SubscriptionSearchTask.priority.desc(),
                     SubscriptionSearchTask.available_at.asc(),
                     SubscriptionSearchTask.created_at.asc(),

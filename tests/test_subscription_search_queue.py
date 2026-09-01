@@ -130,3 +130,23 @@ def test_search_queue_finishes_batch_with_aggregated_failure(tmp_path):
     assert batch.finished_count == 1
     assert batch.failed_count == 1
     assert batch.last_error == "site timeout"
+
+
+def test_search_queue_ages_old_fallback_ahead_of_new_manual_work(tmp_path):
+    """手工任务可优先，但等待超过公平窗口的兜底任务不得持续饥饿。"""
+    repository, engine = _repository(tmp_path)
+    repository.enqueue(subscription_ids=(8,), source="fallback", priority=10)
+    aged_at = (datetime.now(timezone.utc) - timedelta(minutes=16)).isoformat(timespec="seconds")
+    with Session(engine) as session:
+        session.execute(
+            update(SubscriptionSearchTask)
+            .where(SubscriptionSearchTask.subscription_id == 8)
+            .values(created_at=aged_at)
+        )
+        session.commit()
+    repository.enqueue(subscription_ids=(9,), source="manual", priority=100)
+
+    claimed = repository.claim_next(owner="worker-a")
+
+    assert claimed.subscription_id == 8
+    assert claimed.source == "fallback"

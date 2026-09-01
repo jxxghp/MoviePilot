@@ -44,6 +44,25 @@ def test_site_budget_allows_one_inflight_per_site_and_independent_sites(tmp_path
     assert other_site.acquired is True
 
 
+def test_site_budget_recovers_expired_inflight_lease(tmp_path):
+    """进程遗留的过期站点租约可被新 worker 以新 token 恢复。"""
+    repository, engine = _repository(tmp_path)
+    first = repository.claim_site(site_id=20, owner="worker-a", lease_seconds=900)
+    expired_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec="seconds")
+    with Session(engine) as session:
+        session.execute(
+            SiteBudgetRecord.__table__.update()
+            .where(SiteBudgetRecord.site_id == 20)
+            .values(lease_expires_at=expired_at)
+        )
+        session.commit()
+
+    recovered = repository.claim_site(site_id=20, owner="worker-b", lease_seconds=900)
+
+    assert recovered.acquired is True
+    assert recovered.lease_token != first.lease_token
+
+
 def test_site_budget_applies_error_cooldown_and_gradual_success_recovery(tmp_path):
     """失败增加冷却计数，后续成功每次只恢复一级而非直接清零。"""
     repository, engine = _repository(tmp_path)
