@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Callable, Dict, List, Optional
 
 from app.application.configuration import get_configured_system_config
+from app.application.subscription.candidates import CandidateBatch, CandidateIndex
 from app.application.subscription.contract import build_subscribe_meta, subscribe_media_key
 from app.application.torrent.download import TorrentHelper
 from app.chain.media import MediaChain
@@ -102,6 +103,17 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             progress_callback=progress_callback,
         )
 
+    def match_batch(
+        self,
+        batch: CandidateBatch,
+        progress_callback: Optional[Callable[..., None]] = None,
+    ) -> None:
+        """消费包含完整缓存与本轮增量边界的订阅候选批次。"""
+        return self._execute_match(
+            torrents=batch.candidates,
+            progress_callback=progress_callback,
+        )
+
     def _execute_match(
         self,
         torrents: Dict[str, List[Context]],
@@ -129,6 +141,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                 return
 
             processed_torrents = self._prepare_match_torrents(torrents)
+            candidate_index = CandidateIndex(processed_torrents)
 
             # 所有订阅
             subscribes = self.subscription_repository.list(self.get_states_for_search("R"))
@@ -207,7 +220,8 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     torrenthelper = TorrentHelper()
                     systemconfig = get_configured_system_config()
                     wordsmatcher = WordsMatcher()
-                    for domain, contexts in processed_torrents.items():
+                    routed_torrents = candidate_index.route_for_match(subscribe)
+                    for domain, contexts in routed_torrents.items():
                         if runtime_stop_state.is_system_stopped:
                             break
                         if domains and domain not in domains:

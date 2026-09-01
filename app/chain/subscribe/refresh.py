@@ -77,14 +77,14 @@ class SubscribeRefreshOwner(_SubscribeOwnerBase):
                     data=data,
                 )
 
-        torrents = TorrentsChain().refresh(
+        candidate_batch = TorrentsChain().refresh_batch(
             sites=sites,
             progress_callback=_update_refresh_progress if progress_callback else None,
             # 存在音乐订阅时额外抓取站点音乐专用入口，音乐不一定在默认种子首页
             include_music=self.has_music_subscribe(),
         )
-        self.match(
-            torrents,
+        self.match_batch(
+            candidate_batch,
             progress_callback=_update_match_progress if progress_callback else None,
         )
         if progress_callback:
