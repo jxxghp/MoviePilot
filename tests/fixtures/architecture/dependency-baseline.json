@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 7839,
-  "edge_sha256": "39801eb6ea7cf3ce011d8dcdb58c613c74d958c78d0dfc5fe26416b0454deba4",
+  "edge_count": 7840,
+  "edge_sha256": "0dce3c677fe65ce31300636bbd1c1496bd1a180fce2f8b00ed241bd2ffe30b35",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1278,6 +1278,8 @@
     "app.adapters.system.update -> app.adapters",
     "app.adapters.system.update -> app.adapters.network",
     "app.adapters.system.update -> app.adapters.network.http",
+    "app.adapters.system.update -> app.adapters.system",
+    "app.adapters.system.update -> app.adapters.system.resource",
     "app.adapters.system.update -> app.foundation",
     "app.adapters.system.update -> app.foundation.environment",
     "app.adapters.system.update -> app.foundation.singleton",
@@ -8562,7 +8564,6 @@
     "app.startup.initializers.modules -> app.runtime.extensions.service",
     "app.startup.initializers.modules -> app.runtime.log",
     "app.startup.initializers.modules -> app.runtime.settings",
-    "app.startup.initializers.modules -> app.runtime.state",
     "app.startup.initializers.modules -> app.runtime.tasks",
     "app.startup.initializers.modules -> app.runtime.thread",
     "app.startup.initializers.modules -> app.scheduler",

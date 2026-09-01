@@ -8,10 +8,6 @@
   "app/adapters/system/rust.py": {
     "I001": 1
   },
-  "app/adapters/system/update.py": {
-    "F401": 1,
-    "I001": 1
-  },
   "app/adapters/web/metrics.py": {
     "I001": 1
   },
@@ -678,9 +674,6 @@
     "F401": 1
   },
   "tests/test_capability_registry.py": {
-    "I001": 1
-  },
-  "tests/test_cli_auto_update.py": {
     "I001": 1
   },
   "tests/test_coalesce.py": {

@@ -96,8 +96,7 @@
   },
   "app/adapters/system/resource.py": {
     "no-untyped-call": 1,
-    "no-untyped-def": 2,
-    "type-arg": 1
+    "no-untyped-def": 2
   },
   "app/adapters/system/rust.py": {
     "assignment": 1,
@@ -107,9 +106,6 @@
   },
   "app/adapters/system/stdio.py": {
     "override": 1
-  },
-  "app/adapters/system/update.py": {
-    "no-any-return": 6
   },
   "app/adapters/web/correlation.py": {
     "type-arg": 2

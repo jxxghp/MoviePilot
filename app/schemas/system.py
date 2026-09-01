@@ -201,7 +201,7 @@ class CustomIdentifiersUpdateRequest(BaseModel):  # type: ignore[misc]
 SystemUpdateType = Literal["application", "resources"]
 
 
-class SystemUpdateItemStatus(BaseModel):
+class SystemUpdateItemStatus(BaseModel):  # type: ignore[misc]
     """单类升级的可恢复状态快照。"""
 
     type: SystemUpdateType
@@ -232,7 +232,7 @@ class SystemUpdateItemStatus(BaseModel):
     can_install: bool = False
 
 
-class SystemUpdateRequest(BaseModel):
+class SystemUpdateRequest(BaseModel):  # type: ignore[misc]
     """主程序或站点资源升级动作的请求体。"""
 
     target: SystemUpdateType = Field(

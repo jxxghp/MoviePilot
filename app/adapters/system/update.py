@@ -11,7 +11,7 @@ import threading
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, cast
 
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.resource import ResourceHelper, get_resource_versions
@@ -24,9 +24,9 @@ from app.runtime.thread import ThreadHelper
 from app.runtime.version import get_app_version
 from app.schemas.system import SystemUpdateStatus, SystemUpdateType
 
-_APPLICATION = "application"
-_RESOURCES = "resources"
-_TARGETS = (_APPLICATION, _RESOURCES)
+_APPLICATION: SystemUpdateType = "application"
+_RESOURCES: SystemUpdateType = "resources"
+_TARGETS: tuple[SystemUpdateType, ...] = (_APPLICATION, _RESOURCES)
 _ITEM_FIELDS = {
     "state",
     "current_version",
@@ -189,7 +189,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
     def _persist_state(self, state: dict[str, Any]) -> dict[str, Any]:
         """校验并原子替换状态 JSON。"""
-        validated = SystemUpdateStatus.model_validate(state).model_dump()
+        validated = cast(dict[str, Any], SystemUpdateStatus.model_validate(state).model_dump())
         self._root.mkdir(parents=True, exist_ok=True)
         temporary = self._state_file.with_suffix(".tmp")
         temporary.write_text(
@@ -294,7 +294,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
                 state = self._persist_state(self._sync_aggregate(state))
             else:
                 state = self._sync_aggregate(state)
-            return SystemUpdateStatus.model_validate(state)
+            return cast(SystemUpdateStatus, SystemUpdateStatus.model_validate(state))
 
     def _is_install_applied(self, item: dict[str, Any], target: SystemUpdateType) -> bool:
         """判断启动器应用后的当前版本是否已经达到安装目标。"""
@@ -507,8 +507,8 @@ class SystemUpdateManager(metaclass=SingletonClass):
                     self._validate_resource_manifest(prepared)
                     message = "站点资源包已就绪，正在重启安装"
                 install_payload = self._read_install_manifest_optional()
-                targets = [
-                    value
+                targets: list[SystemUpdateType] = [
+                    cast(SystemUpdateType, value)
                     for value in install_payload.get("targets", [])
                     if value in _TARGETS
                 ]
@@ -527,10 +527,10 @@ class SystemUpdateManager(metaclass=SingletonClass):
     def cancel_install(self, reason: str) -> None:
         """重启请求失败时撤销全部已选安装意图，避免下次普通启动意外安装。"""
         with self._lock:
-            targets = []
+            targets: list[SystemUpdateType] = []
             try:
                 payload = json.loads(self._install_file.read_text(encoding="utf-8"))
-                targets = [target for target in payload.get("targets", []) if target in _TARGETS]
+                targets = [cast(SystemUpdateType, target) for target in payload.get("targets", []) if target in _TARGETS]
             except (OSError, json.JSONDecodeError):
                 pass
             self._install_file.unlink(missing_ok=True)

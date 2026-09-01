@@ -1097,9 +1097,7 @@ def check_system_update(
 
 
 @router.post(
-    "/update/download",
-    summary="后台下载系统更新",
-    response_model=_SchemaResponse[_SchemaSystemUpdateStatus],
+    "/update/download", summary="后台下载系统更新", response_model=_SchemaResponse[_SchemaSystemUpdateStatus],
 )
 def download_system_update(
     _: ApiPrincipal = Depends(get_current_active_superuser),
@@ -1112,9 +1110,7 @@ def download_system_update(
 
 
 @router.post(
-    "/update/install",
-    summary="确认重启安装系统更新",
-    response_model=_SchemaResponse[None],
+    "/update/install", summary="确认重启安装系统更新", response_model=_SchemaResponse[None],
 )
 def install_system_update(
     _: ApiPrincipal = Depends(get_current_active_superuser),
