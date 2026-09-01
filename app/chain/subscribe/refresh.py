@@ -11,6 +11,7 @@ from app.application.subscription.contract import (
     subscribe_media_key,
     subscribe_media_keys,
 )
+from app.application.subscription.facts import FreshFactLease
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
@@ -104,6 +105,7 @@ class SubscribeRefreshOwner(_SubscribeOwnerBase):
         # 查询所有订阅
         repository = self.subscription_repository
         subscribes = repository.list()
+        fresh_fact_lease = FreshFactLease()
         total_num = len(subscribes)
         if progress_callback:
             progress_callback(
@@ -135,12 +137,15 @@ class SubscribeRefreshOwner(_SubscribeOwnerBase):
             if meta.type == MediaType.MUSIC:
                 mediainfo = self._recognize_music_subscribe(subscribe)
             else:
-                mediainfo: MediaInfo = MediaChain().recognize_media(
-                    meta=meta,
-                    mtype=meta.type,
-                    **subscribe_recognize_kwargs(subscribe),
-                    episode_group=subscribe.episode_group,
-                    cache=False,
+                mediainfo = fresh_fact_lease.get_or_load(
+                    subscribe,
+                    lambda: MediaChain().recognize_media(
+                        meta=meta,
+                        mtype=meta.type,
+                        **subscribe_recognize_kwargs(subscribe),
+                        episode_group=subscribe.episode_group,
+                        cache=False,
+                    ),
                 )
             if not mediainfo:
                 logger.warn(

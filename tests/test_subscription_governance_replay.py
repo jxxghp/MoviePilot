@@ -38,6 +38,17 @@ class _ReplaySubscriptionRepository:
         return self.current
 
 
+class _ReplaySubscriptionListRepository:
+    """提供多条订阅快照，验证批次级执行合同。"""
+
+    def __init__(self, subscribes: list[SubscriptionSnapshot]) -> None:
+        self.subscribes = subscribes
+
+    def list(self, _state: str = None) -> list[SubscriptionSnapshot]:
+        """返回当前批次的全部订阅快照。"""
+        return self.subscribes
+
+
 class _ReplayTorrentHelper:
     """让无关候选稳定停在身份冲突边界。"""
 
@@ -250,4 +261,65 @@ def test_metadata_reconcile_reuses_fresh_fact_without_candidate_batch(monkeypatc
     assert repository.current.lack_episode == 1
     assert len(reconciled) == 1
     assert reconciled[0]["subscribe"] == repository.current
-    assert reconciled[0]["mediainfo"] is fresh_media
+    assert reconciled[0]["mediainfo"] == fresh_media
+    assert reconciled[0]["mediainfo"] is not fresh_media
+
+
+def test_match_reuses_fresh_fact_for_same_media_subscriptions(monkeypatch):
+    """同媒体同季订阅在一个 Match 批次内只读取一次外部新鲜事实。"""
+    first = _build_subscribe(_load_replay_cases()[1])
+    second = replace(first, id=102)
+    repository = _ReplaySubscriptionListRepository([first, second])
+    recognition_calls = []
+    received_media = []
+    candidate = _build_unrelated_candidate()
+    candidate.meta_info.media_source = MediaSource.TMDB
+    candidate.meta_info.media_id = "100"
+    candidate.media_info.media_id = "100"
+    candidate.media_info.title = "增长中的剧集"
+
+    class _ReplayMediaChain:
+        """返回同一可变对象，验证租约向每个订阅交付独立副本。"""
+
+        def recognize_media(self, **kwargs) -> MediaInfo:
+            """记录一次外部识别并返回固定媒体事实。"""
+            recognition_calls.append(kwargs)
+            return MediaInfo(
+                media_source=MediaSource.TMDB,
+                media_id="100",
+                type=MediaType.TV,
+                title="增长中的剧集",
+                year="2026",
+                seasons={1: list(range(1, 14))},
+            )
+
+        @staticmethod
+        def recognize_by_meta(*_args, **_kwargs) -> MediaInfo:
+            """候选已有明确身份，本场景不应重新识别。"""
+            raise AssertionError("明确身份候选不应重新识别")
+
+    chain = SubscribeChain()
+    chain.subscription_repository = repository
+
+    def _handle_existing(*, mediainfo, **_kwargs):
+        """记录每个订阅收到的事实对象并提前结束其匹配。"""
+        received_media.append(mediainfo)
+        return True, {}
+
+    chain.check_and_handle_existing_media = _handle_existing
+    monkeypatch.setattr("app.chain.subscribe.match.MediaChain", _ReplayMediaChain)
+    monkeypatch.setattr(
+        "app.chain.subscribe.match.get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda _key: []),
+    )
+    monkeypatch.setattr(
+        "app.chain.subscribe.query.get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda _key: []),
+    )
+
+    chain.match({"replay.example": [candidate]})
+
+    assert len(recognition_calls) == 1
+    assert recognition_calls[0]["cache"] is False
+    assert len(received_media) == 2
+    assert received_media[0] is not received_media[1]

@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 7701,
-  "edge_sha256": "9427670889cf46d007599fffd52b4b373f46445f939f209942901497765d233f",
+  "edge_count": 7711,
+  "edge_sha256": "f1ff788de28fa0c486e529afa4dc7af5038587f997bf155c5fc434754ec2a4a3",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3442,6 +3442,14 @@
     "app.application.subscription.delete -> app.schemas",
     "app.application.subscription.delete -> app.schemas.common",
     "app.application.subscription.delete -> app.schemas.event",
+    "app.application.subscription.facts -> app.application",
+    "app.application.subscription.facts -> app.application.subscription",
+    "app.application.subscription.facts -> app.application.subscription.contract",
+    "app.application.subscription.facts -> app.domain",
+    "app.application.subscription.facts -> app.domain.context",
+    "app.application.subscription.facts -> app.schemas",
+    "app.application.subscription.facts -> app.schemas.media",
+    "app.application.subscription.facts -> app.schemas.types",
     "app.application.subscription.identity -> app.application",
     "app.application.subscription.identity -> app.application.outbox",
     "app.application.subscription.identity -> app.application.subscription",
@@ -4458,6 +4466,7 @@
     "app.chain.subscribe.match -> app.application.subscription",
     "app.chain.subscribe.match -> app.application.subscription.candidates",
     "app.chain.subscribe.match -> app.application.subscription.contract",
+    "app.chain.subscribe.match -> app.application.subscription.facts",
     "app.chain.subscribe.match -> app.application.torrent",
     "app.chain.subscribe.match -> app.application.torrent.download",
     "app.chain.subscribe.match -> app.chain",
@@ -4550,6 +4559,7 @@
     "app.chain.subscribe.refresh -> app.application",
     "app.chain.subscribe.refresh -> app.application.subscription",
     "app.chain.subscribe.refresh -> app.application.subscription.contract",
+    "app.chain.subscribe.refresh -> app.application.subscription.facts",
     "app.chain.subscribe.refresh -> app.application.subscription.priority",
     "app.chain.subscribe.refresh -> app.chain",
     "app.chain.subscribe.refresh -> app.chain.download",
@@ -8794,7 +8804,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 920,
+  "module_count": 921,
   "modules": [
     "app",
     "app.adapters",
@@ -9085,6 +9095,7 @@
     "app.application.subscription.complete",
     "app.application.subscription.contract",
     "app.application.subscription.delete",
+    "app.application.subscription.facts",
     "app.application.subscription.identity",
     "app.application.subscription.mutation",
     "app.application.subscription.priority",

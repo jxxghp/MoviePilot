@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional
 from app.application.configuration import get_configured_system_config
 from app.application.subscription.candidates import CandidateBatch, CandidateIndex
 from app.application.subscription.contract import build_subscribe_meta, subscribe_media_key
+from app.application.subscription.facts import FreshFactLease
 from app.application.torrent.download import TorrentHelper
 from app.chain.media import MediaChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
@@ -142,6 +143,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
 
             processed_torrents = self._prepare_match_torrents(torrents)
             candidate_index = CandidateIndex(processed_torrents)
+            fresh_fact_lease = FreshFactLease()
 
             # 所有订阅
             subscribes = self.subscription_repository.list(self.get_states_for_search("R"))
@@ -191,12 +193,15 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         logger.info(f"订阅 {subscribe.name} 本轮没有可能相关的资源，跳过资源匹配准备")
                         continue
                     # 识别媒体信息
-                    mediainfo: MediaInfo = MediaChain().recognize_media(
-                        meta=meta,
-                        mtype=meta.type,
-                        **subscribe_recognize_kwargs(subscribe),
-                        episode_group=subscribe.episode_group,
-                        cache=False,
+                    mediainfo = fresh_fact_lease.get_or_load(
+                        subscribe,
+                        lambda: MediaChain().recognize_media(
+                            meta=meta,
+                            mtype=meta.type,
+                            **subscribe_recognize_kwargs(subscribe),
+                            episode_group=subscribe.episode_group,
+                            cache=False,
+                        ),
                     )
                     if not mediainfo:
                         logger.warn(
