@@ -86,6 +86,69 @@ def _async_pool_kwargs(pooled: bool) -> dict:
     }
 
 
+def apply_sqlite_journal_mode(engine: SyncEngine) -> Any:
+    """
+    把配置声明的 journal_mode 写入引擎所指的库文件，并返回实际生效值。
+
+    journal_mode 是库文件级的持久属性，每个库文件都要有人设置一次。宿主库与插件自有库
+    共用这一段，不会出现「宿主是 WAL、插件库是 DELETE」的分裂行为。
+    :param engine: 同步引擎
+    :return: 生效的 journal_mode
+    """
+    journal_mode = "WAL" if get_runtime_setting("DB_WAL_ENABLE") else "DELETE"
+    with engine.connect() as connection:
+        return connection.execute(text(f"PRAGMA journal_mode={journal_mode};")).scalar()
+
+
+def build_sqlite_engine(url: str) -> SyncEngine:
+    """
+    按宿主 SQLite 连接策略构建指向给定库文件的同步引擎。
+
+    连接超时、驱动级参数、连接池、外键约束、错误日志与池指标在这里收口，宿主库与插件
+    自有库因此共享同一套连接语义，不会因为落在不同文件而出现两种行为。
+    :param url: SQLite 连接串
+    :return: 同步引擎
+    """
+    # 连接参数
+    _connect_args = {
+        "timeout": get_runtime_setting("DB_TIMEOUT"),
+    }
+    # 允许部署侧注入驱动级参数（如 PgBouncer 事务模式下的 statement_cache_size）
+    _connect_args.update(get_runtime_setting("DB_CONNECT_ARGS") or {})
+    # 启用 WAL 模式时的额外配置
+    if get_runtime_setting("DB_WAL_ENABLE"):
+        _connect_args["check_same_thread"] = False
+
+    # 根据池类型设置 poolclass 和相关参数
+    _pool_class = NullPool if get_runtime_setting("DB_POOL_TYPE") == "NullPool" else QueuePool
+
+    # 数据库参数
+    _db_kwargs = {
+        "url": url,
+        "pool_pre_ping": get_runtime_setting("DB_POOL_PRE_PING"),
+        "echo": get_runtime_setting("DB_ECHO"),
+        "poolclass": _pool_class,
+        "pool_recycle": get_runtime_setting("DB_POOL_RECYCLE"),
+        "connect_args": _connect_args,
+    }
+
+    # 当使用 QueuePool 时，添加 QueuePool 特有的参数
+    if _pool_class == QueuePool:
+        _db_kwargs.update(
+            {
+                "pool_size": get_runtime_setting("DB_SQLITE_POOL_SIZE"),
+                "pool_timeout": get_runtime_setting("DB_POOL_TIMEOUT"),
+                "max_overflow": get_runtime_setting("DB_SQLITE_MAX_OVERFLOW"),
+            }
+        )
+
+    engine = create_engine(**_db_kwargs)
+    _register_sqlite_foreign_keys(engine)
+    _register_database_error_logging(engine)
+    _register_database_pool_metrics(engine)
+    return engine
+
+
 def _get_database_engine(is_async: bool = False, pooled: bool = False):
     """
     获取数据库连接参数并设置WAL模式
@@ -116,34 +179,7 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
 
     # 创建同步引擎
     if not is_async:
-        # 根据池类型设置 poolclass 和相关参数
-        _pool_class = NullPool if get_runtime_setting("DB_POOL_TYPE") == "NullPool" else QueuePool
-
-        # 数据库参数
-        _db_kwargs = {
-            "url": get_runtime_setting("DB_SQLITE_URL")(),
-            "pool_pre_ping": get_runtime_setting("DB_POOL_PRE_PING"),
-            "echo": get_runtime_setting("DB_ECHO"),
-            "poolclass": _pool_class,
-            "pool_recycle": get_runtime_setting("DB_POOL_RECYCLE"),
-            "connect_args": _connect_args,
-        }
-
-        # 当使用 QueuePool 时，添加 QueuePool 特有的参数
-        if _pool_class == QueuePool:
-            _db_kwargs.update(
-                {
-                    "pool_size": get_runtime_setting("DB_SQLITE_POOL_SIZE"),
-                    "pool_timeout": get_runtime_setting("DB_POOL_TIMEOUT"),
-                    "max_overflow": get_runtime_setting("DB_SQLITE_MAX_OVERFLOW"),
-                }
-            )
-
-        # 创建数据库引擎
-        engine = create_engine(**_db_kwargs)
-        _register_sqlite_foreign_keys(engine)
-        _register_database_error_logging(engine)
-        _register_database_pool_metrics(engine)
+        engine = build_sqlite_engine(get_runtime_setting("DB_SQLITE_URL")())
 
         # 设置WAL模式。
         # 这是引擎构建里唯一的阻塞 I/O，且发生在 get_engine() 的创建锁内——异步侧因此
@@ -151,10 +187,7 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
         # 设置一次，而同步引擎的首次创建由 lifespan 数据库准备组件中的 init_db() 完成，
         # 不存在一群线程
         # 等在锁上的场面；即便退化到运行期首次访问，阻塞的也只是本地 SQLite 的一次 PRAGMA。
-        _journal_mode = "WAL" if get_runtime_setting("DB_WAL_ENABLE") else "DELETE"
-        with engine.connect() as connection:
-            current_mode = connection.execute(text(f"PRAGMA journal_mode={_journal_mode};")).scalar()
-            print(f"SQLite database journal mode set to: {current_mode}")
+        print(f"SQLite database journal mode set to: {apply_sqlite_journal_mode(engine)}")
 
         return engine
     else:
