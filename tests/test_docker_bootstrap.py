@@ -42,18 +42,22 @@ def test_dockerfile_control_bundle_build_checks_fail_closed() -> None:
     assert "requirements.in" not in dockerfile
     assert "${VENV_PATH}/bin/pip" not in dockerfile
     assert "FROM prepare_payload AS prepare_control" in dockerfile
-    assert "-exec cp -f -t /bundle/control {} +" in dockerfile
-    assert "bash -n /bundle/entrypoint.sh" in dockerfile
     assert (
-        "COPY --from=prepare_control /bundle/control "
-        "/usr/local/lib/moviepilot/control" in dockerfile
+        "-exec cp -f -t /bundle/rootfs/usr/local/lib/moviepilot/control {} +"
+        in dockerfile
+    )
+    assert "bash -n /bundle/rootfs/entrypoint.sh" in dockerfile
+    assert (
+        "COPY --link --from=prepare_control /bundle/rootfs/ /" in dockerfile
     )
     assert 'ENTRYPOINT [ "/usr/bin/tini", "-g", "--", "/entrypoint.sh" ]' in dockerfile
     assert "CMD /usr/bin/curl -fsS" in dockerfile
     assert '"http://127.0.0.1:${PORT:-3001}/health/ready"' in dockerfile
     assert "system/global?token=moviepilot" not in dockerfile
     assert (
-        'for control_script in /bundle/control/*.sh; do bash -n "${control_script}" || exit 1; done'
+        "for control_script in "
+        '/bundle/rootfs/usr/local/lib/moviepilot/control/*.sh; do '
+        'bash -n "${control_script}" || exit 1; done'
         in dockerfile
     )
 
