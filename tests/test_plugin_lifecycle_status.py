@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from app.runtime.extensions.plugin.database import PluginDatabase
 from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
 from app.schemas.plugin import PluginRuntimeStatus
 
@@ -41,6 +42,7 @@ def _lifecycle(*, plugins, auth=True):
         enable_events=MagicMock(),
         disable_events=MagicMock(),
         runtime_status_writer=statuses.__setitem__,
+        database=lambda: PluginDatabase(),
         log=MagicMock(),
         event_sender=MagicMock(),
     )
