@@ -1102,9 +1102,9 @@ def check_system_update(
     response_model=_SchemaResponse[_SchemaSystemUpdateStatus],
 )
 def download_system_update(
-    request: _SchemaSystemUpdateRequest | None = Body(default=None),
     _: ApiPrincipal = Depends(get_current_active_superuser),
     runtime: HostRuntime = Depends(get_host_runtime),
+    request: Annotated[_SchemaSystemUpdateRequest | None, Body()] = None,
 ):
     """启动指定类型的后台下载并立即返回当前状态（仅管理员）。"""
     result = runtime.system.download_update(request.target if request else "application")
@@ -1117,9 +1117,9 @@ def download_system_update(
     response_model=_SchemaResponse[None],
 )
 def install_system_update(
-    request: _SchemaSystemUpdateRequest | None = Body(default=None),
     _: ApiPrincipal = Depends(get_current_active_superuser),
     runtime: HostRuntime = Depends(get_host_runtime),
+    request: Annotated[_SchemaSystemUpdateRequest | None, Body()] = None,
 ):
     """确认消费指定类型的已校验制品，并重启进入安装阶段（仅管理员）。"""
     result = runtime.system.install_update(request.target if request else "application")
