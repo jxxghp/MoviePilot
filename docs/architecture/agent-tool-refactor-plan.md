@@ -40,7 +40,7 @@
 | 下载器/媒体服务器 | 依赖内置低层 Agent 工具或有限 REST operation | downloader-operation 与 mediaserver-operation Skill 通过固定脚本调用已配置 provider API |
 | MCP/HTTP 工具管理 | 存在旧业务工具与同名 first-wins 选择空间 | 与主 Agent 共用严格唯一新目录；重名直接以 TOOL_IDENTITY_AMBIGUOUS 失败 |
 | 退役代码 | 旧实现仍位于 app/agent/tools/impl | 77 个退役文件已直接删除，其中 72 个工具模块、5 个辅助模块 |
-| 架构图 | 982 个宿主模块、8,430 条内部依赖边 | 919 个宿主模块、7,688 条内部依赖边，Application/Chain 具体 Adapter 直连仍为 0 |
+| 架构图 | 982 个宿主模块、8,430 条内部依赖边 | 919 个宿主模块、7,689 条内部依赖边，Application/Chain 具体 Adapter 直连仍为 0 |
 | 工作区状态 | 基线提交 871632af，与 origin/v3 对齐，初始工作区干净 | L1-L10 已完成并通过远端 CI；2026-09-01 继续修复集合总数在大结果截断预览中不可见的问题 |
 
 ## 3. 目标工具分层
@@ -371,6 +371,7 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 - 旧领域工具各自通过 `get_tool_message()` 展示目标和主要参数；收敛为 `moviepilot_api` 后，该方法只展示 `operation_id`，导致 Web Agent 与通知渠道在啰嗦模式下失去 `path_params`、`query` 和 `body` 的调用上下文
 - `moviepilot_api` 现按路径、查询、请求体顺序生成最多 320 字符的主要参数摘要；空参数桶不展示，工具执行与 API 输入结构保持不变
 - 参数摘要统一复用宿主递归脱敏器，设置凭据、密码、Cookie、Token 与 API key 等仅显示 `***`，避免为了恢复可观察性而泄露敏感输入
+- 复用脱敏器新增 1 条 Agent 同域内部依赖边，宿主架构快照由 7,688 更新为 7,689；模块总数和跨层边界均未变化
 - 新增 Web Agent 实际流式回调回归和设置凭据脱敏回归；扩展 Agent/API/流式专项 `487 passed`，完整锁定测试 4 个分片分别为 `1620 passed, 3 skipped`、`1860 passed, 4 skipped`、`1917 passed`、`2253 passed, 2 skipped`，合计 `7650 passed, 9 skipped`；Ruff、Pylint `10.00/10` 和全量 mypy ratchet 均通过
 
 本文件作为本次重构的持续记录，保留阶段状态、实际变更、验证结果、提交状态与已知基线边界。
