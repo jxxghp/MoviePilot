@@ -43,7 +43,6 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
     """
     处理链基类
     """
-
     def __init__(self, runtime_context: Optional[ChainRuntimeContext] = None):
         """
         公共初始化；未显式传入上下文时继续使用兼容运行时 provider。
@@ -86,7 +85,6 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         )
         self._legacy_transfer_command = context.legacy_transfer_command
         self.messagequeue = context.message_queue.bind(self.run_module)
-
     @property
     def runtime_config(self) -> ChainRuntimeConfig:
         """返回实例快照；兼容绕过构造器的旧调用并按需取得当前快照。"""

@@ -43,7 +43,10 @@ from app.application.subscription.mutation import (
 )
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.search import SearchSubscriptionsCommand
-from app.application.subscription.status import SubscriptionExecutionStatusService
+from app.application.subscription.status import (
+    SubscriptionExecutionReadRepository,
+    SubscriptionExecutionStatusService,
+)
 from app.application.subscription.write import (
     SubscriptionBatchWritePort,
 )
@@ -187,7 +190,9 @@ def get_subscription_execution_status_service(
     if factory is None:
         raise RuntimeError("订阅执行状态仓储未注册")
     repository = factory(db)
-    return SubscriptionExecutionStatusService(repository=repository)  # type: ignore[arg-type]
+    return SubscriptionExecutionStatusService(
+        repository=cast(SubscriptionExecutionReadRepository, repository)
+    )
 
 
 def get_subscription_search_repository(

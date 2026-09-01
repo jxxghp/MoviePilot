@@ -45,7 +45,7 @@ def compute_subscribe_completed_episode(subscribe: "Subscribe") -> Optional[int]
     return min(max(start_episode - 1, 0), total_episode) + priority_completed
 
 
-class SubscriptionExecutionStatus(BaseModel):
+class SubscriptionExecutionStatus(BaseModel):  # type: ignore[misc]
     """订阅列表可见的当前业务执行状态。"""
 
     state: str
@@ -63,7 +63,7 @@ class SubscriptionExecutionStatus(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class SubscriptionBatchStatus(BaseModel):
+class SubscriptionBatchStatus(BaseModel):  # type: ignore[misc]
     """订阅搜索批次的用户可见进度和操作能力。"""
 
     batch_id: str

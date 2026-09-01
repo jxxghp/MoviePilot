@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional, Protocol
 
-from app.application.site.search_observation import SiteSearchObservation
+from app.application.site.observation import SiteSearchObservation
 from app.runtime.stop import StopState
 
 

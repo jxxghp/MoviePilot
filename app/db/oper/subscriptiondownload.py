@@ -1,7 +1,7 @@
 """订阅下载提交账本的事务内状态转换。"""
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, cast
 from uuid import uuid4
 
 from sqlalchemy import and_, or_, select, update
@@ -106,11 +106,11 @@ class SubscriptionDownloadOper(DbOper):
         """按稳定幂等键读取提交记录。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅下载提交查询需要调用方提供同步 Session")
-        return self._db.execute(
+        return cast(Optional[SubscriptionDownloadSubmission], self._db.execute(
             select(SubscriptionDownloadSubmission).where(
                 SubscriptionDownloadSubmission.idempotency_key == idempotency_key
             )
-        ).scalars().first()
+        ).scalars().first())
 
     def mark_accepted(
         self,

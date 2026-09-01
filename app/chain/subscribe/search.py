@@ -36,8 +36,8 @@ from app.schemas.types import (
 )
 
 
-class SubscribeSearchOwner(_SubscribeOwnerBase):
-    """订阅主动搜索编排，作为 SubscribeChain 的单一职责实现 owner。"""
+class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
+    """订阅主动搜索入口与持久队列消费 owner。"""
 
     def _subscription_query(self) -> SubscriptionQueryService:
         """构造绑定订阅 Oper 的查询应用服务。"""
@@ -480,6 +480,10 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
             self, "subscription_search_repository", None
         )
         return queue.get_batch(batch_id) if queue else None
+
+
+class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
+    """订阅搜索加载、单项处理与结果通知 owner。"""
 
     def _load_search_subscriptions(
         self,

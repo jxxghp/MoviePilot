@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from app.application.site.search_observation import report_site_search_outcome
+from app.application.site.observation import report_site_search_outcome
 from app.application.subscription.sitebudget import SiteBudgetClaim, SubscriptionSiteBudget
 from app.chain.search.facade import SearchChain
 from app.chain.search.provider import SearchProviderOwner

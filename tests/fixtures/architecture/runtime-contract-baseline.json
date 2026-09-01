@@ -1669,7 +1669,7 @@
       "ChainEventType.ResourceDownload": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "aac2e9ac03b43fd89c42f3efba186365152568edc05881f24204a88fbd74bdbf"
+          "26b919353eed404b502c7fdf899981f372b9a25ca75a90ba205f61c5ff90c41a"
         ]
       },
       "ChainEventType.ResourceSelection": {
@@ -2237,10 +2237,10 @@
         "events": [
           "ChainEventType.ResourceDownload"
         ],
-        "fingerprint": "aac2e9ac03b43fd89c42f3efba186365152568edc05881f24204a88fbd74bdbf",
+        "fingerprint": "26b919353eed404b502c7fdf899981f372b9a25ca75a90ba205f61c5ff90c41a",
         "invalid": false,
         "method": "send_event",
-        "qualname": "DownloadSubmissionOwner._apply_resource_download_event",
+        "qualname": "_DownloadResourceOwner._apply_resource_download_event",
         "receiver_kind": "canonical_singleton"
       },
       {

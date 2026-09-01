@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, Iterator, List, Optional
 
 from app.application.configuration import get_configured_system_config
-from app.application.site.search_observation import (
+from app.application.site.observation import (
     capture_site_search_observation,
     report_site_search_outcome,
 )
@@ -107,8 +107,8 @@ class ProviderBatch:
     continued: bool
 
 
-class SearchProviderOwner(_SearchOwnerBase):
-    """站点与插件资源 provider fan-out owner。"""
+class _SearchProviderSyncOwner(_SearchOwnerBase):
+    """同步站点 provider 选择、预算与 fan-out owner。"""
 
     @staticmethod
     def _selected_site_ids(sites: Optional[List[int]]) -> List[int]:
@@ -403,6 +403,10 @@ class SearchProviderOwner(_SearchOwnerBase):
             return results
         finally:
             progress.end()
+
+
+class SearchProviderOwner(_SearchProviderSyncOwner):
+    """异步站点与插件资源 provider fan-out owner。"""
 
     async def _iter_provider_batches(
         self,

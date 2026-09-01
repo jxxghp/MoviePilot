@@ -25,7 +25,6 @@ from app.api.dependencies.subscription import (
     get_subscription_execution_status_service,
     get_subscription_mutation_service,
     get_subscription_query_service,
-    get_subscription_search_repository,
 )
 from app.api.principal import ApiPrincipal
 from app.api.response import (
@@ -46,7 +45,6 @@ from app.application.subscription.delete import (
     DeleteSubscribeCommand,
     SubscribeDeletionActor,
 )
-from app.application.subscription.execution import SubscriptionSearchRepository
 from app.application.subscription.identity import (
     DeleteSubscriptionsByIdentityCommand,
 )
@@ -72,7 +70,6 @@ from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
 from app.schemas.subscribe import SubscribeDeletionResult as _SchemaSubscribeDeletionResult
 from app.schemas.subscribe import SubscribeShare as _SchemaSubscribeShare
 from app.schemas.subscribe import SubscribeShareStatistics as _SchemaSubscribeShareStatistics
-from app.schemas.subscribe import SubscriptionBatchStatus as _SchemaSubscriptionBatchStatus
 from app.schemas.subscribe import SubscriptionExecutionStatus as _SchemaSubscriptionExecutionStatus
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import (
@@ -103,17 +100,6 @@ async def _attach_execution_status(
         if subscribe.id is not None and (status := statuses.get(subscribe.id)) is not None:
             subscribe.execution_status = _SchemaSubscriptionExecutionStatus.model_validate(status)
     return subscribes
-
-
-async def _accessible_subscription_ids(
-    query: SubscriptionQueryService,
-    current_user: ApiPrincipal,
-) -> Optional[set[int]]:
-    """返回普通用户可访问订阅 ID；超级用户以 None 表示不限制。"""
-    if current_user.is_superuser:
-        return None
-    subscribes = await query.list_public(current_user.name)
-    return {item.id for item in subscribes if item.id is not None}
 
 
 def start_subscribe_add(
@@ -500,83 +486,6 @@ async def search_subscribe(
     if not found:
         return _SchemaResponse(success=False, message="订阅不存在")
     return _SchemaResponse(success=True)
-
-
-@router.get(
-    "/execution/batches",
-    summary="查询订阅搜索批次状态",
-    response_model=List[_SchemaSubscriptionBatchStatus],
-)
-async def list_subscription_execution_batches(
-    limit: int = 10,
-    status_service: SubscriptionExecutionStatusService = Depends(
-        get_subscription_execution_status_service
-    ),
-    query: SubscriptionQueryService = Depends(get_subscription_query_service),
-    current_user: ApiPrincipal = Depends(get_current_active_user_async),
-) -> Any:
-    """返回当前用户完整可见的最近搜索批次。"""
-    accessible_ids = await _accessible_subscription_ids(query, current_user)
-    batches = await status_service.list_batches(
-        accessible_subscription_ids=accessible_ids,
-        limit=limit,
-    )
-    return [_SchemaSubscriptionBatchStatus.model_validate(batch) for batch in batches]
-
-
-@router.get(
-    "/execution/batches/{batch_id}",
-    summary="查询订阅搜索批次",
-    response_model=_SchemaSubscriptionBatchStatus,
-)
-async def get_subscription_execution_batch(
-    batch_id: str,
-    status_service: SubscriptionExecutionStatusService = Depends(
-        get_subscription_execution_status_service
-    ),
-    query: SubscriptionQueryService = Depends(get_subscription_query_service),
-    current_user: ApiPrincipal = Depends(get_current_active_user_async),
-) -> Any:
-    """按稳定 ID 返回当前用户可访问的搜索批次。"""
-    accessible_ids = await _accessible_subscription_ids(query, current_user)
-    batch = await status_service.get_batch(
-        batch_id,
-        accessible_subscription_ids=accessible_ids,
-    )
-    if batch is None:
-        raise HTTPException(status_code=404, detail="订阅搜索批次不存在")
-    return _SchemaSubscriptionBatchStatus.model_validate(batch)
-
-
-@router.put(
-    "/execution/batches/{batch_id}/cancel",
-    summary="取消订阅搜索批次",
-    response_model=_SchemaResponse[None],
-)
-async def cancel_subscription_execution_batch(
-    batch_id: str,
-    status_service: SubscriptionExecutionStatusService = Depends(
-        get_subscription_execution_status_service
-    ),
-    query: SubscriptionQueryService = Depends(get_subscription_query_service),
-    search_repository: SubscriptionSearchRepository = Depends(
-        get_subscription_search_repository
-    ),
-    current_user: ApiPrincipal = Depends(get_current_active_user_async),
-) -> Any:
-    """在权限校验后请求取消尚未越过下载副作用边界的任务。"""
-    accessible_ids = await _accessible_subscription_ids(query, current_user)
-    batch = await status_service.get_batch(
-        batch_id,
-        accessible_subscription_ids=accessible_ids,
-    )
-    if batch is None:
-        return _SchemaResponse(success=False, message="订阅搜索批次不存在")
-    cancelled = await run_in_threadpool(search_repository.request_cancel, batch_id)
-    return _SchemaResponse(
-        success=bool(cancelled),
-        message="" if cancelled else "订阅搜索批次已结束或无法取消",
-    )
 
 
 @router.delete("/media/{media_id}", summary="删除订阅", response_model=_SchemaResponse[None])

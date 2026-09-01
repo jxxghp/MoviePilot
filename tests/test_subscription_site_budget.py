@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.application.site.search_observation import (
+from app.application.site.observation import (
     SiteSearchObservation,
     report_site_search_outcome,
 )

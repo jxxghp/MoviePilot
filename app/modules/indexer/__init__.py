@@ -4,8 +4,8 @@ from types import MappingProxyType
 from typing import Any, Callable, List, Mapping, Optional, Tuple, Union, cast
 
 from app.application.site.health import get_configured_site_health_service
+from app.application.site.observation import report_site_search_outcome
 from app.application.site.query import get_configured_site_query_service
-from app.application.site.search_observation import report_site_search_outcome
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.domain import site as site_rules
 from app.domain.context import Context, SubtitleInfo, TorrentInfo

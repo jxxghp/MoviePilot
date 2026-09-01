@@ -21,8 +21,8 @@ from app.schemas.types import (
 )
 
 
-class SubscribePolicyOwner(_SubscribeOwnerBase):
-    """订阅优先级、剧集范围与来源编码策略，作为 SubscribeChain 的单一职责实现 owner。"""
+class _SubscribePriorityPolicyOwner(_SubscribeOwnerBase):
+    """订阅优先级、剧集范围与来源编码策略 owner。"""
 
     @staticmethod
     def _SubscribeChain__normalize_episode_priority(
@@ -178,6 +178,10 @@ class SubscribePolicyOwner(_SubscribeOwnerBase):
             episode_priority=episode_priority,
         )
         return result
+
+
+class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
+    """订阅提交前复核与下载治理策略 owner。"""
 
     @staticmethod
     def _SubscribeChain__get_downloaded_episodes(downloads: Optional[List[Context]]) -> List[int]:

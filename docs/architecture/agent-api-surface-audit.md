@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **375**
+- OpenAPI HTTP operations: **378**
 - Stable `moviepilot_api` operations: **203**
 - Exact HTTP routes used by the gateway: **201**
 - OpenAPI routes matched directly by the gateway: **200**
@@ -23,7 +23,7 @@
 | `provider-skill` | 11 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 5 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 8 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -291,6 +291,9 @@
 | `POST` | `/api/v1/subscribe/` | subscribe | `gateway` | subscription.add | 新增订阅 |
 | `PUT` | `/api/v1/subscribe/` | subscribe | `gateway` | subscription.update | 更新订阅 |
 | `GET` | `/api/v1/subscribe/check` | subscribe | `gateway` | subscription.metadata.refresh | 刷新订阅 TMDB 信息 |
+| `GET` | `/api/v1/subscribe/execution/batches` | subscribe | `ui_presentation` | host-ui | 查询订阅搜索批次状态 |
+| `GET` | `/api/v1/subscribe/execution/batches/{batch_id}` | subscribe | `ui_presentation` | host-ui | 查询订阅搜索批次 |
+| `PUT` | `/api/v1/subscribe/execution/batches/{batch_id}/cancel` | subscribe | `ui_presentation` | host-ui | 取消订阅搜索批次 |
 | `GET` | `/api/v1/subscribe/files/{subscribe_id}` | subscribe | `gateway` | subscription.files | 订阅相关文件信息 |
 | `DELETE` | `/api/v1/subscribe/follow` | subscribe | `gateway` | subscription.follow.delete | 取消Follow订阅分享人 |
 | `GET` | `/api/v1/subscribe/follow` | subscribe | `gateway` | subscription.follow.list | 查询已Follow的订阅分享人 |

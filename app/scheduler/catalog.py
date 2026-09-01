@@ -23,6 +23,7 @@ from app.application.scheduling import (  # noqa: E402
 )
 from app.runtime.scheduling import TimerUtils
 from app.scheduler.contract import _SchedulerOwnerBase
+from app.scheduler.services import SchedulerServices
 from app.schemas.system import MediaServerConf as _SchemaMediaServerConf
 
 
@@ -33,6 +34,29 @@ class _MediaServerSchedule(TypedDict):
     name: str
     server: str
     interval: int
+
+
+def _subscription_search_job_specs(services: SchedulerServices) -> tuple[JobSpec, ...]:
+    """构造订阅搜索、新增搜索与持久队列恢复任务目录。"""
+    return (
+        JobSpec(
+            "subscribe_search", "订阅搜索补全", services.search_subscribe, "subscription", kwargs={"state": "R"}
+        ),
+        JobSpec(
+            "new_subscribe_search",
+            "新增订阅搜索",
+            services.search_subscribe,
+            "subscription",
+            kwargs={"state": "N"},
+        ),
+        JobSpec(
+            "subscribe_search_queue",
+            "恢复订阅搜索队列",
+            services.resume_subscribe_search,
+            "subscription",
+            recovery=JobRecoveryPolicy.DURABLE_QUEUE,
+        ),
+    )
 
 
 class SchedulerCatalogOwner(_SchedulerOwnerBase):
@@ -123,6 +147,18 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             replace_existing=True,
         )
 
+    def _register_subscription_search_queue_job(self, config: SchedulerRuntimeConfig) -> None:
+        """注册短周期持久搜索队列恢复任务。"""
+        self._scheduler.add_job(
+            self.start,
+            "interval",
+            id="subscribe_search_queue",
+            name="恢复订阅搜索队列",
+            minutes=1,
+            next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=10),
+            kwargs={"job_id": "subscribe_search_queue"},
+        )
+
     def _initialize_catalog(self, config: SchedulerRuntimeConfig) -> None:
         """构建完整任务目录并投影到尚未启动的 APScheduler。"""
         services = self._scheduler_services()
@@ -132,23 +168,7 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
                 JobSpec("cookiecloud", "同步CookieCloud站点", services.sync_cookies, "site"),
                 JobSpec("mediaserver_sync", "同步媒体服务器", services.sync_mediaserver, "mediaserver"),
                 JobSpec("subscribe_tmdb", "订阅元数据更新", services.check_subscribe, "subscription"),
-                JobSpec(
-                    "subscribe_search", "订阅搜索补全", services.search_subscribe, "subscription", kwargs={"state": "R"}
-                ),
-                JobSpec(
-                    "new_subscribe_search",
-                    "新增订阅搜索",
-                    services.search_subscribe,
-                    "subscription",
-                    kwargs={"state": "N"},
-                ),
-                JobSpec(
-                    "subscribe_search_queue",
-                    "恢复订阅搜索队列",
-                    services.resume_subscribe_search,
-                    "subscription",
-                    recovery=JobRecoveryPolicy.DURABLE_QUEUE,
-                ),
+                *_subscription_search_job_specs(services),
                 JobSpec("subscribe_refresh", "订阅刷新", services.refresh_subscribe, "subscription"),
                 JobSpec("subscribe_follow", "关注的订阅分享", services.follow_subscribe, "subscription"),
                 JobSpec(
@@ -253,15 +273,7 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             )
 
         # 新增订阅时搜索（5分钟检查一次）
-        self._scheduler.add_job(
-            self.start,
-            "interval",
-            id="subscribe_search_queue",
-            name="恢复订阅搜索队列",
-            minutes=1,
-            next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=10),
-            kwargs={"job_id": "subscribe_search_queue"},
-        )
+        self._register_subscription_search_queue_job(config)
 
         self._scheduler.add_job(
             self.start,

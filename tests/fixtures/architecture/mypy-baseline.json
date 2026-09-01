@@ -994,7 +994,7 @@
     "var-annotated": 2
   },
   "app/chain/subscribe/search.py": {
-    "assignment": 3
+    "assignment": 2
   },
   "app/chain/system.py": {
     "attr-defined": 1,
