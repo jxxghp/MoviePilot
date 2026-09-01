@@ -12,7 +12,6 @@ from app.application.subscription.execution import (
 )
 from app.application.subscription.sitebudget import SiteBudgetClaim
 from app.db.models.subscriptionsearch import (
-    SubscriptionSiteBudget,
     SubscriptionSearchBatch,
     SubscriptionSearchTask,
 )

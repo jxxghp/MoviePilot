@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from sqlalchemy import create_engine
@@ -116,3 +117,30 @@ def test_fallback_queue_continues_after_one_subscription_failure(tmp_path, monke
     assert batch.finished_count == 1
     assert batch.failed_count == 1
     assert batch.last_error == "provider timeout"
+
+
+def test_late_cancel_completes_when_download_submission_already_started(tmp_path, monkeypatch):
+    """取消晚于下载器副作用边界时按真实结果完成，不能伪装成未执行取消。"""
+    subscribe = _subscribe(5)
+    chain = _chain(tmp_path, [subscribe])
+    monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
+    chain.subscription_download_repository = SimpleNamespace(
+        has_started_for_task=lambda _task_id: False,
+    )
+    queue = chain.subscription_search_repository
+    cancel_checks = iter((False, True))
+    monkeypatch.setattr(queue, "is_cancel_requested", lambda _task_id: next(cancel_checks))
+    def process(item, _searchchain):
+        """模拟当前任务复用或完成下载后才收到取消。"""
+        chain._mark_subscription_download_started()
+        return item
+
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(state="R")
+
+    batch = chain.get_search_batch(batch_id)
+    assert batch.state == "completed"
+    assert batch.finished_count == 1
+    assert batch.cancelled_count == 0

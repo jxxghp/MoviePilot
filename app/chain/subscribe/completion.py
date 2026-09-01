@@ -189,7 +189,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
             mediainfo=mediainfo,
             mediakey=mediakey,
         )
-        return completed
+        return bool(completed)
 
     def _SubscribeChain__update_subscribe_note(
         self,

@@ -48,8 +48,8 @@ from app.startup.composition.context import (
 )
 
 if TYPE_CHECKING:
-    from app.application.subscription.execution import SubscriptionSearchRepository
     from app.application.messaging.message import MessageHelper, MessageQueueManager
+    from app.application.subscription.execution import SubscriptionSearchRepository
     from app.startup.composition.agent import AgentComposition
     from app.startup.composition.configuration import ConfigurationComposition
     from app.startup.composition.database import DatabaseComposition

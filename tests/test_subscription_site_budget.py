@@ -15,10 +15,10 @@ from app.application.subscription.sitebudget import (
     SubscriptionSearchCancelled,
     SubscriptionSiteBudget,
 )
+from app.chain.search.facade import SearchChain
 from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
 from app.db.base import Base
 from app.db.models.subscriptionsearch import SubscriptionSiteBudget as SiteBudgetRecord
-from app.chain.search.facade import SearchChain
 from app.modules.indexer import _classify_search_failure
 from app.runtime.stop import ProcessStopState
 

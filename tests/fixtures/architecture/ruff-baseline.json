@@ -96,9 +96,6 @@
   "app/db/diagnostics.py": {
     "I001": 1
   },
-  "app/db/models/__init__.py": {
-    "I001": 1
-  },
   "app/db/models/agentchat.py": {
     "I001": 1
   },

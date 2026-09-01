@@ -3,6 +3,7 @@
 import random
 import time
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from typing import Any, Callable, Optional, cast
 from uuid import uuid4
 
@@ -13,8 +14,8 @@ from app.application.subscription.contract import (
     build_subscribe_meta,
     subscribe_media_key,
 )
-from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.execution import SearchBatchSnapshot, SubscriptionSearchRepository
+from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.sitebudget import (
     SubscriptionSearchCancelled,
     SubscriptionSiteBudget,
@@ -118,9 +119,8 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
         :param sids: 订阅ID集合，有值时按给定顺序处理
         :return: 更新订阅状态为R或删除订阅
         """
-        queue = cast(
-            Optional[SubscriptionSearchRepository],
-            getattr(self, "subscription_search_repository", None),
+        queue: Optional[SubscriptionSearchRepository] = getattr(
+            self, "subscription_search_repository", None
         )
         if queue is not None:
             return self._execute_queued_search(
@@ -246,7 +246,7 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                     "coalesced": enqueued.coalesced_count,
                 },
             )
-        return enqueued.batch.batch_id
+        return str(enqueued.batch.batch_id)
 
     def _drain_search_queue(
         self,
@@ -273,6 +273,8 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                 if not task.lease_token:
                     logger.error(f"订阅搜索任务 {task.task_id} 缺少租约令牌，跳过执行")
                     continue
+                task_id = str(task.task_id)
+                cancelled = partial(queue.is_cancel_requested, task_id)
                 if queue.is_cancel_requested(task.task_id):
                     queue.release_task(
                         task_id=task.task_id,
@@ -301,19 +303,31 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                 searchchain.configure_subscription_site_budget(
                     SubscriptionSiteBudget(
                         repository=queue,
-                        owner=f"{owner}:{task.task_id}",
-                        cancelled=lambda task_id=task.task_id: queue.is_cancel_requested(task_id),
+                        owner=f"{owner}:{task_id}",
+                        cancelled=cancelled,
                         stop_state=getattr(self, "stop_state", runtime_stop_state),
                     )
                 )
+                self._subscription_download_task_id = task_id
+                self._subscription_download_cancelled = cancelled
+                self._subscription_download_crossed_boundary = False
+                self._subscription_download_mark_started = self._mark_subscription_download_started
                 try:
                     current = self._process_search_subscription(subscribe, searchchain)
                     if queue.is_cancel_requested(task.task_id):
-                        queue.release_task(
-                            task_id=task.task_id,
-                            lease_token=task.lease_token,
-                            cancelled=True,
-                        )
+                        if self._subscription_download_started_for_task(task.task_id):
+                            queue.finish_task(
+                                task_id=task.task_id,
+                                lease_token=task.lease_token,
+                                state="completed",
+                                error="取消请求晚于下载提交边界，已按实际结果完成",
+                            )
+                        else:
+                            queue.release_task(
+                                task_id=task.task_id,
+                                lease_token=task.lease_token,
+                                cancelled=True,
+                            )
                     else:
                         queue.finish_task(
                             task_id=task.task_id,
@@ -336,6 +350,10 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                         error=str(err),
                     )
                 finally:
+                    delattr(self, "_subscription_download_task_id")
+                    delattr(self, "_subscription_download_cancelled")
+                    delattr(self, "_subscription_download_mark_started")
+                    self._subscription_download_crossed_boundary = False
                     searchchain.configure_subscription_site_budget(None)
                     if current and current.state == "N":
                         try:
@@ -355,15 +373,25 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                 queue_lock.release()
         return processed
 
+    def _subscription_download_started_for_task(self, task_id: str) -> bool:
+        """判断取消是否已晚于下载器副作用边界。"""
+        if bool(getattr(self, "_subscription_download_crossed_boundary", False)):
+            return True
+        repository = getattr(self, "subscription_download_repository", None)
+        return bool(repository and repository.has_started_for_task(task_id))
+
+    def _mark_subscription_download_started(self) -> None:
+        """记录当前搜索任务已提交或复用了真实下载结果。"""
+        self._subscription_download_crossed_boundary = True
+
     def resume_search_queue(
         self,
         progress_callback: Optional[Callable[..., None]] = None,
         limit: int = 50,
     ) -> None:
         """短周期恢复排队或租约过期任务，不创建新的 24 小时兜底批次。"""
-        queue = cast(
-            Optional[SubscriptionSearchRepository],
-            getattr(self, "subscription_search_repository", None),
+        queue: Optional[SubscriptionSearchRepository] = getattr(
+            self, "subscription_search_repository", None
         )
         if queue is None:
             return
@@ -413,17 +441,15 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
 
     def cancel_search_batch(self, batch_id: str) -> bool:
         """请求取消持久搜索批次；未注入队列时返回失败。"""
-        queue = cast(
-            Optional[SubscriptionSearchRepository],
-            getattr(self, "subscription_search_repository", None),
+        queue: Optional[SubscriptionSearchRepository] = getattr(
+            self, "subscription_search_repository", None
         )
         return bool(queue and queue.request_cancel(batch_id))
 
     def get_search_batch(self, batch_id: str) -> Optional[SearchBatchSnapshot]:
         """返回持久搜索批次状态；未注入队列时返回空。"""
-        queue = cast(
-            Optional[SubscriptionSearchRepository],
-            getattr(self, "subscription_search_repository", None),
+        queue: Optional[SubscriptionSearchRepository] = getattr(
+            self, "subscription_search_repository", None
         )
         return queue.get_batch(batch_id) if queue else None
 

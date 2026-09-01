@@ -14,7 +14,6 @@ from app.domain.metainfo import MetaInfo
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType
 
-
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "subscription_governance_match_replay.json"
 
 

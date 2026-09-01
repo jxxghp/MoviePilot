@@ -12,6 +12,7 @@ from app.chain.base import ChainBase
 from app.chain.media import MediaChain
 from app.domain import site as site_rules
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
+from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
@@ -496,6 +497,8 @@ class TorrentsChain(ChainBase):
     def _build_refresh_context(self, torrent: TorrentInfo, stype: str) -> Context:
         """识别单个种子并构造缓存上下文。"""
         logger.info(f'处理资源：{torrent.title} ...')
+        meta: MetaBase
+        mediainfo: MediaInfo | MusicInfo
         if torrent.category == MediaType.MUSIC.value:
             meta = MetaMusic.parse_query(torrent.title)
             mediainfo = MusicInfo(
@@ -508,15 +511,23 @@ class TorrentsChain(ChainBase):
             candidate_recognized = False
             match_source = "unknown"
         else:
-            meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
-            if torrent.title != meta.org_string:
-                logger.info(f'种子名称应用识别词后发生改变：{torrent.title} => {meta.org_string}')
-            if meta.type != MediaType.TV and torrent.category == MediaType.TV.value:
-                meta.type = MediaType.TV
-            mediainfo = MediaChain().recognize_by_meta(meta, obtain_images=False) or MediaInfo()
-            mediainfo.clear()
-            candidate_recognized = bool(mediainfo and all(resolve_media_identity(media=mediainfo)))
-            match_source = self._get_media_id_match_source(mediainfo)
+            video_meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+            if torrent.title != video_meta.org_string:
+                logger.info(
+                    f'种子名称应用识别词后发生改变：{torrent.title} => {video_meta.org_string}'
+                )
+            if video_meta.type != MediaType.TV and torrent.category == MediaType.TV.value:
+                video_meta.type = MediaType.TV
+            video_mediainfo = (
+                MediaChain().recognize_by_meta(video_meta, obtain_images=False) or MediaInfo()
+            )
+            video_mediainfo.clear()
+            candidate_recognized = bool(
+                video_mediainfo and all(resolve_media_identity(media=video_mediainfo))
+            )
+            match_source = self._get_media_id_match_source(video_mediainfo)
+            meta = video_meta
+            mediainfo = video_mediainfo
         context = Context(
             meta_info=meta,
             media_info=mediainfo,

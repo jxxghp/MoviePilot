@@ -3,15 +3,14 @@
 import copy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from uuid import uuid4
 
 from app.application.subscription.contract import SubscriptionSnapshot
 from app.domain.context import Context, MediaInfo
 from app.foundation import text as text_tools
 from app.schemas.media import resolve_media_identity
-from app.schemas.types import MediaType
-
+from app.schemas.types import MediaSource, MediaType
 
 CandidateGroups = Dict[str, List[Context]]
 
@@ -196,11 +195,11 @@ class CandidateIndex:
         context.candidate_recognized = False
         context.media_info_is_target = True
         context.media_info = MediaInfo(
-            type=subscribe.type,
+            type=cast(MediaType, subscribe.type),
             title=subscribe.name,
-            media_source=subscribe.media_source,
-            media_id=subscribe.media_id,
-            season=subscribe.season,
+            media_source=cast(MediaSource, subscribe.media_source),
+            media_id=cast(str, subscribe.media_id),
+            season=cast(int, subscribe.season),
         )
 
     @classmethod
@@ -236,7 +235,7 @@ class CandidateIndex:
         return media_season is None or target_season == media_season
 
     @classmethod
-    def meta_seasons(cls, meta_info) -> set[int]:
+    def meta_seasons(cls, meta_info: Any) -> set[int]:
         """提取标题解析出的显式季范围。"""
         meta_fields = vars(meta_info) if meta_info else {}
         if "season_list" in meta_fields:
@@ -271,7 +270,7 @@ class CandidateIndex:
         return {identity for identity in identities if identity}
 
     @staticmethod
-    def media_identity(media) -> Optional[tuple[str, str]]:
+    def media_identity(media: Any) -> Optional[tuple[str, str]]:
         """把动态媒体对象的身份归一为可索引键。"""
         source, media_id = resolve_media_identity(media=media)
         if not source or not media_id:
@@ -279,7 +278,7 @@ class CandidateIndex:
         return str(source), media_id
 
     @staticmethod
-    def normalize_int(value) -> Optional[int]:
+    def normalize_int(value: Any) -> Optional[int]:
         """将季号等动态字段转为整数。"""
         if value is None:
             return None
@@ -289,15 +288,15 @@ class CandidateIndex:
             return None
 
     @staticmethod
-    def normalize_media_type(value) -> Optional[str]:
+    def normalize_media_type(value: Any) -> Optional[str]:
         """统一媒体类型枚举与字符串形态。"""
         if isinstance(value, MediaType):
             value = value.value
         if value == MediaType.UNKNOWN.value:
             return None
-        return value
+        return str(value) if value is not None else None
 
     @staticmethod
-    def normalize_title(value) -> str:
+    def normalize_title(value: Any) -> str:
         """归一标题用于低置信标题匹配。"""
         return (text_tools.normalize_upper(value or "") or "").strip()

@@ -9,6 +9,10 @@ from urllib.parse import urlencode, urljoin, urlparse
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import validate_download_save_path
+from app.application.download.admission import (
+    DownloadReconciliationRequired,
+    SubscriptionDownloadGovernance,
+)
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.download.ports import (
@@ -270,7 +274,9 @@ class DownloadSubmissionOwner(_DownloadOwnerBase):
                         username: Optional[str] = None,
                         label: Optional[str] = None,
                         return_detail: bool = False,
-                        custom_words: Optional[str] = None) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
+                        custom_words: Optional[str] = None,
+                        governance: Optional[SubscriptionDownloadGovernance] = None,
+                        ) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
         """
         下载单个资源并发送结果通知。
 
@@ -290,6 +296,7 @@ class DownloadSubmissionOwner(_DownloadOwnerBase):
             label=label,
             return_detail=return_detail,
             custom_words=custom_words,
+            governance=governance,
         )
 
     def _execute_download_single(self, context: Context,
@@ -304,7 +311,9 @@ class DownloadSubmissionOwner(_DownloadOwnerBase):
                         username: Optional[str] = None,
                         label: Optional[str] = None,
                         return_detail: bool = False,
-                        custom_words: Optional[str] = None) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
+                        custom_words: Optional[str] = None,
+                        governance: Optional[SubscriptionDownloadGovernance] = None,
+                        ) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
         """
         下载及发送通知
         :param context: 资源上下文
@@ -320,6 +329,7 @@ class DownloadSubmissionOwner(_DownloadOwnerBase):
         :param label: 自定义标签
         :param return_detail: 是否返回详细结果；False 时返回下载任务 hash 或 None，True 时返回 (hash, error_msg)
         :param custom_words: 下载来源（如订阅）的完整自定义识别词文本，随下载记录存档，供整理时原样复现识别
+        :param governance: 订阅级提交幂等、入口任务与取消检查；非订阅调用保持为空
         :return: return_detail=False 时返回下载任务 hash 或 None；return_detail=True 时返回 (hash, error_msg)
         """
         _torrent = context.torrent_info
@@ -408,41 +418,138 @@ class DownloadSubmissionOwner(_DownloadOwnerBase):
         file_uri = FileURI(storage=storage, path=download_dir.as_posix())
         download_dir = Path(file_uri.uri)
 
+        if self._subscription_download_cancelled(governance):
+            cancel_error = "订阅下载在提交前已取消"
+            return (None, cancel_error) if return_detail else None
+        admission, duplicate_hash = self._claim_subscription_download(
+            context=context,
+            episodes=episodes,
+            governance=governance,
+        )
+        if duplicate_hash:
+            if governance and governance.mark_started:
+                governance.mark_started()
+            logger.info(f"{_torrent.title} 已由重叠订阅入口提交，复用任务 {duplicate_hash}")
+            return (duplicate_hash, "下载任务已由重叠入口提交") if return_detail else duplicate_hash
+        if admission is not None and not admission.acquired:
+            wait_error = (
+                f"订阅下载提交当前为 {admission.snapshot.state}，"
+                f"最早可重试：{admission.snapshot.available_at or '待下一轮'}"
+            )
+            return (None, wait_error) if return_detail else None
+        attempt_token = admission.snapshot.attempt_token if admission is not None else None
+        admission_key = admission.snapshot.idempotency_key if admission is not None else None
+        if admission is not None and self._subscription_download_cancelled(governance):
+            self._subscription_download_repository().mark_cancelled(
+                idempotency_key=admission.snapshot.idempotency_key,
+                attempt_token=admission.snapshot.attempt_token or "",
+            )
+            cancel_error = "订阅下载在下载器调用前已取消"
+            return (None, cancel_error) if return_detail else None
+
         # 添加下载
-        result: Optional[Tuple[Optional[str], Optional[str], Optional[str], str]] = self.download(content=torrent_content,
-                                                cookie=_torrent.site_cookie,
-                                                episodes=cast(Set[int], episodes),
-                                                download_dir=download_dir,
-                                                category=_media.category,
-                                                label=label,
-                                                downloader=downloader or _site_downloader)
+        if governance and governance.mark_started:
+            governance.mark_started()
+        try:
+            result: Optional[Tuple[Optional[str], Optional[str], Optional[str], str]] = self.download(
+                content=torrent_content,
+                cookie=_torrent.site_cookie,
+                episodes=cast(Set[int], episodes),
+                download_dir=download_dir,
+                category=_media.category,
+                label=label,
+                downloader=downloader or _site_downloader,
+            )
+        except Exception as err:
+            if admission_key and attempt_token:
+                self._subscription_download_repository().mark_reconcile_required(
+                    idempotency_key=admission_key,
+                    attempt_token=attempt_token,
+                    error=f"下载器调用异常：{str(err)}",
+                )
+                raise DownloadReconciliationRequired(
+                    f"{_torrent.title} 下载器结果不确定，已冻结自动重试"
+                ) from err
+            raise
         if result:
             _downloader, _hash, _layout, error_msg = result
         else:
             _downloader, _hash, _layout, error_msg = None, None, None, "未找到下载器"
 
         if _hash:
-            self._settle_download_success(
-                context=context,
-                media=_media,
-                meta=_meta,
-                torrent=_torrent,
-                folder_name=_folder_name,
-                file_list=_file_list,
-                download_dir=download_dir,
-                layout=_layout,
-                downloader=_downloader,
-                download_hash=_hash,
-                download_episodes=download_episodes,
-                episodes=episodes,
-                channel=channel,
-                source=source,
-                userid=userid,
-                username=username,
-                torrent_content=torrent_content,
-                custom_words=custom_words,
-            )
+            if admission_key and attempt_token:
+                accepted = self._subscription_download_repository().mark_accepted(
+                    idempotency_key=admission_key,
+                    attempt_token=attempt_token,
+                    downloader=_downloader,
+                    download_hash=_hash,
+                )
+                if not accepted:
+                    raise DownloadReconciliationRequired(
+                        f"{_torrent.title} 已被下载器接受，但本地接受状态写入失败"
+                    )
+            try:
+                self._settle_download_success(
+                    context=context,
+                    media=_media,
+                    meta=_meta,
+                    torrent=_torrent,
+                    folder_name=_folder_name,
+                    file_list=_file_list,
+                    download_dir=download_dir,
+                    layout=_layout,
+                    downloader=_downloader,
+                    download_hash=_hash,
+                    download_episodes=download_episodes,
+                    episodes=episodes,
+                    channel=channel,
+                    source=source,
+                    userid=userid,
+                    username=username,
+                    torrent_content=torrent_content,
+                    custom_words=custom_words,
+                )
+            except Exception as err:
+                if admission_key and attempt_token:
+                    self._subscription_download_repository().mark_reconcile_required(
+                        idempotency_key=admission_key,
+                        attempt_token=attempt_token,
+                        error=f"下载器已接受但本地结算失败：{str(err)}",
+                        downloader=_downloader,
+                        download_hash=_hash,
+                    )
+                    raise DownloadReconciliationRequired(
+                        f"{_torrent.title} 已被下载器接受但本地结算失败，已转待对账"
+                    ) from err
+                raise
+            if admission_key and attempt_token:
+                succeeded = self._subscription_download_repository().mark_succeeded(
+                    idempotency_key=admission_key,
+                    attempt_token=attempt_token,
+                )
+                if not succeeded:
+                    self._subscription_download_repository().mark_reconcile_required(
+                        idempotency_key=admission_key,
+                        attempt_token=attempt_token,
+                        error="本地结算完成但幂等成功终态写入失败",
+                        downloader=_downloader,
+                        download_hash=_hash,
+                    )
+                    raise DownloadReconciliationRequired(
+                        f"{_torrent.title} 本地结算完成但提交终态未确认，已转待对账"
+                    )
         else:
+            if admission_key and attempt_token:
+                retry_at = self._subscription_download_retry_at(
+                    error_msg,
+                    self._download_failure_ttl(error_msg),
+                )
+                self._subscription_download_repository().mark_retryable(
+                    idempotency_key=admission_key,
+                    attempt_token=attempt_token,
+                    available_at=retry_at,
+                    error=error_msg,
+                )
             # 下载失败
             logger.error(f"{_media.title_year} 添加下载任务失败："
                          f"{_torrent.title} - {_torrent.enclosure}，{error_msg}")

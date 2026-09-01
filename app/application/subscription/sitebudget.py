@@ -148,7 +148,7 @@ class SubscriptionSiteBudget:
             "login_invalid": (900.0, 21600.0),
             "timeout": (300.0, 7200.0),
         }.get(outcome, (180.0, 3600.0))
-        return min(base * (2**exponent), ceiling)
+        return float(min(base * (2**exponent), ceiling))
 
     def _raise_if_cancelled(self) -> None:
         """在不持有业务锁的等待边界传播取消或停机。"""

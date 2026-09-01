@@ -1,8 +1,9 @@
 """订阅优先级、剧集范围与来源编码策略"""
 
 import json
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
+from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.subscription import priority as _priority
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
@@ -258,6 +259,14 @@ class SubscribePolicyOwner(_SubscribeOwnerBase):
         )
         return result
 
+    @staticmethod
+    def _SubscribeChain__load_current_subscription(
+        loader: Callable[[int], Optional[SubscriptionSnapshot]],
+        subscription_id: int,
+    ) -> Optional[SubscriptionSnapshot]:
+        """通过显式可调用边界读取提交前的最新订阅快照。"""
+        return loader(subscription_id)
+
     def _SubscribeChain__download_best_version_with_full_pack_first(
         self,
         contexts: List[Context],
@@ -272,6 +281,60 @@ class SubscribePolicyOwner(_SubscribeOwnerBase):
         """
         TV 分集洗版先尝试覆盖目标范围的全集资源，失败后回退到按集下载。
         """
+        governance: Optional[SubscriptionDownloadGovernance] = None
+        repository = getattr(self, "subscription_repository", None)
+        get_current = getattr(repository, "get", None)
+        if callable(get_current):
+            current_get = cast(
+                Callable[[int], Optional[SubscriptionSnapshot]],
+                get_current,
+            )
+            current = self._SubscribeChain__load_current_subscription(
+                current_get,
+                subscribe.id,
+            )
+            if current is None:
+                logger.info(f"订阅 {subscribe.id} 已删除，放弃本轮下载提交")
+                return [], no_exists
+            if current.state == "S":
+                logger.info(f"订阅 {current.name} 已暂停，放弃本轮下载提交")
+                return [], no_exists
+            if self._SubscribeChain__candidate_contract_changed(subscribe, current):
+                logger.info(f"订阅 {current.name} 的筛选或媒体身份已变化，放弃旧候选并等待下一轮")
+                return [], no_exists
+            if not contexts or not contexts[0].meta_info or not contexts[0].media_info:
+                return [], no_exists
+
+            exists, fresh_no_exists = self.check_and_handle_existing_media(
+                subscribe=current,
+                meta=contexts[0].meta_info,
+                mediainfo=contexts[0].media_info,
+                mediakey=mediakey,
+            )
+            if exists:
+                return [], fresh_no_exists
+            contexts = self._SubscribeChain__revalidate_download_contexts(current, contexts)
+            if not contexts:
+                return [], fresh_no_exists
+            subscribe = current
+            no_exists = fresh_no_exists
+            username = current.username
+            save_path = current.save_path
+            downloader = current.downloader
+            source = self.get_subscribe_source_keyword(current)
+            governance = SubscriptionDownloadGovernance(
+                subscription_id=current.id,
+                mode=self._SubscribeChain__download_governance_mode(current),
+                task_id=cast(Optional[str], getattr(self, "_subscription_download_task_id", None)),
+                cancelled=cast(
+                    Optional[Callable[[], bool]],
+                    getattr(self, "_subscription_download_cancelled", None),
+                ),
+                mark_started=cast(
+                    Optional[Callable[[], None]],
+                    getattr(self, "_subscription_download_mark_started", None),
+                ),
+            )
         full_pack_no_exists = self._SubscribeChain__build_full_pack_first_no_exists(
             subscribe=subscribe, mediakey=mediakey
         )
@@ -316,6 +379,7 @@ class SubscribePolicyOwner(_SubscribeOwnerBase):
                 downloader=downloader,
                 source=source,
                 custom_words=subscribe.custom_words,
+                governance=governance,
             )
             if downloads:
                 return downloads, lefts
@@ -330,9 +394,83 @@ class SubscribePolicyOwner(_SubscribeOwnerBase):
                 downloader=downloader,
                 source=source,
                 custom_words=subscribe.custom_words,
+                governance=governance,
             )
         )
         return result
+
+    @staticmethod
+    def _SubscribeChain__candidate_contract_changed(
+        prepared: SubscriptionSnapshot,
+        current: SubscriptionSnapshot,
+    ) -> bool:
+        """检测会让准备阶段候选失效的订阅身份和筛选字段变化。"""
+        fields = (
+            "type",
+            "media_source",
+            "media_id",
+            "music_type",
+            "season",
+            "episode_group",
+            "keyword",
+            "sites",
+            "include",
+            "exclude",
+            "quality",
+            "resolution",
+            "effect",
+            "audio_quality",
+            "audio_format",
+            "min_bitrate",
+            "min_bit_depth",
+            "min_sample_rate",
+            "filter_groups",
+            "custom_words",
+        )
+        return any(getattr(prepared, field) != getattr(current, field) for field in fields)
+
+    def _SubscribeChain__revalidate_download_contexts(
+        self,
+        subscribe: SubscriptionSnapshot,
+        contexts: List[Context],
+    ) -> List[Context]:
+        """按当前洗版模式和优先级重新过滤准备阶段候选。"""
+        if not subscribe.best_version:
+            return contexts
+        accepted: List[Context] = []
+        for context in contexts:
+            media = context.media_info
+            meta = context.meta_info
+            torrent = context.torrent_info
+            if not media or not meta or not torrent:
+                continue
+            if media.type == MediaType.TV:
+                if self._SubscribeChain__is_full_best_version_enabled(subscribe) \
+                        and not self._SubscribeChain__is_full_season_resource(meta, subscribe):
+                    continue
+                if not self._is_episode_range_covered(meta, subscribe):
+                    continue
+                if not self._SubscribeChain__prepare_best_version_tv_candidate(
+                    subscribe=subscribe,
+                    context=context,
+                    priority=torrent.pri_order,
+                ):
+                    continue
+            elif subscribe.current_priority and torrent.pri_order <= subscribe.current_priority:
+                continue
+            accepted.append(context)
+        return accepted
+
+    @staticmethod
+    def _SubscribeChain__download_governance_mode(subscribe: SubscriptionSnapshot) -> str:
+        """把订阅模式归一为稳定幂等键组成部分。"""
+        if not subscribe.best_version:
+            return "normal"
+        if subscribe.type == MediaType.TV.value and subscribe.best_version_full:
+            return "best_version_full"
+        if subscribe.type == MediaType.TV.value:
+            return "best_version_episode"
+        return "best_version"
 
     @classmethod
     def _is_episode_range_covered(cls, meta: MetaBase, subscribe: SubscriptionSnapshot) -> bool:

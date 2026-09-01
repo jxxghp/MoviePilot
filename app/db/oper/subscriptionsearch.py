@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.db.base import DbOper, execute_dml
 from app.db.models.subscriptionsearch import (
-    SubscriptionSiteBudget,
     SubscriptionSearchBatch,
     SubscriptionSearchTask,
+    SubscriptionSiteBudget,
 )
 
 
@@ -198,12 +198,13 @@ class SubscriptionSearchOper(DbOper):
             )
             self._db.flush()
             self._db.expire_all()
-            return self._db.execute(
+            claimed_task: Optional[SubscriptionSearchTask] = self._db.execute(
                 select(SubscriptionSearchTask).where(
                     SubscriptionSearchTask.id == candidate.id,
                     SubscriptionSearchTask.lease_token == lease_token,
                 )
             ).scalars().first()
+            return claimed_task
         return None
 
     def finish_task(
@@ -359,9 +360,10 @@ class SubscriptionSearchOper(DbOper):
         """按稳定批次 ID 读取聚合记录。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索批次查询需要调用方提供同步 Session")
-        return self._db.execute(
+        batch: Optional[SubscriptionSearchBatch] = self._db.execute(
             select(SubscriptionSearchBatch).where(SubscriptionSearchBatch.batch_id == batch_id)
         ).scalars().first()
+        return batch
 
     def claim_site(
         self,
@@ -477,7 +479,10 @@ class SubscriptionSearchOper(DbOper):
 
     def _ensure_site_budget(self, *, site_id: int, now: str) -> SubscriptionSiteBudget:
         """并发安全地创建站点预算初始记录。"""
-        record = self._db.execute(
+        db = self._db
+        if not isinstance(db, Session):
+            raise RuntimeError("订阅站点预算初始化需要调用方提供同步 Session")
+        record: Optional[SubscriptionSiteBudget] = db.execute(
             select(SubscriptionSiteBudget).where(
                 SubscriptionSiteBudget.site_id == site_id
             )
@@ -485,24 +490,28 @@ class SubscriptionSearchOper(DbOper):
         if record is not None:
             return record
         try:
-            with self._db.begin_nested():
-                self._db.add(SubscriptionSiteBudget(
+            with db.begin_nested():
+                db.add(SubscriptionSiteBudget(
                     site_id=site_id,
                     next_allowed_at=now,
                     updated_at=now,
                 ))
-                self._db.flush()
+                db.flush()
         except IntegrityError:
-            self._db.expire_all()
-        return self._db.execute(
+            db.expire_all()
+        created: SubscriptionSiteBudget = db.execute(
             select(SubscriptionSiteBudget).where(
                 SubscriptionSiteBudget.site_id == site_id
             )
         ).scalar_one()
+        return created
 
     def _batch_cancel_requested(self, batch_id: str) -> bool:
         """在当前事务中读取批次取消标记。"""
-        return bool(self._db.execute(
+        db = self._db
+        if not isinstance(db, Session):
+            raise RuntimeError("订阅搜索批次取消查询需要调用方提供同步 Session")
+        return bool(db.execute(
             select(SubscriptionSearchBatch.cancel_requested).where(
                 SubscriptionSearchBatch.batch_id == batch_id
             )
@@ -510,7 +519,10 @@ class SubscriptionSearchOper(DbOper):
 
     def _refresh_batch(self, batch_id: str, *, now: str, error: Optional[str]) -> None:
         """依据所属任务终态重新计算批次计数和聚合状态。"""
-        rows = self._db.execute(
+        db = self._db
+        if not isinstance(db, Session):
+            raise RuntimeError("订阅搜索批次刷新需要调用方提供同步 Session")
+        rows = db.execute(
             select(SubscriptionSearchTask.state, func.count())  # pylint: disable=not-callable
             .where(SubscriptionSearchTask.batch_id == batch_id)
             .group_by(SubscriptionSearchTask.state)
