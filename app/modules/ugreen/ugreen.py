@@ -1085,7 +1085,8 @@ class Ugreen:
                 continue
 
             video_info = item.get("video_info") if isinstance(item.get("video_info"), dict) else {}
-            if video_info.get("type") not in (1, 2):
+            video_type = video_info.get("type") if isinstance(video_info, dict) else None
+            if video_type != 1 and video_type != 2:
                 continue
             library_id = str(video_info.get("media_lib_set_id") or "")
             if self.__is_library_blocked(library_id):
