@@ -30,6 +30,7 @@ def _response(payload, status_code=200):
 
 def test_check_exposes_new_stable_release(monkeypatch, tmp_path):
     manager = _manager(monkeypatch, tmp_path)
+    logs = []
     releases = [
         {"tag_name": "v3.2.0-beta", "prerelease": True, "draft": False},
         {
@@ -43,6 +44,7 @@ def test_check_exposes_new_stable_release(monkeypatch, tmp_path):
     ]
     monkeypatch.setattr(manager, "_request", lambda: SimpleNamespace(get_res=lambda _url: _response(releases)))
     monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.0")
+    monkeypatch.setattr(update_module.logger, "info", logs.append)
 
     status = manager.check("application")
 
@@ -50,6 +52,29 @@ def test_check_exposes_new_stable_release(monkeypatch, tmp_path):
     assert status.version == "v3.1.0"
     assert status.release_notes == "changes"
     assert status.can_update is True
+    assert logs == ["发现 MoviePilot 主程序更新：v3.0.0 -> v3.1.0"]
+
+
+def test_check_logs_when_application_is_current(monkeypatch, tmp_path):
+    manager = _manager(monkeypatch, tmp_path)
+    logs = []
+    releases = [
+        {
+            "tag_name": "v3.0.0",
+            "name": "MoviePilot v3.0.0",
+            "prerelease": False,
+            "draft": False,
+        }
+    ]
+    monkeypatch.setattr(manager, "_request", lambda: SimpleNamespace(get_res=lambda _url: _response(releases)))
+    monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.0")
+    monkeypatch.setattr(update_module.logger, "info", logs.append)
+
+    status = manager.check("application")
+
+    assert status.state == "idle"
+    assert status.can_update is False
+    assert logs == ["MoviePilot 主程序已是最新版本：v3.0.0"]
 
 
 def test_scheduled_check_failure_stays_silent(monkeypatch, tmp_path):

@@ -379,7 +379,8 @@ class SystemUpdateManager(metaclass=SingletonClass):
         if not release:
             raise RuntimeError("未找到可用的 v3 稳定版本")
         version = str(release["tag_name"])
-        has_update = compare_version(version, "gt", get_app_version()) is True
+        current_version = get_app_version()
+        has_update = compare_version(version, "gt", current_version) is True
         self._write_item(
             _APPLICATION,
             state="available" if has_update else "idle",
@@ -395,6 +396,10 @@ class SystemUpdateManager(metaclass=SingletonClass):
             can_update=has_update,
             can_install=False,
         )
+        if has_update:
+            logger.info(f"发现 MoviePilot 主程序更新：{current_version} -> {version}")
+        else:
+            logger.info(f"MoviePilot 主程序已是最新版本：{current_version}")
 
     def _check_resources(self) -> None:
         """查询当前平台认证资源和索引资源的最新版本。"""
