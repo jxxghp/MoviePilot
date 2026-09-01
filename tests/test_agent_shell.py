@@ -341,6 +341,10 @@ def test_audio_ffmpeg_uses_windows_utf8_text_subprocess_kwargs(tmp_path: Path) -
     provider = OpenAIChatAudioProvider()
     with (
         patch(
+            "app.agent.llm.capability.shutil.which",
+            return_value="/usr/bin/ffmpeg",
+        ),
+        patch(
             "app.agent.llm.capability.agent_text_subprocess_kwargs",
             return_value={
                 "encoding": "utf-8",
