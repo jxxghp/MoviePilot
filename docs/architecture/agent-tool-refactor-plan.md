@@ -1,6 +1,6 @@
 # MoviePilot Agent 工具体系重构计划
 
-> 状态：IN PROGRESS — L10 本地验证完成，等待提交推送与远端 CI
+> 状态：COMPLETE — L1-L10 全部 VERIFIED，正式方案已提交推送并通过远端 CI
 >
 > 建立日期：2026-08-31
 >
@@ -134,7 +134,7 @@ provider 动态返回 namespaced action、参数约束、副作用等级及是�
 | L7 第三方服务 Skill 化 | VERIFIED | L5 | 下载器和媒体服务器能力发现、受控脚本、Skill、策略和离线测试完成；重复低层 Agent API operation 已删除 |
 | L8 收口与交付 | VERIFIED | L6,L7 | 旧代码、文档与架构基线已收口；静态检查和锁定全量测试已完成 |
 | L9 全 API 面审计与最终交付 | VERIFIED | L8 | 375 个 OpenAPI 操作逐路由归属、203 个网关合同与 72 个退出工具映射均由测试锁定；全量测试、80% 覆盖率门禁、提交推送和远端 CI 终态均已完成 |
-| L10 查询 API 显式分页与数据库下推 | ACTIVE | L9 | 列表端点显式声明分页输入；数据库筛选在 `LIMIT/OFFSET` 前完成并使用同条件精确 `COUNT`；省略新增参数保持旧返回语义；响应 `data` 列表结构不变；外部原生分页未提供总数时不伪造；OpenAPI、MCP、Skill、审计、80% 覆盖率和远端 CI 同步完成 |
+| L10 查询 API 显式分页与数据库下推 | VERIFIED | L9 | 列表端点显式声明分页输入；数据库筛选在 `LIMIT/OFFSET` 前完成并使用同条件精确 `COUNT`；省略新增参数保持旧返回语义；响应 `data` 列表结构不变；外部原生分页未提供总数时不伪造；OpenAPI、MCP、Skill、审计、80% 覆盖率和远端 CI 同步完成 |
 
 ## 5. L2 受控 API 网关约束
 
@@ -347,6 +347,14 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 - 完整锁定测试已通过：4 个分片分别为 `1620 passed, 3 skipped`、`1860 passed, 4 skipped`、`1917 passed`、`2248 passed, 2 skipped`，合计 `7645 passed, 9 skipped`
 - 覆盖率按 CI 相同的 8 分片采集并合并，Application `81.72%`、Domain `81.01%`，通过固定 80% 门禁；Ruff/mypy ratchet、严格 mypy、复杂度 v1/v2、并发、异步阻塞、TaskRegistry owner、服务定位、事件策略和启动性能门禁均通过
 - 数据库 Oper 复用 `literal_contains` 新增 4 条内部依赖边，宿主快照从 7,684 更新为 7,688；没有新增 Application/Chain 到具体 Adapter 的直连或跨层依赖
-- 待完成：执行最终 Pylint 与生成物一致性检查，提交推送并等待最终远端 CI 成功后再把 L10 标记为 VERIFIED
+- 生成器幂等校验通过，`api_mcp_schema.json` 与 `skills/moviepilot-api/SKILL.md` 重建前后哈希一致；受影响 Python 文件 Pylint `10.00/10`，关键回归 `207 passed`
+
+### 2026-09-01：L10 提交推送与远端门禁完成
+
+- 实现提交 `d512f528be351dabba0cf344c2e9d890bb93ea6f` 已推送到 `origin/v3`，本地与远端提交一致
+- Unit Tests 工作流 `33457912749` 已终态成功：Architecture Contract Gate、4 个功能分片、8 个覆盖率分片和 Coverage Report 全部通过
+- Pylint 工作流 `33457912735` 已终态成功；变更文件质量检查与完整建议报告均成功
+- L10 正式完成：集合端点显式声明 `page/count`，数据库查询在 SQL 层完成筛选、稳定排序、分页与同条件精确计数；不传新增参数继续返回旧全量列表，外部来源没有总数时不伪造
+- MoviePilot Agent 工具体系重构父目标至此全部完成，后续查询端点必须继续维护 REST、OpenAPI、MCP、Skill 和数据库查询合同的一致性
 
 本文件作为本次重构的持续记录，保留阶段状态、实际变更、验证结果、提交状态与已知基线边界。
