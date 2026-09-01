@@ -68,6 +68,18 @@ async def _async_wait_for_site_request(site: SiteIndexer) -> None:
         await asyncio.sleep(delay)
 
 
+def _search_sync_site_page(
+    search: Callable[..., List[TorrentInfo]],
+    site: SiteIndexer,
+    keyword: str,
+    media_type: Optional[MediaType],
+    page: int,
+) -> List[TorrentInfo]:
+    """在模块级包装同步站点请求，避免扩大既有超限 Owner。"""
+    _wait_for_site_request(site)
+    return search(site=site, keyword=keyword, mtype=media_type, page=page)
+
+
 @dataclass(frozen=True)
 class ProviderBatch:
     """一次 provider 页完成后发布的统一事实。"""
@@ -163,18 +175,9 @@ class SearchProviderOwner(_SearchOwnerBase):
     ) -> None:
         """向进程共享线程 owner 提交一页，并登记该站点的续页位置。"""
         page_number = search_pages[page_index]
-
-        def search_site_page() -> List[TorrentInfo]:
-            _wait_for_site_request(site)
-            return self.search_site_torrents(
-                site=site,
-                keyword=search_keyword,
-                mtype=media_type,
-                page=page_number,
-            )
-
         future = ThreadHelper().submit(
-            search_site_page,
+            _search_sync_site_page, self.search_site_torrents,
+            site, search_keyword, media_type, page_number,
         )
         pending[future] = (site, page_index, page_number)
 
