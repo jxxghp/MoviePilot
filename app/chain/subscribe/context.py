@@ -1,7 +1,8 @@
 """订阅创建与提交后阶段使用的不可变上下文。"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+from uuid import uuid4
 
 from app.domain.context import (
     MediaInfo,
@@ -31,6 +32,7 @@ class _SubscribePostCommitContext:
     username: Optional[str]
     message: bool
     notification: Optional[dict[str, Any]] = None
+    occurrence_id: str = field(default_factory=lambda: uuid4().hex)
 
 
 @dataclass(slots=True)

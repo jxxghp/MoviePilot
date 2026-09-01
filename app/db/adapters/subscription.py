@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime, timedelta, timezone
 from typing import Optional, TypeVar, cast
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +35,9 @@ from app.application.subscription.contract import (
     SubscriptionSnapshot,
     SubscriptionStagingPort,
     SubscriptionWriteResult,
+    subscription_added_event_key,
+    subscription_added_notification_key,
+    subscription_added_report_key,
 )
 from app.application.subscription.write import (
     AsyncCreateSubscriptionBatchCommand,
@@ -42,9 +46,6 @@ from app.application.subscription.write import (
     AsyncUnitOfWork,
     CreateSubscriptionCommand,
     SubscriptionCreateRequest,
-    subscription_added_event_key,
-    subscription_added_notification_key,
-    subscription_added_report_key,
 )
 from app.db.adapters.outbox import (
     SqlAlchemyAsyncOutboxDispatchStore,
@@ -196,8 +197,10 @@ class _TransactionalSubscriptionWriter:
         username: str | None = None,
         after_commit: TypedAfterCommitEffect | None = None,
         notification: Mapping[str, JsonData] | None = None,
+        occurrence_id: str | None = None,
     ) -> tuple[int, str]:
         """在独占同步会话内执行一次完整订阅新增事务。"""
+        resolved_occurrence_id = occurrence_id or uuid4().hex
         write_payload = payload.to_payload()
         notification_payload = dict(notification) if notification else None
         session = self._sync_session()
@@ -219,6 +222,7 @@ class _TransactionalSubscriptionWriter:
                         write_payload,
                         notification_payload,
                         lambda: after_commit(subscribe_id),
+                        occurrence_id=resolved_occurrence_id,
                     )
 
             return command.execute(
@@ -227,6 +231,7 @@ class _TransactionalSubscriptionWriter:
                 username,
                 delivered,
                 notification_payload,
+                occurrence_id=resolved_occurrence_id,
             )
         finally:
             session.close()
@@ -238,8 +243,10 @@ class _TransactionalSubscriptionWriter:
         username: str | None = None,
         after_commit: TypedAsyncAfterCommitEffect | None = None,
         notification: Mapping[str, JsonData] | None = None,
+        occurrence_id: str | None = None,
     ) -> tuple[int, str]:
         """在独占异步会话作用域内执行一次完整订阅新增事务。"""
+        resolved_occurrence_id = occurrence_id or uuid4().hex
         write_payload = payload.to_payload()
         notification_payload = dict(notification) if notification else None
         async with self._async_session() as session:
@@ -260,6 +267,7 @@ class _TransactionalSubscriptionWriter:
                         write_payload,
                         notification_payload,
                         lambda: after_commit(subscribe_id),
+                        occurrence_id=resolved_occurrence_id,
                     )
 
             return await command.execute(
@@ -268,6 +276,7 @@ class _TransactionalSubscriptionWriter:
                 username,
                 delivered,
                 notification_payload,
+                occurrence_id=resolved_occurrence_id,
             )
 
 
@@ -878,6 +887,7 @@ class SessionSubscriptionBatchWriter:
                 payload,
                 notification,
                 invoke,
+                occurrence_id=request.occurrence_id,
             )
 
         return await self._command.execute(requests, after_commit=settle)
@@ -887,12 +897,31 @@ def _added_effect_keys(
     subscribe_id: int,
     payload: dict[str, JsonData],
     notification: Optional[dict[str, JsonData]],
+    occurrence_id: str,
 ) -> tuple[str, ...]:
     """返回组合回调实际包含的独立 durable effect 键。"""
-    keys = [subscription_added_event_key(subscribe_id, payload)]
+    keys = [
+        subscription_added_event_key(
+            subscribe_id,
+            payload,
+            occurrence_id=occurrence_id,
+        )
+    ]
     if notification:
-        keys.append(subscription_added_notification_key(subscribe_id, payload))
-    keys.append(subscription_added_report_key(subscribe_id, payload))
+        keys.append(
+            subscription_added_notification_key(
+                subscribe_id,
+                payload,
+                occurrence_id=occurrence_id,
+            )
+        )
+    keys.append(
+        subscription_added_report_key(
+            subscribe_id,
+            payload,
+            occurrence_id=occurrence_id,
+        )
+    )
     return tuple(keys)
 
 
@@ -929,12 +958,14 @@ def _deliver_added_effects(
     payload: dict[str, JsonData],
     notification: Optional[dict[str, JsonData]],
     effect: Callable[[], Optional[bool]],
+    *,
+    occurrence_id: str,
 ) -> None:
     """认领组合回调并按事件、通知、统计的确认结果分别结算。"""
     now = datetime.now(timezone.utc)
     claimed = _claim_added_effects(
         store,
-        _added_effect_keys(subscribe_id, payload, notification),
+        _added_effect_keys(subscribe_id, payload, notification, occurrence_id),
         now,
     )
     if claimed is None:
@@ -1001,12 +1032,14 @@ async def _deliver_added_effects_async(
     payload: dict[str, JsonData],
     notification: Optional[dict[str, JsonData]],
     effect: Callable[[], Awaitable[bool | None]],
+    *,
+    occurrence_id: str,
 ) -> None:
     """异步认领组合回调并按各 intent 的确认结果分别结算。"""
     now = datetime.now(timezone.utc)
     claimed = await _claim_added_effects_async(
         store,
-        _added_effect_keys(subscribe_id, payload, notification),
+        _added_effect_keys(subscribe_id, payload, notification, occurrence_id),
         now,
     )
     if claimed is None:

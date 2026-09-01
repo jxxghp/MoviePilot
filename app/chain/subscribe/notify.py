@@ -10,6 +10,7 @@ from app.application.configuration import (
 from app.application.messaging.message import MessageTemplateHelper
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
+    subscription_added_event_key,
 )
 from app.chain.subscribe.context import _SubscribeCreateContext, _SubscribePostCommitContext
 from app.chain.subscribe.contract import _SubscribeOwnerBase
@@ -129,7 +130,14 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
             EventType.SubscribeAdded,
             {
                 "subscribe_id": subscribe_id,
-                "idempotency_key": (f"subscribe.added:{subscribe_id}:{context.media_source}:{context.media_id}:v1"),
+                "idempotency_key": subscription_added_event_key(
+                    subscribe_id,
+                    {
+                        "media_source": str(context.media_source) if context.media_source else None,
+                        "media_id": context.media_id,
+                    },
+                    occurrence_id=context.occurrence_id,
+                ),
                 "username": context.username,
                 "mediainfo": context.mediainfo.to_dict(),
             },
@@ -157,7 +165,14 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
             EventType.SubscribeAdded,
             {
                 "subscribe_id": subscribe_id,
-                "idempotency_key": (f"subscribe.added:{subscribe_id}:{context.media_source}:{context.media_id}:v1"),
+                "idempotency_key": subscription_added_event_key(
+                    subscribe_id,
+                    {
+                        "media_source": str(context.media_source) if context.media_source else None,
+                        "media_id": context.media_id,
+                    },
+                    occurrence_id=context.occurrence_id,
+                ),
                 "username": context.username,
                 "mediainfo": context.mediainfo.to_dict(),
             },

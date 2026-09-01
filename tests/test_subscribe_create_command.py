@@ -5,7 +5,7 @@ from dataclasses import replace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.application.subscription.contract import (
     SubscriptionIdentity,
@@ -372,6 +372,43 @@ def test_default_sync_writer_persists_once_and_reuses_duplicate(db) -> None:
     )
     assert [row.id for row in rows] == [first[0]]
     assert after_commit.call_args_list == [((first[0],), {})]
+
+
+def test_default_sync_writer_allows_reused_subscribe_id_with_retained_outbox(db) -> None:
+    """删除订阅后复用数据库主键时，新增事件仍以本次创建事实区分。"""
+    db.watermark(Subscribe, OutboxMessage)
+    media = _media("arch-221-reused-id")
+    writer = _writer()
+
+    first = add_subscribe(
+        mediainfo=media,
+        subscribe_oper=writer,
+        after_commit=lambda _subscribe_id: True,
+    )
+    with SessionFactory() as session:
+        session.execute(delete(Subscribe).where(Subscribe.id == first[0]))
+        session.commit()
+
+    second = add_subscribe(
+        mediainfo=media,
+        subscribe_oper=writer,
+        after_commit=lambda _subscribe_id: True,
+    )
+
+    assert second[0] == first[0]
+    intents = db.session.execute(
+        select(OutboxMessage)
+        .where(OutboxMessage.event_key.contains(media.media_id))
+        .order_by(OutboxMessage.id)
+    ).scalars().all()
+    assert [intent.topic for intent in intents] == [
+        "subscribe.added",
+        "subscribe.added.report",
+        "subscribe.added",
+        "subscribe.added.report",
+    ]
+    assert len({intent.event_key for intent in intents}) == 4
+    assert all(intent.status == "completed" for intent in intents)
 
 
 def test_default_sync_writer_keeps_failed_report_pending_without_raising(db) -> None:

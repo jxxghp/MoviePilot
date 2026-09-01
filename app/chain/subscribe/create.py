@@ -420,6 +420,7 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             username=context.username,
             after_commit=_after_commit,
             notification=post_commit_context.notification,
+            occurrence_id=post_commit_context.occurrence_id,
             **context.options,
         )
         if not sid:
@@ -454,6 +455,7 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             username=context.username,
             after_commit=_after_commit,
             notification=post_commit_context.notification,
+            occurrence_id=post_commit_context.occurrence_id,
             **context.options,
         )
         if not sid:
@@ -659,6 +661,7 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
                 context.mediainfo,
                 notification=notification,
                 after_commit=after_commit,
+                occurrence_id=post_commit_context.occurrence_id,
                 season=context.season,
                 username=context.username,
                 **context.options,

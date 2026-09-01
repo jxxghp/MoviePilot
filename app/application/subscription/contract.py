@@ -6,6 +6,7 @@ import builtins
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, fields
 from typing import NoReturn, Optional, Protocol, cast
+from uuid import uuid4
 
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -360,6 +361,51 @@ AfterCommitEffect = Callable[[int], bool | None]
 AsyncAfterCommitEffect = Callable[[int], Awaitable[bool | None]]
 
 
+def subscription_added_event_key(
+    subscribe_id: int,
+    payload: Mapping[str, JsonData],
+    *,
+    occurrence_id: Optional[str] = None,
+) -> str:
+    """由订阅 ID、媒体身份与本次创建事实构造可重试且不复用的幂等键。"""
+    resolved_occurrence_id = occurrence_id or uuid4().hex
+    return (
+        f"subscribe.added:{subscribe_id}:"
+        f"{payload.get('media_source') or 'unknown'}:"
+        f"{payload.get('media_id') or 'unknown'}:{resolved_occurrence_id}:v1"
+    )
+
+
+def subscription_added_report_key(
+    subscribe_id: int,
+    payload: Mapping[str, JsonData],
+    *,
+    occurrence_id: Optional[str] = None,
+) -> str:
+    """返回与新增事件身份一致但可独立重试的统计幂等键。"""
+    event_key = subscription_added_event_key(
+        subscribe_id,
+        payload,
+        occurrence_id=occurrence_id,
+    )
+    return f"{event_key}:report"
+
+
+def subscription_added_notification_key(
+    subscribe_id: int,
+    payload: Mapping[str, JsonData],
+    *,
+    occurrence_id: Optional[str] = None,
+) -> str:
+    """构造订阅新增通知的稳定幂等键。"""
+    event_key = subscription_added_event_key(
+        subscribe_id,
+        payload,
+        occurrence_id=occurrence_id,
+    )
+    return f"{event_key}:notification"
+
+
 class SubscriptionQueryPort(Protocol):
     """Chain、Workflow、Agent 和 Application 共用的订阅查询端口。"""
 
@@ -483,8 +529,9 @@ class SubscriptionWritePort(Protocol):
         username: Optional[str] = None,
         after_commit: Optional[AfterCommitEffect] = None,
         notification: Optional[Mapping[str, JsonData]] = None,
+        occurrence_id: Optional[str] = None,
     ) -> tuple[int, str]:
-        """在独立同步事务中新增订阅。"""
+        """在独立同步事务中新增订阅；occurrence_id 标识本次创建事实。"""
         ...
 
     async def async_add(
@@ -494,8 +541,9 @@ class SubscriptionWritePort(Protocol):
         username: Optional[str] = None,
         after_commit: Optional[AsyncAfterCommitEffect] = None,
         notification: Optional[Mapping[str, JsonData]] = None,
+        occurrence_id: Optional[str] = None,
     ) -> tuple[int, str]:
-        """在独立异步事务中新增订阅。"""
+        """在独立异步事务中新增订阅；occurrence_id 标识本次创建事实。"""
         ...
 
 class SubscriptionStagingPort(Protocol):

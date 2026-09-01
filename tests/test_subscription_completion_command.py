@@ -256,6 +256,33 @@ def test_completion_success_closes_event_then_report_intent():
     assert calls[10][1]["idempotency_key"] == calls[3][1].event_key
 
 
+def test_completion_keys_distinguish_reused_subscribe_id() -> None:
+    """同一订阅主键被复用时，完成事件与旧 Outbox 历史保持不同。"""
+    first_calls: list[tuple] = []
+    first_command, first_notify, first_report = _command(first_calls)
+    first_command.execute(
+        7,
+        {"id": 7, "media_source": "tmdb", "media_id": "123", "season": 2},
+        {"title": "Test"},
+        notify=first_notify,
+        report=first_report,
+    )
+
+    second_calls: list[tuple] = []
+    second_command, second_notify, second_report = _command(second_calls)
+    second_command.execute(
+        7,
+        {"id": 7, "media_source": "tmdb", "media_id": "123", "season": 2},
+        {"title": "Test"},
+        notify=second_notify,
+        report=second_report,
+    )
+
+    first_event = next(call[1] for call in first_calls if call[0] == "stage")
+    second_event = next(call[1] for call in second_calls if call[0] == "stage")
+    assert first_event.event_key != second_event.event_key
+
+
 def test_completion_stages_and_closes_notification_snapshot() -> None:
     """完成通知快照与业务事务同提交，成功即时投递后独立收口。"""
     calls = []
