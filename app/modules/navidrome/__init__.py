@@ -205,5 +205,9 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         self, server: Optional[str] = None, count: Optional[int] = 10,
         username: Optional[str] = None, remote: Optional[bool] = False,
     ) -> List[str]:
-        """获取最近新增专辑封面。"""
-        return [item.image for item in (self.mediaserver_latest(server, count, username) or []) if item.image]
+        """仅返回电影、电视剧壁纸；纯音乐服务不提供登录壁纸。"""
+        return [
+            item.image
+            for item in (self.mediaserver_latest(server, count, username) or [])
+            if item.type in (MediaType.MOVIE.value, MediaType.TV.value) and item.image
+        ]

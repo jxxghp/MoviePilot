@@ -21,6 +21,8 @@ from app.foundation.url import UrlUtils
 
 
 class Ugreen:
+    """绿联影视媒体服务器客户端。"""
+
     LIBRARY_PATH_PAGE_LIMIT = 200
 
     _username: Optional[str] = None
@@ -1067,6 +1069,7 @@ class Ugreen:
         return latest
 
     def get_latest_backdrops(self, num: int = 20, remote: bool = False) -> Optional[List[str]]:
+        """获取最近入库电影、电视剧的壁纸图片。"""
         if not self.is_authenticated() or not self._api:
             return None
 
@@ -1082,6 +1085,8 @@ class Ugreen:
                 continue
 
             video_info = item.get("video_info") if isinstance(item.get("video_info"), dict) else {}
+            if video_info.get("type") not in (1, 2):
+                continue
             library_id = str(video_info.get("media_lib_set_id") or "")
             if self.__is_library_blocked(library_id):
                 continue

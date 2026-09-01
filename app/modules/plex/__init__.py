@@ -19,6 +19,7 @@ from app.schemas.types import MediaType, ModuleType, ChainEventType, MediaServer
 
 
 class PlexModule(_MediaServerModuleBase[Plex]):
+    """Plex 媒体服务器模块。"""
 
     # 媒体库标识（ExistMediaInfo.server_type）
     _server_type_value = "plex"
@@ -342,6 +343,8 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         links = []
         items = self.mediaserver_latest(server=server, count=count, username=username) or []
         for item in items:
+            if item.type not in (MediaType.MOVIE.value, MediaType.TV.value):
+                continue
             link = server_obj.get_remote_image_by_id(item_id=item.id,
                                                      image_type="Backdrop",
                                                      plex_url=False)

@@ -11,10 +11,11 @@ from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules.zspace.zspace import ZSpace
 from app.schemas.event import AuthCredentials
 from app.schemas.event import AuthInterceptCredentials
-from app.schemas.types import ChainEventType, MediaServerType, ModuleType
+from app.schemas.types import ChainEventType, MediaServerType, MediaType, ModuleType
 
 
 class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
+    """极影视媒体服务器模块。"""
 
     # 媒体库标识（ExistMediaInfo.server_type）
     _server_type_value = "zspace"
@@ -227,6 +228,8 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         links = []
         items = self.mediaserver_latest(server=server, count=count, username=username) or []
         for item in items:
+            if item.type not in (MediaType.MOVIE.value, MediaType.TV.value):
+                continue
             if item.BackdropImageTags:
                 image_url = server_obj.get_backdrop_url(item_id=item.id,
                                                         image_tag=item.BackdropImageTags[0],
