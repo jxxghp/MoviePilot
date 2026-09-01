@@ -6,7 +6,7 @@
     "provider-skill": 11,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
-    "ui_presentation": 5
+    "ui_presentation": 8
   },
   "dynamic_gateway_routes": [
     {
@@ -21,7 +21,7 @@
   "gateway_http_route_count": 201,
   "gateway_operation_count": 203,
   "matched_gateway_http_route_count": 200,
-  "openapi_operation_count": 375,
+  "openapi_operation_count": 378,
   "operations": [
     {
       "disposition": "consolidated",
@@ -3363,6 +3363,42 @@
       "path": "/api/v1/subscribe/check",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "刷新订阅 TMDB 信息",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/subscribe/execution/batches",
+      "reason": "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
+      "summary": "查询订阅搜索批次状态",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/subscribe/execution/batches/{batch_id}",
+      "reason": "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
+      "summary": "查询订阅搜索批次",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "PUT",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/subscribe/execution/batches/{batch_id}/cancel",
+      "reason": "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
+      "summary": "取消订阅搜索批次",
       "tags": [
         "subscribe"
       ]

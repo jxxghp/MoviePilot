@@ -22,6 +22,7 @@ from app.api.dependencies.subscription import (
     get_delete_subscribe_command,
     get_delete_subscriptions_by_identity_command,
     get_search_subscriptions_command,
+    get_subscription_execution_status_service,
     get_subscription_mutation_service,
     get_subscription_query_service,
 )
@@ -56,6 +57,7 @@ from app.application.subscription.search import (
     SearchSubscriptionsCommand,
     SubscribeSearchActor,
 )
+from app.application.subscription.status import SubscriptionExecutionStatusService
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
@@ -68,6 +70,7 @@ from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
 from app.schemas.subscribe import SubscribeDeletionResult as _SchemaSubscribeDeletionResult
 from app.schemas.subscribe import SubscribeShare as _SchemaSubscribeShare
 from app.schemas.subscribe import SubscribeShareStatistics as _SchemaSubscribeShareStatistics
+from app.schemas.subscribe import SubscriptionExecutionStatus as _SchemaSubscriptionExecutionStatus
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -80,6 +83,23 @@ from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.schemas.workflow import Subscribe as _SchemaSubscribe
 
 router = ResponseAPIRouter()
+
+
+async def _attach_execution_status(
+    subscribes: list[_SchemaSubscribe],
+    status_service: object,
+) -> list[_SchemaSubscribe]:
+    """批量附加当前执行状态，保持无执行记录时的旧响应形状。"""
+    loader = getattr(status_service, "for_subscriptions", None)
+    if not callable(loader):
+        return subscribes
+    statuses = await loader(
+        tuple(item.id for item in subscribes if item.id is not None)
+    )
+    for subscribe in subscribes:
+        if subscribe.id is not None and (status := statuses.get(subscribe.id)) is not None:
+            subscribe.execution_status = _SchemaSubscriptionExecutionStatus.model_validate(status)
+    return subscribes
 
 
 def start_subscribe_add(
@@ -162,6 +182,9 @@ def matches_subscribe_music_type(
 async def read_subscribes(
     response: Response = None,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
+    status_service: SubscriptionExecutionStatusService = Depends(
+        get_subscription_execution_status_service
+    ),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
@@ -175,7 +198,8 @@ async def read_subscribes(
         response.headers[COLLECTION_TOTAL_HEADER] = str(
             await query.count_public(username)
         )
-    return await query.list_public(username, page=page, count=count)
+    subscribes = await query.list_public(username, page=page, count=count)
+    return await _attach_execution_status(subscribes, status_service)
 
 
 @router.get(
@@ -187,6 +211,9 @@ async def read_subscribes(
 async def list_subscribes(
     response: Response = None,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
+    status_service: SubscriptionExecutionStatusService = Depends(
+        get_subscription_execution_status_service
+    ),
     _: Annotated[str, Depends(verify_apitoken)] = None,
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
@@ -197,7 +224,8 @@ async def list_subscribes(
     page, count = resolve_compatible_pagination(page, count)
     if response is not None:
         response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_public())
-    return await query.list_public(page=page, count=count)
+    subscribes = await query.list_public(page=page, count=count)
+    return await _attach_execution_status(subscribes, status_service)
 
 
 @router.post(
@@ -692,6 +720,9 @@ async def user_subscribes(
     username: str,
     response: Response = None,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
+    status_service: SubscriptionExecutionStatusService = Depends(
+        get_subscription_execution_status_service
+    ),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
@@ -706,7 +737,8 @@ async def user_subscribes(
         response.headers[COLLECTION_TOTAL_HEADER] = str(
             await query.count_public(username)
         )
-    return await query.list_public(username, page=page, count=count)
+    subscribes = await query.list_public(username, page=page, count=count)
+    return await _attach_execution_status(subscribes, status_service)
 
 
 @router.get(

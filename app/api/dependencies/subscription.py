@@ -34,6 +34,7 @@ from app.application.subscription.delete import (
 from app.application.subscription.delete import (
     DeleteSubscribeCommand,
 )
+from app.application.subscription.execution import SubscriptionSearchRepository
 from app.application.subscription.identity import (
     DeleteSubscriptionsByIdentityCommand,
 )
@@ -42,6 +43,10 @@ from app.application.subscription.mutation import (
 )
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.search import SearchSubscriptionsCommand
+from app.application.subscription.status import (
+    SubscriptionExecutionReadRepository,
+    SubscriptionExecutionStatusService,
+)
 from app.application.subscription.write import (
     SubscriptionBatchWritePort,
 )
@@ -74,9 +79,7 @@ def get_delete_subscribe_command(
     repository_port: SubscriptionStagingPort = Depends(get_subscription_repository),
     unit_of_work: object = Depends(get_subscription_transaction),
     outbox: AsyncOutboxStager = Depends(get_subscription_outbox),
-    dispatch_store: AsyncOutboxDispatchStore = Depends(
-        get_subscription_outbox_store
-    ),
+    dispatch_store: AsyncOutboxDispatchStore = Depends(get_subscription_outbox_store),
 ) -> DeleteSubscribeCommand:
     """组装请求级订阅删除用例及其具体适配器。"""
     return DeleteSubscribeCommand(
@@ -104,9 +107,7 @@ def get_delete_subscriptions_by_identity_command(
     repository_port: SubscriptionStagingPort = Depends(get_subscription_repository),
     unit_of_work: object = Depends(get_subscription_transaction),
     outbox: AsyncOutboxStager = Depends(get_subscription_outbox),
-    dispatch_store: AsyncOutboxDispatchStore = Depends(
-        get_subscription_outbox_store
-    ),
+    dispatch_store: AsyncOutboxDispatchStore = Depends(get_subscription_outbox_store),
 ) -> DeleteSubscriptionsByIdentityCommand:
     """组装请求级按媒体身份删除订阅用例。"""
     return DeleteSubscriptionsByIdentityCommand(
@@ -146,6 +147,7 @@ def get_search_subscriptions_command(
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> SearchSubscriptionsCommand:
     """组装手工订阅搜索用例，并把调度延迟到响应后的后台任务。"""
+
     def schedule_search(
         subscribe_ids: tuple[int, ...] | None,
         state: str | None,
@@ -176,16 +178,49 @@ def get_subscription_query_service(
     )
 
 
+def get_subscription_execution_status_service(
+    db: AsyncSession = Depends(get_async_session),
+    runtime: HostRuntime = Depends(get_host_runtime),
+    task_registry: TaskRegistry = Depends(get_background_task_registry),
+) -> SubscriptionExecutionStatusService:
+    """组装请求级订阅执行状态投影与取消服务。"""
+    factory = runtime.subscription.execution_status_repository
+    if factory is None:
+        raise RuntimeError("订阅执行状态仓储未注册")
+    repository = factory(db)
+    search_repository = get_subscription_search_repository(runtime)
+    registry = resolve_background_task_registry(task_registry)
+
+    async def request_cancel(batch_id: str) -> bool:
+        """在线程 owner 内提交同步队列写入，并等待其真实终态。"""
+        task = registry.create_sync(
+            search_repository.request_cancel,
+            batch_id,
+            owner="api.subscribe.execution.cancel",
+        )
+        return bool(await task)
+
+    return SubscriptionExecutionStatusService(
+        repository=cast(SubscriptionExecutionReadRepository, repository),
+        request_cancel=request_cancel,
+    )
+
+
+def get_subscription_search_repository(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> SubscriptionSearchRepository:
+    """返回宿主组合根持有的订阅搜索队列端口。"""
+    if runtime.subscription.search_repository is None:
+        raise RuntimeError("订阅搜索队列未注册")
+    return cast(SubscriptionSearchRepository, runtime.subscription.search_repository)
+
+
 def get_subscription_mutation_service(
     repository_port: SessionSubscriptionPort = Depends(get_subscription_repository),
-    history_repository: SubscriptionHistoryStagingPort = Depends(
-        get_subscription_history_repository
-    ),
+    history_repository: SubscriptionHistoryStagingPort = Depends(get_subscription_history_repository),
     unit_of_work: object = Depends(get_subscription_transaction),
     outbox: AsyncOutboxStager = Depends(get_subscription_outbox),
-    dispatch_store: AsyncOutboxDispatchStore = Depends(
-        get_subscription_outbox_store
-    ),
+    dispatch_store: AsyncOutboxDispatchStore = Depends(get_subscription_outbox_store),
 ) -> SubscriptionMutationService:
     """组装异步订阅写服务。"""
     return SubscriptionMutationService(
@@ -202,9 +237,7 @@ def get_servarr_subscription_batch_writer(
     repository_port: SubscriptionStagingPort = Depends(get_subscription_repository),
     unit_of_work: object = Depends(get_subscription_transaction),
     outbox: AsyncOutboxStager = Depends(get_subscription_outbox),
-    dispatch_store: AsyncOutboxDispatchStore = Depends(
-        get_subscription_outbox_store
-    ),
+    dispatch_store: AsyncOutboxDispatchStore = Depends(get_subscription_outbox_store),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> SubscriptionBatchWritePort:
     """组装 Servarr 多季订阅使用的请求级原子批量写端口。"""

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Tuple, Union, cast
 
 from app.application.configuration import get_chain_runtime_config_snapshot
+from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.download.failures import (
     DownloadFailureSnapshot,
 )
@@ -156,6 +157,7 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
         username: Optional[str],
         downloader: Optional[str],
         custom_words: Optional[str],
+        governance: Optional[SubscriptionDownloadGovernance],
     ) -> None:
         """
         处理电影与音乐的直接候选下载。
@@ -201,6 +203,7 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
                 username=username,
                 downloader=downloader,
                 custom_words=custom_words,
+                governance=governance,
             ):
                 logger.info(f"{context.torrent_info.title} 添加下载成功")
                 downloaded_list.append(context)

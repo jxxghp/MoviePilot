@@ -49,6 +49,7 @@ from app.startup.composition.context import (
 
 if TYPE_CHECKING:
     from app.application.messaging.message import MessageHelper, MessageQueueManager
+    from app.application.subscription.execution import SubscriptionSearchRepository
     from app.startup.composition.agent import AgentComposition
     from app.startup.composition.configuration import ConfigurationComposition
     from app.startup.composition.database import DatabaseComposition
@@ -67,6 +68,7 @@ class RuntimeDependencies:
     transfer_execution: TransferExecutionRepository
     message_helper: MessageHelper
     message_queue: MessageQueueManager
+    subscription_search: SubscriptionSearchRepository | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +105,7 @@ def compose_runtime_dependencies() -> RuntimeDependencies:
         TransactionalSubscriptionHistoryRepository,
         TransactionalSubscriptionRepository,
     )
+    from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
     from app.db.adapters.transfer.execution import (
         TransactionalTransferExecutionRepository,
     )
@@ -132,6 +135,7 @@ def compose_runtime_dependencies() -> RuntimeDependencies:
         transfer_execution=TransactionalTransferExecutionRepository(SessionFactory),
         message_helper=message_helper_factory(),
         message_queue=MessageQueueManager(auto_start=False),
+        subscription_search=TransactionalSubscriptionSearchRepository(SessionFactory),
     )
 
 
@@ -148,6 +152,9 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
     from app.db.adapters.subscription import (
         SessionSubscriptionHistoryRepository,
         SessionSubscriptionRepository,
+    )
+    from app.db.adapters.subscriptionstatus import (
+        SessionSubscriptionExecutionStatusRepository,
     )
     from app.db.oper.mediaserver import MediaServerOper
     from app.db.oper.message import MessageOper
@@ -210,6 +217,8 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
             async_session=get_async_db,
             repository=SessionSubscriptionRepository,
             history_repository=SessionSubscriptionHistoryRepository,
+            execution_status_repository=SessionSubscriptionExecutionStatusRepository,
+            search_repository=dependencies.subscription_search,
             transaction=SqlAlchemyAsyncUnitOfWork,
             outbox=SqlAlchemyAsyncOutboxStager,
             dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(async_session_scope),

@@ -1524,7 +1524,7 @@ class MediaInfo:
         dicts["media_id"] = str(self.media_id) if self.media_id is not None else None
         return dicts
 
-    def clear(self):
+    def clear(self) -> None:
         """
         去除多余数据，减小体积
         """

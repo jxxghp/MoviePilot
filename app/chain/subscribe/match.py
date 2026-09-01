@@ -2,10 +2,12 @@
 
 import copy
 from datetime import datetime
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from app.application.configuration import get_configured_system_config
+from app.application.subscription.candidates import CandidateBatch, CandidateIndex
 from app.application.subscription.contract import build_subscribe_meta, subscribe_media_key
+from app.application.subscription.facts import FreshFactLease
 from app.application.torrent.download import TorrentHelper
 from app.chain.media import MediaChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
@@ -27,8 +29,51 @@ from app.schemas.types import (
 )
 
 
+def _prepare_subscription_match(
+    owner: Any,
+    subscribe: Any,
+    candidate_index: CandidateIndex,
+    fresh_fact_lease: FreshFactLease,
+) -> Optional[
+    tuple[MetaBase, MediaInfo, Dict[str, List[Context]], List[str], List[int]]
+]:
+    """为单个订阅路由候选，并在本轮新鲜事实租约中加载媒体信息。"""
+    try:
+        meta = build_subscribe_meta(subscribe)
+    except ValueError:
+        logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
+        return None
+    domains = owner.site_repository.get_domains_by_ids(subscribe.sites) if subscribe.sites else []
+    sub_sites = owner.get_sub_sites(subscribe)
+    routed_torrents = candidate_index.route_for_match(
+        subscribe,
+        domains=set(domains) if domains else None,
+        site_ids=set(sub_sites) if sub_sites else None,
+    )
+    if not routed_torrents:
+        logger.info(f"订阅 {subscribe.name} 本轮没有可能相关的资源，跳过资源匹配准备")
+        return None
+    mediainfo = fresh_fact_lease.get_or_load(
+        subscribe,
+        lambda: MediaChain().recognize_media(
+            meta=meta,
+            mtype=meta.type,
+            **subscribe_recognize_kwargs(subscribe),
+            episode_group=subscribe.episode_group,
+            cache=False,
+        ),
+    )
+    if not mediainfo:
+        logger.warning(
+            f"未识别到媒体信息，标题：{subscribe.name}，"
+            f"媒体来源：{subscribe.media_source}，媒体 ID：{subscribe.media_id}"
+        )
+        return None
+    return meta, mediainfo, routed_torrents, domains, sub_sites
+
+
 class SubscribeMatchOwner(_SubscribeOwnerBase):
-    """订阅候选准备、身份复核与资源匹配，作为 SubscribeChain 的单一职责实现 owner。"""
+    """订阅候选准备、身份复核与资源匹配 owner。"""
 
     def _prepare_match_torrents(
         self,
@@ -102,6 +147,17 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             progress_callback=progress_callback,
         )
 
+    def match_batch(
+        self,
+        batch: CandidateBatch,
+        progress_callback: Optional[Callable[..., None]] = None,
+    ) -> None:
+        """消费包含完整缓存与本轮增量边界的订阅候选批次。"""
+        return self._execute_match(
+            torrents=batch.candidates,
+            progress_callback=progress_callback,
+        )
+
     def _execute_match(
         self,
         torrents: Dict[str, List[Context]],
@@ -129,6 +185,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                 return
 
             processed_torrents = self._prepare_match_torrents(torrents)
+            candidate_index, fresh_fact_lease = CandidateIndex(processed_torrents), FreshFactLease()
 
             # 所有订阅
             subscribes = self.subscription_repository.list(self.get_states_for_search("R"))
@@ -159,29 +216,12 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         self._match_music_subscribe(subscribe, music_contexts)
                         continue
                     mediakey = subscribe_media_key(subscribe)
-                    try:
-                        meta = build_subscribe_meta(subscribe)
-                    except ValueError:
-                        logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
-                        continue
-                    # 订阅的站点域名列表
-                    domains = []
-                    if subscribe.sites:
-                        domains = self.site_repository.get_domains_by_ids(subscribe.sites)
-                    # 识别媒体信息
-                    mediainfo: MediaInfo = MediaChain().recognize_media(
-                        meta=meta,
-                        mtype=meta.type,
-                        **subscribe_recognize_kwargs(subscribe),
-                        episode_group=subscribe.episode_group,
-                        cache=False,
+                    prepared = _prepare_subscription_match(
+                        self, subscribe, candidate_index, fresh_fact_lease
                     )
-                    if not mediainfo:
-                        logger.warn(
-                            f"未识别到媒体信息，标题：{subscribe.name}，"
-                            f"媒体来源：{subscribe.media_source}，媒体 ID：{subscribe.media_id}"
-                        )
+                    if prepared is None:
                         continue
+                    meta, mediainfo, routed_torrents, domains, sub_sites = prepared
 
                     # 如果媒体已存在或已下载完毕，跳过当前订阅处理
                     exist_flag, no_exists = self.check_and_handle_existing_media(
@@ -207,7 +247,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     torrenthelper = TorrentHelper()
                     systemconfig = get_configured_system_config()
                     wordsmatcher = WordsMatcher()
-                    for domain, contexts in processed_torrents.items():
+                    for domain, contexts in routed_torrents.items():
                         if runtime_stop_state.is_system_stopped:
                             break
                         if domains and domain not in domains:
@@ -223,7 +263,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                             torrent_info = _context.torrent_info
 
                             # 不在订阅站点范围的不处理
-                            sub_sites = self.get_sub_sites(subscribe)
                             if sub_sites and torrent_info.site not in sub_sites:
                                 logger.debug(f"{torrent_info.site_name} - {torrent_info.title} 不符合订阅站点要求")
                                 continue
@@ -479,7 +518,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             if lock_acquired:
                 self._rlock.release()
                 logger.debug(f"match Lock released at {datetime.now()}")
-
     @staticmethod
     def _SubscribeChain__get_media_id_match_source(mediainfo: Optional[MediaInfo]) -> str:
         """

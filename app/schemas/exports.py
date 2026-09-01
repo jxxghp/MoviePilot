@@ -396,6 +396,8 @@ SCHEMA_EXPORTS = {
     'SubscribeShare': ('app.schemas.subscribe', 'SubscribeShare'),
     'SubscribeShareStatistics': ('app.schemas.subscribe', 'SubscribeShareStatistics'),
     'Subscription': ('app.schemas.message', 'Subscription'),
+    'SubscriptionBatchStatus': ('app.schemas.subscribe', 'SubscriptionBatchStatus'),
+    'SubscriptionExecutionStatus': ('app.schemas.subscribe', 'SubscriptionExecutionStatus'),
     'SubscriptionMessage': ('app.schemas.message', 'SubscriptionMessage'),
     'SubtitleDownloadData': ('app.schemas.download', 'SubtitleDownloadData'),
     'SubtitleInfo': ('app.schemas.search', 'SubtitleInfo'),

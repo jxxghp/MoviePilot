@@ -968,8 +968,8 @@
   },
   "app/chain/subscribe/match.py": {
     "arg-type": 4,
-    "assignment": 2,
-    "no-untyped-call": 4,
+    "assignment": 1,
+    "no-untyped-call": 1,
     "union-attr": 7
   },
   "app/chain/subscribe/notify.py": {
@@ -990,11 +990,11 @@
   "app/chain/subscribe/refresh.py": {
     "arg-type": 3,
     "assignment": 2,
-    "no-redef": 2,
+    "no-redef": 1,
     "var-annotated": 2
   },
   "app/chain/subscribe/search.py": {
-    "assignment": 3
+    "assignment": 2
   },
   "app/chain/system.py": {
     "attr-defined": 1,
@@ -1009,9 +1009,8 @@
     "type-arg": 2
   },
   "app/chain/torrents.py": {
-    "arg-type": 28,
-    "assignment": 4,
-    "no-any-return": 1,
+    "arg-type": 22,
+    "assignment": 3,
     "no-untyped-call": 1,
     "no-untyped-def": 15,
     "type-arg": 5,
@@ -1275,7 +1274,7 @@
     "assignment": 86,
     "no-any-return": 1,
     "no-untyped-call": 4,
-    "no-untyped-def": 24,
+    "no-untyped-def": 23,
     "operator": 1,
     "type-arg": 36
   },

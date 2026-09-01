@@ -10,7 +10,15 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, Iterator, List, Optional
 
 from app.application.configuration import get_configured_system_config
+from app.application.site.observation import (
+    capture_site_search_observation,
+    report_site_search_outcome,
+)
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.application.subscription.sitebudget import (
+    SubscriptionSiteBudget,
+    SubscriptionSiteBudgetUnavailable,
+)
 from app.chain.search.contract import _SearchOwnerBase
 from app.domain.context import MediaInfo, SubtitleInfo, TorrentInfo
 from app.runtime.log import logger
@@ -30,7 +38,7 @@ def _site_request_interval(site: SiteIndexer) -> float:
     """读取站点管理中已有的单次访问间隔配置。"""
     try:
         return max(0.0, float(site.get("limit_seconds") or 0))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0.0
 
 
@@ -39,12 +47,7 @@ def _reserve_site_request(site: SiteIndexer) -> float:
     interval = _site_request_interval(site)
     if interval <= 0:
         return 0.0
-    site_key = str(
-        site.get("id")
-        or site.get("domain")
-        or site.get("url")
-        or site.get("name")
-    )
+    site_key = str(site.get("id") or site.get("domain") or site.get("url") or site.get("name"))
     now = time.monotonic()
     with _site_request_schedule_lock:
         request_at = max(now, _site_next_request_at.get(site_key, now))
@@ -69,7 +72,7 @@ async def _async_wait_for_site_request(site: SiteIndexer) -> None:
 
 
 def _search_site_page(
-    owner: "SearchProviderOwner",
+    owner: "_SearchProviderSyncOwner",
     *,
     site: SiteIndexer,
     keyword: str,
@@ -99,8 +102,8 @@ class ProviderBatch:
     continued: bool
 
 
-class SearchProviderOwner(_SearchOwnerBase):
-    """站点与插件资源 provider fan-out owner。"""
+class _SearchProviderSyncOwner(_SearchOwnerBase):
+    """同步站点 provider 选择、预算与 fan-out owner。"""
 
     @staticmethod
     def _selected_site_ids(sites: Optional[List[int]]) -> List[int]:
@@ -182,12 +185,63 @@ class SearchProviderOwner(_SearchOwnerBase):
         """向进程共享线程 owner 提交一页，并登记该站点的续页位置。"""
         page_number = search_pages[page_index]
         future = ThreadHelper().submit(
-            _search_site_page,
-            self,
-            site=site, keyword=search_keyword,
-            media_type=media_type, page=page_number,
+            self._search_site_torrents_with_budget,
+            site=site,
+            keyword=search_keyword,
+            mtype=media_type,
+            page=page_number,
         )
         pending[future] = (site, page_index, page_number)
+
+    def _search_site_torrents_with_budget(
+        self,
+        *,
+        site: SiteIndexer,
+        keyword: str,
+        mtype: Optional[MediaType],
+        page: int,
+    ) -> List[TorrentInfo]:
+        """在订阅专属站点预算内执行一页同步搜索。"""
+        budget = getattr(self, "_subscription_site_budget", None)
+        site_id = site.get("id")
+        if not isinstance(budget, SubscriptionSiteBudget) or not isinstance(site_id, int):
+            return _search_site_page(
+                self,
+                site=site,
+                keyword=keyword,
+                media_type=mtype,
+                page=page,
+            )
+        try:
+            claim = budget.acquire(site_id)
+        except SubscriptionSiteBudgetUnavailable as error:
+            self.record_subscription_site_budget_failure(str(error))
+            logger.info(str(error))
+            return []
+        with capture_site_search_observation() as observation:
+            try:
+                return _search_site_page(
+                    self,
+                    site=site,
+                    keyword=keyword,
+                    media_type=mtype,
+                    page=page,
+                )
+            except Exception as error:
+                report_site_search_outcome(
+                    attempted=True,
+                    outcome="error",
+                    error=str(error),
+                )
+                raise
+            finally:
+                try:
+                    budget.finish(claim, observation)
+                except Exception as error:  # noqa: BLE001
+                    logger.error(
+                        f"站点 {site.get('name') or site_id} 搜索预算收口失败：{str(error)}",
+                        exc_info=True,
+                    )
 
     def _submit_next_sync_site(
         self,
@@ -344,6 +398,10 @@ class SearchProviderOwner(_SearchOwnerBase):
             return results
         finally:
             progress.end()
+
+
+class SearchProviderOwner(_SearchProviderSyncOwner):
+    """异步站点与插件资源 provider fan-out owner。"""
 
     async def _iter_provider_batches(
         self,

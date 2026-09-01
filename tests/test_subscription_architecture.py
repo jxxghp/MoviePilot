@@ -234,6 +234,7 @@ def test_subscribe_chain_package_has_single_responsibility_owners() -> None:
         "identity.py",
         "interaction.py",
         "match.py",
+        "metadata.py",
         "notify.py",
         "policy.py",
         "query.py",

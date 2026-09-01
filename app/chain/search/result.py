@@ -203,8 +203,7 @@ def _match_torrents(
 def _context_media(mediainfo: MediaInfo) -> MediaInfo:
     """复制并裁剪上下文媒体信息，避免修改调用方持有的目标对象。"""
     context_media = copy.copy(mediainfo)
-    clear_context_media = cast(Callable[[], None], context_media.clear)
-    clear_context_media()
+    context_media.clear()
     return context_media
 
 

@@ -43,7 +43,6 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
     """
     处理链基类
     """
-
     def __init__(self, runtime_context: Optional[ChainRuntimeContext] = None):
         """
         公共初始化；未显式传入上下文时继续使用兼容运行时 provider。
@@ -58,6 +57,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         self.async_filecache = context.async_file_cache
         self.site_repository = context.site_repository
         self.subscription_repository = context.subscription_repository
+        self.subscription_search_repository = context.subscription_search_repository
         self.subscription_mutation_scope = context.subscription_mutation_scope
         self.sync_subscription_mutation_scope = context.sync_subscription_mutation_scope
         self.subscription_delete_scope = context.subscription_delete_scope
@@ -71,6 +71,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         self.transfer_execution_repository = context.transfer_execution_repository
         self.media_server_repository = context.media_server_repository
         self.download_failure_repository = context.download_failure_repository
+        self.subscription_download_repository = context.subscription_download_repository
         self.user_repository = context.user_repository
         self.runtime_config = context.configuration
         self.stop_state = context.stop_state
@@ -84,7 +85,6 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         )
         self._legacy_transfer_command = context.legacy_transfer_command
         self.messagequeue = context.message_queue.bind(self.run_module)
-
     @property
     def runtime_config(self) -> ChainRuntimeConfig:
         """返回实例快照；兼容绕过构造器的旧调用并按需取得当前快照。"""

@@ -12,6 +12,7 @@ from app.application.configuration import ChainRuntimeConfig
 from app.runtime.stop import StopState, runtime_stop_state
 
 if TYPE_CHECKING:
+    from app.application.download.admission import SubscriptionDownloadRepository
     from app.application.download.failures import DownloadFailureRepository
     from app.application.history import (
         DownloadHistoryRepository,
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
         DeleteSubscribeScope,
         SyncDeleteSubscribeScope,
     )
+    from app.application.subscription.execution import SubscriptionSearchRepository
     from app.application.subscription.mutation import (
         SubscriptionMutationScope,
         SyncSubscriptionMutationScope,
@@ -74,6 +76,8 @@ class ChainRuntimeContext:
     media_server_repository: MediaServerRepository
     download_failure_repository: DownloadFailureRepository
     user_repository: ChainUserRepository
+    subscription_search_repository: Optional[SubscriptionSearchRepository] = None
+    subscription_download_repository: Optional[SubscriptionDownloadRepository] = None
     legacy_transfer_command: Optional[LegacyTransferCommand] = None
     durable_event_writer: Optional[ChainDurableEventWriter] = None
     configuration: ChainRuntimeConfig = field(

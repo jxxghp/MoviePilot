@@ -56,6 +56,7 @@ def test_download_single_accepts_existing_plugin_call_shapes() -> None:
     )
     assert signature.parameters["return_detail"].default is False
     assert signature.parameters["custom_words"].default is None
+    assert signature.parameters["governance"].default is None
 
 
 def test_batch_download_accepts_existing_plugin_call_shapes() -> None:
@@ -73,6 +74,7 @@ def test_batch_download_accepts_existing_plugin_call_shapes() -> None:
         downloader="qbittorrent",
         custom_words="S04E05 => S01E170",
     )
+    assert signature.parameters["governance"].default is None
 
 
 def test_get_no_exists_info_accepts_existing_plugin_call_shapes() -> None:

@@ -4,6 +4,7 @@ import copy
 from typing import Callable, Dict, List, Optional, Set, Tuple, cast
 
 from app.application.download import selection as _selection
+from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain import episode as episode_rules
@@ -39,7 +40,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
                        userid: Optional[str] = None,
                        username: Optional[str] = None,
                        downloader: Optional[str] = None,
-                       custom_words: Optional[str] = None
+                       custom_words: Optional[str] = None, governance: Optional[SubscriptionDownloadGovernance] = None,
                        ) -> Tuple[
                            List[Context],
                            Optional[Dict[str, Dict[int, NotExistMediaInfo]]],
@@ -59,7 +60,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
             userid=userid,
             username=username,
             downloader=downloader,
-            custom_words=custom_words,
+            custom_words=custom_words, governance=governance,
         )
 
     def _execute_batch_download(self,
@@ -71,7 +72,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
                        userid: Optional[str] = None,
                        username: Optional[str] = None,
                        downloader: Optional[str] = None,
-                       custom_words: Optional[str] = None
+                       custom_words: Optional[str] = None, governance: Optional[SubscriptionDownloadGovernance] = None,
                        ) -> Tuple[
                            List[Context],
                            Optional[Dict[str, Dict[int, NotExistMediaInfo]]],
@@ -86,7 +87,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
         :param userid:  用户ID
         :param username: 调用下载的用户名/插件名
         :param downloader: 下载器
-        :param custom_words: 下载来源（如订阅）的完整自定义识别词文本，随下载记录存档，供整理时原样复现识别
+        :param custom_words: 下载来源自定义词；governance: 订阅幂等、入口任务和取消边界
         :return: 已下载资源列表及剩余缺集，键格式为 no_exists[source:id]
         """
         no_exists_was_none = no_exists is None
@@ -185,7 +186,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
             userid=userid,
             username=username,
             downloader=downloader,
-            custom_words=custom_words,
+            custom_words=custom_words, governance=governance,
         )
 
         # 电视剧整季匹配
@@ -303,7 +304,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
                                         userid=userid,
                                         username=username,
                                         downloader=downloader,
-                                        custom_words=custom_words
+                                        custom_words=custom_words, governance=governance,
                                     )
                             else:
                                 # 下载
@@ -312,7 +313,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
                                                                    channel=channel, source=source,
                                                                    userid=userid, username=username,
                                                                    downloader=downloader,
-                                                                   custom_words=custom_words)
+                                                                   custom_words=custom_words, governance=governance)
 
                             if download_id:
                                 # 下载成功
@@ -401,7 +402,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
                                                                    channel=channel, source=source,
                                                                    userid=userid, username=username,
                                                                    downloader=downloader,
-                                                                   custom_words=custom_words)
+                                                                   custom_words=custom_words, governance=governance)
                                 if download_id:
                                     # 下载成功
                                     if __requires_complete_coverage(missing_info):
@@ -518,7 +519,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
                                 userid=userid,
                                 username=username,
                                 downloader=downloader,
-                                custom_words=custom_words
+                                custom_words=custom_words, governance=governance,
                             )
                             if not download_id:
                                 __remember_context_failure(context)

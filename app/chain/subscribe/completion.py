@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
+    subscribe_media_key,
     subscribe_media_keys,
 )
 from app.application.subscription.mutation import SubscriptionActor
@@ -173,6 +174,22 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
             self._SubscribeChain__finish_subscribe(subscribe=subscribe, meta=meta, mediainfo=mediainfo)
         elif not downloads:
             logger.info(f"{mediainfo.title_year} 继续洗版 ...")
+
+    def reconcile_subscription_completion(
+        self,
+        subscribe: SubscriptionSnapshot,
+        meta: MetaBase,
+        mediainfo: MediaInfo,
+    ) -> bool:
+        """使用已取得的新鲜媒体事实独立对账订阅完成状态。"""
+        mediakey = subscribe_media_key(subscribe)
+        completed, _no_exists = self.check_and_handle_existing_media(
+            subscribe=subscribe,
+            meta=meta,
+            mediainfo=mediainfo,
+            mediakey=mediakey,
+        )
+        return bool(completed)
 
     def _SubscribeChain__update_subscribe_note(
         self,

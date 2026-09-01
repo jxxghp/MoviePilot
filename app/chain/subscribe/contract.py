@@ -25,6 +25,7 @@ if TYPE_CHECKING:
         site_repository: Any
         subscription_completion_scope: Callable[..., Any]
         subscription_repository: Any
+        subscription_search_repository: Any
         sync_subscription_delete_scope: Callable[..., Any]
         sync_subscription_mutation_scope: Callable[..., Any]
 
@@ -48,20 +49,28 @@ if TYPE_CHECKING:
         _SubscribeChain__notify_subscribe_create_failure: Callable[..., Any]
         _SubscribeChain__post_subscribe_added: Callable[..., Any]
         _SubscribeChain__prepare_best_version_tv_candidate: Callable[..., Any]
+        _SubscribeChain__prepare_subscribe_progress_fields: Callable[..., Any]
         _SubscribeChain__prepare_total_episode_change_fields: Callable[..., Any]
         _SubscribeChain__refresh_subscribe_progress_with_no_exists: Callable[..., Any]
         _SubscribeChain__refresh_total_episode_before_completion: Callable[..., Any]
         _SubscribeChain__report_completed: Callable[..., Any]
+        _SubscribeChain__resolve_total_episode_decrease: Callable[..., Any]
         _acquire_run_lock: Callable[..., Any]
         _async_recognize_music_subscribe: Callable[..., Awaitable[Any]]
         _get_pending_best_version_episodes: Callable[..., Any]
         _is_episode_range_covered: Callable[..., Any]
         _is_music_download_complete: Callable[..., Any]
+        _load_search_subscriptions: Callable[..., Any]
         _match_music_subscribe: Callable[..., Any]
+        _notify_manual_search: Callable[..., Any]
+        _process_search_subscription: Callable[..., Any]
         _recognize_music_subscribe: Callable[..., Any]
+        _report_search_progress: Callable[..., Any]
         _search_music_subscribe: Callable[..., Any]
         _subscription_query: Callable[..., Any]
+        _defer_recent_subscription: Callable[..., Any]
         _validate_music_subscribe_target: Callable[..., Any]
+        _wait_before_scheduled_search: Callable[..., Any]
         add: Callable[..., Any]
         async def async_obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
             """异步补全媒体图片。"""
@@ -79,6 +88,7 @@ if TYPE_CHECKING:
             """异步发送订阅通知。"""
             raise NotImplementedError
         check_and_handle_existing_media: Callable[..., Any]
+        check_and_reconcile: Callable[..., Any]
         filter_torrents: Callable[..., Any]
         finish_subscribe_or_not: Callable[..., Any]
         get_params: Callable[..., Any]
@@ -88,6 +98,7 @@ if TYPE_CHECKING:
         get_subscribed_sites: Callable[..., Any]
         has_music_subscribe: Callable[..., Any]
         match: Callable[..., Any]
+        match_batch: Callable[..., Any]
         media_exists: Callable[..., Any]
         media_files: Callable[..., Any]
         obtain_images: Callable[..., Any]
@@ -95,6 +106,8 @@ if TYPE_CHECKING:
         post_message: Callable[..., Any]
         remote_list: Callable[..., Any]
         resolve_subscribe_missing: Callable[..., Any]
+        reconcile_subscription_completion: Callable[..., Any]
+        resume_search_queue: Callable[..., Any]
 
     _SubscribeOwnerBase = _SubscribeOwnerHost
 else:

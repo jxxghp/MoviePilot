@@ -4,6 +4,7 @@ from types import MappingProxyType
 from typing import Any, Callable, List, Mapping, Optional, Tuple, Union, cast
 
 from app.application.site.health import get_configured_site_health_service
+from app.application.site.observation import report_site_search_outcome
 from app.application.site.query import get_configured_site_query_service
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.domain import site as site_rules
@@ -64,6 +65,24 @@ class _IndexerSearchOutcome:
     error_flag: bool
     result: List[dict[str, Any]]
     seconds: int
+    error: Optional[Exception] = None
+
+
+def _classify_search_failure(error: Optional[Exception]) -> str:
+    """把索引器异常归一为站点预算可执行的冷却类别。"""
+    if error is None:
+        return "error"
+    status_code = getattr(error, "status_code", None)
+    text = f"{type(error).__name__}: {error}".lower()
+    if status_code == 429 or "429" in text or "rate limit" in text:
+        return "rate_limited"
+    if status_code == 403 or "403" in text or "forbidden" in text:
+        return "forbidden"
+    if any(token in text for token in ("未登录", "登录失效", "login", "cookie")):
+        return "login_invalid"
+    if isinstance(error, TimeoutError) or "timeout" in text or "timed out" in text or "超时" in text:
+        return "timeout"
+    return "error"
 
 
 class IndexerModule(_ModuleBase):
@@ -359,12 +378,14 @@ class IndexerModule(_ModuleBase):
         start_time: datetime,
         error_flag: bool,
         result: List[dict[str, Any]],
+        error: Optional[Exception] = None,
     ) -> _IndexerSearchOutcome:
         """把同步、异步 I/O 结果整理为共用的搜索完成状态"""
         return _IndexerSearchOutcome(
             error_flag=error_flag,
             result=result,
             seconds=(datetime.now() - start_time).seconds,
+            error=error,
         )
 
     @staticmethod
@@ -403,21 +424,33 @@ class IndexerModule(_ModuleBase):
             page=page,
         )
         if not request:
+            report_site_search_outcome(attempted=False, outcome="skipped")
             return []
 
         # 开始搜索
+        error: Optional[Exception] = None
         try:
             error_flag, result = self.__execute_search(site, request)
         except Exception as err:
+            error = err
             self.__log_search_error(site, "torrents", err)
 
-        outcome = self.__create_search_outcome(start_time, error_flag, result)
+        outcome = self.__create_search_outcome(start_time, error_flag, result, error)
 
         # 统计索引情况
         self.__indexer_statistic(
             site=site,
             error_flag=outcome.error_flag,
             seconds=outcome.seconds,
+        )
+        report_site_search_outcome(
+            attempted=True,
+            outcome=(
+                _classify_search_failure(outcome.error)
+                if outcome.error_flag or outcome.error is not None
+                else "success"
+            ),
+            error=str(outcome.error) if outcome.error is not None else None,
         )
 
         # 返回结果
@@ -498,21 +531,33 @@ class IndexerModule(_ModuleBase):
             page=page,
         )
         if not request:
+            report_site_search_outcome(attempted=False, outcome="skipped")
             return []
 
         # 开始搜索
+        error: Optional[Exception] = None
         try:
             error_flag, result = await self.__async_execute_search(site, request)
         except Exception as err:
+            error = err
             self.__log_search_error(site, "torrents", err)
 
-        outcome = self.__create_search_outcome(start_time, error_flag, result)
+        outcome = self.__create_search_outcome(start_time, error_flag, result, error)
 
         # 统计索引情况
         await self.__async_indexer_statistic(
             site=site,
             error_flag=outcome.error_flag,
             seconds=outcome.seconds,
+        )
+        report_site_search_outcome(
+            attempted=True,
+            outcome=(
+                _classify_search_failure(outcome.error)
+                if outcome.error_flag or outcome.error is not None
+                else "success"
+            ),
+            error=str(outcome.error) if outcome.error is not None else None,
         )
 
         # 返回结果

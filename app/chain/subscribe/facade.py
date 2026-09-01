@@ -49,6 +49,7 @@ class SubscribeChain(
 
     _interaction_handler_type = SubscribeInteractionHandler
     _rlock = threading.RLock()
+    _search_queue_lock = threading.Lock()
     _LOCK_TIMOUT = 3600 * 2
 
     @classmethod

@@ -36,6 +36,7 @@ from app.chain.transfer.filter import (
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.download import TransactionalDownloadFailureRepository
 from app.db.adapters.mediaserver import TransactionalMediaServerRepository
+from app.db.adapters.subscriptiondownload import TransactionalSubscriptionDownloadRepository
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.oper.message import MessageOper
 from app.db.oper.systemconfig import SystemConfigOper
@@ -91,6 +92,7 @@ def build_chain_runtime_context(
         module_dispatcher_factory=ModuleInvocationDispatcher,
         site_repository=dependencies.site,
         subscription_repository=dependencies.subscription,
+        subscription_search_repository=dependencies.subscription_search,
         subscription_mutation_scope=subscription_mutation_scope,
         sync_subscription_mutation_scope=sync_subscription_mutation_scope,
         subscription_delete_scope=delete_subscribe_scope,
@@ -110,6 +112,7 @@ def build_chain_runtime_context(
         transfer_execution_repository=dependencies.transfer_execution,
         media_server_repository=TransactionalMediaServerRepository(SessionFactory),
         download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
+        subscription_download_repository=TransactionalSubscriptionDownloadRepository(SessionFactory),
         user_repository=build_transactional_user_repository(),
         legacy_transfer_command=execute_legacy_transfer_command,
         configuration=configuration(),

@@ -106,6 +106,7 @@ EXPLICIT_TRANSPORT_PATHS = frozenset(
         "/api/v1/system/ping",
     }
 )
+SUBSCRIPTION_EXECUTION_UI_PREFIX = "/api/v1/subscribe/execution/"
 
 
 def _gateway_routes() -> dict[tuple[str, str], list[str]]:
@@ -160,6 +161,13 @@ def _classify(
             "ui_presentation",
             "host-ui",
             "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+            [],
+        )
+    if path.startswith(SUBSCRIPTION_EXECUTION_UI_PREFIX):
+        return (
+            "ui_presentation",
+            "host-ui",
+            "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
             [],
         )
     if path in EXPLICIT_TRANSPORT_PATHS:
