@@ -126,6 +126,26 @@ class TestAgentToolStreaming:
         assert result == "ok"
         assert buffered_message == "prefix\n\n（调用了 1 次工具）\n\n"
 
+    def test_report_tool_call_switches_between_detail_and_summary(self):
+        """中间件工具报告入口应按详细模式选择逐条展示或汇总。"""
+
+        async def _run(verbose: bool):
+            handler = StreamingHandler()
+            await handler.start_streaming()
+            with patch("app.agent.callback.get_runtime_setting", return_value=verbose):
+                handler.report_tool_call(
+                    tool_name="read_skill",
+                    tool_message="读取技能说明：moviepilot-api",
+                    tool_kwargs={"name": "moviepilot-api"},
+                )
+            return await handler.take()
+
+        detailed_message = asyncio.run(_run(True))
+        summary_message = asyncio.run(_run(False))
+
+        assert detailed_message == "\n\n⚙️ => 读取技能说明：moviepilot-api\n\n"
+        assert summary_message == "（查询了 1 个技能说明）\n\n"
+
     def test_permission_failure_adds_boundary_newline(self):
         """校验权限拦截时在流式缓冲中补齐工具边界换行。"""
 

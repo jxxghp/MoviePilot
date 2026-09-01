@@ -37,10 +37,9 @@ from app.agent.policy.sanitizer import (
     summarize_error,
 )
 from app.agent.runtime import SubAgentDefinition, agent_runtime_manager
-from app.agent.tools.tags import ToolTag
 from app.agent.tools.catalog import ToolCatalogSnapshot
+from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
-
 
 SUBAGENT_TASK_TOOL_NAME = "task"
 SUBAGENT_CONTROL_TOOL_NAME = "subagent_task"
@@ -401,12 +400,19 @@ def _record_subagent_tool_call(
     tool_name: str,
     tool_args: dict[str, Any],
 ) -> None:
-    """在流式处理器中记录子代理工具调用摘要。"""
+    """按当前详细模式展示或汇总子代理工具调用。"""
     if not stream_handler or not getattr(stream_handler, "is_streaming", False):
         return
-    stream_handler.record_tool_call(
+    safe_args = sanitize_for_host(tool_args)
+    if not isinstance(safe_args, dict):
+        safe_args = {}
+    if tool_name == SUBAGENT_TASK_TOOL_NAME:
+        tool_message = f"调用子代理：{safe_args.get('subagent_type') or 'general-purpose'}"
+    else:
+        tool_message = f"管理子代理任务：action={safe_args.get('action') or 'start'}"
+    stream_handler.report_tool_call(
         tool_name=tool_name,
-        tool_message="Subagent invoked",
+        tool_message=tool_message,
         tool_kwargs=tool_args,
     )
 
@@ -580,7 +586,7 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """在 task 子代理工具执行时记录聚合摘要。"""
+        """在 task 子代理工具执行时输出当前模式对应的执行信息。"""
         tool = request.tool
         tool_name = getattr(tool, "name", None)
         if tool_name != SUBAGENT_TASK_TOOL_NAME:
@@ -1234,7 +1240,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """在 subagent_task 子代理工具执行时记录聚合摘要。"""
+        """在 subagent_task 子代理工具执行时输出当前模式对应的执行信息。"""
         tool = request.tool
         tool_name = getattr(tool, "name", None)
         if tool_name != SUBAGENT_CONTROL_TOOL_NAME:

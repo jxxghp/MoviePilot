@@ -705,7 +705,7 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """在活动日志查询工具执行时记录聚合摘要。"""
+        """在活动日志查询工具执行时输出当前模式对应的执行信息。"""
         tool = request.tool
         tool_name = getattr(tool, "name", None)
         if tool_name != QUERY_ACTIVITY_LOG_TOOL_NAME:
@@ -723,9 +723,10 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
             f"date={logged_args.get('date') or '-'}"
         )
         if self.stream_handler and getattr(self.stream_handler, "is_streaming", False):
-            self.stream_handler.record_tool_call(
+            display_args = json.dumps(logged_args, ensure_ascii=False, default=str)
+            self.stream_handler.report_tool_call(
                 tool_name=QUERY_ACTIVITY_LOG_TOOL_NAME,
-                tool_message=QUERY_ACTIVITY_LOG_TOOL_DESCRIPTION,
+                tool_message=f"查询活动日志，主要参数：{display_args}",
                 tool_kwargs=tool_args,
             )
         try:

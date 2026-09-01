@@ -9,9 +9,9 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 import app.agent.middleware.subagents as subagent_module
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.subagents import (
-    MoviePilotSubAgentMiddleware,
     SUBAGENT_CONTROL_TOOL_NAME,
     SUBAGENT_TASK_TOOL_NAME,
+    MoviePilotSubAgentMiddleware,
     SubAgentTaskControlMiddleware,
     create_subagent_middlewares,
 )
@@ -182,14 +182,14 @@ def test_builtin_tools_declare_tags_in_implementation():
     assert missing_tools == []
 
 
-def test_task_tool_call_records_streaming_summary():
-    """task 子代理工具执行时应记录流式聚合摘要。"""
+def test_task_tool_call_reports_streaming_execution():
+    """task 子代理工具执行时应使用统一的工具显示策略。"""
 
     async def _run_test():
         calls = []
         stream_handler = SimpleNamespace(
             is_streaming=True,
-            record_tool_call=lambda **kwargs: calls.append(kwargs),
+            report_tool_call=lambda **kwargs: calls.append(kwargs),
         )
         middleware = MoviePilotSubAgentMiddleware(
             model=FakeListChatModel(responses=["ok"]),
@@ -219,7 +219,7 @@ def test_task_tool_call_records_streaming_summary():
     assert calls == [
         {
             "tool_name": SUBAGENT_TASK_TOOL_NAME,
-            "tool_message": "Subagent invoked",
+            "tool_message": "调用子代理：media-researcher",
             "tool_kwargs": {
                 "description": "检查媒体信息",
                 "subagent_type": "media-researcher",
@@ -235,7 +235,7 @@ def test_task_middleware_sanitizes_its_own_logs():
         secret_marker = "subagent-secret-marker-7316"
         stream_handler = SimpleNamespace(
             is_streaming=True,
-            record_tool_call=MagicMock(),
+            report_tool_call=MagicMock(),
         )
         middleware = MoviePilotSubAgentMiddleware(
             model=FakeListChatModel(responses=["ok"]),
@@ -273,14 +273,14 @@ def test_task_middleware_sanitizes_its_own_logs():
     assert "***" in str(mock_logger.method_calls)
 
 
-def test_control_tool_call_records_streaming_summary():
-    """subagent_task 子代理工具执行时应记录流式聚合摘要。"""
+def test_control_tool_call_reports_streaming_execution():
+    """subagent_task 子代理工具执行时应使用统一的工具显示策略。"""
 
     async def _run_test():
         calls = []
         stream_handler = SimpleNamespace(
             is_streaming=True,
-            record_tool_call=lambda **kwargs: calls.append(kwargs),
+            report_tool_call=lambda **kwargs: calls.append(kwargs),
         )
         middleware = SubAgentTaskControlMiddleware(
             model=FakeListChatModel(responses=["ok"]),
@@ -313,7 +313,7 @@ def test_control_tool_call_records_streaming_summary():
     assert calls == [
         {
             "tool_name": SUBAGENT_CONTROL_TOOL_NAME,
-            "tool_message": "Subagent invoked",
+            "tool_message": "管理子代理任务：action=start",
             "tool_kwargs": {
                 "action": "start",
                 "tasks": [

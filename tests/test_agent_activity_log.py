@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from app.agent.middleware.activity import (
-    QUERY_ACTIVITY_LOG_TOOL_DESCRIPTION,
     QUERY_ACTIVITY_LOG_TOOL_NAME,
     ActivityLogMiddleware,
     _summarize_with_llm,
@@ -402,14 +401,14 @@ def test_activity_log_middleware_query_tool_returns_json_payload(tmp_path):
     assert payload["entries"][0]["summary"] == "帮用户整理了电影 A"
 
 
-def test_activity_log_tool_call_records_streaming_summary(tmp_path):
-    """query_activity_log 工具执行时应记录流式聚合摘要。"""
+def test_activity_log_tool_call_reports_streaming_execution(tmp_path):
+    """query_activity_log 工具执行时应使用统一的工具显示策略。"""
 
     async def _run_test():
         calls = []
         stream_handler = SimpleNamespace(
             is_streaming=True,
-            record_tool_call=lambda **kwargs: calls.append(kwargs),
+            report_tool_call=lambda **kwargs: calls.append(kwargs),
         )
         middleware = ActivityLogMiddleware(
             activity_dir=str(tmp_path),
@@ -438,7 +437,7 @@ def test_activity_log_tool_call_records_streaming_summary(tmp_path):
     assert calls == [
         {
             "tool_name": QUERY_ACTIVITY_LOG_TOOL_NAME,
-            "tool_message": QUERY_ACTIVITY_LOG_TOOL_DESCRIPTION,
+            "tool_message": '查询活动日志，主要参数：{"keyword": "整理", "date": "2026-06-18"}',
             "tool_kwargs": {
                 "keyword": "整理",
                 "date": "2026-06-18",
@@ -454,7 +453,7 @@ def test_activity_log_middleware_sanitizes_its_own_logs(tmp_path):
         secret_marker = "activity-secret-marker-6825"
         stream_handler = SimpleNamespace(
             is_streaming=True,
-            record_tool_call=MagicMock(),
+            report_tool_call=MagicMock(),
         )
         middleware = ActivityLogMiddleware(
             activity_dir=str(tmp_path),

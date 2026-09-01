@@ -7,6 +7,7 @@ from app.agent.policy.sanitizer import sanitize_for_host
 from app.chain.base import ChainBase
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.message import Message, MessageResponse
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import MessageType, NotificationChannel
@@ -125,6 +126,28 @@ class StreamingHandler:
                 line for line in tool_message.splitlines() if line
             )
         return self.emit(f"\n\n{tool_message}\n\n")
+
+    def report_tool_call(
+        self,
+        tool_name: str,
+        tool_message: Optional[str] = None,
+        tool_kwargs: Optional[dict[str, Any]] = None,
+    ) -> str:
+        """
+        按 Agent 详细模式逐条展示工具调用，或登记为延迟汇总。
+
+        中间件私有工具不经过 ``MoviePilotTool._arun``，必须通过本入口复用
+        相同的详细模式语义，避免无条件调用 ``record_tool_call`` 后只显示汇总。
+        """
+        safe_message = sanitize_for_host(tool_message) if tool_message else tool_message
+        if get_runtime_setting("AI_AGENT_VERBOSE") and safe_message:
+            return self.emit_tool_message(str(safe_message))
+        self.record_tool_call(
+            tool_name=tool_name,
+            tool_message=str(safe_message) if safe_message else None,
+            tool_kwargs=tool_kwargs,
+        )
+        return ""
 
     async def take(self) -> str:
         """

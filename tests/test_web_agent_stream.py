@@ -569,6 +569,29 @@ def test_web_agent_tool_summary_is_emitted_before_following_text():
     assert outputs == ["（查询了 1 次数据）\n\n", "查询完成。"]
 
 
+def test_web_agent_middleware_tool_emits_detail_in_verbose_mode():
+    """中间件私有工具在啰嗦模式下应立即输出逐条工具明细。"""
+    outputs = []
+    agent = _get_web_agent_type()(
+        session_id="web-agent:middleware-tool-detail",
+        user_id="7",
+        channel=NotificationChannel.WebAgent.value,
+        source="web-agent",
+        username="admin",
+        replay_mode=ReplyMode.CAPTURE_ONLY,
+        output_callback=outputs.append,
+    )
+
+    with patch("app.agent.callback.get_runtime_setting", return_value=True):
+        agent.stream_handler.report_tool_call(
+            "read_skill",
+            tool_message="读取技能说明：moviepilot-api",
+            tool_kwargs={"name": "moviepilot-api"},
+        )
+
+    assert outputs == ["\n\n⚙️ => 读取技能说明：moviepilot-api\n\n"]
+
+
 def test_web_agent_channel_supports_streaming_and_attachments():
     """WebAgent 渠道应声明流式、多媒体和文件发送能力。"""
     assert ChannelCapabilityManager.supports_capability(NotificationChannel.WebAgent, ChannelCapability.INLINE_BUTTONS)

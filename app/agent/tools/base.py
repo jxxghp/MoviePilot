@@ -57,6 +57,15 @@ else:
             """追加逐条工具提示并登记其展示语义。"""
             ...
 
+        def report_tool_call(
+            self,
+            tool_name: str,
+            tool_message: Optional[str] = None,
+            tool_kwargs: Optional[dict[str, Any]] = None,
+        ) -> str:
+            """按详细模式逐条展示工具调用，或登记为延迟汇总。"""
+            ...
+
         async def take(self) -> str:
             """取出并清空当前缓冲内容。"""
             ...

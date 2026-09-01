@@ -550,7 +550,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """在 read_skill 工具执行时记录聚合摘要。"""
+        """在 read_skill 工具执行时输出当前模式对应的执行信息。"""
         tool = request.tool
         tool_name = getattr(tool, "name", None)
         tool_call = request.tool_call or {}
@@ -586,9 +586,9 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
             logged_args = {}
         logger.info(f"开始执行 Skill 工具: name={logged_args.get('name') or '-'}")
         if self.stream_handler and getattr(self.stream_handler, "is_streaming", False):
-            self.stream_handler.record_tool_call(
+            self.stream_handler.report_tool_call(
                 tool_name=SKILL_TOOL_NAME,
-                tool_message="Skill loaded",
+                tool_message=f"读取技能说明：{logged_args.get('name') or '-'}",
                 tool_kwargs=tool_args,
             )
         try:

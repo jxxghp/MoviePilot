@@ -8,6 +8,7 @@ from anyio import Path as AsyncPath
 from langchain.agents.middleware.types import ModelRequest
 from langchain_core.messages import SystemMessage
 
+from app.agent.callback import StreamingHandler
 from app.agent.middleware.skills import (
     MAX_SKILL_CONTENT_BYTES,
     SKILL_TOOL_NAME,
@@ -276,13 +277,13 @@ def test_modify_request_instructs_model_to_use_read_skill_without_paths(tmp_path
 
 
 @pytest.mark.anyio
-async def test_read_skill_tool_call_records_streaming_summary(tmp_path):
-    """read_skill 工具执行时应记录流式聚合摘要。"""
+async def test_read_skill_tool_call_reports_streaming_execution(tmp_path):
+    """read_skill 工具执行时应使用统一的工具显示策略。"""
     _write_skill(tmp_path, "moviepilot-api")
     calls = []
     stream_handler = SimpleNamespace(
         is_streaming=True,
-        record_tool_call=lambda **kwargs: calls.append(kwargs),
+        report_tool_call=lambda **kwargs: calls.append(kwargs),
     )
     middleware = SkillsMiddleware(
         sources=[str(tmp_path)],
@@ -307,7 +308,7 @@ async def test_read_skill_tool_call_records_streaming_summary(tmp_path):
     assert calls == [
         {
             "tool_name": SKILL_TOOL_NAME,
-            "tool_message": "Skill loaded",
+            "tool_message": "读取技能说明：moviepilot-api",
             "tool_kwargs": {
                 "name": "moviepilot-api",
             },
@@ -316,12 +317,40 @@ async def test_read_skill_tool_call_records_streaming_summary(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_read_skill_tool_call_emits_detail_in_verbose_mode(tmp_path):
+    """啰嗦模式下 read_skill 应逐条显示详情而不是生成技能汇总。"""
+    _write_skill(tmp_path, "moviepilot-api")
+    stream_handler = StreamingHandler()
+    await stream_handler.start_streaming()
+    middleware = SkillsMiddleware(
+        sources=[str(tmp_path)],
+        stream_handler=stream_handler,
+    )
+    request = SimpleNamespace(
+        tool=SimpleNamespace(name=SKILL_TOOL_NAME),
+        tool_call={"args": {"name": "moviepilot-api"}},
+    )
+
+    async def _fake_handler(_request):
+        """返回模拟工具结果。"""
+        return "ok"
+
+    with patch("app.agent.callback.get_runtime_setting", return_value=True):
+        result = await middleware.awrap_tool_call(request, _fake_handler)
+    buffered_message = await stream_handler.take()
+
+    assert result == "ok"
+    assert buffered_message == "\n\n⚙️ => 读取技能说明：moviepilot-api\n\n"
+    assert "查询了 1 个技能说明" not in buffered_message
+
+
+@pytest.mark.anyio
 async def test_skill_middleware_sanitizes_its_own_logs(tmp_path):
     """Skill 中间件读取参数和异常写日志时必须脱敏。"""
     secret_marker = "skill-secret-marker-2471"
     stream_handler = SimpleNamespace(
         is_streaming=True,
-        record_tool_call=MagicMock(),
+        report_tool_call=MagicMock(),
     )
     middleware = SkillsMiddleware(
         sources=[str(tmp_path)],
