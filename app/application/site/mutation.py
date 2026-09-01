@@ -149,6 +149,7 @@ class SiteMutationCommand:
         if await self._repository.async_get_by_domain(domain):
             return SiteMutationResult(False, f"{domain} 站点己存在")
 
+        values.pop("id", None)
         values.update(
             {
                 "domain": domain,

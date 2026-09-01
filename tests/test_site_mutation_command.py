@@ -4,6 +4,7 @@ import pytest
 
 from app.application.site.contract import SiteMutation, SitePriorityMutation
 from app.application.site.mutation import SiteMutationCommand
+from app.schemas.site import Site
 
 
 def _command(**overrides):
@@ -54,6 +55,20 @@ async def test_create_site_commits_before_updated_event():
     assert mutation.values["url"] == "https://demo.example/"
     assert mutation.values["name"] == "Demo"
     assert mutation.values["public"] == 1
+
+
+@pytest.mark.asyncio
+async def test_create_site_ignores_schema_identity_field():
+    """手动新增站点应忽略请求 Schema 自动补出的空主键。"""
+    command, dependencies = _command()
+
+    result = await command.create(
+        Site(url="https://demo.example/path").model_dump()
+    )
+
+    assert result.success is True
+    mutation = dependencies["repository"].stage_create.await_args.args[0]
+    assert "id" not in mutation.values
 
 
 @pytest.mark.asyncio
