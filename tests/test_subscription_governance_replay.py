@@ -176,3 +176,78 @@ def test_match_replays_fresh_episode_completion_contract(case, monkeypatch):
     assert repository.current.total_episode == case["expected_total_episode"]
     assert repository.current.lack_episode == case["expected_lack_episode"]
     assert bool(completions) is case["expected_completed"]
+
+
+def test_match_skips_external_facts_when_index_has_no_possible_candidates(monkeypatch):
+    """本轮只有明确冲突候选时，不得为订阅调用 TMDB 或媒体服务器准备。"""
+    subscribe = _build_subscribe(_load_replay_cases()[0])
+    repository = _ReplaySubscriptionRepository(subscribe)
+    candidate = _build_unrelated_candidate()
+    candidate.meta_info.media_source = MediaSource.TMDB
+    candidate.meta_info.media_id = "999"
+    chain = SubscribeChain()
+    chain.subscription_repository = repository
+    chain.resolve_subscribe_missing = lambda **_kwargs: pytest.fail("不应查询媒体库缺失事实")
+
+    class _UnexpectedMediaChain:
+        """任何媒体识别调用都表示候选门禁失效。"""
+
+        def recognize_media(self, **_kwargs):
+            """阻止无候选订阅读取外部媒体事实。"""
+            pytest.fail("不应读取 TMDB 新鲜事实")
+
+        def recognize_by_meta(self, *_args, **_kwargs):
+            """明确候选身份不应重新识别。"""
+            pytest.fail("不应重新识别明确候选")
+
+    monkeypatch.setattr("app.chain.subscribe.match.MediaChain", _UnexpectedMediaChain)
+    monkeypatch.setattr(
+        "app.chain.subscribe.query.get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda _key: []),
+    )
+
+    chain.match({"replay.example": [candidate]})
+
+
+def test_metadata_reconcile_reuses_fresh_fact_without_candidate_batch(monkeypatch):
+    """独立元数据巡检应复用同一次新鲜识别执行完成对账。"""
+    subscribe = _build_subscribe(_load_replay_cases()[1])
+    repository = _ReplaySubscriptionRepository(subscribe)
+    recognition_calls = []
+    reconciled = []
+    fresh_media = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="100",
+        type=MediaType.TV,
+        title="增长中的剧集",
+        year="2026",
+        seasons={1: list(range(1, 14))},
+    )
+
+    class _ReplayMediaChain:
+        """为独立完成对账返回固定新鲜媒体事实。"""
+
+        def recognize_media(self, **kwargs) -> MediaInfo:
+            """记录识别参数并返回 13 集事实。"""
+            recognition_calls.append(kwargs)
+            return fresh_media
+
+    chain = SubscribeChain()
+    chain.subscription_repository = repository
+    chain._SubscribeChain__apply_subscribe_update = (
+        lambda _subscribe, update_data, **_kwargs: repository.update(dict(update_data))
+    )
+    chain.reconcile_subscription_completion = (
+        lambda **kwargs: reconciled.append(kwargs)
+    )
+    monkeypatch.setattr("app.chain.subscribe.refresh.MediaChain", _ReplayMediaChain)
+
+    chain.check_and_reconcile()
+
+    assert len(recognition_calls) == 1
+    assert recognition_calls[0]["cache"] is False
+    assert repository.current.total_episode == 13
+    assert repository.current.lack_episode == 1
+    assert len(reconciled) == 1
+    assert reconciled[0]["subscribe"] == repository.current
+    assert reconciled[0]["mediainfo"] is fresh_media

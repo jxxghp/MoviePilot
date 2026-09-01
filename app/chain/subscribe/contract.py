@@ -79,6 +79,7 @@ if TYPE_CHECKING:
             """异步发送订阅通知。"""
             raise NotImplementedError
         check_and_handle_existing_media: Callable[..., Any]
+        check_and_reconcile: Callable[..., Any]
         filter_torrents: Callable[..., Any]
         finish_subscribe_or_not: Callable[..., Any]
         get_params: Callable[..., Any]
@@ -96,6 +97,7 @@ if TYPE_CHECKING:
         post_message: Callable[..., Any]
         remote_list: Callable[..., Any]
         resolve_subscribe_missing: Callable[..., Any]
+        reconcile_subscription_completion: Callable[..., Any]
 
     _SubscribeOwnerBase = _SubscribeOwnerHost
 else:

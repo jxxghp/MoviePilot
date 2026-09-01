@@ -90,11 +90,16 @@ class SubscribeRefreshOwner(_SubscribeOwnerBase):
         if progress_callback:
             progress_callback(value=100, text="订阅刷新完成")
 
-    def check(self, progress_callback: Optional[Callable[..., None]] = None) -> None:
+    def check(
+        self,
+        progress_callback: Optional[Callable[..., None]] = None,
+        reconcile_completion: bool = False,
+    ) -> None:
         """
         定时检查订阅，更新订阅信息
 
         :param progress_callback: 定时服务进度更新回调
+        :param reconcile_completion: 是否复用本次新鲜媒体事实执行独立完成对账
         """
         # 查询所有订阅
         repository = self.subscription_repository
@@ -219,6 +224,12 @@ class SubscribeRefreshOwner(_SubscribeOwnerBase):
                 update_data,
                 scene="metadata_refresh",
             )
+            if reconcile_completion and subscribe.state in self.get_states_for_search("R"):
+                self.reconcile_subscription_completion(
+                    subscribe=subscribe,
+                    meta=meta,
+                    mediainfo=mediainfo,
+                )
             logger.info(f"{subscribe.name} 订阅元数据更新完成")
             if progress_callback:
                 progress_callback(
@@ -228,6 +239,16 @@ class SubscribeRefreshOwner(_SubscribeOwnerBase):
                 )
         if progress_callback:
             progress_callback(value=100, text="订阅元数据更新完成")
+
+    def check_and_reconcile(
+        self,
+        progress_callback: Optional[Callable[..., None]] = None,
+    ) -> None:
+        """刷新订阅元数据，并复用同一轮新鲜事实执行完成对账。"""
+        return self.check(
+            progress_callback=progress_callback,
+            reconcile_completion=True,
+        )
 
     async def cache_calendar(
         self,

@@ -181,6 +181,15 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     domains = []
                     if subscribe.sites:
                         domains = self.site_repository.get_domains_by_ids(subscribe.sites)
+                    sub_sites = self.get_sub_sites(subscribe)
+                    routed_torrents = candidate_index.route_for_match(
+                        subscribe,
+                        domains=set(domains) if domains else None,
+                        site_ids=set(sub_sites) if sub_sites else None,
+                    )
+                    if not routed_torrents:
+                        logger.info(f"订阅 {subscribe.name} 本轮没有可能相关的资源，跳过资源匹配准备")
+                        continue
                     # 识别媒体信息
                     mediainfo: MediaInfo = MediaChain().recognize_media(
                         meta=meta,
@@ -220,7 +229,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     torrenthelper = TorrentHelper()
                     systemconfig = get_configured_system_config()
                     wordsmatcher = WordsMatcher()
-                    routed_torrents = candidate_index.route_for_match(subscribe)
                     for domain, contexts in routed_torrents.items():
                         if runtime_stop_state.is_system_stopped:
                             break
@@ -237,7 +245,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                             torrent_info = _context.torrent_info
 
                             # 不在订阅站点范围的不处理
-                            sub_sites = self.get_sub_sites(subscribe)
                             if sub_sites and torrent_info.site not in sub_sites:
                                 logger.debug(f"{torrent_info.site_name} - {torrent_info.title} 不符合订阅站点要求")
                                 continue

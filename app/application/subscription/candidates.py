@@ -113,8 +113,14 @@ class CandidateIndex:
                 results.append(copied)
         return results
 
-    def route_for_match(self, subscribe: SubscriptionSnapshot) -> CandidateGroups:
-        """保守路由可能命中的候选，且只排除当前 canonical 逻辑必然拒绝的候选。"""
+    def route_for_match(
+        self,
+        subscribe: SubscriptionSnapshot,
+        *,
+        domains: Optional[set[str]] = None,
+        site_ids: Optional[set[int]] = None,
+    ) -> CandidateGroups:
+        """保守路由可能命中的候选，并在外部事实查询前应用站点范围。"""
         if subscribe.custom_words:
             positions = set(range(len(self._ordered)))
         else:
@@ -132,6 +138,11 @@ class CandidateIndex:
         routed: CandidateGroups = {}
         for position, (domain, context) in enumerate(self._ordered):
             if position not in positions:
+                continue
+            if domains and domain not in domains:
+                continue
+            torrent_info = getattr(context, "torrent_info", None)
+            if site_ids and getattr(torrent_info, "site", None) not in site_ids:
                 continue
             if not subscribe.custom_words and (
                 not self.media_type_matches(context, subscribe)

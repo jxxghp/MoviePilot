@@ -59,7 +59,7 @@ def configure_scheduler_services() -> None:
         SchedulerServices(
             sync_cookies=site_chain.sync_cookies,
             sync_mediaserver=mediaserver_chain.sync,
-            check_subscribe=subscribe_chain.check,
+            check_subscribe=subscribe_chain.check_and_reconcile,
             search_subscribe=subscribe_chain.search,
             refresh_subscribe=subscribe_chain.refresh,
             follow_subscribe=subscribe_chain.follow,
