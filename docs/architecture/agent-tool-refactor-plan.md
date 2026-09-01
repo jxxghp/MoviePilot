@@ -373,6 +373,7 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 - 参数摘要统一复用宿主递归脱敏器，设置凭据、密码、Cookie、Token 与 API key 等仅显示 `***`，避免为了恢复可观察性而泄露敏感输入
 - 复用脱敏器新增 1 条 Agent 同域内部依赖边，宿主架构快照由 7,688 更新为 7,689；模块总数和跨层边界均未变化
 - 后续将 Skill、子 Agent 和活动记录等中间件统一接入运行时啰嗦模式判断，新增 `app.agent.callback -> app.runtime.settings` 依赖，宿主架构快照由 7,689 更新为 7,690；该方向符合 Agent 到 Runtime 的既定边界
+- 中间件 import 排序修复同时消除了 2 条 Ruff `I001` 历史诊断，低水位由 571 降至 569，并已同步质量指标文档
 - 新增 Web Agent 实际流式回调回归和设置凭据脱敏回归；扩展 Agent/API/流式专项 `487 passed`，完整锁定测试 4 个分片分别为 `1620 passed, 3 skipped`、`1860 passed, 4 skipped`、`1917 passed`、`2253 passed, 2 skipped`，合计 `7650 passed, 9 skipped`；Ruff、Pylint `10.00/10` 和全量 mypy ratchet 均通过
 
 本文件作为本次重构的持续记录，保留阶段状态、实际变更、验证结果、提交状态与已知基线边界。

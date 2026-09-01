@@ -36,9 +36,6 @@
   "app/agent/middleware/selection.py": {
     "I001": 1
   },
-  "app/agent/middleware/subagents.py": {
-    "I001": 1
-  },
   "app/agent/middleware/utils.py": {
     "I001": 1
   },
@@ -672,9 +669,6 @@
     "I001": 1
   },
   "tests/test_agent_subagent_runtime.py": {
-    "I001": 1
-  },
-  "tests/test_agent_subagents.py": {
     "I001": 1
   },
   "tests/test_agent_tokens_events.py": {
