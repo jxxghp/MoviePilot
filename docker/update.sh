@@ -33,6 +33,7 @@ UPDATE_PREVIOUS_APP="${APP_DIR}.__update_previous__"
 UPDATE_PREVIOUS_PUBLIC="${PUBLIC_DIR}.__update_previous__"
 PREPARED_UPDATE_ROOT="${CONFIG_DIR}/temp/moviepilot-update"
 PREPARED_UPDATE_MANIFEST="${PREPARED_UPDATE_ROOT}/install.json"
+PREPARED_DOWNLOAD_MANIFEST="${PREPARED_UPDATE_ROOT}/prepared.json"
 PREPARED_UPDATE_STATE="${PREPARED_UPDATE_ROOT}/state.json"
 
 function mark_prepared_update_failed() {
@@ -41,11 +42,11 @@ function mark_prepared_update_failed() {
     mkdir -p "${PREPARED_UPDATE_ROOT}"
     if [ -f "${PREPARED_UPDATE_STATE}" ]; then
         jq --arg error "${message}" \
-            '.state = "failed" | .error = $error | .can_update = true | .can_install = false' \
+            '.state = "failed" | .error = $error | .can_update = true | .can_install = false | .updates = ((.updates // []) | map(if .state == "installing" then .state = "failed" | .error = $error | .can_update = true | .can_install = false else . end))' \
             "${PREPARED_UPDATE_STATE}" > "${temporary_state}"
     else
         jq -n --arg error "${message}" \
-            '{state: "failed", error: $error, can_update: true, can_install: false}' \
+            '{state: "failed", error: $error, can_update: true, can_install: false, updates: []}' \
             > "${temporary_state}"
     fi
     mv -f "${temporary_state}" "${PREPARED_UPDATE_STATE}"
@@ -308,6 +309,91 @@ function existing_resource_dir() {
     printf '%s\n' "${resource_source_dir}"
 }
 
+function prepared_update_has_target() {
+    local target="$1"
+    jq -e --arg target "${target}" \
+        'if (.targets | type) == "array" then (.targets | index($target)) != null else $target == "application" and (.backend_archive // "") != "" end' \
+        "${PREPARED_UPDATE_MANIFEST}" >/dev/null
+}
+
+function validate_prepared_resources() {
+    local resource_path
+    local resource_name
+    local resource_sha256
+    local resource_count
+    resource_count=$(jq -r '.resource_files // [] | length' "${PREPARED_UPDATE_MANIFEST}") || return 1
+    [ "${resource_count}" -gt 0 ] || return 1
+    jq -e '([.resource_files[]?.name] | index("user.sites.v3.bin")) != null and any(.resource_files[]?.name; startswith("sites."))' "${PREPARED_UPDATE_MANIFEST}" >/dev/null || return 1
+    while IFS=$'\t' read -r resource_path resource_name resource_sha256; do
+        [ -n "${resource_path}" ] && [ -n "${resource_name}" ] || return 1
+        [ "$(basename "${resource_name}")" = "${resource_name}" ] || return 1
+        [[ "${resource_name}" != *..* ]] || return 1
+        [ -f "${resource_path}" ] || return 1
+        [ "$(sha256sum "${resource_path}" | awk '{print $1}')" = "${resource_sha256}" ] || return 1
+    done < <(jq -r '.resource_files[]? | [.path, .name, .sha256] | @tsv' "${PREPARED_UPDATE_MANIFEST}")
+}
+
+function consume_prepared_target() {
+    local target="$1"
+    local temporary="${PREPARED_DOWNLOAD_MANIFEST}.tmp.$$"
+    [ -f "${PREPARED_DOWNLOAD_MANIFEST}" ] || return 0
+    jq --arg target "${target}" '
+        if $target == "application" then
+            del(.version, .frontend_version, .backend_archive, .frontend_archive, .backend_sha256, .frontend_sha256)
+        elif $target == "resources" then
+            del(.resource_package_version, .resource_files)
+        else . end
+        | if (.targets | type) == "array" then
+            .targets = [.targets[] | select(. != $target)]
+            | if (.targets | length) == 0 then del(.targets) else . end
+          else . end
+    ' "${PREPARED_DOWNLOAD_MANIFEST}" > "${temporary}" || {
+        rm -f "${temporary}"
+        return 1
+    }
+    if jq -e '((.backend_archive // "") == "") and (((.resource_files // []) | length) == 0)' "${temporary}" >/dev/null; then
+        rm -f "${temporary}" "${PREPARED_DOWNLOAD_MANIFEST}"
+    else
+        mv -f "${temporary}" "${PREPARED_DOWNLOAD_MANIFEST}"
+    fi
+}
+
+function clear_staged_native_resources() {
+    local resource_dir="$1"
+    rm -f "${resource_dir}"/sites.*.so "${resource_dir}"/sites.*.pyd "${resource_dir}"/sites.*.dylib
+}
+
+function apply_prepared_resources() {
+    local target_dir="${APP_DIR}/app/application/site"
+    local stage_dir="${TMP_PATH}/PreparedResources"
+    local backup_dir="${target_dir}.__prepared_previous__"
+    local resource_path
+    local resource_name
+
+    validate_prepared_resources || return 1
+    rm -rf "${stage_dir}" "${backup_dir}"
+    mkdir -p "${stage_dir}" "${target_dir}" || return 1
+    if [ -d "${target_dir}" ] && ! cp -a "${target_dir}/." "${stage_dir}/"; then
+        return 1
+    fi
+    clear_staged_native_resources "${stage_dir}"
+    while IFS=$'\t' read -r resource_path resource_name; do
+        [ -n "${resource_path}" ] && [ -n "${resource_name}" ] || return 1
+        cp -f "${resource_path}" "${stage_dir}/${resource_name}" || return 1
+    done < <(jq -r '.resource_files[]? | [.path, .name] | @tsv' "${PREPARED_UPDATE_MANIFEST}")
+
+    if [ -d "${target_dir}" ]; then
+        mv "${target_dir}" "${backup_dir}" || return 1
+    fi
+    if ! mkdir -p "${target_dir}" || ! cp -a "${stage_dir}/." "${target_dir}/"; then
+        rm -rf "${target_dir}"
+        [ -d "${backup_dir}" ] && mv "${backup_dir}" "${target_dir}"
+        return 1
+    fi
+    rm -rf "${backup_dir}" "${stage_dir}"
+    return 0
+}
+
 function download_staged_resource() {
     local url="$1"
     local destination="$2"
@@ -369,6 +455,17 @@ function stage_runtime_payload() {
         [ -f "${resource_file}" ] || continue
         cp -a "${resource_file}" "${stage_resource_dir}/" || return 1
     done
+
+    if [ "${MOVIEPILOT_PREPARED_UPDATE:-false}" = "true" ]; then
+        if prepared_update_has_target resources; then
+            clear_staged_native_resources "${stage_resource_dir}"
+            while IFS=$'\t' read -r resource_path resource_name; do
+                [ -n "${resource_path}" ] && [ -n "${resource_name}" ] || return 1
+                cp -f "${resource_path}" "${stage_resource_dir}/${resource_name}" || return 1
+            done < <(jq -r '.resource_files[]? | [.path, .name] | @tsv' "${PREPARED_UPDATE_MANIFEST}")
+        fi
+        return 0
+    fi
 
     python_version="$("${VENV_PATH}/bin/python3" -c 'import sys, sysconfig; print(f"cpython-{sys.version_info.major}{sys.version_info.minor}{"t" if sysconfig.get_config_var("Py_GIL_DISABLED") == 1 else ""}")')" || return 1
     arch="$(uname -m)"
@@ -719,17 +816,33 @@ function get_priority() {
 function run_moviepilot_update() {
 MOVIEPILOT_UPDATE_RESULT="noop"
 if [ -f "${PREPARED_UPDATE_MANIFEST}" ]; then
+    PREPARED_HAS_APPLICATION="false"
+    PREPARED_HAS_RESOURCES="false"
+    if prepared_update_has_target application; then PREPARED_HAS_APPLICATION="true"; fi
+    if prepared_update_has_target resources; then PREPARED_HAS_RESOURCES="true"; fi
     PREPARED_BACKEND_ARCHIVE=$(jq -r '.backend_archive // empty' "${PREPARED_UPDATE_MANIFEST}")
     PREPARED_FRONTEND_ARCHIVE=$(jq -r '.frontend_archive // empty' "${PREPARED_UPDATE_MANIFEST}")
     PREPARED_BACKEND_SHA256=$(jq -r '.backend_sha256 // empty' "${PREPARED_UPDATE_MANIFEST}")
     PREPARED_FRONTEND_SHA256=$(jq -r '.frontend_sha256 // empty' "${PREPARED_UPDATE_MANIFEST}")
     PREPARED_VERSION=$(jq -r '.version // empty' "${PREPARED_UPDATE_MANIFEST}")
     PREPARED_FRONTEND_VERSION=$(jq -r '.frontend_version // empty' "${PREPARED_UPDATE_MANIFEST}")
-    if [ ! -f "${PREPARED_BACKEND_ARCHIVE}" ] || [ ! -f "${PREPARED_FRONTEND_ARCHIVE}" ] \
+    if [ "${PREPARED_HAS_APPLICATION}" = "true" ] && { [ ! -f "${PREPARED_BACKEND_ARCHIVE}" ] || [ ! -f "${PREPARED_FRONTEND_ARCHIVE}" ] \
         || [ "$(sha256sum "${PREPARED_BACKEND_ARCHIVE}" | awk '{print $1}')" != "${PREPARED_BACKEND_SHA256}" ] \
-        || [ "$(sha256sum "${PREPARED_FRONTEND_ARCHIVE}" | awk '{print $1}')" != "${PREPARED_FRONTEND_SHA256}" ]; then
+        || [ "$(sha256sum "${PREPARED_FRONTEND_ARCHIVE}" | awk '{print $1}')" != "${PREPARED_FRONTEND_SHA256}" ]; }; then
         ERROR "已准备的更新包校验失败，拒绝安装"
         mark_prepared_update_failed "已准备的更新包校验失败"
+        MOVIEPILOT_UPDATE_RESULT="failed"
+        return 1
+    fi
+    if [ "${PREPARED_HAS_RESOURCES}" = "true" ] && ! validate_prepared_resources; then
+        ERROR "已准备的站点资源包校验失败，拒绝安装"
+        mark_prepared_update_failed "已准备的站点资源包校验失败"
+        MOVIEPILOT_UPDATE_RESULT="failed"
+        return 1
+    fi
+    if [ "${PREPARED_HAS_APPLICATION}" != "true" ] && [ "${PREPARED_HAS_RESOURCES}" != "true" ]; then
+        ERROR "已准备的更新清单没有可安装内容，拒绝安装"
+        mark_prepared_update_failed "已准备的更新清单没有可安装内容"
         MOVIEPILOT_UPDATE_RESULT="failed"
         return 1
     fi
@@ -752,8 +865,25 @@ if [ -f "${PREPARED_UPDATE_MANIFEST}" ]; then
     else
         CURL_HEADERS=""
     fi
-    INFO "安装已下载并校验的 MoviePilot ${PREPARED_VERSION} 更新包"
-    if install_backend_and_download_resources "tags/${PREPARED_VERSION}.zip"; then
+    INFO "安装已下载并校验的 MoviePilot 更新包"
+    prepared_install_success="true"
+    if [ "${PREPARED_HAS_APPLICATION}" = "true" ]; then
+        if ! install_backend_and_download_resources "tags/${PREPARED_VERSION}.zip"; then
+            prepared_install_success="false"
+        elif [ "${PREPARED_HAS_RESOURCES}" = "true" ] && ! consume_prepared_target resources; then
+            prepared_install_success="false"
+        elif ! consume_prepared_target application; then
+            prepared_install_success="false"
+        fi
+    fi
+    if [ "${PREPARED_HAS_APPLICATION}" != "true" ] && [ "${PREPARED_HAS_RESOURCES}" = "true" ] \
+        && ! apply_prepared_resources; then
+        prepared_install_success="false"
+    elif [ "${PREPARED_HAS_APPLICATION}" != "true" ] && [ "${PREPARED_HAS_RESOURCES}" = "true" ] \
+        && ! consume_prepared_target resources; then
+        prepared_install_success="false"
+    fi
+    if [ "${prepared_install_success}" = "true" ]; then
         rm -f "${PREPARED_UPDATE_MANIFEST}"
     else
         mark_prepared_update_failed "已下载的 Release 更新安装失败"

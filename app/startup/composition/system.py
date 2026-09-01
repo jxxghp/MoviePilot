@@ -39,7 +39,7 @@ from app.runtime.events import eventmanager
 from app.runtime.state import SystemHelper
 from app.runtime.stop import runtime_stop_state
 from app.schemas.event import ConfigChangeEventData
-from app.schemas.system import SystemUpdateStatus
+from app.schemas.system import SystemUpdateStatus, SystemUpdateType
 from app.schemas.types import EventType
 
 _LOG_DOWNLOAD_LIMIT = 10
@@ -264,13 +264,13 @@ class _SystemUpdateAdapter(SystemUpdatePort):
         """立即检查更新。"""
         return system_update_manager.check()
 
-    def download(self) -> SystemUpdateStatus:
-        """启动后台下载。"""
-        return system_update_manager.start_download()
+    def download(self, target: SystemUpdateType = "application") -> SystemUpdateStatus:
+        """启动指定升级类型的后台下载。"""
+        return system_update_manager.start_download(target)
 
-    def prepare_install(self) -> tuple[bool, str]:
-        """确认安装准备。"""
-        return system_update_manager.request_install()
+    def prepare_install(self, target: SystemUpdateType = "application") -> tuple[bool, str]:
+        """确认指定升级类型的安装准备。"""
+        return system_update_manager.request_install(target)
 
     def cancel_install(self, message: str) -> None:
         """撤销失败的安装请求。"""

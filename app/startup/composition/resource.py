@@ -7,7 +7,6 @@ from collections.abc import Callable
 from typing import Optional
 
 from app.adapters.system.resource import (
-    ResourceHelper,
     configure_resource_version_provider,
     reset_resource_version_provider,
 )
@@ -64,12 +63,19 @@ def reset_managed_resource_composition() -> None:
         _managed_resource_runtime = None
 
 
+def configure_site_resource_versions(
+    version_provider: Callable[[], tuple[str, str]],
+) -> None:
+    """装配运行期资源版本读取器，不在应用启动后下载或替换资源。"""
+    configure_resource_version_provider(version_provider)
+
+
 def install_site_resources(
     version_provider: Callable[[], tuple[str, str]],
 ) -> bool:
-    """装配资源版本读取器并执行一次检测安装，返回是否发生更新。"""
-    configure_resource_version_provider(version_provider)
-    return ResourceHelper().check() is True
+    """兼容旧调用方，仅装配版本读取器并禁止启动阶段直接安装资源。"""
+    configure_site_resource_versions(version_provider)
+    return False
 
 
 def reset_site_resource_composition() -> None:

@@ -282,7 +282,7 @@
               "type": "null"
             }
           ],
-          "description": "Exact configured storage target name accepted by storage.manage.",
+          "description": "Exact target identifier selected by the operation.",
           "title": "Target"
         }
       },
@@ -1440,7 +1440,7 @@
           "type": "object"
         },
         "target": {
-          "description": "Exact configured storage target name accepted by storage.manage.",
+          "description": "Exact target identifier selected by the operation.",
           "title": "Target",
           "type": "string"
         }
@@ -2682,6 +2682,17 @@
           "description": "Regular expression or filter expression that rejects matching releases.",
           "title": "Exclude"
         },
+        "execution_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SubscriptionExecutionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Current subscription execution status returned with the subscription snapshot."
+        },
         "filter": {
           "anyOf": [
             {
@@ -3500,6 +3511,111 @@
       "title": "SubscribeShare",
       "type": "object"
     },
+    "SubscriptionExecutionStatus": {
+      "description": "Subscription refresh execution status and progress summary.",
+      "properties": {
+        "batch_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Stable subscription search batch identifier.",
+          "title": "Batch Id"
+        },
+        "can_cancel": {
+          "default": false,
+          "description": "Whether the current subscription execution can be cancelled.",
+          "title": "Can Cancel",
+          "type": "boolean"
+        },
+        "can_retry": {
+          "default": false,
+          "description": "Whether the current subscription execution can be retried.",
+          "title": "Can Retry",
+          "type": "boolean"
+        },
+        "current_site_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Configured site ID currently handling the subscription execution.",
+          "title": "Current Site Id"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Human-readable workflow, provider, or execution error message.",
+          "title": "Error"
+        },
+        "phase": {
+          "description": "Current phase of a subscription execution.",
+          "title": "Phase",
+          "type": "string"
+        },
+        "requires_reconciliation": {
+          "default": false,
+          "description": "Whether the execution requires reconciliation before it can continue.",
+          "title": "Requires Reconciliation",
+          "type": "boolean"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exact metadata or recommendation source selected by the operation.",
+          "title": "Source"
+        },
+        "state": {
+          "description": "Current site, subscription, marketplace, or transfer state filter.",
+          "title": "State",
+          "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Stable durable transfer task ID returned by transfer.manual_reviews.",
+          "title": "Task Id"
+        },
+        "updated_at": {
+          "description": "Timestamp when the subscription execution status was last updated.",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "phase",
+        "updated_at"
+      ],
+      "title": "SubscriptionExecutionStatus",
+      "type": "object"
+    },
     "SystemSettingsUpdateRequest": {
       "description": "One registered system-setting update request.",
       "properties": {
@@ -3553,6 +3669,23 @@
         "setting_key"
       ],
       "title": "SystemSettingsUpdateRequest",
+      "type": "object"
+    },
+    "SystemUpdateRequest": {
+      "description": "Selected MoviePilot application or site-resource update target.",
+      "properties": {
+        "target": {
+          "default": "application",
+          "description": "Exact target identifier selected by the operation.",
+          "enum": [
+            "application",
+            "resources"
+          ],
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "title": "SystemUpdateRequest",
       "type": "object"
     },
     "TorrentInfo": {
@@ -12123,7 +12256,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Check GitHub for the latest stable MoviePilot v3 release. Method: POST. Path: /api/v1/system/update/check. Effect: external_side_effect.",
+      "description": "Check for the latest stable MoviePilot v3 application release and current-platform site resources. Method: POST. Path: /api/v1/system/update/check. Effect: external_side_effect.",
       "properties": {
         "operation_id": {
           "const": "system.update.check",
@@ -12139,8 +12272,20 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start downloading and verifying the available stable release in the background. Method: POST. Path: /api/v1/system/update/download. Effect: external_side_effect.",
+      "description": "Start downloading and verifying one selected application or site-resource update in the background. Method: POST. Path: /api/v1/system/update/download. Effect: external_side_effect.",
       "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SystemUpdateRequest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Request value for system.update.download. Start downloading and verifying one selected application or site-resource update in the background. Use the exact type and fields below.",
+          "title": "Request"
+        },
         "operation_id": {
           "const": "system.update.download",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
@@ -12155,8 +12300,20 @@
     },
     {
       "additionalProperties": false,
-      "description": "Install the already downloaded and verified stable release, then restart MoviePilot. Method: POST. Path: /api/v1/system/update/install. Effect: external_side_effect.",
+      "description": "Install one selected already downloaded and verified application or site-resource update, then restart MoviePilot. Method: POST. Path: /api/v1/system/update/install. Effect: external_side_effect.",
       "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SystemUpdateRequest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Request value for system.update.install. Install one selected already downloaded and verified application or site-resource update, then restart MoviePilot. Use the exact type and fields below.",
+          "title": "Request"
+        },
         "operation_id": {
           "const": "system.update.install",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
@@ -12171,7 +12328,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the current stable-release check, download, verification, or install state. Method: GET. Path: /api/v1/system/update/status. Effect: safe_read.",
+      "description": "Read application and site-resource update checks, downloads, verification, or install state. Method: GET. Path: /api/v1/system/update/status. Effect: safe_read.",
       "properties": {
         "operation_id": {
           "const": "system.update.status",

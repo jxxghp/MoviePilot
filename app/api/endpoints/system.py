@@ -63,6 +63,7 @@ from app.schemas.system import RuleTestData as _SchemaRuleTestData
 from app.schemas.system import SystemEnvironmentUpdateData as _SchemaSystemEnvironmentUpdateData
 from app.schemas.system import SystemModuleListData as _SchemaSystemModuleListData
 from app.schemas.system import SystemSettingsUpdateRequest as _SchemaSystemSettingsUpdateRequest
+from app.schemas.system import SystemUpdateRequest as _SchemaSystemUpdateRequest
 from app.schemas.system import SystemUpdateStatus as _SchemaSystemUpdateStatus
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import SystemConfigKey
@@ -1101,11 +1102,12 @@ def check_system_update(
     response_model=_SchemaResponse[_SchemaSystemUpdateStatus],
 )
 def download_system_update(
+    request: _SchemaSystemUpdateRequest | None = Body(default=None),
     _: ApiPrincipal = Depends(get_current_active_superuser),
     runtime: HostRuntime = Depends(get_host_runtime),
 ):
-    """启动后台下载并立即返回当前状态（仅管理员）。"""
-    result = runtime.system.download_update()
+    """启动指定类型的后台下载并立即返回当前状态（仅管理员）。"""
+    result = runtime.system.download_update(request.target if request else "application")
     return _SchemaResponse(success=result.success, data=result.data, message=result.message)
 
 
@@ -1115,11 +1117,12 @@ def download_system_update(
     response_model=_SchemaResponse[None],
 )
 def install_system_update(
+    request: _SchemaSystemUpdateRequest | None = Body(default=None),
     _: ApiPrincipal = Depends(get_current_active_superuser),
     runtime: HostRuntime = Depends(get_host_runtime),
 ):
-    """确认消费已校验更新包，并重启进入安装阶段（仅管理员）。"""
-    result = runtime.system.install_update()
+    """确认消费指定类型的已校验制品，并重启进入安装阶段（仅管理员）。"""
+    result = runtime.system.install_update(request.target if request else "application")
     return _SchemaResponse(success=result.success, message=result.message)
 
 

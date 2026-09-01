@@ -71,46 +71,23 @@ def test_resource_helper_preserves_no_argument_check_contract(monkeypatch):
     assert provider_calls == [True]
 
 
-def test_startup_owns_restart_after_resource_update(monkeypatch):
-    """资源适配器只返回更新结果，进程重启必须由启动组合层触发。"""
-    restart_calls = []
+def test_startup_resource_hook_only_configures_version_provider(monkeypatch):
+    """启动组合层只注册资源版本读取器，不在进程启动后下载或重启。"""
+    providers = []
     monkeypatch.setattr(
         resource_composition,
-        "ResourceHelper",
-        lambda: type(
-            "ResourceStub",
-            (),
-            {"check": lambda self, **_versions: True},
-        )(),
-    )
-    monkeypatch.setattr(
-        modules_initializer.SystemHelper,
-        "restart",
-        lambda: restart_calls.append(True) or (True, "ok"),
+        "configure_resource_version_provider",
+        lambda provider: providers.append(provider),
     )
 
-    modules_initializer.update_resources()
+    resource_composition.configure_site_resource_versions(lambda: ("1", "2"))
 
-    assert restart_calls == [True]
+    assert len(providers) == 1
+    assert providers[0]() == ("1", "2")
 
 
-def test_startup_does_not_restart_without_resource_update(monkeypatch):
-    """没有成功安装新资源时启动层不得请求重启。"""
-    monkeypatch.setattr(
-        resource_composition,
-        "ResourceHelper",
-        lambda: type(
-            "ResourceStub",
-            (),
-            {"check": lambda self, **_versions: False},
-        )(),
-    )
-    monkeypatch.setattr(
-        modules_initializer.SystemHelper,
-        "restart",
-        lambda: (_ for _ in ()).throw(AssertionError("不应重启")),
-    )
-
+def test_startup_resource_update_hook_is_noop(monkeypatch):
+    """旧启动入口保留兼容性，但不再触发资源检查、安装或重启。"""
     modules_initializer.update_resources()
 
 

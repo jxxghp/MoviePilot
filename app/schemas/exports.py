@@ -406,6 +406,8 @@ SCHEMA_EXPORTS = {
     'SystemModuleInfo': ('app.schemas.system', 'SystemModuleInfo'),
     'SystemModuleListData': ('app.schemas.system', 'SystemModuleListData'),
     'SystemSettingsUpdateRequest': ('app.schemas.system', 'SystemSettingsUpdateRequest'),
+    'SystemUpdateItemStatus': ('app.schemas.system', 'SystemUpdateItemStatus'),
+    'SystemUpdateRequest': ('app.schemas.system', 'SystemUpdateRequest'),
     'SystemUpdateStatus': ('app.schemas.system', 'SystemUpdateStatus'),
     'TMDbException': ('app.schemas.exception', 'TMDbException'),
     'Tag': ('app.schemas.context', 'Tag'),

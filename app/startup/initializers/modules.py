@@ -55,7 +55,6 @@ from app.runtime.log import logger
 from app.runtime.settings import (
     get_runtime_setting,
 )
-from app.runtime.state import SystemHelper
 from app.runtime.tasks import get_task_registry
 from app.runtime.thread import ThreadHelper
 from app.schemas.message import Message, MessageType
@@ -95,7 +94,7 @@ from app.startup.composition.network import (
 )
 from app.startup.composition.outbox import build_outbox_dispatcher, reset_outbox_services
 from app.startup.composition.resource import (
-    install_site_resources,
+    configure_site_resource_versions,
     reset_site_resource_composition,
 )
 from app.startup.composition.runtime import (
@@ -373,15 +372,8 @@ def check_auth():
 
 
 def update_resources() -> None:
-    """安装可用资源更新，并由组合根统一决定是否重启进程。"""
-    sites_helper = SitesHelper()
-    if not install_site_resources(
-        lambda: (sites_helper.auth_version, sites_helper.indexer_version)
-    ):
-        return
-    restarted, message = SystemHelper.restart()
-    if not restarted:
-        logger.error(f"资源更新完成但自动重启失败：{message}")
+    """保留旧入口但不在启动后检查、下载或重启，资源由启动器预先应用。"""
+    return
 
 
 def close_browser_sessions() -> None:
@@ -596,9 +588,11 @@ async def _initialize_modules() -> HostRuntime:
     # DoH
     configure_doh_composition()
     # 站点管理
-    SitesHelper()
-    # 资源适配器只负责下载安装，是否重启由启动组合层决定。
-    update_resources()
+    sites_helper = SitesHelper()
+    # 启动器已在进程拉起前应用待安装资源；这里仅注册当前版本读取器。
+    configure_site_resource_versions(
+        lambda: (sites_helper.auth_version, sites_helper.indexer_version)
+    )
     # 用户认证
     user_auth()
     # 事件错误通知由启动组合层接入消息服务。

@@ -1,4 +1,4 @@
-"""MoviePilot Release 后台检查、下载与待安装状态管理。"""
+"""MoviePilot 主程序与站点资源的后台检查、下载和待安装状态管理。"""
 
 from __future__ import annotations
 
@@ -11,21 +11,46 @@ import threading
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any, Optional
+from typing import Any
 
 from app.adapters.network.http import RequestUtils
+from app.adapters.system.resource import ResourceHelper, get_resource_versions
+from app.foundation.environment import is_docker
 from app.foundation.singleton import SingletonClass
 from app.foundation.version import compare_version
-from app.runtime.version import get_app_version
-from app.foundation.environment import is_docker
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
-from app.schemas.system import SystemUpdateStatus
+from app.runtime.version import get_app_version
+from app.schemas.system import SystemUpdateStatus, SystemUpdateType
+
+_APPLICATION = "application"
+_RESOURCES = "resources"
+_TARGETS = (_APPLICATION, _RESOURCES)
+_ITEM_FIELDS = {
+    "state",
+    "current_version",
+    "version",
+    "frontend_version",
+    "current_auth_version",
+    "auth_version",
+    "current_indexer_version",
+    "indexer_version",
+    "release_name",
+    "release_notes",
+    "published_at",
+    "checked_at",
+    "downloaded_bytes",
+    "total_bytes",
+    "progress",
+    "error",
+    "can_update",
+    "can_install",
+}
 
 
 class SystemUpdateManager(metaclass=SingletonClass):
-    """持久化更新状态，并保证同一时刻只有一个下载任务。"""
+    """持久化两类升级状态，并保证同一时刻只有一个后台下载任务。"""
 
     _BACKEND_RELEASES_API = "https://api.github.com/repos/jxxghp/MoviePilot/releases"
     _FRONTEND_RELEASE_API = (
@@ -40,66 +65,192 @@ class SystemUpdateManager(metaclass=SingletonClass):
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._download_active = False
+        self._active_target: SystemUpdateType | None = None
 
     @property
     def _root(self) -> Path:
-        return Path(get_runtime_setting('TEMP_PATH')) / "moviepilot-update"
+        """返回跨重启保留更新制品的暂存根目录。"""
+        return Path(get_runtime_setting("TEMP_PATH")) / "moviepilot-update"
 
     @property
     def _state_file(self) -> Path:
+        """返回更新状态文件路径。"""
         return self._root / "state.json"
 
     @property
     def _install_file(self) -> Path:
+        """返回启动器消费的安装意图文件路径。"""
         return self._root / "install.json"
 
     @property
     def _backend_archive(self) -> Path:
+        """返回后端 Release 压缩包路径。"""
         return self._root / "backend.zip"
 
     @property
     def _frontend_archive(self) -> Path:
+        """返回后端版本声明对应的前端压缩包路径。"""
         return self._root / "frontend.zip"
+
+    @property
+    def _resource_dir(self) -> Path:
+        """返回站点资源包暂存目录。"""
+        return self._root / "resources"
 
     @staticmethod
     def _now() -> str:
+        """返回 UTC ISO 时间戳。"""
         return datetime.now(timezone.utc).isoformat()
 
+    def _default_item(self, target: SystemUpdateType) -> dict[str, Any]:
+        """创建单类升级的初始状态。"""
+        if target == _APPLICATION:
+            return {
+                "type": target,
+                "state": "idle",
+                "current_version": get_app_version(),
+            }
+        auth_version, indexer_version = get_resource_versions()
+        return {
+            "type": target,
+            "state": "idle",
+            "current_auth_version": auth_version,
+            "current_indexer_version": indexer_version,
+        }
+
     def _default_state(self) -> dict[str, Any]:
-        return SystemUpdateStatus(current_version=get_app_version()).model_dump()
+        """创建兼容旧客户端字段的聚合状态。"""
+        application = self._default_item(_APPLICATION)
+        resources = self._default_item(_RESOURCES)
+        return self._sync_aggregate(
+            {
+                "updates": [application, resources],
+                "current_version": get_app_version(),
+            }
+        )
 
     def _read_state(self) -> dict[str, Any]:
+        """读取并规范化状态文件，兼容只有主程序字段的旧状态。"""
+        payload: dict[str, Any] = {}
         try:
-            payload = json.loads(self._state_file.read_text(encoding="utf-8"))
-            if isinstance(payload, dict):
-                return {
-                    **self._default_state(),
-                    **payload,
-                    "current_version": get_app_version(),
-                }
+            loaded = json.loads(self._state_file.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                payload = loaded
         except (OSError, json.JSONDecodeError):
             pass
-        return self._default_state()
+
+        defaults = self._default_state()
+        updates_payload = payload.get("updates")
+        if not isinstance(updates_payload, list):
+            application = self._default_item(_APPLICATION)
+            application.update(
+                {key: payload[key] for key in _ITEM_FIELDS if key in payload}
+            )
+            updates_payload = [application, self._default_item(_RESOURCES)]
+
+        normalized_updates: list[dict[str, Any]] = []
+        for target in _TARGETS:
+            item = next(
+                (
+                    value
+                    for value in updates_payload
+                    if isinstance(value, dict) and value.get("type") == target
+                ),
+                None,
+            )
+            normalized = self._default_item(target)
+            if item:
+                normalized.update(item)
+            normalized["type"] = target
+            normalized_updates.append(normalized)
+
+        state = {**defaults, **payload, "updates": normalized_updates}
+        return self._sync_aggregate(state)
 
     def _write_state(self, **changes: Any) -> dict[str, Any]:
+        """原子写入聚合状态，并保留旧版直接修改主程序字段的调用语义。"""
         with self._lock:
             state = self._read_state()
-            state.update(changes)
-            state["current_version"] = get_app_version()
-            state["progress"] = self._progress(
-                state.get("downloaded_bytes", 0), state.get("total_bytes", 0)
+            application = self._get_item(state, _APPLICATION)
+            for key, value in changes.items():
+                if key in _ITEM_FIELDS:
+                    application[key] = value
+                else:
+                    state[key] = value
+            state = self._sync_aggregate(state)
+            return self._persist_state(state)
+
+    def _write_item(self, target: SystemUpdateType, **changes: Any) -> dict[str, Any]:
+        """更新一个升级类型并同步聚合字段。"""
+        with self._lock:
+            state = self._read_state()
+            self._get_item(state, target).update(changes)
+            return self._persist_state(self._sync_aggregate(state))
+
+    def _persist_state(self, state: dict[str, Any]) -> dict[str, Any]:
+        """校验并原子替换状态 JSON。"""
+        validated = SystemUpdateStatus.model_validate(state).model_dump()
+        self._root.mkdir(parents=True, exist_ok=True)
+        temporary = self._state_file.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(validated, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        temporary.replace(self._state_file)
+        return validated
+
+    @staticmethod
+    def _get_item(state: dict[str, Any], target: SystemUpdateType) -> dict[str, Any]:
+        """从聚合状态中取得指定升级类型。"""
+        return next(item for item in state["updates"] if item["type"] == target)
+
+    def _sync_aggregate(self, state: dict[str, Any]) -> dict[str, Any]:
+        """从两类明细重新计算旧版顶层字段和汇总进度。"""
+        application = self._get_item(state, _APPLICATION)
+        state.update(
+            {
+                "state": application.get("state", "idle"),
+                "current_version": get_app_version(),
+                "version": application.get("version"),
+                "frontend_version": application.get("frontend_version"),
+                "release_name": application.get("release_name"),
+                "release_notes": application.get("release_notes"),
+                "published_at": application.get("published_at"),
+                "checked_at": application.get("checked_at"),
+                "downloaded_bytes": sum(
+                    int(item.get("downloaded_bytes") or 0) for item in state["updates"]
+                ),
+                "total_bytes": sum(
+                    int(item.get("total_bytes") or 0) for item in state["updates"]
+                ),
+                "error": next(
+                    (item.get("error") for item in state["updates"] if item.get("error")),
+                    None,
+                ),
+                "can_update": any(item.get("can_update") for item in state["updates"]),
+                "can_install": any(item.get("can_install") for item in state["updates"]),
+            }
+        )
+        priorities = ("failed", "installing", "downloading", "ready", "available", "idle")
+        state["state"] = next(
+            (
+                priority
+                for priority in priorities
+                if any(item.get("state") == priority for item in state["updates"])
+            ),
+            "idle",
+        )
+        state["progress"] = self._progress(
+            state["downloaded_bytes"], state["total_bytes"]
+        )
+        for item in state["updates"]:
+            item["progress"] = self._progress(
+                item.get("downloaded_bytes", 0), item.get("total_bytes", 0)
             )
-            validated = SystemUpdateStatus.model_validate(state).model_dump()
-            self._root.mkdir(parents=True, exist_ok=True)
-            temporary = self._state_file.with_suffix(".tmp")
-            temporary.write_text(
-                json.dumps(validated, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            temporary.replace(self._state_file)
-            return validated
+        return state
 
     @staticmethod
     def _progress(downloaded: Any, total: Any) -> int:
+        """将下载字节数转换为 0 到 100 的整数进度。"""
         try:
             downloaded_value = max(0, int(downloaded))
             total_value = max(0, int(total))
@@ -110,106 +261,211 @@ class SystemUpdateManager(metaclass=SingletonClass):
         return min(100, int(downloaded_value * 100 / total_value))
 
     def get_status(self) -> SystemUpdateStatus:
-        """返回状态快照，并在更新完成后的新进程中清理安装终态。"""
+        """返回状态快照，并在新进程中收敛已完成的安装状态。"""
         with self._lock:
             state = self._read_state()
-            target = str(state.get("version") or "")
-            if state.get("state") == "downloading" and not self._download_active:
-                state = self._write_state(
-                    state="failed",
-                    error="更新包下载因服务重启而中断，请重试",
-                    can_update=True,
-                    can_install=False,
-                )
-            if state.get("state") == "installing" and target == get_app_version():
-                self._install_file.unlink(missing_ok=True)
-                state = self._write_state(
-                    state="idle",
-                    version=None,
-                    frontend_version=None,
-                    release_name=None,
-                    release_notes=None,
-                    published_at=None,
-                    downloaded_bytes=0,
-                    total_bytes=0,
-                    error=None,
-                    can_update=False,
-                    can_install=False,
-                )
+            changed = False
+            auth_version, indexer_version = get_resource_versions()
+            resources = self._get_item(state, _RESOURCES)
+            previous_auth_version = resources.get("current_auth_version")
+            previous_indexer_version = resources.get("current_indexer_version")
+            resources["current_auth_version"] = auth_version
+            resources["current_indexer_version"] = indexer_version
+            for item in state["updates"]:
+                target = item["type"]
+                if item.get("state") == "downloading" and not self._download_active:
+                    item.update(
+                        {
+                            "state": "failed",
+                            "error": "更新包下载因服务重启而中断，请重试",
+                            "can_update": True,
+                            "can_install": False,
+                        }
+                    )
+                    changed = True
+                elif item.get("state") == "installing" and self._is_install_applied(item, target):
+                    self._reset_item_after_install(item)
+                    changed = True
+            resources_changed = (
+                previous_auth_version != auth_version
+                or previous_indexer_version != indexer_version
+            )
+            if changed or resources_changed:
+                state = self._persist_state(self._sync_aggregate(state))
+            else:
+                state = self._sync_aggregate(state)
             return SystemUpdateStatus.model_validate(state)
 
-    def check(self) -> SystemUpdateStatus:
-        """查询 GitHub 稳定版 v3 Release，并保留正在下载或待安装状态。"""
-        current = self.get_status()
-        if current.state in {"downloading", "ready", "installing"}:
-            return current
+    def _is_install_applied(self, item: dict[str, Any], target: SystemUpdateType) -> bool:
+        """判断启动器应用后的当前版本是否已经达到安装目标。"""
+        if target == _APPLICATION:
+            return bool(item.get("version")) and item["version"] == get_app_version()
+        current_auth, current_indexer = get_resource_versions()
+        checks = []
+        if item.get("auth_version"):
+            checks.append(compare_version(current_auth, ">=", item["auth_version"]) is True)
+        if item.get("indexer_version"):
+            checks.append(compare_version(current_indexer, ">=", item["indexer_version"]) is True)
+        return bool(checks) and all(checks)
 
-        try:
-            response = self._request().get_res(self._BACKEND_RELEASES_API)
-            if response is None or response.status_code != 200:
-                raise RuntimeError("GitHub Release 请求失败")
-            releases = response.json()
-            release = next(
-                (
-                    item
-                    for item in releases
-                    if isinstance(item, dict)
-                    and not item.get("draft")
-                    and not item.get("prerelease")
-                    and self._STABLE_VERSION_PATTERN.fullmatch(
-                        str(item.get("tag_name") or "")
-                    )
-                ),
-                None,
+    @staticmethod
+    def _reset_item_after_install(item: dict[str, Any]) -> None:
+        """清理已在启动前应用完成的单类安装状态。"""
+        current_values = {
+            key: item.get(key)
+            for key in (
+                "type",
+                "current_version",
+                "current_auth_version",
+                "current_indexer_version",
             )
-            if not release:
-                raise RuntimeError("未找到可用的 v3 稳定版本")
-            version = str(release["tag_name"])
-            has_update = compare_version(version, "gt", get_app_version()) is True
-            return SystemUpdateStatus.model_validate(
-                self._write_state(
-                    state="available" if has_update else "idle",
-                    version=version if has_update else None,
-                    frontend_version=None,
-                    release_name=str(release.get("name") or version) if has_update else None,
-                    release_notes=str(release.get("body") or "") if has_update else None,
-                    published_at=release.get("published_at") if has_update else None,
-                    checked_at=self._now(),
-                    downloaded_bytes=0,
-                    total_bytes=0,
-                    error=None,
-                    can_update=has_update,
-                    can_install=False,
-                )
-            )
-        except Exception as error:  # 定时检查失败不应打扰用户，下载失败才进入可见错误态
-            logger.warning(f"检查 MoviePilot 更新失败: {error}")
-            return SystemUpdateStatus.model_validate(
-                self._write_state(
+        }
+        item.clear()
+        item.update(
+            {
+                **current_values,
+                "state": "idle",
+                "downloaded_bytes": 0,
+                "total_bytes": 0,
+                "progress": 0,
+                "error": None,
+                "can_update": False,
+                "can_install": False,
+            }
+        )
+
+    def check(self, target: SystemUpdateType | None = None) -> SystemUpdateStatus:
+        """检查主程序和站点资源更新，定时检查失败只记录在对应明细中。"""
+        targets = (target,) if target else _TARGETS
+        for update_target in targets:
+            current = self.get_status()
+            item = self._get_item(current.model_dump(), update_target)
+            if item["state"] in {"downloading", "ready", "installing"}:
+                continue
+            try:
+                if update_target == _APPLICATION:
+                    self._check_application()
+                else:
+                    self._check_resources()
+            except Exception as error:  # noqa: BLE001  定时检查不得打扰当前任务
+                logger.warning(f"检查 {update_target} 更新失败：{error}")
+                self._write_item(
+                    update_target,
                     state="idle",
                     checked_at=self._now(),
                     error=str(error),
                     can_update=False,
                     can_install=False,
                 )
-            )
+        return self.get_status()
 
-    def start_download(self) -> SystemUpdateStatus:
-        """启动唯一后台下载线程，并立即返回下载中状态。"""
+    def _check_application(self) -> None:
+        """查询最新稳定主程序 Release，并记录对应前端版本待下载。"""
+        response = self._request().get_res(self._BACKEND_RELEASES_API)
+        if response is None or response.status_code != 200:
+            raise RuntimeError("GitHub Release 请求失败")
+        releases = response.json()
+        release = next(
+            (
+                item
+                for item in releases
+                if isinstance(item, dict)
+                and not item.get("draft")
+                and not item.get("prerelease")
+                and self._STABLE_VERSION_PATTERN.fullmatch(str(item.get("tag_name") or ""))
+            ),
+            None,
+        )
+        if not release:
+            raise RuntimeError("未找到可用的 v3 稳定版本")
+        version = str(release["tag_name"])
+        has_update = compare_version(version, "gt", get_app_version()) is True
+        self._write_item(
+            _APPLICATION,
+            state="available" if has_update else "idle",
+            version=version if has_update else None,
+            frontend_version=None,
+            release_name=str(release.get("name") or version) if has_update else None,
+            release_notes=str(release.get("body") or "") if has_update else None,
+            published_at=release.get("published_at") if has_update else None,
+            checked_at=self._now(),
+            downloaded_bytes=0,
+            total_bytes=0,
+            error=None,
+            can_update=has_update,
+            can_install=False,
+        )
+
+    def _check_resources(self) -> None:
+        """查询当前平台认证资源和索引资源的最新版本。"""
+        current_auth, current_indexer = get_resource_versions()
+        info = ResourceHelper().get_update_info(
+            auth_version=current_auth,
+            indexer_version=current_indexer,
+        )
+        if info is None:
+            self._write_item(
+                _RESOURCES,
+                state="idle",
+                version=None,
+                auth_version=None,
+                indexer_version=None,
+                current_auth_version=current_auth,
+                current_indexer_version=current_indexer,
+                checked_at=self._now(),
+                downloaded_bytes=0,
+                total_bytes=0,
+                error=None,
+                can_update=False,
+                can_install=False,
+            )
+            return
+        self._write_item(
+            _RESOURCES,
+            state="available",
+            version=info.get("package_version") or None,
+            auth_version=info.get("auth_version"),
+            indexer_version=info.get("indexer_version"),
+            current_auth_version=current_auth,
+            current_indexer_version=current_indexer,
+            checked_at=self._now(),
+            downloaded_bytes=0,
+            total_bytes=0,
+            error=None,
+            can_update=True,
+            can_install=False,
+        )
+
+    def start_download(self, target: SystemUpdateType = _APPLICATION) -> SystemUpdateStatus:
+        """启动指定升级类型的唯一后台下载线程。"""
+        if target not in _TARGETS:
+            raise ValueError(f"未知升级类型：{target}")
         with self._lock:
             state = self.get_status()
-            if state.state == "ready":
+            item = self._get_item(state.model_dump(), target)
+            if self._download_active:
                 return state
-            if state.state == "downloading" and self._download_active:
+            if item["state"] == "ready":
                 return state
-            if state.state != "available" or not state.version:
-                state = self.check()
-            if state.state != "available" or not state.version:
+            if item["state"] == "downloading" and self._download_active:
+                return state
+            if item["state"] != "available":
+                state = self.check(target)
+                item = self._get_item(state.model_dump(), target)
+            if item["state"] != "available":
                 return state
 
-            self._backend_archive.unlink(missing_ok=True)
-            self._frontend_archive.unlink(missing_ok=True)
-            self._write_state(
+            self._discard_prepared_target(target)
+            if target == _APPLICATION:
+                self._backend_archive.unlink(missing_ok=True)
+                self._frontend_archive.unlink(missing_ok=True)
+            else:
+                if self._resource_dir.exists():
+                    for path in self._resource_dir.iterdir():
+                        if path.is_file():
+                            path.unlink()
+            self._write_item(
+                target,
                 state="downloading",
                 downloaded_bytes=0,
                 total_bytes=0,
@@ -218,105 +474,143 @@ class SystemUpdateManager(metaclass=SingletonClass):
                 can_install=False,
             )
             self._download_active = True
+            self._active_target = target
             try:
-                ThreadHelper().submit(self._download_update, state.version)
+                ThreadHelper().submit(self._download_update, target)
             except RuntimeError as error:
                 self._download_active = False
-                return SystemUpdateStatus.model_validate(
-                    self._write_state(
-                        state="failed",
-                        error=f"无法启动更新包下载：{error}",
-                        can_update=True,
-                        can_install=False,
-                    )
+                self._active_target = None
+                self._write_item(
+                    target,
+                    state="failed",
+                    error=f"无法启动更新包下载：{error}",
+                    can_update=True,
+                    can_install=False,
                 )
             return self.get_status()
 
-    def request_install(self) -> tuple[bool, str]:
-        """校验待安装文件并写入启动阶段消费的安装意图。"""
+    def request_install(self, target: SystemUpdateType = _APPLICATION) -> tuple[bool, str]:
+        """校验指定待安装制品，并写入启动阶段消费的安装意图。"""
+        if target not in _TARGETS:
+            return False, f"未知升级类型：{target}"
         with self._lock:
             state = self.get_status()
-            if state.state != "ready" or not state.version:
+            item = self._get_item(state.model_dump(), target)
+            if item["state"] != "ready":
                 return False, "更新包尚未下载完成"
             try:
-                backend_sha256 = self._sha256(self._backend_archive)
-                frontend_sha256 = self._sha256(self._frontend_archive)
                 prepared = self._read_prepared_manifest()
-                if backend_sha256 != prepared.get("backend_sha256"):
-                    raise RuntimeError("后端更新包校验失败")
-                if frontend_sha256 != prepared.get("frontend_sha256"):
-                    raise RuntimeError("前端更新包校验失败")
+                if target == _APPLICATION:
+                    self._validate_application_manifest(prepared)
+                    message = "主程序更新包已就绪，正在重启安装"
+                else:
+                    self._validate_resource_manifest(prepared)
+                    message = "站点资源包已就绪，正在重启安装"
+                install_payload = self._read_install_manifest_optional()
+                targets = [
+                    value
+                    for value in install_payload.get("targets", [])
+                    if value in _TARGETS
+                ]
+                if target not in targets:
+                    targets.append(target)
+                prepared["targets"] = targets
                 self._install_file.write_text(
                     json.dumps(prepared, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
-                self._write_state(state="installing", can_install=False, error=None)
-                return True, "更新包已就绪，正在重启安装"
+                self._write_item(target, state="installing", can_install=False, error=None)
+                return True, message
             except (OSError, RuntimeError, json.JSONDecodeError) as error:
-                self._write_state(state="failed", error=str(error), can_install=False)
+                self._write_item(target, state="failed", error=str(error), can_install=False)
                 return False, str(error)
 
     def cancel_install(self, reason: str) -> None:
-        """重启请求失败时撤销安装意图，避免下次普通启动意外安装。"""
+        """重启请求失败时撤销全部已选安装意图，避免下次普通启动意外安装。"""
         with self._lock:
+            targets = []
+            try:
+                payload = json.loads(self._install_file.read_text(encoding="utf-8"))
+                targets = [target for target in payload.get("targets", []) if target in _TARGETS]
+            except (OSError, json.JSONDecodeError):
+                pass
             self._install_file.unlink(missing_ok=True)
-            self._write_state(
-                state="ready",
-                error=reason,
-                can_update=False,
-                can_install=True,
-            )
+            state = self._read_state()
+            for target in targets or _TARGETS:
+                item = self._get_item(state, target)
+                if item.get("state") == "installing":
+                    item.update(
+                        {
+                            "state": "ready",
+                            "error": reason,
+                            "can_update": False,
+                            "can_install": True,
+                        }
+                    )
+            self._persist_state(self._sync_aggregate(state))
 
-    def _request(self) -> RequestUtils:
-        return RequestUtils(
-            proxies=get_runtime_setting('PROXY'),
-            headers=get_runtime_setting('GITHUB_HEADERS'),
-            timeout=60,
-        )
-
-    def _download_update(self, version: str) -> None:
+    def _download_update(self, target: SystemUpdateType) -> None:
+        """在后台线程中下载并校验指定升级类型的制品。"""
         try:
-            downloaded = 0
-            downloaded, backend_total = self._download_file(
-                self._proxied(self._BACKEND_ARCHIVE_URL.format(tag=version)),
-                self._backend_archive,
-                downloaded,
-                0,
-            )
-            frontend_version = self._validate_backend_archive(version)
-            frontend_release = self._fetch_frontend_release(frontend_version)
-            frontend_asset = next(
-                (
-                    item
-                    for item in frontend_release.get("assets") or []
-                    if item.get("name") == "dist.zip" and item.get("browser_download_url")
-                ),
-                None,
-            )
-            if not frontend_asset:
-                raise RuntimeError(f"前端 {frontend_version} 缺少 dist.zip 发布资产")
-            frontend_total = int(frontend_asset.get("size") or 0)
-            total = backend_total + frontend_total
-            self._write_state(
-                frontend_version=frontend_version,
-                downloaded_bytes=downloaded,
-                total_bytes=total,
-            )
-            downloaded, _ = self._download_file(
-                self._proxied(str(frontend_asset["browser_download_url"])),
-                self._frontend_archive,
-                downloaded,
-                total,
-            )
-            self._validate_frontend_archive(frontend_version)
-            expected_digest = str(frontend_asset.get("digest") or "")
-            frontend_sha256 = self._sha256(self._frontend_archive)
-            if expected_digest.startswith("sha256:") and frontend_sha256 != expected_digest.removeprefix("sha256:"):
-                raise RuntimeError("前端更新包与 GitHub Release 摘要不一致")
+            if target == _APPLICATION:
+                self._download_application()
+            else:
+                self._download_resources()
+        except Exception as error:  # noqa: BLE001  后台线程必须沉淀为可查询失败
+            logger.error(f"下载 {target} 更新包失败：{error}")
+            self._write_item(target, state="failed", error=str(error), can_update=True, can_install=False)
+        finally:
+            with self._lock:
+                self._download_active = False
+                self._active_target = None
 
-            if not is_docker():
-                self._prepare_local_backend_ref(version)
+    def _download_application(self) -> None:
+        """下载后端 Release 和其 version.py 声明的前端 dist.zip。"""
+        target = self._get_item(self._read_state(), _APPLICATION)
+        version = str(target.get("version") or "")
+        if not version:
+            raise RuntimeError("主程序更新缺少目标版本")
+        downloaded, backend_total = self._download_file(
+            self._proxied(self._BACKEND_ARCHIVE_URL.format(tag=version)),
+            self._backend_archive,
+            0,
+            0,
+        )
+        frontend_version = self._validate_backend_archive(version)
+        frontend_release = self._fetch_frontend_release(frontend_version)
+        frontend_asset = next(
+            (
+                item
+                for item in frontend_release.get("assets") or []
+                if item.get("name") == "dist.zip" and item.get("browser_download_url")
+            ),
+            None,
+        )
+        if not frontend_asset:
+            raise RuntimeError(f"前端 {frontend_version} 缺少 dist.zip 发布资产")
+        frontend_total = int(frontend_asset.get("size") or 0)
+        total = backend_total + frontend_total
+        self._write_item(
+            _APPLICATION,
+            frontend_version=frontend_version,
+            downloaded_bytes=downloaded,
+            total_bytes=total,
+        )
+        downloaded, _ = self._download_file(
+            self._proxied(str(frontend_asset["browser_download_url"])),
+            self._frontend_archive,
+            downloaded,
+            total,
+        )
+        self._validate_frontend_archive(frontend_version)
+        expected_digest = str(frontend_asset.get("digest") or "")
+        frontend_sha256 = self._sha256(self._frontend_archive)
+        if expected_digest.startswith("sha256:") and frontend_sha256 != expected_digest.removeprefix("sha256:"):
+            raise RuntimeError("前端更新包与 GitHub Release 摘要不一致")
+        if not is_docker():
+            self._prepare_local_backend_ref(version)
 
-            prepared = {
+        self._merge_prepared_manifest(
+            {
                 "version": version,
                 "frontend_version": frontend_version,
                 "backend_archive": str(self._backend_archive),
@@ -324,36 +618,192 @@ class SystemUpdateManager(metaclass=SingletonClass):
                 "backend_sha256": self._sha256(self._backend_archive),
                 "frontend_sha256": frontend_sha256,
                 "prepared_at": self._now(),
-            }
+            },
+        )
+        self._write_item(
+            _APPLICATION,
+            state="ready",
+            downloaded_bytes=downloaded,
+            total_bytes=max(total, downloaded),
+            error=None,
+            can_update=False,
+            can_install=True,
+        )
+        logger.info(f"MoviePilot {version} 更新包已下载完成，等待用户确认重启")
+
+    def _download_resources(self) -> None:
+        """下载当前平台认证与索引资源到外部暂存目录。"""
+        current_auth, current_indexer = get_resource_versions()
+        helper = ResourceHelper()
+        info = helper.get_update_info(
+            auth_version=current_auth,
+            indexer_version=current_indexer,
+        )
+        if info is None:
+            raise RuntimeError("站点资源已是最新版本")
+        files = helper.get_download_files(info)
+        total = sum(int(item.get("size") or 0) for item in files)
+        self._write_item(_RESOURCES, total_bytes=total)
+        downloaded = 0
+
+        def on_progress(delta: int, _file_total: int) -> None:
+            """把资源文件下载进度映射到统一状态。"""
+            nonlocal downloaded
+            downloaded += delta
+            self._write_item(
+                _RESOURCES,
+                downloaded_bytes=downloaded,
+                total_bytes=total,
+            )
+
+        prepared_files = helper.download_files(files, self._resource_dir, on_progress)
+        self._merge_prepared_manifest(
+            {
+                "resource_package_version": info.get("package_version"),
+                "resource_files": prepared_files,
+                "prepared_at": self._now(),
+            },
+        )
+        self._write_item(
+            _RESOURCES,
+            state="ready",
+            version=info.get("package_version") or None,
+            auth_version=info.get("auth_version"),
+            indexer_version=info.get("indexer_version"),
+            current_auth_version=current_auth,
+            current_indexer_version=current_indexer,
+            downloaded_bytes=downloaded,
+            total_bytes=max(total, downloaded),
+            error=None,
+            can_update=False,
+            can_install=True,
+        )
+        logger.info("站点资源包已下载完成，等待用户确认重启")
+
+    def _merge_prepared_manifest(
+        self,
+        changes: dict[str, Any],
+        *,
+        remove_keys: set[str] | None = None,
+    ) -> None:
+        """合并不同升级类型的已下载制品，避免覆盖另一类待安装包。"""
+        prepared = self._read_prepared_manifest_optional()
+        for key in remove_keys or set():
+            prepared.pop(key, None)
+        prepared.update(changes)
+        self._root.mkdir(parents=True, exist_ok=True)
+        (self._root / "prepared.json").write_text(
+            json.dumps(prepared, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+    def _discard_prepared_target(self, target: SystemUpdateType) -> None:
+        """重新下载一类制品时只清理该类型的旧清单，保留另一类制品。"""
+        prepared = self._read_prepared_manifest_optional()
+        if target == _APPLICATION:
+            for key in (
+                "version",
+                "frontend_version",
+                "backend_archive",
+                "frontend_archive",
+                "backend_sha256",
+                "frontend_sha256",
+            ):
+                prepared.pop(key, None)
+        else:
+            for key in ("resource_package_version", "resource_files"):
+                prepared.pop(key, None)
+        targets = [
+            value
+            for value in prepared.get("targets", [])
+            if value in _TARGETS and value != target
+        ]
+        if targets:
+            prepared["targets"] = targets
+        else:
+            prepared.pop("targets", None)
+        if prepared:
             (self._root / "prepared.json").write_text(
                 json.dumps(prepared, ensure_ascii=False, indent=2), encoding="utf-8"
             )
-            self._write_state(
-                state="ready",
-                downloaded_bytes=downloaded,
-                total_bytes=max(total, downloaded),
-                error=None,
-                can_update=False,
-                can_install=True,
-            )
-            logger.info(f"MoviePilot {version} 更新包已下载完成，等待用户确认重启")
-        except Exception as error:  # 后台线程必须把所有失败沉淀为可查询状态
-            logger.error(f"下载 MoviePilot 更新包失败: {error}")
-            self._write_state(
-                state="failed", error=str(error), can_update=True, can_install=False
-            )
-        finally:
-            with self._lock:
-                self._download_active = False
+        else:
+            (self._root / "prepared.json").unlink(missing_ok=True)
+
+    def _read_prepared_manifest_optional(self) -> dict[str, Any]:
+        """读取可选的已下载制品清单。"""
+        try:
+            payload = json.loads((self._root / "prepared.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _read_prepared_manifest(self) -> dict[str, Any]:
+        """读取必须存在的已下载制品清单。"""
+        payload = json.loads((self._root / "prepared.json").read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise RuntimeError("更新包清单格式无效")
+        return payload
+
+    def _read_install_manifest_optional(self) -> dict[str, Any]:
+        """读取当前重启请求，避免把历史安装目标重新加入本次请求。"""
+        try:
+            payload = json.loads(self._install_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _validate_application_manifest(self, prepared: dict[str, Any]) -> None:
+        """校验主程序后端包和配套前端包的路径、摘要与版本。"""
+        backend_archive = Path(str(prepared.get("backend_archive") or ""))
+        frontend_archive = Path(str(prepared.get("frontend_archive") or ""))
+        if not prepared.get("version") or not prepared.get("frontend_version"):
+            raise RuntimeError("主程序更新清单缺少版本信息")
+        if not backend_archive.is_file() or self._sha256(backend_archive) != prepared.get("backend_sha256"):
+            raise RuntimeError("后端更新包校验失败")
+        if not frontend_archive.is_file() or self._sha256(frontend_archive) != prepared.get("frontend_sha256"):
+            raise RuntimeError("前端更新包校验失败")
+
+    def _validate_resource_manifest(self, prepared: dict[str, Any]) -> None:
+        """校验完整资源文件只能来自更新暂存目录且摘要匹配。"""
+        files = prepared.get("resource_files")
+        if not isinstance(files, list) or not files:
+            raise RuntimeError("站点资源更新清单为空")
+        expected_names = set(ResourceHelper._get_needed_files())
+        actual_names = {
+            str(item.get("name") or "") for item in files if isinstance(item, dict)
+        }
+        if actual_names != expected_names:
+            raise RuntimeError("站点资源更新清单不是当前平台的完整资源包")
+        root = self._root.resolve()
+        for item in files:
+            if not isinstance(item, dict):
+                raise RuntimeError("站点资源更新清单格式无效")
+            path = Path(str(item.get("path") or ""))
+            try:
+                path.resolve().relative_to(root)
+            except ValueError as error:
+                raise RuntimeError("站点资源文件路径不安全") from error
+            if not path.is_file() or self._sha256(path) != item.get("sha256"):
+                raise RuntimeError(f"站点资源文件校验失败：{item.get('name')}")
+
+    def _request(self) -> RequestUtils:
+        """创建访问 GitHub Release 的请求客户端。"""
+        return RequestUtils(
+            proxies=get_runtime_setting("PROXY"),
+            headers=get_runtime_setting("GITHUB_HEADERS"),
+            timeout=60,
+        )
 
     def _download_file(
         self, url: str, destination: Path, downloaded_before: int, total_hint: int
     ) -> tuple[int, int]:
+        """流式下载文件并把进度写入当前升级类型。"""
         temporary = destination.with_suffix(".part")
         temporary.unlink(missing_ok=True)
         with self._request().get_stream(url) as response:
             if response is None or response.status_code != 200:
-                raise RuntimeError(f"下载更新包失败：HTTP {getattr(response, 'status_code', '无响应')}")
+                raise RuntimeError(
+                    f"下载更新包失败：HTTP {getattr(response, 'status_code', '无响应')}"
+                )
             content_length = int(response.headers.get("content-length") or 0)
             total = total_hint or content_length
             current = downloaded_before
@@ -363,14 +813,17 @@ class SystemUpdateManager(metaclass=SingletonClass):
                         continue
                     output.write(chunk)
                     current += len(chunk)
-                    self._write_state(downloaded_bytes=current, total_bytes=total)
+                    self._write_item(
+                        self._active_target or _APPLICATION,
+                        downloaded_bytes=current,
+                        total_bytes=total,
+                    )
         temporary.replace(destination)
         return current, content_length
 
     def _fetch_frontend_release(self, version: str) -> dict[str, Any]:
-        response = self._request().get_res(
-            self._FRONTEND_RELEASE_API.format(tag=version)
-        )
+        """读取后端版本声明对应的前端 Release。"""
+        response = self._request().get_res(self._FRONTEND_RELEASE_API.format(tag=version))
         if response is None or response.status_code != 200:
             raise RuntimeError(f"无法获取前端 {version} Release")
         payload = response.json()
@@ -379,10 +832,15 @@ class SystemUpdateManager(metaclass=SingletonClass):
         return payload
 
     def _validate_backend_archive(self, version: str) -> str:
+        """校验后端压缩包结构，并只读取其声明的前端版本。"""
         with zipfile.ZipFile(self._backend_archive) as archive:
             self._validate_zip_members(archive)
             version_name = next(
-                (name for name in archive.namelist() if name.count("/") == 1 and name.endswith("/version.py")),
+                (
+                    name
+                    for name in archive.namelist()
+                    if name.count("/") == 1 and name.endswith("/version.py")
+                ),
                 None,
             )
             if not version_name:
@@ -401,6 +859,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
             return frontend_match.group(1)
 
     def _validate_frontend_archive(self, version: str) -> None:
+        """校验前端包只包含可接受的发布目录和匹配版本。"""
         with zipfile.ZipFile(self._frontend_archive) as archive:
             self._validate_zip_members(archive)
             names = set(archive.namelist())
@@ -412,21 +871,12 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
     @staticmethod
     def _validate_zip_members(archive: zipfile.ZipFile) -> None:
+        """拒绝绝对路径、目录穿越和符号链接成员。"""
         for item in archive.infolist():
             path = PurePosixPath(item.filename)
             file_type = (item.external_attr >> 16) & 0o170000
-            if (
-                path.is_absolute()
-                or ".." in path.parts
-                or file_type == stat.S_IFLNK
-            ):
+            if path.is_absolute() or ".." in path.parts or file_type == stat.S_IFLNK:
                 raise RuntimeError("更新包包含不安全路径")
-
-    def _read_prepared_manifest(self) -> dict[str, Any]:
-        payload = json.loads((self._root / "prepared.json").read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            raise RuntimeError("更新包清单格式无效")
-        return payload
 
     @staticmethod
     def _prepare_local_backend_ref(version: str) -> None:
@@ -466,6 +916,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
     @staticmethod
     def _sha256(path: Path) -> str:
+        """计算文件 SHA256。"""
         digest = hashlib.sha256()
         with path.open("rb") as file_handle:
             for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
@@ -474,7 +925,8 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
     @staticmethod
     def _proxied(url: str) -> str:
-        proxy = str(get_runtime_setting('GITHUB_PROXY') or "").strip()
+        """为 GitHub 下载地址添加配置的代理前缀。"""
+        proxy = str(get_runtime_setting("GITHUB_PROXY") or "").strip()
         return f"{proxy}{url}" if proxy else url
 
 

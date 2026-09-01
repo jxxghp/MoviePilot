@@ -198,8 +198,51 @@ class CustomIdentifiersUpdateRequest(BaseModel):  # type: ignore[misc]
     identifiers: list[str] = Field(default_factory=list)
 
 
+SystemUpdateType = Literal["application", "resources"]
+
+
+class SystemUpdateItemStatus(BaseModel):
+    """单类升级的可恢复状态快照。"""
+
+    type: SystemUpdateType
+    state: Literal[
+        "idle",
+        "available",
+        "downloading",
+        "ready",
+        "installing",
+        "failed",
+    ] = "idle"
+    current_version: Optional[str] = None
+    version: Optional[str] = None
+    frontend_version: Optional[str] = None
+    current_auth_version: Optional[str] = None
+    auth_version: Optional[str] = None
+    current_indexer_version: Optional[str] = None
+    indexer_version: Optional[str] = None
+    release_name: Optional[str] = None
+    release_notes: Optional[str] = None
+    published_at: Optional[str] = None
+    checked_at: Optional[str] = None
+    downloaded_bytes: int = 0
+    total_bytes: int = 0
+    progress: int = 0
+    error: Optional[str] = None
+    can_update: bool = False
+    can_install: bool = False
+
+
+class SystemUpdateRequest(BaseModel):
+    """主程序或站点资源升级动作的请求体。"""
+
+    target: SystemUpdateType = Field(
+        default="application",
+        description="升级目标：application 表示主程序，resources 表示认证和索引资源。",
+    )
+
+
 class SystemUpdateStatus(BaseModel):
-    """主程序后台更新的可恢复状态快照。"""
+    """主程序与站点资源后台更新的聚合状态快照。"""
 
     state: Literal[
         "idle",
@@ -222,6 +265,7 @@ class SystemUpdateStatus(BaseModel):
     error: Optional[str] = None
     can_update: bool = False
     can_install: bool = False
+    updates: list[SystemUpdateItemStatus] = Field(default_factory=list)
 
 
 class PluginMarketSyncData(BaseModel):

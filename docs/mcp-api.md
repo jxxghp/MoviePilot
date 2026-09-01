@@ -253,14 +253,14 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 #### 系统更新
 
-系统 Release 更新采用“检查、后台下载、确认安装”三阶段流程，以下接口均要求超级管理员登录态。后台每 6 小时自动检查一次稳定版 v3 GitHub Release；下载完成前不重启服务，安装接口只消费已下载并校验的后端与前端包。原 Dev 更新入口继续保留，但 `/system/upgrade` 只接受请求体 `"dev"`，不再处理 Release 更新。
+系统 Release 更新采用“检查、后台下载、确认安装”三阶段流程，以下接口均要求超级管理员登录态。后台每 6 小时自动检查一次稳定版 v3 GitHub Release 和站点资源包；升级类型只有 `application`（主程序，前端版本由后端 Release 中的 `version.py` 决定）与 `resources`（认证资源和索引资源）。下载完成前不重启服务，安装接口只消费已下载并校验的完整制品，启动器会先应用主程序包，再应用资源包，之后才启动进程；启动后的初始化不会再次下载或触发资源重启。原 Dev 更新入口继续保留，但 `/system/upgrade` 只接受请求体 `"dev"`，不再处理 Release 更新。
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/system/update/status` | 查询 `idle`、`available`、`downloading`、`ready`、`installing` 或 `failed` 状态，以及版本、字节数和进度 |
-| POST | `/api/v1/system/update/check` | 立即检查最新稳定版 v3 Release |
-| POST | `/api/v1/system/update/download` | 后台下载并校验后端源码包与对应前端 `dist.zip`，立即返回当前状态 |
-| POST | `/api/v1/system/update/install` | 对已准备完成的包再次校验后写入安装意图，并重启完成更新 |
+| GET | `/api/v1/system/update/status` | 查询聚合状态及 `updates` 中两类升级明细的 `idle`、`available`、`downloading`、`ready`、`installing` 或 `failed` 状态，以及版本、字节数和进度 |
+| POST | `/api/v1/system/update/check` | 立即检查最新稳定版 v3 Release 和当前平台站点资源包 |
+| POST | `/api/v1/system/update/download` | 请求体可传 `{"target":"application"}` 或 `{"target":"resources"}`；后台下载并校验对应制品 |
+| POST | `/api/v1/system/update/install` | 请求体可传 `{"target":"application"}` 或 `{"target":"resources"}`；再次校验对应制品，写入安装意图并重启 |
 | POST | `/api/v1/system/upgrade` | 保留 Dev 更新并重启，请求体只能为 `"dev"` |
 
 #### 媒体识别 / 整理

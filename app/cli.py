@@ -48,6 +48,7 @@ MASKED_SUFFIXES = ("_TOKEN", "_PASSWORD", "_SECRET", "_API_KEY")
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 PREPARED_UPDATE_ROOT = get_runtime_setting("TEMP_PATH") / "moviepilot-update"
 PREPARED_UPDATE_MANIFEST = PREPARED_UPDATE_ROOT / "install.json"
+PREPARED_DOWNLOAD_MANIFEST = PREPARED_UPDATE_ROOT / "prepared.json"
 PREPARED_UPDATE_STATE = PREPARED_UPDATE_ROOT / "state.json"
 
 
@@ -262,8 +263,98 @@ def _mark_prepared_update_failed(message: str) -> None:
             "can_install": False,
         }
     )
+    for item in state.get("updates", []):
+        if isinstance(item, dict) and item.get("state") == "installing":
+            item.update(
+                {
+                    "state": "failed",
+                    "error": message,
+                    "can_update": True,
+                    "can_install": False,
+                }
+            )
     _write_json_file(PREPARED_UPDATE_STATE, state)
     _clear_json_file(PREPARED_UPDATE_MANIFEST)
+
+
+def _prepared_update_targets(manifest: Dict[str, Any]) -> set[str]:
+    """解析安装清单中的升级类型，并兼容旧版仅含主程序字段的清单。"""
+    targets = {
+        str(target)
+        for target in manifest.get("targets", [])
+        if str(target) in {"application", "resources"}
+    }
+    if not targets and manifest.get("backend_archive"):
+        targets.add("application")
+    return targets
+
+
+def _validate_prepared_resource_files(manifest: Dict[str, Any]) -> Path:
+    """校验完整资源包，并返回可供 local_setup 离线安装的目录。"""
+    resource_files = manifest.get("resource_files")
+    if not isinstance(resource_files, list) or not resource_files:
+        raise RuntimeError("站点资源更新清单为空")
+    resource_names = {
+        str(resource.get("name") or "")
+        for resource in resource_files
+        if isinstance(resource, dict)
+    }
+    if "user.sites.v3.bin" not in resource_names or not any(
+        name.startswith("sites.") for name in resource_names
+    ):
+        raise RuntimeError("站点资源更新清单不是完整资源包")
+    resource_root = PREPARED_UPDATE_ROOT.resolve()
+    resource_dir: Optional[Path] = None
+    for resource in resource_files:
+        if not isinstance(resource, dict):
+            raise RuntimeError("站点资源更新清单格式无效")
+        path = Path(str(resource.get("path") or ""))
+        try:
+            path.resolve().relative_to(resource_root)
+        except ValueError as error:
+            raise RuntimeError("站点资源文件路径不安全") from error
+        if not path.is_file() or _file_sha256(path) != resource.get("sha256"):
+            raise RuntimeError(f"站点资源文件校验失败：{resource.get('name')}")
+        if resource_dir is None:
+            resource_dir = path.parent
+        elif path.parent != resource_dir:
+            raise RuntimeError("站点资源文件必须位于同一完整资源目录")
+    return resource_dir or PREPARED_UPDATE_ROOT / "resources"
+
+
+def _consume_prepared_target(target: str) -> None:
+    """从持久化下载清单移除已应用目标，保留另一类待安装制品。"""
+    prepared = _read_json_file(PREPARED_DOWNLOAD_MANIFEST)
+    if not prepared:
+        return
+    if target == "application":
+        for key in (
+            "version",
+            "frontend_version",
+            "backend_archive",
+            "frontend_archive",
+            "backend_sha256",
+            "frontend_sha256",
+        ):
+            prepared.pop(key, None)
+    elif target == "resources":
+        for key in ("resource_package_version", "resource_files"):
+            prepared.pop(key, None)
+    else:
+        raise ValueError(f"未知升级类型：{target}")
+    targets = [
+        value
+        for value in prepared.get("targets", [])
+        if value in {"application", "resources"} and value != target
+    ]
+    if targets:
+        prepared["targets"] = targets
+    else:
+        prepared.pop("targets", None)
+    if prepared.get("backend_archive") or prepared.get("resource_files"):
+        _write_json_file(PREPARED_DOWNLOAD_MANIFEST, prepared)
+    else:
+        _clear_json_file(PREPARED_DOWNLOAD_MANIFEST)
 
 
 def _local_update_env() -> dict[str, str]:
@@ -286,60 +377,96 @@ def _local_update_env() -> dict[str, str]:
 
 
 def _apply_prepared_release_update() -> bool:
-    """本地 CLI 重启时离线安装已校验的 Release；返回是否发现安装意图。"""
+    """本地 CLI 重启时按清单顺序离线安装主程序和完整资源包。"""
     manifest = _read_json_file(PREPARED_UPDATE_MANIFEST)
     if not manifest:
         return False
 
     try:
-        version = str(manifest.get("version") or "").strip()
-        frontend_version = str(manifest.get("frontend_version") or "").strip()
-        backend_archive = Path(str(manifest.get("backend_archive") or ""))
-        frontend_archive = Path(str(manifest.get("frontend_archive") or ""))
-        if not version or not frontend_version:
-            raise RuntimeError("更新包清单缺少版本信息")
-        if not backend_archive.is_file() or _file_sha256(backend_archive) != manifest.get("backend_sha256"):
-            raise RuntimeError("后端更新包校验失败")
-        if not frontend_archive.is_file() or _file_sha256(frontend_archive) != manifest.get("frontend_sha256"):
-            raise RuntimeError("前端更新包校验失败")
+        targets = _prepared_update_targets(manifest)
+        if not targets:
+            raise RuntimeError("更新包清单缺少升级类型")
 
-        update_command = [
-            sys.executable,
-            str(_repo_root() / "scripts" / "local_setup.py"),
-            "update",
-            "all",
-            "--ref",
-            version,
-            "--offline-backend",
-            "--frontend-version",
-            frontend_version,
-            "--frontend-archive",
-            str(frontend_archive),
-            "--skip-resources",
-            "--venv",
-            str(_repo_root() / "venv"),
-            "--config-dir",
-            str(get_runtime_setting("CONFIG_PATH")),
-        ]
-        click.echo(f"安装已下载并校验的 MoviePilot {version} 更新包")
-        result = subprocess.run(
-            update_command,
-            cwd=str(_repo_root()),
-            env=_local_update_env(),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-        if result.returncode != 0:
-            lines = [line for line in (result.stdout or "").splitlines() if line.strip()]
-            detail = lines[-1] if lines else "未知错误"
-            raise RuntimeError(detail)
+        config_dir = str(get_runtime_setting("CONFIG_PATH"))
+        if "application" in targets:
+            version = str(manifest.get("version") or "").strip()
+            frontend_version = str(manifest.get("frontend_version") or "").strip()
+            backend_archive = Path(str(manifest.get("backend_archive") or ""))
+            frontend_archive = Path(str(manifest.get("frontend_archive") or ""))
+            if not version or not frontend_version:
+                raise RuntimeError("更新包清单缺少主程序版本信息")
+            if not backend_archive.is_file() or _file_sha256(backend_archive) != manifest.get("backend_sha256"):
+                raise RuntimeError("后端更新包校验失败")
+            if not frontend_archive.is_file() or _file_sha256(frontend_archive) != manifest.get("frontend_sha256"):
+                raise RuntimeError("前端更新包校验失败")
+
+            update_command = [
+                sys.executable,
+                str(_repo_root() / "scripts" / "local_setup.py"),
+                "update",
+                "all",
+                "--ref",
+                version,
+                "--offline-backend",
+                "--frontend-version",
+                frontend_version,
+                "--frontend-archive",
+                str(frontend_archive),
+                "--skip-resources",
+                "--venv",
+                str(_repo_root() / "venv"),
+                "--config-dir",
+                config_dir,
+            ]
+            click.echo(f"安装已下载并校验的 MoviePilot {version} 更新包")
+            result = subprocess.run(
+                update_command,
+                cwd=str(_repo_root()),
+                env=_local_update_env(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            if result.returncode != 0:
+                lines = [line for line in (result.stdout or "").splitlines() if line.strip()]
+                detail = lines[-1] if lines else "未知错误"
+                raise RuntimeError(detail)
+            _consume_prepared_target("application")
+
+        if "resources" in targets:
+            resource_dir = _validate_prepared_resource_files(manifest)
+            resource_command = [
+                sys.executable,
+                str(_repo_root() / "scripts" / "local_setup.py"),
+                "install-resources",
+                "--resource-dir",
+                str(resource_dir),
+                "--config-dir",
+                config_dir,
+            ]
+            click.echo("安装已下载并校验的完整站点资源包")
+            result = subprocess.run(
+                resource_command,
+                cwd=str(_repo_root()),
+                env=_local_update_env(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            if result.returncode != 0:
+                lines = [line for line in (result.stdout or "").splitlines() if line.strip()]
+                detail = lines[-1] if lines else "未知错误"
+                raise RuntimeError(detail)
+            _consume_prepared_target("resources")
 
         _clear_json_file(PREPARED_UPDATE_MANIFEST)
-        click.echo("已下载的 Release 更新安装完成")
+        click.echo("已下载的更新安装完成")
     except (OSError, RuntimeError, ValueError) as error:
         message = f"本地 Release 更新安装失败：{error}"
         _mark_prepared_update_failed(message)

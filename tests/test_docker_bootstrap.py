@@ -893,6 +893,68 @@ def test_prepared_release_is_verified_and_installed_without_release_lookup(tmp_p
     assert not (update_root / "install.json").exists()
 
 
+def test_prepared_resource_update_is_applied_without_backend_or_release_lookup(tmp_path: Path) -> None:
+    config_dir = tmp_path / "config"
+    update_root = config_dir / "temp" / "moviepilot-update"
+    resource_dir = update_root / "resources"
+    resource_dir.mkdir(parents=True)
+    resource_files = []
+    for name, content in (("user.sites.v3.bin", b"index"), ("sites.cpython-test.so", b"auth")):
+        path = resource_dir / name
+        path.write_bytes(content)
+        resource_files.append(
+            {
+                "name": name,
+                "path": str(path),
+                "sha256": hashlib.sha256(content).hexdigest(),
+            }
+        )
+    (update_root / "install.json").write_text(
+        json.dumps({"targets": ["resources"], "resource_files": resource_files}),
+        encoding="utf-8",
+    )
+    release_probe = tmp_path / "release-probe"
+    backend_probe = tmp_path / "backend-probe"
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR="$1"
+        MOVIEPILOT_AUTO_UPDATE=release
+        PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
+        RELEASE_PROBE="$2"
+        BACKEND_PROBE="$3"
+        source {UPDATER!s}
+        INFO() {{ :; }}
+        WARN() {{ :; }}
+        ERROR() {{ :; }}
+        test_connectivity_github() {{ touch "${{RELEASE_PROBE}}"; return 1; }}
+        install_backend_and_download_resources() {{ touch "${{BACKEND_PROBE}}"; return 1; }}
+        apply_prepared_resources() {{ test "${{MOVIEPILOT_PREPARED_UPDATE}}" = true; return 0; }}
+        run_moviepilot_update
+        printf '%s\\n' "${{MOVIEPILOT_UPDATE_RESULT}}"
+        """
+    )
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "prepared-resource-update-test",
+            str(config_dir),
+            str(release_probe),
+            str(backend_probe),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == "noop\n"
+    assert not release_probe.exists()
+    assert not backend_probe.exists()
+    assert not (update_root / "install.json").exists()
+
+
 def test_release_mode_no_longer_checks_or_installs_during_restart(
     tmp_path: Path,
 ) -> None:

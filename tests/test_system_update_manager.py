@@ -6,6 +6,8 @@ import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from app.adapters.system import update as update_module
 
 
@@ -18,6 +20,7 @@ def _manager(monkeypatch, tmp_path: Path):
     manager = object.__new__(update_module.SystemUpdateManager)
     manager._lock = threading.RLock()
     manager._download_active = False
+    manager._active_target = None
     return manager
 
 
@@ -41,7 +44,7 @@ def test_check_exposes_new_stable_release(monkeypatch, tmp_path):
     monkeypatch.setattr(manager, "_request", lambda: SimpleNamespace(get_res=lambda _url: _response(releases)))
     monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.0")
 
-    status = manager.check()
+    status = manager.check("application")
 
     assert status.state == "available"
     assert status.version == "v3.1.0"
@@ -57,7 +60,7 @@ def test_scheduled_check_failure_stays_silent(monkeypatch, tmp_path):
         lambda: SimpleNamespace(get_res=lambda _url: _response({}, status_code=503)),
     )
 
-    status = manager.check()
+    status = manager.check("application")
 
     assert status.state == "idle"
     assert status.error
@@ -116,7 +119,8 @@ def test_download_prepares_matching_backend_and_frontend_archives(monkeypatch, t
     )
 
     manager._write_state(state="downloading", version="v3.1.0")
-    manager._download_update("v3.1.0")
+    manager._active_target = "application"
+    manager._download_update("application")
 
     status = manager.get_status()
     prepared = json.loads((manager._root / "prepared.json").read_text(encoding="utf-8"))
@@ -125,6 +129,100 @@ def test_download_prepares_matching_backend_and_frontend_archives(monkeypatch, t
     assert status.frontend_version == "v3.1.0"
     assert prepared["backend_sha256"] == manager._sha256(manager._backend_archive)
     assert prepared["frontend_sha256"] == manager._sha256(manager._frontend_archive)
+
+
+def test_application_download_keeps_prepared_resource_package(monkeypatch, tmp_path):
+    """应用包重新下载时不得删除另一类已经准备好的资源包。"""
+    manager = _manager(monkeypatch, tmp_path)
+    resource_dir = manager._resource_dir
+    resource_dir.mkdir(parents=True)
+    resource_file = resource_dir / "user.sites.v3.bin"
+    resource_file.write_bytes(b"resource")
+    manager._merge_prepared_manifest(
+        {
+            "resource_package_version": "10",
+            "resource_files": [
+                {
+                    "name": resource_file.name,
+                    "type": "indexer",
+                    "version": "3.0.8",
+                    "path": str(resource_file),
+                    "sha256": manager._sha256(resource_file),
+                }
+            ],
+        }
+    )
+    backend_fixture = tmp_path / "source-backend.zip"
+    frontend_fixture = tmp_path / "source-frontend.zip"
+    with zipfile.ZipFile(backend_fixture, "w") as archive:
+        archive.writestr(
+            "MoviePilot-v3.1.0/version.py",
+            "APP_VERSION = 'v3.1.0'\nFRONTEND_VERSION = 'v3.1.0'\n",
+        )
+        archive.writestr("MoviePilot-v3.1.0/pyproject.toml", "[project]\n")
+        archive.writestr("MoviePilot-v3.1.0/uv.lock", "version = 1\n")
+    with zipfile.ZipFile(frontend_fixture, "w") as archive:
+        archive.writestr("dist/index.html", "ok")
+        archive.writestr("dist/version.txt", "v3.1.0\n")
+
+    fixtures = iter((backend_fixture, frontend_fixture))
+
+    def download(_url, destination, downloaded_before, _total_hint):
+        source = next(fixtures)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source.read_bytes())
+        size = destination.stat().st_size
+        return downloaded_before + size, size
+
+    monkeypatch.setattr(manager, "_download_file", download)
+    monkeypatch.setattr(update_module, "is_docker", lambda: True)
+    monkeypatch.setattr(
+        manager,
+        "_fetch_frontend_release",
+        lambda _version: {
+            "assets": [
+                {
+                    "name": "dist.zip",
+                    "size": frontend_fixture.stat().st_size,
+                    "browser_download_url": "https://example.invalid/dist.zip",
+                }
+            ]
+        },
+    )
+    manager._write_state(state="downloading", version="v3.1.0")
+    manager._active_target = "application"
+
+    manager._download_update("application")
+
+    prepared = json.loads((manager._root / "prepared.json").read_text(encoding="utf-8"))
+    assert prepared["resource_package_version"] == "10"
+    assert prepared["resource_files"][0]["name"] == "user.sites.v3.bin"
+
+
+def test_resource_manifest_requires_complete_current_platform_package(monkeypatch, tmp_path):
+    """资源安装只能接受同时包含索引和当前平台认证文件的完整包。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        update_module.ResourceHelper,
+        "_get_needed_files",
+        classmethod(lambda cls: ["user.sites.v3.bin", "sites.cpython-test.so"]),
+    )
+    resource_dir = manager._resource_dir
+    resource_dir.mkdir(parents=True)
+    resource_file = resource_dir / "user.sites.v3.bin"
+    resource_file.write_bytes(b"resource")
+    prepared = {
+        "resource_files": [
+            {
+                "name": resource_file.name,
+                "path": str(resource_file),
+                "sha256": manager._sha256(resource_file),
+            }
+        ]
+    }
+
+    with pytest.raises(RuntimeError, match="完整资源包"):
+        manager._validate_resource_manifest(prepared)
 
 
 def test_request_install_rejects_modified_prepared_package(monkeypatch, tmp_path):
