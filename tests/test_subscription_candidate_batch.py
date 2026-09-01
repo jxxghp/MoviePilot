@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 from app.application.subscription.candidates import CandidateBatch, CandidateIndex
 from app.application.subscription.contract import SubscriptionSnapshot
+from app.application.subscription.facts import FreshFactLease
 from app.chain.torrents import TorrentsChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
@@ -179,3 +180,60 @@ def test_candidate_index_custom_words_preserve_complete_candidate_set():
     )
 
     assert routed == candidates
+
+
+def test_candidate_index_target_scale_avoids_subscription_candidate_product():
+    """200 条订阅与 1000 候选只检查命中身份位置，并按唯一媒体合并事实读取。"""
+    media_count = 100
+    subscription_count = 200
+    site_count = 20
+    candidates = {f"site-{site_index}.example": [] for site_index in range(site_count)}
+    for candidate_index in range(1000):
+        media_id = str(1000 + candidate_index % media_count)
+        domain = f"site-{candidate_index % site_count}.example"
+        candidates[domain].append(
+            _context(
+                f"目标剧集 {media_id} S01E{candidate_index + 1:04d}",
+                media_id=media_id,
+                meta_media_id=media_id,
+                enclosure=f"https://{domain}/{candidate_index}",
+            )
+        )
+    subscribes = [
+        _subscribe(
+            id=index + 1,
+            name=f"目标剧集 {index % media_count}",
+            media_id=str(1000 + index % media_count),
+        )
+        for index in range(subscription_count)
+    ]
+
+    candidate_index = CandidateIndex(candidates)
+    examined = 0
+    routed = 0
+    for subscribe in subscribes:
+        groups = candidate_index.route_for_match(subscribe)
+        examined += candidate_index.last_examined_count
+        routed += CandidateBatch.count(groups)
+
+    lease = FreshFactLease()
+    fact_loads = []
+    for subscribe in subscribes:
+        lease.get_or_load(
+            subscribe,
+            lambda subscribe=subscribe: fact_loads.append(subscribe.media_id)
+            or MediaInfo(
+                media_source=MediaSource.TMDB,
+                media_id=subscribe.media_id,
+                type=MediaType.TV,
+                season=1,
+            ),
+        )
+
+    assert len(candidates) == site_count
+    assert CandidateBatch.count(candidates) == 1000
+    assert examined == routed == 2000
+    assert examined < subscription_count * CandidateBatch.count(candidates) // 50
+    assert len(fact_loads) == media_count
+    assert lease.loads == media_count
+    assert lease.hits == subscription_count - media_count

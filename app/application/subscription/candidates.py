@@ -77,6 +77,7 @@ class CandidateIndex:
         self._unknown: set[int] = set()
         self._reconcilable: set[int] = set()
         self._explicit_identity: dict[int, tuple[str, str]] = {}
+        self.last_examined_count = 0
         for domain, contexts in candidates.items():
             for context in contexts:
                 position = len(self._ordered)
@@ -136,9 +137,10 @@ class CandidateIndex:
                 )
 
         routed: CandidateGroups = {}
-        for position, (domain, context) in enumerate(self._ordered):
-            if position not in positions:
-                continue
+        self.last_examined_count = 0
+        for position in sorted(positions):
+            domain, context = self._ordered[position]
+            self.last_examined_count += 1
             if domains and domain not in domains:
                 continue
             torrent_info = getattr(context, "torrent_info", None)
