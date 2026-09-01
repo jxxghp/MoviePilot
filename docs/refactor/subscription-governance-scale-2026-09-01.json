@@ -107,6 +107,6 @@
   ],
   "method": "Deterministic local controlled sample. Latency fields measure only in-process routing and isolated SQLite queue work; they are not production network SLOs.",
   "passed": true,
-  "revision": "93d0631da33a9b78137875e9deee0b3c8a660846",
+  "revision": "d239e80b5",
   "schema_version": 1
 }
