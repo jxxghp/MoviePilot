@@ -38,7 +38,7 @@ def _site_request_interval(site: SiteIndexer) -> float:
     """读取站点管理中已有的单次访问间隔配置。"""
     try:
         return max(0.0, float(site.get("limit_seconds") or 0))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0.0
 
 
@@ -47,12 +47,7 @@ def _reserve_site_request(site: SiteIndexer) -> float:
     interval = _site_request_interval(site)
     if interval <= 0:
         return 0.0
-    site_key = str(
-        site.get("id")
-        or site.get("domain")
-        or site.get("url")
-        or site.get("name")
-    )
+    site_key = str(site.get("id") or site.get("domain") or site.get("url") or site.get("name"))
     now = time.monotonic()
     with _site_request_schedule_lock:
         request_at = max(now, _site_next_request_at.get(site_key, now))
@@ -77,7 +72,7 @@ async def _async_wait_for_site_request(site: SiteIndexer) -> None:
 
 
 def _search_site_page(
-    owner: "SearchProviderOwner",
+    owner: "_SearchProviderSyncOwner",
     *,
     site: SiteIndexer,
     keyword: str,

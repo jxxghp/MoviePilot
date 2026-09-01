@@ -100,9 +100,7 @@ def test_execution_status_exposes_site_wait_and_cancel_capability():
     repository = _Repository()
     repository.tasks[1] = _task(1, phase="waiting_site_budget")
 
-    statuses = asyncio.run(
-        SubscriptionExecutionStatusService(repository).for_subscriptions((1,))
-    )
+    statuses = asyncio.run(SubscriptionExecutionStatusService(repository).for_subscriptions((1,)))
 
     assert statuses[1].state == "waiting_site_budget"
     assert statuses[1].current_site_id == 9
@@ -115,9 +113,7 @@ def test_reconciliation_state_overrides_newer_search_terminal():
     repository.tasks[2] = _task(2, state="failed", phase="failed")
     repository.downloads[2] = _download(2, "reconcile_required")
 
-    statuses = asyncio.run(
-        SubscriptionExecutionStatusService(repository).for_subscriptions((2,))
-    )
+    statuses = asyncio.run(SubscriptionExecutionStatusService(repository).for_subscriptions((2,)))
 
     assert statuses[2].state == "reconcile_required"
     assert statuses[2].requires_reconciliation is True
@@ -130,9 +126,7 @@ def test_failed_search_exposes_safe_retryable_error():
     repository = _Repository()
     repository.tasks[3] = _task(3, state="failed", phase="failed")
 
-    statuses = asyncio.run(
-        SubscriptionExecutionStatusService(repository).for_subscriptions((3,))
-    )
+    statuses = asyncio.run(SubscriptionExecutionStatusService(repository).for_subscriptions((3,)))
 
     assert statuses[3].state == "failed"
     assert statuses[3].can_retry is True
@@ -145,15 +139,30 @@ def test_batch_requires_complete_subscription_access():
     repository.tasks = {1: _task(1), 2: _task(2)}
     service = SubscriptionExecutionStatusService(repository)
 
-    hidden = asyncio.run(
-        service.get_batch("batch-1", accessible_subscription_ids={1})
-    )
-    visible = asyncio.run(
-        service.get_batch("batch-1", accessible_subscription_ids={1, 2})
-    )
+    hidden = asyncio.run(service.get_batch("batch-1", accessible_subscription_ids={1}))
+    visible = asyncio.run(service.get_batch("batch-1", accessible_subscription_ids={1, 2}))
 
     assert hidden is None
     assert visible is not None
     assert visible.current_subscription_id == 1
     assert visible.processed_count == 0
     assert visible.can_cancel is True
+
+
+def test_request_cancel_uses_injected_execution_boundary():
+    """取消必须通过组合根注入的异步执行边界并返回真实结果。"""
+    repository = _Repository()
+    requested: list[str] = []
+
+    async def request_cancel(batch_id: str) -> bool:
+        """记录测试请求并模拟队列接受取消。"""
+        requested.append(batch_id)
+        return True
+
+    service = SubscriptionExecutionStatusService(
+        repository,
+        request_cancel=request_cancel,
+    )
+
+    assert asyncio.run(service.request_cancel("batch-1")) is True
+    assert requested == ["batch-1"]

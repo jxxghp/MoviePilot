@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 7835,
-  "edge_sha256": "491127de88d2727e18db050dba310fd4df5a0fe32c67f4976c9f6d1145e2e53f",
+  "edge_count": 7832,
+  "edge_sha256": "3922707ade2b154adcb26bea725f9070ab9ccca109dd4ad9aa0c932cbbad9b74",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2641,11 +2641,8 @@
     "app.api.endpoints.subexecution -> app.api.response",
     "app.api.endpoints.subexecution -> app.application",
     "app.api.endpoints.subexecution -> app.application.subscription",
-    "app.api.endpoints.subexecution -> app.application.subscription.execution",
     "app.api.endpoints.subexecution -> app.application.subscription.query",
     "app.api.endpoints.subexecution -> app.application.subscription.status",
-    "app.api.endpoints.subexecution -> app.runtime",
-    "app.api.endpoints.subexecution -> app.runtime.execution",
     "app.api.endpoints.subexecution -> app.schemas",
     "app.api.endpoints.subexecution -> app.schemas.response",
     "app.api.endpoints.subexecution -> app.schemas.subscribe",

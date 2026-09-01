@@ -1,5 +1,6 @@
 """订阅执行状态的业务投影与访问范围治理。"""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
@@ -108,9 +109,20 @@ class SubscriptionExecutionStatusService:
         "reconcile_required",
     }
 
-    def __init__(self, repository: SubscriptionExecutionReadRepository) -> None:
-        """保存请求会话绑定的状态读取端口。"""
+    def __init__(
+        self,
+        repository: SubscriptionExecutionReadRepository,
+        request_cancel: Optional[Callable[[str], Awaitable[bool]]] = None,
+    ) -> None:
+        """保存请求会话绑定的状态读取端口和可选取消用例。"""
         self._repository = repository
+        self._request_cancel = request_cancel
+
+    async def request_cancel(self, batch_id: str) -> bool:
+        """通过组合根提供的执行边界请求取消搜索批次。"""
+        if self._request_cancel is None:
+            raise RuntimeError("订阅搜索批次取消能力未注册")
+        return bool(await self._request_cancel(batch_id))
 
     async def for_subscriptions(
         self,
@@ -245,8 +257,7 @@ class SubscriptionExecutionStatusService:
             created_at=batch.created_at,
             updated_at=batch.updated_at,
             error=cls._safe_error(batch.last_error),
-            can_cancel=batch.state in {"queued", "running", "cancelling"}
-            and not batch.cancel_requested,
+            can_cancel=batch.state in {"queued", "running", "cancelling"} and not batch.cancel_requested,
         )
 
     @staticmethod
@@ -257,9 +268,7 @@ class SubscriptionExecutionStatusService:
         """超级用户不限制；普通用户必须拥有批次内全部订阅。"""
         if accessible_subscription_ids is None:
             return True
-        return bool(tasks) and all(
-            task.subscription_id in accessible_subscription_ids for task in tasks
-        )
+        return bool(tasks) and all(task.subscription_id in accessible_subscription_ids for task in tasks)
 
     @staticmethod
     def _safe_error(error: Optional[str]) -> Optional[str]:

@@ -8,14 +8,11 @@ from app.api.dependencies.auth import get_current_active_user_async
 from app.api.dependencies.subscription import (
     get_subscription_execution_status_service,
     get_subscription_query_service,
-    get_subscription_search_repository,
 )
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
-from app.application.subscription.execution import SubscriptionSearchRepository
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.status import SubscriptionExecutionStatusService
-from app.runtime.execution import run_in_threadpool
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.subscribe import SubscriptionBatchStatus as _SchemaSubscriptionBatchStatus
 
@@ -40,9 +37,7 @@ async def _accessible_subscription_ids(
 )
 async def list_subscription_execution_batches(
     limit: int = 10,
-    status_service: SubscriptionExecutionStatusService = Depends(
-        get_subscription_execution_status_service
-    ),
+    status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
@@ -62,9 +57,7 @@ async def list_subscription_execution_batches(
 )
 async def get_subscription_execution_batch(
     batch_id: str,
-    status_service: SubscriptionExecutionStatusService = Depends(
-        get_subscription_execution_status_service
-    ),
+    status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
@@ -86,13 +79,8 @@ async def get_subscription_execution_batch(
 )
 async def cancel_subscription_execution_batch(
     batch_id: str,
-    status_service: SubscriptionExecutionStatusService = Depends(
-        get_subscription_execution_status_service
-    ),
+    status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
-    search_repository: SubscriptionSearchRepository = Depends(
-        get_subscription_search_repository
-    ),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
     """在权限校验后请求取消尚未越过下载副作用边界的任务。"""
@@ -103,7 +91,7 @@ async def cancel_subscription_execution_batch(
     )
     if batch is None:
         return _SchemaResponse(success=False, message="订阅搜索批次不存在")
-    cancelled = await run_in_threadpool(search_repository.request_cancel, batch_id)
+    cancelled = await status_service.request_cancel(batch_id)
     return _SchemaResponse(
         success=bool(cancelled),
         message="" if cancelled else "订阅搜索批次已结束或无法取消",

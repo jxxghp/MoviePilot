@@ -1,6 +1,6 @@
 """订阅创建与批量写入编排"""
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Dict, Optional, Tuple, cast
 
 from app.application.subscription.write import (
@@ -24,6 +24,32 @@ from app.schemas.types import (
     MediaType,
     NotificationChannel,
 )
+
+
+def _build_post_commit_callback(
+    owner: Any,
+    context: _SubscribePostCommitContext,
+) -> Callable[[int], bool]:
+    """冻结同步订阅提交后的副作用上下文。"""
+
+    def after_commit(subscribe_id: int) -> bool:
+        """把同步提交后的副作用委托给通知 owner。"""
+        return cast(bool, owner._SubscribeChain__post_subscribe_added(subscribe_id, context))
+
+    return after_commit
+
+
+def _build_async_post_commit_callback(
+    owner: Any,
+    context: _SubscribePostCommitContext,
+) -> Callable[[int], Awaitable[bool]]:
+    """冻结异步订阅提交后的副作用上下文。"""
+
+    async def after_commit(subscribe_id: int) -> bool:
+        """把异步提交后的副作用委托给通知 owner。"""
+        return cast(bool, await owner._SubscribeChain__async_post_subscribe_added(subscribe_id, context))
+
+    return after_commit
 
 
 class SubscribeCreateOwner(_SubscribeOwnerBase):
@@ -408,17 +434,12 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             context,
             self._SubscribeChain__build_subscribe_notification(context),
         )
-
-        def _after_commit(subscribe_id: int) -> bool:
-            """把同步提交后的副作用委托给单一顺序实现。"""
-            return cast(bool, self._SubscribeChain__post_subscribe_added(subscribe_id, post_commit_context))
-
         sid, err_msg = add_subscribe(
             mediainfo=context.mediainfo,
             subscribe_oper=self.subscription_repository,
             season=context.season,
             username=context.username,
-            after_commit=_after_commit,
+            after_commit=_build_post_commit_callback(self, post_commit_context),
             notification=post_commit_context.notification,
             occurrence_id=post_commit_context.occurrence_id,
             **context.options,
@@ -437,23 +458,12 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             context,
             self._SubscribeChain__build_subscribe_notification(context),
         )
-
-        async def _after_commit(subscribe_id: int) -> bool:
-            """把异步提交后的副作用委托给单一顺序实现。"""
-            return cast(
-                bool,
-                await self._SubscribeChain__async_post_subscribe_added(
-                    subscribe_id,
-                    post_commit_context,
-                ),
-            )
-
         sid, err_msg = await async_add_subscribe(
             mediainfo=context.mediainfo,
             subscribe_oper=self.subscription_repository,
             season=context.season,
             username=context.username,
-            after_commit=_after_commit,
+            after_commit=_build_async_post_commit_callback(self, post_commit_context),
             notification=post_commit_context.notification,
             occurrence_id=post_commit_context.occurrence_id,
             **context.options,
@@ -644,23 +654,10 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
                 notification,
             )
 
-            async def after_commit(
-                subscribe_id: int,
-                frozen: _SubscribePostCommitContext = post_commit_context,
-            ) -> bool:
-                """按各季准备阶段冻结的上下文复用单条新增副作用。"""
-                return cast(
-                    bool,
-                    await self._SubscribeChain__async_post_subscribe_added(
-                        subscribe_id,
-                        frozen,
-                    ),
-                )
-
             request = build_subscription_create_request(
                 context.mediainfo,
                 notification=notification,
-                after_commit=after_commit,
+                after_commit=_build_async_post_commit_callback(self, post_commit_context),
                 occurrence_id=post_commit_context.occurrence_id,
                 season=context.season,
                 username=context.username,
