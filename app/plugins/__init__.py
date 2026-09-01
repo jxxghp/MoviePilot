@@ -1,12 +1,14 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Any, List, Dict, Tuple, Optional, Type
+from typing import Any, List, Dict, Tuple, Optional, Type, Union
 
 from app.chain import ChainBase
 from app.core.config import settings
 from app.core.event import EventManager
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.systemconfig import SystemConfigOper
+from app.db.plugin.container import PluginDatabaseHandle
+from app.db.plugin.registry import get_database as get_plugin_database
 from app.helper.message import MessageHelper
 from app.schemas import Notification, NotificationType, MessageChannel
 
@@ -238,6 +240,29 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def get_database_models(self) -> Optional[List[Type]]:
+        """
+        声明插件自有数据库中的模型
+        [ModelClass1, ModelClass2, ...]
+
+        对模型类的要求：
+        1、模型类必须继承 app.sdk.database.plugin_declarative_base() 产出的基类
+        2、同一插件的模型应继承同一个基类，它们的表在插件启动时一并建立
+        3、同时声明了迁移目录时本声明被忽略，改由 alembic 建表
+        """
+        pass
+
+    def get_database_migrations(self) -> Optional[Union[str, Path]]:
+        """
+        声明插件自有数据库的 Alembic 迁移脚本目录
+        目录须符合 Alembic script_location 布局
+
+        声明后插件启动时执行 alembic upgrade head，不再按 get_database_models() 建表。
+        PostgreSQL 下迁移脚本的 env.py 必须从 context.config.attributes["connection"]
+        取用宿主传入的连接，否则迁移会落在 public schema 而不是本插件的 schema。
+        """
+        pass
+
     @abstractmethod
     def stop_service(self):
         """
@@ -274,6 +299,16 @@ class _PluginBase(metaclass=ABCMeta):
         if not data_path.exists():
             data_path.mkdir(parents=True)
         return data_path
+
+    def get_database(self, plugin_id: Optional[str] = None) -> PluginDatabaseHandle:
+        """
+        获取插件自有数据库句柄，用于取会话读写插件自有表
+        句柄不存在时按需建立，不要求先声明模型
+        :param plugin_id: 插件ID
+        """
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        return get_plugin_database(plugin_id)
 
     def save_data(self, key: str, value: Any, plugin_id: Optional[str] = None):
         """

@@ -242,6 +242,45 @@ oper.delete(sid=1)                    # Delete by key
 
 ---
 
+## Plugin-Owned Databases
+
+Plugins that need SQL storage beyond `save_data`/`get_data` own an isolated
+database rather than a table inside the host database. The framework lives in
+`app/db/plugin/`: SQLite deploys one file per plugin at
+`PLUGIN_DATA_PATH/<PluginId>/plugin.db`; PostgreSQL deploys one schema
+`plugin_<pluginid>` that reuses the host engine via `schema_translate_map`.
+
+A plugin declares its schema with `get_database_models()` and/or
+`get_database_migrations()`. The host pulls both hooks once, right after
+`init_plugin()` returns, and creates nothing when both are empty — most
+plugins never pay for this framework. A declared migrations directory takes
+precedence over declared models and is applied with `alembic upgrade head`.
+
+Models must inherit `app.sdk.database.plugin_declarative_base()`, which mints
+a fresh `MetaData` per call so a plugin's tables never collide with
+`app.db.base.Base.metadata` or with another plugin's same-named tables. At
+runtime, `_PluginBase.get_database()` returns a `PluginDatabaseHandle` for
+opening sessions against the plugin's own engine.
+
+Lifecycle is strictly ensure/release/destroy: plugin start calls `ensure`
+after `init_plugin()`; stop, reload and remove call `release` only, which
+disposes the connection pool but never touches data. Only resetting a
+plugin's data or uninstalling a clone/virtual instance calls `destroy`
+(delete the SQLite file and its `-wal`/`-shm` sidecars, or `DROP SCHEMA
+... CASCADE`). Stopping or uninstalling an ordinary plugin never destroys its
+database, mirroring the existing `plugindata` retention semantics.
+
+`db_query` / `db_update` keep their existing automatic-Session fallback bound
+to the **host** `ScopedSession()`; they are not aware of plugin-owned
+databases. A plugin operating on its own tables must pass
+`handle.session()` explicitly — the decorators accept any `Session` argument
+supplied by the caller.
+
+Plugin databases never participate in host Alembic (`database/versions/`)
+and their tables never register on `app.db.base.Base.metadata`.
+
+---
+
 ## SystemConfig — Runtime Configuration
 
 **Purpose:** Runtime business configuration that is user-editable, persisted in the database, and survives application restarts.
@@ -362,4 +401,4 @@ can be accepted only once without Application knowing the configured backend.
 - `settings.API_TOKEN` and other secret fields must not be included in log output or API responses.
 - The `config list --show-secrets` flag exists specifically to gate secret visibility in the CLI.
 
-*Last Updated: 2026-08-28*
+*Last Updated: 2026-09-01*
