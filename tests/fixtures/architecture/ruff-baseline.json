@@ -18,16 +18,10 @@
   "app/adapters/web/plugin/routes.py": {
     "I001": 1
   },
-  "app/agent/llm/capability.py": {
-    "I001": 1
-  },
   "app/agent/llm/tools.py": {
     "I001": 1
   },
   "app/agent/loader.py": {
-    "I001": 1
-  },
-  "app/agent/mcp.py": {
     "I001": 1
   },
   "app/agent/middleware/memory.py": {
@@ -46,9 +40,6 @@
     "I001": 1
   },
   "app/agent/tools/impl/browse_webpage.py": {
-    "I001": 1
-  },
-  "app/agent/tools/impl/execute_command.py": {
     "I001": 1
   },
   "app/agent/tools/impl/recognize_captcha.py": {
