@@ -100,6 +100,14 @@ class SubscriptionBatchWriterFactory(Protocol):
         ...
 
 
+class SubscriptionExecutionStatusRepositoryFactory(Protocol):
+    """由请求会话构造订阅执行状态读取仓储的工厂。"""
+
+    def __call__(self, session: object) -> object:
+        """绑定请求会话并返回执行状态读取端口。"""
+        ...
+
+
 class AsyncSessionProvider(Protocol):
     """FastAPI 请求级异步会话提供器。"""
 
@@ -230,6 +238,8 @@ class SubscriptionRuntime:
     rule_group_mutation_scope: Callable[[], AbstractContextManager[SyncRuleGroupMutationService]]
     async_rule_group_mutation_scope: Callable[[], AbstractAsyncContextManager[AsyncRuleGroupMutationService]]
     site_reference_mutation_scope: Callable[[], AbstractContextManager[SyncSiteReferenceMutationService]]
+    execution_status_repository: SubscriptionExecutionStatusRepositoryFactory | None = None
+    search_repository: object | None = None
 
 
 @dataclass(frozen=True, slots=True)

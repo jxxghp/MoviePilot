@@ -45,6 +45,8 @@ class SubscriptionSearchTask(Base):
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     state: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    phase: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    current_site_id: Mapped[Optional[int]] = mapped_column(Integer)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cancel_requested: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lease_owner: Mapped[Optional[str]] = mapped_column(String(128))

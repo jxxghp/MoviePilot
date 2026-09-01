@@ -60,6 +60,7 @@ class SubscriptionSearchOper(DbOper):
                 priority=priority,
                 position=position,
                 state="queued",
+                phase="queued",
                 available_at=available_at or now,
                 created_at=now,
                 updated_at=now,
@@ -170,6 +171,8 @@ class SubscriptionSearchOper(DbOper):
                 )
                 .values(
                     state="running",
+                    phase="matching",
+                    current_site_id=None,
                     lease_owner=owner,
                     lease_token=lease_token,
                     lease_expires_at=lease_expires_at,
@@ -207,6 +210,52 @@ class SubscriptionSearchOper(DbOper):
             return claimed_task
         return None
 
+    def update_task_phase(
+        self,
+        *,
+        task_id: str,
+        lease_token: str,
+        phase: str,
+        current_site_id: Optional[int],
+    ) -> bool:
+        """只允许当前运行租约推进用户可见阶段。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("订阅搜索阶段更新需要调用方提供同步 Session")
+        task = self._db.execute(
+            select(SubscriptionSearchTask).where(
+                SubscriptionSearchTask.task_id == task_id,
+                SubscriptionSearchTask.state == "running",
+                SubscriptionSearchTask.lease_token == lease_token,
+            )
+        ).scalars().first()
+        if task is None:
+            return False
+        now = utc_now_text()
+        updated = execute_dml(
+            self._db,
+            update(SubscriptionSearchTask)
+            .where(
+                SubscriptionSearchTask.id == task.id,
+                SubscriptionSearchTask.state == "running",
+                SubscriptionSearchTask.lease_token == lease_token,
+            )
+            .values(
+                phase=phase,
+                current_site_id=current_site_id,
+                updated_at=now,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+        if updated:
+            execute_dml(
+                self._db,
+                update(SubscriptionSearchBatch)
+                .where(SubscriptionSearchBatch.batch_id == task.batch_id)
+                .values(updated_at=now),
+                execution_options={"synchronize_session": False},
+            )
+        return bool(updated)
+
     def finish_task(
         self,
         *,
@@ -240,6 +289,8 @@ class SubscriptionSearchOper(DbOper):
             )
             .values(
                 state=state,
+                phase=state,
+                current_site_id=None,
                 active_key=None,
                 lease_owner=None,
                 lease_token=None,
@@ -293,6 +344,8 @@ class SubscriptionSearchOper(DbOper):
             )
             .values(
                 state="queued",
+                phase="queued",
+                current_site_id=None,
                 lease_owner=None,
                 lease_token=None,
                 lease_expires_at=None,
@@ -336,6 +389,8 @@ class SubscriptionSearchOper(DbOper):
             )
             .values(
                 state="cancelled",
+                phase="cancelled",
+                current_site_id=None,
                 active_key=None,
                 cancel_requested=1,
                 finished_at=now,
@@ -350,7 +405,7 @@ class SubscriptionSearchOper(DbOper):
                 SubscriptionSearchTask.batch_id == batch_id,
                 SubscriptionSearchTask.state == "running",
             )
-            .values(cancel_requested=1, updated_at=now),
+            .values(cancel_requested=1, phase="cancelling", updated_at=now),
             execution_options={"synchronize_session": False},
         )
         self._refresh_batch(batch_id, now=now, error=None)

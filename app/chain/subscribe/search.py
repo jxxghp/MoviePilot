@@ -300,18 +300,26 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                     )
                     continue
                 current = subscribe
+                phase_changed = partial(
+                    self._update_search_task_phase,
+                    queue,
+                    task_id,
+                    task.lease_token,
+                )
                 searchchain.configure_subscription_site_budget(
                     SubscriptionSiteBudget(
                         repository=queue,
                         owner=f"{owner}:{task_id}",
                         cancelled=cancelled,
                         stop_state=getattr(self, "stop_state", runtime_stop_state),
+                        phase_changed=phase_changed,
                     )
                 )
                 self._subscription_download_task_id = task_id
                 self._subscription_download_cancelled = cancelled
                 self._subscription_download_crossed_boundary = False
                 self._subscription_download_mark_started = self._mark_subscription_download_started
+                self._subscription_execution_phase = phase_changed
                 try:
                     current = self._process_search_subscription(subscribe, searchchain)
                     if queue.is_cancel_requested(task.task_id):
@@ -353,6 +361,7 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
                     delattr(self, "_subscription_download_task_id")
                     delattr(self, "_subscription_download_cancelled")
                     delattr(self, "_subscription_download_mark_started")
+                    delattr(self, "_subscription_execution_phase")
                     self._subscription_download_crossed_boundary = False
                     searchchain.configure_subscription_site_budget(None)
                     if current and current.state == "N":
@@ -383,6 +392,25 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
     def _mark_subscription_download_started(self) -> None:
         """记录当前搜索任务已提交或复用了真实下载结果。"""
         self._subscription_download_crossed_boundary = True
+        phase_changed = getattr(self, "_subscription_execution_phase", None)
+        if phase_changed:
+            phase_changed("submitting", None)
+
+    @staticmethod
+    def _update_search_task_phase(
+        queue: SubscriptionSearchRepository,
+        task_id: str,
+        lease_token: str,
+        phase: str,
+        current_site_id: Optional[int] = None,
+    ) -> None:
+        """以当前任务租约持久化业务阶段，过期执行者不得覆盖新状态。"""
+        queue.update_task_phase(
+            task_id=task_id,
+            lease_token=lease_token,
+            phase=phase,
+            current_site_id=current_site_id,
+        )
 
     def resume_search_queue(
         self,
@@ -537,6 +565,9 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
             if subscribe.best_version
             else SystemConfigKey.SubscribeFilterRuleGroups
         )
+        phase_changed = getattr(self, "_subscription_execution_phase", None)
+        if phase_changed:
+            phase_changed("searching", None)
         contexts = searchchain.process(
             mediainfo=mediainfo,
             keyword=subscribe.keyword,
@@ -564,6 +595,8 @@ class SubscribeSearchOwner(_SubscribeOwnerBase):
             self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, lefts=no_exists)
             self._raise_site_budget_failures(site_budget_failures)
             return subscribe
+        if phase_changed:
+            phase_changed("preparing", None)
         downloads, lefts = self._SubscribeChain__download_best_version_with_full_pack_first(
             contexts=matched,
             no_exists=no_exists,

@@ -84,6 +84,7 @@ class SubscriptionSiteBudget:
         random_uniform: Callable[[float, float], float] = random.uniform,
         sleeper: Callable[[float], None] = time.sleep,
         clock: Callable[[], datetime] = _utc_now,
+        phase_changed: Optional[Callable[[str, Optional[int]], None]] = None,
     ) -> None:
         """保存持久化端口及可注入的时钟、随机数和等待实现。"""
         self._repository = repository
@@ -96,6 +97,7 @@ class SubscriptionSiteBudget:
         self._random_uniform = random_uniform
         self._sleeper = sleeper
         self._clock = clock
+        self._phase_changed = phase_changed
 
     def acquire(self, site_id: int) -> SiteBudgetClaim:
         """循环认领指定站点，并在每秒边界检查取消与停机。"""
@@ -108,7 +110,9 @@ class SubscriptionSiteBudget:
                 lease_seconds=self._lease_seconds,
             )
             if claim.acquired:
+                self._report_phase("searching", site_id)
                 return claim
+            self._report_phase("waiting_site_budget", site_id)
             retry_at = datetime.fromisoformat(claim.retry_at)
             remaining = max(0.0, (retry_at - self._clock()).total_seconds())
             if remaining > max(0.0, deadline - time.monotonic()):
@@ -117,6 +121,11 @@ class SubscriptionSiteBudget:
                     retry_at=claim.retry_at,
                 )
             self._sleeper(min(max(remaining, 0.05), 1.0))
+
+    def _report_phase(self, phase: str, site_id: Optional[int]) -> None:
+        """向任务所有者报告不改变预算语义的业务阶段。"""
+        if self._phase_changed:
+            self._phase_changed(phase, site_id)
 
     def finish(self, claim: SiteBudgetClaim, observation: SiteSearchObservation) -> bool:
         """依据调用结果计算随机间隔或错误冷却并释放租约。"""

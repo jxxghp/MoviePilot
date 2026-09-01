@@ -68,6 +68,34 @@ def test_search_queue_recovers_expired_lease_with_same_task_identity(tmp_path):
     assert recovered.attempt_count == 2
 
 
+def test_search_queue_phase_update_requires_current_lease(tmp_path):
+    """过期执行者不得覆盖当前任务的用户可见阶段。"""
+    repository, _engine = _repository(tmp_path)
+    repository.enqueue(subscription_ids=(30,), source="manual", priority=100)
+    task = repository.claim_next(owner="worker-a")
+
+    assert repository.update_task_phase(
+        task_id=task.task_id,
+        lease_token="stale-token",
+        phase="searching",
+        current_site_id=7,
+    ) is False
+    assert repository.update_task_phase(
+        task_id=task.task_id,
+        lease_token=task.lease_token,
+        phase="waiting_site_budget",
+        current_site_id=7,
+    ) is True
+
+    current = repository.claim_next(owner="worker-b")
+    assert current is None
+    assert repository.finish_task(
+        task_id=task.task_id,
+        lease_token=task.lease_token,
+        state="completed",
+    ) is True
+
+
 def test_search_queue_cancel_finishes_queued_and_running_tasks(tmp_path):
     """取消立即终止未发请求任务，运行中任务在租约边界收口。"""
     repository, engine = _repository(tmp_path)

@@ -34,6 +34,7 @@ from app.application.subscription.delete import (
 from app.application.subscription.delete import (
     DeleteSubscribeCommand,
 )
+from app.application.subscription.execution import SubscriptionSearchRepository
 from app.application.subscription.identity import (
     DeleteSubscriptionsByIdentityCommand,
 )
@@ -42,6 +43,7 @@ from app.application.subscription.mutation import (
 )
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.search import SearchSubscriptionsCommand
+from app.application.subscription.status import SubscriptionExecutionStatusService
 from app.application.subscription.write import (
     SubscriptionBatchWritePort,
 )
@@ -174,6 +176,27 @@ def get_subscription_query_service(
         async_repository=runtime.subscription.repository(db),
         history_repository=runtime.subscription.history_repository(db),
     )
+
+
+def get_subscription_execution_status_service(
+    db: AsyncSession = Depends(get_async_session),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> SubscriptionExecutionStatusService:
+    """组装请求级订阅执行状态投影服务。"""
+    factory = runtime.subscription.execution_status_repository
+    if factory is None:
+        raise RuntimeError("订阅执行状态仓储未注册")
+    repository = factory(db)
+    return SubscriptionExecutionStatusService(repository=repository)  # type: ignore[arg-type]
+
+
+def get_subscription_search_repository(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> SubscriptionSearchRepository:
+    """返回宿主组合根持有的订阅搜索队列端口。"""
+    if runtime.subscription.search_repository is None:
+        raise RuntimeError("订阅搜索队列未注册")
+    return cast(SubscriptionSearchRepository, runtime.subscription.search_repository)
 
 
 def get_subscription_mutation_service(

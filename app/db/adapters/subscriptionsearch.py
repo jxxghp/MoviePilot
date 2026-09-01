@@ -51,6 +51,7 @@ def _task(record: SubscriptionSearchTask) -> SearchTaskSnapshot:
         priority=record.priority,
         position=record.position,
         state=record.state,
+        phase=record.phase,
         attempt_count=record.attempt_count,
         cancel_requested=bool(record.cancel_requested),
         lease_token=record.lease_token,
@@ -60,6 +61,7 @@ def _task(record: SubscriptionSearchTask) -> SearchTaskSnapshot:
         started_at=record.started_at,
         finished_at=record.finished_at,
         last_error=record.last_error,
+        current_site_id=record.current_site_id,
     )
 
 
@@ -137,6 +139,24 @@ class TransactionalSubscriptionSearchRepository:
                 lease_token=lease_token,
                 state=state,
                 error=error,
+            )
+        )
+
+    def update_task_phase(
+        self,
+        *,
+        task_id: str,
+        lease_token: str,
+        phase: str,
+        current_site_id: Optional[int] = None,
+    ) -> bool:
+        """以当前租约更新任务阶段。"""
+        return self._write(
+            lambda repository: repository.update_task_phase(
+                task_id=task_id,
+                lease_token=lease_token,
+                phase=phase,
+                current_site_id=current_site_id,
             )
         )
 

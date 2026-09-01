@@ -37,6 +37,7 @@ class SearchTaskSnapshot:
     priority: int
     position: int
     state: str
+    phase: str
     attempt_count: int
     cancel_requested: bool
     lease_token: Optional[str]
@@ -46,6 +47,7 @@ class SearchTaskSnapshot:
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
     last_error: Optional[str] = None
+    current_site_id: Optional[int] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +86,17 @@ class SubscriptionSearchRepository(Protocol):
         error: Optional[str] = None,
     ) -> bool:
         """以租约令牌收口任务，并推进所属批次聚合状态。"""
+        ...
+
+    def update_task_phase(
+        self,
+        *,
+        task_id: str,
+        lease_token: str,
+        phase: str,
+        current_site_id: Optional[int] = None,
+    ) -> bool:
+        """以当前租约令牌更新用户可见阶段和正在处理的站点。"""
         ...
 
     def release_task(

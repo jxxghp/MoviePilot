@@ -1,7 +1,7 @@
 import json
-from typing import Optional, List, Dict, Any, ClassVar, Literal
+from typing import Any, ClassVar, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource, MediaType
@@ -45,6 +45,46 @@ def compute_subscribe_completed_episode(subscribe: "Subscribe") -> Optional[int]
     return min(max(start_episode - 1, 0), total_episode) + priority_completed
 
 
+class SubscriptionExecutionStatus(BaseModel):
+    """订阅列表可见的当前业务执行状态。"""
+
+    state: str
+    phase: str
+    updated_at: str
+    source: Optional[str] = None
+    batch_id: Optional[str] = None
+    task_id: Optional[str] = None
+    current_site_id: Optional[int] = None
+    error: Optional[str] = None
+    can_cancel: bool = False
+    can_retry: bool = False
+    requires_reconciliation: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SubscriptionBatchStatus(BaseModel):
+    """订阅搜索批次的用户可见进度和操作能力。"""
+
+    batch_id: str
+    source: str
+    state: str
+    phase: str
+    total_count: int
+    processed_count: int
+    finished_count: int
+    failed_count: int
+    cancelled_count: int
+    created_at: str
+    updated_at: str
+    current_subscription_id: Optional[int] = None
+    current_site_id: Optional[int] = None
+    error: Optional[str] = None
+    can_cancel: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class Subscribe(OptionalMediaIdentityMixin, BaseModel):
     """订阅输入与响应模型，媒体身份必须为空对或完整有效对。"""
 
@@ -59,6 +99,7 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
         "id", "poster", "backdrop", "vote", "description", "lack_episode", "completed_episode",
         "note", "state", "last_update", "username", "current_priority", "episode_priority", "date",
         "current_audio_format", "current_bitrate", "current_bit_depth", "current_sample_rate",
+        "execution_status",
     })
 
     id: Optional[int] = None
@@ -158,6 +199,8 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
     filter_groups: Optional[List[str]] = Field(default_factory=list)
     # 剧集组
     episode_group: Optional[str] = None
+    # 当前搜索或下载执行状态，只用于响应投影
+    execution_status: Optional[SubscriptionExecutionStatus] = None
 
     model_config = ConfigDict(from_attributes=True)
 
