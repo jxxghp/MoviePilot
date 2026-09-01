@@ -22,6 +22,8 @@ from app.api.response import (
     COLLECTION_PAGINATION_OPENAPI_KEY,
     COLLECTION_TOTAL_OPENAPI_KEY,
     RAW_RESPONSE_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
     ResponseAPIRoute,
     ResponseAPIRouter,
 )
@@ -104,7 +106,10 @@ def api_app() -> FastAPI:
         return [Item(id=1)]
 
     @app.get("/many-items", response_model=list[Item])
-    async def get_many_items() -> list[Item]:
+    async def get_many_items(
+        page: CompatiblePageParam = None,
+        count: CompatibleCountParam = None,
+    ) -> list[Item]:
         """返回用于验证兼容分页行为的完整业务列表。"""
         return [Item(id=index) for index in range(1, 6)]
 
@@ -293,8 +298,8 @@ def test_collection_openapi_declares_optional_compatibility_parameters_and_heade
     }
 
 
-def test_every_host_collection_route_declares_compatible_count_contract():
-    """所有宿主列表接口必须报告当前数量，并区分缺省全量与原生分页。"""
+def test_every_host_collection_route_declares_explicit_pagination_contract():
+    """所有宿主列表接口必须显式声明分页窗口并报告当前数量。"""
     app = FastAPI()
     from app.api.apiv1 import api_router
 
@@ -322,17 +327,50 @@ def test_every_host_collection_route_declares_compatible_count_contract():
                 )
             )
         )
-        if not compatible_method or has_native_window:
+        if not compatible_method:
             continue
         query_parameters = {
             parameter["name"]: parameter["schema"]
             for parameter in operation.get("parameters", [])
             if parameter.get("in") == "query"
         }
+        assert "response" not in query_parameters, prefix
+        if has_native_window:
+            continue
+        assert {"page", "count"}.issubset(endpoint_parameters), prefix
         assert {"page", "count"}.issubset(query_parameters), prefix
         assert "default" not in query_parameters["page"], prefix
         assert "default" not in query_parameters["count"], prefix
         assert "X-Total-Count" in headers, prefix
+
+
+def test_database_collection_routes_expose_explicit_page_count_without_response_input():
+    """数据库列表接口只公开 page/count，框架 Response 不能泄漏成 Agent 输入。"""
+    app = FastAPI()
+    from app.api.apiv1 import api_router
+
+    app.include_router(api_router, prefix="/api/v1")
+    openapi = app.openapi()
+    paths = (
+        "/api/v1/user/",
+        "/api/v1/mfa/passkey/list",
+        "/api/v1/subscribe/",
+        "/api/v1/site/",
+        "/api/v1/workflow/",
+    )
+
+    for path in paths:
+        operation = openapi["paths"][path]["get"]
+        parameters = {
+            parameter["name"]: parameter
+            for parameter in operation.get("parameters", [])
+            if parameter.get("in") == "query"
+        }
+        assert {"page", "count"}.issubset(parameters), path
+        assert "response" not in parameters, path
+        assert "default" not in parameters["page"]["schema"], path
+        assert "default" not in parameters["count"]["schema"], path
+        assert "X-Total-Count" in operation["responses"]["200"]["headers"], path
 
 
 async def test_explicit_none_and_stream_keep_native_protocol(api_app: FastAPI):

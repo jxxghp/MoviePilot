@@ -53,15 +53,38 @@ class SubscriptionQueryService:
     async def list_public(
         self,
         username: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> list[SubscribeView]:
-        """读取公开订阅列表并转换为稳定 DTO。"""
+        """按 owner 和可选数据库窗口读取公开订阅 DTO。"""
         if self._async_repository is None:
             raise RuntimeError("异步订阅查询端口未注册")
         if username:
-            records = await self._async_repository.async_list_by_username(username=username)
+            if page is None and count is None:
+                records = await self._async_repository.async_list_by_username(
+                    username=username
+                )
+            else:
+                records = await self._async_repository.async_list_by_username(
+                    username=username,
+                    page=page,
+                    count=count,
+                )
         else:
-            records = await self._async_repository.async_list()
+            if page is None and count is None:
+                records = await self._async_repository.async_list()
+            else:
+                records = await self._async_repository.async_list(
+                    page=page,
+                    count=count,
+                )
         return [SubscribeView.model_validate(record) for record in records]
+
+    async def count_public(self, username: Optional[str] = None) -> int:
+        """按 owner 范围返回公开订阅精确总数。"""
+        if self._async_repository is None:
+            raise RuntimeError("异步订阅查询端口未注册")
+        return await self._async_repository.async_count(username=username)
 
     async def get_public(self, subscribe_id: int) -> Optional[SubscribeView]:
         """按 ID 读取订阅 DTO。"""

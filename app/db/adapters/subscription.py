@@ -359,14 +359,17 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
     async def async_list(
         self,
         state: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按可选状态读取订阅快照。"""
+        """异步按可选状态和窗口读取订阅快照。"""
 
         async def operation(
             repository: SubscribeOper,
         ) -> builtins.list[SubscriptionSnapshot]:
             """读取并在当前 Session 中投影订阅列表。"""
-            return [_project_subscription(record) for record in await repository.async_list(state)]
+            records = await repository.async_list(state, page=page, count=count)
+            return [_project_subscription(record) for record in records]
 
         return await self._async_read(operation)
 
@@ -375,17 +378,40 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         username: str,
         state: Optional[str] = None,
         mtype: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按用户、状态和类型读取订阅快照。"""
+        """异步按用户、状态、类型和窗口读取订阅快照。"""
 
         async def operation(
             repository: SubscribeOper,
         ) -> builtins.list[SubscriptionSnapshot]:
             """读取并在当前 Session 中投影用户订阅。"""
-            records = await repository.async_list_by_username(username, state, mtype)
+            records = await repository.async_list_by_username(
+                username,
+                state,
+                mtype,
+                page=page,
+                count=count,
+            )
             return [_project_subscription(record) for record in records]
 
         return await self._async_read(operation)
+
+    async def async_count(
+        self,
+        state: Optional[str] = None,
+        username: Optional[str] = None,
+        mtype: Optional[str] = None,
+    ) -> int:
+        """按公开列表筛选范围返回订阅精确总数。"""
+        return await self._async_read(
+            lambda repository: repository.async_count(
+                state=state,
+                username=username,
+                mtype=mtype,
+            )
+        )
 
     async def async_list_by_media_identity(
         self,
@@ -565,9 +591,15 @@ class SessionSubscriptionRepository:
     async def async_list(
         self,
         state: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按可选状态读取订阅快照。"""
-        records = await self._async_repository().async_list(state)
+        """异步按可选状态和窗口读取订阅快照。"""
+        records = await self._async_repository().async_list(
+            state,
+            page=page,
+            count=count,
+        )
         return [_project_subscription(record) for record in records]
 
     def list_for_reference_rewrite(self) -> builtins.list[SubscriptionSnapshot]:
@@ -597,10 +629,31 @@ class SessionSubscriptionRepository:
         username: str,
         state: Optional[str] = None,
         mtype: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按用户、状态和类型读取订阅快照。"""
-        records = await self._async_repository().async_list_by_username(username, state, mtype)
+        """异步按用户、状态、类型和窗口读取订阅快照。"""
+        records = await self._async_repository().async_list_by_username(
+            username,
+            state,
+            mtype,
+            page=page,
+            count=count,
+        )
         return [_project_subscription(record) for record in records]
+
+    async def async_count(
+        self,
+        state: Optional[str] = None,
+        username: Optional[str] = None,
+        mtype: Optional[str] = None,
+    ) -> int:
+        """按公开列表筛选范围返回订阅精确总数。"""
+        return await self._async_repository().async_count(
+            state=state,
+            username=username,
+            mtype=mtype,
+        )
 
     async def async_list_by_media_identity(
         self,
@@ -756,6 +809,21 @@ class SessionSubscriptionHistoryRepository:
         """异步按类型和用户分页读取订阅历史快照。"""
         records = await self._repository.async_list_by_type_and_username(mtype, username, page, count)
         return [_project_history(record) for record in records]
+
+    async def async_count_by_type(self, mtype: str) -> int:
+        """在请求 Session 中统计指定媒体类型的订阅历史。"""
+        return await self._repository.async_count_by_type(mtype)
+
+    async def async_count_by_type_and_username(
+        self,
+        mtype: str,
+        username: str,
+    ) -> int:
+        """在请求 Session 中统计指定类型和用户的订阅历史。"""
+        return await self._repository.async_count_by_type_and_username(
+            mtype,
+            username,
+        )
 
     async def stage_delete(self, history_id: int) -> None:
         """异步暂存删除订阅历史。"""

@@ -696,7 +696,7 @@ Purpose: Install or update one plugin from an approved source.
 Purpose: List installed plugins and their runtime status.
 - `response`: `data` remains a list and the endpoint's documented pagination or limit defaults remain in effect. `collection.result_count` reports the returned items and `collection.total_count` reports the exact total.
 - `path_params`: none
-- `query`: `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer; default `50`; minimum `1`; maximum `200`): Maximum number of plugin catalog results to return, from 1 to 200.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=installed): Literal installed, selecting only installed plugin catalog entries.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer; default `50`; minimum `1`; maximum `200`): Maximum number of plugin catalog results to return, from 1 to 200.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=installed): Literal installed, selecting only installed plugin catalog entries.
 - `body`: none
 
 ### `plugin.market`
@@ -704,7 +704,7 @@ Purpose: List installed plugins and their runtime status.
 Purpose: List plugins available from configured marketplaces.
 - `response`: `data` remains a list and the endpoint's documented pagination or limit defaults remain in effect. `collection.result_count` reports the returned items and `collection.total_count` reports the exact total.
 - `path_params`: none
-- `query`: `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer; default `50`; minimum `1`; maximum `200`): Maximum number of plugin catalog results to return, from 1 to 200.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=market): Literal market, selecting only market plugin catalog entries.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer; default `50`; minimum `1`; maximum `200`): Maximum number of plugin catalog results to return, from 1 to 200.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=market): Literal market, selecting only market plugin catalog entries.
 - `body`: none
 
 ### `plugin.market.sync_wiki`

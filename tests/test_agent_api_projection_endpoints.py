@@ -12,8 +12,15 @@ from app.schemas.file import FileItem
 class _SiteQuery:
     """Return a stable mixed site list for projection tests."""
 
-    async def list_ordered(self):
-        """Return one active and one inactive site with authentication fields."""
+    async def list_ordered(
+        self,
+        *,
+        is_active=None,
+        name=None,
+        page=None,
+        count=None,
+    ):
+        """Apply the endpoint's database-query contract to two fixed sites."""
         common = {
             "domain": "example.invalid",
             "url": "https://example.invalid/",
@@ -34,18 +41,34 @@ class _SiteQuery:
             "apikey": "secret-key",
             "token": "secret-token",
         }
-        return [
+        sites = [
             SimpleNamespace(id=1, name="Active Site", is_active=True, **common),
             SimpleNamespace(id=2, name="Inactive Site", is_active=False, **common),
         ]
+        if is_active is not None:
+            sites = [site for site in sites if site.is_active is is_active]
+        if name:
+            sites = [site for site in sites if name.lower() in site.name.lower()]
+        if page is not None and count is not None:
+            offset = (page - 1) * count
+            sites = sites[offset:offset + count]
+        return sites
 
 
 class _WorkflowQuery:
     """Return workflows with private action context that the Agent projection must omit."""
 
-    async def list(self):
-        """Return one manual running workflow and one timer workflow."""
-        return [
+    async def list(
+        self,
+        *,
+        state=None,
+        name=None,
+        trigger_type=None,
+        page=None,
+        count=None,
+    ):
+        """Apply the endpoint's database-query contract to two fixed workflows."""
+        workflows = [
             SimpleNamespace(
                 id=1,
                 name="Manual Workflow",
@@ -77,6 +100,24 @@ class _WorkflowQuery:
                 result=None,
             ),
         ]
+        if state:
+            workflows = [workflow for workflow in workflows if workflow.state == state]
+        if name:
+            workflows = [
+                workflow
+                for workflow in workflows
+                if name.lower() in workflow.name.lower()
+            ]
+        if trigger_type:
+            workflows = [
+                workflow
+                for workflow in workflows
+                if workflow.trigger_type == trigger_type
+            ]
+        if page is not None and count is not None:
+            offset = (page - 1) * count
+            workflows = workflows[offset:offset + count]
+        return workflows
 
 
 def test_site_agent_projection_filters_and_hides_secrets_for_normal_users() -> None:

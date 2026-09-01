@@ -960,13 +960,17 @@ def _collection_response_contract(
             query_parameters.get("page"),
             query_parameters.get("count"),
         ]
+        has_existing_window = bool(
+            {"limit", "offset", "page_size", "max_results"}
+            & query_parameters.keys()
+        )
         defaults_to_unpaginated = all(
             isinstance(parameter, Mapping)
             and not parameter.get("required", False)
             and isinstance(parameter.get("schema"), Mapping)
             and "default" not in parameter["schema"]
             for parameter in compatibility_parameters
-        )
+        ) and not has_existing_window
         return {
             "body_shape": "list",
             "result_count_field": "collection.result_count",

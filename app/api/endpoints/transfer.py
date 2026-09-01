@@ -6,7 +6,11 @@ from fastapi import Depends, HTTPException, Query, status
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.dependencies.auth import get_current_active_manage_user
 from app.api.dependencies.history import get_transfer_execution_repository, get_transfer_history_lookup_service
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.directory import DirectoryHelper
 from app.application.history import TransferHistoryLookupService
@@ -234,7 +238,7 @@ def query_name(
 
 
 @router.get("/queue", summary="查询整理队列", response_model=List[_SchemaTransferJob])
-async def query_queue(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def query_queue(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询整理队列
     :param _: Token校验

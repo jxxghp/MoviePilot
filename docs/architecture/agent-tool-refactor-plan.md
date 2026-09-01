@@ -1,10 +1,10 @@
 # MoviePilot Agent 工具体系重构计划
 
-> 状态：COMPLETE — L10 查询 API 兼容分页与总数合同已验证
+> 状态：IN PROGRESS — L10 本地验证完成，等待提交推送与远端 CI
 >
 > 建立日期：2026-08-31
 >
-> 当前基线：v3@871632af257a663abc159c516acc027a81ab2314
+> 当前基线：v3@91e33277f3a05dc10b8984a2e612d8a32441c987
 >
 > 关联目标：本线程已建立的 Agent 工具体系重构 Goal
 
@@ -40,8 +40,8 @@
 | 下载器/媒体服务器 | 依赖内置低层 Agent 工具或有限 REST operation | downloader-operation 与 mediaserver-operation Skill 通过固定脚本调用已配置 provider API |
 | MCP/HTTP 工具管理 | 存在旧业务工具与同名 first-wins 选择空间 | 与主 Agent 共用严格唯一新目录；重名直接以 TOOL_IDENTITY_AMBIGUOUS 失败 |
 | 退役代码 | 旧实现仍位于 app/agent/tools/impl | 77 个退役文件已直接删除，其中 72 个工具模块、5 个辅助模块 |
-| 架构图 | 982 个宿主模块、8,430 条内部依赖边 | 919 个宿主模块、7,680 条内部依赖边，Application/Chain 具体 Adapter 直连仍为 0 |
-| 工作区状态 | 基线提交 871632af，与 origin/v3 对齐，初始工作区干净 | 最终提交 `3106984df` 已推送并与 `origin/v3` 对齐；生产改动、生成合同、静态检查、全量测试、固定 80% 覆盖率和远端 CI 均已通过 |
+| 架构图 | 982 个宿主模块、8,430 条内部依赖边 | 919 个宿主模块、7,688 条内部依赖边，Application/Chain 具体 Adapter 直连仍为 0 |
+| 工作区状态 | 基线提交 871632af，与 origin/v3 对齐，初始工作区干净 | L1-L9 已完成；L10 正在把上一轮响应层兼容分页改为端点显式输入和数据库查询下推，当前基线 `91e33277f` 与 `origin/v3` 对齐 |
 
 ## 3. 目标工具分层
 
@@ -134,7 +134,7 @@ provider 动态返回 namespaced action、参数约束、副作用等级及是�
 | L7 第三方服务 Skill 化 | VERIFIED | L5 | 下载器和媒体服务器能力发现、受控脚本、Skill、策略和离线测试完成；重复低层 Agent API operation 已删除 |
 | L8 收口与交付 | VERIFIED | L6,L7 | 旧代码、文档与架构基线已收口；静态检查和锁定全量测试已完成 |
 | L9 全 API 面审计与最终交付 | VERIFIED | L8 | 375 个 OpenAPI 操作逐路由归属、203 个网关合同与 72 个退出工具映射均由测试锁定；全量测试、80% 覆盖率门禁、提交推送和远端 CI 终态均已完成 |
-| L10 查询 API 兼容分页与总数合同 | VERIFIED | L9 | 列表查询均可报告当前返回数量；原完整列表新增可选分页，省略新参数时继续返回全部原始结果并报告精确总数；响应 `data` 列表结构不变；外部原生分页未提供总数时不强制输出；OpenAPI、MCP、Skill、审计和测试同步完成 |
+| L10 查询 API 显式分页与数据库下推 | ACTIVE | L9 | 列表端点显式声明分页输入；数据库筛选在 `LIMIT/OFFSET` 前完成并使用同条件精确 `COUNT`；省略新增参数保持旧返回语义；响应 `data` 列表结构不变；外部原生分页未提供总数时不伪造；OpenAPI、MCP、Skill、审计、80% 覆盖率和远端 CI 同步完成 |
 
 ## 5. L2 受控 API 网关约束
 
@@ -309,7 +309,7 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 - 将历史删除提交中的 72 个业务工具冻结为替代映射测试，逐项证明其 owner 是 203-operation API、下载器/媒体服务器 action 或统一 `agent_task` / `persona` 原生工具，并确认旧模块物理文件不存在
 - 实际执行数据库脚本 `tables` / `schema` / `SELECT 1`、下载器与媒体服务器 `instances` / `capabilities`，并直接运行三个结构化 service tool；本机未配置 provider 实例时返回空实例而不是配置读取错误
 - 通过临时本地 HTTP 服务实际执行 `MoviePilotApiTool -> MoviePilotApiExecutor -> GET /api/v1/site/agent` 完整链路，验证返回成功且普通用户投影不包含 cookie、API key、token 或 RSS 等认证字段
-- 修复完整 API Skill 超过原 64 KiB 运行时返回上限而被截断的问题：结果上限调整为 256 KiB，并以真实内置 Skill 加载测试确认 203 个 operation 均可见且 `truncated=false`
+- 新增内置 Agent 私有 `read_skill` 工具，绕过普通工具 64 KiB 结果裁剪并单独限制 `SKILL.md` 主体为 512 KiB；工具同时返回全部辅助文件相对路径，超过上限时明确标记截断，真实内置 Skill 加载测试确认 203 个 operation 均可见且 `truncated=false`
 - Skill 生成器同步 YAML `allowed-api-operations` 与正文目录，避免“文档有参数但运行时未授权”的双事实源漂移；MCP schema、Skill front matter、正文和注册表数量及集合完全一致
 - 为站点优先级、插件目录和工作流路径 ID 等原先不精确的输入补充类型模型或端点约束；固定路由占位符与 path schema 名称、required 状态由测试逐项校验
 - 受影响 Agent/Skill/MCP/OpenAPI/音乐/架构回归 247 passed；修复全量发现的工作流管理员门禁、插件分页默认值、模块命名治理、服务工具标签和 Schema 导出清单后，专项回归 40 passed
@@ -333,15 +333,20 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 
 ### 2026-09-01：L10 查询 API 兼容分页与总数合同
 
-- 重新开启父目标并进入 L10；当前 `v3` 与 `origin/v3` 对齐，工作区同时存在维护者的 Transfer 领域未提交修改，本阶段避开这些文件并只提交 Agent/API 合同相关改动
+- 重新开启父目标并进入 L10；当前基线 `91e33277f` 与 `origin/v3` 对齐，初始工作区干净
 - 查询 API 按结果语义分为完整列表、原生分页或限量列表、结构化分页对象、统计或聚合对象；只有列表结果进入统一数量合同，统计、映射和时序对象不为形式统一而错误分页
 - 原完整列表新增的 `page` / `count` 必须都是可选参数；两者都省略时不切片，继续返回端点原先的完整列表。显式传入任一参数才启用分页，缺失的 `page` 按 1、缺失的 `count` 按 50 解释
 - REST 响应继续保持 `Response.data` 为原列表，禁止改成 `{items,total}` 等对象；总数和分页信息使用响应头及 Agent 网关附加元数据表达，避免破坏外部插件和既有客户端
 - 对完整列表可报告切片前精确总数；对已经由第三方来源原生分页或限量、且上游没有提供总数的结果，只报告当前返回数量，不强制增加总数，也禁止把当前页数量伪装成全局总数
-- 统一响应路由已为原完整列表注入可选 Query 参数：`page >= 1`、`1 <= count <= 200`；两者均省略时不分页，显式提供任一参数后，缺失的 `page` 使用 1、缺失的 `count` 使用 50。已有 `page/count`、`limit/offset` 或 `max_results` 的端点继续使用自己的原始参数和默认值
+- 第一版由统一响应路由隐式注入分页参数并在序列化后切片；复核后确认这种实现虽然能生成查询参数，但端点签名不自描述，而且数据库列表仍会全量读取，因此不作为最终方案
+- 当前正式方案由每个列表端点显式声明 `page` / `count`；框架 `Response` 仅用于写响应头，不会出现在 OpenAPI、MCP 或 Skill 输入中。已有第三方原生 `page`、`count`、`limit` 或 `max_results` 的接口保留其既有参数与默认语义
+- 用户、PassKey、活动订阅、Workflow、Site、站点用户数据和站点统计的筛选、稳定排序、`LIMIT/OFFSET` 与精确 `COUNT` 已下推到异步 SQLAlchemy 查询；状态、用户名、名称、触发类型、站点启用状态、站点 ID/域名和日期筛选均在分页前执行，避免空页和错误总数
+- 纯内存、配置、缓存、文件系统或运行时目录仍可在响应边界按显式 `page/count` 切片；第三方原生分页且不返回总数的接口只报告当前页数量，不伪造总数
 - REST 保持 `data` 原列表；`X-Result-Count` 报告本次返回数量，精确可知时增加 `X-Total-Count`，Agent 网关把这些响应头映射到附加 `collection` 对象。下载历史、订阅历史和插件目录已增加本地精确计数；外部媒体、音乐、推荐和搜索来源未提供总数时不输出 `total_count`
-- OpenAPI 与 `api_mcp_schema.json` 已同步完整参数、默认值、范围和集合输出合同，英文 `skills/moviepilot-api/SKILL.md` 已重新生成；结构化分页端点继续使用既有 `data.total` 与 `data.items` / `data.list`
-- 验证完成：定向回归 226 项通过；全量四分片合计 7634 项通过、9 项跳过；固定 80% 覆盖率门禁通过（Application 81.87%，Domain 81.01%）；Ruff、Mypy、架构基线与差异检查均通过
-- 验证期间安全快进到最新 `v3` 提交 `b2e3056ca`，其网络修复与本阶段文件无冲突；快进后的关键回归再次通过
+- OpenAPI 与 `api_mcp_schema.json` 已重新生成，英文 `skills/moviepilot-api/SKILL.md` 已同步显式参数；生成器会识别插件目录的既有 `max_results`，不会错误声称其默认返回全量
+- 完整锁定测试已通过：4 个分片分别为 `1620 passed, 3 skipped`、`1860 passed, 4 skipped`、`1917 passed`、`2248 passed, 2 skipped`，合计 `7645 passed, 9 skipped`
+- 覆盖率按 CI 相同的 8 分片采集并合并，Application `81.72%`、Domain `81.01%`，通过固定 80% 门禁；Ruff/mypy ratchet、严格 mypy、复杂度 v1/v2、并发、异步阻塞、TaskRegistry owner、服务定位、事件策略和启动性能门禁均通过
+- 数据库 Oper 复用 `literal_contains` 新增 4 条内部依赖边，宿主快照从 7,684 更新为 7,688；没有新增 Application/Chain 到具体 Adapter 的直连或跨层依赖
+- 待完成：执行最终 Pylint 与生成物一致性检查，提交推送并等待最终远端 CI 成功后再把 L10 标记为 VERIFIED
 
 本文件作为本次重构的持续记录，保留阶段状态、实际变更、验证结果、提交状态与已知基线边界。

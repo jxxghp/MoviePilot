@@ -1,9 +1,9 @@
 import inspect
 import json
 from functools import wraps
-from typing import Annotated, Any, Awaitable, Callable, Optional, get_args, get_origin
+from typing import Annotated, Any, Awaitable, Callable, Optional, cast, get_args, get_origin
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.datastructures import DefaultPlaceholder
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute, get_typed_return_annotation
@@ -33,6 +33,27 @@ COLLECTION_PAGE_HEADER = "X-Page"
 COLLECTION_PAGE_SIZE_HEADER = "X-Page-Size"
 COLLECTION_DEFAULT_PAGE_SIZE = 50
 COLLECTION_MAX_PAGE_SIZE = 200
+CompatiblePageParam = Annotated[
+    Optional[int],
+    Query(
+        ge=1,
+        description=(
+            "Optional one-based page for a legacy full-list endpoint. Omit both page and "
+            "count to keep the original unpaginated full result."
+        ),
+    ),
+]
+CompatibleCountParam = Annotated[
+    Optional[int],
+    Query(
+        ge=1,
+        le=COLLECTION_MAX_PAGE_SIZE,
+        description=(
+            "Optional page size for a legacy full-list endpoint. Supplying page or count "
+            f"activates pagination; an omitted count then uses {COLLECTION_DEFAULT_PAGE_SIZE}."
+        ),
+    ),
+]
 _COLLECTION_WINDOW_PARAMETERS = frozenset(
     {"page", "count", "limit", "offset", "page_size", "max_results"}
 )
@@ -52,31 +73,14 @@ _COLLECTION_RESPONSE_HEADERS = {
 }
 
 
-def _optional_collection_pagination(
-    page: Annotated[
-        Optional[int],
-        Query(
-            ge=1,
-            description=(
-                "Optional one-based page for a legacy full-list endpoint. Omit both page and "
-                "count to keep the original unpaginated full result."
-            ),
-        ),
-    ] = None,
-    count: Annotated[
-        Optional[int],
-        Query(
-            ge=1,
-            le=COLLECTION_MAX_PAGE_SIZE,
-            description=(
-                "Optional page size for a legacy full-list endpoint. Supplying page or count "
-                f"activates pagination; an omitted count then uses {COLLECTION_DEFAULT_PAGE_SIZE}."
-            ),
-        ),
-    ] = None,
-) -> None:
-    """校验兼容分页参数；实际切片由统一响应路由在序列化后执行。"""
-    del page, count
+def resolve_compatible_pagination(
+    page: Optional[int],
+    count: Optional[int],
+) -> tuple[Optional[int], Optional[int]]:
+    """解析兼容分页窗口；两项均省略时保留原全量查询语义。"""
+    if page is None and count is None:
+        return None, None
+    return page or 1, count or COLLECTION_DEFAULT_PAGE_SIZE
 
 
 class ResponseAPIRoute(APIRoute):
@@ -120,15 +124,21 @@ class ResponseAPIRoute(APIRoute):
         endpoint_parameters = set(inspect.signature(endpoint).parameters)
         collection_response = self._is_collection_response_model(response_model)
         collection_window_parameters = endpoint_parameters & _COLLECTION_WINDOW_PARAMETERS
+        collection_parameter_defaults = self._parameter_defaults(
+            endpoint,
+            collection_window_parameters,
+        )
+        explicit_compatible_pagination = (
+            {"page", "count"}.issubset(endpoint_parameters)
+            and collection_parameter_defaults.get("page") is None
+            and collection_parameter_defaults.get("count") is None
+        )
         optional_collection_pagination = bool(
             collection_response
             and ("GET" in methods or force_collection_pagination)
-            and not collection_window_parameters
+            and explicit_compatible_pagination
+            and not endpoint_reports_collection_total
         )
-        if optional_collection_pagination:
-            dependencies = list(kwargs.get("dependencies") or [])
-            dependencies.append(Depends(_optional_collection_pagination))
-            kwargs["dependencies"] = dependencies
         if collection_response:
             kwargs["responses"] = self._merge_collection_response_headers(
                 kwargs.get("responses"),
@@ -140,10 +150,7 @@ class ResponseAPIRoute(APIRoute):
 
         self._collection_response = collection_response
         self._optional_collection_pagination = optional_collection_pagination
-        self._collection_parameter_defaults = self._parameter_defaults(
-            endpoint,
-            collection_window_parameters,
-        )
+        self._collection_parameter_defaults = collection_parameter_defaults
 
         should_wrap = self._should_wrap_response(
             response_model=response_model,
@@ -165,7 +172,10 @@ class ResponseAPIRoute(APIRoute):
         self,
     ) -> Callable[[Request], Awaitable[StarletteResponse]]:
         """在标准端点序列化后附加兼容列表分页与数量元数据。"""
-        original_handler = super().get_route_handler()
+        original_handler = cast(
+            Callable[[Request], Awaitable[StarletteResponse]],
+            super().get_route_handler(),
+        )
         if not self._collection_response:
             return original_handler
 
@@ -306,13 +316,15 @@ class ResponseAPIRoute(APIRoute):
         if self._optional_collection_pagination and (
             "page" in request.query_params or "count" in request.query_params
         ):
-            page = int(request.query_params.get("page", "1"))
-            page_size = int(
-                request.query_params.get(
-                    "count",
-                    str(COLLECTION_DEFAULT_PAGE_SIZE),
-                )
+            page, page_size = resolve_compatible_pagination(
+                int(request.query_params["page"])
+                if "page" in request.query_params
+                else None,
+                int(request.query_params["count"])
+                if "count" in request.query_params
+                else None,
             )
+            assert page is not None and page_size is not None
             start = (page - 1) * page_size
             paged_items = items[start : start + page_size]
             if isinstance(payload, dict):

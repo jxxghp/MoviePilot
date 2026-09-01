@@ -9,11 +9,12 @@ from langchain.agents.middleware.types import ModelRequest
 from langchain_core.messages import SystemMessage
 
 from app.agent.middleware.skills import (
-    MAX_SKILL_RESULT_CHARS,
+    MAX_SKILL_CONTENT_BYTES,
     SKILL_TOOL_NAME,
     SkillsMiddleware,
     _alist_skills,
 )
+from app.agent.tools.base import DEFAULT_TOOL_RESULT_MAX_CHARS
 from app.agent.tools.tags import ToolTag
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -60,22 +61,28 @@ async def test_alist_skills_sorts_skill_directories_by_name(tmp_path):
     assert ["a-skill", "m-skill", "z-skill"] == [skill["id"] for skill in skills]
 
 
-def test_skills_middleware_exposes_skill_tool(tmp_path):
-    """SkillsMiddleware 应以中间件工具形式暴露 skill。"""
+def test_skills_middleware_exposes_read_skill_tool(tmp_path):
+    """SkillsMiddleware 应以中间件私有工具形式暴露 read_skill。"""
     _write_skill(tmp_path, "moviepilot-api")
 
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
 
     assert [tool.name for tool in middleware.tools] == [SKILL_TOOL_NAME]
+    assert SKILL_TOOL_NAME == "read_skill"
     assert ToolTag.Read in middleware.tools[0].tags
     assert ToolTag.Skill in middleware.tools[0].tags
     assert "moviepilot-api" in middleware.tools[0].description
 
 
 @pytest.mark.anyio
-async def test_skill_tool_loads_skill_by_id_and_name(tmp_path):
-    """skill 工具应支持按 id 或 name 加载完整 SKILL.md。"""
+async def test_read_skill_loads_body_and_supporting_files_by_id_and_name(tmp_path):
+    """read_skill 应按 id 或 name 返回完整主体及稳定的辅助文件清单。"""
     _write_skill(tmp_path, "moviepilot-api", name="MoviePilot API")
+    skill_dir = tmp_path / "moviepilot-api"
+    (skill_dir / "references").mkdir()
+    (skill_dir / "references" / "usage.md").write_text("usage", encoding="utf-8")
+    (skill_dir / "scripts").mkdir()
+    (skill_dir / "scripts" / "run.py").write_text("print('ok')", encoding="utf-8")
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     skill_tool = middleware.tools[0]
 
@@ -86,26 +93,36 @@ async def test_skill_tool_loads_skill_by_id_and_name(tmp_path):
     assert by_id["skill"]["id"] == "moviepilot-api"
     assert "# moviepilot-api" in by_id["content"]
     assert by_id["skill"]["allowed_api_operations"] == []
+    assert by_id["supporting_files"] == [
+        "references/usage.md",
+        "scripts/run.py",
+    ]
+    assert by_id["truncated"] is False
     assert by_name["success"] is True
     assert by_name["skill"]["name"] == "MoviePilot API"
 
 
 @pytest.mark.anyio
-async def test_skill_tool_caps_large_result_before_model_context(tmp_path):
-    """超大 Skill 内容应在工具返回前限制到模型上下文上限。"""
+async def test_read_skill_caps_body_at_512_kib_without_global_64_kib_truncation(tmp_path):
+    """read_skill 应绕过普通裁剪，但将技能主体限制为 512 KiB。"""
     _write_skill(tmp_path, "large-skill")
     skill_path = tmp_path / "large-skill" / "SKILL.md"
+    final_marker = "END-OF-LARGE-SKILL"
     with skill_path.open("a", encoding="utf-8") as file_handle:
-        file_handle.write("\n" + ("large-line\n" * 30000))
+        file_handle.write("\n" + ("large-line\n" * 120000) + final_marker)
 
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     result = await middleware.tools[0].ainvoke({"name": "large-skill"})
     payload = json.loads(result)
 
-    assert len(result) <= MAX_SKILL_RESULT_CHARS
+    assert len(result) > DEFAULT_TOOL_RESULT_MAX_CHARS
     assert payload["success"] is True
+    assert payload["content_limit_bytes"] == MAX_SKILL_CONTENT_BYTES
+    assert len(payload["content"].encode("utf-8")) <= MAX_SKILL_CONTENT_BYTES
     assert payload["truncated"] is True
-    assert "Skill 内容已截断" in payload["content"]
+    assert "512 KiB" in payload["truncation_message"]
+    assert final_marker not in payload["content"]
+    assert payload["supporting_files"] == []
 
 
 @pytest.mark.anyio
@@ -116,16 +133,17 @@ async def test_bundled_moviepilot_api_skill_loads_complete_contract() -> None:
     result = await middleware.tools[0].ainvoke({"name": "moviepilot-api"})
     payload = json.loads(result)
 
-    assert len(result) <= MAX_SKILL_RESULT_CHARS
     assert payload["success"] is True
+    assert payload["content_limit_bytes"] == MAX_SKILL_CONTENT_BYTES
     assert payload["truncated"] is False
+    assert payload["truncation_message"] is None
     assert len(payload["skill"]["allowed_api_operations"]) == 203
     assert "### `workflow.update`" in payload["content"]
 
 
 @pytest.mark.anyio
 async def test_skill_tool_returns_not_found_for_unknown_skill(tmp_path):
-    """skill 工具找不到技能时应返回结构化失败信息。"""
+    """read_skill 找不到技能时应返回结构化失败信息。"""
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     skill_tool = middleware.tools[0]
 
@@ -233,8 +251,8 @@ async def test_skill_operation_scope_allows_declared_api_operation(tmp_path):
     handler.assert_awaited_once_with(request)
 
 
-def test_modify_request_instructs_model_to_use_skill_tool_without_paths(tmp_path):
-    """系统提示应要求通过 skill 工具加载，而不是直接暴露文件读取路径。"""
+def test_modify_request_instructs_model_to_use_read_skill_without_paths(tmp_path):
+    """系统提示应要求用 read_skill 加载主体，而不是 read_file 或裸路径。"""
     _write_skill(tmp_path, "moviepilot-api")
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     skills_metadata = middleware._load_skills_metadata()
@@ -249,15 +267,17 @@ def test_modify_request_instructs_model_to_use_skill_tool_without_paths(tmp_path
     modified = middleware.modify_request(request)
     system_content = str(modified.system_message.content)
 
-    assert "`skill` tool" in system_content
+    assert "`read_skill` tool" in system_content
+    assert "never `read_file`" in system_content
+    assert "up to 512 KiB" in system_content
     assert "moviepilot-api" in system_content
     assert "Read `" not in system_content
     assert str(tmp_path) not in system_content
 
 
 @pytest.mark.anyio
-async def test_skill_tool_call_records_streaming_summary(tmp_path):
-    """skill 工具执行时应记录流式聚合摘要。"""
+async def test_read_skill_tool_call_records_streaming_summary(tmp_path):
+    """read_skill 工具执行时应记录流式聚合摘要。"""
     _write_skill(tmp_path, "moviepilot-api")
     calls = []
     stream_handler = SimpleNamespace(

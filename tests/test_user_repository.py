@@ -97,6 +97,25 @@ def _insert_user(sync_factory, **overrides) -> int:
         return user.id
 
 
+@pytest.mark.asyncio
+async def test_user_repository_paginates_and_counts_in_database(tmp_path) -> None:
+    """用户列表应按主键稳定分页，并以独立 COUNT 返回完整总数。"""
+    async with _user_write_context(tmp_path / "pagination.db") as (session, _):
+        users = [
+            User(name=f"page-user-{index}", email=f"{index}@example.com")
+            for index in range(1, 4)
+        ]
+        session.add_all(users)
+        await session.commit()
+        repository = SqlAlchemyUserRepository(session)
+
+        page = await repository.async_list(page=2, count=1)
+
+        assert await repository.async_count() == 3
+        assert [item.id for item in page] == [users[1].id]
+        assert users[0].id < users[1].id < users[2].id
+
+
 @asynccontextmanager
 async def _user_write_context(database_path):
     """创建包含用户聚合表的异步请求会话。"""

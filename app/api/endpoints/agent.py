@@ -23,7 +23,11 @@ from app.api.dependencies.agent import (
 from app.api.dependencies.auth import get_current_active_user
 from app.api.presentation.sse import build_sse_response
 from app.api.principal import ApiPrincipal
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application import agent as agent_application
 from app.application.messaging import agent as web_agent_application
 from app.application.messaging.agent import (
@@ -295,6 +299,8 @@ async def web_agent_callback(
 )
 async def list_web_agent_commands(
     current_user: ApiPrincipal = Depends(get_current_active_user),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> _SchemaResponse:
     """
     获取当前 Web 智能助手可补全的斜杠命令。

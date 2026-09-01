@@ -83,6 +83,34 @@ def test_site_list_order_by_pri_is_ascending(db):
         ["p1.test", "p2.test", "p3.test"]
 
 
+def test_site_oper_filters_paginates_and_counts_in_database(db):
+    """站点筛选必须在 LIMIT/OFFSET 前完成，计数使用同一组条件。"""
+    first = db.add(_site("Agent分页一", "agent-page-1.test", pri=1))
+    second = db.add(_site("Agent分页二", "agent-page-2.test", pri=2))
+    db.add(
+        _site("Agent分页停用", "agent-page-off.test", pri=3, is_active=False),
+        _site("无关站点", "unrelated.test", pri=4),
+    )
+
+    async def query(session):
+        """在同一异步会话中执行筛选计数和第二页查询。"""
+        oper = SiteOper(session)
+        total = await oper.async_count_sites(is_active=True, name="Agent分页")
+        rows = await oper.async_list_order_by_pri(
+            is_active=True,
+            name="Agent分页",
+            page=2,
+            count=1,
+        )
+        return total, [item.id for item in rows]
+
+    total, ids = db.run_async_session(query)
+
+    assert total == 2
+    assert ids == [second.id]
+    assert first.id < second.id
+
+
 def test_site_get_domains_by_ids_returns_plain_strings(db):
     """
     按 ID 批量取域名必须返回纯字符串列表，且只含请求的那些 ID。
@@ -158,6 +186,29 @@ def test_sitestatistic_reset_empties_the_table(db):
     SiteStatistic.reset(db.session)
 
     assert SiteStatistic.get_by_domain(db.session, "stat-reset.test") is None
+
+
+def test_site_statistics_oper_paginates_and_counts(db):
+    """站点统计列表在数据库中分页，并返回未分页前的精确总数。"""
+    first = db.add(
+        SiteStatistic(domain="stat-page-1.test", success=1, fail=0, seconds=1)
+    )
+    second = db.add(
+        SiteStatistic(domain="stat-page-2.test", success=2, fail=0, seconds=1)
+    )
+
+    async def query(session):
+        """读取统计总数和第二页。"""
+        oper = SiteOper(session)
+        total = await oper.async_count_statistics()
+        rows = await oper.async_list_statistics(page=2, count=1)
+        return total, [item.id for item in rows]
+
+    total, ids = db.run_async_session(query)
+
+    assert total >= 2
+    assert ids == [second.id]
+    assert first.id < second.id
 
 
 # --------------------------------------------------------------------------- #

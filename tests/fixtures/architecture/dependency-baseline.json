@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 7684,
-  "edge_sha256": "62be4cd0bd17892f3679d8ffd108b54d6c886413290adb9c22e794b076084e03",
+  "edge_count": 7688,
+  "edge_sha256": "3fd19c9e83839d9fca024010ca2826658af311b1d8cc5f19c8539c259da4f7ec",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5326,6 +5326,8 @@
     "app.db.oper.site -> app.db.models.siteicon",
     "app.db.oper.site -> app.db.models.sitestatistic",
     "app.db.oper.site -> app.db.models.siteuserdata",
+    "app.db.oper.site -> app.db.oper",
+    "app.db.oper.site -> app.db.oper.query",
     "app.db.oper.subscribe -> app.application",
     "app.db.oper.subscribe -> app.application.subscription",
     "app.db.oper.subscribe -> app.application.subscription.contract",
@@ -5395,6 +5397,8 @@
     "app.db.oper.workflow -> app.db.base",
     "app.db.oper.workflow -> app.db.models",
     "app.db.oper.workflow -> app.db.models.workflow",
+    "app.db.oper.workflow -> app.db.oper",
+    "app.db.oper.workflow -> app.db.oper.query",
     "app.db.session -> app.db",
     "app.db.session -> app.db.engine",
     "app.db.session -> app.runtime",

@@ -24,7 +24,14 @@ from app.api.dependencies.auth import (
 )
 from app.api.dependencies.plugin import get_plugin_config_command
 from app.api.principal import ApiPrincipal
-from app.api.response import COLLECTION_TOTAL_HEADER, COLLECTION_TOTAL_OPENAPI_KEY, ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+    resolve_compatible_pagination,
+)
 from app.application.commands import init_commands
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
 from app.application.plugin.catalog import get_plugin_catalog_query
@@ -170,29 +177,31 @@ def _verify_plugin_static_file_access(
     verify_resource_token(resource_token)
 
 
-@router.get(
-    "/", summary="所有插件", response_model=List[_SchemaPlugin],
-    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
-)
+@router.get("/", summary="所有插件", response_model=List[_SchemaPlugin], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})
 async def all_plugins(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     state: Optional[str] = "all",
     force: bool = False,
     query: Optional[str] = None,
     max_results: Annotated[int, Query(ge=1, le=200)] = 50,
+    page: CompatiblePageParam = None, count: CompatibleCountParam = None,
     response: Response = None,
 ) -> List[_SchemaPlugin]:
-    """查询插件清单，并支持 Agent 使用关键字和有界结果完成精确选择。"""
+    """查询插件清单，显式分页优先于兼容的 ``max_results`` 限量。"""
     plugins = await get_plugin_catalog_query().query(state=state or "all", force=force)
     if query:
         plugins = [item["plugin"] for item in search_plugin_candidates(query, plugins)]
     if response is not None:
         response.headers[COLLECTION_TOTAL_HEADER] = str(len(plugins))
+    if page is not None or count is not None:
+        page, count = resolve_compatible_pagination(page, count)
+        assert page is not None and count is not None
+        return plugins[(page - 1) * count : page * count]
     return plugins[:max_results]
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
-async def installed(_: ApiPrincipal = Depends(get_current_active_superuser_async)) -> Any:
+async def installed(_: ApiPrincipal = Depends(get_current_active_superuser_async), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询用户已安装插件清单
     """
@@ -533,12 +542,8 @@ async def change_plugin_source(
     )
 
 
-@router.get(
-    "/remotes",
-    summary="获取插件联邦组件列表",
-    response_model=List[_SchemaPluginRemoteInfo],
-)
-async def remotes(token: str) -> Any:
+@router.get("/remotes", summary="获取插件联邦组件列表", response_model=List[_SchemaPluginRemoteInfo])
+async def remotes(token: str, page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     获取插件联邦组件列表
     """
@@ -547,12 +552,8 @@ async def remotes(token: str) -> Any:
     return get_plugin_manager().get_plugin_remotes()
 
 
-@router.get(
-    "/sidebar_nav",
-    summary="获取插件侧栏导航项",
-    response_model=List[_SchemaPluginSidebarNavItem],
-)
-def plugin_sidebar_nav(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+@router.get("/sidebar_nav", summary="获取插件侧栏导航项", response_model=List[_SchemaPluginSidebarNavItem])
+def plugin_sidebar_nav(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     聚合已启用 Vue 插件声明的侧栏入口（get_sidebar_nav），供前端主界面侧栏展示。
     """
@@ -619,13 +620,11 @@ def plugin_page(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_sup
     return {}
 
 
-@router.get(
-    "/dashboard/meta",
-    summary="获取所有插件仪表板元信息",
-    response_model=List[_SchemaPluginDashboardMetaItem],
-)
+@router.get("/dashboard/meta", summary="获取所有插件仪表板元信息", response_model=List[_SchemaPluginDashboardMetaItem])
 def plugin_dashboard_meta(
     _: ApiPrincipal = Depends(get_current_active_superuser),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> List[dict]:
     """
     获取所有插件仪表板元信息

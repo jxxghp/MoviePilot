@@ -10,7 +10,11 @@ from app.api.dependencies.auth import (
     get_current_active_superuser,
     get_current_active_user,
 )
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
@@ -383,7 +387,7 @@ async def search(
     summary="获取媒体数据源",
     response_model=list[_SchemaMediaSourceInfo],
 )
-def source(_: _SchemaTokenPayload = Depends(verify_token)) -> list[_SchemaMediaSourceInfo]:
+def source(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> list[_SchemaMediaSourceInfo]:
     """返回内置及启用插件注册的媒体数据源，供前端统一构造来源选项。"""
     return _registered_media_sources()
 
@@ -557,7 +561,9 @@ async def category(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     response_model=List[_SchemaMediaSeason],
 )
 async def group_seasons(
-    episode_group: str, _: _SchemaTokenPayload = Depends(verify_token)
+    episode_group: str, _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询剧集组季信息（themoviedb）
@@ -576,7 +582,7 @@ async def group_seasons(
     summary="查询媒体剧集组",
     response_model=List[_SchemaMediaEpisodeGroup],
 )
-async def groups(tmdbid: int, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def groups(tmdbid: int, _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询媒体剧集组列表（themoviedb）
     """
@@ -606,6 +612,8 @@ async def seasons(
     year: str = None,
     season: int = None,
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询媒体季信息

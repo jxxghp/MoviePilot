@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Response
 
 from app.adapters.web.security.access import verify_token
 from app.api.context import get_background_task_registry, resolve_background_task_registry
@@ -18,7 +18,14 @@ from app.api.dependencies.site import (
 )
 from app.api.endpoints.plugin import register_plugin_api
 from app.api.principal import ApiPrincipal
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+    resolve_compatible_pagination,
+)
 from app.application.commands import init_commands
 from app.application.configuration import get_configured_system_config
 from app.application.plugin.runtime import get_plugin_manager
@@ -119,38 +126,75 @@ def _indexer_supports_media_type(indexer: dict, media_type: MediaType) -> bool:
     return True
 
 
-@router.get("/", summary="所有站点", response_model=List[_SchemaSite])
+def _normalize_site_ids(values: Any) -> list[int]:
+    """把配置或索引器中的站点标识归一为可查询的整数主键。"""
+    normalized: list[int] = []
+    for value in values or []:
+        try:
+            normalized.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    return list(dict.fromkeys(normalized))
+
+
+@router.get(
+    "/",
+    summary="所有站点",
+    response_model=List[_SchemaSite],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
+)
 async def read_sites(
+    response: Response = None,
     query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> List[dict]:
     """
     获取站点列表
     """
-    return await query.list_ordered()
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count_ordered()
+        )
+    return await query.list_ordered(page=page, count=count)
 
 
 @router.get(  # type: ignore[misc]
     "/agent",
     summary="查询 Agent 可用站点",
     response_model=List[_SchemaJsonObject],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_agent_sites(
+    response: Response = None,
     status: Literal["active", "inactive", "all"] = "all",
     name: Optional[str] = None,
     query: SiteQueryService = Depends(get_site_query_service),
     current_user: Any = Depends(get_current_active_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> List[dict[str, JsonData]]:
     """按旧 Agent 过滤语义返回站点，非超级管理员自动剔除认证字段。"""
-    sites = await query.list_ordered()
+    active_filter = None
+    if status == "active":
+        active_filter = True
+    elif status == "inactive":
+        active_filter = False
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count_ordered(is_active=active_filter, name=name)
+        )
+    sites = await query.list_ordered(
+        is_active=active_filter,
+        name=name,
+        page=page,
+        count=count,
+    )
     results = []
     for site in sites:
-        if status == "active" and not site.is_active:
-            continue
-        if status == "inactive" and site.is_active:
-            continue
-        if name and name.lower() not in (site.name or "").lower():
-            continue
         results.append(
             _project_agent_site(
                 site,
@@ -164,11 +208,15 @@ async def read_agent_sites(
     "/media/{media_type}",
     summary="按媒体类型获取可搜索站点",
     response_model=List[_SchemaSite],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_sites_by_media_type(
     media_type: str,
+    response: Response = None,
     query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> List[_SchemaSite]:
     """
     获取支持指定媒体类型的已配置启用站点。
@@ -186,24 +234,35 @@ async def read_sites_by_media_type(
     if target_media_type not in (MediaType.MOVIE, MediaType.TV, MediaType.MUSIC):
         raise HTTPException(status_code=400, detail="不支持的媒体类型")
 
-    supported_ids = set()
-    supported_domains = set()
+    supported_ids: set[int] = set()
+    supported_domains: set[str] = set()
     for indexer in await SitesHelper().async_get_indexers() or []:
         if not _indexer_supports_media_type(indexer, target_media_type):
             continue
         if indexer.get("id") is not None:
-            supported_ids.add(str(indexer.get("id")))
+            supported_ids.update(_normalize_site_ids([indexer.get("id")]))
         domain = site_rules.extract_domain(indexer.get("domain"))
         if domain:
             supported_domains.add(domain)
 
-    sites = await query.list_ordered()
-    return [
-        site
-        for site in sites
-        if site.is_active
-        and (str(site.id) in supported_ids or site.domain in supported_domains)
-    ]
+    site_ids = sorted(supported_ids)
+    domains = sorted(supported_domains)
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count_ordered(
+                is_active=True,
+                site_ids=site_ids,
+                domains=domains,
+            )
+        )
+    return await query.list_ordered(
+        is_active=True,
+        site_ids=site_ids,
+        domains=domains,
+        page=page,
+        count=count,
+    )
 
 
 @router.post("/", summary="新增站点", response_model=_SchemaResponse[None])
@@ -394,27 +453,40 @@ def refresh_userdata(
     "/userdata/latest",
     summary="查询所有站点最新用户数据",
     response_model=List[_SchemaSiteUserData],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_userdata_latest(
+    response: Response = None,
     query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询所有站点最新用户数据
     """
-    return await query.userdata_latest()
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count_userdata_latest()
+        )
+    return await query.userdata_latest(page=page, count=count)
 
 
 @router.get(
     "/userdata/{site_id}",
     summary="查询某站点用户数据",
     response_model=_SchemaResponse[list[_SchemaSiteUserData]],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_userdata(
     site_id: int,
+    response: Response = None,
     workdate: Optional[str] = None,
     query: SiteQueryService = Depends(get_site_query_service),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询站点用户数据
@@ -425,7 +497,22 @@ async def read_userdata(
             status_code=404,
             detail=f"站点 {site_id} 不存在",
         )
-    user_datas = await query.userdata(site.domain, workdate)
+    if not site.domain:
+        raise HTTPException(
+            status_code=409,
+            detail=f"站点 {site_id} 未配置域名",
+        )
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count_userdata(site.domain, workdate)
+        )
+    user_datas = await query.userdata(
+        site.domain,
+        workdate,
+        page=page,
+        count=count,
+    )
     if not user_datas:
         return _SchemaResponse(success=False, data=[])
     return _SchemaResponse(success=True, data=user_datas)
@@ -482,6 +569,8 @@ async def site_category(
     site_id: int,
     query: SiteQueryService = Depends(get_site_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     获取站点分类
@@ -579,22 +668,41 @@ async def read_statistic_by_domain(
 
 
 @router.get(
-    "/statistic", summary="所有站点统计信息", response_model=List[_SchemaSiteStatistic]
+    "/statistic",
+    summary="所有站点统计信息",
+    response_model=List[_SchemaSiteStatistic],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def read_statistics(
+    response: Response = None,
     query: SiteQueryService = Depends(get_site_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     获取所有站点统计信息
     """
-    return await query.statistics()
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count_statistics()
+        )
+    return await query.statistics(page=page, count=count)
 
 
-@router.get("/rss", summary="所有订阅站点", response_model=List[_SchemaSite])
+@router.get(
+    "/rss",
+    summary="所有订阅站点",
+    response_model=List[_SchemaSite],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
+)
 async def read_rss_sites(
+    response: Response = None,
     query: SiteQueryService = Depends(get_site_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> List[dict]:
     """
     获取站点列表
@@ -602,14 +710,17 @@ async def read_rss_sites(
     # 选中的rss站点
     selected_sites = get_configured_system_config().get(SystemConfigKey.RssSites) or []
 
-    # 所有站点
-    all_site = await query.list_ordered()
-    if not selected_sites:
-        return all_site
-
-    # 选中的rss站点
-    rss_sites = [site for site in all_site if site and site.id in selected_sites]
-    return rss_sites
+    site_ids = _normalize_site_ids(selected_sites) if selected_sites else None
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count_ordered(site_ids=site_ids)
+        )
+    return await query.list_ordered(
+        site_ids=site_ids,
+        page=page,
+        count=count,
+    )
 
 
 @router.get("/auth", summary="查询认证站点", response_model=_SchemaJsonObject)

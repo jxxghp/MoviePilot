@@ -535,12 +535,12 @@
     "type-arg": 14
   },
   "app/api/endpoints/site.py": {
-    "arg-type": 7,
+    "arg-type": 6,
     "assignment": 2,
     "attr-defined": 3,
     "misc": 26,
     "no-untyped-def": 2,
-    "return-value": 3,
+    "return-value": 2,
     "type-arg": 6,
     "var-annotated": 1
   },

@@ -138,9 +138,6 @@
   "app/db/oper/message.py": {
     "I001": 1
   },
-  "app/db/oper/site.py": {
-    "I001": 1
-  },
   "app/db/oper/user.py": {
     "I001": 1
   },
@@ -692,9 +689,6 @@
   "tests/test_api_authorization.py": {
     "I001": 1
   },
-  "tests/test_api_response.py": {
-    "I001": 1
-  },
   "tests/test_async_db_pooling.py": {
     "I001": 1
   },
@@ -1059,9 +1053,6 @@
     "I001": 1
   },
   "tests/test_transfer_download_history_oper_sessions.py": {
-    "I001": 1
-  },
-  "tests/test_transfer_failed_retry_budget.py": {
     "I001": 1
   },
   "tests/test_transfer_history_retransfer.py": {

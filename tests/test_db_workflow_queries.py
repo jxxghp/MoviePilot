@@ -135,6 +135,41 @@ def test_query_repository_async_projection_survives_session_close(db):
     assert created.id in {item.id for item in listed}
 
 
+def test_query_repository_filters_paginates_and_counts_in_database(db):
+    """Agent 工作流筛选必须先进入 SQL，再按同一条件计数和分页。"""
+    first = db.add(_flow("agent-page-first", trigger_type=None, state="W"))
+    second = db.add(_flow("agent-page-second", trigger_type="timer", state="W"))
+    db.add(
+        _flow("agent-page-paused", trigger_type="timer", state="P"),
+        _flow("unrelated-workflow", trigger_type="timer", state="W"),
+    )
+    repository = TransactionalWorkflowQueryRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+
+    total = asyncio.run(
+        repository.async_count(
+            state="W",
+            name="agent-page-",
+            trigger_type="timer",
+        )
+    )
+    page = asyncio.run(
+        repository.async_list(
+            state="W",
+            name="agent-page-",
+            trigger_type="timer",
+            page=2,
+            count=1,
+        )
+    )
+
+    assert total == 2
+    assert [item.id for item in page] == [second.id]
+    assert first.id < second.id
+
+
 def test_workflow_snapshot_validates_against_api_response_contract(db):
     """冻结快照可直接序列化为 API 合同且不会暴露内部执行上下文。"""
     created = db.add(_flow("wf-api-snapshot"))

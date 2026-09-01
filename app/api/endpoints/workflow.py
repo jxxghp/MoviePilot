@@ -1,6 +1,6 @@
 from typing import Any, List, Literal, Optional
 
-from fastapi import Depends
+from fastapi import Depends, Response
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.api.dependencies.auth import (
@@ -12,7 +12,14 @@ from app.api.dependencies.workflow import (
     get_workflow_mutation_command,
     get_workflow_query_service,
 )
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+    resolve_compatible_pagination,
+)
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.workflow import (
     WorkflowDefinitionCommand,
@@ -32,40 +39,66 @@ from app.schemas.workflow import WorkflowShare as _SchemaWorkflowShare
 
 router = ResponseAPIRouter()
 
-@router.get("/", summary="所有工作流", response_model=List[_SchemaWorkflow])
+@router.get(
+    "/",
+    summary="所有工作流",
+    response_model=List[_SchemaWorkflow],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
+)
 async def list_workflows(
+    response: Response = None,
     query: WorkflowQueryService = Depends(get_workflow_query_service),
     _: Any = Depends(get_current_active_manage_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     获取工作流列表
     """
-    return await query.list()
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count())
+    return await query.list(page=page, count=count)
 
 
 @router.get(  # type: ignore[misc]
     "/agent",
     summary="查询 Agent 可用工作流",
     response_model=List[_SchemaJsonObject],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def list_agent_workflows(
+    response: Response = None,
     state: Literal["W", "R", "P", "S", "F", "all"] = "all",
     name: Optional[str] = None,
     trigger_type: Literal["timer", "event", "manual", "all"] = "all",
     query: WorkflowQueryService = Depends(get_workflow_query_service),
     _: Any = Depends(get_current_active_manage_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> List[dict[str, Any]]:
     """按旧 Agent 过滤与字段投影返回工作流列表，避免输出完整动作上下文。"""
-    workflows = await query.list()
+    state_filter = None if state == "all" else state
+    trigger_filter = None if trigger_type == "all" else trigger_type
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count(
+                state=state_filter,
+                name=name,
+                trigger_type=trigger_filter,
+            )
+        )
+    workflows = await query.list(
+        state=state_filter,
+        name=name,
+        trigger_type=trigger_filter,
+        page=page,
+        count=count,
+    )
     results = []
     for workflow in workflows:
-        if state != "all" and workflow.state != state:
-            continue
         normalized_trigger = workflow.trigger_type or "timer"
-        if trigger_type != "all" and normalized_trigger != trigger_type:
-            continue
-        if name and name.lower() not in (workflow.name or "").lower():
-            continue
         results.append(
             {
                 "id": workflow.id,
@@ -103,7 +136,9 @@ async def create_workflow(
     response_model=List[_SchemaPluginWorkflowActionGroup],
 )
 def list_plugin_actions(
-    plugin_id: str = None, _: Any = Depends(get_current_active_manage_user)
+    plugin_id: str = None, _: Any = Depends(get_current_active_manage_user),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     获取所有动作
@@ -116,7 +151,7 @@ def list_plugin_actions(
     summary="所有动作",
     response_model=List[_SchemaWorkflowActionDefinition],
 )
-async def list_actions(_: Any = Depends(get_current_active_manage_user_async)) -> Any:
+async def list_actions(_: Any = Depends(get_current_active_manage_user_async), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     获取所有动作
     """
@@ -128,7 +163,7 @@ async def list_actions(_: Any = Depends(get_current_active_manage_user_async)) -
     summary="获取所有事件类型",
     response_model=List[_SchemaNameValueOption],
 )
-async def get_event_types(_: Any = Depends(get_current_active_manage_user_async)) -> Any:
+async def get_event_types(_: Any = Depends(get_current_active_manage_user_async), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     获取所有事件类型
     """

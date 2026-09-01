@@ -306,13 +306,13 @@ class TestAgentToolStreaming:
             await handler.start_streaming()
             handler.emit("处理中：")
             handler.record_tool_call(
-                tool_name="skill",
-                tool_message="Loads the full instructions for a MoviePilot skill",
+                tool_name="read_skill",
+                tool_message="Reads a MoviePilot skill",
                 tool_kwargs={"name": "moviepilot-api"},
             )
             handler.record_tool_call(
-                tool_name="skill",
-                tool_message="Loads the full instructions for a MoviePilot skill",
+                tool_name="read_skill",
+                tool_message="Reads a MoviePilot skill",
                 tool_kwargs={"name": "moviepilot-api"},
             )
             handler.record_tool_call(

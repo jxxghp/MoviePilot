@@ -452,7 +452,7 @@ class TestAgentBackgroundOutput:
         ]
 
     async def test_create_agent_registers_skill_tool_from_middleware(self):
-        """SkillsMiddleware 暴露的 skill 工具应进入 Agent 工具和筛选候选。"""
+        """SkillsMiddleware 暴露的 read_skill 应进入 Agent 工具和筛选候选。"""
         captured = {}
         skill_tool = SimpleNamespace(name=SKILL_TOOL_NAME)
         agent = MoviePilotAgent(session_id="normal-session", user_id="system")

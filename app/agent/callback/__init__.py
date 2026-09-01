@@ -362,7 +362,7 @@ class StreamingHandler:
         tool_message = (tool_message or "").strip()
         tool_message_lower = tool_message.lower()
 
-        if tool_name == "skill":
+        if tool_name in {"read_skill", "skill"}:
             return "skill", tool_kwargs.get("name")
         if tool_name == "query_activity_log":
             return "activity_log", tool_kwargs.get("keyword") or tool_kwargs.get("date")

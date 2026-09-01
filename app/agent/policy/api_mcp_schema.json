@@ -8221,6 +8221,20 @@
           "additionalProperties": false,
           "description": "Filters and control values for plugin.installed. List installed plugins and their runtime status. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "force": {
               "default": false,
               "description": "Force a marketplace refresh or plugin installation when true.",
@@ -8234,6 +8248,19 @@
               "minimum": 1,
               "title": "Max Results",
               "type": "integer"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
             },
             "query": {
               "anyOf": [
@@ -8285,6 +8312,20 @@
           "additionalProperties": false,
           "description": "Filters and control values for plugin.market. List plugins available from configured marketplaces. Use only the named fields below.",
           "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
             "force": {
               "default": false,
               "description": "Force a marketplace refresh or plugin installation when true.",
@@ -8298,6 +8339,19 @@
               "minimum": 1,
               "title": "Max Results",
               "type": "integer"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
             },
             "query": {
               "anyOf": [

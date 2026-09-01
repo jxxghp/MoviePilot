@@ -304,6 +304,20 @@ def test_passkey_oper_queries_use_explicit_session(db, monkeypatch):
     assert oper.get_by_credential_id("cred-oper-inactive") is None
 
 
+def test_passkey_oper_paginates_and_counts_active_credentials(db):
+    """PassKey 列表只统计有效凭据，并在数据库查询中稳定分页。"""
+    first = db.add(_passkey(9002, "cred-page-1"))
+    second = db.add(_passkey(9002, "cred-page-2"))
+    db.add(_passkey(9002, "cred-page-off", is_active=False))
+    oper = PassKeyOper(db.session)
+
+    page = oper.list_by_user_id(9002, page=2, count=1)
+
+    assert oper.count_by_user_id(9002) == 2
+    assert [item.id for item in page] == [second.id]
+    assert first.id < second.id
+
+
 def test_passkey_lookup_by_credential_id_skips_inactive(db):
     """
     按凭据 ID 查找同样必须忽略停用记录，否则停用的密钥仍可完成认证。

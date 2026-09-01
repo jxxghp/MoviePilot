@@ -260,6 +260,37 @@ def test_market_endpoint_reads_source_preserving_candidates_for_bound_update():
     plugin_manager.async_get_online_plugin_candidates.assert_awaited_once_with(False)
 
 
+def test_all_plugins_explicit_page_count_overrides_legacy_max_results() -> None:
+    """插件列表显式 page/count 应分页，省略时仍保留旧 max_results 行为。"""
+    catalog = MagicMock()
+    catalog.query = AsyncMock(
+        return_value=[
+            schemas.Plugin(id=f"Plugin{index}", plugin_version="1.0.0")
+            for index in range(1, 4)
+        ]
+    )
+
+    with patch(
+        "app.api.endpoints.plugin.get_plugin_catalog_query",
+        return_value=catalog,
+    ):
+        response = Response()
+        result = asyncio.run(
+            plugin_endpoint.all_plugins(
+                None,
+                "all",
+                False,
+                max_results=1,
+                page=2,
+                count=1,
+                response=response,
+            )
+        )
+
+    assert [plugin.id for plugin in result] == ["Plugin2"]
+    assert response.headers["X-Total-Count"] == "3"
+
+
 def _persistence(identity: PluginIdentity) -> MagicMock:
     """构造只暴露身份读取合同的异步持久化替身。"""
     persistence = MagicMock()

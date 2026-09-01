@@ -559,9 +559,12 @@ moviepilot tool run moviepilot_api operation_id=media.search 'query={"title":"�
 - `tool run` 参数格式固定为 `key=value`；对象、数组、布尔值和 `null` 使用合法 JSON
 - MoviePilot 业务能力统一通过 `moviepilot_api` 的固定 `operation_id` 调用；不接受任意 URL、method、认证头或 Token，也不兼容旧业务工具名
 - 涉及精确媒体身份的 operation 统一使用 `media_source` + `media_id`，两个字段必须成对传递并复用搜索结果
-- `read_file`、`write_file`、`edit_file` 和 `execute_command`
+- `read_skill`、`read_file`、`write_file`、`edit_file` 和 `execute_command`
   属于内置 Agent 的本地敏感能力，不通过 MCP/`moviepilot tool` 暴露；插件开发时
   由 Agent 按当前用户权限直接调用这些工具。
+- `read_skill` 会一次性返回最多 512 KiB 的 `SKILL.md` 和技能目录内其它文件的完整相对路径列表，
+  不应用普通工具结果的 64 KiB 全局大小裁剪；超出时会明确标记截断，Agent 不应再用
+  `read_file` 读取或绕过 `SKILL.md` 限制。
 - `read_file` 单次最多返回 50KB 文件内容；超出时会截断并提示 Agent 使用
   `start_line`、`end_line` 指定更小的行号范围继续读取。
 

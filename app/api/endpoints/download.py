@@ -7,7 +7,11 @@ from app.adapters.web.security.access import verify_token
 from app.api.dependencies.auth import get_current_active_user
 from app.api.dependencies.site import get_site_sync_query_service
 from app.api.principal import ApiPrincipal
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
 from app.application.download.tasks import DownloadTaskMutationService
@@ -204,7 +208,7 @@ def _resolve_add_media(
 
 
 @router.get("/", summary="正在下载", response_model=List[_SchemaDownloaderTorrent])
-def current(name: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+def current(name: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询正在下载的任务
     """
@@ -405,7 +409,7 @@ async def update_task(
     summary="查询可用下载器",
     response_model=List[_SchemaServiceClientInfo],
 )
-async def clients(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def clients(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询可用下载器
     """
@@ -416,7 +420,7 @@ async def clients(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
 
 
 @router.get("/paths", summary="查询可用下载路径", response_model=List[_SchemaDownloadDirectory])
-def paths(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+def paths(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询可直接用于下载接口 save_path 参数的下载路径
     """

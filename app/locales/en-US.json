@@ -201,6 +201,7 @@
     "用户未通过认证，无法使用站点功能！": "User authentication has not passed, so site features cannot be used.",
     "该站点不支持，请检查站点域名是否正确": "This site is not supported. Please check whether the site domain is correct",
     "站点不存在": "Site does not exist",
+    "站点 {site} 未配置域名": "Site {site} does not have a configured domain",
     "CookieCloud同步任务已启动！": "CookieCloud sync task has started!",
     "站点已重置！": "Site has been reset!",
     "站点不支持索引或未通过用户认证！": "The site does not support indexing or user authentication has not passed!",
@@ -497,6 +498,10 @@
     {
       "source": "站点 {site} 不存在",
       "target": "Site {site} does not exist"
+    },
+    {
+      "source": "站点 {site} 未配置域名",
+      "target": "Site {site} does not have a configured domain"
     },
     {
       "source": "站点 {site} 不支持",

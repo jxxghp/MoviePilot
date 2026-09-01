@@ -50,7 +50,18 @@ def test_read_sites_by_media_type_filters_configured_active_sites(monkeypatch, m
         {"id": 4, "category": {}},
         {"id": 5, "media_type": "music"},
     ]
-    list_sites = AsyncMock(return_value=sites)
+    async def list_sites_from_query(**filters):
+        """模拟站点查询端口在数据库层应用启用状态和站点标识筛选。"""
+        site_ids = set(filters["site_ids"])
+        domains = set(filters["domains"])
+        return [
+            site
+            for site in sites
+            if site.is_active is filters["is_active"]
+            and (site.id in site_ids or site.domain in domains)
+        ]
+
+    list_sites = AsyncMock(side_effect=list_sites_from_query)
     get_indexers = AsyncMock(return_value=indexers)
     monkeypatch.setattr(
         site_endpoint,
@@ -66,7 +77,13 @@ def test_read_sites_by_media_type_filters_configured_active_sites(monkeypatch, m
     )
 
     assert [site.id for site in result] == expected_ids
-    list_sites.assert_awaited_once()
+    list_sites.assert_awaited_once_with(
+        is_active=True,
+        site_ids=expected_ids if media_type != "music" else [2, 3, 5],
+        domains=[],
+        page=None,
+        count=None,
+    )
     get_indexers.assert_awaited_once()
 
 

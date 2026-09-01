@@ -117,3 +117,26 @@ def test_direct_manager_rejects_ambiguous_tool_identity() -> None:
         manager.get_strict_tool("demo_plugin_tool")
     with pytest.raises(RuntimeError, match="TOOL_IDENTITY_AMBIGUOUS"):
         asyncio.run(manager.call_tool("demo_plugin_tool", {}))
+
+
+def test_read_skill_is_hidden_from_mcp_calls() -> None:
+    """read_skill 只属于内置 Agent，中间件工具不得通过 MCP 直接调用。"""
+    builtin_names = {
+        MoviePilotToolFactory._tool_class_name(tool_class)
+        for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES
+    }
+
+    assert "read_skill" in mcp.MCP_HIDDEN_TOOLS
+    assert "read_skill" not in builtin_names
+
+    result = asyncio.run(
+        mcp.handle_tools_call(
+            {
+                "name": "read_skill",
+                "arguments": {"name": "moviepilot-api"},
+            }
+        )
+    )
+
+    assert result["isError"] is True
+    assert "未找到" in result["content"][0]["text"]

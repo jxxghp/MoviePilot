@@ -540,7 +540,10 @@ def test_workflow_query_contract_returns_only_typed_snapshots():
     for method in methods:
         annotation = ast.unparse(method.returns)
         assert "Any" not in annotation
-        assert "WorkflowSnapshot" in annotation
+        if method.name in {"count", "async_count"}:
+            assert annotation == "int"
+        else:
+            assert "WorkflowSnapshot" in annotation
 
 
 def test_workflow_query_consumers_do_not_reach_raw_oper():

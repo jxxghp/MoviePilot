@@ -10,7 +10,7 @@
 
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from typing import List, Optional, Tuple, cast
+from typing import Any, List, Optional, Tuple, cast
 
 from sqlalchemy import delete as sqlalchemy_delete
 from sqlalchemy import func, select
@@ -32,6 +32,21 @@ from app.schemas.query import QueryPageRequest, QuerySortField, SubscriptionFilt
 from app.schemas.types import MediaSource
 
 INTEGER_FLAG_FIELDS = ("best_version", "best_version_full", "search_imdbid", "manual_total_episode")
+
+
+async def _async_subscription_rows(
+    session: AsyncSession,
+    statement: Any,
+) -> List[Subscribe]:
+    """执行订阅列表语句并返回 ORM 行。"""
+    result = await session.execute(statement)
+    return list(result.scalars().all())
+
+
+async def _async_scalar(session: AsyncSession, statement: Any) -> int:
+    """执行订阅计数语句并返回整数。"""
+    result = await session.execute(statement)
+    return int(result.scalar_one())
 
 AfterCommitEffect = Callable[[int], None]
 AsyncAfterCommitEffect = Callable[[int], Awaitable[None]]
@@ -602,34 +617,66 @@ class SubscribeOper(DbOper):
         """
         return cast(List[Subscribe], self._execute_sync_query(lambda session: Subscribe.get_by_state(session, state)))
 
-    async def async_list(self, state: Optional[str] = None) -> List[Subscribe]:
-        """
-        异步获取订阅列表
-        """
+    async def async_list(
+        self,
+        state: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> List[Subscribe]:
+        """按可选状态和数据库窗口异步获取订阅列表。"""
+        statement = select(Subscribe).order_by(Subscribe.id)
         if state:
-            return cast(
-                List[Subscribe],
-                await self._execute_async_query(lambda session: Subscribe.async_get_by_state(session, state)),
-            )
-        return cast(List[Subscribe], await self._execute_async_query(Subscribe.async_list))
+            statement = statement.where(Subscribe.state.in_(state.split(",")))
+        if page is not None and count is not None:
+            statement = statement.offset((page - 1) * count).limit(count)
+        return cast(
+            List[Subscribe],
+            await self._execute_async_query(
+                lambda session: _async_subscription_rows(session, statement)
+            ),
+        )
 
     async def async_list_by_username(
         self,
         username: str,
         state: Optional[str] = None,
         mtype: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> List[Subscribe]:
-        """异步按用户获取订阅。"""
+        """按用户筛选和数据库窗口异步获取订阅。"""
+        statement = select(Subscribe).where(Subscribe.username == username).order_by(Subscribe.id)
+        if state:
+            statement = statement.where(Subscribe.state == state)
+        if mtype:
+            statement = statement.where(Subscribe.type == mtype)
+        if page is not None and count is not None:
+            statement = statement.offset((page - 1) * count).limit(count)
         return cast(
             List[Subscribe],
             await self._execute_async_query(
-                lambda session: Subscribe.async_list_by_username(
-                    session,
-                    username=username,
-                    state=state,
-                    mtype=mtype,
-                )
+                lambda session: _async_subscription_rows(session, statement)
             ),
+        )
+
+    async def async_count(
+        self,
+        state: Optional[str] = None,
+        username: Optional[str] = None,
+        mtype: Optional[str] = None,
+    ) -> int:
+        """按公开列表筛选条件返回订阅精确总数。"""
+        statement = select(func.count()).select_from(Subscribe)
+        if state:
+            statement = statement.where(Subscribe.state.in_(state.split(",")))
+        if username:
+            statement = statement.where(Subscribe.username == username)
+        if mtype:
+            statement = statement.where(Subscribe.type == mtype)
+        return int(
+            await self._execute_async_query(
+                lambda session: _async_scalar(session, statement)
+            )
         )
 
     async def async_list_by_title(

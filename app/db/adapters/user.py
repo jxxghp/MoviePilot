@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from typing import Any, Optional, cast
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -75,9 +75,24 @@ class SqlAlchemyUserRepository(UserRepository):
         result = await session.execute(select(User.id).limit(1))
         return result.scalar_one_or_none() is not None
 
-    async def async_list(self) -> list[UserSnapshot]:
-        """在异步请求会话中读取全部冻结用户快照。"""
-        return [_to_snapshot(model) for model in await self._oper.async_list()]
+    async def async_list(
+        self,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> list[UserSnapshot]:
+        """在异步请求会话中按可选窗口读取冻结用户快照。"""
+        session = self._require_async_session()
+        statement = select(User).order_by(User.id)
+        if page is not None and count is not None:
+            statement = statement.offset((page - 1) * count).limit(count)
+        result = await session.execute(statement)
+        return [_to_snapshot(model) for model in result.scalars().all()]
+
+    async def async_count(self) -> int:
+        """在异步请求会话中返回用户精确总数。"""
+        session = self._require_async_session()
+        result = await session.execute(select(func.count()).select_from(User))
+        return int(result.scalar_one())
 
     async def async_get_by_name(self, name: str) -> Optional[UserSnapshot]:
         """在异步请求会话中按用户名读取冻结快照。"""

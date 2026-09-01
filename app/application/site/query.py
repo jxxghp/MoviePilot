@@ -16,9 +16,48 @@ class SiteQueryService:
         """保存站点查询仓储端口。"""
         self._repository = repository
 
-    async def list_ordered(self) -> builtins.list[Site]:
-        """按站点优先级返回配置 DTO。"""
-        return [Site.model_validate(item) for item in await self._repository.async_list_order_by_pri()]
+    async def list_ordered(
+        self,
+        *,
+        is_active: Optional[bool] = None,
+        name: Optional[str] = None,
+        site_ids: Optional[builtins.list[int]] = None,
+        domains: Optional[builtins.list[str]] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> builtins.list[Site]:
+        """按筛选、优先级和可选分页窗口返回配置 DTO。"""
+        if all(
+            value is None
+            for value in (is_active, name, site_ids, domains, page, count)
+        ):
+            items = await self._repository.async_list_order_by_pri()
+        else:
+            items = await self._repository.async_list_order_by_pri(
+                is_active=is_active,
+                name=name,
+                site_ids=site_ids,
+                domains=domains,
+                page=page,
+                count=count,
+            )
+        return [Site.model_validate(item) for item in items]
+
+    async def count_ordered(
+        self,
+        *,
+        is_active: Optional[bool] = None,
+        name: Optional[str] = None,
+        site_ids: Optional[builtins.list[int]] = None,
+        domains: Optional[builtins.list[str]] = None,
+    ) -> int:
+        """按与站点列表一致的筛选条件返回总数。"""
+        return await self._repository.async_count_sites(
+            is_active=is_active,
+            name=name,
+            site_ids=site_ids,
+            domains=domains,
+        )
 
     async def list(self) -> builtins.list[Site]:
         """返回全部站点配置 DTO。"""
@@ -39,23 +78,62 @@ class SiteQueryService:
         item = await self._repository.async_get_by_domain(domain)
         return Site.model_validate(item) if item else None
 
-    async def userdata_latest(self) -> builtins.list[SiteUserData]:
-        """返回各站点最新用户数据 DTO。"""
-        return [SiteUserData.model_validate(item) for item in await self._repository.async_get_userdata_latest()]
+    async def userdata_latest(
+        self,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> builtins.list[SiteUserData]:
+        """按可选分页窗口返回各站点最新用户数据 DTO。"""
+        if page is None and count is None:
+            items = await self._repository.async_get_userdata_latest()
+        else:
+            items = await self._repository.async_get_userdata_latest(
+                page=page,
+                count=count,
+            )
+        return [SiteUserData.model_validate(item) for item in items]
+
+    async def count_userdata_latest(self) -> int:
+        """返回各站点最新用户数据查询的结果总数。"""
+        return await self._repository.async_count_userdata_latest()
 
     async def userdata(
         self,
         domain: str,
         workdate: Optional[str] = None,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SiteUserData]:
-        """返回指定站点用户数据 DTO。"""
-        return [
-            SiteUserData.model_validate(item)
-            for item in await self._repository.async_get_userdata_by_domain(
+        """按可选分页窗口返回指定站点用户数据 DTO。"""
+        if page is None and count is None:
+            items = await self._repository.async_get_userdata_by_domain(
                 domain,
                 workdate,
             )
+        else:
+            items = await self._repository.async_get_userdata_by_domain(
+                domain,
+                workdate,
+                page=page,
+                count=count,
+            )
+        return [
+            SiteUserData.model_validate(item)
+            for item in items
         ]
+
+    async def count_userdata(
+        self,
+        domain: str,
+        workdate: Optional[str] = None,
+    ) -> int:
+        """返回指定站点和日期的用户数据总数。"""
+        return await self._repository.async_count_userdata_by_domain(
+            domain,
+            workdate,
+        )
 
     async def icon(self, domain: str) -> Optional[SiteIconData]:
         """返回站点图标 DTO。"""
@@ -71,9 +149,25 @@ class SiteQueryService:
         item = await self._repository.async_get_statistic_by_domain(domain)
         return SiteStatistic.model_validate(item) if item else SiteStatistic(domain=domain)
 
-    async def statistics(self) -> builtins.list[SiteStatistic]:
-        """返回全部站点统计 DTO。"""
-        return [SiteStatistic.model_validate(item) for item in await self._repository.async_list_statistics()]
+    async def statistics(
+        self,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> builtins.list[SiteStatistic]:
+        """按可选分页窗口返回站点统计 DTO。"""
+        if page is None and count is None:
+            items = await self._repository.async_list_statistics()
+        else:
+            items = await self._repository.async_list_statistics(
+                page=page,
+                count=count,
+            )
+        return [SiteStatistic.model_validate(item) for item in items]
+
+    async def count_statistics(self) -> int:
+        """返回站点统计记录总数。"""
+        return await self._repository.async_count_statistics()
 
     def userdata_latest_sync(self) -> builtins.list[SiteUserData]:
         """同步返回各站点最新用户数据 DTO。"""

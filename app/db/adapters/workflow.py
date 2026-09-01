@@ -112,11 +112,42 @@ class TransactionalWorkflowQueryRepository:
             lambda repository: repository.get_event_triggered_workflows()
         )
 
-    async def async_list(self) -> list[WorkflowSnapshot]:
-        """在异步短 Session 内投影全部工作流。"""
+    async def async_list(
+        self,
+        *,
+        state: Optional[str] = None,
+        name: Optional[str] = None,
+        trigger_type: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> list[WorkflowSnapshot]:
+        """在异步短 Session 内按筛选和分页窗口投影工作流。"""
         async with self._async_session() as session:
-            records = await WorkflowOper(session).async_list()
+            records = await WorkflowOper(session).async_list(
+                state=state,
+                name=name,
+                trigger_type=trigger_type,
+                page=page,
+                count=count,
+            )
             return [_project_workflow(record) for record in records]
+
+    async def async_count(
+        self,
+        *,
+        state: Optional[str] = None,
+        name: Optional[str] = None,
+        trigger_type: Optional[str] = None,
+    ) -> int:
+        """在异步短 Session 内按列表筛选统计工作流数量。"""
+        async with self._async_session() as session:
+            return int(
+                await WorkflowOper(session).async_count(
+                    state=state,
+                    name=name,
+                    trigger_type=trigger_type,
+                )
+            )
 
     async def async_get(self, workflow_id: int) -> Optional[WorkflowSnapshot]:
         """在异步短 Session 内读取并投影单条工作流。"""

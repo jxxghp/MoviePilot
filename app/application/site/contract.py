@@ -332,8 +332,28 @@ class SiteQueryPort(Protocol):
         """异步读取全部站点快照。"""
         ...
 
-    async def async_list_order_by_pri(self) -> builtins.list[SiteSnapshot]:
-        """异步按优先级读取站点快照。"""
+    async def async_list_order_by_pri(
+        self,
+        *,
+        is_active: Optional[bool] = None,
+        name: Optional[str] = None,
+        site_ids: Optional[builtins.list[int]] = None,
+        domains: Optional[builtins.list[str]] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> builtins.list[SiteSnapshot]:
+        """按筛选和可选分页窗口异步读取站点快照。"""
+        ...
+
+    async def async_count_sites(
+        self,
+        *,
+        is_active: Optional[bool] = None,
+        name: Optional[str] = None,
+        site_ids: Optional[builtins.list[int]] = None,
+        domains: Optional[builtins.list[str]] = None,
+    ) -> int:
+        """按与站点列表一致的筛选条件统计数量。"""
         ...
 
     async def async_list_active(self) -> builtins.list[SiteSnapshot]:
@@ -344,14 +364,32 @@ class SiteQueryPort(Protocol):
         self,
         domain: str,
         workdate: Optional[str] = None,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SiteUserDataSnapshot]:
-        """异步读取指定域名和日期的用户数据快照。"""
+        """按可选分页窗口异步读取指定域名和日期的用户数据快照。"""
+        ...
+
+    async def async_count_userdata_by_domain(
+        self,
+        domain: str,
+        workdate: Optional[str] = None,
+    ) -> int:
+        """统计指定域名和日期的用户数据数量。"""
         ...
 
     async def async_get_userdata_latest(
         self,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SiteUserDataSnapshot]:
-        """异步读取各站点最新用户数据快照。"""
+        """按可选分页窗口异步读取各站点最新用户数据快照。"""
+        ...
+
+    async def async_count_userdata_latest(self) -> int:
+        """统计各站点最新用户数据查询的结果数量。"""
         ...
 
     async def async_get_icon_by_domain(
@@ -370,8 +408,15 @@ class SiteQueryPort(Protocol):
 
     async def async_list_statistics(
         self,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SiteStatisticSnapshot]:
-        """异步读取全部站点健康统计快照。"""
+        """按可选分页窗口异步读取站点健康统计快照。"""
+        ...
+
+    async def async_count_statistics(self) -> int:
+        """统计站点健康统计记录数量。"""
         ...
 
 

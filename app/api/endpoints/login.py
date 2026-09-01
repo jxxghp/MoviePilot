@@ -9,7 +9,12 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
 from app.api.context import get_api_runtime_config, resolve_api_runtime_config
 from app.api.dependencies.auth import get_user_service
-from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
+from app.api.response import (
+    RAW_RESPONSE_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.configuration import ApiRuntimeConfig, get_runtime_settings
 from app.application.image import WallpaperHelper
 from app.application.security.token import PasswordTooLongError, create_access_token, get_password_hash
@@ -201,7 +206,7 @@ def wallpaper() -> Any:
 
 
 @router.get("/wallpapers", summary="登录页面电影海报列表", response_model=List[str])
-def wallpapers() -> Any:
+def wallpapers(page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     获取登录页面电影海报
     """

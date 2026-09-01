@@ -4,7 +4,11 @@ from typing import Any, List, Optional
 from fastapi import Depends, HTTPException, status
 
 from app.adapters.web.security.access import verify_token
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.music.projection import simplify_music_info
 from app.chain.listenbrainz import (
     LISTENBRAINZ_CHART_RANGES,
@@ -250,7 +254,7 @@ def _project_agent_recommendations(results: List[Any], count: int) -> List[dict[
     summary="获取推荐数据源",
     response_model=List[_SchemaRecommendMediaSource],
 )
-def source(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+def source(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     获取推荐数据源
     """

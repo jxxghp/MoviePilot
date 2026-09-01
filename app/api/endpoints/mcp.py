@@ -5,7 +5,12 @@ from fastapi.responses import JSONResponse, Response
 
 from app.adapters.web.security.access import verify_apikey
 from app.agent.tools.manager import moviepilot_tool_manager
-from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
+from app.api.response import (
+    RAW_RESPONSE_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.runtime.log import logger
 from app.runtime.version import get_app_version
 from app.schemas.mcp import MCP_JSONRPC_REQUEST_SCHEMA as _SchemaMCP_JSONRPC_REQUEST_SCHEMA
@@ -30,6 +35,7 @@ MCP_HIDDEN_TOOLS = {
     "apply_patch",
     "write_file",
     "read_file",
+    "read_skill",
 }
 MCP_JSONRPC_ERROR_RESPONSES = {
     400: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 请求错误"},
@@ -269,7 +275,7 @@ async def delete_mcp_session(
     summary="列出所有可用工具",
     response_model=List[_SchemaMcpToolInfo],
 )
-async def list_tools(_: Annotated[str, Depends(verify_apikey)]) -> Any:
+async def list_tools(_: Annotated[str, Depends(verify_apikey)], page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     获取所有可用的工具列表
 

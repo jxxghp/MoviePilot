@@ -29,7 +29,10 @@ from app.api.principal import ApiPrincipal
 from app.api.response import (
     COLLECTION_TOTAL_HEADER,
     COLLECTION_TOTAL_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
     ResponseAPIRouter,
+    resolve_compatible_pagination,
 )
 from app.application.configuration import (
     get_api_runtime_config_snapshot,
@@ -150,30 +153,51 @@ def matches_subscribe_music_type(
         or (music_type == MUSIC_ENTITY_RECORDING and subscribe_music_type is None)
 
 
-@router.get("/", summary="查询所有订阅", response_model=List[_SchemaSubscribe])
+@router.get(
+    "/",
+    summary="查询所有订阅",
+    response_model=List[_SchemaSubscribe],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
+)
 async def read_subscribes(
+    response: Response = None,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询所有订阅
     """
-    if not current_user.is_superuser:
-        return await query.list_public(current_user.name)
-    return await query.list_public()
+    username = None if current_user.is_superuser else current_user.name
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count_public(username)
+        )
+    return await query.list_public(username, page=page, count=count)
 
 
 @router.get(
-    "/list", summary="查询所有订阅（API_TOKEN）", response_model=List[_SchemaSubscribe]
+    "/list",
+    summary="查询所有订阅（API_TOKEN）",
+    response_model=List[_SchemaSubscribe],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def list_subscribes(
+    response: Response = None,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     _: Annotated[str, Depends(verify_apitoken)] = None,
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询所有订阅 API_TOKEN认证（?token=xxx）
     """
-    return await query.list_public()
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_public())
+    return await query.list_public(page=page, count=count)
 
 
 @router.post(
@@ -659,19 +683,30 @@ async def popular_subscribes(
 
 
 @router.get(
-    "/user/{username}", summary="用户订阅", response_model=List[_SchemaSubscribe]
+    "/user/{username}",
+    summary="用户订阅",
+    response_model=List[_SchemaSubscribe],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def user_subscribes(
     username: str,
+    response: Response = None,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询用户订阅
     """
     if not current_user.is_superuser and username != current_user.name:
         return []
-    return await query.list_public(username)
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count_public(username)
+        )
+    return await query.list_public(username, page=page, count=count)
 
 
 @router.get(
@@ -755,7 +790,7 @@ async def subscribe_fork(
 
 
 @router.get("/follow", summary="查询已Follow的订阅分享人", response_model=List[str])
-async def followed_subscribers(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def followed_subscribers(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询已Follow的订阅分享人
     """
@@ -830,6 +865,8 @@ async def subscribe_shares(
 )
 async def subscribe_share_statistics(
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询订阅分享统计

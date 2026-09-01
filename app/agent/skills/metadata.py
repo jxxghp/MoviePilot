@@ -6,8 +6,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-# 磁盘读取上限属于 Skill 文档格式约束，市场扫描和 Agent 加载必须共用。
-MAX_SKILL_FILE_SIZE = 1 * 1024 * 1024
+MAX_SKILL_CONTENT_BYTES = 512 * 1024
 MAX_SKILL_NAME_LENGTH = 64
 MAX_SKILL_DESCRIPTION_LENGTH = 1024
 MAX_SKILL_COMPATIBILITY_LENGTH = 500
@@ -47,10 +46,6 @@ def parse_skill_metadata(  # noqa: C901
     skill_id: str,
 ) -> SkillMetadata | None:
     """解析并校验一个 SKILL.md 的 YAML 前言。"""
-    if len(content) > MAX_SKILL_FILE_SIZE:
-        logger.warning("Skipping %s: content too large (%d bytes)", skill_path, len(content))
-        return None
-
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
     if not match:
         logger.warning("Skipping %s: no valid YAML frontmatter found", skill_path)

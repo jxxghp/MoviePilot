@@ -5,7 +5,12 @@ from pydantic import BaseModel
 
 from app.adapters.web.security.access import set_or_refresh_resource_token_cookie
 from app.api.dependencies.auth import get_auth_service
-from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
+from app.api.response import (
+    RAW_RESPONSE_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.security.auth import AuthService, consume_plugin_auth_ticket
 from app.schemas.token import Token as _SchemaToken
@@ -47,7 +52,7 @@ def _system_auth_providers(service: AuthService) -> list[dict[str, Any]]:
     summary="查询登录认证提供方",
     response_model=list[_SchemaAuthProviderInfo],
 )
-def auth_providers(service: AuthService = Depends(get_auth_service)) -> list[dict[str, Any]]:
+def auth_providers(service: AuthService = Depends(get_auth_service), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> list[dict[str, Any]]:
     """
     查询系统和插件提供的登录认证入口。
 

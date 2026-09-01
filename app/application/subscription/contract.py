@@ -383,8 +383,13 @@ class SubscriptionQueryPort(Protocol):
         """异步按主键读取订阅快照。"""
         ...
 
-    async def async_list(self, state: Optional[str] = None) -> builtins.list[SubscriptionSnapshot]:
-        """异步按可选状态读取订阅快照。"""
+    async def async_list(
+        self,
+        state: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> builtins.list[SubscriptionSnapshot]:
+        """异步按可选状态和窗口读取订阅快照。"""
         ...
 
     async def async_list_by_username(
@@ -392,8 +397,19 @@ class SubscriptionQueryPort(Protocol):
         username: str,
         state: Optional[str] = None,
         mtype: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按用户、状态和类型读取订阅快照。"""
+        """异步按用户、状态、类型和窗口读取订阅快照。"""
+        ...
+
+    async def async_count(
+        self,
+        state: Optional[str] = None,
+        username: Optional[str] = None,
+        mtype: Optional[str] = None,
+    ) -> int:
+        """按与公开列表相同的筛选范围返回订阅总数。"""
         ...
 
     async def async_list_by_media_identity(

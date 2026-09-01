@@ -301,11 +301,11 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares():
         "edit_file",
         "execute_command",
         "agent_task",
-        "skill",
+        "read_skill",
     ]
     assert tool_selector_middleware.selection_tools[: len(fake_tools)] == fake_tools
     assert [getattr(tool, "name", None) for tool in tool_selector_middleware.selection_tools[len(fake_tools) :]] == [
-        "skill"
+        "read_skill"
     ]
 
 

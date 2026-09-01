@@ -4,7 +4,11 @@ from fastapi import Depends
 
 from app.adapters.web.security.access import verify_token
 from app.api.dependencies.auth import get_current_active_superuser_async
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
 from app.chain.tmdb import TmdbChain
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
@@ -84,7 +88,9 @@ async def clear_tmdb_recognition_cache(
     "/seasons/{tmdbid}", summary="TMDB所有季", response_model=List[_SchemaTmdbSeason]
 )
 async def tmdb_seasons(
-    tmdbid: int, _: _SchemaTokenPayload = Depends(verify_token)
+    tmdbid: int, _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     根据TMDBID查询themoviedb所有季信息
@@ -234,6 +240,8 @@ async def tmdb_season_episodes(
     season: int,
     episode_group: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     根据TMDBID查询某季的所有信信息

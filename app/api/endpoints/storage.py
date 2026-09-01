@@ -15,6 +15,8 @@ from app.api.dependencies.auth import (
 from app.api.principal import ApiPrincipal
 from app.api.response import (
     COLLECTION_PAGINATION_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
     ResponseAPIRouter,
 )
 from app.application.configuration import get_api_runtime_config_snapshot
@@ -43,6 +45,8 @@ def directory_settings(
     storage_type: str = "all",
     name: Optional[str] = None,
     _: ApiPrincipal = Depends(get_current_active_superuser),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> _SchemaResponse[Any]:
     """按用途、存储类型和名称筛选目录配置。"""
     helper = DirectoryHelper()
@@ -123,6 +127,8 @@ def list_files(
     sort: Optional[str] = "updated_at",
     keyword: Optional[str] = None,
     _: ApiPrincipal = Depends(get_current_active_manage_user),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询当前目录下所有目录和文件
@@ -165,6 +171,8 @@ def list_agent_files(
     sort: Optional[str] = "updated_at",
     keyword: Optional[str] = None,
     _: Any = Depends(get_current_active_user),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> List[_SchemaFileItem]:
     """保留旧 Agent 普通用户目录读取能力，不开放创建、改名或删除入口。"""
     return _list_files(fileitem=fileitem, sort=sort, keyword=keyword)

@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlencode, urljoin, urlparse
 
 from app.adapters.network.http import RequestUtils
-from app.agent.skills.metadata import parse_skill_metadata
+from app.agent.skills.metadata import MAX_SKILL_CONTENT_BYTES, parse_skill_metadata
 from app.application.configuration import get_runtime_settings
 from app.foundation.singleton import WeakSingleton
 from app.foundation.url import UrlUtils
@@ -387,7 +387,8 @@ class SkillHelper(metaclass=WeakSingleton):
             if not skill_md.exists():
                 continue
             try:
-                content = skill_md.read_text(encoding="utf-8", errors="replace")
+                with skill_md.open("rb") as handle:
+                    content = handle.read(MAX_SKILL_CONTENT_BYTES).decode("utf-8", errors="replace")
             except Exception as e:
                 logger.warning("读取技能文件失败：%s - %s", skill_md, e)
                 continue
@@ -552,7 +553,11 @@ class SkillHelper(metaclass=WeakSingleton):
                     skill_dir = rel_path[: -len("/SKILL.md")]
                     skill_id = Path(skill_dir).name
                     try:
-                        content = zf.read(archive_name).decode("utf-8")
+                        with zf.open(archive_name, "r") as skill_file:
+                            content = skill_file.read(MAX_SKILL_CONTENT_BYTES).decode(
+                                "utf-8",
+                                errors="replace",
+                            )
                     except Exception as e:
                         logger.warning("读取市场技能失败：%s - %s", archive_name, e)
                         continue

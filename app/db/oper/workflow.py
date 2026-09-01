@@ -1,10 +1,45 @@
 from typing import Any, List, Mapping, Optional, Tuple
 
 from sqlalchemy import delete as sqlalchemy_delete
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.workflow import Workflow
+from app.db.oper.query import literal_contains
+
+
+def _workflow_conditions(
+    *,
+    state: Optional[str] = None,
+    name: Optional[str] = None,
+    trigger_type: Optional[str] = None,
+) -> list[Any]:
+    """构造工作流列表与计数共享的数据库筛选条件。"""
+    conditions: list[Any] = []
+    if state:
+        conditions.append(Workflow.state == state)
+    if name:
+        conditions.append(literal_contains(Workflow.name, name))
+    if trigger_type == "timer":
+        conditions.append(
+            or_(Workflow.trigger_type == "timer", Workflow.trigger_type.is_(None))
+        )
+    elif trigger_type:
+        conditions.append(Workflow.trigger_type == trigger_type)
+    return conditions
+
+
+async def _async_workflow_rows(session: Any, statement: Any) -> List[Workflow]:
+    """执行工作流列表语句并返回 ORM 行。"""
+    result = await session.execute(statement)
+    return list(result.scalars().all())
+
+
+async def _async_scalar(session: Any, statement: Any) -> int:
+    """执行工作流计数语句并返回整数。"""
+    result = await session.execute(statement)
+    return int(result.scalar_one() or 0)
 
 
 class WorkflowOper(DbOper):
@@ -70,12 +105,46 @@ class WorkflowOper(DbOper):
         """
         return self._execute_sync_query(lambda session: Workflow.list(session))
 
-    async def async_list(self) -> List[Workflow]:
-        """
-        异步获取所有工作流列表
-        """
+    async def async_list(
+        self,
+        *,
+        state: Optional[str] = None,
+        name: Optional[str] = None,
+        trigger_type: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> List[Workflow]:
+        """按筛选条件和可选分页窗口异步获取工作流列表。"""
+        statement = select(Workflow).where(
+            *_workflow_conditions(
+                state=state,
+                name=name,
+                trigger_type=trigger_type,
+            )
+        ).order_by(Workflow.id)
+        if page is not None and count is not None:
+            statement = statement.offset((page - 1) * count).limit(count)
         return await self._execute_async_query(
-            lambda session: Workflow.async_list(session)
+            lambda session: _async_workflow_rows(session, statement)
+        )
+
+    async def async_count(
+        self,
+        *,
+        state: Optional[str] = None,
+        name: Optional[str] = None,
+        trigger_type: Optional[str] = None,
+    ) -> int:
+        """按与列表一致的筛选条件异步统计工作流数量。"""
+        statement = select(func.count()).select_from(Workflow).where(
+            *_workflow_conditions(
+                state=state,
+                name=name,
+                trigger_type=trigger_type,
+            )
+        )
+        return await self._execute_async_query(
+            lambda session: _async_scalar(session, statement)
         )
 
     def list_enabled(self) -> List[Workflow]:

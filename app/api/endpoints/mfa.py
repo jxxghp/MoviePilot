@@ -16,7 +16,15 @@ from app.api.dependencies.auth import (
     get_user_service,
 )
 from app.api.principal import ApiPrincipal
-from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    RAW_RESPONSE_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+    resolve_compatible_pagination,
+)
 from app.application.security.auth import get_configured_auth_service
 from app.application.security.otp import OtpUtils
 from app.application.security.passkey import (
@@ -449,14 +457,23 @@ def passkey_authenticate_finish(
     "/passkey/list",
     summary="获取当前用户的 PassKey 列表",
     response_model=_SchemaResponse[list[_SchemaPasskeyInfo]],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 def passkey_list(
     current_user: Annotated[ApiPrincipal, Depends(get_current_active_user)],
+    response: Response = None,
     service: PasskeyService = Depends(get_passkey_service),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """获取当前用户的所有 PassKey"""
     try:
-        passkeys = service.list_by_user_id(current_user.id)
+        page, count = resolve_compatible_pagination(page, count)
+        passkeys = service.list_by_user_id(current_user.id, page=page, count=count)
+        if response is not None:
+            response.headers[COLLECTION_TOTAL_HEADER] = str(
+                service.count_by_user_id(current_user.id)
+            )
 
         key_list = (
             [

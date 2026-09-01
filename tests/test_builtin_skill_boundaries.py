@@ -135,6 +135,15 @@ def test_retired_moviepilot_cli_skill_is_removed() -> None:
     assert not (SKILLS_ROOT / "moviepilot-update" / "scripts" / "mp-update.py").exists()
 
 
+def test_core_prompt_requires_read_skill_for_skill_documents() -> None:
+    """核心提示必须阻止模型用 read_file 分段读取 SKILL.md。"""
+    core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
+
+    assert "Always use `read_skill`, never `read_file`, to load a skill's SKILL.md" in core_prompt
+    assert "returns up to 512 KiB of the skill body" in core_prompt
+    assert "do not use `read_file` to bypass the limit" in core_prompt
+
+
 def test_every_retired_business_tool_has_a_live_precise_owner() -> None:
     """全部 72 个退出业务工具必须由 API、provider Skill 或统一原生工具承接。"""
     from app.agent.policy.api import API_OPERATION_ROUTES

@@ -179,8 +179,15 @@ class UserRepository(Protocol):
     async def async_has_users(self) -> bool:
         """判断数据库中是否已经存在任意用户。"""
 
-    async def async_list(self) -> list[UserSnapshot]:
-        """返回全部用户。"""
+    async def async_list(
+        self,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> list[UserSnapshot]:
+        """按可选窗口返回用户；两项均省略时返回全部。"""
+
+    async def async_count(self) -> int:
+        """返回用户总数。"""
 
     async def async_get_by_name(self, name: str) -> Optional[UserSnapshot]:
         """按用户名返回用户。"""
@@ -250,9 +257,19 @@ class UserService:
         self._unit_of_work = unit_of_work
         self._configuration = configuration
 
-    async def list(self) -> list[UserSnapshot]:
-        """返回用户列表。"""
-        return await self._repository.async_list()
+    async def list(
+        self,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> list[UserSnapshot]:
+        """按可选数据库窗口返回用户列表。"""
+        if page is None and count is None:
+            return await self._repository.async_list()
+        return await self._repository.async_list(page=page, count=count)
+
+    async def count(self) -> int:
+        """返回用户精确总数。"""
+        return await self._repository.async_count()
 
     async def is_initialized(self) -> bool:
         """判断系统是否已经完成首次用户初始化。"""

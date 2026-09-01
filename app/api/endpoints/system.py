@@ -18,7 +18,7 @@ from app.api.dependencies.auth import (
     get_current_active_user_async,
 )
 from app.api.principal import ApiPrincipal
-from app.api.response import ResponseAPIRouter
+from app.api.response import CompatibleCountParam, CompatiblePageParam, ResponseAPIRouter
 from app.application.backup import DatabaseBackupInProgressError
 from app.application.configuration import (
     get_configured_system_config,
@@ -349,13 +349,11 @@ async def get_user_global_setting(
     return _SchemaResponse(success=True, data=info)
 
 
-@router.get(
-    "/database/backups",
-    summary="查询受管数据库备份",
-    response_model=list[_SchemaDatabaseBackupArtifactData],
-)
+@router.get("/database/backups", summary="查询受管数据库备份", response_model=list[_SchemaDatabaseBackupArtifactData])
 async def list_database_backups(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> list[_SchemaDatabaseBackupArtifactData]:
     """列出当前备份目录中的正式制品，不触发内容校验。"""
     try:
@@ -874,6 +872,8 @@ async def download_logging(
 async def latest_version(
     _: _SchemaTokenPayload = Depends(verify_token),
     runtime: HostRuntime = Depends(get_host_runtime),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ):
     """
     查询Github所有Release版本
@@ -966,7 +966,7 @@ def ruletest(
     summary="获取网络测试目标",
     response_model=_SchemaResponse[list[_SchemaNetTestTarget]],
 )
-async def nettest_targets(_: _SchemaTokenPayload = Depends(verify_token)):
+async def nettest_targets(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None):
     """
     获取网络测试目标。
 

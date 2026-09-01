@@ -8,7 +8,11 @@ from fastapi import Body, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from app.adapters.web.security.access import verify_resource_token, verify_token
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.security.url import SecurityUtils
 from app.chain.search.facade import SearchChain
 from app.domain.context import Context
@@ -340,7 +344,7 @@ async def _stream_search_events(request: Request, event_source: AsyncIterator[di
 
 
 @router.get("/last", summary="查询搜索结果", response_model=List[_SchemaContext])
-async def search_latest(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def search_latest(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询搜索结果
     """
@@ -450,6 +454,8 @@ async def search_by_id(
     sites: Optional[str] = None,
     music_type: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     根据媒体来源和原生 ID 精确搜索站点资源。
@@ -724,6 +730,8 @@ async def search_subtitle_by_id(
     episode: Optional[str] = None,
     sites: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     根据媒体来源和原生 ID 精确搜索站点字幕资源。
