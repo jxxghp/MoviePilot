@@ -17,7 +17,7 @@ from app.agent.policy.api import API_OPERATION_ROUTES, API_OPERATION_SPECS  # no
 from app.agent.policy.mcp import build_api_mcp_input_schema  # noqa: E402
 from app.api.apiv1 import api_router  # noqa: E402
 
-OUTPUT_PATH = PROJECT_ROOT / "app/agent/policy/api_mcp_schema.json"
+OUTPUT_PATH = PROJECT_ROOT / "app/agent/policy/resources/api_mcp_schema.json"
 
 
 def generate_schema() -> dict:

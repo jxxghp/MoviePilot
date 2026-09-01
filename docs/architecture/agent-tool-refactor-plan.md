@@ -296,7 +296,7 @@ action，并使用 MoviePilot 已配置的具体服务实例访问其自身 API�
 - Skill 文档生成器会对数据库说明与 ORM 元数据做双向缺项校验；新增、删除或改名表但未同步说明时生成直接失败，避免文档再次出现漏表或只有字段没有语义的问题
 - 系统设置继续由 `config.system.get/update` 统一承载，不恢复旧配置工具；Skill 不再复制易漂移的 `Settings` / `SystemConfigKey` 全量清单，而是要求先动态发现 `definition`（声明类型、当前形状、敏感性、允许操作、列表匹配字段和持久化位置），再按精确键更新
 - `Settings` 更新执行类型转换并持久化到 `app.env`；`SystemConfigKey` 通过配置服务写入数据库，保留插件 mutation 门禁、敏感值脱敏和配置变更事件
-- `app/agent/policy/api_mcp_schema.json` 明确为 OpenAPI + 固定 operation 合同生成的 MCP `tools/list` 制品，禁止手工维护；所有 operation、模型和字段必须具备具体英文说明，抽象占位文本或中文说明会由测试拒绝
+- `app/agent/policy/resources/api_mcp_schema.json` 明确为 OpenAPI + 固定 operation 合同生成的 MCP `tools/list` 制品，禁止手工维护；所有 operation、模型和字段必须具备具体英文说明，抽象占位文本或中文说明会由测试拒绝
 - API 权限保持双层硬门禁：`moviepilot_api` 按 operation 的 `required_role` 在发起 HTTP 前拒绝非管理员，最终 FastAPI 端点继续用真实当前用户令牌执行 superuser/manage/user 级鉴权；下载器、媒体服务器、数据库外部工具整体为 admin-only
 - 异步边界复核：内置 Skill 脚本经 asyncio subprocess 执行；外部服务/数据库 MCP 工具把同步脚本放入 downloader、mediaserver、db 分域线程池；`moviepilot_api` 使用异步 HTTP，不阻塞 Agent event loop
 - 当前阶段进入最终验证：聚焦 Agent/Skill/MCP 回归、全量锁定测试、80% 固定覆盖率 CI、提交推送与远端终态确认

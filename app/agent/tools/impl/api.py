@@ -19,7 +19,12 @@ from app.schemas.types import NotificationChannel
 @lru_cache(maxsize=1)
 def _load_api_mcp_input_schema() -> dict[str, Any]:
     """读取由业务 OpenAPI 生成并经漂移测试锁定的外部 MCP schema。"""
-    schema_path = Path(__file__).resolve().parents[2] / "policy" / "api_mcp_schema.json"
+    schema_path = (
+        Path(__file__).resolve().parents[2]
+        / "policy"
+        / "resources"
+        / "api_mcp_schema.json"
+    )
     payload = json.loads(schema_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict) or not isinstance(payload.get("oneOf"), list):
         raise RuntimeError("moviepilot_api MCP schema 无效")

@@ -43,14 +43,14 @@ MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。
 
 | MCP 工具 | 用途 | 参数合同来源 |
 | :--- | :--- | :--- |
-| `moviepilot_api` | MoviePilot 产品业务 API：媒体、搜索、订阅、下载、整理、站点、存储、调度、工作流、插件、过滤规则和系统配置 | `skills/moviepilot-api/SKILL.md`；运行时 schema 为 `app/agent/policy/api_mcp_schema.json` |
+| `moviepilot_api` | MoviePilot 产品业务 API：媒体、搜索、订阅、下载、整理、站点、存储、调度、工作流、插件、过滤规则和系统配置 | `skills/moviepilot-api/SKILL.md`；运行时 schema 为 `app/agent/policy/resources/api_mcp_schema.json` |
 | `downloader_operation` | qBittorrent、Transmission、rTorrent 原生任务、队列、文件、限速、标签和会话操作 | `skills/downloader-operation/SKILL.md` 与 `skills/downloader-operation/scripts/mp-downloader.py` 的 `ACTIONS` |
 | `mediaserver_operation` | Emby、Jellyfin、Plex、ZSpace、UGREEN、TrimeMedia、Navidrome 原生媒体库、搜索、播放、扫描和刷新操作 | `skills/mediaserver-operation/SKILL.md` 与 `skills/mediaserver-operation/scripts/mp-mediaserver.py` 的 `ACTIONS` |
 | `database_operation` | MoviePilot 配置数据库表清单、实时 schema、只读 SQL 和明确授权写入 | `skills/database-operation/SKILL.md` 与 `skills/database-operation/scripts/mp-db.py` 的 `ACTIONS` |
 
 这四个工具都要求管理员级 MCP 集成身份；`tools/list` 的可见性不等于绕过业务权限或写操作确认。下载器和媒体服务器工具会在一次调用内自动选择默认/唯一实例；实例不明确时，错误结果会列出可复用的精确实例名。数据库工具不接受任意连接串或凭据，脚本从 MoviePilot 运行时配置读取数据库连接。
 
-`app/agent/policy/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。
+`app/agent/policy/resources/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。
 
 当前完整 FastAPI OpenAPI 包含 375 个 HTTP 操作，其中 203 个稳定业务操作进入
 `moviepilot_api`，使用 201 个固定路由模板：200 条 OpenAPI 路由直接匹配，另有 1 条只允许

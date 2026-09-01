@@ -97,7 +97,7 @@ jobs:
       - name: Download models.dev catalog
         id: models_catalog
         run: |
-          temp_file=$(mktemp app/agent/llm/models.json.XXXXXX)
+          temp_file=$(mktemp app/agent/llm/resources/models.json.XXXXXX)
           trap 'rm -f "$temp_file"' EXIT
           curl --fail --show-error --silent --location --retry 3 \
             --connect-timeout 10 --max-time 120 \
@@ -105,9 +105,9 @@ jobs:
           jq -e 'type == "object"' "$temp_file" >/dev/null
           # Git keeps only a small placeholder; the beta image receives the current catalog.
           chmod 644 "$temp_file"
-          mv "$temp_file" app/agent/llm/models.json
-          echo "digest=sha256:$(sha256sum app/agent/llm/models.json | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "Downloaded models.dev catalog ($(wc -c < app/agent/llm/models.json) bytes)"
+          mv "$temp_file" app/agent/llm/resources/models.json
+          echo "digest=sha256:$(sha256sum app/agent/llm/resources/models.json | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "Downloaded models.dev catalog ($(wc -c < app/agent/llm/resources/models.json) bytes)"
 
       - name: Docker Meta
         id: meta

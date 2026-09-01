@@ -161,7 +161,7 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
 
 def _load_json_schema() -> dict[str, Any]:
     """Load the generated moviepilot_api MCP schema."""
-    path = PROJECT_ROOT / "app/agent/policy/api_mcp_schema.json"
+    path = PROJECT_ROOT / "app/agent/policy/resources/api_mcp_schema.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("The API MCP schema must be a JSON object")
