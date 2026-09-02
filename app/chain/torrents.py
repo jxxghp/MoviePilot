@@ -1,12 +1,11 @@
 import re
 import traceback
-from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Union
 
 from app.application.configuration import get_configured_system_config
 from app.application.rss import RssHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.application.subscription.candidates import CandidateBatch, CandidateIndex
+from app.application.subscription.candidates import CandidateIndex
 from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.media import MediaChain
@@ -422,8 +421,6 @@ class TorrentsChain(ChainBase):
             include_music: bool,
             torrents_cache: Dict[str, List[Context]],
             music_cache: Dict[str, List[Context]],
-            fresh_torrents: Dict[str, List[Context]],
-            fresh_music: Dict[str, List[Context]],
     ) -> str:
         """抓取并写入单个站点的影视、音乐资源缓存。"""
         domain = site_rules.extract_domain(indexer.get("domain"))
@@ -483,9 +480,7 @@ class TorrentsChain(ChainBase):
                 continue
             context = self._build_refresh_context(torrent, stype)
             target_cache = music_cache if torrent.category == MediaType.MUSIC.value else torrents_cache
-            target_fresh = fresh_music if torrent.category == MediaType.MUSIC.value else fresh_torrents
             target_cache.setdefault(domain, []).append(context)
-            target_fresh.setdefault(domain, []).append(context)
             if len(target_cache[domain]) > self.runtime_config.torrent_cache_size:
                 target_cache[domain] = target_cache[domain][-self.runtime_config.torrent_cache_size:]
         return domain
@@ -548,31 +543,14 @@ class TorrentsChain(ChainBase):
             progress_callback: Optional[Callable[..., None]] = None,
             include_music: bool = False,
     ) -> Dict[str, List[Context]]:
-        """兼容旧调用返回完整候选字典，批次语义由 ``refresh_batch`` 提供。"""
-        return self.refresh_batch(
-            stype=stype,
-            sites=sites,
-            progress_callback=progress_callback,
-            include_music=include_music,
-        ).candidates
-
-    def refresh_batch(
-            self,
-            stype: Optional[str] = None,
-            sites: List[int] = None,
-            progress_callback: Optional[Callable[..., None]] = None,
-            include_music: bool = False,
-    ) -> CandidateBatch:
         """
-        刷新站点最新资源并返回完整缓存与本轮新增候选。
+        刷新站点最新资源并返回本轮可匹配的完整候选缓存。
 
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         :param sites: 强制指定站点ID列表，为空则读取设置的订阅站点
         :param progress_callback: 资源刷新进度更新回调
         :param include_music: 是否额外抓取站点的音乐专用浏览入口，服务音乐订阅
         """
-        started_at = datetime.now(timezone.utc)
-
         # 刷新类型
         if not stype:
             stype = self.runtime_config.subscribe_mode
@@ -590,8 +568,6 @@ class TorrentsChain(ChainBase):
             music_cache = self.load_cache(self._music_rss_file) or {}
         self._ensure_context_compatibility(torrents_cache, stype=stype)
         self._ensure_context_compatibility(music_cache, stype=stype)
-        fresh_torrents: Dict[str, List[Context]] = {}
-        fresh_music: Dict[str, List[Context]] = {}
 
         # 缓存过滤掉无效种子（影视与音乐缓存分别处理）
         for _cache in (torrents_cache, music_cache):
@@ -632,8 +608,6 @@ class TorrentsChain(ChainBase):
                 include_music=include_music,
                 torrents_cache=torrents_cache,
                 music_cache=music_cache,
-                fresh_torrents=fresh_torrents,
-                fresh_music=fresh_music,
             ))
 
         # 保存缓存到本地，影视与音乐分别存储
@@ -649,10 +623,6 @@ class TorrentsChain(ChainBase):
             torrents_cache = {k: v for k, v in torrents_cache.items() if k in domains}
         if sites and music_cache:
             music_cache = {k: v for k, v in music_cache.items() if k in domains}
-        if sites and fresh_torrents:
-            fresh_torrents = {k: v for k, v in fresh_torrents.items() if k in domains}
-        if sites and fresh_music:
-            fresh_music = {k: v for k, v in fresh_music.items() if k in domains}
 
         if progress_callback:
             progress_callback(
@@ -661,37 +631,10 @@ class TorrentsChain(ChainBase):
                 data={"total": total_indexers, "finished": total_indexers},
             )
 
-        self._retain_cached_fresh(fresh_torrents, torrents_cache)
-        self._retain_cached_fresh(fresh_music, music_cache)
-        candidates = self._merge_torrent_caches(
+        return self._merge_torrent_caches(
             {domain: list(contexts) for domain, contexts in torrents_cache.items()},
             music_cache,
         )
-        fresh_candidates = self._merge_torrent_caches(
-            {domain: list(contexts) for domain, contexts in fresh_torrents.items()},
-            fresh_music,
-        )
-        return CandidateBatch.create(
-            source=stype,
-            candidates=candidates,
-            fresh_candidates=fresh_candidates,
-            sites=domains,
-            started_at=started_at,
-        )
-
-    @staticmethod
-    def _retain_cached_fresh(
-        fresh_candidates: Dict[str, List[Context]],
-        cached_candidates: Dict[str, List[Context]],
-    ) -> None:
-        """移除因缓存容量裁剪而未进入最终完整缓存的本轮候选。"""
-        for domain, contexts in list(fresh_candidates.items()):
-            cached_ids = {id(context) for context in cached_candidates.get(domain) or []}
-            retained = [context for context in contexts if id(context) in cached_ids]
-            if retained:
-                fresh_candidates[domain] = retained
-            else:
-                fresh_candidates.pop(domain, None)
 
     @staticmethod
     def _ensure_context_compatibility(torrents_cache: Dict[str, List[Context]], stype: Optional[str] = None):

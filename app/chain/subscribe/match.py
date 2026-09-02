@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Literal, Optional
 
 from app.application.configuration import get_configured_system_config
-from app.application.subscription.candidates import CandidateBatch, CandidateIndex
+from app.application.subscription.candidates import CandidateIndex
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
@@ -317,17 +317,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             progress_callback(value=0, text="正在预处理订阅资源 ...")
         return self._run_match(
             torrents=torrents,
-            progress_callback=progress_callback,
-        )
-
-    def match_batch(
-        self,
-        batch: CandidateBatch,
-        progress_callback: Optional[Callable[..., None]] = None,
-    ) -> None:
-        """消费包含完整缓存与本轮增量边界的订阅候选批次。"""
-        return self._run_match(
-            torrents=batch.candidates,
             progress_callback=progress_callback,
         )
 

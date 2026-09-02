@@ -100,7 +100,6 @@ if TYPE_CHECKING:
         get_subscribed_sites: Callable[..., Any]
         has_music_subscribe: Callable[..., Any]
         match: Callable[..., Any]
-        match_batch: Callable[..., Any]
         media_exists: Callable[..., Any]
         media_files: Callable[..., Any]
         obtain_images: Callable[..., Any]

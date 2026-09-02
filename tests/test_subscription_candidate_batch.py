@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app.application.subscription.candidates import CandidateBatch, CandidateIndex
+from app.application.subscription.candidates import CandidateIndex
 from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.subscription.facts import FreshFactLease
 from app.chain.torrents import TorrentsChain
@@ -68,8 +68,13 @@ def _subscribe(**overrides) -> SubscriptionSnapshot:
     return SubscriptionSnapshot(**values)
 
 
-def test_refresh_batch_distinguishes_complete_cache_from_fresh_delta():
-    """刷新批次必须保留完整缓存，同时只把本轮新增资源放入 fresh 集合。"""
+def _candidate_count(groups: dict[str, list[Context]]) -> int:
+    """统计分站点候选总数。"""
+    return sum(len(contexts) for contexts in groups.values())
+
+
+def test_refresh_returns_complete_cache_with_new_candidates():
+    """刷新结果必须包含既有缓存和本轮新增资源的完整候选。"""
     chain = TorrentsChain()
     existing = _context("既有剧集 S01E01", media_id="100")
     duplicate = TorrentInfo(
@@ -115,18 +120,13 @@ def test_refresh_batch_distinguishes_complete_cache_from_fresh_delta():
             ),
         ),
     ):
-        batch = chain.refresh_batch(stype="rss", sites=[1])
+        candidates = chain.refresh(stype="rss", sites=[1])
 
-    assert isinstance(batch, CandidateBatch)
-    assert batch.source == "rss"
-    assert batch.finished_at is not None
-    assert [item.torrent_info.title for item in batch.candidates["example.com"]] == [
+    assert [item.torrent_info.title for item in candidates["example.com"]] == [
         existing.torrent_info.title,
         fresh.title,
     ]
-    assert [item.torrent_info.title for item in batch.fresh_candidates["example.com"]] == [fresh.title]
-    assert CandidateBatch.count(batch.candidates) == 2
-    assert CandidateBatch.count(batch.fresh_candidates) == 1
+    assert _candidate_count(candidates) == 2
 
 
 def test_candidate_index_routes_all_canonical_fallback_classes_without_loss():
@@ -214,7 +214,7 @@ def test_candidate_index_target_scale_avoids_subscription_candidate_product():
     for subscribe in subscribes:
         groups = candidate_index.route_for_match(subscribe)
         examined += candidate_index.last_examined_count
-        routed += CandidateBatch.count(groups)
+        routed += _candidate_count(groups)
 
     lease = FreshFactLease()
     fact_loads = []
@@ -231,9 +231,9 @@ def test_candidate_index_target_scale_avoids_subscription_candidate_product():
         )
 
     assert len(candidates) == site_count
-    assert CandidateBatch.count(candidates) == 1000
+    assert _candidate_count(candidates) == 1000
     assert examined == routed == 2000
-    assert examined < subscription_count * CandidateBatch.count(candidates) // 50
+    assert examined < subscription_count * _candidate_count(candidates) // 50
     assert len(fact_loads) == media_count
     assert lease.loads == media_count
     assert lease.hits == subscription_count - media_count
