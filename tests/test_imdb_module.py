@@ -169,6 +169,39 @@ def test_imdb_graphql_error_is_not_cached() -> None:
     assert api._request.post_json.call_count == 2
 
 
+def test_imdb_title_parser_accepts_null_optional_objects() -> None:
+    """GraphQL 可选对象为 null 时应保留可用详情并归一为空值。"""
+    detail = ImdbApi._parse_title(
+        {
+            "titles": [
+                {
+                    "id": "tt30836097",
+                    "titleType": {"id": "tvSeries"},
+                    "titleText": {"text": "19th Floor"},
+                    "originalTitleText": None,
+                    "releaseYear": None,
+                    "runtime": None,
+                    "titleGenres": None,
+                    "countriesOfOrigin": None,
+                    "spokenLanguages": None,
+                    "plot": None,
+                }
+            ]
+        }
+    )
+
+    assert detail is not None
+    assert detail.id == "tt30836097"
+    assert detail.primary_title == "19th Floor"
+    assert detail.original_title is None
+    assert detail.start_year is None
+    assert detail.runtime_seconds is None
+    assert detail.genres == []
+    assert detail.origin_countries == []
+    assert detail.spoken_languages == []
+    assert detail.plot is None
+
+
 def test_imdb_clear_cache_registers_async_cleanup_in_running_loop() -> None:
     """同步清缓存入口在异步宿主中应登记任务，并保留原同步调用约定。"""
 
