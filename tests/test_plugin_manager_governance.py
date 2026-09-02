@@ -56,6 +56,7 @@ def test_plugin_manager_only_consumes_injected_runtime_factory() -> None:
         "PluginRegistry",
         "PluginSyncService",
         "PluginToolCatalog",
+        "PluginVersionBinding",
     }
 
     assert calls.count("_plugin_runtime_factory") == 1
@@ -183,6 +184,7 @@ def test_plugin_runtime_is_the_only_owner_aggregate() -> None:
         "registry",
         "sync",
         "system",
+        "version_binding",
     } <= fields
     assert len(_parse(package_root).body) == 1
 

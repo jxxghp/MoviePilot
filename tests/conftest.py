@@ -206,6 +206,7 @@ def configure_plugin_system_services():
     from app.application.module import configure_module_runtime
     from app.application.plugin.runtime import configure_plugin_runtime
     from app.runtime.cache import AsyncFileCache, FileCache
+    from app.runtime.compat.readiness import plugin_multi_version_blockers
     from app.runtime.events import EventManager
     from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
     from app.runtime.extensions.module.manager import ModuleManager
@@ -251,6 +252,7 @@ def configure_plugin_system_services():
                     plugin_manager_module.get_runtime_setting('DEV')
                 ),
                 logger=plugin_manager_module.logger,
+                multi_version_blockers=plugin_multi_version_blockers,
             ),
             tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
         )

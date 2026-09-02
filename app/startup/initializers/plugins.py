@@ -91,6 +91,7 @@ from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
 )
+from app.runtime.compat.readiness import plugin_multi_version_blockers
 from app.runtime.compat.resources import scan_plugin_resource_imports
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.database import (
@@ -189,6 +190,7 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
             remote_entry=host.get_plugin_remote_entry,
             development=lambda: bool(get_runtime_setting('DEV')),
             logger=logger,
+            multi_version_blockers=plugin_multi_version_blockers,
         ),
         tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
     )

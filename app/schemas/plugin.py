@@ -63,6 +63,56 @@ class PluginInstance(BaseModel):
     plugin_desc: Optional[str] = Field(default=None, description="实例展示描述")
     plugin_icon: Optional[str] = Field(default=None, description="实例展示图标")
     mode: Literal["virtual"] = Field(default="virtual", description="实例实现模式")
+    plugin_version: Optional[str] = Field(
+        default=None,
+        description="该实例已生效的插件版本，None 表示尚未成功启动过任何版本",
+    )
+    follow_current_version: bool = Field(
+        default=True,
+        description="是否跟随插件当前版本；为 False 时固定使用 plugin_version 绑定的版本",
+    )
+
+
+class PluginInstalledVersionInfo(BaseModel):  # type: ignore[misc]
+    """插件某个已装版本的落盘信息。"""
+
+    version: str = Field(description="版本号")
+    directory: str = Field(description="版本源码目录名")
+    installed_at: Optional[str] = Field(default=None, description="安装时间，ISO 格式")
+    source: Optional[str] = Field(default=None, description="版本来源，如 market、local、migrated")
+    is_current: bool = Field(description="是否为版本元信息登记的当前版本")
+
+
+class PluginInstanceVersionBinding(BaseModel):  # type: ignore[misc]
+    """单个实例的版本绑定与运行状态。"""
+
+    instance_id: str = Field(description="实例 ID")
+    plugin_version: Optional[str] = Field(default=None, description="该实例已生效的插件版本")
+    follow_current_version: bool = Field(description="是否跟随插件当前版本")
+    running: bool = Field(description="该实例当前是否运行中")
+
+
+class PluginVersionOverview(BaseModel):  # type: ignore[misc]
+    """插件已装版本总览与各实例的版本绑定。"""
+
+    plugin_id: str = Field(description="插件 ID")
+    current_version: Optional[str] = Field(default=None, description="版本元信息登记的当前版本")
+    installed_versions: List[PluginInstalledVersionInfo] = Field(
+        default_factory=list, description="已装版本列表，按版本号升序排列"
+    )
+    instances: List[PluginInstanceVersionBinding] = Field(
+        default_factory=list, description="引用该插件源码的各实例版本绑定"
+    )
+
+
+class PluginInstanceVersionUpdateRequest(BaseModel):  # type: ignore[misc]
+    """设置实例版本绑定的请求参数。"""
+
+    follow_current_version: bool = Field(description="是否跟随插件当前版本")
+    plugin_version: Optional[str] = Field(
+        default=None,
+        description="不跟随当前版本时必填，且必须是已安装版本",
+    )
 
 
 class Plugin(BaseModel):

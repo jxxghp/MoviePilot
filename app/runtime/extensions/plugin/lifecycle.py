@@ -61,7 +61,10 @@ class PluginLifecycle:
         *,
         classes: dict[str, Any],
         running: dict[str, Any],
-        load_plugins: Callable[[Optional[str], list[str], Callable[[Any], bool]], list[Any]],
+        load_plugins: Callable[
+            [Optional[str], list[str], Callable[[Any], bool], Optional[str]],
+            list[Any],
+        ],
         installed_plugins: Callable[[], list[str]],
         plugin_config: Callable[[str], dict],
         auth_checker: Callable[[Any], bool],
@@ -75,6 +78,7 @@ class PluginLifecycle:
         event_sender: Callable[..., Any],
         refresh_classification: Callable[[str, Any], None] | None = None,
         remove_classification: Callable[[str], None] | None = None,
+        record_instance_version: Callable[[str, str], None] = lambda _id, _version: None,
     ) -> None:
         """保存注册表、加载器、数据库和事件端口。"""
         self._classes = classes
@@ -97,6 +101,7 @@ class PluginLifecycle:
         self._remove_classification = remove_classification or (
             lambda _plugin_id: None
         )
+        self._record_instance_version = record_instance_version
         self._lifecycle_lock = threading.RLock()
         self._quiesced_hooks: dict[str, set[str]] = {}
 
@@ -104,8 +109,15 @@ class PluginLifecycle:
     def start(
         self,
         plugin_id: Optional[str] = None,
+        *,
+        version: Optional[str] = None,
     ) -> dict[str, PluginRuntimeStatus]:
-        """加载并初始化插件，返回每个目标的明确运行结果。"""
+        """加载并初始化插件，返回每个目标的明确运行结果。
+
+        :param plugin_id: 插件ID，为空加载所有插件
+        :param version: 虚拟实例本次显式指定加载的源码版本；仅在按单个实例 ID
+            调用时生效，用于版本切换失败后以某个具体版本重试
+        """
         installed_plugins = self._installed_plugins()
         results: dict[str, PluginRuntimeStatus] = {}
         if plugin_id:
@@ -115,7 +127,7 @@ class PluginLifecycle:
             """判断模块是否具备宿主插件最小生命周期钩子。"""
             return hasattr(module, "init_plugin") and hasattr(module, "plugin_name")
 
-        plugins = self._load_plugins(plugin_id, installed_plugins, check_module)
+        plugins = self._load_plugins(plugin_id, installed_plugins, check_module, version)
         plugins.sort(key=lambda item: getattr(item, "plugin_order", 0))
         for plugin in plugins:
             current_id = plugin.__name__
@@ -145,6 +157,9 @@ class PluginLifecycle:
                 self._logger.info(
                     f"加载插件：{current_id} 版本：{instance.plugin_version}"
                 )
+                loaded_version = getattr(instance, "plugin_version", None)
+                if loaded_version:
+                    self._record_instance_version(current_id, loaded_version)
                 if enabled:
                     self._enable_events(plugin)
                 else:

@@ -209,6 +209,8 @@ OPERATION_DESCRIPTIONS = {
     "plugin.folder.create": "Create one named plugin folder.",
     "plugin.folder.delete": "Delete one named plugin folder without uninstalling its plugins.",
     "plugin.folder.plugins.update": "Replace the ordered plugin IDs assigned to one named plugin folder.",
+    "plugin.versions.get": "List one plugin's installed source versions and each instance's version binding.",
+    "plugin.versions.set_instance": "Set one plugin instance's version binding and restart it to apply the change.",
 }
 
 
@@ -292,6 +294,7 @@ FIELD_DESCRIPTIONS = {
     "files": "Serialized list of files recorded by the history item.",
     "filter": "Named filter rule or rule expression applied to this site or subscription.",
     "filter_groups": "Ordered filter-rule group names applied to the subscription.",
+    "follow_current_version": "Follow the plugin's currently installed version instead of a pinned one.",
     "force": "Force a marketplace refresh or plugin installation when true.",
     "freedate": "Torrent freeleech expiration timestamp reported by the site.",
     "freedate_diff": "Seconds remaining until the torrent freeleech period ends.",
@@ -310,6 +313,7 @@ FIELD_DESCRIPTIONS = {
     "include_group_refs": "Include custom rules referenced only through rule groups.",
     "include_usage": "Include the subscriptions or defaults that reference each rule group.",
     "include_values": "Return complete setting values instead of discovery summaries.",
+    "instance_id": "Exact plugin instance ID returned by plugin.versions.get.",
     "is_active": "Whether the configured site is enabled.",
     "jobid": "Exact scheduler job ID returned by scheduler.list.",
     "key": "Optional exact plugin data key used to narrow the returned preview.",
@@ -365,6 +369,7 @@ FIELD_DESCRIPTIONS = {
     "person_id": "Source-native person ID returned by person search.",
     "pickcode": "115 storage pickcode associated with the item.",
     "plugin_id": "Exact installed or marketplace plugin ID.",
+    "plugin_version": "Exact installed plugin version; required only when not following the current version.",
     "poster": "Poster image URL stored with the media or subscription.",
     "preview": "Validate and preview manual-transfer output without committing file changes.",
     "pri": "Site search priority; lower or higher ordering follows the existing site API convention.",
@@ -567,6 +572,7 @@ MODEL_DESCRIPTIONS = {
     "MediaSource": "Canonical metadata source identifier paired with a source-native media ID.",
     "MediaType": "MoviePilot media type.",
     "MusicRecognizeRequest": "Exact source-native recording or album identity to resolve into canonical music metadata.",
+    "PluginInstanceVersionUpdateRequest": "One plugin instance's version-binding update request.",
     "PluginSourceChangeRequest": "Explicit online-source change request guarded by the current identity revision.",
     "PluginSourceInstallRequest": "Explicit online-source installation request for an unbound plugin.",
     "Site-Input": "Complete site configuration and runtime state.",

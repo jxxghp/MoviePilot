@@ -212,6 +212,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_sync = self._plugin_runtime.sync
         self._plugin_clone = self._plugin_runtime.clone
         self._plugin_classification = self._plugin_runtime.classification
+        self._plugin_version_binding = self._plugin_runtime.version_binding
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
             "plugins",
@@ -1239,6 +1240,40 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     description=description,
                     version=version,
                     icon=icon,
+                )
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False, str(error)
+
+    def get_plugin_version_overview(self, plugin_id: str) -> Dict[str, Any]:
+        """
+        查询插件已装版本列表与各实例的版本绑定
+        :param plugin_id: 插件ID
+        :return: 含已装版本列表与各实例绑定信息的字典
+        :raise LookupError: 插件不存在
+        """
+        return self._plugin_version_binding.overview(plugin_id)
+
+    def set_plugin_instance_version(
+        self,
+        instance_id: str,
+        *,
+        follow_current_version: bool,
+        plugin_version: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """
+        设置虚拟插件实例的版本绑定，并完成一次停止再启动
+        :param instance_id: 实例ID
+        :param follow_current_version: 是否跟随插件当前版本
+        :param plugin_version: 不跟随当前版本时的目标版本号
+        :return: (是否成功, 成功时为实例ID／失败时为可读原因)
+        """
+        try:
+            with self.mutation(f"切换插件实例 {instance_id} 版本"):
+                return self._plugin_version_binding.set_instance_version(
+                    instance_id,
+                    follow_current_version=follow_current_version,
+                    plugin_version=plugin_version,
                 )
         except PluginMutationRejectedError as error:
             logger.warning(str(error))

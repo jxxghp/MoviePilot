@@ -53,7 +53,8 @@ allowed-api-operations: >-
   plugin.market.sync_wiki plugin.runtime.status plugin.history plugin.releases plugin.ratings
   plugin.rating plugin.rating.submit plugin.statistics plugin.reset plugin.clone config.user.get
   config.public.get system.usage.statistics plugin.folders.get plugin.folders.update
-  plugin.folder.create plugin.folder.delete plugin.folder.plugins.update
+  plugin.folder.create plugin.folder.delete plugin.folder.plugins.update plugin.versions.get
+  plugin.versions.set_instance
 ---
 
 # MoviePilot API
@@ -816,6 +817,20 @@ Purpose: Uninstall one plugin and remove it from the installed set.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
+
+### `plugin.versions.get`
+`GET /api/v1/plugin/versions/{plugin_id}`; policy effect: `safe_read`.
+Purpose: List one plugin's installed source versions and each instance's version binding.
+- `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: none
+
+### `plugin.versions.set_instance`
+`PUT /api/v1/plugin/versions/{plugin_id}/{instance_id}`; policy effect: `external_side_effect`.
+Purpose: Set one plugin instance's version binding and restart it to apply the change.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.versions.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: `follow_current_version*` (boolean): Follow the plugin's currently installed version instead of a pinned one.; `plugin_version` (string|null): Exact installed plugin version; required only when not following the current version.
 
 ### `recommendation.list`
 `GET /api/v1/recommend/agent`; policy effect: `safe_read`.

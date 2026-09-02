@@ -1,0 +1,357 @@
+"""插件实例版本绑定字段、加载期版本解析与已生效版本登记测试。"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
+from app.runtime.extensions.plugin.loader import PluginLoader
+from app.runtime.extensions.plugin.storage import PluginInstanceStore, PluginStorage
+from app.runtime.extensions.plugin.version import (
+    plugin_version_dir_name,
+    write_plugin_versions_manifest,
+)
+from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
+from app.schemas.types import SystemConfigKey
+
+
+def _logger() -> SimpleNamespace:
+    """提供加载器与生命周期测试所需的最小日志端口。"""
+    return SimpleNamespace(
+        debug=lambda *_args: None,
+        info=lambda *_args: None,
+        warning=lambda *_args: None,
+        error=lambda *_args: None,
+    )
+
+
+def _make_loader(plugins_root: Path) -> PluginLoader:
+    """构造只需最小日志端口的加载器实例。"""
+    return PluginLoader(
+        plugins_root=plugins_root,
+        import_preparer=lambda **_kwargs: None,
+        import_scanner=lambda **_kwargs: None,
+        log=_logger(),
+    )
+
+
+def _write_version(
+    plugins_root: Path,
+    plugin_id: str,
+    version: str,
+    *,
+    class_name: str = "Versioned",
+    marker: str,
+) -> Path:
+    """写入一个版本目录的最小可加载源码，marker 用于区分不同版本被加载到。"""
+    plugin_root = plugins_root / plugin_id
+    version_dir = plugin_root / plugin_version_dir_name(version)
+    version_dir.mkdir(parents=True)
+    (version_dir / "__init__.py").write_text(
+        f"class {class_name}:\n"
+        f"    plugin_version = {version!r}\n"
+        f"    marker = {marker!r}\n"
+        "    def init_plugin(self, config=None):\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+    return version_dir
+
+
+def _write_manifest(plugin_root: Path, entries: list[tuple[str, str]], current: str | None) -> None:
+    """写入版本元信息文件。"""
+    versions = [
+        {
+            "version": version,
+            "directory": directory,
+            "installed_at": "2026-01-01T00:00:00+00:00",
+            "source": "test",
+        }
+        for version, directory in entries
+    ]
+    write_plugin_versions_manifest(plugin_root, versions, current)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_plugin_modules():
+    """回收测试期间手动导入的临时插件模块，避免污染其它用例的模块缓存。"""
+    before = set(sys.modules)
+    yield
+    for name in set(sys.modules) - before:
+        if name.startswith("app.plugins."):
+            sys.modules.pop(name, None)
+
+
+# 一、PluginInstance 版本绑定字段
+
+
+def test_plugin_instance_defaults_to_no_effective_version_and_follows_current():
+    """新建实例默认未生效任何版本且跟随插件当前版本。"""
+    instance = PluginInstance(instance_id="DemoWork", source_plugin_id="Demo")
+
+    assert instance.plugin_version is None
+    assert instance.follow_current_version is True
+
+
+def test_instance_store_tolerates_legacy_payload_missing_version_fields():
+    """存量数据缺少版本绑定字段时按默认值容错反序列化，不丢弃该实例。"""
+    values = {
+        SystemConfigKey.PluginInstances: {
+            "DemoWork": {
+                "instance_id": "DemoWork",
+                "source_plugin_id": "Demo",
+                "plugin_name": "工作实例",
+            }
+        }
+    }
+    storage = PluginStorage(read=values.get, write=lambda key, value: values.__setitem__(key, value))
+    store = PluginInstanceStore(storage=lambda: storage)
+
+    instance = store.get("DemoWork")
+
+    assert instance is not None
+    assert instance.plugin_version is None
+    assert instance.follow_current_version is True
+
+
+# 二、PluginInstanceStore 已生效版本登记
+
+
+def test_record_effective_version_writes_when_changed():
+    """成功启动的版本与已登记值不同时才写入持久化。"""
+    values: dict = {}
+    storage = PluginStorage(read=values.get, write=lambda key, value: values.__setitem__(key, value))
+    store = PluginInstanceStore(storage=lambda: storage)
+    store.save(PluginInstance(instance_id="DemoWork", source_plugin_id="Demo"))
+
+    store.record_effective_version("DemoWork", "1.2.0")
+
+    assert store.get("DemoWork").plugin_version == "1.2.0"
+
+
+def test_record_effective_version_skips_write_when_unchanged():
+    """已生效版本与本次值相同时不产生新的持久化写入。"""
+    writes: list = []
+    values: dict = {}
+
+    def _write(key, value):
+        writes.append((key, value))
+        values[key] = value
+
+    storage = PluginStorage(read=values.get, write=_write)
+    store = PluginInstanceStore(storage=lambda: storage)
+    store.save(PluginInstance(instance_id="DemoWork", source_plugin_id="Demo", plugin_version="1.2.0"))
+    writes.clear()
+
+    store.record_effective_version("DemoWork", "1.2.0")
+
+    assert writes == []
+
+
+def test_record_effective_version_ignores_ids_without_instance_descriptor():
+    """物理插件没有实例描述时静默跳过，不因找不到实例而报错。"""
+    values: dict = {}
+    storage = PluginStorage(read=values.get, write=lambda key, value: values.__setitem__(key, value))
+    store = PluginInstanceStore(storage=lambda: storage)
+
+    store.record_effective_version("PhysicalPlugin", "1.0.0")
+
+    assert store.all() == {}
+
+
+# 三、加载期版本解析与失败回退
+
+
+def test_load_instance_follows_manifest_current_version_by_default(tmp_path: Path):
+    """跟随当前版本时，加载器按版本元信息登记的当前版本取源码。"""
+    _write_version(tmp_path, "versioned", "1.0.0", marker="old")
+    _write_version(tmp_path, "versioned", "2.0.0", marker="new")
+    _write_manifest(
+        tmp_path / "versioned",
+        [("1.0.0", "v1_0_0"), ("2.0.0", "v2_0_0")],
+        current="2.0.0",
+    )
+
+    instance = PluginInstance(instance_id="VersionedWork", source_plugin_id="versioned")
+    plugins = _make_loader(tmp_path).load_instance(
+        instance, lambda candidate: hasattr(candidate, "init_plugin")
+    )
+
+    assert plugins[0].plugin_version == "2.0.0"
+    assert plugins[0].marker == "new"
+
+
+def test_load_instance_uses_bound_version_when_not_following_current(tmp_path: Path):
+    """不跟随当前版本时，加载器固定使用绑定版本的源码，而不是清单当前版本。"""
+    _write_version(tmp_path, "versioned", "1.0.0", marker="old")
+    _write_version(tmp_path, "versioned", "2.0.0", marker="new")
+    _write_manifest(
+        tmp_path / "versioned",
+        [("1.0.0", "v1_0_0"), ("2.0.0", "v2_0_0")],
+        current="2.0.0",
+    )
+
+    instance = PluginInstance(
+        instance_id="VersionedWork",
+        source_plugin_id="versioned",
+        follow_current_version=False,
+        plugin_version="1.0.0",
+    )
+    plugins = _make_loader(tmp_path).load_instance(
+        instance, lambda candidate: hasattr(candidate, "init_plugin")
+    )
+
+    assert plugins[0].plugin_version == "1.0.0"
+    assert plugins[0].marker == "old"
+
+
+def test_load_instance_falls_back_to_current_when_bound_directory_missing(tmp_path: Path):
+    """绑定版本目录已不存在时回落当前版本，而不是直接判定加载失败。"""
+    _write_version(tmp_path, "versioned", "2.0.0", marker="new")
+    _write_manifest(tmp_path / "versioned", [("2.0.0", "v2_0_0")], current="2.0.0")
+
+    instance = PluginInstance(
+        instance_id="VersionedWork",
+        source_plugin_id="versioned",
+        follow_current_version=False,
+        plugin_version="9.9.9",
+    )
+    warnings: list[str] = []
+    loader = _make_loader(tmp_path)
+    loader._logger.warning = warnings.append
+
+    plugins = loader.load_instance(instance, lambda candidate: hasattr(candidate, "init_plugin"))
+
+    assert plugins[0].plugin_version == "2.0.0"
+    assert warnings and "9.9.9" in warnings[0]
+
+
+def test_load_instance_explicit_version_overrides_binding(tmp_path: Path):
+    """显式指定版本时优先于实例自身绑定，供失败回退重试指定一个具体版本。"""
+    _write_version(tmp_path, "versioned", "1.0.0", marker="old")
+    _write_version(tmp_path, "versioned", "2.0.0", marker="new")
+    _write_manifest(
+        tmp_path / "versioned",
+        [("1.0.0", "v1_0_0"), ("2.0.0", "v2_0_0")],
+        current="2.0.0",
+    )
+
+    instance = PluginInstance(instance_id="VersionedWork", source_plugin_id="versioned")
+    plugins = _make_loader(tmp_path).load_instance(
+        instance,
+        lambda candidate: hasattr(candidate, "init_plugin"),
+        version="1.0.0",
+    )
+
+    assert plugins[0].plugin_version == "1.0.0"
+    assert plugins[0].marker == "old"
+
+
+# 四、PluginLifecycle 启动成功后登记已生效版本
+
+
+def _build_lifecycle(*, load_plugins, record_instance_version) -> PluginLifecycle:
+    """构造只暴露版本登记端口的最小生命周期实例。"""
+    from app.runtime.extensions.plugin.database import PluginDatabase
+
+    return PluginLifecycle(
+        classes={},
+        running={},
+        load_plugins=load_plugins,
+        installed_plugins=lambda: ["VersionedWork"],
+        plugin_config=lambda _plugin_id: {},
+        auth_checker=lambda _plugin: True,
+        clear_modules=lambda _plugin_id: None,
+        clear_tools=lambda: None,
+        enable_events=lambda _plugin: None,
+        disable_events=lambda _plugin: None,
+        runtime_status_writer=lambda _plugin_id, _status: None,
+        database=lambda: PluginDatabase(),
+        log=_logger(),
+        event_sender=lambda *_args, **_kwargs: None,
+        record_instance_version=record_instance_version,
+    )
+
+
+def _versioned_plugin_class(version: str):
+    """构造声明指定版本号的最小插件类。"""
+    return type(
+        "VersionedWork",
+        (),
+        {
+            "plugin_name": "版本化实例",
+            "plugin_version": version,
+            "init_plugin": lambda self, _config=None: None,
+            "get_state": staticmethod(lambda: True),
+        },
+    )
+
+
+def test_lifecycle_records_loaded_class_version_on_successful_start():
+    """启动成功后把已加载类声明的版本登记为该实例的已生效版本。"""
+    recorded: list[tuple[str, str]] = []
+    lifecycle = _build_lifecycle(
+        load_plugins=lambda _pid, _installed, _check, _version=None: [
+            _versioned_plugin_class("2.0.0")
+        ],
+        record_instance_version=lambda instance_id, version: recorded.append(
+            (instance_id, version)
+        ),
+    )
+
+    results = lifecycle.start("VersionedWork")
+
+    assert results["VersionedWork"] == PluginRuntimeStatus.ACTIVE
+    assert recorded == [("VersionedWork", "2.0.0")]
+
+
+def test_lifecycle_does_not_record_version_when_start_fails():
+    """启动失败时不登记任何版本，保持已生效版本原值不变。"""
+    recorded: list[tuple[str, str]] = []
+
+    def _raising_init(_self, _config=None):
+        raise RuntimeError("boom")
+
+    broken_class = type(
+        "VersionedWork",
+        (),
+        {
+            "plugin_name": "版本化实例",
+            "plugin_version": "2.0.0",
+            "init_plugin": _raising_init,
+            "get_state": staticmethod(lambda: True),
+        },
+    )
+    lifecycle = _build_lifecycle(
+        load_plugins=lambda _pid, _installed, _check, _version=None: [broken_class],
+        record_instance_version=lambda instance_id, version: recorded.append(
+            (instance_id, version)
+        ),
+    )
+
+    results = lifecycle.start("VersionedWork")
+
+    assert results["VersionedWork"] == PluginRuntimeStatus.LOAD_FAILED
+    assert recorded == []
+
+
+def test_lifecycle_start_threads_explicit_version_to_load_plugins():
+    """显式 version 参数会原样传给 load_plugins，供版本切换重试使用。"""
+    seen_versions: list = []
+
+    def _load_plugins(_pid, _installed, _check, version=None):
+        seen_versions.append(version)
+        return [_versioned_plugin_class(version or "2.0.0")]
+
+    lifecycle = _build_lifecycle(
+        load_plugins=_load_plugins,
+        record_instance_version=lambda *_args: None,
+    )
+
+    lifecycle.start("VersionedWork", version="1.0.0")
+
+    assert seen_versions == ["1.0.0"]

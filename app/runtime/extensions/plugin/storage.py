@@ -199,6 +199,19 @@ class PluginInstanceStore:
         self._write(instances)
         return True
 
+    def record_effective_version(self, instance_id: str, version: str) -> None:
+        """把实例本次成功启动所用的版本登记为其已生效版本。
+
+        物理插件没有实例描述，读取为空时静默跳过；值未变化时不产生写入，避免
+        每次成功启动都触发一次持久化写入。
+
+        :param instance_id: 实例 ID，也可能是不持有实例描述的物理插件 ID
+        :param version: 本次成功加载的源码所声明的版本号
+        """
+        instance = self.get(instance_id)
+        if instance is not None and instance.plugin_version != version:
+            self.save(instance.model_copy(update={"plugin_version": version}))
+
     def for_source(self, source_plugin_id: str) -> list[PluginInstance]:
         """按持久化顺序返回引用同一源码插件的全部实例。"""
         return [

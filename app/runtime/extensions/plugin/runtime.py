@@ -12,6 +12,7 @@ from app.foundation.version import compare_version
 from app.runtime.events import eventmanager
 from app.runtime.extensions.plugin.access import PluginAccessPolicy
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
+from app.runtime.extensions.plugin.binding import PluginVersionBinding
 from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
 from app.runtime.extensions.plugin.classification import PluginClassificationRegistry
 from app.runtime.extensions.plugin.clone import PluginCloneService
@@ -81,6 +82,7 @@ class PluginRuntimeHost(Protocol):
 PluginCatalogFactory = Callable[[Callable[..., Any]], Any]
 PluginImportService = Callable[..., None]
 PluginRemoteEntryBuilder = Callable[[str, str], str]
+PluginMultiVersionBlockers = Callable[[str, list[Path]], list[str]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +100,7 @@ class PluginRuntimeEnvironment:
     remote_entry: PluginRemoteEntryBuilder
     development: Callable[[], bool]
     logger: Any
+    multi_version_blockers: PluginMultiVersionBlockers
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +123,7 @@ class PluginRuntime:
     metadata: PluginMetadataMapper
     sync: PluginSyncService
     clone: PluginCloneService
+    version_binding: PluginVersionBinding
     projection: PluginProjection
     classification: PluginClassificationRegistry
     recent_local_sync: dict[str, float]
@@ -168,12 +172,18 @@ def build_plugin_runtime(
         plugin_id: Optional[str],
         installed_plugins: list[str],
         validator: Callable[[Any], bool],
+        version: Optional[str] = None,
     ) -> list[Any]:
-        """加载物理插件或虚拟实例，并保持持久化实例顺序。"""
+        """加载物理插件或虚拟实例，并保持持久化实例顺序。
+
+        ``version`` 仅在按单个实例 ID 加载时生效，用于版本切换失败后以某个
+        具体版本重试；批量加载全部安装插件与实例时忽略该参数，各实例按自身
+        绑定解析期望版本。
+        """
         if plugin_id:
             instance = instances.get(plugin_id)
             if instance:
-                return loader.load_instance(instance, validator)
+                return loader.load_instance(instance, validator, version=version)
             return loader.load(plugin_id, installed_plugins, validator)
         plugins = loader.load(None, installed_plugins, validator)
         for instance in instances.all().values():
@@ -199,6 +209,7 @@ def build_plugin_runtime(
         event_sender=eventmanager.send_event,
         refresh_classification=refresh_classification,
         remove_classification=classification.remove,
+        record_instance_version=instances.record_effective_version,
     )
     metadata = PluginMetadataMapper(
         plugin_instance=registry.instance,
@@ -313,6 +324,18 @@ def build_plugin_runtime(
         remove_plugin=host.remove_plugin,
         log=environment.logger,
     )
+    version_binding = PluginVersionBinding(
+        plugins_root=environment.plugins_root,
+        plugin_exists=lambda plugin_id: registry.plugin_class(plugin_id) is not None,
+        get_instance=instances.get,
+        instances_for_source=instances.for_source,
+        save_instance=instances.save,
+        running=lambda: registry.running,
+        start=lambda instance_id, version: lifecycle.start(instance_id, version=version),
+        stop=lifecycle.stop,
+        multi_version_blockers=environment.multi_version_blockers,
+        log=environment.logger,
+    )
     projection = PluginProjection(
         registry.running,
         environment.logger,
@@ -338,6 +361,7 @@ def build_plugin_runtime(
         metadata=metadata,
         sync=sync,
         clone=clone,
+        version_binding=version_binding,
         projection=projection,
         classification=classification,
         recent_local_sync=recent_local_sync,
