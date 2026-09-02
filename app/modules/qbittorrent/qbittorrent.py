@@ -15,6 +15,10 @@ from app.domain import torrent as torrent_rules
 from app.foundation import url as url_tools
 
 
+_TORRENT_TAG_CLEANUP_RETRY_TIMES = 10
+_TORRENT_TAG_CLEANUP_RETRY_INTERVAL = 1
+
+
 class Qbittorrent:
     """
     qbittorrent下载器
@@ -305,6 +309,10 @@ class Qbittorrent:
     def delete_torrents_tag(self, ids: Optional[Union[str, list]], tag: Union[str, list]) -> bool:
         """
         从指定种子移除标签，并删除全局标签定义
+
+        qBittorrent 5.x 添加任务后可能暂时无法按响应中的种子 ID 查询任务，
+        移除接口此时会静默成功，因此需读取任务标签确认清理结果。
+
         :param ids: 种子Hash列表；未知种子Hash时传入None，仅删除全局标签定义
         :param tag: 标签内容
         :return: 是否删除成功
@@ -313,7 +321,41 @@ class Qbittorrent:
             return False
         try:
             if ids:
-                self.qbc.torrents_remove_tags(torrent_hashes=ids, tags=tag)
+                expected_hashes = (
+                    {torrent_hash.strip().lower() for torrent_hash in ids.split('|') if torrent_hash.strip()}
+                    if isinstance(ids, str)
+                    else {str(torrent_hash).strip().lower() for torrent_hash in ids if torrent_hash}
+                )
+                expected_tags = (
+                    {tag_name.strip() for tag_name in tag.split(',') if tag_name.strip()}
+                    if isinstance(tag, str)
+                    else {str(tag_name).strip() for tag_name in tag if tag_name}
+                )
+                for attempt in range(_TORRENT_TAG_CLEANUP_RETRY_TIMES):
+                    self.qbc.torrents_remove_tags(torrent_hashes=ids, tags=tag)
+                    torrents = self.qbc.torrents_info(torrent_hashes=ids) or []
+                    visible_hashes = {
+                        str(torrent.get("hash") or "").strip().lower()
+                        for torrent in torrents
+                    }
+                    tags_removed = all(
+                        not expected_tags.intersection(
+                            {
+                                torrent_tag.strip()
+                                for torrent_tag in str(torrent.get("tags") or "").split(',')
+                                if torrent_tag.strip()
+                            }
+                        )
+                        for torrent in torrents
+                    )
+                    if expected_hashes.issubset(visible_hashes) and tags_removed:
+                        break
+                    if attempt < _TORRENT_TAG_CLEANUP_RETRY_TIMES - 1:
+                        time.sleep(_TORRENT_TAG_CLEANUP_RETRY_INTERVAL)
+                else:
+                    self.qbc.torrents_delete_tags(tags=tag)
+                    logger.warning(f"种子 {ids} 的临时Tag未能在重试期限内确认删除：{tag}")
+                    return False
             self.qbc.torrents_delete_tags(tags=tag)
             return True
         except Exception as err:
