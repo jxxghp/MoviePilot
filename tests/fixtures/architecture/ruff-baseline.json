@@ -300,10 +300,6 @@
   "app/modules/indexer/parser/zhixing.py": {
     "I001": 1
   },
-  "app/modules/indexer/spider/__init__.py": {
-    "F541": 1,
-    "I001": 1
-  },
   "app/modules/indexer/spider/haidan.py": {
     "I001": 1
   },
