@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import app.agent.orchestrator as agent_module
+import app.agent.session as agent_session
 from app.agent.memory import MemoryManager
 from app.agent.orchestrator import (
     AGENT_SESSION_QUEUE_MAX_SIZE,
@@ -20,6 +21,32 @@ from app.application.messaging.agent import (
 from app.sdk import queries as query_sdk
 from app.startup.initializers import agent as agent_initializer
 from app.startup.initializers import modules as modules_initializer
+
+
+@pytest.mark.anyio
+async def test_custom_moviepilot_agent_factory_receives_runtime_context() -> None:
+    """Web/OpenAI Agent 子类必须复用 manager 装配的数据与记忆上下文。"""
+    data = MagicMock()
+    memory = MagicMock()
+    manager = AgentManager(data=data, memory=memory)
+
+    class CustomMoviePilotAgent(agent_module.MoviePilotAgent):
+        async def process(self, message: str, **kwargs: object) -> str:
+            return message
+
+    result = await manager._process_message_internal(
+        agent_session._MessageTask(
+            session_id="custom-context",
+            user_id="1",
+            message="ok",
+            agent_factory=CustomMoviePilotAgent,
+        )
+    )
+
+    agent = manager.active_agents["custom-context"]
+    assert result == "ok"
+    assert agent._data is data
+    assert agent._memory is memory
 
 
 @pytest.mark.anyio

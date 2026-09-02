@@ -563,6 +563,12 @@ class AgentSessionOwner:
                     "output_callback": task.output_callback,
                     "protected_output_callback": task.protected_output_callback,
                 }
+                if isinstance(task.agent_factory, type) and issubclass(
+                    task.agent_factory,
+                    MoviePilotAgent,
+                ):
+                    agent_kwargs["data"] = self._data
+                    agent_kwargs["memory"] = self._memory
                 if task.message_callback is not None:
                     agent_kwargs["message_callback"] = task.message_callback
                 agent = task.agent_factory(**agent_kwargs)
