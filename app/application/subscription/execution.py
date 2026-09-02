@@ -3,7 +3,7 @@
 import threading
 import time
 from dataclasses import dataclass
-from typing import Callable, Optional, Protocol
+from typing import Callable, Mapping, Optional, Protocol
 from uuid import uuid4
 
 from app.application.subscription.sitebudget import SiteBudgetClaim
@@ -159,9 +159,9 @@ class SubscriptionSearchRepository(Protocol):
         subscription_ids: tuple[int, ...],
         source: str,
         priority: int,
-        available_at: Optional[str] = None,
+        available_at_by_subscription: Optional[Mapping[int, str]] = None,
     ) -> SearchEnqueueResult:
-        """按订阅 ID 建立批次，在启动抖动后合并活动任务。"""
+        """按订阅 ID 和各自到期时间建立或合并活动任务。"""
         ...
 
     def claim_next(self, *, owner: str, lease_seconds: int = 900) -> Optional[SearchTaskSnapshot]:
@@ -231,5 +231,5 @@ class SubscriptionSearchRepository(Protocol):
         next_allowed_at: str,
         error: Optional[str] = None,
     ) -> bool:
-        """释放站点预算并写入间隔、冷却和恢复状态。"""
+        """释放站点预算并写入错误冷却和恢复状态。"""
         ...

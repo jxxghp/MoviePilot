@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import random
-import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional, Protocol
@@ -17,7 +15,7 @@ class SubscriptionSearchCancelled(RuntimeError):
 
 
 class SubscriptionSiteBudgetUnavailable(RuntimeError):
-    """表示站点预算超出本任务允许的短等待窗口。"""
+    """表示站点仍处于错误冷却或已有未释放租约。"""
 
     def __init__(self, *, site_id: int, retry_at: str) -> None:
         """保存站点和下一次可尝试时间，供批次聚合失败展示。"""
@@ -69,7 +67,7 @@ def _utc_now() -> datetime:
 
 
 class SubscriptionSiteBudget:
-    """在同步搜索 worker 内执行可取消的站点预算等待与反馈。"""
+    """以非阻塞认领保护站点租约，并持久化外站错误冷却。"""
 
     def __init__(
         self,
@@ -78,49 +76,35 @@ class SubscriptionSiteBudget:
         owner: str,
         cancelled: Callable[[], bool],
         stop_state: StopState,
-        interval_range: tuple[float, float] = (60.0, 300.0),
         lease_seconds: int = 900,
-        max_wait_seconds: float = 5.0,
-        random_uniform: Callable[[float, float], float] = random.uniform,
-        sleeper: Callable[[float], None] = time.sleep,
         clock: Callable[[], datetime] = _utc_now,
         phase_changed: Optional[Callable[[str, Optional[int]], None]] = None,
     ) -> None:
-        """保存持久化端口及可注入的时钟、随机数和等待实现。"""
+        """保存持久化端口及可注入的时钟和阶段回调。"""
         self._repository = repository
         self._owner = owner
         self._cancelled = cancelled
         self._stop_state = stop_state
-        self._interval_range = interval_range
         self._lease_seconds = max(1, lease_seconds)
-        self._max_wait_seconds = max(0.0, max_wait_seconds)
-        self._random_uniform = random_uniform
-        self._sleeper = sleeper
         self._clock = clock
         self._phase_changed = phase_changed
 
     def acquire(self, site_id: int) -> SiteBudgetClaim:
-        """循环认领指定站点，并在每秒边界检查取消与停机。"""
-        deadline = time.monotonic() + self._max_wait_seconds
-        while True:
-            self._raise_if_cancelled()
-            claim = self._repository.claim_site(
-                site_id=site_id,
-                owner=self._owner,
-                lease_seconds=self._lease_seconds,
-            )
-            if claim.acquired:
-                self._report_phase("searching", site_id)
-                return claim
-            self._report_phase("waiting_site_budget", site_id)
-            retry_at = datetime.fromisoformat(claim.retry_at)
-            remaining = max(0.0, (retry_at - self._clock()).total_seconds())
-            if remaining > max(0.0, deadline - time.monotonic()):
-                raise SubscriptionSiteBudgetUnavailable(
-                    site_id=site_id,
-                    retry_at=claim.retry_at,
-                )
-            self._sleeper(min(max(remaining, 0.05), 1.0))
+        """只认领一次指定站点，未就绪时留待下一次正常调度。"""
+        self._raise_if_cancelled()
+        claim = self._repository.claim_site(
+            site_id=site_id,
+            owner=self._owner,
+            lease_seconds=self._lease_seconds,
+        )
+        if claim.acquired:
+            self._report_phase("searching", site_id)
+            return claim
+        self._report_phase("waiting_site_budget", site_id)
+        raise SubscriptionSiteBudgetUnavailable(
+            site_id=site_id,
+            retry_at=claim.retry_at,
+        )
 
     def _report_phase(self, phase: str, site_id: Optional[int]) -> None:
         """向任务所有者报告不改变预算语义的业务阶段。"""
@@ -128,7 +112,7 @@ class SubscriptionSiteBudget:
             self._phase_changed(phase, site_id)
 
     def finish(self, claim: SiteBudgetClaim, observation: SiteSearchObservation) -> bool:
-        """依据调用结果计算随机间隔或错误冷却并释放租约。"""
+        """正常结果立即释放站点，错误结果按类别写入冷却。"""
         if not claim.lease_token:
             return False
         outcome = observation.outcome if observation.attempted else "skipped"
@@ -143,13 +127,9 @@ class SubscriptionSiteBudget:
         )
 
     def _next_delay(self, outcome: str, consecutive_failures: int) -> float:
-        """为成功渐进恢复、错误退避和本地跳过计算下一次等待。"""
-        if outcome == "skipped":
+        """正常或本地跳过立即恢复，错误按连续失败次数退避。"""
+        if outcome in {"success", "skipped"}:
             return 0.0
-        if outcome == "success":
-            low, high = self._interval_range
-            recovery_factor = 1.0 + min(max(consecutive_failures, 0), 3) * 0.5
-            return self._random_uniform(low, high) * recovery_factor
         exponent = min(max(consecutive_failures, 0), 5)
         base, ceiling = {
             "rate_limited": (900.0, 21600.0),
@@ -160,6 +140,6 @@ class SubscriptionSiteBudget:
         return float(min(base * (2**exponent), ceiling))
 
     def _raise_if_cancelled(self) -> None:
-        """在不持有业务锁的等待边界传播取消或停机。"""
+        """在创建站点租约前传播取消或停机。"""
         if self._stop_state.is_system_stopped or self._cancelled():
             raise SubscriptionSearchCancelled("订阅搜索已取消")

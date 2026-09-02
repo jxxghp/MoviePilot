@@ -78,7 +78,7 @@ class SubscriptionSearchTask(Base):
 
 
 class SubscriptionSiteBudget(Base):
-    """记录兜底搜索对单个站点的唯一租约、间隔与错误冷却。"""
+    """记录兜底搜索对单个站点的唯一租约与错误冷却。"""
 
     id = get_id_column()
     site_id: Mapped[int] = mapped_column(Integer, nullable=False)

@@ -1,7 +1,6 @@
 """订阅主动搜索编排"""
 
 import random
-import time
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import Any, Callable, Optional, cast
@@ -84,6 +83,27 @@ def _search_source_and_priority(
     if state in {"R", "P"}:
         return "fallback", 10
     return "new", 50
+
+
+def _search_task_available_at(
+    source: str,
+    subscription_ids: tuple[int, ...],
+    *,
+    now: Optional[datetime] = None,
+) -> dict[int, str]:
+    """把兜底搜索的随机节奏持久化为逐订阅到期时间。"""
+    ordered_ids = tuple(dict.fromkeys(subscription_ids))
+    if not ordered_ids:
+        return {}
+    cursor = now or datetime.now(timezone.utc)
+    if source == "fallback":
+        cursor += timedelta(seconds=random.randint(0, 60))
+    available_at: dict[int, str] = {}
+    for position, subscription_id in enumerate(ordered_ids):
+        if source == "fallback" and position:
+            cursor += timedelta(seconds=random.randint(60, 300))
+        available_at[subscription_id] = cursor.isoformat(timespec="seconds")
+    return available_at
 
 
 def _batch_progress_text(batch: Optional[SearchBatchSnapshot]) -> str:
@@ -293,7 +313,6 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                 self._report_search_progress(progress_callback, subscribe, index, total)
                 if self._defer_recent_subscription(subscribe):
                     continue
-                self._wait_before_scheduled_search(sid, sids, state, progress_callback)
                 lease = self._subscription_execution_admission.try_acquire(
                     subscription_id=subscribe.id,
                     operation="search",
@@ -374,11 +393,15 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             state=state,
             manual=manual,
         )
+        subscription_ids = tuple(subscribe.id for subscribe in subscribes)
         enqueued = queue.enqueue(
-            subscription_ids=tuple(subscribe.id for subscribe in subscribes),
+            subscription_ids=subscription_ids,
             source=source,
             priority=priority,
-            available_at=self._search_batch_available_at(source),
+            available_at_by_subscription=_search_task_available_at(
+                source,
+                subscription_ids,
+            ),
         )
         total = len(subscribes)
         if progress_callback:
@@ -628,14 +651,6 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             progress_callback=progress_callback,
         )
 
-    @staticmethod
-    def _search_batch_available_at(source: str) -> str:
-        """为自动兜底批次持久化一次全局启动抖动。"""
-        delay = random.randint(0, 60) if source == "fallback" else 0
-        return (
-            datetime.now(timezone.utc) + timedelta(seconds=delay)
-        ).isoformat(timespec="seconds")
-
     def cancel_search_batch(self, batch_id: str) -> bool:
         """请求取消持久搜索批次；未注入队列时返回失败。"""
         queue: Optional[SubscriptionSearchRepository] = getattr(
@@ -679,22 +694,6 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
             return False
         logger.debug(f"订阅标题：{subscribe.name} 新增小于1分钟，暂不搜索...")
         return True
-
-    @staticmethod
-    def _wait_before_scheduled_search(
-        sid: Optional[int],
-        sids: Optional[tuple[int, ...]],
-        state: Optional[str],
-        progress_callback: Optional[Callable[..., None]],
-    ) -> None:
-        """为自动搜索增加随机间隔，手动和定向批次不等待。"""
-        if sid or sids is not None or state not in ["R", "P"]:
-            return
-        sleep_time = random.randint(60, 300)
-        logger.info(f"订阅搜索随机休眠 {sleep_time} 秒 ...")
-        if progress_callback:
-            progress_callback(text=f"订阅搜索随机休眠 {sleep_time} 秒后继续 ...")
-        time.sleep(sleep_time)
 
     def _process_search_subscription(
         self,

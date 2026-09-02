@@ -309,7 +309,8 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
 
     now = datetime.now(timezone.utc)
     duplicate_site_claims_blocked = 0
-    cooldown_claims_blocked = 0
+    error_cooldown_claims_blocked = 0
+    successful_site_claims_reused = 0
     site_tokens: dict[int, str] = {}
     for site_id in range(1, case.site_count + 1):
         claim = search.claim_site(
@@ -337,12 +338,27 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
             error="HTTP 429" if outcome == "rate_limited" else None,
         ):
             raise AssertionError(f"站点 {site_id} 预算无法收口")
-        cooldown = search.claim_site(
+        next_claim = search.claim_site(
             site_id=site_id,
             owner="site-worker-c",
             lease_seconds=900,
         )
-        cooldown_claims_blocked += int(not cooldown.acquired)
+        if outcome == "rate_limited":
+            error_cooldown_claims_blocked += int(not next_claim.acquired)
+        else:
+            successful_site_claims_reused += int(
+                next_claim.acquired and bool(next_claim.lease_token)
+            )
+            if (
+                next_claim.lease_token
+                and not search.finish_site(
+                    site_id=site_id,
+                    lease_token=next_claim.lease_token,
+                    outcome="success",
+                    next_allowed_at=now.isoformat(timespec="seconds"),
+                )
+            ):
+                raise AssertionError(f"站点 {site_id} 复用预算无法收口")
 
     recovery_site = case.site_count + 1
     site_first = search.claim_site(
@@ -421,7 +437,8 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
         "site_count": case.site_count,
         "site_peak_inflight_per_site": 1,
         "duplicate_site_claims_blocked": duplicate_site_claims_blocked,
-        "cooldown_claims_blocked": cooldown_claims_blocked,
+        "error_cooldown_claims_blocked": error_cooldown_claims_blocked,
+        "successful_site_claims_reused": successful_site_claims_reused,
         "site_recovered_after_lease_expiry": site_recovered,
         "subscription_leases_acquired": len(acquired_leases),
         "same_subscription_conflicts_blocked": same_subscription_conflicts_blocked,
@@ -476,7 +493,8 @@ def run_acceptance() -> dict[str, Any]:
         "site_pressure_bounded": all(
             case["site_peak_inflight_per_site"] == 1
             and case["duplicate_site_claims_blocked"] == case["site_count"]
-            and case["cooldown_claims_blocked"] == case["site_count"]
+            and case["error_cooldown_claims_blocked"] == 1
+            and case["successful_site_claims_reused"] == case["site_count"] - 1
             for case in durable_cases
         ),
         "subscription_admission_serializes": all(
@@ -494,7 +512,7 @@ def run_acceptance() -> dict[str, Any]:
         ),
     }
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "revision": _git_revision(),
         "environment": {

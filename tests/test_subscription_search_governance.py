@@ -2,16 +2,19 @@
 
 import threading
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.application.site.observation import report_site_search_outcome
 from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.subscription.execution import SubscriptionExecutionAdmission
+from app.chain.search.facade import SearchChain
 from app.chain.subscribe.facade import SubscribeChain
+from app.chain.subscribe.search import _search_task_available_at
 from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
 from app.db.base import Base
 from app.schemas.types import MediaType
@@ -74,11 +77,82 @@ def _chain(tmp_path, subscribes: list[SubscriptionSnapshot]):
     return chain
 
 
+def _make_tasks_ready(monkeypatch) -> None:
+    """让治理测试中的持久任务立即到期，避免依赖真实随机时钟。"""
+    ready_at = "1970-01-01T00:00:00+00:00"
+    monkeypatch.setattr(
+        "app.chain.subscribe.search._search_task_available_at",
+        lambda _source, subscription_ids: {
+            subscription_id: ready_at for subscription_id in subscription_ids
+        },
+    )
+
+
+def test_fallback_task_schedule_staggers_each_subscription(monkeypatch):
+    """兜底批次首条抖动后，每条后续订阅都按独立随机间隔到期。"""
+    now = datetime(2026, 9, 3, 1, 2, 3, tzinfo=timezone.utc)
+    delays = iter((12, 60, 300))
+    monkeypatch.setattr(
+        "app.chain.subscribe.search.random.randint",
+        lambda _low, _high: next(delays),
+    )
+
+    schedule = _search_task_available_at(
+        "fallback",
+        (1, 2, 3),
+        now=now,
+    )
+
+    available = [datetime.fromisoformat(schedule[subscribe_id]) for subscribe_id in (1, 2, 3)]
+    assert (available[0] - now).total_seconds() == 12
+    assert (available[1] - available[0]).total_seconds() == 60
+    assert (available[2] - available[1]).total_seconds() == 300
+
+
+def test_successful_sites_remain_available_to_next_due_subscription(tmp_path, monkeypatch):
+    """正常站点请求不能让同批下一条到期订阅漏掉目标站点。"""
+    subscribes = [_subscribe(40), _subscribe(41)]
+    chain = _chain(tmp_path, subscribes)
+    _make_tasks_ready(monkeypatch)
+    searchchain = object.__new__(SearchChain)
+    searchchain.configure_subscription_site_budget(None)
+    current_subscription_id = 0
+    calls = []
+
+    def search_site_torrents(*, site, **_kwargs):
+        """记录真实发出的站点请求并发布正常完成观察结果。"""
+        calls.append((current_subscription_id, site["id"]))
+        report_site_search_outcome(attempted=True, outcome="success")
+        return [f"torrent-{current_subscription_id}-{site['id']}"]
+
+    def process(subscribe, current_searchchain, **_kwargs):
+        """让每条到期订阅访问同一组完整目标站点。"""
+        nonlocal current_subscription_id
+        current_subscription_id = subscribe.id
+        for site_id in (11, 12):
+            current_searchchain._search_site_torrents_with_budget(  # pylint: disable=protected-access
+                site={"id": site_id, "name": f"Site {site_id}"},
+                keyword=subscribe.name,
+                mtype=MediaType.MOVIE,
+                page=0,
+            )
+        return subscribe
+
+    searchchain.search_site_torrents = search_site_torrents
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=searchchain):
+        batch_id = chain.search(state="R")
+
+    assert calls == [(40, 11), (40, 12), (41, 11), (41, 12)]
+    assert chain.get_search_batch(batch_id).state == "completed"
+
+
 def test_fallback_queue_executes_without_match_global_lock(tmp_path, monkeypatch):
     """R/P 兜底搜索在持久队列中执行，不受日常 Match 长锁阻塞。"""
     subscribes = [_subscribe(1), _subscribe(2)]
     chain = _chain(tmp_path, subscribes)
-    monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
+    _make_tasks_ready(monkeypatch)
     processed = []
 
     def process(subscribe, _searchchain, *, execution_context):
@@ -109,7 +183,7 @@ def test_fallback_queue_continues_after_one_subscription_failure(tmp_path, monke
     """单订阅异常不得中止批次后续任务，聚合终态必须暴露失败。"""
     subscribes = [_subscribe(3), _subscribe(4)]
     chain = _chain(tmp_path, subscribes)
-    monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
+    _make_tasks_ready(monkeypatch)
     processed = []
 
     def process(subscribe, _searchchain, **_kwargs):
@@ -145,7 +219,7 @@ def test_same_subscription_conflict_is_skipped_without_waiting(tmp_path, monkeyp
     """Match 已持有同一订阅时，Search 本轮完成为跳过且不进入业务处理。"""
     subscribe = _subscribe(6)
     chain = _chain(tmp_path, [subscribe])
-    monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
+    _make_tasks_ready(monkeypatch)
     process = Mock(side_effect=AssertionError("冲突订阅不应进入 Search"))
     monkeypatch.setattr(chain, "_process_search_subscription", process)
     match_lease = chain._subscription_execution_admission.try_acquire(
@@ -172,7 +246,7 @@ def test_paused_subscription_is_skipped_after_admission_refresh(tmp_path, monkey
     subscribe = _subscribe(9)
     paused = replace(subscribe, state="S")
     chain = _chain(tmp_path, [subscribe])
-    monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
+    _make_tasks_ready(monkeypatch)
     chain.subscription_repository.get = Mock(side_effect=(subscribe, paused))
     process = Mock(side_effect=AssertionError("暂停订阅不应进入 Search"))
     monkeypatch.setattr(chain, "_process_search_subscription", process)
@@ -192,7 +266,7 @@ def test_cleanup_failures_cannot_leak_subscription_admission(tmp_path, monkeypat
     """站点预算和状态清理都失败时仍必须释放当前订阅 owner。"""
     subscribe = replace(_subscribe(7), state="N")
     chain = _chain(tmp_path, [subscribe])
-    monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
+    _make_tasks_ready(monkeypatch)
     monkeypatch.setattr(
         chain,
         "_process_search_subscription",
@@ -229,7 +303,7 @@ def test_search_state_reset_stays_inside_subscription_admission(tmp_path, monkey
     """N 到 R 的本地状态写回完成前不能让 Match 接管同一订阅。"""
     subscribe = replace(_subscribe(8), state="N")
     chain = _chain(tmp_path, [subscribe])
-    monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
+    _make_tasks_ready(monkeypatch)
     monkeypatch.setattr(
         chain,
         "_process_search_subscription",
@@ -266,7 +340,7 @@ def test_late_cancel_completes_when_download_side_effect_already_started(tmp_pat
     """取消晚于下载器副作用边界时按真实结果完成，不能伪装成未执行取消。"""
     subscribe = _subscribe(5)
     chain = _chain(tmp_path, [subscribe])
-    monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
+    _make_tasks_ready(monkeypatch)
     queue = chain.subscription_search_repository
     cancel_checks = iter((False, True))
     monkeypatch.setattr(queue, "is_cancel_requested", lambda _task_id: next(cancel_checks))
@@ -292,7 +366,7 @@ def test_system_stop_requeues_task_after_search_returns(tmp_path, monkeypatch):
     chain = _chain(tmp_path, [subscribe])
     stop_state = SimpleNamespace(is_system_stopped=False)
     chain.stop_state = stop_state
-    monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
+    _make_tasks_ready(monkeypatch)
 
     def process(item, _searchchain, *, execution_context):
         """模拟站点搜索返回部分候选时进程进入停止阶段。"""

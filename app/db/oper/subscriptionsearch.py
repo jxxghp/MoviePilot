@@ -1,7 +1,7 @@
 """订阅搜索批次与任务的持久队列读写。"""
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Mapping, Optional
 from uuid import uuid4
 
 from sqlalchemy import and_, case, func, or_, select, update
@@ -30,7 +30,7 @@ class SubscriptionSearchOper(DbOper):
         subscription_ids: tuple[int, ...],
         source: str,
         priority: int,
-        available_at: Optional[str],
+        available_at_by_subscription: Optional[Mapping[int, str]],
     ) -> tuple[SubscriptionSearchBatch, int, int]:
         """创建批次，并以活动键合并同一订阅的重叠搜索入口。"""
         if not isinstance(self._db, Session):
@@ -51,6 +51,11 @@ class SubscriptionSearchOper(DbOper):
         coalesced = 0
         for position, subscription_id in enumerate(dict.fromkeys(subscription_ids)):
             active_key = f"subscription:{subscription_id}"
+            available_at = (
+                available_at_by_subscription.get(subscription_id, now)
+                if available_at_by_subscription
+                else now
+            )
             task = SubscriptionSearchTask(
                 task_id=uuid4().hex,
                 batch_id=batch.batch_id,
@@ -61,7 +66,7 @@ class SubscriptionSearchOper(DbOper):
                 position=position,
                 state="queued",
                 phase="queued",
-                available_at=available_at or now,
+                available_at=available_at,
                 created_at=now,
                 updated_at=now,
             )
@@ -85,9 +90,9 @@ class SubscriptionSearchOper(DbOper):
                             (
                                 or_(
                                     SubscriptionSearchTask.available_at.is_(None),
-                                    SubscriptionSearchTask.available_at > (available_at or now),
+                                    SubscriptionSearchTask.available_at > available_at,
                                 ),
-                                available_at or now,
+                                available_at,
                             ),
                             else_=SubscriptionSearchTask.available_at,
                         ),
@@ -441,7 +446,11 @@ class SubscriptionSearchOper(DbOper):
             and record.lease_expires_at
             and record.lease_expires_at > now
         )
-        if lease_busy or record.next_allowed_at > now:
+        cooldown_active = bool(
+            record.last_outcome not in {None, "success", "skipped"}
+            and record.next_allowed_at > now
+        )
+        if lease_busy or cooldown_active:
             return record, False
         lease_token = uuid4().hex
         lease_expires_at = (
@@ -457,12 +466,17 @@ class SubscriptionSearchOper(DbOper):
                     SubscriptionSiteBudget.lease_expires_at.is_(None),
                     SubscriptionSiteBudget.lease_expires_at <= now,
                 ),
-                SubscriptionSiteBudget.next_allowed_at <= now,
+                or_(
+                    SubscriptionSiteBudget.next_allowed_at <= now,
+                    SubscriptionSiteBudget.last_outcome.is_(None),
+                    SubscriptionSiteBudget.last_outcome.in_(("success", "skipped")),
+                ),
             )
             .values(
                 lease_owner=owner,
                 lease_token=lease_token,
                 lease_expires_at=lease_expires_at,
+                next_allowed_at=now,
                 updated_at=now,
             ),
             execution_options={"synchronize_session": False},

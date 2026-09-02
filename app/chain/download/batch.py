@@ -94,7 +94,6 @@ class DownloadBatchOwner(_DownloadOwnerBase):
         no_exists_was_none = no_exists is None
         if no_exists is None:
             no_exists = {}
-
         # 已下载的项目
         downloaded_list: List[Context] = []
         custom_word_list = custom_words.splitlines() if custom_words else None

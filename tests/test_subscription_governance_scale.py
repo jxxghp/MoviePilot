@@ -7,7 +7,7 @@ def test_subscription_governance_controlled_scale_matrix() -> None:
     """两档最终矩阵必须同时满足正确性、压力、恢复和订阅准入门禁。"""
     result = run_acceptance()
 
-    assert result["schema_version"] == 2
+    assert result["schema_version"] == 3
     assert result["passed"] is True
     assert all(result["gates"].values())
     assert result["gates"]["subscription_admission_serializes"] is True
