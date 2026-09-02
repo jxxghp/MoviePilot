@@ -303,20 +303,26 @@ class ConfigChangeEventData(BaseEventData):
     @classmethod
     def convert_to_set(cls, v):
         """将输入的 str、list、dict.keys() 等转为 set"""
+        def normalize(item: Any) -> str:
+            """把枚举键转换为其持久化值，其余键保持字符串兼容。"""
+            return str(item.value) if isinstance(item, _Enum) else str(item)
+
         if v is None:
             return set()
         elif isinstance(v, str):
             return {v}
+        elif isinstance(v, _Enum):
+            return {normalize(v)}
         elif isinstance(v, dict):
-            return set(str(k) for k in v.keys())
+            return {normalize(k) for k in v.keys()}
         elif isinstance(v, (list, tuple)):
-            return set(str(item) for item in v)
+            return {normalize(item) for item in v}
         elif isinstance(v, set):
-            return set(str(item) for item in v)
+            return {normalize(item) for item in v}
         elif isinstance(v, Iterable):
-            return set(str(item) for item in v)
+            return {normalize(item) for item in v}
         else:
-            return {str(v)}
+            return {normalize(v)}
 
 
 class ChainEventData(BaseEventData):

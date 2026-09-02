@@ -35,15 +35,24 @@ from app.application.system import (
     SystemService,
     SystemUpdatePort,
 )
+from app.domain.metainfo import clear_rust_parse_options_cache
 from app.runtime.events import eventmanager
 from app.runtime.state import SystemHelper
 from app.runtime.stop import runtime_stop_state
 from app.schemas.event import ConfigChangeEventData
 from app.schemas.system import SystemUpdateStatus, SystemUpdateType
-from app.schemas.types import EventType
+from app.schemas.types import EventType, SystemConfigKey
 
 _LOG_DOWNLOAD_LIMIT = 10
 _LOG_DOWNLOAD_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_RUST_METAINFO_OPTION_SETTING_KEYS = frozenset({
+    SystemConfigKey.CustomIdentifiers.value,
+    SystemConfigKey.CustomReleaseGroups.value,
+    SystemConfigKey.Customization.value,
+    "RMT_MEDIAEXT",
+    "RMT_SUBEXT",
+    "RMT_AUDIOEXT",
+})
 
 
 class _FileLogAdapter(SystemLogPort):
@@ -181,10 +190,14 @@ class _ConfigurationEventAdapter(ConfigurationEventPort):
     """把已提交设置变更发布到宿主事件总线。"""
 
     async def publish(self, key: Any, value: Any = None) -> None:
-        """发布兼容 ConfigChanged 事件。"""
+        """同步失效派生缓存后发布兼容 ConfigChanged 事件。"""
+        payload = ConfigChangeEventData(key=key, value=value, change_type="update")
+        if payload.key.intersection(_RUST_METAINFO_OPTION_SETTING_KEYS):
+            # 广播事件异步消费，必须在写入入口返回前失效缓存，避免下一次识别读取旧配置。
+            clear_rust_parse_options_cache()
         await eventmanager.async_send_event(
             etype=EventType.ConfigChanged,
-            data=ConfigChangeEventData(key=key, value=value, change_type="update"),
+            data=payload,
         )
 
 

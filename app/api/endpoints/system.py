@@ -725,7 +725,7 @@ async def update_custom_identifiers(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """完整替换自定义识别词并清理识别解析缓存。"""
+    """完整替换自定义识别词。"""
     identifiers = [item for item in payload.identifiers if item is not None]
     data = await SystemSettingsService(
         get_runtime_settings(),
@@ -735,9 +735,6 @@ async def update_custom_identifiers(
         setting_key=SystemConfigKey.CustomIdentifiers.value,
         value=identifiers or None,
     )
-    from app.domain.metainfo import clear_rust_parse_options_cache
-
-    clear_rust_parse_options_cache()
     data.update({"count": len(identifiers), "identifiers": identifiers})
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
