@@ -101,7 +101,7 @@ def _build_unrecognized_media_info(
         )
     try:
         media_type = MediaType(torrent.category)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         media_type = MediaType.from_agent(torrent.category)
     if media_type == MediaType.COLLECTION:
         media_type = MediaType.MOVIE

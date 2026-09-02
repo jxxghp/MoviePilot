@@ -528,7 +528,7 @@ def _redact_basic_auth(
     padded_token = token + "=" * (-len(token) % 4)
     try:
         decoded = base64.b64decode(padded_token, validate=True)
-    except binascii.Error, ValueError:
+    except (binascii.Error, ValueError):
         return match.group(0)
     if b":" not in decoded:
         return match.group(0)
@@ -730,7 +730,7 @@ def sanitize_for_host(
             if not truncated and value.strip().startswith(("{", "[")):
                 try:
                     parsed = json.loads(value)
-                except TypeError, ValueError, json.JSONDecodeError:
+                except (TypeError, ValueError, json.JSONDecodeError):
                     pass
                 else:
                     sanitized_json = sanitize_for_host(

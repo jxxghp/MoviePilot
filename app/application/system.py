@@ -394,7 +394,7 @@ class SystemService:
         if cron:
             try:
                 TimerUtils.normalize_schedule_trigger("cron", cron, self.settings.get("TZ"))
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 return "数据库备份周期格式不正确"
         backup_path = env.get("DB_BACKUP_PATH", self.settings.get("DB_BACKUP_PATH"))
         if backup_path is not None and not isinstance(backup_path, str):
@@ -408,7 +408,7 @@ class SystemService:
                 return f"{label}必须是大于等于 0 的整数"
             try:
                 converted = int(value)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 return f"{label}必须是大于等于 0 的整数"
             if converted < 0 or str(value).strip() != str(converted):
                 return f"{label}必须是大于等于 0 的整数"

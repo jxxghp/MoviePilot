@@ -346,7 +346,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
             for episode in episodes:
                 try:
                     episode_number = int(episode)
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     continue
                 if episode_number not in self._SubscribeChain__get_best_version_target_episodes(subscribe):
                     continue

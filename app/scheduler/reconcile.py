@@ -228,7 +228,7 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
                 trigger_value=trigger_value,
                 timezone_name=config.timezone,
             )
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None
         return next_run_time.isoformat(timespec="seconds") if next_run_time else None
 

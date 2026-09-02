@@ -386,7 +386,7 @@ def _jsonable(value: Any, *, depth: int = 0) -> Any:
         return _jsonable(data, depth=depth + 1)
     try:
         return _jsonable(dict(value), depth=depth + 1)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return str(value)
 
 

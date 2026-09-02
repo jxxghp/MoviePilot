@@ -489,7 +489,7 @@ class MoviePilotAgent:
             content = re.sub(r"\s*```$", "", content).strip()
         try:
             payload = json.loads(content)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return ""
         if not isinstance(payload, dict):
             return ""
@@ -561,7 +561,7 @@ class MoviePilotAgent:
             return None
         try:
             return int(value)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None
 
     @staticmethod
@@ -576,7 +576,7 @@ class MoviePilotAgent:
         """读取 LangGraph 递归上限，防止模型持续循环调用工具。"""
         try:
             limit = int(get_runtime_setting("LLM_MAX_ITERATIONS") or 0)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             limit = 0
         return limit if limit > 0 else 128
 
@@ -1167,7 +1167,7 @@ class MoviePilotAgent:
         try:
             channel_enum = NotificationChannel(self.channel)
             return ChannelCapabilityManager.supports_capability(channel_enum, ChannelCapability.MESSAGE_EDITING)
-        except ValueError, KeyError:
+        except (ValueError, KeyError):
             return False
 
     @staticmethod
@@ -1340,7 +1340,7 @@ class MoviePilotAgent:
         if body is not None:
             try:
                 parts.append(json.dumps(body, ensure_ascii=False))
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 parts.append(str(body))
         return " ".join(part for part in parts if part)
 

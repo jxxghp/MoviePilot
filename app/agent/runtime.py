@@ -821,7 +821,7 @@ class AgentRuntimeManager:
             return default
         try:
             return int(value)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return default
 
     def _validate_runtime_config(

@@ -113,7 +113,7 @@ def parse_skill_metadata(  # noqa: C901
     if raw_version is not None:
         try:
             version = int(raw_version)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             logger.warning(
                 "Invalid 'version' in %s (got %r), defaulting to 0",
                 skill_path,

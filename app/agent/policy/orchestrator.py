@@ -60,7 +60,7 @@ def _normalize_policy_arguments(tool: Any, arguments: Mapping[str, Any]) -> dict
     try:
         validated = args_schema.model_validate(raw_arguments)
         return validated.model_dump(mode="json")
-    except AttributeError, TypeError, ValueError, ValidationError:
+    except (AttributeError, TypeError, ValueError, ValidationError):
         # 实际 handler 仍负责既有参数错误语义；策略观测按原始值保守处理。
         return raw_arguments
 

@@ -1254,7 +1254,7 @@ async def terminate_web_agent_audio_process(
         return
     try:
         await process.communicate()
-    except OSError, ProcessLookupError:
+    except (OSError, ProcessLookupError):
         pass
 
 

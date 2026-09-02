@@ -657,7 +657,7 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         for episode in episodes or []:
             try:
                 episode_number = int(episode)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 ignored.append({"episode": episode, "reason": "invalid"})
                 continue
             if episode_number not in target_episodes:

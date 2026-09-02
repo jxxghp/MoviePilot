@@ -77,7 +77,7 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             return None
         try:
             interval = int(interval)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None
         return interval if interval > 0 else None
 

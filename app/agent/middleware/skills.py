@@ -179,7 +179,7 @@ def _extract_version(skill_md: Path) -> int:
         return 0
     try:
         return int(raw)
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return 0
 
 

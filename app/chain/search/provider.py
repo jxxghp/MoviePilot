@@ -38,7 +38,7 @@ def _site_request_interval(site: SiteIndexer) -> float:
     """读取站点管理中已有的单次访问间隔配置。"""
     try:
         return max(0.0, float(site.get("limit_seconds") or 0))
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return 0.0
 
 

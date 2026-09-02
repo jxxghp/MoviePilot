@@ -136,7 +136,7 @@ class SchedulerProgressOwner(_SchedulerOwnerBase):
         value = detail.get("value", 0)
         try:
             value = float(value)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             value = 0.0
         return _SchemaScheduleProgress(
             id=job_id,
@@ -179,7 +179,7 @@ class SchedulerProgressOwner(_SchedulerOwnerBase):
         value = detail.get("value", 0)
         try:
             value = float(value)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             value = 0.0
         return _SchemaScheduleProgress(
             id=job_id,

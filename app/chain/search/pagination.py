@@ -78,7 +78,7 @@ class SearchPaginationOwner(_SearchOwnerBase):
         pages = get_chain_runtime_config_snapshot().search_resource_pages
         try:
             pages = int(pages)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return 1
         return max(pages, 1)
 
@@ -89,7 +89,7 @@ class SearchPaginationOwner(_SearchOwnerBase):
         """
         try:
             start_page = int(page or 0)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             start_page = 0
         start_page = max(start_page, 0)
         return list(range(start_page, start_page + cls._get_search_resource_pages()))
@@ -114,7 +114,7 @@ class SearchPaginationOwner(_SearchOwnerBase):
         subtitle_conf = (site or {}).get("subtitles") or {}
         try:
             page_size = int(subtitle_conf.get("result_num") or site.get("result_num") or 100)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             page_size = 100
         return page_size > 0 and len(page_results or []) >= page_size
 
