@@ -746,10 +746,10 @@ async def user_subscribes(
     summary="订阅相关文件信息",
     response_model=_SchemaSubscrbieInfo,
 )
-def subscribe_files(
+async def subscribe_files(
     subscribe_id: int,
     repository: SubscriptionQueryPort = Depends(get_subscription_repository),
-    current_user: ApiPrincipal = Depends(get_current_active_user),
+    current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
     """
     订阅相关文件信息
@@ -758,9 +758,12 @@ def subscribe_files(
         name=current_user.name,
         is_superuser=current_user.is_superuser,
     )
-    subscribe = repository.get(subscribe_id)
+    subscribe = await repository.async_get(subscribe_id)
     if subscribe is not None and SubscriptionMutationService.can_access(subscribe, actor):
-        return SubscribeChain().subscribe_files_info(subscribe)
+        return await run_in_threadpool(
+            SubscribeChain().subscribe_files_info,
+            subscribe,
+        )
     return _SchemaSubscrbieInfo()
 
 
