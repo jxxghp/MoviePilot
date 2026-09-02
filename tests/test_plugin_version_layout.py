@@ -19,6 +19,7 @@ from app.runtime.extensions.plugin.version import (
     plugin_version_from_dir_name,
     read_declared_plugin_version,
     read_plugin_versions_manifest,
+    resolve_instance_version_dir,
     resolve_plugin_version_dir,
     write_plugin_versions_manifest,
 )
@@ -442,3 +443,69 @@ def test_read_declared_plugin_version_returns_none_for_unparseable_source(
     broken_file = tmp_path / "broken.py"
     broken_file.write_text("class Broken(:\n", encoding="utf-8")
     assert read_declared_plugin_version(broken_file) is None
+
+
+# 六、实例版本绑定解析
+
+
+def test_resolve_instance_version_dir_uses_current_version_without_an_instance(
+    tmp_path: Path,
+) -> None:
+    """没有实例（即源插件本身）时按插件当前版本解析。"""
+    _write_version(tmp_path, "solo", "1.0.0", class_name="SoloPlugin")
+    _write_version(tmp_path, "solo", "2.0.0", class_name="SoloPlugin")
+    plugin_root = tmp_path / "solo"
+    _write_manifest(plugin_root, [("1.0.0", "v1_0_0"), ("2.0.0", "v2_0_0")], current="2.0.0")
+
+    assert resolve_instance_version_dir(plugin_root, None).name == "v2_0_0"
+
+
+def test_resolve_instance_version_dir_follows_current_version(tmp_path: Path) -> None:
+    """跟随当前版本的实例按插件当前版本解析，忽略自身曾经生效过的版本。"""
+    _write_version(tmp_path, "followed", "1.0.0", class_name="FollowedPlugin")
+    _write_version(tmp_path, "followed", "2.0.0", class_name="FollowedPlugin")
+    plugin_root = tmp_path / "followed"
+    _write_manifest(plugin_root, [("1.0.0", "v1_0_0"), ("2.0.0", "v2_0_0")], current="2.0.0")
+    instance = PluginInstance(
+        instance_id="FollowedWork",
+        source_plugin_id="Followed",
+        plugin_version="1.0.0",
+        follow_current_version=True,
+    )
+
+    assert resolve_instance_version_dir(plugin_root, instance).name == "v2_0_0"
+
+
+def test_resolve_instance_version_dir_uses_the_pinned_version_when_not_following(
+    tmp_path: Path,
+) -> None:
+    """不跟随当前版本的实例按自身绑定的版本解析，即使不是插件当前版本。"""
+    _write_version(tmp_path, "pinned", "1.0.0", class_name="PinnedPlugin")
+    _write_version(tmp_path, "pinned", "2.0.0", class_name="PinnedPlugin")
+    plugin_root = tmp_path / "pinned"
+    _write_manifest(plugin_root, [("1.0.0", "v1_0_0"), ("2.0.0", "v2_0_0")], current="2.0.0")
+    instance = PluginInstance(
+        instance_id="PinnedWork",
+        source_plugin_id="Pinned",
+        plugin_version="1.0.0",
+        follow_current_version=False,
+    )
+
+    assert resolve_instance_version_dir(plugin_root, instance).name == "v1_0_0"
+
+
+def test_resolve_instance_version_dir_falls_back_when_the_pinned_version_is_gone(
+    tmp_path: Path,
+) -> None:
+    """绑定版本的目录已从磁盘移除时回落到当前版本，而不是让解析失败。"""
+    _write_version(tmp_path, "stale", "2.0.0", class_name="StalePlugin")
+    plugin_root = tmp_path / "stale"
+    _write_manifest(plugin_root, [("2.0.0", "v2_0_0")], current="2.0.0")
+    instance = PluginInstance(
+        instance_id="StaleWork",
+        source_plugin_id="Stale",
+        plugin_version="1.0.0",
+        follow_current_version=False,
+    )
+
+    assert resolve_instance_version_dir(plugin_root, instance).name == "v2_0_0"

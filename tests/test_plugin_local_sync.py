@@ -14,9 +14,14 @@ from app.runtime.events import Event, eventmanager
 from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.extensions.plugin.paths import PluginPathResolver
 from app.runtime.extensions.plugin.system import get_plugin_system
+from app.runtime.extensions.plugin.version import (
+    plugin_version_dir_name,
+    write_plugin_versions_manifest,
+)
 from app.scheduler import reconcile as scheduler_reconcile
 from app.scheduler.facade import Scheduler
 from app.scheduler.registry import ExecutionRegistry
+from app.schemas.plugin import PluginInstance
 from app.schemas.types import EventType, SystemConfigKey
 
 
@@ -512,6 +517,138 @@ def test_runtime_federated_asset_change_does_not_copy_or_reload(
     reload_spy.assert_not_called()
 
 
+def _write_versioned_remote_entry(plugin_root: Path, version: str) -> Path:
+    """在插件根目录下的指定版本目录中写入一个最小联邦入口文件。
+
+    :param plugin_root: 插件源码根目录
+    :param version: 版本号，决定版本目录名
+    :return: 写入的 remoteEntry.js 路径
+    """
+    remote_entry = plugin_root / plugin_version_dir_name(version) / "dist" / "remoteEntry.js"
+    remote_entry.parent.mkdir(parents=True)
+    remote_entry.write_text("export default {}\n", encoding="utf-8")
+    return remote_entry
+
+
+def test_federated_change_resolves_within_the_current_version_directory(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """插件源码按版本分目录时，联邦产物变化按插件当前版本目录识别，而不是插件根目录。"""
+    plugins_root = tmp_path / "app" / "plugins"
+    plugin_root = plugins_root / "demoplugin"
+    remote_entry = _write_versioned_remote_entry(plugin_root, "1.0.0")
+    write_plugin_versions_manifest(
+        plugin_root,
+        [
+            {
+                "version": "1.0.0",
+                "directory": plugin_version_dir_name("1.0.0"),
+                "installed_at": "2026-01-01T00:00:00+00:00",
+                "source": "test",
+            }
+        ],
+        current="1.0.0",
+    )
+    _configure_local_watcher(monkeypatch, tmp_path, tmp_path / "unused-local-repository", set())
+    resolver = PluginPathResolver(
+        runtime_root=plugins_root,
+        running=lambda: {"DemoPlugin": SimpleNamespace(get_render_mode=lambda: ("vue", "dist"))},
+        system=get_plugin_system,
+        strict_system_version=lambda: False,
+        get_instance=lambda _plugin_id: None,
+        log=Mock(),
+    )
+
+    assert resolver.federated_change(remote_entry) == ("DemoPlugin", None, True)
+
+
+def test_federated_change_ignores_a_non_current_version_directory(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """产物变化发生在没有被加载的旧版本目录中时不识别，避免误判成入口就绪。"""
+    plugins_root = tmp_path / "app" / "plugins"
+    plugin_root = plugins_root / "demoplugin"
+    stale_remote_entry = _write_versioned_remote_entry(plugin_root, "1.0.0")
+    _write_versioned_remote_entry(plugin_root, "2.0.0")
+    write_plugin_versions_manifest(
+        plugin_root,
+        [
+            {
+                "version": "1.0.0",
+                "directory": plugin_version_dir_name("1.0.0"),
+                "installed_at": "2026-01-01T00:00:00+00:00",
+                "source": "test",
+            },
+            {
+                "version": "2.0.0",
+                "directory": plugin_version_dir_name("2.0.0"),
+                "installed_at": "2026-02-01T00:00:00+00:00",
+                "source": "test",
+            },
+        ],
+        current="2.0.0",
+    )
+    _configure_local_watcher(monkeypatch, tmp_path, tmp_path / "unused-local-repository", set())
+    resolver = PluginPathResolver(
+        runtime_root=plugins_root,
+        running=lambda: {"DemoPlugin": SimpleNamespace(get_render_mode=lambda: ("vue", "dist"))},
+        system=get_plugin_system,
+        strict_system_version=lambda: False,
+        get_instance=lambda _plugin_id: None,
+        log=Mock(),
+    )
+
+    assert resolver.federated_change(stale_remote_entry) is None
+
+
+def test_federated_change_resolves_the_running_ids_bound_version_directory(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """联邦产物路径按 ``get_instance`` 端口解析出的绑定版本识别，而不是插件当前版本。"""
+    plugins_root = tmp_path / "app" / "plugins"
+    plugin_root = plugins_root / "demoplugin"
+    pinned_remote_entry = _write_versioned_remote_entry(plugin_root, "1.0.0")
+    _write_versioned_remote_entry(plugin_root, "2.0.0")
+    write_plugin_versions_manifest(
+        plugin_root,
+        [
+            {
+                "version": "1.0.0",
+                "directory": plugin_version_dir_name("1.0.0"),
+                "installed_at": "2026-01-01T00:00:00+00:00",
+                "source": "test",
+            },
+            {
+                "version": "2.0.0",
+                "directory": plugin_version_dir_name("2.0.0"),
+                "installed_at": "2026-02-01T00:00:00+00:00",
+                "source": "test",
+            },
+        ],
+        current="2.0.0",
+    )
+    pinned_instance = PluginInstance(
+        instance_id="DemoPlugin",
+        source_plugin_id="DemoPlugin",
+        plugin_version="1.0.0",
+        follow_current_version=False,
+    )
+    _configure_local_watcher(monkeypatch, tmp_path, tmp_path / "unused-local-repository", set())
+    resolver = PluginPathResolver(
+        runtime_root=plugins_root,
+        running=lambda: {"DemoPlugin": SimpleNamespace(get_render_mode=lambda: ("vue", "dist"))},
+        system=get_plugin_system,
+        strict_system_version=lambda: False,
+        get_instance=lambda _plugin_id: pinned_instance,
+        log=Mock(),
+    )
+
+    assert resolver.federated_change(pinned_remote_entry) == ("DemoPlugin", None, True)
+
+
 def test_local_requirements_change_still_does_not_sync_or_reload(
     tmp_path,
     monkeypatch,
@@ -813,6 +950,7 @@ def test_runtime_python_change_reloads_without_local_repository_sync(
         running=lambda: plugin_manager.running_plugins,
         system=get_plugin_system,
         strict_system_version=lambda: False,
+        get_instance=lambda _plugin_id: None,
         log=Mock(),
     )
     sync_spy = Mock()

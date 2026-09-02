@@ -267,6 +267,7 @@ def build_plugin_runtime(
         running=lambda: registry.running,
         system=environment.system,
         strict_system_version=lambda: not environment.development(),
+        get_instance=instances.get,
         log=environment.logger,
     )
     recent_local_sync: dict[str, float] = {}

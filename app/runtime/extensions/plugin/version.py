@@ -1,4 +1,4 @@
-"""插件源码按版本分目录布局的目录名映射、元信息读写、存量迁移与加载路径解析。"""
+"""插件源码按版本分目录布局的目录名映射、元信息读写、存量迁移、加载路径解析与回收。"""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import errno
 import json
 import os
 import re
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Any
 
 from app.foundation.version import compare_version
 from app.runtime.log import logger
+from app.schemas.plugin import PluginInstance
 
 # 插件源码版本目录名的前缀，用于把版本目录与插件目录下的其它条目区分开
 PLUGIN_VERSION_DIR_PREFIX = "v"
@@ -28,6 +30,10 @@ PLUGIN_FALLBACK_VERSION = "0.0.0"
 # 合法版本号字符集：数字、字母、点、连字符、加号。语义化版本的先行版与构建
 # 元数据字符集不含下划线，据此保证点与下划线的互换是单射、可逆
 _PLUGIN_VERSION_PATTERN = re.compile(r"^[0-9A-Za-z][0-9A-Za-z.+-]*$")
+# 插件版本回收默认按登记时间额外保留的最近版本数，含当前版本。1 起不到「留
+# 退路」的作用；4 个以上在磁盘占用与回退冗余之间收益递减，2 是满足「装错新
+# 版本后一键切回上一版」这一典型场景的最小值
+PLUGIN_VERSION_RETENTION_WINDOW = 2
 
 
 def plugin_version_dir_name(version: str) -> str:
@@ -396,3 +402,128 @@ def resolve_plugin_version_dir(plugin_root: Path, version: str | None = None) ->
         if compare_version(candidate, ">", newest):
             newest = candidate
     return on_disk[newest]
+
+
+def resolve_instance_version_dir(
+    plugin_root: Path,
+    instance: PluginInstance | None,
+) -> Path:
+    """按虚拟实例的版本绑定解析源插件应读取的源码目录。
+
+    源插件本身或未传入实例时按插件当前版本解析；实例跟随当前版本时同样按
+    当前版本解析，不跟随时按实例自身绑定的版本解析。绑定版本的目录已不在
+    磁盘上时回落到当前版本，语义与加载器对同一绑定失效场景的处理一致，
+    避免静态资源与已加载代码分处不同版本目录。
+
+    :param plugin_root: 源插件源码根目录
+    :param instance: 虚拟实例描述；为空表示直接按源插件本身解析
+    :return: 源码目录；没有版本目录的存量布局时为插件根目录本身
+    """
+    desired_version = (
+        None if instance is None or instance.follow_current_version else instance.plugin_version
+    )
+    try:
+        return resolve_plugin_version_dir(plugin_root, desired_version)
+    except ValueError:
+        return resolve_plugin_version_dir(plugin_root)
+
+
+def _delete_plugin_version_dir(plugin_root: Path, version: str, directory: Path) -> bool:
+    """删除单个插件版本目录，删除前三重校验，任一不通过即拒绝且不删除。
+
+    校验顺序：目录 ``resolve()`` 后确认位于插件目录之内；确认不等于插件目录
+    本身；确认目录名能反解回待删除的版本号本身，据此排除 dist、wheels、
+    __pycache__ 等保留条目，也排除元信息与磁盘目录名不一致的条目。删除失败
+    （占用、权限等）只记错误日志、不向上抛出，不影响其余版本的回收。
+
+    :param plugin_root: 插件源码根目录
+    :param version: 待删除的版本号
+    :param directory: 待删除的版本目录
+    :return: 是否已删除
+    """
+    resolved_root = plugin_root.resolve()
+    resolved_dir = directory.resolve()
+    checks_passed = (
+        resolved_dir.is_relative_to(resolved_root)
+        and resolved_dir != resolved_root
+        and plugin_version_from_dir_name(resolved_dir.name) == version
+    )
+    if not checks_passed:
+        logger.error(f"插件版本目录校验未通过，跳过删除：{resolved_dir}")
+        return False
+    try:
+        shutil.rmtree(resolved_dir)
+        return True
+    except OSError as error:
+        logger.error(f"插件版本目录删除失败：{resolved_dir} - {error}")
+        return False
+
+
+def recycle_plugin_version_directories(
+    plugin_root: Path,
+    referenced_versions: set[str],
+    retention: int = PLUGIN_VERSION_RETENTION_WINDOW,
+) -> dict[str, Any]:
+    """回收插件源码目录下没有实例引用、也不在保留窗口内的旧版本目录。
+
+    保留判据满足其一即保留，且判据取值均为调用方实测的运行态与配置，本函数
+    不按目录时间戳猜测：该版本是版本元信息登记的当前安装版本；该版本落在
+    ``referenced_versions`` 里——调用方须确保该集合已经并入实例的已生效版本
+    与按跟随开关解析出的期望版本两者，否则会删掉正在用或即将切换到的版本；
+    该版本按登记时间排在最近 ``retention`` 个以内。删除前逐一重新校验目录仍
+    是该插件下的合法版本目录，单个目录删除失败不影响其余目录的回收，最后把
+    已删除的版本从已装版本清单中一并摘除。
+
+    :param plugin_root: 插件源码根目录
+    :param referenced_versions: 当前被实例占用的版本号集合（已生效版本 ∪ 按跟随
+        开关解析出的期望版本），由调用方基于实测的实例配置算出
+    :param retention: 额外按登记时间保留的最近版本数，含当前版本，取值理由见
+        ``PLUGIN_VERSION_RETENTION_WINDOW``
+    :return: 含 removed（已删除版本号列表）与 kept（版本号到保留理由的映射）的字典
+    """
+    on_disk = plugin_version_dirs(plugin_root)
+    if not on_disk:
+        return {"removed": [], "kept": {}}
+
+    manifest = read_plugin_versions_manifest(plugin_root)
+    current = manifest.get("current")
+    current_version = current if isinstance(current, str) and current else None
+    entries = {
+        entry["version"]: entry
+        for entry in (manifest.get("versions") or [])
+        if isinstance(entry, dict) and isinstance(entry.get("version"), str)
+    }
+
+    def installed_at(version: str) -> str:
+        """返回版本的登记时间，缺失时排到最旧，不占用保留窗口的名额。"""
+        return (entries.get(version) or {}).get("installed_at") or ""
+
+    recent_window = set(sorted(on_disk, key=installed_at, reverse=True)[: max(retention, 0)])
+
+    kept: dict[str, str] = {}
+    for version in on_disk:
+        if version == current_version:
+            kept[version] = "当前安装版本"
+        elif version in referenced_versions:
+            kept[version] = "被实例引用（已生效版本或按跟随开关解析出的期望版本）"
+        elif version in recent_window:
+            kept[version] = f"保留窗口内（按登记时间的最近 {retention} 个版本）"
+
+    removed: list[str] = []
+    for version in sorted(on_disk):
+        if version in kept:
+            continue
+        if _delete_plugin_version_dir(plugin_root, version, on_disk[version]):
+            removed.append(version)
+        else:
+            kept[version] = "本次删除失败，下次回收重试"
+
+    if removed:
+        remaining_versions = [
+            entry
+            for entry in (manifest.get("versions") or [])
+            if isinstance(entry, dict) and entry.get("version") not in removed
+        ]
+        write_plugin_versions_manifest(plugin_root, remaining_versions, current_version)
+
+    return {"removed": removed, "kept": kept}
