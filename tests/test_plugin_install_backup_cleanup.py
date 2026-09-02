@@ -35,8 +35,13 @@ async def test_successful_install_flows_remove_transient_backups(
     )
     monkeypatch.setattr(
         package,
+        "_PluginPackageManager__place_staged_plugin_content",
+        lambda _pid, _plugin_dir, _staging_dir, _source_label: (tmp_path / "content", ""),
+    )
+    monkeypatch.setattr(
+        package,
         "_PluginPackageManager__install_dependencies_if_required",
-        lambda _pid: (False, False, "不存在依赖"),
+        lambda _pid, _content_dir, _before=None: (False, False, "不存在依赖"),
     )
     monkeypatch.setattr(
         package,
@@ -47,7 +52,7 @@ async def test_successful_install_flows_remove_transient_backups(
     sync_result = package._PluginPackageManager__install_flow_sync(
         "DemoPlugin",
         False,
-        lambda: (True, ""),
+        lambda _staging_dir: (True, ""),
     )
 
     async def backup_plugin(_pid: str) -> str:
@@ -57,11 +62,13 @@ async def test_successful_install_flows_remove_transient_backups(
     async def remove_plugin(_pid: str) -> None:
         """隔离测试中的真实插件目录删除。"""
 
-    async def install_dependencies(_pid: str) -> tuple[bool, bool, str]:
+    async def install_dependencies(
+        _pid: str, _content_dir: Path, _before=None
+    ) -> tuple[bool, bool, str]:
         """表示测试插件没有额外依赖。"""
         return False, False, "不存在依赖"
 
-    async def prepare_content() -> tuple[bool, str]:
+    async def prepare_content(_staging_dir: Path) -> tuple[bool, str]:
         """表示异步内容准备成功。"""
         return True, ""
 

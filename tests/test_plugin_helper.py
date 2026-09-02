@@ -195,6 +195,14 @@ def _patch_release_install_settings(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(Path, "mkdir", guarded_mkdir)
 
 
+def _stage_trivial_plugin_content(staging_dir: Path) -> None:
+    """在给定暂存目录写入一份最小可换入的插件源码，供换入步骤消费。"""
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    (staging_dir / "__init__.py").write_text(
+        "class DemoPlugin:\n    pass\n", encoding="utf-8"
+    )
+
+
 def _patch_sync_remote_install(helper, monkeypatch, meta: dict,
                                release_result: tuple[bool, str],
                                filelist_result: tuple[bool, str] = (True, "")):
@@ -204,14 +212,27 @@ def _patch_sync_remote_install(helper, monkeypatch, meta: dict,
     monkeypatch.setattr(helper, "_PluginPackageManager__get_plugin_meta", lambda *_args: meta)
     monkeypatch.setattr(helper, "_PluginPackageManager__backup_plugin", lambda _pid: None)
     monkeypatch.setattr(helper, "_PluginPackageManager__remove_old_plugin", lambda _pid: calls.append("remove"))
-    monkeypatch.setattr(helper, "_PluginPackageManager__install_dependencies_if_required", lambda _pid: (False, True, ""))
+    monkeypatch.setattr(
+        helper,
+        "_PluginPackageManager__place_staged_plugin_content",
+        lambda _pid, plugin_dir, _staging_dir, _source_label: (plugin_dir, ""),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_PluginPackageManager__install_dependencies_if_required",
+        lambda _pid, _content_dir=None, _before=None: (False, True, ""),
+    )
 
-    def fake_release(_pid, _user_repo, _release_tag):
+    def fake_release(_pid, _user_repo, _release_tag, staging_dir):
         calls.append("release")
+        if release_result[0]:
+            _stage_trivial_plugin_content(staging_dir)
         return release_result
 
-    def fake_filelist(_pid, _user_repo, _package_version):
+    def fake_filelist(_pid, _user_repo, _package_version, staging_dir):
         calls.append("filelist")
+        if filelist_result[0]:
+            _stage_trivial_plugin_content(staging_dir)
         return filelist_result
 
     monkeypatch.setattr(helper, "_PluginPackageManager__install_from_release", fake_release)
@@ -237,25 +258,34 @@ def _patch_async_remote_install(helper, monkeypatch, meta: dict,
     async def fake_remove(_pid):
         calls.append("remove")
 
-    async def fake_dependencies(_pid):
+    async def fake_dependencies(_pid, _content_dir=None, _before=None):
         return False, True, ""
 
-    async def fake_release(_pid, _user_repo, _release_tag):
+    async def fake_release(_pid, _user_repo, _release_tag, staging_dir):
         calls.append("release")
+        if release_result[0]:
+            _stage_trivial_plugin_content(staging_dir)
         return release_result
 
-    async def fake_filelist(_pid, _user_repo, _package_version):
+    async def fake_filelist(_pid, _user_repo, _package_version, staging_dir):
         calls.append("filelist")
+        if filelist_result[0]:
+            _stage_trivial_plugin_content(staging_dir)
         return filelist_result
 
     async def fake_to_thread(func, *args, **kwargs):
-        calls.append(("to_thread", func, args, kwargs))
-        return None
+        """把并存检查与内容换入这两个真实经线程池调用的步骤原样同步执行。"""
+        return func(*args, **kwargs)
 
     monkeypatch.setattr(helper, "async_get_plugin_package_version", fake_package_version)
     monkeypatch.setattr(helper, "_PluginPackageManager__async_get_plugin_meta", fake_meta)
     monkeypatch.setattr(helper, "_PluginPackageManager__async_backup_plugin", fake_backup)
     monkeypatch.setattr(helper, "_PluginPackageManager__async_remove_old_plugin", fake_remove)
+    monkeypatch.setattr(
+        helper,
+        "_PluginPackageManager__place_staged_plugin_content",
+        lambda _pid, plugin_dir, _staging_dir, _source_label: (plugin_dir, ""),
+    )
     monkeypatch.setattr(helper, "_PluginPackageManager__async_install_dependencies_if_required", fake_dependencies)
     monkeypatch.setattr(helper, "_PluginPackageManager__async_install_from_release", fake_release)
     monkeypatch.setattr(helper, "_PluginPackageManager__prepare_content_via_filelist_async", fake_filelist)
@@ -2226,7 +2256,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["remove", "release"] == calls
+        assert ["release"] == calls
 
     def test_install_falls_back_to_filelist_when_release_is_missing(self, monkeypatch):
         """
@@ -2250,7 +2280,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["remove", "release", "remove", "filelist"] == calls
+        assert ["release", "filelist"] == calls
 
     def test_install_reports_filelist_error_after_release_fallback_fails(self, monkeypatch):
         """
@@ -2274,7 +2304,7 @@ demo = { index = "private" }
 
         assert not success
         assert "DemoPlugin 插件源码目录不存在" == message
-        assert ["remove", "release", "remove", "filelist", "remove"] == calls
+        assert ["release", "filelist"] == calls
 
     def test_install_uses_filelist_when_release_flag_is_disabled(self, monkeypatch):
         """
@@ -2298,7 +2328,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["remove", "filelist"] == calls
+        assert ["filelist"] == calls
 
     def test_install_rejects_release_without_version(self, monkeypatch):
         """
@@ -2408,7 +2438,7 @@ demo = { index = "private" }
 
         assert not success
         assert "未找到资产文件：demoplugin_v1.2.0.zip" == message
-        assert ["remove", "release", "remove"] == calls
+        assert ["release"] == calls
 
     def test_install_rejects_release_version_missing_from_release_list(self, monkeypatch):
         """
@@ -2496,12 +2526,26 @@ demo = { index = "private" }
 
         helper = _package_owner(PluginHelper())
         seen_versions = []
+
+        def fake_filelist(*args):
+            _stage_trivial_plugin_content(args[-1])
+            return True, ""
+
         monkeypatch.setattr(helper, "get_plugin_package_version", lambda _pid, _repo, version: seen_versions.append(version) or "")
         monkeypatch.setattr(helper, "_PluginPackageManager__get_plugin_meta", lambda *_args: {"release": False, "version": "1.2.3"})
         monkeypatch.setattr(helper, "_PluginPackageManager__backup_plugin", lambda _pid: None)
         monkeypatch.setattr(helper, "_PluginPackageManager__remove_old_plugin", lambda _pid: None)
-        monkeypatch.setattr(helper, "_PluginPackageManager__install_dependencies_if_required", lambda _pid: (False, True, ""))
-        monkeypatch.setattr(helper, "_PluginPackageManager__prepare_content_via_filelist_sync", lambda *_args: (True, ""))
+        monkeypatch.setattr(
+            helper,
+            "_PluginPackageManager__place_staged_plugin_content",
+            lambda _pid, plugin_dir, _staging_dir, _source_label: (plugin_dir, ""),
+        )
+        monkeypatch.setattr(
+            helper,
+            "_PluginPackageManager__install_dependencies_if_required",
+            lambda _pid, _content_dir=None, _before=None: (False, True, ""),
+        )
+        monkeypatch.setattr(helper, "_PluginPackageManager__prepare_content_via_filelist_sync", fake_filelist)
 
         success, message = helper.install_raw(PLUGIN_ID, REPO_URL, force_install=True)
 
@@ -2575,7 +2619,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["remove", "release", "remove", "filelist"] == calls
+        assert ["release", "filelist"] == calls
 
     def test_async_install_uses_release_package_when_asset_is_available(self, monkeypatch):
         """
@@ -2600,7 +2644,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert calls == ["remove", "release"]
+        assert calls == ["release"]
 
     def test_async_install_falls_back_to_filelist_when_release_is_missing(self, monkeypatch):
         """
@@ -2626,7 +2670,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert calls == ["remove", "release", "remove", "filelist"]
+        assert calls == ["release", "filelist"]
 
     def test_async_install_old_release_version_uses_release_asset_without_filelist_fallback(self, monkeypatch):
         """
@@ -2660,7 +2704,7 @@ demo = { index = "private" }
 
         assert not success
         assert "未找到资产文件：demoplugin_v1.2.0.zip" == message
-        assert calls[:3] == ["remove", "release", "remove"]
+        assert calls == ["release"]
 
     def test_async_install_rejects_release_version_missing_from_release_list(self, monkeypatch):
         """
@@ -2718,7 +2762,7 @@ demo = { index = "private" }
 
         assert not success
         assert "DemoPlugin 插件源码目录不存在" == message
-        assert calls == ["remove", "release", "remove", "filelist", "remove"]
+        assert calls == ["release", "filelist"]
 
     def test_async_install_release_fallback_preserves_plugin_id(self, monkeypatch):
         """
@@ -2739,8 +2783,9 @@ demo = { index = "private" }
             (True, ""),
         )
 
-        async def fake_filelist(pid, _user_repo, _package_version):
+        async def fake_filelist(pid, _user_repo, _package_version, staging_dir):
             filelist_pids.append(pid)
+            _stage_trivial_plugin_content(staging_dir)
             return True, ""
 
         monkeypatch.setattr(helper, "_PluginPackageManager__prepare_content_via_filelist_async", fake_filelist)
@@ -2772,8 +2817,9 @@ demo = { index = "private" }
             (True, ""),
         )
 
-        async def fake_filelist(pid, _user_repo, _package_version):
+        async def fake_filelist(pid, _user_repo, _package_version, staging_dir):
             filelist_pids.append(pid)
+            _stage_trivial_plugin_content(staging_dir)
             return True, ""
 
         monkeypatch.setattr(helper, "_PluginPackageManager__prepare_content_via_filelist_async", fake_filelist)
@@ -2798,7 +2844,9 @@ demo = { index = "private" }
         helper = _package_owner(PluginHelper())
         monkeypatch.setattr(helper, "_PluginPackageManager__request_with_fallback", lambda *_args, **_kwargs: _FakeResponse(404))
 
-        success, message = helper._PluginPackageManager__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        success, message = helper._PluginPackageManager__install_from_release(
+            PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+        )
 
         assert not success
         assert "DemoPlugin_v1.2.3 插件发布包不存在" == message
@@ -2842,7 +2890,9 @@ demo = { index = "private" }
             lambda *_args, **_kwargs: _FakeResponse(200, {"assets": [{"name": "other.zip", "id": 1}]}),
         )
 
-        success, message = helper._PluginPackageManager__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        success, message = helper._PluginPackageManager__install_from_release(
+            PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+        )
 
         assert not success
         assert "未找到资产文件：demoplugin_v1.2.3.zip" == message
@@ -2863,7 +2913,9 @@ demo = { index = "private" }
             lambda *_args, **_kwargs: _FakeResponse(200, {"assets": [{"name": "demoplugin_v1.2.3.zip"}]}),
         )
 
-        success, message = helper._PluginPackageManager__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        success, message = helper._PluginPackageManager__install_from_release(
+            PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+        )
 
         assert not success
         assert "资产缺少ID信息" == message
@@ -2887,7 +2939,9 @@ demo = { index = "private" }
         helper = _package_owner(PluginHelper())
         monkeypatch.setattr(helper, "_PluginPackageManager__request_with_fallback", lambda *_args, **_kwargs: BadResponse(200))
 
-        success, message = helper._PluginPackageManager__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        success, message = helper._PluginPackageManager__install_from_release(
+            PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+        )
 
         assert not success
         assert "解析 Release 信息失败" in message
@@ -2908,7 +2962,9 @@ demo = { index = "private" }
         ])
         monkeypatch.setattr(helper, "_PluginPackageManager__request_with_fallback", lambda *_args, **_kwargs: next(responses))
 
-        success, message = helper._PluginPackageManager__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        success, message = helper._PluginPackageManager__install_from_release(
+            PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+        )
 
         assert not success
         assert "下载资产失败：502" == message
@@ -2941,7 +2997,9 @@ demo = { index = "private" }
         _patch_release_install_settings(monkeypatch, tmp_path)
         monkeypatch.setattr(helper, "_PluginPackageManager__request_with_fallback", lambda *_args, **_kwargs: next(responses))
 
-        success, message = helper._PluginPackageManager__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        success, message = helper._PluginPackageManager__install_from_release(
+            PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+        )
 
         assert not success
         assert "非法 Release 压缩包成员" in message
@@ -2977,7 +3035,9 @@ demo = { index = "private" }
         ))
         monkeypatch.setattr(helper, "_PluginPackageManager__request_with_fallback", lambda *_args, **_kwargs: next(responses))
 
-        success, message = helper._PluginPackageManager__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        success, message = helper._PluginPackageManager__install_from_release(
+            PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+        )
 
         assert success
         assert "" == message
@@ -3010,7 +3070,9 @@ demo = { index = "private" }
         ))
         monkeypatch.setattr(helper, "_PluginPackageManager__request_with_fallback", lambda *_args, **_kwargs: next(responses))
 
-        success, message = helper._PluginPackageManager__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        success, message = helper._PluginPackageManager__install_from_release(
+            PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+        )
 
         assert success
         assert "" == message
@@ -3033,7 +3095,9 @@ demo = { index = "private" }
         ])
         monkeypatch.setattr(helper, "_PluginPackageManager__request_with_fallback", lambda *_args, **_kwargs: next(responses))
 
-        success, message = helper._PluginPackageManager__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        success, message = helper._PluginPackageManager__install_from_release(
+            PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+        )
 
         assert not success
         assert "压缩包内容为空" == message
@@ -3061,7 +3125,9 @@ demo = { index = "private" }
         ))
         monkeypatch.setattr(helper, "_PluginPackageManager__request_with_fallback", lambda *_args, **_kwargs: next(responses))
 
-        success, message = helper._PluginPackageManager__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        success, message = helper._PluginPackageManager__install_from_release(
+            PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+        )
 
         assert not success
         assert "压缩包中无可写入文件" == message
@@ -3082,14 +3148,16 @@ demo = { index = "private" }
         ])
         monkeypatch.setattr(helper, "_PluginPackageManager__request_with_fallback", lambda *_args, **_kwargs: next(responses))
 
-        success, message = helper._PluginPackageManager__install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+        success, message = helper._PluginPackageManager__install_from_release(
+            PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+        )
 
         assert not success
         assert "解压 Release 压缩包失败" in message
 
-    def test_install_flow_sync_restores_backup_when_prepare_fails(self, monkeypatch):
+    def test_install_flow_sync_leaves_plugin_dir_untouched_when_prepare_fails(self, monkeypatch):
         """
-        内容准备失败时恢复备份，避免安装失败后留下半成品目录。
+        内容准备阶段就失败时插件根目录从未被触碰，不备份也不清理，无需回滚。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -3098,19 +3166,19 @@ demo = { index = "private" }
 
         helper = _package_owner(PluginHelper())
         calls = []
-        monkeypatch.setattr(helper, "_PluginPackageManager__backup_plugin", lambda _pid: "/backup")
+        monkeypatch.setattr(helper, "_PluginPackageManager__backup_plugin", lambda _pid: calls.append("backup") or "/backup")
         monkeypatch.setattr(helper, "_PluginPackageManager__remove_old_plugin", lambda _pid: calls.append("remove"))
         monkeypatch.setattr(helper, "_PluginPackageManager__restore_plugin", lambda _pid, _backup: calls.append("restore"))
 
         success, message = helper._PluginPackageManager__install_flow_sync(
-            PLUGIN_ID, False, lambda: (False, "prepare failed")
+            PLUGIN_ID, False, lambda _staging_dir: (False, "prepare failed")
         )
 
         assert not success
         assert "prepare failed" == message
-        assert ["remove", "restore"] == calls
+        assert [] == calls
 
-    def test_install_flow_sync_restores_backup_when_dependency_install_fails(self, monkeypatch):
+    def test_install_flow_sync_restores_backup_when_dependency_install_fails(self, tmp_path, monkeypatch):
         """
         依赖安装失败时恢复备份，避免新插件内容破坏可用版本。
         """
@@ -3119,7 +3187,7 @@ demo = { index = "private" }
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
-        helper = _package_owner(PluginHelper())
+        helper = _package_owner(PluginHelper(), plugin_root=tmp_path / "plugins")
         calls = []
         monkeypatch.setattr(helper, "_PluginPackageManager__backup_plugin", lambda _pid: "/backup")
         monkeypatch.setattr(helper, "_PluginPackageManager__remove_old_plugin", lambda _pid: calls.append("remove"))
@@ -3127,16 +3195,20 @@ demo = { index = "private" }
         monkeypatch.setattr(
             helper,
             "_PluginPackageManager__install_dependencies_if_required",
-            lambda _pid: (True, False, "dependency failed"),
+            lambda _pid, _content_dir=None, _before=None: (True, False, "dependency failed"),
         )
 
+        def prepare_content(staging_dir):
+            _stage_trivial_plugin_content(staging_dir)
+            return True, ""
+
         success, message = helper._PluginPackageManager__install_flow_sync(
-            PLUGIN_ID, False, lambda: (True, "")
+            PLUGIN_ID, False, prepare_content
         )
 
         assert not success
         assert "dependency failed" == message
-        assert ["remove", "restore"] == calls
+        assert ["restore"] == calls
 
     def test_install_flow_sync_restores_backup_for_invalid_modern_manifest(self, tmp_path, monkeypatch):
         """现代清单无效时恢复旧插件目录。"""
@@ -3149,9 +3221,9 @@ demo = { index = "private" }
         monkeypatch.setattr(market_module, "PLUGIN_DIR", plugin_root)
         monkeypatch.setattr(market_module.settings, "CONFIG_DIR", str(tmp_path))
 
-        def prepare_content():
-            plugin_dir.mkdir(parents=True)
-            (plugin_dir / "pyproject.toml").write_text(
+        def prepare_content(staging_dir):
+            staging_dir.mkdir(parents=True, exist_ok=True)
+            (staging_dir / "pyproject.toml").write_text(
                 "[project]\nname = 'demo'\n",
                 encoding="utf-8",
             )
@@ -3194,7 +3266,7 @@ demo = { index = "private" }
             lambda path: seen.append(path) or (True, ""),
         )
 
-        result = helper._PluginPackageManager__install_dependencies_if_required("DemoPlugin")
+        result = helper._PluginPackageManager__install_dependencies_if_required("DemoPlugin", plugin_dir)
 
         assert result == (True, True, "")
         assert seen == [pyproject_file]
@@ -3229,7 +3301,7 @@ demo = { index = "private" }
         )
 
         result = asyncio.run(
-            helper._PluginPackageManager__async_install_dependencies_if_required("DemoPlugin")
+            helper._PluginPackageManager__async_install_dependencies_if_required("DemoPlugin", plugin_dir)
         )
 
         assert result == (True, True, "")
@@ -3261,11 +3333,15 @@ demo = { index = "private" }
             fake_download,
         )
 
-        success, message = helper._PluginPackageManager__prepare_content_via_filelist_sync("demoplugin", "demo/repo", "v2")
+        dest_root = helper._plugins_root() / "demoplugin"
+
+        success, message = helper._PluginPackageManager__prepare_content_via_filelist_sync(
+            "demoplugin", "demo/repo", "v2", dest_root
+        )
 
         assert success
         assert "" == message
-        assert calls == [("demoplugin", file_list, "demo/repo", "v2")]
+        assert calls == [("demoplugin", file_list, "demo/repo", "v2", dest_root)]
 
     def test_prepare_content_via_filelist_sync_reports_missing_file_list(self, monkeypatch):
         """
@@ -3279,7 +3355,9 @@ demo = { index = "private" }
         helper = _package_owner(PluginHelper())
         monkeypatch.setattr(helper, "_PluginPackageManager__get_file_list", lambda *_args: ([], "list failed"))
 
-        success, message = helper._PluginPackageManager__prepare_content_via_filelist_sync("demoplugin", "demo/repo", "v2")
+        success, message = helper._PluginPackageManager__prepare_content_via_filelist_sync(
+            "demoplugin", "demo/repo", "v2", helper._plugins_root() / "demoplugin"
+        )
 
         assert not success
         assert "list failed" == message
@@ -3308,6 +3386,7 @@ demo = { index = "private" }
             PLUGIN_ID,
             "demo/repo",
             "v2",
+            helper._plugins_root() / "demoplugin",
         )
 
         assert not success
@@ -3327,7 +3406,9 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__get_file_list", lambda *_args: ([{"name": "__init__.py"}], ""))
         monkeypatch.setattr(helper, "_PluginPackageManager__download_files", lambda *_args: (False, "download failed"))
 
-        success, message = helper._PluginPackageManager__prepare_content_via_filelist_sync("demoplugin", "demo/repo", "v2")
+        success, message = helper._PluginPackageManager__prepare_content_via_filelist_sync(
+            "demoplugin", "demo/repo", "v2", helper._plugins_root() / "demoplugin"
+        )
 
         assert not success
         assert "download failed" == message
@@ -3356,14 +3437,17 @@ demo = { index = "private" }
 
         monkeypatch.setattr(helper, "_PluginPackageManager__async_get_file_list", fake_file_list)
         monkeypatch.setattr(helper, "_PluginPackageManager__async_download_files", fake_download)
+        dest_root = helper._plugins_root() / "demoplugin"
 
         success, message = asyncio.run(
-            helper._PluginPackageManager__prepare_content_via_filelist_async("demoplugin", "demo/repo", "v2")
+            helper._PluginPackageManager__prepare_content_via_filelist_async(
+                "demoplugin", "demo/repo", "v2", dest_root
+            )
         )
 
         assert success
         assert "" == message
-        assert calls == [("demoplugin", file_list, "demo/repo", "v2")]
+        assert calls == [("demoplugin", file_list, "demo/repo", "v2", dest_root)]
 
     def test_async_prepare_content_via_filelist_reports_missing_file_list(self, monkeypatch):
         """
@@ -3382,7 +3466,9 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__async_get_file_list", fake_file_list)
 
         success, message = asyncio.run(
-            helper._PluginPackageManager__prepare_content_via_filelist_async("demoplugin", "demo/repo", "v2")
+            helper._PluginPackageManager__prepare_content_via_filelist_async(
+                "demoplugin", "demo/repo", "v2", helper._plugins_root() / "demoplugin"
+            )
         )
 
         assert not success
@@ -3413,6 +3499,7 @@ demo = { index = "private" }
                 PLUGIN_ID,
                 "demo/repo",
                 "v2",
+                helper._plugins_root() / "demoplugin",
             )
         )
 
@@ -3441,15 +3528,17 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__async_download_files", fake_download)
 
         success, message = asyncio.run(
-            helper._PluginPackageManager__prepare_content_via_filelist_async("demoplugin", "demo/repo", "v2")
+            helper._PluginPackageManager__prepare_content_via_filelist_async(
+                "demoplugin", "demo/repo", "v2", helper._plugins_root() / "demoplugin"
+            )
         )
 
         assert not success
         assert "download failed" == message
 
-    def test_install_flow_async_restores_backup_when_prepare_fails(self, monkeypatch):
+    def test_install_flow_async_leaves_plugin_dir_untouched_when_prepare_fails(self, monkeypatch):
         """
-        异步内容准备失败时恢复备份。
+        异步内容准备阶段就失败时插件根目录从未被触碰，不备份也不清理，无需回滚。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -3460,6 +3549,7 @@ demo = { index = "private" }
         calls = []
 
         async def backup(_pid):
+            calls.append("backup")
             return "/backup"
 
         async def remove(_pid):
@@ -3468,7 +3558,7 @@ demo = { index = "private" }
         async def restore(_pid, _backup):
             calls.append("restore")
 
-        async def prepare():
+        async def prepare(_staging_dir):
             return False, "prepare failed"
 
         monkeypatch.setattr(helper, "_PluginPackageManager__async_backup_plugin", backup)
@@ -3479,9 +3569,9 @@ demo = { index = "private" }
 
         assert not success
         assert "prepare failed" == message
-        assert ["remove", "restore"] == calls
+        assert [] == calls
 
-    def test_install_flow_async_restores_backup_when_dependency_install_fails(self, monkeypatch):
+    def test_install_flow_async_restores_backup_when_dependency_install_fails(self, tmp_path, monkeypatch):
         """
         异步依赖安装失败时恢复备份。
         """
@@ -3490,7 +3580,7 @@ demo = { index = "private" }
         except ModuleNotFoundError as exc:
             pytest.skip(f"missing dependency: {exc}")
 
-        helper = _package_owner(PluginHelper())
+        helper = _package_owner(PluginHelper(), plugin_root=tmp_path / "plugins")
         calls = []
 
         async def backup(_pid):
@@ -3502,10 +3592,11 @@ demo = { index = "private" }
         async def restore(_pid, _backup):
             calls.append("restore")
 
-        async def prepare():
+        async def prepare(staging_dir):
+            _stage_trivial_plugin_content(staging_dir)
             return True, ""
 
-        async def dependencies(_pid):
+        async def dependencies(_pid, _content_dir=None, _before=None):
             return True, False, "dependency failed"
 
         monkeypatch.setattr(helper, "_PluginPackageManager__async_backup_plugin", backup)
@@ -3517,7 +3608,7 @@ demo = { index = "private" }
 
         assert not success
         assert "dependency failed" == message
-        assert ["remove", "restore"] == calls
+        assert ["restore"] == calls
 
     def test_async_install_from_release_reports_missing_asset(self, monkeypatch):
         """
@@ -3536,7 +3627,9 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__async_request_with_fallback", fake_request)
 
         success, message = asyncio.run(
-            helper._PluginPackageManager__async_install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+            helper._PluginPackageManager__async_install_from_release(
+                PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+            )
         )
 
         assert not success
@@ -3559,7 +3652,9 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__async_request_with_fallback", fake_request)
 
         success, message = asyncio.run(
-            helper._PluginPackageManager__async_install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+            helper._PluginPackageManager__async_install_from_release(
+                PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+            )
         )
 
         assert not success
@@ -3611,7 +3706,9 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__async_request_with_fallback", fake_request)
 
         success, message = asyncio.run(
-            helper._PluginPackageManager__async_install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+            helper._PluginPackageManager__async_install_from_release(
+                PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+            )
         )
 
         assert not success
@@ -3638,7 +3735,9 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__async_request_with_fallback", fake_request)
 
         success, message = asyncio.run(
-            helper._PluginPackageManager__async_install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+            helper._PluginPackageManager__async_install_from_release(
+                PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+            )
         )
 
         assert not success
@@ -3677,7 +3776,9 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__async_request_with_fallback", fake_request)
 
         success, message = asyncio.run(
-            helper._PluginPackageManager__async_install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+            helper._PluginPackageManager__async_install_from_release(
+                PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+            )
         )
 
         assert not success
@@ -3714,7 +3815,9 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__async_request_with_fallback", fake_request)
 
         success, message = asyncio.run(
-            helper._PluginPackageManager__async_install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+            helper._PluginPackageManager__async_install_from_release(
+                PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+            )
         )
 
         assert success
@@ -3742,7 +3845,9 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__async_request_with_fallback", fake_request)
 
         success, message = asyncio.run(
-            helper._PluginPackageManager__async_install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+            helper._PluginPackageManager__async_install_from_release(
+                PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+            )
         )
 
         assert not success
@@ -3769,7 +3874,9 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__async_request_with_fallback", fake_request)
 
         success, message = asyncio.run(
-            helper._PluginPackageManager__async_install_from_release(PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3")
+            helper._PluginPackageManager__async_install_from_release(
+                PLUGIN_ID, "demo/repo", "DemoPlugin_v1.2.3", helper._plugins_root() / PLUGIN_ID.lower()
+            )
         )
 
         assert not success

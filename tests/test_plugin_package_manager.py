@@ -112,6 +112,7 @@ def test_file_list_download_rejects_paths_outside_plugin_root(
         [{"path": remote_path, "download_url": "https://example.invalid/file"}],
         "owner/repo",
         package_version,
+        plugin_root / "demoplugin",
     )
 
     assert result == (False, "插件文件路径无效")
@@ -143,6 +144,7 @@ async def test_async_file_list_download_rejects_path_outside_plugin_root(
         ],
         "owner/repo",
         "v2",
+        tmp_path / "plugins" / "demoplugin",
     )
 
     assert result == (False, "插件文件路径无效")
@@ -170,12 +172,13 @@ async def test_file_list_download_rejects_traversal_directory_names(
         async_query,
     )
     item = {"name": "..", "download_url": None}
+    dest_root = tmp_path / "plugins" / "demoplugin"
 
     assert manager._PluginPackageManager__download_files(
-        "DemoPlugin", [item], "owner/repo"
+        "DemoPlugin", [item], "owner/repo", None, dest_root
     ) == (False, "插件目录路径无效")
     assert await manager._PluginPackageManager__async_download_files(
-        "DemoPlugin", [item], "owner/repo"
+        "DemoPlugin", [item], "owner/repo", None, dest_root
     ) == (False, "插件目录路径无效")
     sync_query.assert_not_called()
     async_query.assert_not_awaited()
@@ -204,12 +207,13 @@ async def test_file_list_download_maps_valid_paths_into_injected_plugin_root(
         "path": "plugins.v2/demoplugin/nested/file.py",
         "download_url": "https://example.invalid/file",
     }
+    dest_root = plugin_root / "demoplugin"
 
     assert manager._PluginPackageManager__download_files(
-        "DemoPlugin", [item], "owner/repo", "v2"
+        "DemoPlugin", [item], "owner/repo", "v2", dest_root
     ) == (True, "")
     assert await manager._PluginPackageManager__async_download_files(
-        "DemoPlugin", [item], "owner/repo", "v2"
+        "DemoPlugin", [item], "owner/repo", "v2", dest_root
     ) == (True, "")
     assert (plugin_root / "demoplugin" / "nested" / "file.py").read_text(
         encoding="utf-8"

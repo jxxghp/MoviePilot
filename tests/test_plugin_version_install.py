@@ -1,10 +1,13 @@
-"""插件版本注册、存量布局迁移与安装期多版本并存拒绝测试。"""
+"""插件版本注册、存量布局迁移、安装期多版本并存拒绝与安装落盘版本目录测试。"""
 
 from __future__ import annotations
 
 import errno
+import io
 import os
+import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -15,11 +18,18 @@ from app.runtime.extensions.plugin.version import (
     PLUGIN_FALLBACK_VERSION,
     migrate_legacy_plugin_layout,
     plugin_version_dir_name,
+    plugin_version_dirs,
     read_plugin_versions_manifest,
     register_plugin_version,
 )
 from app.startup.composition.plugin import (
+    _register_plugin_install_version as register_plugin_install_version,
+)
+from app.startup.composition.plugin import (
     _reject_incompatible_plugin_version_switch as reject_incompatible_plugin_version_switch,
+)
+from app.startup.composition.plugin import (
+    _resolve_plugin_install_target as resolve_plugin_install_target,
 )
 
 
@@ -327,3 +337,381 @@ def test_local_install_rejects_when_the_injected_guard_blocks_the_switch(
     assert message == "拒绝理由"
     assert calls and calls[0][0] == "DemoPlugin"
     assert (plugin_dir / "__init__.py").read_text(encoding="utf-8") == "stable"
+
+
+# 五、安装落盘版本目录
+
+
+def _versioned_manager(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    source: object | None = None,
+) -> tuple[PluginPackageManager, Path]:
+    """构造接了真实版本目录解析与登记端口的包管理器，运行目录隔离在 tmp_path。
+
+    :param monkeypatch: pytest monkeypatch 夹具
+    :param tmp_path: 隔离运行目录的临时根
+    :param source: 市场来源端口；为空时用一个空 Mock 占位
+    :return: (包管理器, 插件根目录)
+    """
+    plugin_root = tmp_path / "app" / "plugins"
+    settings = SimpleNamespace(
+        ROOT_PATH=tmp_path,
+        TEMP_PATH=tmp_path / "temp",
+        CONFIG_PATH=tmp_path / "config",
+        REPO_GITHUB_HEADERS=lambda repo: {},
+    )
+    monkeypatch.setattr(
+        "app.adapters.system.plugin.package.get_runtime_setting",
+        lambda key: getattr(settings, key),
+    )
+    manager = PluginPackageManager(
+        source=source or Mock(),
+        plugin_root=plugin_root,
+        version_switch_guard=reject_incompatible_plugin_version_switch,
+        install_target_resolver=resolve_plugin_install_target,
+        install_version_registrar=register_plugin_install_version,
+    )
+    return manager, plugin_root
+
+
+def _local_source_port(source_dir: Path) -> Mock:
+    """构造一个只声明本地安装所需方法的市场来源端口替身。"""
+    source_port = Mock()
+    source_port.parse_local_repo_url.return_value = "DemoPlugin"
+    source_port.parse_local_repo_path.return_value = None
+    source_port.parse_local_repo_package_version.return_value = None
+    source_port.get_local_plugin_candidate.return_value = {"path": str(source_dir)}
+    source_port.check_plugin_system_version.return_value = (True, "")
+    return source_port
+
+
+def _zip_bytes(files: dict[str, str]) -> bytes:
+    """把文件名到文本内容的映射打包为内存中的 zip 字节串。"""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+    return buffer.getvalue()
+
+
+def test_local_install_lands_in_version_directory_and_registers_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """本地安装把声明版本号的插件源码落到版本目录，并登记来源标签 local。"""
+    source_dir = tmp_path / "repo" / "demoplugin"
+    _write_flat_plugin(source_dir, class_name="DemoPlugin", version="1.0.0")
+    manager, plugin_root = _versioned_manager(
+        monkeypatch, tmp_path, source=_local_source_port(source_dir)
+    )
+
+    success, message = manager.install_local_raw("DemoPlugin", repo_url="local://demoplugin")
+
+    assert (success, message) == (True, "")
+    installed = plugin_root / "demoplugin" / "v1_0_0" / "__init__.py"
+    assert installed.is_file()
+    manifest = read_plugin_versions_manifest(plugin_root / "demoplugin")
+    assert manifest["current"] == "1.0.0"
+    assert manifest["versions"][0]["source"] == "local"
+
+
+def test_release_install_lands_in_version_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """GitHub Release 制品安装把声明版本号的插件源码落到版本目录。"""
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    release_tag = "DemoPlugin_v1.0.0"
+    zip_bytes = _zip_bytes(
+        {"__init__.py": "class DemoPlugin:\n    plugin_version = '1.0.0'\n"}
+    )
+    responses = iter(
+        [
+            SimpleNamespace(
+                status_code=200,
+                json=lambda: {"assets": [{"name": f"{release_tag.lower()}.zip", "id": 42}]},
+            ),
+            SimpleNamespace(status_code=200, content=zip_bytes),
+        ]
+    )
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__request_with_fallback",
+        lambda *_args, **_kwargs: next(responses),
+    )
+
+    ok, message = manager._PluginPackageManager__install_flow_sync(
+        "DemoPlugin",
+        False,
+        lambda staging_dir: manager._PluginPackageManager__install_from_release(
+            "DemoPlugin", "owner/repo", release_tag, staging_dir
+        ),
+    )
+
+    assert (ok, message) == (True, "")
+    installed = plugin_root / "demoplugin" / "v1_0_0" / "__init__.py"
+    assert installed.is_file()
+    manifest = read_plugin_versions_manifest(plugin_root / "demoplugin")
+    assert manifest["current"] == "1.0.0"
+    assert manifest["versions"][0]["source"] == "market"
+
+
+def test_filelist_install_lands_in_version_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """市场文件列表安装把声明版本号的插件源码落到版本目录。"""
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    source_content = "class DemoPlugin:\n    plugin_version = '1.0.0'\n"
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__get_file_list",
+        lambda *_args: (
+            [{"path": "plugins/demoplugin/__init__.py", "download_url": "https://example.invalid/init"}],
+            "",
+        ),
+    )
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__request_with_fallback",
+        lambda *_args, **_kwargs: SimpleNamespace(status_code=200, text=source_content),
+    )
+
+    ok, message = manager._PluginPackageManager__install_flow_sync(
+        "DemoPlugin",
+        False,
+        lambda staging_dir: manager._PluginPackageManager__prepare_content_via_filelist_sync(
+            "DemoPlugin", "owner/repo", None, staging_dir
+        ),
+    )
+
+    assert (ok, message) == (True, "")
+    installed = plugin_root / "demoplugin" / "v1_0_0" / "__init__.py"
+    assert installed.is_file()
+    assert installed.read_text(encoding="utf-8") == source_content
+    manifest = read_plugin_versions_manifest(plugin_root / "demoplugin")
+    assert manifest["current"] == "1.0.0"
+
+
+@pytest.mark.asyncio
+async def test_async_filelist_install_lands_in_version_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """异步市场文件列表安装同样把内容落到版本目录，与同步路径行为一致。"""
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    source_content = "class DemoPlugin:\n    plugin_version = '1.0.0'\n"
+
+    async def fake_get_file_list(*_args: object) -> tuple[list[dict[str, str]], str]:
+        """返回一个只含单个源文件的伪造市场目录列表。"""
+        return (
+            [{"path": "plugins/demoplugin/__init__.py", "download_url": "https://example.invalid/init"}],
+            "",
+        )
+
+    async def fake_request(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        """返回伪造的文件下载响应。"""
+        return SimpleNamespace(status_code=200, text=source_content)
+
+    monkeypatch.setattr(manager, "_PluginPackageManager__async_get_file_list", fake_get_file_list)
+    monkeypatch.setattr(manager, "_PluginPackageManager__async_request_with_fallback", fake_request)
+
+    async def prepare(staging_dir: Path) -> tuple[bool, str]:
+        """把市场文件列表内容准备进给定的暂存目录。"""
+        return await manager._PluginPackageManager__prepare_content_via_filelist_async(
+            "DemoPlugin", "owner/repo", None, staging_dir
+        )
+
+    ok, message = await manager._PluginPackageManager__install_flow_async(
+        "DemoPlugin", False, prepare,
+    )
+
+    assert (ok, message) == (True, "")
+    installed = plugin_root / "demoplugin" / "v1_0_0" / "__init__.py"
+    assert installed.is_file()
+
+
+def test_install_without_declared_version_stays_flat_and_skips_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """读不到声明版本号时安装沿用平铺布局，不为其强行造版本目录或元信息。"""
+    source_dir = tmp_path / "repo" / "demoplugin"
+    _write_flat_plugin(source_dir, class_name="DemoPlugin", version=None)
+    manager, plugin_root = _versioned_manager(
+        monkeypatch, tmp_path, source=_local_source_port(source_dir)
+    )
+
+    success, message = manager.install_local_raw("DemoPlugin", repo_url="local://demoplugin")
+
+    assert (success, message) == (True, "")
+    assert (plugin_root / "demoplugin" / "__init__.py").is_file()
+    assert not (plugin_root / "demoplugin" / "versions.json").exists()
+    assert plugin_version_dirs(plugin_root / "demoplugin") == {}
+
+
+def test_same_version_local_reinstall_is_idempotent_and_stays_flat(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """已经是平铺布局时同版本重装保持平铺，不会为其凭空造出版本目录。"""
+    source_dir = tmp_path / "repo" / "demoplugin"
+    _write_flat_plugin(source_dir, class_name="DemoPlugin", version="1.0.0")
+    manager, plugin_root = _versioned_manager(
+        monkeypatch, tmp_path, source=_local_source_port(source_dir)
+    )
+    existing_dir = plugin_root / "demoplugin"
+    _write_flat_plugin(existing_dir, class_name="DemoPlugin", version="1.0.0")
+
+    success, message = manager.install_local_raw("DemoPlugin", repo_url="local://demoplugin")
+
+    assert (success, message) == (True, "")
+    assert (existing_dir / "__init__.py").is_file()
+    assert plugin_version_dirs(existing_dir) == {}
+    assert not (existing_dir / "versions.json").exists()
+
+
+def test_first_multi_version_local_install_migrates_legacy_layout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """首次安装出现第二个版本号时，先把存量平铺源码迁移进版本目录再写入新版本。"""
+    source_dir = tmp_path / "repo" / "demoplugin"
+    _write_flat_plugin(source_dir, class_name="DemoPlugin", version="2.0.0")
+    manager, plugin_root = _versioned_manager(
+        monkeypatch, tmp_path, source=_local_source_port(source_dir)
+    )
+    existing_dir = plugin_root / "demoplugin"
+    _write_flat_plugin(existing_dir, class_name="DemoPlugin", version="1.0.0")
+
+    success, message = manager.install_local_raw("DemoPlugin", repo_url="local://demoplugin")
+
+    assert (success, message) == (True, "")
+    assert (existing_dir / "v1_0_0" / "__init__.py").is_file()
+    assert (existing_dir / "v2_0_0" / "__init__.py").is_file()
+    assert not (existing_dir / "__init__.py").exists()
+    manifest = read_plugin_versions_manifest(existing_dir)
+    assert manifest["current"] == "2.0.0"
+    versions_by_number = {entry["version"]: entry for entry in manifest["versions"]}
+    assert versions_by_number["1.0.0"]["source"] == "migrated"
+    assert versions_by_number["2.0.0"]["source"] == "local"
+
+
+def test_multi_version_local_install_blocked_keeps_old_version_loadable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """写法体检命中阻断时拒绝安装，存量已装版本原样保留、不残留任何新目录。"""
+    source_dir = tmp_path / "repo" / "demoplugin"
+    _write_flat_plugin(source_dir, class_name="DemoPlugin", version="2.0.0")
+    manager, plugin_root = _versioned_manager(
+        monkeypatch, tmp_path, source=_local_source_port(source_dir)
+    )
+    existing_dir = plugin_root / "demoplugin"
+    existing_dir.mkdir(parents=True)
+    (existing_dir / "__init__.py").write_text(
+        "from app.plugins.demoplugin.utils import helper\n"
+        "class DemoPlugin:\n    plugin_version = '1.0.0'\n",
+        encoding="utf-8",
+    )
+    (existing_dir / "utils.py").write_text("def helper():\n    pass\n", encoding="utf-8")
+
+    success, message = manager.install_local_raw("DemoPlugin", repo_url="local://demoplugin")
+
+    assert success is False
+    assert "自引用" in message
+    assert (existing_dir / "__init__.py").read_text(encoding="utf-8").startswith(
+        "from app.plugins.demoplugin.utils import helper"
+    )
+    assert (existing_dir / "utils.py").is_file()
+    assert not (existing_dir / "v1_0_0").exists()
+    assert not (existing_dir / "v2_0_0").exists()
+    assert not (existing_dir / "versions.json").exists()
+
+
+def test_install_rolls_back_when_dependency_install_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """依赖安装失败时插件根目录必须回滚到安装前内容，不留半份新版本。"""
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    existing_dir = plugin_root / "demoplugin"
+    _write_flat_plugin(existing_dir, class_name="DemoPlugin", version="1.0.0")
+    (existing_dir / "marker.py").write_text("MARK = 1\n", encoding="utf-8")
+
+    def failing_dependencies(*_args: object, **_kwargs: object) -> tuple[bool, bool, str]:
+        """模拟依赖安装失败。"""
+        return True, False, "依赖安装失败：模拟"
+
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__install_dependencies_if_required",
+        failing_dependencies,
+    )
+
+    def prepare_same_version(staging_dir: Path) -> tuple[bool, str]:
+        """准备一份内容不同但版本号相同的替换内容。"""
+        _write_flat_plugin(staging_dir, class_name="DemoPlugin", version="1.0.0")
+        (staging_dir / "marker.py").write_text("MARK = 2\n", encoding="utf-8")
+        return True, ""
+
+    ok, message = manager._PluginPackageManager__install_flow_sync(
+        "DemoPlugin", False, prepare_same_version,
+    )
+
+    assert ok is False
+    assert message == "依赖安装失败：模拟"
+    assert (existing_dir / "marker.py").read_text(encoding="utf-8") == "MARK = 1\n"
+    assert (existing_dir / "__init__.py").is_file()
+
+
+def test_install_rolls_back_when_target_resolver_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """目标目录解析端口失败时插件根目录必须回滚到安装前内容。"""
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    existing_dir = plugin_root / "demoplugin"
+    _write_flat_plugin(existing_dir, class_name="DemoPlugin", version="1.0.0")
+    (existing_dir / "marker.py").write_text("MARK = 1\n", encoding="utf-8")
+
+    def failing_resolver(*_args: object, **_kwargs: object) -> None:
+        """模拟版本目录解析端口异常。"""
+        raise RuntimeError("模拟解析失败")
+
+    monkeypatch.setattr(manager, "_install_target_resolver", failing_resolver)
+
+    def prepare(staging_dir: Path) -> tuple[bool, str]:
+        """准备一份最小可用的替换内容。"""
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        (staging_dir / "__init__.py").write_text("class DemoPlugin:\n    pass\n", encoding="utf-8")
+        return True, ""
+
+    ok, message = manager._PluginPackageManager__install_flow_sync(
+        "DemoPlugin", False, prepare,
+    )
+
+    assert ok is False
+    assert "解析插件安装目标失败" in message
+    assert (existing_dir / "marker.py").read_text(encoding="utf-8") == "MARK = 1\n"
+    assert (existing_dir / "__init__.py").is_file()
+
+
+def test_reinstalling_an_existing_version_directory_overwrites_it_idempotently(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """重装已存在的版本目录直接覆盖该目录内容，元信息里的版本条目不重复。"""
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    existing_dir = plugin_root / "demoplugin"
+    version_dir = existing_dir / "v1_0_0"
+    _write_flat_plugin(version_dir, class_name="DemoPlugin", version="1.0.0")
+    (version_dir / "marker.py").write_text("MARK = 1\n", encoding="utf-8")
+    register_plugin_version(existing_dir, "1.0.0", source="local")
+
+    def prepare(staging_dir: Path) -> tuple[bool, str]:
+        """准备同一版本号但内容不同的重装内容。"""
+        _write_flat_plugin(staging_dir, class_name="DemoPlugin", version="1.0.0")
+        (staging_dir / "marker.py").write_text("MARK = 2\n", encoding="utf-8")
+        return True, ""
+
+    ok, message = manager._PluginPackageManager__install_flow_sync(
+        "DemoPlugin", False, prepare, source_label="local",
+    )
+
+    assert (ok, message) == (True, "")
+    assert (version_dir / "marker.py").read_text(encoding="utf-8") == "MARK = 2\n"
+    manifest = read_plugin_versions_manifest(existing_dir)
+    assert manifest["current"] == "1.0.0"
+    assert len(manifest["versions"]) == 1
