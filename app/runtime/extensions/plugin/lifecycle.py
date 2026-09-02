@@ -5,10 +5,12 @@ from __future__ import annotations
 import traceback
 from collections.abc import Callable
 from functools import wraps
+from pathlib import Path
 import threading
 import time
 from typing import Any, Optional, ParamSpec, TypeVar, cast
 
+from app.runtime.extensions.plugin.database import PluginDatabase
 from app.runtime.observability import record_metric
 from app.schemas.plugin import PluginRuntimeStatus
 
@@ -69,10 +71,11 @@ class PluginLifecycle:
         enable_events: Callable[[Any], None],
         disable_events: Callable[[Any], None],
         runtime_status_writer: Callable[[str, PluginRuntimeStatus], None],
+        database: Callable[[], PluginDatabase],
         log: Any,
         event_sender: Callable[..., Any],
     ) -> None:
-        """保存注册表、加载器和事件端口。"""
+        """保存注册表、加载器、数据库和事件端口。"""
         self._classes = classes
         self._running = running
         self._load_plugins = load_plugins
@@ -84,6 +87,7 @@ class PluginLifecycle:
         self._enable_events = enable_events
         self._disable_events = disable_events
         self._runtime_status_writer = runtime_status_writer
+        self._database = database
         self._logger = log
         self._event_sender = event_sender
         self._lifecycle_lock = threading.RLock()
@@ -121,6 +125,7 @@ class PluginLifecycle:
                 self._classes[current_id] = plugin
                 instance = plugin()
                 instance.init_plugin(self._plugin_config(current_id))
+                self._ensure_database(current_id, instance)
                 self._quiesced_hooks.pop(current_id, None)
                 self._running[current_id] = instance
                 self._logger.info(
@@ -137,6 +142,9 @@ class PluginLifecycle:
                 status = PluginRuntimeStatus.LOAD_FAILED
                 self._runtime_status_writer(plugin_id or current_id, status)
                 results[plugin_id or current_id] = status
+                # 建库发生在进入运行态之前：失败的插件不会出现在 _running 里，卸载路径
+                # 因此够不到它，句柄只能在这里释放
+                self._release_databases((current_id,))
                 self._logger.error(
                     f"加载插件 {current_id} 出错：{error} - {traceback.format_exc()}"
                 )
@@ -149,6 +157,32 @@ class PluginLifecycle:
             results[plugin_id] = status
         self._clear_tools()
         return results
+
+    @staticmethod
+    def _declaration(instance: Any, hook_name: str) -> Any:
+        """读取插件的数据库声明钩子，未实现该钩子时视为未声明。"""
+        hook = getattr(instance, hook_name, None)
+        return hook() if callable(hook) else None
+
+    def _ensure_database(self, plugin_id: str, instance: Any) -> None:
+        """按插件声明建立其自有数据库，两项声明都缺失时不建库。"""
+        migrations = self._declaration(instance, "get_database_migrations")
+        self._database().ensure(
+            plugin_id,
+            tuple(self._declaration(instance, "get_database_models") or ()),
+            Path(migrations) if migrations else None,
+        )
+
+    def _release_databases(self, plugin_ids: tuple[str, ...]) -> None:
+        """释放已卸载插件的自有数据库连接，单个失败不得阻断其余释放。"""
+        database = self._database()
+        for plugin_id in plugin_ids:
+            try:
+                database.release(plugin_id)
+            except Exception as error:  # noqa: BLE001  释放故障不得阻断卸载
+                self._logger.warning(
+                    f"释放插件 {plugin_id} 的数据库连接时发生错误: {error}"
+                )
 
     @observe_plugin_lifecycle("initialize")
     def initialize(self, plugin_id: str, config: dict) -> None:
@@ -293,10 +327,14 @@ class PluginLifecycle:
                 self._classes.pop(runtime_id, None)
                 self._running.pop(runtime_id, None)
                 self._quiesced_hooks.pop(runtime_id, None)
+                self._release_databases((runtime_id,))
             else:
+                # 启动中途失败的插件只登记在 _classes 里，漏掉它就漏掉它的连接池
+                released_ids = tuple(dict.fromkeys((*self._running, *self._classes)))
                 self._classes.clear()
                 self._running.clear()
                 self._quiesced_hooks.clear()
+                self._release_databases(released_ids)
             self._logger.info("插件停止完成")
             return True
 

@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.runtime.extensions.plugin.database import PluginDatabase
 from app.schemas.plugin import PluginInstance
 from app.schemas.types import SystemConfigKey
 
@@ -88,11 +89,13 @@ class PluginConfigStore:
         self,
         *,
         storage: Callable[[], "PluginStorage"],
+        database: Callable[[], PluginDatabase],
         plugin_exists: PluginExists,
         key_prefix: str = "plugin.%s",
     ) -> None:
-        """保存持久化端口和运行态插件查询端口。"""
+        """保存持久化端口、自有数据库端口和运行态插件查询端口。"""
         self._storage = storage
+        self._database = database
         self._plugin_exists = plugin_exists
         self._key_prefix = key_prefix
 
@@ -137,10 +140,11 @@ class PluginConfigStore:
         return self._storage().delete(self._key(plugin_id))
 
     def delete_data(self, plugin_id: str, force: bool = False) -> bool:
-        """删除插件业务数据并保持旧的布尔结果合同。"""
+        """删除插件业务数据与自有数据库，并保持旧的布尔结果合同。"""
         if not force and not self._plugin_exists(plugin_id):
             return False
         self._storage().delete_data(plugin_id)
+        self._database().destroy(plugin_id)
         return True
 
 

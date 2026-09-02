@@ -210,6 +210,7 @@ def configure_plugin_system_services():
     from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
     from app.runtime.extensions.module.manager import ModuleManager
     from app.runtime.extensions.plugin import manager as plugin_manager_module
+    from app.runtime.extensions.plugin.database import get_plugin_database
     from app.runtime.extensions.plugin.manager import (
         PluginManager,
         reset_plugin_runtime_factory,
@@ -234,6 +235,7 @@ def configure_plugin_system_services():
                 plugins_root=settings.ROOT_PATH / "app" / "plugins",
                 storage=get_plugin_storage,
                 system=get_plugin_system,
+                database=get_plugin_database,
                 catalog_factory=lambda mapper: (
                     plugin_manager_module._plugin_catalog_factory(mapper)
                 ),

@@ -9811,6 +9811,11 @@
         "target": "app.application.backup.BackupVerification"
       },
       {
+        "kind": "import",
+        "name": "PluginDatabaseHandle",
+        "target": "app.db.plugin.container.PluginDatabaseHandle"
+      },
+      {
         "kind": "FunctionDef",
         "name": "create_backup",
         "target": ""
@@ -9819,6 +9824,11 @@
         "kind": "FunctionDef",
         "name": "list_backups",
         "target": ""
+      },
+      {
+        "kind": "import",
+        "name": "plugin_declarative_base",
+        "target": "app.db.plugin.base.plugin_declarative_base"
       },
       {
         "kind": "FunctionDef",

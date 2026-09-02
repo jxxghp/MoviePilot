@@ -78,6 +78,11 @@ from app.application.plugin.transaction import (
 from app.application.scheduling import update_plugin_job
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.db.oper.plugindata import PluginDataOper
+from app.db.plugin.registry import (
+    destroy_database,
+    ensure_database,
+    release_database,
+)
 from app.db.session import SessionFactory
 from app.db.uow import SqlAlchemyUnitOfWork
 from app.foundation.version import compare_version
@@ -88,6 +93,11 @@ from app.runtime.compat.diagnostics import (
 )
 from app.runtime.compat.resources import scan_plugin_resource_imports
 from app.runtime.execution import run_in_threadpool_to_completion
+from app.runtime.extensions.plugin.database import (
+    PluginDatabase,
+    configure_plugin_database,
+    get_plugin_database,
+)
 from app.runtime.extensions.plugin.dependency import PluginDependencyInstallResult
 from app.runtime.extensions.plugin.manager import (
     PluginManager,
@@ -145,6 +155,15 @@ def _delete_plugin_data(plugin_id: str) -> None:
         session.close()
 
 
+def _build_plugin_database() -> PluginDatabase:
+    """把插件自有数据库端口装配到 db 层的建库、释放与销毁实现。"""
+    return PluginDatabase(
+        ensure=ensure_database,
+        release=release_database,
+        destroy=destroy_database,
+    )
+
+
 def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
     """在执行旧插件顶层代码前准备其静态导入所需的宿主资源。"""
     for capability_id in scan_plugin_resource_imports(plugin_id, plugin_dir):
@@ -162,6 +181,7 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
             plugins_root=Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins",
             storage=lambda: get_plugin_storage(),
             system=lambda: get_plugin_system(),
+            database=lambda: get_plugin_database(),
             catalog_factory=lambda mapper: _build_plugin_catalog(mapper),
             import_preparer=_prepare_legacy_plugin_import,
             import_scanner=scan_plugin_legacy_imports,
@@ -397,6 +417,7 @@ def configure_plugin_services() -> None:
         delete=lambda key: get_configured_system_config().delete(key),
         delete_data=_delete_plugin_data,
     ))
+    configure_plugin_database(_build_plugin_database())
 
 
 def _register_plugin_runtime(plugin_id: str) -> None:

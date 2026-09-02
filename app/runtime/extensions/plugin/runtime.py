@@ -14,6 +14,7 @@ from app.runtime.extensions.plugin.access import PluginAccessPolicy
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
 from app.runtime.extensions.plugin.clone import PluginCloneService
+from app.runtime.extensions.plugin.database import PluginDatabase
 from app.runtime.extensions.plugin.dependency import PluginDependencyService
 from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
 from app.runtime.extensions.plugin.loader import PluginLoader
@@ -87,6 +88,7 @@ class PluginRuntimeEnvironment:
     plugins_root: Path
     storage: Callable[[], PluginStorage]
     system: Callable[[], PluginSystemServices]
+    database: Callable[[], PluginDatabase]
     catalog_factory: PluginCatalogFactory
     import_preparer: PluginImportService
     import_scanner: PluginImportService
@@ -132,6 +134,7 @@ def build_plugin_runtime(
     instances = PluginInstanceStore(storage=environment.storage)
     configs = PluginConfigStore(
         storage=environment.storage,
+        database=environment.database,
         plugin_exists=lambda plugin_id: bool(registry.classes.get(plugin_id)),
     )
     access = PluginAccessPolicy(
@@ -177,6 +180,7 @@ def build_plugin_runtime(
         enable_events=eventmanager.enable_event_handler,
         disable_events=eventmanager.disable_event_handler,
         runtime_status_writer=registry.set_runtime_status,
+        database=environment.database,
         log=environment.logger,
         event_sender=eventmanager.send_event,
     )
