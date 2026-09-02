@@ -130,6 +130,15 @@ def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> 
     assert "\n    util-linux \\\n" in dockerfile
 
 
+def test_rclone_image_uses_cve_2026_46603_patched_build() -> None:
+    """rclone 制品必须固定到包含 x/image 漏洞修复的不可变镜像。"""
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+
+    assert "rclone/rclone:1.75.0" not in dockerfile
+    patched_rclone_image = "rclone/rclone:beta@sha256:d6f5448594ecefefcf09cfeaf85cb7a21a866328032576ce2c1813e7b59c66dc"
+    assert f"FROM {patched_rclone_image} AS rclone" in dockerfile
+
+
 def test_release_audits_locked_runtime_dependencies_before_building() -> None:
     """正式版和 Beta 构建前必须分别审计两套锁定运行依赖。"""
     for workflow_path in (RELEASE_WORKFLOW, BETA_WORKFLOW):

@@ -6,7 +6,8 @@ ARG MOVIEPILOT_PYTHON_VERSION="3.14.7"
 FROM ghcr.io/astral-sh/uv:latest AS uv
 
 
-FROM rclone/rclone:1.75.0@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac9d2fa659d51d60548 AS rclone
+# rclone v1.75.0 包含受 CVE-2026-46603 影响的 x/image v0.44.0，临时固定已修复的官方 Beta 摘要。
+FROM rclone/rclone:beta@sha256:d6f5448594ecefefcf09cfeaf85cb7a21a866328032576ce2c1813e7b59c66dc AS rclone
 
 
 FROM mwader/static-ffmpeg:8.1.1@sha256:735f84b905e00d5c618b667f0b053f83b1096f5fc404c607e6134bf2275a0e0a AS ffmpeg
