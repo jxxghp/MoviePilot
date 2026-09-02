@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from app.modules.indexer.spider import (
     SiteSpider,
     resolve_category_media_type,
@@ -61,6 +63,28 @@ def test_site_level_music_type_fills_missing_torrent_category():
     spider._SiteSpider__get_category(None)
 
     assert spider.torrents_info["category"] == MediaType.MUSIC.value
+
+
+def test_site_level_music_type_fills_missing_rust_result_category():
+    """Rust 解析未返回分类时应使用纯音乐站点的站点级类型。"""
+    indexer = {
+        "id": "music",
+        "name": "Music",
+        "domain": "https://music.example/",
+        "media_type": "music",
+        "search": {"paths": [{"path": "torrents.php"}]},
+        "torrents": {"list": {}, "fields": {}},
+    }
+
+    with patch(
+        "app.modules.indexer.spider.rust_accel.parse_indexer_torrents",
+        return_value=[{"title": "Artist - Album", "category": None}],
+    ):
+        results = SiteSpider(indexer=indexer, mtype=MediaType.MUSIC).parse(
+            "<html><body></body></html>"
+        )
+
+    assert results[0]["category"] == MediaType.MUSIC.value
 
 
 def test_requested_result_media_type_overrides_unrepresentable_site_category():

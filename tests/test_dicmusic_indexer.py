@@ -1,5 +1,6 @@
 from typing import Any, NoReturn
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -45,6 +46,9 @@ def _dicmusic_indexer() -> dict[str, Any]:
                 "searchstr": "{keyword}",
             },
         },
+        "browse": {
+            "path": "torrents.php?searchsubmit=1&group_results=0&page={page}",
+        },
         "torrents": {
             "list": {"selector": "table#torrent_table > tbody > tr.torrent"},
             "fields": {
@@ -79,6 +83,22 @@ def _dicmusic_indexer() -> dict[str, Any]:
     }
 
 
+def test_dicmusic_browse_requests_ungrouped_torrent_rows() -> None:
+    """DIC Music 无关键词浏览也应显式关闭 Gazelle 结果分组。"""
+    spider = SiteSpider(_dicmusic_indexer(), page=2)
+
+    browse_url = spider._SiteSpider__get_search_url()
+    parsed_url = urlparse(browse_url)
+    query = parse_qs(parsed_url.query)
+
+    assert parsed_url.path == "/torrents.php"
+    assert query == {
+        "searchsubmit": ["1"],
+        "group_results": ["0"],
+        "page": ["2"],
+    }
+
+
 def test_dicmusic_search_uses_complete_music_title_in_python_fallback() -> None:
     """DIC Music Python 兜底解析应从非分组行保留完整音乐名。"""
     with patch(
@@ -91,6 +111,7 @@ def test_dicmusic_search_uses_complete_music_title_in_python_fallback() -> None:
 
     assert len(results) == 1
     assert results[0]["title"] == "BTS - ARIRANG"
+    assert results[0]["category"] == MediaType.MUSIC.value
     assert results[0]["page_url"].endswith("torrents.php?id=123&torrentid=456")
     assert results[0]["enclosure"].endswith("torrents.php?action=download&id=456")
 
@@ -116,3 +137,4 @@ def test_dicmusic_search_uses_complete_music_title_in_rust_parser(
 
     assert len(results) == 1
     assert results[0]["title"] == "BTS - ARIRANG"
+    assert results[0]["category"] == MediaType.MUSIC.value
