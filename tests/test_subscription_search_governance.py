@@ -17,6 +17,7 @@ from app.chain.subscribe.facade import SubscribeChain
 from app.chain.subscribe.search import _search_task_available_at
 from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
 from app.db.base import Base
+from app.modules.indexer import IndexerModule
 from app.schemas.types import MediaType
 
 
@@ -213,6 +214,76 @@ def test_fallback_queue_continues_after_one_subscription_failure(tmp_path, monke
         )
         assert lease is not None
         assert chain._subscription_execution_admission.release(lease) is True
+
+
+def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp_path, monkeypatch):
+    """索引器吞错后仍须失败收口当前任务，并继续处理后续订阅。"""
+    subscribes = [_subscribe(13), _subscribe(14)]
+    chain = _chain(tmp_path, subscribes)
+    _make_tasks_ready(monkeypatch)
+    searchchain = object.__new__(SearchChain)
+    attempts = 0
+    processed = []
+
+    def execute_search(_site, _request):
+        """首条站点请求模拟被 IndexerModule 吞掉的 HTTP 429。"""
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("HTTP 429")
+        return False, []
+
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__search_check",
+        staticmethod(lambda _site, _keyword=None: True),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__execute_search",
+        staticmethod(execute_search),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__indexer_statistic",
+        staticmethod(lambda **_kwargs: None),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__parse_result",
+        staticmethod(lambda **_kwargs: []),
+    )
+    searchchain.search_site_torrents = object.__new__(IndexerModule).search_torrents
+
+    def process(subscribe, current_searchchain, **_kwargs):
+        """让每条任务经过同一预算包装，并把观察到的站点失败抛给队列。"""
+        processed.append(subscribe.id)
+        current_searchchain._search_site_torrents_with_budget(  # pylint: disable=protected-access
+            site={
+                "id": 31 if subscribe.id == 13 else 32,
+                "name": "Flaky" if subscribe.id == 13 else "Healthy",
+            },
+            keyword=subscribe.name,
+            mtype=MediaType.MOVIE,
+            page=0,
+        )
+        failures = current_searchchain.consume_subscription_site_budget_failures()
+        if failures:
+            raise RuntimeError("；".join(failures))
+        return subscribe
+
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=searchchain):
+        batch_id = chain.search(state="R")
+
+    batch = chain.get_search_batch(batch_id)
+    assert processed == [13, 14]
+    assert batch.state == "failed"
+    assert batch.finished_count == 1
+    assert batch.failed_count == 1
+    assert "Flaky" in batch.last_error
+    assert "HTTP 429" in batch.last_error
 
 
 def test_same_subscription_conflict_is_skipped_without_waiting(tmp_path, monkeypatch):

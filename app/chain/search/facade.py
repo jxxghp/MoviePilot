@@ -52,7 +52,7 @@ class SearchChain(ChainBase):
         self._subscription_site_budget_failure_lock = threading.Lock()
 
     def record_subscription_site_budget_failure(self, error: str) -> None:
-        """线程安全地记录一个未执行站点，供订阅任务暴露聚合失败。"""
+        """线程安全地记录一个站点执行失败，供订阅任务暴露聚合失败。"""
         lock = getattr(self, "_subscription_site_budget_failure_lock", None)
         if lock is None:
             return

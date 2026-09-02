@@ -798,7 +798,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
 
     @staticmethod
     def _raise_site_budget_failures(failures: tuple[str, ...]) -> None:
-        """在成功站点结果完成处理后暴露未执行站点的聚合失败。"""
+        """在成功站点结果完成处理后暴露其余站点的聚合失败。"""
         if failures:
             raise RuntimeError("；".join(failures))
 

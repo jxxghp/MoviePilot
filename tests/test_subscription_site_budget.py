@@ -20,7 +20,7 @@ from app.chain.search.facade import SearchChain
 from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
 from app.db.base import Base
 from app.db.models.subscriptionsearch import SubscriptionSiteBudget as SiteBudgetRecord
-from app.modules.indexer import _classify_search_failure
+from app.modules.indexer import IndexerModule, _classify_search_failure
 from app.runtime.stop import ProcessStopState
 
 
@@ -317,3 +317,78 @@ def test_search_provider_releases_successful_site_budget():
     assert captured["site_id"] == 12
     assert captured["outcome"] == "success"
     assert captured["lease_token"] == "lease-token"
+
+
+def test_search_provider_aggregates_swallowed_indexer_failure(monkeypatch):
+    """索引器吞掉外站异常返回空页时，provider 仍须暴露站点失败。"""
+    captured = {}
+
+    class _Repository(_WaitingRepository):
+        """提供立即可用租约并记录失败收口。"""
+
+        def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
+            """返回当前调用独占的站点租约。"""
+            del owner, lease_seconds
+            now = datetime.now(timezone.utc)
+            return SiteBudgetClaim(
+                site_id=site_id,
+                acquired=True,
+                retry_at=now.isoformat(timespec="seconds"),
+                consecutive_failures=0,
+                lease_token="lease-token",
+            )
+
+        def finish_site(self, **kwargs) -> bool:
+            """记录预算收口，确认错误冷却仍由 budget.finish 负责。"""
+            captured.update(kwargs)
+            return True
+
+    def execute_search(_site, _request):
+        """模拟 IndexerModule 捕获的 HTTP 429。"""
+        raise RuntimeError("HTTP 429")
+
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__search_check",
+        staticmethod(lambda _site, _keyword=None: True),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__execute_search",
+        staticmethod(execute_search),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__indexer_statistic",
+        staticmethod(lambda **_kwargs: None),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__parse_result",
+        staticmethod(lambda **_kwargs: []),
+    )
+
+    budget = SubscriptionSiteBudget(
+        repository=_Repository(),
+        owner="fallback-worker",
+        cancelled=lambda: False,
+        stop_state=ProcessStopState(),
+    )
+    chain = object.__new__(SearchChain)
+    chain.configure_subscription_site_budget(budget)
+    chain.search_site_torrents = object.__new__(IndexerModule).search_torrents
+
+    result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
+        site={"id": 13, "name": "Flaky"},
+        keyword="movie",
+        mtype=None,
+        page=0,
+    )
+
+    assert result == []
+    assert captured["outcome"] == "rate_limited"
+    assert captured["error"] == "HTTP 429"
+    failures = chain.consume_subscription_site_budget_failures()
+    assert len(failures) == 1
+    assert "Flaky" in failures[0]
+    assert "HTTP 429" in failures[0]
