@@ -28,6 +28,7 @@ from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import (
     PluginConfigStore,
+    PluginInstanceDirectory,
     PluginInstanceStore,
     PluginStorage,
 )
@@ -91,6 +92,7 @@ class PluginRuntimeEnvironment:
 
     plugins_root: Path
     storage: Callable[[], PluginStorage]
+    instance_directory: Callable[[], PluginInstanceDirectory]
     system: Callable[[], PluginSystemServices]
     database: Callable[[], PluginDatabase]
     catalog_factory: PluginCatalogFactory
@@ -138,7 +140,10 @@ def build_plugin_runtime(
 ) -> PluginRuntime:
     """按依赖顺序构造唯一插件运行时，各业务能力仍由对应 owner 实现。"""
     registry = PluginRegistry()
-    instances = PluginInstanceStore(storage=environment.storage)
+    instances = PluginInstanceStore(
+        storage=environment.storage,
+        directory=environment.instance_directory,
+    )
     configs = PluginConfigStore(
         storage=environment.storage,
         database=environment.database,

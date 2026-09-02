@@ -220,7 +220,10 @@ def configure_plugin_system_services():
         PluginRuntimeEnvironment,
         build_plugin_runtime,
     )
-    from app.runtime.extensions.plugin.storage import get_plugin_storage
+    from app.runtime.extensions.plugin.storage import (
+        get_plugin_instance_directory,
+        get_plugin_storage,
+    )
     from app.runtime.extensions.plugin.system import get_plugin_system
     from app.runtime.extensions.service import ServiceConfigHelper
 
@@ -235,6 +238,7 @@ def configure_plugin_system_services():
             PluginRuntimeEnvironment(
                 plugins_root=settings.ROOT_PATH / "app" / "plugins",
                 storage=get_plugin_storage,
+                instance_directory=get_plugin_instance_directory,
                 system=get_plugin_system,
                 database=get_plugin_database,
                 catalog_factory=lambda mapper: (

@@ -10,7 +10,11 @@ import pytest
 
 from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
 from app.runtime.extensions.plugin.loader import PluginLoader
-from app.runtime.extensions.plugin.storage import PluginInstanceStore, PluginStorage
+from app.runtime.extensions.plugin.storage import (
+    PluginInstanceDirectory,
+    PluginInstanceStore,
+    PluginStorage,
+)
 from app.runtime.extensions.plugin.version import (
     plugin_version_dir_name,
     write_plugin_versions_manifest,
@@ -29,14 +33,62 @@ def _logger() -> SimpleNamespace:
     )
 
 
-def _make_loader(plugins_root: Path) -> PluginLoader:
-    """构造只需最小日志端口的加载器实例。"""
+def _make_loader(plugins_root: Path, **overrides) -> PluginLoader:
+    """构造只需最小日志端口的加载器实例，可覆盖本体版本绑定查询端口。"""
     return PluginLoader(
         plugins_root=plugins_root,
         import_preparer=lambda **_kwargs: None,
         import_scanner=lambda **_kwargs: None,
         log=_logger(),
+        **overrides,
     )
+
+
+class _FakeInstanceDirectory:
+    """进程内插件实例描述符表，记录写入调用轨迹供断言使用。"""
+
+    def __init__(self) -> None:
+        self.records: dict[str, PluginInstance] = {}
+        self.saved: list[PluginInstance] = []
+        self.deleted: list[str] = []
+
+    def get(self, instance_id: str) -> PluginInstance | None:
+        """按实例 ID 读取单条描述。"""
+        return self.records.get(instance_id)
+
+    def list_all(self) -> list[PluginInstance]:
+        """列出全部描述。"""
+        return list(self.records.values())
+
+    def list_by_source(self, source_plugin_id: str) -> list[PluginInstance]:
+        """按源插件 ID 列出其全部描述。"""
+        return [
+            record
+            for record in self.records.values()
+            if record.source_plugin_id == source_plugin_id
+        ]
+
+    def save(self, instance: PluginInstance) -> None:
+        """新增或更新一条描述并记录调用轨迹。"""
+        self.records[instance.instance_id] = instance
+        self.saved.append(instance)
+
+    def delete(self, instance_id: str) -> bool:
+        """删除一条描述并记录调用轨迹。"""
+        removed = self.records.pop(instance_id, None)
+        if removed is not None:
+            self.deleted.append(instance_id)
+        return removed is not None
+
+    def port(self) -> PluginInstanceDirectory:
+        """构造绑定到本实例状态的持久化端口。"""
+        return PluginInstanceDirectory(
+            get=self.get,
+            list_all=self.list_all,
+            list_by_source=self.list_by_source,
+            save=self.save,
+            delete=self.delete,
+        )
 
 
 def _write_version(
@@ -98,7 +150,7 @@ def test_plugin_instance_defaults_to_no_effective_version_and_follows_current():
 
 
 def test_instance_store_tolerates_legacy_payload_missing_version_fields():
-    """存量数据缺少版本绑定字段时按默认值容错反序列化，不丢弃该实例。"""
+    """兜底导入时，存量数据缺少版本绑定字段仍按默认值容错反序列化，不丢弃该实例。"""
     values = {
         SystemConfigKey.PluginInstances: {
             "DemoWork": {
@@ -109,7 +161,7 @@ def test_instance_store_tolerates_legacy_payload_missing_version_fields():
         }
     }
     storage = PluginStorage(read=values.get, write=lambda key, value: values.__setitem__(key, value))
-    store = PluginInstanceStore(storage=lambda: storage)
+    store = PluginInstanceStore(storage=lambda: storage, directory=_FakeInstanceDirectory().port)
 
     instance = store.get("DemoWork")
 
@@ -123,9 +175,8 @@ def test_instance_store_tolerates_legacy_payload_missing_version_fields():
 
 def test_record_effective_version_writes_when_changed():
     """成功启动的版本与已登记值不同时才写入持久化。"""
-    values: dict = {}
-    storage = PluginStorage(read=values.get, write=lambda key, value: values.__setitem__(key, value))
-    store = PluginInstanceStore(storage=lambda: storage)
+    storage = PluginStorage(read=lambda _key: None, write=lambda _key, _value: None)
+    store = PluginInstanceStore(storage=lambda: storage, directory=_FakeInstanceDirectory().port)
     store.save(PluginInstance(instance_id="DemoWork", source_plugin_id="Demo"))
 
     store.record_effective_version("DemoWork", "1.2.0")
@@ -135,32 +186,124 @@ def test_record_effective_version_writes_when_changed():
 
 def test_record_effective_version_skips_write_when_unchanged():
     """已生效版本与本次值相同时不产生新的持久化写入。"""
-    writes: list = []
-    values: dict = {}
-
-    def _write(key, value):
-        writes.append((key, value))
-        values[key] = value
-
-    storage = PluginStorage(read=values.get, write=_write)
-    store = PluginInstanceStore(storage=lambda: storage)
+    storage = PluginStorage(read=lambda _key: None, write=lambda _key, _value: None)
+    directory = _FakeInstanceDirectory()
+    store = PluginInstanceStore(storage=lambda: storage, directory=directory.port)
     store.save(PluginInstance(instance_id="DemoWork", source_plugin_id="Demo", plugin_version="1.2.0"))
-    writes.clear()
+    directory.saved.clear()
 
     store.record_effective_version("DemoWork", "1.2.0")
 
-    assert writes == []
+    assert directory.saved == []
 
 
 def test_record_effective_version_ignores_ids_without_instance_descriptor():
-    """物理插件没有实例描述时静默跳过，不因找不到实例而报错。"""
-    values: dict = {}
-    storage = PluginStorage(read=values.get, write=lambda key, value: values.__setitem__(key, value))
-    store = PluginInstanceStore(storage=lambda: storage)
+    """物理插件的分身与本体都没有实例描述时静默跳过，不因找不到实例而报错。"""
+    storage = PluginStorage(read=lambda _key: None, write=lambda _key, _value: None)
+    store = PluginInstanceStore(storage=lambda: storage, directory=_FakeInstanceDirectory().port)
 
     store.record_effective_version("PhysicalPlugin", "1.0.0")
 
     assert store.all() == {}
+
+
+# 五、PluginInstanceStore 本体版本绑定
+
+
+def test_host_binding_is_isolated_from_clone_views():
+    """本体的版本绑定记录不出现在 all()/get()/for_source() 这些分身专用视图里。"""
+    storage = PluginStorage(read=lambda _key: None, write=lambda _key, _value: None)
+    store = PluginInstanceStore(storage=lambda: storage, directory=_FakeInstanceDirectory().port)
+
+    store.save_host(
+        PluginInstance(
+            instance_id="DemoPlugin",
+            source_plugin_id="DemoPlugin",
+            follow_current_version=False,
+            plugin_version="1.0.0",
+        )
+    )
+
+    assert store.get("DemoPlugin") is None
+    assert store.all() == {}
+    assert store.for_source("DemoPlugin") == []
+    host = store.get_host("DemoPlugin")
+    assert host is not None
+    assert host.mode == "host"
+    assert host.follow_current_version is False
+    assert host.plugin_version == "1.0.0"
+
+
+def test_host_binding_defaults_to_none_when_never_bound():
+    """从未显式绑定过版本的本体读取为 None，而不是一条隐式默认记录。"""
+    storage = PluginStorage(read=lambda _key: None, write=lambda _key, _value: None)
+    store = PluginInstanceStore(storage=lambda: storage, directory=_FakeInstanceDirectory().port)
+
+    assert store.get_host("DemoPlugin") is None
+
+
+def test_record_effective_version_updates_existing_host_binding():
+    """本体已被绑定过版本时，成功启动会更新其已生效版本。"""
+    storage = PluginStorage(read=lambda _key: None, write=lambda _key, _value: None)
+    store = PluginInstanceStore(storage=lambda: storage, directory=_FakeInstanceDirectory().port)
+    store.save_host(PluginInstance(instance_id="DemoPlugin", source_plugin_id="DemoPlugin"))
+
+    store.record_effective_version("DemoPlugin", "1.2.0")
+
+    assert store.get_host("DemoPlugin").plugin_version == "1.2.0"
+
+
+def test_record_effective_version_does_not_create_host_binding_on_first_start():
+    """本体从未被显式绑定过版本时，成功启动不会隐式创建一条绑定记录。"""
+    storage = PluginStorage(read=lambda _key: None, write=lambda _key, _value: None)
+    store = PluginInstanceStore(storage=lambda: storage, directory=_FakeInstanceDirectory().port)
+
+    store.record_effective_version("DemoPlugin", "1.2.0")
+
+    assert store.get_host("DemoPlugin") is None
+
+
+def test_store_bootstraps_legacy_instances_once_when_table_is_empty():
+    """新表为空而旧 systemconfig 单键非空时，首次访问按旧内容导入一次，且不重复导入。"""
+    values = {
+        SystemConfigKey.PluginInstances: {
+            "DemoWork": {"instance_id": "DemoWork", "source_plugin_id": "Demo"},
+        }
+    }
+    storage = PluginStorage(read=values.get, write=lambda key, value: values.__setitem__(key, value))
+    directory = _FakeInstanceDirectory()
+    store = PluginInstanceStore(storage=lambda: storage, directory=directory.port)
+
+    first = store.all()
+    values[SystemConfigKey.PluginInstances] = {
+        "DemoWork": {"instance_id": "DemoWork", "source_plugin_id": "Demo"},
+        "DemoHome": {"instance_id": "DemoHome", "source_plugin_id": "Demo"},
+    }
+    second = store.all()
+
+    assert set(first) == {"DemoWork"}
+    assert set(second) == {"DemoWork"}
+    assert len(directory.saved) == 1
+
+
+def test_store_skips_bootstrap_import_when_table_already_has_rows():
+    """新表已有内容时不再导入旧 systemconfig 单键，避免覆盖已迁移或已改动的数据。"""
+    values = {
+        SystemConfigKey.PluginInstances: {
+            "DemoWork": {"instance_id": "DemoWork", "source_plugin_id": "Demo"},
+        }
+    }
+    storage = PluginStorage(read=values.get, write=lambda key, value: values.__setitem__(key, value))
+    directory = _FakeInstanceDirectory()
+    directory.records["DemoHome"] = PluginInstance(
+        instance_id="DemoHome", source_plugin_id="Demo"
+    )
+    store = PluginInstanceStore(storage=lambda: storage, directory=directory.port)
+
+    instances = store.all()
+
+    assert set(instances) == {"DemoHome"}
+    assert directory.saved == []
 
 
 # 三、加载期版本解析与失败回退

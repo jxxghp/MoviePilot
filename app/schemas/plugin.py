@@ -62,7 +62,10 @@ class PluginInstance(BaseModel):
     plugin_name: Optional[str] = Field(default=None, description="实例展示名称")
     plugin_desc: Optional[str] = Field(default=None, description="实例展示描述")
     plugin_icon: Optional[str] = Field(default=None, description="实例展示图标")
-    mode: Literal["virtual"] = Field(default="virtual", description="实例实现模式")
+    mode: Literal["virtual", "host"] = Field(
+        default="virtual",
+        description="实例实现模式：virtual 为共享源码的分身，host 为源插件本体自身的版本绑定",
+    )
     plugin_version: Optional[str] = Field(
         default=None,
         description="该实例已生效的插件版本，None 表示尚未成功启动过任何版本",
