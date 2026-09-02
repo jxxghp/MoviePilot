@@ -1,10 +1,14 @@
-"""插件源码按版本分目录布局的目录名映射、元信息读写与加载路径解析。"""
+"""插件源码按版本分目录布局的目录名映射、元信息读写、存量迁移与加载路径解析。"""
 
 from __future__ import annotations
 
 import ast
+import errno
 import json
+import os
 import re
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +21,10 @@ PLUGIN_VERSION_DIR_PREFIX = "v"
 PLUGIN_VERSIONS_MANIFEST_NAME = "versions.json"
 # 版本元信息文件的结构版本号
 PLUGIN_VERSIONS_MANIFEST_SCHEMA = 1
+# 存量布局迁移过程中的改名中转目录名中缀，与插件源码目录同级
+_PLUGIN_LAYOUT_STAGING_INFIX = ".migrating-"
+# 存量插件读不到版本号时使用的兜底版本号
+PLUGIN_FALLBACK_VERSION = "0.0.0"
 # 合法版本号字符集：数字、字母、点、连字符、加号。语义化版本的先行版与构建
 # 元数据字符集不含下划线，据此保证点与下划线的互换是单射、可逆
 _PLUGIN_VERSION_PATTERN = re.compile(r"^[0-9A-Za-z][0-9A-Za-z.+-]*$")
@@ -181,6 +189,141 @@ def ensure_plugin_version_dir_available(plugin_root: Path, version: str) -> str:
                 f"插件版本 {version} 与已装版本 {installed_version} 的目录名仅大小写不同，拒绝安装"
             )
     return dir_name
+
+
+def register_plugin_version(plugin_root: Path, version: str, source: str) -> str:
+    """把一个已就位的版本目录登记进版本元信息，并置为当前版本。
+
+    调用方需确保 ``plugin_root / <版本目录>`` 已经就位了该版本的源码；本函数
+    只更新元信息，不做任何文件搬迁，因此可以安全地被存量迁移和真正的多版本
+    安装共用。
+
+    :param plugin_root: 插件源码根目录
+    :param version: 版本号
+    :param source: 版本来源，如 local、migrated
+    :return: 版本目录名
+    :raise ValueError: 版本号非法
+    """
+    dir_name = plugin_version_dir_name(version)
+    manifest = read_plugin_versions_manifest(plugin_root)
+    versions = [
+        entry
+        for entry in (manifest.get("versions") or [])
+        if isinstance(entry, dict) and entry.get("version") != version
+    ]
+    versions.append(
+        {
+            "version": version,
+            "directory": dir_name,
+            "installed_at": datetime.now(timezone.utc).isoformat(),
+            "source": source,
+        }
+    )
+    write_plugin_versions_manifest(plugin_root, versions, version)
+    return dir_name
+
+
+def _find_leftover_layout_staging(plugin_root: Path) -> Path | None:
+    """在插件源码目录同级查找上次迁移中断遗留的改名中转目录。
+
+    :param plugin_root: 插件源码根目录
+    :return: 遗留的中转目录；不存在时为 None
+    """
+    parent = plugin_root.parent
+    if not parent.is_dir():
+        return None
+    prefix = f"{plugin_root.name}{_PLUGIN_LAYOUT_STAGING_INFIX}"
+    candidates = sorted(
+        entry
+        for entry in parent.iterdir()
+        if entry.is_dir() and entry.name.startswith(prefix)
+    )
+    return candidates[0] if candidates else None
+
+
+def _is_reserved_layout_entry(entry: Path) -> bool:
+    """判断插件源码目录下的条目是否属于版本化布局自身，不参与存量迁移。
+
+    :param entry: 插件源码目录下的条目
+    :return: 是版本目录或元信息文件时为 True
+    """
+    if entry.name == PLUGIN_VERSIONS_MANIFEST_NAME:
+        return True
+    return entry.is_dir() and plugin_version_from_dir_name(entry.name) is not None
+
+
+def migrate_legacy_plugin_layout(plugin_root: Path) -> Path | None:
+    """把平铺布局的存量插件源码原地迁移为按版本分目录的布局。
+
+    先把平铺源码改名搬到同级中转目录，再一次改名落到版本目录，最后登记版本
+    元信息；元信息写入同时充当迁移完成哨兵，中断后重入会发现遗留的中转目录
+    并续做。跨设备无法原子改名时放弃迁移，插件继续按存量布局加载——加载路径
+    只在真正要装第二个版本时才调用本函数，平时的加载不会触发磁盘改动。
+
+    :param plugin_root: 插件源码根目录
+    :return: 迁移后的版本目录；无需迁移时为 None；放弃迁移时为仍持有源码的目录
+    """
+    staging = _find_leftover_layout_staging(plugin_root)
+    # 只有插件目录下直接放着主模块才算存量平铺布局；已迁移目录里的杂项条目
+    # （构建残留、临时文件）不能被当成一个待迁移的版本
+    has_flat_source = (plugin_root / "__init__.py").is_file()
+    if staging is None and not has_flat_source:
+        return None
+    pending = (
+        [
+            entry
+            for entry in plugin_root.iterdir()
+            if not _is_reserved_layout_entry(entry)
+        ]
+        if has_flat_source
+        else []
+    )
+
+    source_root = staging if staging is not None and staging.is_dir() else plugin_root
+    version = read_declared_plugin_version(source_root / "__init__.py")
+    if not version:
+        version = PLUGIN_FALLBACK_VERSION
+        logger.warning(
+            f"插件 {plugin_root.name} 未声明版本号，存量源码按兜底版本 "
+            f"{PLUGIN_FALLBACK_VERSION} 迁移"
+        )
+    try:
+        dir_name = plugin_version_dir_name(version)
+    except ValueError as err:
+        logger.error(f"插件 {plugin_root.name} 版本号无法映射为版本目录，放弃迁移：{err}")
+        return plugin_root if (plugin_root / "__init__.py").is_file() else None
+
+    target = plugin_root / dir_name
+    if staging is None:
+        staging = plugin_root.parent / (
+            f"{plugin_root.name}{_PLUGIN_LAYOUT_STAGING_INFIX}{uuid.uuid4().hex}"
+        )
+    try:
+        if pending:
+            staging.mkdir(parents=True, exist_ok=True)
+            for entry in pending:
+                os.rename(entry, staging / entry.name)
+        if not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.rename(staging, target)
+    except OSError as error:
+        if getattr(error, "errno", None) == errno.EXDEV:
+            logger.warning(
+                f"插件源码目录跨设备无法原子改名，放弃本次迁移：{plugin_root} - {error}"
+            )
+        else:
+            logger.error(f"插件源码目录迁移失败：{plugin_root} - {error}")
+        if staging.is_dir() and not any(staging.iterdir()):
+            staging.rmdir()
+        if (plugin_root / "__init__.py").is_file():
+            return plugin_root
+        return staging if staging.is_dir() else None
+
+    try:
+        register_plugin_version(plugin_root, version, source="migrated")
+    except OSError as error:
+        logger.warning(f"插件版本元信息写入失败，下次加载将重试：{plugin_root} - {error}")
+    return target
 
 
 def read_declared_plugin_version(init_file: Path) -> str | None:

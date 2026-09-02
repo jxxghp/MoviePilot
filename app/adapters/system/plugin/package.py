@@ -43,6 +43,14 @@ from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.version import get_app_version
 
+# 判定插件从已装版本切换到另一版本能否被安装期接受，返回拒绝说明或 None
+VersionSwitchGuard = Callable[[str, Path, Path], Optional[str]]
+
+
+def _allow_version_switch(_pid: str, _plugin_dir: Path, _source_dir: Path) -> Optional[str]:
+    """未装配版本并存检查端口时不拦截安装，保持今天的单版本行为。"""
+    return None
+
 
 class PluginPackageSourcePort(Protocol):
     """声明包 owner 读取市场元数据和远端制品所需的外部端口。"""
@@ -182,11 +190,21 @@ class PluginPackageManager:
         *,
         health: Optional[PluginRuntimeHealth] = None,
         plugin_root: Optional[Path] = None,
+        version_switch_guard: VersionSwitchGuard = _allow_version_switch,
     ) -> None:
-        """保存外部来源端口和依赖健康 owner。"""
+        """保存外部来源端口、依赖健康 owner 和版本并存检查端口。
+
+        版本写法体检依赖 AST 静态扫描，不属于适配器层职责，因此只接受可注入的
+        端口；未注入时按不拦截退化为今天的单版本覆盖安装行为。
+        :param source: 市场元数据与制品来源端口
+        :param health: 依赖健康 owner
+        :param plugin_root: 插件根目录，未注入时按运行配置解析
+        :param version_switch_guard: 判定版本切换能否被接受的端口
+        """
         self._source = source
         self._health = health or PluginRuntimeHealth()
         self._plugin_root = plugin_root.resolve() if plugin_root else None
+        self._version_switch_guard = version_switch_guard
 
     def _require_source(self) -> PluginPackageSourcePort:
         """返回已装配来源端口，未完成组合时拒绝执行包写入。"""
@@ -1092,6 +1110,10 @@ class PluginPackageManager:
                 return False, "本地插件来源不能与运行目录相同"
         except Exception:
             return False, "本地插件来源路径无效"
+
+        rejection = self._version_switch_guard(pid, dest_dir, source_dir)
+        if rejection:
+            return False, rejection
 
         def prepare_local() -> tuple[bool, str]:
             try:
