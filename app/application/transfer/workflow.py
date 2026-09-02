@@ -971,7 +971,6 @@ class TransferQueueService:
             *,
             register_task: Callable[[TransferTask], bool],
             admit_task: Callable[[TransferTask], TransferAdmission],
-            claim_task: Callable[[TransferTask, TransferAdmission], None],
             enqueue: Callable[[TransferQueue], None],
             before_enqueue: Callable[[TransferTask], None],
             enqueue_failed: Callable[[TransferTask, Exception], None],
@@ -982,7 +981,6 @@ class TransferQueueService:
         """保存队列用例依赖，避免 Application 服务绑定具体线程队列实现。"""
         self._register_task = register_task
         self._admit_task = admit_task
-        self._claim_task = claim_task
         self._enqueue = enqueue
         self._before_enqueue = before_enqueue
         self._enqueue_failed = enqueue_failed
@@ -991,13 +989,12 @@ class TransferQueueService:
         self._expire_tasks = expire_tasks
 
     def put(self, task: TransferTask, callback: TransferCallback) -> bool:
-        """先持久化并 claim 准入事实再入队；前置失败撤销内存作业视图。"""
+        """先持久化准入事实再入队；任何前置失败都撤销内存作业视图。"""
         if not task or not self._register_task(task):
             return False
         try:
             admission = self._admit_task(task)
             task.bind_admission_task_id(admission.task_id)
-            self._claim_task(task, admission)
         except Exception:
             self._remove_task(task.fileitem)
             raise

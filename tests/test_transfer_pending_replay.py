@@ -119,17 +119,19 @@ def _task(path: str, storage: str = "local") -> TransferTask:
 
 def test_admit_transfer_records_storage_and_path():
     """
-    入队时必须落盘登记「存储 + 源路径」这一最小事实。
+    入队时必须落盘登记源身份并在返回前取得执行租约。
     """
     admissions = MagicMock()
     admissions.admit.return_value = _admission(
         "/mnt/cd2/downloads/Movie.2024.mkv"
     )
-    chain = _build_chain(admissions)
-
-    result = chain._TransferChain__admit_transfer(
-        _task("/mnt/cd2/downloads/Movie.2024.mkv")
+    admissions.claim_task.return_value = _admission(
+        "/mnt/cd2/downloads/Movie.2024.mkv"
     )
+    chain = _build_chain(admissions)
+    task = _task("/mnt/cd2/downloads/Movie.2024.mkv")
+
+    result = chain._TransferChain__admit_transfer(task)
 
     call = admissions.admit.call_args.kwargs
     assert call["storage"] == "local"
@@ -137,6 +139,12 @@ def test_admit_transfer_records_storage_and_path():
     assert isinstance(call["planning_input"], TransferPlanningInput)
     assert call["planning_input"].source_fileitem["path"] == call["src_path"]
     assert result.task_id == "task-1"
+    assert task.lease_token == "lease-task-1"
+    admissions.claim_task.assert_called_once_with(
+        task_id="task-1",
+        owner_id="test-owner",
+        lease_seconds=120,
+    )
 
 
 def test_terminal_without_settlement_releases_claim_and_keeps_pending():
@@ -511,9 +519,7 @@ def test_replay_releases_claim_when_jobview_rejects_recovered_task(
         error="恢复任务未进入内存队列",
     )
     warning.assert_called_once_with(
-        "待整理文件回放未产生可执行队列任务：本次 claim %s 个；"
-        "逐任务原因已写入前序日志和 transferpending.last_error",
-        1,
+        "待整理文件回放未入队：claim 1 个，原因见前序日志与 transferpending.last_error",
     )
     assert chain._owned_leases == {}
 

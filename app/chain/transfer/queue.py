@@ -7,7 +7,7 @@ import time
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from pydantic_core import to_jsonable_python
 
@@ -373,7 +373,6 @@ class TransferQueueOwner(_TransferOwnerBase):
         return TransferQueueService(
             register_task=self._TransferChain__put_to_jobview,
             admit_task=self._TransferChain__admit_transfer,
-            claim_task=self._TransferChain__claim_admitted_task,
             enqueue=self._queue.put,
             before_enqueue=self._register_scrape_batch_task,
             enqueue_failed=self._TransferChain__record_enqueue_failure,
@@ -532,45 +531,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                         time.monotonic() + self._WORKER_LEASE_SECONDS,
                     )
 
-    def _TransferChain__bind_claimed_admission(
-            self,
-            task: TransferTask,
-            admission: TransferAdmission,
-    ) -> None:
-        """校验仓储 claim 投影并把 token 私有绑定到执行任务。"""
-        if (
-                admission.task_id != task.admission_task_id
-        ):
-            raise TransferLeaseLostError(
-                f"整理任务 claim 投影无效：{admission.task_id}"
-            )
-        self._TransferChain__register_claimed_admission(admission)
-        assert admission.lease_owner is not None
-        assert admission.lease_token is not None
-        task.bind_execution_lease(
-            owner_id=admission.lease_owner,
-            lease_token=admission.lease_token,
-        )
-
-    def _TransferChain__register_claimed_admission(
-            self,
-            admission: TransferAdmission,
-    ) -> None:
-        """把仓储 claim 加入续期集合，覆盖恢复构造阶段可能发生的同步 I/O。"""
-        if (
-                admission.lease_owner != self._worker_owner_id
-                or not admission.lease_token
-        ):
-            raise TransferLeaseLostError(
-                f"整理任务 claim 投影无效：{admission.task_id}"
-            )
-        with self._worker_state_lock:
-            self._owned_leases[admission.task_id] = (
-                admission.lease_token,
-                time.monotonic() + self._WORKER_LEASE_SECONDS,
-            )
-        self._TransferChain__ensure_lease_heartbeat_owner()
-
     def _TransferChain__forget_owned_lease(self, task_id: str, lease_token: str) -> None:
         """仅在 token 仍匹配时移除本进程租约镜像，避免删掉新接管记录。"""
         with self._worker_state_lock:
@@ -614,56 +574,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                 if current and current[0] == lease_token:
                     self._owned_leases.pop(task_id, None)
                 raise TransferLeaseLostError(f"整理任务租约已经失效：{task_id}")
-
-    def _TransferChain__claim_task_for_execution(self, task: TransferTask) -> None:
-        """校验队列任务既有租约，并为兼容旧队列项补取唯一租约。"""
-        if task.preview:
-            return
-        self._TransferChain__ensure_lease_runtime_state()
-        if task.lease_token:
-            self._TransferChain__assert_owned_lease(task)
-            return
-        if not task.admission_task_id:
-            admitted = self._TransferChain__admit_transfer(task)
-            task.bind_admission_task_id(admitted.task_id)
-        task_id = task.admission_task_id
-        if task_id is None:
-            raise TransferLeaseLostError("整理任务准入后仍缺少 durable 身份")
-        claimed = self._transfer_admissions.claim_task(
-            task_id=task_id,
-            owner_id=self._worker_owner_id,
-            lease_seconds=self._WORKER_LEASE_SECONDS,
-        )
-        if claimed is None:
-            raise TransferLeaseLostError(
-                f"整理任务已由其他 worker claim：{task_id}"
-            )
-        try:
-            self._TransferChain__bind_claimed_admission(task, claimed)
-        except Exception as err:
-            self._TransferChain__release_admission_claim(claimed, error=str(err))
-            raise
-
-    def _TransferChain__claim_admitted_task(
-            self,
-            task: TransferTask,
-            admission: TransferAdmission,
-    ) -> None:
-        """普通任务进入内存队列前取得租约，避免恢复调度抢占等待项。"""
-        claimed = self._transfer_admissions.claim_task(
-            task_id=admission.task_id,
-            owner_id=self._worker_owner_id,
-            lease_seconds=self._WORKER_LEASE_SECONDS,
-        )
-        if claimed is None:
-            raise TransferLeaseLostError(
-                f"整理任务已由其他 worker claim：{admission.task_id}"
-            )
-        try:
-            self._TransferChain__bind_claimed_admission(task, claimed)
-        except Exception as err:
-            self._TransferChain__release_admission_claim(claimed, error=str(err))
-            raise
 
     def _TransferChain__release_task_claim(
             self,
@@ -945,14 +855,19 @@ class TransferQueueOwner(_TransferOwnerBase):
                 "待整理文件回放收到关闭请求，已送入 %s 个文件，其余登记保持待处理",
                 replayed,
             )
-        elif replayed == 0:
-            logger.warning(
-                "待整理文件回放未产生可执行队列任务：本次 claim %s 个；"
-                "逐任务原因已写入前序日志和 transferpending.last_error",
-                len(pendings),
-            )
         else:
+            self._TransferChain__log_replay_summary(replayed, len(pendings))
+
+    @staticmethod
+    def _TransferChain__log_replay_summary(replayed: int, claimed: int) -> None:
+        """按实际入队结果记录恢复汇总，避免零任务仍输出成功标记。"""
+        if replayed:
             logger.info(f"✓ 待整理文件回放完成，{replayed} 个文件已重新送入整理链")
+            return
+        logger.warning(
+            f"待整理文件回放未入队：claim {claimed} 个，"
+            "原因见前序日志与 transferpending.last_error"
+        )
 
     def _TransferChain__execution_replay_snapshot(
             self,
@@ -1208,22 +1123,6 @@ class TransferQueueOwner(_TransferOwnerBase):
             ),
         })
         return fileitem, False
-
-    def _TransferChain__admit_transfer(self, task: TransferTask) -> TransferAdmission:
-        """在内存入队前持久化源文件并返回稳定任务身份。"""
-        fileitem = task.fileitem if task else None
-        if not fileitem or not fileitem.storage or not fileitem.path:
-            raise ValueError("整理任务缺少源文件身份")
-        planning_input = task.planning_input or self._TransferChain__build_planning_input(task)
-        task.bind_planning_input(planning_input)
-        return cast(
-            TransferAdmission,
-            self._transfer_admissions.admit(
-                storage=fileitem.storage,
-                src_path=fileitem.path,
-                planning_input=planning_input,
-            ),
-        )
 
     @staticmethod
     def _TransferChain__json_snapshot(value: Any) -> Any:

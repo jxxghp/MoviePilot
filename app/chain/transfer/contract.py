@@ -20,6 +20,9 @@ if TYPE_CHECKING:
         _subtitle_exts: Any
         _success_target_files: Any
         _transfer_admissions: Any
+        _owned_leases: Any
+        _worker_owner_id: str
+        _worker_state_lock: Any
         download_history_repository: Any
         eventmanager: Any
         failure_notification_aggregator: Any
@@ -30,11 +33,14 @@ if TYPE_CHECKING:
         transfer_history_repository: Any
 
         _TransferChain__assert_owned_lease: Callable[..., Any]
+        _TransferChain__admit_transfer: Callable[..., Any]
         _TransferChain__bind_claimed_admission: Callable[..., Any]
         _TransferChain__build_planning_input: Callable[..., Any]
         _TransferChain__checkpoint_planning_rejection: Callable[..., Any]
         _TransferChain__claim_task_for_execution: Callable[..., Any]
         _TransferChain__default_callback: Callable[..., Any]
+        _TransferChain__ensure_lease_heartbeat_owner: Callable[..., Any]
+        _TransferChain__ensure_lease_runtime_state: Callable[..., Any]
         _TransferChain__fail_transfer_task: Callable[..., Any]
         _TransferChain__finish_job_execution: Callable[..., Any]
         _TransferChain__forget_owned_lease: Callable[..., Any]
@@ -45,6 +51,8 @@ if TYPE_CHECKING:
         _TransferChain__mark_torrent_completed_if_done: Callable[..., Any]
         _TransferChain__put_to_jobview: Callable[..., Any]
         _TransferChain__record_uncheckpointed_failure: Callable[..., Any]
+        _TransferChain__register_claimed_admission: Callable[..., Any]
+        _TransferChain__release_admission_claim: Callable[..., Any]
         _TransferChain__release_task_claim: Callable[..., Any]
         _TransferChain__restore_mediainfo_snapshot: Callable[..., Any]
         _TransferChain__restore_meta_snapshot: Callable[..., Any]
