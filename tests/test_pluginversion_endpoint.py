@@ -229,8 +229,10 @@ def test_recycle_plugin_versions_reports_mutation_rejection(monkeypatch):
 
 
 def test_router_registers_all_paths():
-    """路由器暴露版本总览、实例切换与回收三个路径，且注册在插件前缀下。"""
+    """路由器暴露版本总览、实例切换、回收与日志等级控制路径，且注册在插件前缀下。"""
     paths = {route.path for route in pluginversion_endpoint.router.routes}
     assert "/versions/{plugin_id}" in paths
     assert "/versions/{plugin_id}/{instance_id}" in paths
     assert "/versions/{plugin_id}/recycle" in paths
+    assert "/loglevel/{plugin_id}" in paths
+    assert "/loglevel/{plugin_id}/{instance_id}" in paths
