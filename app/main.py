@@ -8,7 +8,7 @@ import sys
 if os.name == "nt":
     psql_exe = shutil.which("psql")
     if psql_exe:
-        os.add_dll_directory(os.path.dirname(psql_exe))
+        getattr(os, "add_dll_directory")(os.path.dirname(psql_exe))
 
 def _prepare_direct_execution_import_path() -> None:
     """

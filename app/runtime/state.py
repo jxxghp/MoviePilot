@@ -251,7 +251,8 @@ class SystemHelper(ConfigReloadMixin):
         """
         执行Windows重启操作
         """
-        def cmd(command: list) -> Tuple[bool, str]:
+        def cmd(command: list[str]) -> Tuple[bool, str]:
+            """通过 Windows 命令解释器执行重启命令。"""
             try:
                 subprocess.run(command, shell=True)
                 return True, ""
