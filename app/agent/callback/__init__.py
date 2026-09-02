@@ -49,7 +49,11 @@ class StreamingHandler:
     """
 
     # 流式输出的刷新间隔（秒）
-    FLUSH_INTERVAL = 0.3
+    # Telegram 等渠道的消息编辑存在严格限流；与成熟 Agent 渠道实现保持约 1 秒节流。
+    FLUSH_INTERVAL = 1.0
+    FLUSH_SHUTDOWN_TIMEOUT = 5.0
+    FINAL_FLUSH_TIMEOUT = 10.0
+    FINALIZE_TIMEOUT = 5.0
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -293,26 +297,51 @@ class StreamingHandler:
         self._streaming_enabled = False
 
         # 取消定时任务
-        await self._cancel_flush_task()
+        flush_owner_completed = await self._cancel_flush_task()
 
         # 将未落地的工具统计补入缓冲区，避免流式结束时丢失这段执行信息
         self.flush_pending_tool_summary()
 
-        # 执行最后一次刷新
-        await self._flush()
+        # 只有上一轮刷新明确完成后才能安全执行最终刷新。若渠道请求超时，
+        # 保留完整 buffer 交给调用方走普通消息降级，避免 session worker 永久阻塞。
+        final_flush_completed = flush_owner_completed
+        if flush_owner_completed:
+            try:
+                await asyncio.wait_for(
+                    self._flush(),
+                    timeout=self.FINAL_FLUSH_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                final_flush_completed = False
+                logger.warning(
+                    f"流式最终刷新超时，已保留完整回复用于降级发送: channel={self._channel}"
+                )
 
         message_response = self._message_response
-        if message_response:
-            await run_in_threadpool(
-                _StreamChain().finalize_message,
-                message_response,
-            )
+        if message_response and final_flush_completed:
+            try:
+                await asyncio.wait_for(
+                    run_in_threadpool(
+                        _StreamChain().finalize_message,
+                        message_response,
+                    ),
+                    timeout=self.FINALIZE_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"流式消息完成操作超时，正文已发送: channel={self._channel}"
+                )
 
         # 检查是否所有缓冲内容都已发送
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
             current_msg_text = self._buffer[self._msg_start_offset :]
-            all_sent = self._message_response is not None and self._sent_text and current_msg_text == self._sent_text
+            all_sent = (
+                final_flush_completed
+                and self._message_response is not None
+                and self._sent_text
+                and current_msg_text == self._sent_text
+            )
             # 保留最终文本用于返回（返回完整 buffer 内容，包含所有分段消息）
             final_text = self._buffer if all_sent else ""
             # 重置状态
@@ -603,7 +632,7 @@ class StreamingHandler:
         except Exception as e:
             logger.error(f"流式刷新异常: {e}")
 
-    async def _cancel_flush_task(self):
+    async def _cancel_flush_task(self) -> bool:
         """
         停止当前的定时刷新任务。
 
@@ -612,12 +641,25 @@ class StreamingHandler:
         否则最终刷新会误以为尚未发送过消息，从而再次发送一条新消息。
         """
         current_task = asyncio.current_task()
-        if self._flush_task and not self._flush_task.done() and self._flush_task is not current_task:
+        flush_task = self._flush_task
+        completed = True
+        if flush_task and not flush_task.done() and flush_task is not current_task:
             try:
-                await self._flush_task
+                await asyncio.wait_for(
+                    asyncio.shield(flush_task),
+                    timeout=self.FLUSH_SHUTDOWN_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                completed = False
+                logger.warning(
+                    f"流式刷新任务收口超时，已取消等待并启用最终回复降级: channel={self._channel}"
+                )
+                flush_task.cancel()
+                await asyncio.gather(flush_task, return_exceptions=True)
             except asyncio.CancelledError:
-                pass
+                completed = False
         self._flush_task = None
+        return completed
 
     async def _flush(self):
         """

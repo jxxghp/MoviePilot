@@ -42,6 +42,14 @@ class _FakeAgent:
         return _FakeGraphState(self._messages)
 
 
+class _FakeInvokeResultAgent:
+    async def ainvoke(self, _payload, config=None):
+        return {"messages": [AIMessage(content="直接返回结果")]}
+
+    def get_state(self, _config):
+        return _FakeGraphState([])
+
+
 class _FakeFailingAgent:
     def __init__(self, error):
         self._error = error
@@ -66,6 +74,25 @@ class _FakeStreamingAgent(_FakeAgent):
             yield None
 
 
+class _FakeSilentStreamingAgent:
+    """模拟事件流无正文，但本轮最终状态已有 AI 回复。"""
+
+    def __init__(self):
+        self._completed = False
+
+    async def astream(self, _messages, **_kwargs):
+        self._completed = True
+        if _kwargs.get("__keep_async_generator__"):
+            yield None
+
+    def get_state(self, _config):
+        messages = [AIMessage(content="上一轮旧回复")]
+        if self._completed:
+            messages.append(HumanMessage(content="本轮问题"))
+            messages.append(AIMessage(content="本轮最终回复"))
+        return _FakeGraphState(messages)
+
+
 class StreamChunkTimeoutError(RuntimeError):
     """模拟 langchain_openai 的流式分块超时异常。"""
 
@@ -81,6 +108,24 @@ def _fake_activity_log_middleware(tool=None):
 
 
 class TestAgentBackgroundOutput:
+    async def test_non_streaming_prefers_invoke_result_when_state_is_empty(self):
+        """provider 检查点未同步时不得丢弃 ainvoke 已返回的最终正文。"""
+        agent = MoviePilotAgent(session_id="invoke-result", user_id="user-1")
+        agent.channel = "Telegram"
+        agent.source = "telegram-test"
+        agent._tool_context = {"user_reply_sent": False}
+        agent._streamed_output = ""
+        agent.stream_handler = SimpleNamespace(
+            stop_streaming=AsyncMock(return_value=(False, ""))
+        )
+        agent._should_stream = lambda: False
+        agent._create_agent = AsyncMock(return_value=_FakeInvokeResultAgent())
+        agent.send_agent_message = AsyncMock()
+
+        await agent._execute_agent([HumanMessage(content="测试")])
+
+        agent.send_agent_message.assert_awaited_once_with("直接返回结果")
+
     async def test_background_non_streaming_does_not_send_by_default(self):
         agent = MoviePilotAgent(session_id="bg-test", user_id="system")
         agent.channel = None
@@ -233,6 +278,34 @@ class TestAgentBackgroundOutput:
         await agent._execute_agent([HumanMessage(content="测试")])
 
         agent.stream_handler.stop_streaming.assert_awaited_once()
+
+    async def test_silent_stream_recovers_only_current_turn_final_reply(self):
+        """事件流无正文时从本轮新增状态恢复，且不得重发上一轮回复。"""
+        agent = MoviePilotAgent(session_id="stream-silent", user_id="user-1")
+        agent.channel = "Telegram"
+        agent.source = "telegram-test"
+        agent._tool_context = {"user_reply_sent": False}
+        agent._streamed_output = ""
+        agent.stream_handler = SimpleNamespace(
+            set_dispatch_policy=lambda allow_dispatch_without_context=False: None,
+            start_streaming=AsyncMock(),
+            flush_pending_tool_summary=lambda: "",
+            stop_streaming=AsyncMock(return_value=(False, "")),
+            take=AsyncMock(return_value=""),
+        )
+        agent._should_stream = lambda: True
+        agent._create_agent = AsyncMock(return_value=_FakeSilentStreamingAgent())
+        agent.send_agent_message = AsyncMock()
+
+        with patch.object(
+            memory_manager,
+            "async_save_agent_messages",
+            new=AsyncMock(),
+        ):
+            await agent._execute_agent([HumanMessage(content="本轮问题")])
+
+        agent.send_agent_message.assert_awaited_once_with("本轮最终回复")
+        assert agent._streamed_output == "本轮最终回复"
 
     async def test_tool_sent_reply_persists_raw_agent_messages(self):
         """工具已发送用户回复时仍应保存可恢复的 Agent 原始消息。"""

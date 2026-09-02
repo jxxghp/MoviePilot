@@ -7,6 +7,7 @@ import time
 import traceback
 import uuid
 import warnings
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
@@ -352,6 +353,9 @@ class MoviePilotAgent:
     """
 
     TOOL_CATALOG_REFRESH_SECONDS = 30
+    CHAT_TITLE_GENERATION_TIMEOUT_SECONDS = 15
+    STREAM_FINAL_IDLE_TIMEOUT_SECONDS = 15.0
+    STREAM_EVENT_IDLE_TIMEOUT_SECONDS = 30.0
 
     def __init__(
         self,
@@ -397,6 +401,7 @@ class MoviePilotAgent:
         self._subagent_middlewares: tuple[Any, ...] = ()
         self._shutdown_started = False
         self._last_agent_cache_hit = False
+        self._chat_title_task: Optional[asyncio.Task] = None
 
         # 流式token管理
         self.stream_handler = StreamingHandler()
@@ -532,16 +537,20 @@ class MoviePilotAgent:
             return
         if self._tool_context.get("chat_title_prepared"):
             return
-        self._tool_context["chat_title_prepared"] = True
         try:
             chat = await get_configured_agent_chat_service().get(
                 session_id=self.session_id,
                 user_id=self.user_id,
             )
             if chat and has_custom_agent_chat_title(chat.title):
+                self._tool_context["chat_title_prepared"] = True
                 return
-            title = await self._generate_chat_title(message)
+            title = await asyncio.wait_for(
+                self._generate_chat_title(message),
+                timeout=self.CHAT_TITLE_GENERATION_TIMEOUT_SECONDS,
+            )
             if not title:
+                self._tool_context["chat_title_prepared"] = True
                 return
             await get_configured_agent_chat_persistence().async_update_title_if_empty(
                 session_id=self.session_id,
@@ -552,8 +561,24 @@ class MoviePilotAgent:
                 source=self.source,
                 original_chat_id=self.original_chat_id,
             )
+            self._tool_context["chat_title_prepared"] = True
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"生成Agent会话标题超时，已跳过且不影响本轮回复: session_id={self.session_id}"
+            )
         except Exception as e:
             logger.debug(f"生成Agent会话标题失败: {e}")
+
+    def _schedule_chat_title_generation(self, message: str) -> None:
+        """在主回复完成后异步生成标题，标题失败不得阻塞会话。"""
+        if not self._should_persist_agent_chat() or self._tool_context.get("chat_title_prepared"):
+            return
+        if self._chat_title_task and not self._chat_title_task.done():
+            return
+        self._chat_title_task = asyncio.create_task(
+            self.prepare_chat_title(message),
+            name=f"agent-chat-title:{self.session_id}",
+        )
 
     @staticmethod
     def _coerce_int(value: Any) -> Optional[int]:
@@ -2082,7 +2107,6 @@ class MoviePilotAgent:
             for img in images or []:
                 content.append({"type": "image_url", "image_url": {"url": img}})
             messages.append(HumanMessage(content=content))
-            await self.prepare_chat_title(message)
             await self._save_display_history_messages(
                 [
                     self.build_display_message(
@@ -2100,6 +2124,7 @@ class MoviePilotAgent:
 
             # 执行推理
             result = await self._execute_agent(messages)
+            self._schedule_chat_title_generation(message)
             if isinstance(result, tuple) and result:
                 return result[0]
             return result
@@ -2163,6 +2188,29 @@ class MoviePilotAgent:
         return attachments
 
     @staticmethod
+    def _is_terminal_stream_token(token: Any) -> bool:
+        """识别一次无工具调用的模型最终文本块，避免上游流结束事件丢失后永久等待。"""
+        metadata = getattr(token, "response_metadata", None) or {}
+        additional = getattr(token, "additional_kwargs", None) or {}
+        finish_reason = str(
+            metadata.get("finish_reason")
+            or additional.get("finish_reason")
+            or ""
+        ).strip().lower()
+        return bool(finish_reason and finish_reason not in {"tool_calls", "function_call"})
+
+    @staticmethod
+    def _stream_state_messages(agent: Any, config: dict) -> list[Any]:
+        """容错读取 LangGraph 当前消息状态。"""
+        try:
+            state = agent.get_state(config)
+            values = getattr(state, "values", None) or {}
+            return list(values.get("messages", []) or [])
+        except Exception as error:
+            logger.debug(f"读取Agent流状态失败: {error}")
+            return []
+
+    @staticmethod
     async def _stream_agent_tokens(agent, messages: dict, config: dict, on_token: Callable[[str], None]):
         """
         流式运行智能体，过滤工具调用token和思考内容，将模型生成的内容通过回调输出。
@@ -2173,23 +2221,58 @@ class MoviePilotAgent:
         """
         stripper = _ThinkTagStripper()
 
-        async for chunk in agent.astream(
+        stream = agent.astream(
             messages,
             stream_mode="messages",
             config=config,
             subgraphs=False,
             version="v2",
-        ):
+        )
+        final_text_candidate = False
+        next_chunk_task: Optional[asyncio.Task] = None
+        while True:
+            try:
+                if next_chunk_task is None:
+                    next_chunk_task = asyncio.create_task(anext(stream))
+                poll_timeout = (
+                    MoviePilotAgent.STREAM_FINAL_IDLE_TIMEOUT_SECONDS
+                    if final_text_candidate
+                    else MoviePilotAgent.STREAM_EVENT_IDLE_TIMEOUT_SECONDS
+                )
+                done, _ = await asyncio.wait({next_chunk_task}, timeout=poll_timeout)
+                if not done:
+                    logger.warning(
+                        "Agent文本流事件超时，已停止等待并转入最终状态恢复"
+                    )
+                    next_chunk_task.cancel()
+                    await asyncio.gather(next_chunk_task, return_exceptions=True)
+                    break
+                chunk = next_chunk_task.result()
+                next_chunk_task = None
+            except StopAsyncIteration:
+                break
+
             if chunk["type"] == "messages":
                 token, metadata = chunk["data"]
                 if is_subagent_stream_metadata(metadata):
                     continue
-                if not token or not hasattr(token, "tool_call_chunks"):
+                if not token:
                     continue
 
-                if token.tool_call_chunks:
+                # LangGraph messages 流同时交付 AIMessageChunk、ToolMessage
+                # 等多种消息。工具返回可能包含整份 Skill、API 数据乃至
+                # 敏感业务信息，绝不能当作模型正文推送到消息渠道。
+                token_type = getattr(token, "type", None)
+                if token_type and token_type not in {"ai", "AIMessageChunk"}:
+                    continue
+
+                # OpenAI 兼容 provider 既可能返回 AIMessageChunk，也可能在最终
+                # 阶段返回不带 tool_call_chunks 属性的完整 AIMessage。后者仍然
+                # 包含最终正文，不能因缺少可选属性而整条丢弃。
+                if getattr(token, "tool_call_chunks", None):
                     # 清除 stripper 内部缓冲中可能残留的 <think> 标签中间状态
                     stripper.reset()
+                    final_text_candidate = False
                     continue
 
                 # 以下处理纯文本token（tool_call_chunks为空）
@@ -2204,6 +2287,13 @@ class MoviePilotAgent:
                     content = LLMHelper.extract_text_content(token.content)
                     if content:
                         stripper.process(content, on_token)
+                        final_text_candidate = True
+
+                # 部分 OpenAI 兼容流已经返回 finish_reason，却没有正常关闭
+                # LangGraph astream。最终文本块到达后主动结束本轮消费；工具调用
+                # 的 finish_reason 必须继续等待工具执行及下一次模型调用。
+                if MoviePilotAgent._is_terminal_stream_token(token):
+                    break
 
         stripper.flush(on_token)
 
@@ -2239,6 +2329,9 @@ class MoviePilotAgent:
             input_messages = self._latest_turn_messages(messages) if self._last_agent_cache_hit else messages
 
             if use_streaming:
+                initial_state_message_count = len(
+                    self._stream_state_messages(agent, agent_config)
+                )
                 self.stream_handler.set_dispatch_policy(allow_dispatch_without_context=self.should_dispatch_reply)
                 # 流式模式：渠道支持消息编辑，启动流式输出实时推送 token
                 await self.stream_handler.start_streaming(
@@ -2274,6 +2367,22 @@ class MoviePilotAgent:
                     # 流式输出未能发送全部内容（发送失败等）
                     # 通过常规方式发送剩余内容
                     remaining_text = await self.stream_handler.take()
+                    if not remaining_text:
+                        final_messages = self._stream_state_messages(agent, agent_config)
+                        new_messages = final_messages[initial_state_message_count:]
+                        for final_message in reversed(new_messages):
+                            if (
+                                getattr(final_message, "type", None) == "ai"
+                                and getattr(final_message, "content", None)
+                            ):
+                                remaining_text = LLMHelper.extract_text_content(
+                                    final_message.content
+                                ).strip()
+                                if remaining_text:
+                                    logger.warning(
+                                        "Agent流未产生可展示文本，已从最终状态恢复回复"
+                                    )
+                                    break
                     if remaining_text:
                         unsent_text = remaining_text
                         if self._streamed_output and remaining_text.startswith(self._streamed_output):
@@ -2285,13 +2394,20 @@ class MoviePilotAgent:
 
             else:
                 # 非流式模式：后台任务或渠道不支持消息编辑
-                await agent.ainvoke(
+                invoke_result = await agent.ainvoke(
                     {"messages": input_messages},
                     config=agent_config,
                 )
 
-                # 从最终状态中提取最后一条AI回复内容
-                final_messages = agent.get_state(agent_config).values.get("messages", [])
+                # 优先使用 ainvoke 的本轮直接结果。部分 Responses provider 已
+                # 完成调用但检查点状态尚未同步，若只读 get_state 会静默丢回复。
+                final_messages = (
+                    invoke_result.get("messages", [])
+                    if isinstance(invoke_result, dict)
+                    else []
+                )
+                if not final_messages:
+                    final_messages = self._stream_state_messages(agent, agent_config)
                 final_text = ""
                 for msg in reversed(final_messages):
                     if hasattr(msg, "type") and msg.type == "ai" and msg.content:
@@ -2393,6 +2509,11 @@ class MoviePilotAgent:
         清理智能体资源；detached 子代理未收敛时保留 owner 并返回 False。
         """
         self.begin_shutdown()
+        if self._chat_title_task and not self._chat_title_task.done():
+            self._chat_title_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._chat_title_task
+        self._chat_title_task = None
         if not await self._invalidate_cached_agent():
             logger.error(f"MoviePilot智能体仍有子代理 owner 未收敛: session_id={self.session_id}")
             return False

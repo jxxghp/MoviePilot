@@ -622,6 +622,7 @@ def test_vocechat_group_uses_only_sender_uid_for_admin(admins, expected):
                     "type": "normal",
                     "content_type": "text/plain",
                     "content": "hello",
+                    "properties": {"mentions": [5]},
                 },
                 "from_uid": 7,
                 "target": {"gid": 2},
