@@ -221,8 +221,7 @@
   },
   "app/api/endpoints/subscribe.py:app.runtime.execution.run_in_threadpool": {
     "owners": {
-      "seerr_subscribe": 1,
-      "subscribe_files": 1
+      "seerr_subscribe": 1
     },
     "target": "app.runtime.execution.run_in_threadpool"
   },

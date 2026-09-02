@@ -1,9 +1,12 @@
 """订阅仓储的短 Session 投影与请求事务所有权测试。"""
 
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.context import get_sync_subscription_repository
 from app.application.subscription.complete import CompleteSubscriptionCommand
 from app.application.subscription.contract import (
     SubscriptionIdentity,
@@ -70,6 +73,15 @@ def test_transactional_repository_returns_frozen_detached_snapshot(db) -> None:
         snapshot.sites.append(3)  # type: ignore[union-attr]
     with pytest.raises(TypeError, match="不可修改"):
         snapshot.episode_priority["1"] = 100  # type: ignore[index]
+
+
+def test_sync_api_repository_dependency_binds_sync_session(db) -> None:
+    """文件统计依赖必须把同步请求 Session 交给订阅仓储。"""
+    runtime = SimpleNamespace(repository=SessionSubscriptionRepository)
+
+    repository = get_sync_subscription_repository(db.session, runtime)
+
+    assert repository.get(-1) is None
 
 
 def test_session_repository_leaves_commit_and_rollback_to_caller(db) -> None:

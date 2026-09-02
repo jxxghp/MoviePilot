@@ -13,6 +13,7 @@ from app.application.messaging.chat import AsyncAgentChatRepository, AsyncUnitOf
 from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
 from app.application.subscription.contract import (
     SubscriptionHistoryStagingPort,
+    SubscriptionQueryPort,
     SubscriptionStagingPort,
 )
 from app.runtime.tasks import TaskRegistry, get_task_registry
@@ -134,6 +135,14 @@ def get_subscription_repository(
 ) -> SubscriptionStagingPort:
     """构造绑定当前请求会话的订阅仓储。"""
     return runtime.repository(session)
+
+
+def get_sync_subscription_repository(
+    session: object = Depends(get_sync_session),
+    runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
+) -> SubscriptionQueryPort:
+    """构造绑定当前请求同步 Session 的订阅查询仓储。"""
+    return cast(SubscriptionQueryPort, runtime.repository(session))
 
 
 def get_subscription_history_repository(

@@ -678,47 +678,33 @@ class TestSubscribeEndpoint:
         repository = _SubscriptionRepositoryFake(other)
 
         with patch("app.api.endpoints.subscribe.SubscribeChain") as subscribe_chain:
-            result = asyncio.run(
-                subscribe_files(
-                    subscribe_id=19,
-                    repository=repository,
-                    current_user=_EndpointUser(name="alice", is_superuser=False),
-                )
+            result = subscribe_files(
+                subscribe_id=19,
+                repository=repository,
+                current_user=_EndpointUser(name="alice", is_superuser=False),
             )
 
         assert result.episodes == {}
-        repository.async_get.assert_awaited_once_with(19)
         subscribe_chain.return_value.subscribe_files_info.assert_not_called()
 
-    def test_subscribe_files_uses_async_query_and_offloads_file_statistics(self):
-        """文件统计先异步读取稳定快照，再在线程池执行同步媒体查询。"""
+    def test_subscribe_files_uses_sync_query_repository(self):
+        """文件统计使用绑定同步 Session 的查询仓储读取稳定快照。"""
         from app.api.endpoints.subscribe import subscribe_files
 
         own = _EndpointSubscribe(id=21, username="alice", name="自己的订阅")
         repository = _SubscriptionRepositoryFake(own)
         expected = SimpleNamespace(episodes={1: SimpleNamespace()})
 
-        with (
-            patch("app.api.endpoints.subscribe.SubscribeChain") as subscribe_chain,
-            patch(
-                "app.api.endpoints.subscribe.run_in_threadpool",
-                new=AsyncMock(return_value=expected),
-            ) as run_worker,
-        ):
-            result = asyncio.run(
-                subscribe_files(
-                    subscribe_id=21,
-                    repository=repository,
-                    current_user=_EndpointUser(name="alice", is_superuser=False),
-                )
+        with patch("app.api.endpoints.subscribe.SubscribeChain") as subscribe_chain:
+            subscribe_chain.return_value.subscribe_files_info.return_value = expected
+            result = subscribe_files(
+                subscribe_id=21,
+                repository=repository,
+                current_user=_EndpointUser(name="alice", is_superuser=False),
             )
 
         assert result is expected
-        repository.async_get.assert_awaited_once_with(21)
-        run_worker.assert_awaited_once_with(
-            subscribe_chain.return_value.subscribe_files_info,
-            own,
-        )
+        subscribe_chain.return_value.subscribe_files_info.assert_called_once_with(own)
 
     def test_user_subscribes_hides_other_user_list(self):
         """
