@@ -3532,12 +3532,6 @@
           "title": "Can Cancel",
           "type": "boolean"
         },
-        "can_retry": {
-          "default": false,
-          "description": "Whether the current subscription execution can be retried.",
-          "title": "Can Retry",
-          "type": "boolean"
-        },
         "current_site_id": {
           "anyOf": [
             {

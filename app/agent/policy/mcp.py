@@ -467,7 +467,6 @@ FIELD_DESCRIPTIONS.update(
         "cat": "Exact site category identifier returned by site.category.",
         "check_only": "Validate or preview the recommendation without applying search-result filtering.",
         "can_cancel": "Whether the current subscription execution can be cancelled.",
-        "can_retry": "Whether the current subscription execution can be retried.",
         "concurrency_key": "Workflow expression used to serialize actions sharing the same runtime key.",
         "condition": "Workflow branch or flow condition expression evaluated at runtime.",
         "context": "Persisted workflow execution context available to later actions.",

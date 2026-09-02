@@ -84,15 +84,14 @@ def test_execution_status_exposes_site_wait_and_cancel_capability():
     assert statuses[1].can_cancel is True
 
 
-def test_failed_search_exposes_safe_retryable_error():
-    """搜索失败文本必须压平且仅声明安全重试能力。"""
+def test_failed_search_exposes_safe_error():
+    """搜索失败文本必须压平且不暴露内部错误细节。"""
     repository = _Repository()
     repository.tasks[3] = _task(3, state="failed", phase="failed")
 
     statuses = asyncio.run(SubscriptionExecutionStatusService(repository).for_subscriptions((3,)))
 
     assert statuses[3].state == "failed"
-    assert statuses[3].can_retry is True
     assert statuses[3].error == "provider timeout"
 
 

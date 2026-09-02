@@ -20,7 +20,6 @@ class SubscriptionExecutionStatus:
     current_site_id: Optional[int] = None
     error: Optional[str] = None
     can_cancel: bool = False
-    can_retry: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,7 +165,6 @@ class SubscriptionExecutionStatusService:
             updated_at=task.updated_at,
             error=cls._safe_error(task.last_error),
             can_cancel=state in cls._ACTIVE_STATES,
-            can_retry=state == "failed",
         )
 
     @classmethod

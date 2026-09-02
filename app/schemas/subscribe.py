@@ -57,7 +57,6 @@ class SubscriptionExecutionStatus(BaseModel):  # type: ignore[misc]
     current_site_id: Optional[int] = None
     error: Optional[str] = None
     can_cancel: bool = False
-    can_retry: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

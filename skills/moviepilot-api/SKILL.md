@@ -1685,7 +1685,6 @@ This runtime model has no directly writable fields.
 Subscription refresh execution status and progress summary.
 - `batch_id` (string|null): Stable subscription search batch identifier.
 - `can_cancel` (boolean; default `False`): Whether the current subscription execution can be cancelled.
-- `can_retry` (boolean; default `False`): Whether the current subscription execution can be retried.
 - `current_site_id` (integer|null): Configured site ID currently handling the subscription execution.
 - `error` (string|null): Human-readable workflow, provider, or execution error message.
 - `phase*` (string): Current phase of a subscription execution.
