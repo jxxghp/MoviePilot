@@ -14,7 +14,7 @@ import psutil
 from app.runtime.settings import get_runtime_setting
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
-from app.foundation.environment import is_docker
+from app.foundation.environment import is_windows,is_frozen,is_docker
 
 
 class SystemHelper(ConfigReloadMixin):
@@ -59,7 +59,7 @@ class SystemHelper(ConfigReloadMixin):
         """
         判断是否可以内部重启
         """
-        return is_docker() or SystemHelper._is_local_cli_managed()
+        return is_docker() or SystemHelper._is_local_cli_managed() or (is_windows() and not is_frozen())
 
     @staticmethod
     def _load_runtime_file(path: Path) -> Optional[dict]:
@@ -247,10 +247,33 @@ class SystemHelper(ConfigReloadMixin):
             logger.warning(f"清理内置重启标记失败: {err}")
 
     @staticmethod
+    def _windows_restart() -> tuple[bool, str]:
+        """
+        执行Windows重启操作
+        """
+        def cmd(command: list) -> Tuple[bool, str]:
+            try:
+                subprocess.run(command, shell=True)
+                return True, ""
+            except Exception as error:
+                return False, f"cmd命令{command}执行失败.原因:{str(error)}"
+
+        mp_exe = str(Path(__file__).parents[3].parent / "MoviePilot-V3.exe")
+        if not Path(mp_exe).exists():
+            return False, f"{mp_exe} 文件不存在, 无法执行重启"
+        success, message = cmd(["start", "", mp_exe, "-c", "restart"])
+        if not success:
+            return False, message
+        return True, ""
+
+    @staticmethod
     def restart() -> Tuple[bool, str]:
         """
         执行Docker重启操作
         """
+        if not is_frozen() and is_windows():
+            success, message = SystemHelper._windows_restart()
+            return success, message
         if not is_docker():
             if not SystemHelper._is_local_cli_managed():
                 return False, "当前实例不是由 moviepilot CLI 启动，无法执行内建重启！"
