@@ -77,6 +77,7 @@ from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.observability import record_metric
 from app.runtime.settings import get_runtime_setting
+from app.runtime.tasks import get_task_registry
 from app.schemas.event import AgentLLMProviderEventData, AgentTokensUsageEventData
 from app.schemas.message import Message, MessageType
 from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
@@ -354,8 +355,6 @@ class MoviePilotAgent:
 
     TOOL_CATALOG_REFRESH_SECONDS = 30
     CHAT_TITLE_GENERATION_TIMEOUT_SECONDS = 15
-    STREAM_FINAL_IDLE_TIMEOUT_SECONDS = 15.0
-    STREAM_EVENT_IDLE_TIMEOUT_SECONDS = 30.0
 
     def __init__(
         self,
@@ -575,9 +574,9 @@ class MoviePilotAgent:
             return
         if self._chat_title_task and not self._chat_title_task.done():
             return
-        self._chat_title_task = asyncio.create_task(
+        self._chat_title_task = get_task_registry().create(
             self.prepare_chat_title(message),
-            name=f"agent-chat-title:{self.session_id}",
+            owner="agent.chat_title",
         )
 
     @staticmethod
@@ -2228,30 +2227,7 @@ class MoviePilotAgent:
             subgraphs=False,
             version="v2",
         )
-        final_text_candidate = False
-        next_chunk_task: Optional[asyncio.Task] = None
-        while True:
-            try:
-                if next_chunk_task is None:
-                    next_chunk_task = asyncio.create_task(anext(stream))
-                poll_timeout = (
-                    MoviePilotAgent.STREAM_FINAL_IDLE_TIMEOUT_SECONDS
-                    if final_text_candidate
-                    else MoviePilotAgent.STREAM_EVENT_IDLE_TIMEOUT_SECONDS
-                )
-                done, _ = await asyncio.wait({next_chunk_task}, timeout=poll_timeout)
-                if not done:
-                    logger.warning(
-                        "Agent文本流事件超时，已停止等待并转入最终状态恢复"
-                    )
-                    next_chunk_task.cancel()
-                    await asyncio.gather(next_chunk_task, return_exceptions=True)
-                    break
-                chunk = next_chunk_task.result()
-                next_chunk_task = None
-            except StopAsyncIteration:
-                break
-
+        async for chunk in stream:
             if chunk["type"] == "messages":
                 token, metadata = chunk["data"]
                 if is_subagent_stream_metadata(metadata):
@@ -2272,7 +2248,6 @@ class MoviePilotAgent:
                 if getattr(token, "tool_call_chunks", None):
                     # 清除 stripper 内部缓冲中可能残留的 <think> 标签中间状态
                     stripper.reset()
-                    final_text_candidate = False
                     continue
 
                 # 以下处理纯文本token（tool_call_chunks为空）
@@ -2287,7 +2262,6 @@ class MoviePilotAgent:
                     content = LLMHelper.extract_text_content(token.content)
                     if content:
                         stripper.process(content, on_token)
-                        final_text_candidate = True
 
                 # 部分 OpenAI 兼容流已经返回 finish_reason，却没有正常关闭
                 # LangGraph astream。最终文本块到达后主动结束本轮消费；工具调用

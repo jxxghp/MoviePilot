@@ -148,44 +148,39 @@ def test_agent_stream_does_not_treat_tool_call_finish_as_final_text():
     assert MoviePilotAgent._is_terminal_stream_token(token) is False
 
 
-def test_agent_stream_uses_idle_timeout_when_final_marker_is_missing():
-    """兼容无 finish_reason 且不关闭连接的 provider，保留文本后有界收口。"""
+def test_agent_stream_allows_slow_events_without_cancelling_graph():
+    """慢模型或长工具间隔不得被流式展示层的 idle timeout 提前取消。"""
 
-    class HangingAgent:
+    class SlowAgent:
         async def astream(self, *args, **kwargs):
+            await asyncio.sleep(0.03)
             yield {
                 "type": "messages",
                 "data": (
                     SimpleNamespace(
-                        content="无结束标记的回复",
+                        content="慢速回复",
                         tool_call_chunks=[],
                         additional_kwargs={},
-                        response_metadata={},
+                        response_metadata={"finish_reason": "stop"},
                     ),
                     {},
                 ),
             }
-            await asyncio.Future()
 
     async def _run():
         output = []
-        original_timeout = MoviePilotAgent.STREAM_FINAL_IDLE_TIMEOUT_SECONDS
-        MoviePilotAgent.STREAM_FINAL_IDLE_TIMEOUT_SECONDS = 0.01
-        try:
-            await asyncio.wait_for(
-                MoviePilotAgent._stream_agent_tokens(
-                    agent=HangingAgent(),
-                    messages={"messages": []},
-                    config={},
-                    on_token=output.append,
-                ),
-                timeout=0.5,
-            )
-        finally:
-            MoviePilotAgent.STREAM_FINAL_IDLE_TIMEOUT_SECONDS = original_timeout
+        await asyncio.wait_for(
+            MoviePilotAgent._stream_agent_tokens(
+                agent=SlowAgent(),
+                messages={"messages": []},
+                config={},
+                on_token=output.append,
+            ),
+            timeout=0.5,
+        )
         return output
 
-    assert asyncio.run(_run()) == ["无结束标记的回复"]
+    assert asyncio.run(_run()) == ["慢速回复"]
 
 
 def test_agent_stream_accepts_final_ai_message_without_tool_call_chunks():
@@ -220,55 +215,6 @@ def test_agent_stream_accepts_final_ai_message_without_tool_call_chunks():
         return output
 
     assert asyncio.run(_run()) == ["完整消息正文"]
-
-
-def test_agent_stream_stops_waiting_when_event_stream_is_silent():
-    """事件通道完全静默时有界退出，由调用方在流停止后恢复最终状态。"""
-
-    class SilentEventAgent:
-        def __init__(self):
-            self.completed = False
-
-        def get_state(self, config):
-            messages = []
-            if self.completed:
-                messages.append(
-                    SimpleNamespace(
-                        type="ai",
-                        content="状态中的最终回复",
-                        tool_calls=[],
-                    )
-                )
-            return SimpleNamespace(values={"messages": messages})
-
-        async def astream(self, *args, **kwargs):
-            async def complete_state():
-                await asyncio.sleep(0.01)
-                self.completed = True
-
-            asyncio.create_task(complete_state())
-            await asyncio.Future()
-            yield
-
-    async def _run():
-        output = []
-        original_timeout = MoviePilotAgent.STREAM_EVENT_IDLE_TIMEOUT_SECONDS
-        MoviePilotAgent.STREAM_EVENT_IDLE_TIMEOUT_SECONDS = 0.02
-        try:
-            await asyncio.wait_for(
-                MoviePilotAgent._stream_agent_tokens(
-                    agent=SilentEventAgent(),
-                    messages={"messages": []},
-                    config={},
-                    on_token=output.append,
-                ),
-                timeout=0.5,
-            )
-        finally:
-            MoviePilotAgent.STREAM_EVENT_IDLE_TIMEOUT_SECONDS = original_timeout
-        return output
-
-    assert asyncio.run(_run()) == []
 
 
 class DummyTool(MoviePilotTool):
@@ -857,8 +803,8 @@ class TestAgentToolStreaming:
         assert edit_kwargs["message_id"] == "om_stream"
         assert edit_kwargs["text"] == "hello world"
 
-    def test_stop_streaming_times_out_hung_inflight_flush_and_preserves_buffer(self):
-        """渠道首条消息永久挂起时应有界退出，并保留全文供普通消息降级。"""
+    def test_stop_streaming_does_not_retry_unknown_inflight_delivery(self):
+        """渠道请求超时后结果未知，不得保留全文触发重复投递。"""
 
         async def _run():
             class FakeStreamChain:
@@ -900,12 +846,12 @@ class TestAgentToolStreaming:
 
         all_sent, final_text, fallback_text = asyncio.run(_run())
 
-        assert all_sent is False
-        assert final_text == ""
-        assert fallback_text == "完整回复"
+        assert all_sent is True
+        assert final_text == "完整回复"
+        assert fallback_text == ""
 
-    def test_stop_streaming_times_out_hung_final_flush_and_preserves_buffer(self):
-        """最终刷新永久挂起时不得阻塞 worker，并应保留全文供降级发送。"""
+    def test_stop_streaming_does_not_retry_unknown_final_delivery(self):
+        """最终刷新超时后结果未知，应有界退出且禁止重复投递。"""
 
         async def _run():
             handler = StreamingHandler()
@@ -929,9 +875,9 @@ class TestAgentToolStreaming:
 
         all_sent, final_text, fallback_text = asyncio.run(_run())
 
-        assert all_sent is False
-        assert final_text == ""
-        assert fallback_text == "最终回复"
+        assert all_sent is True
+        assert final_text == "最终回复"
+        assert fallback_text == ""
 
     def test_stop_streaming_uses_generic_finalize_message(self):
         """校验停止流式输出会调用通用消息完成接口。"""

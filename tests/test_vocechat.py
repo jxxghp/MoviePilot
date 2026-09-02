@@ -80,7 +80,7 @@ def test_group_message_without_mention_is_ignored():
 
 
 def test_group_message_with_mention_replies_in_group():
-    message = _parse_group_message(mentions=[5])
+    message = _parse_group_message(mentions=[5], bot_id=5)
     assert message is not None
     assert message.userid == "GID#2"
 
@@ -90,6 +90,10 @@ def test_group_message_only_accepts_configured_bot_mention():
     message = _parse_group_message(mentions=[5, 6], bot_id=5)
     assert message is not None
     assert message.userid == "GID#2"
+
+
+def test_group_message_requires_bot_id_in_mention_only_mode():
+    assert _parse_group_message(mentions=[5]) is None
 
 
 def test_group_message_can_disable_mention_only_filter():

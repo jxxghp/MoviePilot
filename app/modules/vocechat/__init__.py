@@ -122,7 +122,9 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
             or config.get("bot_id")
             or ""
         ).strip()
-        return not bot_id or bot_id in mentions
+        if not bot_id.isdigit() or int(bot_id) <= 0:
+            return False
+        return bot_id in mentions
 
     @staticmethod
     def _mention_only_enabled(config: dict) -> bool:

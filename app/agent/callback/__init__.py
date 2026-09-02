@@ -302,8 +302,9 @@ class StreamingHandler:
         # 将未落地的工具统计补入缓冲区，避免流式结束时丢失这段执行信息
         self.flush_pending_tool_summary()
 
-        # 只有上一轮刷新明确完成后才能安全执行最终刷新。若渠道请求超时，
-        # 保留完整 buffer 交给调用方走普通消息降级，避免 session worker 永久阻塞。
+        # 超时只能停止等待，无法撤销线程池里已经发出的远端请求。此时投递结果
+        # 未知，必须禁止普通消息重试，避免远端稍后成功后产生重复回复。
+        delivery_uncertain = not flush_owner_completed
         final_flush_completed = flush_owner_completed
         if flush_owner_completed:
             try:
@@ -313,8 +314,9 @@ class StreamingHandler:
                 )
             except asyncio.TimeoutError:
                 final_flush_completed = False
+                delivery_uncertain = True
                 logger.warning(
-                    f"流式最终刷新超时，已保留完整回复用于降级发送: channel={self._channel}"
+                    f"流式最终刷新结果未知，已禁止重复投递: channel={self._channel}"
                 )
 
         message_response = self._message_response
@@ -336,24 +338,27 @@ class StreamingHandler:
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
             current_msg_text = self._buffer[self._msg_start_offset :]
-            all_sent = (
+            fully_confirmed = (
                 final_flush_completed
                 and self._message_response is not None
                 and self._sent_text
                 and current_msg_text == self._sent_text
             )
+            # 返回值表达“调用方无需再次投递”：既包括确认全部发送，也包括
+            # 已发起远端请求但结果未知的 at-most-once 情形。
+            no_retry_required = bool(fully_confirmed or delivery_uncertain)
             # 保留最终文本用于返回（返回完整 buffer 内容，包含所有分段消息）
-            final_text = self._buffer if all_sent else ""
+            final_text = self._buffer if no_retry_required else ""
             # 重置状态
             self._sent_text = ""
             self._message_response = None
             self._msg_start_offset = 0
             self._pending_tool_stats = {}
             self._tool_summaries = set()
-            if all_sent:
-                # 所有内容已通过流式发送，清空缓冲区
+            if no_retry_required:
+                # 已确认发送或投递结果未知时均清空，防止调用方再次发送全文。
                 self._buffer = ""
-            return all_sent, final_text
+            return no_retry_required, final_text
 
     def record_tool_call(
         self,
@@ -652,7 +657,7 @@ class StreamingHandler:
             except asyncio.TimeoutError:
                 completed = False
                 logger.warning(
-                    f"流式刷新任务收口超时，已取消等待并启用最终回复降级: channel={self._channel}"
+                    f"流式刷新任务收口超时，投递结果未知，已禁止重复投递: channel={self._channel}"
                 )
                 flush_task.cancel()
                 await asyncio.gather(flush_task, return_exceptions=True)
