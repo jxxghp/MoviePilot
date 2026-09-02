@@ -1,6 +1,7 @@
 """订阅执行状态合并、批次权限和操作能力测试。"""
 
 import asyncio
+from dataclasses import replace
 
 from app.application.download.admission import SubscriptionDownloadSnapshot
 from app.application.subscription.execution import SearchBatchSnapshot, SearchTaskSnapshot
@@ -147,6 +148,35 @@ def test_batch_requires_complete_subscription_access():
     assert visible.current_subscription_id == 1
     assert visible.processed_count == 0
     assert visible.can_cancel is True
+
+
+def test_batch_projection_exposes_skipped_count_as_processed_without_success():
+    """批次跳过应计入处理总数，同时保留独立的完成计数。"""
+    repository = _Repository()
+    repository.batch = replace(
+        repository.batch,
+        state="skipped",
+        total_count=2,
+        finished_count=1,
+        skipped_count=1,
+    )
+    repository.tasks = {
+        1: _task(1, state="completed", phase="completed"),
+        2: _task(2, state="skipped", phase="skipped"),
+    }
+
+    visible = asyncio.run(
+        SubscriptionExecutionStatusService(repository).get_batch(
+            "batch-1",
+            accessible_subscription_ids={1, 2},
+        )
+    )
+
+    assert visible is not None
+    assert visible.state == "skipped"
+    assert visible.finished_count == 1
+    assert visible.skipped_count == 1
+    assert visible.processed_count == 2
 
 
 def test_request_cancel_uses_injected_execution_boundary():

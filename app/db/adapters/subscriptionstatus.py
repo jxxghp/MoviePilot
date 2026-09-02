@@ -46,6 +46,7 @@ def _batch(record: SubscriptionSearchBatch) -> SearchBatchSnapshot:
         finished_count=record.finished_count,
         failed_count=record.failed_count,
         cancelled_count=record.cancelled_count,
+        skipped_count=record.skipped_count,
         cancel_requested=bool(record.cancel_requested),
         created_at=record.created_at,
         updated_at=record.updated_at,

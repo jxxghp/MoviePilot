@@ -44,6 +44,7 @@ class SubscriptionBatchStatus:
     current_site_id: Optional[int] = None
     error: Optional[str] = None
     can_cancel: bool = False
+    skipped_count: int = 0
 
 
 class SubscriptionExecutionReadRepository(Protocol):
@@ -240,7 +241,12 @@ class SubscriptionExecutionStatusService:
         current = next((task for task in tasks if task.state == "running"), None)
         if current is None:
             current = next((task for task in tasks if task.state == "queued"), None)
-        processed = batch.finished_count + batch.failed_count + batch.cancelled_count
+        processed = (
+            batch.finished_count
+            + batch.failed_count
+            + batch.cancelled_count
+            + batch.skipped_count
+        )
         phase = current.phase if current else batch.state
         return SubscriptionBatchStatus(
             batch_id=batch.batch_id,
@@ -252,6 +258,7 @@ class SubscriptionExecutionStatusService:
             finished_count=batch.finished_count,
             failed_count=batch.failed_count,
             cancelled_count=batch.cancelled_count,
+            skipped_count=batch.skipped_count,
             current_subscription_id=current.subscription_id if current else None,
             current_site_id=current.current_site_id if current else None,
             created_at=batch.created_at,

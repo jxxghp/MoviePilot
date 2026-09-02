@@ -77,6 +77,7 @@ class SubscriptionBatchStatus(BaseModel):  # type: ignore[misc]
     cancelled_count: int
     created_at: str
     updated_at: str
+    skipped_count: int = 0
     current_subscription_id: Optional[int] = None
     current_site_id: Optional[int] = None
     error: Optional[str] = None

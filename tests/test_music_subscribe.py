@@ -11,7 +11,12 @@ from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
 )
+from app.application.subscription.execution import (
+    SubscriptionExecutionAdmission,
+    SubscriptionExecutionContext,
+)
 from app.application.subscription.mutation import SubscriptionMutation
+from app.application.subscription.sitebudget import SubscriptionSearchCancelled
 from app.chain.subscribe import SubscribeChain
 from app.domain.context import (
     MUSIC_ENTITY_ALBUM,
@@ -120,6 +125,23 @@ def _configure_subscription_write(chain, repository) -> None:
     chain.sync_subscription_mutation_scope = mutation_scope
 
 
+def _execution_context(*, cancelled=None) -> SubscriptionExecutionContext:
+    """构造音乐订阅使用的独立执行上下文。"""
+    admission = SubscriptionExecutionAdmission()
+    lease = admission.try_acquire(
+        subscription_id=7,
+        operation="search",
+        ttl_seconds=60,
+    )
+    assert lease is not None
+    return SubscriptionExecutionContext(
+        lease=lease,
+        admission=admission,
+        task_id="music-task-7",
+        cancel_requested=cancelled,
+    )
+
+
 def test_build_subscribe_meta_returns_music_meta():
     """音乐订阅应构造 MetaMusic，而不是交给影视标题解析器。"""
     meta = build_subscribe_meta(_subscribe())
@@ -188,6 +210,87 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
     assert matched_context.meta_info.audio_format == "FLAC"
     assert matched_context.meta_info.audio_lossless is True
     chain.finish_subscribe_or_not.assert_called_once()
+
+
+def test_music_search_honours_cancel_before_external_work():
+    """音乐搜索在安全边界收到取消后不得继续访问站点。"""
+    subscribe = _subscribe()
+    chain = SubscribeChain()
+    execution_context = _execution_context(cancelled=lambda: True)
+
+    with patch("app.chain._music.SearchChain") as search_chain, \
+            pytest.raises(SubscriptionSearchCancelled):
+        chain._search_music_subscribe(
+            subscribe,
+            execution_context=execution_context,
+        )
+
+    search_chain.assert_not_called()
+
+
+def test_music_download_marks_shared_execution_context_before_side_effect():
+    """音乐下载必须把任务、取消和副作用边界传入统一下载治理。"""
+    cancelled = [False]
+    subscribe = _subscribe()
+    target = _music_info()
+    downloaded = Context(
+        torrent_info=TorrentInfo(
+            title="周杰伦 - 晴天 FLAC",
+            category=MediaType.MUSIC.value,
+        ),
+        meta_info=MetaMusic.from_music_info(target),
+        media_info=target,
+    )
+    execution_context = _execution_context(cancelled=lambda: cancelled[0])
+    download_chain = Mock()
+
+    def batch_download(**kwargs):
+        """模拟下载器边界内开始提交后才收到取消。"""
+        governance = kwargs["governance"]
+        assert governance.subscription_id == subscribe.id
+        assert governance.task_id == execution_context.task_id
+        assert governance.cancelled() is False
+        governance.mark_started()
+        cancelled[0] = True
+        return [downloaded], None
+
+    download_chain.batch_download.side_effect = batch_download
+    repository = Mock()
+    repository.get.return_value = subscribe
+    chain = SubscribeChain()
+    chain.subscription_repository = repository
+    chain.finish_subscribe_or_not = Mock()
+
+    with patch("app.chain._music.DownloadChain", return_value=download_chain):
+        chain._download_music_subscribe(
+            subscribe,
+            target,
+            [downloaded],
+            execution_context=execution_context,
+        )
+
+    assert execution_context.download_started is True
+    chain.finish_subscribe_or_not.assert_called_once()
+
+
+def test_music_download_rechecks_paused_state_before_submission():
+    """候选准备后暂停的音乐订阅不得进入下载器。"""
+    subscribe = _subscribe()
+    paused = _subscribe(state="S")
+    repository = Mock()
+    repository.get.return_value = paused
+    chain = SubscribeChain()
+    chain.subscription_repository = repository
+
+    with patch("app.chain._music.DownloadChain") as download_chain:
+        chain._download_music_subscribe(
+            subscribe,
+            _music_info(),
+            [Context()],
+            execution_context=_execution_context(),
+        )
+
+    download_chain.assert_not_called()
 
 
 def test_music_subscribe_filters_declared_bitrate_and_format():
@@ -274,6 +377,7 @@ def test_music_best_version_persists_downloaded_rule_priority():
     download_chain.batch_download.return_value = ([downloaded], None)
     subscribe_oper = Mock()
     updated = _subscribe(best_version=1, current_priority=100)
+    subscribe_oper.get.return_value = subscribe
     subscribe_oper.update.return_value = updated
     chain = SubscribeChain()
     chain.finish_subscribe_or_not = Mock()

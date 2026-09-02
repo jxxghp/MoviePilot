@@ -267,7 +267,7 @@ class SubscriptionSearchOper(DbOper):
         """以当前租约令牌收口任务，并重新计算批次终态。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索收口需要调用方提供同步 Session")
-        if state not in {"completed", "failed", "cancelled"}:
+        if state not in {"completed", "failed", "cancelled", "skipped"}:
             raise ValueError(f"不支持的订阅搜索终态：{state}")
         task = self._db.execute(
             select(SubscriptionSearchTask).where(
@@ -334,7 +334,7 @@ class SubscriptionSearchOper(DbOper):
                 error=None,
             )
         now = utc_now_text()
-        return bool(execute_dml(
+        updated = execute_dml(
             self._db,
             update(SubscriptionSearchTask)
             .where(
@@ -352,7 +352,11 @@ class SubscriptionSearchOper(DbOper):
                 updated_at=now,
             ),
             execution_options={"synchronize_session": False},
-        ))
+        )
+        if not updated:
+            return False
+        self._refresh_batch(task.batch_id, now=now, error=None)
+        return True
 
     def is_cancel_requested(self, task_id: str) -> bool:
         """读取任务和批次取消标记。"""
@@ -586,7 +590,8 @@ class SubscriptionSearchOper(DbOper):
         completed = counts.get("completed", 0)
         failed = counts.get("failed", 0)
         cancelled = counts.get("cancelled", 0)
-        terminal = completed + failed + cancelled
+        skipped = counts.get("skipped", 0)
+        terminal = completed + failed + cancelled + skipped
         batch = self.get_batch(batch_id)
         if batch is None:
             return
@@ -595,11 +600,18 @@ class SubscriptionSearchOper(DbOper):
                 state = "failed"
             elif cancelled or batch.cancel_requested:
                 state = "cancelled"
+            elif skipped:
+                state = "skipped"
             else:
                 state = "completed"
             finished_at = now
         else:
-            state = "cancelling" if batch.cancel_requested else "running"
+            if batch.cancel_requested:
+                state = "cancelling"
+            elif counts.get("running", 0):
+                state = "running"
+            else:
+                state = "queued"
             finished_at = None
         execute_dml(
             self._db,
@@ -610,6 +622,7 @@ class SubscriptionSearchOper(DbOper):
                 finished_count=completed,
                 failed_count=failed,
                 cancelled_count=cancelled,
+                skipped_count=skipped,
                 updated_at=now,
                 finished_at=finished_at,
                 last_error=error or batch.last_error,

@@ -701,16 +701,15 @@ class TestSubscribeChain:
 
     def test_match_title_fallback_calls_torrent_match_from_class(self):
         """确保标题兜底匹配不依赖 TorrentHelper 实例绑定。"""
-
-        class _ReachedTitleMatch(Exception):
-            """标记测试已经进入标题匹配函数体。"""
+        reached = []
 
         class _PlainTorrentHelper:
             """模拟需要按类调用的 TorrentHelper 形态。"""
 
             def match_torrent(mediainfo, torrent_meta, torrent):
                 """标记类级调用已经正确进入匹配逻辑。"""
-                raise _ReachedTitleMatch
+                reached.append((mediainfo, torrent_meta, torrent))
+                return False
 
             def filter_torrent(self, *args, **kwargs):
                 """保持订阅匹配后续过滤流程可继续执行。"""
@@ -753,9 +752,14 @@ class TestSubscribeChain:
                 """返回当前测试构造的订阅列表。"""
                 return [subscribe]
 
+            def get(self, subscribe_id):
+                """返回取得订阅准入后的最新快照。"""
+                return subscribe if subscribe_id == subscribe.id else None
+
         chain = SubscribeChain()
         chain.subscription_repository = _SubscribeOper()
         chain.check_and_handle_existing_media = lambda **kwargs: (False, {})
+        chain.finish_subscribe_or_not = lambda **kwargs: None
 
         with (
             patch.object(
@@ -764,9 +768,14 @@ class TestSubscribeChain:
                 _PlainTorrentHelper,
             ),
             _patch_media_recognize(SUBSCRIBE_CHAIN_MODULE, mediainfo),
-            pytest.raises(_ReachedTitleMatch),
         ):
             chain.match({"test.example": [context]})
+
+        assert len(reached) == 1
+        actual_media, actual_meta, actual_torrent = reached[0]
+        assert actual_media.title_year == mediainfo.title_year
+        assert actual_meta is context.meta_info
+        assert actual_torrent is context.torrent_info
 
     def test_match_accepts_special_season_zero_candidate(self):
         """S0 订阅应允许 S00 候选资源进入下载候选，不能按未指定季处理。"""
@@ -862,6 +871,16 @@ class TestSubscribeChain:
 
         assert len(download_calls) == 1
         assert download_calls[0]["contexts"][0].meta_info.begin_season == 0
+        execution_context = download_calls[0]["execution_context"]
+        assert execution_context.lease.subscription_id == subscribe.id
+        assert execution_context.lease.operation == "match"
+        replacement = chain._subscription_execution_admission.try_acquire(
+            subscription_id=subscribe.id,
+            operation="search",
+            ttl_seconds=60,
+        )
+        assert replacement is not None
+        assert chain._subscription_execution_admission.release(replacement) is True
 
     def test_get_episode_priority_falls_back_to_current_priority(self):
         subscribe = self._build_subscribe(current_priority=80, episode_priority=None)

@@ -22,6 +22,10 @@ from app.application.download.admission import (
     SubscriptionDownloadRequest,
 )
 from app.application.subscription.contract import SubscriptionSnapshot
+from app.application.subscription.execution import (
+    SubscriptionExecutionAdmission,
+    SubscriptionExecutionContext,
+)
 from app.chain.download import DownloadChain
 from app.chain.subscribe import policy as subscribe_policy
 from app.chain.subscribe.facade import SubscribeChain
@@ -554,6 +558,18 @@ def test_subscription_policy_reloads_facts_and_threads_governance(monkeypatch) -
         lambda _subscribe, contexts: contexts,
     )
     monkeypatch.setattr(subscribe_policy, "DownloadChain", _FakeDownloadChain)
+    admission = SubscriptionExecutionAdmission()
+    lease = admission.try_acquire(
+        subscription_id=current.id,
+        operation="search",
+        ttl_seconds=60,
+    )
+    assert lease is not None
+    execution_context = SubscriptionExecutionContext(
+        lease=lease,
+        admission=admission,
+        task_id="search-task-7",
+    )
 
     _downloads, lefts = chain._SubscribeChain__download_best_version_with_full_pack_first(
         contexts=[context],
@@ -562,6 +578,7 @@ def test_subscription_policy_reloads_facts_and_threads_governance(monkeypatch) -
         mediakey="themoviedb:77",
         save_path="/old",
         downloader="old",
+        execution_context=execution_context,
     )
 
     assert lefts is fresh_missing
@@ -576,6 +593,11 @@ def test_subscription_policy_reloads_facts_and_threads_governance(monkeypatch) -
     assert captured["downloader"] == "current"
     assert captured["governance"].subscription_id == 7
     assert captured["governance"].mode == "normal"
+    assert captured["governance"].task_id == "search-task-7"
+    assert captured["governance"].cancelled() is False
+    captured["governance"].mark_started()
+    assert execution_context.download_started is True
+    assert admission.release(lease) is True
 
 
 def test_subscription_policy_discards_candidates_after_filter_change(monkeypatch) -> None:

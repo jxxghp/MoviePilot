@@ -4,6 +4,7 @@ import threading
 from typing import Any
 
 from app.application.messaging.subscribe import SubscribeInteractionHandler
+from app.application.subscription.execution import SubscriptionExecutionAdmission
 from app.chain._interaction import InteractionChainMixin
 from app.chain._music import MusicSubscribeMixin
 from app.chain.base import ChainBase
@@ -48,9 +49,10 @@ class SubscribeChain(
     """
 
     _interaction_handler_type = SubscribeInteractionHandler
-    _rlock = threading.RLock()
+    _match_lock = threading.Lock()
     _search_queue_lock = threading.Lock()
-    _LOCK_TIMOUT = 3600 * 2
+    _subscription_execution_admission = SubscriptionExecutionAdmission()
+    _SUBSCRIPTION_EXECUTION_TTL = 3600 * 2
 
     @classmethod
     def _music_media_chain(cls) -> MediaChain:

@@ -160,6 +160,38 @@ def test_search_queue_finishes_batch_with_aggregated_failure(tmp_path):
     assert batch.last_error == "site timeout"
 
 
+def test_search_queue_aggregates_skipped_tasks_without_marking_success(tmp_path):
+    """跳过任务应单独计数并让批次暴露 skipped 聚合终态。"""
+    repository, _engine = _repository(tmp_path)
+    enqueued = repository.enqueue(
+        subscription_ids=(10, 11),
+        source="fallback",
+        priority=10,
+    )
+    first = repository.claim_next(owner="worker-a")
+    assert repository.finish_task(
+        task_id=first.task_id,
+        lease_token=first.lease_token,
+        state="skipped",
+        error="同一订阅正在由其他通道处理，本轮搜索已跳过",
+    ) is True
+    second = repository.claim_next(owner="worker-a")
+    assert repository.finish_task(
+        task_id=second.task_id,
+        lease_token=second.lease_token,
+        state="completed",
+    ) is True
+
+    batch = repository.get_batch(enqueued.batch.batch_id)
+
+    assert batch.state == "skipped"
+    assert batch.finished_count == 1
+    assert batch.failed_count == 0
+    assert batch.cancelled_count == 0
+    assert batch.skipped_count == 1
+    assert batch.last_error == "同一订阅正在由其他通道处理，本轮搜索已跳过"
+
+
 def test_search_queue_ages_old_fallback_ahead_of_new_manual_work(tmp_path):
     """手工任务可优先，但等待超过公平窗口的兜底任务不得持续饥饿。"""
     repository, engine = _repository(tmp_path)
