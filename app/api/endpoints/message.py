@@ -123,7 +123,7 @@ async def user_message(
     _: _SchemaTokenPayload = Depends(verify_apitoken),
 ):
     """
-    用户消息响应，配置请求中需要添加参数：token=API_TOKEN&source=消息配置名
+    用户消息响应；推荐通过 X-API-KEY 请求头传递 API_TOKEN，查询参数 token 仅保留兼容。
     """
     body = await request.body()
     form = await request.form()

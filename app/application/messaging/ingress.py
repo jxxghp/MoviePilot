@@ -18,6 +18,7 @@ class _MessageIngressRequest:
 
     url: str
     payload: Mapping[str, Any]
+    headers: Mapping[str, str]
     source: str
     timeout: float
 
@@ -30,6 +31,7 @@ class MessageIngressPort(Protocol):
         url: str,
         payload: Mapping[str, Any],
         *,
+        headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
         """同步投递 payload，并返回 HTTP 状态码或 None。"""
@@ -40,6 +42,7 @@ class MessageIngressPort(Protocol):
         url: str,
         payload: Mapping[str, Any],
         *,
+        headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
         """异步投递 payload，并返回 HTTP 状态码或 None。"""
@@ -78,14 +81,17 @@ def _message_ingress_snapshot() -> MessageIngressPort:
 
 
 def build_message_ingress_url(source: str | None) -> str:
-    """按当前运行配置构造安全编码的本地消息入口 URL。"""
-    query = {"token": get_runtime_setting('API_TOKEN')}
+    """构造仅含非敏感来源参数的本地消息入口 URL。"""
+    query: dict[str, str] = {}
     if source:
         query["source"] = source
-    return (
-        f"http://127.0.0.1:{get_runtime_setting('PORT')}/api/v1/message?"
-        f"{urlencode(query)}"
-    )
+    base_url = f"http://127.0.0.1:{get_runtime_setting('PORT')}/api/v1/message"
+    return f"{base_url}?{urlencode(query)}" if query else base_url
+
+
+def build_message_ingress_headers() -> dict[str, str]:
+    """把本地回环凭据放入请求头，避免访问日志记录明文 Token。"""
+    return {"X-API-KEY": str(get_runtime_setting("API_TOKEN") or "")}
 
 
 def _message_ingress_request(
@@ -97,6 +103,7 @@ def _message_ingress_request(
     return _MessageIngressRequest(
         url=build_message_ingress_url(source),
         payload=dict(payload),
+        headers=build_message_ingress_headers(),
         source=source or "-",
         timeout=timeout,
     )
@@ -142,6 +149,7 @@ def forward_message_to_host(
         status_code = _message_ingress_snapshot().post(
             request.url,
             request.payload,
+            headers=request.headers,
             timeout=request.timeout,
         )
         return _message_ingress_confirmed(request, status_code)
@@ -161,6 +169,7 @@ async def async_forward_message_to_host(
         status_code = await _message_ingress_snapshot().async_post(
             request.url,
             request.payload,
+            headers=request.headers,
             timeout=request.timeout,
         )
         return _message_ingress_confirmed(request, status_code)

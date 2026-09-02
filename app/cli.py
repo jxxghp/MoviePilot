@@ -17,9 +17,12 @@ import click
 import psutil
 
 from app.application.backup import BackupArtifact
-from app.application.configuration import get_runtime_settings
 from app.runtime.config import Settings
-from app.runtime.settings import get_runtime_setting
+from app.runtime.settings import (
+    get_runtime_setting,
+    has_runtime_setting,
+    update_runtime_setting,
+)
 from app.runtime.state import SystemHelper
 from app.runtime.version import get_app_version, get_frontend_version
 from app.startup.composition.database import build_database_governance
@@ -801,7 +804,9 @@ def _ensure_local_api_token() -> bool:
     if get_runtime_setting("API_TOKEN") and len(str(get_runtime_setting("API_TOKEN")).strip()) >= 16:
         return False
 
-    result, message = get_runtime_settings().update("API_TOKEN", get_runtime_setting("API_TOKEN") or "")
+    result, message = update_runtime_setting(
+        "API_TOKEN", get_runtime_setting("API_TOKEN") or ""
+    )
     if result is False:
         raise click.ClickException(message or "初始化 API_TOKEN 失败")
     return result is True
@@ -1324,7 +1329,7 @@ def config_path() -> None:
 @click.option("--show-secrets", is_flag=True, help="显示敏感配置原文")
 def config_list(show_secrets: bool) -> None:
     """列出当前配置"""
-    values = get_runtime_settings().snapshot()
+    values = {key: get_runtime_setting(key) for key in Settings.model_fields}
     for key in sorted(values):
         click.echo(f"{key}={_format_value(_mask_value(key, values[key], show_secrets))}")
 
@@ -1334,9 +1339,9 @@ def config_list(show_secrets: bool) -> None:
 def config_get(key: str) -> None:
     """读取单个配置项"""
     setting_fields = Settings.model_fields.keys()
-    if key not in setting_fields and not get_runtime_settings().contains(key):
+    if key not in setting_fields and not has_runtime_setting(key):
         raise click.ClickException(f"配置项不存在：{key}")
-    click.echo(_format_value(get_runtime_settings().get(key)))
+    click.echo(_format_value(get_runtime_setting(key)))
 
 
 @config.command("set", context_settings=CONTEXT_SETTINGS)
@@ -1344,7 +1349,7 @@ def config_get(key: str) -> None:
 @click.argument("value")
 def config_set(key: str, value: str) -> None:
     """写入单个配置项"""
-    result, message = get_runtime_settings().update(key, value)
+    result, message = update_runtime_setting(key, value)
     if result is False:
         raise click.ClickException(message or f"配置项更新失败：{key}")
     if result is None:
@@ -1376,7 +1381,7 @@ def config_keys(pattern: Optional[str], show_current: bool, show_secrets: bool) 
         if pattern and pattern.lower() not in key.lower():
             continue
         default_value = _field_default(field)
-        current_value = get_runtime_settings().get(key, default_value)
+        current_value = get_runtime_setting(key, default_value)
         rows.append(
             (
                 key,
@@ -1408,7 +1413,7 @@ def config_describe(key: str, show_secrets: bool) -> None:
         raise click.ClickException(f"配置项不存在：{key}")
 
     default_value = _field_default(field)
-    current_value = get_runtime_settings().get(key, default_value)
+    current_value = get_runtime_setting(key, default_value)
     click.echo(f"Key: {key}")
     click.echo(f"Type: {_annotation_name(field.annotation)}")
     click.echo(f"Default: {_format_value(_mask_value(key, default_value, show_secrets))}")

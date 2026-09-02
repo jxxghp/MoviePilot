@@ -360,6 +360,12 @@ def test_standalone_api_credential_revalidates_current_identity(monkeypatch, dep
     assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
 
 
+def test_api_token_reader_prefers_header_and_preserves_query_compatibility():
+    """兼容 Token 依赖应优先使用请求头，同时继续接受旧查询参数。"""
+    assert access._get_api_token("query-token", "header-token") == "header-token"
+    assert access._get_api_token("query-token", None) == "query-token"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("endpoint", "credential"),
@@ -472,6 +478,52 @@ def test_superuser_payload_provider_rejects_inactive_user(monkeypatch):
     )
 
     with pytest.raises(PermissionError):
+        service.build_superuser_token_payload()
+
+
+def test_superuser_payload_provider_falls_back_to_database_admin(monkeypatch):
+    """V2 升级后 SUPERUSER 为空时，API 凭据应绑定现有启用管理员。"""
+    user = _user(active=True, superuser=True)
+    users = SimpleNamespace(
+        get_by_name=Mock(),
+        get_active_superuser=Mock(return_value=user),
+    )
+    service = AuthService(
+        users=users,
+        config=SimpleNamespace(),
+        passkeys=SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        auth_service_module,
+        "get_chain_runtime_config_snapshot",
+        lambda: SimpleNamespace(superuser=""),
+    )
+
+    payload = service.build_superuser_token_payload()
+
+    assert payload.sub == user.id
+    assert payload.username == user.name
+    users.get_by_name.assert_not_called()
+    users.get_active_superuser.assert_called_once_with()
+
+
+def test_superuser_payload_provider_explains_missing_binding(monkeypatch):
+    """配置和数据库都没有管理员时，应返回可操作的认证失败原因。"""
+    service = AuthService(
+        users=SimpleNamespace(get_active_superuser=Mock(return_value=None)),
+        config=SimpleNamespace(),
+        passkeys=SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        auth_service_module,
+        "get_chain_runtime_config_snapshot",
+        lambda: SimpleNamespace(superuser=""),
+    )
+
+    with pytest.raises(
+        PermissionError,
+        match="未配置 SUPERUSER，且数据库中没有可用超级管理员",
+    ):
         service.build_superuser_token_payload()
 
 

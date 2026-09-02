@@ -69,6 +69,17 @@ class SqlAlchemyUserRepository(UserRepository):
         model = self._oper.get_by_id(user_id)
         return _to_snapshot(model) if model else None
 
+    def get_active_superuser(self) -> Optional[UserSnapshot]:
+        """按主键顺序返回首个启用的超级管理员快照。"""
+        session = cast(Session, self._session)
+        model = session.execute(
+            select(User)
+            .where(User.is_active.is_(True), User.is_superuser.is_(True))
+            .order_by(User.id)
+            .limit(1)
+        ).scalars().first()
+        return _to_snapshot(model) if model else None
+
     async def async_has_users(self) -> bool:
         """使用最小列查询判断数据库中是否已有用户。"""
         session = self._require_async_session()
@@ -224,6 +235,11 @@ class TransactionalUserRepository(ChainUserRepository):
         """按 ID 读取公开用户快照。"""
         with self._sync_session() as session:
             return SqlAlchemyUserRepository(session).get_by_id(user_id)
+
+    def get_active_superuser(self) -> Optional[UserSnapshot]:
+        """在独立会话中返回首个启用的超级管理员快照。"""
+        with self._sync_session() as session:
+            return SqlAlchemyUserRepository(session).get_active_superuser()
 
     def get_auth_by_name(self, name: str) -> Optional[UserAuthSnapshot]:
         """按用户名读取认证凭据快照。"""

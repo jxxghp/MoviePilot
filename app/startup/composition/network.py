@@ -128,10 +128,14 @@ class _MessageIngressAdapter:
         url: str,
         payload: Mapping[str, Any],
         *,
+        headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
         """同步投递消息，关闭响应后返回状态码。"""
-        response = RequestUtils(timeout=timeout).post_res(  # type: ignore[arg-type]
+        response = RequestUtils(
+            timeout=timeout,  # type: ignore[arg-type]
+            headers=dict(headers),
+        ).post_res(
             url,
             json=dict(payload),
         )
@@ -150,11 +154,13 @@ class _MessageIngressAdapter:
         url: str,
         payload: Mapping[str, Any],
         *,
+        headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
         """异步投递消息，关闭响应后返回状态码。"""
         response = await AsyncRequestUtils(
-            timeout=timeout  # type: ignore[arg-type]
+            timeout=timeout,  # type: ignore[arg-type]
+            headers=dict(headers),
         ).post_res(
             url,
             json=dict(payload),

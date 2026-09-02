@@ -28,14 +28,14 @@ class _FakeMessageIngressPort:
         self.sync_calls = []
         self.async_calls = []
 
-    def post(self, url, payload, *, timeout):
+    def post(self, url, payload, *, headers, timeout):
         """记录同步投递并返回固定状态码。"""
-        self.sync_calls.append((url, payload, timeout))
+        self.sync_calls.append((url, payload, headers, timeout))
         return self.status_code
 
-    async def async_post(self, url, payload, *, timeout):
+    async def async_post(self, url, payload, *, headers, timeout):
         """记录异步投递并返回固定状态码。"""
-        self.async_calls.append((url, payload, timeout))
+        self.async_calls.append((url, payload, headers, timeout))
         return self.status_code
 
 
@@ -57,8 +57,8 @@ def _patch_ingress_settings(monkeypatch, **values):
     )
 
 
-def test_forward_message_to_host_encodes_source_and_copies_payload(monkeypatch):
-    """统一入口必须安全编码查询参数，并向端口传递 payload 副本。"""
+def test_forward_message_to_host_keeps_token_out_of_url(monkeypatch):
+    """统一入口仅编码来源参数，并通过请求头传递凭据和 payload 副本。"""
     port = _FakeMessageIngressPort()
     ingress.configure_message_ingress_port(port)
     _patch_ingress_settings(monkeypatch, PORT=3000, API_TOKEN="token value")
@@ -70,12 +70,12 @@ def test_forward_message_to_host_encodes_source_and_copies_payload(monkeypatch):
         timeout=9,
     ) is True
 
-    url, forwarded, timeout = port.sync_calls[0]
+    url, forwarded, headers, timeout = port.sync_calls[0]
     assert urlparse(url).path == "/api/v1/message"
     assert parse_qs(urlparse(url).query) == {
-        "token": ["token value"],
         "source": ["channel & one"],
     }
+    assert headers == {"X-API-KEY": "token value"}
     assert forwarded == {"text": "hello"}
     assert forwarded is not payload
     assert timeout == 9
@@ -114,11 +114,11 @@ async def test_async_forward_message_to_host_uses_same_contract(monkeypatch):
         timeout=10,
     ) is True
 
-    url, payload, timeout = port.async_calls[0]
+    url, payload, headers, timeout = port.async_calls[0]
     assert parse_qs(urlparse(url).query) == {
-        "token": ["token value"],
         "source": ["discord & one"],
     }
+    assert headers == {"X-API-KEY": "token value"}
     assert payload == {"text": "hello"}
     assert timeout == 10
 
@@ -139,10 +139,15 @@ def test_startup_message_ingress_adapter_closes_sync_response(monkeypatch):
     status_code = network_composition._MessageIngressAdapter().post(
         "http://127.0.0.1/message",
         {"text": "hello"},
+        headers={"X-API-KEY": "secret"},
         timeout=9,
     )
 
     assert status_code == 202
+    network_composition.RequestUtils.assert_called_once_with(
+        timeout=9,
+        headers={"X-API-KEY": "secret"},
+    )
     response.close.assert_called_once_with()
 
 
@@ -163,10 +168,15 @@ async def test_startup_message_ingress_adapter_closes_async_response(monkeypatch
     status_code = await network_composition._MessageIngressAdapter().async_post(
         "http://127.0.0.1/message",
         {"text": "hello"},
+        headers={"X-API-KEY": "secret"},
         timeout=10,
     )
 
     assert status_code == 202
+    network_composition.AsyncRequestUtils.assert_called_once_with(
+        timeout=10,
+        headers={"X-API-KEY": "secret"},
+    )
     response.aclose.assert_awaited_once_with()
 
 
