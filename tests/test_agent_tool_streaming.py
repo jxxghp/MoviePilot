@@ -45,6 +45,29 @@ def test_think_tag_stripper_hides_split_think_tag_content():
     assert outputs == ["回答前", "回答后"]
 
 
+def test_think_tag_stripper_ignores_orphan_closing_tag():
+    """模型单独输出 think 结束标签时不应把协议标记展示给用户。"""
+    stripper = _ThinkTagStripper()
+    outputs = []
+
+    emitted = stripper.process("</think>", outputs.append)
+    stripper.process("最终回答", outputs.append)
+
+    assert emitted is False
+    assert outputs == ["最终回答"]
+
+
+def test_think_tag_stripper_hides_split_orphan_closing_tag():
+    """孤立结束标签跨 token 到达时仍应被过滤并保留前后正文。"""
+    stripper = _ThinkTagStripper()
+    outputs = []
+
+    stripper.process("回答前</", outputs.append)
+    stripper.process("think>回答后", outputs.append)
+
+    assert outputs == ["回答前", "回答后"]
+
+
 class DummyTool(MoviePilotTool):
     """用于流式输出测试的固定结果工具。"""
 

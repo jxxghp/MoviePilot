@@ -224,7 +224,13 @@ class _ThinkTagStripper:
     """
     流式剥离 <think>...</think> 标签的辅助类。
     维护内部缓冲区，处理标签跨 token 边界被截断的情况。
+
+    部分模型会将思考正文放到 reasoning_content 字段，只把孤立的结束标签
+    放进普通文本流；这类结束标签同样不能交给用户界面展示。
     """
+
+    _THINK_START_TAG = "<think>"
+    _THINK_END_TAG = "</think>"
 
     def __init__(self):
         self.buffer = ""
@@ -234,6 +240,14 @@ class _ThinkTagStripper:
         """重置状态"""
         self.buffer = ""
         self.in_think_tag = False
+
+    @staticmethod
+    def _find_partial_tag_length(text: str, tag: str) -> int:
+        """返回文本末尾匹配的标签前缀长度，完整标签不计入。"""
+        for length in range(len(tag) - 1, 0, -1):
+            if text.endswith(tag[:length]):
+                return length
+        return 0
 
     def process(self, text: str, on_output: Callable[[str], None]):
         """
@@ -246,43 +260,45 @@ class _ThinkTagStripper:
         emitted = False
         while self.buffer:
             if not self.in_think_tag:
-                start_idx = self.buffer.find("<think>")
-                if start_idx != -1:
+                start_idx = self.buffer.find(self._THINK_START_TAG)
+                end_idx = self.buffer.find(self._THINK_END_TAG)
+                if end_idx != -1 and (start_idx == -1 or end_idx < start_idx):
+                    if end_idx > 0:
+                        on_output(self.buffer[:end_idx])
+                        emitted = True
+                    self.buffer = self.buffer[end_idx + len(self._THINK_END_TAG) :]
+                elif start_idx != -1:
                     if start_idx > 0:
                         on_output(self.buffer[:start_idx])
                         emitted = True
                     self.in_think_tag = True
-                    self.buffer = self.buffer[start_idx + 7 :]
+                    self.buffer = self.buffer[start_idx + len(self._THINK_START_TAG) :]
                 else:
-                    # 检查是否以 <think> 的不完整前缀结尾
-                    partial_match = False
-                    for i in range(6, 0, -1):
-                        if self.buffer.endswith("<think>"[:i]):
-                            if len(self.buffer) > i:
-                                on_output(self.buffer[:-i])
-                                emitted = True
-                            self.buffer = self.buffer[-i:]
-                            partial_match = True
-                            break
-                    if partial_match:
+                    # 同时保留开始和结束标签的半截，避免标签被拆到不同 token 后泄漏。
+                    partial_length = max(
+                        self._find_partial_tag_length(self.buffer, self._THINK_START_TAG),
+                        self._find_partial_tag_length(self.buffer, self._THINK_END_TAG),
+                    )
+                    if partial_length:
+                        if len(self.buffer) > partial_length:
+                            on_output(self.buffer[:-partial_length])
+                            emitted = True
+                        self.buffer = self.buffer[-partial_length:]
                         break
                     on_output(self.buffer)
                     emitted = True
                     self.buffer = ""
             else:
-                end_idx = self.buffer.find("</think>")
+                end_idx = self.buffer.find(self._THINK_END_TAG)
                 if end_idx != -1:
                     self.in_think_tag = False
-                    self.buffer = self.buffer[end_idx + 8 :]
+                    self.buffer = self.buffer[end_idx + len(self._THINK_END_TAG) :]
                 else:
                     # 检查是否以 </think> 的不完整前缀结尾
-                    partial_match = False
-                    for i in range(7, 0, -1):
-                        if self.buffer.endswith("</think>"[:i]):
-                            self.buffer = self.buffer[-i:]
-                            partial_match = True
-                            break
-                    if not partial_match:
+                    partial_length = self._find_partial_tag_length(self.buffer, self._THINK_END_TAG)
+                    if partial_length:
+                        self.buffer = self.buffer[-partial_length:]
+                    else:
                         self.buffer = ""
                     break
         return emitted
@@ -290,6 +306,10 @@ class _ThinkTagStripper:
     def flush(self, on_output: Callable[[str], None]):
         """流式结束时，输出缓冲区中剩余的非思考内容"""
         if self.buffer and not self.in_think_tag:
+            # 流结束时孤立的半截结束标签也属于协议标记，不应泄漏到回复正文。
+            if self._find_partial_tag_length(self.buffer, self._THINK_END_TAG) >= 2:
+                self.buffer = ""
+                return
             on_output(self.buffer)
             self.buffer = ""
 
