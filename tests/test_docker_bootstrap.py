@@ -958,9 +958,17 @@ def test_prepared_resource_update_is_applied_without_backend_or_release_lookup(t
 def test_release_mode_no_longer_checks_or_installs_during_restart(
     tmp_path: Path,
 ) -> None:
+    """Release 模式只能消费准备清单，不得保留启动时查版本的旧实现。"""
+    updater = UPDATER.read_text(encoding="utf-8")
+    for retired_function in (
+        "fetch_latest_v3_release",
+        "compare_versions",
+        "get_priority",
+    ):
+        assert f"function {retired_function}()" not in updater
+
     package_probe = tmp_path / "package-probe"
     curl_log = tmp_path / "curl.log"
-    comparison_log = tmp_path / "comparison.log"
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
@@ -968,28 +976,12 @@ def test_release_mode_no_longer_checks_or_installs_during_restart(
         PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
         PACKAGE_PROBE="$2"
         CURL_LOG="$3"
-        COMPARISON_LOG="$4"
         source {UPDATER!s}
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
         test_connectivity_package() {{ touch "${{PACKAGE_PROBE}}"; return 0; }}
         test_connectivity_github() {{ CURL_OPTIONS=-sL; GITHUB_LOG=test; return 0; }}
-        compare_versions() {{ printf '%s|%s\n' "$1" "$2" > "${{COMPARISON_LOG}}"; return 1; }}
-        grep() {{
-            if [[ "$*" == *"/app/version.py"* ]]; then
-                printf '%s\n' "APP_VERSION = 'v3.0.0'"
-                return 0
-            fi
-            command grep "$@"
-        }}
-        sed() {{
-            if [[ "$*" == *"APP_VERSION"* ]]; then
-                printf '%s\n' 'v3.0.0'
-                return 0
-            fi
-            command sed "$@"
-        }}
         curl() {{
             printf '%s\n' "$*" >> "${{CURL_LOG}}"
             printf '%s\n' '[{{"tag_name":"v2.15.6"}},{{"tag_name":"v3.1.0-beta"}},{{"tag_name":"v3.1.0-rc"}},{{"tag_name":"v3.0.0"}}]'
@@ -1008,7 +1000,6 @@ def test_release_mode_no_longer_checks_or_installs_during_restart(
             str(tmp_path / "config"),
             str(package_probe),
             str(curl_log),
-            str(comparison_log),
         ],
         text=True,
         capture_output=True,
@@ -1018,7 +1009,13 @@ def test_release_mode_no_longer_checks_or_installs_during_restart(
     assert result.stdout == "noop\n"
     assert not package_probe.exists()
     assert not curl_log.exists()
-    assert not comparison_log.exists()
+
+
+def test_entrypoint_does_not_keep_retired_package_command_wrapper() -> None:
+    """依赖恢复统一走 updater 的受控路由后，不再保留旧代理包装器。"""
+    entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+
+    assert "function run_package_command()" not in entrypoint
 
 
 @pytest.mark.parametrize(

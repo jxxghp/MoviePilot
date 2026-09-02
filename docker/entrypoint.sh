@@ -47,18 +47,6 @@ function apply_package_cache_env() {
     mkdir -p "${UV_CACHE_DIR}"
 }
 
-function run_package_command() {
-    if [ -n "${PROXY_HOST}" ]; then
-        HTTP_PROXY="${PROXY_HOST}" \
-            HTTPS_PROXY="${PROXY_HOST}" \
-            http_proxy="${PROXY_HOST}" \
-            https_proxy="${PROXY_HOST}" \
-            "$@"
-    else
-        "$@"
-    fi
-}
-
 function wait_backend_ready() {
     local entrypoint_start_time="${1:-$(date +%s)}"
     local backend_start_time="${2:-$(date +%s)}"
