@@ -25,7 +25,7 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
     TransferTask,
 )
-from app.chain.transfer import TransferChain
+from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
 from app.schemas.file import FileItem
 
 

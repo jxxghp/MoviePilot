@@ -15,7 +15,7 @@ from app.application.transfer.workflow import (
     TransferQueue,
     TransferTask,
 )
-from app.chain.transfer import TransferChain
+from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
 from app.foundation.singleton import Singleton
 from app.runtime.config import global_vars
 from app.schemas.file import FileItem
