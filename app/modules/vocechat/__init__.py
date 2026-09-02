@@ -124,6 +124,16 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
         ).strip()
         return not bot_id or bot_id in mentions
 
+    @staticmethod
+    def _mention_only_enabled(config: dict) -> bool:
+        """读取群聊仅 @ 回复开关，旧配置默认保持安全的开启状态。"""
+        value = config.get("VOCECHAT_MENTION_ONLY")
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return value.strip().lower() not in {"0", "false", "no", "off"}
+        return bool(value)
+
     def message_parser(self, source: str, body: Any, form: Any,
                        args: Any) -> Optional[IncomingMessage]:
         """
@@ -176,7 +186,14 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
             if content_type in ("text/plain", "text/markdown") and isinstance(content, str):
                 text = content
             # 用户ID
-            gid = msg_body.get("target", {}).get("gid")
+            target = msg_body.get("target") or {}
+            if not isinstance(target, dict):
+                logger.warning(
+                    f"忽略目标结构无效的VoceChat消息：target_type={type(target).__name__}"
+                )
+                return None
+            gid = target.get("gid")
+            target_uid = target.get("uid")
             from_uid = msg_body.get("from_uid")
             if from_uid is None:
                 return None
@@ -185,17 +202,41 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
                 client_config.config.get("VOCECHAT_CHANNEL_ID")
                 or client_config.config.get("channel_id")
             )
-            if gid and str(gid) == str(channel_id):
+            logger.debug(
+                "VoceChat消息路由：target_keys=%s, gid=%s, target_uid=%s, "
+                "configured_channel_id=%s, mention_ids=%s",
+                sorted(target.keys()), gid, target_uid, channel_id,
+                sorted(self._mention_ids(detail)),
+            )
+            if gid is not None:
+                if str(gid) != str(channel_id):
+                    logger.debug(
+                        f"忽略非监听频道的VoceChat群消息：gid={gid}, "
+                        f"configured_channel_id={channel_id}, from_uid={from_uid}"
+                    )
+                    return None
                 # 来自监听频道的消息
-                if not self._is_mentioned_group_message(detail, client_config.config):
+                if (
+                        self._mention_only_enabled(client_config.config)
+                        and not self._is_mentioned_group_message(
+                            detail,
+                            client_config.config,
+                        )
+                ):
                     logger.debug(
                         f"忽略未@机器人的VoceChat群消息：gid={gid}, from_uid={from_uid}"
                     )
                     return None
                 userid = f"GID#{gid}"
-            else:
+            elif target_uid is not None:
                 # 来自个人的消息
-                userid = f"UID#{msg_body.get('from_uid')}"
+                userid = f"UID#{from_uid}"
+            else:
+                logger.debug(
+                    f"忽略目标类型不明的VoceChat消息：target_keys={sorted(target.keys())}, "
+                    f"from_uid={from_uid}"
+                )
+                return None
 
             # 处理消息内容
             if (text or images or audio_refs or files) and userid:
