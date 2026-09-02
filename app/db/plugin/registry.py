@@ -48,15 +48,16 @@ def _search_path_setter(schema: str) -> Callable[[Connection], None]:
 
     ``schema_translate_map`` 只改写 SQLAlchemy 生成的 schema 感知语句，``text()`` 一类
     的原生 SQL 不在其列；不动 ``search_path``，插件按合同写的未限定原生 SQL 会落到
-    ``public``。``SET LOCAL`` 的作用域随事务结束，不会经连接池把插件的解析根泄漏给宿主
-    或其它插件。
+    ``public``。解析根只放插件自己的 schema，不留 ``public`` 兜底：留了兜底，插件 schema
+    里不存在的表名会继续解析到宿主同名表，一条未限定的 ``DELETE`` 就能改到宿主数据。
+    ``SET LOCAL`` 的作用域随事务结束，不会经连接池把插件的解析根泄漏给宿主或其它插件。
     :param schema: 插件 schema 名
     :return: 绑定该 schema 的 ``begin`` 事件监听器
     """
 
     def _apply_search_path(connection: Connection) -> None:
         """在事务开始时把该连接的未限定标识符解析根切到插件 schema。"""
-        connection.exec_driver_sql(f'SET LOCAL search_path TO "{schema}", public')
+        connection.exec_driver_sql(f'SET LOCAL search_path TO "{schema}"')
 
     return _apply_search_path
 
@@ -169,11 +170,16 @@ def ensure_database(
     :param plugin_id: 插件标识
     :param models: 插件声明的模型类
     :param migrations: 插件声明的 Alembic 迁移目录
+    :raise ValueError: 声明的迁移目录不是绝对路径
     :raise FileNotFoundError: 声明的迁移目录不存在
     """
     if migrations is not None:
         # 目录校验必须早于建句柄：alembic 找不到 script_location 时抛错，而句柄已经把
         # 库文件建了出来，插件下次启动面对的是一个既没有表、也没有版本号的空库
+        # 相对路径按宿主进程的当前工作目录解析，插件预期的脚本与实际执行的脚本可能是
+        # 两条不同的迁移链，宁可拒绝也不能让它建出错误的表结构与版本记录
+        if not migrations.is_absolute():
+            raise ValueError(f"插件 {plugin_id} 声明的迁移目录不是绝对路径：{migrations}")
         if not migrations.is_dir():
             raise FileNotFoundError(f"插件 {plugin_id} 声明的迁移目录不存在：{migrations}")
         # 迁移目录同时描述建表与后续版本演进，与按模型建表会争夺同一批表，故优先且互斥。

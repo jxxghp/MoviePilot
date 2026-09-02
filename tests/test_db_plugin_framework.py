@@ -512,6 +512,18 @@ def test_release_closes_the_thread_local_session(plugin_data_root, sqlite_backen
     assert handle.scoped_session_factory.registry.has() is False
 
 
+def test_relative_migrations_directory_is_rejected_before_any_file_is_created(
+    plugin_data_root,
+    sqlite_backend,
+):
+    """迁移目录是相对路径时直接抛错：它按宿主工作目录解析，可能是另一条迁移链。"""
+    with pytest.raises(ValueError):
+        registry_module.ensure_database("demo", (), Path("migrations"))
+
+    assert "demo" not in registry_module._handles
+    assert not (plugin_data_root / "demo").exists()
+
+
 def test_missing_migrations_directory_is_rejected_before_any_file_is_created(
     plugin_data_root,
     sqlite_backend,
@@ -694,13 +706,14 @@ def test_destroy_blocks_a_concurrent_handle_rebuild_until_the_carrier_is_removed
 
 
 def test_search_path_setter_binds_the_quoted_plugin_schema():
-    """监听器在事务开始时执行 SET LOCAL search_path，schema 名带引号且回落 public。"""
+    """监听器在事务开始时执行 SET LOCAL search_path，schema 名带引号且不留 public 兜底。"""
     connection = MagicMock(name="connection")
 
     registry_module._search_path_setter("plugin_demo")(connection)
 
     executed = connection.exec_driver_sql.call_args.args[0]
-    assert executed == 'SET LOCAL search_path TO "plugin_demo", public'
+    assert executed == 'SET LOCAL search_path TO "plugin_demo"'
+    assert "public" not in executed
 
 
 def test_begin_listener_on_a_derived_engine_never_reaches_the_host_engine(tmp_path):

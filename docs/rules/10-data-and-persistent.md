@@ -274,9 +274,10 @@ same as never having a database: `get_database()` creates the SQLite file (or
 the PostgreSQL schema) on first call, so a plugin that only runs raw SQL still
 gets an isolated database. Under PostgreSQL the handle's sessions and
 connections issue `SET LOCAL search_path` at the start of every transaction,
-so unqualified raw SQL resolves to the plugin's own schema rather than
-`public`; `SET LOCAL` ends with the transaction and never leaks back to the
-host through the shared pool.
+naming the plugin schema alone. Unqualified raw SQL therefore resolves inside
+the plugin's own schema, and a name missing there fails instead of falling
+through to a host table of the same name; `SET LOCAL` ends with the
+transaction and never leaks back to the host through the shared pool.
 
 Lifecycle is strictly ensure/release/destroy: plugin start calls `ensure`
 after `init_plugin()`; stop, reload and remove call `release` only, which
