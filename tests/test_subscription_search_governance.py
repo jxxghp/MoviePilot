@@ -262,14 +262,11 @@ def test_search_state_reset_stays_inside_subscription_admission(tmp_path, monkey
     assert chain._subscription_execution_admission.release(replacement) is True
 
 
-def test_late_cancel_completes_when_download_submission_already_started(tmp_path, monkeypatch):
+def test_late_cancel_completes_when_download_side_effect_already_started(tmp_path, monkeypatch):
     """取消晚于下载器副作用边界时按真实结果完成，不能伪装成未执行取消。"""
     subscribe = _subscribe(5)
     chain = _chain(tmp_path, [subscribe])
     monkeypatch.setattr(chain, "_search_batch_available_at", lambda _source: "1970-01-01T00:00:00+00:00")
-    chain.subscription_download_repository = SimpleNamespace(
-        has_started_for_task=lambda _task_id: False,
-    )
     queue = chain.subscription_search_repository
     cancel_checks = iter((False, True))
     monkeypatch.setattr(queue, "is_cancel_requested", lambda _task_id: next(cancel_checks))

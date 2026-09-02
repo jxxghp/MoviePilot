@@ -372,9 +372,6 @@ class MusicSubscribeMixin:
         governance = None
         if execution_context:
             governance = SubscriptionDownloadGovernance(
-                subscription_id=subscribe.id,
-                mode=self._SubscribeChain__download_governance_mode(subscribe),
-                task_id=execution_context.task_id,
                 cancelled=execution_context.should_stop,
                 mark_started=execution_context.mark_download_started,
             )

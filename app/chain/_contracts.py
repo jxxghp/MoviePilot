@@ -74,10 +74,6 @@ class MusicSubscribeMixinHost(Protocol):
         """判断准备候选期间订阅身份或过滤合同是否已经变化。"""
         ...
 
-    def _SubscribeChain__download_governance_mode(self, subscribe: Any) -> str:
-        """返回订阅下载模式的稳定标识。"""
-        ...
-
 
 class InteractionMixinHost(Protocol):
     """交互委托 mixin 对业务 Chain 的最小要求。"""

@@ -58,7 +58,6 @@ class SubscriptionExecutionStatus(BaseModel):  # type: ignore[misc]
     error: Optional[str] = None
     can_cancel: bool = False
     can_retry: bool = False
-    requires_reconciliation: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

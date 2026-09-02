@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import math
 import platform
@@ -24,13 +23,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.application.download.admission import SubscriptionDownloadRequest  # noqa: E402
 from app.application.subscription.candidates import CandidateIndex  # noqa: E402
 from app.application.subscription.contract import SubscriptionSnapshot  # noqa: E402
+from app.application.subscription.execution import SubscriptionExecutionAdmission  # noqa: E402
 from app.application.subscription.facts import FreshFactLease  # noqa: E402
-from app.db.adapters.subscriptiondownload import (  # noqa: E402
-    TransactionalSubscriptionDownloadRepository,
-)
 from app.db.adapters.subscriptionsearch import (  # noqa: E402
     TransactionalSubscriptionSearchRepository,
 )
@@ -226,23 +222,8 @@ def _run_match_case(case: ScaleCase) -> dict[str, Any]:
     }
 
 
-def _download_request(*, key: str, subscription_id: int, task_id: str) -> SubscriptionDownloadRequest:
-    """构造两个订阅记录共享的规范下载意图。"""
-    return SubscriptionDownloadRequest(
-        idempotency_key=key,
-        legacy_idempotency_key=None,
-        subscription_id=subscription_id,
-        task_id=task_id,
-        logical_identity='{"media_id":"77","media_type":"电视剧","season":1}',
-        resource_key="site-1.example:torrent-77",
-        coverage="episodes:E01-E03",
-        mode="normal",
-        delivery_scope='{"download_uri":"local:/downloads","downloader":"auto"}',
-    )
-
-
 def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
-    """验证持久队列、站点预算、恢复、取消与跨记录下载幂等。"""
+    """验证持久队列、站点预算、恢复、取消与订阅级准入。"""
     engine = create_engine(
         f"sqlite:///{workdir / (case.name + '.db')}",
         connect_args={"check_same_thread": False},
@@ -250,7 +231,6 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
     search = TransactionalSubscriptionSearchRepository(factory)
-    download = TransactionalSubscriptionDownloadRepository(factory)
 
     started = time.perf_counter()
     enqueued = search.enqueue(
@@ -388,51 +368,38 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
         and site_recovered_claim.lease_token != site_first.lease_token
     )
 
-    key = hashlib.sha256(f"{case.name}:shared-download".encode()).hexdigest()
-    first_download = download.claim(
-        _download_request(key=key, subscription_id=1, task_id="download-task-a")
+    admission = SubscriptionExecutionAdmission()
+    leases = [
+        admission.try_acquire(
+            subscription_id=subscription_id,
+            operation="search",
+            ttl_seconds=60,
+        )
+        for subscription_id in range(1, case.subscription_count + 1)
+    ]
+    acquired_leases = [lease for lease in leases if lease is not None]
+    same_subscription_conflicts_blocked = sum(
+        admission.try_acquire(
+            subscription_id=subscription_id,
+            operation="match",
+            ttl_seconds=60,
+        ) is None
+        for subscription_id in range(1, case.subscription_count + 1)
     )
-    external_submissions = int(first_download.acquired)
-    first_token = first_download.snapshot.attempt_token or ""
-    if first_download.acquired:
-        download.mark_accepted(
-            idempotency_key=key,
-            attempt_token=first_token,
-            downloader="qb",
-            download_hash="hash-77",
+    initial_release_count = sum(admission.release(lease) for lease in acquired_leases)
+    reacquired_leases = [
+        admission.try_acquire(
+            subscription_id=subscription_id,
+            operation="match",
+            ttl_seconds=60,
         )
-        download.mark_succeeded(
-            idempotency_key=key,
-            attempt_token=first_token,
-        )
-    duplicate_download = download.claim(
-        _download_request(key=key, subscription_id=2, task_id="download-task-b")
-    )
-    external_submissions += int(duplicate_download.acquired)
-
-    uncertain_key = hashlib.sha256(f"{case.name}:uncertain-download".encode()).hexdigest()
-    uncertain = download.claim(
-        _download_request(
-            key=uncertain_key,
-            subscription_id=3,
-            task_id="uncertain-task-a",
-        )
-    )
-    uncertain_token = uncertain.snapshot.attempt_token or ""
-    uncertain_frozen = bool(
-        uncertain.acquired
-        and download.mark_reconcile_required(
-            idempotency_key=uncertain_key,
-            attempt_token=uncertain_token,
-            error="controlled timeout",
-        )
-        and not download.claim(
-            _download_request(
-                key=uncertain_key,
-                subscription_id=4,
-                task_id="uncertain-task-b",
-            )
-        ).acquired
+        for subscription_id in range(1, case.subscription_count + 1)
+    ]
+    reacquired_count = sum(lease is not None for lease in reacquired_leases)
+    final_release_count = sum(
+        admission.release(lease)
+        for lease in reacquired_leases
+        if lease is not None
     )
 
     return {
@@ -456,14 +423,11 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
         "duplicate_site_claims_blocked": duplicate_site_claims_blocked,
         "cooldown_claims_blocked": cooldown_claims_blocked,
         "site_recovered_after_lease_expiry": site_recovered,
-        "external_download_submissions": external_submissions,
-        "duplicate_download_submissions": max(0, external_submissions - 1),
-        "duplicate_download_reused_success": bool(
-            not duplicate_download.acquired
-            and duplicate_download.snapshot.state == "succeeded"
-            and duplicate_download.snapshot.download_hash == "hash-77"
-        ),
-        "uncertain_download_frozen": uncertain_frozen,
+        "subscription_leases_acquired": len(acquired_leases),
+        "same_subscription_conflicts_blocked": same_subscription_conflicts_blocked,
+        "subscription_leases_released": initial_release_count,
+        "subscription_leases_reacquired": reacquired_count,
+        "reacquired_subscription_leases_released": final_release_count,
     }
 
 
@@ -515,16 +479,22 @@ def run_acceptance() -> dict[str, Any]:
             and case["cooldown_claims_blocked"] == case["site_count"]
             for case in durable_cases
         ),
-        "download_idempotent": all(
-            case["external_download_submissions"] == 1
-            and case["duplicate_download_submissions"] == 0
-            and case["duplicate_download_reused_success"]
-            and case["uncertain_download_frozen"]
+        "subscription_admission_serializes": all(
+            case["subscription_leases_acquired"]
+            == next(item.subscription_count for item in cases if item.name == case["name"])
+            and case["same_subscription_conflicts_blocked"]
+            == next(item.subscription_count for item in cases if item.name == case["name"])
+            and case["subscription_leases_released"]
+            == next(item.subscription_count for item in cases if item.name == case["name"])
+            and case["subscription_leases_reacquired"]
+            == next(item.subscription_count for item in cases if item.name == case["name"])
+            and case["reacquired_subscription_leases_released"]
+            == next(item.subscription_count for item in cases if item.name == case["name"])
             for case in durable_cases
         ),
     }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "revision": _git_revision(),
         "environment": {

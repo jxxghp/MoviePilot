@@ -609,14 +609,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         execution_context: SubscriptionExecutionContext,
     ) -> bool:
         """判断取消是否已晚于下载器副作用边界。"""
-        if execution_context.download_started:
-            return True
-        repository = getattr(self, "subscription_download_repository", None)
-        return bool(
-            repository
-            and execution_context.task_id
-            and repository.has_started_for_task(execution_context.task_id)
-        )
+        return execution_context.download_started
 
     def resume_search_queue(
         self,

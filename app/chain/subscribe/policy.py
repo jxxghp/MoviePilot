@@ -329,9 +329,6 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
             downloader = current.downloader
             source = self.get_subscribe_source_keyword(current)
             governance = SubscriptionDownloadGovernance(
-                subscription_id=current.id,
-                mode=self._SubscribeChain__download_governance_mode(current),
-                task_id=execution_context.task_id if execution_context else None,
                 cancelled=execution_context.should_stop if execution_context else None,
                 mark_started=execution_context.mark_download_started if execution_context else None,
             )
@@ -460,17 +457,6 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
                 continue
             accepted.append(context)
         return accepted
-
-    @staticmethod
-    def _SubscribeChain__download_governance_mode(subscribe: SubscriptionSnapshot) -> str:
-        """把订阅模式归一为稳定幂等键组成部分。"""
-        if not subscribe.best_version:
-            return "normal"
-        if subscribe.type == MediaType.TV.value and subscribe.best_version_full:
-            return "best_version_full"
-        if subscribe.type == MediaType.TV.value:
-            return "best_version_episode"
-        return "best_version"
 
     @classmethod
     def _is_episode_range_covered(cls, meta: MetaBase, subscribe: SubscriptionSnapshot) -> bool:

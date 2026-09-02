@@ -71,7 +71,6 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin,
         self.transfer_execution_repository = context.transfer_execution_repository
         self.media_server_repository = context.media_server_repository
         self.download_failure_repository = context.download_failure_repository
-        self.subscription_download_repository = context.subscription_download_repository
         self.user_repository = context.user_repository
         self.runtime_config = context.configuration
         self.stop_state = context.stop_state

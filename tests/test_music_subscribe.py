@@ -17,7 +17,7 @@ from app.application.subscription.execution import (
 )
 from app.application.subscription.mutation import SubscriptionMutation
 from app.application.subscription.sitebudget import SubscriptionSearchCancelled
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_ARTIST,
@@ -229,7 +229,7 @@ def test_music_search_honours_cancel_before_external_work():
 
 
 def test_music_download_marks_shared_execution_context_before_side_effect():
-    """音乐下载必须把任务、取消和副作用边界传入统一下载治理。"""
+    """音乐下载必须把取消和副作用边界传入统一下载治理。"""
     cancelled = [False]
     subscribe = _subscribe()
     target = _music_info()
@@ -247,8 +247,6 @@ def test_music_download_marks_shared_execution_context_before_side_effect():
     def batch_download(**kwargs):
         """模拟下载器边界内开始提交后才收到取消。"""
         governance = kwargs["governance"]
-        assert governance.subscription_id == subscribe.id
-        assert governance.task_id == execution_context.task_id
         assert governance.cancelled() is False
         governance.mark_started()
         cancelled[0] = True

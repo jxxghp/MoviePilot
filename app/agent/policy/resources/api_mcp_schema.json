@@ -3567,12 +3567,6 @@
           "title": "Phase",
           "type": "string"
         },
-        "requires_reconciliation": {
-          "default": false,
-          "description": "Whether the execution requires reconciliation before it can continue.",
-          "title": "Requires Reconciliation",
-          "type": "boolean"
-        },
         "source": {
           "anyOf": [
             {
