@@ -56,8 +56,20 @@ def test_plugin_instance_migration_migrates_legacy_dict_payload_and_keeps_source
         inspector = sa.inspect(connection)
         assert "plugininstance" in inspector.get_table_names()
         columns = {column["name"] for column in inspector.get_columns("plugininstance")}
+        # 本迁移只建出它自己声明的列；日志等级覆盖列由后续 487f7e681955 迁移补上，
+        # 不在这里跟当前完整模型比较，否则每次给该表加列都要回头改这条断言。
         assert columns == {
-            column.name for column in PluginInstanceDescriptor.__table__.columns
+            "id",
+            "instance_id",
+            "source_plugin_id",
+            "plugin_name",
+            "plugin_desc",
+            "plugin_icon",
+            "mode",
+            "plugin_version",
+            "follow_current_version",
+            "created_at",
+            "updated_at",
         }
         unique_constraints = {
             constraint["name"]: tuple(constraint["column_names"])
