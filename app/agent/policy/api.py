@@ -546,6 +546,13 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
         confirmation=_CONFIRM,
         recovery=RecoveryMode.RECONCILE,
     ),
+    _spec(
+        "plugin.versions.recycle",
+        effect=ActionEffect.EXTERNAL_SIDE_EFFECT,
+        required_role=_ADMIN,
+        confirmation=_CONFIRM,
+        recovery=RecoveryMode.RECONCILE,
+    ),
 )
 
 
@@ -766,6 +773,9 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     "plugin.versions.get": ApiOperationRoute("GET", "/api/v1/plugin/versions/{plugin_id}"),
     "plugin.versions.set_instance": ApiOperationRoute(
         "PUT", "/api/v1/plugin/versions/{plugin_id}/{instance_id}"
+    ),
+    "plugin.versions.recycle": ApiOperationRoute(
+        "POST", "/api/v1/plugin/versions/{plugin_id}/recycle"
     ),
 }
 

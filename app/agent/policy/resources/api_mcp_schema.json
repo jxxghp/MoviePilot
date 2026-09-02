@@ -9010,6 +9010,38 @@
     },
     {
       "additionalProperties": false,
+      "description": "Delete one plugin's installed source versions that are unreferenced and outside the retention window. Method: POST. Path: /api/v1/plugin/versions/{plugin_id}/recycle. Effect: external_side_effect.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.versions.recycle",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.versions.recycle. Delete one plugin's installed source versions that are unreferenced and outside the retention window. Use only the named fields below.",
+          "properties": {
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.versions.recycle",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "Set one plugin instance's version binding and restart it to apply the change. Method: PUT. Path: /api/v1/plugin/versions/{plugin_id}/{instance_id}. Effect: external_side_effect.",
       "properties": {
         "body": {
@@ -14030,6 +14062,7 @@
         "plugin.statistics",
         "plugin.uninstall",
         "plugin.versions.get",
+        "plugin.versions.recycle",
         "plugin.versions.set_instance",
         "recommendation.list",
         "scheduler.list",

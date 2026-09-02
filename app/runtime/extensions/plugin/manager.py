@@ -1279,6 +1279,34 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger.warning(str(error))
             return False, str(error)
 
+    def recycle_plugin_versions(self, plugin_id: str) -> Dict[str, Any]:
+        """
+        回收指定插件不再被引用、也不在最近版本窗口内的已装版本目录
+        :param plugin_id: 插件ID
+        :return: 含 removed 与 kept 的回收结果
+        :raise LookupError: 插件不存在
+        :raise PluginMutationRejectedError: 当前处于停机准入窗口，拒绝本次回收
+        """
+        with self.mutation(f"回收插件 {plugin_id} 已装版本"):
+            return self._plugin_version_binding.recycle_versions(plugin_id)
+
+    def recycle_all_plugin_versions(self) -> Dict[str, Dict[str, Any]]:
+        """
+        回收全部源码插件不再被引用、也不在最近版本窗口内的已装版本目录
+        单个插件的回收失败（含引用集合收集失败、并发窗口拒绝）只记错误日志并
+        跳过该插件，不阻断其余插件的回收
+        :return: 插件ID到回收结果的映射，只含成功完成本次回收的插件
+        """
+        results: Dict[str, Dict[str, Any]] = {}
+        for plugin_id in self.get_plugin_ids():
+            if self.get_plugin_instance(plugin_id) is not None:
+                continue
+            try:
+                results[plugin_id] = self.recycle_plugin_versions(plugin_id)
+            except Exception as error:  # noqa: BLE001 - 单个插件的回收失败不能连带阻断其余插件
+                logger.error(f"插件 {plugin_id} 版本回收失败，跳过本次回收：{error}")
+        return results
+
     def _modify_plugin_files(self, plugin_dir: Path, original_id: str, suffix: str,
                              name: str, description: str, version: str = None,
                              icon: str = None) -> Tuple[bool, str]:

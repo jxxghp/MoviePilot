@@ -8,8 +8,10 @@ from app.api.dependencies.auth import get_current_active_superuser
 from app.api.endpoints import pluginversion as pluginversion_endpoint
 from app.api.endpoints.pluginversion import (
     plugin_version_overview,
+    recycle_plugin_versions,
     set_plugin_instance_version,
 )
+from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import PluginInstanceVersionUpdateRequest
 
 
@@ -18,9 +20,9 @@ def _depends_default(func, parameter_name: str):
     return inspect.signature(func).parameters[parameter_name].default
 
 
-def test_both_endpoints_require_superuser_dependency():
-    """两个端点都要求超级管理员，不能被低权限用户直接调用。"""
-    for func in (plugin_version_overview, set_plugin_instance_version):
+def test_all_endpoints_require_superuser_dependency():
+    """三个端点都要求超级管理员，不能被低权限用户直接调用。"""
+    for func in (plugin_version_overview, set_plugin_instance_version, recycle_plugin_versions):
         depends = _depends_default(func, "_")
         assert depends.dependency is get_current_active_superuser
 
@@ -180,8 +182,55 @@ def test_set_plugin_instance_version_reports_missing_plugin(monkeypatch):
     assert "不存在" in result.message
 
 
-def test_router_registers_both_paths():
-    """路由器暴露版本总览与实例切换两个路径，且注册在插件前缀下。"""
+def test_recycle_plugin_versions_returns_manager_outcome(monkeypatch):
+    """接口把 Manager 回收结果原样透传给调用方。"""
+    outcome = {"removed": ["1.0.0"], "kept": {"2.0.0": "当前安装版本"}}
+    manager = type(
+        "Manager",
+        (),
+        {"recycle_plugin_versions": lambda self, _plugin_id: outcome},
+    )()
+    monkeypatch.setattr(pluginversion_endpoint, "get_plugin_manager", lambda: manager)
+
+    result = recycle_plugin_versions("DemoPlugin", None)
+
+    assert result.success is True
+    assert result.data == outcome
+
+
+def test_recycle_plugin_versions_reports_missing_plugin(monkeypatch):
+    """插件不存在时返回失败响应，而不是让异常穿透接口。"""
+
+    def _raise(_plugin_id):
+        raise LookupError("插件 Missing 不存在")
+
+    manager = type("Manager", (), {"recycle_plugin_versions": lambda self, plugin_id: _raise(plugin_id)})()
+    monkeypatch.setattr(pluginversion_endpoint, "get_plugin_manager", lambda: manager)
+
+    result = recycle_plugin_versions("Missing", None)
+
+    assert result.success is False
+    assert "不存在" in result.message
+
+
+def test_recycle_plugin_versions_reports_mutation_rejection(monkeypatch):
+    """并发窗口拒绝本次回收时返回失败响应，而不是让异常穿透接口。"""
+
+    def _raise(_plugin_id):
+        raise PluginMutationRejectedError("插件正在结算，暂不接受回收")
+
+    manager = type("Manager", (), {"recycle_plugin_versions": lambda self, plugin_id: _raise(plugin_id)})()
+    monkeypatch.setattr(pluginversion_endpoint, "get_plugin_manager", lambda: manager)
+
+    result = recycle_plugin_versions("DemoPlugin", None)
+
+    assert result.success is False
+    assert "暂不接受回收" in result.message
+
+
+def test_router_registers_all_paths():
+    """路由器暴露版本总览、实例切换与回收三个路径，且注册在插件前缀下。"""
     paths = {route.path for route in pluginversion_endpoint.router.routes}
     assert "/versions/{plugin_id}" in paths
     assert "/versions/{plugin_id}/{instance_id}" in paths
+    assert "/versions/{plugin_id}/recycle" in paths

@@ -365,6 +365,7 @@ SCHEMA_EXPORTS = {
     'PluginTriggeredEventData': ('app.schemas.event', 'PluginTriggeredEventData'),
     'PluginUpdateCandidate': ('app.schemas.plugin', 'PluginUpdateCandidate'),
     'PluginVersionOverview': ('app.schemas.plugin', 'PluginVersionOverview'),
+    'PluginVersionRecycleOutcome': ('app.schemas.plugin', 'PluginVersionRecycleOutcome'),
     'PluginWorkflowActionGroup': ('app.schemas.workflow', 'PluginWorkflowActionGroup'),
     'ProcessInfo': ('app.schemas.dashboard', 'ProcessInfo'),
     'ProgressKeyData': ('app.schemas.common', 'ProgressKeyData'),

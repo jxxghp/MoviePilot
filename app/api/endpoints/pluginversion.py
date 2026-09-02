@@ -8,8 +8,10 @@ from app.api.dependencies.auth import get_current_active_superuser
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.plugin.runtime import get_plugin_manager
+from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import PluginInstanceVersionUpdateRequest as _SchemaPluginInstanceVersionUpdateRequest
 from app.schemas.plugin import PluginVersionOverview as _SchemaPluginVersionOverview
+from app.schemas.plugin import PluginVersionRecycleOutcome as _SchemaPluginVersionRecycleOutcome
 from app.schemas.response import Response as _SchemaResponse
 
 router = ResponseAPIRouter()
@@ -65,3 +67,22 @@ def set_plugin_instance_version(
         success=success,
         message="版本切换成功" if success else message,
     )
+
+
+@router.post(  # type: ignore[misc]
+    "/versions/{plugin_id}/recycle",
+    summary="回收插件不再引用的已装版本目录",
+    response_model=_SchemaResponse[_SchemaPluginVersionRecycleOutcome],
+)
+def recycle_plugin_versions(
+    plugin_id: str,
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    手动触发回收指定插件不再被引用、也不在最近版本窗口内的已装版本目录
+    """
+    try:
+        outcome = get_plugin_manager().recycle_plugin_versions(plugin_id)
+    except (LookupError, PluginMutationRejectedError) as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(success=True, data=outcome)

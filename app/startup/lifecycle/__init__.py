@@ -118,6 +118,10 @@ async def init_extra():
     finally:
         plugin_manager.set_plugin_settling(False)
         plugin_manager.start_monitor()
+        try:
+            await run_in_threadpool_to_completion(plugin_manager.recycle_all_plugin_versions)
+        except Exception as error:  # noqa: BLE001 - 版本回收失败不能阻断启动收尾流程
+            logger.error(f"插件版本回收时发生错误：{error}", exc_info=True)
         _log_runtime_gil_status()
     # 设置系统已修改标志
     SystemHelper().set_system_modified()

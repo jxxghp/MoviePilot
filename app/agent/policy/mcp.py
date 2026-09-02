@@ -211,6 +211,7 @@ OPERATION_DESCRIPTIONS = {
     "plugin.folder.plugins.update": "Replace the ordered plugin IDs assigned to one named plugin folder.",
     "plugin.versions.get": "List one plugin's installed source versions and each instance's version binding.",
     "plugin.versions.set_instance": "Set one plugin instance's version binding and restart it to apply the change.",
+    "plugin.versions.recycle": "Delete one plugin's installed source versions that are unreferenced and outside the retention window.",
 }
 
 

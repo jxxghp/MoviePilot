@@ -9,6 +9,7 @@ from typing import Any, Optional
 from app.runtime.extensions.plugin.version import (
     plugin_version_dirs,
     read_plugin_versions_manifest,
+    recycle_plugin_version_directories,
 )
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 
@@ -204,3 +205,37 @@ class PluginVersionBinding:
         return False, (
             f"切换到版本 {target_version} 失败，回退到原版本 {fallback_version} 同样失败"
         )
+
+    def _referenced_versions(self, plugin_id: str) -> set[str]:
+        """收集指定插件全部实例的已生效版本与按跟随开关解析出的期望版本。
+
+        两者都要并入回收判据的引用集合，否则会误删已生效但暂无实例在跑、
+        或即将切换过去的版本。集合来自对实例存储的实测查询，任何读取失败
+        都直接向上抛出而不是按空集继续，交由回收调用方跳过本次回收，避免
+        在凑不齐引用集合的情况下误删仍在用的版本且无从恢复。
+
+        :param plugin_id: 插件ID
+        :return: 被引用的版本号集合
+        """
+        current_version = self._current_version(plugin_id)
+        referenced: set[str] = set()
+        for instance in self._instances_for_source(plugin_id):
+            if instance.plugin_version:
+                referenced.add(instance.plugin_version)
+            expected = self._instance_expected_version(instance, current_version)
+            if expected:
+                referenced.add(expected)
+        return referenced
+
+    def recycle_versions(self, plugin_id: str) -> dict[str, Any]:
+        """回收指定插件不再被引用、也不在最近版本窗口内的已装版本目录。
+
+        :param plugin_id: 插件ID
+        :return: 含 removed（已删除版本号列表）与 kept（版本号到保留理由的映射）的字典
+        :raise LookupError: 插件不存在
+        """
+        if not self._plugin_exists(plugin_id):
+            raise LookupError(f"插件 {plugin_id} 不存在")
+        plugin_root = self._plugin_root(plugin_id)
+        referenced = self._referenced_versions(plugin_id)
+        return recycle_plugin_version_directories(plugin_root, referenced)

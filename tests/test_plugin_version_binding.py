@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Iterator
 
 import pytest
 
+from app.foundation.singleton import Singleton
 from app.runtime.extensions.plugin.binding import PluginVersionBinding
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.extensions.plugin.version import (
     plugin_version_dir_name,
+    read_plugin_versions_manifest,
     write_plugin_versions_manifest,
 )
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
@@ -48,6 +52,15 @@ def _write_manifest(
     write_plugin_versions_manifest(plugin_root, versions, current)
 
 
+def _stamp_installed_at(plugin_root: Path, stamps: dict[str, str]) -> None:
+    """把已装版本清单里各版本的登记时间改写为指定值，消除真实时钟带来的顺序不确定性。"""
+    manifest = read_plugin_versions_manifest(plugin_root)
+    for entry in manifest["versions"]:
+        if entry["version"] in stamps:
+            entry["installed_at"] = stamps[entry["version"]]
+    write_plugin_versions_manifest(plugin_root, manifest["versions"], manifest["current"])
+
+
 class _Harness:
     """组装 PluginVersionBinding 依赖并记录调用轨迹的测试脚手架。"""
 
@@ -60,6 +73,7 @@ class _Harness:
         start_results: dict | None = None,
         multi_version_blockers: list[str] | None = None,
         running_ids: set[str] | None = None,
+        instances_for_source_error: Exception | None = None,
     ) -> None:
         self.plugins_root = plugins_root
         self.instances: dict[str, PluginInstance] = dict(instances or {})
@@ -73,6 +87,7 @@ class _Harness:
         )
         self.multi_version_blockers_calls: list[tuple[str, list[Path]]] = []
         self._running_ids = running_ids or set()
+        self._instances_for_source_error = instances_for_source_error
         self.logger = _logger()
         self.service = PluginVersionBinding(
             plugins_root=plugins_root,
@@ -88,6 +103,8 @@ class _Harness:
         )
 
     def _instances_for_source(self, source_plugin_id: str) -> list[PluginInstance]:
+        if self._instances_for_source_error is not None:
+            raise self._instances_for_source_error
         return [
             instance
             for instance in self.instances.values()
@@ -380,3 +397,125 @@ def test_set_instance_version_switch_to_follow_current_does_not_retry(tmp_path: 
     assert "跟随当前版本失败" in message
     assert harness.start_calls == [("DemoPluginWork", None)]
     assert harness.instances["DemoPluginWork"].follow_current_version is True
+
+
+# 三、版本回收
+
+
+def test_recycle_versions_raises_lookup_error_for_unknown_plugin(tmp_path: Path):
+    """插件不存在时抛出 LookupError，不静默返回空回收结果。"""
+    harness = _Harness(plugins_root=tmp_path, plugin_exists=False)
+
+    with pytest.raises(LookupError):
+        harness.service.recycle_versions("Missing")
+
+
+def test_recycle_versions_protects_both_effective_and_expected_versions(tmp_path: Path):
+    """引用集合并入已生效版本与按跟随开关解析出的期望版本，两者都受保护。
+
+    四个已装版本按登记时间排列，默认保留窗口（2）只覆盖最近的 3.0.0 与
+    4.0.0；1.0.0 既不是当前版本也不在保留窗口内，唯一能保住它的就是「被
+    实例引用」这条判据——实例跟随当前版本（期望版本 3.0.0），但已生效版本
+    仍是上次成功启动时的旧版本 1.0.0，二者必须都并入引用集合。
+    """
+    _write_version_dir(tmp_path, "demoplugin", "1.0.0")
+    _write_version_dir(tmp_path, "demoplugin", "2.0.0")
+    _write_version_dir(tmp_path, "demoplugin", "3.0.0")
+    _write_version_dir(tmp_path, "demoplugin", "4.0.0")
+    plugin_root = tmp_path / "demoplugin"
+    _write_manifest(
+        plugin_root,
+        [
+            ("1.0.0", "v1_0_0"),
+            ("2.0.0", "v2_0_0"),
+            ("3.0.0", "v3_0_0"),
+            ("4.0.0", "v4_0_0"),
+        ],
+        current="3.0.0",
+    )
+    _stamp_installed_at(
+        plugin_root,
+        {
+            "1.0.0": "2020-01-01T00:00:00+00:00",
+            "2.0.0": "2020-02-01T00:00:00+00:00",
+            "3.0.0": "2020-03-01T00:00:00+00:00",
+            "4.0.0": "2020-04-01T00:00:00+00:00",
+        },
+    )
+    following = PluginInstance(
+        instance_id="DemoPluginWork",
+        source_plugin_id="DemoPlugin",
+        plugin_version="1.0.0",
+        follow_current_version=True,
+    )
+    harness = _Harness(plugins_root=tmp_path, instances={"DemoPluginWork": following})
+
+    outcome = harness.service.recycle_versions("DemoPlugin")
+
+    assert outcome["removed"] == ["2.0.0"]
+    assert (plugin_root / "v1_0_0").is_dir()
+    assert (plugin_root / "v3_0_0").is_dir()
+    assert (plugin_root / "v4_0_0").is_dir()
+    assert not (plugin_root / "v2_0_0").exists()
+
+
+def test_recycle_versions_propagates_referenced_version_collection_failures(tmp_path: Path):
+    """收集引用集合失败时直接向上抛出，不能按空集继续回收。"""
+    _write_version_dir(tmp_path, "demoplugin", "1.0.0")
+    plugin_root = tmp_path / "demoplugin"
+    _write_manifest(plugin_root, [("1.0.0", "v1_0_0")], current="1.0.0")
+    harness = _Harness(
+        plugins_root=tmp_path,
+        instances_for_source_error=RuntimeError("实例存储不可用"),
+    )
+
+    with pytest.raises(RuntimeError, match="实例存储不可用"):
+        harness.service.recycle_versions("DemoPlugin")
+
+    # 收集失败时不能触发任何删除，版本目录必须原样保留。
+    assert (plugin_root / "v1_0_0").is_dir()
+
+
+# 四、批量回收调用方（PluginManager 逐插件隔离失败）
+
+
+@pytest.fixture
+def plugin_manager() -> Iterator[PluginManager]:
+    """构造隔离的插件管理器单例，测试后归还，避免污染其它用例。"""
+    Singleton._instances.pop((PluginManager, (), frozenset()), None)
+    manager = PluginManager()
+    yield manager
+    Singleton._instances.pop((PluginManager, (), frozenset()), None)
+
+
+def test_recycle_all_plugin_versions_skips_instances_and_isolates_failures(
+    plugin_manager: PluginManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """批量回收跳过虚拟实例 ID，且单个插件失败不阻断其余插件的回收。"""
+    monkeypatch.setattr(
+        plugin_manager, "get_plugin_ids", lambda: ["PluginA", "PluginB", "CloneWork"]
+    )
+    clone_instance = PluginInstance(instance_id="CloneWork", source_plugin_id="PluginA")
+    monkeypatch.setattr(
+        plugin_manager,
+        "get_plugin_instance",
+        lambda plugin_id: clone_instance if plugin_id == "CloneWork" else None,
+    )
+    recycle_calls: list[str] = []
+
+    def fake_recycle_plugin_versions(plugin_id: str) -> dict:
+        """PluginB 的回收总是失败，其余插件按原样返回回收结果。"""
+        recycle_calls.append(plugin_id)
+        if plugin_id == "PluginB":
+            raise RuntimeError("boom")
+        return {"removed": [], "kept": {}}
+
+    monkeypatch.setattr(
+        plugin_manager, "recycle_plugin_versions", fake_recycle_plugin_versions
+    )
+
+    results = plugin_manager.recycle_all_plugin_versions()
+
+    assert recycle_calls == ["PluginA", "PluginB"]
+    assert results == {"PluginA": {"removed": [], "kept": {}}}
