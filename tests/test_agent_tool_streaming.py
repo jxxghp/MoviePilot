@@ -70,41 +70,6 @@ def test_think_tag_stripper_hides_split_orphan_closing_tag():
     assert outputs == ["回答前", "回答后"]
 
 
-def test_agent_stream_stops_on_final_text_chunk_when_upstream_never_closes():
-    """最终 finish_reason 到达后即应结束，不能继续等待失踪的流关闭事件。"""
-
-    class HangingAgent:
-        async def astream(self, *args, **kwargs):
-            yield {
-                "type": "messages",
-                "data": (
-                    SimpleNamespace(
-                        content="回复完成",
-                        tool_call_chunks=[],
-                        additional_kwargs={},
-                        response_metadata={"finish_reason": "stop"},
-                    ),
-                    {},
-                ),
-            }
-            await asyncio.Future()
-
-    async def _run():
-        output = []
-        await asyncio.wait_for(
-            MoviePilotAgent._stream_agent_tokens(
-                agent=HangingAgent(),
-                messages={"messages": []},
-                config={},
-                on_token=output.append,
-            ),
-            timeout=0.5,
-        )
-        return output
-
-    assert asyncio.run(_run()) == ["回复完成"]
-
-
 def test_agent_stream_never_emits_tool_message_content():
     """LangGraph messages 流中的工具结果不得泄漏到渠道正文。"""
 
@@ -138,14 +103,18 @@ def test_agent_stream_never_emits_tool_message_content():
     assert asyncio.run(_run()) == ["最终回复"]
 
 
-def test_agent_stream_does_not_treat_tool_call_finish_as_final_text():
-    """tool_calls 结束原因必须继续执行工具，不能提前关闭 Agent 流。"""
-    token = SimpleNamespace(
-        response_metadata={"finish_reason": "tool_calls"},
-        additional_kwargs={},
+def test_current_turn_state_messages_excludes_input_history_when_state_was_empty():
+    """首次状态读取失败时，恢复逻辑也不得把输入中的旧回复当成本轮结果。"""
+    history = [SimpleNamespace(type="human"), SimpleNamespace(type="ai")]
+    current = SimpleNamespace(type="ai", content="本轮回复")
+
+    result = MoviePilotAgent._current_turn_state_messages(
+        [*history, current],
+        initial_state_count=0,
+        input_message_count=len(history),
     )
 
-    assert MoviePilotAgent._is_terminal_stream_token(token) is False
+    assert result == [current]
 
 
 def test_agent_stream_allows_slow_events_without_cancelling_graph():
@@ -199,7 +168,6 @@ def test_agent_stream_accepts_final_ai_message_without_tool_call_chunks():
                     {},
                 ),
             }
-            await asyncio.Future()
 
     async def _run():
         output = []

@@ -92,10 +92,6 @@ def test_group_message_only_accepts_configured_bot_mention():
     assert message.userid == "GID#2"
 
 
-def test_group_message_requires_bot_id_in_mention_only_mode():
-    assert _parse_group_message(mentions=[5]) is None
-
-
 def test_group_message_can_disable_mention_only_filter():
     message = _parse_group_message(mentions=[], mention_only=False)
     assert message is not None

@@ -379,10 +379,8 @@ def test_send_msg_uses_rich_message_api(telegram):
 
 
 def test_send_msg_falls_back_to_plain_text_when_rich_message_fails(telegram):
-    """Rich Message 不可用时不得中断消息发送。"""
-    telegram._Telegram__send_rich_message = Mock(  # noqa: SLF001
-        side_effect=RetryException("rich unavailable")
-    )
+    """客户端明确不支持 Rich Message 时应安全回退普通文本。"""
+    telegram.bot.send_rich_message = None
     telegram.bot.send_message.return_value = SimpleNamespace(
         message_id=102,
         chat=SimpleNamespace(id=10001),
@@ -398,6 +396,22 @@ def test_send_msg_falls_back_to_plain_text_when_rich_message_fails(telegram):
     send_kwargs = telegram.bot.send_message.call_args.kwargs
     assert send_kwargs["text"] == "处理中"
     assert send_kwargs["parse_mode"] == ""
+
+
+def test_send_msg_does_not_retry_unknown_rich_message_delivery(telegram):
+    """Rich Message 传输异常的远端结果未知，不得再次发送普通文本。"""
+    telegram._Telegram__send_rich_message = Mock(  # noqa: SLF001
+        side_effect=RetryException("response lost")
+    )
+
+    result = telegram.send_msg(
+        title="",
+        text="处理中",
+        rich_message="**处理中**",
+    )
+
+    assert result == {"success": False}
+    telegram.bot.send_message.assert_not_called()
 
 
 def test_send_msg_edits_rich_message(telegram):

@@ -2187,18 +2187,6 @@ class MoviePilotAgent:
         return attachments
 
     @staticmethod
-    def _is_terminal_stream_token(token: Any) -> bool:
-        """识别一次无工具调用的模型最终文本块，避免上游流结束事件丢失后永久等待。"""
-        metadata = getattr(token, "response_metadata", None) or {}
-        additional = getattr(token, "additional_kwargs", None) or {}
-        finish_reason = str(
-            metadata.get("finish_reason")
-            or additional.get("finish_reason")
-            or ""
-        ).strip().lower()
-        return bool(finish_reason and finish_reason not in {"tool_calls", "function_call"})
-
-    @staticmethod
     def _stream_state_messages(agent: Any, config: dict) -> list[Any]:
         """容错读取 LangGraph 当前消息状态。"""
         try:
@@ -2208,6 +2196,17 @@ class MoviePilotAgent:
         except Exception as error:
             logger.debug(f"读取Agent流状态失败: {error}")
             return []
+
+    @staticmethod
+    def _current_turn_state_messages(
+        messages: list[Any],
+        *,
+        initial_state_count: int,
+        input_message_count: int,
+    ) -> list[Any]:
+        """只返回本轮新增状态，状态读取失败时也排除输入中携带的历史。"""
+        boundary = max(initial_state_count, input_message_count)
+        return messages[boundary:]
 
     @staticmethod
     async def _stream_agent_tokens(agent, messages: dict, config: dict, on_token: Callable[[str], None]):
@@ -2262,12 +2261,6 @@ class MoviePilotAgent:
                     content = LLMHelper.extract_text_content(token.content)
                     if content:
                         stripper.process(content, on_token)
-
-                # 部分 OpenAI 兼容流已经返回 finish_reason，却没有正常关闭
-                # LangGraph astream。最终文本块到达后主动结束本轮消费；工具调用
-                # 的 finish_reason 必须继续等待工具执行及下一次模型调用。
-                if MoviePilotAgent._is_terminal_stream_token(token):
-                    break
 
         stripper.flush(on_token)
 
@@ -2343,7 +2336,11 @@ class MoviePilotAgent:
                     remaining_text = await self.stream_handler.take()
                     if not remaining_text:
                         final_messages = self._stream_state_messages(agent, agent_config)
-                        new_messages = final_messages[initial_state_message_count:]
+                        new_messages = self._current_turn_state_messages(
+                            final_messages,
+                            initial_state_count=initial_state_message_count,
+                            input_message_count=len(input_messages),
+                        )
                         for final_message in reversed(new_messages):
                             if (
                                 getattr(final_message, "type", None) == "ai"

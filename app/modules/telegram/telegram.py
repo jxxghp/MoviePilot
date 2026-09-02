@@ -733,18 +733,9 @@ class Telegram:
                     if force_reply and original_chat_id
                     else chat_id
                 )
-                try:
-                    sent = self.__send_rich_message(
-                        chat_id=target_chat_id,
-                        rich_message=rich_message,
-                        reply_markup=reply_markup,
-                        reply_to_message_id=(
-                            original_message_id if force_reply else None
-                        ),
-                    )
-                except RetryException as err:
+                if not callable(getattr(self._bot, "send_rich_message", None)):
                     logger.warning(
-                        f"Telegram Rich Message 发送失败，回退为普通文本：{err.__cause__ or err}"
+                        "Telegram客户端不支持 Rich Message，回退为普通文本"
                     )
                     sent = self.__send_request(
                         userid=target_chat_id,
@@ -756,6 +747,23 @@ class Telegram:
                             original_message_id if force_reply else None
                         ),
                     )
+                else:
+                    try:
+                        sent = self.__send_rich_message(
+                            chat_id=target_chat_id,
+                            rich_message=rich_message,
+                            reply_markup=reply_markup,
+                            reply_to_message_id=(
+                                original_message_id if force_reply else None
+                            ),
+                        )
+                    except RetryException as err:
+                        # 请求可能已经被 Telegram 接受，只是确认响应在传输中丢失。
+                        # 结果未知时不得改用另一发送方法，否则会重复投递。
+                        logger.error(
+                            f"Telegram Rich Message 投递结果未知，已禁止重复发送：{err.__cause__ or err}"
+                        )
+                        sent = None
                 self._stop_typing_if_needed(chat_id, stop_typing)
                 if sent and hasattr(sent, "message_id"):
                     return {
