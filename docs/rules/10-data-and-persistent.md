@@ -272,7 +272,11 @@ runtime, `_PluginBase.get_database()` returns a `PluginDatabaseHandle` for
 opening sessions against the plugin's own engine. Declaring nothing is not the
 same as never having a database: `get_database()` creates the SQLite file (or
 the PostgreSQL schema) on first call, so a plugin that only runs raw SQL still
-gets an isolated database.
+gets an isolated database. Under PostgreSQL the handle's sessions and
+connections issue `SET LOCAL search_path` at the start of every transaction,
+so unqualified raw SQL resolves to the plugin's own schema rather than
+`public`; `SET LOCAL` ends with the transaction and never leaks back to the
+host through the shared pool.
 
 Lifecycle is strictly ensure/release/destroy: plugin start calls `ensure`
 after `init_plugin()`; stop, reload and remove call `release` only, which
@@ -286,11 +290,10 @@ SCHEMA ... CASCADE`). Stopping or uninstalling an ordinary plugin never
 destroys its database, mirroring the existing `plugindata` retention
 semantics.
 
-Uninstall destroys the database before the plugin is stopped, so a stop hook
-calling `get_database()` recreates it. A destroyed plugin id is remembered
-until its next `release` — which destroys the recreated database instead of
-merely releasing it — or its next `ensure`, which clears the mark because the
-plugin is legitimately starting again.
+Uninstall stops the plugin before deleting anything: a stop hook that calls
+`get_database()` would otherwise recreate the database that was just
+destroyed. Because stopping also unregisters the plugin class, the deletions
+that follow are issued with `force=True`.
 
 `db_query` / `db_update` keep their existing automatic-Session fallback bound
 to the **host** `ScopedSession()`; they are not aware of plugin-owned
@@ -423,4 +426,4 @@ can be accepted only once without Application knowing the configured backend.
 - `settings.API_TOKEN` and other secret fields must not be included in log output or API responses.
 - The `config list --show-secrets` flag exists specifically to gate secret visibility in the CLI.
 
-*Last Updated: 2026-09-01*
+*Last Updated: 2026-09-02*

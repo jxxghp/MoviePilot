@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import threading
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy import create_engine, event, text
 from sqlalchemy import inspect as sa_inspect
-from sqlalchemy import text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, scoped_session, sessionmaker
 
 import app.db.engine as engine_module
 import app.db.plugin.locator as locator_module
@@ -29,23 +30,37 @@ from app.db.plugin.locator import (
 
 @pytest.fixture(autouse=True)
 def _isolate_plugin_databases():
-    """快照插件数据库句柄与销毁标记，用例结束后释放残留句柄并还原快照。"""
+    """快照插件数据库句柄，用例结束后释放残留句柄并还原快照。"""
     handles = dict(registry_module._handles)
-    destroyed = set(registry_module._destroyed)
     registry_module._handles.clear()
-    registry_module._destroyed.clear()
     yield
     for plugin_id in list(registry_module._handles):
         registry_module.release_database(plugin_id)
     registry_module._handles.clear()
     registry_module._handles.update(handles)
-    registry_module._destroyed.clear()
-    registry_module._destroyed.update(destroyed)
 
 
 def _raise_dispose() -> None:
     """模拟连接池释放失败。"""
     raise RuntimeError("dispose failed")
+
+
+def _borrowed_engine_handle(engine: Any) -> PluginDatabaseHandle:
+    """
+    构造一个不拥有引擎的句柄，用于验证 PostgreSQL 分支上的连接路由。
+    :param engine: 句柄借用的引擎
+    :return: owns_engine 为假的数据库句柄
+    """
+    session_factory = sessionmaker(bind=engine)
+    return PluginDatabaseHandle(
+        plugin_id="demo",
+        engine=engine,
+        session_factory=session_factory,
+        scoped_session_factory=scoped_session(session_factory),
+        db_path=None,
+        schema="plugin_demo",
+        owns_engine=False,
+    )
 
 
 def _write_migration_directory(root: Path) -> Path:
@@ -130,7 +145,10 @@ def sqlite_backend(monkeypatch):
 def postgresql_backend(monkeypatch):
     """把宿主数据库类型固定为 PostgreSQL，并用替身覆盖宿主引擎。"""
     host_engine = MagicMock(name="host_engine")
-    derived_engine = MagicMock(name="derived_engine")
+    # 派生引擎必须是真实引擎：注册 begin 监听器要求一个真实的 SQLAlchemy 事件目标，
+    # 替身对象会被 event.listen 拒绝
+    borrowed_engine = create_engine("sqlite://")
+    derived_engine = borrowed_engine.execution_options()
     host_engine.execution_options.return_value = derived_engine
     monkeypatch.setattr(
         registry_module,
@@ -138,7 +156,8 @@ def postgresql_backend(monkeypatch):
         lambda key, default=None: "postgresql" if key == "DB_TYPE" else default,
     )
     monkeypatch.setattr(registry_module, "get_engine", lambda: host_engine)
-    return host_engine, derived_engine
+    yield host_engine, derived_engine
+    borrowed_engine.dispose()
 
 
 def test_plugin_declarative_base_returns_a_fresh_metadata_per_call():
@@ -318,25 +337,32 @@ def test_postgresql_handle_does_not_own_the_host_engine(postgresql_backend):
     )
 
 
-def test_postgresql_release_never_disposes_the_host_engine(postgresql_backend):
+def test_postgresql_release_never_disposes_the_host_engine(postgresql_backend, monkeypatch):
     """release 在 PostgreSQL 下不得 dispose 派生引擎，也不得触碰宿主引擎。"""
     host_engine, derived_engine = postgresql_backend
+    disposed: list[str] = []
+    monkeypatch.setattr(derived_engine, "dispose", lambda: disposed.append("derived"))
     registry_module.get_database("demo")
     registry_module.release_database("demo")
-    derived_engine.dispose.assert_not_called()
+    assert disposed == []
     host_engine.dispose.assert_not_called()
 
 
-def test_postgresql_destroy_drops_the_schema_and_keeps_the_host_engine(postgresql_backend):
+def test_postgresql_destroy_drops_the_schema_and_keeps_the_host_engine(
+    postgresql_backend,
+    monkeypatch,
+):
     """destroy 在 PostgreSQL 下丢弃对应 schema，且不 dispose 任何引擎。"""
     host_engine, derived_engine = postgresql_backend
+    disposed: list[str] = []
+    monkeypatch.setattr(derived_engine, "dispose", lambda: disposed.append("derived"))
     handle = registry_module.get_database("demo")
     schema = handle.schema
     registry_module.destroy_database("demo")
     connection = host_engine.begin.return_value.__enter__.return_value
     executed = [str(call.args[0]) for call in connection.execute.call_args_list]
     assert any("DROP SCHEMA" in sql and schema in sql for sql in executed)
-    derived_engine.dispose.assert_not_called()
+    assert disposed == []
     host_engine.dispose.assert_not_called()
 
 
@@ -486,41 +512,6 @@ def test_release_closes_the_thread_local_session(plugin_data_root, sqlite_backen
     assert handle.scoped_session_factory.registry.has() is False
 
 
-def test_release_after_destroy_removes_a_database_revived_by_a_stop_hook(
-    plugin_data_root,
-    sqlite_backend,
-):
-    """销毁后停机钩子取句柄让库文件复活，随后的 release 负责把它删掉并清除标记。"""
-    db_path = registry_module.get_database("demo").db_path
-    registry_module.destroy_database("demo")
-    assert not db_path.exists()
-
-    revived = registry_module.get_database("demo")
-    assert revived.db_path.exists()
-
-    registry_module.release_database("demo")
-
-    assert not db_path.exists()
-    assert registry_module._destroyed == set()
-
-
-def test_ensure_clears_the_destroyed_mark_so_a_restart_keeps_its_data(
-    plugin_data_root,
-    sqlite_backend,
-):
-    """重新建库即撤销销毁标记，此后的 release 只释放连接、不再删库。"""
-    registry_module.get_database("demo")
-    registry_module.destroy_database("demo")
-
-    registry_module.ensure_database("demo")
-    assert registry_module._destroyed == set()
-
-    handle = registry_module.get_database("demo")
-    registry_module.release_database("demo")
-
-    assert handle.db_path.exists()
-
-
 def test_missing_migrations_directory_is_rejected_before_any_file_is_created(
     plugin_data_root,
     sqlite_backend,
@@ -615,7 +606,6 @@ def test_run_migrations_upgrades_a_sqlite_plugin_database(plugin_data_root, sqli
 
 
 def test_run_migrations_routes_the_postgresql_connection_through_the_handle(
-    postgresql_backend,
     monkeypatch,
     tmp_path,
 ):
@@ -628,7 +618,7 @@ def test_run_migrations_routes_the_postgresql_connection_through_the_handle(
         captured["revision"] = revision
 
     monkeypatch.setattr(migration_module, "upgrade", _record_upgrade)
-    handle = registry_module.get_database("demo")
+    handle = _borrowed_engine_handle(MagicMock(name="derived_engine"))
 
     migration_module.run_migrations(handle, _write_migration_directory(tmp_path))
 
@@ -636,3 +626,150 @@ def test_run_migrations_routes_the_postgresql_connection_through_the_handle(
     assert captured["connection"] is connection
     assert captured["revision"] == "head"
     connection.commit.assert_called_once()
+
+
+def test_release_after_destroy_keeps_a_database_rebuilt_by_a_stop_hook(
+    plugin_data_root,
+    sqlite_backend,
+):
+    """销毁后重新建出的库属于仍在运行的插件，普通停止只释放连接、不得再删一次。"""
+    registry_module.get_database("demo")
+    registry_module.destroy_database("demo")
+
+    rebuilt = registry_module.get_database("demo")
+    session = rebuilt.session()
+    try:
+        session.execute(text("CREATE TABLE kept (id INTEGER PRIMARY KEY)"))
+        session.commit()
+    finally:
+        session.close()
+
+    registry_module.release_database("demo")
+
+    assert rebuilt.db_path.exists()
+    assert "demo" not in registry_module._handles
+
+
+def test_destroy_blocks_a_concurrent_handle_rebuild_until_the_carrier_is_removed(
+    plugin_data_root,
+    sqlite_backend,
+    monkeypatch,
+):
+    """销毁未删完载体前并发的取句柄取不到结果，新句柄因此不会指向被删掉的载体。"""
+    first = registry_module.get_database("demo")
+    entered_removal = threading.Event()
+    resume_removal = threading.Event()
+    original_remove_storage = registry_module._remove_storage
+
+    def _blocking_remove_storage(plugin_id, handle):
+        """在删除载体前挂住销毁流程，制造并发窗口。"""
+        entered_removal.set()
+        assert resume_removal.wait(10)
+        original_remove_storage(plugin_id, handle)
+
+    monkeypatch.setattr(registry_module, "_remove_storage", _blocking_remove_storage)
+    rebuilt: list[PluginDatabaseHandle] = []
+
+    def _rebuild() -> None:
+        """在销毁进行中重新取句柄。"""
+        rebuilt.append(registry_module.get_database("demo"))
+
+    destroyer = threading.Thread(target=registry_module.destroy_database, args=("demo",))
+    destroyer.start()
+    assert entered_removal.wait(10)
+    rebuilder = threading.Thread(target=_rebuild)
+    rebuilder.start()
+    rebuilder.join(0.5)
+
+    assert rebuilder.is_alive()
+    assert rebuilt == []
+
+    resume_removal.set()
+    destroyer.join(10)
+    rebuilder.join(10)
+
+    assert not rebuilder.is_alive()
+    assert rebuilt and rebuilt[0] is not first
+    assert rebuilt[0].db_path.exists()
+
+
+def test_search_path_setter_binds_the_quoted_plugin_schema():
+    """监听器在事务开始时执行 SET LOCAL search_path，schema 名带引号且回落 public。"""
+    connection = MagicMock(name="connection")
+
+    registry_module._search_path_setter("plugin_demo")(connection)
+
+    executed = connection.exec_driver_sql.call_args.args[0]
+    assert executed == 'SET LOCAL search_path TO "plugin_demo", public'
+
+
+def test_begin_listener_on_a_derived_engine_never_reaches_the_host_engine(tmp_path):
+    """派生引擎上的 begin 监听器只对派生连接生效，宿主引擎的连接不触发。"""
+    host_engine = create_engine(f"sqlite:///{tmp_path / 'host.db'}")
+    derived_engine = host_engine.execution_options()
+    fired: list[str] = []
+
+    def _listener(connection) -> None:
+        """记录触发并在同一连接上执行一条无害语句，验证不会递归或报错。"""
+        fired.append("begin")
+        connection.exec_driver_sql("SELECT 1")
+
+    event.listen(derived_engine, "begin", _listener)
+
+    with derived_engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+        connection.commit()
+    assert fired == ["begin"]
+
+    with host_engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+        connection.commit()
+    assert fired == ["begin"]
+
+    session = sessionmaker(bind=derived_engine)()
+    try:
+        assert session.execute(text("SELECT 1")).scalar() == 1
+        session.commit()
+    finally:
+        session.close()
+    assert fired == ["begin", "begin"]
+
+    host_engine.dispose()
+
+
+def test_postgresql_handle_binds_a_search_path_listener_to_the_derived_engine(
+    postgresql_backend,
+    monkeypatch,
+):
+    """PostgreSQL 建句柄时把插件 schema 的监听器挂到派生引擎，而不是宿主引擎。"""
+    _host_engine, derived_engine = postgresql_backend
+    bound: list[tuple] = []
+    build_listener = registry_module._search_path_setter
+
+    def _record(schema: str):
+        """记录被绑定的 schema 与生成的监听器。"""
+        listener = build_listener(schema)
+        bound.append((schema, listener))
+        return listener
+
+    monkeypatch.setattr(registry_module, "_search_path_setter", _record)
+
+    handle = registry_module.get_database("demo")
+
+    assert [schema for schema, _ in bound] == [handle.schema]
+    assert event.contains(derived_engine, "begin", bound[0][1])
+
+
+def test_alembic_migrations_trigger_the_begin_event_on_a_borrowed_engine(tmp_path):
+    """借用引擎的迁移在连接上首次执行即触发 begin，search_path 监听器因此覆盖 alembic。"""
+    engine = create_engine(f"sqlite:///{tmp_path / 'host.db'}").execution_options()
+    begins: list[str] = []
+    event.listen(engine, "begin", lambda _connection: begins.append("begin"))
+    handle = _borrowed_engine_handle(engine)
+
+    migration_module.run_migrations(handle, _write_migration_directory(tmp_path))
+
+    assert begins
+    assert "notes" in set(sa_inspect(engine).get_table_names())
+
+    engine.dispose()

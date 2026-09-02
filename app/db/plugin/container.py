@@ -18,7 +18,9 @@ class PluginDatabaseHandle:
 
     SQLite 下引擎由本句柄独占，``owns_engine`` 为真；PostgreSQL 下引擎是宿主引擎按
     ``schema_translate_map`` 派生的外观，``owns_engine`` 为假——只有前者可以 dispose，
-    后者一旦 dispose 会连累宿主与其它插件仍在使用的同一个连接池。
+    后者一旦 dispose 会连累宿主与其它插件仍在使用的同一个连接池。PostgreSQL 下本句柄的
+    会话与连接在每个事务开始时把 ``search_path`` 限定到插件 schema，未限定的原生 SQL 因此
+    同样解析到插件自己的表。
     """
 
     plugin_id: str

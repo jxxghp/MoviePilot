@@ -46,18 +46,14 @@ class _SamplePlugin(_PluginBase):
 
 @pytest.fixture(autouse=True)
 def _isolate_plugin_databases():
-    """快照插件数据库句柄与销毁标记，用例结束后释放残留句柄并还原快照。"""
+    """快照插件数据库句柄，用例结束后释放残留句柄并还原快照。"""
     handles = dict(registry_module._handles)
-    destroyed = set(registry_module._destroyed)
     registry_module._handles.clear()
-    registry_module._destroyed.clear()
     yield
     for plugin_id in list(registry_module._handles):
         registry_module.release_database(plugin_id)
     registry_module._handles.clear()
     registry_module._handles.update(handles)
-    registry_module._destroyed.clear()
-    registry_module._destroyed.update(destroyed)
 
 
 @pytest.fixture

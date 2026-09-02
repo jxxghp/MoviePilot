@@ -331,13 +331,17 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
         was_clone = bool(getattr(plugin_class, "is_clone", False))
         clone_files_removed = False
 
+        # 删除数据必须发生在插件停止之后：插件的停机钩子只要取一次自有库句柄，就会把刚
+        # 删除的数据重新建出来。停止同时注销插件类，故其后的删除一律按 force 执行
+        plugin_manager.stop(plugin_id)
+
         if virtual_instance:
             plugin_manager.delete_plugin_config(plugin_id, force=True)
             plugin_manager.delete_plugin_data(plugin_id, force=True)
             plugin_manager.delete_plugin_instance(plugin_id)
         elif was_clone:
-            plugin_manager.delete_plugin_config(plugin_id)
-            plugin_manager.delete_plugin_data(plugin_id)
+            plugin_manager.delete_plugin_config(plugin_id, force=True)
+            plugin_manager.delete_plugin_data(plugin_id, force=True)
             try:
                 clone_files_removed = await to_thread.run_sync(
                     plugin_manager.remove_plugin_package,

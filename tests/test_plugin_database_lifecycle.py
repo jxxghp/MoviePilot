@@ -7,10 +7,15 @@ import asyncio
 import logging
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import app.api.endpoints.plugin as plugin_endpoint
+import app.application.plugin.folders as plugin_folders
+import app.application.plugin.management as plugin_management
+import app.application.plugin.routes as plugin_routes
+import app.application.scheduling as scheduling_module
 import app.db.engine as engine_module
 import app.db.session as session_module
 import app.runtime.extensions.plugin.database as database_module
@@ -18,7 +23,8 @@ import app.startup.initializers.plugins as plugins_initializer
 from app.runtime.extensions.plugin.database import PluginDatabase
 from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
 from app.runtime.extensions.plugin.storage import PluginConfigStore, PluginStorage
-from app.schemas.plugin import PluginRuntimeStatus
+from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
+from app.schemas.types import SystemConfigKey
 
 
 class ModelA:
@@ -454,3 +460,115 @@ def test_stop_all_releases_plugins_that_never_reached_the_running_registry():
     lifecycle.stop()
 
     assert ("release", "DemoPlugin") in calls
+
+
+def test_stopping_an_already_stopped_plugin_stays_idempotent():
+    """卸载编排先停后删，删除之后的 remove_plugin 会再停一次，二次停止必须无害。"""
+    calls: list[tuple] = []
+    plugin_cls = _make_plugin_class("DemoPlugin")
+    lifecycle = _build_lifecycle(
+        load_plugins=lambda *_a, **_kw: [plugin_cls],
+        installed_plugins=lambda: ["DemoPlugin"],
+        database=lambda: _recording_database(calls),
+    )
+    lifecycle.start("DemoPlugin")
+    lifecycle.stop("DemoPlugin")
+    calls.clear()
+
+    lifecycle.stop("DemoPlugin")
+
+    assert calls == [("release", "DemoPlugin")]
+    assert lifecycle._classes == {}
+    assert lifecycle._running == {}
+
+
+def _uninstall_manager() -> MagicMock:
+    """构造卸载分身所需的插件管理器替身，按调用顺序记录全部方法调用。"""
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_instance.return_value = None
+    plugin_manager.get_plugin_source_instances.return_value = []
+    plugin_manager.plugins = {"DemoPluginwork": MagicMock(is_clone=True)}
+    plugin_manager.remove_plugin_package.return_value = True
+    return plugin_manager
+
+
+def _assert_stop_precedes_deletion(plugin_manager: MagicMock) -> None:
+    """断言插件先停止再删除数据，且删除按 force 执行。"""
+    method_names = [name for name, _args, _kwargs in plugin_manager.mock_calls]
+    assert method_names.index("stop") < method_names.index("delete_plugin_config")
+    assert method_names.index("stop") < method_names.index("delete_plugin_data")
+    plugin_manager.stop.assert_called_once_with("DemoPluginwork")
+    plugin_manager.delete_plugin_config.assert_called_once_with(
+        "DemoPluginwork",
+        force=True,
+    )
+    plugin_manager.delete_plugin_data.assert_called_once_with(
+        "DemoPluginwork",
+        force=True,
+    )
+
+
+def test_http_uninstall_stops_the_plugin_before_deleting_its_data(monkeypatch):
+    """HTTP 卸载先停插件再删数据，停机钩子因此无法重建刚销毁的自有库。"""
+    plugin_manager = _uninstall_manager()
+    config = MagicMock()
+    config.get.return_value = ["DemoPluginwork"]
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_endpoint, "get_configured_system_config", lambda: config)
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_from_folders", MagicMock())
+
+    result = plugin_endpoint.uninstall_plugin("DemoPluginwork", None)
+
+    assert result.success is True
+    _assert_stop_precedes_deletion(plugin_manager)
+
+
+def test_runtime_uninstall_stops_the_plugin_before_deleting_its_data(monkeypatch):
+    """运行态卸载编排同样先停后删，两条卸载路径的数据删除时机保持一致。"""
+    plugin_manager = _uninstall_manager()
+    config = MagicMock()
+    config.get.return_value = ["DemoPluginwork"]
+    config.async_set = AsyncMock()
+    monkeypatch.setattr(plugin_management, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(
+        plugin_management,
+        "get_configured_system_config",
+        lambda: config,
+    )
+    monkeypatch.setattr(plugin_routes, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(scheduling_module, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_folders, "remove_plugin_from_folders", MagicMock())
+
+    result = asyncio.run(plugin_management.uninstall_plugin_runtime("DemoPluginwork"))
+
+    assert result == {"was_clone": True, "clone_files_removed": True}
+    _assert_stop_precedes_deletion(plugin_manager)
+
+
+def test_uninstall_virtual_instance_also_stops_before_deleting(monkeypatch):
+    """虚拟实例卸载同样先停后删，force 删除不受插件类注销影响。"""
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_instance.return_value = PluginInstance(
+        instance_id="DemoPluginwork",
+        source_plugin_id="DemoPlugin",
+    )
+    plugin_manager.get_plugin_source_instances.return_value = []
+    plugin_manager.plugins = {}
+    config = MagicMock()
+    config.get.return_value = ["DemoPlugin"]
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_endpoint, "get_configured_system_config", lambda: config)
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_endpoint, "remove_plugin_from_folders", MagicMock())
+
+    result = plugin_endpoint.uninstall_plugin("DemoPluginwork", None)
+
+    assert result.success is True
+    config.set.assert_called_once_with(
+        SystemConfigKey.UserInstalledPlugins,
+        ["DemoPlugin"],
+    )
+    _assert_stop_precedes_deletion(plugin_manager)

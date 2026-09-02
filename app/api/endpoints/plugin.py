@@ -979,14 +979,15 @@ def uninstall_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_activ
             remove_plugin_job(plugin_id)
             # 判断是否为分身
             plugin_class = plugin_manager.plugins.get(plugin_id)
+            # 删除必须晚于停止：停机钩子会重建刚删的自有库；停止同时注销插件类，故删除一律按 force
+            plugin_manager.stop(plugin_id)
             if virtual_instance:
                 plugin_manager.delete_plugin_config(plugin_id, force=True)
                 plugin_manager.delete_plugin_data(plugin_id, force=True)
                 plugin_manager.delete_plugin_instance(plugin_id)
             elif getattr(plugin_class, "is_clone", False):
-                # 如果是分身插件，则删除分身数据和配置
-                plugin_manager.delete_plugin_config(plugin_id)
-                plugin_manager.delete_plugin_data(plugin_id)
+                plugin_manager.delete_plugin_config(plugin_id, force=True)
+                plugin_manager.delete_plugin_data(plugin_id, force=True)
                 # 分身物理目录只能由包文件 owner 删除。
                 if plugin_manager.remove_plugin_package(plugin_id):
                     plugin_manager.plugins.pop(plugin_id, None)

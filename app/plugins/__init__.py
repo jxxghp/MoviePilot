@@ -306,6 +306,8 @@ class _PluginBase(metaclass=ABCMeta):
         """
         获取插件自有数据库句柄，用于取会话读写插件自有表
         句柄不存在时按需建立，不要求先声明模型
+        PostgreSQL 下句柄的会话与连接在每个事务开始时把 search_path 限定到本插件 schema，
+        未限定的原生 SQL 因此同样解析到插件自己的表，不会落到 public
         :param plugin_id: 插件ID
         """
         if not plugin_id:
