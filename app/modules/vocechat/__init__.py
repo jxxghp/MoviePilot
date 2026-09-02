@@ -1,21 +1,19 @@
 import json
+from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote
-from typing import Optional, Union, List, Tuple, Any, Dict
 
-from app.domain.context import Context, MediaInfo
 from app.application.messaging.agent import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.runtime.log import logger
+from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.vocechat.vocechat import VoceChat
+from app.runtime.log import logger
+from app.schemas.message import IncomingMessage, Message
 from app.schemas.notification import NotificationChannel
-from app.schemas.message import IncomingMessage
-from app.schemas.message import Message
 from app.schemas.types import ModuleType
-
 
 register_channel_admin_resolver(
     NotificationChannel.VoceChat,
@@ -100,6 +98,32 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
         if client and userid:
             client.send_msg(title="只有管理员才有权限执行此命令", userid=str(userid))
 
+    @staticmethod
+    def _mention_ids(detail: dict) -> set[str]:
+        """读取 VoceChat 文本消息 properties.mentions 中的用户 ID。"""
+        properties = detail.get("properties") or {}
+        mentions = properties.get("mentions") if isinstance(properties, dict) else None
+        if not isinstance(mentions, list):
+            return set()
+        return {
+            str(mention).strip()
+            for mention in mentions
+            if str(mention).strip().isdigit()
+        }
+
+    @classmethod
+    def _is_mentioned_group_message(cls, detail: dict, config: dict) -> bool:
+        """群消息仅在明确 @ 时触发；配置机器人 ID 后只接受对机器人的 @。"""
+        mentions = cls._mention_ids(detail)
+        if not mentions:
+            return False
+        bot_id = str(
+            config.get("VOCECHAT_BOT_ID")
+            or config.get("bot_id")
+            or ""
+        ).strip()
+        return not bot_id or bot_id in mentions
+
     def message_parser(self, source: str, body: Any, form: Any,
                        args: Any) -> Optional[IncomingMessage]:
         """
@@ -157,9 +181,17 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
             if from_uid is None:
                 return None
             actor_userid = f"UID#{from_uid}"
-            channel_id = client_config.config.get("channel_id")
+            channel_id = (
+                client_config.config.get("VOCECHAT_CHANNEL_ID")
+                or client_config.config.get("channel_id")
+            )
             if gid and str(gid) == str(channel_id):
                 # 来自监听频道的消息
+                if not self._is_mentioned_group_message(detail, client_config.config):
+                    logger.debug(
+                        f"忽略未@机器人的VoceChat群消息：gid={gid}, from_uid={from_uid}"
+                    )
+                    return None
                 userid = f"GID#{gid}"
             else:
                 # 来自个人的消息
@@ -367,7 +399,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
             if not userid and targets is not None:
                 userid = targets.get('vocechat_userid')
                 if not userid:
-                    logger.warn(f"用户没有指定 VoceChat用户ID，消息无法发送")
+                    logger.warn("用户没有指定 VoceChat用户ID，消息无法发送")
                     return
             client: VoceChat = self.get_instance(conf.name)
             if client:
