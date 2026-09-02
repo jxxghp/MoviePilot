@@ -1,6 +1,14 @@
 import os
+import shutil
 import sys
 
+# Windows 环境下手动注入 DLL 搜索路径
+# Python 3.8+ 不再从环境变量 PATH 中自动加载 DLL。由于 psycopg 在 Free-Threading 版本中强制使用 C 扩展，
+# 为避免因缺少底层 C 库导致运行失败，必须手动将 psql 所在目录加入 DLL 搜索路径。
+if os.name == "nt":
+    psql_exe = shutil.which("psql")
+    if psql_exe:
+        os.add_dll_directory(os.path.dirname(psql_exe))
 
 def _prepare_direct_execution_import_path() -> None:
     """
