@@ -708,6 +708,19 @@ class Telegram:
                         rich_message=rich_message,
                         reply_markup=reply_markup,
                     )
+                    if not result:
+                        logger.warning(
+                            "Telegram Rich Message 编辑失败，回退为普通文本编辑"
+                        )
+                        result = self.__edit_message(
+                            str(original_chat_id),
+                            int(original_message_id),
+                            caption,
+                            buttons,
+                            image,
+                            disable_web_page_preview=disable_web_page_preview,
+                            parse_mode=TELEGRAM_PARSE_MODE_PLAIN,
+                        )
                     self._stop_typing_if_needed(chat_id, stop_typing)
                     return {
                         "success": bool(result),
@@ -720,14 +733,29 @@ class Telegram:
                     if force_reply and original_chat_id
                     else chat_id
                 )
-                sent = self.__send_rich_message(
-                    chat_id=target_chat_id,
-                    rich_message=rich_message,
-                    reply_markup=reply_markup,
-                    reply_to_message_id=(
-                        original_message_id if force_reply else None
-                    ),
-                )
+                try:
+                    sent = self.__send_rich_message(
+                        chat_id=target_chat_id,
+                        rich_message=rich_message,
+                        reply_markup=reply_markup,
+                        reply_to_message_id=(
+                            original_message_id if force_reply else None
+                        ),
+                    )
+                except RetryException as err:
+                    logger.warning(
+                        f"Telegram Rich Message 发送失败，回退为普通文本：{err.__cause__ or err}"
+                    )
+                    sent = self.__send_request(
+                        userid=target_chat_id,
+                        caption=caption,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=disable_web_page_preview,
+                        parse_mode=TELEGRAM_PARSE_MODE_PLAIN,
+                        reply_to_message_id=(
+                            original_message_id if force_reply else None
+                        ),
+                    )
                 self._stop_typing_if_needed(chat_id, stop_typing)
                 if sent and hasattr(sent, "message_id"):
                     return {
@@ -1257,12 +1285,17 @@ class Telegram:
                 reply_markup = (
                     self._create_inline_keyboard(buttons) if buttons else None
                 )
-                return self.__edit_rich_message(
+                if self.__edit_rich_message(
                     chat_id=chat_id,
                     message_id=message_id,
                     rich_message=rich_message,
                     reply_markup=reply_markup,
+                ):
+                    return True
+                logger.warning(
+                    "Telegram Rich Message 编辑失败，回退为普通文本编辑"
                 )
+                parse_mode = TELEGRAM_PARSE_MODE_PLAIN
 
             # 组合标题和文本
             if title:

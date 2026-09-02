@@ -12,7 +12,7 @@ import pytest
 from app.domain.context import MediaInfo, Context, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.modules.telegram.module import TelegramModule
-from app.modules.telegram.telegram import Telegram
+from app.modules.telegram.telegram import RetryException, Telegram
 from app.schemas.message import Message
 from app.schemas.types import NotificationChannel
 from app.schemas.types import MediaType
@@ -378,6 +378,28 @@ def test_send_msg_uses_rich_message_api(telegram):
     assert send_kwargs["reply_markup"] is not None
 
 
+def test_send_msg_falls_back_to_plain_text_when_rich_message_fails(telegram):
+    """Rich Message 不可用时不得中断消息发送。"""
+    telegram._Telegram__send_rich_message = Mock(  # noqa: SLF001
+        side_effect=RetryException("rich unavailable")
+    )
+    telegram.bot.send_message.return_value = SimpleNamespace(
+        message_id=102,
+        chat=SimpleNamespace(id=10001),
+    )
+
+    result = telegram.send_msg(
+        title="",
+        text="处理中",
+        rich_message="**处理中**",
+    )
+
+    assert result == {"success": True, "message_id": 102, "chat_id": 10001}
+    send_kwargs = telegram.bot.send_message.call_args.kwargs
+    assert send_kwargs["text"] == "处理中"
+    assert send_kwargs["parse_mode"] == ""
+
+
 def test_send_msg_edits_rich_message(telegram):
     """带原消息定位信息的 Rich Message 应使用富文本编辑接口。"""
     result = telegram.send_msg(
@@ -392,6 +414,24 @@ def test_send_msg_edits_rich_message(telegram):
     assert edit_kwargs["text"] is None
     assert edit_kwargs["message_id"] == 101
     assert "<h1>更新结果</h1>" in edit_kwargs["rich_message"].html
+
+
+def test_edit_msg_falls_back_to_plain_text_when_rich_edit_fails(telegram):
+    """Rich Message 编辑失败时应继续使用 editMessageText。"""
+    telegram.bot.edit_message_text.side_effect = [RuntimeError("unsupported"), True]
+
+    result = telegram.edit_msg(
+        chat_id="10001",
+        message_id=101,
+        text="更新后的普通文本",
+        rich_message="**更新后的普通文本**",
+    )
+
+    assert result is True
+    assert telegram.bot.edit_message_text.call_count == 2
+    fallback_kwargs = telegram.bot.edit_message_text.call_args_list[1].kwargs
+    assert fallback_kwargs["text"] == "更新后的普通文本"
+    assert fallback_kwargs["parse_mode"] == ""
 
 
 def test_telegram_module_passes_parse_mode_to_client():
