@@ -18,7 +18,7 @@ class PluginInstanceDescriptor(Base):
     或 ``host``（本体），互不进入对方的枚举视图。
     """
 
-    __tablename__ = "plugin_instance"
+    __tablename__ = "plugininstance"
 
     id = get_id_column()
     instance_id: Mapped[str] = mapped_column(String(128), nullable=False)

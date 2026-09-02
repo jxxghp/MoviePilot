@@ -15,7 +15,7 @@ down_revision = "a7d9e2c4f6b1"
 branch_labels = None
 depends_on = None
 
-_TABLE = "plugin_instance"
+_TABLE = "plugininstance"
 _LEGACY_KEY = "PluginInstances"
 
 

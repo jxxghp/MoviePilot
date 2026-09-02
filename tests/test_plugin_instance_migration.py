@@ -54,25 +54,25 @@ def test_plugin_instance_migration_migrates_legacy_dict_payload_and_keeps_source
         migration.upgrade()
 
         inspector = sa.inspect(connection)
-        assert "plugin_instance" in inspector.get_table_names()
-        columns = {column["name"] for column in inspector.get_columns("plugin_instance")}
+        assert "plugininstance" in inspector.get_table_names()
+        columns = {column["name"] for column in inspector.get_columns("plugininstance")}
         assert columns == {
             column.name for column in PluginInstanceDescriptor.__table__.columns
         }
         unique_constraints = {
             constraint["name"]: tuple(constraint["column_names"])
-            for constraint in inspector.get_unique_constraints("plugin_instance")
+            for constraint in inspector.get_unique_constraints("plugininstance")
         }
         assert unique_constraints["uq_plugininstance_instance_id"] == ("instance_id",)
         check_constraints = {
             constraint["name"]
-            for constraint in inspector.get_check_constraints("plugin_instance")
+            for constraint in inspector.get_check_constraints("plugininstance")
         }
         assert "ck_plugininstance_mode" in check_constraints
-        indexes = {index["name"] for index in inspector.get_indexes("plugin_instance")}
+        indexes = {index["name"] for index in inspector.get_indexes("plugininstance")}
         assert "ix_plugininstance_source_plugin_id" in indexes
 
-        table = sa.Table("plugin_instance", sa.MetaData(), autoload_with=connection)
+        table = sa.Table("plugininstance", sa.MetaData(), autoload_with=connection)
         rows = connection.execute(sa.select(table)).mappings().all()
         assert len(rows) == 1
         row = rows[0]
@@ -97,13 +97,13 @@ def test_plugin_instance_migration_migrates_legacy_dict_payload_and_keeps_source
         }
 
         migration.downgrade()
-        assert "plugin_instance" not in sa.inspect(connection).get_table_names()
+        assert "plugininstance" not in sa.inspect(connection).get_table_names()
         assert connection.execute(
             sa.select(SystemConfig.value).where(SystemConfig.key == "PluginInstances")
         ).scalar_one() == legacy_row
 
         migration.upgrade()
-        restored = sa.Table("plugin_instance", sa.MetaData(), autoload_with=connection)
+        restored = sa.Table("plugininstance", sa.MetaData(), autoload_with=connection)
         restored_rows = connection.execute(sa.select(restored)).mappings().all()
         assert len(restored_rows) == 1
         assert restored_rows[0]["instance_id"] == "DemoPluginWork"
@@ -124,7 +124,7 @@ def test_plugin_instance_migration_migrates_legacy_list_payload(monkeypatch) -> 
         migration = _bind_migration(monkeypatch, connection)
         migration.upgrade()
 
-        table = sa.Table("plugin_instance", sa.MetaData(), autoload_with=connection)
+        table = sa.Table("plugininstance", sa.MetaData(), autoload_with=connection)
         instance_ids = {
             row["instance_id"]
             for row in connection.execute(sa.select(table)).mappings().all()
@@ -149,7 +149,7 @@ def test_plugin_instance_migration_skips_malformed_legacy_entries(monkeypatch) -
         migration = _bind_migration(monkeypatch, connection)
         migration.upgrade()
 
-        table = sa.Table("plugin_instance", sa.MetaData(), autoload_with=connection)
+        table = sa.Table("plugininstance", sa.MetaData(), autoload_with=connection)
         rows = connection.execute(sa.select(table)).mappings().all()
         assert [row["instance_id"] for row in rows] == ["DemoPluginWork"]
 
@@ -164,8 +164,8 @@ def test_plugin_instance_migration_without_legacy_key_creates_empty_table(
         migration = _bind_migration(monkeypatch, connection)
         migration.upgrade()
 
-        assert "plugin_instance" in sa.inspect(connection).get_table_names()
-        table = sa.Table("plugin_instance", sa.MetaData(), autoload_with=connection)
+        assert "plugininstance" in sa.inspect(connection).get_table_names()
+        table = sa.Table("plugininstance", sa.MetaData(), autoload_with=connection)
         assert connection.execute(sa.select(table)).mappings().all() == []
 
 
@@ -182,5 +182,5 @@ def test_plugin_instance_migration_accepts_fresh_current_schema(monkeypatch) -> 
 
         assert {
             column["name"]
-            for column in sa.inspect(connection).get_columns("plugin_instance")
+            for column in sa.inspect(connection).get_columns("plugininstance")
         } == {column.name for column in PluginInstanceDescriptor.__table__.columns}
