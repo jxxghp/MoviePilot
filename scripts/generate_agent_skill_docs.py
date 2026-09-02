@@ -86,6 +86,12 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "Diagnosing interrupted installations, rollback conditions, and package or backup presence.",
         "Owned by the plugin installation state machine; never advance phase or overwrite evidence manually.",
     ),
+    "plugininstance": (
+        "Stores one row per shared-source plugin runtime instance: virtual clone descriptors and the host "
+        "plugin's own version binding, plus each instance's log-level override and its expiry.",
+        "Diagnosing clone naming, version binding, or which instance currently overrides the global log level.",
+        "Owned by plugin instance and log-level control APIs; never edit rows directly.",
+    ),
     "site": (
         "Stores private-tracker URLs, RSS, credentials, rate limits, proxy state, and downloader binding.",
         "Inspecting enablement, domain, rate limits, or downloader binding with minimal credential exposure.",

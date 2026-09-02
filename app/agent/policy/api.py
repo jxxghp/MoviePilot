@@ -553,6 +553,9 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
         confirmation=_CONFIRM,
         recovery=RecoveryMode.RECONCILE,
     ),
+    _admin_read("plugin.loglevel.get", sensitivity=ResultSensitivity.PRIVATE),
+    _write("plugin.loglevel.set"),
+    _write("plugin.loglevel.clear"),
 )
 
 
@@ -776,6 +779,13 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     ),
     "plugin.versions.recycle": ApiOperationRoute(
         "POST", "/api/v1/plugin/versions/{plugin_id}/recycle"
+    ),
+    "plugin.loglevel.get": ApiOperationRoute("GET", "/api/v1/plugin/loglevel/{plugin_id}"),
+    "plugin.loglevel.set": ApiOperationRoute(
+        "PUT", "/api/v1/plugin/loglevel/{plugin_id}/{instance_id}"
+    ),
+    "plugin.loglevel.clear": ApiOperationRoute(
+        "DELETE", "/api/v1/plugin/loglevel/{plugin_id}/{instance_id}"
     ),
 }
 
