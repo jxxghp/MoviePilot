@@ -351,6 +351,27 @@ def test_load_instance_uses_the_resolved_current_version_directory(
     assert plugins[0].plugin_version == "2.0.0"
 
 
+def test_import_versioned_module_clears_module_cache_when_exec_fails(
+    tmp_path: Path,
+) -> None:
+    """按版本目录导入模块执行失败时清除半成品缓存，不让后续加载命中坏对象。
+
+    标准 importlib 在 ``exec_module`` 抛错时会移除已经预置的 ``sys.modules`` 键；
+    按版本目录手动构造模块规格的分支必须复现同一行为，否则失败后的模块对象
+    会残留在缓存里，后续加载直接拿到这个半成品。
+    """
+    plugin_root = tmp_path / "broken"
+    version_dir = plugin_root / "v1_0_0"
+    version_dir.mkdir(parents=True)
+    (version_dir / "__init__.py").write_text("raise RuntimeError('boom')\n", encoding="utf-8")
+    module_name = "app.plugins.broken"
+
+    with pytest.raises(RuntimeError):
+        PluginLoader._import_versioned_module(module_name, version_dir)
+
+    assert module_name not in sys.modules
+
+
 # 四、元信息文件读写
 
 

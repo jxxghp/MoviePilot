@@ -141,7 +141,11 @@ class PluginLoader:
             raise ImportError(f"无法创建模块规格：{module_name}")
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except Exception:  # noqa: BLE001 - 与标准 importlib 一致：执行失败必须清除半成品缓存
+            sys.modules.pop(module_name, None)
+            raise
         return module
 
     def load_instance(
