@@ -20,6 +20,12 @@ from app.schemas.plugin import PluginInstance
 PluginImportPreparer = Callable[..., None]
 PluginImportScanner = Callable[..., None]
 PluginValidator = Callable[[Any], bool]
+PluginHostBinding = Callable[[str], Optional[PluginInstance]]
+
+
+def _no_host_binding(_plugin_id: str) -> Optional[PluginInstance]:
+    """未装配本体版本绑定端口时，视为该插件本体从未被显式绑定过版本。"""
+    return None
 
 
 class PluginLoader:
@@ -34,12 +40,14 @@ class PluginLoader:
         import_preparer: PluginImportPreparer,
         import_scanner: PluginImportScanner,
         log: Any,
+        host_binding: PluginHostBinding = _no_host_binding,
     ) -> None:
-        """保存插件目录、导入前置能力和日志端口。"""
+        """保存插件目录、导入前置能力、日志端口和本体版本绑定查询端口。"""
         self._plugins_root = plugins_root
         self._import_preparer = import_preparer
         self._import_scanner = import_scanner
         self._logger = log
+        self._host_binding = host_binding
 
     def load(
         self,
@@ -71,7 +79,7 @@ class PluginLoader:
                     f"跳过插件目录：{plugin_dir.name}（不在加载列表中）"
                 )
                 continue
-            source_dir = resolve_plugin_version_dir(plugin_dir)
+            source_dir = self._resolve_host_source_dir(plugin_dir)
             if not (source_dir / "__init__.py").exists():
                 self._logger.debug(
                     f"跳过插件目录：{plugin_dir.name}（缺少__init__.py）"
@@ -114,6 +122,32 @@ class PluginLoader:
                     f"{traceback.format_exc()}"
                 )
         return plugins
+
+    def _resolve_host_source_dir(self, plugin_dir: Path) -> Path:
+        """按源插件本体的版本绑定解析待加载源码目录。
+
+        语义与 ``load_instance`` 对分身绑定的三情形处理一致：本体从未显式绑定
+        过版本，或绑定为跟随当前版本时，都取插件当前版本；绑定为钉住某版本时
+        取该版本；钉住的版本目录已不在磁盘上时视为绑定已失效，记警告后回落到
+        当前版本，不让整个本体加载失败。
+
+        :param plugin_dir: 插件源码根目录
+        :return: 源码目录
+        """
+        binding = self._host_binding(plugin_dir.name)
+        desired_version = (
+            None if binding is None or binding.follow_current_version else binding.plugin_version
+        )
+        if desired_version is None:
+            return resolve_plugin_version_dir(plugin_dir)
+        try:
+            return resolve_plugin_version_dir(plugin_dir, desired_version)
+        except ValueError as error:
+            self._logger.warning(
+                f"源插件 {plugin_dir.name} 绑定的版本目录不存在，"
+                f"回落到插件当前版本：{error}"
+            )
+            return resolve_plugin_version_dir(plugin_dir)
 
     @staticmethod
     def _import_versioned_module(module_name: str, source_dir: Path) -> Any:

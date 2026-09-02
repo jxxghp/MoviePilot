@@ -159,6 +159,7 @@ def build_plugin_runtime(
         import_preparer=environment.import_preparer,
         import_scanner=environment.import_scanner,
         log=environment.logger,
+        host_binding=instances.get_host,
     )
     tools = PluginToolCatalog(max_attempts=tool_build_max_attempts)
     classification = PluginClassificationRegistry(environment.logger)
@@ -336,6 +337,8 @@ def build_plugin_runtime(
         get_instance=instances.get,
         instances_for_source=instances.for_source,
         save_instance=instances.save,
+        get_host_instance=instances.get_host,
+        save_host_instance=instances.save_host,
         running=lambda: registry.running,
         start=lambda instance_id, version: lifecycle.start(instance_id, version=version),
         stop=lifecycle.stop,

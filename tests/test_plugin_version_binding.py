@@ -69,7 +69,9 @@ class _Harness:
         *,
         plugins_root: Path,
         instances: dict[str, PluginInstance] | None = None,
+        host_instances: dict[str, PluginInstance] | None = None,
         plugin_exists: bool = True,
+        known_plugin_ids: set[str] | None = None,
         start_results: dict | None = None,
         multi_version_blockers: list[str] | None = None,
         running_ids: set[str] | None = None,
@@ -77,11 +79,17 @@ class _Harness:
     ) -> None:
         self.plugins_root = plugins_root
         self.instances: dict[str, PluginInstance] = dict(instances or {})
+        self.host_instances: dict[str, PluginInstance] = dict(host_instances or {})
         self.saved: list[PluginInstance] = []
+        self.saved_hosts: list[PluginInstance] = []
         self.stopped: list[str] = []
         self.start_calls: list[tuple[str, str | None]] = []
         self._start_results = start_results or {}
-        self._plugin_exists = plugin_exists
+        self._plugin_exists_flag = plugin_exists
+        # None 保持旧语义：不论查询哪个 ID 都直接返回 plugin_exists 这一个布尔值；
+        # 只有显式传入 known_plugin_ids 时才按 ID 精确判定，供需要区分「已知插件」
+        # 与「任意未知 ID」的用例使用（例如本体解析回退路径）。
+        self._known_plugin_ids = known_plugin_ids
         self._multi_version_blockers_result = (
             [] if multi_version_blockers is None else multi_version_blockers
         )
@@ -91,16 +99,23 @@ class _Harness:
         self.logger = _logger()
         self.service = PluginVersionBinding(
             plugins_root=plugins_root,
-            plugin_exists=lambda _plugin_id: self._plugin_exists,
+            plugin_exists=self._plugin_exists,
             get_instance=self.instances.get,
             instances_for_source=self._instances_for_source,
             save_instance=self._save_instance,
+            get_host_instance=self.host_instances.get,
+            save_host_instance=self._save_host_instance,
             running=lambda: {plugin_id: object() for plugin_id in self._running_ids},
             start=self._start,
             stop=self.stopped.append,
             multi_version_blockers=self._multi_version_blockers,
             log=self.logger,
         )
+
+    def _plugin_exists(self, plugin_id: str) -> bool:
+        if self._known_plugin_ids is not None:
+            return self._plugin_exists_flag and plugin_id in self._known_plugin_ids
+        return self._plugin_exists_flag
 
     def _instances_for_source(self, source_plugin_id: str) -> list[PluginInstance]:
         if self._instances_for_source_error is not None:
@@ -114,6 +129,10 @@ class _Harness:
     def _save_instance(self, instance: PluginInstance) -> None:
         self.instances[instance.instance_id] = instance
         self.saved.append(instance)
+
+    def _save_host_instance(self, instance: PluginInstance) -> None:
+        self.host_instances[instance.instance_id] = instance
+        self.saved_hosts.append(instance)
 
     def _start(self, instance_id: str, version: str | None) -> dict:
         self.start_calls.append((instance_id, version))
@@ -165,9 +184,19 @@ def test_overview_lists_installed_versions_and_instance_bindings(tmp_path: Path)
         "plugin_version": "1.0.0",
         "follow_current_version": False,
         "running": True,
+        "is_host": False,
     }
     assert bindings["DemoPluginHome"]["running"] is False
     assert bindings["DemoPluginHome"]["follow_current_version"] is True
+    assert bindings["DemoPluginHome"]["is_host"] is False
+    assert bindings["DemoPlugin"] == {
+        "instance_id": "DemoPlugin",
+        "plugin_version": None,
+        "follow_current_version": True,
+        "running": False,
+        "is_host": True,
+    }
+    assert overview["instances"][0]["is_host"] is True
 
 
 def test_overview_raises_lookup_error_for_unknown_plugin(tmp_path: Path):
@@ -233,8 +262,8 @@ def test_set_instance_version_requires_target_when_not_following(tmp_path: Path)
 
 
 def test_set_instance_version_returns_failure_for_unknown_instance(tmp_path: Path):
-    """实例不存在时直接返回失败，不产生任何副作用。"""
-    harness = _Harness(plugins_root=tmp_path)
+    """实例不存在、且该 ID 也不是已知插件本体时直接返回失败，不产生任何副作用。"""
+    harness = _Harness(plugins_root=tmp_path, known_plugin_ids=set())
 
     success, message = harness.service.set_instance_version(
         "Missing", follow_current_version=True
@@ -399,6 +428,116 @@ def test_set_instance_version_switch_to_follow_current_does_not_retry(tmp_path: 
     assert harness.instances["DemoPluginWork"].follow_current_version is True
 
 
+def test_set_instance_version_applies_to_source_plugin_host(tmp_path: Path):
+    """instance_id 等于源插件 ID 且该插件存在时按本体解析，写回本体端口而非分身端口。"""
+    _write_version_dir(tmp_path, "demoplugin", "1.0.0")
+    _write_version_dir(tmp_path, "demoplugin", "2.0.0")
+    harness = _Harness(plugins_root=tmp_path)
+
+    success, message = harness.service.set_instance_version(
+        "DemoPlugin", follow_current_version=False, plugin_version="2.0.0"
+    )
+
+    assert success is True
+    assert message == "DemoPlugin"
+    assert harness.saved == []
+    assert harness.saved_hosts[-1].instance_id == "DemoPlugin"
+    assert harness.saved_hosts[-1].mode == "host"
+    assert harness.host_instances["DemoPlugin"].follow_current_version is False
+    assert harness.stopped == ["DemoPlugin"]
+    assert harness.start_calls == [("DemoPlugin", "2.0.0")]
+
+
+def test_set_instance_version_updates_existing_host_binding(tmp_path: Path):
+    """本体已有版本绑定记录时，切换沿用同一条记录原地更新，不当作新分身处理。"""
+    _write_version_dir(tmp_path, "demoplugin", "1.0.0")
+    _write_version_dir(tmp_path, "demoplugin", "2.0.0")
+    existing_host = PluginInstance(
+        instance_id="DemoPlugin",
+        source_plugin_id="DemoPlugin",
+        mode="host",
+        follow_current_version=False,
+        plugin_version="1.0.0",
+    )
+    harness = _Harness(plugins_root=tmp_path, host_instances={"DemoPlugin": existing_host})
+
+    success, _message = harness.service.set_instance_version(
+        "DemoPlugin", follow_current_version=True
+    )
+
+    assert success is True
+    assert harness.host_instances["DemoPlugin"].follow_current_version is True
+    assert harness.saved == []
+
+
+def test_creates_version_coexistence_detects_divergence_from_pinned_host(tmp_path: Path):
+    """本体被钉在某版本时，分身切到另一版本仍会被判定为制造多版本并存。"""
+    _write_version_dir(tmp_path, "demoplugin", "1.0.0")
+    _write_version_dir(tmp_path, "demoplugin", "2.0.0")
+    _write_manifest(
+        tmp_path / "demoplugin", [("1.0.0", "v1_0_0"), ("2.0.0", "v2_0_0")], current="1.0.0"
+    )
+    clone = PluginInstance(instance_id="DemoPluginWork", source_plugin_id="DemoPlugin")
+    pinned_host = PluginInstance(
+        instance_id="DemoPlugin",
+        source_plugin_id="DemoPlugin",
+        mode="host",
+        follow_current_version=False,
+        plugin_version="1.0.0",
+    )
+    harness = _Harness(
+        plugins_root=tmp_path,
+        instances={"DemoPluginWork": clone},
+        host_instances={"DemoPlugin": pinned_host},
+        multi_version_blockers=["存在自引用绝对导入"],
+    )
+
+    success, message = harness.service.set_instance_version(
+        "DemoPluginWork", follow_current_version=False, plugin_version="2.0.0"
+    )
+
+    assert success is False
+    assert "多版本并存" in message
+    assert harness.multi_version_blockers_calls != []
+
+
+def test_creates_version_coexistence_uses_host_actual_pinned_version_not_manifest_current(
+    tmp_path: Path,
+):
+    """并存判定按本体实际绑定版本核算，而不是无条件假设本体运行清单当前版本。
+
+    清单当前版本是 2.0.0，但本体已被钉在 1.0.0；分身切到与本体实际绑定一致的
+    1.0.0 时不应被判定为制造并存——旧实现无条件把清单当前版本当作本体的运行
+    版本，会在这种场景下把这次完全安全的切换误判为并存并拒绝。
+    """
+    _write_version_dir(tmp_path, "demoplugin", "1.0.0")
+    _write_version_dir(tmp_path, "demoplugin", "2.0.0")
+    _write_manifest(
+        tmp_path / "demoplugin", [("1.0.0", "v1_0_0"), ("2.0.0", "v2_0_0")], current="2.0.0"
+    )
+    clone = PluginInstance(instance_id="DemoPluginWork", source_plugin_id="DemoPlugin")
+    pinned_host = PluginInstance(
+        instance_id="DemoPlugin",
+        source_plugin_id="DemoPlugin",
+        mode="host",
+        follow_current_version=False,
+        plugin_version="1.0.0",
+    )
+    harness = _Harness(
+        plugins_root=tmp_path,
+        instances={"DemoPluginWork": clone},
+        host_instances={"DemoPlugin": pinned_host},
+        multi_version_blockers=["存在自引用绝对导入"],
+    )
+
+    success, _message = harness.service.set_instance_version(
+        "DemoPluginWork", follow_current_version=False, plugin_version="1.0.0"
+    )
+
+    assert success is True
+    assert harness.multi_version_blockers_calls == []
+
+
 # 三、版本回收
 
 
@@ -449,6 +588,55 @@ def test_recycle_versions_protects_both_effective_and_expected_versions(tmp_path
         follow_current_version=True,
     )
     harness = _Harness(plugins_root=tmp_path, instances={"DemoPluginWork": following})
+
+    outcome = harness.service.recycle_versions("DemoPlugin")
+
+    assert outcome["removed"] == ["2.0.0"]
+    assert (plugin_root / "v1_0_0").is_dir()
+    assert (plugin_root / "v3_0_0").is_dir()
+    assert (plugin_root / "v4_0_0").is_dir()
+    assert not (plugin_root / "v2_0_0").exists()
+
+
+def test_recycle_versions_protects_hosts_effective_version_with_no_clones(tmp_path: Path):
+    """引用集合同样纳入本体的已生效版本，即便该插件没有任何分身实例。
+
+    四个已装版本，保留窗口只覆盖最近的 3.0.0 与 4.0.0；本体跟随当前版本（期望
+    版本 3.0.0），但已生效版本仍是上次成功启动时的旧版本 1.0.0——遗漏本体会
+    误删它正在用的版本。
+    """
+    _write_version_dir(tmp_path, "demoplugin", "1.0.0")
+    _write_version_dir(tmp_path, "demoplugin", "2.0.0")
+    _write_version_dir(tmp_path, "demoplugin", "3.0.0")
+    _write_version_dir(tmp_path, "demoplugin", "4.0.0")
+    plugin_root = tmp_path / "demoplugin"
+    _write_manifest(
+        plugin_root,
+        [
+            ("1.0.0", "v1_0_0"),
+            ("2.0.0", "v2_0_0"),
+            ("3.0.0", "v3_0_0"),
+            ("4.0.0", "v4_0_0"),
+        ],
+        current="3.0.0",
+    )
+    _stamp_installed_at(
+        plugin_root,
+        {
+            "1.0.0": "2020-01-01T00:00:00+00:00",
+            "2.0.0": "2020-02-01T00:00:00+00:00",
+            "3.0.0": "2020-03-01T00:00:00+00:00",
+            "4.0.0": "2020-04-01T00:00:00+00:00",
+        },
+    )
+    host = PluginInstance(
+        instance_id="DemoPlugin",
+        source_plugin_id="DemoPlugin",
+        mode="host",
+        plugin_version="1.0.0",
+        follow_current_version=True,
+    )
+    harness = _Harness(plugins_root=tmp_path, host_instances={"DemoPlugin": host})
 
     outcome = harness.service.recycle_versions("DemoPlugin")
 

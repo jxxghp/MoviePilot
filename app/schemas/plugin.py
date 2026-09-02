@@ -93,6 +93,7 @@ class PluginInstanceVersionBinding(BaseModel):  # type: ignore[misc]
     plugin_version: Optional[str] = Field(default=None, description="该实例已生效的插件版本")
     follow_current_version: bool = Field(description="是否跟随插件当前版本")
     running: bool = Field(description="该实例当前是否运行中")
+    is_host: bool = Field(default=False, description="是否为源插件本体自身，而非共享源码的分身")
 
 
 class PluginVersionOverview(BaseModel):  # type: ignore[misc]

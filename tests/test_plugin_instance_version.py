@@ -394,6 +394,73 @@ def test_load_instance_explicit_version_overrides_binding(tmp_path: Path):
     assert plugins[0].marker == "old"
 
 
+def test_load_host_follows_manifest_current_version_without_binding(tmp_path: Path):
+    """源插件本体从未被绑定过版本时，加载器按版本元信息登记的当前版本取源码。"""
+    _write_version(tmp_path, "versioned", "1.0.0", marker="old")
+    _write_version(tmp_path, "versioned", "2.0.0", marker="new")
+    _write_manifest(
+        tmp_path / "versioned",
+        [("1.0.0", "v1_0_0"), ("2.0.0", "v2_0_0")],
+        current="2.0.0",
+    )
+
+    plugins = _make_loader(tmp_path).load(
+        "versioned", ["versioned"], lambda candidate: hasattr(candidate, "init_plugin")
+    )
+
+    assert plugins[0].plugin_version == "2.0.0"
+    assert plugins[0].marker == "new"
+
+
+def test_load_host_uses_bound_version_when_not_following_current(tmp_path: Path):
+    """本体绑定为不跟随当前版本时，加载器固定使用绑定版本的源码。"""
+    _write_version(tmp_path, "versioned", "1.0.0", marker="old")
+    _write_version(tmp_path, "versioned", "2.0.0", marker="new")
+    _write_manifest(
+        tmp_path / "versioned",
+        [("1.0.0", "v1_0_0"), ("2.0.0", "v2_0_0")],
+        current="2.0.0",
+    )
+    binding = PluginInstance(
+        instance_id="versioned",
+        source_plugin_id="versioned",
+        mode="host",
+        follow_current_version=False,
+        plugin_version="1.0.0",
+    )
+    loader = _make_loader(tmp_path, host_binding=lambda plugin_id: binding if plugin_id == "versioned" else None)
+
+    plugins = loader.load(
+        "versioned", ["versioned"], lambda candidate: hasattr(candidate, "init_plugin")
+    )
+
+    assert plugins[0].plugin_version == "1.0.0"
+    assert plugins[0].marker == "old"
+
+
+def test_load_host_falls_back_to_current_when_bound_directory_missing(tmp_path: Path):
+    """本体绑定的版本目录已不存在时回落当前版本，而不是让本体加载失败。"""
+    _write_version(tmp_path, "versioned", "2.0.0", marker="new")
+    _write_manifest(tmp_path / "versioned", [("2.0.0", "v2_0_0")], current="2.0.0")
+    binding = PluginInstance(
+        instance_id="versioned",
+        source_plugin_id="versioned",
+        mode="host",
+        follow_current_version=False,
+        plugin_version="9.9.9",
+    )
+    warnings: list[str] = []
+    loader = _make_loader(tmp_path, host_binding=lambda plugin_id: binding if plugin_id == "versioned" else None)
+    loader._logger.warning = warnings.append
+
+    plugins = loader.load(
+        "versioned", ["versioned"], lambda candidate: hasattr(candidate, "init_plugin")
+    )
+
+    assert plugins[0].plugin_version == "2.0.0"
+    assert warnings and "9.9.9" in warnings[0]
+
+
 # 四、PluginLifecycle 启动成功后登记已生效版本
 
 
