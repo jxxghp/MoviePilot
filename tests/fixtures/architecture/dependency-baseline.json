@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 7873,
-  "edge_sha256": "0f2cb35f34e4c4f3e2546e4416595b15ebe804f23f453a40bdda98fda35f2c40",
+  "edge_count": 7874,
+  "edge_sha256": "b4ca47899f8af4366446ad76546b5b0cf3c5e87f38b603d593241acd52fba9f3",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5033,7 +5033,6 @@
     "app.chain.workflow -> app.schemas.workflow",
     "app.cli -> app.application",
     "app.cli -> app.application.backup",
-    "app.cli -> app.application.configuration",
     "app.cli -> app.doctor",
     "app.cli -> app.doctor.formatters",
     "app.cli -> app.runtime",
@@ -8407,6 +8406,8 @@
     "app.startup.composition.security -> app.db.oper.systemconfig",
     "app.startup.composition.security -> app.runtime",
     "app.startup.composition.security -> app.runtime.cache",
+    "app.startup.composition.security -> app.runtime.log",
+    "app.startup.composition.security -> app.runtime.settings",
     "app.startup.composition.security -> app.startup",
     "app.startup.composition.security -> app.startup.composition",
     "app.startup.composition.security -> app.startup.composition.context",
