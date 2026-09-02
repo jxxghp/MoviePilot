@@ -1005,7 +1005,12 @@ def test_plugin_reload_refreshes_scheduler_services_idempotently(monkeypatch):
 
     assert set(scheduler._jobs) == {"DemoPlugin_new"}
     service = scheduler._jobs["DemoPlugin_new"]
-    assert service["func"] is current_func
+    # 定时服务回调经 wrap_for_plugin_instance 包了一层日志实例上下文绑定，
+    # 不再是原始 callable 本身；用 __wrapped__ 核对包装前后是同一个函数，
+    # 并实测调用确实透传到原始 Mock。
+    assert service["func"].__wrapped__ is current_func
+    service["func"](marker="check")
+    current_func.assert_called_once_with(marker="check")
     assert service["kwargs"] == {"marker": "new"}
     assert set(backend.jobs) == {"DemoPlugin_new"}
     registered_job = backend.jobs["DemoPlugin_new"]

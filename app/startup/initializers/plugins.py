@@ -130,7 +130,7 @@ from app.runtime.extensions.plugin.system import (
     configure_plugin_system,
     get_plugin_system,
 )
-from app.runtime.log import logger
+from app.runtime.log import logger, set_plugin_instance_log_level
 from app.runtime.loop import main_loop_registry
 from app.runtime.resources import acquire_managed_resource
 from app.runtime.settings import get_runtime_setting
@@ -181,6 +181,8 @@ def _plugin_instance_from_record(record: PluginInstanceDescriptor) -> PluginInst
         mode=record.mode,
         plugin_version=record.plugin_version,
         follow_current_version=record.follow_current_version,
+        log_level=record.log_level,
+        log_expires_at=record.log_expires_at,
     )
 
 
@@ -195,7 +197,33 @@ def _save_plugin_instance_record(instance: PluginInstance) -> None:
         mode=instance.mode,
         plugin_version=instance.plugin_version,
         follow_current_version=instance.follow_current_version,
+        log_level=instance.log_level,
+        log_expires_at=(
+            instance.log_expires_at.isoformat() if instance.log_expires_at else None
+        ),
     )
+
+
+def _prime_plugin_instance_log_levels() -> None:
+    """进程启动时把数据库中已设置的实例日志等级覆盖预热进运行期缓存。
+
+    过期覆盖也照常预热：过期判定统一在读取时惰性执行（见 `app.runtime.log`），
+    这里不重复实现一份过期过滤逻辑。单条记录预热失败不得阻断其余记录。
+    """
+    for record in PluginInstanceOper().list_all():
+        if not record.log_level:
+            continue
+        try:
+            expires_at = (
+                datetime.fromisoformat(record.log_expires_at)
+                if record.log_expires_at
+                else None
+            )
+            set_plugin_instance_log_level(record.instance_id, record.log_level, expires_at)
+        except ValueError as error:
+            logger.warning(
+                f"预热插件实例 {record.instance_id} 的日志等级覆盖失败：{error}"
+            )
 
 
 def _build_plugin_instance_directory() -> PluginInstanceDirectory:
@@ -484,6 +512,7 @@ def configure_plugin_services() -> None:
     ))
     configure_plugin_database(_build_plugin_database())
     configure_plugin_instance_directory(_build_plugin_instance_directory())
+    _prime_plugin_instance_log_levels()
 
 
 def _register_plugin_runtime(plugin_id: str) -> None:

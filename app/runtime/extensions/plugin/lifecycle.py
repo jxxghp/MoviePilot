@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Optional, ParamSpec, TypeVar, cast
 
 from app.runtime.extensions.plugin.database import PluginDatabase
+from app.runtime.log import bind_plugin_instance
 from app.runtime.observability import record_metric
 from app.schemas.plugin import PluginRuntimeStatus
 
@@ -144,8 +145,9 @@ class PluginLifecycle:
                     continue
                 self._remove_classification(current_id)
                 self._classes[current_id] = plugin
-                instance = plugin()
-                instance.init_plugin(self._plugin_config(current_id))
+                with bind_plugin_instance(current_id):
+                    instance = plugin()
+                    instance.init_plugin(self._plugin_config(current_id))
                 self._ensure_database(current_id, instance)
                 enabled = bool(instance.get_state())
                 if enabled:
@@ -223,7 +225,8 @@ class PluginLifecycle:
             return
         self._remove_classification(plugin_id)
         try:
-            plugin.init_plugin(config)
+            with bind_plugin_instance(plugin_id):
+                plugin.init_plugin(config)
             enabled = bool(plugin.get_state())
             if enabled:
                 self._refresh_classification_safely(plugin_id, plugin)

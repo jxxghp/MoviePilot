@@ -9,6 +9,7 @@ from app.runtime.extensions.plugin.contracts import (
     supports_plugin_hook,
 )
 from app.runtime.log import logger as default_logger
+from app.runtime.log import wrap_for_plugin_instance
 from app.schemas.plugin import PluginDashboard
 
 
@@ -51,7 +52,7 @@ class PluginProjection:
         return commands
 
     def apis(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合插件 API 并补充宿主路径和默认认证方式。"""
+        """聚合插件 API 并补充宿主路径和默认认证方式，端点绑定发起实例的日志上下文。"""
         apis: list[dict] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_api"):
@@ -62,6 +63,9 @@ class PluginProjection:
                     api["path"] = f"/{plugin_id}{api['path']}"
                     if not api.get("auth"):
                         api["auth"] = "apikey"
+                    endpoint = api.get("endpoint")
+                    if callable(endpoint):
+                        api["endpoint"] = wrap_for_plugin_instance(endpoint, plugin_id)
                     apis.append(api)
             except Exception as error:
                 self._logger.error(f"获取插件 {plugin_id} API出错：{str(error)}")

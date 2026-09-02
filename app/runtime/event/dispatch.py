@@ -5,15 +5,25 @@ from __future__ import annotations
 import inspect
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 from app.runtime.correlation import correlation_scope
 from app.runtime.event.binding import EventBindingResolver
 from app.runtime.event.registry import EventRegistry
 from app.runtime.execution import run_in_threadpool
-from app.runtime.log import logger
+from app.runtime.log import bind_plugin_instance, logger
 from app.runtime.observability import observe_duration
 from app.schemas.types import EventType
+
+
+def _instance_binding_scope(class_name: str) -> AbstractContextManager[None]:
+    """处理器归属某个类时绑定其插件实例日志上下文，自由函数处理器不绑定。
+
+    ``class_name`` 就是声明该处理器的类的 ``__name__``；宿主类处理器同样会
+    命中这里，但缓存里没有它们的等级覆盖记录，过滤时自然回落全局等级。
+    """
+    return bind_plugin_instance(class_name) if class_name else nullcontext()
 
 
 class EventDispatcher:
@@ -202,7 +212,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ):
+                ), _instance_binding_scope(class_name):
                     method(event)
             except Exception as err:
                 self._error_handler(
@@ -229,7 +239,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ):
+                ), _instance_binding_scope(class_name):
                     method(event)
             except Exception as err:
                 self._error_handler(
@@ -253,7 +263,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ):
+                ), _instance_binding_scope(class_name):
                     if inspect.iscoroutinefunction(method):
                         await method(event)
                     elif binding.run_sync_in_threadpool or not class_name:
@@ -285,7 +295,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ):
+                ), _instance_binding_scope(class_name):
                     if inspect.iscoroutinefunction(method):
                         await method(event)
                     elif binding.run_sync_in_threadpool or not class_name:

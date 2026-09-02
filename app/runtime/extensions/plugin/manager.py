@@ -5,6 +5,7 @@ import posixpath
 import threading
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import (
     Any,
@@ -213,6 +214,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_clone = self._plugin_runtime.clone
         self._plugin_classification = self._plugin_runtime.classification
         self._plugin_version_binding = self._plugin_runtime.version_binding
+        self._plugin_log_level = self._plugin_runtime.log_level
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
             "plugins",
@@ -1278,6 +1280,42 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return False, str(error)
+
+    def get_plugin_instance_log_levels(self, plugin_id: str) -> List[Dict[str, Any]]:
+        """
+        查询插件全部实例（含本体）当前的日志等级设置
+        :param plugin_id: 插件ID
+        :return: 每个实例的等级设置条目列表
+        :raise LookupError: 插件不存在
+        """
+        return self._plugin_log_level.list_levels(plugin_id)
+
+    def set_plugin_instance_log_level(
+        self,
+        plugin_id: str,
+        instance_id: str,
+        level: str,
+        expires_at: Optional[datetime] = None,
+    ) -> None:
+        """
+        设置指定插件实例的日志等级覆盖，运行期立即生效
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :param level: 目标日志等级
+        :param expires_at: 覆盖失效时间，None 表示不过期
+        :raise LookupError: 插件不存在，或实例不存在／不归属该插件
+        :raise ValueError: level 不是受支持的等级名
+        """
+        self._plugin_log_level.set_level(plugin_id, instance_id, level, expires_at)
+
+    def clear_plugin_instance_log_level(self, plugin_id: str, instance_id: str) -> None:
+        """
+        清除指定插件实例的日志等级覆盖，运行期立即回落全局等级
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :raise LookupError: 插件不存在，或实例不存在／不归属该插件
+        """
+        self._plugin_log_level.clear_level(plugin_id, instance_id)
 
     def recycle_plugin_versions(self, plugin_id: str) -> Dict[str, Any]:
         """

@@ -21,7 +21,7 @@ from app.application.scheduling import (  # noqa: E402
 )
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.workflow import WorkflowSnapshot
-from app.runtime.log import logger
+from app.runtime.log import logger, wrap_for_plugin_instance
 from app.runtime.scheduling import TimerUtils
 from app.scheduler.contract import _SchedulerOwnerBase
 from app.schemas.message import Message
@@ -427,7 +427,7 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
                     job = JobSpec(
                         job_id,
                         service["name"],
-                        service["func"],
+                        wrap_for_plugin_instance(service["func"], pid),
                         f"plugin:{pid}",
                         kwargs=service.get("func_kwargs") or {},
                     ).to_runtime_state()
