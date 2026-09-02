@@ -247,28 +247,50 @@ oper.delete(sid=1)                    # Delete by key
 Plugins that need SQL storage beyond `save_data`/`get_data` own an isolated
 database rather than a table inside the host database. The framework lives in
 `app/db/plugin/`: SQLite deploys one file per plugin at
-`PLUGIN_DATA_PATH/<PluginId>/plugin.db`; PostgreSQL deploys one schema
-`plugin_<pluginid>` that reuses the host engine via `schema_translate_map`.
+`PLUGIN_DATA_PATH/<PluginId>/plugin.db`; PostgreSQL deploys one schema that
+reuses the host engine via `schema_translate_map`. The schema name is
+`plugin_<pluginid>` when the plugin id already consists of lowercase ASCII
+alphanumerics and underscores and the result fits in 63 bytes; otherwise the
+sanitized name carries an 8-hex-character suffix derived from the plugin id,
+so `My-Plugin`, `My_Plugin` and `my_plugin` never share one schema — uninstall
+issues `DROP SCHEMA ... CASCADE` and a shared name would delete another
+plugin's data.
 
 A plugin declares its schema with `get_database_models()` and/or
 `get_database_migrations()`. The host pulls both hooks once, right after
 `init_plugin()` returns, and creates nothing when both are empty — most
 plugins never pay for this framework. A declared migrations directory takes
-precedence over declared models and is applied with `alembic upgrade head`.
+precedence over declared models and is applied with `alembic upgrade head`;
+it must be an absolute, existing directory — `ensure` raises
+`FileNotFoundError` before creating anything rather than leaving behind a
+database with neither tables nor a version stamp.
 
 Models must inherit `app.sdk.database.plugin_declarative_base()`, which mints
 a fresh `MetaData` per call so a plugin's tables never collide with
 `app.db.base.Base.metadata` or with another plugin's same-named tables. At
 runtime, `_PluginBase.get_database()` returns a `PluginDatabaseHandle` for
-opening sessions against the plugin's own engine.
+opening sessions against the plugin's own engine. Declaring nothing is not the
+same as never having a database: `get_database()` creates the SQLite file (or
+the PostgreSQL schema) on first call, so a plugin that only runs raw SQL still
+gets an isolated database.
 
 Lifecycle is strictly ensure/release/destroy: plugin start calls `ensure`
 after `init_plugin()`; stop, reload and remove call `release` only, which
-disposes the connection pool but never touches data. Only resetting a
-plugin's data or uninstalling a clone/virtual instance calls `destroy`
-(delete the SQLite file and its `-wal`/`-shm` sidecars, or `DROP SCHEMA
-... CASCADE`). Stopping or uninstalling an ordinary plugin never destroys its
-database, mirroring the existing `plugindata` retention semantics.
+closes the handle's thread-local sessions and never touches data. `release`
+disposes the connection pool only under SQLite, where the handle owns its
+engine; under PostgreSQL the handle is a view over the host engine, and
+disposing it would take the host and every other plugin down with it. Only
+resetting a plugin's data or uninstalling a clone/virtual instance calls
+`destroy` (delete the SQLite file and its `-wal`/`-shm` sidecars, or `DROP
+SCHEMA ... CASCADE`). Stopping or uninstalling an ordinary plugin never
+destroys its database, mirroring the existing `plugindata` retention
+semantics.
+
+Uninstall destroys the database before the plugin is stopped, so a stop hook
+calling `get_database()` recreates it. A destroyed plugin id is remembered
+until its next `release` — which destroys the recreated database instead of
+merely releasing it — or its next `ensure`, which clears the mark because the
+plugin is legitimately starting again.
 
 `db_query` / `db_update` keep their existing automatic-Session fallback bound
 to the **host** `ScopedSession()`; they are not aware of plugin-owned

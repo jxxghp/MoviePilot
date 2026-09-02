@@ -42,10 +42,10 @@ class PluginDatabase:
         self._destroy = destroy
 
     def ensure(
-        self,
-        plugin_id: str,
-        models: Sequence[type],
-        migrations: Path | None,
+            self,
+            plugin_id: str,
+            models: Sequence[type],
+            migrations: Path | None,
     ) -> None:
         """按插件声明建立自有数据库，两项声明都为空时不建库。"""
         self._ensure(plugin_id, models, migrations)

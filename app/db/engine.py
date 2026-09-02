@@ -167,16 +167,6 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
     """
     获取SQLite数据库引擎
     """
-    # 连接参数
-    _connect_args = {
-        "timeout": get_runtime_setting("DB_TIMEOUT"),
-    }
-    # 允许部署侧注入驱动级参数（如 PgBouncer 事务模式下的 statement_cache_size）
-    _connect_args.update(get_runtime_setting("DB_CONNECT_ARGS") or {})
-    # 启用 WAL 模式时的额外配置
-    if get_runtime_setting("DB_WAL_ENABLE"):
-        _connect_args["check_same_thread"] = False
-
     # 创建同步引擎
     if not is_async:
         engine = build_sqlite_engine(get_runtime_setting("DB_SQLITE_URL")())
@@ -191,6 +181,16 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
 
         return engine
     else:
+        # 连接参数
+        _connect_args = {
+            "timeout": get_runtime_setting("DB_TIMEOUT"),
+        }
+        # 允许部署侧注入驱动级参数（如 PgBouncer 事务模式下的 statement_cache_size）
+        _connect_args.update(get_runtime_setting("DB_CONNECT_ARGS") or {})
+        # 启用 WAL 模式时的额外配置
+        if get_runtime_setting("DB_WAL_ENABLE"):
+            _connect_args["check_same_thread"] = False
+
         # 数据库参数，只能使用 NullPool
         _db_kwargs = {
             "url": get_runtime_setting("DB_SQLITE_URL")("aiosqlite"),

@@ -255,7 +255,9 @@ class _PluginBase(metaclass=ABCMeta):
     def get_database_migrations(self) -> Optional[Union[str, Path]]:
         """
         声明插件自有数据库的 Alembic 迁移脚本目录
-        目录须符合 Alembic script_location 布局
+        目录须符合 Alembic script_location 布局，且必须是绝对路径
+        （相对路径按宿主进程的当前工作目录解析，插件无法预期它指向哪里，
+        建议用 Path(__file__).parent / "migrations" 之类的写法取得）
 
         声明后插件启动时执行 alembic upgrade head，不再按 get_database_models() 建表。
         PostgreSQL 下迁移脚本的 env.py 必须从 context.config.attributes["connection"]

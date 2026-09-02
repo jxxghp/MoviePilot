@@ -402,3 +402,55 @@ def test_plugin_runtime_database_port_does_not_import_the_database_layer():
             imported_modules.append(node.module)
 
     assert not any(module.startswith("app.db") for module in imported_modules)
+
+
+def test_start_releases_the_database_of_a_plugin_that_failed_to_load():
+    """建库失败的插件不会进入运行态，其句柄在失败分支就地释放。"""
+    calls: list[tuple] = []
+    plugin_cls = _make_plugin_class("DemoPlugin")
+
+    def _raise_ensure(plugin_id, _models, _migrations):
+        """模拟建库失败，但句柄可能已经建立。"""
+        calls.append(("ensure", plugin_id))
+        raise RuntimeError("ensure failed")
+
+    lifecycle = _build_lifecycle(
+        load_plugins=lambda *_a, **_kw: [plugin_cls],
+        installed_plugins=lambda: ["DemoPlugin"],
+        database=lambda: PluginDatabase(
+            ensure=_raise_ensure,
+            release=lambda plugin_id: calls.append(("release", plugin_id)),
+        ),
+    )
+
+    lifecycle.start("DemoPlugin")
+
+    assert [call for call in calls if call[0] == "release"] == [("release", "DemoPlugin")]
+    assert "DemoPlugin" not in lifecycle._running
+
+
+def test_stop_all_releases_plugins_that_never_reached_the_running_registry():
+    """整体停止会释放启动中途失败、只登记在类注册表里的插件。"""
+    calls: list[tuple] = []
+    plugin_cls = _make_plugin_class("DemoPlugin")
+
+    def _raise_ensure(_plugin_id, _models, _migrations):
+        """模拟建库失败。"""
+        raise RuntimeError("ensure failed")
+
+    lifecycle = _build_lifecycle(
+        load_plugins=lambda *_a, **_kw: [plugin_cls],
+        installed_plugins=lambda: ["DemoPlugin"],
+        database=lambda: PluginDatabase(
+            ensure=_raise_ensure,
+            release=lambda plugin_id: calls.append(("release", plugin_id)),
+        ),
+    )
+    lifecycle.start()
+    assert "DemoPlugin" not in lifecycle._running
+    assert "DemoPlugin" in lifecycle._classes
+    calls.clear()
+
+    lifecycle.stop()
+
+    assert ("release", "DemoPlugin") in calls

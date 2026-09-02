@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from app.runtime.settings import get_runtime_setting
@@ -16,6 +17,10 @@ __all__ = [
 DATABASE_FILENAME = "plugin.db"
 # SQLite WAL 模式下与库文件同生共死的边车文件后缀
 SIDECAR_SUFFIXES = ("-wal", "-shm")
+# PostgreSQL 标识符上限 63 字节，超出部分会被静默截断成另一个 schema
+SCHEMA_NAME_MAX_LENGTH = 63
+# 归一改写了插件标识时用于区分两个插件的哈希长度
+SCHEMA_NAME_HASH_LENGTH = 8
 
 
 def sqlite_database_path(plugin_id: str) -> Path:
@@ -44,12 +49,27 @@ def plugin_schema_name(plugin_id: str) -> str:
     """
     按插件标识拼出 PostgreSQL schema 名。
 
-    只保留小写字母、数字与下划线，避免插件标识中的字符逃逸成标识符片段。
+    只保留 ASCII 小写字母、数字与下划线，避免插件标识中的字符逃逸成标识符片段，也让
+    名字的字符数与字节数一致。归一是多对一的：``My-Plugin``、``My_Plugin`` 与
+    ``my_plugin`` 会折叠到同一个名字，而卸载一个插件执行的是 ``DROP SCHEMA ...
+    CASCADE``，折叠意味着删掉另一个插件的全部数据。
+    因此只要归一改写过标识，就追加插件标识的哈希把它们重新分开；超长标识同样追加哈希
+    再截断，截断本身也是一次折叠。
     :param plugin_id: 插件标识
-    :return: 合法的 schema 名
+    :return: 合法且与插件标识一一对应的 schema 名
     """
-    raw = f"plugin_{plugin_id}".lower()
-    return "".join(
-        character if character.isalnum() or character == "_" else "_"
-        for character in raw
+    raw = f"plugin_{plugin_id}"
+    sanitized = "".join(
+        character
+        if (character.isascii() and character.isalnum()) or character == "_"
+        else "_"
+        for character in raw.lower()
     )
+    if sanitized == raw and len(sanitized) <= SCHEMA_NAME_MAX_LENGTH:
+        return sanitized
+    digest = hashlib.sha1(
+        plugin_id.encode("utf-8"),
+        usedforsecurity=False,
+    ).hexdigest()[:SCHEMA_NAME_HASH_LENGTH]
+    suffix = f"_{digest}"
+    return f"{sanitized[:SCHEMA_NAME_MAX_LENGTH - len(suffix)]}{suffix}"

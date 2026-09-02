@@ -142,6 +142,9 @@ class PluginLifecycle:
                 status = PluginRuntimeStatus.LOAD_FAILED
                 self._runtime_status_writer(plugin_id or current_id, status)
                 results[plugin_id or current_id] = status
+                # 建库发生在进入运行态之前：失败的插件不会出现在 _running 里，卸载路径
+                # 因此够不到它，句柄只能在这里释放
+                self._release_databases((current_id,))
                 self._logger.error(
                     f"加载插件 {current_id} 出错：{error} - {traceback.format_exc()}"
                 )
@@ -326,7 +329,8 @@ class PluginLifecycle:
                 self._quiesced_hooks.pop(runtime_id, None)
                 self._release_databases((runtime_id,))
             else:
-                released_ids = tuple(self._running)
+                # 启动中途失败的插件只登记在 _classes 里，漏掉它就漏掉它的连接池
+                released_ids = tuple(dict.fromkeys((*self._running, *self._classes)))
                 self._classes.clear()
                 self._running.clear()
                 self._quiesced_hooks.clear()

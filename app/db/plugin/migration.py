@@ -28,7 +28,10 @@ def run_migrations(handle: PluginDatabaseHandle, directory: Path) -> None:
     config.file_config = ConfigParser(interpolation=None)
     config.set_main_option("script_location", str(directory))
     if handle.owns_engine:
-        config.set_main_option("sqlalchemy.url", f"sqlite:///{handle.db_path}")
+        config.set_main_option(
+            "sqlalchemy.url",
+            handle.engine.url.render_as_string(hide_password=False),
+        )
         upgrade(config, "head")
         return
     with handle.engine.connect() as connection:

@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.orm import scoped_session as ScopedSessionRegistry
+from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
 __all__ = ["PluginDatabaseHandle"]
 
@@ -25,7 +24,7 @@ class PluginDatabaseHandle:
     plugin_id: str
     engine: Engine
     session_factory: sessionmaker
-    scoped_session_factory: ScopedSessionRegistry
+    scoped_session_factory: scoped_session
     db_path: Path | None
     schema: str | None
     owns_engine: bool
