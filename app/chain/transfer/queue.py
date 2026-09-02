@@ -373,6 +373,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         return TransferQueueService(
             register_task=self._TransferChain__put_to_jobview,
             admit_task=self._TransferChain__admit_transfer,
+            claim_task=self._TransferChain__claim_admitted_task,
             enqueue=self._queue.put,
             before_enqueue=self._register_scrape_batch_task,
             enqueue_failed=self._TransferChain__record_enqueue_failure,
@@ -615,7 +616,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                 raise TransferLeaseLostError(f"整理任务租约已经失效：{task_id}")
 
     def _TransferChain__claim_task_for_execution(self, task: TransferTask) -> None:
-        """让普通队列任务在业务执行前取得唯一租约，恢复任务复用既有 token。"""
+        """校验队列任务既有租约，并为兼容旧队列项补取唯一租约。"""
         if task.preview:
             return
         self._TransferChain__ensure_lease_runtime_state()
@@ -636,6 +637,27 @@ class TransferQueueOwner(_TransferOwnerBase):
         if claimed is None:
             raise TransferLeaseLostError(
                 f"整理任务已由其他 worker claim：{task_id}"
+            )
+        try:
+            self._TransferChain__bind_claimed_admission(task, claimed)
+        except Exception as err:
+            self._TransferChain__release_admission_claim(claimed, error=str(err))
+            raise
+
+    def _TransferChain__claim_admitted_task(
+            self,
+            task: TransferTask,
+            admission: TransferAdmission,
+    ) -> None:
+        """普通任务进入内存队列前取得租约，避免恢复调度抢占等待项。"""
+        claimed = self._transfer_admissions.claim_task(
+            task_id=admission.task_id,
+            owner_id=self._worker_owner_id,
+            lease_seconds=self._WORKER_LEASE_SECONDS,
+        )
+        if claimed is None:
+            raise TransferLeaseLostError(
+                f"整理任务已由其他 worker claim：{admission.task_id}"
             )
         try:
             self._TransferChain__bind_claimed_admission(task, claimed)
@@ -728,6 +750,12 @@ class TransferQueueOwner(_TransferOwnerBase):
         """把已 claim 的恢复任务送入普通队列，禁止再次准入或二次 claim。"""
         self._TransferChain__assert_owned_lease(task)
         if not self._TransferChain__put_to_jobview(task):
+            logger.warning(
+                "恢复任务被内存作业视图判定为重复，未进入队列：task_id=%s, source=%s:%s",
+                task.admission_task_id,
+                task.fileitem.storage,
+                task.fileitem.path,
+            )
             return False
         try:
             self._register_scrape_batch_task(task)
@@ -916,6 +944,12 @@ class TransferQueueOwner(_TransferOwnerBase):
             logger.info(
                 "待整理文件回放收到关闭请求，已送入 %s 个文件，其余登记保持待处理",
                 replayed,
+            )
+        elif replayed == 0:
+            logger.warning(
+                "待整理文件回放未产生可执行队列任务：本次 claim %s 个；"
+                "逐任务原因已写入前序日志和 transferpending.last_error",
+                len(pendings),
             )
         else:
             logger.info(f"✓ 待整理文件回放完成，{replayed} 个文件已重新送入整理链")

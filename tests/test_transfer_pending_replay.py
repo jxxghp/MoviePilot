@@ -495,6 +495,8 @@ def test_replay_releases_claim_when_jobview_rejects_recovered_task(
     admissions.claim_recoverable.return_value = [admission]
     admissions.release_claim.return_value = True
     chain = _build_chain(admissions)
+    warning = MagicMock()
+    monkeypatch.setattr("app.chain.transfer.queue.logger.warning", warning)
     monkeypatch.setattr(
         chain,
         "_TransferChain__queue_planned_replay",
@@ -507,6 +509,11 @@ def test_replay_releases_claim_when_jobview_rejects_recovered_task(
         task_id="task-1",
         lease_token="lease-task-1",
         error="恢复任务未进入内存队列",
+    )
+    warning.assert_called_once_with(
+        "待整理文件回放未产生可执行队列任务：本次 claim %s 个；"
+        "逐任务原因已写入前序日志和 transferpending.last_error",
+        1,
     )
     assert chain._owned_leases == {}
 

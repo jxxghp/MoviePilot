@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -9,6 +10,7 @@ from app.application.transfer.workflow import (
     TransferAdmission,
     TransferPlanningInput,
     TransferQueueService,
+    TransferTask,
 )
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.models.transferhistory import TransferHistory
@@ -44,6 +46,7 @@ def _service(**overrides):
             updated_at="2026-08-27 10:00:00",
             planning_input=_planning_input(),
         )),
+        "claim_task": Mock(),
         "enqueue": Mock(),
         "before_enqueue": Mock(),
         "enqueue_failed": Mock(),
@@ -56,7 +59,7 @@ def _service(**overrides):
 
 
 def test_transfer_queue_service_put_preserves_registration_order():
-    """入队必须先登记视图和 durable admission，再登记批次并写队列。"""
+    """入队必须先登记视图、准入并取得租约，再登记批次并写队列。"""
     calls = []
     service, _ = _service(
         register_task=lambda _task: calls.append("register") or True,
@@ -69,13 +72,14 @@ def test_transfer_queue_service_put_preserves_registration_order():
             updated_at="2026-08-27 10:00:00",
             planning_input=_planning_input(),
         ),
+        claim_task=lambda _task, _admission: calls.append("claim"),
         before_enqueue=lambda _task: calls.append("batch"),
         enqueue=lambda _item: calls.append("queue"),
     )
 
     task = make_task(1)
     assert service.put(task, Mock()) is True
-    assert calls == ["register", "admit", "batch", "queue"]
+    assert calls == ["register", "admit", "claim", "batch", "queue"]
     assert task.admission_task_id == "task-1"
 
 
@@ -87,6 +91,7 @@ def test_transfer_queue_service_rejects_duplicate_without_side_effects():
     dependencies["before_enqueue"].assert_not_called()
     dependencies["enqueue"].assert_not_called()
     dependencies["admit_task"].assert_not_called()
+    dependencies["claim_task"].assert_not_called()
 
 
 def test_transfer_queue_service_blocks_enqueue_when_admission_fails():
@@ -100,8 +105,68 @@ def test_transfer_queue_service_blocks_enqueue_when_admission_fails():
         service.put(task, Mock())
 
     dependencies["remove_task"].assert_called_once_with(task.fileitem)
+    dependencies["claim_task"].assert_not_called()
     dependencies["before_enqueue"].assert_not_called()
     dependencies["enqueue"].assert_not_called()
+
+
+def test_transfer_queue_service_blocks_enqueue_when_claim_fails() -> None:
+    """准入后的租约竞争失败必须撤销作业视图，不能留下等待占位。"""
+    service, dependencies = _service(
+        claim_task=Mock(side_effect=RuntimeError("already claimed")),
+    )
+    task = make_task(1)
+
+    with pytest.raises(RuntimeError, match="already claimed"):
+        service.put(task, Mock())
+
+    dependencies["remove_task"].assert_called_once_with(task.fileitem)
+    dependencies["before_enqueue"].assert_not_called()
+    dependencies["enqueue"].assert_not_called()
+
+
+def test_transfer_queue_service_claim_fences_recovery_owner(tmp_path: Path) -> None:
+    """普通任务等待内存队列期间必须持有租约，恢复 owner 不得抢占。"""
+    engine = create_engine(f"sqlite:///{tmp_path / 'queue-claim.db'}")
+    TransferHistory.__table__.create(engine)
+    TransferPending.__table__.create(engine)
+    factory = sessionmaker(bind=engine)
+    repository = TransactionalTransferAdmissionRepository(factory)
+    task = make_task(1)
+    task.bind_planning_input(_planning_input(task.fileitem.path))
+
+    def claim_task(item: TransferTask, admission: TransferAdmission) -> None:
+        """使用真实仓储 claim 并把租约绑定到内存任务。"""
+        claimed = repository.claim_task(
+            task_id=admission.task_id,
+            owner_id="queue-worker",
+            lease_seconds=120,
+        )
+        assert claimed is not None
+        assert claimed.lease_owner is not None
+        assert claimed.lease_token is not None
+        item.bind_execution_lease(
+            owner_id=claimed.lease_owner,
+            lease_token=claimed.lease_token,
+        )
+
+    service, _ = _service(
+        admit_task=lambda item: repository.admit(
+            storage=item.fileitem.storage,
+            src_path=item.fileitem.path,
+            planning_input=item.planning_input,
+        ),
+        claim_task=claim_task,
+    )
+
+    assert service.put(task, Mock()) is True
+    assert task.lease_token is not None
+    assert repository.claim_recoverable(
+        owner_id="recovery-worker",
+        limit=100,
+        lease_seconds=120,
+    ) == []
+    engine.dispose()
 
 
 def test_transfer_queue_service_keeps_admission_when_enqueue_fails():

@@ -490,6 +490,12 @@ def test_durable_task_identity_flows_to_unsettled_terminal_claim_release(monkeyp
     monkeypatch.setattr(global_vars, "STOP_EVENT", threading.Event())
 
     assert chain.put_to_queue(task) is True
+    assert task.lease_token == "lease-durable-task-id"
+    admissions.claim_task.assert_called_once_with(
+        task_id="durable-task-id",
+        owner_id="worker-owner",
+        lease_seconds=120,
+    )
     stop_event = threading.Event()
     worker = threading.Thread(
         target=chain._TransferChain__start_transfer,
@@ -503,11 +509,7 @@ def test_durable_task_identity_flows_to_unsettled_terminal_claim_release(monkeyp
 
     assert worker.is_alive() is False
     assert task.admission_task_id == "durable-task-id"
-    admissions.claim_task.assert_called_once_with(
-        task_id="durable-task-id",
-        owner_id="worker-owner",
-        lease_seconds=120,
-    )
+    admissions.claim_task.assert_called_once()
     admissions.release_claim.assert_called_once_with(
         task_id="durable-task-id",
         lease_token="lease-durable-task-id",
