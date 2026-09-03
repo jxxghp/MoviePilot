@@ -5,6 +5,7 @@ from typing import cast
 
 from fastapi import Depends, Request
 
+from app.application.classification.runtime import ClassificationRuntime
 from app.application.configuration import (
     ApiRuntimeConfig,
     get_api_runtime_config_snapshot,
@@ -37,6 +38,13 @@ def get_background_task_registry(
 ) -> TaskRegistry:
     """返回当前 lifespan 统一管理的后台任务登记器。"""
     return runtime.tasks
+
+
+def get_classification_runtime(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> ClassificationRuntime:
+    """从完整宿主运行时收窄到媒体分类策略能力。"""
+    return runtime.classification
 
 
 def get_background_task_registry_compat(request: Request) -> TaskRegistry:

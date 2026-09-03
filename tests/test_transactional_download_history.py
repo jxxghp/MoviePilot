@@ -58,7 +58,11 @@ def _history_write(
             "source": "subscribe",
             "nested": {"season": 1, "episodes": [1, 2]},
         },
+        media_category_id="tv.episode",
         media_category="剧集",
+        classification_rule_id="rule.tv.episode",
+        classification_policy_revision=9,
+        classification_source="automatic",
         episode_group="group-1",
         custom_words="S02 => S01",
     )
@@ -102,6 +106,11 @@ def test_transactional_repository_projects_detached_snapshots(db) -> None:
     assert by_hash.id == history_id
     assert by_hash.userid == "7"
     assert by_hash.media_source == MediaSource.TMDB
+    assert by_hash.media_category_id == "tv.episode"
+    assert by_hash.media_category == "剧集"
+    assert by_hash.classification_rule_id == "rule.tv.episode"
+    assert by_hash.classification_policy_revision == 9
+    assert by_hash.classification_source == "automatic"
     assert by_path == by_hash
     assert by_hashes == {"typed-history-hash": by_hash}
     assert by_identity == [by_hash]

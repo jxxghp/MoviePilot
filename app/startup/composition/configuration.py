@@ -19,10 +19,18 @@ from app.application.configuration import (
     reset_configuration_services,
 )
 from app.application.database import AsyncDatabaseExecutor
+from app.application.directory import (
+    DirectoryAwareSystemConfigService,
+    DirectoryConfigurationMutationService,
+    normalize_directory_configurations_for_policy,
+)
 from app.application.security.userconfig import (
     UserConfigurationService,
     configure_user_configuration,
     reset_user_configuration,
+)
+from app.db.adapters.classification import (
+    SystemConfigDirectoryConfigurationStore,
 )
 from app.db.adapters.configuration import TransactionalUserConfigurationRepository
 from app.db.oper.systemconfig import SystemConfigOper
@@ -57,9 +65,18 @@ async def compose_configuration(
     user_config = TransactionalUserConfigurationRepository(SessionFactory)
     await executor.run(system_config.load_snapshot)
     await executor.run(user_config.load_snapshot)
-    system_service = SystemConfigService(
+    directory_mutation = DirectoryConfigurationMutationService(
+        SystemConfigDirectoryConfigurationStore(
+            SessionFactory,
+            system_config.publish_many,
+            normalize_directory_configurations_for_policy,
+        ),
+        async_executor=executor,
+    )
+    system_service = DirectoryAwareSystemConfigService(
         repository=system_config,
         async_executor=executor,
+        directory_mutation=directory_mutation,
     )
     user_service = UserConfigurationService(
         repository=user_config,

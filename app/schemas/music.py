@@ -1,7 +1,8 @@
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.schemas.category import ClassificationFactValue, ClassificationResult
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin, RequiredMediaIdentityMixin
 from app.schemas.types import MediaSource, MusicEntityType, MusicTargetEntityType
@@ -53,6 +54,7 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
     album_artist: Optional[str] = None
     album_id: Optional[str] = None
     album_type: Optional[str] = None
+    secondary_types: list[str] = Field(default_factory=list)
     year: Optional[int] = None
     release_date: Optional[str] = None
     disc_number: Optional[int] = None
@@ -71,8 +73,15 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
     bit_depth: Optional[int] = None
     sample_rate: Optional[int] = None
     bitrate: Optional[int] = None
+    library_category: Optional[str] = ""
+    metadata_category: Optional[str] = ""
+    classification: Optional[ClassificationResult] = None
+    classification_facts: dict[str, ClassificationFactValue] = Field(default_factory=dict)
     category: Optional[str] = ""
     genres: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    artist_country: Optional[str] = None
+    release_status: Optional[str] = None
     names: list[str] = Field(default_factory=list)
     detail_link: Optional[str] = None
     listen_count: Optional[int] = None
@@ -88,6 +97,24 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
     def _strip_album_type(cls, v: Optional[str]) -> Optional[str]:
         """去除专辑类型字段两端的空白，防止数据源返回带空格的值。"""
         return v.strip() if isinstance(v, str) and v.strip() else None
+
+    @model_validator(mode="before")  # type: ignore[misc]
+    @classmethod
+    def _normalize_category_compatibility(cls, value: Any) -> Any:
+        """迁移旧音乐 category 元数据，并让兼容字段只映射媒体库分类。"""
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        has_library = "library_category" in payload
+        has_metadata = "metadata_category" in payload
+        legacy_category = payload.get("category") or ""
+        if not has_library and not has_metadata and legacy_category:
+            payload["metadata_category"] = legacy_category
+            payload["library_category"] = ""
+        library_category = payload.get("library_category") or ""
+        payload["library_category"] = library_category
+        payload["category"] = library_category
+        return payload
 
     def __getattr__(self, name: str) -> None:
         """影视专用字段兜底返回 None：音乐模型不存在这些字段，避免下游逐点安全访问。
@@ -137,6 +164,12 @@ class MusicAlbumInfo(OptionalMediaIdentityMixin, BaseModel):
     cover_url: Optional[str] = None
     genres: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    artist_country: Optional[str] = None
+    release_status: Optional[str] = None
+    library_category: Optional[str] = ""
+    metadata_category: Optional[str] = ""
+    classification: Optional[ClassificationResult] = None
+    classification_facts: dict[str, ClassificationFactValue] = Field(default_factory=dict)
     category: Optional[str] = ""
     rating: float = 0.0
     rating_votes: Optional[int] = None
@@ -155,6 +188,24 @@ class MusicAlbumInfo(OptionalMediaIdentityMixin, BaseModel):
     def _strip_album_type(cls, v: Optional[str]) -> Optional[str]:
         """去除专辑类型字段两端的空白，防止数据源返回带空格的值。"""
         return v.strip() if isinstance(v, str) and v.strip() else None
+
+    @model_validator(mode="before")  # type: ignore[misc]
+    @classmethod
+    def _normalize_category_compatibility(cls, value: Any) -> Any:
+        """迁移旧专辑 category 元数据，并让兼容字段只映射媒体库分类。"""
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        has_library = "library_category" in payload
+        has_metadata = "metadata_category" in payload
+        legacy_category = payload.get("category") or ""
+        if not has_library and not has_metadata and legacy_category:
+            payload["metadata_category"] = legacy_category
+            payload["library_category"] = ""
+        library_category = payload.get("library_category") or ""
+        payload["library_category"] = library_category
+        payload["category"] = library_category
+        return payload
 
 
 class MusicArtistInfo(OptionalMediaIdentityMixin, BaseModel):
@@ -179,6 +230,7 @@ class MusicArtistInfo(OptionalMediaIdentityMixin, BaseModel):
     genres: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     aliases: list[str] = Field(default_factory=list)
+    classification_facts: dict[str, ClassificationFactValue] = Field(default_factory=dict)
     relation: Optional[str] = None
     image_url: Optional[str] = None
     detail_link: Optional[str] = None

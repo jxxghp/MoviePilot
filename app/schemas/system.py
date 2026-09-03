@@ -349,6 +349,8 @@ class TransferDirectoryConf(BaseModel):
     media_type: Optional[str] = None
     # 适用媒体类别
     media_category: Optional[str] = None
+    # 适用媒体类别稳定 ID；media_category 在兼容期保存路径快照
+    media_category_id: Optional[str] = None
     # 下载类型子目录
     download_type_folder: Optional[bool] = False
     # 下载类别子目录

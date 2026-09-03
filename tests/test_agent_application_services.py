@@ -10,6 +10,7 @@ import app.application.commands as command_application
 import app.application.filtering as filtering
 import app.application.plugin.management as plugin_management
 import app.application.settings as settings_module
+from app.application.configuration import SystemConfigWriteResult
 from app.application.download.tasks import DownloadTaskMutationService, DownloadTaskService
 from app.application.music.projection import simplify_music_album, simplify_music_artist, simplify_music_info
 from app.application.plugin.data import (
@@ -177,7 +178,14 @@ async def test_save_system_config_and_settings_service(monkeypatch):
     runtime.update.return_value = (True, "updated")
     system = MagicMock()
     system.get.side_effect = lambda key: [{"name": "qb", "token": "secret"}] if key == SystemConfigKey.Downloaders else {"a": 1}
+    system.normalize_value.side_effect = lambda _key, value: value
     system.async_set = AsyncMock(return_value=True)
+    system.async_set_with_normalized_value = AsyncMock(
+        side_effect=lambda _key, value: SystemConfigWriteResult(
+            changed=True,
+            normalized_value=value,
+        )
+    )
     publish = AsyncMock()
     filter_config = MagicMock()
     filter_config.async_set = AsyncMock(return_value=True)
@@ -218,6 +226,37 @@ async def test_save_system_config_and_settings_service(monkeypatch):
     assert result["changed"] is True
     runtime.get.side_effect = lambda key: "old"
     assert (await service.update(setting_key="PLUGIN_MARKET", value="new"))["changed"] is True
+
+
+@pytest.mark.asyncio
+async def test_settings_service_publishes_normalized_directory_value(monkeypatch):
+    """新设置入口写库与配置事件必须共享同一份目录规范化结果。"""
+    runtime = MagicMock()
+    system = MagicMock()
+    system.get.side_effect = [[], [{"name": "动漫", "media_category": "动漫/日番"}]]
+    normalized = [{"name": "动漫", "media_category_id": "tv.anime.jp", "media_category": "动漫/日番"}]
+    system.async_set_with_normalized_value = AsyncMock(
+        return_value=SystemConfigWriteResult(
+            changed=True,
+            normalized_value=normalized,
+        )
+    )
+    publish = AsyncMock()
+    monkeypatch.setattr(settings_module, "plugin_system_config_mutation", lambda _key: nullcontext())
+    service = settings_module.SystemSettingsService(runtime, system, publish)
+
+    result = await service.update(
+        setting_key=SystemConfigKey.Directories.value,
+        value={"name": "动漫", "media_category_id": "tv.anime.jp"},
+        operation="upsert_list_item",
+    )
+
+    assert result["saved_value"] == [{"name": "动漫", "media_category": "动漫/日番"}]
+    system.async_set_with_normalized_value.assert_awaited_once_with(
+        SystemConfigKey.Directories,
+        [{"name": "动漫", "media_category_id": "tv.anime.jp"}],
+    )
+    publish.assert_awaited_once_with(SystemConfigKey.Directories.value, normalized)
 
 
 def test_settings_catalog_redaction_and_projection():

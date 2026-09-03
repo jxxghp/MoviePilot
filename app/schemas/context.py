@@ -1,10 +1,11 @@
-from typing import Annotated, Optional, Dict, List, Union, Any
+from typing import Annotated, Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Discriminator, Field, RootModel, Tag
+from pydantic import BaseModel, Discriminator, Field, RootModel, Tag, model_validator
 
+from app.schemas.category import ClassificationFactValue, ClassificationResult
 from app.schemas.common import JsonData
-from app.schemas.music import MusicInfo, MusicMeta
 from app.schemas.media import OptionalMediaIdentityMixin
+from app.schemas.music import MusicInfo, MusicMeta
 from app.schemas.types import MediaSource
 
 
@@ -265,7 +266,15 @@ class MediaInfo(OptionalMediaIdentityMixin, BaseModel):
     vote_average: Optional[float] = 0.0
     # 描述
     overview: Optional[str] = None
-    # 二级分类
+    # 媒体库目录分类；category 是过渡期兼容字段
+    library_category: Optional[str] = ""
+    # 来源提供的描述性分类，不参与目录选择
+    metadata_category: Optional[str] = ""
+    # 本次分类使用的推荐、生效结果和策略快照
+    classification: Optional[ClassificationResult] = None
+    # 插件来源提交的受控扩展分类事实，键使用完整 extensions.<source>.* 字段 ID
+    classification_facts: Dict[str, ClassificationFactValue] = Field(default_factory=dict)
+    # 二级分类兼容字段，始终映射到 library_category
     category: Optional[str] = ""
     # 季季集清单
     seasons: Optional[Dict[int, list[int]]] = Field(default_factory=dict)
@@ -341,6 +350,20 @@ class MediaInfo(OptionalMediaIdentityMixin, BaseModel):
     douban_info: Optional[dict[str, JsonData]] = None
     bangumi_info: Optional[dict[str, JsonData]] = None
     anilist_info: Optional[dict[str, JsonData]] = None
+
+    @model_validator(mode="before")  # type: ignore[misc]
+    @classmethod
+    def _normalize_category_compatibility(cls, value: Any) -> Any:
+        """把旧影视 category 输入归一为媒体库分类，并保持兼容字段双写。"""
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        library_category = payload.get("library_category")
+        if library_category is None or library_category == "":
+            library_category = payload.get("category") or ""
+        payload["library_category"] = library_category
+        payload["category"] = library_category
+        return payload
 
 
 class TorrentInfo(OptionalMediaIdentityMixin, BaseModel):

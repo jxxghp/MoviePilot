@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import urlparse
 
+from app.application.classification.contract import ClassificationPolicyStateCorruptError
 from app.application.configuration import RuntimeSettingsService, SystemConfigService
 from app.runtime.scheduling import TimerUtils
 from app.schemas.common import JsonData
@@ -318,12 +319,26 @@ class SystemService:
                     event_value = definitions
                     success = True
                 else:
-                    success = await self._system_config.async_set(key, value)
+                    write_result = (
+                        await self._system_config.async_set_with_normalized_value(
+                            key,
+                            value,
+                        )
+                    )
+                    success = write_result.changed
+                    event_value = write_result.normalized_value
                 if success:
                     await self._events.publish(key, event_value)
                 # None 表示值未变化，仍是成功完成；只有明确 False 才代表持久化失败。
-                return SystemOperationResult(success is not False)
-        except PluginMutationRejectedError as error:
+                return SystemOperationResult(
+                    success is not False,
+                    data=event_value if key == SystemConfigKey.Directories.value else None,
+                )
+        except (
+            ClassificationPolicyStateCorruptError,
+            PluginMutationRejectedError,
+            ValueError,
+        ) as error:
             return SystemOperationResult(False, str(error))
 
     async def user_global(self) -> dict[str, Any]:

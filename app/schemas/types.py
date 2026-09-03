@@ -424,6 +424,8 @@ class SystemConfigKey(Enum):
     UgreenSessionCache = "UgreenSessionCache"
     # 共享媒体识别成功次数
     MediaRecognizeShareCount = "MediaRecognizeShareCount"
+    # 多媒体自动分类策略及其有界历史
+    MediaClassificationPolicy = "MediaClassificationPolicy"
 
 
 # 处理进度Key字典

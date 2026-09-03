@@ -416,7 +416,11 @@ class MediaPathOwner(_MediaOwnerBase):
         except StopIteration as completed:
             info = cast(Optional[MusicInfo], completed.value)
         result = _finalize_music_path_info(meta, info)
-        return meta, self._simplify_recognized_music_info(result)
+        simplified = self._simplify_recognized_music_info(result)
+        return meta, cast(
+            MusicInfo,
+            self._finalize_recognition_result(simplified),
+        )
 
     async def async_recognize_music_by_path(
         self,
@@ -457,7 +461,11 @@ class MediaPathOwner(_MediaOwnerBase):
         except StopIteration as completed:
             info = cast(Optional[MusicInfo], completed.value)
         result = _finalize_music_path_info(meta, info)
-        return meta, self._simplify_recognized_music_info(result)
+        simplified = self._simplify_recognized_music_info(result)
+        return meta, cast(
+            MusicInfo,
+            await self._async_finalize_recognition_result(simplified),
+        )
 
     def _is_music_path_request(self, path: str, media_source: Optional[MediaSource]) -> bool:
         """路径识别请求是否属于音乐：音频后缀文件或显式指定音乐数据源。"""

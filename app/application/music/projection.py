@@ -34,7 +34,18 @@ def simplify_music_info(info: MusicInfo) -> dict[str, Any]:
         "isrc": info.isrc,
         "version": info.version,
         "genres": list(info.genres or []),
+        "secondary_types": list(info.secondary_types or []),
+        "tags": list(info.tags or []),
+        "artist_country": info.artist_country,
+        "release_status": info.release_status,
+        "metadata_category": info.metadata_category,
+        "library_category": info.library_category,
         "category": info.category,
+        "classification": (
+            info.classification.model_dump(mode="json")
+            if info.classification
+            else None
+        ),
         "listen_count": info.listen_count,
         "media_source": info.media_source,
         "media_id": info.media_id,

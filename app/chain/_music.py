@@ -1,7 +1,10 @@
 import copy
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, cast
 
+from app.application.classification.reference import (
+    subscription_classification_override,
+)
 from app.application.configuration import get_configured_system_config
 from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.subscription.contract import (
@@ -22,6 +25,7 @@ from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
+from app.schemas.category import ClassificationSelection
 from app.schemas.common import JsonData
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -118,59 +122,142 @@ class MusicSubscribeMixin:
         return mediainfo
 
     @staticmethod
+    def _music_subscribe_classification_override(
+            subscribe: SubscriptionSnapshot,
+    ) -> Optional[ClassificationSelection]:
+        """把订阅手工分类转换为规则执行层使用的生效分类覆盖。"""
+        return subscription_classification_override(
+            category_id=getattr(subscribe, "media_category_id", None),
+            path_snapshot=getattr(subscribe, "media_category", None),
+            media_type=MediaType.MUSIC,
+        )
+
+    @staticmethod
+    def _apply_music_subscription_classification(
+            media: MusicInfo,
+            subscribe: SubscriptionSnapshot,
+    ) -> MusicInfo:
+        """在音乐订阅域内应用手工分类，避免 mixin 反向依赖订阅具体实现。"""
+        override = MusicSubscribeMixin._music_subscribe_classification_override(
+            subscribe
+        )
+        if override is None:
+            return media
+        finalized = MediaChain()._finalize_recognition_result(
+            media,
+            effective_override=override,
+        )
+        return finalized or media
+
+    @staticmethod
+    def _finalize_music_subscribe_recognition(
+            media_chain: MediaChain,
+            subscribe: SubscriptionSnapshot,
+            mediainfo: Optional[MusicInfo],
+    ) -> Optional[MusicInfo]:
+        """统一收口音乐订阅的远端结果、持久化快照与空结果分类。"""
+        return cast(
+            Optional[MusicInfo],
+            media_chain._finalize_recognition_result(
+                mediainfo,
+                effective_override=(
+                    MusicSubscribeMixin._music_subscribe_classification_override(
+                        subscribe
+                    )
+                ),
+            ),
+        )
+
+    @staticmethod
     def _recognize_music_subscribe(subscribe: SubscriptionSnapshot) -> Optional[MusicInfo]:
         """按订阅身份恢复音乐目标，远端暂不可用时使用已持久化的稳定快照。"""
+        media_chain = MediaChain()
+        mediainfo: Optional[MusicInfo]
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
-            mediainfo = MediaChain().recognize_media(
+            recognized = media_chain.recognize_media(
                 media_source=subscribe.media_source,
                 media_id=str(subscribe.media_id),
                 mtype=MediaType.MUSIC,
                 music_type=getattr(subscribe, "music_type", None),
             )
-            if mediainfo:
-                return MusicSubscribeMixin._ensure_music_subscribe_entity(subscribe, mediainfo)
-            if getattr(subscribe, "music_type", None) in {MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM}:
-                return MusicSubscribeMixin._music_info_from_subscribe(subscribe)
-            # 旧订阅没有保存实体类型时不能猜测为单曲，否则可能误把专辑按单曲完成。
-            return None
-        if getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM:
+            if recognized:
+                mediainfo = MusicSubscribeMixin._ensure_music_subscribe_entity(
+                    subscribe,
+                    recognized,
+                )
+            elif getattr(subscribe, "music_type", None) in {
+                MUSIC_ENTITY_RECORDING,
+                MUSIC_ENTITY_ALBUM,
+            }:
+                mediainfo = MusicSubscribeMixin._music_info_from_subscribe(subscribe)
+            else:
+                # 旧订阅没有保存实体类型时不能猜测为单曲，否则可能误把专辑按单曲完成。
+                mediainfo = None
+        elif getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM:
             # 缺少远端 ID 的专辑不能退化为单曲识别，使用已保存专辑快照更可靠。
-            return MusicSubscribeMixin._music_info_from_subscribe(subscribe)
-        # 旧订阅没有实体类型时只允许走 Recording 识别，不能从全局混合搜索中猜成专辑或艺术家。
-        mediainfo = MediaChain().recognize_media(
-            meta=build_subscribe_meta(subscribe),
-            mtype=MediaType.MUSIC,
-            media_source=subscribe.media_source,
-            music_type=MUSIC_ENTITY_RECORDING,
+            mediainfo = MusicSubscribeMixin._music_info_from_subscribe(subscribe)
+        else:
+            # 旧订阅没有实体类型时只允许走 Recording 识别，不能从全局混合搜索中猜成专辑或艺术家。
+            recognized = media_chain.recognize_media(
+                meta=build_subscribe_meta(subscribe),
+                mtype=MediaType.MUSIC,
+                media_source=subscribe.media_source,
+                music_type=MUSIC_ENTITY_RECORDING,
+            )
+            mediainfo = MusicSubscribeMixin._ensure_music_subscribe_entity(
+                subscribe,
+                recognized,
+            )
+        return MusicSubscribeMixin._finalize_music_subscribe_recognition(
+            media_chain,
+            subscribe,
+            mediainfo,
         )
-        return MusicSubscribeMixin._ensure_music_subscribe_entity(subscribe, mediainfo)
 
     @staticmethod
     async def _async_recognize_music_subscribe(subscribe: SubscriptionSnapshot) -> Optional[MusicInfo]:
         """异步按订阅身份恢复音乐目标，远端暂不可用时使用已持久化的稳定快照。"""
+        media_chain = MediaChain()
+        mediainfo: Optional[MusicInfo]
         if subscribe.media_source and subscribe.media_id:
             # 与影视共用统一识别入口，按媒体源和原生 ID 恢复音乐详情
-            mediainfo = await MediaChain().async_recognize_media(
+            recognized = await media_chain.async_recognize_media(
                 media_source=subscribe.media_source,
                 media_id=str(subscribe.media_id),
                 mtype=MediaType.MUSIC,
                 music_type=getattr(subscribe, "music_type", None),
             )
-            if mediainfo:
-                return MusicSubscribeMixin._ensure_music_subscribe_entity(subscribe, mediainfo)
-            if getattr(subscribe, "music_type", None) in {MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM}:
-                return MusicSubscribeMixin._music_info_from_subscribe(subscribe)
-            return None
-        if getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM:
-            return MusicSubscribeMixin._music_info_from_subscribe(subscribe)
-        mediainfo = await MediaChain().async_recognize_media(
-            meta=build_subscribe_meta(subscribe),
-            mtype=MediaType.MUSIC,
-            media_source=subscribe.media_source,
-            music_type=MUSIC_ENTITY_RECORDING,
+            if recognized:
+                mediainfo = MusicSubscribeMixin._ensure_music_subscribe_entity(
+                    subscribe,
+                    recognized,
+                )
+            elif getattr(subscribe, "music_type", None) in {
+                MUSIC_ENTITY_RECORDING,
+                MUSIC_ENTITY_ALBUM,
+            }:
+                mediainfo = MusicSubscribeMixin._music_info_from_subscribe(subscribe)
+            else:
+                mediainfo = None
+        elif getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM:
+            mediainfo = MusicSubscribeMixin._music_info_from_subscribe(subscribe)
+        else:
+            recognized = await media_chain.async_recognize_media(
+                meta=build_subscribe_meta(subscribe),
+                mtype=MediaType.MUSIC,
+                media_source=subscribe.media_source,
+                music_type=MUSIC_ENTITY_RECORDING,
+            )
+            mediainfo = MusicSubscribeMixin._ensure_music_subscribe_entity(
+                subscribe,
+                recognized,
+            )
+        return MusicSubscribeMixin._finalize_music_subscribe_recognition(
+            media_chain,
+            subscribe,
+            mediainfo,
         )
-        return MusicSubscribeMixin._ensure_music_subscribe_entity(subscribe, mediainfo)
 
     @staticmethod
     def _music_info_from_subscribe(subscribe: SubscriptionSnapshot) -> MusicInfo:
@@ -344,8 +431,10 @@ class MusicSubscribeMixin:
             context.match_source = str(mediainfo.media_source or "title")
             context.candidate_recognized = False
             context.media_info_is_target = True
-            if subscribe.media_category:
-                context.media_info.category = subscribe.media_category
+            context.media_info = self._apply_music_subscription_classification(
+                context.media_info,
+                subscribe,
+            )
             matched.append(context)
         return matched
 

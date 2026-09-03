@@ -99,7 +99,7 @@ def _put_in_manual_review(factory, *, task_id: str) -> tuple[
             input_version=1,
             planning_input=planning_input.to_payload(),
             input_fingerprint=planning_input.fingerprint,
-            checkpoint_version=1,
+            checkpoint_version=checkpoint.schema_version,
             checkpoint_payload=checkpoint.to_payload(),
             planned_at="2026-08-27 09:00:00",
             lease_owner="worker-secret",

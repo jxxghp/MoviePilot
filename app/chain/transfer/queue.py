@@ -36,6 +36,7 @@ from app.application.transfer.workflow import (
 )
 from app.chain.media import MediaChain
 from app.chain.transfer.contract import _TransferOwnerBase
+from app.chain.transfer.records import apply_download_history_classification
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
@@ -1534,9 +1535,10 @@ class TransferQueueOwner(_TransferOwnerBase):
                         if mediainfo:
                             # 补充图片
                             self.obtain_images(mediainfo)
-                            # 更新自定义媒体类别
-                            if downloadhis.media_category:
-                                mediainfo.category = downloadhis.media_category
+                            mediainfo = apply_download_history_classification(
+                                mediainfo,
+                                downloadhis,
+                            )
 
                     else:
                         # 非MoviePilot下载的任务，按文件识别

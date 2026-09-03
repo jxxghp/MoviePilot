@@ -6,6 +6,10 @@ import time
 from pathlib import Path
 from typing import Any, List, Optional, Tuple, Union, cast
 
+from app.application.classification.reference import (
+    append_classification_category_path,
+    category_path_below_media_type,
+)
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.application.torrent.download import TorrentHelper
@@ -31,6 +35,34 @@ from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectory
 from app.schemas.types import (
     MediaSource,
 )
+
+
+def _append_download_classification_path(
+    root_path: Path,
+    dir_info: _SchemaTransferDirectoryConf,
+    media_info: MediaInfo,
+) -> Path:
+    """按目录开关和稳定分类快照拼装下载子目录。"""
+    download_dir = root_path
+    type_folder_enabled = bool(
+        not dir_info.media_type and dir_info.download_type_folder
+    )
+    if type_folder_enabled:
+        download_dir = download_dir / media_info.type.value
+    helper = DirectoryHelper()
+    if helper.has_fixed_category(dir_info) or not dir_info.download_category_folder:
+        return download_dir
+    category_path = helper.resolve_media_category(media_info).path
+    if not category_path:
+        return download_dir
+    category_path = category_path_below_media_type(
+        category_path,
+        media_info.type,
+        type_folder_enabled=type_folder_enabled,
+    )
+    if not category_path:
+        return download_dir
+    return append_classification_category_path(download_dir, category_path)
 
 
 class DownloadSubtitleOwner(_DownloadOwnerBase):
@@ -173,12 +205,7 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         :param media_info: 媒体信息
         :return: 应传给存储或下载器的媒体下载目录
         """
-        download_dir = root_path
-        if not dir_info.media_type and dir_info.download_type_folder:
-            download_dir = download_dir / media_info.type.value
-        if not dir_info.media_category and dir_info.download_category_folder and media_info.category:
-            download_dir = download_dir / media_info.category
-        return download_dir
+        return _append_download_classification_path(root_path, dir_info, media_info)
 
     @staticmethod
     def _upload_subtitle_file(

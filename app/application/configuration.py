@@ -12,6 +12,9 @@ from app.application.database import AsyncDatabaseExecutor
 from app.schemas.common import JsonData
 from app.schemas.types import MediaType, SystemConfigKey
 
+SystemConfigValueNormalizer = Callable[[Any, Any], Any]
+"""系统配置值在进入持久化端口前使用的规范化函数。"""
+
 
 class SystemConfigReader(Protocol):
     """持久化用户配置的最小只读端口。"""
@@ -96,6 +99,14 @@ class TokenRuntimeConfig:
     resource_secret_key: str
     access_token_expire_minutes: int
     resource_access_token_expire_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
+class SystemConfigWriteResult:
+    """系统配置一次写入的变更状态和实际规范化值。"""
+
+    changed: bool | None
+    normalized_value: Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,8 +331,9 @@ class SystemConfigService:
         reader: SystemConfigReader | None = None,
         writer: SystemConfigWriter | None = None,
         async_executor: AsyncDatabaseExecutor | None = None,
+        value_normalizer: SystemConfigValueNormalizer | None = None,
     ) -> None:
-        """注入读写端口及可选的异步事务执行能力。"""
+        """注入读写端口、异步事务执行能力及可选值规范化边界。"""
         resolved_reader = reader or repository
         resolved_writer = writer or repository
         if resolved_reader is None or resolved_writer is None:
@@ -329,6 +341,7 @@ class SystemConfigService:
         self._reader = resolved_reader
         self._writer = resolved_writer
         self._async_executor = async_executor
+        self._value_normalizer = value_normalizer
 
     def get(self, key: Any = None) -> Any:
         """读取配置。"""
@@ -336,7 +349,25 @@ class SystemConfigService:
 
     def set(self, key: Any, value: Any) -> bool | None:
         """写入配置。"""
-        return self._writer.set(key, value)
+        return self.set_with_normalized_value(key, value).changed
+
+    def set_with_normalized_value(
+        self,
+        key: Any,
+        value: Any,
+    ) -> SystemConfigWriteResult:
+        """规范化一次后同步写入，并返回实际交给持久化端口的值。"""
+        normalized_value = self.normalize_value(key, value)
+        return SystemConfigWriteResult(
+            changed=self._writer.set(key, normalized_value),
+            normalized_value=normalized_value,
+        )
+
+    def normalize_value(self, key: Any, value: Any) -> Any:
+        """在写入和配置事件发布前返回同一份规范化配置值。"""
+        if self._value_normalizer is None:
+            return value
+        return self._value_normalizer(key, value)
 
     def increment(self, key: SystemConfigKey, step: int = 1) -> int:
         """原子递增整数系统配置，保持计数更新由持久化端口负责。"""
@@ -344,10 +375,24 @@ class SystemConfigService:
 
     async def async_set(self, key: Any, value: Any) -> bool | None:
         """异步写入配置，并等待数据库提交或回滚完成。"""
+        return (await self.async_set_with_normalized_value(key, value)).changed
+
+    async def async_set_with_normalized_value(
+        self,
+        key: Any,
+        value: Any,
+    ) -> SystemConfigWriteResult:
+        """规范化一次后异步写入，并返回配置事件应发布的同一值。"""
         if self._async_executor is None:
             raise RuntimeError("系统配置异步数据库执行端口尚未配置")
-        result = await self._async_executor.run(partial(self._writer.set, key, value))
-        return cast(bool | None, result)
+        normalized_value = self.normalize_value(key, value)
+        result = await self._async_executor.run(
+            partial(self._writer.set, key, normalized_value)
+        )
+        return SystemConfigWriteResult(
+            changed=cast(bool | None, result),
+            normalized_value=normalized_value,
+        )
 
     async def async_delete(self, key: Any) -> Any:
         """异步删除配置，并等待数据库提交或回滚完成。"""

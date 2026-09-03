@@ -121,6 +121,28 @@ def test_system_config_service_forwards_atomic_increment() -> None:
     writer.increment.assert_called_once_with(SystemConfigKey.MediaRecognizeShareCount, 1)
 
 
+def test_system_config_service_normalizes_sync_and_async_writes() -> None:
+    """同步和异步配置写入必须共用组合根注入的值规范化边界。"""
+    reader = MagicMock()
+    writer = MagicMock()
+    writer.set.return_value = True
+    normalizer = MagicMock(side_effect=lambda key, value: {"key": str(key), "value": value})
+    service = SystemConfigService(
+        reader=reader,
+        writer=writer,
+        async_executor=_InlineDatabaseExecutor(),
+        value_normalizer=normalizer,
+    )
+
+    assert service.set("demo", 1) is True
+    assert asyncio.run(service.async_set("demo", 2)) is True
+    assert writer.set.call_args_list == [
+        (("demo", {"key": "demo", "value": 1}), {}),
+        (("demo", {"key": "demo", "value": 2}), {}),
+    ]
+    assert normalizer.call_count == 2
+
+
 def test_user_configuration_service_supports_sync_and_async_writes() -> None:
     """用户配置服务的同步与异步入口执行同一仓储方法。"""
     repository = MagicMock()

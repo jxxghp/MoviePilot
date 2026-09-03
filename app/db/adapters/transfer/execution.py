@@ -34,6 +34,8 @@ from app.application.transfer.execution import (
 from app.application.transfer.workflow import (
     TRANSFER_ADMISSION_PLANNED,
     TRANSFER_ADMISSION_PROVIDER_PENDING,
+    TRANSFER_PLAN_CHECKPOINT_LEGACY_VERSION,
+    TRANSFER_PLAN_CHECKPOINT_VERSION,
     TransferPlanCheckpoint,
     TransferProviderInvocationSnapshot,
     TransferProviderReference,
@@ -308,25 +310,33 @@ class TransactionalTransferExecutionRepository:
             )
             if invocation.fileitem != checkpoint.planning_input.source_fileitem:
                 return None
-            predecessor = TransferPlanCheckpoint(
-                planning_input=checkpoint.planning_input,
-                target_storage="",
-                root_target_path="",
-                final_target_path="",
-                resolved_transfer_type="",
-                items=(),
-                resolved_meta=invocation.meta,
-                resolved_meta_kind=invocation.meta_kind,
-                resolved_mediainfo=invocation.mediainfo,
-                resolved_mediainfo_kind=invocation.mediainfo_kind,
-                resolved_episodes_info=invocation.episodes_info,
-                legacy_transfer_providers=providers,
-                provider_invocation=invocation,
-                preview=invocation.preview,
-            )
+            for schema_version in (
+                TRANSFER_PLAN_CHECKPOINT_VERSION,
+                TRANSFER_PLAN_CHECKPOINT_LEGACY_VERSION,
+            ):
+                predecessor = TransferPlanCheckpoint(
+                    planning_input=checkpoint.planning_input,
+                    target_storage="",
+                    root_target_path="",
+                    final_target_path="",
+                    resolved_transfer_type="",
+                    items=(),
+                    classification_snapshot=checkpoint.classification_snapshot,
+                    resolved_meta=invocation.meta,
+                    resolved_meta_kind=invocation.meta_kind,
+                    resolved_mediainfo=invocation.mediainfo,
+                    resolved_mediainfo_kind=invocation.mediainfo_kind,
+                    resolved_episodes_info=invocation.episodes_info,
+                    legacy_transfer_providers=providers,
+                    provider_invocation=invocation,
+                    preview=invocation.preview,
+                    schema_version=schema_version,
+                )
+                if predecessor.fingerprint == step.checkpoint_fingerprint:
+                    return predecessor
         except (TypeError, ValueError):
             return None
-        return predecessor
+        return None
 
     @staticmethod
     def _intent_belongs_to_checkpoint(

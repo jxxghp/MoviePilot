@@ -1,3 +1,4 @@
+import re
 import typing
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, fields
@@ -20,6 +21,7 @@ from app.domain.meta.metamusic import (
 )
 from app.domain.metainfo import MetaInfo
 from app.foundation import temporal as time_tools
+from app.schemas.category import ClassificationFactValue, ClassificationResult
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -160,6 +162,139 @@ def _music_init_values(model: type, data: dict[str, Any]) -> dict[str, Any]:
     """按 dataclass 可初始化字段过滤字典，避免传入非法构造参数。"""
     init_names = {item.name for item in fields(model) if item.init}
     return {key: value for key, value in data.items() if key in init_names}
+
+
+def _classification_result(value: object) -> ClassificationResult | None:
+    """将分类结果字典恢复为独立模型，避免领域对象共享可变标签列表。"""
+    if value is None:
+        return None
+    if isinstance(value, ClassificationResult):
+        return typing.cast(ClassificationResult, value.model_copy(deep=True))
+    if isinstance(value, Mapping):
+        return typing.cast(
+            ClassificationResult,
+            ClassificationResult.model_validate(dict(value)),
+        )
+    raise TypeError("分类结果必须是 ClassificationResult、字典或空值")
+
+
+def _classification_payload(value: ClassificationResult | None) -> dict[str, Any] | None:
+    """把分类结果转换为可持久化字典。"""
+    return value.model_dump(mode="json") if value else None
+
+
+def _music_category_tokens(value: object) -> list[str]:
+    """拆分并规范化音乐来源分类文本，供旧载荷语义判定。"""
+    return [
+        re.sub(r"[\s_-]+", " ", part).strip().casefold()
+        for part in re.split(r"[/\|,;、，]+", str(value or ""))
+        if part.strip()
+    ]
+
+
+def _legacy_music_category_is_metadata(
+    category: object,
+    *,
+    album_type: object = None,
+    secondary_types: object = None,
+    genres: object = None,
+    tags: object = None,
+    classification: ClassificationResult | None = None,
+) -> bool:
+    """判断旧音乐 category 是否是来源描述，而不是人工库分类。
+
+    旧音乐模型曾把专辑类型、流派写入 category，同时订阅人工分类也可能
+    覆盖同一字段。优先用分类结果确认库分类；其余仅在文本能由标准音乐
+    元数据解释时判为来源描述，无法解释时保守保留为库分类。
+    """
+    category_tokens = _music_category_tokens(category)
+    if not category_tokens:
+        return False
+
+    selection = None
+    if classification:
+        selection = classification.effective or classification.recommended
+    if selection and selection.category_path:
+        category_text = " / ".join(category_tokens)
+        path_tokens = _music_category_tokens(" / ".join(selection.category_path))
+        if category_text in {
+            " / ".join(path_tokens),
+            path_tokens[-1] if path_tokens else "",
+        }:
+            return False
+
+    evidence = [str(album_type or "")]
+    for value in (secondary_types, genres, tags):
+        evidence.extend(_music_string_list(value))
+    evidence_tokens = {
+        token
+        for value in evidence
+        for token in _music_category_tokens(value)
+    }
+    category_text = " ".join(category_tokens)
+    if any(
+        token and (token in category_text or category_text in token)
+        for token in evidence_tokens
+    ):
+        return True
+
+    source_descriptors = {
+        "album",
+        "ep",
+        "single",
+        "broadcast",
+        "other",
+        "live",
+        "compilation",
+        "soundtrack",
+        "spoken word",
+        "interview",
+        "audiobook",
+        "audio book",
+        "audio drama",
+        "remix",
+        "dj mix",
+        "mixtape",
+        "street",
+        "demo",
+        "person",
+        "group",
+        "orchestra",
+        "choir",
+        "character",
+    }
+    return all(token in source_descriptors for token in category_tokens)
+
+
+def _resolve_music_categories(
+    *,
+    category: object,
+    library_category: object,
+    metadata_category: object,
+    album_type: object = None,
+    secondary_types: object = None,
+    genres: object = None,
+    tags: object = None,
+    classification: ClassificationResult | None = None,
+) -> tuple[str, str]:
+    """解析新旧音乐分类字段，新字段存在时禁止来源描述升级为库分类。"""
+    compatible = str(category or "").strip()
+    library = str(library_category or "").strip()
+    metadata = str(metadata_category or "").strip()
+    if library or metadata:
+        return library or compatible, metadata
+    if not compatible:
+        return "", ""
+    if _legacy_music_category_is_metadata(
+        compatible,
+        album_type=album_type,
+        secondary_types=secondary_types,
+        genres=genres,
+        tags=tags,
+        classification=classification,
+    ):
+        return "", compatible
+    return compatible, ""
 
 
 @dataclass
@@ -432,8 +567,11 @@ class MusicInfo:
     album_id: str | None = None
     # 专辑主类型：Album、EP、Single 等
     album_type: str | None = None
+    # 专辑副类型：Live、Compilation、Soundtrack 等
+    secondary_types: list[str] = field(default_factory=list)
     year: int | None = None
     release_date: str | None = None
+    release_status: str | None = None
     disc_number: int | None = None
     track_number: int | None = None
     total_tracks: int | None = None
@@ -447,8 +585,18 @@ class MusicInfo:
     bit_depth: int | None = None
     sample_rate: int | None = None
     bitrate: int | None = None
+    # 兼容字段，过渡期始终与 library_category 同步
     category: str = ""
+    # 自动分类或人工覆盖后的媒体库相对目录分类
+    library_category: str = ""
+    # 数据源提供的专辑类型、流派等描述性分类
+    metadata_category: str = ""
+    classification: ClassificationResult | None = None
+    # 插件来源提交的受控扩展分类事实，统一收口时由宿主注册表校验
+    classification_facts: dict[str, ClassificationFactValue] = field(default_factory=dict)
     genres: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    artist_country: str | None = None
     names: list[str] = field(default_factory=list)
     detail_link: str | None = None
     listen_count: int | None = None
@@ -458,8 +606,36 @@ class MusicInfo:
     recognize_cache_hit = False
 
     def __post_init__(self) -> None:
-        """将构造参数中的媒体身份规范化为统一成对字段。"""
+        """规范化媒体身份，并兼容拆分旧音乐分类字段。"""
         self.media_source, self.media_id = resolve_media_identity(media=self)
+        classification = _classification_result(self.classification)
+        library_category, metadata_category = _resolve_music_categories(
+            category=self.category,
+            library_category=self.library_category,
+            metadata_category=self.metadata_category,
+            album_type=self.album_type,
+            secondary_types=self.secondary_types,
+            genres=self.genres,
+            tags=self.tags,
+            classification=classification,
+        )
+        self.__dict__["classification"] = classification
+        self.__dict__["library_category"] = library_category
+        self.__dict__["category"] = library_category
+        self.__dict__["metadata_category"] = metadata_category
+        self.__dict__["_category_semantics_ready"] = True
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """兼容旧调用方直接写 category，并在初始化后同步库分类字段。"""
+        if (
+            name in {"category", "library_category"}
+            and self.__dict__.get("_category_semantics_ready")
+        ):
+            normalized = str(value or "").strip()
+            self.__dict__["category"] = normalized
+            self.__dict__["library_category"] = normalized
+            return
+        self.__dict__[name] = value
 
     def __getattr__(self, name: str) -> None:
         """影视专用字段兜底返回 None：音乐模型不存在这些字段，避免下游逐点安全访问。
@@ -549,6 +725,10 @@ class MusicInfo:
         """返回背景图位使用的音乐封面。"""
         return self.cover_url
 
+    def set_library_category(self, category: str | None) -> None:
+        """设置媒体库分类，并同步过渡期兼容 category 字段。"""
+        self.library_category = category or ""
+
     def clear(self) -> None:
         """清理不参与队列展示和持久化的上游原始响应。"""
         self.raw_data.clear()
@@ -556,6 +736,8 @@ class MusicInfo:
     def to_dict(self) -> dict[str, Any]:
         """转换为统一媒体身份的 Context 外层字典。"""
         payload = asdict(self)
+        payload["classification"] = _classification_payload(self.classification)
+        payload["category"] = self.library_category
         payload.update(
             {
                 "type": self.type.value,
@@ -582,10 +764,12 @@ class MusicInfo:
         """从字典恢复标准化音乐元数据。"""
         _validate_music_type(data.get("type"))
         values = _music_init_values(cls, data)
+        values["classification"] = _classification_result(values.get("classification"))
         values["media_source"] = normalize_media_source(values.get("media_source"))
         values["artists"] = _music_string_list(values.get("artists") or data.get("artist"))
         values["artist_ids"] = _music_aligned_list(values.get("artist_ids"))
-        values["genres"] = _music_string_list(values.get("genres"))
+        for key in ("secondary_types", "genres", "tags"):
+            values[key] = _music_string_list(values.get(key))
         values["names"] = _music_string_list(values.get("names"))
         values["music_type"] = str(values.get("music_type") or MUSIC_ENTITY_RECORDING)
         values["audio_format"] = normalize_audio_format(values.get("audio_format"))
@@ -593,6 +777,29 @@ class MusicInfo:
             values.get("audio_format"), values.get("audio_lossless")
         )
         values["raw_data"] = dict(values.get("raw_data") or {})
+        if "library_category" in data or "metadata_category" in data:
+            library_value = (
+                data.get("library_category")
+                if "library_category" in data
+                else data.get("category")
+            )
+            values["library_category"] = str(library_value or "")
+            values["metadata_category"] = str(data.get("metadata_category") or "")
+            values["category"] = values["library_category"]
+        else:
+            library_category, metadata_category = _resolve_music_categories(
+                category=data.get("category"),
+                library_category=None,
+                metadata_category=None,
+                album_type=values.get("album_type"),
+                secondary_types=values.get("secondary_types"),
+                genres=values.get("genres"),
+                tags=values.get("tags"),
+                classification=values.get("classification"),
+            )
+            values["category"] = library_category
+            values["library_category"] = library_category
+            values["metadata_category"] = metadata_category
         for key in (
             "year",
             "disc_number",
@@ -682,7 +889,15 @@ class MusicAlbumInfo:
     album_type: str | None = None
     # 专辑副类型：Live、Compilation、Soundtrack、Remix 等
     secondary_types: list[str] = field(default_factory=list)
+    # 自动分类或人工覆盖后的媒体库相对目录分类
+    library_category: str = ""
+    # 数据源提供的专辑类型和副类型描述
+    metadata_category: str = ""
+    classification: ClassificationResult | None = None
+    classification_facts: dict[str, ClassificationFactValue] = field(default_factory=dict)
     release_date: str | None = None
+    release_status: str | None = None
+    artist_country: str | None = None
     cover_url: str | None = None
     genres: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
@@ -696,8 +911,15 @@ class MusicAlbumInfo:
     raw_data: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """将构造参数中的媒体身份规范化为统一成对字段。"""
+        """规范化媒体身份，并补全专辑描述分类和分类结果。"""
         self.media_source, self.media_id = resolve_media_identity(media=self)
+        self.library_category = str(self.library_category or "").strip()
+        self.metadata_category = str(self.metadata_category or "").strip() or (
+            " / ".join(
+                part for part in [self.album_type, *self.secondary_types] if part
+            )
+        )
+        self.classification = _classification_result(self.classification)
 
     @property
     def artist(self) -> str:
@@ -711,8 +933,17 @@ class MusicAlbumInfo:
 
     @property
     def category(self) -> str:
-        """返回专辑主类型与副类型组合成的分类文本。"""
-        return " / ".join(part for part in [self.album_type, *self.secondary_types] if part)
+        """返回兼容字段，其语义始终等同媒体库分类。"""
+        return self.library_category
+
+    @category.setter
+    def category(self, value: str | None) -> None:
+        """兼容旧调用方直接写 category，并同步媒体库分类。"""
+        self.set_library_category(value)
+
+    def set_library_category(self, category: str | None) -> None:
+        """设置媒体库分类，来源描述分类保持不变。"""
+        self.library_category = str(category or "").strip()
 
     @property
     def track_count(self) -> int:
@@ -745,7 +976,12 @@ class MusicAlbumInfo:
     @property
     def overview(self) -> str:
         """返回专辑摘要，供卡片和通知复用。"""
-        parts = [self.artist, self.category, self.release_date, " / ".join(self.genres[:3])]
+        parts = [
+            self.artist,
+            self.metadata_category,
+            self.release_date,
+            " / ".join(self.genres[:3]),
+        ]
         return " · ".join(part for part in parts if part)
 
     def to_dict(self) -> dict[str, Any]:
@@ -755,6 +991,7 @@ class MusicAlbumInfo:
             for key, value in asdict(self).items()
             if key not in {"tracks", "releases", "type"}
         }
+        payload["classification"] = _classification_payload(self.classification)
         payload.update(
             {
                 "type": self.type.value,
@@ -785,6 +1022,7 @@ class MusicAlbumInfo:
         """从字典恢复标准化专辑信息。"""
         _validate_music_type(data.get("type"))
         values = _music_init_values(cls, data)
+        values["classification"] = _classification_result(values.get("classification"))
         values["media_source"] = normalize_media_source(values.get("media_source"))
         for key in ("artists", "secondary_types", "genres", "tags"):
             values[key] = _music_string_list(values.get(key))
@@ -800,6 +1038,27 @@ class MusicAlbumInfo:
             for item in data.get("releases") or []
         ]
         values["raw_data"] = dict(values.get("raw_data") or {})
+        if "library_category" in data or "metadata_category" in data:
+            library_value = (
+                data.get("library_category")
+                if "library_category" in data
+                else data.get("category")
+            )
+            values["library_category"] = str(library_value or "")
+            values["metadata_category"] = str(data.get("metadata_category") or "")
+        else:
+            library_category, metadata_category = _resolve_music_categories(
+                category=data.get("category"),
+                library_category=None,
+                metadata_category=None,
+                album_type=values.get("album_type"),
+                secondary_types=values.get("secondary_types"),
+                genres=values.get("genres"),
+                tags=values.get("tags"),
+                classification=values.get("classification"),
+            )
+            values["library_category"] = library_category
+            values["metadata_category"] = metadata_category
         return cls(**values)
 
     def to_music_info(self) -> MusicInfo:
@@ -815,13 +1074,19 @@ class MusicAlbumInfo:
             album_artist=self.artist or None,
             album_id=self.media_id,
             album_type=self.album_type,
+            secondary_types=list(self.secondary_types),
             year=self.year,
             release_date=self.release_date,
+            release_status=self.release_status,
             total_tracks=self.track_count or None,
             duration=self.duration,
             cover_url=self.cover_url,
-            category=self.category,
+            library_category=self.library_category,
+            metadata_category=self.metadata_category,
+            classification=self.classification,
             genres=list(self.genres),
+            tags=list(self.tags),
+            artist_country=self.artist_country,
             names=[name for name in (self.title,) if name],
             detail_link=self.detail_link,
         )
@@ -850,6 +1115,12 @@ class MusicArtistInfo:
     genres: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     aliases: list[str] = field(default_factory=list)
+    # 自动分类或人工覆盖后的媒体库相对目录分类
+    library_category: str = ""
+    # 数据源提供的艺术家类型等描述性分类
+    metadata_category: str = ""
+    classification: ClassificationResult | None = None
+    classification_facts: dict[str, ClassificationFactValue] = field(default_factory=dict)
     # 关联艺术家场景下的关系文本，例如乐队成员、子团体
     relation: str | None = None
     image_url: str | None = None
@@ -860,8 +1131,27 @@ class MusicArtistInfo:
     raw_data: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """将构造参数中的媒体身份规范化为统一成对字段。"""
+        """规范化媒体身份，并拆分艺术家描述分类与媒体库分类。"""
         self.media_source, self.media_id = resolve_media_identity(media=self)
+        self.library_category = str(self.library_category or "").strip()
+        self.metadata_category = str(
+            self.metadata_category or self.artist_type or ""
+        ).strip()
+        self.classification = _classification_result(self.classification)
+
+    @property
+    def category(self) -> str:
+        """返回兼容字段，其语义始终等同媒体库分类。"""
+        return self.library_category
+
+    @category.setter
+    def category(self, value: str | None) -> None:
+        """兼容旧调用方直接写 category，并同步媒体库分类。"""
+        self.set_library_category(value)
+
+    def set_library_category(self, category: str | None) -> None:
+        """设置媒体库分类，来源艺术家类型保持不变。"""
+        self.library_category = str(category or "").strip()
 
     @property
     def title(self) -> str | None:
@@ -896,9 +1186,11 @@ class MusicArtistInfo:
     def to_dict(self) -> dict[str, Any]:
         """转换为可传输的字典。"""
         payload = {key: value for key, value in asdict(self).items() if key != "type"}
+        payload["classification"] = _classification_payload(self.classification)
         payload.update(
             {
                 "type": self.type.value,
+                "category": self.category,
                 "title": self.title,
                 "life_span": self.life_span,
                 "overview": self.overview,
@@ -921,8 +1213,13 @@ class MusicArtistInfo:
             title=self.name,
             cover_url=self.image_url,
             version=self.disambiguation,
-            category=self.artist_type or "",
+            library_category=self.library_category,
+            metadata_category=self.metadata_category,
+            classification=self.classification,
+            classification_facts=dict(self.classification_facts),
             genres=list(self.genres),
+            tags=list(self.tags),
+            artist_country=self.country,
             names=[name for name in [self.name, *self.aliases] if name],
             detail_link=self.detail_link,
             raw_data=dict(self.raw_data),
@@ -933,6 +1230,7 @@ class MusicArtistInfo:
         """从字典恢复标准化艺术家信息。"""
         _validate_music_type(data.get("type"))
         values = _music_init_values(cls, data)
+        values["classification"] = _classification_result(values.get("classification"))
         values["media_source"] = normalize_media_source(values.get("media_source"))
         for key in ("genres", "tags", "aliases"):
             values[key] = _music_string_list(values.get(key))
@@ -944,6 +1242,12 @@ class MusicArtistInfo:
             if value
         }
         values["raw_data"] = dict(values.get("raw_data") or {})
+        values["library_category"] = str(
+            data.get("library_category") or data.get("category") or ""
+        )
+        values["metadata_category"] = str(
+            data.get("metadata_category") or ""
+        )
         return cls(**values)
 
 
@@ -1259,8 +1563,15 @@ class MediaInfo:
     season_info: List[dict] = field(default_factory=list)
     # 各季的年份
     season_years: dict = field(default_factory=dict)
-    # 二级分类
+    # 兼容字段，过渡期始终与 library_category 同步
     category: str = ""
+    # 自动分类或人工覆盖后的媒体库相对目录分类
+    library_category: str = ""
+    # 数据源提供的描述性分类
+    metadata_category: str = ""
+    classification: ClassificationResult | None = None
+    # 插件来源提交的受控扩展分类事实，统一收口时由宿主注册表校验
+    classification_facts: dict[str, ClassificationFactValue] = field(default_factory=dict)
     # TMDB INFO
     tmdb_info: dict = field(default_factory=dict)
     # 豆瓣 INFO
@@ -1274,7 +1585,7 @@ class MediaInfo:
     # 演员
     actors: List[dict] = field(default_factory=list)
     # 是否成人内容
-    adult: bool = False
+    adult: Optional[bool] = None
     # 创建人
     created_by: list = field(default_factory=list)
     # 集时长
@@ -1327,7 +1638,7 @@ class MediaInfo:
     episode_group: str = None
 
     def __post_init__(self):
-        """规范化媒体来源，并从各来源原始数据初始化统一字段。"""
+        """规范化媒体来源、来源投影和新旧分类字段。"""
         self.media_source, self.media_id = resolve_media_identity(media=self)
         # 设置媒体信息
         if self.tmdb_info:
@@ -1339,9 +1650,27 @@ class MediaInfo:
         if self.anilist_info:
             self.set_anilist_info(self.anilist_info)
         self.media_source, self.media_id = resolve_media_identity(media=self)
+        library_category = str(self.library_category or self.category or "").strip()
+        self.__dict__["library_category"] = library_category
+        self.__dict__["category"] = library_category
+        self.__dict__["metadata_category"] = str(
+            self.metadata_category or ""
+        ).strip()
+        self.__dict__["classification"] = _classification_result(
+            self.classification
+        )
+        self.__dict__["_category_semantics_ready"] = True
 
     def __setattr__(self, name: str, value: Any):
-        """直接写入媒体运行时字段，保留历史动态属性行为。"""
+        """写入动态字段，并兼容旧调用方直接覆盖 category。"""
+        if (
+            name in {"category", "library_category"}
+            and self.__dict__.get("_category_semantics_ready")
+        ):
+            normalized = str(value or "").strip()
+            self.__dict__["category"] = normalized
+            self.__dict__["library_category"] = normalized
+            return
         self.__dict__[name] = value
 
     def __get_properties(self):
@@ -1361,18 +1690,34 @@ class MediaInfo:
         """
         properties = self.__get_properties()
         for key, value in data.items():
-            if key in properties:
+            if key in properties or key in {
+                "category",
+                "library_category",
+                "metadata_category",
+                "classification",
+                "_category_semantics_ready",
+            }:
                 continue
             setattr(self, key, value)
+        if "metadata_category" in data:
+            self.metadata_category = str(data.get("metadata_category") or "").strip()
+        if "classification" in data:
+            self.classification = _classification_result(data.get("classification"))
+        if "library_category" in data:
+            self.set_library_category(data.get("library_category"))
+        elif "category" in data:
+            self.set_library_category(data.get("category"))
         self.media_source, self.media_id = resolve_media_identity(media=self)
         if isinstance(self.type, str):
             self.type = MediaType(self.type)
 
     def set_category(self, cat: str):
-        """
-        设置二级分类
-        """
-        self.category = cat or ""
+        """兼容旧入口，委托统一媒体库分类写入方法。"""
+        self.set_library_category(cat)
+
+    def set_library_category(self, category: str | None) -> None:
+        """设置媒体库分类，并同步过渡期兼容 category 字段。"""
+        self.library_category = category or ""
 
     def _apply_source_projection(self, values: dict[str, Any]) -> None:
         """把来源 owner 返回的字段映射应用到当前领域对象。"""
@@ -1509,6 +1854,11 @@ class MediaInfo:
         返回字典
         """
         dicts = vars(self).copy()
+        dicts.pop("_category_semantics_ready", None)
+        dicts["category"] = self.library_category
+        dicts["library_category"] = self.library_category
+        dicts["metadata_category"] = self.metadata_category
+        dicts["classification"] = _classification_payload(self.classification)
         dicts["type"] = self.type.value if self.type else None
         dicts["detail_link"] = self.detail_link
         dicts["title_year"] = self.title_year

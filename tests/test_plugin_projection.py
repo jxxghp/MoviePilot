@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 
 from app.runtime.extensions.plugin.projection import PluginProjection
+from app.schemas.category import ClassificationFieldDefinition
+from app.schemas.event import MediaSourceInfo
 
 
 class _Plugin(SimpleNamespace):
@@ -105,6 +107,12 @@ def test_projection_collects_enabled_media_source_declarations():
             "name": "Acme Video",
             "media_source": "acme.video",
             "media_types": ["电影", "电视剧"],
+            "classification_fields": [{
+                "id": "extensions.acme.video.release_channel",
+                "label": "发行渠道",
+                "value_type": "enum",
+                "operators": ["equals"],
+            }],
         }],
     )
     disabled = _Plugin(
@@ -117,8 +125,44 @@ def test_projection_collects_enabled_media_source_declarations():
         "name": "Acme Video",
         "media_source": "acme.video",
         "media_types": ["电影", "电视剧"],
+        "classification_fields": [{
+            "id": "extensions.acme.video.release_channel",
+            "label": "发行渠道",
+            "value_type": "enum",
+            "operators": ["equals"],
+        }],
         "plugin_id": "Demo",
     }]
+
+
+def test_projection_serializes_public_media_source_sdk_model():
+    """新 SDK 声明模型应继续出现在既有媒体来源接口中。"""
+    source = MediaSourceInfo(
+        name="SDK Video",
+        media_source="sdk.video",
+        media_types=["电影"],
+        classification_fields=[
+            ClassificationFieldDefinition(
+                id="extensions.sdk.video.channel",
+                label="渠道",
+                value_type="string",
+                operators=["equals"],
+                media_types=["电影"],
+            )
+        ],
+    )
+    projection = PluginProjection(
+        {"SdkDemo": _Plugin(get_media_source=lambda: [source])}
+    )
+
+    projected = projection.media_sources()
+
+    assert len(projected) == 1
+    assert projected[0]["media_source"] == "sdk.video"
+    assert projected[0]["plugin_id"] == "SdkDemo"
+    assert projected[0]["classification_fields"][0]["id"] == (
+        "extensions.sdk.video.channel"
+    )
 
 
 def test_projection_isolates_one_plugin_hook_failure():

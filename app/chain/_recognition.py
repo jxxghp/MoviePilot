@@ -8,19 +8,33 @@ import copy
 import threading
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Generator, Optional, Protocol, cast
+from typing import Any, Generator, Optional, Protocol, TypeVar, cast
 
 from app.application.configuration import get_configured_system_config
 from app.chain._contracts import ChainRuntimeMixinHost
-from app.domain.context import MediaInfo, MusicInfo
+from app.domain.context import (
+    MediaInfo,
+    MusicAlbumInfo,
+    MusicArtistInfo,
+    MusicInfo,
+)
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.cache import async_fresh, fresh
 from app.runtime.events import Event
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
+from app.schemas.category import ClassificationSelection
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import ChainEventType, MediaSource, MediaType, SystemConfigKey
+
+_ClassificationSubjectT = TypeVar(
+    "_ClassificationSubjectT",
+    MediaInfo,
+    MusicInfo,
+    MusicAlbumInfo,
+    MusicArtistInfo,
+)
 
 
 class RecognitionSharePort(Protocol):
@@ -240,11 +254,61 @@ class _PluginRecognitionPlan:
     music_type: Optional[str]
 
 
+class _RecognitionFinalizationOwner:
+    """隔离完整识别结果的同步与异步分类收口。"""
+
+    def _finalize_recognition_result(
+        self,
+        mediainfo: Optional[_ClassificationSubjectT],
+        *,
+        effective_override: ClassificationSelection | None = None,
+        refresh: bool = False,
+    ) -> Optional[_ClassificationSubjectT]:
+        """在唯一应用服务中复制并分类完整识别结果。"""
+        if mediainfo is None:
+            return None
+        service = getattr(cast(ChainRuntimeMixinHost, self), "classification_service", None)
+        if service is None:
+            return mediainfo
+        return cast(
+            _ClassificationSubjectT,
+            service.finalize(
+                mediainfo,
+                effective_override=effective_override,
+                refresh=refresh,
+            ),
+        )
+
+    async def _async_finalize_recognition_result(
+        self,
+        mediainfo: Optional[_ClassificationSubjectT],
+        *,
+        effective_override: ClassificationSelection | None = None,
+        refresh: bool = False,
+    ) -> Optional[_ClassificationSubjectT]:
+        """通过异步应用服务复制、补充并分类完整识别结果。"""
+        if mediainfo is None:
+            return None
+        service = getattr(cast(ChainRuntimeMixinHost, self), "classification_service", None)
+        if service is None:
+            return mediainfo
+        return cast(
+            _ClassificationSubjectT,
+            await service.async_finalize(
+                mediainfo,
+                effective_override=effective_override,
+                refresh=refresh,
+            ),
+        )
+
+
 class RecognitionMixin:
     """为媒体 Chain 提供本地识别、共享识别和插件补充识别流程。"""
 
     __mixin_host_protocol__ = ChainRuntimeMixinHost
     eventmanager: Any
+    _finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._finalize_recognition_result)
+    _async_finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._async_finalize_recognition_result)
 
     def _runtime_host(self) -> ChainRuntimeMixinHost:
         """把 MRO 注入的宿主能力收窄为识别 mixin 的静态协议。"""
@@ -530,13 +594,13 @@ class RecognitionMixin:
 
     def recognize_media(
             self,
-            meta: MetaBase = None,
+            meta: Optional[MetaBase] = None,
             mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             episode_group: Optional[str] = None,
             cache: bool = True,
-            share_meta: MetaBase = None,
+            share_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
@@ -564,17 +628,17 @@ class RecognitionMixin:
         if not plan.identity_valid:
             logger.warning("媒体识别需要同时提供有效的 media_source 和 media_id")
             return None
-        return self._run_recognition_steps(plan)
+        return cast(Optional[MediaInfo], self._finalize_recognition_result(self._run_recognition_steps(plan)))
 
     async def async_recognize_media(
             self,
-            meta: MetaBase = None,
+            meta: Optional[MetaBase] = None,
             mtype: Optional[MediaType] = None,
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
             episode_group: Optional[str] = None,
             cache: bool = True,
-            share_meta: MetaBase = None,
+            share_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
     ) -> Optional[MediaInfo]:
         """
@@ -602,7 +666,7 @@ class RecognitionMixin:
         if not plan.identity_valid:
             logger.warning("媒体识别需要同时提供有效的 media_source 和 media_id")
             return None
-        return await self._async_run_recognition_steps(plan)
+        return cast(Optional[MediaInfo], await self._async_finalize_recognition_result(await self._async_run_recognition_steps(plan)))
 
     @staticmethod
     def _media_recognize_plugin_payload(
@@ -743,8 +807,7 @@ class RecognitionMixin:
         return plugin_info
 
     def _supplement_media_recognize(
-            self,
-            meta: Optional[MetaBase],
+            self, meta: Optional[MetaBase],
             mtype: Optional[MediaType],
             media_source: Optional[MediaSource | str],
             media_id: Optional[str],
@@ -779,8 +842,7 @@ class RecognitionMixin:
         return self._apply_plugin_recognition_result(plan, result)
 
     async def _async_supplement_media_recognize(
-            self,
-            meta: Optional[MetaBase],
+            self, meta: Optional[MetaBase],
             mtype: Optional[MediaType],
             media_source: Optional[MediaSource | str],
             media_id: Optional[str],

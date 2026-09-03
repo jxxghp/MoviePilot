@@ -25,6 +25,7 @@ from app.application.historymutation import (
 from app.application.historymutation import (
     TransferHistoryMutationRepository as TransferHistoryMutationRepository,
 )
+from app.application.transfer import history as history_projection
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -117,7 +118,11 @@ class TransferHistorySnapshot:
     dest_fileitem: Optional[JsonData] = None
     mode: Optional[str] = None
     type: Optional[str] = None
+    media_category_id: Optional[str] = None
     category: Optional[str] = None
+    classification_rule_id: Optional[str] = None
+    classification_policy_revision: Optional[int] = None
+    classification_source: Optional[str] = None
     title: Optional[str] = None
     year: Optional[str] = None
     media_source: Optional[MediaSource] = None
@@ -159,7 +164,11 @@ class TransferHistoryWrite:
     dest_fileitem: Optional[JsonData] = None
     mode: Optional[str] = None
     type: Optional[str] = None
+    media_category_id: Optional[str] = None
     category: Optional[str] = None
+    classification_rule_id: Optional[str] = None
+    classification_policy_revision: Optional[int] = None
+    classification_source: Optional[str] = None
     title: Optional[str] = None
     year: Optional[str] = None
     media_source: Optional[MediaSource] = None
@@ -440,7 +449,11 @@ class DownloadHistorySnapshot:
     channel: Optional[str] = None
     date: Optional[str] = None
     note: Optional[JsonData] = None
+    media_category_id: Optional[str] = None
     media_category: Optional[str] = None
+    classification_rule_id: Optional[str] = None
+    classification_policy_revision: Optional[int] = None
+    classification_source: Optional[str] = None
     episode_group: Optional[str] = None
     custom_words: Optional[str] = None
 
@@ -488,7 +501,11 @@ class DownloadHistoryWrite:
     channel: Optional[str] = None
     date: Optional[str] = None
     note: Optional[JsonData] = None
+    media_category_id: Optional[str] = None
     media_category: Optional[str] = None
+    classification_rule_id: Optional[str] = None
+    classification_policy_revision: Optional[int] = None
+    classification_source: Optional[str] = None
     episode_group: Optional[str] = None
     custom_words: Optional[str] = None
 
@@ -1184,28 +1201,6 @@ def describe_history_gate(history: Optional[TransferHistorySnapshot],
 # 表的读写规则放在一起，字段含义只有一处需要维护。
 # --------------------------------------------------------------------------- #
 
-def _history_title(meta: MetaBase,
-                   mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None) -> Optional[str]:
-    """音乐文件优先记录曲目标题，其它媒体保持识别标题。"""
-    if isinstance(meta, MetaMusic) and meta.title:
-        return str(meta.title)
-    if mediainfo and mediainfo.title:
-        return str(mediainfo.title)
-    return str(meta.name) if meta.name else None
-
-
-def _history_source_path(fileitem: FileItem) -> str:
-    """返回整理历史必需的源路径，拒绝持久化无身份记录。"""
-    if not fileitem.path:
-        raise ValueError("整理历史缺少源文件路径")
-    return fileitem.path
-
-
-def _history_year(value: object) -> Optional[str]:
-    """把媒体年份规范为整理历史稳定字符串。"""
-    return str(value) if value is not None else None
-
-
 def add_transfer_success(
     fileitem: FileItem,
     mode: str,
@@ -1231,7 +1226,7 @@ def add_transfer_success(
     repository = transfer_history_oper or get_transfer_history_repository()
     media_source, media_id = resolve_media_identity(media=mediainfo)
     return repository.replace(TransferHistoryWrite(
-        src=_history_source_path(fileitem),
+        src=history_projection.history_source_path(fileitem),
         src_storage=fileitem.storage,
         src_fileitem=fileitem.model_dump(),
         dest=transferinfo.target_item.path if transferinfo.target_item else None,
@@ -1239,9 +1234,9 @@ def add_transfer_success(
         dest_fileitem=transferinfo.target_item.model_dump() if transferinfo.target_item else None,
         mode=mode,
         type=mediainfo.type.value,
-        category=mediainfo.category,
-        title=_history_title(meta, mediainfo),
-        year=_history_year(mediainfo.year),
+        **history_projection.classification_fields(mediainfo),
+        title=history_projection.history_title(meta, mediainfo),
+        year=history_projection.history_year(mediainfo.year),
         media_source=media_source,
         media_id=media_id,
         music_type=getattr(mediainfo, "music_type", None),
@@ -1290,7 +1285,7 @@ def add_transfer_fail(
     if mediainfo and transferinfo:
         media_source, media_id = resolve_media_identity(media=mediainfo)
         history = repository.replace(TransferHistoryWrite(
-            src=_history_source_path(fileitem),
+            src=history_projection.history_source_path(fileitem),
             src_storage=fileitem.storage,
             src_fileitem=fileitem.model_dump(),
             dest=transferinfo.target_item.path if transferinfo.target_item else None,
@@ -1298,9 +1293,9 @@ def add_transfer_fail(
             dest_fileitem=transferinfo.target_item.model_dump() if transferinfo.target_item else None,
             mode=mode,
             type=mediainfo.type.value,
-            category=mediainfo.category,
-            title=_history_title(meta, mediainfo),
-            year=_history_year(mediainfo.year or meta.year),
+            **history_projection.classification_fields(mediainfo),
+            title=history_projection.history_title(meta, mediainfo),
+            year=history_projection.history_year(mediainfo.year or meta.year),
             media_source=media_source,
             media_id=media_id,
             music_type=getattr(mediainfo, "music_type", None),
@@ -1324,8 +1319,8 @@ def add_transfer_fail(
         media_source, media_id = resolve_media_identity(media=meta)
         history = repository.replace(TransferHistoryWrite(
             type=meta.type.value if meta.type else None,
-            title=_history_title(meta),
-            year=_history_year(meta.year),
+            title=history_projection.history_title(meta),
+            year=history_projection.history_year(meta.year),
             media_source=media_source,
             media_id=media_id,
             music_type=MUSIC_ENTITY_RECORDING if isinstance(meta, MetaMusic) else None,
@@ -1334,7 +1329,7 @@ def add_transfer_fail(
             bit_depth=getattr(meta, "bit_depth", None),
             sample_rate=getattr(meta, "sample_rate", None),
             bitrate=getattr(meta, "bitrate", None),
-            src=_history_source_path(fileitem),
+            src=history_projection.history_source_path(fileitem),
             src_storage=fileitem.storage,
             src_fileitem=fileitem.model_dump(),
             mode=mode,

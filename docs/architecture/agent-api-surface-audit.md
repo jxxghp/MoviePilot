@@ -5,10 +5,10 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **378**
-- Stable `moviepilot_api` operations: **203**
-- Exact HTTP routes used by the gateway: **201**
-- OpenAPI routes matched directly by the gateway: **200**
+- OpenAPI HTTP operations: **385**
+- Stable `moviepilot_api` operations: **202**
+- Exact HTTP routes used by the gateway: **200**
+- OpenAPI routes matched directly by the gateway: **199**
 - Bounded dynamic gateway routes: **1**
 - Every gateway operation has a generated English oneOf input contract in MCP `tools/list` and `skills/moviepilot-api/SKILL.md`.
 - Every non-gateway OpenAPI operation is listed below with an explicit ownership boundary; it is not silently callable through arbitrary URL/method input.
@@ -19,11 +19,11 @@
 | :--- | ---: | :--- |
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
 | `consolidated` | 72 | Source/UI route represented by a stable aggregate Agent operation. |
-| `gateway` | 200 | Approved structured MoviePilot Agent operation. |
+| `gateway` | 199 | Approved structured MoviePilot Agent operation. |
 | `provider-skill` | 11 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 8 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 16 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -113,7 +113,14 @@
 | `GET` | `/api/v1/mcp/tools/{tool_name}/schema` | mcp | `transport_or_identity` | host-runtime | 获取工具参数Schema |
 | `GET` | `/api/v1/media/category` | media | `gateway` | media.categories | 查询自动分类配置 |
 | `GET` | `/api/v1/media/category/config` | media | `gateway` | media.category.config.get | 获取分类策略配置 |
-| `POST` | `/api/v1/media/category/config` | media | `gateway` | media.category.config.update | 保存分类策略配置 |
+| `GET` | `/api/v1/media/classification/fields` | media | `ui_presentation` | host-ui | 读取媒体分类字段能力目录 |
+| `GET` | `/api/v1/media/classification/history` | media | `ui_presentation` | host-ui | 读取媒体分类策略历史 |
+| `POST` | `/api/v1/media/classification/impact` | media | `ui_presentation` | host-ui | 分析分类策略对近期样本的估算影响 |
+| `GET` | `/api/v1/media/classification/policy` | media | `ui_presentation` | host-ui | 读取当前媒体分类策略 |
+| `PUT` | `/api/v1/media/classification/policy` | media | `ui_presentation` | host-ui | 校验并发布媒体分类策略 |
+| `POST` | `/api/v1/media/classification/preview` | media | `ui_presentation` | host-ui | 预览媒体分类策略命中过程 |
+| `POST` | `/api/v1/media/classification/rollback/{revision}` | media | `ui_presentation` | host-ui | 把历史媒体分类策略发布为新版本 |
+| `POST` | `/api/v1/media/classification/validate` | media | `ui_presentation` | host-ui | 校验媒体分类策略草稿 |
 | `GET` | `/api/v1/media/group/seasons/{episode_group}` | media | `gateway` | media.episode_group.seasons | 查询剧集组季信息 |
 | `GET` | `/api/v1/media/groups/{tmdbid}` | media | `gateway` | media.episode_groups | 查询媒体剧集组 |
 | `GET` | `/api/v1/media/recognize` | media | `gateway` | media.recognize | 识别媒体信息（种子） |

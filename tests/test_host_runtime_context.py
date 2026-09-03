@@ -204,6 +204,8 @@ def _runtime() -> HostRuntime:
             repository=_Repository,
             system_config=lambda: _Repository(object()),
         ),
+        classification=SimpleNamespace(),
+        classification_execution=SimpleNamespace(),
         system=SimpleNamespace(),
         configuration=RuntimeConfiguration(
             api=lambda: ApiRuntimeConfig(60, False, True),

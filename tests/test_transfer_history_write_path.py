@@ -21,6 +21,7 @@ from app.db.models.transferhistory import TransferHistory
 from app.db.session import SessionFactory, async_session_scope
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
+from app.schemas.category import ClassificationResult, ClassificationSelection
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -100,6 +101,59 @@ def test_add_success_maps_every_field_onto_the_row(db):
     assert (row.downloader, row.download_hash) == ("qbittorrent", "hash-ok")
     assert row.files == ["/downloads/片名.S01E02.2026.mkv"]
     assert row.errmsg is None
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_identified_transfer_history_persists_effective_classification(
+    db,
+    failed: bool,
+) -> None:
+    """整理成功和已识别失败都必须保存最终分类的完整执行快照。"""
+    oper = _repository()
+    media = _mediainfo(category="不得作为真值")
+    media.classification = ClassificationResult(
+        recommended=ClassificationSelection(
+            category_id="tv.auto",
+            category_path=["自动"],
+            rule_id="rule.auto",
+            source="automatic",
+        ),
+        effective=ClassificationSelection(
+            category_id="tv.manual",
+            category_path=["剧集", "收藏"],
+            source="subscription",
+        ),
+        policy_revision=13,
+        state="complete",
+    )
+    media.set_library_category("剧集/收藏")
+    source = f"/downloads/classification-{'fail' if failed else 'success'}.mkv"
+
+    if failed:
+        add_transfer_fail(
+            transfer_history_oper=oper,
+            fileitem=_fileitem(source),
+            mode="copy",
+            meta=MetaInfo("classification.mkv"),
+            mediainfo=media,
+            transferinfo=_transferinfo(message="失败"),
+        )
+    else:
+        add_transfer_success(
+            transfer_history_oper=oper,
+            fileitem=_fileitem(source),
+            mode="copy",
+            meta=MetaInfo("classification.mkv"),
+            mediainfo=media,
+            transferinfo=_transferinfo(),
+        )
+
+    row = oper.get_by_src(source)
+    assert row.media_category_id == "tv.manual"
+    assert row.category == "剧集/收藏"
+    assert row.classification_rule_id is None
+    assert row.classification_policy_revision == 13
+    assert row.classification_source == "subscription"
 
 
 def test_add_success_persists_both_file_items(db):

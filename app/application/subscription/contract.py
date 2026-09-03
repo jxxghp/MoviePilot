@@ -63,20 +63,29 @@ _SUBSCRIPTION_FIELDS = frozenset(
         "search_imdbid",
         "manual_total_episode",
         "custom_words",
+        "media_category_id",
         "media_category",
         "filter_groups",
         "episode_group",
     }
 )
 
-_SUBSCRIPTION_HISTORY_FIELDS = _SUBSCRIPTION_FIELDS - {
+_CLASSIFICATION_HISTORY_FIELDS = frozenset(
+    {
+        "classification_rule_id",
+        "classification_policy_revision",
+        "classification_source",
+    }
+)
+
+_SUBSCRIPTION_HISTORY_FIELDS = (_SUBSCRIPTION_FIELDS - {
     "lack_episode",
     "note",
     "state",
     "last_update",
     "downloader",
     "manual_total_episode",
-}
+}) | _CLASSIFICATION_HISTORY_FIELDS
 
 
 class _FrozenJsonDict(dict[str, JsonData]):
@@ -186,6 +195,7 @@ class SubscriptionSnapshot:
     search_imdbid: Optional[int] = None
     manual_total_episode: Optional[int] = None
     custom_words: Optional[str] = None
+    media_category_id: Optional[str] = None
     media_category: Optional[str] = None
     filter_groups: Optional[builtins.list[str]] = None
     episode_group: Optional[str] = None
@@ -245,7 +255,11 @@ class SubscriptionHistorySnapshot:
     save_path: Optional[str] = None
     search_imdbid: Optional[int] = None
     custom_words: Optional[str] = None
+    media_category_id: Optional[str] = None
     media_category: Optional[str] = None
+    classification_rule_id: Optional[str] = None
+    classification_policy_revision: Optional[int] = None
+    classification_source: Optional[str] = None
     filter_groups: Optional[builtins.list[str]] = None
     episode_group: Optional[str] = None
 

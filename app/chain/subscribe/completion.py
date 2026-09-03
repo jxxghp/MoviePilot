@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from app.application.classification.reference import effective_classification_snapshot
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
     subscribe_media_key,
@@ -102,6 +103,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
                 notify=notify,
                 report=self._SubscribeChain__report_completed,
                 notification=completion_message.model_dump(mode="json"),
+                classification_snapshot=effective_classification_snapshot(mediainfo),
             )
 
     def finish_subscribe_or_not(

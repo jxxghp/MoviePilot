@@ -15,7 +15,6 @@ TransferJob / TransferJobTask，那两个用 app.schemas 的同名 DTO——一�
 """
 import asyncio
 import hashlib
-import json
 import threading
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -38,6 +37,7 @@ from typing import (
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from app.application.history import DownloadHistorySnapshot
+from app.application.transfer import checkpoint as checkpoint_codec
 from app.application.transfer.execution import TransferExecutionCheckpoint
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
@@ -139,43 +139,9 @@ TRANSFER_ADMISSION_ACCEPTED = "accepted"
 TRANSFER_ADMISSION_PROVIDER_PENDING = "provider_pending"
 TRANSFER_ADMISSION_PLANNED = "planned"
 TRANSFER_PLANNING_INPUT_VERSION = 1
-TRANSFER_PLAN_CHECKPOINT_VERSION = 1
+TRANSFER_PLAN_CHECKPOINT_VERSION = 2
+TRANSFER_PLAN_CHECKPOINT_LEGACY_VERSION = 1
 TRANSFER_PROVIDER_INVOCATION_VERSION = 1
-
-
-def _copy_json_mapping(value: Optional[dict[str, JSONValue]]) -> Optional[dict[str, JSONValue]]:
-    if value is None:
-        return None
-    return deepcopy(value)
-
-
-def _read_json_mapping(payload: dict[str, Any], key: str) -> Optional[dict[str, JSONValue]]:
-    value = payload.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, dict):
-        raise ValueError(f"整理计划字段 {key} 必须是 JSON 对象")
-    return deepcopy(value)
-
-
-def _read_json_tuple(payload: dict[str, Any], key: str) -> tuple[dict[str, JSONValue], ...]:
-    value = payload.get(key, [])
-    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
-        raise ValueError(f"整理计划字段 {key} 必须是 JSON 对象数组")
-    return tuple(deepcopy(item) for item in value)
-
-
-def _canonical_json(payload: dict[str, JSONValue]) -> str:
-    try:
-        return json.dumps(
-            payload,
-            ensure_ascii=True,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        )
-    except (TypeError, ValueError) as error:
-        raise ValueError("整理计划只能包含有限 JSON 值") from error
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,12 +172,12 @@ class TransferPlanningInput:
         if self.schema_version != TRANSFER_PLANNING_INPUT_VERSION:
             raise ValueError(f"不支持的整理规划输入版本: {self.schema_version}")
         object.__setattr__(self, "source_fileitem", deepcopy(self.source_fileitem))
-        object.__setattr__(self, "meta", _copy_json_mapping(self.meta))
-        object.__setattr__(self, "mediainfo", _copy_json_mapping(self.mediainfo))
+        object.__setattr__(self, "meta", checkpoint_codec.copy_json_mapping(self.meta))
+        object.__setattr__(self, "mediainfo", checkpoint_codec.copy_json_mapping(self.mediainfo))
         object.__setattr__(
             self,
             "target_directory",
-            _copy_json_mapping(self.target_directory),
+            checkpoint_codec.copy_json_mapping(self.target_directory),
         )
         object.__setattr__(
             self,
@@ -223,21 +189,21 @@ class TransferPlanningInput:
         path = self.source_fileitem.get("path")
         if not isinstance(storage, str) or not storage or not isinstance(path, str) or not path:
             raise ValueError("整理规划输入缺少源文件存储或路径")
-        _canonical_json(self.to_payload())
+        checkpoint_codec.canonical_json(self.to_payload())
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "TransferPlanningInput":
         """从受版本约束的 JSON 对象恢复规划输入。"""
         if not isinstance(payload, dict):
             raise ValueError("整理规划输入必须是 JSON 对象")
-        source_fileitem = _read_json_mapping(payload, "source_fileitem")
+        source_fileitem = checkpoint_codec.read_json_mapping(payload, "source_fileitem")
         if source_fileitem is None:
             raise ValueError("整理规划输入缺少 source_fileitem")
         return cls(
             source_fileitem=source_fileitem,
-            meta=_read_json_mapping(payload, "meta"),
-            mediainfo=_read_json_mapping(payload, "mediainfo"),
-            target_directory=_read_json_mapping(payload, "target_directory"),
+            meta=checkpoint_codec.read_json_mapping(payload, "meta"),
+            mediainfo=checkpoint_codec.read_json_mapping(payload, "mediainfo"),
+            target_directory=checkpoint_codec.read_json_mapping(payload, "target_directory"),
             target_storage=payload.get("target_storage"),
             target_path=payload.get("target_path"),
             requested_transfer_type=payload.get("requested_transfer_type"),
@@ -248,9 +214,9 @@ class TransferPlanningInput:
             need_rename=payload.get("need_rename", True),
             need_notify=payload.get("need_notify", True),
             overwrite_mode=payload.get("overwrite_mode"),
-            episodes_info=_read_json_tuple(payload, "episodes_info"),
+            episodes_info=checkpoint_codec.read_json_tuple(payload, "episodes_info"),
             preview=payload.get("preview", False),
-            options=_read_json_mapping(payload, "options") or {},
+            options=checkpoint_codec.read_json_mapping(payload, "options") or {},
             schema_version=payload.get("schema_version", 0),
         )
 
@@ -259,9 +225,9 @@ class TransferPlanningInput:
         return {
             "schema_version": self.schema_version,
             "source_fileitem": deepcopy(self.source_fileitem),
-            "meta": _copy_json_mapping(self.meta),
-            "mediainfo": _copy_json_mapping(self.mediainfo),
-            "target_directory": _copy_json_mapping(self.target_directory),
+            "meta": checkpoint_codec.copy_json_mapping(self.meta),
+            "mediainfo": checkpoint_codec.copy_json_mapping(self.mediainfo),
+            "target_directory": checkpoint_codec.copy_json_mapping(self.target_directory),
             "target_storage": self.target_storage,
             "target_path": self.target_path,
             "requested_transfer_type": self.requested_transfer_type,
@@ -280,7 +246,7 @@ class TransferPlanningInput:
     @property
     def fingerprint(self) -> str:
         """返回规范 JSON 的稳定 SHA-256 指纹。"""
-        return hashlib.sha256(_canonical_json(self.to_payload()).encode("utf-8")).hexdigest()
+        return hashlib.sha256(checkpoint_codec.canonical_json(self.to_payload()).encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,12 +268,12 @@ class TransferPlanItem:
             raise ValueError("整理计划项缺少目标身份或动作")
         if not self.source_fileitem.get("storage") or not self.source_fileitem.get("path"):
             raise ValueError("整理计划项缺少源文件身份")
-        _canonical_json(self.to_payload())
+        checkpoint_codec.canonical_json(self.to_payload())
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "TransferPlanItem":
         """从 JSON 对象恢复单条叶子文件操作。"""
-        source_fileitem = _read_json_mapping(payload, "source_fileitem")
+        source_fileitem = checkpoint_codec.read_json_mapping(payload, "source_fileitem")
         if source_fileitem is None:
             raise ValueError("整理计划项缺少 source_fileitem")
         return cls(
@@ -345,7 +311,7 @@ class TransferProviderReference:
             raise ValueError("旧 transfer provider 的 plugin_name 必须是非空字符串")
         if self.method != "transfer":
             raise ValueError("旧 transfer provider 的 method 必须是 transfer")
-        _canonical_json(self.to_payload())
+        checkpoint_codec.canonical_json(self.to_payload())
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "TransferProviderReference":
@@ -394,12 +360,12 @@ class TransferProviderInvocationSnapshot:
                 f"不支持的旧 transfer provider 调用快照版本: {self.schema_version}"
             )
         object.__setattr__(self, "fileitem", deepcopy(self.fileitem))
-        object.__setattr__(self, "meta", _copy_json_mapping(self.meta))
-        object.__setattr__(self, "mediainfo", _copy_json_mapping(self.mediainfo))
+        object.__setattr__(self, "meta", checkpoint_codec.copy_json_mapping(self.meta))
+        object.__setattr__(self, "mediainfo", checkpoint_codec.copy_json_mapping(self.mediainfo))
         object.__setattr__(
             self,
             "target_directory",
-            _copy_json_mapping(self.target_directory),
+            checkpoint_codec.copy_json_mapping(self.target_directory),
         )
         object.__setattr__(
             self,
@@ -427,7 +393,7 @@ class TransferProviderInvocationSnapshot:
                 raise ValueError("旧 transfer provider 可选布尔参数必须是 bool 或 None")
         if not isinstance(self.preview, bool):
             raise ValueError("旧 transfer provider preview 参数必须是 bool")
-        _canonical_json(self.to_payload())
+        checkpoint_codec.canonical_json(self.to_payload())
 
     @classmethod
     def from_payload(
@@ -437,23 +403,23 @@ class TransferProviderInvocationSnapshot:
         """从版本化 JSON 对象严格恢复旧 transfer ABI 调用快照。"""
         if not isinstance(payload, dict):
             raise ValueError("旧 transfer provider 调用快照必须是 JSON 对象")
-        fileitem = _read_json_mapping(payload, "fileitem")
+        fileitem = checkpoint_codec.read_json_mapping(payload, "fileitem")
         if fileitem is None:
             raise ValueError("旧 transfer provider 调用快照缺少 fileitem")
         return cls(
             fileitem=fileitem,
-            meta=_read_json_mapping(payload, "meta"),
+            meta=checkpoint_codec.read_json_mapping(payload, "meta"),
             meta_kind=payload.get("meta_kind"),
-            mediainfo=_read_json_mapping(payload, "mediainfo"),
+            mediainfo=checkpoint_codec.read_json_mapping(payload, "mediainfo"),
             mediainfo_kind=payload.get("mediainfo_kind"),
-            target_directory=_read_json_mapping(payload, "target_directory"),
+            target_directory=checkpoint_codec.read_json_mapping(payload, "target_directory"),
             target_storage=payload.get("target_storage"),
             target_path=payload.get("target_path"),
             transfer_type=payload.get("transfer_type"),
             scrape=payload.get("scrape"),
             library_type_folder=payload.get("library_type_folder"),
             library_category_folder=payload.get("library_category_folder"),
-            episodes_info=_read_json_tuple(payload, "episodes_info"),
+            episodes_info=checkpoint_codec.read_json_tuple(payload, "episodes_info"),
             preview=payload.get("preview", False),
             schema_version=payload.get("schema_version", 0),
         )
@@ -463,11 +429,11 @@ class TransferProviderInvocationSnapshot:
         return {
             "schema_version": self.schema_version,
             "fileitem": deepcopy(self.fileitem),
-            "meta": _copy_json_mapping(self.meta),
+            "meta": checkpoint_codec.copy_json_mapping(self.meta),
             "meta_kind": self.meta_kind,
-            "mediainfo": _copy_json_mapping(self.mediainfo),
+            "mediainfo": checkpoint_codec.copy_json_mapping(self.mediainfo),
             "mediainfo_kind": self.mediainfo_kind,
-            "target_directory": _copy_json_mapping(self.target_directory),
+            "target_directory": checkpoint_codec.copy_json_mapping(self.target_directory),
             "target_storage": self.target_storage,
             "target_path": self.target_path,
             "transfer_type": self.transfer_type,
@@ -489,6 +455,9 @@ class TransferPlanCheckpoint:
     final_target_path: str
     resolved_transfer_type: str
     items: tuple[TransferPlanItem, ...]
+    classification_snapshot: checkpoint_codec.EffectiveClassificationSnapshot = field(
+        default_factory=checkpoint_codec.EffectiveClassificationSnapshot
+    )
     resolved_meta: Optional[dict[str, JSONValue]] = None
     resolved_meta_kind: Optional[str] = None
     resolved_mediainfo: Optional[dict[str, JSONValue]] = None
@@ -508,15 +477,23 @@ class TransferPlanCheckpoint:
 
     def __post_init__(self) -> None:
         """验证版本、目标身份和计划项顺序组成完整检查点。"""
-        if self.schema_version != TRANSFER_PLAN_CHECKPOINT_VERSION:
+        if self.schema_version not in {
+            TRANSFER_PLAN_CHECKPOINT_LEGACY_VERSION,
+            TRANSFER_PLAN_CHECKPOINT_VERSION,
+        }:
             raise ValueError(f"不支持的整理计划检查点版本: {self.schema_version}")
+        if not isinstance(
+            self.classification_snapshot,
+            checkpoint_codec.EffectiveClassificationSnapshot,
+        ):
+            raise ValueError("整理计划分类快照必须使用类型化对象")
         if not isinstance(self.pre_execution_cleanup_completed, bool):
             raise ValueError("整理计划预执行 cleanup 完成标记必须是 bool")
-        object.__setattr__(self, "resolved_meta", _copy_json_mapping(self.resolved_meta))
+        object.__setattr__(self, "resolved_meta", checkpoint_codec.copy_json_mapping(self.resolved_meta))
         object.__setattr__(
             self,
             "resolved_mediainfo",
-            _copy_json_mapping(self.resolved_mediainfo),
+            checkpoint_codec.copy_json_mapping(self.resolved_mediainfo),
         )
         object.__setattr__(
             self,
@@ -584,7 +561,7 @@ class TransferPlanCheckpoint:
                 and not self.rejection_error
         ):
             raise ValueError("非预览空计划必须记录合法跳过原因")
-        _canonical_json(self.to_payload())
+        checkpoint_codec.canonical_json(self.to_payload())
 
     @property
     def is_provider_pending(self) -> bool:
@@ -595,7 +572,7 @@ class TransferPlanCheckpoint:
     def fingerprint(self) -> str:
         """返回完整冻结计划规范 JSON 的稳定 SHA-256 指纹。"""
         return hashlib.sha256(
-            _canonical_json(self.to_payload()).encode("utf-8")
+            checkpoint_codec.canonical_json(self.to_payload()).encode("utf-8")
         ).hexdigest()
 
     @classmethod
@@ -603,7 +580,7 @@ class TransferPlanCheckpoint:
         """从受版本约束的 JSON 对象恢复完整执行检查点。"""
         if not isinstance(payload, dict):
             raise ValueError("整理计划检查点必须是 JSON 对象")
-        planning_input_payload = _read_json_mapping(payload, "planning_input")
+        planning_input_payload = checkpoint_codec.read_json_mapping(payload, "planning_input")
         if planning_input_payload is None:
             raise ValueError("整理计划检查点缺少 planning_input")
         item_payloads = payload.get("items", [])
@@ -622,6 +599,17 @@ class TransferPlanCheckpoint:
                 dict,
         ):
             raise ValueError("整理计划检查点 provider_invocation 必须是 JSON 对象")
+        schema_version = payload.get("schema_version", 0)
+        if schema_version == TRANSFER_PLAN_CHECKPOINT_VERSION:
+            classification_payload = payload.get("classification_snapshot")
+            classification_snapshot = checkpoint_codec.read_classification_snapshot(
+                classification_payload,
+                require_all_fields=True,
+            )
+        elif schema_version == TRANSFER_PLAN_CHECKPOINT_LEGACY_VERSION:
+            classification_snapshot = checkpoint_codec.legacy_classification_snapshot(payload)
+        else:
+            raise ValueError(f"不支持的整理计划检查点版本: {schema_version}")
         return cls(
             planning_input=TransferPlanningInput.from_payload(planning_input_payload),
             target_storage=payload.get("target_storage", ""),
@@ -629,11 +617,15 @@ class TransferPlanCheckpoint:
             final_target_path=payload.get("final_target_path", ""),
             resolved_transfer_type=payload.get("resolved_transfer_type", ""),
             items=tuple(TransferPlanItem.from_payload(item) for item in item_payloads),
-            resolved_meta=_read_json_mapping(payload, "resolved_meta"),
+            classification_snapshot=classification_snapshot,
+            resolved_meta=checkpoint_codec.read_json_mapping(payload, "resolved_meta"),
             resolved_meta_kind=payload.get("resolved_meta_kind"),
-            resolved_mediainfo=_read_json_mapping(payload, "resolved_mediainfo"),
+            resolved_mediainfo=checkpoint_codec.read_json_mapping(
+                payload,
+                "resolved_mediainfo",
+            ),
             resolved_mediainfo_kind=payload.get("resolved_mediainfo_kind"),
-            resolved_episodes_info=_read_json_tuple(
+            resolved_episodes_info=checkpoint_codec.read_json_tuple(
                 payload,
                 "resolved_episodes_info",
             ),
@@ -659,12 +651,12 @@ class TransferPlanCheckpoint:
             preview=payload.get("preview", False),
             skip_reason=payload.get("skip_reason"),
             rejection_error=payload.get("rejection_error"),
-            schema_version=payload.get("schema_version", 0),
+            schema_version=schema_version,
         )
 
     def to_payload(self) -> dict[str, JSONValue]:
         """生成可原子落库的完整版本化 JSON 检查点。"""
-        return {
+        payload: dict[str, JSONValue] = {
             "schema_version": self.schema_version,
             "planning_input": self.planning_input.to_payload(),
             "target_storage": self.target_storage,
@@ -672,9 +664,11 @@ class TransferPlanCheckpoint:
             "final_target_path": self.final_target_path,
             "resolved_transfer_type": self.resolved_transfer_type,
             "items": [item.to_payload() for item in self.items],
-            "resolved_meta": _copy_json_mapping(self.resolved_meta),
+            "resolved_meta": checkpoint_codec.copy_json_mapping(self.resolved_meta),
             "resolved_meta_kind": self.resolved_meta_kind,
-            "resolved_mediainfo": _copy_json_mapping(self.resolved_mediainfo),
+            "resolved_mediainfo": checkpoint_codec.copy_json_mapping(
+                self.resolved_mediainfo
+            ),
             "resolved_mediainfo_kind": self.resolved_mediainfo_kind,
             "resolved_episodes_info": [
                 deepcopy(item) for item in self.resolved_episodes_info
@@ -699,6 +693,11 @@ class TransferPlanCheckpoint:
             "skip_reason": self.skip_reason,
             "rejection_error": self.rejection_error,
         }
+        if self.schema_version == TRANSFER_PLAN_CHECKPOINT_VERSION:
+            payload["classification_snapshot"] = checkpoint_codec.classification_snapshot_payload(
+                self.classification_snapshot
+            )
+        return payload
 
 
 class TransferAdmissionConflictError(ValueError):

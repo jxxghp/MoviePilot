@@ -26,6 +26,7 @@ class DownloadDirectory(BaseModel):
     priority: Optional[int] = Field(default=0, description="目录优先级")
     media_type: Optional[str] = Field(default=None, description="适用媒体类型")
     media_category: Optional[str] = Field(default=None, description="适用媒体分类")
+    media_category_id: Optional[str] = Field(default=None, description="适用媒体分类稳定 ID")
 
 
 class DownloadAddedData(BaseModel):

@@ -48,6 +48,8 @@ from app.startup.composition.context import (
 )
 
 if TYPE_CHECKING:
+    from app.application.classification.execution import ClassificationExecutionPort
+    from app.application.classification.runtime import ClassificationRuntime
     from app.application.messaging.message import MessageHelper, MessageQueueManager
     from app.application.subscription.execution import SubscriptionSearchRepository
     from app.startup.composition.agent import AgentComposition
@@ -79,6 +81,8 @@ class RuntimeInputs:
     database: DatabaseComposition
     agent: AgentComposition
     authentication: SecurityComposition
+    classification: ClassificationRuntime
+    classification_execution: ClassificationExecutionPort
     dependencies: RuntimeDependencies
     tasks: TaskRegistry
 
@@ -238,6 +242,8 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
             repository=cast(RepositoryFactory, WorkflowOper),
             system_config=lambda: configuration.system_service,
         ),
+        classification=inputs.classification,
+        classification_execution=inputs.classification_execution,
         system=compose_system_service(
             settings=configuration.settings,
             system_config=configuration.system_service,

@@ -301,7 +301,10 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             return None
         if obtain_images:
             self.obtain_images(mediainfo=mediainfo)
-        return mediainfo
+        return cast(
+            Optional[MediaInfo],
+            self._finalize_recognition_result(mediainfo),
+        )
 
     async def async_recognize_by_meta(
         self,
@@ -407,4 +410,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             return None
         if obtain_images:
             await self.async_obtain_images(mediainfo=mediainfo)
-        return mediainfo
+        return cast(
+            Optional[MediaInfo],
+            await self._async_finalize_recognition_result(mediainfo),
+        )

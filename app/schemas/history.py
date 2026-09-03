@@ -54,8 +54,16 @@ class DownloadHistory(OptionalMediaIdentityMixin, BaseModel):
     date: Optional[str] = None
     # 备注
     note: Optional[JsonData] = None
-    # 自定义媒体类别
+    # 实际媒体类别稳定标识
+    media_category_id: Optional[str] = None
+    # 实际媒体类别兼容路径快照
     media_category: Optional[str] = None
+    # 命中的分类规则标识
+    classification_rule_id: Optional[str] = None
+    # 执行时分类策略版本
+    classification_policy_revision: Optional[int] = None
+    # 最终分类来源
+    classification_source: Optional[str] = None
     # 自定义剧集组
     episode_group: Optional[str] = None
 
@@ -87,8 +95,16 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
     mode: Optional[str] = None
     # 类型：电影、电视剧、音乐
     type: Optional[str] = None
-    # 二级分类
+    # 实际媒体类别稳定标识
+    media_category_id: Optional[str] = None
+    # 实际媒体类别兼容路径快照
     category: Optional[str] = None
+    # 命中的分类规则标识
+    classification_rule_id: Optional[str] = None
+    # 执行时分类策略版本
+    classification_policy_revision: Optional[int] = None
+    # 最终分类来源
+    classification_source: Optional[str] = None
     # 标题
     title: Optional[str] = None
     # 年份

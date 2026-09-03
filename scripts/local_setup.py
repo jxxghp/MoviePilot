@@ -2488,6 +2488,12 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         sys.path.insert(0, str(ROOT))
 
     try:
+        from app.application.classification.reference import (
+            ClassificationCategoryResolver,
+        )
+        from app.application.configuration import SystemConfigService
+        from app.application.directory import normalize_directory_system_config_value
+        from app.schemas.category import ClassificationPolicyState
         from app.startup.initializers.database import prepare_database
         from app.db.oper.systemconfig import SystemConfigOper
         from app.schemas.types import SystemConfigKey
@@ -2521,24 +2527,51 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
 
     system_config = SystemConfigOper()
     system_config.load_snapshot()
+
+    def normalize_local_system_config_value(key: object, value: object) -> object:
+        """仅在离线目录写入时加载活动分类策略并执行共享规范化。"""
+        normalized_key = key.value if isinstance(key, SystemConfigKey) else str(key)
+        if normalized_key != SystemConfigKey.Directories.value:
+            return value
+        raw_policy_state = system_config.get(
+            SystemConfigKey.MediaClassificationPolicy
+        )
+        policy_state = (
+            ClassificationPolicyState.model_validate(raw_policy_state)
+            if raw_policy_state is not None
+            else None
+        )
+        classification_resolver = ClassificationCategoryResolver(
+            lambda: policy_state.active if policy_state is not None else None
+        )
+        return normalize_directory_system_config_value(
+            key,
+            value,
+            classification_resolver=classification_resolver,
+        )
+
+    system_config_service = SystemConfigService(
+        repository=system_config,
+        value_normalizer=normalize_local_system_config_value,
+    )
     directory_items = config_payload.get("directories") or []
     if directory_items:
         current_directories = system_config.get(SystemConfigKey.Directories) or []
         for item in directory_items:
             current_directories = _merge_directory_item(current_directories, item)
-        system_config.set(SystemConfigKey.Directories, current_directories)
+        system_config_service.set(SystemConfigKey.Directories, current_directories)
 
     downloader_item = config_payload.get("downloader")
     if downloader_item:
         current_downloaders = system_config.get(SystemConfigKey.Downloaders) or []
         current_downloaders = _merge_named_item(current_downloaders, downloader_item)
-        system_config.set(SystemConfigKey.Downloaders, current_downloaders)
+        system_config_service.set(SystemConfigKey.Downloaders, current_downloaders)
 
     mediaserver_item = config_payload.get("mediaserver")
     if mediaserver_item:
         current_servers = system_config.get(SystemConfigKey.MediaServers) or []
         current_servers = _merge_named_item(current_servers, mediaserver_item)
-        system_config.set(SystemConfigKey.MediaServers, current_servers)
+        system_config_service.set(SystemConfigKey.MediaServers, current_servers)
 
     notification_item = config_payload.get("notification")
     if notification_item:
@@ -2546,9 +2579,9 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         current_notifications = _merge_named_item(
             current_notifications, notification_item
         )
-        system_config.set(SystemConfigKey.Notifications, current_notifications)
+        system_config_service.set(SystemConfigKey.Notifications, current_notifications)
         current_switches = system_config.get(SystemConfigKey.NotificationSwitchs) or []
-        system_config.set(
+        system_config_service.set(
             SystemConfigKey.NotificationSwitchs,
             _merge_notification_switches(current_switches),
         )
@@ -2559,7 +2592,7 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         and site_auth_item.get("site")
         and site_auth_item.get("params")
     ):
-        system_config.set(SystemConfigKey.UserSiteAuthParams, site_auth_item)
+        system_config_service.set(SystemConfigKey.UserSiteAuthParams, site_auth_item)
         try:
             from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 

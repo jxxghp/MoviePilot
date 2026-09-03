@@ -8,6 +8,7 @@ from app.application.chain.events import (
     snapshot_download_notification,
     snapshot_download_processing,
 )
+from app.application.classification.reference import effective_classification_snapshot
 from app.application.history import DownloadFileWrite, DownloadHistoryWrite
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain.context import (
@@ -80,6 +81,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             download_path = download_dir / Path(file_list[0]).stem if file_list else download_dir
         save_path = download_dir if layout == "NoSubfolder" or not folder_name else download_path
         media_source, media_id = resolve_media_identity(media=media)
+        classification = effective_classification_snapshot(media)
         history = DownloadHistoryWrite(
             path=download_path.as_posix(),
             type=media.type.value,
@@ -101,7 +103,11 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             username=username,
             channel=channel.value if channel else None,
             date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-            media_category=media.category,
+            media_category_id=classification.category_id,
+            media_category=classification.path,
+            classification_rule_id=classification.rule_id,
+            classification_policy_revision=classification.policy_revision,
+            classification_source=classification.source,
             episode_group=media.episode_group,
             note=self._build_download_note(source, media, meta),
             custom_words=custom_words,

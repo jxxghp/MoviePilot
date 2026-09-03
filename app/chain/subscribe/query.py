@@ -191,6 +191,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                     save_path=subscribe_in.save_path,
                     search_imdbid=subscribe_in.search_imdbid,
                     custom_words=subscribe_in.custom_words,
+                    media_category_id=subscribe_in.media_category_id,
                     media_category=subscribe_in.media_category,
                     filter_groups=subscribe_in.filter_groups,
                     exist_ok=True,

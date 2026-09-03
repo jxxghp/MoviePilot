@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
+import threading
+import time
 import traceback
 from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
-import threading
-import time
 from typing import Any, Optional, ParamSpec, TypeVar, cast
 
 from app.runtime.extensions.plugin.database import PluginDatabase
 from app.runtime.observability import record_metric
 from app.schemas.plugin import PluginRuntimeStatus
-
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -74,6 +73,8 @@ class PluginLifecycle:
         database: Callable[[], PluginDatabase],
         log: Any,
         event_sender: Callable[..., Any],
+        refresh_classification: Callable[[str, Any], None] | None = None,
+        remove_classification: Callable[[str], None] | None = None,
     ) -> None:
         """保存注册表、加载器、数据库和事件端口。"""
         self._classes = classes
@@ -90,6 +91,12 @@ class PluginLifecycle:
         self._database = database
         self._logger = log
         self._event_sender = event_sender
+        self._refresh_classification = refresh_classification or (
+            lambda _plugin_id, _instance: None
+        )
+        self._remove_classification = remove_classification or (
+            lambda _plugin_id: None
+        )
         self._lifecycle_lock = threading.RLock()
         self._quiesced_hooks: dict[str, set[str]] = {}
 
@@ -116,22 +123,29 @@ class PluginLifecycle:
                 continue
             try:
                 if not self._auth_checker(plugin):
+                    self._remove_classification(current_id)
                     if current_id in self._classes:
                         self._classes[current_id] = plugin
                     status = PluginRuntimeStatus.BLOCKED_BY_POLICY
                     self._runtime_status_writer(plugin_id or current_id, status)
                     results[plugin_id or current_id] = status
                     continue
+                self._remove_classification(current_id)
                 self._classes[current_id] = plugin
                 instance = plugin()
                 instance.init_plugin(self._plugin_config(current_id))
                 self._ensure_database(current_id, instance)
+                enabled = bool(instance.get_state())
+                if enabled:
+                    self._refresh_classification_safely(current_id, instance)
+                else:
+                    self._remove_classification(current_id)
                 self._quiesced_hooks.pop(current_id, None)
                 self._running[current_id] = instance
                 self._logger.info(
                     f"加载插件：{current_id} 版本：{instance.plugin_version}"
                 )
-                if instance.get_state():
+                if enabled:
                     self._enable_events(plugin)
                 else:
                     self._disable_events(plugin)
@@ -139,6 +153,7 @@ class PluginLifecycle:
                 self._runtime_status_writer(plugin_id or current_id, status)
                 results[plugin_id or current_id] = status
             except Exception as error:  # noqa: BLE001
+                self._remove_classification(current_id)
                 status = PluginRuntimeStatus.LOAD_FAILED
                 self._runtime_status_writer(plugin_id or current_id, status)
                 results[plugin_id or current_id] = status
@@ -152,6 +167,7 @@ class PluginLifecycle:
             result_id.casefold() == plugin_id.casefold()
             for result_id in results
         ):
+            self._remove_classification(plugin_id)
             status = PluginRuntimeStatus.LOAD_FAILED
             self._runtime_status_writer(plugin_id, status)
             results[plugin_id] = status
@@ -190,12 +206,34 @@ class PluginLifecycle:
         plugin = self._running.get(plugin_id)
         if not plugin:
             return
-        plugin.init_plugin(config)
-        if plugin.get_state():
-            self._enable_events(type(plugin))
-        else:
-            self._disable_events(type(plugin))
+        self._remove_classification(plugin_id)
+        try:
+            plugin.init_plugin(config)
+            enabled = bool(plugin.get_state())
+            if enabled:
+                self._refresh_classification_safely(plugin_id, plugin)
+                self._enable_events(type(plugin))
+            else:
+                self._remove_classification(plugin_id)
+                self._disable_events(type(plugin))
+        except Exception:
+            self._remove_classification(plugin_id)
+            raise
         self._clear_tools()
+
+    def _refresh_classification_safely(
+        self,
+        plugin_id: str,
+        instance: Any,
+    ) -> None:
+        """隔离可选分类声明故障，并确保无效声明不会保留旧注册。"""
+        try:
+            self._refresh_classification(plugin_id, instance)
+        except Exception as error:  # noqa: BLE001  可选声明不得阻断插件主功能
+            self._remove_classification(plugin_id)
+            self._logger.warning(
+                f"插件 {plugin_id} 的分类扩展声明无效，已忽略：{error}"
+            )
 
     @observe_plugin_lifecycle("stop")
     def stop(self, plugin_id: Optional[str] = None) -> None:
@@ -318,6 +356,8 @@ class PluginLifecycle:
                         self._disable_events(type(plugin))
                 self._clear_modules(plugin_id)
                 self._clear_tools()
+                for current_id in plugins:
+                    self._remove_classification(current_id)
             except Exception as error:  # noqa: BLE001  保留实例所有权供后续重试
                 self._logger.warning(f"卸载插件运行实例时发生错误: {error}")
                 return False

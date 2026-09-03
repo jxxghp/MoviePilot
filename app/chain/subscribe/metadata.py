@@ -1,19 +1,45 @@
 """订阅单条元数据刷新与完成对账协作者。"""
 
 from collections.abc import Callable
-from typing import Any, Optional, cast
+from typing import Any, Optional, TypeVar, cast
 
+from app.application.classification.reference import (
+    subscription_classification_override,
+)
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
     subscribe_media_key,
 )
 from app.application.subscription.facts import FreshFactLease
+from app.chain.media import MediaChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.identity import subscribe_recognize_kwargs
+from app.domain.context import MediaInfo, MusicInfo
 from app.runtime.log import logger
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
+
+SubscriptionMediaT = TypeVar("SubscriptionMediaT", MediaInfo, MusicInfo)
+
+
+def apply_subscription_classification(
+    media: SubscriptionMediaT,
+    subscribe: SubscriptionSnapshot,
+) -> SubscriptionMediaT:
+    """把稳定订阅分类覆盖应用到媒体副本，并兼容缺少新字段的旧快照。"""
+    override = subscription_classification_override(
+        category_id=getattr(subscribe, "media_category_id", None),
+        path_snapshot=getattr(subscribe, "media_category", None),
+        media_type=media.type,
+    )
+    if override is None:
+        return media
+    finalized = MediaChain()._finalize_recognition_result(
+        media,
+        effective_override=override,
+    )
+    return finalized or media
 
 
 class SubscribeMetadataOwner(_SubscribeOwnerBase):

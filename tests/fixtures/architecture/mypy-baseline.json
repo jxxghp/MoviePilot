@@ -459,9 +459,9 @@
     "arg-type": 2,
     "assignment": 8,
     "attr-defined": 3,
-    "misc": 14,
+    "misc": 13,
     "no-untyped-call": 5,
-    "no-untyped-def": 3,
+    "no-untyped-def": 2,
     "type-arg": 1
   },
   "app/api/endpoints/mediaserver.py": {
@@ -638,8 +638,7 @@
     "arg-type": 6,
     "assignment": 2,
     "return-value": 2,
-    "type-arg": 1,
-    "union-attr": 2
+    "type-arg": 1
   },
   "app/application/downloader.py": {
     "arg-type": 1,
@@ -852,9 +851,6 @@
     "attr-defined": 8,
     "no-untyped-call": 1
   },
-  "app/chain/_recognition.py": {
-    "assignment": 4
-  },
   "app/chain/anilist.py": {
     "no-any-return": 4,
     "no-untyped-def": 2,
@@ -868,9 +864,9 @@
   "app/chain/base.py": {
     "assignment": 13,
     "attr-defined": 1,
-    "no-any-return": 50,
+    "no-any-return": 47,
     "no-untyped-def": 7,
-    "type-arg": 31
+    "type-arg": 30
   },
   "app/chain/dashboard.py": {
     "no-any-return": 2
@@ -1013,11 +1009,11 @@
     "union-attr": 2
   },
   "app/chain/transfer/execution.py": {
-    "arg-type": 3,
+    "arg-type": 1,
     "assignment": 4,
     "no-any-return": 2,
     "type-arg": 2,
-    "union-attr": 18
+    "union-attr": 17
   },
   "app/chain/transfer/facade.py": {
     "attr-defined": 2,
@@ -1041,7 +1037,6 @@
     "no-untyped-def": 4
   },
   "app/chain/transfer/plan.py": {
-    "arg-type": 3,
     "attr-defined": 1
   },
   "app/chain/transfer/queue.py": {
@@ -1088,7 +1083,7 @@
   },
   "app/chain/transfer/workflow.py": {
     "arg-type": 9,
-    "assignment": 11,
+    "assignment": 10,
     "attr-defined": 2,
     "operator": 1,
     "return-value": 1,
@@ -1181,9 +1176,6 @@
   "app/db/models/subscribehistory.py": {
     "no-untyped-def": 6
   },
-  "app/db/models/systemconfig.py": {
-    "no-untyped-def": 3
-  },
   "app/db/models/transferhistory.py": {
     "no-any-return": 3,
     "no-untyped-def": 20,
@@ -1235,8 +1227,7 @@
   },
   "app/db/oper/systemconfig.py": {
     "no-any-return": 1,
-    "no-untyped-call": 1,
-    "no-untyped-def": 4
+    "no-untyped-def": 3
   },
   "app/db/oper/transferhistory.py": {
     "no-any-return": 2,
@@ -1668,7 +1659,6 @@
     "arg-type": 18,
     "assignment": 2,
     "attr-defined": 1,
-    "no-any-return": 1,
     "no-redef": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 3,
@@ -2154,14 +2144,14 @@
   },
   "app/modules/themoviedb/__init__.py": {
     "arg-type": 5,
-    "assignment": 12,
+    "assignment": 11,
     "empty-body": 1,
     "index": 2,
     "no-any-return": 4,
-    "no-untyped-call": 7,
+    "no-untyped-call": 6,
     "no-untyped-def": 3,
     "return-value": 2,
-    "type-arg": 21,
+    "type-arg": 19,
     "union-attr": 2
   },
   "app/modules/themoviedb/cache.py": {
@@ -2170,13 +2160,6 @@
     "no-untyped-def": 4,
     "type-arg": 5,
     "union-attr": 5
-  },
-  "app/modules/themoviedb/category.py": {
-    "assignment": 2,
-    "no-any-return": 2,
-    "no-untyped-call": 2,
-    "no-untyped-def": 4,
-    "type-arg": 3
   },
   "app/modules/themoviedb/scraper.py": {
     "arg-type": 4,

@@ -198,7 +198,13 @@ def configure_plugin_runtime_services() -> None:
     """在模块对象图构造前发布插件 Runtime 工厂和应用层提供器。"""
     configure_plugin_catalog_factory(_build_plugin_catalog)
     configure_plugin_runtime_factory(build_plugin_runtime_graph)
-    configure_plugin_runtime(lambda: cast(PluginRuntimePort, PluginManager()))
+    configure_plugin_runtime(
+        lambda: cast(PluginRuntimePort, PluginManager()),
+        existing_provider=lambda: cast(
+            PluginRuntimePort | None,
+            PluginManager.get_existing_instance(),
+        ),
+    )
 
 
 def configure_plugin_services() -> None:

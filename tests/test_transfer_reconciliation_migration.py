@@ -250,6 +250,7 @@ def test_upgrade_reconciles_invalid_execution_combinations(monkeypatch) -> None:
             resolved_transfer_type="copy",
             items=(),
             rejection_error="未识别到媒体信息",
+            schema_version=1,
         )
         invalid_outcome_input = _planning_input("/invalid-outcome")
         invalid_outcome_checkpoint = _host_checkpoint(invalid_outcome_input)
@@ -551,6 +552,7 @@ def _host_checkpoint(planning_input: TransferPlanningInput) -> TransferPlanCheck
             target_storage="local",
             target_path="/library/Movies/Movie.mkv",
         ),),
+        schema_version=1,
     )
 
 
@@ -581,6 +583,7 @@ def _provider_checkpoint(
             plugin_name="Provider A",
         ),),
         provider_invocation=invocation,
+        schema_version=1,
     )
 
 

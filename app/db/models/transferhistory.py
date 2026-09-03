@@ -44,8 +44,16 @@ class TransferHistory(Base):
     mode: Mapped[Optional[str]] = mapped_column(String)
     # 类型 电影/电视剧
     type: Mapped[Optional[str]] = mapped_column(String)
-    # 二级分类
+    # 实际媒体类别稳定标识
+    media_category_id: Mapped[Optional[str]] = mapped_column(String)
+    # 实际媒体类别兼容路径快照
     category: Mapped[Optional[str]] = mapped_column(String)
+    # 命中的分类规则标识
+    classification_rule_id: Mapped[Optional[str]] = mapped_column(String)
+    # 执行时分类策略版本
+    classification_policy_revision: Mapped[Optional[int]] = mapped_column(Integer)
+    # 最终分类来源
+    classification_source: Mapped[Optional[str]] = mapped_column(String)
     # 标题
     title: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 年份

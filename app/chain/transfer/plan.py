@@ -4,6 +4,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union, cast
 
+from app.application.classification.reference import (
+    EffectiveClassificationSnapshot,
+    apply_persisted_classification_snapshot,
+    effective_classification_snapshot,
+)
 from app.application.transfer.execution import (
     TransferExecutionConflictError,
     TransferExecutionOutcome,
@@ -41,39 +46,8 @@ from app.schemas.types import (
 )
 from app.schemas.workflow import FileItem
 
+from .checkpoint import build_planning_rejection_checkpoint, restore_planned_task
 from .execution import _DurableTransferStepRunner, _TransferRetryExhausted
-
-
-def _build_planning_rejection_checkpoint(
-        task: TransferTask,
-        *,
-        error: str,
-        planning_input: TransferPlanningInput,
-) -> TransferPlanCheckpoint:
-    """把确定性的宿主规划错误冻结为可重放的零步骤失败计划。"""
-    meta_kind = planning_input.options.get("_meta_kind")
-    mediainfo_kind = planning_input.options.get("_mediainfo_kind")
-    source_path = task.fileitem.path
-    return TransferPlanCheckpoint(
-        planning_input=planning_input,
-        target_storage=task.fileitem.storage,
-        root_target_path=source_path,
-        final_target_path=source_path,
-        resolved_transfer_type=(
-            task.transfer_type or planning_input.requested_transfer_type or "copy"
-        ),
-        items=(),
-        resolved_meta=planning_input.meta,
-        resolved_meta_kind=meta_kind if isinstance(meta_kind, str) else None,
-        resolved_mediainfo=planning_input.mediainfo,
-        resolved_mediainfo_kind=(
-            mediainfo_kind if isinstance(mediainfo_kind, str) else None
-        ),
-        resolved_episodes_info=planning_input.episodes_info,
-        need_notify=planning_input.need_notify,
-        overwrite_mode=planning_input.overwrite_mode,
-        rejection_error=error,
-    )
 
 
 class TransferPlanningOwner(_TransferOwnerBase):
@@ -193,62 +167,11 @@ class TransferPlanningOwner(_TransferOwnerBase):
 
     def _TransferChain__restore_planned_task(self, task: TransferTask) -> None:
         """用冻结检查点覆盖易受配置和在线识别变化影响的任务字段。"""
-        checkpoint = task.plan_checkpoint
-        if checkpoint is None:
-            raise TransferPlanningStateError("planned 任务缺少整理计划检查点")
-        if checkpoint.provider_invocation is not None:
-            invocation = checkpoint.provider_invocation
-            task.fileitem = FileItem.model_validate(invocation.fileitem)
-            task.meta = self._TransferChain__restore_meta_snapshot(
-                invocation.meta,
-                invocation.meta_kind,
-            )
-            task.mediainfo = self._TransferChain__restore_mediainfo_snapshot(
-                invocation.mediainfo,
-                invocation.mediainfo_kind,
-            )
-            task.target_directory = (
-                TransferDirectoryConf.model_validate(invocation.target_directory)
-                if invocation.target_directory
-                else None
-            )
-            task.target_storage = invocation.target_storage
-            task.target_path = (
-                Path(invocation.target_path) if invocation.target_path else None
-            )
-            task.transfer_type = invocation.transfer_type
-            task.scrape = invocation.scrape
-            task.library_type_folder = invocation.library_type_folder
-            task.library_category_folder = invocation.library_category_folder
-            task.episodes_info = [
-                TmdbEpisode.model_validate(item)
-                for item in invocation.episodes_info
-            ]
-            task.mark_planning_context_restored()
-            return
-        if checkpoint.resolved_meta:
-            task.meta = self._TransferChain__restore_meta_snapshot(
-                checkpoint.resolved_meta,
-                checkpoint.resolved_meta_kind,
-            )
-        elif task.meta is None and checkpoint.rejection_error is None:
-            raise TransferPlanningStateError("整理计划检查点缺少已解析元数据")
-        if checkpoint.resolved_mediainfo:
-            task.mediainfo = self._TransferChain__restore_mediainfo_snapshot(
-                checkpoint.resolved_mediainfo,
-                checkpoint.resolved_mediainfo_kind,
-            )
-        elif task.mediainfo is None and checkpoint.rejection_error is None:
-            raise TransferPlanningStateError("整理计划检查点缺少已识别媒体信息")
-        task.episodes_info = [
-            TmdbEpisode.model_validate(item)
-            for item in checkpoint.resolved_episodes_info
-        ]
-        task.target_storage = checkpoint.target_storage
-        task.target_path = Path(checkpoint.root_target_path)
-        task.transfer_type = checkpoint.resolved_transfer_type
-        task.scrape = checkpoint.need_scrape
-        task.mark_planning_context_restored()
+        restore_planned_task(
+            task,
+            restore_meta=self._TransferChain__restore_meta_snapshot,
+            restore_media=self._TransferChain__restore_mediainfo_snapshot,
+        )
 
     def _TransferChain__select_storage_oper(self, storage: Optional[str]) -> Any:
         """按冻结存储标识请求插件存储适配器，未接管时返回空值。"""
@@ -307,10 +230,13 @@ class TransferPlanningOwner(_TransferOwnerBase):
             )
         planning_input = task.planning_input or self._TransferChain__build_planning_input(task)
         task.bind_planning_input(planning_input)
-        checkpoint = _build_planning_rejection_checkpoint(
+        checkpoint = build_planning_rejection_checkpoint(
             task,
             error=error,
             planning_input=planning_input,
+            classification_snapshot=effective_classification_snapshot(
+                task.mediainfo
+            ),
         )
         persisted = self._TransferChain__persist_transfer_checkpoint(
             task,
@@ -556,6 +482,9 @@ class TransferPlanningOwner(_TransferOwnerBase):
         checkpoint = task.plan_checkpoint
         if checkpoint is None:
             try:
+                classification_snapshot = effective_classification_snapshot(
+                    task.mediainfo
+                )
                 frozen_providers = tuple(
                     TransferProviderReference(
                         plugin_id=provider.plugin_id,
@@ -575,6 +504,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                         final_target_path="",
                         resolved_transfer_type="",
                         items=(),
+                        classification_snapshot=classification_snapshot,
                         resolved_meta=invocation.meta,
                         resolved_meta_kind=invocation.meta_kind,
                         resolved_mediainfo=invocation.mediainfo,
@@ -589,6 +519,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                         task,
                         planning_input=planning_input,
                         source_oper=source_oper,
+                        classification_snapshot=classification_snapshot,
                     )
                 checkpoint = self._TransferChain__persist_transfer_checkpoint(
                     task,
@@ -638,6 +569,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                         task,
                         planning_input=planning_input,
                         source_oper=source_oper,
+                        classification_snapshot=checkpoint.classification_snapshot,
                     ),
                     pre_execution_cleanup_completed=True,
                 )
@@ -685,6 +617,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
             *,
             planning_input: TransferPlanningInput,
             source_oper: Any,
+            classification_snapshot: EffectiveClassificationSnapshot,
     ) -> TransferPlanCheckpoint:
         """在 provider 未接管时生成纯宿主计划，不执行任何文件写入。"""
         try:
@@ -708,14 +641,18 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 ),
             )
         except TransferPlanningRejectedError as error:
-            return _build_planning_rejection_checkpoint(
+            return build_planning_rejection_checkpoint(
                 task,
                 error=str(error),
                 planning_input=planning_input,
+                classification_snapshot=classification_snapshot,
             )
         if checkpoint is None:
             raise RuntimeError("文件整理模块未返回规划检查点")
-        return checkpoint
+        return replace(
+            checkpoint,
+            classification_snapshot=classification_snapshot,
+        )
 
     def _TransferChain__persist_transfer_checkpoint(
             self,
@@ -794,6 +731,13 @@ class TransferPlanningOwner(_TransferOwnerBase):
             )
             if invocation.mediainfo
             else task.mediainfo
+        )
+        provider_mediainfo = cast(
+            Optional[Union[MediaInfo, MusicInfo]],
+            apply_persisted_classification_snapshot(
+                provider_mediainfo,
+                checkpoint.classification_snapshot,
+            ),
         )
         provider_episodes = [
             TmdbEpisode.model_validate(item)

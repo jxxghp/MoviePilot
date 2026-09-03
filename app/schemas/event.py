@@ -8,6 +8,7 @@ from typing import Union as _Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic import BeforeValidator as _BeforeValidator
 
+from app.schemas.category import ClassificationFieldDefinition
 from app.schemas.common import JsonData
 from app.schemas.context import Context as _ContextSnapshotBase
 from app.schemas.context import MediaInfo as _MediaInfoSnapshot
@@ -920,8 +921,8 @@ class MediaSourceInfo(BaseModel):
     """
     媒体数据源注册描述。
 
-    插件通过该描述声明来源的展示名称和支持的媒体类型；识别、搜索和刮削的
-    实际实现仍由插件模块方法提供，宿主只负责把来源传递到统一媒体链路。
+    插件通过该描述声明来源的展示名称、支持的媒体类型和可选受控分类字段；
+    识别、搜索和刮削的实际实现仍由插件模块方法提供，宿主负责验证声明和事实。
     """
 
     name: str = Field(..., description="数据源展示名称")
@@ -929,6 +930,10 @@ class MediaSourceInfo(BaseModel):
     media_types: List[MediaType] = Field(
         default_factory=lambda: [MediaType.MOVIE, MediaType.TV],
         description="支持的媒体类型",
+    )
+    classification_fields: List[ClassificationFieldDefinition] = Field(
+        default_factory=list,
+        description="来源声明的受控扩展分类字段；旧插件省略时保持无扩展字段",
     )
 
 

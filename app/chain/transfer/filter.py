@@ -7,6 +7,7 @@ from typing import Dict, Optional, Protocol, Union
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
 )
+from app.application.directory import DirectoryHelper
 from app.application.history import (
     DownloadHistorySnapshot,
     TransferHistoryRepository,
@@ -90,7 +91,7 @@ class FileFilterMixin(_TransferOwnerBase):
         :return: 是否必须具备自动分类结果
         """
         target_directory = task.target_directory
-        if target_directory and target_directory.media_category:
+        if target_directory and DirectoryHelper.has_fixed_category(target_directory):
             return False
         if task.library_category_folder is not None:
             return bool(task.library_category_folder)
@@ -208,11 +209,20 @@ class FileFilterMixin(_TransferOwnerBase):
         merged_info.artist_ids = list(info.artist_ids)
         merged_info.album_id = info.album_id
         merged_info.album_type = info.album_type
+        merged_info.secondary_types = list(info.secondary_types)
         merged_info.release_date = info.release_date
+        merged_info.release_status = info.release_status
         merged_info.cover_url = info.cover_url
-        merged_info.category = info.category
+        merged_info.set_library_category(info.library_category)
+        merged_info.metadata_category = info.metadata_category
+        merged_info.classification = deepcopy(info.classification)
         merged_info.genres = list(info.genres)
+        merged_info.tags = list(info.tags)
+        merged_info.artist_country = info.artist_country
+        merged_info.names = list(info.names)
         merged_info.detail_link = info.detail_link
+        merged_info.listen_count = info.listen_count
+        merged_info.raw_data = deepcopy(info.raw_data)
         return merged_meta, merged_info
 
     @staticmethod

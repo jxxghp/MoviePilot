@@ -28,7 +28,8 @@ class ServerSharingService:
         "year", "type", "keyword", "media_source", "media_id", "music_type",
         "total_tracks", "season", "poster", "backdrop", "vote", "description",
         "genre_ids", "include", "exclude", "quality", "resolution", "effect",
-        "total_episode", "custom_words", "media_category", "episode_group",
+        "total_episode", "custom_words", "media_category_id", "media_category",
+        "episode_group",
         "date",
     })
 

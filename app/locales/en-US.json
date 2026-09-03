@@ -107,6 +107,10 @@
     "media_source 和 media_id 必须同时提供": "media_source and media_id must be provided together",
     "新增订阅时必须同时提供有效的 media_source 和 media_id": "A valid media_source and media_id must be provided together when creating a subscription",
     "更新媒体身份时必须同时提供有效的 media_source 和 media_id": "A valid media_source and media_id must be provided together when updating media identity",
+    "分类策略已被其他会话更新，请刷新后重试": "The classification policy was updated by another session. Refresh and try again",
+    "分类策略已被其他会话更新，请重新加载或合并后再发布": "The classification policy was updated by another session. Reload or merge before publishing again",
+    "分类策略校验失败": "Classification policy validation failed",
+    "分类策略转换失败": "Classification policy conversion failed",
     "模块不支持测试": "Module does not support testing",
     "网络请求失败": "Network request failed",
     "TMDB请求失败": "TMDB request failed",
@@ -457,6 +461,10 @@
     "订阅日历预缓存完成": "Subscription calendar precache completed"
   },
   "message_patterns": [
+    {
+      "source": "订阅分类无效：{reason}",
+      "target": "Invalid subscription classification: {reason}"
+    },
     {
       "source": "不支持的推荐来源: {source}",
       "target": "Unsupported recommendation source: {source}"

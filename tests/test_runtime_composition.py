@@ -57,6 +57,8 @@ def _inputs() -> runtime_composition.RuntimeInputs:
         database=database,
         agent=agent,
         authentication=authentication,
+        classification=Mock(name="classification_runtime"),
+        classification_execution=Mock(name="classification_execution"),
         dependencies=dependencies,
         tasks=TaskRegistry(),
     )
@@ -76,6 +78,8 @@ def test_runtime_composition_reuses_dependencies_and_projects_api_identity() -> 
     assert runtime.agent_chat.persistence is inputs.agent.persistence
     assert runtime.authentication.user_repository is inputs.authentication.user_repository
     assert runtime.authentication.passkey_repository is inputs.authentication.passkey_repository
+    assert runtime.classification is inputs.classification
+    assert runtime.classification_execution is inputs.classification_execution
     assert runtime.configuration is inputs.configuration.runtime
     assert runtime.settings is inputs.configuration.settings
     assert runtime.system._system_config is inputs.configuration.system_service

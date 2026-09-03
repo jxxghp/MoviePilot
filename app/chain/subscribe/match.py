@@ -19,6 +19,7 @@ from app.application.torrent.download import TorrentHelper
 from app.chain.media import MediaChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.identity import subscribe_recognize_kwargs
+from app.chain.subscribe.metadata import apply_subscription_classification
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -242,6 +243,7 @@ def _prepare_subscription_match(
             f"媒体来源：{subscribe.media_source}，媒体 ID：{subscribe.media_id}"
         )
         return None
+    mediainfo = apply_subscription_classification(mediainfo, subscribe)
     return meta, mediainfo, routed_torrents, domains, sub_sites
 
 
@@ -741,8 +743,11 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                 # 匹配成功
                 logger.info(f"{mediainfo.title_year} 匹配成功：{torrent_info.title}")
                 # 自定义属性
-                if subscribe.media_category:
-                    torrent_mediainfo.category = subscribe.media_category
+                torrent_mediainfo = apply_subscription_classification(
+                    torrent_mediainfo,
+                    subscribe,
+                )
+                _context.media_info = torrent_mediainfo
                 if subscribe.episode_group:
                     torrent_mediainfo.episode_group = subscribe.episode_group
                 _match_context.append(_context)

@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 from app.application.audio import AudioMetadataHelper
 from app.application.configuration import get_chain_runtime_config_snapshot
@@ -205,7 +205,14 @@ class MediaAlbumOwner(_MediaOwnerBase):
             signature,
             lambda: self._match_music_album_directory(directory, files),
         )
-        return self._simplify_recognized_music_mapping(matched)
+        simplified = self._simplify_recognized_music_mapping(matched)
+        finalized: dict[str, MusicInfo] = {}
+        for item_path, info in simplified.items():
+            finalized[item_path] = cast(
+                MusicInfo,
+                self._finalize_recognition_result(info),
+            )
+        return finalized
 
     async def async_recognize_music_album_directory(
         self,
@@ -225,4 +232,11 @@ class MediaAlbumOwner(_MediaOwnerBase):
             signature,
             lambda: self._async_match_music_album_directory(directory, files),
         )
-        return self._simplify_recognized_music_mapping(matched)
+        simplified = self._simplify_recognized_music_mapping(matched)
+        return {
+            item_path: cast(
+                MusicInfo,
+                await self._async_finalize_recognition_result(info),
+            )
+            for item_path, info in simplified.items()
+        }

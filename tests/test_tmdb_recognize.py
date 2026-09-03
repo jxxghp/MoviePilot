@@ -40,8 +40,7 @@ def _replay(url: str) -> dict:
     key = _cassette_key(url)
     if key not in _CASSETTE:
         raise AssertionError(
-            f"TMDB cassette 未命中：{key}；如识别流程新增请求，请重新录制 "
-            f"tests/fixtures/tmdb_recognize_cassette.json"
+            f"TMDB cassette 未命中：{key}；如识别流程新增请求，请重新录制 tests/fixtures/tmdb_recognize_cassette.json"
         )
     # headers 置空：识别只消费 json，丢弃录制头可规避限流/ETag 等无关分支
     return {_MARKER: True, "headers": {}, "json": deepcopy(_CASSETTE[key])}
@@ -67,14 +66,16 @@ def setUpModule():
     MP 服务器（movie-pilot.org）的「共享识别 API」上报/查询；识别失败时还会反向
     查询。这两条链路与 TMDB 目录无关，必须一并打桩，否则 Chain 端到端用例仍会真发请求。
     """
-    _PATCHERS.extend([
-        patch.object(TMDb, "request", _replay_request),
-        patch.object(TMDb, "async_request", _replay_async_request),
-        patch.object(MoviePilotServerHelper, "async_report_recognize_share", new=AsyncMock(return_value=None)),
-        patch.object(MoviePilotServerHelper, "async_query_recognize_share", new=AsyncMock(return_value=None)),
-        patch.object(MoviePilotServerHelper, "report_recognize_share", new=MagicMock(return_value=None)),
-        patch.object(MoviePilotServerHelper, "query_recognize_share", new=MagicMock(return_value=None)),
-    ])
+    _PATCHERS.extend(
+        [
+            patch.object(TMDb, "request", _replay_request),
+            patch.object(TMDb, "async_request", _replay_async_request),
+            patch.object(MoviePilotServerHelper, "async_report_recognize_share", new=AsyncMock(return_value=None)),
+            patch.object(MoviePilotServerHelper, "async_query_recognize_share", new=AsyncMock(return_value=None)),
+            patch.object(MoviePilotServerHelper, "report_recognize_share", new=MagicMock(return_value=None)),
+            patch.object(MoviePilotServerHelper, "query_recognize_share", new=MagicMock(return_value=None)),
+        ]
+    )
     started = []
     try:
         for patcher in _PATCHERS:
@@ -94,6 +95,23 @@ def tearDownModule():
     for patcher in _PATCHERS:
         patcher.stop()
     _PATCHERS.clear()
+
+
+def test_tmdb_module_has_no_legacy_category_runtime_dependency() -> None:
+    """正常模块初始化不得构造旧分类门面或暴露旧模块调度方法。"""
+    with (
+        patch("app.modules.themoviedb.TmdbCache"),
+        patch("app.modules.themoviedb.TmdbApi"),
+        patch("app.modules.themoviedb.TmdbScraper"),
+    ):
+        module = TheMovieDbModule()
+        module.init_module()
+
+    assert not hasattr(module, "category")
+    assert not hasattr(module, "_category_helper")
+    assert not hasattr(module, "media_category")
+    assert not hasattr(module, "load_category_config")
+    assert not hasattr(module, "save_category_config")
 
 
 @pytest.fixture

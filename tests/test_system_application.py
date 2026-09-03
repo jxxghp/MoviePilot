@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.application.configuration import SystemConfigWriteResult
 from app.application.system import (
     LogFileData,
     MarketFetchResult,
@@ -21,7 +22,14 @@ def _build_service() -> tuple[SystemService, SimpleNamespace]:
     settings = Mock()
     settings.get.return_value = None
     system_config = Mock()
+    system_config.normalize_value.side_effect = lambda _key, value: value
     system_config.async_set = AsyncMock(return_value=True)
+    system_config.async_set_with_normalized_value = AsyncMock(
+        side_effect=lambda _key, value: SystemConfigWriteResult(
+            changed=True,
+            normalized_value=value,
+        )
+    )
     logs = Mock()
     logs.read = AsyncMock(return_value="first\nsecond")
     logs.follow = AsyncMock(return_value=iter(("tail",)))
@@ -213,7 +221,7 @@ async def test_update_setting_routes_runtime_and_persistent_values() -> None:
     assert runtime_result.success is True
     assert unknown_result.success is False
     assert persistent_result.success is True
-    dependencies.system_config.async_set.assert_awaited_once_with(
+    dependencies.system_config.async_set_with_normalized_value.assert_awaited_once_with(
         SystemConfigKey.IndexerSites.value, [1, 2]
     )
     dependencies.events.publish.assert_awaited_once_with(
@@ -234,7 +242,13 @@ async def test_update_setting_preserves_persistent_write_result(
     """通用系统配置写入只把明确 False 映射为失败并抑制失败事件。"""
     service, dependencies = _build_service()
     dependencies.settings.contains.return_value = False
-    dependencies.system_config.async_set.return_value = persisted_result
+    dependencies.system_config.async_set_with_normalized_value.side_effect = None
+    dependencies.system_config.async_set_with_normalized_value.return_value = (
+        SystemConfigWriteResult(
+            changed=persisted_result,
+            normalized_value=[1, 2],
+        )
+    )
 
     result = await service.update_setting(
         SystemConfigKey.IndexerSites.value, [1, None, 2]
@@ -247,6 +261,23 @@ async def test_update_setting_preserves_persistent_write_result(
         )
     else:
         dependencies.events.publish.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_update_setting_rejects_invalid_normalized_value() -> None:
+    """旧设置入口必须把目录规范化错误作为可见失败返回且不写库。"""
+    service, dependencies = _build_service()
+    dependencies.settings.contains.return_value = False
+    dependencies.system_config.async_set_with_normalized_value.side_effect = ValueError(
+        "分类 ID 已失效"
+    )
+
+    result = await service.update_setting(SystemConfigKey.Directories.value, [{}])
+
+    assert result.success is False
+    assert result.message == "分类 ID 已失效"
+    dependencies.system_config.async_set_with_normalized_value.assert_awaited_once()
+    dependencies.events.publish.assert_not_awaited()
 
 
 @pytest.mark.anyio

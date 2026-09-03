@@ -102,6 +102,9 @@ async def test_runtime_settings_service_uses_legacy_settings_from_startup_root(
         def load_snapshot(self):
             """模拟系统配置快照加载。"""
 
+        def publish_many(self, _values):
+            """模拟事务提交后的系统配置快照发布。"""
+
     class _UserConfig:
         """提供无需数据库的用户配置快照桩。"""
 
@@ -142,6 +145,9 @@ async def test_configuration_services_publish_after_both_snapshots_load(
         def load_snapshot(self):
             """登记系统快照已加载。"""
             events.append("load-system")
+
+        def publish_many(self, _values):
+            """模拟事务提交后的系统配置快照发布。"""
 
     class _UserConfig:
         """记录用户配置快照加载顺序。"""

@@ -29,6 +29,7 @@ from app.chain.media import MediaChain
 from app.chain.search.facade import SearchChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.identity import subscribe_recognize_kwargs
+from app.chain.subscribe.metadata import apply_subscription_classification
 from app.domain.context import (
     MediaInfo,
 )
@@ -799,6 +800,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
             )
             return subscribe
         _ensure_execution_active(execution_context)
+        mediainfo = apply_subscription_classification(mediainfo, subscribe)
         mediakey = subscribe_media_key(subscribe)
         exists, no_exists = self.check_and_handle_existing_media(
             subscribe=subscribe,
@@ -911,8 +913,11 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
                 ):
                     logger.info(f"{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级")
                     continue
-                if subscribe.media_category:
-                    media.category = subscribe.media_category
+                media = apply_subscription_classification(
+                    media,
+                    subscribe,
+                )
+                context.media_info = media
                 if subscribe.episode_group:
                     media.episode_group = subscribe.episode_group
                 matched.append(context)

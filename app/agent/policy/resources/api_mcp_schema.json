@@ -483,127 +483,6 @@
       "title": "Body_recommend_search_results_api_v1_search_recommend_post",
       "type": "object"
     },
-    "CategoryConfig": {
-      "description": "Complete automatic media-category strategy configuration.",
-      "properties": {
-        "movie": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "anyOf": [
-                  {
-                    "$ref": "#/$defs/CategoryRule"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": {},
-          "description": "Automatic movie-category rules evaluated in order.",
-          "title": "Movie"
-        },
-        "tv": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "anyOf": [
-                  {
-                    "$ref": "#/$defs/CategoryRule"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": {},
-          "description": "Automatic TV-category rules evaluated in order.",
-          "title": "Tv"
-        }
-      },
-      "title": "CategoryConfig",
-      "type": "object"
-    },
-    "CategoryRule": {
-      "additionalProperties": true,
-      "description": "One ordered automatic media-category matching rule.",
-      "properties": {
-        "genre_ids": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Genre identifiers accepted by the automatic category rule.",
-          "title": "Genre Ids"
-        },
-        "origin_country": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Production-country code matched by an automatic category rule.",
-          "title": "Origin Country"
-        },
-        "original_language": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Original-language code matched by an automatic category rule.",
-          "title": "Original Language"
-        },
-        "production_countries": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Production-country codes matched by an automatic category rule.",
-          "title": "Production Countries"
-        },
-        "release_year": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Release year matched by an automatic category rule.",
-          "title": "Release Year"
-        }
-      },
-      "title": "CategoryRule",
-      "type": "object"
-    },
     "CustomFilterRuleCreateRequest": {
       "description": "Custom filter-rule creation request.",
       "properties": {
@@ -806,6 +685,42 @@
           "description": "Message channel that originally submitted the download.",
           "title": "Channel"
         },
+        "classification_policy_revision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Policy revision that produced the persisted classification snapshot.",
+          "title": "Classification Policy Revision"
+        },
+        "classification_rule_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Stable rule ID that selected the persisted classification category.",
+          "title": "Classification Rule Id"
+        },
+        "classification_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Selection source recorded with the persisted classification snapshot.",
+          "title": "Classification Source"
+        },
         "date": {
           "anyOf": [
             {
@@ -882,6 +797,18 @@
           ],
           "description": "MoviePilot library category assigned to the media.",
           "title": "Media Category"
+        },
+        "media_category_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Stable classification category ID; preserve it separately from the current category path snapshot.",
+          "title": "Media Category Id"
         },
         "media_id": {
           "anyOf": [
@@ -2511,6 +2438,42 @@
           "description": "Enable full best-version upgrading when set to 1.",
           "title": "Best Version Full"
         },
+        "classification_policy_revision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Policy revision that produced the persisted classification snapshot.",
+          "title": "Classification Policy Revision"
+        },
+        "classification_rule_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Stable rule ID that selected the persisted classification category.",
+          "title": "Classification Rule Id"
+        },
+        "classification_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Selection source recorded with the persisted classification snapshot.",
+          "title": "Classification Source"
+        },
         "completed_episode": {
           "anyOf": [
             {
@@ -2792,6 +2755,18 @@
           ],
           "description": "MoviePilot library category assigned to the media.",
           "title": "Media Category"
+        },
+        "media_category_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Stable classification category ID; preserve it separately from the current category path snapshot.",
+          "title": "Media Category Id"
         },
         "media_id": {
           "anyOf": [
@@ -3253,6 +3228,18 @@
           ],
           "description": "MoviePilot library category assigned to the media.",
           "title": "Media Category"
+        },
+        "media_category_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Stable classification category ID; preserve it separately from the current category path snapshot.",
+          "title": "Media Category Id"
         },
         "media_id": {
           "anyOf": [
@@ -4092,6 +4079,42 @@
           "description": "MoviePilot media category or filter-group category, depending on the operation.",
           "title": "Category"
         },
+        "classification_policy_revision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Policy revision that produced the persisted classification snapshot.",
+          "title": "Classification Policy Revision"
+        },
+        "classification_rule_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Stable rule ID that selected the persisted classification category.",
+          "title": "Classification Rule Id"
+        },
+        "classification_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Selection source recorded with the persisted classification snapshot.",
+          "title": "Classification Source"
+        },
         "date": {
           "anyOf": [
             {
@@ -4214,6 +4237,18 @@
           ],
           "description": "Image URL stored with the history record.",
           "title": "Image"
+        },
+        "media_category_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Stable classification category ID; preserve it separately from the current category path snapshot.",
+          "title": "Media Category Id"
         },
         "media_id": {
           "anyOf": [
@@ -6483,27 +6518,6 @@
         "operation_id"
       ],
       "title": "media.category.config.get",
-      "type": "object"
-    },
-    {
-      "additionalProperties": false,
-      "description": "Replace the complete automatic media-category strategy configuration. Method: POST. Path: /api/v1/media/category/config. Effect: reversible_write.",
-      "properties": {
-        "body": {
-          "$ref": "#/$defs/CategoryConfig",
-          "description": "Request value for media.category.config.update. Replace the complete automatic media-category strategy configuration. Use the exact type and fields below."
-        },
-        "operation_id": {
-          "const": "media.category.config.update",
-          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "operation_id",
-        "body"
-      ],
-      "title": "media.category.config.update",
       "type": "object"
     },
     {
@@ -13864,7 +13878,6 @@
         "library.latest",
         "media.categories",
         "media.category.config.get",
-        "media.category.config.update",
         "media.detail",
         "media.episode_group.seasons",
         "media.episode_groups",

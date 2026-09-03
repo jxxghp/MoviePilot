@@ -434,16 +434,21 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             context,
             self._SubscribeChain__build_subscribe_notification(context),
         )
-        sid, err_msg = add_subscribe(
-            mediainfo=context.mediainfo,
-            subscribe_oper=self.subscription_repository,
-            season=context.season,
-            username=context.username,
-            after_commit=_build_post_commit_callback(self, post_commit_context),
-            notification=post_commit_context.notification,
-            occurrence_id=post_commit_context.occurrence_id,
-            **context.options,
-        )
+        try:
+            sid, err_msg = add_subscribe(
+                mediainfo=context.mediainfo,
+                subscribe_oper=self.subscription_repository,
+                season=context.season,
+                username=context.username,
+                after_commit=_build_post_commit_callback(self, post_commit_context),
+                notification=post_commit_context.notification,
+                occurrence_id=post_commit_context.occurrence_id,
+                **context.options,
+            )
+        except ValueError as error:
+            err_msg = f"订阅分类无效：{error}"
+            self._SubscribeChain__notify_subscribe_create_failure(context, err_msg)
+            return None, err_msg
         if not sid:
             self._SubscribeChain__notify_subscribe_create_failure(context, err_msg)
             return None, err_msg
@@ -458,16 +463,24 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             context,
             self._SubscribeChain__build_subscribe_notification(context),
         )
-        sid, err_msg = await async_add_subscribe(
-            mediainfo=context.mediainfo,
-            subscribe_oper=self.subscription_repository,
-            season=context.season,
-            username=context.username,
-            after_commit=_build_async_post_commit_callback(self, post_commit_context),
-            notification=post_commit_context.notification,
-            occurrence_id=post_commit_context.occurrence_id,
-            **context.options,
-        )
+        try:
+            sid, err_msg = await async_add_subscribe(
+                mediainfo=context.mediainfo,
+                subscribe_oper=self.subscription_repository,
+                season=context.season,
+                username=context.username,
+                after_commit=_build_async_post_commit_callback(self, post_commit_context),
+                notification=post_commit_context.notification,
+                occurrence_id=post_commit_context.occurrence_id,
+                **context.options,
+            )
+        except ValueError as error:
+            err_msg = f"订阅分类无效：{error}"
+            await self._SubscribeChain__async_notify_subscribe_create_failure(
+                context,
+                err_msg,
+            )
+            return None, err_msg
         if not sid:
             await self._SubscribeChain__async_notify_subscribe_create_failure(context, err_msg)
             return None, err_msg

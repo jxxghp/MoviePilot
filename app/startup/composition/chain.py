@@ -11,7 +11,14 @@ from app.application.chain.context import (
     ChainRuntimeContext,
     configure_chain_runtime_context_provider,
 )
+from app.application.classification.execution import ClassificationExecutionService
+from app.application.classification.reference import ClassificationCategoryResolver
+from app.application.classification.runtime import ClassificationRuntime
 from app.application.configuration import ChainRuntimeConfig
+from app.application.directory import (
+    configure_directory_classification_resolver,
+    reset_directory_classification_resolver,
+)
 from app.application.image import (
     configure_wallpaper_providers,
     reset_wallpaper_providers,
@@ -77,6 +84,7 @@ def build_chain_runtime_context(
     dependencies: RuntimeDependencies,
     system_config: SystemConfigOper,
     configuration: Callable[[], ChainRuntimeConfig],
+    classification_service: ClassificationExecutionService,
 ) -> ChainRuntimeContext:
     """创建 Chain 无参兼容入口共享的运行时对象与数据端口。"""
     return ChainRuntimeContext(
@@ -112,6 +120,7 @@ def build_chain_runtime_context(
         media_server_repository=TransactionalMediaServerRepository(SessionFactory),
         download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
         user_repository=build_transactional_user_repository(),
+        classification_service=classification_service,
         legacy_transfer_command=execute_legacy_transfer_command,
         configuration=configuration(),
         durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
@@ -129,11 +138,21 @@ def configure_wallpaper_services() -> None:
     )
 
 
+def configure_directory_classification_service(
+    runtime: ClassificationRuntime,
+) -> None:
+    """把活动分类策略解析能力装配给目录选择与路径生成服务。"""
+    configure_directory_classification_resolver(
+        ClassificationCategoryResolver(runtime)
+    )
+
+
 def configure_chain_runtime_context(
     *,
     dependencies: RuntimeDependencies,
     system_config: SystemConfigOper,
     configuration: Callable[[], ChainRuntimeConfig],
+    classification_service: ClassificationExecutionService,
 ) -> None:
     """登记按需构造的 Chain 上下文，保持无参 Chain 的插件兼容合同。"""
     configure_chain_runtime_context_provider(
@@ -141,6 +160,7 @@ def configure_chain_runtime_context(
             dependencies=dependencies,
             system_config=system_config,
             configuration=configuration,
+            classification_service=classification_service,
         )
     )
 
@@ -148,6 +168,7 @@ def configure_chain_runtime_context(
 def reset_chain_services() -> None:
     """按发布逆序撤销 Chain 无参上下文和壁纸来源。"""
     configure_chain_runtime_context_provider(None)
+    reset_directory_classification_resolver()
     reset_wallpaper_providers()
 
 

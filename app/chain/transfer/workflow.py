@@ -7,6 +7,9 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+from app.application.classification.reference import (
+    category_path_below_media_type,
+)
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
 from app.application.formatting import FormatParser
@@ -60,10 +63,10 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         )
 
     def _TransferChain__get_trans_fileitems(
-            self,
-            fileitem: FileItem,
-            predicate: Optional[Callable[[FileItem, bool], bool]],
-            verify_file_exists: bool = True,
+        self,
+        fileitem: FileItem,
+        predicate: Optional[Callable[[FileItem, bool], bool]],
+        verify_file_exists: bool = True,
     ) -> List[Tuple[FileItem, bool]]:
         """
         获取待整理文件项列表
@@ -89,9 +92,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             """
             判断是否蓝光原盘目录内的子目录或文件
             """
-            return (
-                True if re.search(r"BDMV[/\\]STREAM", _path, re.IGNORECASE) else False
-            )
+            return True if re.search(r"BDMV[/\\]STREAM", _path, re.IGNORECASE) else False
 
         def __get_bluray_dir(_storage: str, _path: Path) -> Optional[FileItem]:
             """
@@ -102,9 +103,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     return storagechain.get_file_item(storage=_storage, path=p.parent)
             return None
 
-        def _apply_predicate(
-                file_item: FileItem, is_bluray_dir: bool
-        ) -> List[Tuple[FileItem, bool]]:
+        def _apply_predicate(file_item: FileItem, is_bluray_dir: bool) -> List[Tuple[FileItem, bool]]:
             if predicate is None or predicate(file_item, is_bluray_dir):
                 return [(file_item, is_bluray_dir)]
             return []
@@ -138,9 +137,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             item
             for sub_item in sub_items
             for item in (
-                self._TransferChain__get_trans_fileitems(
-                    sub_item, predicate, verify_file_exists=False
-                )
+                self._TransferChain__get_trans_fileitems(sub_item, predicate, verify_file_exists=False)
                 if sub_item.type == "dir"
                 else _apply_predicate(sub_item, False)
             )
@@ -156,7 +153,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         """
         shared_roots: set[str] = set()
         media_type_dirs = {mtype.value for mtype in MediaType}
-        media_categories = None
+        directory_helper = DirectoryHelper()
 
         for dir_info in DirectoryHelper().get_download_dirs():
             if not dir_info.download_path:
@@ -171,49 +168,56 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             current_root = download_root
             part_index = 0
             media_type = dir_info.media_type
+            type_folder_applied = False
 
             if (
-                    not dir_info.media_type
-                    and dir_info.download_type_folder
-                    and len(relative_parts) > part_index
-                    and relative_parts[part_index] in media_type_dirs
+                not dir_info.media_type
+                and dir_info.download_type_folder
+                and len(relative_parts) > part_index
+                and relative_parts[part_index] in media_type_dirs
             ):
                 current_root = current_root / relative_parts[part_index]
                 shared_roots.add(current_root.as_posix())
                 media_type = relative_parts[part_index]
                 part_index += 1
+                type_folder_applied = True
 
             if (
-                    not dir_info.media_category
-                    and dir_info.download_category_folder
-                    and len(relative_parts) > part_index
+                not directory_helper.has_fixed_category(dir_info)
+                and dir_info.download_category_folder
+                and len(relative_parts) > part_index
             ):
-                category_root = current_root / relative_parts[part_index]
-                shared_roots.add(category_root.as_posix())
-                if media_categories is None:
-                    media_categories = MediaChain().media_category() or {}
-                if media_type:
-                    category_names = media_categories.get(media_type, [])
-                else:
-                    category_names = {
-                        category
-                        for categories in media_categories.values()
-                        for category in categories
-                    }
-                category_paths = sorted(
-                    (Path(category).parts for category in category_names if category),
-                    key=len,
-                )
-                for category_parts in category_paths:
-                    relative_category_parts = tuple(
-                        relative_parts[part_index:part_index + len(category_parts)]
+                category_paths = directory_helper.classification_category_paths(media_type)
+                category_paths = tuple(
+                    relative_path
+                    for category_path in category_paths
+                    if (
+                        relative_path := category_path_below_media_type(
+                            category_path,
+                            media_type,
+                            type_folder_enabled=type_folder_applied,
+                        )
                     )
+                )
+                category_matched = False
+                sorted_category_paths = sorted(
+                    category_paths,
+                    key=len,
+                    reverse=True,
+                )
+                for category_parts in sorted_category_paths:
+                    relative_category_parts = tuple(relative_parts[part_index : part_index + len(category_parts)])
                     if relative_category_parts != category_parts:
                         continue
+                    category_matched = True
                     category_root = current_root
                     for category_part in category_parts:
                         category_root = category_root / category_part
                         shared_roots.add(category_root.as_posix())
+                    break
+                if not category_matched:
+                    category_root = current_root / relative_parts[part_index]
+                    shared_roots.add(category_root.as_posix())
 
         return shared_roots
 
@@ -240,9 +244,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             media_source=media_source,
             media_id=media_id,
         )
-        if explicit_identity and (
-                not normalized_source or not normalized_media_id
-        ):
+        if explicit_identity and (not normalized_source or not normalized_media_id):
             return (
                 mediainfo,
                 normalized_source,
@@ -250,9 +252,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 "整理任务需要同时提供有效的 media_source 和 media_id",
             )
         if not explicit_identity and mediainfo:
-            normalized_source, normalized_media_id = resolve_media_identity(
-                media=mediainfo
-            )
+            normalized_source, normalized_media_id = resolve_media_identity(media=mediainfo)
         if explicit_identity and not mediainfo:
             mediainfo = MediaChain().recognize_media(
                 mtype=mtype,
@@ -265,8 +265,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     mediainfo,
                     normalized_source,
                     normalized_media_id,
-                    "未识别到媒体信息，"
-                    f"media_source：{normalized_source}，media_id：{normalized_media_id}",
+                    f"未识别到媒体信息，media_source：{normalized_source}，media_id：{normalized_media_id}",
                 )
         return mediainfo, normalized_source, normalized_media_id, None
 
@@ -296,9 +295,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             else None
         )
         has_template = bool(epformat and epformat.format)
-        exclude_words = get_configured_system_config().get(
-            SystemConfigKey.TransferExcludeWords
-        )
+        exclude_words = get_configured_system_config().get(SystemConfigKey.TransferExcludeWords)
         matched_template = False
 
         def keep_candidate(item: FileItem, _is_bluray_dir: bool) -> bool:
@@ -323,58 +320,49 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     return False
                 if not self._is_allow_filesize(item, min_filesize):
                     return False
-            elif (
-                not is_bluray_dir
-                and not self._is_subtitle_file(item)
-                and not self._is_audio_file(item)
-            ):
+            elif not is_bluray_dir and not self._is_subtitle_file(item) and not self._is_audio_file(item):
                 if not self._is_media_file(item, batch_mtype):
                     return False
                 if not self._is_allow_filesize(item, min_filesize):
                     return False
-            if any(
-                marker in item.path
-                for marker in ("/@Recycle/", "/#recycle/", "/.", "/@eaDir")
-            ):
+            if any(marker in item.path for marker in ("/@Recycle/", "/#recycle/", "/.", "/@eaDir")):
                 logger.debug(f"{item.path} 是回收站或隐藏的文件")
                 return False
             return not self._is_blocked_by_exclude_words(item.path, exclude_words)
 
         candidates = self._TransferChain__get_trans_fileitems(fileitem, predicate=keep_candidate)
         return [
-            (item, is_bluray_dir)
-            for item, is_bluray_dir in candidates
-            if is_allowed(item, is_bluray_dir)
+            (item, is_bluray_dir) for item, is_bluray_dir in candidates if is_allowed(item, is_bluray_dir)
         ], matched_template
 
     def do_transfer(
-            self,
-            fileitem: FileItem,
-            meta: MetaBase = None,
-            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
-            mtype: Optional[MediaType] = None,
-            media_source: Optional[MediaSource] = None,
-            media_id: Optional[str] = None,
-            target_directory: TransferDirectoryConf = None,
-            target_storage: Optional[str] = None,
-            target_path: Path = None,
-            transfer_type: Optional[str] = None,
-            scrape: Optional[bool] = None,
-            library_type_folder: Optional[bool] = None,
-            library_category_folder: Optional[bool] = None,
-            season: Optional[int] = None,
-            epformat: EpisodeFormat = None,
-            min_filesize: Optional[int] = 0,
-            downloader: Optional[str] = None,
-            download_hash: Optional[str] = None,
-            force: Optional[bool] = False,
-            background: Optional[bool] = True,
-            manual: Optional[bool] = False,
-            preview: Optional[bool] = False,
-            sync_extra_files: Optional[bool] = False,
-            cleanup_dest_fileitem: Optional[FileItem] = None,
-            continue_callback: Callable = None,
-            reorganize: Optional[bool] = False,
+        self,
+        fileitem: FileItem,
+        meta: MetaBase = None,
+        mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
+        mtype: Optional[MediaType] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        target_directory: TransferDirectoryConf = None,
+        target_storage: Optional[str] = None,
+        target_path: Path = None,
+        transfer_type: Optional[str] = None,
+        scrape: Optional[bool] = None,
+        library_type_folder: Optional[bool] = None,
+        library_category_folder: Optional[bool] = None,
+        season: Optional[int] = None,
+        epformat: EpisodeFormat = None,
+        min_filesize: Optional[int] = 0,
+        downloader: Optional[str] = None,
+        download_hash: Optional[str] = None,
+        force: Optional[bool] = False,
+        background: Optional[bool] = True,
+        manual: Optional[bool] = False,
+        preview: Optional[bool] = False,
+        sync_extra_files: Optional[bool] = False,
+        cleanup_dest_fileitem: Optional[FileItem] = None,
+        continue_callback: Callable = None,
+        reorganize: Optional[bool] = False,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         兼容公开整理入口，委托给内部批次执行阶段。
@@ -416,34 +404,34 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         return self._run_transfer_workflow(*args, **kwargs)
 
     def _run_transfer_workflow(
-            self,
-            fileitem: FileItem,
-            meta: MetaBase = None,
-            mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
-            mtype: Optional[MediaType] = None,
-            media_source: Optional[MediaSource] = None,
-            media_id: Optional[str] = None,
-            target_directory: TransferDirectoryConf = None,
-            target_storage: Optional[str] = None,
-            target_path: Path = None,
-            transfer_type: Optional[str] = None,
-            scrape: Optional[bool] = None,
-            library_type_folder: Optional[bool] = None,
-            library_category_folder: Optional[bool] = None,
-            season: Optional[int] = None,
-            epformat: EpisodeFormat = None,
-            min_filesize: Optional[int] = 0,
-            downloader: Optional[str] = None,
-            download_hash: Optional[str] = None,
-            force: Optional[bool] = False,
-            background: Optional[bool] = True,
-            manual: Optional[bool] = False,
-            preview: Optional[bool] = False,
-            sync_extra_files: Optional[bool] = False,
-            cleanup_dest_fileitem: Optional[FileItem] = None,
-            continue_callback: Callable = None,
-            reorganize: Optional[bool] = False,
-            recovery_admission: Optional[TransferAdmission] = None,
+        self,
+        fileitem: FileItem,
+        meta: MetaBase = None,
+        mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
+        mtype: Optional[MediaType] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        target_directory: TransferDirectoryConf = None,
+        target_storage: Optional[str] = None,
+        target_path: Path = None,
+        transfer_type: Optional[str] = None,
+        scrape: Optional[bool] = None,
+        library_type_folder: Optional[bool] = None,
+        library_category_folder: Optional[bool] = None,
+        season: Optional[int] = None,
+        epformat: EpisodeFormat = None,
+        min_filesize: Optional[int] = 0,
+        downloader: Optional[str] = None,
+        download_hash: Optional[str] = None,
+        force: Optional[bool] = False,
+        background: Optional[bool] = True,
+        manual: Optional[bool] = False,
+        preview: Optional[bool] = False,
+        sync_extra_files: Optional[bool] = False,
+        cleanup_dest_fileitem: Optional[FileItem] = None,
+        continue_callback: Callable = None,
+        reorganize: Optional[bool] = False,
+        recovery_admission: Optional[TransferAdmission] = None,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         执行一个复杂目录的整理操作
@@ -476,14 +464,12 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param recovery_admission: 内部恢复调用绑定的既有 durable 记录
         返回：成功标识，错误信息
         """
-        mediainfo, media_source, media_id, identity_error = (
-            self._normalize_transfer_identity(
-                mediainfo=mediainfo,
-                mtype=mtype,
-                media_source=media_source,
-                media_id=media_id,
-                meta=meta,
-            )
+        mediainfo, media_source, media_id, identity_error = self._normalize_transfer_identity(
+            mediainfo=mediainfo,
+            mtype=mtype,
+            media_source=media_source,
+            media_id=media_id,
+            meta=meta,
         )
         if identity_error:
             return False, identity_error
@@ -512,19 +498,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
 
         # 汇总错误信息
         err_msgs: List[str] = []
-        transfer_exclude_words = get_configured_system_config().get(
-            SystemConfigKey.TransferExcludeWords
-        )
-
-
-
-
-
-
-
-
-
-
+        transfer_exclude_words = get_configured_system_config().get(SystemConfigKey.TransferExcludeWords)
 
         candidate_planner = _TransferCandidatePlanner(
             self,
@@ -623,19 +597,12 @@ class TransferWorkflowOwner(_TransferOwnerBase):
 
         # 下载器任务在这一轮可能因为历史记录全部命中而没有进入整理队列，
         # 这里补打一遍已整理标签，避免同一种子被重复扫描。
-        if (
-                skipped_history_count == planned_file_count
-                and skipped_torrents
-        ):
+        if skipped_history_count == planned_file_count and skipped_torrents:
             for skipped_hash, skipped_downloader in skipped_torrents:
                 logger.info(f"补充设置下载任务已整理标签：{skipped_hash}")
-                self._TransferChain__mark_torrent_completed_if_done(
-                    skipped_hash, skipped_downloader
-                )
+                self._TransferChain__mark_torrent_completed_if_done(skipped_hash, skipped_downloader)
 
-        error_msg = "、".join(err_msgs[:2]) + (
-            f"，等{len(err_msgs)}个文件错误！" if len(err_msgs) > 2 else ""
-        )
+        error_msg = "、".join(err_msgs[:2]) + (f"，等{len(err_msgs)}个文件错误！" if len(err_msgs) > 2 else "")
         if preview:
             return all_success, {
                 "summary": {
@@ -649,34 +616,34 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         return all_success, error_msg
 
     def _build_transfer_tasks(
-            self,
-            *,
-            file_items: List[Tuple[FileItem, bool]],
-            inherited_meta_map: Dict[Tuple[str, str], MetaBase],
-            build_file_meta: Callable[[Path, Optional[List[str]]], Optional[MetaBase]],
-            meta: Optional[MetaBase],
-            mediainfo: Optional[Union[MediaInfo, MusicInfo]],
-            media_source: Optional[MediaSource],
-            media_id: Optional[str],
-            batch_mtype: Optional[MediaType],
-            target_directory: Optional[TransferDirectoryConf],
-            target_storage: Optional[str],
-            target_path: Optional[Path],
-            transfer_type: Optional[str],
-            scrape: Optional[bool],
-            library_type_folder: Optional[bool],
-            library_category_folder: Optional[bool],
-            downloader: Optional[str],
-            download_hash: Optional[str],
-            transfer_batch_id: str,
-            manual: bool,
-            background: bool,
-            preview: bool,
-            reorganize: bool,
-            force: bool,
-            continue_callback: Optional[Callable[[], bool]],
-            cleanup_dest_fileitem: Optional[FileItem],
-            recovery_admission: Optional[TransferAdmission],
+        self,
+        *,
+        file_items: List[Tuple[FileItem, bool]],
+        inherited_meta_map: Dict[Tuple[str, str], MetaBase],
+        build_file_meta: Callable[[Path, Optional[List[str]]], Optional[MetaBase]],
+        meta: Optional[MetaBase],
+        mediainfo: Optional[Union[MediaInfo, MusicInfo]],
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+        batch_mtype: Optional[MediaType],
+        target_directory: Optional[TransferDirectoryConf],
+        target_storage: Optional[str],
+        target_path: Optional[Path],
+        transfer_type: Optional[str],
+        scrape: Optional[bool],
+        library_type_folder: Optional[bool],
+        library_category_folder: Optional[bool],
+        downloader: Optional[str],
+        download_hash: Optional[str],
+        transfer_batch_id: str,
+        manual: bool,
+        background: bool,
+        preview: bool,
+        reorganize: bool,
+        force: bool,
+        continue_callback: Optional[Callable[[], bool]],
+        cleanup_dest_fileitem: Optional[FileItem],
+        recovery_admission: Optional[TransferAdmission],
     ) -> Tuple[List[TransferTask], bool, List[str], int, set[Tuple[str, str]]]:
         """从冻结候选构建任务，并集中执行历史去重与 durable 绑定。"""
         _build_file_meta = build_file_meta
@@ -698,7 +665,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 # 自动整理按 app/application/history.py 的统一判定去重（失败记录放行重试、
                 # 成功但源文件已变化放行交 overwrite_mode 决断）；手动整理可清理失败记录，
                 # 或按用户确认清理成功记录；手动显式指定媒体身份时，先解除旧失败任务再重新规划。
-                if (not force or reorganize or (manual and (media_source is not None or media_id is not None))) and not preview:
+                if (
+                    not force or reorganize or (manual and (media_source is not None or media_id is not None))
+                ) and not preview:
                     transfer_history_oper = self.transfer_history_repository
                     transferd = self._get_manual_transfer_history(
                         fileitem=file_item,
@@ -706,13 +675,12 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         include_move_dest=bool(manual and reorganize),
                     )
                     if transferd:
-                        should_reorganize = manual and (
-                                reorganize or not transferd.status
-                        )
+                        should_reorganize = manual and (reorganize or not transferd.status)
                         if should_reorganize:
                             if not reorganize and not (media_source is not None or media_id is not None):
                                 durable_retry = self._request_durable_transfer_retry(
-                                    transferd, requested_by="manual_reorganize",
+                                    transferd,
+                                    requested_by="manual_reorganize",
                                 )
                                 if durable_retry is not None:
                                     accepted, message = durable_retry
@@ -733,9 +701,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                                 logger.error(message)
                                 err_msgs.append(message)
                                 continue
-                            logger.info(
-                                f"{file_item.path} 已清理旧整理记录，继续重新整理。"
-                            )
+                            logger.info(f"{file_item.path} 已清理旧整理记录，继续重新整理。")
                             transferd = None
 
                     if transferd:
@@ -755,11 +721,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                                 fileid=file_item.fileid,
                             )
                             if not is_skip_action(gate_action):
-                                logger.info(
-                                    f"{file_item.path} 命中"
-                                    f"{history_description}"
-                                    f"，重新送入整理"
-                                )
+                                logger.info(f"{file_item.path} 命中{history_description}，重新送入整理")
                                 transferd = None
 
                         if transferd:
@@ -771,13 +733,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                             candidate_hash = download_hash or transferd.download_hash
                             candidate_downloader = downloader or transferd.downloader
                             if candidate_hash and candidate_downloader:
-                                skipped_torrents.add(
-                                    (candidate_hash, candidate_downloader)
-                                )
+                                skipped_torrents.add((candidate_hash, candidate_downloader))
                             logger.info(
-                                f"{file_item.path} 已整理过（"
-                                f"{history_description}"
-                                f"），如需重新处理，请删除整理记录。"
+                                f"{file_item.path} 已整理过（{history_description}），如需重新处理，请删除整理记录。"
                             )
                             err_msgs.append(f"{file_item.name} 已整理过")
                             continue
@@ -798,9 +756,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
 
                 if not meta:
                     # 文件元数据(优先使用订阅识别词)
-                    inherited_meta = inherited_meta_map.get(
-                        self._get_file_key(file_item)
-                    )
+                    inherited_meta = inherited_meta_map.get(self._get_file_key(file_item))
                     if history_music_meta:
                         file_meta = history_music_meta
                     elif inherited_meta:
@@ -831,14 +787,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 task_mediainfo = mediainfo or history_music_info
                 if not task_mediainfo and isinstance(file_meta, MetaMusic):
                     # 无标签音频按目录级专辑匹配补齐曲目身份，命中结果带缓存不会逐文件重复请求
-                    file_meta, task_mediainfo = self._match_music_album_context(
-                        file_item, file_path, file_meta
-                    )
-                if (
-                        not manual
-                        and task_mediainfo
-                        and self._is_movie_year_conflict(file_meta, task_mediainfo)
-                ):
+                    file_meta, task_mediainfo = self._match_music_album_context(file_item, file_path, file_meta)
+                if not manual and task_mediainfo and self._is_movie_year_conflict(file_meta, task_mediainfo):
                     task_mediainfo = None
 
                 # 后台整理
@@ -864,11 +814,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     background=background,
                     preview=preview,
                 )
-                cleanup_intent = (
-                    cleanup_dest_fileitem
-                    if not preview and not cleanup_intent_assigned
-                    else None
-                )
+                cleanup_intent = cleanup_dest_fileitem if not preview and not cleanup_intent_assigned else None
                 transfer_task.bind_planning_input(
                     self._TransferChain__build_planning_input(
                         transfer_task,
@@ -876,9 +822,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     )
                 )
                 if (
-                        recovery_admission
-                        and file_item.storage == recovery_admission.storage
-                        and file_item.path == recovery_admission.src_path
+                    recovery_admission
+                    and file_item.storage == recovery_admission.storage
+                    and file_item.path == recovery_admission.src_path
                 ):
                     transfer_task.bind_admission_task_id(recovery_admission.task_id)
                     self._TransferChain__bind_claimed_admission(
@@ -886,13 +832,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         recovery_admission,
                     )
                     if recovery_admission.planning_input:
-                        transfer_task.bind_planning_input(
-                            recovery_admission.planning_input
-                        )
+                        transfer_task.bind_planning_input(recovery_admission.planning_input)
                     if recovery_admission.checkpoint:
-                        transfer_task.bind_plan_checkpoint(
-                            recovery_admission.checkpoint
-                        )
+                        transfer_task.bind_plan_checkpoint(recovery_admission.checkpoint)
                 if background:
                     try:
                         queued = self.put_to_queue(task=transfer_task)
@@ -933,13 +875,13 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         )
 
     def _execute_transfer_tasks(
-            self,
-            *,
-            transfer_tasks: List[TransferTask],
-            preview: bool,
-            continue_callback: Optional[Callable[[], bool]],
-            all_success: bool,
-            err_msgs: List[str],
+        self,
+        *,
+        transfer_tasks: List[TransferTask],
+        preview: bool,
+        continue_callback: Optional[Callable[[], bool]],
+        all_success: bool,
+        err_msgs: List[str],
     ) -> Tuple[bool, List[str], List[dict[str, Any]]]:
         """同步消费已规划任务；后台任务只由 queue owner 消费。"""
         # 实时整理
@@ -995,7 +937,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         break
                     if not preview:
                         # 更新进度
-                        __process_msg = f"正在整理 （{processed_num + fail_num + 1}/{total_num}）{transfer_task.fileitem.name} ..."
+                        __process_msg = (
+                            f"正在整理 （{processed_num + fail_num + 1}/{total_num}）{transfer_task.fileitem.name} ..."
+                        )
                         logger.info(__process_msg)
                         progress.update(
                             value=(processed_num + fail_num) / total_num * 100,
@@ -1009,16 +953,12 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     terminal_settlement: Optional[bool] = None
 
                     def callback_after_terminal_settlement(
-                            callback_task: TransferTask,
-                            transferinfo: TransferInfo,
+                        callback_task: TransferTask,
+                        transferinfo: TransferInfo,
                     ) -> Tuple[bool, str]:
                         """同步路径也由默认回调原子提交历史、事件与 durable 终态。"""
                         nonlocal terminal_settlement
-                        callback = (
-                            _preview_callback
-                            if preview
-                            else self._TransferChain__default_callback
-                        )
+                        callback = _preview_callback if preview else self._TransferChain__default_callback
                         try:
                             return callback(callback_task, transferinfo)
                         finally:
@@ -1037,8 +977,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         if terminal_settlement is not None:
                             terminal = True
                         logger.error(
-                            f"{transfer_task.fileitem.name} 整理任务处理出现错误："
-                            f"{e} - {traceback.format_exc()}"
+                            f"{transfer_task.fileitem.name} 整理任务处理出现错误：{e} - {traceback.format_exc()}"
                         )
                         if not preview:
                             self._TransferChain__fail_transfer_task(transfer_task)
@@ -1061,7 +1000,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                             self.jobview.fail_task(transfer_task)
                             self.jobview.try_remove_job(transfer_task)
                         if preview and (
-                                not preview_items or preview_items[-1].get("source") != transfer_task.fileitem.path):
+                            not preview_items or preview_items[-1].get("source") != transfer_task.fileitem.path
+                        ):
                             preview_items.append(
                                 {
                                     "source": transfer_task.fileitem.path,
@@ -1096,9 +1036,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
 
             # 整理结束
             if not preview:
-                __end_msg = (
-                    f"整理队列处理完成，共整理 {total_num} 个文件，失败 {fail_num} 个"
-                )
+                __end_msg = f"整理队列处理完成，共整理 {total_num} 个文件，失败 {fail_num} 个"
                 logger.info(__end_msg)
                 progress.update(value=100, text=__end_msg, data={})
                 progress.end()

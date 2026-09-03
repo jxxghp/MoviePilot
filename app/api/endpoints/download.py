@@ -436,6 +436,7 @@ def paths(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePagePa
             priority=dir_info.priority,
             media_type=dir_info.media_type,
             media_category=dir_info.media_category,
+            media_category_id=dir_info.media_category_id,
         )
         for dir_info in DirectoryHelper().get_download_dirs()
         if dir_info.download_path

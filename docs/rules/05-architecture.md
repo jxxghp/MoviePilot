@@ -398,6 +398,7 @@ mentions media, site or torrent:
 | Subdomain | Modules and ownership |
 |---|---|
 | Media | `context.py` owns canonical `Context`, `MediaInfo` and `TorrentInfo` construction; `projection/` owns the pure, input-immutable TMDB/Douban/Bangumi/AniList field mappings and TMDB image-builder port; `media.py` owns source selection policy; identity representation/normalization stays in `schemas/media.py`; `title.py` owns title-candidate and search-keyword rules; `episode.py` owns episode-range display; `scraper.py` owns Kodi-style NFO reading and metadata document generation |
+| Classification | `classification/fields.py` owns the standard field and operator catalog; `classification/sources.py` owns fixture-verified built-in source capability levels; `classification/facts.py` owns canonical fact construction and cross-source country/genre normalization; `classification/evaluator.py` owns deterministic condition and policy evaluation; `classification/validation.py` owns publish-time structural and semantic validation. The package consumes only normalized classification schemas and facts, never concrete media-source modules or persisted configuration |
 | Recognition | `metainfo.py`, `meta/` and `tokens.py` parse names, paths, release groups, streaming platforms, anime, video and music metadata |
 | Site | `site.py` owns site-domain exceptions and interprets HTML into business states such as logged-in and checked-in; configured catalog/auth/index resources stay in `app/application/site/`, generic URL/DOM parsing stays in foundation and network access stays in adapters |
 | Torrent | `domain/torrent.py` owns magnet-link semantics; configured download/file behavior stays in `application/torrent/download.py`, while cache recognition stays in `application/torrent/cache.py` |
@@ -414,6 +415,59 @@ mutating either input. `MediaInfo` retains its canonical constructor, attributes
 and four setter ABI as thin delegates; host code imports source owners rather
 than calling its compatibility helpers. These internal owners do not create new
 SDK or Compat paths.
+
+Automatic media classification is a separate pure domain capability under
+`app/domain/classification/`. Its package root contains documentation only;
+callers import its focused child modules directly. `sources.py` declares only
+fixture-verified built-in field coverage, while `facts.py` converts canonical
+media objects into normalized `ClassificationFacts`. The evaluator therefore
+never reads raw source payloads; plugin fact admission, policy persistence and
+recognition lifecycle remain in their own Application, Runtime and Chain owners.
+
+Configured media-classification use cases belong to the same-named
+`app/application/classification/` package. Its package root contains
+documentation only; `catalog.py` merges pure standard fields with the currently
+registered source set, while undeclared dynamic-source capabilities remain
+absent instead of being misreported as unavailable. `contract.py` owns the
+atomic policy-state Port and stable conflict/corruption errors;
+`configuration.py` owns default initialization, publish validation, monotonic
+revision, bounded history, rollback and isolated process snapshots;
+`legacy.py` owns the pure, deterministic conversion between the read-only
+`category.yaml` contract and the versioned policy, including controlled TMDB
+extension facts; `runtime.py` owns legacy API projection and CAS publication
+without writing YAML; `execution.py` owns the input-immutable finalization of
+complete recognition results, current-revision evaluation, explicit manual
+overrides and invalid-policy legacy fallback; `analysis.py` owns the typed field catalog, explicit-fact
+preview and bounded, read-only impact comparison over partial recent-history
+facts. It must neither import concrete media-source modules nor write history,
+subscriptions or files, and CPU-bound batch evaluation runs outside the API
+event loop. The startup composition root injects the same execution port into
+the host runtime and every Chain context; source modules only construct source
+metadata and must not assign library categories. `app/api/endpoints/classification.py` owns the HTTP permission and
+structured `409`/`422` response mapping only; it composes read ports without
+moving classification semantics into the endpoint. `app/startup/composition/classification.py` is the only
+owner allowed to decide whether the one-time YAML migration runs: an existing
+`MediaClassificationPolicy` always wins, while invalid legacy input leaves the
+new runtime unavailable with structured diagnostics instead of publishing a
+partial policy. The
+`app/db/adapters/classification.py` implementation stores `active + history` in
+the single `SystemConfigKey.MediaClassificationPolicy` value, verifies revision
+inside a short row-lock transaction and publishes the shared SystemConfig
+snapshot only after commit. The same adapter also owns directory-configuration
+mutation: policy and directory rows are locked in one fixed order, directory IDs
+are resolved against the transaction-local active policy, and policy CAS repeats
+directory-reference validation before commit. `DirectoryAwareSystemConfigService`
+routes every `Directories` write through that shared mutation boundary, so API,
+Agent, internal and offline configuration callers publish the exact normalized
+snapshot that was committed. `systemconfig.key` is non-null and uniquely indexed,
+so first-create races are rejected by the database as well as existing-row CAS.
+Plugin declaration discovery and validation remain owned by the plugin runtime
+and are supplied to this Application boundary rather than imported from the pure
+Domain package. `app/runtime/extensions/plugin/classification.py` owns the enabled-plugin
+source registry, namespace/type validation and fact filtering; lifecycle replacement and
+removal use the runtime instance ID so virtual instances remain isolated. The Application
+classification service reads immutable field and fact snapshots through composition-root
+providers, while `app/sdk/classification.py` is the stable public capability/version surface.
 
 `StringUtils` is not a canonical implementation type. Generic text, capacity,
 time, URL, DOM, hash and version functions live under `app.foundation`; media

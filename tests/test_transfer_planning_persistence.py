@@ -11,6 +11,7 @@ from app.application.transfer.workflow import (
     TRANSFER_ADMISSION_ACCEPTED,
     TRANSFER_ADMISSION_PLANNED,
     TRANSFER_ADMISSION_PROVIDER_PENDING,
+    TRANSFER_PLAN_CHECKPOINT_VERSION,
     TransferAdmissionConflictError,
     TransferAdmissionProjectionError,
     TransferPlanCheckpoint,
@@ -657,7 +658,7 @@ def test_projection_rejects_checkpoint_version_corruption(tmp_path) -> None:
         row = session.execute(
             select(TransferPending).where(TransferPending.task_id == admitted.task_id)
         ).scalar_one()
-        row.checkpoint_version = 2
+        row.checkpoint_version = TRANSFER_PLAN_CHECKPOINT_VERSION + 1
         row.lease_expires_at = "2000-01-01 00:00:00.000000"
         session.commit()
 

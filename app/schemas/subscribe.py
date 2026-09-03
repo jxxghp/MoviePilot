@@ -98,6 +98,7 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
         "id", "poster", "backdrop", "vote", "description", "lack_episode", "completed_episode",
         "note", "state", "last_update", "username", "current_priority", "episode_priority", "date",
         "current_audio_format", "current_bitrate", "current_bit_depth", "current_sample_rate",
+        "classification_rule_id", "classification_policy_revision", "classification_source",
         "execution_status",
     })
 
@@ -192,8 +193,16 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
     date: Optional[str] = None
     # 自定义识别词
     custom_words: Optional[str] = None
-    # 自定义媒体类别
+    # 自定义媒体类别稳定标识
+    media_category_id: Optional[str] = None
+    # 自定义媒体类别兼容路径快照
     media_category: Optional[str] = None
+    # 历史命中的分类规则标识，活动订阅中为空
+    classification_rule_id: Optional[str] = None
+    # 历史执行时分类策略版本，活动订阅中为空
+    classification_policy_revision: Optional[int] = None
+    # 历史最终分类来源，活动订阅中为空
+    classification_source: Optional[str] = None
     # 过滤规则组
     filter_groups: Optional[List[str]] = Field(default_factory=list)
     # 剧集组
@@ -332,7 +341,9 @@ class SubscribeShare(OptionalMediaIdentityMixin, BaseModel):
     date: Optional[str] = None
     # 自定义识别词
     custom_words: Optional[str] = None
-    # 自定义媒体类别
+    # 自定义媒体类别稳定标识
+    media_category_id: Optional[str] = None
+    # 自定义媒体类别兼容路径快照
     media_category: Optional[str] = None
     # 自定义剧集组
     episode_group: Optional[str] = None

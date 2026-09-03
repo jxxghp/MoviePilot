@@ -107,7 +107,6 @@ OPERATION_DESCRIPTIONS = {
     "filter.test": "Test one title and optional subtitle against an exact named filter-rule group.",
     "media.categories": "Read the resolved automatic media-category mapping.",
     "media.category.config.get": "Read the complete automatic media-category strategy configuration.",
-    "media.category.config.update": "Replace the complete automatic media-category strategy configuration.",
     "media.episode_group.seasons": "List seasons defined by one exact TMDB episode-group identity.",
     "media.episode_groups": "List alternate TMDB episode groups available for one TV media identity.",
     "media.recognize_file": "Recognize canonical media identity from one exact filename and optional path context.",
@@ -227,7 +226,7 @@ FIELD_DESCRIPTIONS = {
     "audio_quality": "Subscription audio-quality rule, such as hires, lossless, or lossy.",
     "backdrop": "Backdrop image URL stored with the media or subscription.",
     "background": "Run the transfer asynchronously and return before completion.",
-        "batch_id": "Stable subscription search batch identifier.",
+    "batch_id": "Stable subscription search batch identifier.",
     "basename": "Base filename without its parent path.",
     "best_version": "Enable normal best-version upgrading when set to 1.",
     "best_version_full": "Enable full best-version upgrading when set to 1.",
@@ -244,7 +243,7 @@ FIELD_DESCRIPTIONS = {
     "code": "Two-factor verification code or site-specific authentication secret.",
     "command": "Complete slash command, including the leading slash and all arguments.",
     "completed_episode": "Highest episode number already completed for the subscription.",
-        "current_site_id": "Configured site ID currently handling the subscription execution.",
+    "current_site_id": "Configured site ID currently handling the subscription execution.",
     "cookie": "Site authentication cookie. Treat this value as a secret.",
     "count": "Maximum number of records to return on the requested page.",
     "current_audio_format": "Audio format of the best version currently held.",
@@ -253,6 +252,9 @@ FIELD_DESCRIPTIONS = {
     "current_priority": "Calculated priority of the best version currently held.",
     "current_sample_rate": "Sample rate of the best version currently held.",
     "custom_words": "Custom recognition or rename words applied to this media workflow.",
+    "classification_policy_revision": "Policy revision that produced the persisted classification snapshot.",
+    "classification_rule_id": "Stable rule ID that selected the persisted classification category.",
+    "classification_source": "Selection source recorded with the persisted classification snapshot.",
     "date": "Record creation or completion timestamp used by the history item.",
     "date_elapsed": "Human-readable age of the torrent publication date.",
     "days": "Recommendation time window in days.",
@@ -270,7 +272,7 @@ FIELD_DESCRIPTIONS = {
     "douban_sort": "Douban Music category order: U for comprehensive, S for rating, R for newest, or O for hottest.",
     "drive_id": "Provider-native storage drive identifier.",
     "effect": "Video or release-effect filter expression used by the subscription.",
-        "error": "Human-readable workflow, provider, or execution error message.",
+    "error": "Human-readable workflow, provider, or execution error message.",
     "entity": "Music exploration entity: recording for tracks or album for release groups.",
     "enclosure": "Torrent download URL or enclosure supplied by the indexer result.",
     "episode_detail": "Episode mapping details used by manual transfer.",
@@ -328,6 +330,7 @@ FIELD_DESCRIPTIONS = {
     "max_results": "Maximum number of plugin catalog results to return, from 1 to 200.",
     "max_rating": "Maximum rating used to filter shared or popular subscriptions.",
     "media_category": "MoviePilot library category assigned to the media.",
+    "media_category_id": "Stable classification category ID; preserve it separately from the current category path snapshot.",
     "media_id": "Source-native media ID. Always pair it with the exact media_source returned by search.",
     "media_source": "Metadata source identifier. Preserve the exact value returned with media_id.",
     "media_type": "MoviePilot media type used to filter recommendations or rule groups.",
@@ -614,8 +617,7 @@ def _apply_field_descriptions(schema: Mapping[str, Any]) -> dict[str, Any]:
             rewritten[key] = _apply_field_descriptions(value)
         elif isinstance(value, list):
             rewritten[key] = [
-                _apply_field_descriptions(item) if isinstance(item, Mapping) else deepcopy(item)
-                for item in value
+                _apply_field_descriptions(item) if isinstance(item, Mapping) else deepcopy(item) for item in value
             ]
         else:
             rewritten[key] = deepcopy(value)
@@ -625,11 +627,7 @@ def _apply_field_descriptions(schema: Mapping[str, Any]) -> dict[str, Any]:
             if not isinstance(field_schema, dict):
                 continue
             existing = field_schema.get("description")
-            if (
-                isinstance(existing, str)
-                and existing.strip()
-                and not re.search(r"[\u3400-\u9fff]", existing)
-            ):
+            if isinstance(existing, str) and existing.strip() and not re.search(r"[\u3400-\u9fff]", existing):
                 continue
             description = FIELD_DESCRIPTIONS.get(str(field_name))
             if not description:
@@ -764,11 +762,7 @@ def _person_credits_operation(openapi: Mapping[str, Any]) -> dict[str, Any]:
         if source_path not in paths:
             raise ValueError(f"OpenAPI 缺少人物作品端点: {source_path}")
     representative = paths[source_paths["douban"]].get("get")
-    responses = (
-        deepcopy(representative.get("responses"))
-        if isinstance(representative, Mapping)
-        else {}
-    )
+    responses = deepcopy(representative.get("responses")) if isinstance(representative, Mapping) else {}
     return {
         "summary": "Read person credits",
         "parameters": [
@@ -951,44 +945,40 @@ def _collection_response_contract(
     if not isinstance(success, Mapping) and isinstance(responses, Mapping):
         success = responses.get(200)
     headers = success.get("headers") if isinstance(success, Mapping) else None
-    header_names = {
-        str(name).lower()
-        for name in headers
-    } if isinstance(headers, Mapping) else set()
+    header_names = {str(name).lower() for name in headers} if isinstance(headers, Mapping) else set()
     data_schema = _response_data_schema(operation, components)
     if data_schema.get("type") == "array":
         has_total = "x-total-count" in header_names
         parameters = operation.get("parameters")
-        query_parameters = {
-            str(parameter.get("name")): parameter
-            for parameter in parameters
-            if isinstance(parameter, Mapping)
-            and parameter.get("in") == "query"
-        } if isinstance(parameters, list) else {}
+        query_parameters = (
+            {
+                str(parameter.get("name")): parameter
+                for parameter in parameters
+                if isinstance(parameter, Mapping) and parameter.get("in") == "query"
+            }
+            if isinstance(parameters, list)
+            else {}
+        )
         compatibility_parameters = [
             query_parameters.get("page"),
             query_parameters.get("count"),
         ]
-        has_existing_window = bool(
-            {"limit", "offset", "page_size", "max_results"}
-            & query_parameters.keys()
+        has_existing_window = bool({"limit", "offset", "page_size", "max_results"} & query_parameters.keys())
+        defaults_to_unpaginated = (
+            all(
+                isinstance(parameter, Mapping)
+                and not parameter.get("required", False)
+                and isinstance(parameter.get("schema"), Mapping)
+                and "default" not in parameter["schema"]
+                for parameter in compatibility_parameters
+            )
+            and not has_existing_window
         )
-        defaults_to_unpaginated = all(
-            isinstance(parameter, Mapping)
-            and not parameter.get("required", False)
-            and isinstance(parameter.get("schema"), Mapping)
-            and "default" not in parameter["schema"]
-            for parameter in compatibility_parameters
-        ) and not has_existing_window
         return {
             "body_shape": "list",
             "result_count_field": "collection.result_count",
             "total_count_field": "collection.total_count" if has_total else None,
-            "default_pagination": (
-                "unpaginated"
-                if defaults_to_unpaginated
-                else "endpoint-defined"
-            ),
+            "default_pagination": ("unpaginated" if defaults_to_unpaginated else "endpoint-defined"),
         }
     data_properties = data_schema.get("properties")
     if not isinstance(data_properties, Mapping) or "total" not in data_properties:
@@ -1095,16 +1085,14 @@ def build_api_mcp_input_schema(
         required = ["operation_id"]
         if path_schema is not None:
             path_schema["description"] = (
-                f"Resource identity placeholders for {operation_id}. {summary} "
-                "Use only the named fields below."
+                f"Resource identity placeholders for {operation_id}. {summary} Use only the named fields below."
             )
             properties["path_params"] = path_schema
             if path_schema.get("required"):
                 required.append("path_params")
         if query_schema is not None:
             query_schema["description"] = (
-                f"Filters and control values for {operation_id}. {summary} "
-                "Use only the named fields below."
+                f"Filters and control values for {operation_id}. {summary} Use only the named fields below."
             )
             properties["query"] = query_schema
             if query_schema.get("required"):
@@ -1121,21 +1109,19 @@ def build_api_mcp_input_schema(
         spec = spec_by_id[operation_id]
         collection_contract = _collection_response_contract(operation, components)
         collection_guidance = (
-            _collection_response_guidance(collection_contract)
-            if collection_contract is not None
-            else ""
+            _collection_response_guidance(collection_contract) if collection_contract is not None else ""
         )
         branch = {
-                "type": "object",
-                "title": operation_id,
-                "description": (
-                    f"{summary} Method: {route.method}. Path: {route.path}. "
-                    f"Effect: {spec.effect.value}.{collection_guidance}"
-                ),
-                "properties": properties,
-                "required": required,
-                "additionalProperties": False,
-            }
+            "type": "object",
+            "title": operation_id,
+            "description": (
+                f"{summary} Method: {route.method}. Path: {route.path}. "
+                f"Effect: {spec.effect.value}.{collection_guidance}"
+            ),
+            "properties": properties,
+            "required": required,
+            "additionalProperties": False,
+        }
         if collection_contract is not None:
             branch["x-moviepilot-collection"] = collection_contract
         branches.append(branch)

@@ -70,7 +70,15 @@ def _project_history(record: object) -> DownloadHistorySnapshot:
         channel=getattr(record, "channel", None),
         date=getattr(record, "date", None),
         note=deepcopy(getattr(record, "note", None)),
+        media_category_id=getattr(record, "media_category_id", None),
         media_category=getattr(record, "media_category", None),
+        classification_rule_id=getattr(record, "classification_rule_id", None),
+        classification_policy_revision=getattr(
+            record,
+            "classification_policy_revision",
+            None,
+        ),
+        classification_source=getattr(record, "classification_source", None),
         episode_group=getattr(record, "episode_group", None),
         custom_words=getattr(record, "custom_words", None),
     )

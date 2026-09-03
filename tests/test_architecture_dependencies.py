@@ -387,6 +387,89 @@ def test_runtime_dependencies_use_same_named_single_word_package() -> None:
     assert violations == []
 
 
+def test_domain_classification_is_a_pure_direct_import_package() -> None:
+    """分类领域包根仅承载文档，且实现不得依赖配置、持久化或具体来源。"""
+    package = APP_ROOT / "domain" / "classification"
+    assert {path.name for path in package.glob("*.py")} == {
+        "__init__.py",
+        "evaluator.py",
+        "facts.py",
+        "fields.py",
+        "sources.py",
+        "validation.py",
+    }
+
+    init_path = package / "__init__.py"
+    init_tree = ast.parse(init_path.read_text(encoding="utf-8"), filename=str(init_path))
+    assert ast.get_docstring(init_tree)
+    assert len(init_tree.body) == 1
+
+    forbidden_prefixes = (
+        "app.adapters",
+        "app.application",
+        "app.core.config",
+        "app.db",
+        "app.modules",
+        "app.runtime",
+        "app.sdk",
+    )
+    violations: list[str] = []
+    for path in package.glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            imported_modules: list[str] = []
+            if isinstance(node, ast.ImportFrom) and node.module:
+                imported_modules.append(node.module)
+            elif isinstance(node, ast.Import):
+                imported_modules.extend(alias.name for alias in node.names)
+            violations.extend(
+                f"{path.name}:{node.lineno}:{module}"
+                for module in imported_modules
+                if module.startswith(forbidden_prefixes)
+            )
+    assert violations == []
+
+    root_imports: list[str] = []
+    for path in APP_ROOT.rglob("*.py"):
+        if path.is_relative_to(APP_ROOT / "plugins"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "app.domain.classification":
+                root_imports.append(f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}")
+            elif isinstance(node, ast.Import):
+                root_imports.extend(
+                    f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
+                    for alias in node.names
+                    if alias.name == "app.domain.classification"
+                )
+    assert root_imports == []
+
+
+def test_application_classification_uses_same_named_package() -> None:
+    """分类应用能力必须归入同名包，包根不得重复导出内部实现。"""
+    package = APP_ROOT / "application" / "classification"
+    assert {path.name for path in package.glob("*.py")} == {
+        "__init__.py",
+        "analysis.py",
+        "catalog.py",
+        "configuration.py",
+        "contract.py",
+        "enrichment.py",
+        "execution.py",
+        "legacy.py",
+        "migration.py",
+        "projection.py",
+        "reference.py",
+        "runtime.py",
+    }
+
+    init_path = package / "__init__.py"
+    init_tree = ast.parse(init_path.read_text(encoding="utf-8"), filename=str(init_path))
+    assert ast.get_docstring(init_tree)
+    assert len(init_tree.body) == 1
+
+
 def test_application_torrent_uses_same_named_single_word_package() -> None:
     """种子应用能力必须归入同名包，包根不得重复导出内部实现。"""
     package = APP_ROOT / "application" / "torrent"

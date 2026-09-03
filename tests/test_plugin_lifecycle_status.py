@@ -1,6 +1,5 @@
 """插件生命周期六类状态中的运行结果测试。"""
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from app.runtime.extensions.plugin.database import PluginDatabase
@@ -25,7 +24,15 @@ def _plugin_class(*, init_error: Exception | None = None):
     return DemoPlugin
 
 
-def _lifecycle(*, plugins, auth=True):
+def _lifecycle(
+    *,
+    plugins,
+    auth=True,
+    refresh_classification=None,
+    remove_classification=None,
+    enable_events=None,
+    log=None,
+):
     """构造隔离外部事件和模块清理的生命周期实例。"""
     classes = {}
     running = {}
@@ -39,12 +46,14 @@ def _lifecycle(*, plugins, auth=True):
         auth_checker=lambda _plugin: auth,
         clear_modules=MagicMock(),
         clear_tools=MagicMock(),
-        enable_events=MagicMock(),
+        enable_events=enable_events or MagicMock(),
         disable_events=MagicMock(),
         runtime_status_writer=statuses.__setitem__,
         database=lambda: PluginDatabase(),
-        log=MagicMock(),
+        log=log or MagicMock(),
         event_sender=MagicMock(),
+        refresh_classification=refresh_classification,
+        remove_classification=remove_classification,
     )
     return lifecycle, classes, running, statuses
 
@@ -114,6 +123,81 @@ def test_lifecycle_records_load_failure_when_loader_returns_no_class():
     assert result == {"DemoPlugin": PluginRuntimeStatus.LOAD_FAILED}
     assert running == {}
     assert statuses["DemoPlugin"] is PluginRuntimeStatus.LOAD_FAILED
+
+
+def test_classification_registration_precedes_event_enablement():
+    """启用插件必须先刷新分类声明，再开放可能产生扩展事实的事件入口。"""
+    order: list[str] = []
+    lifecycle, _classes, _running, _statuses = _lifecycle(
+        plugins=[_plugin_class()],
+        refresh_classification=lambda _plugin_id, _instance: order.append("refresh"),
+        remove_classification=lambda _plugin_id: order.append("remove"),
+        enable_events=lambda _plugin_type: order.append("enable"),
+    )
+
+    lifecycle.start("DemoPlugin")
+
+    assert order == ["remove", "refresh", "enable"]
+
+
+def test_invalid_classification_declaration_does_not_fail_plugin_start():
+    """可选分类声明异常会被撤销并记录，但插件主体仍进入 active。"""
+    removals: list[str] = []
+    log = MagicMock()
+
+    def fail_refresh(_plugin_id, _instance):
+        """模拟插件返回命名空间不合法的分类字段声明。"""
+        raise ValueError("invalid field")
+
+    lifecycle, _classes, running, _statuses = _lifecycle(
+        plugins=[_plugin_class()],
+        refresh_classification=fail_refresh,
+        remove_classification=removals.append,
+        log=log,
+    )
+
+    result = lifecycle.start("DemoPlugin")
+
+    assert result == {"DemoPlugin": PluginRuntimeStatus.ACTIVE}
+    assert "DemoPlugin" in running
+    assert removals == ["DemoPlugin", "DemoPlugin"]
+    assert "分类扩展声明无效" in log.warning.call_args.args[0]
+
+
+def test_disable_and_stop_remove_classification_registration():
+    """配置禁用和最终停止都必须撤销当前运行实例拥有的分类声明。"""
+    removals: list[str] = []
+
+    class DemoPlugin:
+        """允许测试切换启用状态的运行时插件。"""
+
+        plugin_name = "演示插件"
+        plugin_version = "1.0.0"
+        enabled = True
+
+        def init_plugin(self, config):
+            """按配置切换启用状态。"""
+            if "enabled" in config:
+                self.enabled = bool(config["enabled"])
+
+        def get_state(self):
+            """返回当前测试状态。"""
+            return self.enabled
+
+    lifecycle, _classes, _running, _statuses = _lifecycle(
+        plugins=[DemoPlugin],
+        refresh_classification=lambda _plugin_id, _instance: None,
+        remove_classification=removals.append,
+    )
+    lifecycle.start("DemoPlugin")
+    removals.clear()
+
+    lifecycle.initialize("DemoPlugin", {"enabled": False})
+    assert removals == ["DemoPlugin", "DemoPlugin"]
+
+    removals.clear()
+    lifecycle.stop("DemoPlugin")
+    assert removals == ["DemoPlugin"]
 
 
 def test_phased_quiesce_disables_events_before_hooks_and_keeps_instance():

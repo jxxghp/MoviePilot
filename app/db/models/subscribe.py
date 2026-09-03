@@ -106,7 +106,9 @@ class Subscribe(Base):
     manual_total_episode: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 自定义识别词
     custom_words: Mapped[Optional[str]] = mapped_column(String)
-    # 自定义媒体类别
+    # 自定义媒体类别稳定标识
+    media_category_id: Mapped[Optional[str]] = mapped_column(String)
+    # 自定义媒体类别兼容路径快照
     media_category: Mapped[Optional[str]] = mapped_column(String)
     # 过滤规则组
     filter_groups: Mapped[Optional[Any]] = mapped_column(JSON, default=list)

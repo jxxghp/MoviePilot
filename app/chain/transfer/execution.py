@@ -28,6 +28,7 @@ from app.application.transfer.workflow import (
 from app.chain.media import MediaChain
 from app.chain.tmdb import TmdbChain
 from app.chain.transfer.contract import _TransferOwnerBase
+from app.chain.transfer.records import apply_download_history_classification
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
@@ -437,9 +438,7 @@ class TransferExecutionOwner(_TransferOwnerBase):
                         )
                         need_obtain_images = True
                         if mediainfo:
-                            # 更新自定义媒体类别
-                            if download_history.media_category:
-                                mediainfo.category = download_history.media_category
+                            mediainfo = apply_download_history_classification(mediainfo, download_history)
                     else:
                         if history_year_conflict:
                             logger.info(
@@ -454,8 +453,8 @@ class TransferExecutionOwner(_TransferOwnerBase):
                         mediainfo = MediaChain().recognize_by_meta(
                             task.meta, **recognize_kwargs
                         )
-                        if mediainfo and download_history.media_category:
-                            mediainfo.category = download_history.media_category
+                        if mediainfo:
+                            mediainfo = apply_download_history_classification(mediainfo, download_history)
                 else:
                     # 识别媒体信息
                     recognize_kwargs = {"obtain_images": True}

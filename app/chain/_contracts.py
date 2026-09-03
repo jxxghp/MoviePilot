@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from app.application.classification.execution import ClassificationExecutionPort
     from app.application.history import TransferHistoryRepository
     from app.application.transfer.execution import TransferExecutionRepository
 
@@ -16,6 +17,7 @@ class ChainRuntimeMixinHost(Protocol):
     eventmanager: Any
     messageoper: Any
     messagequeue: Any
+    classification_service: ClassificationExecutionPort | None
 
     def run_module(self, method: str, **kwargs: Any) -> Any:
         """调用同步模块能力。"""

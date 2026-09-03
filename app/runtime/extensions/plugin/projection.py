@@ -112,13 +112,25 @@ class PluginProjection:
                 if not plugin.get_state():
                     continue
                 for source in plugin.get_media_source() or []:
-                    if isinstance(source, dict):
-                        item = source.copy()
-                        item.setdefault("plugin_id", plugin_id)
-                        sources.append(item)
+                    item = self._media_source_mapping(source)
+                    if item is None:
+                        continue
+                    item.setdefault("plugin_id", plugin_id)
+                    sources.append(item)
             except Exception as error:
                 self._logger.error(f"获取插件 {plugin_id} 媒体数据源出错：{str(error)}")
         return sources
+
+    @staticmethod
+    def _media_source_mapping(source: Any) -> dict[str, Any] | None:
+        """把旧字典或新 SDK 模型转换为隔离的 JSON 字典。"""
+        if isinstance(source, Mapping):
+            return dict(source)
+        model_dump = getattr(source, "model_dump", None)
+        if not callable(model_dump):
+            return None
+        payload = model_dump(mode="json")
+        return dict(payload) if isinstance(payload, Mapping) else None
 
     def actions(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """聚合启用插件的工作流动作。"""

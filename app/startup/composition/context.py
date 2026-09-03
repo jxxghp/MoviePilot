@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from app.application.agent import AgentDataContext
+from app.application.classification.execution import ClassificationExecutionPort
+from app.application.classification.runtime import ClassificationRuntime
 from app.application.configuration import RuntimeConfiguration, RuntimeSettingsService
 from app.application.history import (
     TransferHistoryMutationRepository,
@@ -255,6 +257,8 @@ class HostRuntime:
     site: SiteRuntime
     subscription: SubscriptionRuntime
     workflow: WorkflowRuntime
+    classification: ClassificationRuntime
+    classification_execution: ClassificationExecutionPort
     system: SystemService
     configuration: RuntimeConfiguration
     settings: RuntimeSettingsService

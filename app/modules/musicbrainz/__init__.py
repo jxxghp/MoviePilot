@@ -7,6 +7,8 @@ from difflib import SequenceMatcher
 from typing import Any, Iterable, Optional, Tuple, Union
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.domain.classification.evaluator import read_fact
+from app.domain.classification.facts import build_classification_facts
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
@@ -22,6 +24,11 @@ from app.modules.musicbrainz.cache import MusicBrainzCache
 from app.runtime.cache import cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.schemas.category import (
+    ClassificationEnrichmentMatch,
+    ClassificationEnrichmentRequest,
+    ClassificationEnrichmentResponse,
+)
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
@@ -195,6 +202,65 @@ class MusicBrainzModule(_ModuleBase):
     def get_name() -> str:
         """返回模块展示名称。"""
         return "MusicBrainz"
+
+    @staticmethod
+    def get_classification_enrichment_sources() -> tuple[MediaSource, ...]:
+        """声明本模块只能以 MusicBrainz 来源补充音乐标准事实。"""
+        return (MediaSource.MusicBrainz,)
+
+    def get_media_classification_facts(
+        self,
+        request: ClassificationEnrichmentRequest,
+    ) -> ClassificationEnrichmentResponse | None:
+        """通过精确 ISRC 匹配单曲，并仅返回请求中的缺失标准事实。"""
+        if request.media_type != MediaType.MUSIC.value:
+            return None
+        isrc = request.external_ids.get("isrc")
+        if not isrc:
+            return None
+        payload = self._request_json(
+            "/recording",
+            params={
+                "query": f'isrc:"{self._escape_query(isrc)}"',
+                "limit": 5,
+                "fmt": "json",
+            },
+        )
+        candidate = next(
+            (
+                item
+                for item in self._project_recording_search(payload)
+                if item.media_id and self._same_text(item.isrc, isrc)
+            ),
+            None,
+        )
+        if candidate is None:
+            return None
+        candidate_id = candidate.media_id
+        if not candidate_id:
+            return None
+        detail = self.recognize_music(
+            MediaSource.MusicBrainz,
+            candidate_id,
+            music_type=MUSIC_ENTITY_RECORDING,
+        )
+        if detail is None:
+            return None
+        facts = build_classification_facts(detail)
+        supplied = {}
+        for field_id in request.missing_fields:
+            value, missing = read_fact(facts, field_id)
+            if not missing:
+                supplied[field_id] = value
+        return ClassificationEnrichmentResponse(
+            media_source=MediaSource.MusicBrainz.value,
+            match=ClassificationEnrichmentMatch(
+                kind="external_id",
+                media_source="isrc",
+                media_id=isrc,
+            ),
+            facts=supplied,
+        )
 
     @staticmethod
     def get_music_source() -> MediaSource:
@@ -1633,8 +1699,12 @@ class MusicBrainzModule(_ModuleBase):
         album = (release or {}).get("title")
         artists, artist_ids = cls._artist_credits(recording.get("artist-credit"))
         album_artists, _ = cls._artist_credits((release or {}).get("artist-credit"))
-        category_parts = [cls._stripped(release_group.get("primary-type"))]
-        category_parts.extend(cls._stripped(item) for item in release_group.get("secondary-types") or [])
+        secondary_types = [
+            value
+            for item in release_group.get("secondary-types") or []
+            if (value := cls._stripped(item))
+        ]
+        category_parts = [cls._stripped(release_group.get("primary-type")), *secondary_types]
         return MusicInfo(
             media_source=cls._source,
             media_id=str(media_id),
@@ -1645,14 +1715,16 @@ class MusicBrainzModule(_ModuleBase):
             album_artist=" / ".join(album_artists) if album_artists else None,
             album_id=str(release_group["id"]) if release_group.get("id") else None,
             album_type=cls._stripped(release_group.get("primary-type")),
+            secondary_types=secondary_types,
             year=cls._year(release_date),
             release_date=release_date,
             duration=cls._duration_seconds(recording.get("length")),
             isrc=next(iter(recording.get("isrcs") or []), None),
             cover_url=cls._build_cover_url(release_group.get("id")),
             version=recording.get("disambiguation") or None,
-            category=" / ".join(str(part) for part in category_parts if part),
+            metadata_category=" / ".join(str(part) for part in category_parts if part),
             genres=cls._names_of(recording.get("genres")),
+            release_status=cls._stripped((release or {}).get("status")),
             names=[name for name in (title, album) if name],
             detail_link=f"{cls._detail_url}/{media_id}",
             raw_data=recording,
@@ -1827,7 +1899,12 @@ class MusicBrainzModule(_ModuleBase):
             duration=cls._duration_seconds(track.get("length") or recording.get("length")),
             cover_url=album.cover_url,
             version=recording.get("disambiguation") or None,
-            category=album.category,
+            secondary_types=list(album.secondary_types),
+            metadata_category=album.metadata_category,
+            genres=list(album.genres),
+            tags=list(album.tags),
+            artist_country=album.artist_country,
+            release_status=album.release_status,
             names=[str(title)],
             detail_link=f"{cls._detail_url}/{media_id}",
         )

@@ -5937,6 +5937,24 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "get_media_classification_facts": {
+      "aggregation": "fan_out",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-classification",
+      "input_contract": "ClassificationEnrichmentRequest",
+      "plugin_short_circuit": false,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "request"
+      ],
+      "result_contract": "ClassificationEnrichmentResponse | None",
+      "result_shape": "mapping",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "get_parent_item": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -6051,22 +6069,6 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
-    "load_category_config": {
-      "aggregation": "first_non_empty",
-      "error_policy": "isolate_provider",
-      "execution": "sync_or_async",
-      "family": "category",
-      "input_contract": "CategoryConfigReadRequest",
-      "plugin_short_circuit": true,
-      "public_to_plugins": true,
-      "required_parameters": [],
-      "result_contract": "CategoryConfig | None",
-      "result_shape": "any",
-      "supports_async": true,
-      "supports_sync": true,
-      "timeout_policy": "caller_budget",
-      "version": 1
-    },
     "mark_message_processing_finished": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -6171,22 +6173,6 @@
         "year"
       ],
       "result_contract": "dict[str, Any] | None",
-      "result_shape": "mapping",
-      "supports_async": true,
-      "supports_sync": true,
-      "timeout_policy": "caller_budget",
-      "version": 1
-    },
-    "media_category": {
-      "aggregation": "first_non_empty",
-      "error_policy": "isolate_provider",
-      "execution": "sync_or_async",
-      "family": "media-recognition",
-      "input_contract": "MediaCategoryRequest",
-      "plugin_short_circuit": true,
-      "public_to_plugins": true,
-      "required_parameters": [],
-      "result_contract": "dict[str, list] | None",
       "result_shape": "mapping",
       "supports_async": true,
       "supports_sync": true,
@@ -7046,24 +7032,6 @@
       ],
       "result_contract": "bool | FileItem",
       "result_shape": "any",
-      "supports_async": true,
-      "supports_sync": true,
-      "timeout_policy": "caller_budget",
-      "version": 1
-    },
-    "save_category_config": {
-      "aggregation": "first_non_empty",
-      "error_policy": "isolate_provider",
-      "execution": "sync_or_async",
-      "family": "category",
-      "input_contract": "CategoryConfigWriteRequest",
-      "plugin_short_circuit": true,
-      "public_to_plugins": true,
-      "required_parameters": [
-        "config"
-      ],
-      "result_contract": "bool | None",
-      "result_shape": "boolean",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -7994,10 +7962,10 @@
     }
   },
   "run_module": {
-    "call_count": 265,
+    "call_count": 262,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 214,
+    "method_count": 211,
     "methods": {
       "anilist_credits": [
         {
@@ -8905,13 +8873,6 @@
           "mode": "sync"
         }
       ],
-      "load_category_config": [
-        {
-          "caller": "app.chain.base",
-          "count": 1,
-          "mode": "sync"
-        }
-      ],
       "mark_message_processing_finished": [
         {
           "caller": "app.chain._messaging",
@@ -8941,13 +8902,6 @@
         }
       ],
       "match_tmdbinfo": [
-        {
-          "caller": "app.chain.base",
-          "count": 1,
-          "mode": "sync"
-        }
-      ],
-      "media_category": [
         {
           "caller": "app.chain.base",
           "count": 1,
@@ -9304,13 +9258,6 @@
       "rename_file": [
         {
           "caller": "app.chain.storage",
-          "count": 1,
-          "mode": "sync"
-        }
-      ],
-      "save_category_config": [
-        {
-          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9785,6 +9732,48 @@
         "kind": "import",
         "name": "ChainBase",
         "target": "app.chain.base.ChainBase"
+      }
+    ],
+    "app.sdk.classification": [
+      {
+        "kind": "import",
+        "name": "ClassificationEnrichmentMatch",
+        "target": "app.schemas.category.ClassificationEnrichmentMatch"
+      },
+      {
+        "kind": "import",
+        "name": "ClassificationEnrichmentRequest",
+        "target": "app.schemas.category.ClassificationEnrichmentRequest"
+      },
+      {
+        "kind": "import",
+        "name": "ClassificationEnrichmentResponse",
+        "target": "app.schemas.category.ClassificationEnrichmentResponse"
+      },
+      {
+        "kind": "import",
+        "name": "ClassificationFactValue",
+        "target": "app.schemas.category.ClassificationFactValue"
+      },
+      {
+        "kind": "import",
+        "name": "ClassificationFieldDefinition",
+        "target": "app.schemas.category.ClassificationFieldDefinition"
+      },
+      {
+        "kind": "alias",
+        "name": "MEDIA_SOURCE_CLASSIFICATION_PROTOCOL_VERSION",
+        "target": "2"
+      },
+      {
+        "kind": "import",
+        "name": "MediaSourceInfo",
+        "target": "app.schemas.event.MediaSourceInfo"
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "classify_media",
+        "target": ""
       }
     ],
     "app.sdk.config": [

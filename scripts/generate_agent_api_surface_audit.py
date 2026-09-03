@@ -107,6 +107,7 @@ EXPLICIT_TRANSPORT_PATHS = frozenset(
     }
 )
 SUBSCRIPTION_EXECUTION_UI_PREFIX = "/api/v1/subscribe/execution/"
+CLASSIFICATION_POLICY_UI_PREFIX = "/api/v1/media/classification/"
 
 
 def _gateway_routes() -> dict[tuple[str, str], list[str]]:
@@ -168,6 +169,13 @@ def _classify(
             "ui_presentation",
             "host-ui",
             "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
+            [],
+        )
+    if path.startswith(CLASSIFICATION_POLICY_UI_PREFIX):
+        return (
+            "ui_presentation",
+            "host-ui",
+            "Classification policy authoring, validation, preview, impact analysis, and publication are owned by the authenticated frontend editor until a stable Agent governance contract is approved.",
             [],
         )
     if path in EXPLICIT_TRANSPORT_PATHS:

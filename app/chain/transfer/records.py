@@ -1,8 +1,12 @@
 """整理记录匹配、文件键与手动历史辅助能力。"""
 
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
+from app.application.classification.reference import (
+    apply_persisted_classification_snapshot,
+    persisted_classification_snapshot,
+)
 from app.application.history import (
     DownloadFileSnapshot,
     DownloadHistoryQueryPort,
@@ -29,6 +33,24 @@ from app.schemas.types import (
 from app.schemas.workflow import FileItem
 
 from .retry import _request_durable_transfer_retry
+
+TransferMediaT = TypeVar("TransferMediaT", MediaInfo, MusicInfo)
+
+
+def apply_download_history_classification(
+    media: TransferMediaT,
+    history: DownloadHistorySnapshot,
+) -> TransferMediaT:
+    """按下载发生时的分类标量恢复媒体，不读取或解析当前活动策略。"""
+    snapshot = persisted_classification_snapshot(
+        category_id=getattr(history, "media_category_id", None),
+        category_path=getattr(history, "media_category", None),
+        rule_id=getattr(history, "classification_rule_id", None),
+        policy_revision=getattr(history, "classification_policy_revision", None),
+        source=getattr(history, "classification_source", None),
+    )
+    restored = apply_persisted_classification_snapshot(media, snapshot)
+    return cast(TransferMediaT, restored or media)
 
 # 字幕文件常见语言、默认和强制标记；匹配主视频时只剥离这些字幕专属尾缀。
 SUBTITLE_STEM_TAGS = {

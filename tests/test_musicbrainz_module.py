@@ -374,7 +374,8 @@ def test_music_album_builds_tracks_and_release_variants(monkeypatch):
     album = module.music_album("musicbrainz", "release-group-1")
 
     assert album is not None
-    assert album.category == "Album / Live"
+    assert album.metadata_category == "Album / Live"
+    assert album.category == ""
     assert album.rating == 8.5
     assert album.genres[:2] == ["rock", "art rock"]
     assert [track.media_id for track in album.tracks] == ["recording-1", "recording-2"]

@@ -4,6 +4,7 @@ from datetime import datetime
 
 import pytest
 
+from app.application.classification.reference import EffectiveClassificationSnapshot
 from app.application.outbox import ClaimedOutboxMessage
 from app.application.subscription.complete import CompleteSubscriptionCommand
 from app.application.subscription.contract import SubscriptionHistoryPatch
@@ -191,6 +192,39 @@ def test_completion_report_failure_returns_success_and_keeps_intent_pending():
         "report",
         "retry",
     ]
+
+
+def test_completion_history_uses_actual_effective_classification_snapshot() -> None:
+    """完成历史必须记录本次执行结果，而不是活动订阅创建时的旧路径。"""
+    calls = []
+    command, notify, report = _command(calls)
+
+    command.execute(
+        7,
+        {
+            "id": 7,
+            "name": "Test",
+            "media_category_id": "movie.stale",
+            "media_category": "旧路径",
+        },
+        {"title": "Test"},
+        notify=notify,
+        report=report,
+        classification_snapshot=EffectiveClassificationSnapshot(
+            category_id="movie.actual",
+            category_path=("电影", "剧情"),
+            rule_id="rule.drama",
+            policy_revision=11,
+            source="automatic",
+        ),
+    )
+
+    history = next(call[1] for call in calls if call[0] == "history")
+    assert history["media_category_id"] == "movie.actual"
+    assert history["media_category"] == "电影/剧情"
+    assert history["classification_rule_id"] == "rule.drama"
+    assert history["classification_policy_revision"] == 11
+    assert history["classification_source"] == "automatic"
 
 
 def test_completion_report_error_returns_success_and_keeps_intent_pending():

@@ -586,7 +586,7 @@ class TheAudioDbModule(_ModuleBase):
                 "strTrack3DCase",
             ) or (album.cover_url if album else None),
             lyrics=cls._text(item.get("strTrackLyrics")),
-            category=" / ".join(genres),
+            metadata_category=" / ".join(genres),
             genres=genres,
             names=cls._unique_texts([title, item.get("strTrackAlternate")]),
             detail_link=f"{cls._detail_url}/track/{media_id}",

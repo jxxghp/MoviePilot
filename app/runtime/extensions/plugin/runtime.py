@@ -13,7 +13,9 @@ from app.runtime.events import eventmanager
 from app.runtime.extensions.plugin.access import PluginAccessPolicy
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
+from app.runtime.extensions.plugin.classification import PluginClassificationRegistry
 from app.runtime.extensions.plugin.clone import PluginCloneService
+from app.runtime.extensions.plugin.contracts import supports_plugin_hook
 from app.runtime.extensions.plugin.database import PluginDatabase
 from app.runtime.extensions.plugin.dependency import PluginDependencyService
 from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
@@ -119,6 +121,7 @@ class PluginRuntime:
     sync: PluginSyncService
     clone: PluginCloneService
     projection: PluginProjection
+    classification: PluginClassificationRegistry
     recent_local_sync: dict[str, float]
     system: Callable[[], PluginSystemServices]
 
@@ -149,6 +152,17 @@ def build_plugin_runtime(
         log=environment.logger,
     )
     tools = PluginToolCatalog(max_attempts=tool_build_max_attempts)
+    classification = PluginClassificationRegistry(environment.logger)
+
+    def refresh_classification(plugin_id: str, instance: Any) -> None:
+        """读取插件当前媒体来源声明并替换其分类扩展注册。"""
+        classification.remove(plugin_id)
+        declarations = (
+            instance.get_media_source() or []
+            if supports_plugin_hook(instance, "get_media_source")
+            else []
+        )
+        classification.replace(plugin_id, declarations)
 
     def load_plugins(
         plugin_id: Optional[str],
@@ -183,6 +197,8 @@ def build_plugin_runtime(
         database=environment.database,
         log=environment.logger,
         event_sender=eventmanager.send_event,
+        refresh_classification=refresh_classification,
+        remove_classification=classification.remove,
     )
     metadata = PluginMetadataMapper(
         plugin_instance=registry.instance,
@@ -323,6 +339,7 @@ def build_plugin_runtime(
         sync=sync,
         clone=clone,
         projection=projection,
+        classification=classification,
         recent_local_sync=recent_local_sync,
         system=environment.system,
     )

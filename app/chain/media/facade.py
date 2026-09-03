@@ -57,9 +57,15 @@ class MediaChain(ChainBase, metaclass=Singleton):
         "album_artist",
         "album_type",
         "version",
-        "category",
+        "metadata_category",
     )
-    _music_simplified_list_fields = ("artists", "genres", "names")
+    _music_simplified_list_fields = (
+        "artists",
+        "secondary_types",
+        "genres",
+        "tags",
+        "names",
+    )
 
     _music_source_chain = staticmethod(MediaCatalogOwner._music_source_chain)
     _music_search_sources = classmethod(  # type: ignore[var-annotated]

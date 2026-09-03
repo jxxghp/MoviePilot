@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import sys
-from typing import Callable
+from typing import Callable, cast
 
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
 
@@ -36,6 +36,7 @@ from app.application.messaging.message import (
 )
 from app.application.module import configure_module_runtime, reset_module_runtime
 from app.application.outbox import configure_outbox_dispatcher
+from app.application.plugin.runtime import get_existing_plugin_manager
 from app.application.security.url import close_image_proxy_block_log_coalescer
 from app.application.service import configure_service_directory, reset_service_directory
 from app.command import CommandChain
@@ -57,6 +58,7 @@ from app.runtime.settings import (
 )
 from app.runtime.tasks import get_task_registry
 from app.runtime.thread import ThreadHelper
+from app.schemas.category import ClassificationFactValue, ClassificationFieldDefinition
 from app.schemas.message import Message, MessageType
 from app.schemas.types import EventType, SystemConfigKey
 from app.startup.composition.agent import (
@@ -66,9 +68,11 @@ from app.startup.composition.agent import (
 )
 from app.startup.composition.chain import (
     configure_chain_runtime_context,
+    configure_directory_classification_service,
     configure_wallpaper_services,
     reset_chain_services,
 )
+from app.startup.composition.classification import compose_classification
 from app.startup.composition.configuration import (
     compose_configuration,
     publish_configuration,
@@ -85,6 +89,9 @@ from app.startup.composition.database import (
     reset_workflow_execution_composition,
     start_database_runtime,
     stop_database_runtime,
+)
+from app.startup.composition.enrichment import (
+    compose_classification_enrichment,
 )
 from app.startup.composition.network import (
     configure_application_network_ports,
@@ -125,6 +132,44 @@ from app.startup.initializers.scheduler import (
     configure_scheduler_agent_tasks,
     reset_scheduler_bindings,
 )
+
+
+def _plugin_classification_fields() -> tuple[ClassificationFieldDefinition, ...]:
+    """读取已创建插件运行时的字段快照，模块初始化阶段不提前物化管理器。"""
+    manager = get_existing_plugin_manager()
+    if manager is None:
+        return ()
+    try:
+        return cast(
+            tuple[ClassificationFieldDefinition, ...],
+            manager.get_classification_fields(),
+        )
+    except Exception as error:  # noqa: BLE001  插件字段目录故障不得阻断策略管理
+        logger.warning(f"读取插件分类字段目录失败，已忽略动态字段：{error}")
+        return ()
+
+
+def _plugin_classification_facts(
+    media: object,
+) -> dict[str, dict[str, ClassificationFactValue]]:
+    """通过已创建插件运行时校验媒体对象携带的扩展事实。"""
+    manager = get_existing_plugin_manager()
+    if manager is None:
+        return {}
+    try:
+        return cast(
+            dict[str, dict[str, ClassificationFactValue]],
+            manager.get_classification_facts(media),
+        )
+    except Exception as error:  # noqa: BLE001  插件事实不得成为媒体识别硬依赖
+        logger.warning(f"读取插件扩展分类事实失败，已按字段缺失继续：{error}")
+        return {}
+
+
+def _existing_module_manager() -> object | None:
+    """返回已创建模块管理器；测试替身或未初始化状态按无 provider 处理。"""
+    getter = getattr(ModuleManager, "get_existing_instance", None)
+    return getter() if callable(getter) else None
 
 
 def configure_runtime_data_providers() -> None:
@@ -529,6 +574,17 @@ async def _initialize_modules() -> HostRuntime:
             logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
         raise
     publish_configuration(configuration, legacy_settings)
+    classification = await compose_classification(
+        executor=database_runtime.worker,
+        settings=legacy_settings,
+        system_config=configuration.system_config,
+        extra_fields_provider=_plugin_classification_fields,
+        extension_facts_provider=_plugin_classification_facts,
+        enrichment=compose_classification_enrichment(
+            module_manager=_existing_module_manager,
+            plugin_manager=get_existing_plugin_manager,
+        ),
+    )
     database_services = compose_database_services(
         runtime=database_runtime,
         system_config=configuration.system_config,
@@ -548,6 +604,8 @@ async def _initialize_modules() -> HostRuntime:
             database=database_services,
             agent=agent_composition,
             authentication=security_composition,
+            classification=classification.runtime,
+            classification_execution=classification.execution,
             dependencies=runtime_dependencies,
             tasks=get_task_registry(),
         )
@@ -577,11 +635,14 @@ async def _initialize_modules() -> HostRuntime:
     init_managed_resources()
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。
     configure_wallpaper_services()
+    # 目录选择和多级路径生成复用同一活动分类策略快照。
+    configure_directory_classification_service(classification.runtime)
     # Chain 无参兼容入口由组合根明确提供依赖上下文；测试和新代码可直接注入替代上下文。
     configure_chain_runtime_context(
         dependencies=runtime_dependencies,
         system_config=system_config,
         configuration=configuration.runtime.chain,
+        classification_service=classification.execution,
     )
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
     configure_security_access()

@@ -39,6 +39,7 @@ from app.runtime.observability import observe_compat_facade
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
+from app.schemas.category import ClassificationFactValue, ClassificationFieldDefinition
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
@@ -210,6 +211,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_metadata = self._plugin_runtime.metadata
         self._plugin_sync = self._plugin_runtime.sync
         self._plugin_clone = self._plugin_runtime.clone
+        self._plugin_classification = self._plugin_runtime.classification
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
             "plugins",
@@ -896,6 +898,20 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def get_media_sources(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """获取运行中插件声明的媒体数据源。"""
         return self._plugin_projection().media_sources(pid)
+
+    def get_classification_fields(
+        self,
+        pid: Optional[str] = None,
+    ) -> tuple[ClassificationFieldDefinition, ...]:
+        """获取当前启用插件声明的扩展分类字段快照。"""
+        return self._plugin_classification.fields(pid)
+
+    def get_classification_facts(
+        self,
+        media: Any,
+    ) -> dict[str, dict[str, ClassificationFactValue]]:
+        """校验媒体识别结果携带的插件扩展事实并返回分类器输入。"""
+        return self._plugin_classification.facts(media)
 
     def get_plugin_actions(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """

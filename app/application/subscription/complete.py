@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
+from app.application.classification.reference import EffectiveClassificationSnapshot
 from app.application.outbox import (
     SUBSCRIBE_COMPLETED_TOPIC,
     OutboxDispatchStore,
@@ -53,9 +54,20 @@ class CompleteSubscriptionCommand:
         notify: CompletionEffect,
         report: CompletionReporter,
         notification: Mapping[str, JsonData] | None = None,
+        classification_snapshot: EffectiveClassificationSnapshot | None = None,
     ) -> None:
         """在同一事务中写历史、删订阅并暂存完成事件、通知与统计意图。"""
         info = dict(subscribe_info)
+        if classification_snapshot is not None:
+            info.update(
+                {
+                    "media_category_id": classification_snapshot.category_id,
+                    "media_category": classification_snapshot.path,
+                    "classification_rule_id": classification_snapshot.rule_id,
+                    "classification_policy_revision": classification_snapshot.policy_revision,
+                    "classification_source": classification_snapshot.source,
+                }
+            )
         occurrence_id = uuid4().hex
         event_key = completion_event_key(
             subscribe_id,

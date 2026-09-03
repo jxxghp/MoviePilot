@@ -1,7 +1,7 @@
 """音乐来源、目录搜索与详情路由 owner。"""
 
 from copy import deepcopy
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, cast
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.music.catalog import MusicCatalogService
@@ -197,7 +197,16 @@ class MediaCatalogOwner(_MediaOwnerBase):
             cache=cache,
             music_type=music_type,
         )
-        return self._validate_music_result(result, source, normalized_id, music_type)
+        validated = self._validate_music_result(
+            result,
+            source,
+            normalized_id,
+            music_type,
+        )
+        return cast(
+            Optional[MusicInfo],
+            self._finalize_recognition_result(validated),
+        )
 
     async def async_recognize_music_from_source(
         self,
@@ -221,7 +230,16 @@ class MediaCatalogOwner(_MediaOwnerBase):
             cache=cache,
             music_type=music_type,
         )
-        return self._validate_music_result(result, source, normalized_id, music_type)
+        validated = self._validate_music_result(
+            result,
+            source,
+            normalized_id,
+            music_type,
+        )
+        return cast(
+            Optional[MusicInfo],
+            await self._async_finalize_recognition_result(validated),
+        )
 
     def get_music_album(
         self,
@@ -233,7 +251,11 @@ class MediaCatalogOwner(_MediaOwnerBase):
         if not source or not normalized_id:
             return None
         chain = self._music_source_chain(source)
-        return chain.get_music_album(normalized_id) if chain else None
+        result = chain.get_music_album(normalized_id) if chain else None
+        return cast(
+            Optional[MusicAlbumInfo],
+            self._finalize_recognition_result(result),
+        )
 
     async def async_get_music_album(
         self,
@@ -245,7 +267,11 @@ class MediaCatalogOwner(_MediaOwnerBase):
         if not source or not normalized_id:
             return None
         chain = self._music_source_chain(source)
-        return await chain.async_get_music_album(normalized_id) if chain else None
+        result = await chain.async_get_music_album(normalized_id) if chain else None
+        return cast(
+            Optional[MusicAlbumInfo],
+            await self._async_finalize_recognition_result(result),
+        )
 
     async def async_get_music_album_related(
         self,
@@ -277,7 +303,11 @@ class MediaCatalogOwner(_MediaOwnerBase):
         chain = self._music_source_chain(source)
         if not chain or not hasattr(chain, "async_get_music_artist"):
             return None
-        return await chain.async_get_music_artist(normalized_id)
+        result = await chain.async_get_music_artist(normalized_id)
+        return cast(
+            Optional[MusicArtistInfo],
+            await self._async_finalize_recognition_result(result),
+        )
 
     async def async_get_music_artist_albums(
         self,

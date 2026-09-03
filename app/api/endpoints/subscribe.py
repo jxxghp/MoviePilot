@@ -349,12 +349,18 @@ async def update_subscribe(
     if total_episode_updated and subscribe_in.total_episode != subscribe.total_episode:
         subscribe_dict["manual_total_episode"] = 1
     # 更新到数据库
-    change = await mutation.update(
-        subscribe_in.id,
-        subscribe_dict,
-        actor,
-        existing=subscribe,
-    )
+    try:
+        change = await mutation.update(
+            subscribe_in.id,
+            subscribe_dict,
+            actor,
+            existing=subscribe,
+        )
+    except ValueError as error:
+        return _SchemaResponse(
+            success=False,
+            message=f"订阅分类无效：{error}",
+        )
     if not change:
         return _SchemaResponse(success=False, message="订阅不存在")
     return _SchemaResponse(success=True)

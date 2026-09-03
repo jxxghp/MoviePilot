@@ -135,6 +135,7 @@ def project(
     builder.set("vote_average", round(float(vote_average), 1) if vote_average else 0)
     builder.set("overview", info.get("overview"))
     builder.set("genre_ids", info.get("genre_ids") or [])
+    builder.set("adult", info.get("adult"))
     for name in ("original_language", "en_title", "hk_title", "tw_title", "sg_title"):
         builder.set(name, info.get(name))
 

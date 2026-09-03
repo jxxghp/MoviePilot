@@ -747,19 +747,19 @@ flowchart LR
   SDK 导出（若公开）、`docs/rules/05-architecture.md` 与上述架构测试。
 - 延迟导入不被接受为隐藏循环依赖的手段。
 
-### 10.1 2026-08-31 当前收口状态与后续边界
+### 10.1 2026-09-03 当前收口状态与后续边界
 
 当前宿主架构基线（排除 `app/plugins/**`）如下；数字来自
 `tests/fixtures/architecture/`，更新基线前必须先审查语义变化：
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 940 |
-| 内部导入边 | 7,845 |
+| Python 模块 | 967 |
+| 内部导入边 | 8,121 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |
-| Module Contract V2 spec | 217（其中 214 个进入 `run_module` 观察面） |
+| Module Contract V2 spec | 215（其中 211 个进入 `run_module` 观察面） |
 | Event Contract | 53 |
 | Event producer / consumer | 86（85 静态、1 动态）/ 17（16 静态、1 动态） |
 | Model/Oper 自动事务与自建 Session | 0 |

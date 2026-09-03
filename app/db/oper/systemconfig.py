@@ -152,7 +152,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             self.set(key, value)
             return value
 
-    def all(self):
+    def all(self) -> dict[str, Any]:
         """
         获取所有系统设置
         """

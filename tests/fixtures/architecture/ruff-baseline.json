@@ -62,9 +62,6 @@
   "app/application/notification.py": {
     "I001": 1
   },
-  "app/application/plugin/runtime.py": {
-    "I001": 1
-  },
   "app/application/site/sites.pyi": {
     "I001": 1
   },
@@ -86,9 +83,6 @@
   "app/db/models/agentchat.py": {
     "I001": 1
   },
-  "app/db/models/downloadhistory.py": {
-    "I001": 1
-  },
   "app/db/models/mediaserver.py": {
     "I001": 1
   },
@@ -108,9 +102,6 @@
     "I001": 1
   },
   "app/db/models/siteuserdata.py": {
-    "I001": 1
-  },
-  "app/db/models/systemconfig.py": {
     "I001": 1
   },
   "app/db/models/workflow.py": {
@@ -400,10 +391,6 @@
   "app/modules/themoviedb/cache.py": {
     "I001": 1
   },
-  "app/modules/themoviedb/category.py": {
-    "F541": 1,
-    "I001": 1
-  },
   "app/modules/themoviedb/scraper.py": {
     "I001": 1
   },
@@ -511,9 +498,6 @@
   "app/runtime/extensions/module/manager.py": {
     "I001": 1
   },
-  "app/runtime/extensions/plugin/lifecycle.py": {
-    "I001": 1
-  },
   "app/runtime/extensions/plugin/loader.py": {
     "I001": 1
   },
@@ -536,9 +520,6 @@
     "I001": 1
   },
   "app/schemas/common.py": {
-    "I001": 1
-  },
-  "app/schemas/context.py": {
     "I001": 1
   },
   "app/schemas/file.py": {
@@ -685,8 +666,7 @@
     "I001": 1
   },
   "tests/test_database_migration_startup.py": {
-    "F841": 1,
-    "I001": 1
+    "F841": 1
   },
   "tests/test_db_declarative_2_0.py": {
     "E402": 1,
@@ -720,9 +700,6 @@
     "I001": 1
   },
   "tests/test_douban_recognition.py": {
-    "I001": 1
-  },
-  "tests/test_download_paths_endpoint.py": {
     "I001": 1
   },
   "tests/test_episode_format_helper.py": {
@@ -909,9 +886,6 @@
   },
   "tests/test_plugin_dependency_service.py": {
     "I001": 1
-  },
-  "tests/test_plugin_lifecycle_status.py": {
-    "F401": 1
   },
   "tests/test_plugin_market_default.py": {
     "I001": 1

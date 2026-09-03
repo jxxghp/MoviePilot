@@ -84,6 +84,7 @@ def directory_settings(
                 "library_storage": directory.library_storage,
                 "media_type": directory.media_type,
                 "media_category": directory.media_category,
+                "media_category_id": directory.media_category_id,
                 "monitor_type": directory.monitor_type,
                 "monitor_mode": directory.monitor_mode,
                 "transfer_type": directory.transfer_type,

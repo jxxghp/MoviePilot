@@ -57,7 +57,8 @@ class TestMusicBrainzAlbumTypeStripped:
 
         assert info is not None
         assert info.album_type == "Single"
-        assert info.category == "Single / Remix"
+        assert info.metadata_category == "Single / Remix"
+        assert info.category == ""
 
     def test_release_group_to_album_strips_types(self):
         """Release Group 浏览结果中 album_type 和 secondary_types 应被清理。"""
@@ -96,7 +97,8 @@ class TestListenBrainzAlbumTypeStripped:
 
         assert info is not None
         assert info.album_type == "Album"
-        assert info.category == "Album / Compilation"
+        assert info.metadata_category == "Album / Compilation"
+        assert info.category == ""
 
     def test_fresh_release_to_info_handles_none_type(self):
         """空白的 release_group_primary_type 应返回 None。"""

@@ -31,10 +31,11 @@ def test_transfer_package_retires_monolith_and_keeps_thin_facade() -> None:
     assert not (CHAIN_ROOT / "_transfer.py").exists()
     assert {
         path.name for path in TRANSFER_PACKAGE.glob("*.py")
-        } == {
-            "__init__.py",
-            "contract.py",
-            "execution.py",
+    } == {
+        "__init__.py",
+        "checkpoint.py",
+        "contract.py",
+        "execution.py",
         "facade.py",
         "filter.py",
         "format.py",

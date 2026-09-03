@@ -429,6 +429,20 @@ def test_imdb_search_respects_source_and_returns_generic_identity(
     assert results[0].type == MediaType.TV
 
 
+def test_imdb_summary_keeps_unknown_adult_state_missing() -> None:
+    """IMDb 搜索摘要缺少成人标记时不能把未知值误写为否。"""
+    result = ImdbModule._to_media_info(
+        ImdbTitle(
+            id="tt0000001",
+            type="movie",
+            primaryTitle="Summary Movie",
+            startYear=2024,
+        )
+    )
+
+    assert result.adult is None
+
+
 def test_imdb_explicit_identity_recognition_enriches_media_info(
     imdb_module: ImdbModule,
 ) -> None:
@@ -450,7 +464,8 @@ def test_imdb_explicit_identity_recognition_enriches_media_info(
     assert result.season_years == {1: "2008"}
     assert result.number_of_episodes == 1
     assert result.runtime == 47
-    assert result.category == "欧美剧"
+    assert result.category == ""
+    assert result.library_category == ""
 
 
 def test_imdb_name_recognition_requires_imdb_selection(

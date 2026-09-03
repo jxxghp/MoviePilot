@@ -18,9 +18,12 @@ app/application/history.py 里整理历史的写入路径同构。
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional, Protocol, Tuple
+from typing import Optional, Protocol, Tuple, cast
 from uuid import uuid4
 
+from app.application.classification.reference import (
+    normalize_classification_reference_payload,
+)
 from app.application.outbox import SUBSCRIBE_ADDED_TOPIC, OutboxIntent
 from app.application.subscription.contract import (
     AfterCommitEffect,
@@ -381,7 +384,13 @@ def _translate(
         season=kwargs.get("season") if isinstance(kwargs.get("season"), int) else None,
         episode_group=mediainfo.episode_group,
     )
-    payload = dict(kwargs)
+    payload = cast(
+        dict[str, JsonData],
+        normalize_classification_reference_payload(
+            kwargs,
+            media_type=mediainfo.type,
+        ),
+    )
     payload.update(
         {
             "name": mediainfo.title,

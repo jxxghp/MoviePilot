@@ -140,6 +140,7 @@ def test_chain_composition_registers_lazy_compatibility_provider(monkeypatch) ->
         "dependencies": runtime_dependencies,
         "system_config": Mock(),
         "configuration": Mock(),
+        "classification_service": Mock(),
     }
     monkeypatch.setattr(chain_composition, "build_chain_runtime_context", builder)
     monkeypatch.setattr(

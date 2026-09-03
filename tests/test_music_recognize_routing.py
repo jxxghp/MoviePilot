@@ -379,12 +379,15 @@ def test_media_chain_converts_recognized_music_metadata_without_mutating_source(
     assert result.artists == ["张学友"]
     assert result.album == "岁月如歌"
     assert result.album_artist == "张学友"
-    assert result.category == "华语流行"
+    assert result.metadata_category == "华语流行"
+    assert result.category == ""
     assert result.genres == ["华语"]
     assert result.names == ["后来的我们", "岁月如歌"]
     assert result.lyrics == "後來的我們"
     assert source_info.title == "後來的我們"
     assert source_info.artists == ["張學友"]
+    assert source_info.metadata_category == "華語流行"
+    assert source_info.category == ""
 
 
 def test_media_chain_preserves_original_music_metadata_when_conversion_disabled(monkeypatch):

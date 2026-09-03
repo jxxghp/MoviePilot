@@ -256,7 +256,10 @@ def configure_plugin_system_services():
         )
 
     plugin_manager_module.configure_plugin_runtime_factory(build_test_plugin_runtime)
-    configure_plugin_runtime(lambda: PluginManager())
+    configure_plugin_runtime(
+        lambda: PluginManager(),
+        existing_provider=PluginManager.get_existing_instance,
+    )
     configure_module_runtime(lambda: ModuleManager())
     from app.application.site.health import SiteHealthService, configure_site_health_service
     from app.application.site.query import SiteQueryService, configure_site_query_service

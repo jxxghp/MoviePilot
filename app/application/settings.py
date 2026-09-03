@@ -634,12 +634,14 @@ class SystemSettingsService:
                 changed = success is True
             else:
                 event_value = self._normalize_systemconfig_value(next_value)
-                changed = bool(
-                    await self._system_config.async_set(
+                write_result = (
+                    await self._system_config.async_set_with_normalized_value(
                         spec.systemconfig_key,
                         event_value,
                     )
                 )
+                event_value = write_result.normalized_value
+                changed = bool(write_result.changed)
             if changed:
                 await self._publish_config_changed(spec.key, event_value)
             saved_value = self._load(spec)

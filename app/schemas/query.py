@@ -172,6 +172,7 @@ class SubscriptionSnapshot(_QuerySnapshot):
     search_imdbid: Optional[int] = None
     manual_total_episode: Optional[int] = None
     custom_words: Optional[str] = None
+    media_category_id: Optional[str] = None
     media_category: Optional[str] = None
     filter_groups: Optional[list[str]] = None
     episode_group: Optional[str] = None
@@ -219,7 +220,11 @@ class SubscriptionHistorySnapshot(_QuerySnapshot):
     save_path: Optional[str] = None
     search_imdbid: Optional[int] = None
     custom_words: Optional[str] = None
+    media_category_id: Optional[str] = None
     media_category: Optional[str] = None
+    classification_rule_id: Optional[str] = None
+    classification_policy_revision: Optional[int] = None
+    classification_source: Optional[str] = None
     filter_groups: Optional[list[str]] = None
     episode_group: Optional[str] = None
 
@@ -247,7 +252,11 @@ class DownloadHistorySnapshot(_QuerySnapshot):
     channel: Optional[str] = None
     date: Optional[str] = None
     note: Optional[JsonData] = None
+    media_category_id: Optional[str] = None
     media_category: Optional[str] = None
+    classification_rule_id: Optional[str] = None
+    classification_policy_revision: Optional[int] = None
+    classification_source: Optional[str] = None
     episode_group: Optional[str] = None
     custom_words: Optional[str] = None
 
@@ -264,7 +273,11 @@ class TransferHistorySnapshot(_QuerySnapshot):
     dest_fileitem: Optional[JsonData] = None
     mode: Optional[str] = None
     type: Optional[str] = None
+    media_category_id: Optional[str] = None
     category: Optional[str] = None
+    classification_rule_id: Optional[str] = None
+    classification_policy_revision: Optional[int] = None
+    classification_source: Optional[str] = None
     title: Optional[str] = None
     year: Optional[str] = None
     music_type: Optional[str] = None
