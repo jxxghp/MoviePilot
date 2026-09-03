@@ -806,8 +806,9 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             context=context,
         )
 
-
-# 保留组合宿主对候选来源辅助方法的私有属性契约。
-SubscribeMatchOwner._SubscribeChain__get_media_id_match_source = staticmethod(
-    _get_media_id_match_source
-)
+    @staticmethod
+    def _SubscribeChain__get_media_id_match_source(
+        mediainfo: Optional[MediaInfo],
+    ) -> str:
+        """保留组合宿主解析媒体 ID 匹配来源的稳定入口。"""
+        return _get_media_id_match_source(mediainfo)

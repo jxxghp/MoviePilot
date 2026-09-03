@@ -1,6 +1,6 @@
 import copy
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
 
 from app.application.configuration import get_configured_system_config
 from app.application.download.admission import SubscriptionDownloadGovernance
@@ -47,6 +47,9 @@ class MusicSubscribeMixin:
     __mixin_host_protocol__ = MusicSubscribeMixinHost
     subscription_repository: SubscriptionRepository
     sync_subscription_mutation_scope: "SyncSubscriptionMutationScope"
+    _SubscribeChain__candidate_contract_changed: Callable[
+        [SubscriptionSnapshot, SubscriptionSnapshot], bool
+    ]
     """
     音乐订阅功能域 mixin：单曲/专辑目标识别、实体快照同步、候选筛选、
     择优下载与完成推进。

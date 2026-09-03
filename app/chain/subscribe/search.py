@@ -410,7 +410,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                             )
                     except Exception as err:
                         logger.error(
-                            f"订阅 {current.name} 搜索后状态重置失败：{str(err)}",
+                            f"订阅 {subscribe.name} 搜索后状态重置失败：{str(err)}",
                             exc_info=True,
                         )
                     finally:
