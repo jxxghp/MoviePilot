@@ -266,6 +266,56 @@ def _prepare_subscription_match(
     return meta, mediainfo, routed_torrents, domains, sub_sites
 
 
+def _prepare_match_torrents(
+    torrents: Dict[str, List[Context]],
+) -> Dict[str, List[Context]]:
+    """预识别待匹配资源，并保留原上下文供后续订阅复用。"""
+    processed_torrents: Dict[str, List[Context]] = {}
+    for domain, contexts in torrents.items():
+        if runtime_stop_state.is_system_stopped:
+            break
+        processed_torrents[domain] = []
+        for context in contexts:
+            if runtime_stop_state.is_system_stopped:
+                break
+            if context.torrent_info and getattr(context.torrent_info, "category", None) in (
+                MediaType.MUSIC,
+                MediaType.MUSIC.value,
+            ):
+                # 音乐 RSS 使用订阅目标做实体匹配，不应进入影视识别并累计失败次数。
+                processed_torrents[domain].append(context)
+                continue
+            if (
+                not context.media_info or not resolve_media_identity(media=context.media_info)[1]
+            ) and context.media_recognize_fail_count < 3:
+                logger.debug(
+                    f"尝试重新识别种子：{context.torrent_info.title}，当前失败次数："
+                    f"{context.media_recognize_fail_count}/3"
+                )
+                re_mediainfo = MediaChain().recognize_by_meta(
+                    context.meta_info,
+                    obtain_images=False,
+                )
+                if re_mediainfo:
+                    re_mediainfo.clear()
+                    context.media_info = re_mediainfo
+                    context.match_source = _get_media_id_match_source(re_mediainfo)
+                    context.candidate_recognized = bool(resolve_media_identity(media=re_mediainfo)[1])
+                    context.media_info_is_target = False
+                    context.media_recognize_fail_count = 0
+                    logger.debug(f"种子 {context.torrent_info.title} 重新识别成功")
+                else:
+                    context.media_recognize_fail_count += 1
+                    logger.debug(
+                        f"种子 {context.torrent_info.title} 媒体识别失败，失败次数："
+                        f"{context.media_recognize_fail_count}/3"
+                    )
+            elif context.media_recognize_fail_count >= 3:
+                logger.debug(f"种子 {context.torrent_info.title} 已达到最大识别失败次数(3次)，跳过识别")
+            processed_torrents[domain].append(context)
+    return processed_torrents
+
+
 class SubscribeMatchOwner(_SubscribeOwnerBase):
     """订阅候选准备、身份复核与资源匹配 owner。"""
 
@@ -273,51 +323,8 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         self,
         torrents: Dict[str, List[Context]],
     ) -> Dict[str, List[Context]]:
-        """预识别待匹配资源，并保留原上下文供后续订阅复用。"""
-        processed_torrents: Dict[str, List[Context]] = {}
-        for domain, contexts in torrents.items():
-            if runtime_stop_state.is_system_stopped:
-                break
-            processed_torrents[domain] = []
-            for context in contexts:
-                if runtime_stop_state.is_system_stopped:
-                    break
-                if context.torrent_info and getattr(context.torrent_info, "category", None) in (
-                    MediaType.MUSIC,
-                    MediaType.MUSIC.value,
-                ):
-                    # 音乐 RSS 使用订阅目标做实体匹配，不应进入影视识别并累计失败次数。
-                    processed_torrents[domain].append(context)
-                    continue
-                if (
-                    not context.media_info or not resolve_media_identity(media=context.media_info)[1]
-                ) and context.media_recognize_fail_count < 3:
-                    logger.debug(
-                        f"尝试重新识别种子：{context.torrent_info.title}，当前失败次数："
-                        f"{context.media_recognize_fail_count}/3"
-                    )
-                    re_mediainfo = MediaChain().recognize_by_meta(
-                        context.meta_info,
-                        obtain_images=False,
-                    )
-                    if re_mediainfo:
-                        re_mediainfo.clear()
-                        context.media_info = re_mediainfo
-                        context.match_source = _get_media_id_match_source(re_mediainfo)
-                        context.candidate_recognized = bool(resolve_media_identity(media=re_mediainfo)[1])
-                        context.media_info_is_target = False
-                        context.media_recognize_fail_count = 0
-                        logger.debug(f"种子 {context.torrent_info.title} 重新识别成功")
-                    else:
-                        context.media_recognize_fail_count += 1
-                        logger.debug(
-                            f"种子 {context.torrent_info.title} 媒体识别失败，失败次数："
-                            f"{context.media_recognize_fail_count}/3"
-                        )
-                elif context.media_recognize_fail_count >= 3:
-                    logger.debug(f"种子 {context.torrent_info.title} 已达到最大识别失败次数(3次)，跳过识别")
-                processed_torrents[domain].append(context)
-        return processed_torrents
+        """保留既有实例入口，并委托模块级实现执行资源预识别。"""
+        return _prepare_match_torrents(torrents)
 
     def match(
         self,
