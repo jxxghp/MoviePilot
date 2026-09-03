@@ -58,12 +58,13 @@ def _write_flat_plugin(plugin_root: Path, *, class_name: str, version: str | Non
 
 
 def test_register_plugin_version_writes_manifest_and_sets_current(tmp_path: Path) -> None:
-    """注册一个版本后元信息登记该版本并置为当前版本，返回其版本目录名。"""
+    """注册一个版本后元信息登记该版本并置为当前版本，返回其版本目录名与登记前的当前版本号。"""
     plugin_root = tmp_path / "registered"
 
-    dir_name = register_plugin_version(plugin_root, "1.2.0", source="local")
+    dir_name, previous_current = register_plugin_version(plugin_root, "1.2.0", source="local")
 
     assert dir_name == "v1_2_0"
+    assert previous_current is None
     manifest = read_plugin_versions_manifest(plugin_root)
     assert manifest["current"] == "1.2.0"
     assert manifest["versions"] == [
@@ -93,12 +94,13 @@ def test_register_plugin_version_replaces_existing_entry_for_the_same_version(
 def test_register_plugin_version_keeps_other_versions_and_switches_current(
     tmp_path: Path,
 ) -> None:
-    """注册第二个版本后两条记录并存，当前版本切到新注册的版本。"""
+    """注册第二个版本后两条记录并存，当前版本切到新注册的版本，返回登记前的当前版本号。"""
     plugin_root = tmp_path / "dual"
     register_plugin_version(plugin_root, "1.0.0", source="local")
 
-    register_plugin_version(plugin_root, "2.0.0", source="local")
+    _, previous_current = register_plugin_version(plugin_root, "2.0.0", source="local")
 
+    assert previous_current == "1.0.0"
     manifest = read_plugin_versions_manifest(plugin_root)
     assert {entry["version"] for entry in manifest["versions"]} == {"1.0.0", "2.0.0"}
     assert manifest["current"] == "2.0.0"
@@ -742,24 +744,46 @@ def _register_real_version(plugin_root: Path, version: str, *, marker: str) -> P
     return version_dir
 
 
-def test_remove_plugin_installed_version_keeps_sibling_versions_and_reverts_current(
+def test_remove_plugin_installed_version_keeps_sibling_versions_and_restores_previous_current(
     tmp_path: Path,
 ) -> None:
-    """回滚失败版本只删该版本目录与元信息条目，其它已装版本与目录原样保留。"""
+    """回滚失败版本只删该版本目录与元信息条目，当前版本精确复原为调用方传入的登记前的值。
+
+    ``previous_current`` 传入的是 1.0.0，既不是剩余版本里语义号最高的
+    2.0.0，也不是被删版本 3.0.0 之前链式注册产生的值，用来证明复原结果
+    只取决于调用方传入的值本身，不是按剩余版本重新猜一个。
+    """
     plugin_root = tmp_path / "demoplugin"
     version_a = _register_real_version(plugin_root, "1.0.0", marker="A")
     version_b = _register_real_version(plugin_root, "2.0.0", marker="B")
     version_c = _register_real_version(plugin_root, "3.0.0", marker="C")
     assert read_plugin_versions_manifest(plugin_root)["current"] == "3.0.0"
 
-    remove_plugin_installed_version(plugin_root, "3.0.0")
+    remove_plugin_installed_version(plugin_root, "3.0.0", "1.0.0")
 
     assert not version_c.exists()
     assert (version_a / "marker.py").read_text(encoding="utf-8") == "A"
     assert (version_b / "marker.py").read_text(encoding="utf-8") == "B"
     manifest = read_plugin_versions_manifest(plugin_root)
     assert {entry["version"] for entry in manifest["versions"]} == {"1.0.0", "2.0.0"}
-    assert manifest["current"] == "2.0.0"
+    assert manifest["current"] == "1.0.0"
+
+
+def test_remove_plugin_installed_version_falls_back_to_empty_when_previous_current_is_gone(
+    tmp_path: Path,
+) -> None:
+    """登记前的当前版本在回滚时已不在剩余版本清单中（理论上不该发生）时，置空而不是乱猜。"""
+    plugin_root = tmp_path / "demoplugin"
+    version_a = _register_real_version(plugin_root, "1.0.0", marker="A")
+    version_c = _register_real_version(plugin_root, "3.0.0", marker="C")
+
+    remove_plugin_installed_version(plugin_root, "3.0.0", "9.9.9")
+
+    assert not version_c.exists()
+    assert (version_a / "marker.py").read_text(encoding="utf-8") == "A"
+    manifest = read_plugin_versions_manifest(plugin_root)
+    assert {entry["version"] for entry in manifest["versions"]} == {"1.0.0"}
+    assert manifest["current"] is None
 
 
 def test_remove_plugin_installed_version_deletes_empty_plugin_root_after_only_version(
@@ -769,7 +793,7 @@ def test_remove_plugin_installed_version_deletes_empty_plugin_root_after_only_ve
     plugin_root = tmp_path / "demoplugin"
     _register_real_version(plugin_root, "1.0.0", marker="A")
 
-    remove_plugin_installed_version(plugin_root, "1.0.0")
+    remove_plugin_installed_version(plugin_root, "1.0.0", None)
 
     assert not plugin_root.exists()
 
@@ -781,7 +805,7 @@ def test_remove_plugin_installed_version_is_a_no_op_when_the_version_was_never_p
     plugin_root = tmp_path / "demoplugin"
     version_a = _register_real_version(plugin_root, "1.0.0", marker="A")
 
-    remove_plugin_installed_version(plugin_root, "9.9.9")
+    remove_plugin_installed_version(plugin_root, "9.9.9", "1.0.0")
 
     assert (version_a / "marker.py").read_text(encoding="utf-8") == "A"
     manifest = read_plugin_versions_manifest(plugin_root)
@@ -866,6 +890,116 @@ async def test_async_install_failure_without_backup_only_removes_the_new_version
     manifest = read_plugin_versions_manifest(existing_dir)
     assert {entry["version"] for entry in manifest["versions"]} == {"1.0.0", "2.0.0"}
     assert manifest["current"] == "2.0.0"
+
+
+def test_sync_install_failure_restores_current_to_the_version_installed_before_this_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """安装前 current 不是剩余版本里语义号最高者时，回滚同样精确复原为安装前的真实值，不回退到最高版本。
+
+    版本 B（2.0.0）先于版本 A（1.0.0）注册，注册顺序决定安装第三个版本前
+    current 是语义号较低的 1.0.0；旧实现按剩余版本语义号最高者回退会落到
+    2.0.0，掩盖这条缺陷。
+    """
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    existing_dir = plugin_root / "demoplugin"
+    version_b = _register_real_version(existing_dir, "2.0.0", marker="B")
+    version_a = _register_real_version(existing_dir, "1.0.0", marker="A")
+    assert read_plugin_versions_manifest(existing_dir)["current"] == "1.0.0"
+
+    def prepare(staging_dir: Path) -> tuple[bool, str]:
+        """准备一份声明第三个版本号的替换内容。"""
+        _write_flat_plugin(staging_dir, class_name="DemoPlugin", version="3.0.0")
+        return True, ""
+
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__install_dependencies_if_required",
+        lambda *_args, **_kwargs: (True, False, "依赖安装失败：模拟"),
+    )
+
+    success, message = manager._PluginPackageManager__install_flow_sync(
+        "DemoPlugin", True, prepare,
+    )
+
+    assert success is False
+    assert message == "依赖安装失败：模拟"
+    assert not (existing_dir / "v3_0_0").exists()
+    assert (version_a / "marker.py").read_text(encoding="utf-8") == "A"
+    assert (version_b / "marker.py").read_text(encoding="utf-8") == "B"
+    manifest = read_plugin_versions_manifest(existing_dir)
+    assert {entry["version"] for entry in manifest["versions"]} == {"1.0.0", "2.0.0"}
+    assert manifest["current"] == "1.0.0"
+
+
+@pytest.mark.asyncio
+async def test_async_install_failure_restores_current_that_is_neither_the_highest_nor_the_lowest_version(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """安装前 current 是三个已装版本里居中的一个时，回滚同样精确复原，既不落到最高也不落到最低。"""
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    existing_dir = plugin_root / "demoplugin"
+    version_a = _register_real_version(existing_dir, "1.0.0", marker="A")
+    version_d = _register_real_version(existing_dir, "4.0.0", marker="D")
+    version_b = _register_real_version(existing_dir, "2.0.0", marker="B")
+    assert read_plugin_versions_manifest(existing_dir)["current"] == "2.0.0"
+
+    async def prepare(staging_dir: Path) -> tuple[bool, str]:
+        """准备一份声明第四个版本号的替换内容。"""
+        _write_flat_plugin(staging_dir, class_name="DemoPlugin", version="5.0.0")
+        return True, ""
+
+    async def failing_dependencies(*_args: object, **_kwargs: object) -> tuple[bool, bool, str]:
+        """模拟异步依赖安装失败。"""
+        return True, False, "依赖安装失败：模拟"
+
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__async_install_dependencies_if_required",
+        failing_dependencies,
+    )
+
+    success, message = await manager._PluginPackageManager__install_flow_async(
+        "DemoPlugin", True, prepare,
+    )
+
+    assert success is False
+    assert message == "依赖安装失败：模拟"
+    assert not (existing_dir / "v5_0_0").exists()
+    assert (version_a / "marker.py").read_text(encoding="utf-8") == "A"
+    assert (version_b / "marker.py").read_text(encoding="utf-8") == "B"
+    assert (version_d / "marker.py").read_text(encoding="utf-8") == "D"
+    manifest = read_plugin_versions_manifest(existing_dir)
+    assert {entry["version"] for entry in manifest["versions"]} == {"1.0.0", "2.0.0", "4.0.0"}
+    assert manifest["current"] == "2.0.0"
+
+
+def test_sync_install_failure_for_the_first_ever_version_leaves_no_empty_shell(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """插件在安装这一次之前没有任何已装版本、首个版本安装失败时，回滚后不留没有可用版本的空壳目录。"""
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    existing_dir = plugin_root / "demoplugin"
+    assert not existing_dir.exists()
+
+    def prepare(staging_dir: Path) -> tuple[bool, str]:
+        """准备一份声明首个版本号的插件内容。"""
+        _write_flat_plugin(staging_dir, class_name="DemoPlugin", version="1.0.0")
+        return True, ""
+
+    monkeypatch.setattr(
+        manager,
+        "_PluginPackageManager__install_dependencies_if_required",
+        lambda *_args, **_kwargs: (True, False, "依赖安装失败：模拟"),
+    )
+
+    success, message = manager._PluginPackageManager__install_flow_sync(
+        "DemoPlugin", True, prepare,
+    )
+
+    assert success is False
+    assert message == "依赖安装失败：模拟"
+    assert not existing_dir.exists()
 
 
 def test_sync_install_failure_without_backup_in_flat_layout_still_removes_whole_directory(

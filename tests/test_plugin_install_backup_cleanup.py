@@ -40,7 +40,7 @@ async def test_successful_install_flows_remove_transient_backups(
         package,
         "_PluginPackageManager__place_staged_plugin_content",
         lambda _pid, _plugin_dir, _staging_dir, _source_label: _PluginContentPlacement(
-            tmp_path / "content", "", None, True
+            tmp_path / "content", "", None, True, None
         ),
     )
     monkeypatch.setattr(

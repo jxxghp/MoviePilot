@@ -197,21 +197,29 @@ def ensure_plugin_version_dir_available(plugin_root: Path, version: str) -> str:
     return dir_name
 
 
-def register_plugin_version(plugin_root: Path, version: str, source: str) -> str:
+def register_plugin_version(
+    plugin_root: Path, version: str, source: str
+) -> tuple[str, str | None]:
     """把一个已就位的版本目录登记进版本元信息，并置为当前版本。
 
     调用方需确保 ``plugin_root / <版本目录>`` 已经就位了该版本的源码；本函数
     只更新元信息，不做任何文件搬迁，因此可以安全地被存量迁移和真正的多版本
-    安装共用。
+    安装共用。同时返回登记前的当前版本号，供安装失败清理据此精确复原当前
+    版本，不必在回滚时靠猜。
 
     :param plugin_root: 插件源码根目录
     :param version: 版本号
     :param source: 版本来源，如 local、migrated
-    :return: 版本目录名
+    :return: 版本目录名，以及登记前元信息里的当前版本号（插件在本次登记前
+        没有任何已装版本时为 None）
     :raise ValueError: 版本号非法
     """
     dir_name = plugin_version_dir_name(version)
     manifest = read_plugin_versions_manifest(plugin_root)
+    previous_current = manifest.get("current")
+    previous_current = (
+        previous_current if isinstance(previous_current, str) and previous_current else None
+    )
     versions = [
         entry
         for entry in (manifest.get("versions") or [])
@@ -226,7 +234,7 @@ def register_plugin_version(plugin_root: Path, version: str, source: str) -> str
         }
     )
     write_plugin_versions_manifest(plugin_root, versions, version)
-    return dir_name
+    return dir_name, previous_current
 
 
 def _find_leftover_layout_staging(plugin_root: Path) -> Path | None:
@@ -529,28 +537,12 @@ def recycle_plugin_version_directories(
     return {"removed": removed, "kept": kept}
 
 
-def _newest_manifest_version(versions: list[dict[str, Any]]) -> str | None:
-    """从版本元信息条目里选出语义版本号最高者，供当前版本回退使用。
-
-    :param versions: 版本条目列表
-    :return: 语义版本号最高的版本号；列表为空或没有合法版本号条目时为 None
-    """
-    candidates: list[str] = [
-        entry["version"]
-        for entry in versions
-        if isinstance(entry, dict) and isinstance(entry.get("version"), str) and entry["version"]
-    ]
-    if not candidates:
-        return None
-    newest = candidates[0]
-    for candidate in candidates[1:]:
-        if compare_version(candidate, ">", newest):
-            newest = candidate
-    return newest
-
-
-def remove_plugin_installed_version(plugin_root: Path, version: str) -> None:
-    """回滚一次失败的版本化安装：删除该版本目录并从版本元信息摘除。
+def remove_plugin_installed_version(
+    plugin_root: Path,
+    version: str,
+    previous_current: str | None,
+) -> None:
+    """回滚一次失败的版本化安装：删除该版本目录并从版本元信息摘除，精确复原当前版本。
 
     只清理调用方指定的这一个版本，不牵连插件目录下的其它已装版本——多版本
     并存下安装失败清理的范围必须收敛到本次安装尝试本身，否则会连带删掉正被
@@ -558,11 +550,19 @@ def remove_plugin_installed_version(plugin_root: Path, version: str) -> None:
     的主模块，视为清理干净的空壳，连插件目录本身与版本元信息一并删除，不留
     安装失败的残留登记；仍有其它版本时，若被摘除的版本恰好是元信息登记的
     当前版本（写入版本目录成功后会乐观置为当前版本，早于依赖安装校验完成），
-    按剩余版本里语义版本号最高者回退，因为本次安装前的真实当前版本没有被
-    另外记录、无法精确复原，取最高版本是不依赖外部输入就能确定的合理回退。
+    精确复原为 ``previous_current``——登记本次失败版本之前元信息里的当前
+    版本，由版本登记函数在写入前读出并逐层穿透到这里，据此精确复原而不是
+    按剩余版本里语义号最高者去猜。``previous_current`` 为 None 表示登记前
+    插件没有任何已装版本，复原后当前版本同样置空；``previous_current`` 指向
+    的版本在回滚时已不在剩余版本清单中（理论上不该发生，版本登记函数只在
+    原子替换当前版本前追加新条目、不会摘除其它条目），按同样口径置空，不去
+    猜一个可能已经与磁盘状态脱节的版本号。
 
     :param plugin_root: 插件源码根目录
     :param version: 安装失败需要回滚的版本号
+    :param previous_current: 登记本次失败版本之前元信息里的当前版本号，由
+        ``register_plugin_version`` 返回并逐层穿透而来；插件在本次登记前
+        没有任何已装版本时为 None
     """
     directory = plugin_version_dirs(plugin_root).get(version)
     if directory is not None:
@@ -580,5 +580,6 @@ def remove_plugin_installed_version(plugin_root: Path, version: str) -> None:
     ]
     current = manifest.get("current")
     if current == version:
-        current = _newest_manifest_version(remaining_versions)
+        remaining_version_numbers = {entry.get("version") for entry in remaining_versions}
+        current = previous_current if previous_current in remaining_version_numbers else None
     write_plugin_versions_manifest(plugin_root, remaining_versions, current)

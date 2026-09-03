@@ -219,7 +219,7 @@ def _patch_sync_remote_install(helper, monkeypatch, meta: dict,
         helper,
         "_PluginPackageManager__place_staged_plugin_content",
         lambda _pid, plugin_dir, _staging_dir, _source_label: _PluginContentPlacement(
-            plugin_dir, "", None, True
+            plugin_dir, "", None, True, None
         ),
     )
     monkeypatch.setattr(
@@ -290,7 +290,7 @@ def _patch_async_remote_install(helper, monkeypatch, meta: dict,
         helper,
         "_PluginPackageManager__place_staged_plugin_content",
         lambda _pid, plugin_dir, _staging_dir, _source_label: _PluginContentPlacement(
-            plugin_dir, "", None, True
+            plugin_dir, "", None, True, None
         ),
     )
     monkeypatch.setattr(helper, "_PluginPackageManager__async_install_dependencies_if_required", fake_dependencies)
@@ -2546,7 +2546,7 @@ demo = { index = "private" }
             helper,
             "_PluginPackageManager__place_staged_plugin_content",
             lambda _pid, plugin_dir, _staging_dir, _source_label: _PluginContentPlacement(
-                plugin_dir, "", None, True
+                plugin_dir, "", None, True, None
             ),
         )
         monkeypatch.setattr(

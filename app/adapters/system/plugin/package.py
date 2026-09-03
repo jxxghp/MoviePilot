@@ -74,21 +74,24 @@ def _flat_install_target(
     return None
 
 
-# 把已落盘的版本目录登记进版本元信息并置为当前版本：(插件根目录, 版本号, 来源标签)
-InstallVersionRegistrar = Callable[[Path, str, str], None]
+# 把已落盘的版本目录登记进版本元信息并置为当前版本，返回登记前的当前版本号（插件
+# 在本次登记前没有任何已装版本时为 None），供失败清理精确复原：(插件根目录, 版本号, 来源标签)
+InstallVersionRegistrar = Callable[[Path, str, str], Optional[str]]
 
 
-def _noop_version_registrar(_plugin_dir: Path, _version: str, _source: str) -> None:
+def _noop_version_registrar(_plugin_dir: Path, _version: str, _source: str) -> Optional[str]:
     """未装配版本元信息登记端口时不写入 versions.json，保持平铺布局行为。"""
     return None
 
 
-# 安装失败时回滚单个版本目录及其版本元信息登记，不牵连插件的其它已装版本：
-# (插件根目录, 版本号)
-InstallVersionRollback = Callable[[Path, str], None]
+# 安装失败时回滚单个版本目录及其版本元信息登记，把当前版本精确复原为登记前的值，
+# 不牵连插件的其它已装版本：(插件根目录, 版本号, 登记前的当前版本号)
+InstallVersionRollback = Callable[[Path, str, Optional[str]], None]
 
 
-def _noop_version_rollback(_plugin_dir: Path, _version: str) -> None:
+def _noop_version_rollback(
+    _plugin_dir: Path, _version: str, _previous_current: Optional[str]
+) -> None:
     """未装配版本回滚端口时不清理版本目录，保持平铺布局下由整根清理兜底的行为。"""
     return None
 
@@ -234,12 +237,16 @@ class _PluginContentPlacement:
     :param message: 失败信息；成功时为空串
     :param target: 已解析的版本化安装目标；平铺布局时为 None
     :param swap_committed: 换入步骤是否已把新内容写入最终目录
+    :param previous_current: 版本元信息登记端口返回的登记前当前版本号，供
+        失败清理精确复原当前版本；平铺布局、登记未执行或登记端口自身失败
+        时为 None
     """
 
     content_dir: Optional[Path]
     message: str
     target: Optional[PluginInstallVersionTarget]
     swap_committed: bool
+    previous_current: Optional[str]
 
 
 class PluginPackageManager:
@@ -1439,22 +1446,25 @@ class PluginPackageManager:
         pid: str,
         plugin_dir: Path,
         target: Optional[PluginInstallVersionTarget],
+        previous_current: Optional[str],
     ) -> None:
         """安装失败且未走备份还原时按目标类型收敛清理范围，同步流程使用。
 
         平铺布局（target 为 None）沿用清理插件根目录的既有行为；版本化布局
         委托注入的回滚端口只清理本次安装尝试写入的那一个版本目录，插件下的
-        其它已装版本与版本元信息不受影响。
+        其它已装版本与版本元信息不受影响，当前版本精确复原为登记前的值。
 
         :param pid: 插件 ID
         :param plugin_dir: 插件根目录
         :param target: 本次安装解析出的版本化安装目标；平铺布局时为 None
+        :param previous_current: 版本元信息登记前的当前版本号，供回滚端口
+            精确复原当前版本；平铺布局或登记未执行时为 None
         """
         if target is None:
             self.__remove_old_plugin(pid)
             logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
             return
-        self._install_version_rollback(plugin_dir, target.version)
+        self._install_version_rollback(plugin_dir, target.version, previous_current)
         logger.warn(f"{pid} 已清理版本 {target.version} 对应安装目录，请尝试重新安装")
 
     def refresh_persistent_backup(self, pid: str) -> bool:
@@ -1603,13 +1613,14 @@ class PluginPackageManager:
         :return: 落位结果；``content_dir`` 为 None 表示失败，调用方据此判断
             失败清理范围——``target`` 为 None 时是平铺布局，需清理插件根
             目录，非 None 时只需清理该版本目录；``swap_committed`` 为 False
-            时最终目录已由换入步骤自身恢复，调用方不得再清理
+            时最终目录已由换入步骤自身恢复，调用方不得再清理；``previous_current``
+            为登记端口返回的登记前当前版本号，供失败清理精确复原当前版本
         """
         try:
             target = self._install_target_resolver(pid, plugin_dir, staging_dir)
         except Exception as error:  # noqa: BLE001 - 组合根注入的解析端口失败按安装失败处理
             return _PluginContentPlacement(
-                None, f"解析插件安装目标失败：{error}", None, False
+                None, f"解析插件安装目标失败：{error}", None, False, None
             )
 
         final_dir = plugin_dir if target is None else plugin_dir / target.subdirectory
@@ -1617,18 +1628,21 @@ class PluginPackageManager:
             self.__swap_staged_plugin_content(staging_dir, final_dir)
         except OSError as error:
             return _PluginContentPlacement(
-                None, f"写入插件内容失败：{error}", target, False
+                None, f"写入插件内容失败：{error}", target, False, None
             )
 
+        previous_current: Optional[str] = None
         if target is not None:
             try:
-                self._install_version_registrar(plugin_dir, target.version, source_label)
+                previous_current = self._install_version_registrar(
+                    plugin_dir, target.version, source_label
+                )
             except Exception as error:  # noqa: BLE001 - 组合根注入的登记端口失败按安装失败处理
                 return _PluginContentPlacement(
-                    None, f"登记插件版本元信息失败：{error}", target, True
+                    None, f"登记插件版本元信息失败：{error}", target, True, None
                 )
 
-        return _PluginContentPlacement(final_dir, "", target, True)
+        return _PluginContentPlacement(final_dir, "", target, True, previous_current)
 
     def __install_flow_sync(
         self,
@@ -1672,7 +1686,9 @@ class PluginPackageManager:
                     self.__restore_plugin(pid, backup_dir)
                     logger.warn(f"{pid} 插件安装失败，已还原备份插件")
                 elif placement.swap_committed:
-                    self.__cleanup_failed_install(pid, plugin_dir, target)
+                    self.__cleanup_failed_install(
+                        pid, plugin_dir, target, placement.previous_current,
+                    )
                 return False, placement.message
 
             dependencies_exist, dep_ok, dep_msg = self.__install_dependencies_if_required(
@@ -1684,7 +1700,9 @@ class PluginPackageManager:
                     self.__restore_plugin(pid, backup_dir)
                     logger.warn(f"{pid} 插件安装失败，已还原备份插件")
                 else:
-                    self.__cleanup_failed_install(pid, plugin_dir, target)
+                    self.__cleanup_failed_install(
+                        pid, plugin_dir, target, placement.previous_current,
+                    )
                 return False, dep_msg
 
             if backup_dir:
@@ -2006,19 +2024,22 @@ class PluginPackageManager:
         pid: str,
         plugin_dir: Path,
         target: Optional[PluginInstallVersionTarget],
+        previous_current: Optional[str],
     ) -> None:
         """安装失败且未走备份还原时按目标类型收敛清理范围，异步流程使用，语义与同步方法一致。
 
         :param pid: 插件 ID
         :param plugin_dir: 插件根目录
         :param target: 本次安装解析出的版本化安装目标；平铺布局时为 None
+        :param previous_current: 版本元信息登记前的当前版本号，供回滚端口
+            精确复原当前版本；平铺布局或登记未执行时为 None
         """
         if target is None:
             await self.__async_remove_old_plugin(pid)
             logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
             return
         await _await_thread_operation(
-            self._install_version_rollback, plugin_dir, target.version,
+            self._install_version_rollback, plugin_dir, target.version, previous_current,
         )
         logger.warning(f"{pid} 已清理版本 {target.version} 对应安装目录，请尝试重新安装")
 
@@ -2297,7 +2318,9 @@ class PluginPackageManager:
                     await self.__async_restore_plugin(pid, backup_dir)
                     logger.warning(f"{pid} 插件安装失败，已还原备份插件")
                 elif placement.swap_committed:
-                    await self.__async_cleanup_failed_install(pid, plugin_dir, target)
+                    await self.__async_cleanup_failed_install(
+                        pid, plugin_dir, target, placement.previous_current,
+                    )
                 return False, placement.message
 
             dependencies_exist, dep_ok, dep_msg = await self.__async_install_dependencies_if_required(
@@ -2309,7 +2332,9 @@ class PluginPackageManager:
                     await self.__async_restore_plugin(pid, backup_dir)
                     logger.warning(f"{pid} 插件安装失败，已还原备份插件")
                 else:
-                    await self.__async_cleanup_failed_install(pid, plugin_dir, target)
+                    await self.__async_cleanup_failed_install(
+                        pid, plugin_dir, target, placement.previous_current,
+                    )
                 return False, dep_msg
 
             return True, ""

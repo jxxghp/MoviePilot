@@ -105,17 +105,25 @@ def _resolve_plugin_install_target(
     return PluginInstallVersionTarget(subdirectory=dir_name, version=incoming_version)
 
 
-def _register_plugin_install_version(plugin_dir: Path, version: str, source: str) -> None:
-    """把已落盘的版本目录登记进版本元信息并置为当前版本。
+def _register_plugin_install_version(
+    plugin_dir: Path, version: str, source: str
+) -> Optional[str]:
+    """把已落盘的版本目录登记进版本元信息并置为当前版本，返回登记前的当前版本号。
+
+    返回值供安装失败清理据此精确复原当前版本，不必在回滚时靠猜。
 
     :param plugin_dir: 插件根目录
     :param version: 已落盘的版本号
     :param source: 版本来源标签，如 market、local
+    :return: 登记前元信息里的当前版本号；插件在本次登记前没有任何已装版本时为 None
     """
-    register_plugin_version(plugin_dir, version, source)
+    _, previous_current = register_plugin_version(plugin_dir, version, source)
+    return previous_current
 
 
-def _rollback_plugin_install_version(plugin_dir: Path, version: str) -> None:
+def _rollback_plugin_install_version(
+    plugin_dir: Path, version: str, previous_current: Optional[str]
+) -> None:
     """安装失败时回滚单个版本目录及其版本元信息登记，不牵连插件的其它已装版本。
 
     版本目录布局和版本元信息读写都属于运行时扩展包，不允许被适配器层引用，
@@ -123,8 +131,11 @@ def _rollback_plugin_install_version(plugin_dir: Path, version: str) -> None:
 
     :param plugin_dir: 插件根目录
     :param version: 安装失败需要回滚的版本号
+    :param previous_current: 登记本次失败版本之前元信息里的当前版本号，由
+        ``_register_plugin_install_version`` 返回并逐层穿透而来；插件在
+        本次登记前没有任何已装版本时为 None
     """
-    remove_plugin_installed_version(plugin_dir, version)
+    remove_plugin_installed_version(plugin_dir, version, previous_current)
 
 
 @dataclass(frozen=True, slots=True)
