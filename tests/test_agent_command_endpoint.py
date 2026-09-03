@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from unittest.mock import patch
+from urllib.parse import quote
 
 import pytest
 
@@ -10,7 +11,7 @@ from app.schemas.types import NotificationChannel
 
 @pytest.mark.asyncio
 async def test_agent_command_endpoint_decodes_internal_channel_headers() -> None:
-    """命令端点应解析 ASCII 渠道名，并还原编码后的来源名称。"""
+    """命令端点应解析 ASCII 编码的渠道，并还原编码后的来源名称。"""
     user = SimpleNamespace(id=1, is_superuser=True)
     command_result = {
         "message": "命令已触发",
@@ -25,7 +26,7 @@ async def test_agent_command_endpoint_decodes_internal_channel_headers() -> None
         response = await run_agent_command(
             AgentCommandRunRequest(command="/demo"),
             current_user=user,
-            agent_channel=NotificationChannel.Wechat.name,
+            agent_channel=quote(NotificationChannel.Wechat.value, safe=""),
             agent_source="%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1",
         )
 

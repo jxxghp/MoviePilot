@@ -138,7 +138,7 @@ def test_executor_serializes_channel_and_source_headers_as_ascii() -> None:
     with patch("app.agent.api.executor.create_access_token", return_value="token"):
         headers = executor._build_headers()
 
-    assert headers["X-MoviePilot-Agent-Channel"] == NotificationChannel.Wechat.name
+    assert headers["X-MoviePilot-Agent-Channel"] == "%E5%BE%AE%E4%BF%A1"
     assert headers["X-MoviePilot-Agent-Channel"].isascii()
     assert headers["X-MoviePilot-Agent-Source"] == "%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1"
     assert headers["X-MoviePilot-Agent-Source"].isascii()

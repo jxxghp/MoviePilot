@@ -12,7 +12,6 @@ from app.agent.policy.api import ApiOperationRoute, resolve_api_route
 from app.application.security.token import create_access_token
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
-from app.schemas.types import NotificationChannel
 
 
 class ApiExecutionError(RuntimeError):
@@ -112,12 +111,8 @@ class MoviePilotApiExecutor:
         if self._context.session_id:
             headers["X-MoviePilot-Agent-Session"] = self._context.session_id
         if self._context.channel:
-            try:
-                channel = NotificationChannel(self._context.channel)
-                headers["X-MoviePilot-Agent-Channel"] = channel.name
-            except ValueError:
-                # 未知渠道仍需经过 URL 编码，避免自定义渠道值破坏 HTTP 头的 ASCII 约束。
-                headers["X-MoviePilot-Agent-Channel"] = quote(self._context.channel, safe="")
+            # 渠道值来自通知渠道枚举，也可能来自插件扩展；统一 URL 编码可兼容两者。
+            headers["X-MoviePilot-Agent-Channel"] = quote(self._context.channel, safe="")
         if self._context.source:
             headers["X-MoviePilot-Agent-Source"] = quote(self._context.source, safe="")
         return headers
