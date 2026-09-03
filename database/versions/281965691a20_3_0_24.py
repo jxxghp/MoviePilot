@@ -1,7 +1,7 @@
 """3.0.24 插件实例描述符迁入独立表。
 
 Revision ID: 281965691a20
-Revises: a7d9e2c4f6b1
+Revises: d8f2b6a4c1e7
 Create Date: 2026-09-02
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "281965691a20"
-down_revision = "a7d9e2c4f6b1"
+down_revision = "d8f2b6a4c1e7"
 branch_labels = None
 depends_on = None
 
