@@ -119,7 +119,7 @@ async def init_extra():
         plugin_manager.set_plugin_settling(False)
         plugin_manager.start_monitor()
         try:
-            await run_in_threadpool_to_completion(plugin_manager.recycle_all_plugin_versions)
+            await offload_blocking_callback(plugin_manager.recycle_all_plugin_versions)()
         except Exception as error:  # noqa: BLE001 - 版本回收失败不能阻断启动收尾流程
             logger.error(f"插件版本回收时发生错误：{error}", exc_info=True)
         _log_runtime_gil_status()
@@ -194,10 +194,14 @@ async def run_shutdown_step(
         return False
 
 
-def offload_shutdown_callback(
+def offload_blocking_callback(
     callback: Callable[[], object],
 ) -> Callable[[], Awaitable[object]]:
-    """把明确会阻塞的同步关闭 owner 包装为异步生命周期回调。"""
+    """把明确会阻塞的同步 owner 包装为可等待的异步回调，供关闭步骤与启动收尾复用。
+
+    :param callback: 明确会阻塞事件循环的同步调用
+    :return: 在线程池中执行该调用并等待其完成的异步回调
+    """
 
     async def invoke() -> object:
         return await run_in_threadpool_to_completion(callback)
@@ -535,7 +539,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("插件备份恢复",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_plugins,
-            stop=offload_shutdown_callback(finalize_plugins),
+            stop=offload_blocking_callback(finalize_plugins),
             start_order=90,
             stop_order=60,
             start_timeout_seconds=300,
@@ -546,7 +550,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             name="插件变更监控",
             dependencies=("插件",),
             mode=LifecycleMode.NORMAL_ONLY,
-            stop=offload_shutdown_callback(stop_plugin_monitor),
+            stop=offload_blocking_callback(stop_plugin_monitor),
             stop_order=8,
             stop_timeout_seconds=10,
             stop_failure=LifecycleFailurePolicy.FAIL_FAST,
@@ -650,7 +654,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             dependencies=("命令服务",),
             mode=LifecycleMode.NORMAL_ONLY,
             start=init_workflow,
-            stop=offload_shutdown_callback(stop_workflow),
+            stop=offload_blocking_callback(stop_workflow),
             start_order=140,
             stop_order=20,
             start_timeout_seconds=120,
@@ -661,7 +665,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             name="插件备份",
             dependencies=("插件",),
             mode=LifecycleMode.NORMAL_ONLY,
-            stop=offload_shutdown_callback(
+            stop=offload_blocking_callback(
                 lambda: SystemChain().backup_plugins()
             ),
             stop_order=10,

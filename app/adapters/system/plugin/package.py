@@ -2322,7 +2322,7 @@ class PluginPackageManager:
             if backup_dir:
                 await aioshutil.rmtree(backup_dir, ignore_errors=True)
             if staging_dir.exists():
-                shutil.rmtree(staging_dir, ignore_errors=True)
+                await aioshutil.rmtree(staging_dir, ignore_errors=True)
 
     def __prepare_content_via_filelist_sync(self, pid: str, user_repo: str,
                                             package_version: Optional[str],

@@ -1478,7 +1478,7 @@ async def test_shutdown_step_bounds_sync_owner_without_blocking_event_loop() -> 
     shutdown = asyncio.create_task(
         lifecycle.run_shutdown_step(
             "同步阻塞 owner",
-            lifecycle.offload_shutdown_callback(blocking_shutdown),
+            lifecycle.offload_blocking_callback(blocking_shutdown),
             timeout_seconds=0.02,
         )
     )
