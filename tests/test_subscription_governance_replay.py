@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.application.subscription.contract import SubscriptionSnapshot
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.mediaserver import NotExistMediaInfo

@@ -10,8 +10,8 @@ import pytest
 from app.application.subscription.contract import SubscriptionPatch, SubscriptionSnapshot
 from app.application.subscription.execution import SubscriptionExecutionAdmission
 from app.application.subscription.mutation import SubscriptionMutation
-from app.chain.subscribe import SubscribeChain
 from app.chain.subscribe import search as subscribe_search
+from app.chain.subscribe.facade import SubscribeChain
 from app.schemas.types import MediaType
 
 
