@@ -229,3 +229,99 @@ def test_match_stop_does_not_report_unvisited_subscriptions_as_completed(monkeyp
             "failed": 0,
         },
     }
+
+
+def test_match_logs_one_bounded_start_and_finish_summary(monkeypatch) -> None:
+    """Match INFO 只保留轮次摘要，并明确任务完成不等于订阅成功。"""
+    completed = _subscribe(13)
+    conflicted = _subscribe(14)
+    cancelled = _subscribe(15)
+    chain = _chain([completed, conflicted, cancelled])
+    search_lease = chain._subscription_execution_admission.try_acquire(
+        subscription_id=conflicted.id,
+        operation="search",
+        ttl_seconds=60,
+    )
+    assert search_lease is not None
+
+    def process(**kwargs):
+        """让一条正常处理完成，另一条在安全边界取消。"""
+        if kwargs["subscribe"].id == cancelled.id:
+            raise subscribe_match.SubscriptionSearchCancelled("cancelled")
+        return "completed"
+
+    chain._match_subscription = process
+    info_logs = []
+    monkeypatch.setattr(subscribe_match.logger, "info", info_logs.append)
+
+    chain.match({"site-a.example": [object()], "site-b.example": [object(), object()]})
+
+    assert len(info_logs) == 2
+    assert info_logs[0].startswith("订阅治理轮次开始: operation=match ")
+    assert "subscriptions=3" in info_logs[0]
+    assert "sites=2" in info_logs[0]
+    assert "candidates=3" in info_logs[0]
+    assert info_logs[1].startswith("订阅治理轮次结束: operation=match ")
+    assert "state=skipped" in info_logs[1]
+    assert "task_completed=1" in info_logs[1]
+    assert "task_skipped=2" in info_logs[1]
+    assert "admission_conflicts=1" in info_logs[1]
+    assert "cancelled=1" in info_logs[1]
+    assert "ttl_timeouts=0" in info_logs[1]
+    assert "订阅成功" not in "\n".join(info_logs)
+    assert chain._subscription_execution_admission.release(search_lease) is True
+
+
+def test_match_summary_distinguishes_ttl_timeout(monkeypatch) -> None:
+    """Match 安全边界因 TTL 停止时必须单独计数。"""
+    subscribe = _subscribe(16)
+    chain = _chain([subscribe])
+    now = [0.0]
+    chain._subscription_execution_admission = SubscriptionExecutionAdmission(
+        clock=lambda: now[0]
+    )
+
+    def expire(**_kwargs):
+        """让当前 owner 在单订阅执行返回前超过 TTL。"""
+        now[0] = chain._SUBSCRIPTION_EXECUTION_TTL + 1
+        return "skipped"
+
+    chain._match_subscription = expire
+    info_logs = []
+    monkeypatch.setattr(subscribe_match.logger, "info", info_logs.append)
+
+    chain.match({"site.example": [object()]})
+
+    assert len(info_logs) == 2
+    assert "task_skipped=1" in info_logs[1]
+    assert "cancelled=0" in info_logs[1]
+    assert "ttl_timeouts=1" in info_logs[1]
+
+
+def test_match_logs_subscription_admission_release_failure(monkeypatch) -> None:
+    """订阅 owner token 无法释放时必须同时进入错误日志和轮次摘要。"""
+    class _ReleaseRejectingAdmission(SubscriptionExecutionAdmission):
+        """模拟当前 owner 已被替换的释放冲突。"""
+
+        def release(self, lease):
+            """拒绝释放以触发可见性合同。"""
+            del lease
+            return False
+
+    subscribe = _subscribe(17)
+    chain = _chain([subscribe])
+    chain._subscription_execution_admission = _ReleaseRejectingAdmission()
+    chain._match_subscription = lambda **_kwargs: "completed"
+    info_logs = []
+    error_logs = []
+    monkeypatch.setattr(subscribe_match.logger, "info", info_logs.append)
+    monkeypatch.setattr(
+        subscribe_match.logger,
+        "error",
+        lambda message, **_kwargs: error_logs.append(message),
+    )
+
+    chain.match({"site.example": [object()]})
+
+    assert any("订阅准入释放失败: operation=match subscription_id=17" in item for item in error_logs)
+    assert "release_failures=1" in info_logs[-1]

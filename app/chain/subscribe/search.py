@@ -20,6 +20,11 @@ from app.application.subscription.execution import (
     SubscriptionExecutionContext,
     SubscriptionSearchRepository,
 )
+from app.application.subscription.observability import (
+    SearchExecutionSummary,
+    SearchTaskOutcome,
+    finish_returned_search_task,
+)
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.sitebudget import (
     SubscriptionSearchCancelled,
@@ -180,62 +185,8 @@ def _release_cancelled_or_stopped_search_task(
     )
 
 
-def _finish_returned_search_task(
-    *,
-    queue: SubscriptionSearchRepository,
-    task_id: str,
-    lease_token: str,
-    subscription_id: int,
-    execution_context: SubscriptionExecutionContext,
-    system_stopped: bool,
-    cancel_requested: bool,
-) -> Optional[int]:
-    """按 TTL、停机和取消边界收口正常返回的搜索任务。"""
-    download_started = execution_context.download_started
-    if execution_context.is_expired() and not (system_stopped or cancel_requested):
-        if download_started:
-            queue.finish_task(
-                task_id=task_id,
-                lease_token=lease_token,
-                state="completed",
-                error="执行截止时间晚于下载提交边界，已按实际结果完成",
-            )
-            return subscription_id
-        queue.finish_task(
-            task_id=task_id,
-            lease_token=lease_token,
-            state="failed",
-            error="订阅执行已超过协作截止时间",
-        )
-        return None
-    if system_stopped:
-        if download_started:
-            queue.finish_task(
-                task_id=task_id,
-                lease_token=lease_token,
-                state="completed",
-                error="停机请求晚于下载提交边界，已按实际结果完成",
-            )
-            return subscription_id
-        queue.release_task(task_id=task_id, lease_token=lease_token)
-        return None
-    if cancel_requested:
-        if download_started:
-            queue.finish_task(
-                task_id=task_id,
-                lease_token=lease_token,
-                state="completed",
-                error="取消请求晚于下载提交边界，已按实际结果完成",
-            )
-            return subscription_id
-        queue.release_task(task_id=task_id, lease_token=lease_token, cancelled=True)
-        return None
-    queue.finish_task(task_id=task_id, lease_token=lease_token, state="completed")
-    return subscription_id
-
-
-class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
-    """订阅主动搜索入口与持久队列消费 owner。"""
+class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
+    """订阅主动搜索入口、队列提交与消费协调 owner。"""
 
     def _subscription_query(self) -> SubscriptionQueryService:
         """构造绑定订阅 Oper 的查询应用服务。"""
@@ -353,9 +304,12 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             return
         subscribes = []
         processed = []
+        summary: Optional[SearchExecutionSummary] = None
         try:
             subscribes = self._load_search_subscriptions(sid=sid, sids=sids, state=state)
             total = len(subscribes)
+            summary = SearchExecutionSummary(source="inline", requested=total)
+            logger.info(summary.start_log())
             if progress_callback:
                 progress_callback(
                     value=0,
@@ -365,9 +319,11 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             searchchain = SearchChain()
             for index, subscribe in enumerate(subscribes, start=1):
                 if runtime_stop_state.is_system_stopped:
+                    summary.stopped = True
                     break
                 self._report_search_progress(progress_callback, subscribe, index, total)
                 if self._defer_recent_subscription(subscribe):
+                    summary.record("skipped", "recent_subscription")
                     continue
                 self._wait_before_scheduled_search(sid, sids, state, progress_callback)
                 lease = self._subscription_execution_admission.try_acquire(
@@ -376,7 +332,8 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                     ttl_seconds=self._SUBSCRIPTION_EXECUTION_TTL,
                 )
                 if lease is None:
-                    logger.info(f"订阅 {subscribe.name} 正在由其他通道处理，本轮搜索已跳过")
+                    logger.debug(f"订阅 {subscribe.name} 正在由其他通道处理，本轮搜索已跳过")
+                    summary.record("skipped", "admission_conflict")
                     continue
                 execution_context = SubscriptionExecutionContext(
                     lease=lease,
@@ -384,11 +341,13 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                     cancel_requested=lambda: runtime_stop_state.is_system_stopped,
                 )
                 current = None
+                outcome: SearchTaskOutcome = "skipped"
+                reason: Optional[str] = "not_eligible"
                 try:
                     current = self.subscription_repository.get(subscribe.id)
                     if current is None or current.state == "S":
                         if current and current.state == "S":
-                            logger.info(f"订阅 {current.name} 已暂停，本轮搜索已跳过")
+                            logger.debug(f"订阅 {current.name} 已暂停，本轮搜索已跳过")
                         continue
                     processed_result = self._process_search_subscription(
                         current,
@@ -397,9 +356,15 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                     )
                     processed.append(processed_result or current)
                     current = processed_result
+                    outcome = "completed"
+                    reason = None
                 except SubscriptionSearchCancelled:
-                    logger.info(f"订阅 {subscribe.name} 搜索已在安全边界取消")
+                    reason = "ttl_timeout" if execution_context.is_expired() else "cancelled"
+                    outcome = "failed" if reason == "ttl_timeout" else "cancelled"
+                    logger.debug(f"订阅 {subscribe.name} 搜索已在安全边界取消")
                 except Exception as err:
+                    outcome = "failed"
+                    reason = "error"
                     logger.error(f"订阅 {subscribe.name} 搜索失败：{str(err)}", exc_info=True)
                 finally:
                     try:
@@ -415,7 +380,14 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                             exc_info=True,
                         )
                     finally:
-                        self._subscription_execution_admission.release(lease)
+                        released = self._subscription_execution_admission.release(lease)
+                        if not released:
+                            summary.release_failures += 1
+                            logger.error(
+                                "订阅准入释放失败: operation=search "
+                                f"subscription_id={subscribe.id} run_id={summary.run_id}"
+                            )
+                        summary.record(outcome, reason)
                         self._report_search_progress(
                             progress_callback,
                             subscribe,
@@ -430,6 +402,8 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         finally:
             subscribes.clear()
             self._search_queue_lock.release()
+            if summary is not None:
+                logger.info(summary.finish_log())
             logger.debug(f"search Lock released at {datetime.now()}")
 
     def _execute_queued_search(
@@ -461,6 +435,13 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             ),
         )
         total = len(subscribes)
+        summary = SearchExecutionSummary(
+            source=source,
+            requested=total,
+            batch_id=str(enqueued.batch.batch_id),
+            coalesced=enqueued.coalesced_count,
+        )
+        logger.info(summary.start_log())
         if progress_callback:
             progress_callback(
                 value=0,
@@ -476,11 +457,12 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             queue=queue,
             limit=max(1, enqueued.created_count + enqueued.coalesced_count),
             progress_callback=progress_callback,
+            summary=summary,
         )
         processed_subscribes = [item for item in subscribes if item.id in processed]
         self._notify_manual_search(manual, sid, sids, subscribes, processed_subscribes)
+        batch = queue.get_batch(enqueued.batch.batch_id)
         if progress_callback:
-            batch = queue.get_batch(enqueued.batch.batch_id)
             progress_callback(
                 value=100,
                 text=_batch_progress_text(batch),
@@ -491,6 +473,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                     "coalesced": enqueued.coalesced_count,
                 },
             )
+        logger.info(summary.finish_log(batch))
         return str(enqueued.batch.batch_id)
 
     def _drain_search_queue(
@@ -499,10 +482,12 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         queue: SubscriptionSearchRepository,
         limit: int,
         progress_callback: Optional[Callable[..., None]],
+        summary: SearchExecutionSummary,
     ) -> set[int]:
         """有界消费可恢复任务；单任务失败不得阻止后续订阅。"""
         if not self._search_queue_lock.acquire(blocking=False):
             logger.debug("订阅搜索队列已有消费者，本轮仅保留持久任务")
+            summary.consumer_conflicts += 1
             return set()
         owner = f"subscribe-search:{uuid4().hex}"
         processed: set[int] = set()
@@ -510,6 +495,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             searchchain = SearchChain()
             for index in range(1, limit + 1):
                 if runtime_stop_state.is_system_stopped:
+                    summary.stopped = True
                     break
                 task = queue.claim_next(owner=owner)
                 if task is None:
@@ -522,12 +508,17 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                     index=index,
                     limit=limit,
                     progress_callback=progress_callback,
+                    summary=summary,
                 )
                 if subscription_id is not None:
                     processed.add(subscription_id)
         finally:
             self._search_queue_lock.release()
         return processed
+
+
+class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
+    """持久搜索任务执行与批次控制 owner。"""
 
     def _execute_search_task(
         self,
@@ -539,10 +530,12 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         index: int,
         limit: int,
         progress_callback: Optional[Callable[..., None]],
+        summary: SearchExecutionSummary,
     ) -> Optional[int]:
         """执行一条已认领任务，返回实际进入搜索处理的订阅 ID。"""
         if task.lease_token is None:
             logger.error(f"订阅搜索任务 {task.task_id} 缺少租约令牌，跳过执行")
+            summary.record("failed", "missing_lease")
             return None
         task_id = str(task.task_id)
         lease_token = task.lease_token
@@ -550,6 +543,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         stop_state = getattr(self, "stop_state", runtime_stop_state)
         if cancelled():
             queue.release_task(task_id=task_id, lease_token=lease_token, cancelled=True)
+            summary.record("cancelled", "cancelled")
             return None
         subscribe = self.subscription_repository.get(task.subscription_id)
         if subscribe is None:
@@ -559,10 +553,12 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                 state="cancelled",
                 error="订阅已不存在",
             )
+            summary.record("cancelled", "missing_subscription")
             return None
         self._report_search_progress(progress_callback, subscribe, index, limit)
         if self._defer_recent_subscription(subscribe):
             _skip_search_task(queue, task, "订阅仍在新增保护期，本轮搜索已跳过")
+            summary.record("skipped", "recent_subscription")
             return None
         lease = self._subscription_execution_admission.try_acquire(
             subscription_id=subscribe.id,
@@ -570,8 +566,9 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             ttl_seconds=self._SUBSCRIPTION_EXECUTION_TTL,
         )
         if lease is None:
-            logger.info(f"订阅 {subscribe.name} 正在由其他通道处理，本轮搜索已跳过")
+            logger.debug(f"订阅 {subscribe.name} 正在由其他通道处理，本轮搜索已跳过")
             _skip_search_task(queue, task, "同一订阅正在由其他通道处理，本轮搜索已跳过")
+            summary.record("skipped", "admission_conflict")
             return None
         phase_changed = partial(_update_search_task_phase, queue, task_id, lease_token)
         execution_context = SubscriptionExecutionContext(
@@ -591,9 +588,11 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                     state="cancelled",
                     error="订阅已不存在",
                 )
+                summary.record("cancelled", "missing_subscription")
                 return None
             if current.state == "S":
                 _skip_search_task(queue, task, "订阅已暂停，本轮搜索已跳过")
+                summary.record("skipped", "paused")
                 return None
             searchchain.configure_subscription_site_budget(
                 SubscriptionSiteBudget(
@@ -602,6 +601,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                     cancelled=execution_context.should_stop,
                     stop_state=stop_state,
                     phase_changed=phase_changed,
+                    metrics=summary.site_metrics,
                 )
             )
             current = self._process_search_subscription(
@@ -611,7 +611,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             )
             system_stopped = stop_state.is_system_stopped
             cancel_requested = False if system_stopped else cancelled()
-            return _finish_returned_search_task(
+            subscription_id, outcome, reason = finish_returned_search_task(
                 queue=queue,
                 task_id=task_id,
                 lease_token=lease_token,
@@ -620,6 +620,8 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                 system_stopped=system_stopped,
                 cancel_requested=cancel_requested,
             )
+            summary.record(outcome, reason)
+            return subscription_id
         except SubscriptionSearchCancelled:
             if execution_context.is_expired() and not execution_context.is_cancel_requested():
                 queue.finish_task(
@@ -628,12 +630,18 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                     state="failed",
                     error="订阅执行已超过协作截止时间",
                 )
+                summary.record("failed", "ttl_timeout")
             else:
+                system_stopped = stop_state.is_system_stopped
                 _release_cancelled_or_stopped_search_task(
                     queue,
                     task_id,
                     lease_token,
-                    stop_state.is_system_stopped,
+                    system_stopped,
+                )
+                summary.record(
+                    "requeued" if system_stopped else "cancelled",
+                    "system_stop" if system_stopped else "cancelled",
                 )
         except Exception as err:
             logger.error(f"订阅 {subscribe.name} 搜索失败：{str(err)}", exc_info=True)
@@ -643,6 +651,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                 state="failed",
                 error=str(err),
             )
+            summary.record("failed", "error")
         finally:
             self._cleanup_search_task(
                 queue=queue,
@@ -653,6 +662,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                 progress_callback=progress_callback,
                 index=index,
                 limit=limit,
+                summary=summary,
             )
         return None
 
@@ -667,6 +677,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         progress_callback: Optional[Callable[..., None]],
         index: int,
         limit: int,
+        summary: SearchExecutionSummary,
     ) -> None:
         """清理站点预算和订阅状态，并在所有异常路径释放 owner。"""
         try:
@@ -683,7 +694,13 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         except Exception as err:
             logger.error(f"订阅 {subscribe.name} 搜索后状态重置失败：{str(err)}", exc_info=True)
         finally:
-            self._subscription_execution_admission.release(lease)
+            released = self._subscription_execution_admission.release(lease)
+            if not released:
+                summary.release_failures += 1
+                logger.error(
+                    "订阅准入释放失败: operation=search "
+                    f"subscription_id={subscribe.id} run_id={summary.run_id}"
+                )
             self._report_search_progress(
                 progress_callback,
                 subscribe,
@@ -703,11 +720,15 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         )
         if queue is None:
             return
+        summary = SearchExecutionSummary(source="resume", requested=max(1, limit))
+        logger.info(summary.start_log())
         self._drain_search_queue(
             queue=queue,
             limit=max(1, limit),
             progress_callback=progress_callback,
+            summary=summary,
         )
+        logger.info(summary.finish_log())
 
     def cancel_search_batch(self, batch_id: str) -> bool:
         """请求取消持久搜索批次；未注入队列时返回失败。"""
@@ -764,7 +785,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         if sid or sids is not None or state not in {"R", "P"}:
             return
         sleep_time = random.randint(60, 300)
-        logger.info(f"订阅搜索随机休眠 {sleep_time} 秒 ...")
+        logger.debug(f"订阅搜索随机休眠 {sleep_time} 秒 ...")
         if progress_callback:
             progress_callback(text=f"订阅搜索随机休眠 {sleep_time} 秒后继续 ...")
         time.sleep(sleep_time)
@@ -777,7 +798,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
     ) -> Optional[SubscriptionSnapshot]:
         """处理单个订阅，并返回下载后重新读取的状态快照。"""
         _ensure_execution_active(execution_context)
-        logger.info(f"开始搜索订阅，标题：{subscribe.name} ...")
+        logger.debug(f"开始搜索订阅，标题：{subscribe.name} ...")
         if subscribe.type == MediaType.MUSIC.value:
             self._search_music_subscribe(subscribe, execution_context=execution_context)
             return subscribe
@@ -830,7 +851,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         site_budget_failures = searchchain.consume_subscription_site_budget_failures()
         _ensure_execution_active(execution_context)
         if not contexts:
-            logger.warning(f"订阅 {subscribe.keyword or subscribe.name} 未搜索到资源")
+            logger.debug(f"订阅 {subscribe.keyword or subscribe.name} 未搜索到资源")
             self.finish_subscribe_or_not(
                 subscribe=subscribe,
                 meta=meta,
@@ -841,7 +862,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
             return subscribe
         matched = self._filter_search_contexts(subscribe, contexts)
         if not matched:
-            logger.warning(f"订阅 {subscribe.name} 没有符合过滤条件的资源")
+            logger.debug(f"订阅 {subscribe.name} 没有符合过滤条件的资源")
             self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, lefts=no_exists)
             self._raise_site_budget_failures(site_budget_failures)
             return subscribe
@@ -893,17 +914,17 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
                 media = context.media_info
                 if subscribe.best_version and media.type == MediaType.TV:
                     if not self._SubscribeChain__is_full_season_best_version_resource(torrent_meta, subscribe):
-                        logger.info(f"{subscribe.name} 正在全集洗版，{torrent_info.title} 不是全集资源")
+                        logger.debug(f"{subscribe.name} 正在全集洗版，{torrent_info.title} 不是全集资源")
                         continue
                     if not self._is_episode_range_covered(torrent_meta, subscribe):
-                        logger.info(f"{subscribe.name} 正在洗版，{torrent_info.title} 不符合订阅集数范围")
+                        logger.debug(f"{subscribe.name} 正在洗版，{torrent_info.title} 不符合订阅集数范围")
                         continue
                     if not self._SubscribeChain__prepare_best_version_tv_candidate(
                         subscribe,
                         context,
                         torrent_info.pri_order,
                     ):
-                        logger.info(f"{subscribe.name} 正在洗版，{torrent_info.title} 优先级未达到当前模式的升级条件")
+                        logger.debug(f"{subscribe.name} 正在洗版，{torrent_info.title} 优先级未达到当前模式的升级条件")
                         continue
                 if (
                     subscribe.best_version
@@ -911,7 +932,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
                     and subscribe.current_priority
                     and torrent_info.pri_order <= subscribe.current_priority
                 ):
-                    logger.info(f"{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级")
+                    logger.debug(f"{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级")
                     continue
                 media = apply_subscription_classification(
                     media,

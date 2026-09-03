@@ -14,6 +14,7 @@ from app.application.subscription.sitebudget import (
     SiteBudgetClaim,
     SubscriptionSearchCancelled,
     SubscriptionSiteBudget,
+    SubscriptionSiteBudgetMetrics,
     SubscriptionSiteBudgetUnavailable,
 )
 from app.chain.search.facade import SearchChain
@@ -244,11 +245,13 @@ def test_skipped_search_releases_budget_without_external_interval():
 def test_search_provider_reports_cooled_site_without_blocking_other_results():
     """错误冷却中的站点返回空页并记录聚合失败，而非阻塞 provider。"""
     repository = _WaitingRepository()
+    metrics = SubscriptionSiteBudgetMetrics()
     budget = SubscriptionSiteBudget(
         repository=repository,
         owner="fallback-worker",
         cancelled=lambda: False,
         stop_state=ProcessStopState(),
+        metrics=metrics,
     )
     chain = object.__new__(SearchChain)
     chain.configure_subscription_site_budget(budget)
@@ -265,6 +268,9 @@ def test_search_provider_reports_cooled_site_without_blocking_other_results():
     failures = chain.consume_subscription_site_budget_failures()
     assert len(failures) == 1
     assert "站点 11" in failures[0]
+    snapshot = metrics.snapshot()
+    assert snapshot.request_count == 0
+    assert snapshot.cooldown_skip_count == 1
 
 
 def test_search_provider_releases_successful_site_budget():
@@ -290,11 +296,13 @@ def test_search_provider_releases_successful_site_budget():
             captured.update(kwargs)
             return True
 
+    metrics = SubscriptionSiteBudgetMetrics()
     budget = SubscriptionSiteBudget(
         repository=_Repository(),
         owner="manual-worker",
         cancelled=lambda: False,
         stop_state=ProcessStopState(),
+        metrics=metrics,
     )
     chain = object.__new__(SearchChain)
     chain.configure_subscription_site_budget(budget)
@@ -317,6 +325,12 @@ def test_search_provider_releases_successful_site_budget():
     assert captured["site_id"] == 12
     assert captured["outcome"] == "success"
     assert captured["lease_token"] == "lease-token"
+    snapshot = metrics.snapshot()
+    assert snapshot.site_count == 1
+    assert snapshot.request_count == 1
+    assert snapshot.candidate_count == 1
+    assert snapshot.failure_count == 0
+    assert snapshot.release_failure_count == 0
 
 
 def test_search_provider_aggregates_swallowed_indexer_failure(monkeypatch):
@@ -368,11 +382,13 @@ def test_search_provider_aggregates_swallowed_indexer_failure(monkeypatch):
         staticmethod(lambda **_kwargs: []),
     )
 
+    metrics = SubscriptionSiteBudgetMetrics()
     budget = SubscriptionSiteBudget(
         repository=_Repository(),
         owner="fallback-worker",
         cancelled=lambda: False,
         stop_state=ProcessStopState(),
+        metrics=metrics,
     )
     chain = object.__new__(SearchChain)
     chain.configure_subscription_site_budget(budget)
@@ -392,3 +408,53 @@ def test_search_provider_aggregates_swallowed_indexer_failure(monkeypatch):
     assert len(failures) == 1
     assert "Flaky" in failures[0]
     assert "HTTP 429" in failures[0]
+    snapshot = metrics.snapshot()
+    assert snapshot.request_count == 1
+    assert snapshot.failure_count == 1
+    assert snapshot.cooldown_seconds == 900.0
+
+
+def test_search_provider_logs_site_budget_release_failure(monkeypatch):
+    """站点租约收口返回失败时必须进入摘要并即时记录错误。"""
+    class _Repository(_WaitingRepository):
+        """提供租约但拒绝以当前 token 收口。"""
+
+        def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
+            """返回当前调用独占的站点租约。"""
+            del owner, lease_seconds
+            return SiteBudgetClaim(
+                site_id=site_id,
+                acquired=True,
+                retry_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                consecutive_failures=0,
+                lease_token="stale-token",
+            )
+
+        def finish_site(self, **_kwargs) -> bool:
+            """模拟 token 已失效的 CAS 收口。"""
+            return False
+
+    metrics = SubscriptionSiteBudgetMetrics()
+    budget = SubscriptionSiteBudget(
+        repository=_Repository(),
+        owner="fallback-worker",
+        cancelled=lambda: False,
+        stop_state=ProcessStopState(),
+        metrics=metrics,
+    )
+    chain = object.__new__(SearchChain)
+    chain.configure_subscription_site_budget(budget)
+    chain.search_site_torrents = lambda **_kwargs: ["torrent"]
+    errors = []
+    monkeypatch.setattr("app.chain.search.provider.logger.error", lambda message, **_kwargs: errors.append(message))
+
+    result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
+        site={"id": 14, "name": "Stale"},
+        keyword="movie",
+        mtype=None,
+        page=0,
+    )
+
+    assert result == ["torrent"]
+    assert metrics.snapshot().release_failure_count == 1
+    assert errors == ["订阅站点预算释放失败: site_id=14 site=Stale"]

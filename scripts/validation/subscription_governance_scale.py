@@ -782,7 +782,30 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
     settlement_ms: list[float] = []
     recognition_calls = 0
     progress_snapshots: list[dict[str, int]] = []
+    info_logs: list[str] = []
     started = time.perf_counter()
+
+    class _ScaleMatchLogger:
+        """只收集 Match 模块 INFO，用于验证日志量不随候选乘积增长。"""
+
+        @staticmethod
+        def debug(*_args: Any, **_kwargs: Any) -> None:
+            """忽略受控样本的逐项诊断日志。"""
+
+        @staticmethod
+        def warning(*_args: Any, **_kwargs: Any) -> None:
+            """忽略受控样本中预期不会出现的警告。"""
+
+        warn = warning
+
+        @staticmethod
+        def error(*_args: Any, **_kwargs: Any) -> None:
+            """错误仍由集合和终态门禁暴露，不污染 INFO 计数。"""
+
+        @staticmethod
+        def info(message: Any, *_args: Any, **_kwargs: Any) -> None:
+            """保存结构化批次摘要。"""
+            info_logs.append(str(message))
 
     class _ScaleMediaChain:
         """用固定新鲜媒体事实替代目标规模下的真实 TMDB 请求。"""
@@ -905,6 +928,7 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
             "runtime_stop_state",
             SimpleNamespace(is_system_stopped=False),
         ),
+        patch.object(subscribe_match, "logger", _ScaleMatchLogger()),
         patch.object(
             download_batch,
             "runtime_stop_state",
@@ -936,6 +960,12 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
             "skipped": 0,
             "failed": 0,
         },
+        "info_log_count": len(info_logs),
+        "info_log_bounded": bool(
+            len(info_logs) == 2
+            and info_logs[0].startswith("订阅治理轮次开始: operation=match ")
+            and info_logs[1].startswith("订阅治理轮次结束: operation=match ")
+        ),
         "first_settlement_local_ms": round(settlement_ms[0], 3),
         "subscription_settlement_local_p50_ms": _percentile(settlement_ms, 50),
         "subscription_settlement_local_p95_ms": _percentile(settlement_ms, 95),
@@ -1163,6 +1193,10 @@ def run_acceptance() -> dict[str, Any]:
             case["fresh_fact_loads"] == match_case["media_count"]
             for case, match_case in zip(match_execution_cases, match_cases)
         ),
+        "match_info_logs_bounded": all(
+            case["info_log_bounded"]
+            for case in match_execution_cases
+        ),
         "queue_completed": all(
             case["queue_state"] == "completed"
             and case["queue_finished_count"] == next(
@@ -1210,7 +1244,7 @@ def run_acceptance() -> dict[str, Any]:
         ),
     }
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "revision": _git_revision(),
         "environment": {
