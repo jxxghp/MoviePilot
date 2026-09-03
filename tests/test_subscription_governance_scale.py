@@ -182,16 +182,25 @@ def test_scale_validator_rejects_unfinished_site_wrapper(monkeypatch, tmp_path):
 
     def stall_after_rejection(self, *, site, keyword, mtype, page):
         """模拟预算拒绝已记录、调用方却未取得返回值的挂起路径。"""
-        result = original_wrapper(
-            self,
-            site=site,
-            keyword=keyword,
-            mtype=mtype,
-            page=page,
-        )
-        if not result:
-            release_stalled.wait(timeout=1)
-        return result
+        original_record_failure = self.record_subscription_site_budget_failure
+
+        def record_failure_and_stall(error: str) -> None:
+            """在拒绝已登记后阻塞原始 wrapper 的返回。"""
+            original_record_failure(error)
+            if "冷却或已有在途搜索" in error:
+                release_stalled.wait()
+
+        self.record_subscription_site_budget_failure = record_failure_and_stall
+        try:
+            return original_wrapper(
+                self,
+                site=site,
+                keyword=keyword,
+                mtype=mtype,
+                page=page,
+            )
+        finally:
+            self.record_subscription_site_budget_failure = original_record_failure
 
     monkeypatch.setattr(
         SearchChain,
