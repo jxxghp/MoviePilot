@@ -23,7 +23,10 @@ from app.application.subscription.execution import (
 from app.application.subscription.observability import (
     SearchExecutionSummary,
     SearchTaskOutcome,
+    batch_finished_count,
+    batch_progress_text,
     finish_returned_search_task,
+    inline_search_result,
 )
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.sitebudget import (
@@ -111,48 +114,6 @@ def _search_task_available_at(
             cursor += timedelta(seconds=random.randint(60, 300))
         available_at[subscription_id] = cursor.isoformat(timespec="seconds")
     return available_at
-
-
-def _batch_progress_text(batch: Optional[SearchBatchSnapshot]) -> str:
-    """把批次聚合终态转为兼容进度文案。"""
-    if batch is None:
-        return "订阅搜索任务已提交"
-    if batch.state == "failed":
-        return "订阅搜索完成，部分任务失败"
-    if batch.state == "cancelled":
-        return "订阅搜索已取消"
-    if batch.state == "skipped":
-        return "订阅搜索完成，部分任务本轮已跳过"
-    if batch.state in {"queued", "running", "cancelling"}:
-        return "订阅搜索任务已排队"
-    if batch.skipped_count:
-        return "订阅搜索完成，部分任务本轮已跳过"
-    return "订阅搜索完成"
-
-
-def _inline_search_result(total: int, finished: int) -> tuple[str, dict[str, int]]:
-    """返回兼容搜索的真实终态文案与计数。"""
-    text = (
-        "订阅搜索完成"
-        if finished == total
-        else "订阅搜索结束，部分订阅本轮未执行或未完成"
-    )
-    return text, {"total": total, "finished": finished}
-
-
-def _batch_finished_count(
-    batch: Optional[SearchBatchSnapshot],
-    fallback: int,
-) -> int:
-    """返回批次所有终态任务数；批次暂不可读时使用本轮实际完成数。"""
-    if batch is None:
-        return fallback
-    return (
-        batch.finished_count
-        + batch.failed_count
-        + batch.cancelled_count
-        + batch.skipped_count
-    )
 
 
 def _skip_search_task(
@@ -397,7 +358,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
                         )
             self._notify_manual_search(manual, sid, sids, subscribes, processed)
             if progress_callback:
-                text, data = _inline_search_result(total, len(processed))
+                text, data = inline_search_result(total, len(processed))
                 progress_callback(value=100, text=text, data=data)
         finally:
             subscribes.clear()
@@ -442,39 +403,45 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
             coalesced=enqueued.coalesced_count,
         )
         logger.info(summary.start_log())
-        if progress_callback:
-            progress_callback(
-                value=0,
-                text=f"开始订阅搜索，共 {total} 个订阅 ...",
-                data={
-                    "batch_id": enqueued.batch.batch_id,
-                    "total": total,
-                    "finished": 0,
-                    "coalesced": enqueued.coalesced_count,
-                },
+        batch: Optional[SearchBatchSnapshot] = None
+        try:
+            if progress_callback:
+                progress_callback(
+                    value=0,
+                    text=f"开始订阅搜索，共 {total} 个订阅 ...",
+                    data={
+                        "batch_id": enqueued.batch.batch_id,
+                        "total": total,
+                        "finished": 0,
+                        "coalesced": enqueued.coalesced_count,
+                    },
+                )
+            processed = self._drain_search_queue(
+                queue=queue,
+                limit=max(1, enqueued.created_count + enqueued.coalesced_count),
+                progress_callback=progress_callback,
+                summary=summary,
             )
-        processed = self._drain_search_queue(
-            queue=queue,
-            limit=max(1, enqueued.created_count + enqueued.coalesced_count),
-            progress_callback=progress_callback,
-            summary=summary,
-        )
-        processed_subscribes = [item for item in subscribes if item.id in processed]
-        self._notify_manual_search(manual, sid, sids, subscribes, processed_subscribes)
-        batch = queue.get_batch(enqueued.batch.batch_id)
-        if progress_callback:
-            progress_callback(
-                value=100,
-                text=_batch_progress_text(batch),
-                data={
-                    "batch_id": enqueued.batch.batch_id,
-                    "total": total,
-                    "finished": _batch_finished_count(batch, len(processed_subscribes)),
-                    "coalesced": enqueued.coalesced_count,
-                },
-            )
-        logger.info(summary.finish_log(batch))
-        return str(enqueued.batch.batch_id)
+            processed_subscribes = [item for item in subscribes if item.id in processed]
+            self._notify_manual_search(manual, sid, sids, subscribes, processed_subscribes)
+            batch = queue.get_batch(enqueued.batch.batch_id)
+            if progress_callback:
+                progress_callback(
+                    value=100,
+                    text=batch_progress_text(batch),
+                    data={
+                        "batch_id": enqueued.batch.batch_id,
+                        "total": total,
+                        "finished": batch_finished_count(batch, len(processed_subscribes)),
+                        "coalesced": enqueued.coalesced_count,
+                    },
+                )
+            return str(enqueued.batch.batch_id)
+        except Exception:
+            summary.round_failed = True
+            raise
+        finally:
+            logger.info(summary.finish_log(batch))
 
     def _drain_search_queue(
         self,
@@ -722,13 +689,18 @@ class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
             return
         summary = SearchExecutionSummary(source="resume", requested=max(1, limit))
         logger.info(summary.start_log())
-        self._drain_search_queue(
-            queue=queue,
-            limit=max(1, limit),
-            progress_callback=progress_callback,
-            summary=summary,
-        )
-        logger.info(summary.finish_log())
+        try:
+            self._drain_search_queue(
+                queue=queue,
+                limit=max(1, limit),
+                progress_callback=progress_callback,
+                summary=summary,
+            )
+        except Exception:
+            summary.round_failed = True
+            raise
+        finally:
+            logger.info(summary.finish_log())
 
     def cancel_search_batch(self, batch_id: str) -> bool:
         """请求取消持久搜索批次；未注入队列时返回失败。"""

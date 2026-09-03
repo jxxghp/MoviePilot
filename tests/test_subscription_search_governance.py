@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -309,6 +310,46 @@ def test_search_logs_subscription_admission_release_failure(tmp_path, monkeypatc
 
     assert any("订阅准入释放失败: operation=search subscription_id=52" in item for item in error_logs)
     assert "release_failures=1" in info_logs[-1]
+
+
+def test_queued_search_logs_failed_finish_summary_when_callback_raises(tmp_path, monkeypatch):
+    """排队搜索开始后的外围异常仍须输出失败结束摘要。"""
+    chain = _chain(tmp_path, [_subscribe(53)])
+    _make_tasks_ready(monkeypatch)
+    info_logs = []
+    monkeypatch.setattr(subscribe_search.logger, "info", info_logs.append)
+
+    with pytest.raises(RuntimeError, match="callback failed"):
+        chain.search(
+            state="R",
+            progress_callback=Mock(side_effect=RuntimeError("callback failed")),
+        )
+
+    assert len(info_logs) == 2
+    assert info_logs[-1].startswith("订阅治理轮次结束: operation=search ")
+    assert "state=failed" in info_logs[-1]
+    assert "round_failed=1" in info_logs[-1]
+
+
+def test_resume_search_logs_failed_finish_summary_when_drain_raises(tmp_path, monkeypatch):
+    """恢复消费开始后的外围异常仍须输出失败结束摘要。"""
+    chain = _chain(tmp_path, [_subscribe(54)])
+    info_logs = []
+    monkeypatch.setattr(subscribe_search.logger, "info", info_logs.append)
+    monkeypatch.setattr(
+        chain,
+        "_drain_search_queue",
+        Mock(side_effect=RuntimeError("claim failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="claim failed"):
+        chain.resume_search_queue()
+
+    assert len(info_logs) == 2
+    assert info_logs[-1].startswith("订阅治理轮次结束: operation=search ")
+    assert "source=resume" in info_logs[-1]
+    assert "state=failed" in info_logs[-1]
+    assert "round_failed=1" in info_logs[-1]
 
 
 def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp_path, monkeypatch):
