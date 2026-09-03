@@ -88,9 +88,11 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
     ),
     "plugininstance": (
         "Stores one row per shared-source plugin runtime instance: virtual clone descriptors and the host "
-        "plugin's own version binding, plus each instance's log-level override and its expiry.",
-        "Diagnosing clone naming, version binding, or which instance currently overrides the global log level.",
-        "Owned by plugin instance and log-level control APIs; never edit rows directly.",
+        "plugin's own version binding, plus each instance's log-level override and its expiry, plus which "
+        "instance (if any) is the plugin's default call target for unspecified-instance invocations.",
+        "Diagnosing clone naming, version binding, which instance currently overrides the global log level, "
+        "or which instance an unspecified-instance call would resolve to.",
+        "Owned by plugin instance, log-level control, and default-call-target control APIs; never edit rows directly.",
     ),
     "site": (
         "Stores private-tracker URLs, RSS, credentials, rate limits, proxy state, and downloader binding.",

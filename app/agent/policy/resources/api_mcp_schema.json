@@ -8136,6 +8136,82 @@
     },
     {
       "additionalProperties": false,
+      "description": "Clear one plugin instance's default-call-target flag, only if it is the plugin's current default. Method: DELETE. Path: /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target. Effect: reversible_write.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.default_target.clear",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.default_target.clear. Clear one plugin instance's default-call-target flag, only if it is the plugin's current default. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.versions.get.",
+              "title": "Instance Id",
+              "type": "string"
+            },
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id",
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.default_target.clear",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Set one plugin instance as the plugin's default call target, automatically clearing any previous default. Method: PUT. Path: /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target. Effect: reversible_write.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.default_target.set",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.default_target.set. Set one plugin instance as the plugin's default call target, automatically clearing any previous default. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.versions.get.",
+              "title": "Instance Id",
+              "type": "string"
+            },
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id",
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.default_target.set",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "Create one named plugin folder. Method: POST. Path: /api/v1/plugin/folders/{folder_name}. Effect: reversible_write.",
       "properties": {
         "operation_id": {
@@ -14180,6 +14256,8 @@
         "plugin.config.get",
         "plugin.config.update",
         "plugin.data",
+        "plugin.default_target.clear",
+        "plugin.default_target.set",
         "plugin.folder.create",
         "plugin.folder.delete",
         "plugin.folder.plugins.update",

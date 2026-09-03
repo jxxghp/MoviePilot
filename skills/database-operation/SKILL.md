@@ -201,10 +201,10 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Columns: `id`, `transaction_id`, `plugin_id`, `phase`, `membership_before`, `membership_target`, `identity_before_revision`, `identity_target_revision`, `package_existed`, `persistent_backup_existed`, `created_at`, `updated_at`, `schema_version`
 
 ### `plugininstance`
-- Purpose: Stores one row per shared-source plugin runtime instance: virtual clone descriptors and the host plugin's own version binding, plus each instance's log-level override and its expiry.
-- Useful queries: Diagnosing clone naming, version binding, or which instance currently overrides the global log level.
-- Write boundary: Owned by plugin instance and log-level control APIs; never edit rows directly.
-- Columns: `id`, `instance_id`, `source_plugin_id`, `plugin_name`, `plugin_desc`, `plugin_icon`, `mode`, `plugin_version`, `follow_current_version`, `log_level`, `log_expires_at`, `created_at`, `updated_at`
+- Purpose: Stores one row per shared-source plugin runtime instance: virtual clone descriptors and the host plugin's own version binding, plus each instance's log-level override and its expiry, plus which instance (if any) is the plugin's default call target for unspecified-instance invocations.
+- Useful queries: Diagnosing clone naming, version binding, which instance currently overrides the global log level, or which instance an unspecified-instance call would resolve to.
+- Write boundary: Owned by plugin instance, log-level control, and default-call-target control APIs; never edit rows directly.
+- Columns: `id`, `instance_id`, `source_plugin_id`, `plugin_name`, `plugin_desc`, `plugin_icon`, `mode`, `plugin_version`, `follow_current_version`, `log_level`, `log_expires_at`, `is_default_target`, `created_at`, `updated_at`
 
 ### `site`
 - Purpose: Stores private-tracker URLs, RSS, credentials, rate limits, proxy state, and downloader binding.

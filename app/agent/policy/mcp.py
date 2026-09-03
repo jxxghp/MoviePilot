@@ -215,6 +215,8 @@ OPERATION_DESCRIPTIONS = {
     "plugin.loglevel.get": "List one plugin's instances, including its host binding, with each instance's configured and effective log level.",
     "plugin.loglevel.set": "Set one plugin instance's log-level override, taking effect immediately without following the global log level.",
     "plugin.loglevel.clear": "Clear one plugin instance's log-level override so it immediately follows the global log level again.",
+    "plugin.default_target.set": "Set one plugin instance as the plugin's default call target, automatically clearing any previous default.",
+    "plugin.default_target.clear": "Clear one plugin instance's default-call-target flag, only if it is the plugin's current default.",
 }
 
 
@@ -322,6 +324,7 @@ FIELD_DESCRIPTIONS = {
     "include_values": "Return complete setting values instead of discovery summaries.",
     "instance_id": "Exact plugin instance ID returned by plugin.versions.get.",
     "is_active": "Whether the configured site is enabled.",
+    "is_default_target": "Whether this plugin instance is the plugin's default call target, used when a caller does not specify an instance.",
     "jobid": "Exact scheduler job ID returned by scheduler.list.",
     "key": "Optional exact plugin data key used to narrow the returned preview.",
     "keyword": "Case-insensitive substring used to discover settings or filter storage entries.",
