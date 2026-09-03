@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8189,
-  "edge_sha256": "71dc98097c1f01398f133c34b693619dbb68facdd8563c769bb663492778a226",
+  "edge_count": 8187,
+  "edge_sha256": "81e0e03a85694de0f21eee7865d3f1c732db5e39b87fd2c113fc66dc2a95c90c",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1314,8 +1314,6 @@
     "app.agent.api.executor -> app.runtime",
     "app.agent.api.executor -> app.runtime.log",
     "app.agent.api.executor -> app.runtime.settings",
-    "app.agent.api.executor -> app.schemas",
-    "app.agent.api.executor -> app.schemas.types",
     "app.agent.callback -> app.agent",
     "app.agent.callback -> app.agent.policy",
     "app.agent.callback -> app.agent.policy.sanitizer",
