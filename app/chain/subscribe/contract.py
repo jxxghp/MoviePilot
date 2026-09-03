@@ -59,6 +59,7 @@ if TYPE_CHECKING:
         _SubscribeChain__resolve_total_episode_decrease: Callable[..., Any]
         _acquire_run_lock: Callable[..., Any]
         _async_recognize_music_subscribe: Callable[..., Awaitable[Any]]
+        _execute_search_task: Callable[..., Any]
         _get_pending_best_version_episodes: Callable[..., Any]
         _is_episode_range_covered: Callable[..., Any]
         _is_music_download_complete: Callable[..., Any]

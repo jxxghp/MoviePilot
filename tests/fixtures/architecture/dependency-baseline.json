@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8121,
-  "edge_sha256": "2bd9e458b68d93d182b47c91af9afa1b1646b00b03d28a107d1ee9204f703e14",
+  "edge_count": 8127,
+  "edge_sha256": "b355003c1ca55cd75ed454e9fe986dcf37b37078e6583563b41038c62a05c57f",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3599,6 +3599,10 @@
     "app.application.subscription.mutation -> app.schemas",
     "app.application.subscription.mutation -> app.schemas.common",
     "app.application.subscription.mutation -> app.schemas.event",
+    "app.application.subscription.observability -> app.application",
+    "app.application.subscription.observability -> app.application.subscription",
+    "app.application.subscription.observability -> app.application.subscription.execution",
+    "app.application.subscription.observability -> app.application.subscription.sitebudget",
     "app.application.subscription.priority -> app.application",
     "app.application.subscription.priority -> app.application.subscription",
     "app.application.subscription.priority -> app.application.subscription.contract",
@@ -4655,6 +4659,7 @@
     "app.chain.subscribe.match -> app.application.subscription.contract",
     "app.chain.subscribe.match -> app.application.subscription.execution",
     "app.chain.subscribe.match -> app.application.subscription.facts",
+    "app.chain.subscribe.match -> app.application.subscription.observability",
     "app.chain.subscribe.match -> app.application.subscription.sitebudget",
     "app.chain.subscribe.match -> app.application.torrent",
     "app.chain.subscribe.match -> app.application.torrent.download",
@@ -4797,6 +4802,7 @@
     "app.chain.subscribe.search -> app.application.subscription",
     "app.chain.subscribe.search -> app.application.subscription.contract",
     "app.chain.subscribe.search -> app.application.subscription.execution",
+    "app.chain.subscribe.search -> app.application.subscription.observability",
     "app.chain.subscribe.search -> app.application.subscription.query",
     "app.chain.subscribe.search -> app.application.subscription.sitebudget",
     "app.chain.subscribe.search -> app.chain",
@@ -9214,7 +9220,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 967,
+  "module_count": 968,
   "modules": [
     "app",
     "app.adapters",
@@ -9526,6 +9532,7 @@
     "app.application.subscription.facts",
     "app.application.subscription.identity",
     "app.application.subscription.mutation",
+    "app.application.subscription.observability",
     "app.application.subscription.priority",
     "app.application.subscription.query",
     "app.application.subscription.search",
