@@ -20,6 +20,7 @@ class SubscriptionSearchBatch(Base):
     finished_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cancelled_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cancel_requested: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -77,7 +78,7 @@ class SubscriptionSearchTask(Base):
 
 
 class SubscriptionSiteBudget(Base):
-    """记录兜底搜索对单个站点的唯一租约、间隔与错误冷却。"""
+    """记录兜底搜索对单个站点的唯一租约与错误冷却。"""
 
     id = get_id_column()
     site_id: Mapped[int] = mapped_column(Integer, nullable=False)

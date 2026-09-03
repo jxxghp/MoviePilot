@@ -4,13 +4,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
-from app.application.download.admission import SubscriptionDownloadSnapshot
 from app.application.subscription.execution import SearchBatchSnapshot, SearchTaskSnapshot
 
 
 @dataclass(frozen=True, slots=True)
 class SubscriptionExecutionStatus:
-    """一个订阅跨搜索与下载账本合并后的用户可见状态。"""
+    """一个订阅最近搜索任务的用户可见状态。"""
 
     state: str
     phase: str
@@ -21,8 +20,6 @@ class SubscriptionExecutionStatus:
     current_site_id: Optional[int] = None
     error: Optional[str] = None
     can_cancel: bool = False
-    can_retry: bool = False
-    requires_reconciliation: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,23 +41,17 @@ class SubscriptionBatchStatus:
     current_site_id: Optional[int] = None
     error: Optional[str] = None
     can_cancel: bool = False
+    skipped_count: int = 0
 
 
 class SubscriptionExecutionReadRepository(Protocol):
-    """请求级读取搜索任务、批次与下载提交事实的端口。"""
+    """请求级读取搜索任务与批次事实的端口。"""
 
     async def latest_search_tasks(
         self,
         subscription_ids: tuple[int, ...],
     ) -> dict[int, SearchTaskSnapshot]:
         """返回每条订阅最近更新的搜索任务。"""
-        ...
-
-    async def latest_download_submissions(
-        self,
-        subscription_ids: tuple[int, ...],
-    ) -> dict[int, SubscriptionDownloadSnapshot]:
-        """返回每条订阅最近更新的下载提交。"""
         ...
 
     async def list_batches(
@@ -81,16 +72,8 @@ class SubscriptionExecutionReadRepository(Protocol):
 
 
 class SubscriptionExecutionStatusService:
-    """把搜索队列与下载幂等账本投影为稳定业务状态。"""
+    """把搜索队列投影为稳定业务状态。"""
 
-    _DOWNLOAD_STATES = {
-        "submitting": "submitting",
-        "accepted": "accepted",
-        "succeeded": "completed",
-        "retryable": "retryable",
-        "reconcile_required": "reconcile_required",
-        "cancelled": "cancelled",
-    }
     _ACTIVE_STATES = {
         "queued",
         "running",
@@ -99,16 +82,8 @@ class SubscriptionExecutionStatusService:
         "waiting_site_budget",
         "preparing",
         "submitting",
-        "accepted",
         "cancelling",
     }
-    _DOWNLOAD_OVERRIDE_STATES = {
-        "submitting",
-        "accepted",
-        "retryable",
-        "reconcile_required",
-    }
-
     def __init__(
         self,
         repository: SubscriptionExecutionReadRepository,
@@ -133,14 +108,10 @@ class SubscriptionExecutionStatusService:
         if not ids:
             return {}
         tasks = await self._repository.latest_search_tasks(ids)
-        downloads = await self._repository.latest_download_submissions(ids)
         result: dict[int, SubscriptionExecutionStatus] = {}
         for subscription_id in ids:
             task = tasks.get(subscription_id)
-            download = downloads.get(subscription_id)
-            if download and self._download_wins(task, download):
-                result[subscription_id] = self._from_download(download, task)
-            elif task:
+            if task:
                 result[subscription_id] = self._from_task(task)
         return result
 
@@ -176,17 +147,6 @@ class SubscriptionExecutionStatusService:
         return self._from_batch(batch, tasks)
 
     @classmethod
-    def _download_wins(
-        cls,
-        task: Optional[SearchTaskSnapshot],
-        download: SubscriptionDownloadSnapshot,
-    ) -> bool:
-        """下载风险状态优先，其余事实按更新时间选择。"""
-        if download.state in cls._DOWNLOAD_OVERRIDE_STATES:
-            return True
-        return task is None or download.updated_at >= task.updated_at
-
-    @classmethod
     def _from_task(cls, task: SearchTaskSnapshot) -> SubscriptionExecutionStatus:
         """把搜索任务状态归一为稳定业务词汇。"""
         if task.cancel_requested and task.state == "running":
@@ -205,29 +165,6 @@ class SubscriptionExecutionStatusService:
             updated_at=task.updated_at,
             error=cls._safe_error(task.last_error),
             can_cancel=state in cls._ACTIVE_STATES,
-            can_retry=state == "failed",
-        )
-
-    @classmethod
-    def _from_download(
-        cls,
-        download: SubscriptionDownloadSnapshot,
-        task: Optional[SearchTaskSnapshot],
-    ) -> SubscriptionExecutionStatus:
-        """把下载提交账本状态投影为业务状态并保留搜索来源。"""
-        state = cls._DOWNLOAD_STATES.get(download.state, download.state)
-        return SubscriptionExecutionStatus(
-            state=state,
-            phase=state,
-            source=task.source if task else None,
-            batch_id=task.batch_id if task else None,
-            task_id=download.task_id or (task.task_id if task else None),
-            current_site_id=task.current_site_id if task else None,
-            updated_at=download.updated_at,
-            error=cls._safe_error(download.last_error),
-            can_cancel=state == "submitting",
-            can_retry=state == "retryable",
-            requires_reconciliation=state == "reconcile_required",
         )
 
     @classmethod
@@ -240,7 +177,12 @@ class SubscriptionExecutionStatusService:
         current = next((task for task in tasks if task.state == "running"), None)
         if current is None:
             current = next((task for task in tasks if task.state == "queued"), None)
-        processed = batch.finished_count + batch.failed_count + batch.cancelled_count
+        processed = (
+            batch.finished_count
+            + batch.failed_count
+            + batch.cancelled_count
+            + batch.skipped_count
+        )
         phase = current.phase if current else batch.state
         return SubscriptionBatchStatus(
             batch_id=batch.batch_id,
@@ -252,6 +194,7 @@ class SubscriptionExecutionStatusService:
             finished_count=batch.finished_count,
             failed_count=batch.failed_count,
             cancelled_count=batch.cancelled_count,
+            skipped_count=batch.skipped_count,
             current_subscription_id=current.subscription_id if current else None,
             current_site_id=current.current_site_id if current else None,
             created_at=batch.created_at,

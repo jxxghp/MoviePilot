@@ -14,8 +14,10 @@ if TYPE_CHECKING:
     class _SubscribeOwnerHost:
         """声明 SubscribeChain 组合后向各 owner 提供的属性和兄弟职责。"""
 
-        _LOCK_TIMOUT: int
-        _rlock: Any
+        _SUBSCRIPTION_EXECUTION_TTL: int
+        _match_lock: Any
+        _search_queue_lock: Any
+        _subscription_execution_admission: Any
         download_history_repository: Any
         eventmanager: Any
         messagehelper: Any
@@ -98,7 +100,6 @@ if TYPE_CHECKING:
         get_subscribed_sites: Callable[..., Any]
         has_music_subscribe: Callable[..., Any]
         match: Callable[..., Any]
-        match_batch: Callable[..., Any]
         media_exists: Callable[..., Any]
         media_files: Callable[..., Any]
         obtain_images: Callable[..., Any]

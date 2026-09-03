@@ -1,9 +1,99 @@
-"""订阅搜索执行批次、任务与持久队列端口。"""
+"""订阅执行准入、搜索上下文、批次任务与持久队列端口。"""
 
+import threading
+import time
 from dataclasses import dataclass
-from typing import Optional, Protocol
+from typing import Callable, Mapping, Optional, Protocol
+from uuid import uuid4
 
 from app.application.subscription.sitebudget import SiteBudgetClaim
+
+
+@dataclass(frozen=True, slots=True)
+class SubscriptionExecutionLease:
+    """一次订阅执行的进程内所有权及协作截止时间。"""
+
+    subscription_id: int
+    operation: str
+    owner_token: str
+    expires_at: float
+
+
+class SubscriptionExecutionAdmission:
+    """按订阅 ID 控制 Search 与 Match 的进程内互斥。"""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        """保存单调时钟和当前活跃 owner。"""
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._owners: dict[int, SubscriptionExecutionLease] = {}
+
+    def try_acquire(
+        self,
+        *,
+        subscription_id: int,
+        operation: str,
+        ttl_seconds: float,
+    ) -> Optional[SubscriptionExecutionLease]:
+        """无等待取得订阅所有权；已有 owner 时直接返回空。"""
+        with self._lock:
+            if subscription_id in self._owners:
+                return None
+            lease = SubscriptionExecutionLease(
+                subscription_id=subscription_id,
+                operation=operation,
+                owner_token=uuid4().hex,
+                expires_at=self._clock() + max(1.0, ttl_seconds),
+            )
+            self._owners[subscription_id] = lease
+            return lease
+
+    def release(self, lease: SubscriptionExecutionLease) -> bool:
+        """仅允许当前 owner 释放订阅所有权。"""
+        with self._lock:
+            current = self._owners.get(lease.subscription_id)
+            if current is None or current.owner_token != lease.owner_token:
+                return False
+            self._owners.pop(lease.subscription_id)
+            return True
+
+    def is_expired(self, lease: SubscriptionExecutionLease) -> bool:
+        """判断 owner 是否已超过协作执行截止时间。"""
+        return self._clock() >= lease.expires_at
+
+
+@dataclass(slots=True)
+class SubscriptionExecutionContext:
+    """一次订阅执行的显式取消、阶段和副作用边界。"""
+
+    lease: SubscriptionExecutionLease
+    admission: SubscriptionExecutionAdmission
+    task_id: Optional[str] = None
+    cancel_requested: Optional[Callable[[], bool]] = None
+    phase_changed: Optional[Callable[[str, Optional[int]], None]] = None
+    download_started: bool = False
+
+    def is_cancel_requested(self) -> bool:
+        """判断调用入口是否请求在下一个安全边界退出。"""
+        return bool(self.cancel_requested and self.cancel_requested())
+
+    def is_expired(self) -> bool:
+        """判断本次执行是否已经超过协作截止时间。"""
+        return self.admission.is_expired(self.lease)
+
+    def should_stop(self) -> bool:
+        """在安全边界合并用户取消和执行 TTL。"""
+        return self.is_expired() or self.is_cancel_requested()
+
+    def report_phase(self, phase: str, current_site_id: Optional[int] = None) -> None:
+        """向当前搜索任务报告业务阶段。"""
+        if self.phase_changed:
+            self.phase_changed(phase, current_site_id)
+
+    def mark_download_started(self) -> None:
+        """标记执行已越过下载器副作用边界。"""
+        self.download_started = True
+        self.report_phase("submitting")
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +114,7 @@ class SearchBatchSnapshot:
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
     last_error: Optional[str] = None
+    skipped_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,9 +159,9 @@ class SubscriptionSearchRepository(Protocol):
         subscription_ids: tuple[int, ...],
         source: str,
         priority: int,
-        available_at: Optional[str] = None,
+        available_at_by_subscription: Optional[Mapping[int, str]] = None,
     ) -> SearchEnqueueResult:
-        """按订阅 ID 建立批次，在启动抖动后合并活动任务。"""
+        """按订阅 ID 和各自到期时间建立或合并活动任务。"""
         ...
 
     def claim_next(self, *, owner: str, lease_seconds: int = 900) -> Optional[SearchTaskSnapshot]:
@@ -85,7 +176,7 @@ class SubscriptionSearchRepository(Protocol):
         state: str,
         error: Optional[str] = None,
     ) -> bool:
-        """以租约令牌收口任务，并推进所属批次聚合状态。"""
+        """以租约令牌收口任务，并推进所属批次聚合状态（含 skipped）。"""
         ...
 
     def update_task_phase(
@@ -140,5 +231,5 @@ class SubscriptionSearchRepository(Protocol):
         next_allowed_at: str,
         error: Optional[str] = None,
     ) -> bool:
-        """释放站点预算并写入间隔、冷却和恢复状态。"""
+        """释放站点预算并写入错误冷却和恢复状态。"""
         ...

@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.subscription import priority as _priority
-from app.application.subscription.candidates import CandidateBatch
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
@@ -78,21 +77,14 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
                 )
 
         torrents_chain = TorrentsChain()
-        candidate_batch = torrents_chain.refresh_batch(
+        candidates = torrents_chain.refresh(
             sites=sites,
             progress_callback=_update_refresh_progress if progress_callback else None,
             # 存在音乐订阅时额外抓取站点音乐专用入口，音乐不一定在默认种子首页
             include_music=self.has_music_subscribe(),
         )
-        if not isinstance(candidate_batch, CandidateBatch):
-            legacy_candidates = torrents_chain.refresh(
-                sites=sites,
-                progress_callback=_update_refresh_progress if progress_callback else None,
-                include_music=self.has_music_subscribe(),
-            )
-            candidate_batch = CandidateBatch.from_legacy(legacy_candidates or {}, source="refresh")
-        self.match_batch(
-            candidate_batch,
+        self.match(
+            candidates,
             progress_callback=_update_match_progress if progress_callback else None,
         )
         if progress_callback:

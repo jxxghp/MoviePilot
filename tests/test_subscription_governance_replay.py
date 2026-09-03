@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.application.subscription.contract import SubscriptionSnapshot
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.mediaserver import NotExistMediaInfo
@@ -42,10 +42,15 @@ class _ReplaySubscriptionListRepository:
 
     def __init__(self, subscribes: list[SubscriptionSnapshot]) -> None:
         self.subscribes = subscribes
+        self._by_id = {subscribe.id: subscribe for subscribe in subscribes}
 
     def list(self, _state: str = None) -> list[SubscriptionSnapshot]:
         """返回当前批次的全部订阅快照。"""
         return self.subscribes
+
+    def get(self, subscribe_id: int) -> SubscriptionSnapshot | None:
+        """返回取得订阅准入后的最新快照。"""
+        return self._by_id.get(subscribe_id)
 
 
 class _ReplayTorrentHelper:

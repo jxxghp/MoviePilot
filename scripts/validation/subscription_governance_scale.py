@@ -11,36 +11,51 @@ import platform
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, Optional
+from unittest.mock import patch
 
-from sqlalchemy import create_engine, update
+from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.application.download.admission import SubscriptionDownloadRequest  # noqa: E402
+from app.application.site.observation import report_site_search_outcome  # noqa: E402
 from app.application.subscription.candidates import CandidateIndex  # noqa: E402
 from app.application.subscription.contract import SubscriptionSnapshot  # noqa: E402
+from app.application.subscription.execution import SubscriptionExecutionAdmission  # noqa: E402
 from app.application.subscription.facts import FreshFactLease  # noqa: E402
-from app.db.adapters.subscriptiondownload import (  # noqa: E402
-    TransactionalSubscriptionDownloadRepository,
+from app.application.subscription.sitebudget import (  # noqa: E402
+    SubscriptionSiteBudget as SubscriptionSiteBudgetController,
 )
+from app.chain.download import batch as download_batch  # noqa: E402
+from app.chain.download.facade import DownloadChain  # noqa: E402
+from app.chain.search.facade import SearchChain  # noqa: E402
+from app.chain.subscribe import match as subscribe_match  # noqa: E402
+from app.chain.subscribe import policy as subscribe_policy  # noqa: E402
+from app.chain.subscribe.facade import SubscribeChain  # noqa: E402
 from app.db.adapters.subscriptionsearch import (  # noqa: E402
     TransactionalSubscriptionSearchRepository,
 )
 from app.db.base import Base  # noqa: E402
 from app.db.models.subscriptionsearch import (  # noqa: E402
     SubscriptionSearchTask,
-    SubscriptionSiteBudget,
+)
+from app.db.models.subscriptionsearch import (  # noqa: E402
+    SubscriptionSiteBudget as SubscriptionSiteBudgetRecord,
 )
 from app.domain.context import Context, MediaInfo, TorrentInfo  # noqa: E402
 from app.domain.metainfo import MetaInfo  # noqa: E402
+from app.runtime.stop import ProcessStopState  # noqa: E402
+from app.schemas.mediaserver import NotExistMediaInfo  # noqa: E402
 from app.schemas.types import MediaSource, MediaType  # noqa: E402
 
 
@@ -78,10 +93,12 @@ def _git_revision() -> str:
 
 def _context(*, candidate_index: int, media_id: str, site_id: int) -> Context:
     """构造同时携带 canonical 媒体身份和稳定资源身份的候选。"""
-    title = f"Governance Show {media_id} S01E{candidate_index + 1:04d}"
+    title = f"Governance Show {media_id} S01E01"
     meta = MetaInfo(title)
     meta.type = MediaType.TV
     meta.begin_season = 1
+    meta.begin_episode = 1
+    meta.end_episode = None
     meta.media_source = MediaSource.TMDB
     meta.media_id = media_id
     return Context(
@@ -116,6 +133,10 @@ def _subscription(subscription_id: int, media_id: str, site_count: int) -> Subsc
         media_source=MediaSource.TMDB,
         media_id=media_id,
         season=1,
+        total_episode=2,
+        start_episode=1,
+        lack_episode=1 if subscription_id % 2 == 0 else 2,
+        note=[],
         state="R",
         sites=list(range(1, site_count + 1)),
         best_version=0,
@@ -146,8 +167,10 @@ def _baseline_route(
     return routed
 
 
-def _run_match_case(case: ScaleCase) -> dict[str, Any]:
-    """比较完整扫描与无损索引，并记录单轮事实租约和本地等待分位。"""
+def _build_match_inputs(
+    case: ScaleCase,
+) -> tuple[dict[str, list[Context]], list[SubscriptionSnapshot]]:
+    """为索引基线和实际 Match 构造彼此独立的固定输入快照。"""
     candidates = {
         f"site-{site_id}.example": []
         for site_id in range(1, case.site_count + 1)
@@ -170,6 +193,509 @@ def _run_match_case(case: ScaleCase) -> dict[str, Any]:
         )
         for index in range(case.subscription_count)
     ]
+    return candidates, subscribes
+
+
+def _collection_digest(values: list[str]) -> str:
+    """返回保留重复次数的稳定摘要，便于审计完整集合而不膨胀输出。"""
+    payload = "\n".join(sorted(values)).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _compare_collections(expected: set[str], actual: list[str]) -> dict[str, Any]:
+    """比较完整多重集合并保留计数、摘要、重复项和有限差异样本。"""
+    expected_values = sorted(expected)
+    actual_values = sorted(actual)
+    expected_counts = Counter(expected_values)
+    actual_counts = Counter(actual_values)
+    missing = expected_counts - actual_counts
+    unexpected = actual_counts - expected_counts
+    return {
+        "equal": actual_counts == expected_counts,
+        "expected_count": len(expected_values),
+        "actual_count": len(actual_values),
+        "actual_distinct_count": len(actual_counts),
+        "duplicate_count": sum(max(count - 1, 0) for count in actual_counts.values()),
+        "expected_sha256": _collection_digest(expected_values),
+        "actual_sha256": _collection_digest(actual_values),
+        "missing_sample": sorted(missing.elements())[:5],
+        "unexpected_sample": sorted(unexpected.elements())[:5],
+    }
+
+
+class _ScaleSubscriptionRepository:
+    """为实际 Match 提供固定订阅列表和准入后的最新快照。"""
+
+    def __init__(self, subscribes: list[SubscriptionSnapshot]) -> None:
+        self._subscribes = list(subscribes)
+        self._by_id = {subscribe.id: subscribe for subscribe in subscribes}
+
+    def list(self, _state: str) -> list[SubscriptionSnapshot]:
+        """返回固定顺序的完整订阅快照。"""
+        return list(self._subscribes)
+
+    def get(self, subscription_id: int) -> Optional[SubscriptionSnapshot]:
+        """返回准入和提交前复读使用的当前订阅快照。"""
+        return self._by_id.get(subscription_id)
+
+
+class _ScaleSiteRepository:
+    """把受控站点 ID 映射为候选分组域名。"""
+
+    @staticmethod
+    def get_domains_by_ids(site_ids: list[int]) -> list[str]:
+        """返回固定快照内与站点 ID 一一对应的域名。"""
+        return [f"site-{site_id}.example" for site_id in site_ids]
+
+
+class _ScaleTorrentHelper:
+    """隔离实际 Match 的种子属性过滤外部依赖。"""
+
+    @staticmethod
+    def filter_torrent(**_kwargs: Any) -> bool:
+        """固定样本中的候选均通过订阅属性过滤。"""
+        return True
+
+
+_SITE_PRESSURE_SYNC_TIMEOUT = 5.0
+
+
+class _ScaleSiteRequestBoundary:
+    """记录确定性站点请求替身的在途数量和请求结果。"""
+
+    def __init__(self, *, site_id: int) -> None:
+        self.site_id = site_id
+        self._lock = threading.Lock()
+        self._active = 0
+        self._peak = 0
+        self._calls = 0
+        self._outcomes: list[str] = []
+        self._outcome = "success"
+        self._error: Optional[str] = None
+        self._active_at_rejection = 0
+        self.first_started = threading.Event()
+        self.round_observed = threading.Event()
+        self.release_first = threading.Event()
+
+    @property
+    def active(self) -> int:
+        """返回请求边界当前真实在途数量。"""
+        with self._lock:
+            return self._active
+
+    @property
+    def peak(self) -> int:
+        """返回请求边界观测到的最大在途数量。"""
+        with self._lock:
+            return self._peak
+
+    @property
+    def calls(self) -> int:
+        """返回请求边界实际进入次数。"""
+        with self._lock:
+            return self._calls
+
+    @property
+    def outcomes(self) -> tuple[str, ...]:
+        """返回请求边界按进入顺序记录的结果分类。"""
+        with self._lock:
+            return tuple(self._outcomes)
+
+    @property
+    def active_at_rejection(self) -> int:
+        """返回预算拒绝发生时请求边界的在途数量。"""
+        with self._lock:
+            return self._active_at_rejection
+
+    def set_outcome(self, outcome: str, error: Optional[str] = None) -> None:
+        """设置后续确定性请求要发布的站点观察结果。"""
+        with self._lock:
+            self._outcome = outcome
+            self._error = error
+
+    def record_budget_rejection(self) -> None:
+        """记录 wrapper 拒绝时请求边界仍保持在途的事实。"""
+        with self._lock:
+            self._active_at_rejection = max(self._active_at_rejection, self._active)
+        self.round_observed.set()
+
+    def request(self, *, owner: str) -> list[str]:
+        """在真实请求边界更新 active/peak 并返回固定站点结果。"""
+        with self._lock:
+            call_index = self._calls
+            self._calls += 1
+            self._active += 1
+            self._peak = max(self._peak, self._active)
+            outcome = self._outcome
+            error = self._error
+            self._outcomes.append(outcome)
+            first_request = call_index == 0
+            if call_index == 1:
+                self.round_observed.set()
+        if first_request:
+            self.first_started.set()
+            self.release_first.wait(timeout=_SITE_PRESSURE_SYNC_TIMEOUT)
+        try:
+            report_site_search_outcome(
+                attempted=True,
+                outcome=outcome,
+                error=error,
+            )
+            if outcome == "rate_limited":
+                return []
+            return [f"site-{self.site_id}-{owner}-{call_index}"]
+        finally:
+            with self._lock:
+                self._active -= 1
+
+
+def _site_budget_record(
+    engine: Any,
+    site_id: int,
+) -> Optional[SubscriptionSiteBudgetRecord]:
+    """读取站点预算最终记录，核对 observation 是否实际持久化。"""
+    with Session(engine) as session:
+        return session.execute(
+            select(SubscriptionSiteBudgetRecord).where(
+                SubscriptionSiteBudgetRecord.site_id == site_id
+            )
+        ).scalars().first()
+
+
+def _run_site_pressure_case(
+    case: ScaleCase,
+    search: TransactionalSubscriptionSearchRepository,
+    engine: Any,
+) -> dict[str, Any]:
+    """让两个并发 SearchChain owner 通过 wrapper 验证每个站点的容量和冷却。"""
+    site_observations: list[dict[str, Any]] = []
+    duplicate_site_claims_blocked = 0
+    error_cooldown_claims_blocked = 0
+    successful_site_claims_reused = 0
+
+    for site_id in range(1, case.site_count + 1):
+        boundary = _ScaleSiteRequestBoundary(site_id=site_id)
+        pressure_event = boundary.round_observed
+        start_barrier = threading.Barrier(2)
+        owners = ("scale-owner-a", "scale-owner-b")
+        chains: dict[str, SearchChain] = {}
+        owner_failures: dict[str, list[str]] = {owner: [] for owner in owners}
+
+        for owner in owners:
+            controller = SubscriptionSiteBudgetController(
+                repository=search,
+                owner=owner,
+                cancelled=lambda: False,
+                stop_state=ProcessStopState(),
+                lease_seconds=900,
+            )
+            chain = object.__new__(SearchChain)
+            chain.configure_subscription_site_budget(controller)
+            original_record_failure = chain.record_subscription_site_budget_failure
+
+            def record_failure(
+                error: str,
+                *,
+                original=original_record_failure,
+                owner_name=owner,
+            ) -> None:
+                """保留 wrapper 聚合失败并同步压力轮次观测。"""
+                original(error)
+                owner_failures[owner_name].append(error)
+                if "冷却或已有在途搜索" in error:
+                    boundary.record_budget_rejection()
+                    pressure_event.set()
+
+            chain.record_subscription_site_budget_failure = record_failure
+
+            def search_site_torrents(*, _owner=owner, **_kwargs: Any) -> list[str]:
+                """将 SearchChain 的真实站点请求委托给固定边界。"""
+                return boundary.request(owner=_owner)
+
+            chain.search_site_torrents = search_site_torrents
+            chains[owner] = chain
+
+        owner_results: dict[str, list[str]] = {}
+        owner_errors: dict[str, str] = {}
+        owner_invocations: dict[str, int] = {owner: 0 for owner in owners}
+        result_lock = threading.Lock()
+
+        def run_owner(owner: str) -> None:
+            """同步启动一个 owner，并保存 wrapper 的结果或异常。"""
+            try:
+                start_barrier.wait(timeout=_SITE_PRESSURE_SYNC_TIMEOUT)
+                with result_lock:
+                    owner_invocations[owner] += 1
+                result = chains[owner]._search_site_torrents_with_budget(  # pylint: disable=protected-access
+                    site={"id": site_id, "name": f"Site {site_id}"},
+                    keyword="governance-pressure",
+                    mtype=None,
+                    page=0,
+                )
+                with result_lock:
+                    owner_results[owner] = result
+            except Exception as error:  # noqa: BLE001
+                with result_lock:
+                    owner_errors[owner] = str(error)
+
+        threads = [
+            threading.Thread(target=run_owner, args=(owner,), daemon=True)
+            for owner in owners
+        ]
+        for thread in threads:
+            thread.start()
+        first_request_started = boundary.first_started.wait(
+            timeout=_SITE_PRESSURE_SYNC_TIMEOUT,
+        )
+        contention_observed = pressure_event.wait(timeout=_SITE_PRESSURE_SYNC_TIMEOUT)
+        boundary.release_first.set()
+        for thread in threads:
+            thread.join(timeout=_SITE_PRESSURE_SYNC_TIMEOUT)
+        owners_finished = all(not thread.is_alive() for thread in threads)
+
+        initial_failures = [
+            error
+            for owner in owners
+            for error in owner_failures[owner]
+            if "冷却或已有在途搜索" in error
+        ]
+        successful_owners = [
+            owner
+            for owner in owners
+            if owner in owner_results and owner_results[owner]
+        ]
+        blocked_owners = [
+            owner
+            for owner in owners
+            if owner in owner_results
+            and not owner_results[owner]
+            and any(
+                "冷却或已有在途搜索" in error
+                for error in owner_failures[owner]
+            )
+        ]
+        successful_owner = successful_owners[0] if len(successful_owners) == 1 else None
+        blocked_owner = blocked_owners[0] if len(blocked_owners) == 1 else None
+        initial_pressure_valid = bool(
+            first_request_started
+            and contention_observed
+            and boundary.active_at_rejection == 1
+            and boundary.peak == 1
+            and boundary.active == 0
+            and len(initial_failures) == 1
+            and len(successful_owners) == 1
+            and len(blocked_owners) == 1
+            and all(count == 1 for count in owner_invocations.values())
+            and owners_finished
+            and set(owner_results) == set(owners)
+            and not owner_errors
+        )
+
+        success_reused = False
+        error_observed = False
+        error_cooldown_blocked = False
+        error_cooldown_persisted = False
+        reuse_calls = 0
+        error_calls = 0
+        cooldown_calls = 0
+        if successful_owner and blocked_owner:
+            winner = chains[successful_owner]
+            loser = chains[blocked_owner]
+            winner.consume_subscription_site_budget_failures()
+            loser.consume_subscription_site_budget_failures()
+
+            if site_id != case.site_count:
+                boundary.set_outcome("success")
+                calls_before_reuse = boundary.calls
+                reused = winner._search_site_torrents_with_budget(  # pylint: disable=protected-access
+                    site={"id": site_id, "name": f"Site {site_id}"},
+                    keyword="governance-pressure-reuse",
+                    mtype=None,
+                    page=0,
+                )
+                reuse_calls = boundary.calls - calls_before_reuse
+                reuse_record = _site_budget_record(engine, site_id)
+                success_reused = bool(
+                    reused
+                    and reuse_calls == 1
+                    and boundary.active == 0
+                    and reuse_record
+                    and reuse_record.last_outcome == "success"
+                    and reuse_record.lease_token is None
+                )
+                winner.consume_subscription_site_budget_failures()
+
+            if site_id == case.site_count:
+                boundary.set_outcome("rate_limited", error="HTTP 429")
+                calls_before_error = boundary.calls
+                error_result = winner._search_site_torrents_with_budget(  # pylint: disable=protected-access
+                    site={"id": site_id, "name": f"Site {site_id}"},
+                    keyword="governance-pressure-error",
+                    mtype=None,
+                    page=0,
+                )
+                error_calls = boundary.calls - calls_before_error
+                error_record = _site_budget_record(engine, site_id)
+                error_observed = bool(
+                    not error_result
+                    and error_calls == 1
+                    and boundary.active == 0
+                    and boundary.outcomes[-1:] == ("rate_limited",)
+                )
+                winner.consume_subscription_site_budget_failures()
+
+                calls_before_cooldown = boundary.calls
+                cooldown_result = loser._search_site_torrents_with_budget(  # pylint: disable=protected-access
+                    site={"id": site_id, "name": f"Site {site_id}"},
+                    keyword="governance-pressure-cooldown",
+                    mtype=None,
+                    page=0,
+                )
+                cooldown_calls = boundary.calls - calls_before_cooldown
+                cooldown_failures = loser.consume_subscription_site_budget_failures()
+                error_cooldown_blocked = bool(
+                    not cooldown_result
+                    and cooldown_calls == 0
+                    and cooldown_failures
+                )
+                error_cooldown_persisted = bool(
+                    error_record
+                    and error_record.last_outcome == "rate_limited"
+                    and error_record.lease_token is None
+                    and error_record.next_allowed_at
+                    > datetime.now(timezone.utc).isoformat(timespec="seconds")
+                )
+
+        site_pressure_valid = bool(
+            initial_pressure_valid
+            and (
+                success_reused
+                if site_id != case.site_count
+                else error_observed
+                and error_cooldown_blocked
+                and error_cooldown_persisted
+            )
+        )
+        duplicate_site_claims_blocked += len(initial_failures)
+        successful_site_claims_reused += int(success_reused)
+        error_cooldown_claims_blocked += int(error_cooldown_blocked)
+        site_observations.append(
+            {
+                "site_id": site_id,
+                "owner_count": len(owners),
+                "owner_invocations": sum(owner_invocations.values()),
+                "owners_finished": owners_finished,
+                "request_active": boundary.active,
+                "request_peak": boundary.peak,
+                "request_calls": boundary.calls,
+                "request_active_at_rejection": boundary.active_at_rejection,
+                "budget_rejections": len(initial_failures),
+                "success_reused": success_reused,
+                "error_observed": error_observed,
+                "error_cooldown_blocked": error_cooldown_blocked,
+                "error_cooldown_persisted": error_cooldown_persisted,
+                "reuse_calls": reuse_calls,
+                "error_calls": error_calls,
+                "cooldown_calls": cooldown_calls,
+                "pressure_valid": site_pressure_valid,
+            }
+        )
+
+    peaks = [item["request_peak"] for item in site_observations]
+    return {
+        "site_peak_inflight_per_site": max(peaks, default=0),
+        "site_request_boundary_active": max(
+            (item["request_active"] for item in site_observations),
+            default=0,
+        ),
+        "site_request_boundary_peak": max(peaks, default=0),
+        "site_request_boundary_calls": sum(
+            item["request_calls"] for item in site_observations
+        ),
+        "site_pressure_owner_count": 2,
+        "site_pressure_concurrency_verified": all(
+            item["owner_count"] == 2
+            and item["owner_invocations"] == 2
+            and item["owners_finished"]
+            and item["request_active_at_rejection"] == 1
+            for item in site_observations
+        ),
+        "site_pressure_success_release_reused": successful_site_claims_reused
+        == max(0, case.site_count - 1),
+        "site_pressure_error_observation_cooled": (
+            error_cooldown_claims_blocked == 1
+            and bool(site_observations)
+            and site_observations[-1]["error_observed"]
+            and site_observations[-1]["error_cooldown_persisted"]
+        ),
+        "site_pressure_valid": all(
+            item["pressure_valid"] for item in site_observations
+        ),
+        "site_observations": site_observations,
+        "duplicate_site_claims_blocked": duplicate_site_claims_blocked,
+        "error_cooldown_claims_blocked": error_cooldown_claims_blocked,
+        "successful_site_claims_reused": successful_site_claims_reused,
+    }
+
+
+class _ScaleDownloadBoundary(DownloadChain):
+    """运行 canonical 批量选择，并在实际下载器边界返回确定性成功。"""
+
+    def __init__(self, matched: list[str], downloaded: list[str]) -> None:
+        self._matched = matched
+        self._downloaded = downloaded
+        self._subscription_id = 0
+
+    @staticmethod
+    def _prepare_batch_download_contexts(
+        *,
+        contexts: list[Context],
+        **_kwargs: Any,
+    ) -> tuple[list[Context], dict[str, Any]]:
+        """固定快照保持候选顺序且不读取历史失败冷却。"""
+        return contexts, {}
+
+    def batch_download(
+        self,
+        *,
+        contexts: list[Context],
+        no_exists: dict[Any, dict[int, NotExistMediaInfo]],
+        source: str,
+        governance: Any,
+        **_kwargs: Any,
+    ) -> tuple[list[Context], dict[Any, dict[int, NotExistMediaInfo]]]:
+        """记录 Match 提交集合后运行真实批量候选选择。"""
+        source_data = json.loads(source.removeprefix("Subscribe|"))
+        self._subscription_id = int(source_data["id"])
+        for context in contexts:
+            self._matched.append(f"{self._subscription_id}|{_candidate_key(context)}")
+        return super().batch_download(
+            contexts=contexts,
+            no_exists=no_exists,
+            source=source,
+            governance=governance,
+            **_kwargs,
+        )
+
+    def download_single(
+        self,
+        context: Context,
+        *,
+        governance: Any,
+        **_kwargs: Any,
+    ) -> str:
+        """模拟下载器明确成功，并记录 canonical 选择出的资源。"""
+        if governance.cancelled and governance.cancelled():
+            raise AssertionError("固定快照执行不应在下载前取消")
+        if governance.mark_started:
+            governance.mark_started()
+        self._downloaded.append(f"{self._subscription_id}|{_candidate_key(context)}")
+        return f"scale-download-{self._subscription_id}"
+
+
+def _run_match_case(case: ScaleCase) -> dict[str, Any]:
+    """比较完整扫描与无损索引，并记录单轮事实租约和本地等待分位。"""
+    candidates, subscribes = _build_match_inputs(case)
 
     index = CandidateIndex(candidates)
     baseline_comparisons = case.subscription_count * case.candidate_count
@@ -226,23 +752,199 @@ def _run_match_case(case: ScaleCase) -> dict[str, Any]:
     }
 
 
-def _download_request(*, key: str, subscription_id: int, task_id: str) -> SubscriptionDownloadRequest:
-    """构造两个订阅记录共享的规范下载意图。"""
-    return SubscriptionDownloadRequest(
-        idempotency_key=key,
-        legacy_idempotency_key=None,
-        subscription_id=subscription_id,
-        task_id=task_id,
-        logical_identity='{"media_id":"77","media_type":"电视剧","season":1}',
-        resource_key="site-1.example:torrent-77",
-        coverage="episodes:E01-E03",
-        mode="normal",
-        delivery_scope='{"download_uri":"local:/downloads","downloader":"auto"}',
+def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
+    """运行实际 SubscribeChain Match 并对照四类完整业务集合。"""
+    candidates, subscribes = _build_match_inputs(case)
+    expected_matched: set[str] = set()
+    expected_downloaded: set[str] = set()
+    expected_missing = {
+        f"{subscribe.id}|2"
+        for subscribe in subscribes
+        if subscribe.id % 2 == 1
+    }
+    expected_completed = {
+        str(subscribe.id)
+        for subscribe in subscribes
+        if subscribe.id % 2 == 0
+    }
+    for subscribe in subscribes:
+        routed = _baseline_route(candidates, subscribe)
+        expected_matched.update(
+            f"{subscribe.id}|{candidate_key}"
+            for candidate_key in routed
+        )
+        expected_downloaded.add(f"{subscribe.id}|{routed[0]}")
+
+    actual_matched: list[str] = []
+    actual_downloaded: list[str] = []
+    actual_missing: list[str] = []
+    actual_completed: list[str] = []
+    settlement_ms: list[float] = []
+    recognition_calls = 0
+    progress_snapshots: list[dict[str, int]] = []
+    started = time.perf_counter()
+
+    class _ScaleMediaChain:
+        """用固定新鲜媒体事实替代目标规模下的真实 TMDB 请求。"""
+
+        def recognize_media(self, **kwargs: Any) -> MediaInfo:
+            """按订阅身份返回两集电视剧的新鲜事实。"""
+            nonlocal recognition_calls
+            recognition_calls += 1
+            media_id = str(kwargs["media_id"])
+            return MediaInfo(
+                media_source=kwargs["media_source"],
+                media_id=media_id,
+                type=MediaType.TV,
+                title=f"Governance Show {media_id}",
+                year="2026",
+                season=1,
+                seasons={1: [1, 2]},
+            )
+
+        @staticmethod
+        def recognize_by_meta(*_args: Any, **_kwargs: Any) -> MediaInfo:
+            """明确身份候选不应进入二次识别。"""
+            raise AssertionError("明确身份候选不应重新识别")
+
+        @staticmethod
+        def supplement_media_info(mediainfo: MediaInfo) -> MediaInfo:
+            """固定样本无需访问其他元数据来源。"""
+            return mediainfo
+
+    chain = object.__new__(SubscribeChain)
+    chain.subscription_repository = _ScaleSubscriptionRepository(subscribes)
+    chain.site_repository = _ScaleSiteRepository()
+    chain._match_lock = threading.Lock()
+    chain._search_queue_lock = threading.Lock()
+    chain._subscription_execution_admission = SubscriptionExecutionAdmission()
+    chain.get_sub_sites = lambda subscribe: list(subscribe.sites or [])
+    chain.get_params = lambda _subscribe: {}
+    chain.filter_torrents = lambda *, torrent_list, **_kwargs: torrent_list
+
+    initial_missing = {
+        subscribe.id: [1] if subscribe.id % 2 == 0 else [1, 2]
+        for subscribe in subscribes
+    }
+
+    def check_existing(
+        *,
+        subscribe: SubscriptionSnapshot,
+        mediakey: Any,
+        **_kwargs: Any,
+    ) -> tuple[bool, dict[Any, dict[int, NotExistMediaInfo]]]:
+        """返回每条订阅固定的初始缺集快照。"""
+        return False, {
+            mediakey: {
+                1: NotExistMediaInfo(
+                    season=1,
+                    episodes=list(initial_missing[subscribe.id]),
+                    total_episode=2,
+                    start_episode=1,
+                )
+            }
+        }
+
+    def record_download_facts(
+        subscribe: SubscriptionSnapshot,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        """让完成判断消费下载边界结果，不引入持久化测试替身。"""
+        return {
+            "episodes": [1],
+            "fields": [],
+            "updated": False,
+            "subscribe": subscribe,
+        }
+
+    def record_missing(
+        *,
+        no_exists: dict[Any, dict[int, NotExistMediaInfo]],
+        subscribe: SubscriptionSnapshot,
+        **_kwargs: Any,
+    ) -> None:
+        """记录实际完成判断收到的剩余缺集集合。"""
+        for seasons in no_exists.values():
+            for missing in seasons.values():
+                actual_missing.extend(
+                    f"{subscribe.id}|{episode}"
+                    for episode in missing.episodes or []
+                )
+
+    chain.check_and_handle_existing_media = check_existing
+    chain._SubscribeChain__record_subscribe_download_facts = record_download_facts
+    chain._SubscribeChain__refresh_subscribe_progress_with_no_exists = record_missing
+    chain._SubscribeChain__finish_subscribe = (
+        lambda *, subscribe, **_kwargs: actual_completed.append(str(subscribe.id))
     )
+    original_finish = chain.finish_subscribe_or_not
+
+    def finish_and_record(**kwargs: Any) -> None:
+        """运行 canonical 完成判断并记录每条订阅收口时间。"""
+        original_finish(**kwargs)
+        settlement_ms.append((time.perf_counter() - started) * 1000)
+
+    chain.finish_subscribe_or_not = finish_and_record
+    download_boundary = _ScaleDownloadBoundary(actual_matched, actual_downloaded)
+
+    def record_progress(**kwargs: Any) -> None:
+        """保存 Match 对外发布的真实批次聚合状态。"""
+        if kwargs.get("data"):
+            progress_snapshots.append(dict(kwargs["data"]))
+
+    with (
+        patch.object(subscribe_match, "MediaChain", _ScaleMediaChain),
+        patch.object(subscribe_match, "TorrentHelper", _ScaleTorrentHelper),
+        patch.object(
+            subscribe_match,
+            "get_configured_system_config",
+            return_value=SimpleNamespace(get=lambda _key: []),
+        ),
+        patch.object(
+            subscribe_match,
+            "runtime_stop_state",
+            SimpleNamespace(is_system_stopped=False),
+        ),
+        patch.object(
+            download_batch,
+            "runtime_stop_state",
+            SimpleNamespace(is_system_stopped=False),
+        ),
+        patch.object(
+            subscribe_policy,
+            "DownloadChain",
+            return_value=download_boundary,
+        ),
+    ):
+        chain.match(candidates, progress_callback=record_progress)
+
+    final_progress = progress_snapshots[-1]
+    return {
+        "name": case.name,
+        "subscription_count": case.subscription_count,
+        "site_count": case.site_count,
+        "candidate_count": case.candidate_count,
+        "matched_candidates": _compare_collections(expected_matched, actual_matched),
+        "downloaded_candidates": _compare_collections(expected_downloaded, actual_downloaded),
+        "remaining_missing_episodes": _compare_collections(expected_missing, actual_missing),
+        "completed_subscriptions": _compare_collections(expected_completed, actual_completed),
+        "fresh_fact_loads": recognition_calls,
+        "match_execution_completed": final_progress == {
+            "total": case.subscription_count,
+            "finished": case.subscription_count,
+            "completed": case.subscription_count,
+            "skipped": 0,
+            "failed": 0,
+        },
+        "first_settlement_local_ms": round(settlement_ms[0], 3),
+        "subscription_settlement_local_p50_ms": _percentile(settlement_ms, 50),
+        "subscription_settlement_local_p95_ms": _percentile(settlement_ms, 95),
+        "batch_local_ms": round((time.perf_counter() - started) * 1000, 3),
+    }
 
 
 def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
-    """验证持久队列、站点预算、恢复、取消与跨记录下载幂等。"""
+    """验证持久队列、站点预算、恢复、取消与订阅级准入。"""
     engine = create_engine(
         f"sqlite:///{workdir / (case.name + '.db')}",
         connect_args={"check_same_thread": False},
@@ -250,7 +952,6 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
     search = TransactionalSubscriptionSearchRepository(factory)
-    download = TransactionalSubscriptionDownloadRepository(factory)
 
     started = time.perf_counter()
     enqueued = search.enqueue(
@@ -327,42 +1028,7 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
     )
     cancelled_batch = search.get_batch(cancellation.batch.batch_id)
 
-    now = datetime.now(timezone.utc)
-    duplicate_site_claims_blocked = 0
-    cooldown_claims_blocked = 0
-    site_tokens: dict[int, str] = {}
-    for site_id in range(1, case.site_count + 1):
-        claim = search.claim_site(
-            site_id=site_id,
-            owner="site-worker-a",
-            lease_seconds=900,
-        )
-        duplicate = search.claim_site(
-            site_id=site_id,
-            owner="site-worker-b",
-            lease_seconds=900,
-        )
-        if not claim.acquired or not claim.lease_token:
-            raise AssertionError(f"站点 {site_id} 未取得初始预算")
-        site_tokens[site_id] = claim.lease_token
-        duplicate_site_claims_blocked += int(not duplicate.acquired)
-    for site_id, lease_token in site_tokens.items():
-        outcome = "rate_limited" if site_id == case.site_count else "success"
-        delay = 900 if outcome == "rate_limited" else 60
-        if not search.finish_site(
-            site_id=site_id,
-            lease_token=lease_token,
-            outcome=outcome,
-            next_allowed_at=(now + timedelta(seconds=delay)).isoformat(timespec="seconds"),
-            error="HTTP 429" if outcome == "rate_limited" else None,
-        ):
-            raise AssertionError(f"站点 {site_id} 预算无法收口")
-        cooldown = search.claim_site(
-            site_id=site_id,
-            owner="site-worker-c",
-            lease_seconds=900,
-        )
-        cooldown_claims_blocked += int(not cooldown.acquired)
+    site_pressure = _run_site_pressure_case(case, search, engine)
 
     recovery_site = case.site_count + 1
     site_first = search.claim_site(
@@ -372,8 +1038,8 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
     )
     with Session(engine) as session:
         session.execute(
-            update(SubscriptionSiteBudget)
-            .where(SubscriptionSiteBudget.site_id == recovery_site)
+            update(SubscriptionSiteBudgetRecord)
+            .where(SubscriptionSiteBudgetRecord.site_id == recovery_site)
             .values(lease_expires_at=expired_at)
         )
         session.commit()
@@ -388,51 +1054,38 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
         and site_recovered_claim.lease_token != site_first.lease_token
     )
 
-    key = hashlib.sha256(f"{case.name}:shared-download".encode()).hexdigest()
-    first_download = download.claim(
-        _download_request(key=key, subscription_id=1, task_id="download-task-a")
+    admission = SubscriptionExecutionAdmission()
+    leases = [
+        admission.try_acquire(
+            subscription_id=subscription_id,
+            operation="search",
+            ttl_seconds=60,
+        )
+        for subscription_id in range(1, case.subscription_count + 1)
+    ]
+    acquired_leases = [lease for lease in leases if lease is not None]
+    same_subscription_conflicts_blocked = sum(
+        admission.try_acquire(
+            subscription_id=subscription_id,
+            operation="match",
+            ttl_seconds=60,
+        ) is None
+        for subscription_id in range(1, case.subscription_count + 1)
     )
-    external_submissions = int(first_download.acquired)
-    first_token = first_download.snapshot.attempt_token or ""
-    if first_download.acquired:
-        download.mark_accepted(
-            idempotency_key=key,
-            attempt_token=first_token,
-            downloader="qb",
-            download_hash="hash-77",
+    initial_release_count = sum(admission.release(lease) for lease in acquired_leases)
+    reacquired_leases = [
+        admission.try_acquire(
+            subscription_id=subscription_id,
+            operation="match",
+            ttl_seconds=60,
         )
-        download.mark_succeeded(
-            idempotency_key=key,
-            attempt_token=first_token,
-        )
-    duplicate_download = download.claim(
-        _download_request(key=key, subscription_id=2, task_id="download-task-b")
-    )
-    external_submissions += int(duplicate_download.acquired)
-
-    uncertain_key = hashlib.sha256(f"{case.name}:uncertain-download".encode()).hexdigest()
-    uncertain = download.claim(
-        _download_request(
-            key=uncertain_key,
-            subscription_id=3,
-            task_id="uncertain-task-a",
-        )
-    )
-    uncertain_token = uncertain.snapshot.attempt_token or ""
-    uncertain_frozen = bool(
-        uncertain.acquired
-        and download.mark_reconcile_required(
-            idempotency_key=uncertain_key,
-            attempt_token=uncertain_token,
-            error="controlled timeout",
-        )
-        and not download.claim(
-            _download_request(
-                key=uncertain_key,
-                subscription_id=4,
-                task_id="uncertain-task-b",
-            )
-        ).acquired
+        for subscription_id in range(1, case.subscription_count + 1)
+    ]
+    reacquired_count = sum(lease is not None for lease in reacquired_leases)
+    final_release_count = sum(
+        admission.release(lease)
+        for lease in reacquired_leases
+        if lease is not None
     )
 
     return {
@@ -452,18 +1105,13 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
         "cancelled_batch_state": cancelled_batch.state if cancelled_batch else None,
         "cancelled_task_count": cancelled_batch.cancelled_count if cancelled_batch else 0,
         "site_count": case.site_count,
-        "site_peak_inflight_per_site": 1,
-        "duplicate_site_claims_blocked": duplicate_site_claims_blocked,
-        "cooldown_claims_blocked": cooldown_claims_blocked,
+        **site_pressure,
         "site_recovered_after_lease_expiry": site_recovered,
-        "external_download_submissions": external_submissions,
-        "duplicate_download_submissions": max(0, external_submissions - 1),
-        "duplicate_download_reused_success": bool(
-            not duplicate_download.acquired
-            and duplicate_download.snapshot.state == "succeeded"
-            and duplicate_download.snapshot.download_hash == "hash-77"
-        ),
-        "uncertain_download_frozen": uncertain_frozen,
+        "subscription_leases_acquired": len(acquired_leases),
+        "same_subscription_conflicts_blocked": same_subscription_conflicts_blocked,
+        "subscription_leases_released": initial_release_count,
+        "subscription_leases_reacquired": reacquired_count,
+        "reacquired_subscription_leases_released": final_release_count,
     }
 
 
@@ -474,6 +1122,7 @@ def run_acceptance() -> dict[str, Any]:
         ScaleCase("large", 200, 20, 1200, 100),
     )
     match_cases = [_run_match_case(case) for case in cases]
+    match_execution_cases = [_run_match_execution_case(case) for case in cases]
     with tempfile.TemporaryDirectory(prefix="subscription-governance-") as directory:
         durable_cases = [
             _run_durable_governance(case, Path(directory))
@@ -489,6 +1138,30 @@ def run_acceptance() -> dict[str, Any]:
         "fresh_facts_bounded_by_unique_media": all(
             case["fact_loads"] == case["media_count"]
             for case in match_cases
+        ),
+        "match_execution_candidate_sets_equal": all(
+            case["matched_candidates"]["equal"]
+            for case in match_execution_cases
+        ),
+        "match_execution_download_sets_equal": all(
+            case["downloaded_candidates"]["equal"]
+            for case in match_execution_cases
+        ),
+        "match_execution_missing_sets_equal": all(
+            case["remaining_missing_episodes"]["equal"]
+            for case in match_execution_cases
+        ),
+        "match_execution_completion_sets_equal": all(
+            case["completed_subscriptions"]["equal"]
+            for case in match_execution_cases
+        ),
+        "match_execution_batches_completed": all(
+            case["match_execution_completed"]
+            for case in match_execution_cases
+        ),
+        "match_execution_fresh_facts_bounded": all(
+            case["fresh_fact_loads"] == match_case["media_count"]
+            for case, match_case in zip(match_execution_cases, match_cases)
         ),
         "queue_completed": all(
             case["queue_state"] == "completed"
@@ -511,20 +1184,33 @@ def run_acceptance() -> dict[str, Any]:
         ),
         "site_pressure_bounded": all(
             case["site_peak_inflight_per_site"] == 1
+            and case["site_request_boundary_peak"] == 1
+            and case["site_request_boundary_active"] == 0
             and case["duplicate_site_claims_blocked"] == case["site_count"]
-            and case["cooldown_claims_blocked"] == case["site_count"]
+            and case["error_cooldown_claims_blocked"] == 1
+            and case["successful_site_claims_reused"] == case["site_count"] - 1
+            and case["site_pressure_concurrency_verified"]
+            and case["site_pressure_success_release_reused"]
+            and case["site_pressure_error_observation_cooled"]
+            and case["site_pressure_valid"]
             for case in durable_cases
         ),
-        "download_idempotent": all(
-            case["external_download_submissions"] == 1
-            and case["duplicate_download_submissions"] == 0
-            and case["duplicate_download_reused_success"]
-            and case["uncertain_download_frozen"]
+        "subscription_admission_serializes": all(
+            case["subscription_leases_acquired"]
+            == next(item.subscription_count for item in cases if item.name == case["name"])
+            and case["same_subscription_conflicts_blocked"]
+            == next(item.subscription_count for item in cases if item.name == case["name"])
+            and case["subscription_leases_released"]
+            == next(item.subscription_count for item in cases if item.name == case["name"])
+            and case["subscription_leases_reacquired"]
+            == next(item.subscription_count for item in cases if item.name == case["name"])
+            and case["reacquired_subscription_leases_released"]
+            == next(item.subscription_count for item in cases if item.name == case["name"])
             for case in durable_cases
         ),
     }
     return {
-        "schema_version": 1,
+        "schema_version": 4,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "revision": _git_revision(),
         "environment": {
@@ -534,11 +1220,33 @@ def run_acceptance() -> dict[str, Any]:
             "external_requests": 0,
             "external_downloads": 0,
         },
-        "method": (
-            "Deterministic local controlled sample. Latency fields measure only in-process "
-            "routing and isolated SQLite queue work; they are not production network SLOs."
-        ),
+        "method": {
+            "sample": "Deterministic local controlled snapshot",
+            "match_entrypoint": "SubscribeChain.match",
+            "download_selection": "DownloadChain.batch_download",
+            "fixed_external_boundaries": [
+                "TMDB",
+                "media_server",
+                "downloader",
+            ],
+            "fixed_persistence_boundaries": [
+                "subscription_repository",
+                "download_facts",
+                "subscription_progress",
+                "completion_side_effects",
+            ],
+            "fixed_policy_inputs": [
+                "site_mapping",
+                "system_configuration",
+                "subscription_filters",
+                "torrent_attribute_filter",
+                "download_preparation",
+            ],
+            "latency_scope": "in-process Match and isolated SQLite queue work",
+            "production_network_slo": False,
+        },
         "match_cases": match_cases,
+        "match_execution_cases": match_execution_cases,
         "durable_cases": durable_cases,
         "gates": gates,
         "passed": all(gates.values()),
@@ -547,7 +1255,13 @@ def run_acceptance() -> dict[str, Any]:
 
 def main() -> int:
     """解析输出路径，运行门禁并以进程状态反映验收结果。"""
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=(
+            "运行 100/10/1000 与 200/20/1200 两档离线订阅治理验收；"
+            "结果仅代表固定输入下的本地 Match、下载选择和隔离 SQLite，"
+            "不代表生产网络 SLO。"
+        )
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     result = run_acceptance()

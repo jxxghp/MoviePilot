@@ -1,15 +1,18 @@
 import copy
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
 
 from app.application.configuration import get_configured_system_config
+from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.subscription.contract import (
     SubscriptionRepository,
     SubscriptionSnapshot,
     build_subscribe_meta,
     subscribe_media_key,
 )
+from app.application.subscription.execution import SubscriptionExecutionContext
 from app.application.subscription.mutation import SubscriptionActor
+from app.application.subscription.sitebudget import SubscriptionSearchCancelled
 from app.application.torrent.download import TorrentHelper
 from app.chain._contracts import MusicSubscribeMixinHost
 from app.chain.download import DownloadChain
@@ -44,6 +47,9 @@ class MusicSubscribeMixin:
     __mixin_host_protocol__ = MusicSubscribeMixinHost
     subscription_repository: SubscriptionRepository
     sync_subscription_mutation_scope: "SyncSubscriptionMutationScope"
+    _SubscribeChain__candidate_contract_changed: Callable[
+        [SubscriptionSnapshot, SubscriptionSnapshot], bool
+    ]
     """
     音乐订阅功能域 mixin：单曲/专辑目标识别、实体快照同步、候选筛选、
     择优下载与完成推进。
@@ -348,10 +354,32 @@ class MusicSubscribeMixin:
             subscribe: SubscriptionSnapshot,
             mediainfo: MusicInfo,
             contexts: List[Context],
+            execution_context: Optional[SubscriptionExecutionContext] = None,
     ) -> None:
         """批量择优下载音乐候选，并按单曲或整专完成语义推进订阅。"""
         if not contexts:
             return
+        self._ensure_music_execution_active(execution_context)
+        repository = self.subscription_repository
+        current_subscribe = repository.get(subscribe.id)
+        if current_subscribe is None:
+            logger.info(f"音乐订阅 {subscribe.id} 已删除，放弃本轮下载提交")
+            return
+        if current_subscribe.state == "S":
+            logger.info(f"音乐订阅 {current_subscribe.name} 已暂停，放弃本轮下载提交")
+            return
+        if self._SubscribeChain__candidate_contract_changed(subscribe, current_subscribe):
+            logger.info(f"音乐订阅 {current_subscribe.name} 的筛选或媒体身份已变化，放弃旧候选并等待下一轮")
+            return
+        subscribe = current_subscribe
+        governance = None
+        if execution_context:
+            governance = SubscriptionDownloadGovernance(
+                cancelled=execution_context.should_stop,
+                mark_started=execution_context.mark_download_started,
+            )
+            execution_context.report_phase("preparing")
+        self._ensure_music_execution_active(execution_context)
         downloads, _ = DownloadChain().batch_download(
             contexts=contexts,
             username=subscribe.username,
@@ -359,6 +387,7 @@ class MusicSubscribeMixin:
             downloader=subscribe.downloader,
             source=self.get_subscribe_source_keyword(subscribe),
             custom_words=subscribe.custom_words,
+            governance=governance,
         )
         successful = [
             context for context in downloads or []
@@ -370,7 +399,6 @@ class MusicSubscribeMixin:
                 context for context in successful
                 if context.confirmed_full_coverage
             ]
-        repository = self.subscription_repository
         current_subscribe = None
         if subscribe.best_version and quality_downloads:
             best_context = max(quality_downloads, key=lambda item: item.torrent_info.pri_order)
@@ -397,12 +425,18 @@ class MusicSubscribeMixin:
                 downloads=downloads,
             )
 
-    def _search_music_subscribe(self, subscribe: SubscriptionSnapshot) -> None:
+    def _search_music_subscribe(
+            self,
+            subscribe: SubscriptionSnapshot,
+            execution_context: Optional[SubscriptionExecutionContext] = None,
+    ) -> None:
         """复用站点标题搜索、订阅过滤和批量下载完成单个音乐订阅。"""
+        self._ensure_music_execution_active(execution_context)
         target = self._prepare_music_subscribe(subscribe)
         if not target:
             return
         subscribe, mediainfo, _ = target
+        self._ensure_music_execution_active(execution_context)
 
         sites = self.get_sub_sites(subscribe)
         default_rule_key = SystemConfigKey.BestVersionFilterRuleGroups \
@@ -414,13 +448,17 @@ class MusicSubscribeMixin:
 
         searchchain = SearchChain()
         contexts: List[Context] = []
+        if execution_context:
+            execution_context.report_phase("searching")
         for keyword in keywords:
+            self._ensure_music_execution_active(execution_context)
             contexts = searchchain.search_by_title(
                 title=keyword,
                 sites=sites,
                 mtype=MediaType.MUSIC,
                 rule_groups=rule_groups,
             )
+            self._ensure_music_execution_active(execution_context)
             contexts = self._filter_music_subscribe_contexts(
                 subscribe=subscribe,
                 mediainfo=mediainfo,
@@ -433,18 +471,28 @@ class MusicSubscribeMixin:
             logger.warning(f"音乐订阅 {subscribe.keyword or subscribe.name} 未搜索到符合条件的资源")
             return
 
-        self._download_music_subscribe(subscribe, mediainfo, contexts)
+        self._download_music_subscribe(
+            subscribe,
+            mediainfo,
+            contexts,
+            execution_context=execution_context,
+        )
 
     def _match_music_subscribe(
             self,
             subscribe: SubscriptionSnapshot,
             contexts: List[Context],
+            execution_context: Optional[SubscriptionExecutionContext] = None,
     ) -> None:
         """直接匹配本轮 RSS 缓存中的音乐资源，避免再次调用站点搜索接口。"""
+        self._ensure_music_execution_active(execution_context)
         target = self._prepare_music_subscribe(subscribe)
         if not target:
             return
         subscribe, mediainfo, _ = target
+        if execution_context:
+            execution_context.report_phase("matching")
+        self._ensure_music_execution_active(execution_context)
         matched = self._filter_music_subscribe_contexts(
             subscribe=subscribe,
             mediainfo=mediainfo,
@@ -453,4 +501,21 @@ class MusicSubscribeMixin:
         if not matched:
             logger.info(f"音乐订阅 {subscribe.name} 未匹配到符合条件的 RSS 资源")
             return
-        self._download_music_subscribe(subscribe, mediainfo, matched)
+        self._download_music_subscribe(
+            subscribe,
+            mediainfo,
+            matched,
+            execution_context=execution_context,
+        )
+
+    @staticmethod
+    def _ensure_music_execution_active(
+            execution_context: Optional[SubscriptionExecutionContext],
+    ) -> None:
+        """在音乐搜索、匹配和提交前的安全边界执行取消与 TTL 检查。"""
+        if execution_context is None:
+            return
+        if execution_context.is_cancel_requested():
+            raise SubscriptionSearchCancelled("订阅搜索已取消")
+        if execution_context.is_expired():
+            raise TimeoutError("订阅执行已超过协作截止时间")

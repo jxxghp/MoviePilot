@@ -60,8 +60,6 @@ def test_cooled_site_does_not_block_independent_site_or_hide_batch_failure():
         owner="fallback-task",
         cancelled=lambda: False,
         stop_state=ProcessStopState(),
-        max_wait_seconds=0,
-        random_uniform=lambda _low, _high: 60.0,
     )
     chain = object.__new__(SearchChain)
     chain._runtime_config = SimpleNamespace(search_threadpool_size=2)

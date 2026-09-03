@@ -1,6 +1,6 @@
 """订阅搜索持久队列的 SQLAlchemy 适配器。"""
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Optional, TypeVar
 
 from sqlalchemy.orm import Session
@@ -32,6 +32,7 @@ def _batch(record: SubscriptionSearchBatch) -> SearchBatchSnapshot:
         finished_count=record.finished_count,
         failed_count=record.failed_count,
         cancelled_count=record.cancelled_count,
+        skipped_count=record.skipped_count,
         cancel_requested=bool(record.cancel_requested),
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -95,7 +96,7 @@ class TransactionalSubscriptionSearchRepository:
         subscription_ids: tuple[int, ...],
         source: str,
         priority: int,
-        available_at: Optional[str] = None,
+        available_at_by_subscription: Optional[Mapping[int, str]] = None,
     ) -> SearchEnqueueResult:
         """创建批次并返回 single-flight 合并计数。"""
         def operation(repository: SubscriptionSearchOper) -> SearchEnqueueResult:
@@ -104,7 +105,7 @@ class TransactionalSubscriptionSearchRepository:
                 subscription_ids=subscription_ids,
                 source=source,
                 priority=priority,
-                available_at=available_at,
+                available_at_by_subscription=available_at_by_subscription,
             )
             return SearchEnqueueResult(
                 batch=_batch(record),
@@ -231,7 +232,7 @@ class TransactionalSubscriptionSearchRepository:
         next_allowed_at: str,
         error: Optional[str] = None,
     ) -> bool:
-        """释放站点租约并持久化间隔或冷却。"""
+        """释放站点租约并持久化错误冷却或立即恢复。"""
         return self._write(
             lambda repository: repository.finish_site(
                 site_id=site_id,

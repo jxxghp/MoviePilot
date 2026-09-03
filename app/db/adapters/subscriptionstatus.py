@@ -5,9 +5,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.download.admission import SubscriptionDownloadSnapshot
 from app.application.subscription.execution import SearchBatchSnapshot, SearchTaskSnapshot
-from app.db.models.subscriptiondownload import SubscriptionDownloadSubmission
 from app.db.models.subscriptionsearch import SubscriptionSearchBatch, SubscriptionSearchTask
 
 
@@ -46,6 +44,7 @@ def _batch(record: SubscriptionSearchBatch) -> SearchBatchSnapshot:
         finished_count=record.finished_count,
         failed_count=record.failed_count,
         cancelled_count=record.cancelled_count,
+        skipped_count=record.skipped_count,
         cancel_requested=bool(record.cancel_requested),
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -55,26 +54,8 @@ def _batch(record: SubscriptionSearchBatch) -> SearchBatchSnapshot:
     )
 
 
-def _download(record: SubscriptionDownloadSubmission) -> SubscriptionDownloadSnapshot:
-    """复制可脱离 AsyncSession 使用的下载提交快照。"""
-    return SubscriptionDownloadSnapshot(
-        idempotency_key=record.idempotency_key,
-        subscription_id=record.subscription_id,
-        task_id=record.task_id,
-        state=record.state,
-        attempt_count=record.attempt_count,
-        attempt_token=record.attempt_token,
-        downloader=record.downloader,
-        download_hash=record.download_hash,
-        available_at=record.available_at,
-        last_error=record.last_error,
-        created_at=record.created_at,
-        updated_at=record.updated_at,
-    )
-
-
 class SessionSubscriptionExecutionStatusRepository:
-    """复用请求 AsyncSession 批量读取搜索和下载执行事实。"""
+    """复用请求 AsyncSession 批量读取搜索执行事实。"""
 
     def __init__(self, session: AsyncSession) -> None:
         """绑定请求持有的异步会话。"""
@@ -96,24 +77,6 @@ class SessionSubscriptionExecutionStatusRepository:
         snapshots: dict[int, SearchTaskSnapshot] = {}
         for record in result.scalars().all():
             snapshots.setdefault(record.subscription_id, _task(record))
-        return snapshots
-
-    async def latest_download_submissions(
-        self,
-        subscription_ids: tuple[int, ...],
-    ) -> dict[int, SubscriptionDownloadSnapshot]:
-        """按更新时间倒序读取并在内存中保留每条订阅首项。"""
-        result = await self._session.execute(
-            select(SubscriptionDownloadSubmission)
-            .where(SubscriptionDownloadSubmission.subscription_id.in_(subscription_ids))
-            .order_by(
-                SubscriptionDownloadSubmission.updated_at.desc(),
-                SubscriptionDownloadSubmission.id.desc(),
-            )
-        )
-        snapshots: dict[int, SubscriptionDownloadSnapshot] = {}
-        for record in result.scalars().all():
-            snapshots.setdefault(record.subscription_id, _download(record))
         return snapshots
 
     async def list_batches(self, *, limit: int) -> list[SearchBatchSnapshot]:

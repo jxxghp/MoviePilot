@@ -1,9 +1,8 @@
-"""订阅下载跨入口幂等、不确定终态与取消补偿测试。"""
+"""订阅下载取消边界、普通失败语义与账本移除迁移测试。"""
 
 from __future__ import annotations
 
 import importlib
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -13,96 +12,20 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 import app.chain.download.submission as download_submission
-from app.application.download.admission import (
-    DownloadReconciliationRequired,
-    SubscriptionDownloadGovernance,
-    SubscriptionDownloadRequest,
-)
+from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.subscription.contract import SubscriptionSnapshot
+from app.application.subscription.execution import (
+    SubscriptionExecutionAdmission,
+    SubscriptionExecutionContext,
+)
 from app.chain.download import DownloadChain
 from app.chain.subscribe import policy as subscribe_policy
 from app.chain.subscribe.facade import SubscribeChain
-from app.db.adapters.subscriptiondownload import TransactionalSubscriptionDownloadRepository
-from app.db.base import Base
-from app.db.models.subscriptiondownload import SubscriptionDownloadSubmission
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.types import MediaSource, MediaType
-
-
-def _request(key: str = "key-1", task_id: str | None = "task-1") -> SubscriptionDownloadRequest:
-    """构造固定身份的提交认领请求。"""
-    return SubscriptionDownloadRequest(
-        idempotency_key=key,
-        legacy_idempotency_key=None,
-        subscription_id=7,
-        task_id=task_id,
-        logical_identity='{"subscription_id":7}',
-        resource_key="example.com:id=42",
-        coverage="episodes:E01-E03",
-        mode="normal",
-        delivery_scope='{"download_uri":"local:/downloads","downloader":"auto"}',
-    )
-
-
-def _repository(tmp_path) -> tuple[TransactionalSubscriptionDownloadRepository, object]:
-    """创建独立 SQLite 幂等账本仓储与 Session 工厂。"""
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'subscription-download.db'}",
-        connect_args={"check_same_thread": False},
-    )
-    Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine)
-    return TransactionalSubscriptionDownloadRepository(factory), factory
-
-
-def test_repository_claims_same_submission_once_across_workers(tmp_path) -> None:
-    """并发入口对同一幂等键只能有一个取得下载器提交权。"""
-    repository, _factory = _repository(tmp_path)
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        claims = list(executor.map(lambda _index: repository.claim(_request()), range(2)))
-
-    assert sum(claim.acquired for claim in claims) == 1
-    assert {claim.snapshot.state for claim in claims} == {"submitting"}
-    assert {claim.snapshot.attempt_count for claim in claims} == {1}
-
-
-def test_repository_fences_retry_and_preserves_uncertain_terminal(tmp_path) -> None:
-    """明确拒绝可延迟重试，过期令牌和待对账状态均不得重新提交。"""
-    repository, _factory = _repository(tmp_path)
-    first = repository.claim(_request())
-    token = first.snapshot.attempt_token
-    assert token
-    assert repository.mark_retryable(
-        idempotency_key="key-1",
-        attempt_token=token,
-        available_at="1970-01-01T00:00:00+00:00",
-        error="downloader rejected",
-    )
-
-    second = repository.claim(_request(task_id="task-2"))
-    second_token = second.snapshot.attempt_token
-    assert second.acquired
-    assert second_token and second_token != token
-    assert not repository.mark_succeeded(
-        idempotency_key="key-1",
-        attempt_token=token,
-    )
-    assert repository.mark_reconcile_required(
-        idempotency_key="key-1",
-        attempt_token=second_token,
-        error="transport timeout",
-    )
-
-    blocked = repository.claim(_request(task_id="task-3"))
-    assert not blocked.acquired
-    assert blocked.snapshot.state == "reconcile_required"
-    assert blocked.snapshot.attempt_count == 2
-    assert repository.has_started_for_task("task-2")
 
 
 class _FakeTorrentHelper:
@@ -114,10 +37,9 @@ class _FakeTorrentHelper:
         return "Demo.Show.S01", ["Demo.Show.S01E01.mkv"]
 
 
-def _download_chain(repository) -> DownloadChain:
+def _download_chain() -> DownloadChain:
     """构造只执行下载提交边界的 Chain 测试实例。"""
     chain = DownloadChain.__new__(DownloadChain)
-    chain.subscription_download_repository = repository
     chain.download_history_repository = MagicMock()
     chain.download_history_repository.get_by_media_identity.return_value = []
     chain.download_failure_repository = MagicMock()
@@ -174,12 +96,11 @@ def _submission_dependencies(monkeypatch):
     )
 
 
-def test_download_chain_reuses_success_without_second_downloader_call(tmp_path) -> None:
-    """重叠入口在首个提交成功后复用 hash，不再次调用下载器。"""
-    repository, _factory = _repository(tmp_path)
-    chain = _download_chain(repository)
+def test_download_chain_uses_normal_submission_for_each_execution() -> None:
+    """下载边界不保留本地提交账本，由下载器处理相同 torrent 的复用。"""
+    chain = _download_chain()
     chain.download = MagicMock(return_value=("qb", "hash-1", "Original", "accepted"))
-    governance = SubscriptionDownloadGovernance(subscription_id=7, mode="normal")
+    governance = SubscriptionDownloadGovernance()
 
     first = chain.download_single(
         context=_context(),
@@ -197,306 +118,91 @@ def test_download_chain_reuses_success_without_second_downloader_call(tmp_path) 
     )
 
     assert first == second == "hash-1"
-    chain.download.assert_called_once()
-    chain._settle_download_success.assert_called_once()
+    assert chain.download.call_count == 2
+    assert chain._settle_download_success.call_count == 2
 
 
-def test_download_chain_deduplicates_same_media_across_subscription_rows(tmp_path) -> None:
-    """同媒体同覆盖同交付目标的重复订阅只允许一个下载器提交。"""
-    repository, _factory = _repository(tmp_path)
-    chain = _download_chain(repository)
-    chain.download = MagicMock(return_value=("qb", "hash-cross-row", "Original", "accepted"))
-
-    first = chain.download_single(
-        context=_context(),
-        torrent_content=b"torrent",
-        episodes={1},
-        save_path="/downloads",
-        governance=SubscriptionDownloadGovernance(subscription_id=7, mode="normal"),
-    )
-    second = chain.download_single(
-        context=_context(),
-        torrent_content=b"torrent",
-        episodes={1},
-        save_path="/downloads",
-        governance=SubscriptionDownloadGovernance(subscription_id=8, mode="normal"),
-    )
-
-    assert first == second == "hash-cross-row"
-    chain.download.assert_called_once()
-    chain._settle_download_success.assert_called_once()
-
-
-def test_download_chain_keeps_distinct_delivery_targets_separate(tmp_path) -> None:
-    """不同保存目标属于独立产品意图，不得跨记录误去重。"""
-    repository, _factory = _repository(tmp_path)
-    chain = _download_chain(repository)
-    chain._resolve_media_download_dir.side_effect = (
-        lambda *, save_path, **_kwargs: ("local", Path(save_path), None)
-    )
+def test_download_chain_retries_after_downloader_exception() -> None:
+    """下载器异常不冻结后续执行，下一轮仍按普通下载合同重新提交。"""
+    chain = _download_chain()
     chain.download = MagicMock(side_effect=[
-        ("qb", "hash-a", "Original", "accepted"),
-        ("qb", "hash-b", "Original", "accepted"),
+        TimeoutError("response timeout"),
+        ("qb", "hash-after-timeout", "Original", "accepted"),
     ])
 
-    first = chain.download_single(
-        context=_context(),
-        torrent_content=b"torrent",
-        episodes={1},
-        save_path="/downloads/a",
-        governance=SubscriptionDownloadGovernance(subscription_id=7, mode="normal"),
-    )
-    second = chain.download_single(
-        context=_context(),
-        torrent_content=b"torrent",
-        episodes={1},
-        save_path="/downloads/b",
-        governance=SubscriptionDownloadGovernance(subscription_id=8, mode="normal"),
-    )
-
-    assert (first, second) == ("hash-a", "hash-b")
-    assert chain.download.call_count == 2
-
-
-def test_download_chain_keeps_distinct_downloaders_separate(tmp_path) -> None:
-    """不同下载器属于独立交付策略，不得跨记录误去重。"""
-    repository, _factory = _repository(tmp_path)
-    chain = _download_chain(repository)
-    chain.download = MagicMock(side_effect=[
-        ("qb-a", "hash-a", "Original", "accepted"),
-        ("qb-b", "hash-b", "Original", "accepted"),
-    ])
-
-    first = chain.download_single(
-        context=_context(),
-        torrent_content=b"torrent",
-        episodes={1},
-        save_path="/downloads",
-        downloader="qb-a",
-        governance=SubscriptionDownloadGovernance(subscription_id=7, mode="normal"),
-    )
-    second = chain.download_single(
-        context=_context(),
-        torrent_content=b"torrent",
-        episodes={1},
-        save_path="/downloads",
-        downloader="qb-b",
-        governance=SubscriptionDownloadGovernance(subscription_id=8, mode="normal"),
-    )
-
-    assert (first, second) == ("hash-a", "hash-b")
-    assert chain.download.call_count == 2
-
-
-def test_download_chain_keeps_distinct_episode_coverage_separate(tmp_path) -> None:
-    """跨记录仅复用精确覆盖，新增目标集不得被已有子集吞掉。"""
-    repository, _factory = _repository(tmp_path)
-    chain = _download_chain(repository)
-    chain.download = MagicMock(side_effect=[
-        ("qb", "hash-e1", "Original", "accepted"),
-        ("qb", "hash-e12", "Original", "accepted"),
-    ])
-
-    first = chain.download_single(
-        context=_context(),
-        torrent_content=b"torrent",
-        episodes={1},
-        save_path="/downloads",
-        governance=SubscriptionDownloadGovernance(subscription_id=7, mode="normal"),
-    )
-    second = chain.download_single(
-        context=_context(),
-        torrent_content=b"torrent",
-        episodes={1, 2},
-        save_path="/downloads",
-        governance=SubscriptionDownloadGovernance(subscription_id=8, mode="normal"),
-    )
-
-    assert (first, second) == ("hash-e1", "hash-e12")
-    assert chain.download.call_count == 2
-
-
-def test_download_chain_reuses_pre_004_ledger_key(tmp_path) -> None:
-    """键升级后仍应读取 003A 同记录成功账本，避免版本升级造成重复下载。"""
-    repository, _factory = _repository(tmp_path)
-    chain = _download_chain(repository)
-    governance = SubscriptionDownloadGovernance(subscription_id=7, mode="normal")
-    request = chain._build_subscription_download_request(
-        context=_context(),
-        episodes={1},
-        governance=governance,
-        delivery_scope=chain._subscription_delivery_scope(
-            downloader=None,
-            download_uri="local:/downloads",
-        ),
-    )
-    legacy = repository.claim(
-        SubscriptionDownloadRequest(
-            idempotency_key=request.legacy_idempotency_key or "",
-            legacy_idempotency_key=None,
-            subscription_id=7,
-            task_id=None,
-            logical_identity='{"subscription_id":7}',
-            resource_key=request.resource_key,
-            coverage=request.coverage,
-            mode=request.mode,
-            delivery_scope="legacy",
+    with pytest.raises(TimeoutError, match="response timeout"):
+        chain.download_single(
+            context=_context(),
+            torrent_content=b"torrent",
+            episodes={1},
+            save_path="/downloads",
+            governance=SubscriptionDownloadGovernance(),
         )
-    )
-    token = legacy.snapshot.attempt_token or ""
-    assert repository.mark_accepted(
-        idempotency_key=legacy.snapshot.idempotency_key,
-        attempt_token=token,
-        downloader="qb",
-        download_hash="legacy-ledger-hash",
-    )
-    assert repository.mark_succeeded(
-        idempotency_key=legacy.snapshot.idempotency_key,
-        attempt_token=token,
-    )
-    chain.download = MagicMock()
 
     result = chain.download_single(
         context=_context(),
         torrent_content=b"torrent",
         episodes={1},
         save_path="/downloads",
-        governance=governance,
+        governance=SubscriptionDownloadGovernance(),
     )
 
-    assert result == "legacy-ledger-hash"
-    chain.download.assert_not_called()
+    assert result == "hash-after-timeout"
+    assert chain.download.call_count == 2
+    chain._settle_download_success.assert_called_once()
 
 
-def test_download_chain_freezes_when_local_settlement_fails(tmp_path) -> None:
-    """下载器接受而历史结算失败时进入待对账，后续入口不得盲重试。"""
-    repository, _factory = _repository(tmp_path)
-    chain = _download_chain(repository)
+def test_download_chain_retries_after_local_settlement_failure() -> None:
+    """本地结算异常直接失败，下一轮不依赖补偿状态即可重新执行。"""
+    chain = _download_chain()
     chain.download = MagicMock(return_value=("qb", "hash-2", "Original", "accepted"))
-    chain._settle_download_success.side_effect = RuntimeError("history unavailable")
-    governance = SubscriptionDownloadGovernance(subscription_id=7, mode="normal")
+    chain._settle_download_success.side_effect = [RuntimeError("history unavailable"), None]
 
-    with pytest.raises(DownloadReconciliationRequired):
+    with pytest.raises(RuntimeError, match="history unavailable"):
         chain.download_single(
             context=_context(),
             torrent_content=b"torrent",
             episodes={1},
             save_path="/downloads",
-            governance=governance,
+            governance=SubscriptionDownloadGovernance(),
         )
-    with pytest.raises(DownloadReconciliationRequired):
-        chain.download_single(
-            context=_context(),
-            torrent_content=b"torrent",
-            episodes={1},
-            save_path="/downloads",
-            governance=governance,
-        )
-
-    chain.download.assert_called_once()
-
-
-def test_download_chain_freezes_when_downloader_result_is_uncertain(tmp_path) -> None:
-    """下载器调用抛错可能已产生副作用，重启后的新实例仍不得自动重试。"""
-    repository, _factory = _repository(tmp_path)
-    chain = _download_chain(repository)
-    chain.download = MagicMock(side_effect=TimeoutError("response timeout"))
-    governance = SubscriptionDownloadGovernance(subscription_id=7, mode="normal")
-
-    with pytest.raises(DownloadReconciliationRequired):
-        chain.download_single(
-            context=_context(),
-            torrent_content=b"torrent",
-            episodes={1},
-            save_path="/downloads",
-            governance=governance,
-        )
-
-    restarted = _download_chain(repository)
-    restarted.download = MagicMock()
-    with pytest.raises(DownloadReconciliationRequired):
-        restarted.download_single(
-            context=_context(),
-            torrent_content=b"torrent",
-            episodes={1},
-            save_path="/downloads",
-            governance=governance,
-        )
-    restarted.download.assert_not_called()
-
-
-def test_download_chain_delays_retry_after_explicit_rejection(tmp_path) -> None:
-    """下载器明确拒绝且无 hash 时进入冷却，不把不确定和已拒绝混为一谈。"""
-    repository, factory = _repository(tmp_path)
-    chain = _download_chain(repository)
-    chain.download = MagicMock(return_value=("qb", None, "Original", "downloader rejected"))
-    governance = SubscriptionDownloadGovernance(subscription_id=7, mode="normal")
-
-    first = chain.download_single(
-        context=_context(),
-        torrent_content=b"torrent",
-        episodes={1},
-        save_path="/downloads",
-        governance=governance,
-    )
-    second = chain.download_single(
-        context=_context(),
-        torrent_content=b"torrent",
-        episodes={1},
-        save_path="/downloads",
-        governance=governance,
-    )
-
-    assert first is None and second is None
-    chain.download.assert_called_once()
-    with factory() as session:
-        record = session.query(SubscriptionDownloadSubmission).one()
-        assert record.state == "retryable"
-        assert record.available_at > record.updated_at
-
-
-def test_download_chain_reads_legacy_history_before_new_ledger(tmp_path) -> None:
-    """迁移前同订阅同 torrent 同覆盖的成功历史仍能阻止重复提交。"""
-    repository, factory = _repository(tmp_path)
-    chain = _download_chain(repository)
-    chain.download = MagicMock()
-    chain.download_history_repository.get_by_media_identity.return_value = [
-        SimpleNamespace(
-            download_hash="legacy-hash",
-            torrent_name="Demo Show S01E01 1080p",
-            torrent_site="TestSite",
-            episodes="E01",
-            seasons="S01",
-            episode_group=None,
-            note={"source": 'Subscribe|{"id": 7}'},
-        )
-    ]
 
     result = chain.download_single(
         context=_context(),
         torrent_content=b"torrent",
         episodes={1},
         save_path="/downloads",
-        governance=SubscriptionDownloadGovernance(subscription_id=7, mode="normal"),
+        governance=SubscriptionDownloadGovernance(),
     )
 
-    assert result == "legacy-hash"
-    chain.download.assert_not_called()
-    with factory() as session:
-        assert session.query(SubscriptionDownloadSubmission).count() == 0
+    assert result == "hash-2"
+    assert chain.download.call_count == 2
+    assert chain._settle_download_success.call_count == 2
 
 
-def test_download_chain_cancels_before_external_side_effect(tmp_path) -> None:
+def test_download_chain_records_explicit_rejection_as_normal_failure() -> None:
+    """下载器明确拒绝仍写入既有资源失败冷却，不建立提交恢复状态。"""
+    chain = _download_chain()
+    chain.download = MagicMock(return_value=("qb", None, "Original", "downloader rejected"))
+
+    result = chain.download_single(
+        context=_context(),
+        torrent_content=b"torrent",
+        episodes={1},
+        save_path="/downloads",
+        governance=SubscriptionDownloadGovernance(),
+    )
+
+    assert result is None
+    chain.download_failure_repository.record_failure.assert_called_once()
+    chain.post_message.assert_called_once()
+
+
+def test_download_chain_cancels_before_external_side_effect() -> None:
     """取消在下载器边界前生效时不得创建下载任务或成功事实。"""
-    repository, _factory = _repository(tmp_path)
-    chain = _download_chain(repository)
+    chain = _download_chain()
     chain.download = MagicMock()
-    governance = SubscriptionDownloadGovernance(
-        subscription_id=7,
-        mode="normal",
-        task_id="cancel-task",
-        cancelled=lambda: True,
-    )
+    governance = SubscriptionDownloadGovernance(cancelled=lambda: True)
 
     result = chain.download_single(
         context=_context(),
@@ -508,7 +214,34 @@ def test_download_chain_cancels_before_external_side_effect(tmp_path) -> None:
 
     assert result is None
     chain.download.assert_not_called()
-    assert not repository.has_started_for_task("cancel-task")
+    chain._settle_download_success.assert_not_called()
+
+
+def test_download_chain_marks_side_effect_boundary_before_downloader_call() -> None:
+    """下载器调用前必须标记副作用起点，使晚到取消按真实执行结果收口。"""
+    chain = _download_chain()
+    order: list[str] = []
+
+    def download(**_kwargs):
+        """记录下载器调用顺序并返回成功结果。"""
+        order.append("download")
+        return "qb", "hash-3", "Original", "accepted"
+
+    chain.download = download
+    governance = SubscriptionDownloadGovernance(
+        mark_started=lambda: order.append("started"),
+    )
+
+    result = chain.download_single(
+        context=_context(),
+        torrent_content=b"torrent",
+        episodes={1},
+        save_path="/downloads",
+        governance=governance,
+    )
+
+    assert result == "hash-3"
+    assert order == ["started", "download"]
 
 
 def test_subscription_policy_reloads_facts_and_threads_governance(monkeypatch) -> None:
@@ -554,6 +287,18 @@ def test_subscription_policy_reloads_facts_and_threads_governance(monkeypatch) -
         lambda _subscribe, contexts: contexts,
     )
     monkeypatch.setattr(subscribe_policy, "DownloadChain", _FakeDownloadChain)
+    admission = SubscriptionExecutionAdmission()
+    lease = admission.try_acquire(
+        subscription_id=current.id,
+        operation="search",
+        ttl_seconds=60,
+    )
+    assert lease is not None
+    execution_context = SubscriptionExecutionContext(
+        lease=lease,
+        admission=admission,
+        task_id="search-task-7",
+    )
 
     _downloads, lefts = chain._SubscribeChain__download_best_version_with_full_pack_first(
         contexts=[context],
@@ -562,6 +307,7 @@ def test_subscription_policy_reloads_facts_and_threads_governance(monkeypatch) -
         mediakey="themoviedb:77",
         save_path="/old",
         downloader="old",
+        execution_context=execution_context,
     )
 
     assert lefts is fresh_missing
@@ -574,8 +320,10 @@ def test_subscription_policy_reloads_facts_and_threads_governance(monkeypatch) -
     assert captured["no_exists"] is fresh_missing
     assert captured["save_path"] == "/current"
     assert captured["downloader"] == "current"
-    assert captured["governance"].subscription_id == 7
-    assert captured["governance"].mode == "normal"
+    assert captured["governance"].cancelled() is False
+    captured["governance"].mark_started()
+    assert execution_context.download_started is True
+    assert admission.release(lease) is True
 
 
 def test_subscription_policy_discards_candidates_after_filter_change(monkeypatch) -> None:
@@ -610,58 +358,50 @@ def test_subscription_policy_discards_candidates_after_filter_change(monkeypatch
     batch_download.assert_not_called()
 
 
-def test_subscription_download_migration_is_idempotent_and_reversible(tmp_path, monkeypatch) -> None:
-    """3.0.21 迁移可重复升级，并只移除自身新增的兼容表。"""
-    engine = create_engine(f"sqlite:///{tmp_path / 'migration.db'}")
-    migration = importlib.import_module("database.versions.e1b6d4f8a2c7_3_0_21")
-    with engine.begin() as connection:
-        operations = Operations(MigrationContext.configure(connection))
-        monkeypatch.setattr(migration, "op", operations)
-        migration.upgrade()
-        migration.upgrade()
-        inspector = sa.inspect(connection)
-        assert "subscriptiondownloadsubmission" in inspector.get_table_names()
-        indexes = {item["name"] for item in inspector.get_indexes("subscriptiondownloadsubmission")}
-        assert "ix_subscriptiondownloadsubmission_task_state" in indexes
-        migration.downgrade()
-        assert "subscriptiondownloadsubmission" not in sa.inspect(connection).get_table_names()
-
-
-def test_subscription_delivery_scope_migration_is_idempotent_and_reversible(
+def test_subscription_download_ledger_removal_migration_is_reversible(
     tmp_path,
     monkeypatch,
 ) -> None:
-    """3.0.23 为存量提交填充兼容范围，并支持重复升级和完整回滚。"""
-    engine = create_engine(f"sqlite:///{tmp_path / 'delivery-migration.db'}")
-    base_migration = importlib.import_module("database.versions.e1b6d4f8a2c7_3_0_21")
-    migration = importlib.import_module("database.versions.a7d9e2c4f6b1_3_0_23")
+    """3.0.25 删除旧账本；降级只恢复结构，不伪造已删除的运行状态。"""
+    engine = create_engine(f"sqlite:///{tmp_path / 'migration.db'}")
+    create_ledger = importlib.import_module("database.versions.e1b6d4f8a2c7_3_0_21")
+    add_delivery_scope = importlib.import_module("database.versions.a7d9e2c4f6b1_3_0_23")
+    remove_ledger = importlib.import_module("database.versions.c8f2e6a1d4b9_3_0_25")
+
     with engine.begin() as connection:
         operations = Operations(MigrationContext.configure(connection))
-        monkeypatch.setattr(base_migration, "op", operations)
-        monkeypatch.setattr(migration, "op", operations)
-        base_migration.upgrade()
+        monkeypatch.setattr(create_ledger, "op", operations)
+        monkeypatch.setattr(add_delivery_scope, "op", operations)
+        monkeypatch.setattr(remove_ledger, "op", operations)
+        create_ledger.upgrade()
+        add_delivery_scope.upgrade()
         connection.execute(sa.text(
             "INSERT INTO subscriptiondownloadsubmission "
             "(idempotency_key, subscription_id, logical_identity, resource_key, coverage, mode, "
-            "state, attempt_count, created_at, updated_at) VALUES "
-            "('legacy-key', 7, '{}', 'resource', 'full', 'normal', 'succeeded', 1, 'now', 'now')"
+            "delivery_scope, state, attempt_count, created_at, updated_at) VALUES "
+            "('legacy-key', 7, '{}', 'resource', 'full', 'normal', 'legacy', "
+            "'reconcile_required', 1, 'now', 'now')"
         ))
 
-        migration.upgrade()
-        migration.upgrade()
+        remove_ledger.upgrade()
+        remove_ledger.upgrade()
+        assert "subscriptiondownloadsubmission" not in sa.inspect(connection).get_table_names()
 
-        assert connection.execute(sa.text(
-            "SELECT delivery_scope FROM subscriptiondownloadsubmission WHERE idempotency_key='legacy-key'"
-        )).scalar_one() == "legacy"
-        migration.downgrade()
-        columns = {
-            column["name"]
-            for column in sa.inspect(connection).get_columns("subscriptiondownloadsubmission")
+        remove_ledger.downgrade()
+        remove_ledger.downgrade()
+        inspector = sa.inspect(connection)
+        assert "subscriptiondownloadsubmission" in inspector.get_table_names()
+        assert {column["name"] for column in inspector.get_columns(
+            "subscriptiondownloadsubmission"
+        )} >= {"idempotency_key", "delivery_scope", "state", "download_hash"}
+        indexes = {
+            item["name"]
+            for item in inspector.get_indexes("subscriptiondownloadsubmission")
         }
-        assert "delivery_scope" not in columns
-
-
-def test_model_metadata_registers_submission_table() -> None:
-    """显式模型注册必须让 fresh create_all 包含订阅提交账本。"""
-    assert SubscriptionDownloadSubmission.__tablename__ == "subscriptiondownloadsubmission"
-    assert "subscriptiondownloadsubmission" in Base.metadata.tables
+        assert indexes == {
+            "ix_subscriptiondownloadsubmission_subscription_state",
+            "ix_subscriptiondownloadsubmission_task_state",
+        }
+        assert connection.execute(sa.text(
+            "SELECT COUNT(*) FROM subscriptiondownloadsubmission"
+        )).scalar_one() == 0

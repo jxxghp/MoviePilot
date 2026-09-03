@@ -220,7 +220,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
             return []
         with capture_site_search_observation() as observation:
             try:
-                return _search_site_page(
+                result = _search_site_page(
                     self,
                     site=site,
                     keyword=keyword,
@@ -234,6 +234,13 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                     error=str(error),
                 )
                 raise
+            else:
+                if observation.attempted and observation.outcome not in {"success", "skipped"}:
+                    failure = observation.error or observation.outcome
+                    self.record_subscription_site_budget_failure(
+                        f"站点 {site.get('name') or site_id} 搜索失败：{failure}"
+                    )
+                return result
             finally:
                 try:
                     budget.finish(claim, observation)

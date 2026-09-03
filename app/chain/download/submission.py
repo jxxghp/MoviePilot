@@ -10,10 +10,7 @@ from urllib.parse import urlencode, urljoin, urlparse
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import validate_download_save_path
-from app.application.download.admission import (
-    DownloadReconciliationRequired,
-    SubscriptionDownloadGovernance,
-)
+from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.download.ports import (
@@ -284,6 +281,13 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
 class DownloadSubmissionOwner(_DownloadResourceOwner):
     """单任务下载准备、提交与结算 owner。"""
 
+    @staticmethod
+    def _subscription_download_cancelled(
+        governance: Optional[SubscriptionDownloadGovernance],
+    ) -> bool:
+        """在下载器副作用前读取订阅执行上下文的停止信号。"""
+        return bool(governance and governance.cancelled and governance.cancelled())
+
     def download_single(self, context: Context,
                         torrent_file: Optional[Path] = None,
                         torrent_content: Optional[Union[str, bytes]] = None,
@@ -478,57 +482,20 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         custom_words: Optional[str],
         governance: Optional[SubscriptionDownloadGovernance],
     ) -> tuple[Optional[str], Optional[str]]:
-        """认领幂等提交权，调用下载器并分派成功或拒绝结算。"""
+        """在可取消边界后调用下载器，并分派成功或拒绝结算。"""
         if self._subscription_download_cancelled(governance):
             return None, "订阅下载在提交前已取消"
-        admission, duplicate_hash = self._claim_subscription_download(
-            context=context,
-            episodes=episodes,
-            governance=governance,
-            downloader=downloader or prepared.site_downloader,
-            download_uri=prepared.download_uri,
-        )
-        if duplicate_hash:
-            if governance and governance.mark_started:
-                governance.mark_started()
-            logger.info(f"{prepared.torrent.title} 已由重叠订阅入口提交，复用任务 {duplicate_hash}")
-            return duplicate_hash, "下载任务已由重叠入口提交"
-        if admission is not None and not admission.acquired:
-            return None, (
-                f"订阅下载提交当前为 {admission.snapshot.state}，"
-                f"最早可重试：{admission.snapshot.available_at or '待下一轮'}"
-            )
-        attempt_token = admission.snapshot.attempt_token if admission is not None else None
-        admission_key = admission.snapshot.idempotency_key if admission is not None else None
-        if admission is not None and self._subscription_download_cancelled(governance):
-            self._subscription_download_repository().mark_cancelled(
-                idempotency_key=admission.snapshot.idempotency_key,
-                attempt_token=admission.snapshot.attempt_token or "",
-            )
-            return None, "订阅下载在下载器调用前已取消"
         if governance and governance.mark_started:
             governance.mark_started()
-        try:
-            result = self.download(
-                content=prepared.torrent_content,
-                cookie=prepared.torrent.site_cookie,
-                episodes=cast(Set[int], episodes),
-                download_dir=prepared.download_dir,
-                category=prepared.media.category,
-                label=label,
-                downloader=downloader or prepared.site_downloader,
-            )
-        except Exception as err:
-            if admission_key and attempt_token:
-                self._subscription_download_repository().mark_reconcile_required(
-                    idempotency_key=admission_key,
-                    attempt_token=attempt_token,
-                    error=f"下载器调用异常：{str(err)}",
-                )
-                raise DownloadReconciliationRequired(
-                    f"{prepared.torrent.title} 下载器结果不确定，已冻结自动重试"
-                ) from err
-            raise
+        result = self.download(
+            content=prepared.torrent_content,
+            cookie=prepared.torrent.site_cookie,
+            episodes=cast(Set[int], episodes),
+            download_dir=prepared.download_dir,
+            category=prepared.media.category,
+            label=label,
+            downloader=downloader or prepared.site_downloader,
+        )
         actual_downloader, download_hash, layout, error_msg = (
             result if result else (None, None, None, "未找到下载器")
         )
@@ -545,8 +512,6 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 actual_downloader=actual_downloader,
                 download_hash=download_hash,
                 layout=layout,
-                admission_key=admission_key,
-                attempt_token=attempt_token,
             )
         else:
             self._record_rejected_download(
@@ -559,8 +524,6 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 userid=userid,
                 actual_downloader=actual_downloader,
                 error_msg=error_msg,
-                admission_key=admission_key,
-                attempt_token=attempt_token,
             )
         return download_hash, error_msg
 
@@ -578,71 +541,28 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         actual_downloader: Optional[str],
         download_hash: str,
         layout: Optional[str],
-        admission_key: Optional[str],
-        attempt_token: Optional[str],
     ) -> None:
-        """持久化下载器接受事实，执行本地结算并确认成功终态。"""
-        if admission_key and attempt_token:
-            accepted = self._subscription_download_repository().mark_accepted(
-                idempotency_key=admission_key,
-                attempt_token=attempt_token,
-                downloader=actual_downloader,
-                download_hash=download_hash,
-            )
-            if not accepted:
-                raise DownloadReconciliationRequired(
-                    f"{prepared.torrent.title} 已被下载器接受，但本地接受状态写入失败"
-                )
-        try:
-            self._settle_download_success(
-                context=context,
-                media=prepared.media,
-                meta=prepared.meta,
-                torrent=prepared.torrent,
-                folder_name=prepared.folder_name,
-                file_list=prepared.file_list,
-                download_dir=prepared.download_dir,
-                layout=layout,
-                downloader=actual_downloader,
-                download_hash=download_hash,
-                download_episodes=prepared.download_episodes,
-                episodes=episodes,
-                channel=channel,
-                source=source,
-                userid=userid,
-                username=username,
-                torrent_content=prepared.torrent_content,
-                custom_words=custom_words,
-            )
-        except Exception as err:
-            if admission_key and attempt_token:
-                self._subscription_download_repository().mark_reconcile_required(
-                    idempotency_key=admission_key,
-                    attempt_token=attempt_token,
-                    error=f"下载器已接受但本地结算失败：{str(err)}",
-                    downloader=actual_downloader,
-                    download_hash=download_hash,
-                )
-                raise DownloadReconciliationRequired(
-                    f"{prepared.torrent.title} 已被下载器接受但本地结算失败，已转待对账"
-                ) from err
-            raise
-        if admission_key and attempt_token:
-            succeeded = self._subscription_download_repository().mark_succeeded(
-                idempotency_key=admission_key,
-                attempt_token=attempt_token,
-            )
-            if not succeeded:
-                self._subscription_download_repository().mark_reconcile_required(
-                    idempotency_key=admission_key,
-                    attempt_token=attempt_token,
-                    error="本地结算完成但幂等成功终态写入失败",
-                    downloader=actual_downloader,
-                    download_hash=download_hash,
-                )
-                raise DownloadReconciliationRequired(
-                    f"{prepared.torrent.title} 本地结算完成但提交终态未确认，已转待对账"
-                )
+        """按普通下载合同结算下载器明确返回的成功结果。"""
+        self._settle_download_success(
+            context=context,
+            media=prepared.media,
+            meta=prepared.meta,
+            torrent=prepared.torrent,
+            folder_name=prepared.folder_name,
+            file_list=prepared.file_list,
+            download_dir=prepared.download_dir,
+            layout=layout,
+            downloader=actual_downloader,
+            download_hash=download_hash,
+            download_episodes=prepared.download_episodes,
+            episodes=episodes,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            torrent_content=prepared.torrent_content,
+            custom_words=custom_words,
+        )
 
     def _record_rejected_download(
         self,
@@ -656,20 +576,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         userid: Union[str, int, None],
         actual_downloader: Optional[str],
         error_msg: str,
-        admission_key: Optional[str],
-        attempt_token: Optional[str],
     ) -> None:
-        """记录无外部副作用的明确拒绝，并通知原调用渠道。"""
-        if admission_key and attempt_token:
-            self._subscription_download_repository().mark_retryable(
-                idempotency_key=admission_key,
-                attempt_token=attempt_token,
-                available_at=self._subscription_download_retry_at(
-                    error_msg,
-                    self._download_failure_ttl(error_msg),
-                ),
-                error=error_msg,
-            )
+        """按普通失败合同记录下载器明确拒绝并通知原调用渠道。"""
         logger.error(
             f"{prepared.media.title_year} 添加下载任务失败："
             f"{prepared.torrent.title} - {prepared.torrent.enclosure}，{error_msg}"

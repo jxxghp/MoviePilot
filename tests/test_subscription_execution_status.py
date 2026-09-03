@@ -1,8 +1,8 @@
 """订阅执行状态合并、批次权限和操作能力测试。"""
 
 import asyncio
+from dataclasses import replace
 
-from app.application.download.admission import SubscriptionDownloadSnapshot
 from app.application.subscription.execution import SearchBatchSnapshot, SearchTaskSnapshot
 from app.application.subscription.status import SubscriptionExecutionStatusService
 
@@ -35,31 +35,12 @@ def _task(
     )
 
 
-def _download(subscription_id: int, state: str) -> SubscriptionDownloadSnapshot:
-    """构造一个比搜索任务更早的下载提交快照。"""
-    return SubscriptionDownloadSnapshot(
-        idempotency_key=f"key-{subscription_id}",
-        subscription_id=subscription_id,
-        task_id=f"task-{subscription_id}",
-        state=state,
-        attempt_count=1,
-        attempt_token="attempt",
-        downloader=None,
-        download_hash=None,
-        available_at=None,
-        last_error="downloader response uncertain" if state == "reconcile_required" else None,
-        created_at="2026-09-01T00:30:00+00:00",
-        updated_at="2026-09-01T00:59:00+00:00",
-    )
-
-
 class _Repository:
     """保存测试快照的异步状态仓储。"""
 
     def __init__(self) -> None:
         """初始化可由测试覆盖的快照集合。"""
         self.tasks: dict[int, SearchTaskSnapshot] = {}
-        self.downloads: dict[int, SubscriptionDownloadSnapshot] = {}
         self.batch = SearchBatchSnapshot(
             batch_id="batch-1",
             source="manual",
@@ -77,10 +58,6 @@ class _Repository:
     async def latest_search_tasks(self, subscription_ids):
         """返回请求范围内搜索任务。"""
         return {key: value for key, value in self.tasks.items() if key in subscription_ids}
-
-    async def latest_download_submissions(self, subscription_ids):
-        """返回请求范围内下载提交。"""
-        return {key: value for key, value in self.downloads.items() if key in subscription_ids}
 
     async def list_batches(self, *, limit):
         """返回一个测试批次。"""
@@ -107,29 +84,14 @@ def test_execution_status_exposes_site_wait_and_cancel_capability():
     assert statuses[1].can_cancel is True
 
 
-def test_reconciliation_state_overrides_newer_search_terminal():
-    """不确定下载副作用不得被稍晚写入的搜索失败掩盖。"""
-    repository = _Repository()
-    repository.tasks[2] = _task(2, state="failed", phase="failed")
-    repository.downloads[2] = _download(2, "reconcile_required")
-
-    statuses = asyncio.run(SubscriptionExecutionStatusService(repository).for_subscriptions((2,)))
-
-    assert statuses[2].state == "reconcile_required"
-    assert statuses[2].requires_reconciliation is True
-    assert statuses[2].can_retry is False
-    assert statuses[2].error == "downloader response uncertain"
-
-
-def test_failed_search_exposes_safe_retryable_error():
-    """搜索失败文本必须压平且仅声明安全重试能力。"""
+def test_failed_search_exposes_safe_error():
+    """搜索失败文本必须压平且不暴露内部错误细节。"""
     repository = _Repository()
     repository.tasks[3] = _task(3, state="failed", phase="failed")
 
     statuses = asyncio.run(SubscriptionExecutionStatusService(repository).for_subscriptions((3,)))
 
     assert statuses[3].state == "failed"
-    assert statuses[3].can_retry is True
     assert statuses[3].error == "provider timeout"
 
 
@@ -147,6 +109,35 @@ def test_batch_requires_complete_subscription_access():
     assert visible.current_subscription_id == 1
     assert visible.processed_count == 0
     assert visible.can_cancel is True
+
+
+def test_batch_projection_exposes_skipped_count_as_processed_without_success():
+    """批次跳过应计入处理总数，同时保留独立的完成计数。"""
+    repository = _Repository()
+    repository.batch = replace(
+        repository.batch,
+        state="skipped",
+        total_count=2,
+        finished_count=1,
+        skipped_count=1,
+    )
+    repository.tasks = {
+        1: _task(1, state="completed", phase="completed"),
+        2: _task(2, state="skipped", phase="skipped"),
+    }
+
+    visible = asyncio.run(
+        SubscriptionExecutionStatusService(repository).get_batch(
+            "batch-1",
+            accessible_subscription_ids={1, 2},
+        )
+    )
+
+    assert visible is not None
+    assert visible.state == "skipped"
+    assert visible.finished_count == 1
+    assert visible.skipped_count == 1
+    assert visible.processed_count == 2
 
 
 def test_request_cancel_uses_injected_execution_boundary():

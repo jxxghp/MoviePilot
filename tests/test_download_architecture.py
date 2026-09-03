@@ -39,7 +39,6 @@ def test_download_monolith_is_retired_and_package_owners_are_complete() -> None:
     assert not (CHAIN_ROOT / "download.py").exists()
     assert {path.name for path in DOWNLOAD_PACKAGE.glob("*.py")} == {
         "__init__.py",
-        "admission.py",
         "batch.py",
         "contract.py",
         "existence.py",

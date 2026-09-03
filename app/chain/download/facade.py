@@ -3,7 +3,6 @@
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from app.chain.download.admission import DownloadAdmissionOwner
 from app.chain.download.batch import DownloadBatchOwner
 from app.chain.download.existence import DownloadExistenceOwner
 from app.chain.download.failure import DownloadFailureOwner
@@ -30,7 +29,6 @@ class DownloadChain(
     DownloadSubtitleOwner,
     DownloadSelectionOwner,
     DownloadFailureOwner,
-    DownloadAdmissionOwner,
     DownloadSubmissionOwner,
     DownloadBatchOwner,
     DownloadExistenceOwner,

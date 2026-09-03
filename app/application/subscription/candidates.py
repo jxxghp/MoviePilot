@@ -1,10 +1,7 @@
-"""订阅候选批次与无损路由合同。"""
+"""订阅候选的无损路由合同。"""
 
 import copy
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
-from uuid import uuid4
 
 from app.application.subscription.contract import SubscriptionSnapshot
 from app.domain.context import Context, MediaInfo
@@ -13,57 +10,6 @@ from app.schemas.media import resolve_media_identity
 from app.schemas.types import MediaSource, MediaType
 
 CandidateGroups = Dict[str, List[Context]]
-
-
-@dataclass(slots=True)
-class CandidateBatch:
-    """一次资源获取产生的完整候选、增量候选与重试候选边界。"""
-
-    batch_id: str
-    source: str
-    candidates: CandidateGroups
-    fresh_candidates: CandidateGroups = field(default_factory=dict)
-    retry_candidates: CandidateGroups = field(default_factory=dict)
-    sites: tuple[str, ...] = ()
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    finished_at: Optional[datetime] = None
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        source: str,
-        candidates: CandidateGroups,
-        fresh_candidates: Optional[CandidateGroups] = None,
-        retry_candidates: Optional[CandidateGroups] = None,
-        sites: Optional[List[str]] = None,
-        started_at: Optional[datetime] = None,
-    ) -> "CandidateBatch":
-        """构造已完成获取的候选批次。"""
-        return cls(
-            batch_id=uuid4().hex,
-            source=source,
-            candidates=candidates,
-            fresh_candidates=fresh_candidates or {},
-            retry_candidates=retry_candidates or {},
-            sites=tuple(sites or candidates.keys()),
-            started_at=started_at or datetime.now(timezone.utc),
-            finished_at=datetime.now(timezone.utc),
-        )
-
-    @classmethod
-    def from_legacy(cls, candidates: CandidateGroups, source: str = "legacy") -> "CandidateBatch":
-        """把旧入口传入的完整候选包装为无增量声明的兼容批次。"""
-        return cls.create(source=source, candidates=candidates)
-
-    @staticmethod
-    def count(groups: CandidateGroups) -> int:
-        """统计分站点候选总数。"""
-        return sum(len(contexts) for contexts in groups.values())
-
-    def build_index(self) -> "CandidateIndex":
-        """基于完整候选构建一次性无损索引。"""
-        return CandidateIndex(self.candidates)
 
 
 class CandidateIndex:

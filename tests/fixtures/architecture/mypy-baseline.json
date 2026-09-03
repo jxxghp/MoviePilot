@@ -1006,7 +1006,7 @@
   },
   "app/chain/torrents.py": {
     "arg-type": 22,
-    "assignment": 3,
+    "assignment": 2,
     "no-untyped-call": 1,
     "no-untyped-def": 15,
     "type-arg": 5,

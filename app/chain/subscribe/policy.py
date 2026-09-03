@@ -8,6 +8,7 @@ from app.application.subscription import priority as _priority
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
 )
+from app.application.subscription.execution import SubscriptionExecutionContext
 from app.chain.download import DownloadChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.domain.context import (
@@ -281,6 +282,7 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         save_path: Optional[str] = None,
         downloader: Optional[str] = None,
         source: Optional[str] = None,
+        execution_context: Optional[SubscriptionExecutionContext] = None,
     ) -> Tuple[List[Context], Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]]:
         """
         TV 分集洗版先尝试覆盖目标范围的全集资源，失败后回退到按集下载。
@@ -327,17 +329,8 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
             downloader = current.downloader
             source = self.get_subscribe_source_keyword(current)
             governance = SubscriptionDownloadGovernance(
-                subscription_id=current.id,
-                mode=self._SubscribeChain__download_governance_mode(current),
-                task_id=cast(Optional[str], getattr(self, "_subscription_download_task_id", None)),
-                cancelled=cast(
-                    Optional[Callable[[], bool]],
-                    getattr(self, "_subscription_download_cancelled", None),
-                ),
-                mark_started=cast(
-                    Optional[Callable[[], None]],
-                    getattr(self, "_subscription_download_mark_started", None),
-                ),
+                cancelled=execution_context.should_stop if execution_context else None,
+                mark_started=execution_context.mark_download_started if execution_context else None,
             )
         full_pack_no_exists = self._SubscribeChain__build_full_pack_first_no_exists(
             subscribe=subscribe, mediakey=mediakey
@@ -464,17 +457,6 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
                 continue
             accepted.append(context)
         return accepted
-
-    @staticmethod
-    def _SubscribeChain__download_governance_mode(subscribe: SubscriptionSnapshot) -> str:
-        """把订阅模式归一为稳定幂等键组成部分。"""
-        if not subscribe.best_version:
-            return "normal"
-        if subscribe.type == MediaType.TV.value and subscribe.best_version_full:
-            return "best_version_full"
-        if subscribe.type == MediaType.TV.value:
-            return "best_version_episode"
-        return "best_version"
 
     @classmethod
     def _is_episode_range_covered(cls, meta: MetaBase, subscribe: SubscriptionSnapshot) -> bool:

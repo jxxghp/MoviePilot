@@ -46,6 +46,42 @@ def test_search_queue_coalesces_active_subscription_and_raises_priority(tmp_path
     assert first.task_id != second.task_id
 
 
+def test_search_queue_claims_each_subscription_only_after_its_available_at(tmp_path):
+    """逐订阅到期时间必须持久化，未到期任务不能占用同步 worker。"""
+    repository, _engine = _repository(tmp_path)
+    now = datetime.now(timezone.utc)
+    ready_at = (now - timedelta(seconds=1)).isoformat(timespec="seconds")
+    later_at = (now + timedelta(minutes=5)).isoformat(timespec="seconds")
+    repository.enqueue(
+        subscription_ids=(20, 21),
+        source="fallback",
+        priority=10,
+        available_at_by_subscription={20: ready_at, 21: later_at},
+    )
+
+    first = repository.claim_next(owner="worker-a")
+
+    assert first.subscription_id == 20
+    assert first.available_at == ready_at
+    assert repository.finish_task(
+        task_id=first.task_id,
+        lease_token=first.lease_token,
+        state="completed",
+    ) is True
+    assert repository.claim_next(owner="worker-a") is None
+
+    repository.enqueue(
+        subscription_ids=(21,),
+        source="manual",
+        priority=100,
+        available_at_by_subscription={21: ready_at},
+    )
+    accelerated = repository.claim_next(owner="worker-b")
+    assert accelerated.subscription_id == 21
+    assert accelerated.available_at == ready_at
+    assert accelerated.priority == 100
+
+
 def test_search_queue_recovers_expired_lease_with_same_task_identity(tmp_path):
     """进程遗留的过期 running 任务应以新 token 恢复且 attempt 单调递增。"""
     repository, engine = _repository(tmp_path)
@@ -158,6 +194,38 @@ def test_search_queue_finishes_batch_with_aggregated_failure(tmp_path):
     assert batch.finished_count == 1
     assert batch.failed_count == 1
     assert batch.last_error == "site timeout"
+
+
+def test_search_queue_aggregates_skipped_tasks_without_marking_success(tmp_path):
+    """跳过任务应单独计数并让批次暴露 skipped 聚合终态。"""
+    repository, _engine = _repository(tmp_path)
+    enqueued = repository.enqueue(
+        subscription_ids=(10, 11),
+        source="fallback",
+        priority=10,
+    )
+    first = repository.claim_next(owner="worker-a")
+    assert repository.finish_task(
+        task_id=first.task_id,
+        lease_token=first.lease_token,
+        state="skipped",
+        error="同一订阅正在由其他通道处理，本轮搜索已跳过",
+    ) is True
+    second = repository.claim_next(owner="worker-a")
+    assert repository.finish_task(
+        task_id=second.task_id,
+        lease_token=second.lease_token,
+        state="completed",
+    ) is True
+
+    batch = repository.get_batch(enqueued.batch.batch_id)
+
+    assert batch.state == "skipped"
+    assert batch.finished_count == 1
+    assert batch.failed_count == 0
+    assert batch.cancelled_count == 0
+    assert batch.skipped_count == 1
+    assert batch.last_error == "同一订阅正在由其他通道处理，本轮搜索已跳过"
 
 
 def test_search_queue_ages_old_fallback_ahead_of_new_manual_work(tmp_path):

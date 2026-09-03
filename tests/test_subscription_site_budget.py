@@ -14,12 +14,13 @@ from app.application.subscription.sitebudget import (
     SiteBudgetClaim,
     SubscriptionSearchCancelled,
     SubscriptionSiteBudget,
+    SubscriptionSiteBudgetUnavailable,
 )
 from app.chain.search.facade import SearchChain
 from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
 from app.db.base import Base
 from app.db.models.subscriptionsearch import SubscriptionSiteBudget as SiteBudgetRecord
-from app.modules.indexer import _classify_search_failure
+from app.modules.indexer import IndexerModule, _classify_search_failure
 from app.runtime.stop import ProcessStopState
 
 
@@ -76,6 +77,8 @@ def test_site_budget_applies_error_cooldown_and_gradual_success_recovery(tmp_pat
         next_allowed_at=(now + timedelta(minutes=5)).isoformat(timespec="seconds"),
         error="request timeout",
     ) is True
+    cooled = repository.claim_site(site_id=3, owner="worker-b", lease_seconds=900)
+    assert cooled.acquired is False
     with Session(engine) as session:
         failed = session.execute(
             select(SiteBudgetRecord).where(SiteBudgetRecord.site_id == 3)
@@ -101,6 +104,29 @@ def test_site_budget_applies_error_cooldown_and_gradual_success_recovery(tmp_pat
         assert healthy.consecutive_failures == 0
         assert healthy.success_streak == 1
         assert healthy.last_outcome == "success"
+
+
+def test_site_budget_ignores_legacy_success_interval(tmp_path):
+    """升级前留下的正常成功间隔不能阻止新语义下的到期订阅。"""
+    repository, engine = _repository(tmp_path)
+    first = repository.claim_site(site_id=4, owner="worker-a", lease_seconds=900)
+    future = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(timespec="seconds")
+    assert repository.finish_site(
+        site_id=4,
+        lease_token=first.lease_token,
+        outcome="success",
+        next_allowed_at=future,
+    ) is True
+
+    recovered = repository.claim_site(site_id=4, owner="worker-b", lease_seconds=900)
+
+    assert recovered.acquired is True
+    assert recovered.lease_token is not None
+    with Session(engine) as session:
+        record = session.execute(
+            select(SiteBudgetRecord).where(SiteBudgetRecord.site_id == 4)
+        ).scalar_one()
+        assert record.next_allowed_at < future
 
 
 @pytest.mark.parametrize(
@@ -135,40 +161,50 @@ class _WaitingRepository:
         raise AssertionError("未取得站点预算时不应收口")
 
 
-def test_site_budget_wait_is_cancellable_without_business_lock():
-    """批次取消应在一次短等待后终止预算获取。"""
-    cancelled = False
-
-    def sleeper(_seconds: float) -> None:
-        """模拟等待一次后收到取消请求。"""
-        nonlocal cancelled
-        cancelled = True
-
+def test_unavailable_site_budget_does_not_sleep_in_worker():
+    """错误冷却中的站点应立即留待下轮，不占用同步 worker 等待。"""
     budget = SubscriptionSiteBudget(
         repository=_WaitingRepository(),
         owner="worker-a",
-        cancelled=lambda: cancelled,
+        cancelled=lambda: False,
         stop_state=ProcessStopState(),
-        sleeper=sleeper,
-        max_wait_seconds=600,
+    )
+
+    with pytest.raises(SubscriptionSiteBudgetUnavailable):
+        budget.acquire(9)
+
+
+def test_site_budget_checks_cancellation_before_repository_claim():
+    """取消或停机必须在创建任何站点租约前终止当前任务。"""
+    class _ForbiddenRepository(_WaitingRepository):
+        """取消路径不允许触发持久认领。"""
+
+        def claim_site(self, **_kwargs) -> SiteBudgetClaim:
+            """若取消检查失效则立即暴露。"""
+            raise AssertionError("取消任务不应认领站点预算")
+
+    budget = SubscriptionSiteBudget(
+        repository=_ForbiddenRepository(),
+        owner="worker-a",
+        cancelled=lambda: True,
+        stop_state=ProcessStopState(),
     )
 
     with pytest.raises(SubscriptionSearchCancelled):
         budget.acquire(9)
 
 
-def test_site_budget_delay_keeps_manual_requests_under_same_budget():
-    """来源优先级不参与站点冷却计算，手工任务不能获得旁路。"""
+def test_site_budget_only_delays_external_failures():
+    """正常完成立即恢复，外站错误仍按类别进入冷却。"""
     budget = SubscriptionSiteBudget(
         repository=_WaitingRepository(),
         owner="manual-worker",
         cancelled=lambda: False,
         stop_state=ProcessStopState(),
-        random_uniform=lambda _low, _high: 60.0,
     )
 
-    assert budget._next_delay("success", consecutive_failures=0) == 60.0  # pylint: disable=protected-access
-    assert budget._next_delay("success", consecutive_failures=2) == 120.0  # pylint: disable=protected-access
+    assert budget._next_delay("success", consecutive_failures=0) == 0.0  # pylint: disable=protected-access
+    assert budget._next_delay("success", consecutive_failures=2) == 0.0  # pylint: disable=protected-access
     assert budget._next_delay("rate_limited", consecutive_failures=0) == 900.0  # pylint: disable=protected-access
 
 
@@ -206,14 +242,13 @@ def test_skipped_search_releases_budget_without_external_interval():
 
 
 def test_search_provider_reports_cooled_site_without_blocking_other_results():
-    """超出短等待窗口的站点返回空页并记录聚合失败，而非阻塞整个 provider。"""
+    """错误冷却中的站点返回空页并记录聚合失败，而非阻塞 provider。"""
     repository = _WaitingRepository()
     budget = SubscriptionSiteBudget(
         repository=repository,
         owner="fallback-worker",
         cancelled=lambda: False,
         stop_state=ProcessStopState(),
-        max_wait_seconds=0,
     )
     chain = object.__new__(SearchChain)
     chain.configure_subscription_site_budget(budget)
@@ -233,7 +268,7 @@ def test_search_provider_reports_cooled_site_without_blocking_other_results():
 
 
 def test_search_provider_releases_successful_site_budget():
-    """真实站点页完成后必须释放租约并写入成功间隔。"""
+    """真实站点页正常完成后必须释放租约并立即允许下一任务。"""
     captured = {}
 
     class _Repository(_WaitingRepository):
@@ -260,7 +295,6 @@ def test_search_provider_releases_successful_site_budget():
         owner="manual-worker",
         cancelled=lambda: False,
         stop_state=ProcessStopState(),
-        random_uniform=lambda _low, _high: 60.0,
     )
     chain = object.__new__(SearchChain)
     chain.configure_subscription_site_budget(budget)
@@ -283,3 +317,78 @@ def test_search_provider_releases_successful_site_budget():
     assert captured["site_id"] == 12
     assert captured["outcome"] == "success"
     assert captured["lease_token"] == "lease-token"
+
+
+def test_search_provider_aggregates_swallowed_indexer_failure(monkeypatch):
+    """索引器吞掉外站异常返回空页时，provider 仍须暴露站点失败。"""
+    captured = {}
+
+    class _Repository(_WaitingRepository):
+        """提供立即可用租约并记录失败收口。"""
+
+        def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
+            """返回当前调用独占的站点租约。"""
+            del owner, lease_seconds
+            now = datetime.now(timezone.utc)
+            return SiteBudgetClaim(
+                site_id=site_id,
+                acquired=True,
+                retry_at=now.isoformat(timespec="seconds"),
+                consecutive_failures=0,
+                lease_token="lease-token",
+            )
+
+        def finish_site(self, **kwargs) -> bool:
+            """记录预算收口，确认错误冷却仍由 budget.finish 负责。"""
+            captured.update(kwargs)
+            return True
+
+    def execute_search(_site, _request):
+        """模拟 IndexerModule 捕获的 HTTP 429。"""
+        raise RuntimeError("HTTP 429")
+
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__search_check",
+        staticmethod(lambda _site, _keyword=None: True),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__execute_search",
+        staticmethod(execute_search),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__indexer_statistic",
+        staticmethod(lambda **_kwargs: None),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__parse_result",
+        staticmethod(lambda **_kwargs: []),
+    )
+
+    budget = SubscriptionSiteBudget(
+        repository=_Repository(),
+        owner="fallback-worker",
+        cancelled=lambda: False,
+        stop_state=ProcessStopState(),
+    )
+    chain = object.__new__(SearchChain)
+    chain.configure_subscription_site_budget(budget)
+    chain.search_site_torrents = object.__new__(IndexerModule).search_torrents
+
+    result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
+        site={"id": 13, "name": "Flaky"},
+        keyword="movie",
+        mtype=None,
+        page=0,
+    )
+
+    assert result == []
+    assert captured["outcome"] == "rate_limited"
+    assert captured["error"] == "HTTP 429"
+    failures = chain.consume_subscription_site_budget_failures()
+    assert len(failures) == 1
+    assert "Flaky" in failures[0]
+    assert "HTTP 429" in failures[0]

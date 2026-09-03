@@ -285,7 +285,6 @@ def configure_plugin_system_services():
     from app.db.adapters.mediaserver import TransactionalMediaServerRepository
     from app.db.adapters.site import TransactionalSiteRepository
     from app.db.adapters.subscription import TransactionalSubscriptionRepository
-    from app.db.adapters.subscriptiondownload import TransactionalSubscriptionDownloadRepository
     from app.db.adapters.transaction import TransactionalWriteRunner
     from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
     from app.db.adapters.transfer.execution import (
@@ -413,7 +412,6 @@ def configure_plugin_system_services():
             transfer_execution_repository=TransactionalTransferExecutionRepository(SessionFactory),
             media_server_repository=TransactionalMediaServerRepository(SessionFactory),
             download_failure_repository=TransactionalDownloadFailureRepository(SessionFactory),
-            subscription_download_repository=TransactionalSubscriptionDownloadRepository(SessionFactory),
             user_repository=user_repository(),
             configuration=build_chain_runtime_config(settings),
         )

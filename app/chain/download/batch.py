@@ -87,13 +87,13 @@ class DownloadBatchOwner(_DownloadOwnerBase):
         :param userid:  用户ID
         :param username: 调用下载的用户名/插件名
         :param downloader: 下载器
-        :param custom_words: 下载来源自定义词；governance: 订阅幂等、入口任务和取消边界
+        :param custom_words: 下载来源自定义词
+        :param governance: 订阅取消与下载器副作用边界
         :return: 已下载资源列表及剩余缺集，键格式为 no_exists[source:id]
         """
         no_exists_was_none = no_exists is None
         if no_exists is None:
             no_exists = {}
-
         # 已下载的项目
         downloaded_list: List[Context] = []
         custom_word_list = custom_words.splitlines() if custom_words else None
