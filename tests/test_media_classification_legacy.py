@@ -169,8 +169,8 @@ def _leaf_fields(node: ClassificationConditionNode) -> list[str]:
     return [field for child in children for field in _leaf_fields(child)]
 
 
-def test_default_style_config_preserves_order_and_uses_tmdb_extensions() -> None:
-    """默认式配置应保持分类顺序，并避免把国家语言字段误升格为标准事实。"""
+def test_default_style_config_preserves_order_and_uses_safe_standard_fields() -> None:
+    """默认式配置应保持顺序，已知风格使用标准字段，其余字段保持等价。"""
     result = migrate_legacy_category_config(_legacy_config())
 
     assert result.valid
@@ -188,6 +188,8 @@ def test_default_style_config_preserves_order_and_uses_tmdb_extensions() -> None
         "美国电影",
     ]
     all_fields = [field for rule in result.policy.rules for field in _leaf_fields(rule.when)]
+    assert "media.genre_keys" in all_fields
+    assert "extensions.themoviedb.genre_ids" not in all_fields
     assert "media.language" not in all_fields
     assert "media.countries" not in all_fields
     assert "extensions.themoviedb.original_language" in all_fields
@@ -195,6 +197,15 @@ def test_default_style_config_preserves_order_and_uses_tmdb_extensions() -> None
     assert "extensions.themoviedb.origin_country" in all_fields
     assert legacy_extension_fields_from_policy(result.policy) == result.extra_fields
     assert ClassificationPolicyValidator.validate(result.policy, result.extra_fields).valid
+    origin_country = next(
+        field
+        for field in result.extra_fields
+        if field.id == "extensions.themoviedb.origin_country"
+    )
+    assert origin_country.label == "原产国家/地区（旧规则）"
+    assert origin_country.group == "旧规则"
+    assert origin_country.selectable is False
+    assert origin_country.replacement_field == "media.countries"
 
 
 def test_first_empty_rule_becomes_source_fallback_and_later_entries_are_disabled() -> None:
@@ -246,6 +257,14 @@ def test_mixed_genre_ids_keep_positive_or_and_negative_and_semantics() -> None:
     assert result.valid
     extension_ids = {field.id for field in legacy_extension_fields_from_policy(result.policy)}
     assert "extensions.themoviedb.genre_ids" in extension_ids
+    genre_field = next(
+        field
+        for field in result.extra_fields
+        if field.id == "extensions.themoviedb.genre_ids"
+    )
+    assert genre_field.label == "风格（旧规则）"
+    assert genre_field.selectable is False
+    assert genre_field.replacement_field == "media.genre_keys"
     assert ClassificationPolicyValidator.validate(result.policy, result.extra_fields).valid
     assert _category_name(result, _tmdb_facts(result, {"genre_ids": [16]}, "电影")) == "混合类型"
     assert _category_name(result, _tmdb_facts(result, {"genre_ids": [999]}, "电影")) == "混合类型"

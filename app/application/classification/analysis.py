@@ -10,7 +10,10 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Literal, Optional, Protocol, cast
 
-from app.application.classification.catalog import build_classification_field_catalog
+from app.application.classification.catalog import (
+    build_classification_field_catalog,
+    build_retired_classification_field_catalog,
+)
 from app.application.classification.configuration import (
     ClassificationPolicyConfigurationService,
     ClassificationPolicyValidationError,
@@ -161,12 +164,14 @@ class ClassificationAnalysisService:
         self._sample_provider = sample_provider
 
     def fields(self) -> ClassificationFieldCatalog:
-        """返回标准字段与当前动态来源扩展字段组成的隔离目录。"""
+        """分开返回新规则可选字段和已有规则使用的退役字段。"""
+        extra_fields = self._configuration.extra_fields()
         return ClassificationFieldCatalog(
             fields=list(
-                build_classification_field_catalog(
-                    self._configuration.extra_fields()
-                )
+                build_classification_field_catalog(extra_fields)
+            ),
+            retired_fields=list(
+                build_retired_classification_field_catalog(extra_fields)
             ),
             limits=ClassificationPolicyLimits(
                 max_category_depth=MAX_CATEGORY_DEPTH,

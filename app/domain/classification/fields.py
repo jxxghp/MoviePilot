@@ -94,6 +94,7 @@ class _FieldSpec(TypedDict):
     id: str
     label: str
     group: NotRequired[str]
+    description: NotRequired[str]
     value_type: str
     media_types: tuple[str, ...]
     options: NotRequired[tuple[str, ...]]
@@ -127,19 +128,22 @@ _STANDARD_FIELD_SPECS: Final[tuple[_FieldSpec, ...]] = (
     },
     {
         "id": "media.countries",
-        "label": "国家或地区",
+        "label": "原产国家/地区",
+        "description": "跨数据源统一的原产国家或地区代码",
         "value_type": "string_list",
         "media_types": ALL_MEDIA_TYPES,
     },
     {
         "id": "media.genre_keys",
-        "label": "规范类型",
+        "label": "风格",
+        "description": "跨数据源统一的 MoviePilot 规范风格",
         "value_type": "string_list",
         "media_types": ALL_MEDIA_TYPES,
     },
     {
         "id": "media.genre_names",
-        "label": "来源类型",
+        "label": "来源风格",
+        "description": "媒体数据源返回的原始风格名称",
         "value_type": "string_list",
         "media_types": ALL_MEDIA_TYPES,
     },
@@ -330,6 +334,7 @@ def _build_field_definition(values: _FieldSpec) -> ClassificationFieldDefinition
         id=values["id"],
         label=values["label"],
         group=values.get("group", "通用"),
+        description=values.get("description"),
         value_type=values["value_type"],
         operators=[
             cast(ClassificationOperator, operator) for operator in operators_for_value_type(values["value_type"])

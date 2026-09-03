@@ -432,6 +432,14 @@ class ClassificationFieldDefinition(_ClassificationModel):
         default_factory=dict,
         description="各数据源对字段的支持等级",
     )
+    selectable: bool = Field(
+        default=True,
+        description="是否允许在新规则的字段选择器中使用",
+    )
+    replacement_field: Optional[str] = Field(
+        default=None,
+        description="退役字段建议替换为的标准字段 ID",
+    )
 
     @field_validator("options", mode="before")  # type: ignore[misc]
     @classmethod
@@ -499,7 +507,11 @@ class ClassificationFieldCatalog(_ClassificationModel):
 
     fields: list[ClassificationFieldDefinition] = Field(
         default_factory=list,
-        description="标准字段与当前已登记来源扩展字段",
+        description="允许在新规则中选择的标准字段与来源扩展字段",
+    )
+    retired_fields: list[ClassificationFieldDefinition] = Field(
+        default_factory=list,
+        description="仅用于解析已有规则、不可新增的退役字段",
     )
     limits: ClassificationPolicyLimits = Field(description="服务端策略结构限制")
 

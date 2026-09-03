@@ -34,6 +34,7 @@ from app.schemas.category import (
     ClassificationCategory,
     ClassificationCondition,
     ClassificationFacts,
+    ClassificationFieldDefinition,
     ClassificationMusicFacts,
     ClassificationPolicy,
     ClassificationPolicyPublishRequest,
@@ -209,6 +210,34 @@ def test_field_catalog_exposes_typed_options_and_server_limits() -> None:
     assert catalog.limits.max_condition_depth == 3
     assert catalog.limits.max_conditions_per_rule == 30
     assert catalog.limits.max_rules == 1000
+    assert catalog.retired_fields == []
+
+
+def test_field_catalog_exposes_retired_fields_outside_new_rule_options() -> None:
+    """字段 API 应保留旧规则解析信息，但不得把它混入新条件选项。"""
+    retired = ClassificationFieldDefinition(
+        id="extensions.themoviedb.genre_ids",
+        label="风格（旧规则）",
+        group="旧规则",
+        value_type="string_list",
+        operators=["contains_any"],
+        media_types=["电影"],
+        source_support={"themoviedb": "extension"},
+        selectable=False,
+        replacement_field="media.genre_keys",
+    )
+    configuration = ClassificationPolicyConfigurationService(
+        _MemoryPolicyStore(),
+        extra_fields=[retired],
+        clock=lambda: NOW,
+    )
+    configuration.initialize()
+
+    catalog = ClassificationAnalysisService(configuration).fields()
+
+    assert retired.id not in {field.id for field in catalog.fields}
+    assert [field.id for field in catalog.retired_fields] == [retired.id]
+    assert catalog.retired_fields[0].replacement_field == "media.genre_keys"
 
 
 def test_preview_returns_condition_path_and_structured_missing_fact_warning() -> None:

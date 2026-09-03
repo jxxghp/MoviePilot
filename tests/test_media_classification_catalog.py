@@ -1,12 +1,16 @@
 """媒体分类字段与来源能力目录测试。"""
 
-from app.application.classification.catalog import build_classification_field_catalog
+from app.application.classification.catalog import (
+    build_classification_field_catalog,
+    build_retired_classification_field_catalog,
+)
 from app.domain.classification.fields import get_standard_classification_fields
 from app.domain.classification.sources import (
     BUILTIN_CLASSIFICATION_SOURCES,
     STANDARD_CLASSIFICATION_FIELD_IDS,
     builtin_source_field_support,
 )
+from app.schemas.category import ClassificationFieldDefinition
 from app.schemas.types import MediaSource
 
 
@@ -51,6 +55,47 @@ def test_catalog_preserves_verified_builtin_capability_levels() -> None:
     assert fields["media.content_rating"].source_support["themoviedb"] == "partial"
     assert fields["music.secondary_types"].source_support["musicbrainz"] == "partial"
     assert fields["music.secondary_types"].source_support["theaudiodb"] == "unavailable"
+
+
+def test_standard_catalog_uses_user_facing_country_and_genre_names() -> None:
+    """通用标准字段应直接使用用户理解的国家和风格名称。"""
+    fields = {
+        definition.id: definition
+        for definition in build_classification_field_catalog()
+    }
+
+    assert fields["media.countries"].label == "原产国家/地区"
+    assert fields["media.genre_keys"].label == "风格"
+    assert fields["media.genre_names"].label == "来源风格"
+
+
+def test_catalog_separates_retired_fields_from_new_rule_options() -> None:
+    """迁移专用字段只能解析已有规则，插件正常扩展字段仍可新增。"""
+    retired = ClassificationFieldDefinition(
+        id="extensions.themoviedb.origin_country",
+        label="原产国家/地区（旧规则）",
+        value_type="string_list",
+        media_types=["电视剧"],
+        selectable=False,
+        replacement_field="media.countries",
+    )
+    plugin = ClassificationFieldDefinition(
+        id="extensions.example.region",
+        label="地区",
+        value_type="string",
+        media_types=["电影"],
+    )
+
+    selectable_ids = {
+        field.id
+        for field in build_classification_field_catalog((retired, plugin))
+    }
+    retired_fields = build_retired_classification_field_catalog((retired, plugin))
+
+    assert "extensions.example.region" in selectable_ids
+    assert retired.id not in selectable_ids
+    assert [field.id for field in retired_fields] == [retired.id]
+    assert retired_fields[0].replacement_field == "media.countries"
 
 
 def test_discover_only_builtin_sources_are_explicitly_unavailable() -> None:
