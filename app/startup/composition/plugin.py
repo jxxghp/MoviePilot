@@ -22,6 +22,7 @@ from app.runtime.extensions.plugin.version import (
     plugin_version_dirs,
     read_declared_plugin_version,
     register_plugin_version,
+    remove_plugin_installed_version,
 )
 from app.runtime.settings import get_runtime_setting
 
@@ -114,6 +115,18 @@ def _register_plugin_install_version(plugin_dir: Path, version: str, source: str
     register_plugin_version(plugin_dir, version, source)
 
 
+def _rollback_plugin_install_version(plugin_dir: Path, version: str) -> None:
+    """安装失败时回滚单个版本目录及其版本元信息登记，不牵连插件的其它已装版本。
+
+    版本目录布局和版本元信息读写都属于运行时扩展包，不允许被适配器层引用，
+    因此只能落在组合根。
+
+    :param plugin_dir: 插件根目录
+    :param version: 安装失败需要回滚的版本号
+    """
+    remove_plugin_installed_version(plugin_dir, version)
+
+
 @dataclass(frozen=True, slots=True)
 class PluginMarketComposition:
     """保存插件市场相关 Transport、Client、Package 和 Dependency owner。"""
@@ -148,6 +161,7 @@ def compose_plugin_market(
             version_switch_guard=_reject_incompatible_plugin_version_switch,
             install_target_resolver=_resolve_plugin_install_target,
             install_version_registrar=_register_plugin_install_version,
+            install_version_rollback=_rollback_plugin_install_version,
         ),
         dependency=PluginDependencyInstaller(
             health,

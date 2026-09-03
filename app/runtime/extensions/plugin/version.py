@@ -527,3 +527,58 @@ def recycle_plugin_version_directories(
         write_plugin_versions_manifest(plugin_root, remaining_versions, current_version)
 
     return {"removed": removed, "kept": kept}
+
+
+def _newest_manifest_version(versions: list[dict[str, Any]]) -> str | None:
+    """从版本元信息条目里选出语义版本号最高者，供当前版本回退使用。
+
+    :param versions: 版本条目列表
+    :return: 语义版本号最高的版本号；列表为空或没有合法版本号条目时为 None
+    """
+    candidates: list[str] = [
+        entry["version"]
+        for entry in versions
+        if isinstance(entry, dict) and isinstance(entry.get("version"), str) and entry["version"]
+    ]
+    if not candidates:
+        return None
+    newest = candidates[0]
+    for candidate in candidates[1:]:
+        if compare_version(candidate, ">", newest):
+            newest = candidate
+    return newest
+
+
+def remove_plugin_installed_version(plugin_root: Path, version: str) -> None:
+    """回滚一次失败的版本化安装：删除该版本目录并从版本元信息摘除。
+
+    只清理调用方指定的这一个版本，不牵连插件目录下的其它已装版本——多版本
+    并存下安装失败清理的范围必须收敛到本次安装尝试本身，否则会连带删掉正被
+    其它实例绑定的版本。删除后若插件目录既没有其它版本目录、也没有平铺布局
+    的主模块，视为清理干净的空壳，连插件目录本身与版本元信息一并删除，不留
+    安装失败的残留登记；仍有其它版本时，若被摘除的版本恰好是元信息登记的
+    当前版本（写入版本目录成功后会乐观置为当前版本，早于依赖安装校验完成），
+    按剩余版本里语义版本号最高者回退，因为本次安装前的真实当前版本没有被
+    另外记录、无法精确复原，取最高版本是不依赖外部输入就能确定的合理回退。
+
+    :param plugin_root: 插件源码根目录
+    :param version: 安装失败需要回滚的版本号
+    """
+    directory = plugin_version_dirs(plugin_root).get(version)
+    if directory is not None:
+        _delete_plugin_version_dir(plugin_root, version, directory)
+
+    if not plugin_version_dirs(plugin_root) and not (plugin_root / "__init__.py").is_file():
+        shutil.rmtree(plugin_root, ignore_errors=True)
+        return
+
+    manifest = read_plugin_versions_manifest(plugin_root)
+    remaining_versions = [
+        entry
+        for entry in (manifest.get("versions") or [])
+        if isinstance(entry, dict) and entry.get("version") != version
+    ]
+    current = manifest.get("current")
+    if current == version:
+        current = _newest_manifest_version(remaining_versions)
+    write_plugin_versions_manifest(plugin_root, remaining_versions, current)
