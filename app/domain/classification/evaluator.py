@@ -98,6 +98,7 @@ class ClassificationEvaluator:
         labels: list[str] = []
         traces: list[ClassificationRuleTrace] = []
         missing_fields: set[str] = set()
+        fact_cache: dict[str, tuple[Any, bool]] = {}
 
         for rule_index, rule in enumerate(policy.rules):
             if not rule.enabled:
@@ -113,8 +114,9 @@ class ClassificationEvaluator:
                 rule.when,
                 facts,
                 policy.field_aliases,
+                fact_cache,
                 trace,
-                ["rules", rule_index, "when"],
+                ["rules", rule_index, "when"] if trace else [],
             )
             missing_fields.update(outcome.missing_fields)
             if outcome.matched:
@@ -185,7 +187,7 @@ class ClassificationEvaluator:
         facts: ClassificationFacts,
     ) -> bool:
         """返回单个条件树是否匹配，不构造解释轨迹。"""
-        return cls._evaluate_node(condition, facts, {}, False, []).matched
+        return cls._evaluate_node(condition, facts, {}, {}, False, []).matched
 
     @classmethod
     def trace_condition(
@@ -194,7 +196,7 @@ class ClassificationEvaluator:
         facts: ClassificationFacts,
     ) -> list[ClassificationConditionTrace]:
         """执行单个条件树并返回短路后实际求值到的叶子轨迹。"""
-        return list(cls._evaluate_node(condition, facts, {}, True, []).traces)
+        return list(cls._evaluate_node(condition, facts, {}, {}, True, []).traces)
 
     @classmethod
     def _evaluate_node(
@@ -202,24 +204,34 @@ class ClassificationEvaluator:
         node: ClassificationConditionNode,
         facts: ClassificationFacts,
         field_aliases: Mapping[str, Mapping[str, str]],
+        fact_cache: dict[str, tuple[Any, bool]],
         trace: bool,
         path: list[str | int],
     ) -> _ConditionOutcome:
         """递归求值条件叶子或条件组。"""
         if isinstance(node, ClassificationCondition):
-            return cls._evaluate_leaf(node, facts, field_aliases, trace, path)
-        return cls._evaluate_group(node, facts, field_aliases, trace, path)
+            return cls._evaluate_leaf(
+                node, facts, field_aliases, fact_cache, trace, path
+            )
+        return cls._evaluate_group(
+            node, facts, field_aliases, fact_cache, trace, path
+        )
 
     @staticmethod
     def _evaluate_leaf(
         condition: ClassificationCondition,
         facts: ClassificationFacts,
         field_aliases: Mapping[str, Mapping[str, str]],
+        fact_cache: dict[str, tuple[Any, bool]],
         trace: bool,
         path: list[str | int],
     ) -> _ConditionOutcome:
         """执行叶子条件并应用统一缺失值语义。"""
-        actual, missing = read_fact(facts, condition.field)
+        fact = fact_cache.get(condition.field)
+        if fact is None:
+            fact = read_fact(facts, condition.field)
+            fact_cache[condition.field] = fact
+        actual, missing = fact
         if condition.operator == "not_exists":
             matched = missing
         elif condition.operator == "exists":
@@ -263,6 +275,7 @@ class ClassificationEvaluator:
         group: ClassificationConditionGroup,
         facts: ClassificationFacts,
         field_aliases: Mapping[str, Mapping[str, str]],
+        fact_cache: dict[str, tuple[Any, bool]],
         trace: bool,
         path: list[str | int],
     ) -> _ConditionOutcome:
@@ -276,8 +289,9 @@ class ClassificationEvaluator:
                 children[0],
                 facts,
                 field_aliases,
+                fact_cache,
                 trace,
-                [*path, "not"],
+                [*path, "not"] if trace else path,
             )
             # not 不能把普通字段缺失反转成命中；匹配缺失必须显式使用 not_exists。
             matched = False if outcome.missing_fields else not outcome.matched
@@ -290,8 +304,9 @@ class ClassificationEvaluator:
                     child,
                     facts,
                     field_aliases,
+                    fact_cache,
                     trace,
-                    [*path, "all", index],
+                    [*path, "all", index] if trace else path,
                 )
                 traces.extend(outcome.traces)
                 missing_fields.update(outcome.missing_fields)
@@ -310,8 +325,9 @@ class ClassificationEvaluator:
                 child,
                 facts,
                 field_aliases,
+                fact_cache,
                 trace,
-                [*path, "any", index],
+                [*path, "any", index] if trace else path,
             )
             traces.extend(outcome.traces)
             missing_fields.update(outcome.missing_fields)
