@@ -236,3 +236,4 @@ def test_router_registers_all_paths():
     assert "/versions/{plugin_id}/recycle" in paths
     assert "/loglevel/{plugin_id}" in paths
     assert "/loglevel/{plugin_id}/{instance_id}" in paths
+    assert "/instances/{plugin_id}/{instance_id}/default_target" in paths

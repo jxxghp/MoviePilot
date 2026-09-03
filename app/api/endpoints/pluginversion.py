@@ -155,3 +155,47 @@ def clear_plugin_instance_log_level(
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     return _SchemaResponse(success=True)
+
+
+@router.put(  # type: ignore[misc]
+    "/instances/{plugin_id}/{instance_id}/default_target",
+    summary="设置插件实例的默认调用目标",
+    response_model=_SchemaResponse[None],
+)
+def set_plugin_instance_default_target(
+    plugin_id: str,
+    instance_id: str,
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    设置指定插件实例为默认调用目标，并自动清除同插件的旧默认
+    """
+    try:
+        matched = get_plugin_manager().set_plugin_instance_default_target(
+            plugin_id, instance_id
+        )
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    if not matched:
+        raise HTTPException(status_code=404, detail=f"插件实例 {instance_id} 不存在")
+    return _SchemaResponse(success=True)
+
+
+@router.delete(  # type: ignore[misc]
+    "/instances/{plugin_id}/{instance_id}/default_target",
+    summary="清除插件实例的默认调用目标",
+    response_model=_SchemaResponse[None],
+)
+def clear_plugin_instance_default_target(
+    plugin_id: str,
+    instance_id: str,
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+) -> Any:
+    """
+    清除指定插件实例的默认调用目标置位，仅当当前置位的正是该实例时才动作，重复调用保持幂等
+    """
+    try:
+        get_plugin_manager().clear_plugin_instance_default_target(plugin_id, instance_id)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return _SchemaResponse(success=True)
