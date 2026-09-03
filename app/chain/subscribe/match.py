@@ -1,9 +1,11 @@
 """订阅候选准备、身份复核与资源匹配"""
 
 import copy
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Literal, Optional
+from uuid import uuid4
 
 from app.application.configuration import get_configured_system_config
 from app.application.subscription.candidates import CandidateIndex
@@ -43,16 +45,24 @@ class _MatchExecutionSummary:
     """保存一次 Match 批次的实际订阅执行结果。"""
 
     total: int
+    candidate_count: int
+    site_count: int
+    run_id: str
+    started_at: float
     completed: int = 0
     skipped: int = 0
     failed: int = 0
+    admission_conflicts: int = 0
+    cancelled: int = 0
+    ttl_timeouts: int = 0
+    release_failures: int = 0
 
     @property
     def finished(self) -> int:
         """返回已经收口的订阅数量。"""
         return self.completed + self.skipped + self.failed
 
-    def record(self, outcome: Optional[str]) -> None:
+    def record(self, outcome: Optional[str], reason: Optional[str] = None) -> None:
         """将单订阅结果归入稳定的完成、跳过或失败计数。"""
         if outcome == "completed":
             self.completed += 1
@@ -60,6 +70,45 @@ class _MatchExecutionSummary:
             self.skipped += 1
         else:
             self.failed += 1
+        if reason == "admission_conflict":
+            self.admission_conflicts += 1
+        elif reason == "cancelled":
+            self.cancelled += 1
+        elif reason == "ttl_timeout":
+            self.ttl_timeouts += 1
+
+    @property
+    def state(self) -> str:
+        """按已处理数量和任务终态生成轮次状态。"""
+        if self.finished < self.total:
+            return "stopped"
+        if self.failed:
+            return "failed"
+        if self.skipped:
+            return "skipped"
+        return "completed"
+
+    def start_log(self) -> str:
+        """构造 Match 轮次开始日志。"""
+        return (
+            "订阅治理轮次开始: operation=match "
+            f"run_id={self.run_id} subscriptions={self.total} "
+            f"sites={self.site_count} candidates={self.candidate_count}"
+        )
+
+    def finish_log(self) -> str:
+        """构造 Match 轮次结束日志，completed 表示任务处理完成而非订阅成功。"""
+        elapsed_ms = (time.perf_counter() - self.started_at) * 1000
+        return (
+            "订阅治理轮次结束: operation=match "
+            f"run_id={self.run_id} state={self.state} subscriptions={self.total} "
+            f"processed={self.finished} task_completed={self.completed} "
+            f"task_skipped={self.skipped} task_failed={self.failed} "
+            f"admission_conflicts={self.admission_conflicts} cancelled={self.cancelled} "
+            f"ttl_timeouts={self.ttl_timeouts} release_failures={self.release_failures} "
+            f"sites={self.site_count} candidates={self.candidate_count} "
+            f"duration_ms={elapsed_ms:.1f}"
+        )
 
     def as_data(self, current: Optional[int] = None) -> dict[str, int]:
         """构造供进度消费者读取的实际计数。"""
@@ -92,6 +141,15 @@ def _report_match_progress(
         )
 
 
+def _match_stop_reason(context: SubscriptionExecutionContext) -> Optional[str]:
+    """区分 Match 安全停止来自 TTL 还是取消请求。"""
+    if context.is_expired():
+        return "ttl_timeout"
+    if context.is_cancel_requested():
+        return "cancelled"
+    return None
+
+
 def _is_title_match_allowed(
     mediainfo: MediaInfo,
     torrent_meta: MetaBase,
@@ -109,7 +167,7 @@ def _is_title_match_allowed(
         torrent_meta=torrent_meta,
     ):
         return True
-    logger.info(
+    logger.debug(
         f"{torrent_info.site_name} - {torrent_info.title} 仅通过无年份别名命中且候选媒体身份无法确认，已跳过"
     )
     return False
@@ -224,7 +282,7 @@ def _prepare_subscription_match(
         site_ids=set(sub_sites) if sub_sites else None,
     )
     if not routed_torrents:
-        logger.info(f"订阅 {subscribe.name} 本轮没有可能相关的资源，跳过资源匹配准备")
+        logger.debug(f"订阅 {subscribe.name} 本轮没有可能相关的资源，跳过资源匹配准备")
         return None
     mediainfo = fresh_fact_lease.get_or_load(
         subscribe,
@@ -341,6 +399,14 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             progress_callback(value=0, text="正在预处理订阅资源 ...")
 
         lock_acquired = False
+        summary = _MatchExecutionSummary(
+            total=0,
+            candidate_count=sum(len(contexts) for contexts in torrents.values()),
+            site_count=len(torrents),
+            run_id=uuid4().hex,
+            started_at=time.perf_counter(),
+        )
+        summary_started = False
         try:
             lock_acquired = self._acquire_run_lock("match", progress_callback)
             if not lock_acquired:
@@ -352,7 +418,9 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             # 所有订阅
             subscribes = self.subscription_repository.list(self.get_states_for_search("R"))
             total_num = len(subscribes)
-            summary = _MatchExecutionSummary(total=total_num)
+            summary.total = total_num
+            logger.info(summary.start_log())
+            summary_started = True
             if progress_callback:
                 _report_match_progress(
                     progress_callback,
@@ -373,13 +441,15 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                             current=listed_subscribe.id,
                         )
                     outcome: Optional[str] = "skipped"
+                    reason: Optional[str] = "not_eligible"
                     lease = self._subscription_execution_admission.try_acquire(
                         subscription_id=listed_subscribe.id,
                         operation="match",
                         ttl_seconds=self._SUBSCRIPTION_EXECUTION_TTL,
                     )
                     if lease is None:
-                        logger.info(f"订阅 {listed_subscribe.name} 正在由其他通道处理，本轮匹配已跳过")
+                        reason = "admission_conflict"
+                        logger.debug(f"订阅 {listed_subscribe.name} 正在由其他通道处理，本轮匹配已跳过")
                     else:
                         current_subscribe = None
                         execution_context = SubscriptionExecutionContext(
@@ -390,13 +460,14 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         try:
                             current_subscribe = self.subscription_repository.get(listed_subscribe.id)
                             if current_subscribe is None:
-                                logger.info(f"订阅 {listed_subscribe.id} 已不存在，本轮匹配跳过")
+                                logger.debug(f"订阅 {listed_subscribe.id} 已不存在，本轮匹配跳过")
                             elif current_subscribe.state not in {"R", "P"}:
-                                logger.info(
+                                logger.debug(
                                     f"订阅 {current_subscribe.name} 当前状态为 {current_subscribe.state}，本轮匹配跳过"
                                 )
                             elif execution_context.should_stop():
-                                logger.info(f"订阅 {current_subscribe.name} 已取消或超时，本轮匹配跳过")
+                                reason = _match_stop_reason(execution_context)
+                                logger.debug(f"订阅 {current_subscribe.name} 已取消或超时，本轮匹配跳过")
                             else:
                                 outcome = self._match_subscription(
                                     subscribe=current_subscribe,
@@ -405,18 +476,31 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                                     fresh_fact_lease=fresh_fact_lease,
                                     execution_context=execution_context,
                                 )
+                                reason = (
+                                    _match_stop_reason(execution_context)
+                                    if outcome == "skipped"
+                                    else None
+                                ) or ("business_skip" if outcome == "skipped" else None)
                         except SubscriptionSearchCancelled as err:
                             outcome = "skipped"
-                            logger.info(f"订阅 {listed_subscribe.name} 匹配已取消：{str(err)}")
+                            reason = _match_stop_reason(execution_context) or "cancelled"
+                            logger.debug(f"订阅 {listed_subscribe.name} 匹配已取消：{str(err)}")
                         except Exception as err:
                             outcome = "failed"
+                            reason = "error"
                             subscribe_name = (
                                 current_subscribe.name if current_subscribe is not None else listed_subscribe.name
                             )
                             logger.error(f"订阅 {subscribe_name} 匹配失败：{str(err)}", exc_info=True)
                         finally:
-                            self._subscription_execution_admission.release(lease)
-                    summary.record(outcome)
+                            released = self._subscription_execution_admission.release(lease)
+                            if not released:
+                                summary.release_failures += 1
+                                logger.error(
+                                    "订阅准入释放失败: operation=match "
+                                    f"subscription_id={listed_subscribe.id} run_id={summary.run_id}"
+                                )
+                    summary.record(outcome, reason)
                     _report_match_progress(
                         progress_callback,
                         summary,
@@ -443,6 +527,8 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         text=final_text,
                     )
         finally:
+            if summary_started:
+                logger.info(summary.finish_log())
             if lock_acquired:
                 self._match_lock.release()
                 logger.debug(f"match Lock released at {datetime.now()}")
@@ -477,7 +563,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         """在单条订阅准入期间完成匹配、下载和完成判定。"""
         if execution_context.should_stop():
             return "skipped"
-        logger.info(f"开始匹配订阅，标题：{subscribe.name} ...")
+        logger.debug(f"开始匹配订阅，标题：{subscribe.name} ...")
         if subscribe.type == MediaType.MUSIC.value:
             music_contexts = [context for contexts in processed_torrents.values() for context in contexts]
             execution_context.report_phase("matching")
@@ -551,7 +637,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         torrent_meta.org_string, custom_words=custom_words_list
                     )
                     if apply_words:
-                        logger.info(
+                        logger.debug(
                             f"{torrent_info.site_name} - {torrent_info.title} 因订阅存在自定义识别词，重新识别元数据..."
                         )
                         # 重新识别元数据
@@ -593,7 +679,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     ):
                         continue
                     # 匹配成功
-                    logger.info(
+                    logger.debug(
                         f"{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}"
                     )
                     torrent_mediainfo = mediainfo
@@ -633,7 +719,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         _context.candidate_recognized = True
                         _context.media_info_is_target = False
                         match_label = "媒体ID"
-                    logger.info(
+                    logger.debug(
                         f"{mediainfo.title_year} 通过{match_label}匹配到可选资源："
                         f"{torrent_info.site_name} - {torrent_info.title}"
                     )
@@ -723,7 +809,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                             context=_context,
                             priority=torrent_info.pri_order,
                         ):
-                            logger.info(
+                            logger.debug(
                                 f"{subscribe.name} 正在洗版，{torrent_info.title} "
                                 f"优先级未达到当前模式的升级条件"
                             )
@@ -733,13 +819,13 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         and subscribe.current_priority
                         and torrent_info.pri_order <= subscribe.current_priority
                     ):
-                        logger.info(
+                        logger.debug(
                             f"{subscribe.name} 正在洗版，{torrent_info.title} 优先级低于或等于已下载优先级"
                         )
                         continue
 
                 # 匹配成功
-                logger.info(f"{mediainfo.title_year} 匹配成功：{torrent_info.title}")
+                logger.debug(f"{mediainfo.title_year} 匹配成功：{torrent_info.title}")
                 # 自定义属性
                 if subscribe.media_category:
                     torrent_mediainfo.category = subscribe.media_category
@@ -752,7 +838,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
 
         if not _match_context:
             # 未匹配到资源
-            logger.info(f"{mediainfo.title_year} 未匹配到符合条件的资源")
+            logger.debug(f"{mediainfo.title_year} 未匹配到符合条件的资源")
             self.finish_subscribe_or_not(
                 subscribe=subscribe, meta=meta, mediainfo=mediainfo, lefts=no_exists
             )
@@ -762,7 +848,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             return "skipped"
 
         # 开始批量择优下载
-        logger.info(f"{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源")
+        logger.debug(f"{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源")
         downloads, lefts = self._SubscribeChain__download_best_version_with_full_pack_first(
             contexts=_match_context,
             no_exists=no_exists,

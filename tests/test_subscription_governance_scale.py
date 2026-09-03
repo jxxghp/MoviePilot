@@ -22,7 +22,7 @@ def test_subscription_governance_controlled_scale_matrix() -> None:
     """两档最终矩阵必须同时满足正确性、压力、恢复和订阅准入门禁。"""
     result = run_acceptance()
 
-    assert result["schema_version"] == 4
+    assert result["schema_version"] == 5
     assert result["passed"] is True
     assert all(result["gates"].values())
     assert result["method"]["match_entrypoint"] == "SubscribeChain.match"
@@ -51,6 +51,7 @@ def test_subscription_governance_controlled_scale_matrix() -> None:
     assert result["gates"]["match_execution_download_sets_equal"] is True
     assert result["gates"]["match_execution_missing_sets_equal"] is True
     assert result["gates"]["match_execution_completion_sets_equal"] is True
+    assert result["gates"]["match_info_logs_bounded"] is True
     assert [case["subscription_count"] for case in result["match_cases"]] == [100, 200]
     assert [case["site_count"] for case in result["match_cases"]] == [10, 20]
     assert min(case["candidate_count"] for case in result["match_cases"]) >= 1000
@@ -69,6 +70,8 @@ def test_subscription_governance_controlled_scale_matrix() -> None:
     assert all(
         case["downloaded_candidates"]["duplicate_count"] == 0
         and case["completed_subscriptions"]["duplicate_count"] == 0
+        and case["info_log_count"] == 2
+        and case["info_log_bounded"] is True
         for case in result["match_execution_cases"]
     )
     assert [

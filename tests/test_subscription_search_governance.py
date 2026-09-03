@@ -14,6 +14,7 @@ from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.subscription.execution import SubscriptionExecutionAdmission
 from app.application.subscription.sitebudget import SubscriptionSearchCancelled
 from app.chain.search.facade import SearchChain
+from app.chain.subscribe import search as subscribe_search
 from app.chain.subscribe.facade import SubscribeChain
 from app.chain.subscribe.search import _search_task_available_at
 from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
@@ -128,7 +129,6 @@ def test_inline_fallback_search_preserves_site_pressure_stagger(tmp_path, monkey
         "_process_search_subscription",
         lambda item, _searchchain, **_kwargs: item,
     )
-
     with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
         chain.search(state="R")
 
@@ -166,12 +166,19 @@ def test_successful_sites_remain_available_to_next_due_subscription(tmp_path, mo
 
     searchchain.search_site_torrents = search_site_torrents
     monkeypatch.setattr(chain, "_process_search_subscription", process)
+    info_logs = []
+    monkeypatch.setattr(subscribe_search.logger, "info", info_logs.append)
 
     with patch("app.chain.subscribe.search.SearchChain", return_value=searchchain):
         batch_id = chain.search(state="R")
 
     assert calls == [(40, 11), (40, 12), (41, 11), (41, 12)]
     assert chain.get_search_batch(batch_id).state == "completed"
+    assert "sites=2" in info_logs[-1]
+    assert "site_requests=4" in info_logs[-1]
+    assert "site_failures=0" in info_logs[-1]
+    assert "site_cooldown_skips=0" in info_logs[-1]
+    assert "candidates=4" in info_logs[-1]
 
 
 def test_fallback_queue_executes_without_match_global_lock(tmp_path, monkeypatch):
@@ -241,6 +248,69 @@ def test_fallback_queue_continues_after_one_subscription_failure(tmp_path, monke
         assert chain._subscription_execution_admission.release(lease) is True
 
 
+def test_search_logs_one_bounded_start_and_finish_summary(tmp_path, monkeypatch):
+    """Search INFO 只保留轮次摘要，并携带任务终态与耗时字段。"""
+    subscribes = [_subscribe(50), _subscribe(51)]
+    chain = _chain(tmp_path, subscribes)
+    _make_tasks_ready(monkeypatch)
+
+    def process(subscribe, _searchchain, **_kwargs):
+        """让一条任务失败并保持下一条正常收口。"""
+        if subscribe.id == 50:
+            raise RuntimeError("provider timeout")
+        return subscribe
+
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+    info_logs = []
+    monkeypatch.setattr(subscribe_search.logger, "info", info_logs.append)
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(state="R")
+
+    assert batch_id
+    assert len(info_logs) == 2
+    assert info_logs[0].startswith("订阅治理轮次开始: operation=search ")
+    assert f"batch_id={batch_id}" in info_logs[0]
+    assert "subscriptions=2" in info_logs[0]
+    assert info_logs[1].startswith("订阅治理轮次结束: operation=search ")
+    assert "state=failed" in info_logs[1]
+    assert "processed=2" in info_logs[1]
+    assert "task_completed=1" in info_logs[1]
+    assert "task_failed=1" in info_logs[1]
+    assert "admission_conflicts=0" in info_logs[1]
+    assert "ttl_timeouts=0" in info_logs[1]
+    assert "site_requests=0" in info_logs[1]
+    assert "duration_ms=" in info_logs[1]
+    assert "订阅成功" not in "\n".join(info_logs)
+
+
+def test_search_logs_subscription_admission_release_failure(tmp_path, monkeypatch):
+    """Search 无法释放订阅 owner 时必须即时告警并写入轮次摘要。"""
+    subscribe = _subscribe(52)
+    chain = _chain(tmp_path, [subscribe])
+    _make_tasks_ready(monkeypatch)
+    monkeypatch.setattr(
+        chain,
+        "_process_search_subscription",
+        lambda item, _searchchain, **_kwargs: item,
+    )
+    monkeypatch.setattr(chain._subscription_execution_admission, "release", lambda _lease: False)
+    info_logs = []
+    error_logs = []
+    monkeypatch.setattr(subscribe_search.logger, "info", info_logs.append)
+    monkeypatch.setattr(
+        subscribe_search.logger,
+        "error",
+        lambda message, **_kwargs: error_logs.append(message),
+    )
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        chain.search(state="R")
+
+    assert any("订阅准入释放失败: operation=search subscription_id=52" in item for item in error_logs)
+    assert "release_failures=1" in info_logs[-1]
+
+
 def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp_path, monkeypatch):
     """索引器吞错后仍须失败收口当前任务，并继续处理后续订阅。"""
     subscribes = [_subscribe(13), _subscribe(14)]
@@ -298,6 +368,8 @@ def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp
         return subscribe
 
     monkeypatch.setattr(chain, "_process_search_subscription", process)
+    info_logs = []
+    monkeypatch.setattr(subscribe_search.logger, "info", info_logs.append)
 
     with patch("app.chain.subscribe.search.SearchChain", return_value=searchchain):
         batch_id = chain.search(state="R")
@@ -309,6 +381,10 @@ def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp
     assert batch.failed_count == 1
     assert "Flaky" in batch.last_error
     assert "HTTP 429" in batch.last_error
+    assert "sites=2" in info_logs[-1]
+    assert "site_requests=2" in info_logs[-1]
+    assert "site_failures=1" in info_logs[-1]
+    assert "cooldown_seconds=900.0" in info_logs[-1]
 
 
 def test_same_subscription_conflict_is_skipped_without_waiting(tmp_path, monkeypatch):
@@ -324,6 +400,8 @@ def test_same_subscription_conflict_is_skipped_without_waiting(tmp_path, monkeyp
         ttl_seconds=60,
     )
     assert match_lease is not None
+    info_logs = []
+    monkeypatch.setattr(subscribe_search.logger, "info", info_logs.append)
 
     with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
         batch_id = chain.search(state="R")
@@ -334,6 +412,8 @@ def test_same_subscription_conflict_is_skipped_without_waiting(tmp_path, monkeyp
     assert batch.finished_count == 0
     assert batch.skipped_count == 1
     assert batch.last_error == "同一订阅正在由其他通道处理，本轮搜索已跳过"
+    assert "task_skipped=1" in info_logs[-1]
+    assert "admission_conflicts=1" in info_logs[-1]
     assert chain._subscription_execution_admission.release(match_lease) is True
 
 
@@ -532,6 +612,8 @@ def test_ttl_expiry_after_normal_return_marks_task_and_batch_failed(tmp_path, mo
         "_process_search_subscription",
         lambda item, _searchchain, **_kwargs: item,
     )
+    info_logs = []
+    monkeypatch.setattr(subscribe_search.logger, "info", info_logs.append)
 
     with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
         batch_id = chain.search(state="R")
@@ -542,6 +624,8 @@ def test_ttl_expiry_after_normal_return_marks_task_and_batch_failed(tmp_path, mo
     assert batch.failed_count == 1
     assert batch.cancelled_count == 0
     assert batch.last_error == "订阅执行已超过协作截止时间"
+    assert "task_failed=1" in info_logs[-1]
+    assert "ttl_timeouts=1" in info_logs[-1]
 
 
 def test_ttl_expiry_after_download_started_completes_with_actual_result(tmp_path, monkeypatch):

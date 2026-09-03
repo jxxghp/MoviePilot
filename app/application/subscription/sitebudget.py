@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional, Protocol
@@ -33,6 +34,74 @@ class SiteBudgetClaim:
     retry_at: str
     consecutive_failures: int
     lease_token: Optional[str] = None
+
+
+@dataclass(frozen=True, slots=True)
+class SubscriptionSiteBudgetMetricsSnapshot:
+    """一次订阅搜索轮次内的站点预算观测快照。"""
+
+    site_count: int
+    request_count: int
+    candidate_count: int
+    failure_count: int
+    cooldown_skip_count: int
+    release_failure_count: int
+    cooldown_seconds: float
+
+
+class SubscriptionSiteBudgetMetrics:
+    """线程安全聚合站点请求、失败、冷却与租约收口结果。"""
+
+    def __init__(self) -> None:
+        """初始化一次搜索轮次共享的计数器。"""
+        self._lock = threading.Lock()
+        self._site_ids: set[int] = set()
+        self._request_count = 0
+        self._candidate_count = 0
+        self._failure_count = 0
+        self._cooldown_skip_count = 0
+        self._release_failure_count = 0
+        self._cooldown_seconds = 0.0
+
+    def record_unavailable(self, site_id: int) -> None:
+        """记录因在途租约或错误冷却而未发出的站点请求。"""
+        with self._lock:
+            self._site_ids.add(site_id)
+            self._cooldown_skip_count += 1
+
+    def record_request(self, site_id: int, candidate_count: int) -> None:
+        """记录一个真实站点请求及其返回候选数。"""
+        with self._lock:
+            self._site_ids.add(site_id)
+            self._request_count += 1
+            self._candidate_count += max(0, candidate_count)
+
+    def record_finish(self, *, outcome: str, delay: float, released: bool) -> None:
+        """记录外站结果、错误冷却时间和租约释放结果。"""
+        with self._lock:
+            if outcome not in {"success", "skipped"}:
+                self._failure_count += 1
+                self._cooldown_seconds += max(0.0, delay)
+            if not released:
+                self._release_failure_count += 1
+
+    def record_release_failure(self) -> None:
+        """记录未进入正常结果收口的站点租约释放失败。"""
+        with self._lock:
+            self._release_failure_count += 1
+
+    def snapshot(self) -> SubscriptionSiteBudgetMetricsSnapshot:
+        """返回可安全跨线程读取的不可变观测结果。"""
+        with self._lock:
+            return SubscriptionSiteBudgetMetricsSnapshot(
+                site_count=len(self._site_ids),
+                request_count=self._request_count,
+                candidate_count=self._candidate_count,
+                failure_count=self._failure_count,
+                cooldown_skip_count=self._cooldown_skip_count,
+                release_failure_count=self._release_failure_count,
+                cooldown_seconds=round(self._cooldown_seconds, 3),
+            )
 
 
 class SubscriptionSiteBudgetRepository(Protocol):
@@ -79,6 +148,7 @@ class SubscriptionSiteBudget:
         lease_seconds: int = 900,
         clock: Callable[[], datetime] = _utc_now,
         phase_changed: Optional[Callable[[str, Optional[int]], None]] = None,
+        metrics: Optional[SubscriptionSiteBudgetMetrics] = None,
     ) -> None:
         """保存持久化端口及可注入的时钟和阶段回调。"""
         self._repository = repository
@@ -88,6 +158,7 @@ class SubscriptionSiteBudget:
         self._lease_seconds = max(1, lease_seconds)
         self._clock = clock
         self._phase_changed = phase_changed
+        self._metrics = metrics
 
     def acquire(self, site_id: int) -> SiteBudgetClaim:
         """只认领一次指定站点，未就绪时留待下一次正常调度。"""
@@ -100,6 +171,8 @@ class SubscriptionSiteBudget:
         if claim.acquired:
             self._report_phase("searching", site_id)
             return claim
+        if self._metrics:
+            self._metrics.record_unavailable(site_id)
         self._report_phase("waiting_site_budget", site_id)
         raise SubscriptionSiteBudgetUnavailable(
             site_id=site_id,
@@ -111,20 +184,38 @@ class SubscriptionSiteBudget:
         if self._phase_changed:
             self._phase_changed(phase, site_id)
 
+    def record_request(self, site_id: int, candidate_count: int) -> None:
+        """把真实请求及返回候选数写入轮次聚合器。"""
+        if self._metrics:
+            self._metrics.record_request(site_id, candidate_count)
+
+    def record_release_failure(self) -> None:
+        """把站点租约释放异常写入轮次聚合器。"""
+        if self._metrics:
+            self._metrics.record_release_failure()
+
     def finish(self, claim: SiteBudgetClaim, observation: SiteSearchObservation) -> bool:
         """正常结果立即释放站点，错误结果按类别写入冷却。"""
         if not claim.lease_token:
+            self.record_release_failure()
             return False
         outcome = observation.outcome if observation.attempted else "skipped"
         delay = self._next_delay(outcome, claim.consecutive_failures)
         next_allowed_at = (self._clock() + timedelta(seconds=delay)).isoformat(timespec="seconds")
-        return self._repository.finish_site(
+        released = self._repository.finish_site(
             site_id=claim.site_id,
             lease_token=claim.lease_token,
             outcome=outcome,
             next_allowed_at=next_allowed_at,
             error=observation.error,
         )
+        if self._metrics:
+            self._metrics.record_finish(
+                outcome=outcome,
+                delay=delay,
+                released=released,
+            )
+        return released
 
     def _next_delay(self, outcome: str, consecutive_failures: int) -> float:
         """正常或本地跳过立即恢复，错误按连续失败次数退避。"""

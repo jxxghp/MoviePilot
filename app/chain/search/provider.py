@@ -59,7 +59,7 @@ def _wait_for_site_request(site: SiteIndexer) -> None:
     """同步等待当前站点预约时间，不阻塞其他站点的线程任务。"""
     delay = _reserve_site_request(site)
     if delay > 0:
-        logger.info(f"{site.get('name')} 站点流控等待 {delay:.1f} 秒 ...")
+        logger.debug(f"{site.get('name')} 站点流控等待 {delay:.1f} 秒 ...")
         time.sleep(delay)
 
 
@@ -67,7 +67,7 @@ async def _async_wait_for_site_request(site: SiteIndexer) -> None:
     """异步等待当前站点预约时间，让其他站点继续并发搜索。"""
     delay = _reserve_site_request(site)
     if delay > 0:
-        logger.info(f"{site.get('name')} 站点流控等待 {delay:.1f} 秒 ...")
+        logger.debug(f"{site.get('name')} 站点流控等待 {delay:.1f} 秒 ...")
         await asyncio.sleep(delay)
 
 
@@ -216,7 +216,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
             claim = budget.acquire(site_id)
         except SubscriptionSiteBudgetUnavailable as error:
             self.record_subscription_site_budget_failure(str(error))
-            logger.info(str(error))
+            logger.debug(str(error))
             return []
         with capture_site_search_observation() as observation:
             try:
@@ -228,6 +228,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                     page=page,
                 )
             except Exception as error:
+                budget.record_request(site_id, 0)
                 report_site_search_outcome(
                     attempted=True,
                     outcome="error",
@@ -235,6 +236,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                 )
                 raise
             else:
+                budget.record_request(site_id, len(result or []))
                 if observation.attempted and observation.outcome not in {"success", "skipped"}:
                     failure = observation.error or observation.outcome
                     self.record_subscription_site_budget_failure(
@@ -243,8 +245,14 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                 return result
             finally:
                 try:
-                    budget.finish(claim, observation)
+                    released = budget.finish(claim, observation)
+                    if not released:
+                        logger.error(
+                            f"订阅站点预算释放失败: site_id={site_id} "
+                            f"site={site.get('name') or '-'}"
+                        )
                 except Exception as error:  # noqa: BLE001
+                    budget.record_release_failure()
                     logger.error(
                         f"站点 {site.get('name') or site_id} 搜索预算收口失败：{str(error)}",
                         exc_info=True,
@@ -343,7 +351,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                             search_keyword=search_keyword,
                             media_type=media_type,
                         )
-                    logger.info(f"站点搜索进度：{finish_count} / {total_num}")
+                    logger.debug(f"站点搜索进度：{finish_count} / {total_num}")
                     progress.update(
                         value=finish_count / total_num * 100,
                         text=(f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个请求 ..."),
@@ -401,7 +409,12 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                 value=100,
                 text=(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {elapsed} 秒"),
             )
-            logger.info(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {elapsed} 秒")
+            log = (
+                logger.debug
+                if isinstance(getattr(self, "_subscription_site_budget", None), SubscriptionSiteBudget)
+                else logger.info
+            )
+            log(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {elapsed} 秒")
             return results
         finally:
             progress.end()
@@ -550,7 +563,7 @@ class SearchProviderOwner(_SearchProviderSyncOwner):
             logger.debug(f"{batch.site.get('name')} {label}第 {batch.page} 页返回 {len(batch.items)} 条，停止继续翻页")
         progress_value = batch.finished / batch.total * 100
         progress_text = f"正在搜索{label}{keyword or ''}，已完成 {batch.finished} / {batch.total} 个请求 ..."
-        logger.info(f"站点{label}搜索进度：{batch.finished} / {batch.total}")
+        logger.debug(f"站点{label}搜索进度：{batch.finished} / {batch.total}")
         await progress.update(value=progress_value, text=progress_text)
         return {
             "type": "append",
