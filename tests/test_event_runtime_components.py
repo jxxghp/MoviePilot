@@ -5,14 +5,20 @@ import threading
 import types
 from unittest.mock import Mock
 
+from app.foundation.singleton import Singleton
 from app.runtime.event.binding import (
     EventBindingResolver,
     EventHandlerBinding,
 )
 from app.runtime.event.errors import EventErrorPolicy
 from app.runtime.events import Event
+from app.runtime.extensions.plugin import manager as plugin_manager_module
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.schemas.types import EventType
-from app.startup.initializers.modules import get_host_event_handler_factories
+from app.startup.initializers.modules import (
+    get_config_reload_handler_providers,
+    get_host_event_handler_factories,
+)
 
 
 class _UnmanagedHandler:
@@ -26,6 +32,15 @@ class _UnmanagedHandler:
 
     def handle(self, _event: Event) -> None:
         """提供可解析的实例方法声明。"""
+
+
+class _PluginHandler:
+    """代表插件运行时登记的事件 owner。"""
+
+    @staticmethod
+    def get_name() -> str:
+        """返回测试插件名称。"""
+        return "测试插件"
 
 
 def _free_function_handler(_event: Event) -> None:
@@ -155,6 +170,41 @@ def test_binding_uses_explicit_resolver_instance() -> None:
     assert method_name == "handle"
 
 
+def test_plugin_resolver_requires_exact_registered_class() -> None:
+    """同名宿主类不能被 plugins resolver 误识别为插件 owner。"""
+    manager = object.__new__(PluginManager)
+    plugin = _PluginHandler()
+    manager._plugins = {_PluginHandler.__name__: _PluginHandler}
+    manager._running_plugins = {_PluginHandler.__name__: plugin}
+    impostor = type(_PluginHandler.__name__, (), {})
+
+    assert manager.resolve_event_handler_instance(
+        _PluginHandler
+    ) == EventHandlerBinding(
+        instance=plugin,
+        owner_name="测试插件",
+        run_sync_in_threadpool=True,
+    )
+    assert manager.resolve_event_handler_instance(impostor) is None
+
+
+def test_plugin_resolver_does_not_materialize_manager(monkeypatch) -> None:
+    """残留 resolver 在管理器不存在时必须跳过，不能构造插件 Runtime。"""
+    singleton_key = (PluginManager, (), frozenset())
+    monkeypatch.delitem(Singleton._instances, singleton_key, raising=False)
+    runtime_factory = Mock(side_effect=AssertionError("不得构造 PluginManager"))
+    monkeypatch.setattr(
+        plugin_manager_module,
+        "_plugin_runtime_factory",
+        runtime_factory,
+    )
+
+    assert plugin_manager_module._resolve_plugin_handler_instance(
+        _PluginHandler
+    ) is None
+    runtime_factory.assert_not_called()
+
+
 def test_system_error_failure_does_not_rebroadcast() -> None:
     """SystemError 处理器自身失败时只能通知和日志降级，不能再次发送事件。"""
     notifier = Mock()
@@ -212,4 +262,29 @@ def test_all_decorated_host_handler_classes_have_explicit_factories() -> None:
         "SiteChain",
         "SubscribeChain",
         "WorkflowChain",
+    }
+
+
+def test_all_unmanaged_config_reload_classes_have_explicit_providers(
+    monkeypatch,
+) -> None:
+    """专属 resolver 未覆盖的配置 owner 必须全部声明生命周期 Provider。"""
+    manager = object.__new__(PluginManager)
+    plugin_singleton_key = (PluginManager, (), frozenset())
+    monkeypatch.setitem(Singleton._instances, plugin_singleton_key, manager)
+    doh_helper = object.__new__(
+        __import__("app.adapters.network.doh", fromlist=["DohHelper"]).DohHelper
+    )
+    doh_singleton_key = (type(doh_helper), (), frozenset())
+    monkeypatch.setitem(Singleton._instances, doh_singleton_key, doh_helper)
+    providers = get_config_reload_handler_providers()
+
+    assert {owner.__name__ for owner in providers} == {
+        "AsyncRedisHelper",
+        "DohHelper",
+        "Monitor",
+        "PluginManager",
+        "RedisHelper",
+        "SystemHelper",
+        "TransferChain",
     }
