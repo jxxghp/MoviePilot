@@ -13,13 +13,19 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.foundation.environment import is_free_threaded_runtime
+from app.runtime.extensions.plugin.version import resolve_plugin_version_dir
 from app.runtime.settings import get_runtime_setting
 from app.schemas.plugin import PluginInstance
-
 
 PluginImportPreparer = Callable[..., None]
 PluginImportScanner = Callable[..., None]
 PluginValidator = Callable[[Any], bool]
+PluginHostBinding = Callable[[str], Optional[PluginInstance]]
+
+
+def _no_host_binding(_plugin_id: str) -> Optional[PluginInstance]:
+    """未装配本体版本绑定端口时，视为该插件本体从未被显式绑定过版本。"""
+    return None
 
 
 class PluginLoader:
@@ -34,12 +40,14 @@ class PluginLoader:
         import_preparer: PluginImportPreparer,
         import_scanner: PluginImportScanner,
         log: Any,
+        host_binding: PluginHostBinding = _no_host_binding,
     ) -> None:
-        """保存插件目录、导入前置能力和日志端口。"""
+        """保存插件目录、导入前置能力、日志端口和本体版本绑定查询端口。"""
         self._plugins_root = plugins_root
         self._import_preparer = import_preparer
         self._import_scanner = import_scanner
         self._logger = log
+        self._host_binding = host_binding
 
     def load(
         self,
@@ -71,12 +79,13 @@ class PluginLoader:
                     f"跳过插件目录：{plugin_dir.name}（不在加载列表中）"
                 )
                 continue
-            if not (plugin_dir / "__init__.py").exists():
+            source_dir = self._resolve_host_source_dir(plugin_dir)
+            if not (source_dir / "__init__.py").exists():
                 self._logger.debug(
                     f"跳过插件目录：{plugin_dir.name}（缺少__init__.py）"
                 )
                 continue
-            if not self._is_runtime_compatible(plugin_dir):
+            if not self._is_runtime_compatible(source_dir):
                 self._logger.warning(
                     f"跳过插件 {plugin_dir.name}：声明与当前运行时不兼容"
                 )
@@ -87,13 +96,17 @@ class PluginLoader:
                 self._logger.debug(f"正在导入插件模块：{module_name}")
                 self._import_preparer(
                     plugin_id=plugin_dir.name,
-                    plugin_dir=plugin_dir,
+                    plugin_dir=source_dir,
                 )
                 self._import_scanner(
                     plugin_id=plugin_dir.name,
-                    plugin_dir=plugin_dir,
+                    plugin_dir=source_dir,
                 )
-                module = importlib.import_module(module_name)
+                module = (
+                    importlib.import_module(module_name)
+                    if source_dir == plugin_dir
+                    else self._import_versioned_module(module_name, source_dir)
+                )
                 for name, candidate in module.__dict__.items():
                     if name.startswith("_") or not isinstance(candidate, type):
                         continue
@@ -110,13 +123,98 @@ class PluginLoader:
                 )
         return plugins
 
+    def _resolve_host_source_dir(self, plugin_dir: Path) -> Path:
+        """按源插件本体的版本绑定解析待加载源码目录。
+
+        语义与 ``load_instance`` 对分身绑定的三情形处理一致：本体从未显式绑定
+        过版本，或绑定为跟随当前版本时，都取插件当前版本；绑定为钉住某版本时
+        取该版本；钉住的版本目录已不在磁盘上时视为绑定已失效，记警告后回落到
+        当前版本，不让整个本体加载失败。
+
+        :param plugin_dir: 插件源码根目录
+        :return: 源码目录
+        """
+        binding = self._host_binding(plugin_dir.name)
+        desired_version = (
+            None if binding is None or binding.follow_current_version else binding.plugin_version
+        )
+        if desired_version is None:
+            return resolve_plugin_version_dir(plugin_dir)
+        try:
+            return resolve_plugin_version_dir(plugin_dir, desired_version)
+        except ValueError as error:
+            self._logger.warning(
+                f"源插件 {plugin_dir.name} 绑定的版本目录不存在，"
+                f"回落到插件当前版本：{error}"
+            )
+            return resolve_plugin_version_dir(plugin_dir)
+
+    @staticmethod
+    def _import_versioned_module(module_name: str, source_dir: Path) -> Any:
+        """按版本目录手动导入插件模块，绕开与目录名不一致的标准包解析。
+
+        版本化布局下源码所在的版本目录名（如 v1_2_0）与保持不变的模块名
+        （app.plugins.<插件ID>）不一致，标准 import 机制按模块名逐段定位文件会
+        找不到源码，因此改为按已解析出的源码目录直接构造模块规格。
+
+        :param module_name: 目标模块名
+        :param source_dir: 已解析出的源码目录
+        :return: 已执行完成的模块对象，模块名已在缓存中时直接返回缓存对象
+        :raise ImportError: 无法为源码目录创建模块规格
+        """
+        cached = sys.modules.get(module_name)
+        if cached is not None:
+            return cached
+        source_file = source_dir / "__init__.py"
+        spec = importlib.util.spec_from_file_location(
+            module_name,
+            source_file,
+            submodule_search_locations=[str(source_dir)],
+        )
+        if spec is None or spec.loader is None:
+            raise ImportError(f"无法创建模块规格：{module_name}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:  # noqa: BLE001 - 与标准 importlib 一致：执行失败必须清除半成品缓存
+            sys.modules.pop(module_name, None)
+            raise
+        return module
+
     def load_instance(
         self,
         instance: PluginInstance,
         validator: PluginValidator,
+        *,
+        version: Optional[str] = None,
     ) -> list[Any]:
-        """在实例专属模块命名空间中重新执行源插件代码并返回适配类。"""
-        source_dir = self._plugins_root / instance.source_plugin_id.lower()
+        """在实例专属模块命名空间中重新执行源插件代码并返回适配类。
+
+        源码目录按期望版本解析：显式传入 ``version`` 时以其为准（供调用方在启动
+        失败后以某个具体版本重试）；否则按实例自身绑定解析——跟随插件当前版本时
+        取清单当前版本，不跟随时取实例绑定的版本。绑定版本的目录已不在磁盘上时
+        视为该绑定已失效，记警告后回落到当前版本，而不是让整个实例加载失败。
+
+        :param instance: 待加载的虚拟插件实例描述
+        :param validator: 候选类是否满足宿主插件契约的校验函数
+        :param version: 显式指定加载的版本号，为空时按实例绑定解析
+        :return: 通过校验的适配类列表；源码或运行时不兼容时为空列表
+        """
+        plugin_dir = self._plugins_root / instance.source_plugin_id.lower()
+        desired_version = (
+            version
+            if version is not None
+            else (None if instance.follow_current_version else instance.plugin_version)
+        )
+        try:
+            source_dir = resolve_plugin_version_dir(plugin_dir, desired_version)
+        except ValueError as error:
+            self._logger.warning(
+                f"虚拟插件实例 {instance.instance_id} 绑定的版本目录不存在，"
+                f"回落到插件当前版本：{error}"
+            )
+            source_dir = resolve_plugin_version_dir(plugin_dir)
         source_file = source_dir / "__init__.py"
         if not source_file.exists():
             self._logger.warning(

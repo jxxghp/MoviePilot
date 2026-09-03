@@ -1,3 +1,4 @@
+from datetime import datetime as _datetime
 from enum import Enum as _Enum
 from typing import Annotated as _Annotated
 from typing import Dict, List, Literal, Optional, Union
@@ -62,7 +63,108 @@ class PluginInstance(BaseModel):
     plugin_name: Optional[str] = Field(default=None, description="实例展示名称")
     plugin_desc: Optional[str] = Field(default=None, description="实例展示描述")
     plugin_icon: Optional[str] = Field(default=None, description="实例展示图标")
-    mode: Literal["virtual"] = Field(default="virtual", description="实例实现模式")
+    mode: Literal["virtual", "host"] = Field(
+        default="virtual",
+        description="实例实现模式：virtual 为共享源码的分身，host 为源插件本体自身的版本绑定",
+    )
+    plugin_version: Optional[str] = Field(
+        default=None,
+        description="该实例已生效的插件版本，None 表示尚未成功启动过任何版本",
+    )
+    follow_current_version: bool = Field(
+        default=True,
+        description="是否跟随插件当前版本；为 False 时固定使用 plugin_version 绑定的版本",
+    )
+    log_level: Optional[str] = Field(
+        default=None,
+        description="该实例的日志等级覆盖，None 表示跟随全局日志等级",
+    )
+    log_expires_at: Optional[_datetime] = Field(
+        default=None,
+        description="日志等级覆盖的失效时间，None 表示不过期",
+    )
+    is_default_target: bool = Field(
+        default=False,
+        description="该实例是否为所属源插件的默认调用目标",
+    )
+
+
+class PluginInstalledVersionInfo(BaseModel):  # type: ignore[misc]
+    """插件某个已装版本的落盘信息。"""
+
+    version: str = Field(description="版本号")
+    directory: str = Field(description="版本源码目录名")
+    installed_at: Optional[str] = Field(default=None, description="安装时间，ISO 格式")
+    source: Optional[str] = Field(default=None, description="版本来源，如 market、local、migrated")
+    is_current: bool = Field(description="是否为版本元信息登记的当前版本")
+
+
+class PluginInstanceVersionBinding(BaseModel):  # type: ignore[misc]
+    """单个实例的版本绑定与运行状态。"""
+
+    instance_id: str = Field(description="实例 ID")
+    plugin_version: Optional[str] = Field(default=None, description="该实例已生效的插件版本")
+    follow_current_version: bool = Field(description="是否跟随插件当前版本")
+    running: bool = Field(description="该实例当前是否运行中")
+    is_host: bool = Field(default=False, description="是否为源插件本体自身，而非共享源码的分身")
+    is_default_target: bool = Field(
+        default=False, description="该实例是否为本插件的默认调用目标"
+    )
+
+
+class PluginVersionOverview(BaseModel):  # type: ignore[misc]
+    """插件已装版本总览与各实例的版本绑定。"""
+
+    plugin_id: str = Field(description="插件 ID")
+    current_version: Optional[str] = Field(default=None, description="版本元信息登记的当前版本")
+    installed_versions: List[PluginInstalledVersionInfo] = Field(
+        default_factory=list, description="已装版本列表，按版本号升序排列"
+    )
+    instances: List[PluginInstanceVersionBinding] = Field(
+        default_factory=list, description="引用该插件源码的各实例版本绑定"
+    )
+
+
+class PluginInstanceVersionUpdateRequest(BaseModel):  # type: ignore[misc]
+    """设置实例版本绑定的请求参数。"""
+
+    follow_current_version: bool = Field(description="是否跟随插件当前版本")
+    plugin_version: Optional[str] = Field(
+        default=None,
+        description="不跟随当前版本时必填，且必须是已安装版本",
+    )
+
+
+class PluginVersionRecycleOutcome(BaseModel):  # type: ignore[misc]
+    """插件已装版本目录回收结果。"""
+
+    removed: List[str] = Field(default_factory=list, description="本次已删除的版本号列表")
+    kept: Dict[str, str] = Field(default_factory=dict, description="版本号到保留理由的映射")
+
+
+class PluginInstanceLogLevel(BaseModel):  # type: ignore[misc]
+    """单个实例的日志等级设置与生效结果。"""
+
+    instance_id: str = Field(description="实例 ID")
+    configured_level: Optional[str] = Field(default=None, description="该实例设置的日志等级覆盖，None 表示未设置或已过期")
+    expires_at: Optional[_datetime] = Field(default=None, description="日志等级覆盖的失效时间，None 表示不过期")
+    effective_level: str = Field(description="按过期回落判定后实际生效的日志等级")
+
+
+class PluginInstanceLogLevelOverview(BaseModel):  # type: ignore[misc]
+    """插件全部实例（含本体）的日志等级设置总览。"""
+
+    plugin_id: str = Field(description="插件 ID")
+    instances: List[PluginInstanceLogLevel] = Field(
+        default_factory=list, description="该插件全部实例的日志等级设置，首项固定是本体自身"
+    )
+
+
+class PluginInstanceLogLevelUpdateRequest(BaseModel):  # type: ignore[misc]
+    """设置实例日志等级覆盖的请求参数。"""
+
+    level: str = Field(description="目标日志等级，如 DEBUG、INFO、WARNING、ERROR、CRITICAL")
+    expires_at: Optional[_datetime] = Field(default=None, description="覆盖失效时间，None 表示不过期")
 
 
 class Plugin(BaseModel):
@@ -132,6 +234,12 @@ class Plugin(BaseModel):
     is_instance: Optional[bool] = False
     # 实例实现模式；存量物理分身为空
     instance_mode: Optional[str] = None
+    # 该实例钉住的插件版本；跟随插件当前版本时为空
+    pinned_version: Optional[str] = None
+    # 该实例是否为所属插件的默认调用目标
+    is_default_target: bool = False
+    # 该实例当前生效的日志等级覆盖；未设置覆盖或覆盖已过期回落全局等级时为空
+    log_level_effective: Optional[str] = None
 
     @property
     def package_version(self) -> Optional[str]:

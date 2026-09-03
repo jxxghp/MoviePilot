@@ -42,7 +42,11 @@ class InvokePluginAction(BaseAction):
         if not params.plugin_id or not params.action_id:
             return context
         try:
-            plugin_actions = get_plugin_manager().get_plugin_actions(params.plugin_id)
+            plugin_manager = get_plugin_manager()
+            # 未指定实例的插件 ID 存在分身时须裁决默认调用目标，避免历史工作流在
+            # 源插件本体停用、仅分身启用后静默失效
+            resolved_plugin_id = plugin_manager.resolve_plugin_call_target(params.plugin_id)
+            plugin_actions = plugin_manager.get_plugin_actions(resolved_plugin_id)
             if not plugin_actions:
                 logger.error(f"插件不存在: {params.plugin_id}")
                 return context

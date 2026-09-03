@@ -5,6 +5,7 @@ import posixpath
 import threading
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import (
     Any,
@@ -212,6 +213,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_sync = self._plugin_runtime.sync
         self._plugin_clone = self._plugin_runtime.clone
         self._plugin_classification = self._plugin_runtime.classification
+        self._plugin_version_binding = self._plugin_runtime.version_binding
+        self._plugin_log_level = self._plugin_runtime.log_level
+        self._plugin_default_target = self._plugin_runtime.default_target
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
             "plugins",
@@ -1243,6 +1247,132 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return False, str(error)
+
+    def get_plugin_version_overview(self, plugin_id: str) -> Dict[str, Any]:
+        """
+        查询插件已装版本列表与各实例的版本绑定
+        :param plugin_id: 插件ID
+        :return: 含已装版本列表与各实例绑定信息的字典
+        :raise LookupError: 插件不存在
+        """
+        return self._plugin_version_binding.overview(plugin_id)
+
+    def set_plugin_instance_version(
+        self,
+        instance_id: str,
+        *,
+        follow_current_version: bool,
+        plugin_version: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """
+        设置虚拟插件实例的版本绑定，并完成一次停止再启动
+        :param instance_id: 实例ID
+        :param follow_current_version: 是否跟随插件当前版本
+        :param plugin_version: 不跟随当前版本时的目标版本号
+        :return: (是否成功, 成功时为实例ID／失败时为可读原因)
+        """
+        try:
+            with self.mutation(f"切换插件实例 {instance_id} 版本"):
+                return self._plugin_version_binding.set_instance_version(
+                    instance_id,
+                    follow_current_version=follow_current_version,
+                    plugin_version=plugin_version,
+                )
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False, str(error)
+
+    def get_plugin_instance_log_levels(self, plugin_id: str) -> List[Dict[str, Any]]:
+        """
+        查询插件全部实例（含本体）当前的日志等级设置
+        :param plugin_id: 插件ID
+        :return: 每个实例的等级设置条目列表
+        :raise LookupError: 插件不存在
+        """
+        return self._plugin_log_level.list_levels(plugin_id)
+
+    def set_plugin_instance_log_level(
+        self,
+        plugin_id: str,
+        instance_id: str,
+        level: str,
+        expires_at: Optional[datetime] = None,
+    ) -> None:
+        """
+        设置指定插件实例的日志等级覆盖，运行期立即生效
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :param level: 目标日志等级
+        :param expires_at: 覆盖失效时间，None 表示不过期
+        :raise LookupError: 插件不存在，或实例不存在／不归属该插件
+        :raise ValueError: level 不是受支持的等级名
+        """
+        self._plugin_log_level.set_level(plugin_id, instance_id, level, expires_at)
+
+    def clear_plugin_instance_log_level(self, plugin_id: str, instance_id: str) -> None:
+        """
+        清除指定插件实例的日志等级覆盖，运行期立即回落全局等级
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :raise LookupError: 插件不存在，或实例不存在／不归属该插件
+        """
+        self._plugin_log_level.clear_level(plugin_id, instance_id)
+
+    def resolve_plugin_call_target(self, plugin_id: str) -> str:
+        """
+        确定按插件ID发起、未指定实例的调用应当落到哪个实例
+        :param plugin_id: 插件ID，也可以是调用方已经明确知道的具体实例ID
+        :return: 应当使用的实例ID
+        :raise LookupError: 该插件已有分身但未设置默认调用目标，或默认调用目标已停用
+        """
+        return self._plugin_default_target.resolve(plugin_id)
+
+    def set_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> bool:
+        """
+        设置指定插件实例为默认调用目标，并清除同插件的旧默认
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :return: 目标实例存在时为True，指定的非本体实例不归属该插件时为False
+        :raise LookupError: 插件不存在
+        """
+        return self._plugin_default_target.set_target(plugin_id, instance_id)
+
+    def clear_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> None:
+        """
+        清除指定插件实例的默认调用目标置位，仅当当前置位的正是该实例时才动作
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :raise LookupError: 插件不存在
+        """
+        self._plugin_default_target.clear_target(plugin_id, instance_id)
+
+    def recycle_plugin_versions(self, plugin_id: str) -> Dict[str, Any]:
+        """
+        回收指定插件不再被引用、也不在最近版本窗口内的已装版本目录
+        :param plugin_id: 插件ID
+        :return: 含 removed 与 kept 的回收结果
+        :raise LookupError: 插件不存在
+        :raise PluginMutationRejectedError: 当前处于停机准入窗口，拒绝本次回收
+        """
+        with self.mutation(f"回收插件 {plugin_id} 已装版本"):
+            return self._plugin_version_binding.recycle_versions(plugin_id)
+
+    def recycle_all_plugin_versions(self) -> Dict[str, Dict[str, Any]]:
+        """
+        回收全部源码插件不再被引用、也不在最近版本窗口内的已装版本目录
+        单个插件的回收失败（含引用集合收集失败、并发窗口拒绝）只记错误日志并
+        跳过该插件，不阻断其余插件的回收
+        :return: 插件ID到回收结果的映射，只含成功完成本次回收的插件
+        """
+        results: Dict[str, Dict[str, Any]] = {}
+        for plugin_id in self.get_plugin_ids():
+            if self.get_plugin_instance(plugin_id) is not None:
+                continue
+            try:
+                results[plugin_id] = self.recycle_plugin_versions(plugin_id)
+            except Exception as error:  # noqa: BLE001 - 单个插件的回收失败不能连带阻断其余插件
+                logger.error(f"插件 {plugin_id} 版本回收失败，跳过本次回收：{error}")
+        return results
 
     def _modify_plugin_files(self, plugin_dir: Path, original_id: str, suffix: str,
                              name: str, description: str, version: str = None,

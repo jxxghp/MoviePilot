@@ -10,6 +10,7 @@ from app.foundation.version import compare_version
 from app.runtime.extensions.plugin.contracts import supports_plugin_hook
 from app.runtime.extensions.plugin.storage import PluginStorage
 from app.runtime.extensions.plugin.system import PluginSystemServices
+from app.runtime.log import get_plugin_instance_log_level_override
 from app.runtime.settings import get_runtime_setting
 from app.schemas.plugin import Plugin, PluginInstance, PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
@@ -33,6 +34,7 @@ class PluginCatalogFacade:
         plugin_attr: Callable[[str, str], Any],
         plugin_instance: Callable[[str], Optional[PluginInstance]],
         plugin_instances: Callable[[], dict[str, PluginInstance]],
+        host_instances: Callable[[], dict[str, PluginInstance]],
         runtime_status: Callable[[str], Optional[PluginRuntimeStatus]],
         log: Any,
     ) -> None:
@@ -49,6 +51,7 @@ class PluginCatalogFacade:
         self._plugin_attr = plugin_attr
         self._plugin_instance = plugin_instance
         self._plugin_instances = plugin_instances
+        self._host_instances = host_instances
         self._runtime_status = runtime_status
         self._logger = log
 
@@ -72,6 +75,7 @@ class PluginCatalogFacade:
     def local(self) -> list[Plugin]:
         """把已加载插件投影为本地插件目录 DTO。"""
         installed = self._installed_ids()
+        host_instances = self._host_instances()
         plugins: list[Plugin] = []
         for plugin_id, plugin_class in self._classes().items():
             plugin_instance = self._running().get(plugin_id)
@@ -95,6 +99,7 @@ class PluginCatalogFacade:
                 source_plugin_id=getattr(plugin_class, "plugin_source_id", None),
                 is_instance=instance is not None,
                 instance_mode=instance.mode if instance else None,
+                **self._instance_overlay(instance or host_instances.get(plugin_id)),
             )
             if not self._auth_checker(plugin=plugin, source=plugin_class):
                 continue
@@ -110,6 +115,7 @@ class PluginCatalogFacade:
             for plugin in self.local()
             if plugin.installed and plugin.id
         }
+        host_instances = self._host_instances()
         result = []
         for plugin_id in installed_ids:
             plugin = local_by_id.get(plugin_id)
@@ -129,10 +135,38 @@ class PluginCatalogFacade:
                 ),
                 is_instance=instance is not None,
                 instance_mode=instance.mode if instance else None,
+                **self._instance_overlay(instance or host_instances.get(plugin_id)),
             ))
         # 展示顺序由持久化安装清单保留，避免后台恢复或占位卡片出现后改变用户看到的位置。
         # 前端可用用户级 PluginOrder 覆盖，plugin_order 只用于运行期插件发现顺序。
         return result
+
+    @staticmethod
+    def _instance_overlay(source: Optional[PluginInstance]) -> dict[str, Any]:
+        """把实例或源插件本体的版本绑定记录投影为卡片列表的三个只读叠加字段。
+
+        ``source`` 分身来自已在遍历中取到的实例对象，本体来自批量取到的
+        本体绑定记录字典，两者读的都是已经在内存中的对象，不再另发查询。
+        没有对应记录时给出跟随全局的默认值：不钉版本、非默认目标、日志
+        等级跟随全局（返回 None）。
+
+        :param source: 分身实例或源插件本体的版本绑定记录，可能为 None
+        :return: 可直接展开进 ``Plugin(...)`` 构造参数的字段字典
+        """
+        if source is None:
+            return {
+                "pinned_version": None,
+                "is_default_target": False,
+                "log_level_effective": None,
+            }
+        override = get_plugin_instance_log_level_override(source.instance_id)
+        return {
+            "pinned_version": (
+                None if source.follow_current_version else source.plugin_version
+            ),
+            "is_default_target": source.is_default_target,
+            "log_level_effective": override[0] if override is not None else None,
+        }
 
     def local_version(self, plugin_id: str) -> Optional[str]:
         """读取指定已安装插件版本，不触发全量目录投影。"""

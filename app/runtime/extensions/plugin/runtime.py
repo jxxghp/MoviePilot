@@ -12,6 +12,7 @@ from app.foundation.version import compare_version
 from app.runtime.events import eventmanager
 from app.runtime.extensions.plugin.access import PluginAccessPolicy
 from app.runtime.extensions.plugin.admission import PluginMutationAdmission
+from app.runtime.extensions.plugin.binding import PluginVersionBinding
 from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
 from app.runtime.extensions.plugin.classification import PluginClassificationRegistry
 from app.runtime.extensions.plugin.clone import PluginCloneService
@@ -20,6 +21,7 @@ from app.runtime.extensions.plugin.database import PluginDatabase
 from app.runtime.extensions.plugin.dependency import PluginDependencyService
 from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
 from app.runtime.extensions.plugin.loader import PluginLoader
+from app.runtime.extensions.plugin.loglevel import PluginLogLevelControl
 from app.runtime.extensions.plugin.metadata import PluginMetadataMapper
 from app.runtime.extensions.plugin.monitor import PluginMonitorController
 from app.runtime.extensions.plugin.paths import PluginPathResolver
@@ -27,6 +29,7 @@ from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import (
     PluginConfigStore,
+    PluginInstanceDirectory,
     PluginInstanceStore,
     PluginStorage,
 )
@@ -35,6 +38,7 @@ from app.runtime.extensions.plugin.sync import (
     PluginSyncService,
 )
 from app.runtime.extensions.plugin.system import PluginSystemServices
+from app.runtime.extensions.plugin.target import PluginDefaultTargetControl
 from app.runtime.extensions.plugin.tools import PluginToolCatalog
 from app.schemas.types import SystemConfigKey
 
@@ -81,6 +85,7 @@ class PluginRuntimeHost(Protocol):
 PluginCatalogFactory = Callable[[Callable[..., Any]], Any]
 PluginImportService = Callable[..., None]
 PluginRemoteEntryBuilder = Callable[[str, str], str]
+PluginMultiVersionBlockers = Callable[[str, list[Path]], list[str]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +94,7 @@ class PluginRuntimeEnvironment:
 
     plugins_root: Path
     storage: Callable[[], PluginStorage]
+    instance_directory: Callable[[], PluginInstanceDirectory]
     system: Callable[[], PluginSystemServices]
     database: Callable[[], PluginDatabase]
     catalog_factory: PluginCatalogFactory
@@ -98,6 +104,9 @@ class PluginRuntimeEnvironment:
     remote_entry: PluginRemoteEntryBuilder
     development: Callable[[], bool]
     logger: Any
+    multi_version_blockers: PluginMultiVersionBlockers
+    set_default_target: Callable[[str, str], bool]
+    clear_default_target: Callable[[str], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +129,9 @@ class PluginRuntime:
     metadata: PluginMetadataMapper
     sync: PluginSyncService
     clone: PluginCloneService
+    version_binding: PluginVersionBinding
+    log_level: PluginLogLevelControl
+    default_target: PluginDefaultTargetControl
     projection: PluginProjection
     classification: PluginClassificationRegistry
     recent_local_sync: dict[str, float]
@@ -134,7 +146,10 @@ def build_plugin_runtime(
 ) -> PluginRuntime:
     """按依赖顺序构造唯一插件运行时，各业务能力仍由对应 owner 实现。"""
     registry = PluginRegistry()
-    instances = PluginInstanceStore(storage=environment.storage)
+    instances = PluginInstanceStore(
+        storage=environment.storage,
+        directory=environment.instance_directory,
+    )
     configs = PluginConfigStore(
         storage=environment.storage,
         database=environment.database,
@@ -150,6 +165,7 @@ def build_plugin_runtime(
         import_preparer=environment.import_preparer,
         import_scanner=environment.import_scanner,
         log=environment.logger,
+        host_binding=instances.get_host,
     )
     tools = PluginToolCatalog(max_attempts=tool_build_max_attempts)
     classification = PluginClassificationRegistry(environment.logger)
@@ -168,12 +184,18 @@ def build_plugin_runtime(
         plugin_id: Optional[str],
         installed_plugins: list[str],
         validator: Callable[[Any], bool],
+        version: Optional[str] = None,
     ) -> list[Any]:
-        """加载物理插件或虚拟实例，并保持持久化实例顺序。"""
+        """加载物理插件或虚拟实例，并保持持久化实例顺序。
+
+        ``version`` 仅在按单个实例 ID 加载时生效，用于版本切换失败后以某个
+        具体版本重试；批量加载全部安装插件与实例时忽略该参数，各实例按自身
+        绑定解析期望版本。
+        """
         if plugin_id:
             instance = instances.get(plugin_id)
             if instance:
-                return loader.load_instance(instance, validator)
+                return loader.load_instance(instance, validator, version=version)
             return loader.load(plugin_id, installed_plugins, validator)
         plugins = loader.load(None, installed_plugins, validator)
         for instance in instances.all().values():
@@ -199,6 +221,7 @@ def build_plugin_runtime(
         event_sender=eventmanager.send_event,
         refresh_classification=refresh_classification,
         remove_classification=classification.remove,
+        record_instance_version=instances.record_effective_version,
     )
     metadata = PluginMetadataMapper(
         plugin_instance=registry.instance,
@@ -248,6 +271,7 @@ def build_plugin_runtime(
         ),
         plugin_instance=instances.get,
         plugin_instances=instances.all,
+        host_instances=instances.all_hosts,
         runtime_status=registry.runtime_status,
         log=environment.logger,
     )
@@ -256,6 +280,7 @@ def build_plugin_runtime(
         running=lambda: registry.running,
         system=environment.system,
         strict_system_version=lambda: not environment.development(),
+        get_instance=instances.get,
         log=environment.logger,
     )
     recent_local_sync: dict[str, float] = {}
@@ -313,6 +338,38 @@ def build_plugin_runtime(
         remove_plugin=host.remove_plugin,
         log=environment.logger,
     )
+    version_binding = PluginVersionBinding(
+        plugins_root=environment.plugins_root,
+        plugin_exists=lambda plugin_id: registry.plugin_class(plugin_id) is not None,
+        get_instance=instances.get,
+        instances_for_source=instances.for_source,
+        save_instance=instances.save,
+        get_host_instance=instances.get_host,
+        save_host_instance=instances.save_host,
+        running=lambda: registry.running,
+        start=lambda instance_id, version: lifecycle.start(instance_id, version=version),
+        stop=lifecycle.stop,
+        multi_version_blockers=environment.multi_version_blockers,
+        log=environment.logger,
+    )
+    log_level = PluginLogLevelControl(
+        plugin_exists=lambda plugin_id: registry.plugin_class(plugin_id) is not None,
+        get_instance=instances.get,
+        instances_for_source=instances.for_source,
+        save_instance=instances.save,
+        get_host_instance=instances.get_host,
+        save_host_instance=instances.save_host,
+    )
+    default_target = PluginDefaultTargetControl(
+        plugin_exists=lambda plugin_id: registry.plugin_class(plugin_id) is not None,
+        get_instance=instances.get,
+        instances_for_source=instances.for_source,
+        get_host_instance=instances.get_host,
+        save_host_instance=instances.save_host,
+        running=lambda: registry.running,
+        set_default_target=environment.set_default_target,
+        clear_default_target=environment.clear_default_target,
+    )
     projection = PluginProjection(
         registry.running,
         environment.logger,
@@ -338,6 +395,9 @@ def build_plugin_runtime(
         metadata=metadata,
         sync=sync,
         clone=clone,
+        version_binding=version_binding,
+        log_level=log_level,
+        default_target=default_target,
         projection=projection,
         classification=classification,
         recent_local_sync=recent_local_sync,

@@ -205,7 +205,9 @@ def configure_plugin_system_services():
     from app.application.messaging.message import MessageHelper, MessageQueueManager
     from app.application.module import configure_module_runtime
     from app.application.plugin.runtime import configure_plugin_runtime
+    from app.db.oper.plugininstance import PluginInstanceOper
     from app.runtime.cache import AsyncFileCache, FileCache
+    from app.runtime.compat.readiness import plugin_multi_version_blockers
     from app.runtime.events import EventManager
     from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
     from app.runtime.extensions.module.manager import ModuleManager
@@ -219,7 +221,10 @@ def configure_plugin_system_services():
         PluginRuntimeEnvironment,
         build_plugin_runtime,
     )
-    from app.runtime.extensions.plugin.storage import get_plugin_storage
+    from app.runtime.extensions.plugin.storage import (
+        get_plugin_instance_directory,
+        get_plugin_storage,
+    )
     from app.runtime.extensions.plugin.system import get_plugin_system
     from app.runtime.extensions.service import ServiceConfigHelper
 
@@ -234,6 +239,7 @@ def configure_plugin_system_services():
             PluginRuntimeEnvironment(
                 plugins_root=settings.ROOT_PATH / "app" / "plugins",
                 storage=get_plugin_storage,
+                instance_directory=get_plugin_instance_directory,
                 system=get_plugin_system,
                 database=get_plugin_database,
                 catalog_factory=lambda mapper: (
@@ -251,6 +257,13 @@ def configure_plugin_system_services():
                     plugin_manager_module.get_runtime_setting('DEV')
                 ),
                 logger=plugin_manager_module.logger,
+                multi_version_blockers=plugin_multi_version_blockers,
+                set_default_target=lambda source_plugin_id, instance_id: (
+                    PluginInstanceOper().set_default_target(source_plugin_id, instance_id)
+                ),
+                clear_default_target=lambda source_plugin_id: (
+                    PluginInstanceOper().clear_default_target(source_plugin_id)
+                ),
             ),
             tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
         )

@@ -51,6 +51,7 @@ from app.application.plugin.runtime import get_plugin_manager
 from app.application.plugin.transaction import get_plugin_persistence
 from app.application.scheduling import remove_plugin_job, update_plugin_job
 from app.runtime.extensions.plugin.contracts import PluginDashboardError, PluginNotFoundError
+from app.runtime.extensions.plugin.version import resolve_instance_version_dir
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
 from app.schemas.common import JsonObject as _SchemaJsonObject
@@ -704,12 +705,11 @@ async def plugin_static_file(
         logger.warning(f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    source_plugin_id = get_plugin_manager().get_plugin_source_id(plugin_id)
-    plugin_base_dir = (
-        AsyncPath(get_api_runtime_config_snapshot().root_path) / "app" / "plugins" / source_plugin_id.lower()
-    )
+    manager = get_plugin_manager()
+    source_plugin_id = manager.get_plugin_source_id(plugin_id)
+    plugin_root = get_api_runtime_config_snapshot().root_path / "app" / "plugins" / source_plugin_id.lower()
+    plugin_base_dir = AsyncPath(resolve_instance_version_dir(plugin_root, manager.get_plugin_instance(plugin_id)))
     plugin_file_path = plugin_base_dir / filepath.lstrip("/")
-
     try:
         resolved_base = await plugin_base_dir.resolve()
         resolved_file = await plugin_file_path.resolve()

@@ -5,9 +5,29 @@ from types import ModuleType, SimpleNamespace
 
 from app.runtime.extensions.plugin.clone import PluginCloneService
 from app.runtime.extensions.plugin.loader import PluginLoader
-from app.runtime.extensions.plugin.storage import PluginInstanceStore, PluginStorage
+from app.runtime.extensions.plugin.storage import (
+    PluginInstanceDirectory,
+    PluginInstanceStore,
+    PluginStorage,
+)
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
+
+
+def _make_directory() -> PluginInstanceDirectory:
+    """构造进程内插件实例描述符表，供分身持久化测试使用。"""
+    records: dict[str, PluginInstance] = {}
+    return PluginInstanceDirectory(
+        get=records.get,
+        list_all=lambda: list(records.values()),
+        list_by_source=lambda source_plugin_id: [
+            record
+            for record in records.values()
+            if record.source_plugin_id == source_plugin_id
+        ],
+        save=lambda instance: records.__setitem__(instance.instance_id, instance),
+        delete=lambda instance_id: records.pop(instance_id, None) is not None,
+    )
 
 
 def _logger() -> SimpleNamespace:
@@ -27,7 +47,8 @@ def test_instance_store_keeps_virtual_instances_out_of_installed_list():
         read=values.get,
         write=lambda key, value: values.__setitem__(key, value),
     )
-    store = PluginInstanceStore(storage=lambda: storage)
+    directory = _make_directory()
+    store = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
 
     instance = PluginInstance(
         instance_id="DemoPluginWork",
@@ -41,6 +62,66 @@ def test_instance_store_keeps_virtual_instances_out_of_installed_list():
     assert values[SystemConfigKey.UserInstalledPlugins] == ["DemoPlugin"]
     assert store.delete("DemoPluginWork") is True
     assert store.all() == {}
+
+
+def test_host_binding_does_not_leak_into_clone_list_or_installed_list():
+    """本体的版本绑定与分身共用一张表，但不得出现在分身清单或已安装清单里。"""
+    values = {SystemConfigKey.UserInstalledPlugins: ["DemoPlugin"]}
+    storage = PluginStorage(
+        read=values.get,
+        write=lambda key, value: values.__setitem__(key, value),
+    )
+    directory = _make_directory()
+    store = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+    clone = PluginInstance(instance_id="DemoPluginWork", source_plugin_id="DemoPlugin")
+    store.save(clone)
+
+    store.save_host(
+        PluginInstance(
+            instance_id="DemoPlugin",
+            source_plugin_id="DemoPlugin",
+            follow_current_version=False,
+            plugin_version="1.0.0",
+        )
+    )
+
+    assert store.all() == {"DemoPluginWork": clone}
+    assert store.for_source("DemoPlugin") == [clone]
+    assert store.get("DemoPlugin") is None
+    assert values[SystemConfigKey.UserInstalledPlugins] == ["DemoPlugin"]
+    assert store.get_host("DemoPlugin") is not None
+
+
+def test_all_hosts_batches_host_binding_records_without_leaking_clones():
+    """``all_hosts`` 一次性返回全部本体绑定记录，且不得混入分身实例。"""
+    values = {SystemConfigKey.UserInstalledPlugins: ["DemoPlugin", "OtherPlugin"]}
+    storage = PluginStorage(
+        read=values.get,
+        write=lambda key, value: values.__setitem__(key, value),
+    )
+    directory = _make_directory()
+    store = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+    store.save(PluginInstance(instance_id="DemoPluginWork", source_plugin_id="DemoPlugin"))
+    demo_host = PluginInstance(
+        instance_id="DemoPlugin",
+        source_plugin_id="DemoPlugin",
+        follow_current_version=False,
+        plugin_version="1.0.0",
+    )
+    other_host = PluginInstance(
+        instance_id="OtherPlugin",
+        source_plugin_id="OtherPlugin",
+        is_default_target=True,
+    )
+    store.save_host(demo_host)
+    store.save_host(other_host)
+
+    hosts = store.all_hosts()
+
+    assert hosts == {
+        "DemoPlugin": demo_host.model_copy(update={"mode": "host"}),
+        "OtherPlugin": other_host.model_copy(update={"mode": "host"}),
+    }
 
 
 def test_loader_executes_each_instance_in_an_isolated_module_namespace(

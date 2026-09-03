@@ -1909,6 +1909,61 @@
       "title": "PluginFoldersData",
       "type": "object"
     },
+    "PluginInstanceLogLevelUpdateRequest": {
+      "description": "One plugin instance's log-level override update request.",
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Expiry timestamp for a plugin instance's log-level override; null means it never expires.",
+          "title": "Expires At"
+        },
+        "level": {
+          "description": "Target log level, one of DEBUG, INFO, WARNING, ERROR, or CRITICAL.",
+          "title": "Level",
+          "type": "string"
+        }
+      },
+      "required": [
+        "level"
+      ],
+      "title": "PluginInstanceLogLevelUpdateRequest",
+      "type": "object"
+    },
+    "PluginInstanceVersionUpdateRequest": {
+      "description": "One plugin instance's version-binding update request.",
+      "properties": {
+        "follow_current_version": {
+          "description": "Follow the plugin's currently installed version instead of a pinned one.",
+          "title": "Follow Current Version",
+          "type": "boolean"
+        },
+        "plugin_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exact installed plugin version; required only when not following the current version.",
+          "title": "Plugin Version"
+        }
+      },
+      "required": [
+        "follow_current_version"
+      ],
+      "title": "PluginInstanceVersionUpdateRequest",
+      "type": "object"
+    },
     "PluginMarketSyncRequest": {
       "description": "Approved Wiki source request for plugin-market synchronization.",
       "properties": {
@@ -8081,6 +8136,82 @@
     },
     {
       "additionalProperties": false,
+      "description": "Clear one plugin instance's default-call-target flag, only if it is the plugin's current default. Method: DELETE. Path: /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target. Effect: reversible_write.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.default_target.clear",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.default_target.clear. Clear one plugin instance's default-call-target flag, only if it is the plugin's current default. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.versions.get.",
+              "title": "Instance Id",
+              "type": "string"
+            },
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id",
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.default_target.clear",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Set one plugin instance as the plugin's default call target, automatically clearing any previous default. Method: PUT. Path: /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target. Effect: reversible_write.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.default_target.set",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.default_target.set. Set one plugin instance as the plugin's default call target, automatically clearing any previous default. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.versions.get.",
+              "title": "Instance Id",
+              "type": "string"
+            },
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id",
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.default_target.set",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "Create one named plugin folder. Method: POST. Path: /api/v1/plugin/folders/{folder_name}. Effect: reversible_write.",
       "properties": {
         "operation_id": {
@@ -8433,6 +8564,119 @@
         "result_count_field": "collection.result_count",
         "total_count_field": "collection.total_count"
       }
+    },
+    {
+      "additionalProperties": false,
+      "description": "Clear one plugin instance's log-level override so it immediately follows the global log level again. Method: DELETE. Path: /api/v1/plugin/loglevel/{plugin_id}/{instance_id}. Effect: reversible_write.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.loglevel.clear",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.loglevel.clear. Clear one plugin instance's log-level override so it immediately follows the global log level again. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.versions.get.",
+              "title": "Instance Id",
+              "type": "string"
+            },
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id",
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.loglevel.clear",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "List one plugin's instances, including its host binding, with each instance's configured and effective log level. Method: GET. Path: /api/v1/plugin/loglevel/{plugin_id}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.loglevel.get",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.loglevel.get. List one plugin's instances, including its host binding, with each instance's configured and effective log level. Use only the named fields below.",
+          "properties": {
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.loglevel.get",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Set one plugin instance's log-level override, taking effect immediately without following the global log level. Method: PUT. Path: /api/v1/plugin/loglevel/{plugin_id}/{instance_id}. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/PluginInstanceLogLevelUpdateRequest",
+          "description": "Request value for plugin.loglevel.set. Set one plugin instance's log-level override, taking effect immediately without following the global log level. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "plugin.loglevel.set",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.loglevel.set. Set one plugin instance's log-level override, taking effect immediately without following the global log level. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.versions.get.",
+              "title": "Instance Id",
+              "type": "string"
+            },
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id",
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "plugin.loglevel.set",
+      "type": "object"
     },
     {
       "additionalProperties": false,
@@ -8947,6 +9191,113 @@
         "path_params"
       ],
       "title": "plugin.uninstall",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "List one plugin's installed source versions and each instance's version binding. Method: GET. Path: /api/v1/plugin/versions/{plugin_id}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.versions.get",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.versions.get. List one plugin's installed source versions and each instance's version binding. Use only the named fields below.",
+          "properties": {
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.versions.get",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Delete one plugin's installed source versions that are unreferenced and outside the retention window. Method: POST. Path: /api/v1/plugin/versions/{plugin_id}/recycle. Effect: external_side_effect.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.versions.recycle",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.versions.recycle. Delete one plugin's installed source versions that are unreferenced and outside the retention window. Use only the named fields below.",
+          "properties": {
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.versions.recycle",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Set one plugin instance's version binding and restart it to apply the change. Method: PUT. Path: /api/v1/plugin/versions/{plugin_id}/{instance_id}. Effect: external_side_effect.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/PluginInstanceVersionUpdateRequest",
+          "description": "Request value for plugin.versions.set_instance. Set one plugin instance's version binding and restart it to apply the change. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "plugin.versions.set_instance",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.versions.set_instance. Set one plugin instance's version binding and restart it to apply the change. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.versions.get.",
+              "title": "Instance Id",
+              "type": "string"
+            },
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id",
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "plugin.versions.set_instance",
       "type": "object"
     },
     {
@@ -13905,6 +14256,8 @@
         "plugin.config.get",
         "plugin.config.update",
         "plugin.data",
+        "plugin.default_target.clear",
+        "plugin.default_target.set",
         "plugin.folder.create",
         "plugin.folder.delete",
         "plugin.folder.plugins.update",
@@ -13913,6 +14266,9 @@
         "plugin.history",
         "plugin.install",
         "plugin.installed",
+        "plugin.loglevel.clear",
+        "plugin.loglevel.get",
+        "plugin.loglevel.set",
         "plugin.market",
         "plugin.market.sync_wiki",
         "plugin.rating",
@@ -13927,6 +14283,9 @@
         "plugin.source.options",
         "plugin.statistics",
         "plugin.uninstall",
+        "plugin.versions.get",
+        "plugin.versions.recycle",
+        "plugin.versions.set_instance",
         "recommendation.list",
         "scheduler.list",
         "scheduler.progress",

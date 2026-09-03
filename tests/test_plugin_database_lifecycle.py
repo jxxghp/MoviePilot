@@ -96,7 +96,7 @@ def _build_lifecycle(**overrides: Any) -> PluginLifecycle:
     defaults: dict[str, Any] = dict(
         classes={},
         running={},
-        load_plugins=lambda _plugin_id, _installed, _check: [],
+        load_plugins=lambda _plugin_id, _installed, _check, _version=None: [],
         installed_plugins=lambda: [],
         plugin_config=lambda _plugin_id: {},
         auth_checker=lambda _plugin: True,

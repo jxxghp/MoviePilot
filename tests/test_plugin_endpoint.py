@@ -1025,6 +1025,43 @@ def test_virtual_instance_static_file_reads_from_source_directory(tmp_path, monk
     plugin_manager.get_plugin_source_id.assert_called_once_with("DemoPluginwork")
 
 
+def test_virtual_instance_static_file_reads_the_instances_bound_version_directory(
+    tmp_path, monkeypatch
+):
+    """源插件安装了多个版本时，分身按自身版本绑定读取源插件对应版本目录。"""
+    old_file = tmp_path / "app/plugins/demoplugin/v1_0_0/dist/remoteEntry.js"
+    old_file.parent.mkdir(parents=True)
+    old_file.write_text("export default 'v1'", encoding="utf-8")
+    new_file = tmp_path / "app/plugins/demoplugin/v2_0_0/dist/remoteEntry.js"
+    new_file.parent.mkdir(parents=True)
+    new_file.write_text("export default 'v2'", encoding="utf-8")
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_source_id.return_value = "DemoPlugin"
+    plugin_manager.get_plugin_instance.return_value = PluginInstance(
+        instance_id="DemoPluginwork",
+        source_plugin_id="DemoPlugin",
+        plugin_version="1.0.0",
+        follow_current_version=False,
+    )
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "get_api_runtime_config_snapshot",
+        lambda: MagicMock(root_path=tmp_path),
+    )
+
+    response = asyncio.run(
+        plugin_static_file("DemoPluginwork", "dist/remoteEntry.js", None)
+    )
+
+    async def read_body() -> bytes:
+        """读取流式响应的全部测试内容。"""
+        return b"".join([chunk async for chunk in response.body_iterator])
+
+    assert asyncio.run(read_body()) == b"export default 'v1'"
+    plugin_manager.get_plugin_instance.assert_called_once_with("DemoPluginwork")
+
+
 def test_uninstall_virtual_instance_never_removes_source_package(monkeypatch):
     """卸载虚拟实例只清理实例状态，不触碰源插件安装清单或目录。"""
     plugin_manager = MagicMock()

@@ -143,6 +143,7 @@ async def test_dependency_manifest_is_observed_before_install(
 
     result = await manager._PluginPackageManager__async_install_dependencies_if_required(
         "DemoPlugin",
+        plugin_dir,
         lambda: calls.append(("observe", None)),
     )
 
@@ -175,6 +176,7 @@ async def test_dependency_observer_failure_does_not_block_install(
 
     result = await manager._PluginPackageManager__async_install_dependencies_if_required(
         "DemoPlugin",
+        plugin_dir,
         failing_observer,
     )
 
@@ -189,11 +191,13 @@ async def test_dependency_observer_is_not_called_without_manifest(
 ) -> None:
     """未声明依赖的插件不承担原生环境快照成本。"""
     plugin_root = tmp_path / "plugins"
-    (plugin_root / "demoplugin").mkdir(parents=True)
+    plugin_dir = plugin_root / "demoplugin"
+    plugin_dir.mkdir(parents=True)
     manager = PluginPackageManager(plugin_root=plugin_root)
     observer = Mock()
     result = await manager._PluginPackageManager__async_install_dependencies_if_required(
         "DemoPlugin",
+        plugin_dir,
         observer,
     )
 
@@ -235,6 +239,7 @@ async def test_empty_dependency_manifest_does_not_trigger_native_snapshot(
 
     result = await manager._PluginPackageManager__async_install_dependencies_if_required(
         "DemoPlugin",
+        plugin_dir,
         observer,
     )
 
@@ -272,6 +277,7 @@ async def test_legacy_unparsed_requirement_still_triggers_native_snapshot(
 
     result = await manager._PluginPackageManager__async_install_dependencies_if_required(
         "DemoPlugin",
+        plugin_dir,
         lambda: calls.append(("observe", None)),
     )
 

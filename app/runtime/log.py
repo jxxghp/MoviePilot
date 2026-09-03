@@ -1,6 +1,10 @@
+"""日志基础设施：等级过滤、控制台与文件路由、插件实例日志等级覆盖。"""
+
 from __future__ import annotations
 
 import asyncio
+import functools
+import inspect
 import logging
 import os
 import queue
@@ -8,11 +12,14 @@ import sys
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import FrameType
-from typing import Any, Callable, Dict, Optional, Protocol, Self
+from typing import Any, Callable, Dict, Iterator, Optional, Protocol, Self, Tuple
 
 import click
 from pydantic import BaseModel, ConfigDict
@@ -101,6 +108,179 @@ def configure_correlation_id_provider(provider: Callable[[], str | None]) -> Non
 def _get_log_correlation_id() -> str:
     """读取当前关联 ID；未装配或无请求上下文时返回稳定占位符。"""
     return _correlation_id_provider() or "-"
+
+
+# 插件实例日志等级允许的取值，与标准库 logging 的等级名保持一致。
+LOG_LEVELS: Tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
+
+def _current_global_log_level() -> int:
+    """返回当前全局日志策略对应的标准库日志级别。"""
+    if log_settings.DEBUG:
+        return logging.DEBUG
+    return getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO)
+
+
+@dataclass(frozen=True)
+class _PluginLevelOverride:
+    """一个插件实例的日志等级覆盖。"""
+
+    level: int
+    level_name: str
+    expires_at: Optional[float]
+
+
+# 宿主在构造、init_plugin、事件分发、定时任务、API 端点等自己控制的调用点用它绑定
+# 当前插件实例；插件自建的原生线程不会继承这里绑定的取值（contextvars 只在同一
+# 协程/任务链内传播），这类线程内的日志按全局等级过滤，不属于本机制的覆盖范围。
+_current_plugin_instance: "ContextVar[Optional[str]]" = ContextVar(
+    "current_plugin_instance", default=None
+)
+
+# 插件实例日志等级覆盖缓存：等级来自数据库，避免每条日志都查库；写入源是日志控制
+# API（配置变更时直接调用 set/clear，立即生效）和启动组合根（进程重启后从数据库
+# 预热）；覆盖的过期回落在读取时惰性判定并清理，不额外起后台线程扫描。
+#
+# `LoggerManager.logger` 只在 `current_plugin_instance_id()` 命中时才查这份缓存
+# （未绑定实例的日志直接按全局等级过滤），因此不需要额外维护一个全局快速闸——
+# ContextVar 读取本身已经足够便宜，也避免了「某个实例的覆盖不小心放宽了所有未绑定
+# 日志的过滤阈值」这类跨实例串扰。
+_plugin_level_overrides: Dict[str, _PluginLevelOverride] = {}
+_plugin_level_lock = threading.RLock()
+
+
+def set_plugin_instance_log_level(
+    instance_id: str,
+    level: str,
+    expires_at: Optional[datetime] = None,
+) -> None:
+    """
+    设置插件实例的日志等级覆盖，写入进程内缓存并立即生效。
+
+    只维护运行期生效状态；把覆盖持久化到数据库是调用方（日志控制 API、启动组合根
+    的缓存预热）的职责，本函数不做任何数据库读写。
+    :param instance_id: 实例 ID，源插件本体自身的版本绑定与虚拟实例共用同一命名空间
+    :param level: 目标等级，取值须在 LOG_LEVELS 内
+    :param expires_at: 覆盖失效时间，None 表示不过期
+    :raises ValueError: level 不是受支持的等级名
+    """
+    normalized = (level or "").strip().upper()
+    if normalized not in LOG_LEVELS:
+        raise ValueError(f"不支持的日志等级：{level}")
+    entry = _PluginLevelOverride(
+        level=getattr(logging, normalized),
+        level_name=normalized,
+        expires_at=expires_at.timestamp() if expires_at else None,
+    )
+    with _plugin_level_lock:
+        _plugin_level_overrides[instance_id] = entry
+
+
+def clear_plugin_instance_log_level(instance_id: str) -> None:
+    """
+    清除插件实例的日志等级覆盖，运行期立即回落全局等级。
+    :param instance_id: 实例 ID
+    """
+    with _plugin_level_lock:
+        _plugin_level_overrides.pop(instance_id, None)
+
+
+def get_plugin_instance_log_level_override(
+    instance_id: str,
+) -> Optional[Tuple[str, Optional[datetime]]]:
+    """
+    返回插件实例当前缓存的原始等级覆盖设置，未设置或已过期时为 None。
+    :param instance_id: 实例 ID
+    :return: `(等级名, 失效时间)`；失效时间为 None 表示不过期
+    """
+    with _plugin_level_lock:
+        entry = _plugin_level_overrides.get(instance_id)
+        if entry is None:
+            return None
+        if entry.expires_at is not None and entry.expires_at <= time.time():
+            del _plugin_level_overrides[instance_id]
+            return None
+        expires_dt = (
+            datetime.fromtimestamp(entry.expires_at) if entry.expires_at else None
+        )
+        return entry.level_name, expires_dt
+
+
+def get_effective_plugin_instance_log_level(instance_id: str) -> str:
+    """
+    返回插件实例当前生效的日志等级名，覆盖过期时回落全局等级。
+    :param instance_id: 实例 ID
+    :return: 等级名，如 "DEBUG"
+    """
+    override = get_plugin_instance_log_level_override(instance_id)
+    if override is not None:
+        return override[0]
+    return "DEBUG" if log_settings.DEBUG else log_settings.LOG_LEVEL.upper()
+
+
+def _effective_instance_level_int(instance_id: str) -> int:
+    """返回插件实例过滤日志时实际使用的等级整数，供 `LoggerManager.logger` 精确过滤。"""
+    with _plugin_level_lock:
+        entry = _plugin_level_overrides.get(instance_id)
+        if entry is None:
+            return _current_global_log_level()
+        if entry.expires_at is not None and entry.expires_at <= time.time():
+            del _plugin_level_overrides[instance_id]
+            return _current_global_log_level()
+        return entry.level
+
+
+def current_plugin_instance_id() -> Optional[str]:
+    """返回当前受控调用点绑定的插件实例 ID，未绑定时为 None。"""
+    return _current_plugin_instance.get()
+
+
+@contextmanager
+def bind_plugin_instance(instance_id: str) -> Iterator[None]:
+    """
+    在宿主自己控制的调用点（构造、init_plugin、事件分发、定时任务、API 端点……）内
+    绑定当前插件实例，供日志等级过滤使用。
+
+    绑定只在当前协程/任务链内生效；插件自建的原生线程不继承这个绑定。
+    :param instance_id: 实例 ID
+    """
+    token = _current_plugin_instance.set(instance_id)
+    try:
+        yield
+    finally:
+        _current_plugin_instance.reset(token)
+
+
+def wrap_for_plugin_instance(
+    func: Callable[..., Any], instance_id: str
+) -> Callable[..., Any]:
+    """
+    包装一个插件回调，使其执行期间的日志按指定实例过滤等级。
+
+    用于回调在注册时被捕获、稍后才由宿主（如调度器、HTTP 路由）调用的场景；
+    绑定发生在包装函数自身调用内部，因此不依赖调用方所在协程/线程如何传播
+    上下文。同步/异步函数各自返回同型包装，`inspect.iscoroutinefunction`
+    等自省结果不变。
+    :param func: 插件提供的原始回调，通常是插件实例的绑定方法
+    :param instance_id: 实例 ID
+    :return: 包装后的可调用对象
+    """
+    if inspect.iscoroutinefunction(func):
+        @functools.wraps(func)
+        async def _async_wrapped(*args: Any, **kwargs: Any) -> Any:
+            """在绑定实例上下文内等待原始协程回调。"""
+            with bind_plugin_instance(instance_id):
+                return await func(*args, **kwargs)
+
+        return _async_wrapped
+
+    @functools.wraps(func)
+    def _sync_wrapped(*args: Any, **kwargs: Any) -> Any:
+        """在绑定实例上下文内调用原始同步回调。"""
+        with bind_plugin_instance(instance_id):
+            return func(*args, **kwargs)
+
+    return _sync_wrapped
 
 
 class NonBlockingFileHandler:
@@ -512,9 +692,7 @@ class LoggerManager:
     @staticmethod
     def _get_log_level() -> int:
         """返回当前日志策略对应的标准库日志级别。"""
-        if log_settings.DEBUG:
-            return logging.DEBUG
-        return getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO)
+        return _current_global_log_level()
 
     @classmethod
     def _write_file_log(cls, level: str, message: str, logfile: Path) -> None:
@@ -528,9 +706,21 @@ class LoggerManager:
         writer.write_log(level, message, log_path / logfile)
 
     def logger(self, method: str, msg: str, *args: Any, **kwargs: Any) -> None:
-        """按调用来源路由并输出一条日志。"""
+        """按调用来源路由并输出一条日志。
+
+        等级过滤只看 `current_plugin_instance_id()`：命中受控调用点绑定的插件
+        实例时按该实例的覆盖等级过滤（未设置覆盖时等同全局等级），未绑定任何
+        实例时直接按全局等级过滤，不依赖栈回溯识别出的调用来源，因此不影响
+        既有的文件路由逻辑，也不会让某个实例的覆盖影响到其它日志的过滤阈值。
+        """
         method_level = getattr(logging, method.upper(), logging.INFO)
-        if method_level < self._get_log_level():
+        instance_id = current_plugin_instance_id()
+        effective_level = (
+            _effective_instance_level_int(instance_id)
+            if instance_id
+            else _current_global_log_level()
+        )
+        if method_level < effective_level:
             return
 
         caller_name, plugin_name = self._get_caller()

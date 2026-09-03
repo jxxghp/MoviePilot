@@ -77,7 +77,9 @@ from app.application.plugin.transaction import (
 )
 from app.application.scheduling import update_plugin_job
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.db.models.plugininstance import PluginInstance as PluginInstanceRecord
 from app.db.oper.plugindata import PluginDataOper
+from app.db.oper.plugininstance import PluginInstanceOper
 from app.db.plugin.registry import (
     destroy_database,
     ensure_database,
@@ -91,6 +93,7 @@ from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
 )
+from app.runtime.compat.readiness import plugin_multi_version_blockers
 from app.runtime.compat.resources import scan_plugin_resource_imports
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.database import (
@@ -115,8 +118,11 @@ from app.runtime.extensions.plugin.runtime import (
     build_plugin_runtime,
 )
 from app.runtime.extensions.plugin.storage import (
+    PluginInstanceDirectory,
     PluginStorage,
+    configure_plugin_instance_directory,
     configure_plugin_storage,
+    get_plugin_instance_directory,
     get_plugin_storage,
 )
 from app.runtime.extensions.plugin.system import (
@@ -124,12 +130,12 @@ from app.runtime.extensions.plugin.system import (
     configure_plugin_system,
     get_plugin_system,
 )
-from app.runtime.log import logger
+from app.runtime.log import logger, set_plugin_instance_log_level
 from app.runtime.loop import main_loop_registry
 from app.runtime.resources import acquire_managed_resource
 from app.runtime.settings import get_runtime_setting
 from app.schemas.exception import PluginMutationRejectedError
-from app.schemas.plugin import PluginRuntimeStatus
+from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 from app.startup.composition.plugin import (
     compose_plugin_market,
@@ -164,6 +170,87 @@ def _build_plugin_database() -> PluginDatabase:
     )
 
 
+def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance:
+    """把插件实例描述符表的 ORM 行投影为运行时端口使用的 Pydantic 描述。"""
+    return PluginInstance(
+        instance_id=record.instance_id,
+        source_plugin_id=record.source_plugin_id,
+        plugin_name=record.plugin_name,
+        plugin_desc=record.plugin_desc,
+        plugin_icon=record.plugin_icon,
+        mode=record.mode,
+        plugin_version=record.plugin_version,
+        follow_current_version=record.follow_current_version,
+        log_level=record.log_level,
+        log_expires_at=record.log_expires_at,
+        is_default_target=record.is_default_target,
+    )
+
+
+def _save_plugin_instance_record(instance: PluginInstance) -> None:
+    """把运行时实例描述写入插件实例描述符表，以实例 ID 为稳定键做新增或更新。"""
+    PluginInstanceOper().save(
+        instance_id=instance.instance_id,
+        source_plugin_id=instance.source_plugin_id,
+        plugin_name=instance.plugin_name,
+        plugin_desc=instance.plugin_desc,
+        plugin_icon=instance.plugin_icon,
+        mode=instance.mode,
+        plugin_version=instance.plugin_version,
+        follow_current_version=instance.follow_current_version,
+        log_level=instance.log_level,
+        log_expires_at=(
+            instance.log_expires_at.isoformat() if instance.log_expires_at else None
+        ),
+        is_default_target=instance.is_default_target,
+    )
+
+
+def _prime_plugin_instance_log_levels() -> None:
+    """进程启动时把数据库中已设置的实例日志等级覆盖预热进运行期缓存。
+
+    过期覆盖也照常预热：过期判定统一在读取时惰性执行（见 `app.runtime.log`），
+    这里不重复实现一份过期过滤逻辑。单条记录预热失败不得阻断其余记录。
+    """
+    for record in PluginInstanceOper().list_all():
+        if not record.log_level:
+            continue
+        try:
+            expires_at = (
+                datetime.fromisoformat(record.log_expires_at)
+                if record.log_expires_at
+                else None
+            )
+            set_plugin_instance_log_level(record.instance_id, record.log_level, expires_at)
+        except ValueError as error:
+            logger.warning(
+                f"预热插件实例 {record.instance_id} 的日志等级覆盖失败：{error}"
+            )
+
+
+def _build_plugin_instance_directory() -> PluginInstanceDirectory:
+    """把插件实例描述符表端口装配到 db 层的独立表实现。"""
+    oper = PluginInstanceOper()
+
+    def _get(instance_id: str) -> PluginInstance | None:
+        """按实例 ID 查询并投影为运行时描述。"""
+        record = oper.get(instance_id)
+        return _plugin_instance_from_record(record) if record is not None else None
+
+    return PluginInstanceDirectory(
+        get=_get,
+        list_all=lambda: [
+            _plugin_instance_from_record(record) for record in oper.list_all()
+        ],
+        list_by_source=lambda source_plugin_id: [
+            _plugin_instance_from_record(record)
+            for record in oper.list_by_source(source_plugin_id)
+        ],
+        save=_save_plugin_instance_record,
+        delete=oper.delete,
+    )
+
+
 def _prepare_legacy_plugin_import(*, plugin_id: str, plugin_dir: Path) -> None:
     """在执行旧插件顶层代码前准备其静态导入所需的宿主资源。"""
     for capability_id in scan_plugin_resource_imports(plugin_id, plugin_dir):
@@ -180,6 +267,7 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
         PluginRuntimeEnvironment(
             plugins_root=Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins",
             storage=lambda: get_plugin_storage(),
+            instance_directory=lambda: get_plugin_instance_directory(),
             system=lambda: get_plugin_system(),
             database=lambda: get_plugin_database(),
             catalog_factory=lambda mapper: _build_plugin_catalog(mapper),
@@ -189,6 +277,13 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
             remote_entry=host.get_plugin_remote_entry,
             development=lambda: bool(get_runtime_setting('DEV')),
             logger=logger,
+            multi_version_blockers=plugin_multi_version_blockers,
+            set_default_target=lambda source_plugin_id, instance_id: (
+                PluginInstanceOper().set_default_target(source_plugin_id, instance_id)
+            ),
+            clear_default_target=lambda source_plugin_id: (
+                PluginInstanceOper().clear_default_target(source_plugin_id)
+            ),
         ),
         tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
     )
@@ -424,6 +519,8 @@ def configure_plugin_services() -> None:
         delete_data=_delete_plugin_data,
     ))
     configure_plugin_database(_build_plugin_database())
+    configure_plugin_instance_directory(_build_plugin_instance_directory())
+    _prime_plugin_instance_log_levels()
 
 
 def _register_plugin_runtime(plugin_id: str) -> None:
