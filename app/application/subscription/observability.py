@@ -17,6 +17,48 @@ from app.application.subscription.sitebudget import SubscriptionSiteBudgetMetric
 SearchTaskOutcome = Literal["completed", "skipped", "failed", "cancelled", "requeued"]
 
 
+def batch_progress_text(batch: Optional[SearchBatchSnapshot]) -> str:
+    """把批次聚合终态转为兼容进度文案。"""
+    if batch is None:
+        return "订阅搜索任务已提交"
+    if batch.state == "failed":
+        return "订阅搜索完成，部分任务失败"
+    if batch.state == "cancelled":
+        return "订阅搜索已取消"
+    if batch.state == "skipped":
+        return "订阅搜索完成，部分任务本轮已跳过"
+    if batch.state in {"queued", "running", "cancelling"}:
+        return "订阅搜索任务已排队"
+    if batch.skipped_count:
+        return "订阅搜索完成，部分任务本轮已跳过"
+    return "订阅搜索完成"
+
+
+def inline_search_result(total: int, finished: int) -> tuple[str, dict[str, int]]:
+    """返回兼容搜索的真实终态文案与计数。"""
+    text = (
+        "订阅搜索完成"
+        if finished == total
+        else "订阅搜索结束，部分订阅本轮未执行或未完成"
+    )
+    return text, {"total": total, "finished": finished}
+
+
+def batch_finished_count(
+    batch: Optional[SearchBatchSnapshot],
+    fallback: int,
+) -> int:
+    """返回批次所有终态任务数；批次暂不可读时使用本轮实际完成数。"""
+    if batch is None:
+        return fallback
+    return (
+        batch.finished_count
+        + batch.failed_count
+        + batch.cancelled_count
+        + batch.skipped_count
+    )
+
+
 def finish_returned_search_task(
     *,
     queue: SubscriptionSearchRepository,
@@ -186,6 +228,7 @@ class SearchExecutionSummary:
     release_failures: int = 0
     consumer_conflicts: int = 0
     stopped: bool = False
+    round_failed: bool = False
     site_metrics: SubscriptionSiteBudgetMetrics = field(
         default_factory=SubscriptionSiteBudgetMetrics
     )
@@ -223,7 +266,9 @@ class SearchExecutionSummary:
     def finish_log(self, batch: Optional[SearchBatchSnapshot] = None) -> str:
         """构造 Search 轮次结束日志，任务完成与订阅完成保持分离。"""
         sites = self.site_metrics.snapshot()
-        if batch is not None:
+        if self.round_failed:
+            state = "failed"
+        elif batch is not None:
             state = batch.state
         elif self.consumer_conflicts:
             state = "skipped"
@@ -246,6 +291,7 @@ class SearchExecutionSummary:
             f"task_failed={self.failed} task_cancelled={self.cancelled} task_requeued={self.requeued} "
             f"admission_conflicts={self.admission_conflicts} cancelled={self.cancelled} "
             f"ttl_timeouts={self.ttl_timeouts} consumer_conflicts={self.consumer_conflicts} "
+            f"round_failed={int(self.round_failed)} "
             f"sites={sites.site_count} site_requests={sites.request_count} "
             f"site_failures={sites.failure_count} site_cooldown_skips={sites.cooldown_skip_count} "
             f"candidates={sites.candidate_count} cooldown_seconds={sites.cooldown_seconds:.1f} "
