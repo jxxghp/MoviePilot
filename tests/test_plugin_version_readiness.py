@@ -112,6 +112,54 @@ def test_self_referential_dynamic_import_module_reports_suggestion(tmp_path: Pat
     assert "from .utils import" in hit.suggestion
 
 
+def test_self_referential_import_inside_type_checking_block_is_not_reported(
+    tmp_path: Path,
+) -> None:
+    """if TYPE_CHECKING: 内的自引用绝对 import 运行期不执行，不应计入阻断。"""
+    plugin_dir = _write_plugin(
+        tmp_path,
+        "myplugin",
+        {
+            "__init__.py": (
+                "from typing import TYPE_CHECKING\n\n"
+                "if TYPE_CHECKING:\n"
+                "    from app.plugins.myplugin.utils import helper\n"
+            ),
+            "utils.py": "def helper():\n    pass\n",
+        },
+    )
+
+    readiness = scan_plugin_version_readiness("myplugin", plugin_dir)
+
+    assert readiness.has_self_referential_imports is False
+
+
+def test_self_referential_import_inside_type_checking_else_branch_is_still_reported(
+    tmp_path: Path,
+) -> None:
+    """if TYPE_CHECKING: 的 else 分支运行期正常执行，其中的自引用导入仍应计入阻断。"""
+    plugin_dir = _write_plugin(
+        tmp_path,
+        "myplugin",
+        {
+            "__init__.py": (
+                "from typing import TYPE_CHECKING\n\n"
+                "if TYPE_CHECKING:\n"
+                "    pass\n"
+                "else:\n"
+                "    from app.plugins.myplugin.utils import helper\n"
+            ),
+            "utils.py": "def helper():\n    pass\n",
+        },
+    )
+
+    readiness = scan_plugin_version_readiness("myplugin", plugin_dir)
+
+    assert readiness.has_self_referential_imports
+    hit = readiness.self_referential_imports[0]
+    assert hit.statement == "from app.plugins.myplugin.utils import helper"
+
+
 def test_cross_plugin_import_is_not_confused_with_self_reference(tmp_path: Path) -> None:
     """引用其它插件应归入跨插件依赖类，不计入自引用绝对 import。"""
     plugin_dir = _write_plugin(
@@ -209,6 +257,50 @@ def test_shared_base_model_via_module_alias_is_reported(tmp_path: Path) -> None:
             "__init__.py": (
                 "import app.db as db\n\n"
                 "class MyData(db.Base):\n"
+                "    pass\n"
+            ),
+        },
+    )
+
+    readiness = scan_plugin_version_readiness("myplugin", plugin_dir)
+
+    assert readiness.has_shared_base_models
+    assert readiness.shared_base_models[0].class_name == "MyData"
+
+
+def test_shared_base_model_via_from_package_import_submodule_with_alias_is_reported(
+    tmp_path: Path,
+) -> None:
+    """from app.db import base as db_base 后以 db_base.Base 继承应被识别。"""
+    plugin_dir = _write_plugin(
+        tmp_path,
+        "myplugin",
+        {
+            "__init__.py": (
+                "from app.db import base as db_base\n\n"
+                "class MyData(db_base.Base):\n"
+                "    pass\n"
+            ),
+        },
+    )
+
+    readiness = scan_plugin_version_readiness("myplugin", plugin_dir)
+
+    assert readiness.has_shared_base_models
+    assert readiness.shared_base_models[0].class_name == "MyData"
+
+
+def test_shared_base_model_via_from_package_import_submodule_without_alias_is_reported(
+    tmp_path: Path,
+) -> None:
+    """from app.db import base（无 as）后以 base.Base 继承应被识别。"""
+    plugin_dir = _write_plugin(
+        tmp_path,
+        "myplugin",
+        {
+            "__init__.py": (
+                "from app.db import base\n\n"
+                "class MyData(base.Base):\n"
                 "    pass\n"
             ),
         },

@@ -8,6 +8,10 @@
 3. 共享声明基类建模——插件在宿主 ``app.db.Base``／``app.db.base.Base`` 上定义模型类，
    同一插件的两个版本会映射到同名表，第二个版本 import 时直接冲突。
 
+写在 ``if TYPE_CHECKING:``（含 ``typing.TYPE_CHECKING`` 及其别名）body 内的自引用
+或跨插件绝对 import 运行期永不执行，不计入第 1、2 类判据；同一 if 的 else 分支运行期
+正常执行，仍计入判据。
+
 本模块只做只读静态分析，不导入插件代码、不改变插件加载行为。
 """
 
@@ -165,22 +169,28 @@ def _dotted_attribute_name(expr: ast.expr) -> str | None:
 def _collect_base_bindings(tree: ast.AST) -> tuple[set[str], set[str]]:
     """收集文件内可能指向宿主共享 Base 的符号别名与模块别名。
 
+    ``from <parent> import <child> [as X]`` 既可能引入符号 ``Base`` 本身，也可能
+    引入 ``_SHARED_BASE_MODULES`` 中某一模块的子模块（如 ``from app.db import
+    base``）；后者绑定的是模块，需要按 ``<parent>.<child>`` 拼出完整路径与
+    ``_SHARED_BASE_MODULES`` 比对，才能覆盖 ``db_base.Base`` 这类属性访问写法。
+
     :param tree: 已解析的文件语法树
     :return: (符号别名集合, 模块别名集合)。符号别名来自
         ``from app.db[.base] import Base [as X]``；模块别名来自
         ``import app.db[.base] [as X]``（未显式 as 时按 Python 语义绑定为 "app"）
+        或 ``from <parent> import <child> [as X]`` 且 ``<parent>.<child>`` 属于
+        ``_SHARED_BASE_MODULES``（未显式 as 时绑定为 ``<child>``）
     """
     symbol_aliases: set[str] = set()
     module_aliases: set[str] = set()
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.ImportFrom)
-            and node.module in _SHARED_BASE_MODULES
-            and node.level == 0
-        ):
+        if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             for alias in node.names:
-                if alias.name == "Base":
+                if node.module in _SHARED_BASE_MODULES and alias.name == "Base":
                     symbol_aliases.add(alias.asname or alias.name)
+                    continue
+                if f"{node.module}.{alias.name}" in _SHARED_BASE_MODULES:
+                    module_aliases.add(alias.asname or alias.name)
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name in _SHARED_BASE_MODULES:
@@ -202,6 +212,63 @@ def _is_shared_base_reference(
             return False
         return dotted in module_aliases or dotted in _SHARED_BASE_MODULES
     return False
+
+
+def _typing_check_aliases(tree: ast.AST) -> tuple[set[str], set[str]]:
+    """收集文件内 ``typing.TYPE_CHECKING`` 的符号别名与 typing 模块别名。
+
+    仅类型检查分支的判定依赖这两类绑定：符号别名来自
+    ``from typing import TYPE_CHECKING [as X]``，用于匹配 ``if X:``；模块别名来自
+    ``import typing [as X]``，用于匹配 ``if X.TYPE_CHECKING:``。
+
+    :param tree: 已解析的文件语法树
+    :return: (TYPE_CHECKING 符号别名集合, typing 模块别名集合)
+    """
+    symbol_aliases: set[str] = set()
+    module_aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "typing" and node.level == 0:
+            for alias in node.names:
+                if alias.name == "TYPE_CHECKING":
+                    symbol_aliases.add(alias.asname or alias.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "typing":
+                    module_aliases.add(alias.asname or alias.name)
+    return symbol_aliases, module_aliases
+
+
+def _is_type_checking_test(
+    test: ast.expr,
+    symbol_aliases: set[str],
+    module_aliases: set[str],
+) -> bool:
+    """判断 if 条件表达式是否为仅类型检查判据（TYPE_CHECKING 或其别名）。"""
+    if isinstance(test, ast.Name):
+        return test.id in symbol_aliases
+    if isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING":
+        base = test.value
+        return isinstance(base, ast.Name) and base.id in module_aliases
+    return False
+
+
+def _type_checking_only_node_ids(tree: ast.AST) -> frozenset[int]:
+    """收集仅类型检查分支内全部节点的 id，供导入类判据跳过。
+
+    ``if TYPE_CHECKING:``（或其别名形式）的 body 运行期永不执行，其中的导入
+    在版本化目录下不会触发 ``ModuleNotFoundError``，不应计入阻断；同一 if 的
+    ``else`` 分支运行期正常执行，不在排除范围内。
+
+    :param tree: 已解析的文件语法树
+    :return: 需要从自引用/跨插件导入判据中排除的节点 id 集合
+    """
+    symbol_aliases, module_aliases = _typing_check_aliases(tree)
+    excluded: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and _is_type_checking_test(node.test, symbol_aliases, module_aliases):
+            for stmt in node.body:
+                excluded.update(id(sub) for sub in ast.walk(stmt))
+    return frozenset(excluded)
 
 
 def scan_plugin_version_readiness(plugin_id: str, plugin_dir: Path) -> PluginVersionReadiness:
@@ -233,8 +300,14 @@ def scan_plugin_version_readiness(plugin_id: str, plugin_dir: Path) -> PluginVer
         from_package_parts = list(relative_path.parts[:-1])
         importlib_aliases, import_module_aliases = _dynamic_import_aliases(tree)
         symbol_aliases, module_aliases = _collect_base_bindings(tree)
+        type_checking_only_ids = _type_checking_only_node_ids(tree)
 
         for node in ast.walk(tree):
+            if (
+                isinstance(node, (ast.ImportFrom, ast.Import, ast.Call))
+                and id(node) in type_checking_only_ids
+            ):
+                continue
             if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
                 classification = _classify_plugin_module(node.module, plugin_id)
                 if not classification:
