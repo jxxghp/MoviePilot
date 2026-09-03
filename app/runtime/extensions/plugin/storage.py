@@ -317,6 +317,19 @@ class PluginInstanceStore:
         record = self._directory().get(instance_id)
         return record if record is not None and record.mode == "virtual" else None
 
+    def all_hosts(self) -> dict[str, PluginInstance]:
+        """一次性读取全部源插件本体的版本绑定记录，不含分身实例。
+
+        供目录投影批量取数使用，按插件 ID 遍历卡片时只做内存字典查找，
+        不再逐张卡片各查一次数据库。
+        """
+        self._ensure_bootstrapped()
+        return {
+            record.instance_id: record
+            for record in self._directory().list_all()
+            if record.mode == "host"
+        }
+
     def save(self, instance: PluginInstance) -> None:
         """新增或更新分身实例描述，并以实例 ID 作为稳定持久化键。"""
         self._ensure_bootstrapped()

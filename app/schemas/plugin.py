@@ -234,6 +234,12 @@ class Plugin(BaseModel):
     is_instance: Optional[bool] = False
     # 实例实现模式；存量物理分身为空
     instance_mode: Optional[str] = None
+    # 该实例钉住的插件版本；跟随插件当前版本时为空
+    pinned_version: Optional[str] = None
+    # 该实例是否为所属插件的默认调用目标
+    is_default_target: bool = False
+    # 该实例当前生效的日志等级覆盖；未设置覆盖或覆盖已过期回落全局等级时为空
+    log_level_effective: Optional[str] = None
 
     @property
     def package_version(self) -> Optional[str]:

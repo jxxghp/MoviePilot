@@ -271,6 +271,7 @@ def build_plugin_runtime(
         ),
         plugin_instance=instances.get,
         plugin_instances=instances.all,
+        host_instances=instances.all_hosts,
         runtime_status=registry.runtime_status,
         log=environment.logger,
     )

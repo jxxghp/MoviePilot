@@ -92,6 +92,38 @@ def test_host_binding_does_not_leak_into_clone_list_or_installed_list():
     assert store.get_host("DemoPlugin") is not None
 
 
+def test_all_hosts_batches_host_binding_records_without_leaking_clones():
+    """``all_hosts`` 一次性返回全部本体绑定记录，且不得混入分身实例。"""
+    values = {SystemConfigKey.UserInstalledPlugins: ["DemoPlugin", "OtherPlugin"]}
+    storage = PluginStorage(
+        read=values.get,
+        write=lambda key, value: values.__setitem__(key, value),
+    )
+    directory = _make_directory()
+    store = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+    store.save(PluginInstance(instance_id="DemoPluginWork", source_plugin_id="DemoPlugin"))
+    demo_host = PluginInstance(
+        instance_id="DemoPlugin",
+        source_plugin_id="DemoPlugin",
+        follow_current_version=False,
+        plugin_version="1.0.0",
+    )
+    other_host = PluginInstance(
+        instance_id="OtherPlugin",
+        source_plugin_id="OtherPlugin",
+        is_default_target=True,
+    )
+    store.save_host(demo_host)
+    store.save_host(other_host)
+
+    hosts = store.all_hosts()
+
+    assert hosts == {
+        "DemoPlugin": demo_host.model_copy(update={"mode": "host"}),
+        "OtherPlugin": other_host.model_copy(update={"mode": "host"}),
+    }
+
+
 def test_loader_executes_each_instance_in_an_isolated_module_namespace(
     tmp_path,
     monkeypatch,
