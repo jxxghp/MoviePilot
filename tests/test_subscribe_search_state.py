@@ -1,7 +1,7 @@
+import threading
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta
-import threading
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 

@@ -48,6 +48,8 @@ from app.db.adapters.subscriptionsearch import (  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.models.subscriptionsearch import (  # noqa: E402
     SubscriptionSearchTask,
+)
+from app.db.models.subscriptionsearch import (  # noqa: E402
     SubscriptionSiteBudget as SubscriptionSiteBudgetRecord,
 )
 from app.domain.context import Context, MediaInfo, TorrentInfo  # noqa: E402

@@ -3,9 +3,10 @@
 import threading
 
 import pytest
+
 from app.application.site.observation import capture_site_search_observation
-from app.application.subscription.sitebudget import SiteBudgetClaim
 from app.application.subscription.candidates import CandidateIndex
+from app.application.subscription.sitebudget import SiteBudgetClaim
 from app.chain.search.facade import SearchChain
 from app.chain.subscribe.facade import SubscribeChain
 from scripts.validation import subscription_governance_scale as scale
