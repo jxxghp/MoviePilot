@@ -1475,20 +1475,25 @@ class PluginPackageManager:
         与既有的运行目录补偿替换手法一致（见 __restore_tree）：先把旧目标改名
         挪到同级临时位置，暂存内容改名落位后再删除旧目标；只要新内容还没落位，
         旧目标就仍然完整，因此中途失败可以原样退回。跨设备无法原子改名时退化
-        为复制加删除，复制完成后才删除暂存内容，避免留下半份文件。
+        为复制加删除：复制期间随时可能中途失败留下半份 final_dir，因此复制失败
+        时先删掉这份半成品，再把旧目标换回 final_dir 位置，只有复制确认完整
+        落地后才删除旧目标；回滚换回旧目标本身也可能失败，此时只记录旧目标的
+        保留位置、不覆盖原始异常，避免看起来"改名成功"实则数据已丢的假象。
 
         :param staging_dir: 已就位的待安装内容目录
         :param final_dir: 最终写入目标目录，可能已存在旧内容
-        :raise OSError: 改名或复制失败
+        :raise OSError: 改名或复制失败，且已尽力保留或恢复换入前的目录内容
         """
         final_dir.parent.mkdir(parents=True, exist_ok=True)
         previous = final_dir.parent / f".{final_dir.name}.previous-{uuid.uuid4().hex}"
         had_previous_content = final_dir.exists()
+        previous_kept_for_manual_recovery = False
         try:
             if had_previous_content:
                 os.rename(final_dir, previous)
             try:
                 os.rename(staging_dir, final_dir)
+                return
             except OSError as error:
                 if getattr(error, "errno", None) != errno.EXDEV:
                     raise
@@ -1496,14 +1501,29 @@ class PluginPackageManager:
                     f"插件安装内容跨设备无法原子改名，退化为复制后删除："
                     f"{staging_dir} -> {final_dir} - {error}"
                 )
+            try:
                 shutil.copytree(staging_dir, final_dir)
-                shutil.rmtree(staging_dir, ignore_errors=True)
-        except OSError:
-            if not final_dir.exists() and had_previous_content and previous.exists():
-                os.rename(previous, final_dir)
+            except OSError:
+                if final_dir.exists():
+                    shutil.rmtree(final_dir, ignore_errors=True)
+                raise
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        except OSError as error:
+            if had_previous_content and previous.exists():
+                try:
+                    if final_dir.exists():
+                        shutil.rmtree(final_dir, ignore_errors=True)
+                    os.rename(previous, final_dir)
+                except OSError as rollback_error:
+                    previous_kept_for_manual_recovery = True
+                    logger.error(
+                        f"插件安装换入失败后恢复换入前内容也失败，"
+                        f"换入前内容保留在 {previous}：{rollback_error}"
+                    )
+                    raise error from rollback_error
             raise
         finally:
-            if previous.exists():
+            if previous.exists() and not previous_kept_for_manual_recovery:
                 shutil.rmtree(previous, ignore_errors=True)
 
     def __place_staged_plugin_content(
