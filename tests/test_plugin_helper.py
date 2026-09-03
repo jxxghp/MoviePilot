@@ -21,7 +21,10 @@ from app.adapters.external.plugin.client import (
     PluginPackageSourceClient,
 )
 from app.adapters.system.plugin.health import PluginRuntimeHealth
-from app.adapters.system.plugin.package import PluginPackageManager
+from app.adapters.system.plugin.package import (
+    PluginPackageManager,
+    _PluginContentPlacement,
+)
 
 PLUGIN_ID = "DemoPlugin"
 REPO_URL = "https://github.com/demo/MoviePilot-Plugins"
@@ -215,7 +218,9 @@ def _patch_sync_remote_install(helper, monkeypatch, meta: dict,
     monkeypatch.setattr(
         helper,
         "_PluginPackageManager__place_staged_plugin_content",
-        lambda _pid, plugin_dir, _staging_dir, _source_label: (plugin_dir, "", None),
+        lambda _pid, plugin_dir, _staging_dir, _source_label: _PluginContentPlacement(
+            plugin_dir, "", None, True
+        ),
     )
     monkeypatch.setattr(
         helper,
@@ -284,7 +289,9 @@ def _patch_async_remote_install(helper, monkeypatch, meta: dict,
     monkeypatch.setattr(
         helper,
         "_PluginPackageManager__place_staged_plugin_content",
-        lambda _pid, plugin_dir, _staging_dir, _source_label: (plugin_dir, "", None),
+        lambda _pid, plugin_dir, _staging_dir, _source_label: _PluginContentPlacement(
+            plugin_dir, "", None, True
+        ),
     )
     monkeypatch.setattr(helper, "_PluginPackageManager__async_install_dependencies_if_required", fake_dependencies)
     monkeypatch.setattr(helper, "_PluginPackageManager__async_install_from_release", fake_release)
@@ -2538,7 +2545,9 @@ demo = { index = "private" }
         monkeypatch.setattr(
             helper,
             "_PluginPackageManager__place_staged_plugin_content",
-            lambda _pid, plugin_dir, _staging_dir, _source_label: (plugin_dir, "", None),
+            lambda _pid, plugin_dir, _staging_dir, _source_label: _PluginContentPlacement(
+                plugin_dir, "", None, True
+            ),
         )
         monkeypatch.setattr(
             helper,

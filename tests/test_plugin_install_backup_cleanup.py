@@ -6,7 +6,10 @@ import pytest
 
 from app.adapters.external.market import PluginHelper
 from app.adapters.external.plugin.client import PluginPackageSourceClient
-from app.adapters.system.plugin.package import PluginPackageManager
+from app.adapters.system.plugin.package import (
+    PluginPackageManager,
+    _PluginContentPlacement,
+)
 
 
 @pytest.mark.asyncio
@@ -36,7 +39,9 @@ async def test_successful_install_flows_remove_transient_backups(
     monkeypatch.setattr(
         package,
         "_PluginPackageManager__place_staged_plugin_content",
-        lambda _pid, _plugin_dir, _staging_dir, _source_label: (tmp_path / "content", "", None),
+        lambda _pid, _plugin_dir, _staging_dir, _source_label: _PluginContentPlacement(
+            tmp_path / "content", "", None, True
+        ),
     )
     monkeypatch.setattr(
         package,

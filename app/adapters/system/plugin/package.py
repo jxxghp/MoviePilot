@@ -220,6 +220,28 @@ class _RemotePluginInstallSelection:
     fallback_to_filelist: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _PluginContentPlacement:
+    """记录暂存内容落位尝试的结果，供安装流程判断失败时是否需要清理。
+
+    换入子步骤本身失败时，最终目录已经由换入函数恢复到换入前的状态，此时
+    ``swap_committed`` 为 False，调用方绝不能再清理，否则会删掉刚恢复好的
+    旧内容；换入已经成功、之后的版本元信息登记才失败时，最终目录确实被
+    本次安装改动过，``swap_committed`` 为 True，调用方需要按既有语义清理
+    本次安装写入的版本目录。
+
+    :param content_dir: 落盘后的内容目录；失败时为 None
+    :param message: 失败信息；成功时为空串
+    :param target: 已解析的版本化安装目标；平铺布局时为 None
+    :param swap_committed: 换入步骤是否已把新内容写入最终目录
+    """
+
+    content_dir: Optional[Path]
+    message: str
+    target: Optional[PluginInstallVersionTarget]
+    swap_committed: bool
+
+
 class PluginPackageManager:
     """隔离插件包安装、本地同步、分身改写和文件补偿能力。"""
 
@@ -1568,7 +1590,7 @@ class PluginPackageManager:
         plugin_dir: Path,
         staging_dir: Path,
         source_label: str,
-    ) -> tuple[Optional[Path], str, Optional[PluginInstallVersionTarget]]:
+    ) -> _PluginContentPlacement:
         """决定暂存内容的落盘子目录、原子换入，并在写入版本目录时登记版本元信息。
 
         目标目录决策委托给注入的解析端口，必要时该端口会原地迁移存量平铺布局；
@@ -1578,29 +1600,35 @@ class PluginPackageManager:
         :param plugin_dir: 插件根目录
         :param staging_dir: 已就位的暂存内容目录
         :param source_label: 登记版本元信息使用的来源标签
-        :return: (落盘后的内容目录, 错误信息, 已解析的版本化安装目标)；失败时
-            内容目录为 None，调用方据此判断失败清理范围——目标为 None 时是
-            平铺布局，需清理插件根目录；目标非 None 时只需清理该版本目录，
-            不牵连插件的其它已装版本
+        :return: 落位结果；``content_dir`` 为 None 表示失败，调用方据此判断
+            失败清理范围——``target`` 为 None 时是平铺布局，需清理插件根
+            目录，非 None 时只需清理该版本目录；``swap_committed`` 为 False
+            时最终目录已由换入步骤自身恢复，调用方不得再清理
         """
         try:
             target = self._install_target_resolver(pid, plugin_dir, staging_dir)
         except Exception as error:  # noqa: BLE001 - 组合根注入的解析端口失败按安装失败处理
-            return None, f"解析插件安装目标失败：{error}", None
+            return _PluginContentPlacement(
+                None, f"解析插件安装目标失败：{error}", None, False
+            )
 
         final_dir = plugin_dir if target is None else plugin_dir / target.subdirectory
         try:
             self.__swap_staged_plugin_content(staging_dir, final_dir)
         except OSError as error:
-            return None, f"写入插件内容失败：{error}", target
+            return _PluginContentPlacement(
+                None, f"写入插件内容失败：{error}", target, False
+            )
 
         if target is not None:
             try:
                 self._install_version_registrar(plugin_dir, target.version, source_label)
             except Exception as error:  # noqa: BLE001 - 组合根注入的登记端口失败按安装失败处理
-                return None, f"登记插件版本元信息失败：{error}", target
+                return _PluginContentPlacement(
+                    None, f"登记插件版本元信息失败：{error}", target, True
+                )
 
-        return final_dir, "", target
+        return _PluginContentPlacement(final_dir, "", target, True)
 
     def __install_flow_sync(
         self,
@@ -1634,17 +1662,18 @@ class PluginPackageManager:
             if not force_install:
                 backup_dir = self.__backup_plugin(pid)
 
-            content_dir, place_message, target = self.__place_staged_plugin_content(
+            placement = self.__place_staged_plugin_content(
                 pid, plugin_dir, staging_dir, source_label,
             )
+            content_dir, target = placement.content_dir, placement.target
             if content_dir is None:
-                logger.error(f"{pid} 落位插件内容失败：{place_message}")
+                logger.error(f"{pid} 落位插件内容失败：{placement.message}")
                 if backup_dir:
                     self.__restore_plugin(pid, backup_dir)
                     logger.warn(f"{pid} 插件安装失败，已还原备份插件")
-                else:
+                elif placement.swap_committed:
                     self.__cleanup_failed_install(pid, plugin_dir, target)
-                return False, place_message
+                return False, placement.message
 
             dependencies_exist, dep_ok, dep_msg = self.__install_dependencies_if_required(
                 pid, content_dir, before_dependency_install,
@@ -2251,8 +2280,8 @@ class PluginPackageManager:
             if not force_install:
                 backup_dir = await self.__async_backup_plugin(pid)
 
-            content_dir, place_message, target = cast(
-                tuple[Optional[Path], str, Optional[PluginInstallVersionTarget]],
+            placement = cast(
+                _PluginContentPlacement,
                 await _await_thread_operation(
                     self.__place_staged_plugin_content,
                     pid,
@@ -2261,14 +2290,15 @@ class PluginPackageManager:
                     "market",
                 ),
             )
+            content_dir, target = placement.content_dir, placement.target
             if content_dir is None:
-                logger.error(f"{pid} 落位插件内容失败：{place_message}")
+                logger.error(f"{pid} 落位插件内容失败：{placement.message}")
                 if backup_dir:
                     await self.__async_restore_plugin(pid, backup_dir)
                     logger.warning(f"{pid} 插件安装失败，已还原备份插件")
-                else:
+                elif placement.swap_committed:
                     await self.__async_cleanup_failed_install(pid, plugin_dir, target)
-                return False, place_message
+                return False, placement.message
 
             dependencies_exist, dep_ok, dep_msg = await self.__async_install_dependencies_if_required(
                 pid, content_dir, before_dependency_install,

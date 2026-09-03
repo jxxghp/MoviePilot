@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import io
 import os
+import shutil
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +13,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from app.adapters.system.plugin import package as plugin_package_module
 from app.adapters.system.plugin.package import PluginPackageManager
 from app.runtime.extensions.plugin import version as plugin_version_module
 from app.runtime.extensions.plugin.version import (
@@ -892,3 +894,207 @@ def test_sync_install_failure_without_backup_in_flat_layout_still_removes_whole_
     assert success is False
     assert message == "依赖安装失败：模拟"
     assert not existing_dir.exists()
+
+
+# 七、换入未提交与换入已提交后失败的清理边界
+
+
+def _fail_rename_from_directory(root: Path):
+    """构造只让位于给定目录下的源路径改名失败（模拟 EXDEV）的 os.rename 替身，其余改名走真实实现。"""
+    real_rename = os.rename
+
+    def fake_rename(src: object, dst: object) -> None:
+        """按源路径是否位于给定目录内决定是否伪造跨设备改名失败。"""
+        if Path(str(src)).is_relative_to(root):
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        real_rename(src, dst)
+
+    return fake_rename
+
+
+def _fail_copytree_into_directory(root: Path, marker_name: str, message: str):
+    """构造只让目标路径位于给定目录树内的 copytree 调用失败的替身，先落半份新内容再抛错。"""
+    real_copytree = shutil.copytree
+
+    def fake_copytree(src: object, dst: object, **kwargs: object) -> None:
+        """按目标路径是否位于给定目录内决定是否伪造复制中途磁盘写满。"""
+        if Path(str(dst)).is_relative_to(root):
+            Path(str(dst)).mkdir(parents=True, exist_ok=True)
+            (Path(str(dst)) / marker_name).write_text("partial", encoding="utf-8")
+            raise OSError(errno.ENOSPC, message)
+        real_copytree(src, dst, **kwargs)
+
+    return fake_copytree
+
+
+def _patch_swap_to_fail_writing_into(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, plugin_root: Path,
+) -> None:
+    """让暂存目录改名失败并让退化复制在写入插件根目录时中途失败，复现换入失败场景。"""
+    monkeypatch.setattr(
+        plugin_package_module.os,
+        "rename",
+        _fail_rename_from_directory(tmp_path / "temp" / "plugin_install_staging"),
+    )
+    monkeypatch.setattr(
+        plugin_package_module.shutil,
+        "copytree",
+        _fail_copytree_into_directory(plugin_root, "partial.txt", "No space left on device"),
+    )
+
+
+def test_sync_install_swap_failure_in_flat_layout_leaves_directory_untouched(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """平铺布局强制安装换入失败时插件目录必须逐字节完好，不被失败清理二次删除。"""
+    source_dir = tmp_path / "repo" / "demoplugin"
+    _write_flat_plugin(source_dir, class_name="DemoPlugin", version=None)
+    manager, plugin_root = _versioned_manager(
+        monkeypatch, tmp_path, source=_local_source_port(source_dir)
+    )
+    existing_dir = plugin_root / "demoplugin"
+    _write_flat_plugin(existing_dir, class_name="DemoPlugin", version=None)
+    (existing_dir / "marker.py").write_text("MARK = 1\n", encoding="utf-8")
+    init_before = (existing_dir / "__init__.py").read_text(encoding="utf-8")
+    marker_before = (existing_dir / "marker.py").read_text(encoding="utf-8")
+
+    _patch_swap_to_fail_writing_into(monkeypatch, tmp_path, plugin_root)
+
+    success, message = manager.install_local_raw(
+        "DemoPlugin", repo_url="local://demoplugin", force_install=True,
+    )
+
+    assert success is False
+    assert "写入插件内容失败" in message
+    assert existing_dir.is_dir()
+    assert (existing_dir / "__init__.py").read_text(encoding="utf-8") == init_before
+    assert (existing_dir / "marker.py").read_text(encoding="utf-8") == marker_before
+    assert not (existing_dir / "partial.txt").exists()
+
+
+def test_sync_install_swap_failure_installing_new_version_leaves_existing_versions_untouched(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """版本化布局强制安装新版本换入失败时，已装版本、清单与目标版本目录都回到安装前状态。"""
+    source_dir = tmp_path / "repo" / "demoplugin"
+    _write_flat_plugin(source_dir, class_name="DemoPlugin", version="3.0.0")
+    manager, plugin_root = _versioned_manager(
+        monkeypatch, tmp_path, source=_local_source_port(source_dir)
+    )
+    existing_dir = plugin_root / "demoplugin"
+    version_a = _register_real_version(existing_dir, "1.0.0", marker="A")
+    version_b = _register_real_version(existing_dir, "2.0.0", marker="B")
+    manifest_before = read_plugin_versions_manifest(existing_dir)
+
+    _patch_swap_to_fail_writing_into(monkeypatch, tmp_path, plugin_root)
+
+    success, message = manager.install_local_raw(
+        "DemoPlugin", repo_url="local://demoplugin", force_install=True,
+    )
+
+    assert success is False
+    assert "写入插件内容失败" in message
+    assert not (existing_dir / "v3_0_0").exists()
+    assert (version_a / "marker.py").read_text(encoding="utf-8") == "A"
+    assert (version_b / "marker.py").read_text(encoding="utf-8") == "B"
+    assert read_plugin_versions_manifest(existing_dir) == manifest_before
+
+
+@pytest.mark.asyncio
+async def test_async_install_swap_failure_installing_new_version_leaves_existing_versions_untouched(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """异步安装路径下版本化布局换入失败同样不得清理已恢复的目录，与同步路径行为一致。"""
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    existing_dir = plugin_root / "demoplugin"
+    version_a = _register_real_version(existing_dir, "1.0.0", marker="A")
+    version_b = _register_real_version(existing_dir, "2.0.0", marker="B")
+    manifest_before = read_plugin_versions_manifest(existing_dir)
+
+    async def prepare(staging_dir: Path) -> tuple[bool, str]:
+        """准备一份声明第三个版本号的替换内容。"""
+        _write_flat_plugin(staging_dir, class_name="DemoPlugin", version="3.0.0")
+        return True, ""
+
+    _patch_swap_to_fail_writing_into(monkeypatch, tmp_path, plugin_root)
+
+    success, message = await manager._PluginPackageManager__install_flow_async(
+        "DemoPlugin", True, prepare,
+    )
+
+    assert success is False
+    assert "写入插件内容失败" in message
+    assert not (existing_dir / "v3_0_0").exists()
+    assert (version_a / "marker.py").read_text(encoding="utf-8") == "A"
+    assert (version_b / "marker.py").read_text(encoding="utf-8") == "B"
+    assert read_plugin_versions_manifest(existing_dir) == manifest_before
+
+
+def test_sync_install_swap_failure_reinstalling_existing_version_restores_original_content(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """重装已存在版本目录时换入失败，该版本必须恢复为换入前内容，不被失败清理连版本一起删除。
+
+    这个场景才是新缺陷的真实复现：目标版本目录换入前已经存在真实内容，
+    换入函数自身已经把它换回；旧的清理路径不区分“换入未提交”和“换入已
+    提交后失败”，会把刚恢复好的这份内容连同版本登记一起删掉。
+    """
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    existing_dir = plugin_root / "demoplugin"
+    version_a = _register_real_version(existing_dir, "1.0.0", marker="A")
+    version_b = _register_real_version(existing_dir, "2.0.0", marker="B")
+    marker_before = (version_b / "marker.py").read_text(encoding="utf-8")
+    manifest_before = read_plugin_versions_manifest(existing_dir)
+
+    def prepare(staging_dir: Path) -> tuple[bool, str]:
+        """准备同一版本号但内容不同的重装内容。"""
+        _write_flat_plugin(staging_dir, class_name="DemoPlugin", version="2.0.0")
+        (staging_dir / "marker.py").write_text("MARK = 2-new\n", encoding="utf-8")
+        return True, ""
+
+    _patch_swap_to_fail_writing_into(monkeypatch, tmp_path, plugin_root)
+
+    success, message = manager._PluginPackageManager__install_flow_sync(
+        "DemoPlugin", True, prepare, source_label="local",
+    )
+
+    assert success is False
+    assert "写入插件内容失败" in message
+    assert version_b.is_dir()
+    assert (version_b / "marker.py").read_text(encoding="utf-8") == marker_before
+    assert (version_a / "marker.py").read_text(encoding="utf-8") == "A"
+    assert read_plugin_versions_manifest(existing_dir) == manifest_before
+
+
+@pytest.mark.asyncio
+async def test_async_install_cleans_up_new_version_when_registration_fails_after_successful_swap(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """换入已经成功提交、版本元信息登记随后失败时，仍按既有语义清理本次安装写入的版本目录。"""
+    manager, plugin_root = _versioned_manager(monkeypatch, tmp_path)
+    existing_dir = plugin_root / "demoplugin"
+    version_a = _register_real_version(existing_dir, "1.0.0", marker="A")
+    version_b = _register_real_version(existing_dir, "2.0.0", marker="B")
+    manifest_before = read_plugin_versions_manifest(existing_dir)
+
+    async def prepare(staging_dir: Path) -> tuple[bool, str]:
+        """准备一份声明第三个版本号的替换内容。"""
+        _write_flat_plugin(staging_dir, class_name="DemoPlugin", version="3.0.0")
+        return True, ""
+
+    def failing_registrar(*_args: object, **_kwargs: object) -> None:
+        """模拟版本元信息登记端口异常。"""
+        raise RuntimeError("模拟登记失败")
+
+    monkeypatch.setattr(manager, "_install_version_registrar", failing_registrar)
+
+    success, message = await manager._PluginPackageManager__install_flow_async(
+        "DemoPlugin", True, prepare,
+    )
+
+    assert success is False
+    assert "登记插件版本元信息失败" in message
+    assert not (existing_dir / "v3_0_0").exists()
+    assert (version_a / "marker.py").read_text(encoding="utf-8") == "A"
+    assert (version_b / "marker.py").read_text(encoding="utf-8") == "B"
+    assert read_plugin_versions_manifest(existing_dir) == manifest_before
