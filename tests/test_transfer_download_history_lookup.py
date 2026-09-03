@@ -1,7 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 
 
 class FakeDownloadHistoryOper:
