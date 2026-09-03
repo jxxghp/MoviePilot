@@ -1101,8 +1101,13 @@ class TransHandler:
         observe_cleanup_before_transfer: Optional[Callable[[], bool]] = None,
         step_runner: Optional[TransferStepRunner] = None,
     ) -> TransferInfo:
-        """只消费冻结目标和有序操作，并在执行期处理覆盖与插件拦截。"""
+        """只消费冻结目标和有序操作，并在执行期处理覆盖与插件拦截。
+
+        持久步骤意图中的源文件必须使用规划输入快照；目录执行时可能重新统计
+        STREAM 大小，但这类运行期投影不属于步骤身份。
+        """
         fileitem = FileItem(**checkpoint.planning_input.source_fileitem)
+        frozen_source_payload = checkpoint.planning_input.source_fileitem
         target_storage = checkpoint.target_storage
         target_path = Path(checkpoint.final_target_path)
         transfer_type = checkpoint.resolved_transfer_type
@@ -1162,7 +1167,7 @@ class TransHandler:
             allowed, reason = self.__intercept_with_step(
                 step_runner=step_runner,
                 payload={
-                    "source": fileitem.model_dump(mode="json"),
+                    "source": frozen_source_payload,
                     "target_storage": target_storage,
                     "target_path": target_path.as_posix(),
                     "transfer_type": transfer_type,
@@ -1292,7 +1297,7 @@ class TransHandler:
         allowed, reason = self.__intercept_with_step(
             step_runner=step_runner,
             payload={
-                "source": fileitem.model_dump(mode="json"),
+                "source": frozen_source_payload,
                 "target_storage": target_storage,
                 "target_path": target_file.as_posix(),
                 "transfer_type": transfer_type,
