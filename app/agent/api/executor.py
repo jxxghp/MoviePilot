@@ -12,6 +12,7 @@ from app.agent.policy.api import ApiOperationRoute, resolve_api_route
 from app.application.security.token import create_access_token
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.schemas.types import NotificationChannel
 
 
 class ApiExecutionError(RuntimeError):
@@ -95,7 +96,7 @@ class MoviePilotApiExecutor:
         return rendered
 
     def _build_headers(self) -> dict[str, str]:
-        """构造仅包含宿主生成令牌的认证头。"""
+        """构造宿主令牌和请求上下文头，并确保头值符合 ASCII 约束。"""
         user_id = str(self._context.user_id or "")
         if not user_id.isdigit():
             raise ApiExecutionError("当前 Agent 身份没有可用于 API 鉴权的用户 ID")
@@ -111,9 +112,14 @@ class MoviePilotApiExecutor:
         if self._context.session_id:
             headers["X-MoviePilot-Agent-Session"] = self._context.session_id
         if self._context.channel:
-            headers["X-MoviePilot-Agent-Channel"] = self._context.channel
+            try:
+                channel = NotificationChannel(self._context.channel)
+                headers["X-MoviePilot-Agent-Channel"] = channel.name
+            except ValueError:
+                # 未知渠道仍需经过 URL 编码，避免自定义渠道值破坏 HTTP 头的 ASCII 约束。
+                headers["X-MoviePilot-Agent-Channel"] = quote(self._context.channel, safe="")
         if self._context.source:
-            headers["X-MoviePilot-Agent-Source"] = self._context.source
+            headers["X-MoviePilot-Agent-Source"] = quote(self._context.source, safe="")
         return headers
 
     @classmethod

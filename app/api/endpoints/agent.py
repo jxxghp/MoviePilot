@@ -2,6 +2,7 @@ import json
 import mimetypes
 import uuid
 from typing import Any, AsyncIterator, Optional
+from urllib.parse import unquote
 
 from fastapi import (
     Depends,
@@ -67,6 +68,22 @@ def _ensure_superuser(user: ApiPrincipal) -> None:
     """校验当前用户是否为超级管理员。"""
     if not getattr(user, "is_superuser", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+
+def _parse_agent_channel_header(value: Optional[str]) -> Optional[NotificationChannel]:
+    """解析 Agent API 的 ASCII 渠道名，并兼容旧版本直接传递的枚举值。"""
+    if not value:
+        return None
+    try:
+        return NotificationChannel[value]
+    except KeyError:
+        try:
+            return NotificationChannel(value)
+        except ValueError:
+            try:
+                return NotificationChannel(unquote(value))
+            except ValueError:
+                return None
 
 
 @router.get(
@@ -330,10 +347,8 @@ async def run_agent_command(
 ) -> _SchemaResponse[Any]:
     """以当前认证用户和宿主透传渠道触发已注册命令。"""
     _ensure_superuser(current_user)
-    try:
-        channel = NotificationChannel(agent_channel) if agent_channel else None
-    except ValueError:
-        channel = None
+    channel = _parse_agent_channel_header(agent_channel)
+    agent_source = unquote(agent_source) if agent_source else None
     try:
         data = web_agent_application.dispatch_command(
             payload.command,

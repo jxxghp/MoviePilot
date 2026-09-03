@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agent.api.executor import ApiExecutionContext, MoviePilotApiExecutor
 from app.agent.tools.base import format_tool_result_for_agent
+from app.schemas.types import NotificationChannel
 
 
 def _execute_with_headers(headers: dict[str, str]) -> tuple[dict, AsyncMock]:
@@ -118,3 +119,26 @@ def test_executor_keeps_collection_total_visible_in_truncated_tool_preview() -> 
         "content_preview"
     ].index('"data"')
     response.aclose.assert_awaited_once()
+
+
+def test_executor_serializes_channel_and_source_headers_as_ascii() -> None:
+    """中文通知渠道和来源必须以 ASCII 形式发送到 Agent API。"""
+    request_factory = MagicMock(return_value=SimpleNamespace(request=AsyncMock()))
+    executor = MoviePilotApiExecutor(
+        context=ApiExecutionContext(
+            user_id="1",
+            username="admin",
+            is_admin=True,
+            channel=NotificationChannel.Wechat.value,
+            source="企业微信",
+        ),
+        request_factory=request_factory,
+    )
+
+    with patch("app.agent.api.executor.create_access_token", return_value="token"):
+        headers = executor._build_headers()
+
+    assert headers["X-MoviePilot-Agent-Channel"] == NotificationChannel.Wechat.name
+    assert headers["X-MoviePilot-Agent-Channel"].isascii()
+    assert headers["X-MoviePilot-Agent-Source"] == "%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1"
+    assert headers["X-MoviePilot-Agent-Source"].isascii()
