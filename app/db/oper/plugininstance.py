@@ -9,48 +9,48 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
-from app.db.models.plugininstance import PluginInstanceDescriptor
+from app.db.models.plugininstance import PluginInstance
 
 
 class PluginInstanceOper(DbOper):
     """在调用方 Session 或独占事务中查询并暂存插件实例描述符。"""
 
-    def get(self, instance_id: str) -> Optional[PluginInstanceDescriptor]:
+    def get(self, instance_id: str) -> Optional[PluginInstance]:
         """按实例 ID 查询单条描述符，分身与本体共用同一张表和同一个查询。"""
         return self._execute_sync_query(
             lambda session: cast(
-                Optional[PluginInstanceDescriptor],
+                Optional[PluginInstance],
                 session.execute(
-                    select(PluginInstanceDescriptor).where(
-                        PluginInstanceDescriptor.instance_id == instance_id
+                    select(PluginInstance).where(
+                        PluginInstance.instance_id == instance_id
                     )
                 ).scalars().first(),
             )
         )
 
-    def list_by_source(self, source_plugin_id: str) -> list[PluginInstanceDescriptor]:
+    def list_by_source(self, source_plugin_id: str) -> list[PluginInstance]:
         """按源插件 ID 列举其全部实例描述符，含分身与本体。"""
         return list(
             self._execute_sync_query(
                 lambda session: session.execute(
-                    select(PluginInstanceDescriptor).where(
-                        PluginInstanceDescriptor.source_plugin_id == source_plugin_id
+                    select(PluginInstance).where(
+                        PluginInstance.source_plugin_id == source_plugin_id
                     )
                 ).scalars()
             )
         )
 
-    def list_all(self) -> list[PluginInstanceDescriptor]:
+    def list_all(self) -> list[PluginInstance]:
         """列举全部实例描述符，供运行期批量装载和兜底导入判空使用。"""
         return list(
             self._execute_sync_query(
                 lambda session: session.execute(
-                    select(PluginInstanceDescriptor)
+                    select(PluginInstance)
                 ).scalars()
             )
         )
 
-    def save(self, **fields: Any) -> PluginInstanceDescriptor:
+    def save(self, **fields: Any) -> PluginInstance:
         """按 ``instance_id`` 新增或更新一条描述符。
 
         :param fields: 描述符字段，须含 ``instance_id``
@@ -61,7 +61,7 @@ class PluginInstanceOper(DbOper):
         if existing is not None:
             return self._stage_update(existing, {**fields, "updated_at": now})
         return self._stage_create(
-            PluginInstanceDescriptor(**fields, created_at=now, updated_at=now)
+            PluginInstance(**fields, created_at=now, updated_at=now)
         )
 
     def delete(self, instance_id: str) -> bool:
@@ -69,8 +69,8 @@ class PluginInstanceOper(DbOper):
         def stage(session: Session) -> bool:
             """在同一事务内查询并删除，避免读写跨两个独立事务。"""
             existing = session.execute(
-                select(PluginInstanceDescriptor).where(
-                    PluginInstanceDescriptor.instance_id == instance_id
+                select(PluginInstance).where(
+                    PluginInstance.instance_id == instance_id
                 )
             ).scalars().first()
             if existing is None:
@@ -96,19 +96,19 @@ class PluginInstanceOper(DbOper):
         def stage(session: Session) -> bool:
             """在同一事务内定位目标行、清除同插件其余置位、置位目标行。"""
             target = session.execute(
-                select(PluginInstanceDescriptor).where(
-                    PluginInstanceDescriptor.instance_id == instance_id,
-                    PluginInstanceDescriptor.source_plugin_id == source_plugin_id,
+                select(PluginInstance).where(
+                    PluginInstance.instance_id == instance_id,
+                    PluginInstance.source_plugin_id == source_plugin_id,
                 )
             ).scalars().first()
             if target is None:
                 return False
             session.execute(
-                update(PluginInstanceDescriptor)
+                update(PluginInstance)
                 .where(
-                    PluginInstanceDescriptor.source_plugin_id == source_plugin_id,
-                    PluginInstanceDescriptor.instance_id != instance_id,
-                    PluginInstanceDescriptor.is_default_target.is_(True),
+                    PluginInstance.source_plugin_id == source_plugin_id,
+                    PluginInstance.instance_id != instance_id,
+                    PluginInstance.is_default_target.is_(True),
                 )
                 .values(is_default_target=False)
             )
@@ -123,10 +123,10 @@ class PluginInstanceOper(DbOper):
         def stage(session: Session) -> None:
             """在同一事务内清除该源插件全部置位的行。"""
             session.execute(
-                update(PluginInstanceDescriptor)
+                update(PluginInstance)
                 .where(
-                    PluginInstanceDescriptor.source_plugin_id == source_plugin_id,
-                    PluginInstanceDescriptor.is_default_target.is_(True),
+                    PluginInstance.source_plugin_id == source_plugin_id,
+                    PluginInstance.is_default_target.is_(True),
                 )
                 .values(is_default_target=False)
             )

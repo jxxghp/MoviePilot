@@ -12,7 +12,7 @@ from alembic.operations import Operations
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.exc import IntegrityError
 
-from app.db.models.plugininstance import PluginInstanceDescriptor
+from app.db.models.plugininstance import PluginInstance
 
 MIGRATION_MODULE = "database.versions.e0e68cbd5756_3_0_31"
 
@@ -118,7 +118,7 @@ def test_default_target_migration_accepts_fresh_current_schema(monkeypatch) -> N
     """create_all 已建当前表时重复升级不得因列或索引已存在而报错。"""
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
-        PluginInstanceDescriptor.__table__.create(connection)
+        PluginInstance.__table__.create(connection)
         migration = _bind_migration(monkeypatch, connection)
 
         migration.upgrade()
@@ -127,7 +127,7 @@ def test_default_target_migration_accepts_fresh_current_schema(monkeypatch) -> N
         assert {
             column["name"]
             for column in sa.inspect(connection).get_columns("plugininstance")
-        } == {column.name for column in PluginInstanceDescriptor.__table__.columns}
+        } == {column.name for column in PluginInstance.__table__.columns}
         assert "ux_plugininstance_default_target" in {
             index["name"] for index in sa.inspect(connection).get_indexes("plugininstance")
         }
@@ -170,7 +170,7 @@ def test_default_target_index_is_partial_in_both_dialects() -> None:
     退化成「每个源插件只能有一行实例」，把插件分身整个锁死。
     """
     index = next(
-        item for item in PluginInstanceDescriptor.__table__.indexes
+        item for item in PluginInstance.__table__.indexes
         if item.name == "ux_plugininstance_default_target"
     )
     ddl = sa.schema.CreateIndex(index)

@@ -8,7 +8,7 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-from app.db.models.plugininstance import PluginInstanceDescriptor
+from app.db.models.plugininstance import PluginInstance
 from app.db.models.systemconfig import SystemConfig
 
 MIGRATION_MODULE = "database.versions.281965691a20_3_0_29"
@@ -186,7 +186,7 @@ def test_plugin_instance_migration_accepts_fresh_current_schema(monkeypatch) -> 
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         SystemConfig.__table__.create(connection)
-        PluginInstanceDescriptor.__table__.create(connection)
+        PluginInstance.__table__.create(connection)
         migration = _bind_migration(monkeypatch, connection)
 
         migration.upgrade()
@@ -195,4 +195,4 @@ def test_plugin_instance_migration_accepts_fresh_current_schema(monkeypatch) -> 
         assert {
             column["name"]
             for column in sa.inspect(connection).get_columns("plugininstance")
-        } == {column.name for column in PluginInstanceDescriptor.__table__.columns}
+        } == {column.name for column in PluginInstance.__table__.columns}

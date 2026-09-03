@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-from app.db.models.plugininstance import PluginInstanceDescriptor
+from app.db.models.plugininstance import PluginInstance
 
 MIGRATION_MODULE = "database.versions.487f7e681955_3_0_30"
 
@@ -115,7 +115,7 @@ def test_plugin_instance_log_level_migration_accepts_fresh_current_schema(
     """create_all 已建当前表时重复升级不得因列已存在而报错。"""
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
-        PluginInstanceDescriptor.__table__.create(connection)
+        PluginInstance.__table__.create(connection)
         migration = _bind_migration(monkeypatch, connection)
 
         migration.upgrade()
@@ -124,4 +124,4 @@ def test_plugin_instance_log_level_migration_accepts_fresh_current_schema(
         assert {
             column["name"]
             for column in sa.inspect(connection).get_columns("plugininstance")
-        } == {column.name for column in PluginInstanceDescriptor.__table__.columns}
+        } == {column.name for column in PluginInstance.__table__.columns}

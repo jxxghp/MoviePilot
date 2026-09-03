@@ -21,9 +21,9 @@ _MODEL_EXPORTS = {
         "app.db.models.plugininstallation",
         "PluginInstallation",
     ),
-    "PluginInstanceDescriptor": (
+    "PluginInstance": (
         "app.db.models.plugininstance",
-        "PluginInstanceDescriptor",
+        "PluginInstance",
     ),
     "PluginIdentity": (
         "app.db.models.pluginidentity",

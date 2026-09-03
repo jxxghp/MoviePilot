@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, get_id_column
 
 
-class PluginInstanceDescriptor(Base):
+class PluginInstance(Base):
     """持久化一个共享源码插件的运行实例描述，一实例一行。
 
     ``instance_id`` 既是分身的实例 ID，也可以等于 ``source_plugin_id`` 表示
@@ -25,9 +25,10 @@ class PluginInstanceDescriptor(Base):
     ``source_plugin_id`` 都无关——本体和任意一个分身都可能被选为默认调用目标。
     「同一源插件至多一个默认调用目标」这条不变量由 ``ux_plugininstance_default_target``
     条件唯一索引在数据库层强制，只索引置位的行，不靠应用层纪律。
-    """
 
-    __tablename__ = "plugininstance"
+    表名由 ``Base`` 按类名自动派生为小写 ``plugininstance``，与既有迁移一致，
+    不再显式声明 ``__tablename__``。
+    """
 
     id = get_id_column()
     instance_id: Mapped[str] = mapped_column(String(128), nullable=False)

@@ -77,7 +77,7 @@ from app.application.plugin.transaction import (
 )
 from app.application.scheduling import update_plugin_job
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.db.models.plugininstance import PluginInstanceDescriptor
+from app.db.models.plugininstance import PluginInstance as PluginInstanceRecord
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.plugininstance import PluginInstanceOper
 from app.db.plugin.registry import (
@@ -170,7 +170,7 @@ def _build_plugin_database() -> PluginDatabase:
     )
 
 
-def _plugin_instance_from_record(record: PluginInstanceDescriptor) -> PluginInstance:
+def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance:
     """把插件实例描述符表的 ORM 行投影为运行时端口使用的 Pydantic 描述。"""
     return PluginInstance(
         instance_id=record.instance_id,
