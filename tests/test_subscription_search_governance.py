@@ -517,6 +517,61 @@ def test_system_stop_completes_when_download_side_effect_already_started(tmp_pat
     assert chain.subscription_search_repository.claim_next(owner="worker-after-restart") is None
 
 
+def test_ttl_expiry_after_normal_return_marks_task_and_batch_failed(tmp_path, monkeypatch):
+    """正常返回也必须检查执行 TTL，未提交下载时按失败收口。"""
+    subscribe = _subscribe(15)
+    chain = _chain(tmp_path, [subscribe])
+    _make_tasks_ready(monkeypatch)
+    monkeypatch.setattr(
+        chain._subscription_execution_admission,
+        "is_expired",
+        lambda _lease: True,
+    )
+    monkeypatch.setattr(
+        chain,
+        "_process_search_subscription",
+        lambda item, _searchchain, **_kwargs: item,
+    )
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(state="R")
+
+    batch = chain.get_search_batch(batch_id)
+    assert batch.state == "failed"
+    assert batch.finished_count == 0
+    assert batch.failed_count == 1
+    assert batch.cancelled_count == 0
+    assert batch.last_error == "订阅执行已超过协作截止时间"
+
+
+def test_ttl_expiry_after_download_started_completes_with_actual_result(tmp_path, monkeypatch):
+    """TTL 晚于下载器副作用边界时按实际结果完成，避免下轮重复提交。"""
+    subscribe = _subscribe(16)
+    chain = _chain(tmp_path, [subscribe])
+    _make_tasks_ready(monkeypatch)
+    monkeypatch.setattr(
+        chain._subscription_execution_admission,
+        "is_expired",
+        lambda _lease: True,
+    )
+
+    def process(item, _searchchain, *, execution_context):
+        """模拟下载器已接收任务后搜索链正常返回。"""
+        execution_context.mark_download_started()
+        return item
+
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(state="R")
+
+    batch = chain.get_search_batch(batch_id)
+    assert batch.state == "completed"
+    assert batch.finished_count == 1
+    assert batch.failed_count == 0
+    assert batch.cancelled_count == 0
+
+
 def test_site_budget_ttl_expiry_marks_task_and_batch_failed(tmp_path, monkeypatch):
     """站点预算观察到执行 TTL 到期时必须失败收口，不能伪装成用户取消。"""
     subscribe = _subscribe(12)

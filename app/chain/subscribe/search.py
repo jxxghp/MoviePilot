@@ -179,6 +179,60 @@ def _release_cancelled_or_stopped_search_task(
     )
 
 
+def _finish_returned_search_task(
+    *,
+    queue: SubscriptionSearchRepository,
+    task_id: str,
+    lease_token: str,
+    subscription_id: int,
+    execution_context: SubscriptionExecutionContext,
+    system_stopped: bool,
+    cancel_requested: bool,
+) -> Optional[int]:
+    """按 TTL、停机和取消边界收口正常返回的搜索任务。"""
+    download_started = execution_context.download_started
+    if execution_context.is_expired() and not (system_stopped or cancel_requested):
+        if download_started:
+            queue.finish_task(
+                task_id=task_id,
+                lease_token=lease_token,
+                state="completed",
+                error="执行截止时间晚于下载提交边界，已按实际结果完成",
+            )
+            return subscription_id
+        queue.finish_task(
+            task_id=task_id,
+            lease_token=lease_token,
+            state="failed",
+            error="订阅执行已超过协作截止时间",
+        )
+        return None
+    if system_stopped:
+        if download_started:
+            queue.finish_task(
+                task_id=task_id,
+                lease_token=lease_token,
+                state="completed",
+                error="停机请求晚于下载提交边界，已按实际结果完成",
+            )
+            return subscription_id
+        queue.release_task(task_id=task_id, lease_token=lease_token)
+        return None
+    if cancel_requested:
+        if download_started:
+            queue.finish_task(
+                task_id=task_id,
+                lease_token=lease_token,
+                state="completed",
+                error="取消请求晚于下载提交边界，已按实际结果完成",
+            )
+            return subscription_id
+        queue.release_task(task_id=task_id, lease_token=lease_token, cancelled=True)
+        return None
+    queue.finish_task(task_id=task_id, lease_token=lease_token, state="completed")
+    return subscription_id
+
+
 class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
     """订阅主动搜索入口与持久队列消费 owner。"""
 
@@ -554,30 +608,17 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                 searchchain,
                 execution_context=execution_context,
             )
-            if stop_state.is_system_stopped:
-                if self._subscription_download_started_for_task(execution_context):
-                    queue.finish_task(
-                        task_id=task_id,
-                        lease_token=lease_token,
-                        state="completed",
-                        error="停机请求晚于下载提交边界，已按实际结果完成",
-                    )
-                    return task.subscription_id
-                queue.release_task(task_id=task_id, lease_token=lease_token)
-                return None
-            if queue.is_cancel_requested(task_id):
-                if self._subscription_download_started_for_task(execution_context):
-                    queue.finish_task(
-                        task_id=task_id,
-                        lease_token=lease_token,
-                        state="completed",
-                        error="取消请求晚于下载提交边界，已按实际结果完成",
-                    )
-                    return task.subscription_id
-                queue.release_task(task_id=task_id, lease_token=lease_token, cancelled=True)
-                return None
-            queue.finish_task(task_id=task_id, lease_token=lease_token, state="completed")
-            return task.subscription_id
+            system_stopped = stop_state.is_system_stopped
+            cancel_requested = False if system_stopped else cancelled()
+            return _finish_returned_search_task(
+                queue=queue,
+                task_id=task_id,
+                lease_token=lease_token,
+                subscription_id=task.subscription_id,
+                execution_context=execution_context,
+                system_stopped=system_stopped,
+                cancel_requested=cancel_requested,
+            )
         except SubscriptionSearchCancelled:
             if execution_context.is_expired() and not execution_context.is_cancel_requested():
                 queue.finish_task(
@@ -649,13 +690,6 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                 limit,
                 finished=True,
             )
-
-    def _subscription_download_started_for_task(
-        self,
-        execution_context: SubscriptionExecutionContext,
-    ) -> bool:
-        """判断取消是否已晚于下载器副作用边界。"""
-        return execution_context.download_started
 
     def resume_search_queue(
         self,
