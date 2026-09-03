@@ -1,11 +1,8 @@
 """订阅候选准备、身份复核与资源匹配"""
 
 import copy
-import time
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Literal, Optional
-from uuid import uuid4
 
 from app.application.configuration import get_configured_system_config
 from app.application.subscription.candidates import CandidateIndex
@@ -14,8 +11,13 @@ from app.application.subscription.contract import (
     build_subscribe_meta,
     subscribe_media_key,
 )
-from app.application.subscription.execution import SubscriptionExecutionContext
+from app.application.subscription.execution import (
+    SubscriptionExecutionAdmission,
+    SubscriptionExecutionContext,
+    SubscriptionExecutionLease,
+)
 from app.application.subscription.facts import FreshFactLease
+from app.application.subscription.observability import MatchExecutionSummary
 from app.application.subscription.sitebudget import SubscriptionSearchCancelled
 from app.application.torrent.download import TorrentHelper
 from app.chain.media import MediaChain
@@ -40,93 +42,9 @@ from app.schemas.types import (
 _MatchOutcome = Literal["completed", "skipped", "failed"]
 
 
-@dataclass(slots=True)
-class _MatchExecutionSummary:
-    """保存一次 Match 批次的实际订阅执行结果。"""
-
-    total: int
-    candidate_count: int
-    site_count: int
-    run_id: str
-    started_at: float
-    completed: int = 0
-    skipped: int = 0
-    failed: int = 0
-    admission_conflicts: int = 0
-    cancelled: int = 0
-    ttl_timeouts: int = 0
-    release_failures: int = 0
-
-    @property
-    def finished(self) -> int:
-        """返回已经收口的订阅数量。"""
-        return self.completed + self.skipped + self.failed
-
-    def record(self, outcome: Optional[str], reason: Optional[str] = None) -> None:
-        """将单订阅结果归入稳定的完成、跳过或失败计数。"""
-        if outcome == "completed":
-            self.completed += 1
-        elif outcome == "skipped":
-            self.skipped += 1
-        else:
-            self.failed += 1
-        if reason == "admission_conflict":
-            self.admission_conflicts += 1
-        elif reason == "cancelled":
-            self.cancelled += 1
-        elif reason == "ttl_timeout":
-            self.ttl_timeouts += 1
-
-    @property
-    def state(self) -> str:
-        """按已处理数量和任务终态生成轮次状态。"""
-        if self.finished < self.total:
-            return "stopped"
-        if self.failed:
-            return "failed"
-        if self.skipped:
-            return "skipped"
-        return "completed"
-
-    def start_log(self) -> str:
-        """构造 Match 轮次开始日志。"""
-        return (
-            "订阅治理轮次开始: operation=match "
-            f"run_id={self.run_id} subscriptions={self.total} "
-            f"sites={self.site_count} candidates={self.candidate_count}"
-        )
-
-    def finish_log(self) -> str:
-        """构造 Match 轮次结束日志，completed 表示任务处理完成而非订阅成功。"""
-        elapsed_ms = (time.perf_counter() - self.started_at) * 1000
-        return (
-            "订阅治理轮次结束: operation=match "
-            f"run_id={self.run_id} state={self.state} subscriptions={self.total} "
-            f"processed={self.finished} task_completed={self.completed} "
-            f"task_skipped={self.skipped} task_failed={self.failed} "
-            f"admission_conflicts={self.admission_conflicts} cancelled={self.cancelled} "
-            f"ttl_timeouts={self.ttl_timeouts} release_failures={self.release_failures} "
-            f"sites={self.site_count} candidates={self.candidate_count} "
-            f"duration_ms={elapsed_ms:.1f}"
-        )
-
-    def as_data(self, current: Optional[int] = None) -> dict[str, int]:
-        """构造供进度消费者读取的实际计数。"""
-        data = {
-            "total": self.total,
-            "finished": self.finished,
-            "completed": self.completed,
-            "skipped": self.skipped,
-            "failed": self.failed,
-        }
-        if current is not None:
-            data["current"] = current
-        return data
-
-
 def _report_match_progress(
     progress_callback: Optional[Callable[..., None]],
-    summary: _MatchExecutionSummary,
+    summary: MatchExecutionSummary,
     *,
     value: float,
     text: str,
@@ -148,6 +66,49 @@ def _match_stop_reason(context: SubscriptionExecutionContext) -> Optional[str]:
     if context.is_cancel_requested():
         return "cancelled"
     return None
+
+
+def _match_result_reason(
+    outcome: Optional[str],
+    context: SubscriptionExecutionContext,
+) -> Optional[str]:
+    """为跳过结果补充停止边界或业务原因。"""
+    if outcome != "skipped":
+        return None
+    return _match_stop_reason(context) or "business_skip"
+
+
+def _release_match_admission(
+    admission: SubscriptionExecutionAdmission,
+    lease: SubscriptionExecutionLease,
+    subscription_id: int,
+    summary: MatchExecutionSummary,
+) -> None:
+    """释放 Match 订阅准入，并让 token 冲突即时可见。"""
+    if admission.release(lease):
+        return
+    summary.release_failures += 1
+    logger.error(
+        "订阅准入释放失败: operation=match "
+        f"subscription_id={subscription_id} run_id={summary.run_id}"
+    )
+
+
+def _report_match_finished(
+    progress_callback: Optional[Callable[..., None]],
+    summary: MatchExecutionSummary,
+) -> None:
+    """按实际计数发布 Match 最终进度。"""
+    if not progress_callback:
+        return
+    final_text = "订阅资源匹配完成"
+    if summary.finished < summary.total:
+        final_text = "订阅资源匹配已停止，部分订阅未执行"
+    elif summary.failed:
+        final_text = "订阅资源匹配完成，部分订阅失败"
+    elif summary.skipped:
+        final_text = "订阅资源匹配完成，部分订阅跳过"
+    _report_match_progress(progress_callback, summary, value=100, text=final_text)
 
 
 def _is_title_match_allowed(
@@ -399,13 +360,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             progress_callback(value=0, text="正在预处理订阅资源 ...")
 
         lock_acquired = False
-        summary = _MatchExecutionSummary(
-            total=0,
-            candidate_count=sum(len(contexts) for contexts in torrents.values()),
-            site_count=len(torrents),
-            run_id=uuid4().hex,
-            started_at=time.perf_counter(),
-        )
+        summary = MatchExecutionSummary.from_candidates(torrents)
         summary_started = False
         try:
             lock_acquired = self._acquire_run_lock("match", progress_callback)
@@ -476,11 +431,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                                     fresh_fact_lease=fresh_fact_lease,
                                     execution_context=execution_context,
                                 )
-                                reason = (
-                                    _match_stop_reason(execution_context)
-                                    if outcome == "skipped"
-                                    else None
-                                ) or ("business_skip" if outcome == "skipped" else None)
+                                reason = _match_result_reason(outcome, execution_context)
                         except SubscriptionSearchCancelled as err:
                             outcome = "skipped"
                             reason = _match_stop_reason(execution_context) or "cancelled"
@@ -493,13 +444,12 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                             )
                             logger.error(f"订阅 {subscribe_name} 匹配失败：{str(err)}", exc_info=True)
                         finally:
-                            released = self._subscription_execution_admission.release(lease)
-                            if not released:
-                                summary.release_failures += 1
-                                logger.error(
-                                    "订阅准入释放失败: operation=match "
-                                    f"subscription_id={listed_subscribe.id} run_id={summary.run_id}"
-                                )
+                            _release_match_admission(
+                                self._subscription_execution_admission,
+                                lease,
+                                listed_subscribe.id,
+                                summary,
+                            )
                     summary.record(outcome, reason)
                     _report_match_progress(
                         progress_callback,
@@ -512,20 +462,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                 del processed_torrents
                 subscribes.clear()
                 del subscribes
-                if progress_callback:
-                    final_text = "订阅资源匹配完成"
-                    if summary.finished < summary.total:
-                        final_text = "订阅资源匹配已停止，部分订阅未执行"
-                    elif summary.failed:
-                        final_text = "订阅资源匹配完成，部分订阅失败"
-                    elif summary.skipped:
-                        final_text = "订阅资源匹配完成，部分订阅跳过"
-                    _report_match_progress(
-                        progress_callback,
-                        summary,
-                        value=100,
-                        text=final_text,
-                    )
+                _report_match_finished(progress_callback, summary)
         finally:
             if summary_started:
                 logger.info(summary.finish_log())

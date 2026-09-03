@@ -2,10 +2,9 @@
 
 import random
 import time
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import partial
-from typing import Any, Callable, Literal, Optional, cast
+from typing import Any, Callable, Optional, cast
 from uuid import uuid4
 
 from app.application.configuration import get_configured_system_config
@@ -21,11 +20,15 @@ from app.application.subscription.execution import (
     SubscriptionExecutionContext,
     SubscriptionSearchRepository,
 )
+from app.application.subscription.observability import (
+    SearchExecutionSummary,
+    SearchTaskOutcome,
+    finish_returned_search_task,
+)
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.sitebudget import (
     SubscriptionSearchCancelled,
     SubscriptionSiteBudget,
-    SubscriptionSiteBudgetMetrics,
 )
 from app.chain.media import MediaChain
 from app.chain.search.facade import SearchChain
@@ -181,153 +184,8 @@ def _release_cancelled_or_stopped_search_task(
     )
 
 
-_SearchTaskOutcome = Literal["completed", "skipped", "failed", "cancelled", "requeued"]
-
-
-def _finish_returned_search_task(
-    *,
-    queue: SubscriptionSearchRepository,
-    task_id: str,
-    lease_token: str,
-    subscription_id: int,
-    execution_context: SubscriptionExecutionContext,
-    system_stopped: bool,
-    cancel_requested: bool,
-) -> tuple[Optional[int], _SearchTaskOutcome, Optional[str]]:
-    """按 TTL、停机和取消边界收口正常返回的搜索任务。"""
-    download_started = execution_context.download_started
-    if execution_context.is_expired() and not (system_stopped or cancel_requested):
-        if download_started:
-            queue.finish_task(
-                task_id=task_id,
-                lease_token=lease_token,
-                state="completed",
-                error="执行截止时间晚于下载提交边界，已按实际结果完成",
-            )
-            return subscription_id, "completed", "ttl_timeout"
-        queue.finish_task(
-            task_id=task_id,
-            lease_token=lease_token,
-            state="failed",
-            error="订阅执行已超过协作截止时间",
-        )
-        return None, "failed", "ttl_timeout"
-    if system_stopped:
-        if download_started:
-            queue.finish_task(
-                task_id=task_id,
-                lease_token=lease_token,
-                state="completed",
-                error="停机请求晚于下载提交边界，已按实际结果完成",
-            )
-            return subscription_id, "completed", "system_stop"
-        queue.release_task(task_id=task_id, lease_token=lease_token)
-        return None, "requeued", "system_stop"
-    if cancel_requested:
-        if download_started:
-            queue.finish_task(
-                task_id=task_id,
-                lease_token=lease_token,
-                state="completed",
-                error="取消请求晚于下载提交边界，已按实际结果完成",
-            )
-            return subscription_id, "completed", "cancelled"
-        queue.release_task(task_id=task_id, lease_token=lease_token, cancelled=True)
-        return None, "cancelled", "cancelled"
-    queue.finish_task(task_id=task_id, lease_token=lease_token, state="completed")
-    return subscription_id, "completed", None
-
-
-@dataclass(slots=True)
-class _SearchExecutionSummary:
-    """聚合一次 Search 消费轮次的任务、站点与候选观测。"""
-
-    source: str
-    requested: int
-    run_id: str = field(default_factory=lambda: uuid4().hex)
-    batch_id: Optional[str] = None
-    coalesced: int = 0
-    started_at: float = field(default_factory=time.perf_counter)
-    completed: int = 0
-    skipped: int = 0
-    failed: int = 0
-    cancelled: int = 0
-    requeued: int = 0
-    admission_conflicts: int = 0
-    ttl_timeouts: int = 0
-    release_failures: int = 0
-    consumer_conflicts: int = 0
-    stopped: bool = False
-    site_metrics: SubscriptionSiteBudgetMetrics = field(
-        default_factory=SubscriptionSiteBudgetMetrics
-    )
-
-    @property
-    def processed(self) -> int:
-        """返回本轮实际取得并收口或退回队列的任务数。"""
-        return self.completed + self.skipped + self.failed + self.cancelled + self.requeued
-
-    def record(self, outcome: _SearchTaskOutcome, reason: Optional[str] = None) -> None:
-        """记录一个任务结果，并单独统计冲突、取消和 TTL。"""
-        if outcome == "completed":
-            self.completed += 1
-        elif outcome == "skipped":
-            self.skipped += 1
-        elif outcome == "failed":
-            self.failed += 1
-        elif outcome == "cancelled":
-            self.cancelled += 1
-        else:
-            self.requeued += 1
-        if reason == "admission_conflict":
-            self.admission_conflicts += 1
-        elif reason == "ttl_timeout":
-            self.ttl_timeouts += 1
-
-    def start_log(self) -> str:
-        """构造 Search 轮次开始日志。"""
-        return (
-            "订阅治理轮次开始: operation=search "
-            f"run_id={self.run_id} batch_id={self.batch_id or '-'} source={self.source} "
-            f"subscriptions={self.requested} coalesced={self.coalesced}"
-        )
-
-    def finish_log(self, batch: Optional[SearchBatchSnapshot] = None) -> str:
-        """构造 Search 轮次结束日志，任务完成与订阅完成保持分离。"""
-        sites = self.site_metrics.snapshot()
-        if batch is not None:
-            state = batch.state
-        elif self.consumer_conflicts:
-            state = "skipped"
-        elif self.requeued or self.stopped:
-            state = "stopped"
-        elif self.failed:
-            state = "failed"
-        elif self.cancelled:
-            state = "cancelled"
-        elif self.skipped:
-            state = "skipped"
-        else:
-            state = "completed"
-        elapsed_ms = (time.perf_counter() - self.started_at) * 1000
-        return (
-            "订阅治理轮次结束: operation=search "
-            f"run_id={self.run_id} batch_id={self.batch_id or '-'} source={self.source} "
-            f"state={state} subscriptions={self.requested} processed={self.processed} "
-            f"task_completed={self.completed} task_skipped={self.skipped} "
-            f"task_failed={self.failed} task_cancelled={self.cancelled} task_requeued={self.requeued} "
-            f"admission_conflicts={self.admission_conflicts} cancelled={self.cancelled} "
-            f"ttl_timeouts={self.ttl_timeouts} consumer_conflicts={self.consumer_conflicts} "
-            f"sites={sites.site_count} site_requests={sites.request_count} "
-            f"site_failures={sites.failure_count} site_cooldown_skips={sites.cooldown_skip_count} "
-            f"candidates={sites.candidate_count} cooldown_seconds={sites.cooldown_seconds:.1f} "
-            f"release_failures={self.release_failures + sites.release_failure_count} "
-            f"duration_ms={elapsed_ms:.1f}"
-        )
-
-
-class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
-    """订阅主动搜索入口与持久队列消费 owner。"""
+class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
+    """订阅主动搜索入口、队列提交与消费协调 owner。"""
 
     def _subscription_query(self) -> SubscriptionQueryService:
         """构造绑定订阅 Oper 的查询应用服务。"""
@@ -445,11 +303,11 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             return
         subscribes = []
         processed = []
-        summary: Optional[_SearchExecutionSummary] = None
+        summary: Optional[SearchExecutionSummary] = None
         try:
             subscribes = self._load_search_subscriptions(sid=sid, sids=sids, state=state)
             total = len(subscribes)
-            summary = _SearchExecutionSummary(source="inline", requested=total)
+            summary = SearchExecutionSummary(source="inline", requested=total)
             logger.info(summary.start_log())
             if progress_callback:
                 progress_callback(
@@ -482,7 +340,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                     cancel_requested=lambda: runtime_stop_state.is_system_stopped,
                 )
                 current = None
-                outcome: _SearchTaskOutcome = "skipped"
+                outcome: SearchTaskOutcome = "skipped"
                 reason: Optional[str] = "not_eligible"
                 try:
                     current = self.subscription_repository.get(subscribe.id)
@@ -576,7 +434,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             ),
         )
         total = len(subscribes)
-        summary = _SearchExecutionSummary(
+        summary = SearchExecutionSummary(
             source=source,
             requested=total,
             batch_id=str(enqueued.batch.batch_id),
@@ -623,7 +481,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         queue: SubscriptionSearchRepository,
         limit: int,
         progress_callback: Optional[Callable[..., None]],
-        summary: _SearchExecutionSummary,
+        summary: SearchExecutionSummary,
     ) -> set[int]:
         """有界消费可恢复任务；单任务失败不得阻止后续订阅。"""
         if not self._search_queue_lock.acquire(blocking=False):
@@ -657,6 +515,10 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             self._search_queue_lock.release()
         return processed
 
+
+class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
+    """持久搜索任务执行与批次控制 owner。"""
+
     def _execute_search_task(
         self,
         *,
@@ -667,7 +529,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         index: int,
         limit: int,
         progress_callback: Optional[Callable[..., None]],
-        summary: _SearchExecutionSummary,
+        summary: SearchExecutionSummary,
     ) -> Optional[int]:
         """执行一条已认领任务，返回实际进入搜索处理的订阅 ID。"""
         if task.lease_token is None:
@@ -748,7 +610,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             )
             system_stopped = stop_state.is_system_stopped
             cancel_requested = False if system_stopped else cancelled()
-            subscription_id, outcome, reason = _finish_returned_search_task(
+            subscription_id, outcome, reason = finish_returned_search_task(
                 queue=queue,
                 task_id=task_id,
                 lease_token=lease_token,
@@ -814,7 +676,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         progress_callback: Optional[Callable[..., None]],
         index: int,
         limit: int,
-        summary: _SearchExecutionSummary,
+        summary: SearchExecutionSummary,
     ) -> None:
         """清理站点预算和订阅状态，并在所有异常路径释放 owner。"""
         try:
@@ -857,7 +719,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
         )
         if queue is None:
             return
-        summary = _SearchExecutionSummary(source="resume", requested=max(1, limit))
+        summary = SearchExecutionSummary(source="resume", requested=max(1, limit))
         logger.info(summary.start_log())
         self._drain_search_queue(
             queue=queue,
