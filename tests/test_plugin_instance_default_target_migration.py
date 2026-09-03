@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.models.plugininstance import PluginInstanceDescriptor
 
-MIGRATION_MODULE = "database.versions.e0e68cbd5756_3_0_26"
+MIGRATION_MODULE = "database.versions.e0e68cbd5756_3_0_31"
 
 
 def _bind_migration(monkeypatch, connection):

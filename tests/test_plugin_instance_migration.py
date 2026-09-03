@@ -11,7 +11,7 @@ from alembic.operations import Operations
 from app.db.models.plugininstance import PluginInstanceDescriptor
 from app.db.models.systemconfig import SystemConfig
 
-MIGRATION_MODULE = "database.versions.281965691a20_3_0_24"
+MIGRATION_MODULE = "database.versions.281965691a20_3_0_29"
 
 
 def _bind_migration(monkeypatch, connection):
