@@ -1,6 +1,7 @@
 """订阅主动搜索编排"""
 
 import random
+import time
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import Any, Callable, Optional, cast
@@ -313,6 +314,7 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                 self._report_search_progress(progress_callback, subscribe, index, total)
                 if self._defer_recent_subscription(subscribe):
                     continue
+                self._wait_before_scheduled_search(sid, sids, state, progress_callback)
                 lease = self._subscription_execution_admission.try_acquire(
                     subscription_id=subscribe.id,
                     operation="search",
@@ -715,6 +717,22 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
             return False
         logger.debug(f"订阅标题：{subscribe.name} 新增小于1分钟，暂不搜索...")
         return True
+
+    @staticmethod
+    def _wait_before_scheduled_search(
+        sid: Optional[int],
+        sids: Optional[tuple[int, ...]],
+        state: Optional[str],
+        progress_callback: Optional[Callable[..., None]],
+    ) -> None:
+        """未使用持久队列时为自动兜底搜索保留逐订阅随机间隔。"""
+        if sid or sids is not None or state not in {"R", "P"}:
+            return
+        sleep_time = random.randint(60, 300)
+        logger.info(f"订阅搜索随机休眠 {sleep_time} 秒 ...")
+        if progress_callback:
+            progress_callback(text=f"订阅搜索随机休眠 {sleep_time} 秒后继续 ...")
+        time.sleep(sleep_time)
 
     def _process_search_subscription(
         self,

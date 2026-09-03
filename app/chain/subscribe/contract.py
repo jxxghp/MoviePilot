@@ -72,6 +72,7 @@ if TYPE_CHECKING:
         _subscription_query: Callable[..., Any]
         _defer_recent_subscription: Callable[..., Any]
         _validate_music_subscribe_target: Callable[..., Any]
+        _wait_before_scheduled_search: Callable[..., Any]
         add: Callable[..., Any]
         async def async_obtain_images(self, mediainfo: MediaInfo) -> Optional[MediaInfo]:
             """异步补全媒体图片。"""

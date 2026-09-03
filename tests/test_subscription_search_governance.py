@@ -111,6 +111,30 @@ def test_fallback_task_schedule_staggers_each_subscription(monkeypatch):
     assert (available[2] - available[1]).total_seconds() == 300
 
 
+def test_inline_fallback_search_preserves_site_pressure_stagger(tmp_path, monkeypatch):
+    """无持久队列的兼容宿主仍须在每条自动兜底订阅前错峰。"""
+    subscribes = [_subscribe(20), _subscribe(21)]
+    chain = _chain(tmp_path, subscribes)
+    del chain.subscription_search_repository
+    waits = []
+    delays = iter((60, 300))
+    monkeypatch.setattr(
+        "app.chain.subscribe.search.random.randint",
+        lambda _low, _high: next(delays),
+    )
+    monkeypatch.setattr("app.chain.subscribe.search.time.sleep", waits.append)
+    monkeypatch.setattr(
+        chain,
+        "_process_search_subscription",
+        lambda item, _searchchain, **_kwargs: item,
+    )
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        chain.search(state="R")
+
+    assert waits == [60, 300]
+
+
 def test_successful_sites_remain_available_to_next_due_subscription(tmp_path, monkeypatch):
     """正常站点请求不能让同批下一条到期订阅漏掉目标站点。"""
     subscribes = [_subscribe(40), _subscribe(41)]
