@@ -26,8 +26,7 @@ class PluginInstance(Base):
     「同一源插件至多一个默认调用目标」这条不变量由 ``ux_plugininstance_default_target``
     条件唯一索引在数据库层强制，只索引置位的行，不靠应用层纪律。
 
-    表名由 ``Base`` 按类名自动派生为小写 ``plugininstance``，与既有迁移一致，
-    不再显式声明 ``__tablename__``。
+    表名由 ``Base`` 按类名自动派生为小写 ``plugininstance``。
     """
 
     id = get_id_column()
