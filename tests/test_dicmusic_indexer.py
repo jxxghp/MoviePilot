@@ -13,10 +13,15 @@ DICMUSIC_HTML = """
 <table class="torrent_table" id="torrent_table"><tbody>
   <tr class="torrent_checked torrent">
     <td class="td_info" colspan="3">
-      <span>
+      <span class="torrent_links_block">
         <a href="/torrents.php?action=download&amp;id=456">DL</a>
+        <a href="/torrents.php?action=usetoken&amp;id=456">FL</a>
+        <a href="/reportsv2.php?action=report&amp;id=456">RP</a>
       </span>
-      <a href="/torrents.php?id=123&amp;torrentid=456">BTS - ARIRANG</a>
+      <a href="/artist.php?id=789">BTS (방탄소년단 / 防弹少年团)</a> -
+      <a href="/torrents.php?id=123&amp;torrentid=456">ARIRANG</a>
+      [2026] [专辑]
+      <div class="tags">K-Pop</div>
     </td>
     <td class="td_time nobr"><span title="Aug 26 2026, 08:43">today</span></td>
     <td class="td_size number_column nobr">1.00 GiB</td>
@@ -59,7 +64,10 @@ def _dicmusic_indexer() -> dict[str, Any]:
                         {"name": "re_search", "args": [r"torrentid=(\d+)", 1]}
                     ],
                 },
-                "title": {"selector": detail_selector},
+                "title": {
+                    "selector": "td.td_info",
+                    "remove": "span, div.tags",
+                },
                 "details": {"selector": detail_selector, "attribute": "href"},
                 "download": {
                     "selector": 'a[href*="torrents.php?action=download"]',
@@ -110,7 +118,9 @@ def test_dicmusic_search_uses_complete_music_title_in_python_fallback() -> None:
         ).parse(DICMUSIC_HTML)
 
     assert len(results) == 1
-    assert results[0]["title"] == "BTS - ARIRANG"
+    assert results[0]["title"] == (
+        "BTS (방탄소년단 / 防弹少年团) - ARIRANG [2026] [专辑]"
+    )
     assert results[0]["category"] == MediaType.MUSIC.value
     assert results[0]["page_url"].endswith("torrents.php?id=123&torrentid=456")
     assert results[0]["enclosure"].endswith("torrents.php?action=download&id=456")
@@ -136,5 +146,7 @@ def test_dicmusic_search_uses_complete_music_title_in_rust_parser(
     ).parse(DICMUSIC_HTML)
 
     assert len(results) == 1
-    assert results[0]["title"] == "BTS - ARIRANG"
+    assert results[0]["title"] == (
+        "BTS (방탄소년단 / 防弹少年团) - ARIRANG [2026] [专辑]"
+    )
     assert results[0]["category"] == MediaType.MUSIC.value
