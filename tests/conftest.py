@@ -205,6 +205,7 @@ def configure_plugin_system_services():
     from app.application.messaging.message import MessageHelper, MessageQueueManager
     from app.application.module import configure_module_runtime
     from app.application.plugin.runtime import configure_plugin_runtime
+    from app.db.oper.plugininstance import PluginInstanceOper
     from app.runtime.cache import AsyncFileCache, FileCache
     from app.runtime.compat.readiness import plugin_multi_version_blockers
     from app.runtime.events import EventManager
@@ -257,6 +258,12 @@ def configure_plugin_system_services():
                 ),
                 logger=plugin_manager_module.logger,
                 multi_version_blockers=plugin_multi_version_blockers,
+                set_default_target=lambda source_plugin_id, instance_id: (
+                    PluginInstanceOper().set_default_target(source_plugin_id, instance_id)
+                ),
+                clear_default_target=lambda source_plugin_id: (
+                    PluginInstanceOper().clear_default_target(source_plugin_id)
+                ),
             ),
             tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
         )

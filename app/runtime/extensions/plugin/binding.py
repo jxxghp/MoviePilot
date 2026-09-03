@@ -114,6 +114,7 @@ class PluginVersionBinding:
                 "follow_current_version": host_instance.follow_current_version,
                 "running": host_instance.instance_id in running,
                 "is_host": True,
+                "is_default_target": host_instance.is_default_target,
             },
             *(
                 {
@@ -122,6 +123,7 @@ class PluginVersionBinding:
                     "follow_current_version": instance.follow_current_version,
                     "running": instance.instance_id in running,
                     "is_host": False,
+                    "is_default_target": instance.is_default_target,
                 }
                 for instance in self._instances_for_source(plugin_id)
             ),

@@ -183,6 +183,7 @@ def _plugin_instance_from_record(record: PluginInstanceDescriptor) -> PluginInst
         follow_current_version=record.follow_current_version,
         log_level=record.log_level,
         log_expires_at=record.log_expires_at,
+        is_default_target=record.is_default_target,
     )
 
 
@@ -201,6 +202,7 @@ def _save_plugin_instance_record(instance: PluginInstance) -> None:
         log_expires_at=(
             instance.log_expires_at.isoformat() if instance.log_expires_at else None
         ),
+        is_default_target=instance.is_default_target,
     )
 
 
@@ -276,6 +278,12 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
             development=lambda: bool(get_runtime_setting('DEV')),
             logger=logger,
             multi_version_blockers=plugin_multi_version_blockers,
+            set_default_target=lambda source_plugin_id, instance_id: (
+                PluginInstanceOper().set_default_target(source_plugin_id, instance_id)
+            ),
+            clear_default_target=lambda source_plugin_id: (
+                PluginInstanceOper().clear_default_target(source_plugin_id)
+            ),
         ),
         tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
     )

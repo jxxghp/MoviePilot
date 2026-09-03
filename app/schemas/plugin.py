@@ -83,6 +83,10 @@ class PluginInstance(BaseModel):
         default=None,
         description="日志等级覆盖的失效时间，None 表示不过期",
     )
+    is_default_target: bool = Field(
+        default=False,
+        description="该实例是否为所属源插件的默认调用目标",
+    )
 
 
 class PluginInstalledVersionInfo(BaseModel):  # type: ignore[misc]
@@ -103,6 +107,9 @@ class PluginInstanceVersionBinding(BaseModel):  # type: ignore[misc]
     follow_current_version: bool = Field(description="是否跟随插件当前版本")
     running: bool = Field(description="该实例当前是否运行中")
     is_host: bool = Field(default=False, description="是否为源插件本体自身，而非共享源码的分身")
+    is_default_target: bool = Field(
+        default=False, description="该实例是否为本插件的默认调用目标"
+    )
 
 
 class PluginVersionOverview(BaseModel):  # type: ignore[misc]

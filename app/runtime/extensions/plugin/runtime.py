@@ -38,6 +38,7 @@ from app.runtime.extensions.plugin.sync import (
     PluginSyncService,
 )
 from app.runtime.extensions.plugin.system import PluginSystemServices
+from app.runtime.extensions.plugin.target import PluginDefaultTargetControl
 from app.runtime.extensions.plugin.tools import PluginToolCatalog
 from app.schemas.types import SystemConfigKey
 
@@ -104,6 +105,8 @@ class PluginRuntimeEnvironment:
     development: Callable[[], bool]
     logger: Any
     multi_version_blockers: PluginMultiVersionBlockers
+    set_default_target: Callable[[str, str], bool]
+    clear_default_target: Callable[[str], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +131,7 @@ class PluginRuntime:
     clone: PluginCloneService
     version_binding: PluginVersionBinding
     log_level: PluginLogLevelControl
+    default_target: PluginDefaultTargetControl
     projection: PluginProjection
     classification: PluginClassificationRegistry
     recent_local_sync: dict[str, float]
@@ -355,6 +359,16 @@ def build_plugin_runtime(
         get_host_instance=instances.get_host,
         save_host_instance=instances.save_host,
     )
+    default_target = PluginDefaultTargetControl(
+        plugin_exists=lambda plugin_id: registry.plugin_class(plugin_id) is not None,
+        get_instance=instances.get,
+        instances_for_source=instances.for_source,
+        get_host_instance=instances.get_host,
+        save_host_instance=instances.save_host,
+        running=lambda: registry.running,
+        set_default_target=environment.set_default_target,
+        clear_default_target=environment.clear_default_target,
+    )
     projection = PluginProjection(
         registry.running,
         environment.logger,
@@ -382,6 +396,7 @@ def build_plugin_runtime(
         clone=clone,
         version_binding=version_binding,
         log_level=log_level,
+        default_target=default_target,
         projection=projection,
         classification=classification,
         recent_local_sync=recent_local_sync,

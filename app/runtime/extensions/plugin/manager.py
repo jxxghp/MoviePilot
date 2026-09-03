@@ -215,6 +215,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_classification = self._plugin_runtime.classification
         self._plugin_version_binding = self._plugin_runtime.version_binding
         self._plugin_log_level = self._plugin_runtime.log_level
+        self._plugin_default_target = self._plugin_runtime.default_target
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
             "plugins",
@@ -1316,6 +1317,34 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :raise LookupError: 插件不存在，或实例不存在／不归属该插件
         """
         self._plugin_log_level.clear_level(plugin_id, instance_id)
+
+    def resolve_plugin_call_target(self, plugin_id: str) -> str:
+        """
+        确定按插件ID发起、未指定实例的调用应当落到哪个实例
+        :param plugin_id: 插件ID，也可以是调用方已经明确知道的具体实例ID
+        :return: 应当使用的实例ID
+        :raise LookupError: 该插件已有分身但未设置默认调用目标，或默认调用目标已停用
+        """
+        return self._plugin_default_target.resolve(plugin_id)
+
+    def set_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> bool:
+        """
+        设置指定插件实例为默认调用目标，并清除同插件的旧默认
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :return: 目标实例存在时为True，指定的非本体实例不归属该插件时为False
+        :raise LookupError: 插件不存在
+        """
+        return self._plugin_default_target.set_target(plugin_id, instance_id)
+
+    def clear_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> None:
+        """
+        清除指定插件实例的默认调用目标置位，仅当当前置位的正是该实例时才动作
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :raise LookupError: 插件不存在
+        """
+        self._plugin_default_target.clear_target(plugin_id, instance_id)
 
     def recycle_plugin_versions(self, plugin_id: str) -> Dict[str, Any]:
         """

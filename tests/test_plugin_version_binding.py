@@ -185,16 +185,19 @@ def test_overview_lists_installed_versions_and_instance_bindings(tmp_path: Path)
         "follow_current_version": False,
         "running": True,
         "is_host": False,
+        "is_default_target": False,
     }
     assert bindings["DemoPluginHome"]["running"] is False
     assert bindings["DemoPluginHome"]["follow_current_version"] is True
     assert bindings["DemoPluginHome"]["is_host"] is False
+    assert bindings["DemoPluginHome"]["is_default_target"] is False
     assert bindings["DemoPlugin"] == {
         "instance_id": "DemoPlugin",
         "plugin_version": None,
         "follow_current_version": True,
         "running": False,
         "is_host": True,
+        "is_default_target": False,
     }
     assert overview["instances"][0]["is_host"] is True
 
