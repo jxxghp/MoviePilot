@@ -353,6 +353,9 @@ class Plex:
         for episode in episodes:
             if season is not None and episode.seasonNumber != int(season):
                 continue
+            # Plex 空条目可能缺少季集号，不能传入后续季集模型校验。
+            if episode.seasonNumber is None or episode.index is None:
+                continue
             if episode.seasonNumber not in season_episodes:
                 season_episodes[episode.seasonNumber] = []
             season_episodes[episode.seasonNumber].append(episode.index)
