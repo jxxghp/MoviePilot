@@ -135,7 +135,12 @@ class ModuleManager(metaclass=Singleton):
         self,
         owner_class: type,
     ) -> Optional[EventHandlerBinding]:
-        """按 canonical class identity 绑定当前 generation，停止态阻断 fallback 构造。"""
+        """按类型身份绑定管理器自身或运行模块，停止态阻断 fallback 构造。"""
+        if owner_class is type(self):
+            return EventHandlerBinding(
+                instance=self,
+                owner_name=type(self).__name__,
+            )
         for spec in self._specs:
             with self._lock:
                 implementation = self._modules.get(spec.id)
