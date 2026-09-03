@@ -1,9 +1,17 @@
 """订阅执行治理最终受控规模门禁。"""
 
+import threading
+
+import pytest
+from app.application.site.observation import capture_site_search_observation
+from app.application.subscription.sitebudget import SiteBudgetClaim
 from app.application.subscription.candidates import CandidateIndex
+from app.chain.search.facade import SearchChain
 from app.chain.subscribe.facade import SubscribeChain
+from scripts.validation import subscription_governance_scale as scale
 from scripts.validation.subscription_governance_scale import (
     ScaleCase,
+    _run_durable_governance,
     _run_match_execution_case,
     run_acceptance,
 )
@@ -66,6 +74,145 @@ def test_subscription_governance_controlled_scale_matrix() -> None:
         case["site_peak_inflight_per_site"]
         for case in result["durable_cases"]
     ] == [1, 1]
+    assert all(
+        case["site_request_boundary_active"] == 0
+        and case["site_request_boundary_peak"] == 1
+        and case["site_pressure_owner_count"] == 2
+        and case["site_pressure_concurrency_verified"]
+        and case["site_pressure_success_release_reused"]
+        and case["site_pressure_error_observation_cooled"]
+        and case["site_pressure_valid"]
+        for case in result["durable_cases"]
+    )
+    assert all(
+        observation["request_active"] == 0
+        and observation["request_peak"] == 1
+        and observation["owners_finished"] is True
+        and observation["request_active_at_rejection"] == 1
+        and observation["budget_rejections"] == 1
+        for case in result["durable_cases"]
+        for observation in case["site_observations"]
+    )
+
+
+@pytest.mark.parametrize("mutation", ["bypass", "early_release", "allow_concurrent"])
+def test_scale_validator_rejects_fake_site_pressure(monkeypatch, tmp_path, mutation):
+    """绕过 wrapper、提前释放或并发放行时，请求边界峰值必须暴露门禁失效。"""
+    if mutation == "bypass":
+        def bypass_wrapper(self, *, site, keyword, mtype, page):
+            """模拟绕过预算 wrapper 的请求路径。"""
+            return self.search_site_torrents(
+                site=site,
+                keyword=keyword,
+                mtype=mtype,
+                page=page,
+            )
+
+        monkeypatch.setattr(
+            SearchChain,
+            "_search_site_torrents_with_budget",
+            bypass_wrapper,
+        )
+    elif mutation == "early_release":
+        release_guard = threading.Lock()
+
+        def early_release_wrapper(self, *, site, keyword, mtype, page):
+            """模拟请求边界前错误释放站点租约。"""
+            budget = self._subscription_site_budget
+            # 将错误释放本身串行化，避免第二个 owner 在首个释放动作完成前
+            # 被正常拒绝，从而掩盖“请求期间已失去租约”的变异。
+            with release_guard:
+                claim = budget.acquire(site["id"])
+                with capture_site_search_observation() as observation:
+                    budget.finish(claim, observation)
+            return self.search_site_torrents(
+                site=site,
+                keyword=keyword,
+                mtype=mtype,
+                page=page,
+            )
+
+        monkeypatch.setattr(
+            SearchChain,
+            "_search_site_torrents_with_budget",
+            early_release_wrapper,
+        )
+    else:
+        original_claim = scale.TransactionalSubscriptionSearchRepository.claim_site
+
+        def allow_concurrent_claim(self, *, site_id, owner, lease_seconds):
+            """模拟仓储错误地向第二 owner 发放同站点租约。"""
+            claim = original_claim(
+                self,
+                site_id=site_id,
+                owner=owner,
+                lease_seconds=lease_seconds,
+            )
+            if claim.acquired:
+                return claim
+            return SiteBudgetClaim(
+                site_id=site_id,
+                acquired=True,
+                retry_at=claim.retry_at,
+                consecutive_failures=claim.consecutive_failures,
+                lease_token=f"mutant-{owner}",
+            )
+
+        monkeypatch.setattr(
+            scale.TransactionalSubscriptionSearchRepository,
+            "claim_site",
+            allow_concurrent_claim,
+        )
+
+    result = _run_durable_governance(
+        ScaleCase(f"mutant-{mutation}", 2, 1, 2, 1),
+        tmp_path,
+    )
+
+    assert result["site_pressure_valid"] is False
+    assert result["site_peak_inflight_per_site"] >= 2
+    assert result["site_request_boundary_peak"] >= 2
+
+
+def test_scale_validator_rejects_unfinished_site_wrapper(monkeypatch, tmp_path):
+    """失败已登记但 wrapper 尚未返回时，压力门禁必须拒绝并暴露未收口 owner。"""
+    original_wrapper = SearchChain._search_site_torrents_with_budget
+    release_stalled = threading.Event()
+    threads_before = set(threading.enumerate())
+
+    def stall_after_rejection(self, *, site, keyword, mtype, page):
+        """模拟预算拒绝已记录、调用方却未取得返回值的挂起路径。"""
+        result = original_wrapper(
+            self,
+            site=site,
+            keyword=keyword,
+            mtype=mtype,
+            page=page,
+        )
+        if not result:
+            release_stalled.wait(timeout=1)
+        return result
+
+    monkeypatch.setattr(
+        SearchChain,
+        "_search_site_torrents_with_budget",
+        stall_after_rejection,
+    )
+    monkeypatch.setattr(scale, "_SITE_PRESSURE_SYNC_TIMEOUT", 0.05)
+
+    try:
+        result = _run_durable_governance(
+            ScaleCase("mutant-unfinished", 2, 1, 2, 1),
+            tmp_path,
+        )
+
+        assert result["site_pressure_valid"] is False
+        assert result["site_pressure_concurrency_verified"] is False
+        assert result["site_observations"][0]["owners_finished"] is False
+    finally:
+        release_stalled.set()
+        for thread in set(threading.enumerate()) - threads_before:
+            thread.join(timeout=1)
 
 
 def test_scale_validator_rejects_candidate_loss(monkeypatch) -> None:
