@@ -1,17 +1,20 @@
-"""插件实例日志等级覆盖列 Alembic 迁移测试。"""
+"""插件实例默认调用目标标记列与条件唯一索引 Alembic 迁移测试。"""
 
 from __future__ import annotations
 
 import importlib
 from datetime import datetime, timezone
 
+import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy.exc import IntegrityError
 
 from app.db.models.plugininstance import PluginInstanceDescriptor
 
-MIGRATION_MODULE = "database.versions.487f7e681955_3_0_25"
+MIGRATION_MODULE = "database.versions.e0e68cbd5756_3_0_26"
 
 
 def _bind_migration(monkeypatch, connection):
@@ -37,6 +40,8 @@ def _create_legacy_table(connection: sa.engine.Connection) -> None:
         sa.Column("mode", sa.String(length=16), nullable=False, server_default="virtual"),
         sa.Column("plugin_version", sa.String(length=64)),
         sa.Column("follow_current_version", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("log_level", sa.String(length=16)),
+        sa.Column("log_expires_at", sa.String(length=40)),
         sa.Column("created_at", sa.String(length=40), nullable=False),
         sa.Column("updated_at", sa.String(length=40), nullable=False),
     )
@@ -53,10 +58,8 @@ def _create_legacy_table(connection: sa.engine.Connection) -> None:
     )
 
 
-def test_plugin_instance_log_level_migration_adds_columns_and_keeps_existing_rows(
-    monkeypatch,
-) -> None:
-    """新增列必须可空，且不得影响已有行；重复升级与完整回滚都要幂等。"""
+def test_default_target_migration_adds_column_and_keeps_existing_rows(monkeypatch) -> None:
+    """新增列必须可空默认为假，且不得影响已有行；重复升级与完整回滚都要幂等。"""
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_legacy_table(connection)
@@ -83,36 +86,36 @@ def test_plugin_instance_log_level_migration_adds_columns_and_keeps_existing_row
             "follow_current_version",
             "log_level",
             "log_expires_at",
+            "is_default_target",
             "created_at",
             "updated_at",
         }
-        assert columns["log_level"]["nullable"] is True
-        assert columns["log_expires_at"]["nullable"] is True
+        assert columns["is_default_target"]["nullable"] is False
 
         table = sa.Table("plugininstance", sa.MetaData(), autoload_with=connection)
         row = connection.execute(sa.select(table)).mappings().one()
         assert row["instance_id"] == "DemoPluginWork"
-        assert row["log_level"] is None
-        assert row["log_expires_at"] is None
+        assert bool(row["is_default_target"]) is False
 
         migration.downgrade()
         remaining = {
             column["name"] for column in sa.inspect(connection).get_columns("plugininstance")
         }
-        assert "log_level" not in remaining
-        assert "log_expires_at" not in remaining
+        assert "is_default_target" not in remaining
+        remaining_indexes = {
+            index["name"] for index in sa.inspect(connection).get_indexes("plugininstance")
+        }
+        assert "ux_plugininstance_default_target" not in remaining_indexes
 
         migration.upgrade()
         restored = {
             column["name"] for column in sa.inspect(connection).get_columns("plugininstance")
         }
-        assert {"log_level", "log_expires_at"}.issubset(restored)
+        assert "is_default_target" in restored
 
 
-def test_plugin_instance_log_level_migration_accepts_fresh_current_schema(
-    monkeypatch,
-) -> None:
-    """create_all 已建当前表时重复升级不得因列已存在而报错。"""
+def test_default_target_migration_accepts_fresh_current_schema(monkeypatch) -> None:
+    """create_all 已建当前表时重复升级不得因列或索引已存在而报错。"""
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         PluginInstanceDescriptor.__table__.create(connection)
@@ -125,3 +128,58 @@ def test_plugin_instance_log_level_migration_accepts_fresh_current_schema(
             column["name"]
             for column in sa.inspect(connection).get_columns("plugininstance")
         } == {column.name for column in PluginInstanceDescriptor.__table__.columns}
+        assert "ux_plugininstance_default_target" in {
+            index["name"] for index in sa.inspect(connection).get_indexes("plugininstance")
+        }
+
+
+def test_default_target_migration_index_rejects_a_second_default_target(monkeypatch) -> None:
+    """迁移建出的条件唯一索引必须在真实数据库连接上拒绝第二条置位。"""
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as connection:
+        _create_legacy_table(connection)
+        migration = _bind_migration(monkeypatch, connection)
+        migration.upgrade()
+
+        table = sa.Table("plugininstance", sa.MetaData(), autoload_with=connection)
+        now = datetime.now(timezone.utc).isoformat()
+        connection.execute(
+            table.insert().values(
+                instance_id="DemoPlugin",
+                source_plugin_id="DemoPlugin",
+                mode="host",
+                follow_current_version=True,
+                is_default_target=True,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+
+        with pytest.raises(IntegrityError):
+            connection.execute(
+                table.update()
+                .where(table.c.instance_id == "DemoPluginWork")
+                .values(is_default_target=True)
+            )
+
+
+def test_default_target_index_is_partial_in_both_dialects() -> None:
+    """模型（``create_all`` 路径）建出的索引在两种方言下都必须带谓词。
+
+    本仓测试库是 SQLite，PostgreSQL 分支只能靠编译期 DDL 证明：谓词整个丢失会
+    退化成「每个源插件只能有一行实例」，把插件分身整个锁死。
+    """
+    index = next(
+        item for item in PluginInstanceDescriptor.__table__.indexes
+        if item.name == "ux_plugininstance_default_target"
+    )
+    ddl = sa.schema.CreateIndex(index)
+
+    assert str(ddl.compile(dialect=sqlite.dialect())).strip() == (
+        "CREATE UNIQUE INDEX ux_plugininstance_default_target "
+        "ON plugininstance (source_plugin_id) WHERE is_default_target IS 1"
+    )
+    assert str(ddl.compile(dialect=postgresql.dialect())).strip() == (
+        "CREATE UNIQUE INDEX ux_plugininstance_default_target "
+        "ON plugininstance (source_plugin_id) WHERE is_default_target IS true"
+    )
