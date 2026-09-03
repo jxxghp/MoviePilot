@@ -16,6 +16,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
 
 from watchfiles import watch
@@ -167,7 +168,10 @@ def _resolve_plugin_handler_instance(
     owner_class: Type[Any],
 ) -> Optional[EventHandlerBinding]:
     """通过当前插件管理器单例解析实例，避免事件总线持有过期对象。"""
-    manager = PluginManager.get_existing_instance()
+    manager = cast(
+        Optional["PluginManager"],
+        PluginManager.get_existing_instance(),
+    )
     if manager is None:
         return None
     return manager.resolve_event_handler_instance(owner_class)
