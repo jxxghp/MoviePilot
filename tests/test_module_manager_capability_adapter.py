@@ -499,6 +499,31 @@ def test_config_event_reloads_same_instance_and_tracks_selector_changes(
     assert running.events == ["create", "start", "stop", "start", "stop"]
 
 
+def test_registered_config_event_activates_newly_enabled_module(
+    module_manager_harness,
+) -> None:
+    """事件总线必须把配置变更绑定回当前 ModuleManager 实例。"""
+    manager = module_manager_harness.manager
+    handler = next(
+        listener
+        for listener in _config_changed_listeners().values()
+        if getattr(listener, "__self__", None) is manager
+    )
+    _enable_sample(module_manager_harness.config_values)
+
+    eventmanager._EventManager__invoke_handler_by_type_sync(
+        handler,
+        Event(
+            EventType.ConfigChanged,
+            ConfigChangeEventData(key="Notifications"),
+        ),
+    )
+
+    running = manager.get_running_module("SampleModule")
+    assert running is not None
+    assert running.events == ["create", "start"]
+
+
 def test_shutdown_is_irreversible(module_manager_harness, monkeypatch) -> None:
     """shutdown 撤销全部可见实例，并拒绝通过 load_modules 再次启动。"""
     manager = module_manager_harness.manager
