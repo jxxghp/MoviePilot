@@ -383,6 +383,11 @@ def configure_doh_composition() -> None:
     DohHelper()
 
 
+def get_existing_doh_composition() -> object | None:
+    """返回已由组合根物化的 DoH Adapter，不触发资源创建。"""
+    return cast(Optional[DohHelper], DohHelper.get_existing_instance())
+
+
 def stop_doh_composition() -> bool:
     """关闭已存在的 DoH Adapter，停机阶段不得反向物化实例。"""
     helper = DohHelper.get_existing_instance()

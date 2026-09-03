@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8127,
-  "edge_sha256": "b355003c1ca55cd75ed454e9fe986dcf37b37078e6583563b41038c62a05c57f",
+  "edge_count": 8132,
+  "edge_sha256": "33505d1acbf26b53533027ed633ec23f3b4c4ee24c242a02372c05493c2919ab",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8831,10 +8831,14 @@
     "app.startup.initializers.modules -> app.chain.site",
     "app.startup.initializers.modules -> app.chain.subscribe",
     "app.startup.initializers.modules -> app.chain.subscribe.facade",
+    "app.startup.initializers.modules -> app.chain.transfer",
+    "app.startup.initializers.modules -> app.chain.transfer.facade",
     "app.startup.initializers.modules -> app.chain.workflow",
     "app.startup.initializers.modules -> app.command",
     "app.startup.initializers.modules -> app.db",
     "app.startup.initializers.modules -> app.db.session",
+    "app.startup.initializers.modules -> app.monitor",
+    "app.startup.initializers.modules -> app.monitor.monitor",
     "app.startup.initializers.modules -> app.runtime",
     "app.startup.initializers.modules -> app.runtime.config",
     "app.startup.initializers.modules -> app.runtime.events",
@@ -8845,6 +8849,7 @@
     "app.startup.initializers.modules -> app.runtime.extensions.service",
     "app.startup.initializers.modules -> app.runtime.log",
     "app.startup.initializers.modules -> app.runtime.settings",
+    "app.startup.initializers.modules -> app.runtime.state",
     "app.startup.initializers.modules -> app.runtime.tasks",
     "app.startup.initializers.modules -> app.runtime.thread",
     "app.startup.initializers.modules -> app.scheduler",

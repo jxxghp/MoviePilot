@@ -16,6 +16,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
 
 from watchfiles import watch
@@ -167,7 +168,13 @@ def _resolve_plugin_handler_instance(
     owner_class: Type[Any],
 ) -> Optional[EventHandlerBinding]:
     """通过当前插件管理器单例解析实例，避免事件总线持有过期对象。"""
-    return PluginManager().resolve_event_handler_instance(owner_class)
+    manager = cast(
+        Optional["PluginManager"],
+        PluginManager.get_existing_instance(),
+    )
+    if manager is None:
+        return None
+    return manager.resolve_event_handler_instance(owner_class)
 
 
 @observe_compat_facade("PluginManager")
@@ -224,7 +231,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """为插件声明的事件方法解析当前运行实例。"""
         plugin_id = owner_class.__name__
         # 旧测试与部分扩展会替换私有映射来构造隔离运行态，解析器继续尊重该接缝。
-        if plugin_id not in self._plugins:
+        if self._plugins.get(plugin_id) is not owner_class:
             return None
         plugin = self._running_plugins.get(plugin_id)
         owner_name = plugin_id

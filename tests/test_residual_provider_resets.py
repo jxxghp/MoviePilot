@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 
@@ -19,15 +20,19 @@ from app.application.database import (
     get_database_governance,
     reset_database_governance,
 )
+from app.foundation.singleton import Singleton
 from app.runtime import resources as managed_resource_facade
-from app.runtime.events import EventManager
+from app.runtime.events import Event, EventHandlerBinding, EventManager
 from app.runtime.resources import (
     configure_managed_resource_runtime,
     reset_managed_resource_runtime,
 )
+from app.runtime.state import SystemHelper
 from app.scheduler.facade import Scheduler
+from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType
 from app.startup.composition import resource as managed_resource_composition
+from app.startup.initializers.modules import reset_event_services
 
 _MISSING = object()
 
@@ -178,6 +183,55 @@ def test_event_manager_host_binding_reset_contract() -> None:
     assert manager._EventManager__handler_instance_resolvers["host"] is second_resolver
     assert manager._EventManager__error_notifier is second_notifier
     assert second_resolver is not first_resolver
+
+
+def test_reset_event_services_unregisters_lifespan_resolvers(monkeypatch) -> None:
+    """模块 lifespan 结束时应撤销宿主与配置 owner resolver。"""
+    manager = object.__new__(EventManager)
+    EventManager.__init__(manager)
+    singleton_key = (EventManager, (), frozenset())
+    monkeypatch.setitem(Singleton._instances, singleton_key, manager)
+    owner = object.__new__(SystemHelper)
+    reload_config = Mock()
+    owner.on_config_changed = reload_config
+
+    def plugin_resolver(_owner: type) -> None:
+        """代表插件运行时独立拥有的 resolver。"""
+
+    def config_resolver(owner_class: type) -> EventHandlerBinding | None:
+        """代表当前 lifespan 持有的配置 owner resolver。"""
+        if owner_class is SystemHelper:
+            return EventHandlerBinding(
+                instance=owner,
+                owner_name=owner_class.__name__,
+            )
+        return None
+
+    manager.register_handler_instance_resolver("plugins", plugin_resolver)
+    manager.register_handler_instance_resolver("host", lambda _owner: None)
+    manager.register_handler_instance_resolver(
+        "config_reload",
+        config_resolver,
+    )
+    event = Event(
+        EventType.ConfigChanged,
+        ConfigChangeEventData(key={"DEBUG"}),
+    )
+    manager._EventManager__invoke_handler_by_type_sync(
+        SystemHelper.handle_config_changed,
+        event,
+    )
+
+    reset_event_services()
+    manager._EventManager__invoke_handler_by_type_sync(
+        SystemHelper.handle_config_changed,
+        event,
+    )
+
+    assert manager._EventManager__handler_instance_resolvers == {
+        "plugins": plugin_resolver,
+    }
+    reload_config.assert_called_once_with()
 
 
 def test_managed_resource_owner_reset_releases_only_closed_runtime(

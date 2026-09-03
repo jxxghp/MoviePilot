@@ -96,6 +96,7 @@ from app.startup.composition.enrichment import (
 from app.startup.composition.network import (
     configure_application_network_ports,
     configure_doh_composition,
+    get_existing_doh_composition,
     reset_application_network_ports,
     stop_doh_composition,
 )
@@ -199,6 +200,7 @@ def reset_event_services() -> None:
         dispatch_web_agent_message_event,
     )
     event_manager.unregister_handler_instance_resolver("host")
+    event_manager.unregister_handler_instance_resolver("config_reload")
     event_manager.reset_error_notifier()
 
 
@@ -294,6 +296,72 @@ def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
         SubscribeChain: SubscribeChain,
         WorkflowChain: WorkflowChain,
     }
+
+
+def get_config_reload_handler_providers(
+) -> dict[type, Callable[[], object | None]]:
+    """返回未由专属运行时接管的配置重载 owner Provider。"""
+    from app.chain.transfer.facade import TransferChain
+    from app.monitor.monitor import Monitor
+    from app.runtime.state import SystemHelper
+
+    # SystemHelper 不持有外部资源；闭包为当前 lifespan 保留稳定身份。
+    system_helper = SystemHelper()
+    providers: dict[type, Callable[[], object | None]] = {
+        SystemHelper: lambda: system_helper,
+        RedisHelper: RedisHelper.get_existing_instance,
+        AsyncRedisHelper: AsyncRedisHelper.get_existing_instance,
+        TransferChain: TransferChain.get_existing_instance,
+        Monitor: Monitor.get_existing_instance,
+    }
+    doh_helper = get_existing_doh_composition()
+    if doh_helper is not None:
+        providers[type(doh_helper)] = get_existing_doh_composition
+    plugin_manager = get_existing_plugin_manager()
+    if plugin_manager is not None:
+        providers[type(plugin_manager)] = get_existing_plugin_manager
+    return providers
+
+
+def configure_config_reload_event_handler_resolver() -> None:
+    """绑定当前生命周期已拥有的配置重载实例，惰性 owner 未创建时跳过。"""
+    providers = get_config_reload_handler_providers()
+    runtime_providers = (
+        get_existing_doh_composition,
+        get_existing_plugin_manager,
+    )
+
+    def resolve(owner_class: type) -> EventHandlerBinding | None:
+        """按类型身份读取当前 owner，不在事件分发路径构造资源。"""
+        provider = providers.get(owner_class)
+        if provider is not None:
+            instance = provider()
+            if instance is not None and type(instance) is not owner_class:
+                return None
+            return EventHandlerBinding(
+                instance=instance,
+                owner_name=owner_class.__name__,
+            )
+        instance = next(
+            (
+                current
+                for runtime_provider in runtime_providers
+                if (current := runtime_provider()) is not None
+                and type(current) is owner_class
+            ),
+            None,
+        )
+        if instance is None:
+            return None
+        return EventHandlerBinding(
+            instance=instance,
+            owner_name=owner_class.__name__,
+        )
+
+    EventManager().register_handler_instance_resolver(  # type: ignore[no-untyped-call]
+        "config_reload",
+        resolve,
+    )
 
 
 def configure_host_event_handler_resolver() -> None:
@@ -665,6 +733,8 @@ async def _initialize_modules() -> HostRuntime:
     )
     # 宿主类处理器在启动层显式登记，事件总线不再兜底 owner_class()。
     configure_host_event_handler_resolver()
+    # 配置 owner 按各自生命周期读取当前实例，惰性资源不会因事件而物化。
+    configure_config_reload_event_handler_resolver()
     # 加载模块
     ModuleManager()
     # 启动事件消费
