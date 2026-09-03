@@ -462,3 +462,31 @@ def test_system_stop_requeues_task_after_search_returns(tmp_path, monkeypatch):
     assert recovered is not None
     assert recovered.subscription_id == subscribe.id
     assert recovered.attempt_count == 2
+
+
+def test_system_stop_completes_when_download_side_effect_already_started(tmp_path, monkeypatch):
+    """停机晚于下载器副作用边界时必须终结任务，避免重启后重复提交。"""
+    subscribe = _subscribe(11)
+    chain = _chain(tmp_path, [subscribe])
+    stop_state = SimpleNamespace(is_system_stopped=False)
+    chain.stop_state = stop_state
+    _make_tasks_ready(monkeypatch)
+
+    def process(item, _searchchain, *, execution_context):
+        """模拟下载器已接收任务后进程进入停止阶段。"""
+        execution_context.mark_download_started()
+        stop_state.is_system_stopped = True
+        return item
+
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(state="R")
+
+    batch = chain.get_search_batch(batch_id)
+    assert batch.state == "completed"
+    assert batch.finished_count == 1
+    assert batch.failed_count == 0
+    assert batch.cancelled_count == 0
+    assert batch.skipped_count == 0
+    assert chain.subscription_search_repository.claim_next(owner="worker-after-restart") is None

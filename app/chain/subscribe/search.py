@@ -553,6 +553,14 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
                 execution_context=execution_context,
             )
             if stop_state.is_system_stopped:
+                if self._subscription_download_started_for_task(execution_context):
+                    queue.finish_task(
+                        task_id=task_id,
+                        lease_token=lease_token,
+                        state="completed",
+                        error="停机请求晚于下载提交边界，已按实际结果完成",
+                    )
+                    return task.subscription_id
                 queue.release_task(task_id=task_id, lease_token=lease_token)
                 return None
             if queue.is_cancel_requested(task_id):
