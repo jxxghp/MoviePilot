@@ -577,7 +577,20 @@ class _SubscribeSearchQueueOwner(_SubscribeOwnerBase):
             queue.finish_task(task_id=task_id, lease_token=lease_token, state="completed")
             return task.subscription_id
         except SubscriptionSearchCancelled:
-            _release_cancelled_or_stopped_search_task(queue, task_id, lease_token, stop_state.is_system_stopped)
+            if execution_context.is_expired() and not execution_context.is_cancel_requested():
+                queue.finish_task(
+                    task_id=task_id,
+                    lease_token=lease_token,
+                    state="failed",
+                    error="订阅执行已超过协作截止时间",
+                )
+            else:
+                _release_cancelled_or_stopped_search_task(
+                    queue,
+                    task_id,
+                    lease_token,
+                    stop_state.is_system_stopped,
+                )
         except Exception as err:
             logger.error(f"订阅 {subscribe.name} 搜索失败：{str(err)}", exc_info=True)
             queue.finish_task(

@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from app.application.site.observation import report_site_search_outcome
 from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.subscription.execution import SubscriptionExecutionAdmission
+from app.application.subscription.sitebudget import SubscriptionSearchCancelled
 from app.chain.search.facade import SearchChain
 from app.chain.subscribe.facade import SubscribeChain
 from app.chain.subscribe.search import _search_task_available_at
@@ -490,3 +491,32 @@ def test_system_stop_completes_when_download_side_effect_already_started(tmp_pat
     assert batch.cancelled_count == 0
     assert batch.skipped_count == 0
     assert chain.subscription_search_repository.claim_next(owner="worker-after-restart") is None
+
+
+def test_site_budget_ttl_expiry_marks_task_and_batch_failed(tmp_path, monkeypatch):
+    """站点预算观察到执行 TTL 到期时必须失败收口，不能伪装成用户取消。"""
+    subscribe = _subscribe(12)
+    chain = _chain(tmp_path, [subscribe])
+    _make_tasks_ready(monkeypatch)
+    monkeypatch.setattr(
+        chain._subscription_execution_admission,
+        "is_expired",
+        lambda _lease: True,
+    )
+
+    def process(_item, _searchchain, *, execution_context):
+        """模拟站点预算将协作超时传播为搜索取消异常。"""
+        assert execution_context.should_stop() is True
+        raise SubscriptionSearchCancelled("订阅搜索已取消")
+
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(state="R")
+
+    batch = chain.get_search_batch(batch_id)
+    assert batch.state == "failed"
+    assert batch.finished_count == 0
+    assert batch.failed_count == 1
+    assert batch.cancelled_count == 0
+    assert batch.last_error == "订阅执行已超过协作截止时间"
