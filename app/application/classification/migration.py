@@ -15,8 +15,6 @@ from app.schemas.category import (
     ClassificationCondition,
     ClassificationConditionGroup,
     ClassificationConditionNode,
-    ClassificationFactScalar,
-    ClassificationFactValue,
     ClassificationFieldDefinition,
     ClassificationMediaType,
     ClassificationPolicy,
@@ -33,12 +31,6 @@ LegacyDiagnosticSeverity: TypeAlias = Literal["error", "warning"]
 
 LegacyDiagnosticPathPart: TypeAlias = Union[str, int]
 """旧配置迁移诊断路径允许的段类型。"""
-
-LegacyPolicyOrFields: TypeAlias = Union[
-    ClassificationPolicy,
-    Iterable[ClassificationFieldDefinition],
-]
-"""受控 TMDB 扩展事实可以从策略或字段声明中发现。"""
 
 _TMDB_SOURCE: Final[str] = "themoviedb"
 _EXTENSION_PREFIX: Final[str] = f"extensions.{_TMDB_SOURCE}."
@@ -183,8 +175,7 @@ class _MigrationContext:
     def build_field_definitions(self) -> tuple[ClassificationFieldDefinition, ...]:
         """按首次出现顺序构造仅供已有规则解析的退役字段声明。"""
         return tuple(
-            _legacy_field_definition(field_id, media_types)
-            for field_id, media_types in self.field_media_types.items()
+            _legacy_field_definition(field_id, media_types) for field_id, media_types in self.field_media_types.items()
         )
 
 
@@ -224,11 +215,7 @@ def migrate_legacy_category_config(
         "rules": rules,
         "fallbacks": dict(_COMMON_FALLBACKS),
         "source_fallbacks": source_fallbacks,
-        "field_aliases": {
-            field_id: aliases
-            for field_id, aliases in context.field_aliases.items()
-            if aliases
-        },
+        "field_aliases": {field_id: aliases for field_id, aliases in context.field_aliases.items() if aliases},
     }
     policy = ClassificationPolicy.model_validate(policy_payload)
     return LegacyClassificationMigrationResult(
@@ -236,46 +223,6 @@ def migrate_legacy_category_config(
         extra_fields=context.build_field_definitions(),
         issues=tuple(context.diagnostics),
     )
-
-
-def build_legacy_tmdb_extension_facts(
-    policy_or_field_defs: LegacyPolicyOrFields,
-    tmdb_info: Mapping[str, object],
-) -> dict[str, dict[str, ClassificationFactValue]]:
-    """
-    为策略实际使用的受控字段构造 TMDB 旧比较字符串列表
-
-    假值保持缺失，列表与标量严格沿用 CategoryHelper 的字符串化和大写规则。
-
-    :param policy_or_field_defs: 分类策略或本迁移器生成的动态字段声明
-    :param tmdb_info: 当前 TMDB 详情映射
-    :return: 可直接传给分类事实构造器的 extensions 映射
-    """
-    values: dict[str, ClassificationFactValue] = {}
-    for field_name in _controlled_tmdb_fields(policy_or_field_defs):
-        projected = _project_legacy_tmdb_field(field_name, tmdb_info)
-        if projected is not None:
-            values[field_name] = projected
-    return {_TMDB_SOURCE: values} if values else {}
-
-
-def resolve_legacy_tmdb_category(
-    config: CategoryConfig,
-    *,
-    media_type: str,
-    media_source: str,
-    tmdb_info: object,
-) -> str:
-    """策略不可用时按旧 CategoryHelper 语义解析 TMDB 目录分类。"""
-    if media_source != _TMDB_SOURCE or not isinstance(tmdb_info, Mapping):
-        return ""
-    if media_type == "电影":
-        categories = config.movie or {}
-    elif media_type == "电视剧":
-        categories = config.tv or {}
-    else:
-        return ""
-    return _resolve_legacy_category_mapping(categories, tmdb_info)
 
 
 def legacy_extension_fields_from_policy(
@@ -293,80 +240,6 @@ def legacy_extension_fields_from_policy(
             for media_type in rule.media_types:
                 context.register_extension_field(field_name, media_type)
     return context.build_field_definitions()
-
-
-def _resolve_legacy_category_mapping(
-    categories: Mapping[str, Optional[CategoryRule]],
-    tmdb_info: Mapping[str, object],
-) -> str:
-    """复现旧分类的顺序、假值、范围和排除条件语义。"""
-    if not tmdb_info or not categories:
-        return ""
-    for name, rule in categories.items():
-        if rule is None:
-            return name
-        matched = True
-        for field_name, expected in rule.model_dump(exclude_none=True).items():
-            if not expected:
-                continue
-            actual = (
-                tmdb_info.get("release_date") or tmdb_info.get("first_air_date")
-                if field_name == "release_year"
-                else tmdb_info.get(field_name)
-            )
-            if field_name == "release_year" and actual:
-                actual = str(actual)[:4]
-            if not actual:
-                matched = False
-                continue
-            actual_values = _legacy_actual_values(field_name, actual)
-            positive, negative = _legacy_expected_values(str(expected))
-            if positive and not set(positive).intersection(actual_values):
-                matched = False
-            if negative and set(negative).intersection(actual_values):
-                matched = False
-        if matched:
-            return name
-    return ""
-
-
-def _legacy_actual_values(field_name: str, value: object) -> list[str]:
-    """按旧实现把 TMDB 标量、列表和制作国家转换为大写字符串。"""
-    if field_name == "production_countries" and isinstance(value, list):
-        return [
-            str(item.get("iso_3166_1")).upper()
-            for item in value
-            if isinstance(item, Mapping)
-        ]
-    if isinstance(value, list):
-        return [str(item).upper() for item in value]
-    return [str(value).upper()]
-
-
-def _legacy_expected_values(value: str) -> tuple[list[str], list[str]]:
-    """按旧实现展开逗号项、数字范围及排除项。"""
-    expanded: list[str] = []
-    for token in (item for item in value.split(",") if item):
-        if "-" not in token:
-            expanded.append(token)
-            continue
-        begin, end = token.split("-", 1)
-        prefix = ""
-        if begin.startswith("!"):
-            prefix = "!"
-            begin = begin[1:]
-        if begin.isdigit() and end.isdigit():
-            expanded.extend(
-                f"{prefix}{item}"
-                for item in range(int(begin), int(end) + 1)
-            )
-        else:
-            expanded.extend((f"{prefix}{begin}", f"{prefix}{end}"))
-    values = [item.upper() for item in expanded]
-    return (
-        [item for item in values if not item.startswith("!")],
-        [item[1:] for item in values if item.startswith("!")],
-    )
 
 
 def _legacy_root_mapping(
@@ -627,19 +500,12 @@ def _legacy_field_definition(
     presentation = _LEGACY_FIELD_PRESENTATION.get(field_name)
     label = presentation[0] if presentation else f"TMDB {field_name}"
     replacement_field = presentation[1] if presentation else None
-    replacement_hint = (
-        f"；新规则请使用 {replacement_field}"
-        if replacement_field
-        else ""
-    )
+    replacement_hint = f"；新规则请使用 {replacement_field}" if replacement_field else ""
     return ClassificationFieldDefinition(
         id=field_id,
         label=label,
         group="旧规则",
-        description=(
-            "仅用于保持已迁移 category.yaml 的原始比较语义"
-            f"{replacement_hint}"
-        ),
+        description=(f"仅用于保持已迁移 category.yaml 的原始比较语义{replacement_hint}"),
         value_type="string_list",
         operators=["contains_any", "contains_none", "exists", "not_exists"],
         media_types=media_types,
@@ -682,10 +548,7 @@ def _expand_legacy_token(value: str) -> tuple[str, ...]:
         prefix = "!"
         value_begin = value_begin[1:]
     if value_begin.isdigit() and value_end.isdigit():
-        return tuple(
-            f"{prefix}{item}"
-            for item in range(int(value_begin), int(value_end) + 1)
-        )
+        return tuple(f"{prefix}{item}" for item in range(int(value_begin), int(value_end) + 1))
     return (f"{prefix}{value_begin}", f"{prefix}{value_end}")
 
 
@@ -736,9 +599,7 @@ def _migrate_genre_tokens(
     for token in tokens:
         if token.negative:
             if extension_field_id is None:
-                extension_field_id = context.register_extension_field(
-                    "genre_ids", media_type
-                )
+                extension_field_id = context.register_extension_field("genre_ids", media_type)
             context.register_aliases(extension_field_id, token.values)
             negative_nodes.append(
                 ClassificationCondition(
@@ -766,9 +627,7 @@ def _migrate_genre_tokens(
             )
         if unknown_ids:
             if extension_field_id is None:
-                extension_field_id = context.register_extension_field(
-                    "genre_ids", media_type
-                )
+                extension_field_id = context.register_extension_field("genre_ids", media_type)
             context.register_aliases(extension_field_id, unknown_ids)
             token_nodes.append(
                 ClassificationCondition(
@@ -785,9 +644,7 @@ def _migrate_genre_tokens(
         nodes.append(_any_or_single(positive_nodes))
     nodes.extend(negative_nodes)
     if not nodes and requires_exists:
-        extension_field_id = context.register_extension_field(
-            "genre_ids", media_type
-        )
+        extension_field_id = context.register_extension_field("genre_ids", media_type)
         return ClassificationCondition(field=extension_field_id, operator="exists")
     return _all_or_single(nodes)
 
@@ -938,29 +795,6 @@ def _error_count(diagnostics: Sequence[LegacyClassificationDiagnostic]) -> int:
     return sum(item.severity == "error" for item in diagnostics)
 
 
-def _controlled_tmdb_fields(
-    policy_or_field_defs: LegacyPolicyOrFields,
-) -> tuple[str, ...]:
-    """从策略条件或动态字段声明中提取安全且去重的 TMDB 一级字段。"""
-    field_ids: list[str] = []
-    if isinstance(policy_or_field_defs, ClassificationPolicy):
-        for rule in policy_or_field_defs.rules:
-            field_ids.extend(_condition_field_ids(rule.when))
-    else:
-        for definition in policy_or_field_defs:
-            if definition.source_support.get(_TMDB_SOURCE) == "extension":
-                field_ids.append(definition.id)
-
-    fields: list[str] = []
-    for field_id in field_ids:
-        if not field_id.startswith(_EXTENSION_PREFIX):
-            continue
-        field_name = field_id.removeprefix(_EXTENSION_PREFIX)
-        if _SAFE_FIELD_SEGMENT.fullmatch(field_name):
-            _append_unique(fields, field_name)
-    return tuple(fields)
-
-
 def _condition_field_ids(node: ClassificationConditionNode) -> list[str]:
     """按条件树顺序提取全部叶子字段 ID。"""
     if isinstance(node, ClassificationCondition):
@@ -974,33 +808,6 @@ def _condition_field_ids(node: ClassificationConditionNode) -> list[str]:
     else:
         children = []
     return [field_id for child in children for field_id in _condition_field_ids(child)]
-
-
-def _project_legacy_tmdb_field(
-    field_name: str,
-    tmdb_info: Mapping[str, object],
-) -> Optional[list[ClassificationFactScalar]]:
-    """把一个受控 TMDB 字段投影为旧算法实际比较的大写字符串列表。"""
-    if field_name == "release_year":
-        info_value = tmdb_info.get("release_date") or tmdb_info.get("first_air_date")
-        if not info_value:
-            return None
-        return [str(info_value)[:4].upper()]
-
-    info_value = tmdb_info.get(field_name)
-    if not info_value:
-        return None
-    if field_name == "production_countries":
-        if not isinstance(info_value, list):
-            return None
-        return [
-            str(item.get("iso_3166_1")).upper()
-            for item in info_value
-            if isinstance(item, Mapping)
-        ]
-    if isinstance(info_value, list):
-        return [str(item).upper() for item in info_value]
-    return [str(info_value).upper()]
 
 
 def _append_unique(values: list[str], value: str) -> None:
