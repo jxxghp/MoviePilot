@@ -32,6 +32,24 @@ DirectoryConfigurationNormalizer = Callable[
 ]
 """使用事务内活动策略规范化目录配置的纯函数。"""
 
+
+def discard_removed_source_fallbacks(value: Any) -> Any:
+    """读取持久化策略时丢弃已删除的来源级默认分类字段，不再恢复其行为。"""
+    if not isinstance(value, Mapping):
+        return value
+
+    state = copy.deepcopy(dict(value))
+    policies = []
+    active = state.get("active")
+    if isinstance(active, Mapping):
+        policies.append(active)
+    history = state.get("history")
+    if isinstance(history, list):
+        policies.extend(item for item in history if isinstance(item, Mapping))
+    for policy in policies:
+        policy.pop("source_fallbacks", None)
+    return state
+
 _CONFIGURATION_LOCK_KEYS = (
     SystemConfigKey.MediaClassificationPolicy.value,
     SystemConfigKey.Directories.value,
@@ -142,7 +160,9 @@ class SystemConfigClassificationPolicyStore:
         try:
             return cast(
                 ClassificationPolicyState,
-                ClassificationPolicyState.model_validate(value),
+                ClassificationPolicyState.model_validate(
+                    discard_removed_source_fallbacks(value)
+                ),
             )
         except ValidationError as error:
             raise ClassificationPolicyStateCorruptError(

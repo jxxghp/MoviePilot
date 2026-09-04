@@ -511,15 +511,9 @@ def _build_impact_analysis(
         elif "rule_id" in changed_fields:
             rule_changed_only_count += 1
         proposed_selection = proposed.effective or proposed.recommended
-        if proposed_selection and proposed_selection.source in {
-            "fallback",
-            "source_fallback",
-        }:
+        if proposed_selection and proposed_selection.source == "fallback":
             previous_selection = previous.effective or previous.recommended
-            if not previous_selection or previous_selection.source not in {
-                "fallback",
-                "source_fallback",
-            }:
+            if not previous_selection or previous_selection.source != "fallback":
                 became_fallback_count += 1
         group_key = (facts.media.type, facts.identity.media_source)
         group = group_counts.setdefault(group_key, [0, 0, 0])

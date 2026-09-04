@@ -63,7 +63,6 @@ def _policy_state_payload() -> dict[str, object]:
         "categories": [legacy_category, unchanged_category],
         "rules": [],
         "fallbacks": {},
-        "source_fallbacks": {},
         "field_aliases": {},
     }
     history = {

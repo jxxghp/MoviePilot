@@ -349,28 +349,6 @@ def test_media_type_fallback_is_used_when_no_category_rule_matches() -> None:
     assert evaluation.result.effective.source == "fallback"
 
 
-def test_source_fallback_overrides_only_its_declared_media_source() -> None:
-    payload = _base_policy_payload()
-    payload["source_fallbacks"] = {
-        "themoviedb": {"电影": "movie.hit"},
-    }
-    policy = ClassificationPolicy.model_validate(payload)
-
-    tmdb_evaluation = _evaluate(
-        policy,
-        _facts(media_source="themoviedb"),
-    )
-    douban_evaluation = _evaluate(
-        policy,
-        _facts(media_source="douban"),
-    )
-
-    assert tmdb_evaluation.result.effective.category_id == "movie.hit"
-    assert tmdb_evaluation.result.effective.source == "source_fallback"
-    assert douban_evaluation.result.effective.category_id == "movie.fallback"
-    assert douban_evaluation.result.effective.source == "fallback"
-
-
 @pytest.mark.parametrize(  # type: ignore[misc]
     ("media_type", "media_source", "expected_category"),
     [
@@ -617,24 +595,6 @@ def test_every_enabled_media_type_requires_a_fallback() -> None:
     payload["fallbacks"].pop("音乐")
 
     _assert_validation_error(payload, "missing_fallback")
-
-
-@pytest.mark.parametrize(  # type: ignore[misc]
-    ("source_fallbacks", "error_code"),
-    [
-        ({"TheMovieDB": {"电影": "movie.hit"}}, "invalid_fallback_source"),
-        ({"themoviedb": {"电影": "missing"}}, "unknown_source_fallback_category"),
-        ({"themoviedb": {"电影": "tv.fallback"}}, "source_fallback_media_type_mismatch"),
-    ],
-)
-def test_source_fallbacks_must_reference_valid_same_type_categories(
-    source_fallbacks: dict[str, dict[str, str]],
-    error_code: str,
-) -> None:
-    payload = _base_policy_payload()
-    payload["source_fallbacks"] = source_fallbacks
-
-    _assert_validation_error(payload, error_code)
 
 
 def test_extension_field_namespace_must_match_the_restricted_source() -> None:

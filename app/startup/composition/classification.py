@@ -34,7 +34,10 @@ from app.application.classification.reference import (
 )
 from app.application.classification.runtime import ClassificationRuntime
 from app.application.database import AsyncDatabaseExecutor
-from app.db.adapters.classification import SystemConfigClassificationPolicyStore
+from app.db.adapters.classification import (
+    SystemConfigClassificationPolicyStore,
+    discard_removed_source_fallbacks,
+)
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.session import SessionFactory
 from app.runtime.config import Settings
@@ -104,7 +107,9 @@ async def compose_classification(
     existing_issue: tuple[ClassificationValidationIssue, ...] = ()
     if policy_key in values:
         try:
-            stored_state = ClassificationPolicyState.model_validate(stored_value)
+            stored_state = ClassificationPolicyState.model_validate(
+                discard_removed_source_fallbacks(stored_value)
+            )
             extra_fields = legacy_extension_fields_from_policy(stored_state.active)
         except ValidationError:
             existing_issue = (

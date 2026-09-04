@@ -135,17 +135,10 @@ class ClassificationEvaluator:
 
         selection_source = "automatic"
         if not selected_category_id:
-            source_fallbacks = policy.source_fallbacks.get(normalized_media_source, {})
-            selected_category_id = source_fallbacks.get(
+            selected_category_id = policy.fallbacks.get(
                 cast(ClassificationMediaType, normalized_media_type)
             )
-            if selected_category_id:
-                selection_source = "source_fallback"
-            else:
-                selected_category_id = policy.fallbacks.get(
-                    cast(ClassificationMediaType, normalized_media_type)
-                )
-                selection_source = "fallback"
+            selection_source = "fallback"
 
         category = categories.get(selected_category_id or "")
         if category:

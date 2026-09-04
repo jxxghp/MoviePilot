@@ -596,7 +596,7 @@ class ClassificationPolicyValidator:
         categories: Mapping[str, Any],
         collector: _ValidationCollector,
     ) -> None:
-        """确保通用和来源级兜底均引用同类型的可用分类。"""
+        """确保每种媒体类型的全局兜底引用同类型的可用分类。"""
         for media_type in ALL_MEDIA_TYPES:
             category_id = policy.fallbacks.get(cast(ClassificationMediaType, media_type))
             path: list[str | int] = ["fallbacks", media_type]
@@ -626,35 +626,6 @@ class ClassificationPolicyValidator:
                     f"兜底分类 {category_id} 已禁用",
                     path,
                 )
-        for source, source_fallbacks in policy.source_fallbacks.items():
-            source_path: list[str | int] = ["source_fallbacks", source]
-            if not _SOURCE_ID_PATTERN.fullmatch(source):
-                collector.error(
-                    "invalid_fallback_source",
-                    f"来源级兜底的数据源 {source} 不是合法标识",
-                    source_path,
-                )
-            for media_type, category_id in source_fallbacks.items():
-                path = [*source_path, media_type]
-                category = categories.get(category_id)
-                if not category:
-                    collector.error(
-                        "unknown_source_fallback_category",
-                        f"来源级兜底分类 {category_id} 不存在",
-                        path,
-                    )
-                elif category.media_type != media_type:
-                    collector.error(
-                        "source_fallback_media_type_mismatch",
-                        f"来源级兜底分类 {category_id} 不属于媒体类型 {media_type}",
-                        path,
-                    )
-                elif not category.enabled:
-                    collector.error(
-                        "disabled_source_fallback_category",
-                        f"来源级兜底分类 {category_id} 已禁用",
-                        path,
-                    )
 
     @classmethod
     def _validate_aliases(

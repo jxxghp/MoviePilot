@@ -198,10 +198,6 @@ class ClassificationPolicy(_ClassificationModel):
     categories: list[ClassificationCategory] = Field(default_factory=list, description="稳定分类定义列表")
     rules: list[ClassificationRule] = Field(default_factory=list, description="全局有序规则列表")
     fallbacks: dict[ClassificationMediaType, str] = Field(default_factory=dict, description="各媒体类型的兜底分类 ID")
-    source_fallbacks: dict[str, dict[ClassificationMediaType, str]] = Field(
-        default_factory=dict,
-        description="按数据源覆盖的媒体类型兜底分类 ID",
-    )
     field_aliases: dict[str, dict[str, str]] = Field(default_factory=dict, description="字段值别名到规范值的映射")
     updated_at: Optional[datetime] = Field(default=None, description="策略最后发布时间")
 
@@ -641,7 +637,7 @@ class ClassificationImpactAnalysis(_ClassificationModel):
     category_changed_count: int = Field(ge=0, description="稳定分类 ID 发生变化的样本数量")
     path_only_changed_count: int = Field(ge=0, description="分类 ID 不变但路径变化的样本数量")
     rule_changed_only_count: int = Field(ge=0, description="分类与路径不变但命中规则变化的样本数量")
-    became_fallback_count: int = Field(ge=0, description="候选策略改为通用或来源级兜底的样本数量")
+    became_fallback_count: int = Field(ge=0, description="候选策略改为媒体类型默认分类的样本数量")
     partial_count: int = Field(ge=0, description="任一策略因事实缺失产生 partial 的样本数量")
     degraded_count: int = Field(
         ge=0,

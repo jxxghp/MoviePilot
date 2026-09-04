@@ -208,8 +208,8 @@ def test_default_style_config_preserves_order_and_uses_safe_standard_fields() ->
     assert origin_country.replacement_field == "media.countries"
 
 
-def test_first_empty_rule_becomes_source_fallback_and_later_entries_are_disabled() -> None:
-    """首个全空项应成为 TMDB 兜底，后续分类和规则保留但永远禁用。"""
+def test_first_empty_rule_becomes_global_fallback_and_later_entries_are_disabled() -> None:
+    """首个全空项应成为媒体类型全局兜底，后续分类和规则保留但永远禁用。"""
     result = migrate_legacy_category_config(
         {
             "movie": {
@@ -222,7 +222,7 @@ def test_first_empty_rule_becomes_source_fallback_and_later_entries_are_disabled
     )
     legacy_categories = [category for category in result.policy.categories if category.id.startswith("legacy.movie.")]
 
-    assert result.policy.source_fallbacks["themoviedb"]["电影"] == legacy_categories[0].id
+    assert result.policy.fallbacks["电影"] == legacy_categories[0].id
     assert [category.enabled for category in legacy_categories] == [True, False, False]
     assert [rule.enabled for rule in result.policy.rules] == [False, False, False]
     assert [issue.code for issue in result.issues].count("unreachable_legacy_category") == 2
@@ -433,8 +433,8 @@ def test_tmdb_fixtures_match_category_helper_directory_classification(
     assert current_category == legacy_category
 
 
-def test_non_tmdb_source_uses_common_fallback_instead_of_legacy_source_fallback() -> None:
-    """非 TMDB 身份不得进入只为旧 category.yaml 保留的来源级兜底。"""
+def test_non_tmdb_source_uses_the_same_media_type_fallback() -> None:
+    """媒体类型全局兜底对不同数据源保持一致。"""
     result = migrate_legacy_category_config(_legacy_config())
     facts = ClassificationFacts.model_validate(
         {
@@ -447,7 +447,6 @@ def test_non_tmdb_source_uses_common_fallback_instead_of_legacy_source_fallback(
     evaluation = ClassificationEvaluator.evaluate(result.policy, facts)
 
     assert evaluation.result.recommended.category_id == result.policy.fallbacks["电影"]
-    assert evaluation.result.recommended.category_id != result.policy.source_fallbacks["themoviedb"]["电影"]
     assert evaluation.result.recommended.source == "fallback"
 
 
@@ -463,7 +462,6 @@ def test_config_without_empty_entry_remains_valid_and_uses_common_fallback() -> 
     evaluation = ClassificationEvaluator.evaluate(result.policy, facts)
 
     assert result.valid
-    assert result.policy.source_fallbacks == {}
     assert ClassificationPolicyValidator.validate(result.policy, result.extra_fields).valid
     assert evaluation.result.recommended.category_id == result.policy.fallbacks["电影"]
     assert evaluation.result.recommended.source == "fallback"
