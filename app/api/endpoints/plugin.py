@@ -197,9 +197,7 @@ async def all_plugins(
         page, count = resolve_compatible_pagination(page, count)
         assert page is not None and count is not None
         return plugins[(page - 1) * count : page * count]
-    if max_results is None:
-        return plugins
-    return plugins[:max_results]
+    return plugins if max_results is None else plugins[:max_results]
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
