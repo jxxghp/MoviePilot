@@ -39,13 +39,13 @@ def discard_removed_source_fallbacks(value: Any) -> Any:
         return value
 
     state = copy.deepcopy(dict(value))
-    policies = []
+    policies: list[dict[str, Any]] = []
     active = state.get("active")
-    if isinstance(active, Mapping):
+    if isinstance(active, dict):
         policies.append(active)
     history = state.get("history")
     if isinstance(history, list):
-        policies.extend(item for item in history if isinstance(item, Mapping))
+        policies.extend(item for item in history if isinstance(item, dict))
     for policy in policies:
         policy.pop("source_fallbacks", None)
     return state
