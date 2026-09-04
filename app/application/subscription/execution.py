@@ -11,7 +11,6 @@ from app.application.subscription.sitebudget import (
     SubscriptionSearchDeferred,
     SubscriptionSiteBudgetDeferral,
 )
-from app.runtime.log import logger
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,7 +122,6 @@ def handle_subscription_search_deferred(
     queue: SubscriptionSearchRepository,
     task_id: str,
     lease_token: str,
-    subscribe_name: str,
     deferred: SubscriptionSearchDeferred,
     record: Callable[[str, Optional[str]], None],
 ) -> None:
@@ -134,13 +132,7 @@ def handle_subscription_search_deferred(
         available_at=deferred.retry_at,
     )
     if requeued:
-        logger.debug(
-            f"订阅 {subscribe_name} 站点预算冲突，已排队至 {deferred.retry_at} 后重试，"
-            f"sites={','.join(str(site_id) for site_id in deferred.site_ids)}"
-        )
         record("requeued", "site_budget_deferred")
-    else:
-        logger.debug(f"订阅搜索任务 {task_id} 租约已变化，跳过重复站点预算重排队")
 
 
 @dataclass(frozen=True, slots=True)

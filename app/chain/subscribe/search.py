@@ -622,7 +622,7 @@ class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
                 )
         except SubscriptionSearchDeferred as deferred:
             handle_subscription_search_deferred(
-                queue, task_id, lease_token, subscribe.name, deferred, summary.record
+                queue, task_id, lease_token, deferred, summary.record
             )
         except Exception as err:
             logger.error(f"订阅 {subscribe.name} 搜索失败：{str(err)}", exc_info=True)
