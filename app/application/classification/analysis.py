@@ -26,8 +26,8 @@ from app.application.history import (
     TransferHistoryQueryPort,
     TransferHistorySnapshot,
 )
-from app.domain.classification.facts import build_classification_facts
 from app.domain.classification.evaluator import ClassificationEvaluator
+from app.domain.classification.facts import build_classification_facts
 from app.domain.classification.validation import (
     MAX_CATEGORY_DEPTH,
     MAX_CATEGORY_PATH_LENGTH,
@@ -40,12 +40,12 @@ from app.domain.classification.validation import (
 from app.schemas.category import (
     ClassificationEvaluation,
     ClassificationFacts,
+    ClassificationFactValue,
     ClassificationFieldCatalog,
     ClassificationIdentityFacts,
     ClassificationImpactAnalysis,
     ClassificationImpactChange,
     ClassificationImpactGroup,
-    ClassificationFactValue,
     ClassificationMediaFacts,
     ClassificationMediaType,
     ClassificationMusicFacts,
