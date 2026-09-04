@@ -4,7 +4,7 @@ import re
 import shutil
 import time
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, List, Optional, Tuple, Union, cast
 
 from app.application.classification.reference import (
     append_classification_category_path,
@@ -63,6 +63,54 @@ def _append_download_classification_path(
     if not category_path:
         return download_dir
     return append_classification_category_path(download_dir, category_path)
+
+
+def _resolve_torrent_content_dir(
+    list_torrents: Callable[..., List[Any]],
+    *,
+    download_hash: Optional[str],
+    downloader: Optional[str],
+    default_storage: str,
+) -> Tuple[Optional[str], Optional[Path]]:
+    """
+    查询下载器当前内容路径，返回其父目录和对应存储。
+
+    下载器启用 TempPath 时，任务的 content_path 在完成前可能位于
+    save_path 之外；使用其父目录可以避免在最终目录预建同名目录，破坏下载器迁移。
+    """
+    if not download_hash:
+        return None, None
+    try:
+        torrents = list_torrents(
+            hashs=[download_hash],
+            downloader=downloader,
+        )
+    except Exception as err:
+        logger.debug(f"查询下载任务实际内容路径失败：{str(err)}")
+        return None, None
+    if not torrents:
+        return None, None
+
+    torrent = next(
+        (
+            item for item in torrents
+            if str(getattr(item, "hash", "")) == str(download_hash)
+        ),
+        torrents[0],
+    )
+    content_path = getattr(torrent, "content_path", None)
+    if not content_path:
+        return None, None
+    content_uri = FileURI.from_uri(str(content_path))
+    if not content_uri.path:
+        return None, None
+    storage = content_uri.storage or default_storage
+    if storage == "local" and default_storage != "local":
+        storage = default_storage
+    # content_path 指向单文件时是文件本身，指向多文件种子时是根目录；
+    # 统一返回其父目录，保留下方按 folder_name 拼接的既有路径规则。
+    content_dir = Path(content_uri.path).parent
+    return storage, content_dir
 
 
 class DownloadSubtitleOwner(_DownloadOwnerBase):
@@ -432,53 +480,6 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             self.run_module("site_subtitle_links", context=context),
         )
 
-    def _resolve_torrent_content_dir(
-        self,
-        *,
-        download_hash: Optional[str],
-        downloader: Optional[str],
-        default_storage: str,
-    ) -> Tuple[Optional[str], Optional[Path]]:
-        """
-        查询下载器当前内容路径，返回其父目录和对应存储。
-
-        下载器启用 TempPath 时，任务的 content_path 在完成前可能位于
-        save_path 之外；使用其父目录可以避免在最终目录预建同名目录，破坏下载器迁移。
-        """
-        if not download_hash:
-            return None, None
-        try:
-            torrents = self.list_torrents(
-                hashs=[download_hash],
-                downloader=downloader,
-            )
-        except Exception as err:
-            logger.debug(f"查询下载任务实际内容路径失败：{str(err)}")
-            return None, None
-        if not torrents:
-            return None, None
-
-        torrent = next(
-            (
-                item for item in torrents
-                if str(getattr(item, "hash", "")) == str(download_hash)
-            ),
-            torrents[0],
-        )
-        content_path = getattr(torrent, "content_path", None)
-        if not content_path:
-            return None, None
-        content_uri = FileURI.from_uri(str(content_path))
-        if not content_uri.path:
-            return None, None
-        storage = content_uri.storage or default_storage
-        if storage == "local" and default_storage != "local":
-            storage = default_storage
-        # content_path 指向单文件时是文件本身，指向多文件种子时是根目录；
-        # 统一返回其父目录，保留下方按 folder_name 拼接的既有路径规则。
-        content_dir = Path(content_uri.path).parent
-        return storage, content_dir
-
     def _save_site_subtitle_response(
         self,
         *,
@@ -594,7 +595,8 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             logger.error("下载目录路径为空，无法保存字幕")
             return
         download_dir = Path(fileURI.path)
-        content_storage, content_dir = self._resolve_torrent_content_dir(
+        content_storage, content_dir = _resolve_torrent_content_dir(
+            self.list_torrents,
             download_hash=download_hash,
             downloader=downloader,
             default_storage=storage,
