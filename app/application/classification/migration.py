@@ -304,7 +304,7 @@ def _migrate_media_categories(
                 id=category_id,
                 media_type=media_type,
                 name=name,
-                path=[name],
+                path=_legacy_category_path(name),
                 enabled=not unreachable,
             )
         )
@@ -430,14 +430,12 @@ def _diagnose_category_name(
     path: Sequence[LegacyDiagnosticPathPart],
     context: _MigrationContext,
 ) -> None:
-    """在仍保留分类的同时标记无法安全作为目录段的名称。"""
+    """在仍保留分类的同时标记无法安全投影为目录路径的名称。"""
     invalid = (
         not isinstance(raw_name, str)
         or not name
         or name != name.strip()
-        or name in {".", ".."}
-        or name.endswith((".", " "))
-        or any(character in _ILLEGAL_PATH_CHARACTERS or ord(character) < 32 for character in name)
+        or any(_legacy_path_segment_is_invalid(segment) for segment in _legacy_category_path(name))
     )
     if invalid:
         context.add_diagnostic(
@@ -446,6 +444,23 @@ def _diagnose_category_name(
             f"分类名称 {name!r} 不能安全投影为目录路径",
             path,
         )
+
+
+def _legacy_category_path(name: str) -> list[str]:
+    """把旧分类名中的斜杠还原为目录层级，同时保留原始显示名称。"""
+    return name.split("/")
+
+
+def _legacy_path_segment_is_invalid(segment: str) -> bool:
+    """判断旧分类名拆出的目录段是否违反跨平台路径安全约束。"""
+    illegal_characters = _ILLEGAL_PATH_CHARACTERS - frozenset({"/"})
+    return (
+        not segment
+        or segment in {".", ".."}
+        or segment != segment.strip()
+        or segment.endswith((".", " "))
+        or any(character in illegal_characters or ord(character) < 32 for character in segment)
+    )
 
 
 def _migrate_legacy_field(
