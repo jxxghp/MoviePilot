@@ -99,6 +99,8 @@ if TYPE_CHECKING:
         process: Callable[..., Any]
         record_subscription_site_budget_failure: Callable[..., Any]
         consume_subscription_site_budget_failures: Callable[..., Any]
+        record_subscription_site_budget_deferred: Callable[..., Any]
+        consume_subscription_site_budget_deferrals: Callable[..., Any]
         save_last_search_params: Callable[..., Any]
         search_by_id: Callable[..., Any]
         search_by_title: Callable[..., Any]

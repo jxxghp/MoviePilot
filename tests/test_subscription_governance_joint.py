@@ -52,8 +52,8 @@ class _MixedBudgetRepository:
         return True
 
 
-def test_cooled_site_does_not_block_independent_site_or_hide_batch_failure():
-    """慢站点跳过后其它站点仍完成，调用方同时收到可聚合失败。"""
+def test_cooled_site_does_not_block_independent_site_or_mark_batch_failed():
+    """冷却站点延后后其它站点仍完成，调用方只收到可重新入队的事实。"""
     repository = _MixedBudgetRepository()
     budget = SubscriptionSiteBudget(
         repository=repository,
@@ -91,7 +91,9 @@ def test_cooled_site_does_not_block_independent_site_or_hide_batch_failure():
 
     assert results == [2]
     assert repository.finished_sites == [2]
+    deferrals = chain.consume_subscription_site_budget_deferrals()
+    assert len(deferrals) == 1
+    assert deferrals[0].site_id == 1
     failures = chain.consume_subscription_site_budget_failures()
-    assert len(failures) == 1
-    assert "站点 1" in failures[0]
+    assert failures == ()
     assert progress.values[-1] == 100

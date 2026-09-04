@@ -379,7 +379,7 @@ def _run_site_pressure_case(
         start_barrier = threading.Barrier(2)
         owners = ("scale-owner-a", "scale-owner-b")
         chains: dict[str, SearchChain] = {}
-        owner_failures: dict[str, list[str]] = {owner: [] for owner in owners}
+        owner_deferrals: dict[str, list[Any]] = {owner: [] for owner in owners}
 
         for owner in owners:
             controller = SubscriptionSiteBudgetController(
@@ -391,22 +391,21 @@ def _run_site_pressure_case(
             )
             chain = object.__new__(SearchChain)
             chain.configure_subscription_site_budget(controller)
-            original_record_failure = chain.record_subscription_site_budget_failure
+            original_record_deferred = chain.record_subscription_site_budget_deferred
 
-            def record_failure(
-                error: str,
+            def record_deferred(
+                deferral: Any,
                 *,
-                original=original_record_failure,
+                original=original_record_deferred,
                 owner_name=owner,
             ) -> None:
-                """保留 wrapper 聚合失败并同步压力轮次观测。"""
-                original(error)
-                owner_failures[owner_name].append(error)
-                if "冷却或已有在途搜索" in error:
-                    boundary.record_budget_rejection()
-                    pressure_event.set()
+                """保留 wrapper 延后事实并同步压力轮次观测。"""
+                original(deferral)
+                owner_deferrals[owner_name].append(deferral)
+                boundary.record_budget_rejection()
+                pressure_event.set()
 
-            chain.record_subscription_site_budget_failure = record_failure
+            chain.record_subscription_site_budget_deferred = record_deferred
 
             def search_site_torrents(*, _owner=owner, **_kwargs: Any) -> list[str]:
                 """将 SearchChain 的真实站点请求委托给固定边界。"""
@@ -453,11 +452,10 @@ def _run_site_pressure_case(
             thread.join(timeout=_SITE_PRESSURE_SYNC_TIMEOUT)
         owners_finished = all(not thread.is_alive() for thread in threads)
 
-        initial_failures = [
-            error
+        initial_deferrals = [
+            deferral
             for owner in owners
-            for error in owner_failures[owner]
-            if "冷却或已有在途搜索" in error
+            for deferral in owner_deferrals[owner]
         ]
         successful_owners = [
             owner
@@ -469,10 +467,7 @@ def _run_site_pressure_case(
             for owner in owners
             if owner in owner_results
             and not owner_results[owner]
-            and any(
-                "冷却或已有在途搜索" in error
-                for error in owner_failures[owner]
-            )
+            and owner_deferrals[owner]
         ]
         successful_owner = successful_owners[0] if len(successful_owners) == 1 else None
         blocked_owner = blocked_owners[0] if len(blocked_owners) == 1 else None
@@ -482,7 +477,7 @@ def _run_site_pressure_case(
             and boundary.active_at_rejection == 1
             and boundary.peak == 1
             and boundary.active == 0
-            and len(initial_failures) == 1
+            and len(initial_deferrals) == 1
             and len(successful_owners) == 1
             and len(blocked_owners) == 1
             and all(count == 1 for count in owner_invocations.values())
@@ -501,8 +496,8 @@ def _run_site_pressure_case(
         if successful_owner and blocked_owner:
             winner = chains[successful_owner]
             loser = chains[blocked_owner]
-            winner.consume_subscription_site_budget_failures()
-            loser.consume_subscription_site_budget_failures()
+            winner.consume_subscription_site_budget_deferrals()
+            loser.consume_subscription_site_budget_deferrals()
 
             if site_id != case.site_count:
                 boundary.set_outcome("success")
@@ -552,11 +547,11 @@ def _run_site_pressure_case(
                     page=0,
                 )
                 cooldown_calls = boundary.calls - calls_before_cooldown
-                cooldown_failures = loser.consume_subscription_site_budget_failures()
+                cooldown_deferrals = loser.consume_subscription_site_budget_deferrals()
                 error_cooldown_blocked = bool(
                     not cooldown_result
                     and cooldown_calls == 0
-                    and cooldown_failures
+                    and cooldown_deferrals
                 )
                 error_cooldown_persisted = bool(
                     error_record
@@ -576,7 +571,7 @@ def _run_site_pressure_case(
                 and error_cooldown_persisted
             )
         )
-        duplicate_site_claims_blocked += len(initial_failures)
+        duplicate_site_claims_blocked += len(initial_deferrals)
         successful_site_claims_reused += int(success_reused)
         error_cooldown_claims_blocked += int(error_cooldown_blocked)
         site_observations.append(
@@ -589,7 +584,7 @@ def _run_site_pressure_case(
                 "request_peak": boundary.peak,
                 "request_calls": boundary.calls,
                 "request_active_at_rejection": boundary.active_at_rejection,
-                "budget_rejections": len(initial_failures),
+                "budget_rejections": len(initial_deferrals),
                 "success_reused": success_reused,
                 "error_observed": error_observed,
                 "error_cooldown_blocked": error_cooldown_blocked,

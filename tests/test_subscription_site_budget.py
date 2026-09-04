@@ -243,7 +243,7 @@ def test_skipped_search_releases_budget_without_external_interval():
 
 
 def test_search_provider_reports_cooled_site_without_blocking_other_results():
-    """错误冷却中的站点返回空页并记录聚合失败，而非阻塞 provider。"""
+    """错误冷却中的站点返回空页并记录延后，而非阻塞 provider 或制造失败。"""
     repository = _WaitingRepository()
     metrics = SubscriptionSiteBudgetMetrics()
     budget = SubscriptionSiteBudget(
@@ -265,9 +265,12 @@ def test_search_provider_reports_cooled_site_without_blocking_other_results():
     )
 
     assert result == []
+    deferrals = chain.consume_subscription_site_budget_deferrals()
+    assert len(deferrals) == 1
+    assert deferrals[0].site_id == 11
+    assert deferrals[0].retry_at
     failures = chain.consume_subscription_site_budget_failures()
-    assert len(failures) == 1
-    assert "站点 11" in failures[0]
+    assert failures == ()
     snapshot = metrics.snapshot()
     assert snapshot.request_count == 0
     assert snapshot.cooldown_skip_count == 1

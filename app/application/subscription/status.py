@@ -153,6 +153,8 @@ class SubscriptionExecutionStatusService:
             state = phase = "cancelling"
         elif task.state == "running":
             state = phase = task.phase or "running"
+        elif task.state == "queued" and task.phase == "waiting_site_budget":
+            state = phase = "waiting_site_budget"
         else:
             state = phase = task.state
         return SubscriptionExecutionStatus(

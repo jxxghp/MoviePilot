@@ -363,6 +363,60 @@ class SubscriptionSearchOper(DbOper):
         self._refresh_batch(task.batch_id, now=now, error=None)
         return True
 
+    def defer_task(
+        self,
+        *,
+        task_id: str,
+        lease_token: str,
+        available_at: str,
+    ) -> bool:
+        """释放当前租约并在站点预算时间到达后恢复同一任务。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("订阅搜索延后需要调用方提供同步 Session")
+        task = self._db.execute(
+            select(SubscriptionSearchTask).where(
+                SubscriptionSearchTask.task_id == task_id,
+                SubscriptionSearchTask.state == "running",
+                SubscriptionSearchTask.lease_token == lease_token,
+            )
+        ).scalars().first()
+        if task is None:
+            return False
+        if bool(task.cancel_requested) or self._batch_cancel_requested(task.batch_id):
+            return self.finish_task(
+                task_id=task_id,
+                lease_token=lease_token,
+                state="cancelled",
+                error=None,
+            )
+        now = utc_now_text()
+        updated = execute_dml(
+            self._db,
+            update(SubscriptionSearchTask)
+            .where(
+                SubscriptionSearchTask.id == task.id,
+                SubscriptionSearchTask.state == "running",
+                SubscriptionSearchTask.lease_token == lease_token,
+            )
+            .values(
+                state="queued",
+                phase="waiting_site_budget",
+                current_site_id=None,
+                lease_owner=None,
+                lease_token=None,
+                lease_expires_at=None,
+                available_at=available_at,
+                updated_at=now,
+                finished_at=None,
+                last_error=None,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+        if not updated:
+            return False
+        self._refresh_batch(task.batch_id, now=now, error=None)
+        return True
+
     def is_cancel_requested(self, task_id: str) -> bool:
         """读取任务和批次取消标记。"""
         if not isinstance(self._db, Session):

@@ -4,7 +4,10 @@ import threading
 from collections.abc import AsyncIterator, Callable
 from typing import Any, Optional, TypeVar, cast
 
-from app.application.subscription.sitebudget import SubscriptionSiteBudget
+from app.application.subscription.sitebudget import (
+    SubscriptionSiteBudget,
+    SubscriptionSiteBudgetDeferral,
+)
 from app.chain.base import ChainBase
 from app.chain.search.cache import SearchCacheOwner
 from app.chain.search.media import SearchMediaOwner
@@ -49,6 +52,7 @@ class SearchChain(ChainBase):
         """仅为订阅搜索启用或清除站点预算，不影响其它搜索入口。"""
         self._subscription_site_budget = budget
         self._subscription_site_budget_failures: list[str] = []
+        self._subscription_site_budget_deferrals: list[SubscriptionSiteBudgetDeferral] = []
         self._subscription_site_budget_failure_lock = threading.Lock()
 
     def record_subscription_site_budget_failure(self, error: str) -> None:
@@ -68,6 +72,27 @@ class SearchChain(ChainBase):
             failures = tuple(self._subscription_site_budget_failures)
             self._subscription_site_budget_failures.clear()
         return failures
+
+    def record_subscription_site_budget_deferred(
+        self,
+        deferral: SubscriptionSiteBudgetDeferral,
+    ) -> None:
+        """线程安全地记录临时站点冲突，供订阅任务重新入队。"""
+        lock = getattr(self, "_subscription_site_budget_failure_lock", None)
+        if lock is None:
+            return
+        with lock:
+            self._subscription_site_budget_deferrals.append(deferral)
+
+    def consume_subscription_site_budget_deferrals(self) -> tuple[SubscriptionSiteBudgetDeferral, ...]:
+        """读取并清空当前订阅搜索积累的站点预算延后事实。"""
+        lock = getattr(self, "_subscription_site_budget_failure_lock", None)
+        if lock is None:
+            return ()
+        with lock:
+            deferrals = tuple(self._subscription_site_budget_deferrals)
+            self._subscription_site_budget_deferrals.clear()
+        return deferrals
 
     # owner descriptor 经类访问后被 mypy 视为普通 Callable；运行时仍需取回原始
     # classmethod 函数，才能保持 SearchChain 的直接 MRO 与既有绑定语义。

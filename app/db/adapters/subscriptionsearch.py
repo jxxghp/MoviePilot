@@ -177,6 +177,22 @@ class TransactionalSubscriptionSearchRepository:
             )
         )
 
+    def defer_task(
+        self,
+        *,
+        task_id: str,
+        lease_token: str,
+        available_at: str,
+    ) -> bool:
+        """以站点预算的下一次可用时间重新排队任务。"""
+        return self._write(
+            lambda repository: repository.defer_task(
+                task_id=task_id,
+                lease_token=lease_token,
+                available_at=available_at,
+            )
+        )
+
     def is_cancel_requested(self, task_id: str) -> bool:
         """查询任务或批次的取消请求。"""
         return self._read(lambda repository: repository.is_cancel_requested(task_id))
@@ -208,11 +224,9 @@ class TransactionalSubscriptionSearchRepository:
                 owner=owner,
                 lease_seconds=lease_seconds,
             )
-            retry_at = (
-                record.lease_expires_at
-                if record.lease_token and not acquired
-                else record.next_allowed_at
-            ) or record.next_allowed_at
+            retry_at = record.next_allowed_at
+            if not acquired and record.lease_token and record.lease_expires_at:
+                retry_at = max(retry_at, record.lease_expires_at)
             return SiteBudgetClaim(
                 site_id=record.site_id,
                 acquired=acquired,

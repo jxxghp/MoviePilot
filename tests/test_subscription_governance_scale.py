@@ -179,22 +179,21 @@ def test_scale_validator_rejects_fake_site_pressure(monkeypatch, tmp_path, mutat
 
 
 def test_scale_validator_rejects_unfinished_site_wrapper(monkeypatch, tmp_path):
-    """失败已登记但 wrapper 尚未返回时，压力门禁必须拒绝并暴露未收口 owner。"""
+    """延后已登记但 wrapper 尚未返回时，压力门禁必须拒绝并暴露未收口 owner。"""
     original_wrapper = SearchChain._search_site_torrents_with_budget
     release_stalled = threading.Event()
     threads_before = set(threading.enumerate())
 
     def stall_after_rejection(self, *, site, keyword, mtype, page):
         """模拟预算拒绝已记录、调用方却未取得返回值的挂起路径。"""
-        original_record_failure = self.record_subscription_site_budget_failure
+        original_record_deferred = self.record_subscription_site_budget_deferred
 
-        def record_failure_and_stall(error: str) -> None:
+        def record_deferred_and_stall(deferral) -> None:
             """在拒绝已登记后阻塞原始 wrapper 的返回。"""
-            original_record_failure(error)
-            if "冷却或已有在途搜索" in error:
-                release_stalled.wait()
+            original_record_deferred(deferral)
+            release_stalled.wait()
 
-        self.record_subscription_site_budget_failure = record_failure_and_stall
+        self.record_subscription_site_budget_deferred = record_deferred_and_stall
         try:
             return original_wrapper(
                 self,
@@ -204,7 +203,7 @@ def test_scale_validator_rejects_unfinished_site_wrapper(monkeypatch, tmp_path):
                 page=page,
             )
         finally:
-            self.record_subscription_site_budget_failure = original_record_failure
+            self.record_subscription_site_budget_deferred = original_record_deferred
 
     monkeypatch.setattr(
         SearchChain,

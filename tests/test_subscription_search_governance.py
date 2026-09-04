@@ -13,13 +13,17 @@ from sqlalchemy.orm import sessionmaker
 from app.application.site.observation import report_site_search_outcome
 from app.application.subscription.contract import SubscriptionSnapshot
 from app.application.subscription.execution import SubscriptionExecutionAdmission
-from app.application.subscription.sitebudget import SubscriptionSearchCancelled
+from app.application.subscription.sitebudget import (
+    SubscriptionSearchCancelled,
+    SubscriptionSearchDeferred,
+)
 from app.chain.search.facade import SearchChain
 from app.chain.subscribe import search as subscribe_search
 from app.chain.subscribe.facade import SubscribeChain
 from app.chain.subscribe.search import _search_task_available_at
 from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
 from app.db.base import Base
+from app.db.models.subscriptionsearch import SubscriptionSearchTask
 from app.modules.indexer import IndexerModule
 from app.schemas.types import MediaType
 
@@ -247,6 +251,37 @@ def test_fallback_queue_continues_after_one_subscription_failure(tmp_path, monke
         )
         assert lease is not None
         assert chain._subscription_execution_admission.release(lease) is True
+
+
+def test_site_budget_conflict_requeues_task_without_batch_failure(tmp_path, monkeypatch):
+    """站点预算冲突应自动排队重试，不能把订阅批次置为失败。"""
+    subscribe = _subscribe(5)
+    chain = _chain(tmp_path, [subscribe])
+    _make_tasks_ready(monkeypatch)
+    retry_at = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(timespec="seconds")
+    monkeypatch.setattr(
+        chain,
+        "_process_search_subscription",
+        Mock(side_effect=SubscriptionSearchDeferred(retry_at=retry_at, site_ids=(31,))),
+    )
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(state="R")
+
+    batch = chain.get_search_batch(batch_id)
+    assert batch.state == "queued"
+    assert batch.finished_count == 0
+    assert batch.failed_count == 0
+    assert batch.last_error is None
+    with chain.subscription_search_repository._session_factory() as session:
+        task = session.query(SubscriptionSearchTask).filter_by(
+            subscription_id=subscribe.id,
+        ).one()
+        assert task.state == "queued"
+        assert task.phase == "waiting_site_budget"
+        assert task.available_at == retry_at
+        assert task.last_error is None
+    assert chain.subscription_search_repository.claim_next(owner="worker-after-retry") is None
 
 
 def test_search_logs_one_bounded_start_and_finish_summary(tmp_path, monkeypatch):

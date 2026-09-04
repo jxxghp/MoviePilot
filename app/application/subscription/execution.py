@@ -200,6 +200,16 @@ class SubscriptionSearchRepository(Protocol):
         """释放尚未完成的任务租约，供停止或取消后恢复。"""
         ...
 
+    def defer_task(
+        self,
+        *,
+        task_id: str,
+        lease_token: str,
+        available_at: str,
+    ) -> bool:
+        """把临时站点预算冲突任务退回队列，并设置下一次领取时间。"""
+        ...
+
     def is_cancel_requested(self, task_id: str) -> bool:
         """判断任务或所属批次是否已请求取消。"""
         ...

@@ -132,6 +132,47 @@ def test_search_queue_phase_update_requires_current_lease(tmp_path):
     ) is True
 
 
+def test_search_queue_defers_site_budget_conflict_until_retry_time(tmp_path):
+    """站点预算冲突应释放任务租约并保留同一任务等待后续恢复。"""
+    repository, engine = _repository(tmp_path)
+    enqueued = repository.enqueue(subscription_ids=(31,), source="fallback", priority=10)
+    running = repository.claim_next(owner="worker-a")
+    retry_at = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(timespec="seconds")
+
+    assert repository.defer_task(
+        task_id=running.task_id,
+        lease_token=running.lease_token,
+        available_at=retry_at,
+    ) is True
+
+    batch = repository.get_batch(enqueued.batch.batch_id)
+    assert batch.state == "queued"
+    assert batch.finished_count == 0
+    assert batch.failed_count == 0
+    assert repository.claim_next(owner="worker-b") is None
+
+    with Session(engine) as session:
+        task = session.execute(
+            select(SubscriptionSearchTask).where(
+                SubscriptionSearchTask.task_id == running.task_id
+            )
+        ).scalar_one()
+        assert task.state == "queued"
+        assert task.phase == "waiting_site_budget"
+        assert task.available_at == retry_at
+        assert task.last_error is None
+        session.execute(
+            update(SubscriptionSearchTask)
+            .where(SubscriptionSearchTask.task_id == running.task_id)
+            .values(available_at="1970-01-01T00:00:00+00:00")
+        )
+        session.commit()
+
+    recovered = repository.claim_next(owner="worker-c")
+    assert recovered.task_id == running.task_id
+    assert recovered.attempt_count == 2
+
+
 def test_search_queue_cancel_finishes_queued_and_running_tasks(tmp_path):
     """取消立即终止未发请求任务，运行中任务在租约边界收口。"""
     repository, engine = _repository(tmp_path)

@@ -17,6 +17,7 @@ from app.application.site.observation import (
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.subscription.sitebudget import (
     SubscriptionSiteBudget,
+    SubscriptionSiteBudgetDeferral,
     SubscriptionSiteBudgetUnavailable,
 )
 from app.chain.search.contract import _SearchOwnerBase
@@ -215,7 +216,12 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
         try:
             claim = budget.acquire(site_id)
         except SubscriptionSiteBudgetUnavailable as error:
-            self.record_subscription_site_budget_failure(str(error))
+            self.record_subscription_site_budget_deferred(
+                SubscriptionSiteBudgetDeferral(
+                    site_id=error.site_id,
+                    retry_at=error.retry_at,
+                )
+            )
             logger.debug(str(error))
             return []
         with capture_site_search_observation() as observation:

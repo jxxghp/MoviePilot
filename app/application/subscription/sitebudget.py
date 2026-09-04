@@ -15,11 +15,29 @@ class SubscriptionSearchCancelled(RuntimeError):
     """表示订阅搜索在可取消预算等待点终止。"""
 
 
+@dataclass(frozen=True, slots=True)
+class SubscriptionSiteBudgetDeferral:
+    """记录一次站点预算冲突及该站点最早可再次尝试的时间。"""
+
+    site_id: int
+    retry_at: str
+
+
+class SubscriptionSearchDeferred(RuntimeError):
+    """表示订阅搜索未失败，而是应在站点预算可用后重新入队。"""
+
+    def __init__(self, *, retry_at: str, site_ids: tuple[int, ...]) -> None:
+        """保存队列恢复所需的时间和冲突站点，避免把临时冲突写成错误。"""
+        super().__init__(f"订阅搜索已延后，站点预算最早可重试：{retry_at}")
+        self.retry_at = retry_at
+        self.site_ids = site_ids
+
+
 class SubscriptionSiteBudgetUnavailable(RuntimeError):
-    """表示站点仍处于错误冷却或已有未释放租约。"""
+    """表示站点预算暂时不可用，调用方应记录为延后而非失败。"""
 
     def __init__(self, *, site_id: int, retry_at: str) -> None:
-        """保存站点和下一次可尝试时间，供批次聚合失败展示。"""
+        """保存站点和下一次可尝试时间，供订阅队列恢复。"""
         super().__init__(f"站点 {site_id} 冷却或已有在途搜索，最早可重试：{retry_at}")
         self.site_id = site_id
         self.retry_at = retry_at
