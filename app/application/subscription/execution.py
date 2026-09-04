@@ -123,7 +123,7 @@ def handle_subscription_search_deferred(
     task_id: str,
     lease_token: str,
     deferred: SubscriptionSearchDeferred,
-    record: Callable[[str, Optional[str]], None],
+    record: Callable[..., None],
 ) -> None:
     """把站点预算冲突重新入队，并记录为可恢复而非失败的任务结果。"""
     requeued = queue.defer_task(
