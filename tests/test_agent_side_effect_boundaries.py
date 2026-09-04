@@ -325,7 +325,7 @@ async def test_agent_execution_failure_closes_cached_subagent_middleware() -> No
 
     result, _ = await agent._execute_agent([])
 
-    assert "failed" in result
+    assert result == "智能助手执行失败，请稍后重试"
     middleware.close.assert_awaited_once()
     assert agent._compiled_agent_bundle is None
     assert agent._subagent_middlewares == ()

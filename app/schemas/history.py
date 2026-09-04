@@ -1,8 +1,9 @@
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic import field_validator as _field_validator
 
-from app.runtime.errors import public_error_message
+from app.runtime.errors import public_error_message as _public_error_message
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MediaSource
@@ -149,13 +150,13 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @field_validator("errmsg", mode="before")
+    @_field_validator("errmsg", mode="before")
     @classmethod
     def _sanitize_error_message(cls, value: object) -> Optional[str]:
         """历史接口只返回可理解的整理失败原因，数据库原文仍用于诊断。"""
         if value is None or not str(value).strip():
             return None
-        return public_error_message(value, context="transfer")
+        return _public_error_message(value, context="transfer")
 
 
 class BatchTransferHistoryRedoRequest(BaseModel):

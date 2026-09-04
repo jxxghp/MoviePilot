@@ -51,7 +51,7 @@ def test_update_cookie_legacy_get_keeps_query_params():
         )
 
     assert response.success is False
-    assert response.message == "failed"
+    assert response.message == "操作失败，请稍后重试"
     fake_chain.update_cookie.assert_called_once_with(
         site_info=fake_site,
         username="user",

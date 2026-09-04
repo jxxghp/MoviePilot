@@ -35,6 +35,7 @@ from app.application.outbox import (
     DOWNLOAD_MODULE_TOPIC,
     DOWNLOAD_NOTIFICATION_TOPIC,
     DOWNLOAD_SUBTITLE_TOPIC,
+    PostCommitEffectError,
 )
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
@@ -561,7 +562,7 @@ def test_transfer_event_failure_leaves_committed_intent_pending():
         """模拟插件事件总线在业务提交后失败。"""
         raise RuntimeError("event failed")
 
-    with pytest.raises(RuntimeError, match="event failed"):
+    with pytest.raises(PostCommitEffectError, match="提交后的相关处理未完成") as error:
         writer.transfer_result(
             topic="transfer.completed",
             stage_history=stage_history,
@@ -576,6 +577,8 @@ def test_transfer_event_failure_leaves_committed_intent_pending():
             },
             publish=fail_publish,
         )
+    assert len(error.value.errors) == 1
+    assert str(error.value.errors[0]) == "event failed"
 
     with factory() as session:
         history = session.execute(select(TransferHistory)).scalar_one()

@@ -9,7 +9,7 @@ from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferSettlementResult,
 )
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.file import FileItem
