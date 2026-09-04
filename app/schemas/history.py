@@ -150,7 +150,8 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @_field_validator("errmsg", mode="before")
+    # Pydantic 的动态装饰器类型会被存量 mypy 配置解析为 Any，公开 schema 仍需保留该校验。
+    @_field_validator("errmsg", mode="before")  # type: ignore[misc]
     @classmethod
     def _sanitize_error_message(cls, value: object) -> Optional[str]:
         """历史接口只返回可理解的整理失败原因，数据库原文仍用于诊断。"""
