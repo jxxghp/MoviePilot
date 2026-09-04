@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from typing import Callable, Mapping, Optional, Protocol
 from uuid import uuid4
 
-from app.application.subscription.sitebudget import SiteBudgetClaim
+from app.application.subscription.sitebudget import (
+    SiteBudgetClaim,
+    SubscriptionSearchDeferred,
+    SubscriptionSiteBudgetDeferral,
+)
+from app.runtime.log import logger
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +99,48 @@ class SubscriptionExecutionContext:
         """标记执行已越过下载器副作用边界。"""
         self.download_started = True
         self.report_phase("submitting")
+
+
+def raise_subscription_site_budget_failures(failures: tuple[str, ...]) -> None:
+    """在成功站点结果完成处理后暴露其余站点的聚合失败。"""
+    if failures:
+        raise RuntimeError("；".join(failures))
+
+
+def raise_subscription_site_budget_deferral(
+    deferrals: tuple[SubscriptionSiteBudgetDeferral, ...],
+    execution_context: Optional[SubscriptionExecutionContext],
+) -> None:
+    """在没有下载副作用时，将临时站点冲突转换为持久队列延后。"""
+    if not deferrals or (execution_context and execution_context.download_started):
+        return
+    retry_at = min(deferrals, key=lambda item: item.retry_at).retry_at
+    site_ids = tuple(dict.fromkeys(item.site_id for item in deferrals))
+    raise SubscriptionSearchDeferred(retry_at=retry_at, site_ids=site_ids)
+
+
+def handle_subscription_search_deferred(
+    queue: SubscriptionSearchRepository,
+    task_id: str,
+    lease_token: str,
+    subscribe_name: str,
+    deferred: SubscriptionSearchDeferred,
+    record: Callable[[str, Optional[str]], None],
+) -> None:
+    """把站点预算冲突重新入队，并记录为可恢复而非失败的任务结果。"""
+    requeued = queue.defer_task(
+        task_id=task_id,
+        lease_token=lease_token,
+        available_at=deferred.retry_at,
+    )
+    if requeued:
+        logger.debug(
+            f"订阅 {subscribe_name} 站点预算冲突，已排队至 {deferred.retry_at} 后重试，"
+            f"sites={','.join(str(site_id) for site_id in deferred.site_ids)}"
+        )
+        record("requeued", "site_budget_deferred")
+    else:
+        logger.debug(f"订阅搜索任务 {task_id} 租约已变化，跳过重复站点预算重排队")
 
 
 @dataclass(frozen=True, slots=True)
