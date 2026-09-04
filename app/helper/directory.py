@@ -74,7 +74,8 @@ class DirectoryHelper:
                 return dir_info
             if dir_info.media_type == media_type and not dir_info.media_category:
                 return dir_info
-            if dir_info.media_type == media_type and dir_info.media_category == media.category:
+            if dir_info.media_type == media_type and _match_media_category(
+                    dir_info.media_category, media.category):
                 return dir_info
         return None
 
@@ -136,8 +137,8 @@ class DirectoryHelper:
             if d.media_type == media_type and not d.media_category:
                 matched_dirs.append(d)
                 continue
-            # 目录类型相等，目录类别相等，符合条件
-            if d.media_type == media_type and d.media_category == media.category:
+            # 目录类型相等，目录类别命中配置，符合条件
+            if d.media_type == media_type and _match_media_category(d.media_category, media.category):
                 matched_dirs.append(d)
                 continue
         if matched_dirs:
@@ -208,6 +209,20 @@ class DirectoryHelper:
         # 媒体根路径
         media_root = rename_path.parents[rename_format_level - 1]
         return media_root
+
+
+def _match_media_category(configured_category: Optional[str], media_category: Optional[str]) -> bool:
+    """
+    判断媒体类别是否命中目录配置，支持逗号分隔的多个类别。
+    """
+    if not configured_category or not media_category:
+        return False
+    categories = {
+        category.strip()
+        for category in re.split(r"[,，]", configured_category)
+        if category.strip()
+    }
+    return media_category.strip() in categories
 
 
 def _split_file_uri(value: str) -> Tuple[str, str]:
