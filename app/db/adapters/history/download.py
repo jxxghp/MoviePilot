@@ -287,6 +287,12 @@ class SessionDownloadHistoryRepository:
         )
         return [_project_history(record) for record in records]
 
+    async def async_count(self) -> int:
+        """在请求异步 Session 内统计下载历史总数。"""
+        if not isinstance(self._session, AsyncSession):
+            raise RuntimeError("下载历史异步统计需要 AsyncSession")
+        return await DownloadHistoryOper(self._session).async_count()
+
     def stage_delete_history(self, history_id: int) -> None:
         """在请求同步 Session 内暂存下载历史删除。"""
         if not isinstance(self._session, Session):

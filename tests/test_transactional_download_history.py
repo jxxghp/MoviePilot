@@ -205,3 +205,27 @@ def test_session_repository_obeys_caller_transaction(db) -> None:
         repository.stage_delete_history(history.id)
         session.commit()
     assert _repository().get_by_hash("request-history-hash") is None
+
+
+def test_session_repository_counts_history_in_caller_async_session(db) -> None:
+    """请求级 adapter 在调用方 AsyncSession 内统计总数，与分页读取口径一致。"""
+    repository = _repository()
+    baseline_count = asyncio.run(repository.async_count())
+    history_id = repository.add(_history_write(download_hash="request-async-count-hash"))
+
+    async def exercise() -> tuple[int, list[DownloadHistorySnapshot]]:
+        """在同一请求 AsyncSession 内先统计总数再分页读取。"""
+        async with async_session_scope() as session:
+            session_repository = SessionDownloadHistoryRepository(session)
+            total = await session_repository.async_count()
+            records = await session_repository.async_list_by_page(count=10)
+            return total, records
+
+    total, records = asyncio.run(exercise())
+
+    assert total == baseline_count + 1
+    assert any(record.id == history_id for record in records)
+
+    with SessionFactory() as session:
+        with pytest.raises(RuntimeError):
+            asyncio.run(SessionDownloadHistoryRepository(session).async_count())
