@@ -253,6 +253,8 @@ def test_durable_snapshots_are_json_and_restore_plugin_runtime_objects():
         context=context,
         download_dir=Path("/downloads"),
         torrent_content=b"torrent-bytes",
+        download_hash="hash-1",
+        downloader="qb",
     )
     restored_processing = restore_download_processing(processing_snapshot)
     restored_transfer = restore_transfer_result(transfer_snapshot)
@@ -261,6 +263,8 @@ def test_durable_snapshots_are_json_and_restore_plugin_runtime_objects():
     assert isinstance(restored_processing.context, Context)
     assert restored_processing.download_dir == Path("/downloads")
     assert restored_processing.torrent_content == b"torrent-bytes"
+    assert restored_processing.download_hash == "hash-1"
+    assert restored_processing.downloader == "qb"
     assert isinstance(restored_transfer["fileitem"], FileItem)
     assert type(restored_transfer["meta"]) is type(meta)
     assert isinstance(restored_transfer["mediainfo"], MediaInfo)

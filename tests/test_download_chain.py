@@ -226,7 +226,126 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
         context=context,
         download_dir=Path("/downloads"),
         torrent_content=b"torrent-content",
+        download_hash="hash123",
+        downloader="qb",
     )
+
+
+def test_download_site_subtitles_uses_downloader_content_path_without_creating_save_folder(
+        monkeypatch,
+):
+    """TempPath 任务应使用下载器当前内容目录，不能在 save_path 预建同名目录。"""
+    accessed_paths = []
+
+    class _FakeTorrentHelper:
+        """提供固定的多文件种子目录名。"""
+
+        def get_fileinfo_from_torrent_content(self, _content):
+            """返回多文件种子目录名。"""
+            return "Demo.Movie", []
+
+    class _FakeStorageChain:
+        """只让 TempPath 下的实际内容目录可见。"""
+
+        def get_file_item(self, storage, path):
+            """记录查询并返回 TempPath 内容目录。"""
+            accessed_paths.append((storage, path))
+            if path == Path("/downloading/Demo.Movie"):
+                return FileItem(
+                    storage=storage,
+                    type="dir",
+                    path=path.as_posix(),
+                    name=path.name,
+                )
+            return None
+
+        def create_folder(self, *_args, **_kwargs):
+            """若生产代码尝试预建目录则让测试失败。"""
+            pytest.fail("TempPath 字幕处理不应在 save_path 预建目录")
+
+    monkeypatch.setattr(download_subtitle, "TorrentHelper", _FakeTorrentHelper)
+    monkeypatch.setattr(download_subtitle, "StorageChain", _FakeStorageChain)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.runtime_config = SimpleNamespace(
+        download_subtitle=True,
+        proxy=None,
+        temporary_path=Path("/tmp/moviepilot-test"),
+        subtitle_extensions=tuple(settings.RMT_SUBEXT),
+        user_agent="MoviePilotTest",
+    )
+    chain.list_torrents = MagicMock(return_value=[DownloaderTorrent(
+        hash="hash123",
+        downloader="qb",
+        content_path="/downloading/Demo.Movie",
+    )])
+    chain._site_subtitle_links = MagicMock(return_value=[])
+    context = Context(
+        torrent_info=TorrentInfo(page_url="https://example.com/torrent/1"),
+    )
+
+    chain.download_site_subtitles(
+        context=context,
+        download_dir=Path("/downloads"),
+        torrent_content=b"torrent-content",
+        download_hash="hash123",
+        downloader="qb",
+    )
+
+    assert accessed_paths == [("local", Path("/downloading/Demo.Movie"))]
+    chain.list_torrents.assert_called_once_with(
+        hashs=["hash123"],
+        downloader="qb",
+    )
+
+
+def test_download_site_subtitles_does_not_create_missing_save_folder(monkeypatch):
+    """找不到实际内容目录时应放弃字幕写入，不能制造迁移冲突目录。"""
+    class _FakeTorrentHelper:
+        """提供固定的多文件种子目录名。"""
+
+        def get_fileinfo_from_torrent_content(self, _content):
+            """返回多文件种子目录名。"""
+            return "Demo.Movie", []
+
+    class _FakeStorageChain:
+        """模拟最终 save_path 下尚未出现种子目录。"""
+
+        def get_file_item(self, _storage, _path):
+            """始终报告目标目录不存在。"""
+            return None
+
+        def create_folder(self, *_args, **_kwargs):
+            """若生产代码尝试预建目录则让测试失败。"""
+            pytest.fail("缺失目录时不应预建 save_path 子目录")
+
+    monkeypatch.setattr(download_subtitle, "TorrentHelper", _FakeTorrentHelper)
+    monkeypatch.setattr(download_subtitle, "StorageChain", _FakeStorageChain)
+    monkeypatch.setattr(download_subtitle.time, "sleep", lambda _seconds: None)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.runtime_config = SimpleNamespace(
+        download_subtitle=True,
+        proxy=None,
+        temporary_path=Path("/tmp/moviepilot-test"),
+        subtitle_extensions=tuple(settings.RMT_SUBEXT),
+        user_agent="MoviePilotTest",
+    )
+    chain.list_torrents = MagicMock(return_value=[])
+    chain._site_subtitle_links = MagicMock()
+    context = Context(
+        torrent_info=TorrentInfo(page_url="https://example.com/torrent/1"),
+    )
+
+    chain.download_site_subtitles(
+        context=context,
+        download_dir=Path("/downloads"),
+        torrent_content=b"torrent-content",
+        download_hash="hash123",
+        downloader="qb",
+    )
+
+    chain._site_subtitle_links.assert_not_called()
 
 
 def test_download_single_supplements_category_before_download_event(monkeypatch):

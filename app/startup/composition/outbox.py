@@ -105,6 +105,8 @@ def build_outbox_handlers() -> dict[
                 context=snapshot.context,
                 download_dir=snapshot.download_dir,
                 torrent_content=snapshot.torrent_content,
+                download_hash=snapshot.download_hash,
+                downloader=snapshot.downloader,
             )
 
     handlers: dict[str, Callable[[ClaimedOutboxMessage], None]] = {

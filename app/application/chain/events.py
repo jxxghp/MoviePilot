@@ -98,6 +98,8 @@ class DownloadProcessingSnapshot:
     context: Context
     download_dir: Path
     torrent_content: str | bytes
+    download_hash: str | None = None
+    downloader: str | None = None
 
 
 def snapshot_download_notification(message: Message | None) -> dict[str, Any] | None:
@@ -112,8 +114,10 @@ def snapshot_download_processing(
     context: Context,
     download_dir: Path,
     torrent_content: str | bytes,
+    download_hash: str | None = None,
+    downloader: str | None = None,
 ) -> dict[str, Any]:
-    """冻结下载模块与字幕处理需要的 JSON 输入，并无损编码种子字节。"""
+    """冻结下载后处理输入，并保留查询下载器实际内容路径所需的身份。"""
     if isinstance(torrent_content, bytes):
         content = {
             "kind": "bytes",
@@ -125,6 +129,8 @@ def snapshot_download_processing(
         "context": context.to_dict(),
         "download_dir": download_dir.as_posix(),
         "torrent_content": content,
+        "download_hash": download_hash,
+        "downloader": downloader,
     }))
 
 
@@ -133,10 +139,16 @@ def restore_download_processing(payload: dict[str, Any]) -> DownloadProcessingSn
     context = payload.get("context")
     content = payload.get("torrent_content")
     download_dir = payload.get("download_dir")
+    download_hash = payload.get("download_hash")
+    downloader = payload.get("downloader")
     if not isinstance(context, dict) or not isinstance(content, dict):
         raise ValueError("下载后处理快照缺少 context 或 torrent_content")
     if not isinstance(download_dir, str) or not download_dir:
         raise ValueError("下载后处理快照缺少 download_dir")
+    if download_hash is not None and not isinstance(download_hash, str):
+        raise ValueError("下载后处理快照的 download_hash 无效")
+    if downloader is not None and not isinstance(downloader, str):
+        raise ValueError("下载后处理快照的 downloader 无效")
     kind = content.get("kind")
     value = content.get("value")
     if not isinstance(value, str):
@@ -157,6 +169,8 @@ def restore_download_processing(payload: dict[str, Any]) -> DownloadProcessingSn
         context=_restore_context(context),
         download_dir=Path(download_dir),
         torrent_content=restored_content,
+        download_hash=download_hash,
+        downloader=downloader,
     )
 
 

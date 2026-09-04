@@ -150,6 +150,8 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             context=context,
             download_dir=download_dir,
             torrent_content=torrent_content,
+            download_hash=download_hash,
+            downloader=downloader,
         )
 
         durable_event_writer = getattr(self, "durable_event_writer", None)
@@ -170,5 +172,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             context=context,
             download_dir=download_dir,
             torrent_content=torrent_content,
+            download_hash=download_hash,
+            downloader=downloader,
         )
         self.eventmanager.send_event(EventType.DownloadAdded, event_payload)

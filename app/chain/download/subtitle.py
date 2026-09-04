@@ -432,6 +432,53 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             self.run_module("site_subtitle_links", context=context),
         )
 
+    def _resolve_torrent_content_dir(
+        self,
+        *,
+        download_hash: Optional[str],
+        downloader: Optional[str],
+        default_storage: str,
+    ) -> Tuple[Optional[str], Optional[Path]]:
+        """
+        查询下载器当前内容路径，返回其父目录和对应存储。
+
+        下载器启用 TempPath 时，任务的 content_path 在完成前可能位于
+        save_path 之外；使用其父目录可以避免在最终目录预建同名目录，破坏下载器迁移。
+        """
+        if not download_hash:
+            return None, None
+        try:
+            torrents = self.list_torrents(
+                hashs=[download_hash],
+                downloader=downloader,
+            )
+        except Exception as err:
+            logger.debug(f"查询下载任务实际内容路径失败：{str(err)}")
+            return None, None
+        if not torrents:
+            return None, None
+
+        torrent = next(
+            (
+                item for item in torrents
+                if str(getattr(item, "hash", "")) == str(download_hash)
+            ),
+            torrents[0],
+        )
+        content_path = getattr(torrent, "content_path", None)
+        if not content_path:
+            return None, None
+        content_uri = FileURI.from_uri(str(content_path))
+        if not content_uri.path:
+            return None, None
+        storage = content_uri.storage or default_storage
+        if storage == "local" and default_storage != "local":
+            storage = default_storage
+        # content_path 指向单文件时是文件本身，指向多文件种子时是根目录；
+        # 统一返回其父目录，保留下方按 folder_name 拼接的既有路径规则。
+        content_dir = Path(content_uri.path).parent
+        return storage, content_dir
+
     def _save_site_subtitle_response(
         self,
         *,
@@ -508,12 +555,16 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             context: Context,
             download_dir: Path,
             torrent_content: Optional[Union[str, bytes]] = None,
+            download_hash: Optional[str] = None,
+            downloader: Optional[str] = None,
     ) -> None:
         """
         添加下载任务成功后，从站点下载字幕，保存到下载目录
         :param context:  上下文，包括识别信息、媒体信息、种子信息
         :param download_dir:  下载目录
         :param torrent_content: 种子内容，如果是种子文件，则为文件内容，否则为种子字符串
+        :param download_hash: 下载器任务 Hash，用于查询实际内容路径
+        :param downloader: 下载器名称
         """
         if not self.runtime_config.download_subtitle:
             return
@@ -543,23 +594,20 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             logger.error("下载目录路径为空，无法保存字幕")
             return
         download_dir = Path(fileURI.path)
+        content_storage, content_dir = self._resolve_torrent_content_dir(
+            download_hash=download_hash,
+            downloader=downloader,
+            default_storage=storage,
+        )
+        if content_dir:
+            storage = content_storage or storage
+            download_dir = content_dir
         for _ in range(30):
             found = storage_chain.get_file_item(storage, download_dir / folder_name)
             if found:
                 working_dir_item = found
                 break
             time.sleep(1)
-        # 目录仍然不存在，且有文件夹名，则创建目录
-        if not working_dir_item and folder_name:
-            parent_dir_item = storage_chain.get_folder(storage, download_dir)
-            if parent_dir_item:
-                working_dir_item = storage_chain.create_folder(
-                    parent_dir_item,
-                    folder_name
-                )
-            else:
-                logger.error(f"下载根目录不存在，无法创建字幕文件夹：{download_dir}")
-                return
         if not working_dir_item:
             logger.error(f"下载目录不存在，无法保存字幕：{download_dir / folder_name}")
             return
