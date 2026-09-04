@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from enum import Enum
+from functools import partial
 from typing import cast
 
 from fastapi import Depends, HTTPException, status
@@ -30,10 +32,13 @@ from app.application.classification.contract import (
     ClassificationPolicyConflictError,
     ClassificationPolicyStateCorruptError,
 )
+from app.application.classification.execution import ClassificationExecutionPort
 from app.application.classification.runtime import ClassificationRuntime
 from app.application.history import DownloadHistoryQueryPort
+from app.chain.media import MediaChain
 from app.schemas.category import (
     ClassificationEvaluation,
+    ClassificationFacts,
     ClassificationFieldCatalog,
     ClassificationImpactAnalysis,
     ClassificationImpactRequest,
@@ -48,6 +53,7 @@ from app.schemas.category import (
     ClassificationValidationResult,
 )
 from app.schemas.response import Response
+from app.schemas.types import MediaSource, MediaType
 from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
@@ -77,8 +83,59 @@ def _get_analysis_service(
                 runtime.history.download_repository(db),
             ),
             transfer_history=runtime.history.transfer_repository,
+            facts_resolver=partial(
+                _resolve_history_facts,
+                runtime.classification_execution,
+            ),
         ),
     )
+
+
+async def _resolve_history_facts(
+    execution: ClassificationExecutionPort,
+    history: object,
+) -> ClassificationFacts | None:
+    """按历史记录中的来源和编号重新读取完整媒体信息。"""
+    media_source = _enum_text(getattr(history, "media_source", None))
+    media_id = str(getattr(history, "media_id", None) or "").strip()
+    media_type = _history_media_type(getattr(history, "type", None))
+    if not media_source or not media_id or media_type is None:
+        return None
+    try:
+        source = MediaSource(media_source)
+        media = await MediaChain().async_recognize_media(
+            media_source=source,
+            media_id=media_id,
+            mtype=media_type,
+            music_type=str(getattr(history, "music_type", None) or "").strip() or None,
+        )
+        if media is None:
+            return None
+        return await execution.async_build_facts(media)
+    except (TypeError, ValueError):
+        return None
+
+
+def _history_media_type(value: object) -> MediaType | None:
+    """兼容历史记录中的中文和英文媒体类型。"""
+    normalized = _enum_text(value).casefold()
+    aliases = {
+        "电影": MediaType.MOVIE,
+        "movie": MediaType.MOVIE,
+        "电视剧": MediaType.TV,
+        "tv": MediaType.TV,
+        "电视": MediaType.TV,
+        "音乐": MediaType.MUSIC,
+        "music": MediaType.MUSIC,
+    }
+    return aliases.get(normalized)
+
+
+def _enum_text(value: object) -> str:
+    """把枚举或普通值转换为去除首尾空白的文本。"""
+    if isinstance(value, Enum):
+        value = value.value
+    return str(value or "").strip()
 
 
 def _require_active_policy(runtime: ClassificationRuntime) -> ClassificationPolicy:
@@ -217,7 +274,7 @@ async def preview_policy(
     _: object = Depends(get_current_active_user_async),
     runtime: ClassificationRuntime = Depends(get_classification_runtime),
 ) -> ClassificationEvaluation | JSONResponse:
-    """对显式标准事实执行活动策略或未发布草稿并返回完整 trace。"""
+    """对选择的媒体信息或兼容事实执行策略，并返回完整匹配说明。"""
     if request.policy is None:
         _require_active_policy(runtime)
     try:
@@ -237,7 +294,7 @@ async def analyze_impact(
     _: object = Depends(get_current_active_superuser_async),
     service: ClassificationAnalysisService = Depends(_get_analysis_service),
 ) -> ClassificationImpactAnalysis | JSONResponse:
-    """比较活动策略与草稿；样本有限且不触发联网识别或任何写入。"""
+    """读取近期历史对应的完整媒体详情后比较策略，不修改媒体或历史数据。"""
     try:
         return await service.impact(
             request.policy,

@@ -3,6 +3,8 @@ from typing import Dict, Literal, Optional, TypeAlias, Union
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 
+from app.schemas.common import JsonData
+
 
 class CategoryRule(BaseModel):
     """
@@ -523,8 +525,32 @@ class ClassificationFactsPreviewInput(_ClassificationModel):
     facts: ClassificationFacts = Field(description="本次预览使用的标准化分类事实")
 
 
-ClassificationPreviewInput: TypeAlias = ClassificationFactsPreviewInput
-"""首版预览输入联合；C1 将在不破坏 facts 形状的前提下增加身份和历史输入。"""
+class ClassificationMediaPreviewInput(_ClassificationModel):
+    """从媒体搜索结果选择的完整媒体信息，用于直接预览分类结果。"""
+
+    kind: Literal["media"] = Field(default="media", description="预览输入类型")
+    media: dict[str, JsonData] = Field(description="从媒体搜索结果选择的媒体信息")
+
+    @model_validator(mode="after")
+    def validate_media_identity(self) -> "ClassificationMediaPreviewInput":
+        """确保搜索结果包含分类所需的来源、编号和媒体类型。"""
+        source = str(self.media.get("media_source") or "").strip()
+        media_id = str(self.media.get("media_id") or "").strip()
+        media_type = str(self.media.get("type") or "").strip()
+        if not source:
+            raise ValueError("选择的媒体缺少数据来源")
+        if not media_id:
+            raise ValueError("选择的媒体缺少媒体编号")
+        if media_type not in {"电影", "电视剧", "音乐"}:
+            raise ValueError("选择的媒体类型不受分类规则支持")
+        return self
+
+
+ClassificationPreviewInput: TypeAlias = Union[
+    ClassificationFactsPreviewInput,
+    ClassificationMediaPreviewInput,
+]
+"""预览输入联合；前端通常提交搜索结果，旧调用仍可提交标准事实。"""
 
 
 class ClassificationPreviewRequest(_ClassificationModel):
@@ -603,7 +629,11 @@ class ClassificationImpactAnalysis(_ClassificationModel):
     candidate_revision: int = Field(ge=2, description="候选策略预计发布 revision")
     requested_limit: int = Field(ge=1, le=200, description="请求的最大样本数量")
     scanned_count: int = Field(ge=0, description="为生成样本实际扫描的记录数量")
-    skipped_count: int = Field(ge=0, description="因身份缺失、类型无效或重复而跳过的记录数量")
+    skipped_count: int = Field(ge=0, description="未参与比较的记录数量")
+    unresolved_count: int = Field(
+        ge=0,
+        description="身份有效但无法重新获取完整媒体信息的记录数量",
+    )
     truncated: bool = Field(description="是否因样本或示例上限截断结果")
     sample_count: int = Field(ge=0, description="实际参与比较的唯一有效样本数量")
     changed_count: int = Field(ge=0, description="分类结果发生变化的样本数量")

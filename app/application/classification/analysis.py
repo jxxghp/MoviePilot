@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Literal, Optional, Protocol, cast
+from types import SimpleNamespace
+from typing import Any, Literal, Optional, Protocol, TypeAlias, cast
 
 from app.application.classification.catalog import (
     build_classification_field_catalog,
@@ -25,6 +26,7 @@ from app.application.history import (
     TransferHistoryQueryPort,
     TransferHistorySnapshot,
 )
+from app.domain.classification.facts import build_classification_facts
 from app.domain.classification.evaluator import ClassificationEvaluator
 from app.domain.classification.validation import (
     MAX_CATEGORY_DEPTH,
@@ -43,17 +45,28 @@ from app.schemas.category import (
     ClassificationImpactAnalysis,
     ClassificationImpactChange,
     ClassificationImpactGroup,
+    ClassificationFactValue,
     ClassificationMediaFacts,
     ClassificationMediaType,
     ClassificationMusicFacts,
     ClassificationPolicy,
     ClassificationPolicyLimits,
+    ClassificationPreviewInput,
     ClassificationPreviewRequest,
     ClassificationResult,
     ClassificationValidationResult,
 )
+from app.schemas.context import MediaInfo as SchemaMediaInfo
+from app.schemas.music import MusicInfo as SchemaMusicInfo
 
 _UNCLASSIFIED_CATEGORY_ID = "__unclassified__"
+_DEFAULT_RESOLVE_CONCURRENCY = 3
+
+ClassificationImpactFactsResolver: TypeAlias = Callable[
+    [DownloadHistorySnapshot | TransferHistorySnapshot],
+    Awaitable[ClassificationFacts | None],
+]
+"""按历史记录重新读取完整媒体信息的异步端口。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +77,8 @@ class ClassificationImpactSampleBatch:
     facts: tuple[ClassificationFacts, ...]
     scanned_count: int
     skipped_count: int
+    unresolved_count: int = 0
+    truncated: bool = False
     warnings: tuple[str, ...] = ()
 
 
@@ -83,10 +98,16 @@ class RecentHistoryClassificationSampleProvider:
         *,
         download_history: DownloadHistoryQueryPort,
         transfer_history: TransferHistoryQueryPort,
+        facts_resolver: ClassificationImpactFactsResolver | None = None,
+        resolve_concurrency: int = _DEFAULT_RESOLVE_CONCURRENCY,
     ) -> None:
         """保存由 API 请求或宿主运行时提供的只读历史端口。"""
+        if resolve_concurrency <= 0:
+            raise ValueError("影响分析详情读取并发上限必须大于 0")
         self._download_history = download_history
         self._transfer_history = transfer_history
+        self._facts_resolver = facts_resolver
+        self._resolve_concurrency = resolve_concurrency
 
     async def load(self, limit: int) -> ClassificationImpactSampleBatch:
         """合并两类近期历史，按时间和 ID 排序后去重并投影事实。"""
@@ -106,7 +127,7 @@ class RecentHistoryClassificationSampleProvider:
             key=lambda item: (item.date or "", item.record_id, item.kind),
             reverse=True,
         )
-        facts: list[ClassificationFacts] = []
+        unique_records: list[tuple[_HistorySampleRecord, ClassificationFacts]] = []
         seen: set[tuple[str, str, str, str]] = set()
         skipped_count = 0
         for record in records:
@@ -126,18 +147,76 @@ class RecentHistoryClassificationSampleProvider:
                 skipped_count += 1
                 continue
             seen.add(identity_key)
-            facts.append(projected)
-            if len(facts) >= limit:
-                break
+            unique_records.append((record, projected))
+
+        if self._facts_resolver is None:
+            facts = [projected for _, projected in unique_records[:limit]]
+            skipped_count += max(0, len(unique_records) - len(facts))
+            return ClassificationImpactSampleBatch(
+                source="recent_history",
+                facts=tuple(facts),
+                scanned_count=len(records),
+                skipped_count=skipped_count,
+                truncated=len(unique_records) > limit,
+                warnings=(
+                    "近期历史仅稳定保存媒体身份、类型、标题和年份；其它字段缺失时相关规则不会命中",
+                ),
+            )
+
+        records_to_resolve = unique_records[:limit]
+        skipped_count += max(0, len(unique_records) - len(records_to_resolve))
+        resolved = await self._resolve_records(records_to_resolve)
+        facts = []
+        unresolved_count = 0
+        for item in resolved:
+            if item is None:
+                unresolved_count += 1
+                skipped_count += 1
+                continue
+            facts.append(item)
+
+        warnings = [
+            "系统会按近期下载和整理记录中的来源与编号重新读取完整媒体信息；无法读取的记录不会参与比较",
+        ]
+        if unresolved_count:
+            warnings.append(
+                f"{unresolved_count} 条记录无法获取完整媒体信息，未纳入比较",
+            )
+        if len(unique_records) > limit:
+            warnings.append(f"符合条件的记录超过 {limit} 条，本次最多比较 {limit} 条")
         return ClassificationImpactSampleBatch(
             source="recent_history",
             facts=tuple(facts),
             scanned_count=len(records),
             skipped_count=skipped_count,
-            warnings=(
-                "近期历史仅稳定保存媒体身份、类型、标题和年份；其它字段缺失时相关规则不会命中",
-            ),
+            unresolved_count=unresolved_count,
+            truncated=len(unique_records) > limit,
+            warnings=tuple(warnings),
         )
+
+    async def _resolve_records(
+        self,
+        records: Sequence[tuple[_HistorySampleRecord, ClassificationFacts]],
+    ) -> list[ClassificationFacts | None]:
+        """以固定并发上限重新读取详情，并拒绝身份不一致的返回值。"""
+        if self._facts_resolver is None:
+            return [projected for _, projected in records]
+        semaphore = asyncio.Semaphore(self._resolve_concurrency)
+
+        async def resolve(
+            record: _HistorySampleRecord,
+            projected: ClassificationFacts,
+        ) -> ClassificationFacts | None:
+            async with semaphore:
+                try:
+                    facts = await self._facts_resolver(record.payload)
+                except Exception:  # noqa: BLE001  单条详情失败不应阻断整批分析
+                    return None
+            if facts is None or _classification_identity_key(facts) != _classification_identity_key(projected):
+                return None
+            return facts
+
+        return list(await asyncio.gather(*(resolve(record, projected) for record, projected in records)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,13 +271,13 @@ class ClassificationAnalysisService:
         return self._configuration.validate(policy)
 
     def preview(self, request: ClassificationPreviewRequest) -> ClassificationEvaluation:
-        """对显式事实执行活动策略或合法草稿，并返回完整命中轨迹。"""
+        """对搜索结果或兼容事实执行活动策略或合法草稿，并返回完整命中轨迹。"""
         policy = request.policy or self._configuration.active()
         if request.policy is not None:
             self._require_valid(policy)
         return ClassificationEvaluator.evaluate(
             policy,
-            request.input.facts,
+            _preview_facts(request.input),
             trace=True,
         )
 
@@ -258,6 +337,8 @@ class ClassificationAnalysisService:
                 facts=selected,
                 scanned_count=len(samples),
                 skipped_count=0,
+                unresolved_count=0,
+                truncated=len(samples) > sample_limit,
                 warnings=warnings,
             )
         if self._sample_provider is None:
@@ -266,6 +347,8 @@ class ClassificationAnalysisService:
                 facts=(),
                 scanned_count=0,
                 skipped_count=0,
+                unresolved_count=0,
+                truncated=False,
                 warnings=("近期历史样本提供器未配置，本次影响分析没有可比较样本",),
             )
         return await self._sample_provider.load(sample_limit)
@@ -296,6 +379,70 @@ def _history_facts(
             year=_history_year(history.year),
         ),
         music=music,
+    )
+
+
+def _classification_identity_key(facts: ClassificationFacts) -> tuple[str, str, str, str]:
+    """返回媒体详情可用于核对的来源、编号、类型和音乐实体键。"""
+    return (
+        facts.identity.media_source,
+        facts.identity.media_id,
+        facts.media.type,
+        facts.music.entity_type if facts.music and facts.music.entity_type else "",
+    )
+
+
+def _preview_facts(input_data: ClassificationPreviewInput) -> ClassificationFacts:
+    """根据预览输入选择兼容事实或媒体搜索结果转换器。"""
+    if input_data.kind == "facts":
+        return input_data.facts
+    return build_classification_facts_from_media_payload(input_data.media)
+
+
+def build_classification_facts_from_media(media: object) -> ClassificationFacts:
+    """把搜索或识别得到的完整媒体对象转换为统一分类数据。"""
+    return build_classification_facts(
+        cast(Any, media),
+        extensions=_media_extension_facts(media),
+    )
+
+
+def build_classification_facts_from_media_payload(
+    payload: Mapping[str, Any],
+) -> ClassificationFacts:
+    """把前端选择的媒体搜索结果转换为统一分类数据，并兼容插件来源。"""
+    media_type = _enum_text(payload.get("type"))
+    model = SchemaMusicInfo if media_type == "音乐" else SchemaMediaInfo
+    try:
+        media = model.model_validate(dict(payload))
+    except ValueError:
+        # 插件来源不一定属于内置 MediaSource 枚举，使用轻量对象保留其完整字段。
+        media = SimpleNamespace(**dict(payload))
+    return build_classification_facts_from_media(media)
+
+
+def _media_extension_facts(media: object) -> dict[str, dict[str, ClassificationFactValue]]:
+    """按 extensions.<source>.<field> 命名空间整理媒体携带的扩展字段。"""
+    raw_facts = getattr(media, "classification_facts", None)
+    if not isinstance(raw_facts, Mapping):
+        return {}
+    extensions: dict[str, dict[str, ClassificationFactValue]] = {}
+    for raw_field, value in raw_facts.items():
+        parts = str(raw_field or "").split(".", 2)
+        if len(parts) != 3 or parts[0] != "extensions" or not parts[1] or not parts[2]:
+            continue
+        if not _is_classification_fact_value(value):
+            continue
+        extensions.setdefault(parts[1], {})[parts[2]] = cast(ClassificationFactValue, value)
+    return extensions
+
+
+def _is_classification_fact_value(value: object) -> bool:
+    """判断扩展字段是否为分类契约允许的 JSON 标量或标量列表。"""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return True
+    return isinstance(value, list) and all(
+        item is None or isinstance(item, (str, int, float, bool)) for item in value
     )
 
 
@@ -397,7 +544,8 @@ def _build_impact_analysis(
     sample_count = len(batch.facts)
     changed_count = len(changes)
     truncated = (
-        batch.scanned_count > sample_count + batch.skipped_count
+        batch.truncated
+        or batch.scanned_count > sample_count + batch.skipped_count
         or changed_count > example_limit
     )
     return ClassificationImpactAnalysis(
@@ -408,6 +556,7 @@ def _build_impact_analysis(
         requested_limit=requested_limit,
         scanned_count=batch.scanned_count,
         skipped_count=batch.skipped_count,
+        unresolved_count=batch.unresolved_count,
         truncated=truncated,
         sample_count=sample_count,
         changed_count=changed_count,

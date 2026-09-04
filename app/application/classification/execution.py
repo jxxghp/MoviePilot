@@ -50,6 +50,13 @@ class ClassificationRuntimePort(Protocol):
 class ClassificationExecutionPort(Protocol):
     """Chain、订阅和整理应用层共享的纯分类执行端口。"""
 
+    async def async_build_facts(
+        self,
+        media: ClassificationSubject,
+    ) -> ClassificationFacts | None:
+        """异步构造与实际分类一致的完整事实快照，不写入媒体或策略。"""
+        ...
+
     def finalize(
         self,
         media: ClassificationSubject,
@@ -117,6 +124,26 @@ class ClassificationExecutionService:
         self._runtime = runtime
         self._extension_facts_provider = extension_facts_provider
         self._enrichment = enrichment
+
+    async def async_build_facts(
+        self,
+        media: ClassificationSubject,
+    ) -> ClassificationFacts | None:
+        """构造影响分析使用的完整事实，并复用插件扩展与跨来源补充规则。"""
+        finalized, policy, facts, _ = self._prepare(
+            media,
+            extensions=None,
+            effective_override=None,
+            refresh=False,
+        )
+        if policy is None or facts is None:
+            return None
+        if self._enrichment is not None:
+            try:
+                facts = await self._enrichment.async_enrich(policy, facts, finalized)
+            except Exception:  # noqa: BLE001  详情补充失败时保留主来源事实
+                pass
+        return facts
 
     def finalize(
         self,

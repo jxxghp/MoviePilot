@@ -181,6 +181,33 @@ def test_execution_classifies_copy_and_preserves_source_identity() -> None:
     assert source.classification.policy_revision == 1
 
 
+def test_execution_builds_complete_facts_without_mutating_media() -> None:
+    """影响分析事实入口应复用插件字段构造，并保持原媒体对象不变。"""
+    source = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="native-1",
+        type=MediaType.MOVIE,
+        title="Example",
+        genres=[{"name": "动画"}],
+        origin_country=["JP"],
+    )
+    service = ClassificationExecutionService(
+        _Runtime(_policy()),
+        extension_facts_provider=lambda media: {
+            "example.source": {"region_group": "east-asia"}
+        },
+    )
+
+    facts = asyncio.run(service.async_build_facts(source))
+
+    assert facts is not None
+    assert facts.identity.media_id == "native-1"
+    assert facts.media.genre_keys == ["animation"]
+    assert facts.media.countries == ["JP"]
+    assert facts.extensions["example.source"]["region_group"] == "east-asia"
+    assert source.classification is None
+
+
 def test_execution_reclassifies_cached_result_after_policy_revision_changes() -> None:
     """缓存对象携带旧 revision 时必须按当前策略重新分类。"""
     runtime = _Runtime(_policy(revision=7))
