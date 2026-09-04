@@ -531,7 +531,7 @@ class ClassificationMediaPreviewInput(_ClassificationModel):
     kind: Literal["media"] = Field(default="media", description="预览输入类型")
     media: dict[str, JsonData] = Field(description="从媒体搜索结果选择的媒体信息")
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[misc]
     def validate_media_identity(self) -> "ClassificationMediaPreviewInput":
         """确保搜索结果包含分类所需的来源、编号和媒体类型。"""
         source = str(self.media.get("media_source") or "").strip()

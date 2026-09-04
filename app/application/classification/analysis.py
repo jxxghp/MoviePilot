@@ -199,7 +199,8 @@ class RecentHistoryClassificationSampleProvider:
         records: Sequence[tuple[_HistorySampleRecord, ClassificationFacts]],
     ) -> list[ClassificationFacts | None]:
         """以固定并发上限重新读取详情，并拒绝身份不一致的返回值。"""
-        if self._facts_resolver is None:
+        facts_resolver = self._facts_resolver
+        if facts_resolver is None:
             return [projected for _, projected in records]
         semaphore = asyncio.Semaphore(self._resolve_concurrency)
 
@@ -209,7 +210,7 @@ class RecentHistoryClassificationSampleProvider:
         ) -> ClassificationFacts | None:
             async with semaphore:
                 try:
-                    facts = await self._facts_resolver(record.payload)
+                    facts = await facts_resolver(record.payload)
                 except Exception:  # noqa: BLE001  单条详情失败不应阻断整批分析
                     return None
             if facts is None or _classification_identity_key(facts) != _classification_identity_key(projected):
