@@ -217,7 +217,7 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
         self._register_database_backup_job(config)
         outbox_job = JobSpec(
             "outbox_dispatch",
-            "恢复待投递副作用",
+            "重试未完成的后台处理",
             dispatch_pending_outbox,
             "outbox",
             recovery=JobRecoveryPolicy.DURABLE_QUEUE,
@@ -228,7 +228,7 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             self.start,
             "interval",
             id="outbox_dispatch",
-            name="恢复待投递副作用",
+            name="重试未完成的后台处理",
             seconds=30,
             next_run_time=datetime.now(pytz.timezone(config.timezone)),
             kwargs={"job_id": "outbox_dispatch"},
