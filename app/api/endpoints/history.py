@@ -44,7 +44,6 @@ from app.application.transfer.execution import (
     TransferExecutionRepository,
     TransferRetryRequestResult,
 )
-from app.runtime.errors import public_error_message
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.runtime.progress import AsyncProgressHelper
@@ -90,6 +89,8 @@ def _format_retry_rejections(
     rejections: list[tuple[int, TransferRetryRequestResult]],
 ) -> str:
     """把批量整理重试拒绝原因格式化为前端可直接理解的提示。"""
+    from app.runtime.errors import public_error_message
+
     return "；".join(
         f"第 {history_id} 条：{public_error_message(result.message, context='transfer')}"
         for history_id, result in rejections
@@ -461,6 +462,8 @@ async def ai_redo_transfer_history(
     """
     手动触发单条历史记录的 AI 重新整理，并返回进度键。
     """
+    from app.runtime.errors import public_error_message
+
     runtime_config = resolve_api_runtime_config(runtime_config)
     history = await query.get_transfer(history_id)
     if not history:

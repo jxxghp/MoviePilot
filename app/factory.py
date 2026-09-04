@@ -23,7 +23,6 @@ from app.application.plugin.routes import configure_plugin_routes
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.security.token import create_access_token, decode_access_token
 from app.runtime.correlation import get_correlation_id
-from app.runtime.errors import public_error_message
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import configure_correlation_id_provider, logger
 from app.runtime.loop import main_loop_registry
@@ -203,6 +202,8 @@ async def localized_http_exception_handler(
     :param exc: FastAPI HTTP 异常
     :return: 统一 JSON 错误响应
     """
+    from app.runtime.errors import public_error_message
+
     message = _localize_exception_message(
         request,
         public_error_message(_get_http_exception_message(exc.detail)),

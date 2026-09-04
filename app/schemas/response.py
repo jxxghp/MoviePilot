@@ -2,7 +2,6 @@ from typing import Any, Generic, Optional, TypeVar
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.runtime.errors import public_error_message as _public_error_message
 from app.runtime.localization import LocaleHelper
 
 DataT = TypeVar("DataT")
@@ -32,7 +31,9 @@ class Response(BaseModel, Generic[DataT]):
         raw_message = str(value)
         if not raw_message.strip():
             return ""
-        message = _public_error_message(raw_message)
+        from app.runtime.errors import public_error_message
+
+        message = public_error_message(raw_message)
         if not message:
             return ""
         return LocaleHelper.translate_text(

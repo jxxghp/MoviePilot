@@ -17,7 +17,6 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MusicInfo
-from app.runtime.errors import public_error_message
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.runtime.tasks import get_task_registry
@@ -155,6 +154,8 @@ class FailedRetryMixin(_TransferOwnerBase):
         """
         立即重新整理一条失败的整理记录。
         """
+        from app.runtime.errors import public_error_message
+
         self.post_message(
             Message(
                 channel=channel,
@@ -206,6 +207,7 @@ class FailedRetryMixin(_TransferOwnerBase):
         """
         由智能助手接管一条失败的整理记录。
         """
+        from app.runtime.errors import public_error_message
 
         history = self.transfer_history_repository.get(history_id)
         if not history:

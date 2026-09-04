@@ -18,7 +18,6 @@ from app.chain.subscribe.facade import SubscribeChain
 from app.chain.tvdb import TvdbChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
-from app.runtime.errors import public_error_message
 from app.runtime.version import get_app_version
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.servarr import RadarrMovie, SonarrSeries
@@ -37,6 +36,8 @@ arr_router = APIRouter(tags=["servarr"], responses=ERROR_RESPONSES)
 
 def _subscribe_error_message(error: Optional[object]) -> str:
     """将 Servarr 订阅失败转换为调用方能理解的提示。"""
+    from app.runtime.errors import public_error_message
+
     return public_error_message(
         error or "订阅操作失败",
         context="subscription",

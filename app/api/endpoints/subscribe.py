@@ -61,7 +61,6 @@ from app.application.subscription.status import SubscriptionExecutionStatusServi
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
-from app.runtime.errors import public_error_message
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
@@ -85,6 +84,13 @@ from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.schemas.workflow import Subscribe as _SchemaSubscribe
 
 router = ResponseAPIRouter()
+
+
+def _public_subscription_message(message: Optional[object]) -> str:
+    """延迟加载订阅错误转换器，避免启动阶段增加宿主模块。"""
+    from app.runtime.errors import public_error_message
+
+    return public_error_message(message, context="subscription")
 
 
 async def _attach_execution_status(
@@ -292,7 +298,7 @@ async def create_subscribe(
     return _SchemaResponse(
         success=bool(sid),
         message=(
-            public_error_message(message, context="subscription")
+            _public_subscription_message(message)
             if message
             else ""
         ),
@@ -806,7 +812,7 @@ async def subscribe_share(
     return _SchemaResponse(
         success=state,
         message=(
-            public_error_message(errmsg, context="subscription")
+            _public_subscription_message(errmsg)
             if errmsg
             else ""
         ),
@@ -824,7 +830,7 @@ async def subscribe_share_delete(
     return _SchemaResponse(
         success=state,
         message=(
-            public_error_message(errmsg, context="subscription")
+            _public_subscription_message(errmsg)
             if errmsg
             else ""
         ),

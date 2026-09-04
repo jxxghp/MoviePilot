@@ -26,7 +26,6 @@ from app.application.transfer.execution import (
 )
 from app.chain.media import MediaChain
 from app.chain.transfer.facade import TransferChain
-from app.runtime.errors import public_error_message
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.common import NameData as _SchemaNameData
@@ -55,6 +54,8 @@ def _public_transfer_message(message: Optional[object]) -> Optional[str]:
     """把整理链返回的错误转换为前端可直接展示的文案。"""
     if message is None or not str(message).strip():
         return None
+    from app.runtime.errors import public_error_message
+
     return public_error_message(message, context="transfer")
 
 

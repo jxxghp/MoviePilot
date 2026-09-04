@@ -8,7 +8,6 @@ from app.chain.media import MediaChain
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
-from app.runtime.errors import public_error_message
 from app.runtime.log import logger
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
@@ -36,6 +35,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
         """
         远程重新整理，参数为历史记录 ID，或媒体来源、原生 ID 与类型。
         """
+        from app.runtime.errors import public_error_message
 
         def args_error():
             self.post_message(
