@@ -343,6 +343,17 @@ def test_metainfo_routes_audio_filename_to_music():
     assert meta.apply_words == []
 
 
+def test_metainfo_routes_ape_filename_to_music():
+    """Monkey's Audio 文件应使用默认音频扩展配置进入音乐识别分支。"""
+    meta = MetaInfo("陈奕迅 - 天下太平.ape")
+
+    assert isinstance(meta, MetaMusic)
+    assert meta.type == MediaType.MUSIC
+    assert meta.title == "天下太平"
+    assert meta.artists == ["陈奕迅"]
+    assert meta.audio_format == "APE"
+
+
 def test_metainfo_routes_audio_path_to_music_without_parent_merge():
     """音频路径应直接构造音乐元数据，不参与影视季集合并，并拆分歌手与曲名。"""
     meta = MetaInfoPath(Path("/music/叶惠美/周杰伦 - 晴天.flac"))

@@ -402,6 +402,7 @@ class ConfigModel(BaseModel):
             ".alac",
             ".adif",
             ".adts",
+            ".ape",
             ".flac",
             ".midi",
             ".opus",
