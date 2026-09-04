@@ -168,11 +168,7 @@ class FailedRetryMixin(_TransferOwnerBase):
 
         state, errmsg = self.redo_transfer_history(history_id)
         if state:
-            public_message = (
-                public_error_message(errmsg, context="transfer")
-                if errmsg
-                else ""
-            )
+            public_message = public_error_message(errmsg, context="transfer") if errmsg else ""
             self.post_message(
                 Message(
                     channel=channel,
@@ -242,11 +238,7 @@ class FailedRetryMixin(_TransferOwnerBase):
                     source=source,
                     userid=userid,
                     username=username,
-                    title=(
-                        public_message
-                        if accepted
-                        else "重新整理失败"
-                    ),
+                    title=public_message if accepted else "重新整理失败",
                     text=None if accepted else public_message,
                     link=self.runtime_config.history_url,
                     save_history=False,

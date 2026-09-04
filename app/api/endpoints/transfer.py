@@ -77,6 +77,43 @@ def _public_transfer_result(data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _build_failure_preview_item(file_item: FileItem, message: Optional[str]) -> dict:
+    """构造手动整理预览失败项。"""
+    return {
+        "source": file_item.path if file_item else None,
+        "target": None,
+        "target_dir": None,
+        "success": False,
+        "message": _public_transfer_message(message),
+        "type": None,
+        "title": None,
+        "season": None,
+        "episode": None,
+        "episode_end": None,
+        "part": None,
+        "org_string": None,
+        "apply_words": [],
+        "resource_team": None,
+        "customization": None,
+    }
+
+
+def _merge_transfer_messages(messages: List[str]) -> str:
+    """合并手动整理批量预览提示信息，并统一转换错误文案。"""
+    valid_messages = [
+        public_message
+        for msg in messages
+        if msg
+        for public_message in [_public_transfer_message(msg)]
+        if public_message
+    ]
+    if not valid_messages:
+        return ""
+    return "、".join(valid_messages[:2]) + (
+        f"，等{len(valid_messages)}条消息" if len(valid_messages) > 2 else ""
+    )
+
+
 def _manual_review_actor(current_user: object) -> str:
     """按名称、用户名和用户 ID 的稳定顺序提取人工复核操作者。"""
     for attribute in ("name", "username", "id"):
@@ -637,45 +674,6 @@ def _execute_manual_transfer(
         )
     explicit_selected_files = bool(transer_item.fileitems)
 
-    def _build_failure_preview_item(file_item: FileItem, message: str | None) -> dict:
-        """
-        构造手动整理预览失败项。
-        """
-        return {
-            "source": file_item.path if file_item else None,
-            "target": None,
-            "target_dir": None,
-            "success": False,
-            "message": _public_transfer_message(message),
-            "type": None,
-            "title": None,
-            "season": None,
-            "episode": None,
-            "episode_end": None,
-            "part": None,
-            "org_string": None,
-            "apply_words": [],
-            "resource_team": None,
-            "customization": None,
-        }
-
-    def _merge_messages(messages: List[str]) -> str:
-        """
-        合并手动整理批量预览提示信息，并统一转换错误文案。
-        """
-        valid_messages = [
-            public_message
-            for msg in messages
-            if msg
-            for public_message in [_public_transfer_message(msg)]
-            if public_message
-        ]
-        if not valid_messages:
-            return ""
-        return "、".join(valid_messages[:2]) + (
-            f"，等{len(valid_messages)}条消息" if len(valid_messages) > 2 else ""
-        )
-
     # 前端显式传入文件列表时，按选中的文件逐个处理，避免将目录整体展开。
     if explicit_selected_files:
         preview_items: List[dict] = []
@@ -748,7 +746,7 @@ def _execute_manual_transfer(
                     if isinstance(preview_item, dict)
                     else preview_item
                 )
-            merged_message = _merge_messages(error_messages)
+            merged_message = _merge_transfer_messages(error_messages)
             preview_data = {
                 "summary": {
                     "total": len(merged_preview_items),
@@ -771,7 +769,7 @@ def _execute_manual_transfer(
         if not all_success:
             return _SchemaResponse(
                 success=False,
-                message=_merge_messages(error_messages),
+                message=_merge_transfer_messages(error_messages),
             )
         return _SchemaResponse(success=True)
 
