@@ -8345,7 +8345,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List installed plugins and their runtime status. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count-only request, use the smallest valid page and read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List installed plugins and their runtime status. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "plugin.installed",
@@ -8377,12 +8377,18 @@
               "type": "boolean"
             },
             "max_results": {
-              "default": 50,
-              "description": "Maximum number of plugin catalog results to return, from 1 to 200.",
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Max Results",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional upper bound on plugin catalog results, from 1 to 200; omit it for the complete catalog.",
+              "title": "Max Results"
             },
             "page": {
               "anyOf": [
@@ -8429,14 +8435,14 @@
       "type": "object",
       "x-moviepilot-collection": {
         "body_shape": "list",
-        "default_pagination": "endpoint-defined",
+        "default_pagination": "unpaginated",
         "result_count_field": "collection.result_count",
         "total_count_field": "collection.total_count"
       }
     },
     {
       "additionalProperties": false,
-      "description": "List plugins available from configured marketplaces. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count-only request, use the smallest valid page and read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List plugins available from configured marketplaces. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "plugin.market",
@@ -8468,12 +8474,18 @@
               "type": "boolean"
             },
             "max_results": {
-              "default": 50,
-              "description": "Maximum number of plugin catalog results to return, from 1 to 200.",
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Max Results",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional upper bound on plugin catalog results, from 1 to 200; omit it for the complete catalog.",
+              "title": "Max Results"
             },
             "page": {
               "anyOf": [
@@ -8520,7 +8532,7 @@
       "type": "object",
       "x-moviepilot-collection": {
         "body_shape": "list",
-        "default_pagination": "endpoint-defined",
+        "default_pagination": "unpaginated",
         "result_count_field": "collection.result_count",
         "total_count_field": "collection.total_count"
       }

@@ -327,7 +327,7 @@ FIELD_DESCRIPTIONS = {
     "match_field": "Object field used to match one list item during an upsert or removal.",
     "match_value": "Exact value compared against match_field during a list-item update.",
     "max_chars": "Maximum number of serialized plugin-data characters to return.",
-    "max_results": "Maximum number of plugin catalog results to return, from 1 to 200.",
+    "max_results": "Optional upper bound on plugin catalog results, from 1 to 200; omit it for the complete catalog.",
     "max_rating": "Maximum rating used to filter shared or popular subscriptions.",
     "media_category": "MoviePilot library category assigned to the media.",
     "media_category_id": "Stable classification category ID; preserve it separately from the current category path snapshot.",
@@ -963,7 +963,19 @@ def _collection_response_contract(
             query_parameters.get("page"),
             query_parameters.get("count"),
         ]
-        has_existing_window = bool({"limit", "offset", "page_size", "max_results"} & query_parameters.keys())
+        native_window_names = {"limit", "offset", "page_size", "max_results"}
+        has_native_window_default = False
+        for name in native_window_names:
+            parameter = query_parameters.get(name)
+            if not isinstance(parameter, Mapping):
+                continue
+            if parameter.get("required", False):
+                has_native_window_default = True
+                break
+            schema = parameter.get("schema")
+            if isinstance(schema, Mapping) and schema.get("default") is not None:
+                has_native_window_default = True
+                break
         defaults_to_unpaginated = (
             all(
                 isinstance(parameter, Mapping)
@@ -972,7 +984,7 @@ def _collection_response_contract(
                 and "default" not in parameter["schema"]
                 for parameter in compatibility_parameters
             )
-            and not has_existing_window
+            and not has_native_window_default
         )
         return {
             "body_shape": "list",

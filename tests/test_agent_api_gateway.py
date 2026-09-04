@@ -172,16 +172,18 @@ def test_mcp_collection_contract_distinguishes_exact_and_unavailable_totals() ->
         "collection.total_count"
     )
 
-    for operation_id in (
-        "subscription.history",
-        "download.history.list",
-        "plugin.installed",
-        "plugin.market",
-    ):
+    for operation_id in ("subscription.history", "download.history.list"):
         local_page = branches[operation_id]["x-moviepilot-collection"]
         assert local_page["total_count_field"] == "collection.total_count"
         assert local_page["default_pagination"] == "endpoint-defined"
         assert "defaults remain in effect" in branches[operation_id]["description"]
+
+    for operation_id in ("plugin.installed", "plugin.market"):
+        local_page = branches[operation_id]["x-moviepilot-collection"]
+        assert local_page["total_count_field"] == "collection.total_count"
+        assert local_page["default_pagination"] == "unpaginated"
+        assert "omit both page and count" in branches[operation_id]["description"]
+        assert "default" not in branches[operation_id]["properties"]["query"]["properties"]["max_results"]
 
     media_search = branches["media.search"]["x-moviepilot-collection"]
     assert media_search["result_count_field"] == "collection.result_count"
@@ -221,7 +223,9 @@ def test_plugin_operations_expose_discovery_before_precise_writes() -> None:
     installed_query = branches["plugin.installed"]["properties"]["query"]
     assert installed_query["properties"]["state"]["const"] == "installed"
     assert "query" in installed_query["properties"]
-    assert installed_query["properties"]["max_results"]["maximum"] == 200
+    max_results = installed_query["properties"]["max_results"]
+    integer_variant = next(item for item in max_results["anyOf"] if item.get("type") == "integer")
+    assert integer_variant["maximum"] == 200
 
     config_get_path = API_OPERATION_ROUTES["plugin.config.get"].path
     assert config_get_path == "/api/v1/plugin/form/{plugin_id}"

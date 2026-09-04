@@ -96,7 +96,7 @@ operation ID、权限、副作用、确认、恢复、结果敏感性及精确�
 查询结果的兼容分页合同如下：
 
 - 原先返回完整列表、没有分页参数的接口会在端点签名、OpenAPI、Skill 和 MCP `oneOf` 中显式声明可选 `page` / `count`；`page` 必须不小于 1，`count` 范围为 1 到 200。两者都省略时仍返回原来的完整列表，不启用分页；显式传入任一参数时才分页，缺失的 `page` 按 1、缺失的 `count` 按 50 处理。FastAPI 的 `response` 注入对象不是业务输入，不会出现在 REST、Skill 或 MCP 参数中。
-- 数据库列表在查询层先应用授权范围和业务筛选，再执行稳定排序、`LIMIT/OFFSET` 和同条件精确 `COUNT`；不得先全表加载、响应后切片。纯内存、配置、缓存、文件系统或运行时列表可以在序列化边界切片。已有 `max_results` 等原生限量参数的接口继续保留其旧默认值，显式 `page/count` 的优先级由端点合同说明。
+- 数据库列表在查询层先应用授权范围和业务筛选，再执行稳定排序、`LIMIT/OFFSET` 和同条件精确 `COUNT`；不得先全表加载、响应后切片。纯内存、配置、缓存、文件系统或运行时列表可以在序列化边界切片。已有 `max_results` 等原生限量参数的接口继续支持显式限量；原生限量参数默认值为 `None` 时，省略所有分页和限量参数仍返回完整列表，显式 `page/count` 的优先级由端点合同说明。
 - REST 响应的 `data` 保持原列表结构，不改成 `{items,total}`。`X-Result-Count` 报告本次实际返回数量；仅当 MoviePilot 已经取得完整筛选结果时，才增加精确的 `X-Total-Count`。原有结构化分页接口继续在既有 `data.total` 与 `data.items` / `data.list` 中返回总数。
 - `moviepilot_api` 把这些响应头投影为响应中的附加 `collection` 对象：`result_count` 为本次返回数量，`total_count` 仅在精确可知时出现，`page` / `count` 在可用时出现。`collection` 是附加元数据，不替换或改写 `data`。
 - Agent 仅查询数量或摘要时，应对支持精确总数的列表发送最小窗口；兼容分页接口使用 `page=1,count=1`，然后直接读取 `collection.total_count`。即使列表内容触发 64KB 工具预览截断，网关也会把 `collection` 放在 `data` 前面，确保总数仍可见；不得因为条目被截断就回退到数据库统计。

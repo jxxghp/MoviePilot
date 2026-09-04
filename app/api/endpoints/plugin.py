@@ -183,11 +183,11 @@ async def all_plugins(
     state: Optional[str] = "all",
     force: bool = False,
     query: Optional[str] = None,
-    max_results: Annotated[int, Query(ge=1, le=200)] = 50,
+    max_results: Annotated[Optional[int], Query(ge=1, le=200)] = None,
     page: CompatiblePageParam = None, count: CompatibleCountParam = None,
     response: Response = None,
 ) -> List[_SchemaPlugin]:
-    """查询插件清单，显式分页优先于兼容的 ``max_results`` 限量。"""
+    """查询插件清单；未指定分页或限量时返回完整清单。"""
     plugins = await get_plugin_catalog_query().query(state=state or "all", force=force)
     if query:
         plugins = [item["plugin"] for item in search_plugin_candidates(query, plugins)]
@@ -197,6 +197,8 @@ async def all_plugins(
         page, count = resolve_compatible_pagination(page, count)
         assert page is not None and count is not None
         return plugins[(page - 1) * count : page * count]
+    if max_results is None:
+        return plugins
     return plugins[:max_results]
 
 
