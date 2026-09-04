@@ -18,10 +18,12 @@ from app.adapters.web.security.access import (
     verify_token,
 )
 from app.api.response import ResponseAPIRoute
+from app.application.outbox import PostCommitEffectError
 from app.application.plugin.routes import configure_plugin_routes
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.security.token import create_access_token, decode_access_token
 from app.runtime.correlation import get_correlation_id
+from app.runtime.errors import public_error_message
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import configure_correlation_id_provider, logger
 from app.runtime.loop import main_loop_registry
@@ -195,7 +197,7 @@ async def localized_http_exception_handler(
         exc: HTTPException,
 ) -> JSONResponse:
     """
-    将 HTTPException 响应统一封装为 Response 结构并保留原始错误消息。
+    将 HTTPException 响应统一封装为 Response 结构并隐藏内部实现细节。
 
     :param request: 当前 HTTP 请求
     :param exc: FastAPI HTTP 异常
@@ -203,7 +205,7 @@ async def localized_http_exception_handler(
     """
     message = _localize_exception_message(
         request,
-        _get_http_exception_message(exc.detail),
+        public_error_message(_get_http_exception_message(exc.detail)),
     )
     native_ai_protocol = _get_native_ai_protocol(request)
     if native_ai_protocol:
@@ -310,11 +312,16 @@ async def localized_unhandled_exception_handler(
             code=-32603,
             message="Internal error",
         )
+    message = (
+        str(exc)
+        if isinstance(exc, PostCommitEffectError)
+        else "未知错误"
+    )
     return JSONResponse(
         status_code=500,
         content=ApiResponse[None](
             success=False,
-            message=_localize_exception_message(request, "未知错误"),
+            message=_localize_exception_message(request, message),
         ).model_dump(mode="json"),
     )
 

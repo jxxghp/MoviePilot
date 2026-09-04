@@ -265,7 +265,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     mediainfo,
                     normalized_source,
                     normalized_media_id,
-                    f"未识别到媒体信息，media_source：{normalized_source}，media_id：{normalized_media_id}",
+                    "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试",
                 )
         return mediainfo, normalized_source, normalized_media_id, None
 
@@ -840,9 +840,11 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         queued = self.put_to_queue(task=transfer_task)
                     except Exception as err:
                         all_success = False
-                        message = f"{file_path.name} 加入整理队列失败：{err}"
-                        err_msgs.append(message)
-                        logger.error(message)
+                        logger.error(
+                            f"{file_path.name} 加入整理队列失败：{err}",
+                            exc_info=True,
+                        )
+                        err_msgs.append(f"{file_path.name} 未能加入整理队列，请稍后重试")
                         continue
                     if queued:
                         if cleanup_intent:
@@ -981,7 +983,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         )
                         if not preview:
                             self._TransferChain__fail_transfer_task(transfer_task)
-                        state, err_msg = False, str(e)
+                        state, err_msg = False, "整理任务处理失败，请稍后重试"
                     finally:
                         durable_settled = self._TransferChain__finish_job_execution(
                             transfer_task,
@@ -990,7 +992,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         )
                     if terminal and not durable_settled:
                         state = False
-                        err_msg = "整理任务 durable 终态结算失去租约"
+                        err_msg = "整理任务结果暂未确认，后台将自动重试"
                     if not state:
                         all_success = False
                         logger.warn(f"{transfer_task.fileitem.name} {err_msg}")

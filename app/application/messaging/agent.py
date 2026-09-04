@@ -2018,7 +2018,7 @@ def _build_agent_web_agent_stream(
                 logger.error(f"Web智能助手执行失败: {str(err)}")
                 error_event = {
                     "type": "error",
-                    "message": f"智能助手执行失败: {str(err)}",
+                    "message": "智能助手执行失败，请稍后重试",
                 }
                 apply_web_agent_display_event(error_event, assistant_display_message)
                 event_publisher.publish(error_event)

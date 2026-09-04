@@ -151,13 +151,13 @@ async def test_agent_mcp_server(
             data=result.model_dump(),
         )
     except Exception as err:
-        logger.warning(f"测试 Agent MCP 服务器失败: {err}")
+        logger.warning(f"测试 Agent MCP 服务器失败: {err}", exc_info=True)
         return _SchemaResponse(
             success=False,
-            message=f"测试MCP服务器失败: {str(err)}",
+            message="MCP 服务测试失败，请检查服务配置后重试",
             data={
                 "success": False,
-                "message": str(err),
+                "message": "MCP 服务测试失败，请检查服务配置后重试",
                 "tools": [],
                 "tool_count": 0,
             },

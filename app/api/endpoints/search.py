@@ -327,7 +327,11 @@ async def _stream_search_events(request: Request, event_source: AsyncIterator[di
         termination_reason = "error"
         logger.error(f"渐进式搜索出错：{err}", exc_info=True)
         payload = _sse_event(
-            {"type": "error", "success": False, "message": str(err)},
+            {
+                "type": "error",
+                "success": False,
+                "message": "搜索失败，请稍后重试",
+            },
             locale=locale,
         )
         event_count += 1

@@ -319,7 +319,7 @@ UNSUPPORTED_IMAGE_INPUT_MESSAGE = (
     "当前模型不支持图片输入，请更换支持图片输入的模型，或在系统设置中关闭图片输入支持后重试。"
 )
 AGENT_EXECUTION_ERROR_PREFIX = "智能助手执行失败"
-AGENT_EXECUTION_ERROR_MESSAGE = "智能助手执行失败，请稍后重试。"
+AGENT_EXECUTION_ERROR_MESSAGE = "智能助手执行失败，请稍后重试"
 AGENT_DISPLAY_HISTORY_SKIP_CHANNELS = {NotificationChannel.WebAgent.value}
 AGENT_CHAT_TITLE_PROMPT = (
     "你是 MoviePilot 智能助手的内部会话标题生成器。你的唯一任务是根据提供的用户消息生成一个简洁中文标题。"
@@ -1441,7 +1441,7 @@ class MoviePilotAgent:
         message = cls._primary_exception_message(error)
         if not message:
             return AGENT_EXECUTION_ERROR_MESSAGE
-        return f"{AGENT_EXECUTION_ERROR_PREFIX}: {message}"
+        return AGENT_EXECUTION_ERROR_MESSAGE
 
     async def _dispatch_execution_notice(self, message: str) -> None:
         """
@@ -2105,8 +2105,8 @@ class MoviePilotAgent:
             return result
 
         except Exception as e:
-            error_message = f"处理消息时发生错误: {str(e)}"
-            logger.error(error_message)
+            error_message = AGENT_EXECUTION_ERROR_MESSAGE
+            logger.error(f"处理消息时发生错误: {e}", exc_info=True)
             if not user_display_saved:
                 await self._save_display_history_messages([self.build_display_message(role="user", content=message)])
             if not self.should_dispatch_reply:

@@ -18,6 +18,7 @@ from app.chain.subscribe.facade import SubscribeChain
 from app.chain.tvdb import TvdbChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
+from app.runtime.errors import public_error_message
 from app.runtime.version import get_app_version
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.servarr import RadarrMovie, SonarrSeries
@@ -32,6 +33,14 @@ from app.schemas.servarr import SonarrSeries as _SchemaSonarrSeries
 from app.schemas.types import MediaSource, MediaType
 
 arr_router = APIRouter(tags=["servarr"], responses=ERROR_RESPONSES)
+
+
+def _subscribe_error_message(error: Optional[object]) -> str:
+    """将 Servarr 订阅失败转换为调用方能理解的提示。"""
+    return public_error_message(
+        error or "订阅操作失败",
+        context="subscription",
+    )
 
 
 def _subscribe_tmdb_id(subscribe: ServarrSubscription) -> int | None:
@@ -448,7 +457,10 @@ async def arr_add_movie(
     if sid:
         return _SchemaServarrIdResponse(id=sid)
     else:
-        raise HTTPException(status_code=500, detail=f"添加订阅失败：{message}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"添加订阅失败：{_subscribe_error_message(message)}",
+        )
 
 
 @arr_router.delete(
@@ -860,12 +872,15 @@ async def arr_add_series(
     except SubscriptionBatchWriteError as error:
         raise HTTPException(
             status_code=500,
-            detail=f"添加订阅失败：{error}",
+            detail=f"添加订阅失败：{_subscribe_error_message(error)}",
         ) from error
 
     if sid:
         return _SchemaServarrIdResponse(id=sid)
-    raise HTTPException(status_code=500, detail=f"添加订阅失败：{message}")
+    raise HTTPException(
+        status_code=500,
+        detail=f"添加订阅失败：{_subscribe_error_message(message)}",
+    )
 
 
 @arr_router.put(

@@ -294,6 +294,38 @@
     "媒体信息识别失败": "Media information recognition failed",
     "媒体信息中没有季集信息": "Media information does not contain season and episode details",
     "文件整理模块运行失败": "File organization module failed to run",
+    "已提交重新整理，后台将自动处理": "Reorganization submitted; it will be processed in the background",
+    "整理任务已在等待重新处理": "The organization task is already waiting to be retried",
+    "这条整理任务需要先完成人工确认，再重试": "This organization task needs manual confirmation before it can be retried",
+    "这条整理任务当前无法重试，请刷新后再试": "This organization task cannot be retried right now. Refresh and try again",
+    "整理任务已提交重试，请勿重复操作": "The organization task has already been queued for retry. Do not submit it again",
+    "整理任务状态已变化，请刷新后重试": "The organization task changed state. Refresh and try again",
+    "整理任务已被其他操作放弃": "The organization task was discarded by another operation",
+    "没有找到对应的整理任务，请刷新后重试": "The organization task was not found. Refresh and try again",
+    "这条整理任务当前无法放弃，请刷新后重试": "This organization task cannot be discarded right now. Refresh and try again",
+    "整理任务正在处理中，暂时无法放弃，请稍后重试": "The organization task is still running and cannot be discarded yet. Try again later",
+    "已放弃这条失败的整理任务": "The failed organization task was discarded",
+    "整理服务没有返回有效结果，请稍后重试": "The organization service did not return a valid result. Try again later",
+    "整理服务暂时无法生成有效计划，请稍后重试": "The organization service cannot create a valid plan right now. Try again later",
+    "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试": "Unable to recognize the media. Check the media source and media ID, then try again",
+    "整理结果确认失败，后台将自动重试": "The organization result could not be confirmed. It will be retried in the background",
+    "整理任务处理失败，请稍后重试": "The organization task failed. Try again later",
+    "整理操作多次失败，请稍后重试": "The organization operation failed repeatedly. Try again later",
+    "整理任务结果暂未确认，后台将自动重试": "The organization result is not confirmed yet and will be retried in the background",
+    "提交后的相关处理未完成，系统将自动重试": "Some follow-up processing is incomplete and will be retried automatically",
+    "后台任务暂未完成，系统会自动重试": "The background task is not finished yet and will be retried automatically",
+    "整理失败，请刷新后重试": "Organization failed. Refresh and try again",
+    "整理任务暂时无法重试，请稍后重试": "The organization task cannot be retried right now. Try again later",
+    "订阅分类设置无效，请重新选择分类后重试": "The subscription classification is invalid. Select it again and try again",
+    "订阅操作失败，请刷新后重试": "The subscription operation failed. Refresh and try again",
+    "智能助手执行失败，请稍后重试": "Assistant execution failed. Try again later",
+    "消息处理失败，请稍后重试": "Message processing failed. Try again later",
+    "消息验证失败，请稍后重试": "Message verification failed. Try again later",
+    "附件读取失败，请稍后重试": "Attachment could not be read. Try again later",
+    "搜索失败，请稍后重试": "Search failed. Try again later",
+    "MCP 服务测试失败，请检查服务配置后重试": "The MCP service test failed. Check the service configuration and try again",
+    "没有可发送的浏览器通知": "No browser notification subscriptions are available",
+    "消息发送失败，请检查浏览器通知权限后重试": "Message delivery failed. Check browser notification permissions and try again",
     "缺少目录参数": "Directory parameter is missing",
     "目录不存在": "Directory does not exist",
     "没有可用于识别的样本文件": "No sample files are available for recognition",
@@ -461,6 +493,34 @@
     "订阅日历预缓存完成": "Subscription calendar precache completed"
   },
   "message_patterns": [
+    {
+      "source": "{name} 未能加入整理队列，请稍后重试",
+      "target": "Could not add {name} to the organization queue. Try again later"
+    },
+    {
+      "source": "已提交 {count} 个整理任务，后台将自动处理",
+      "target": "Submitted {count} organization tasks; they will be processed in the background"
+    },
+    {
+      "source": "以下整理记录未能提交重试：{reason}",
+      "target": "The following organization records could not be queued for retry: {reason}"
+    },
+    {
+      "source": "第 {history_id} 条：{reason}",
+      "target": "Record {history_id}: {reason}"
+    },
+    {
+      "source": "已提交 {count} 条旧历史给智能助手处理",
+      "target": "Submitted {count} legacy records to the Assistant"
+    },
+    {
+      "source": "消息已发送到 {success_count} 个设备",
+      "target": "Message sent to {success_count} devices"
+    },
+    {
+      "source": "消息已发送到 {success_count} 个设备，{failure_count} 个设备发送失败",
+      "target": "Message sent to {success_count} devices; delivery failed for {failure_count} devices"
+    },
     {
       "source": "订阅分类无效：{reason}",
       "target": "Invalid subscription classification: {reason}"

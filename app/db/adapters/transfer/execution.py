@@ -1152,13 +1152,13 @@ class TransactionalTransferExecutionRepository:
                         accepted=True,
                         state=state,
                         retry_generation=pending.retry_generation,
-                        message="整理任务已在等待重试",
+                        message="整理任务已在等待重新处理",
                     )
                 if state is not TransferExecutionState.FAILED:
                     message = (
-                        "人工复核任务必须先完成专门判定"
+                        "这条整理任务需要先完成人工确认，再重试"
                         if state is TransferExecutionState.MANUAL_REVIEW
-                        else "整理任务当前状态不接受用户重试"
+                        else "这条整理任务当前无法重试，请刷新后再试"
                     )
                     return TransferRetryRequestResult(
                         accepted=False,
@@ -1184,13 +1184,13 @@ class TransactionalTransferExecutionRepository:
                             accepted=True,
                             state=state,
                             retry_generation=pending.retry_generation,
-                            message="整理任务已由并发请求登记重试",
+                            message="整理任务已提交重试，请勿重复操作",
                         )
                     return TransferRetryRequestResult(
                         accepted=False,
                         state=state,
                         retry_generation=pending.retry_generation,
-                        message="整理任务状态已变化，未登记重试",
+                        message="整理任务状态已变化，请刷新后重试",
                     )
                 session.flush()
                 session.expire_all()
@@ -1201,7 +1201,7 @@ class TransactionalTransferExecutionRepository:
                     accepted=True,
                     state=TransferExecutionState.RETRY_WAIT,
                     retry_generation=pending.retry_generation,
-                    message="整理任务已登记重试",
+                    message="已提交重新整理，后台将自动处理",
                 )
                 transaction.commit()
                 return result
@@ -1229,20 +1229,20 @@ class TransactionalTransferExecutionRepository:
                         return TransferFailureDiscardResult(
                             discarded=True,
                             state=None,
-                            message="失败整理任务已由并发请求放弃",
+                            message="整理任务已被其他操作放弃",
                         )
                     return TransferFailureDiscardResult(
                         discarded=False,
                         state=None,
-                        message="未找到与失败历史匹配的整理任务，请刷新后重试",
+                        message="没有找到对应的整理任务，请刷新后重试",
                     )
 
                 state = TransferExecutionState(pending.execution_state)
                 if state is not TransferExecutionState.FAILED:
                     message = (
-                        "人工复核任务必须先完成专门判定"
+                        "这条整理任务需要先完成人工确认，再重试"
                         if state is TransferExecutionState.MANUAL_REVIEW
-                        else "整理任务当前状态不能放弃"
+                        else "这条整理任务当前无法放弃，请刷新后重试"
                     )
                     return TransferFailureDiscardResult(
                         discarded=False,
@@ -1253,7 +1253,7 @@ class TransactionalTransferExecutionRepository:
                     return TransferFailureDiscardResult(
                         discarded=False,
                         state=state,
-                        message="整理任务仍被执行器占用，不能放弃",
+                        message="整理任务正在处理中，暂时无法放弃，请稍后重试",
                     )
                 if (
                         pending.terminal_history_id != history_id
@@ -1262,7 +1262,7 @@ class TransactionalTransferExecutionRepository:
                     return TransferFailureDiscardResult(
                         discarded=False,
                         state=state,
-                        message="整理任务失败回执已变化，请刷新后重试",
+                        message="整理任务状态已变化，请刷新后重试",
                     )
 
                 deleted = pending_oper.stage_delete_terminal_failure(
@@ -1280,7 +1280,7 @@ class TransactionalTransferExecutionRepository:
                         return TransferFailureDiscardResult(
                             discarded=True,
                             state=None,
-                            message="失败整理任务已由并发请求放弃",
+                            message="整理任务已被其他操作放弃",
                         )
                     return TransferFailureDiscardResult(
                         discarded=False,
@@ -1289,7 +1289,7 @@ class TransactionalTransferExecutionRepository:
                             if pending is not None
                             else None
                         ),
-                        message="整理任务状态已变化，未放弃失败任务",
+                        message="整理任务状态已变化，请刷新后重试",
                     )
 
                 # PostgreSQL/启用外键的 SQLite 会级联删除；显式清理兼容独立测试库。
@@ -1307,7 +1307,7 @@ class TransactionalTransferExecutionRepository:
                 return TransferFailureDiscardResult(
                     discarded=True,
                     state=TransferExecutionState.FAILED,
-                    message="已放弃失败整理任务",
+                    message="已放弃这条失败的整理任务",
                 )
             except Exception:
                 self._rollback(transaction)

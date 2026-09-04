@@ -92,7 +92,7 @@ def test_failed_search_exposes_safe_error():
     statuses = asyncio.run(SubscriptionExecutionStatusService(repository).for_subscriptions((3,)))
 
     assert statuses[3].state == "failed"
-    assert statuses[3].error == "provider timeout"
+    assert statuses[3].error == "订阅操作失败，请刷新后重试"
 
 
 def test_batch_requires_complete_subscription_access():

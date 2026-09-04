@@ -1141,7 +1141,7 @@ def test_summary_failure_preserves_database_history():
 
     isolated_memory.clear_memory(session_id, user_id)
     recovered_messages = isolated_memory.get_agent_messages(session_id, user_id)
-    assert result == "智能助手执行失败: 会话上下文压缩失败，原有上下文已保留，请稍后重试"
+    assert result == "智能助手执行失败，请稍后重试"
     assert agent._compiled_agent_bundle is None
     assert [message.content for message in recovered_messages] == ["数据库中的旧事实"]
     send_usage_event.assert_called_once()

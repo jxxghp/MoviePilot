@@ -44,7 +44,7 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
 
 # 身份不完整时的固定返回。身份不全的订阅写进去就是一条永远匹配不上资源的僵尸订阅，
 # 而后续按身份去重也会失效，所以必须在查询与建模之前短路
-INCOMPLETE_IDENTITY = (0, "媒体身份不完整")
+INCOMPLETE_IDENTITY = (0, "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试")
 
 
 class SubscriptionOutboxStager(Protocol):

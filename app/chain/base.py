@@ -163,7 +163,11 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         if kwargs.get("raise_exception"):
             raise err
         logger.error(f"运行插件 {plugin_id} 模块 {method} 出错：{str(err)}\n{traceback.format_exc()}")
-        self.messagehelper.put(title=f"{plugin_name} 发生了错误", message=str(err), role="plugin")
+        self.messagehelper.put(
+            title=f"{plugin_name} 运行失败",
+            message="插件运行失败，请稍后重试",
+            role="plugin",
+        )
         self.eventmanager.send_event(
             EventType.SystemError,
             {
@@ -183,7 +187,11 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         if kwargs.get("raise_exception"):
             raise err
         logger.error(f"运行模块 {module_id}.{method} 出错：{str(err)}\n{traceback.format_exc()}")
-        self.messagehelper.put(title=f"{module_name}发生了错误", message=str(err), role="system")
+        self.messagehelper.put(
+            title=f"{module_name}运行失败",
+            message="系统模块运行失败，请稍后重试",
+            role="system",
+        )
         self.eventmanager.send_event(
             EventType.SystemError,
             {

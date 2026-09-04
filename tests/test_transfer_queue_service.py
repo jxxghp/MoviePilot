@@ -211,4 +211,5 @@ def test_do_transfer_reports_durable_admission_failure():
         state, message = chain.do_transfer(fileitem=fileitem, background=True)
 
     assert state is False
-    assert "加入整理队列失败：db locked" in message
+    assert "未能加入整理队列，请稍后重试" in message
+    assert "db locked" not in message

@@ -61,7 +61,9 @@ from app.application.subscription.status import SubscriptionExecutionStatusServi
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
+from app.runtime.errors import public_error_message
 from app.runtime.execution import run_in_threadpool
+from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
 from app.schemas.common import IdData as _SchemaIdData
 from app.schemas.media import normalize_media_source, resolve_media_identity
@@ -287,7 +289,15 @@ async def create_subscribe(
         owner_scope=not current_user.is_superuser,
         **subscribe_dict,
     )
-    return _SchemaResponse(success=bool(sid), message=message, data={"id": sid})
+    return _SchemaResponse(
+        success=bool(sid),
+        message=(
+            public_error_message(message, context="subscription")
+            if message
+            else ""
+        ),
+        data={"id": sid},
+    )
 
 
 @router.put("/", summary="更新订阅", response_model=_SchemaResponse[None])
@@ -357,9 +367,10 @@ async def update_subscribe(
             existing=subscribe,
         )
     except ValueError as error:
+        logger.error(f"订阅分类设置无效：{error}", exc_info=True)
         return _SchemaResponse(
             success=False,
-            message=f"订阅分类无效：{error}",
+            message="订阅分类设置无效，请重新选择分类后重试",
         )
     if not change:
         return _SchemaResponse(success=False, message="订阅不存在")
@@ -792,7 +803,14 @@ async def subscribe_share(
         share_comment=sub.share_comment,
         share_user=sub.share_user,
     )
-    return _SchemaResponse(success=state, message=errmsg)
+    return _SchemaResponse(
+        success=state,
+        message=(
+            public_error_message(errmsg, context="subscription")
+            if errmsg
+            else ""
+        ),
+    )
 
 
 @router.delete("/share/{share_id}", summary="删除分享", response_model=_SchemaResponse[None])
@@ -803,7 +821,14 @@ async def subscribe_share_delete(
     删除分享
     """
     state, errmsg = await MoviePilotServerHelper.async_share_delete(share_id=share_id)
-    return _SchemaResponse(success=state, message=errmsg)
+    return _SchemaResponse(
+        success=state,
+        message=(
+            public_error_message(errmsg, context="subscription")
+            if errmsg
+            else ""
+        ),
+    )
 
 
 @router.post("/fork", summary="复用订阅", response_model=_SchemaResponse[None])

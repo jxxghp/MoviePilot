@@ -1471,9 +1471,11 @@ class MessageChain(ChainBase):
             return True
 
         except Exception as e:
-            logger.error(f"处理AI智能体消息失败: {e}")
+            logger.error(f"处理AI智能体消息失败: {e}", exc_info=True)
             self.messagehelper.put(
-                f"AI智能体处理失败: {str(e)}", role="system", title="MoviePilot助手"
+                "智能助手执行失败，请稍后重试",
+                role="system",
+                title="MoviePilot助手",
             )
             return False
 
@@ -1796,8 +1798,11 @@ class MessageChain(ChainBase):
                     }
                 )
             except Exception as err:
-                logger.error(f"准备附件上下文失败: {attachment.ref}, error: {err}")
-                payload["error"] = str(err)
+                logger.error(
+                    f"准备附件上下文失败: {attachment.ref}, error: {err}",
+                    exc_info=True,
+                )
+                payload["error"] = "附件读取失败，请稍后重试"
             prepared_files.append(payload)
 
         return prepared_files or None

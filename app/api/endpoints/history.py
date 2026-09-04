@@ -44,6 +44,7 @@ from app.application.transfer.execution import (
     TransferExecutionRepository,
     TransferRetryRequestResult,
 )
+from app.runtime.errors import public_error_message
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.runtime.progress import AsyncProgressHelper
@@ -88,9 +89,9 @@ def _request_durable_transfer_retry(
 def _format_retry_rejections(
     rejections: list[tuple[int, TransferRetryRequestResult]],
 ) -> str:
-    """把批量 durable 重试拒绝原因格式化为可审计的接口提示。"""
+    """把批量整理重试拒绝原因格式化为前端可直接理解的提示。"""
     return "；".join(
-        f"#{history_id} [{result.state.value}]: {result.message}"
+        f"第 {history_id} 条：{public_error_message(result.message, context='transfer')}"
         for history_id, result in rejections
     )
 
@@ -135,9 +136,9 @@ def _durable_retry_messages(
     """构造 durable 批量登记结果消息，供纯 durable 和混合请求复用。"""
     messages: list[str] = []
     if accepted_count:
-        messages.append(f"已登记 {accepted_count} 个持久整理任务重试")
+        messages.append(f"已提交 {accepted_count} 个整理任务，后台将自动处理")
     if rejections:
-        messages.append("以下任务未登记重试：" + _format_retry_rejections(rejections))
+        messages.append("以下整理记录未能提交重试：" + _format_retry_rejections(rejections))
     return messages
 
 
@@ -242,13 +243,14 @@ def _start_ai_redo_task(
                 data={"history_id": history_id, "success": True, "completed": True},
             )
         except Exception as e:
+            logger.error(f"智能助手后台整理失败：{e}", exc_info=True)
             await progress.update(
-                text=f"智能助手整理失败：{str(e)}",
+                text="智能助手整理失败，请稍后重试",
                 data={
                     "history_id": history_id,
                     "success": False,
                     "completed": True,
-                    "error": str(e),
+                    "error": "智能助手整理失败，请稍后重试",
                 },
             )
         finally:
@@ -299,13 +301,14 @@ def _start_batch_ai_redo_task(
                 data={"history_ids": history_ids, "success": True, "completed": True},
             )
         except Exception as e:
+            logger.error(f"智能助手后台批量整理失败：{e}", exc_info=True)
             await progress.update(
-                text=f"智能助手批量整理失败：{str(e)}",
+                text="智能助手批量整理失败，请稍后重试",
                 data={
                     "history_ids": history_ids,
                     "success": False,
                     "completed": True,
-                    "error": str(e),
+                    "error": "智能助手批量整理失败，请稍后重试",
                 },
             )
         finally:
@@ -472,16 +475,18 @@ async def ai_redo_transfer_history(
             repository=execution_repository,
         )
         if not retry.accepted:
-            return _SchemaResponse(success=False, message=retry.message)
+            retry_message = public_error_message(retry.message, context="transfer")
+            return _SchemaResponse(success=False, message=retry_message)
+        retry_message = public_error_message(retry.message, context="transfer")
         progress_key = f"transfer_retry_{history_id}_{int(time.time() * 1000)}"
         await _complete_durable_retry_progress(
             progress_key=progress_key,
-            text=retry.message,
+            text=retry_message,
             history_ids=[history.id],
         )
         return _SchemaResponse(
             success=True,
-            message=retry.message,
+            message=retry_message,
             data={"progress_key": progress_key},
         )
 

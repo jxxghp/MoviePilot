@@ -19,7 +19,7 @@ class _RetryCommand:
         accepted=True,
         state=TransferExecutionState.RETRY_WAIT,
         retry_generation=2,
-        message="整理任务已登记重试",
+        message="已提交重新整理，后台将自动处理",
     )
 
     def __init__(self, repository: object) -> None:
@@ -39,7 +39,7 @@ class _DiscardCommand:
     result = TransferFailureDiscardResult(
         discarded=True,
         state=TransferExecutionState.FAILED,
-        message="已放弃失败整理任务",
+        message="已放弃这条失败的整理任务",
     )
 
     def __init__(self, repository: object) -> None:
@@ -60,7 +60,7 @@ def _install_retry_port(monkeypatch) -> object:
         accepted=True,
         state=TransferExecutionState.RETRY_WAIT,
         retry_generation=2,
-        message="整理任务已登记重试",
+        message="已提交重新整理，后台将自动处理",
     )
     monkeypatch.setattr(
         "app.chain.transfer.retry.TransferExecutionCommand",
@@ -76,7 +76,7 @@ def _install_discard_port(monkeypatch) -> object:
     _DiscardCommand.result = TransferFailureDiscardResult(
         discarded=True,
         state=TransferExecutionState.FAILED,
-        message="已放弃失败整理任务",
+        message="已放弃这条失败的整理任务",
     )
     monkeypatch.setattr(
         "app.chain.transfer.records.TransferExecutionCommand",
@@ -115,7 +115,7 @@ def test_durable_history_redo_only_requests_persistent_retry(monkeypatch):
     state, message = chain._re_transfer(logid=81)
 
     assert state is True
-    assert message == "整理任务已登记重试"
+    assert message == "已提交重新整理，后台将自动处理"
     assert _RetryCommand.calls == [
         (
             repository,
@@ -273,7 +273,7 @@ def test_durable_manual_cleanup_rejects_nonfailed_state(monkeypatch):
     _DiscardCommand.result = TransferFailureDiscardResult(
         discarded=False,
         state=TransferExecutionState.MANUAL_REVIEW,
-        message="人工复核任务必须先完成专门判定",
+        message="这条整理任务需要先完成人工确认，再重试",
     )
     history = SimpleNamespace(
         id=85,
@@ -313,7 +313,7 @@ def test_durable_manual_cleanup_rejects_nonfailed_state(monkeypatch):
     )
 
     assert state is False
-    assert message == "人工复核任务必须先完成专门判定"
+    assert message == "这条整理任务需要先完成人工确认，再重试"
 
 
 def test_durable_ai_button_bypasses_agent_and_requests_scheduler(monkeypatch):
@@ -353,7 +353,7 @@ def test_durable_ai_button_bypasses_agent_and_requests_scheduler(monkeypatch):
     )
 
     assert len(messages) == 1
-    assert messages[0].title == "整理任务已登记重试"
+    assert messages[0].title == "已提交重新整理，后台将自动处理"
     assert _RetryCommand.calls[0][1]["requested_by"] == "ai_retry_button"
 
 
@@ -364,7 +364,7 @@ def test_durable_manual_review_rejection_does_not_fall_back_to_legacy(monkeypatc
         accepted=False,
         state=TransferExecutionState.MANUAL_REVIEW,
         retry_generation=1,
-        message="人工复核任务必须先完成专门判定",
+        message="这条整理任务需要先完成人工确认，再重试",
     )
     history = SimpleNamespace(
         id=84,
@@ -386,4 +386,4 @@ def test_durable_manual_review_rejection_does_not_fall_back_to_legacy(monkeypatc
     state, message = chain._re_transfer(logid=84)
 
     assert state is False
-    assert message == "人工复核任务必须先完成专门判定"
+    assert message == "这条整理任务需要先完成人工确认，再重试"

@@ -146,14 +146,14 @@ def test_transfer_delete_rejects_nonfailed_durable_receipt_before_file_side_effe
         TransferFailureDiscardResult(
             discarded=False,
             state=TransferExecutionState.MANUAL_REVIEW,
-            message="人工复核任务必须先完成专门判定",
+            message="这条整理任务需要先完成人工确认，再重试",
         )
     )
 
     result = command.delete(7, delete_source=True, delete_destination=True)
 
     assert result.success is False
-    assert result.message == "人工复核任务必须先完成专门判定"
+    assert result.message == "这条整理任务需要先完成人工确认，再重试"
     assert result.history == "retained"
     dependencies["delete_media_file"].assert_not_called()
     dependencies["repository"].stage_delete.assert_not_called()
@@ -170,7 +170,7 @@ def test_transfer_delete_discards_failed_durable_receipt_before_cleanup():
         TransferFailureDiscardResult(
             discarded=True,
             state=TransferExecutionState.FAILED,
-            message="已放弃失败整理任务",
+            message="已放弃这条失败的整理任务",
         )
     )
 

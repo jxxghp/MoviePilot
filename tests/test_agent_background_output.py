@@ -200,15 +200,11 @@ class TestAgentBackgroundOutput:
 
         result, _ = await agent._execute_agent([HumanMessage(content="测试超时")])
 
-        expected = (
-            "智能助手执行失败: No streaming chunk received for 120.0s "
-            "(model=mimo-v2.5-pro, chunks_received=1)."
-        )
+        expected = "智能助手执行失败，请稍后重试"
         assert result == expected
         agent.send_agent_message.assert_awaited_once_with(expected, title="")
         sent_message = agent.send_agent_message.await_args.args[0]
-        assert "No streaming chunk received for 120.0s" in sent_message
-        assert "Tune or disable" not in sent_message
+        assert "No streaming chunk received for 120.0s" not in sent_message
         assert agent._streamed_output == expected
 
     async def test_streaming_success_stops_streaming_once(self):

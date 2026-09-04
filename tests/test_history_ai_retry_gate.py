@@ -105,7 +105,7 @@ def test_durable_retry_progress_is_immediately_completed_for_existing_sse() -> N
         progress_key = "test_history_durable_retry_completed"
         await history_endpoint._complete_durable_retry_progress(
             progress_key=progress_key,
-            text="整理任务已登记重试",
+            text="已提交重新整理，后台将自动处理",
             history_ids=[8],
         )
         detail = await AsyncProgressHelper(progress_key).get()
@@ -119,7 +119,7 @@ def test_durable_retry_progress_is_immediately_completed_for_existing_sse() -> N
     assert detail["data"]["history_ids"] == [8]
     assert detail["data"]["success"] is True
     assert detail["data"]["completed"] is True
-    assert detail["data"]["message"] == "整理任务已登记重试"
+    assert detail["data"]["message"] == "已提交重新整理，后台将自动处理"
 
 
 def test_single_ai_redo_requests_durable_retry_without_agent(monkeypatch) -> None:
@@ -130,7 +130,7 @@ def test_single_ai_redo_requests_durable_retry_without_agent(monkeypatch) -> Non
             "task-11": _retry_result(
                 accepted=True,
                 state=TransferExecutionState.RETRY_WAIT,
-                message="整理任务已登记重试",
+                message="已提交重新整理，后台将自动处理",
             )
         },
     )
@@ -160,7 +160,7 @@ def test_single_ai_redo_requests_durable_retry_without_agent(monkeypatch) -> Non
     assert response.success is True
     assert response.data is not None
     assert response.data["progress_key"].startswith("transfer_retry_11_")
-    assert response.message == "整理任务已登记重试"
+    assert response.message == "已提交重新整理，后台将自动处理"
     assert completed_progress[0]["history_ids"] == [11]
     assert _RetryCommand.calls == [
         (
@@ -182,7 +182,7 @@ def test_single_ai_redo_reports_manual_review_rejection(monkeypatch) -> None:
             "task-12": _retry_result(
                 accepted=False,
                 state=TransferExecutionState.MANUAL_REVIEW,
-                message="人工复核任务必须先完成专门判定",
+                message="这条整理任务需要先完成人工确认，再重试",
             )
         },
     )
@@ -204,7 +204,7 @@ def test_single_ai_redo_reports_manual_review_rejection(monkeypatch) -> None:
     )
 
     assert response.success is False
-    assert response.message == "人工复核任务必须先完成专门判定"
+    assert response.message == "这条整理任务需要先完成人工确认，再重试"
 
 
 def test_batch_ai_redo_returns_completed_progress_for_durable_tasks(monkeypatch) -> None:
@@ -215,12 +215,12 @@ def test_batch_ai_redo_returns_completed_progress_for_durable_tasks(monkeypatch)
             "task-18": _retry_result(
                 accepted=True,
                 state=TransferExecutionState.RETRY_WAIT,
-                message="整理任务已登记重试",
+                message="已提交重新整理，后台将自动处理",
             ),
             "task-19": _retry_result(
                 accepted=True,
                 state=TransferExecutionState.RETRY_WAIT,
-                message="整理任务已在等待重试",
+                message="整理任务已在等待重新处理",
             ),
         },
     )
@@ -269,12 +269,12 @@ def test_batch_ai_redo_reports_each_rejection_without_starting_legacy_agent(
             "task-21": _retry_result(
                 accepted=True,
                 state=TransferExecutionState.RETRY_WAIT,
-                message="整理任务已登记重试",
+                message="已提交重新整理，后台将自动处理",
             ),
             "task-22": _retry_result(
                 accepted=False,
                 state=TransferExecutionState.RUNNING,
-                message="整理任务当前状态不接受用户重试",
+                message="这条整理任务当前无法重试，请刷新后再试",
             ),
         },
     )
@@ -308,8 +308,8 @@ def test_batch_ai_redo_reports_each_rejection_without_starting_legacy_agent(
     )
 
     assert response.success is False
-    assert "已登记 1 个持久整理任务重试" in response.message
-    assert "#22 [running]: 整理任务当前状态不接受用户重试" in response.message
+    assert "已提交 1 个整理任务，后台将自动处理" in response.message
+    assert "第 22 条：这条整理任务当前无法重试，请刷新后再试" in response.message
     assert response.data is None
     assert "1 条旧历史未提交" in response.message
     assert prompted == []
@@ -330,7 +330,7 @@ def test_batch_ai_redo_sends_only_legacy_records_after_durable_acceptance(
             "task-24": _retry_result(
                 accepted=True,
                 state=TransferExecutionState.RETRY_WAIT,
-                message="整理任务已登记重试",
+                message="已提交重新整理，后台将自动处理",
             )
         },
     )

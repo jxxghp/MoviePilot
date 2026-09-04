@@ -39,6 +39,7 @@ from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain import episode as episode_rules
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
+from app.runtime.errors import public_error_message
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.schemas.message import Message
@@ -530,7 +531,10 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 else task.fileitem.name if task.fileitem else "未知媒体"
             ),
             season_episode=getattr(task.meta, "season_episode", "") or "",
-            reason=transferinfo.message or "未知",
+            reason=(
+                public_error_message(transferinfo.message, context="transfer")
+                or "整理失败"
+            ),
             history_id=history_id,
             image=(
                 task.mediainfo.get_message_image()

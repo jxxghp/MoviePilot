@@ -446,7 +446,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
                 **context.options,
             )
         except ValueError as error:
-            err_msg = f"订阅分类无效：{error}"
+            logger.error(f"订阅分类设置无效：{error}", exc_info=True)
+            err_msg = "订阅分类设置无效，请重新选择分类后重试"
             self._SubscribeChain__notify_subscribe_create_failure(context, err_msg)
             return None, err_msg
         if not sid:
@@ -475,7 +476,8 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
                 **context.options,
             )
         except ValueError as error:
-            err_msg = f"订阅分类无效：{error}"
+            logger.error(f"订阅分类设置无效：{error}", exc_info=True)
+            err_msg = "订阅分类设置无效，请重新选择分类后重试"
             await self._SubscribeChain__async_notify_subscribe_create_failure(
                 context,
                 err_msg,
