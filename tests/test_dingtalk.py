@@ -111,6 +111,19 @@ def test_module_routes_matching_notifications_to_dingtalk_client(monkeypatch) ->
     client.send_msg.assert_called_once()
 
 
+def test_module_skips_unsupported_command_registration(monkeypatch) -> None:
+    """钉钉机器人不支持命令 API 时应跳过基类命令注册流程。"""
+    module = DingTalkModule()
+    config = SimpleNamespace(name="家庭群", config={})
+    get_instance = Mock()
+    monkeypatch.setattr(module, "get_configs", lambda: {config.name: config})
+    monkeypatch.setattr(module, "get_instance", get_instance)
+
+    module.register_commands({"/version": {"description": "当前版本"}})
+
+    get_instance.assert_not_called()
+
+
 def test_dingtalk_channel_declares_markdown_image_and_link_capabilities() -> None:
     """能力表应允许通用消息层保留钉钉支持的富文本字段。"""
     for capability in (
