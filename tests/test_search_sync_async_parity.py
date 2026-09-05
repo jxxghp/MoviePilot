@@ -117,6 +117,14 @@ def test_id_search_sync_async_share_request_and_missing_plan(monkeypatch):
     assert saved_sync == saved_async
 
 
+def test_imdb_search_falls_back_to_media_title_without_imdb_id():
+    """IMDb 搜索缺少 IMDb ID 且没有调用方关键字时应请求媒体标题。"""
+    target = _media()
+
+    assert SearchChain._torrent_keyword(None, target, "imdbid") == target.title
+    assert SearchChain._torrent_keyword("自定义标题", target, "imdbid") == "自定义标题"
+
+
 def test_media_process_sync_async_share_keyword_stop_decision(monkeypatch):
     """双入口应按相同关键字顺序搜索，并在首个有效结果后同时停止。"""
     chain = _chain()

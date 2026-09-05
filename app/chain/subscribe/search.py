@@ -830,7 +830,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
             no_exists=no_exists,
             sites=self.get_sub_sites(subscribe),
             rule_groups=subscribe.filter_groups or get_configured_system_config().get(rule_key) or [],
-            area="imdbid" if subscribe.search_imdbid else "title",
+            area="imdbid" if subscribe.search_imdbid and mediainfo.imdb_id else "title",
             custom_words=subscribe.custom_words.split("\n") if subscribe.custom_words else None,
             filter_params=self.get_params(subscribe),
         )
