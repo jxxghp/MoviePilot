@@ -241,6 +241,7 @@ def test_subscribe_chain_package_has_single_responsibility_owners() -> None:
         "reconcile.py",
         "refresh.py",
         "search.py",
+        "searchtask.py",
     }
     assert {path.name for path in SUBSCRIBE_CHAIN_PACKAGE.glob("*.py")} == expected_files
 
