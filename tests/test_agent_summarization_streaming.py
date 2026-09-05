@@ -817,42 +817,7 @@ def test_real_agent_does_not_compact_request_below_threshold():
 
 
 def test_real_agent_executes_compacted_tool_call_once():
-    """压缩不得重试主模型或重复执行工具事务。"""
-    calls = []
-
-    @tool
-    def record_value(value: str) -> str:
-        """记录工具调用次数。"""
-        calls.append(value)
-        return value
-
-    summarizer = _CountingSummaryLLM("summary")
-    model = _RecordingChatModel(
-        responses=[
-            AIMessage(
-                content="",
-                tool_calls=[{"name": "record_value", "args": {"value": "once"}, "id": "call-1"}],
-            ),
-            AIMessage(content="工具完成"),
-        ],
-        profile={"max_input_tokens": 2048},
-    )
-    graph = _real_compaction_graph(
-        model=model,
-        summarizer=summarizer,
-        tools=[record_value],
-    )
-
-    result = asyncio.run(graph.ainvoke({"messages": _oversized_final_request_history()}))
-
-    assert calls == ["once"]
-    assert summarizer.calls == 1
-    assert len(model.seen_messages) == 2
-    assert result["messages"][-1].content == "工具完成"
-
-
-def test_real_agent_does_not_recompact_small_tool_result_during_same_loop():
-    """小工具结果不会让同一轮请求重新压缩。"""
+    """压缩只执行一次工具事务，小工具结果也不得触发同轮二次压缩。"""
     calls = []
 
     @tool

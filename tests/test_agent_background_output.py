@@ -81,28 +81,7 @@ def _fake_activity_log_middleware(tool=None):
 
 
 class TestAgentBackgroundOutput:
-    async def test_background_non_streaming_does_not_send_by_default(self):
-        agent = MoviePilotAgent(session_id="bg-test", user_id="system")
-        agent.channel = None
-        agent.source = None
-        agent.reply_mode = ReplyMode.CAPTURE_ONLY
-        agent._tool_context = {"user_reply_sent": False}
-        agent._streamed_output = ""
-        agent.stream_handler = SimpleNamespace(
-            stop_streaming=AsyncMock(return_value=(False, ""))
-        )
-        agent._should_stream = lambda: False
-        agent._create_agent = AsyncMock(
-            return_value=_FakeAgent([AIMessage(content="后台结果")])
-        )
-        agent.send_agent_message = AsyncMock()
-
-        with patch.object(memory_manager, "save_agent_messages") as save_messages:
-            await agent._execute_agent([])
-
-        agent.send_agent_message.assert_not_awaited()
-        save_messages.assert_not_called()
-        assert agent._streamed_output == "后台结果"
+    """验证后台任务的回复策略、流式结束行为和工具装配。"""
 
     async def test_non_streaming_image_unsupported_error_sends_friendly_notice(self):
         agent = MoviePilotAgent(session_id="image-test", user_id="user-1")
@@ -322,6 +301,7 @@ class TestAgentBackgroundOutput:
         assert agent._streamed_output == "后台结果"
 
     async def test_background_non_streaming_captures_without_sending_when_capture_only(self):
+        """显式捕获模式保留最终结果，但不发送消息或保存渠道历史。"""
         agent = MoviePilotAgent(session_id="bg-test", user_id="system")
         agent.channel = None
         agent.source = None

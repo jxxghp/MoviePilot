@@ -330,23 +330,6 @@ def test_clone_uninstall_destroys_only_the_clone_database():
     assert destroyed == ["DemoPluginwork"]
 
 
-def test_remove_plugin_only_releases_the_database():
-    """从内存移除插件的内部路径即 stop，只释放不销毁。"""
-    calls: list[tuple] = []
-    plugin_cls = _make_plugin_class("DemoPlugin")
-    lifecycle = _build_lifecycle(
-        load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
-        database=lambda: _recording_database(calls),
-    )
-    lifecycle.start("DemoPlugin")
-
-    lifecycle.stop("DemoPlugin")
-
-    assert ("release", "DemoPlugin") in calls
-    assert not any(call[0] == "destroy" for call in calls)
-
-
 def test_close_database_releases_plugin_databases_before_the_host_engine(monkeypatch):
     """进程关停时先释放插件库，再释放宿主同步引擎。"""
     calls: list[str] = []

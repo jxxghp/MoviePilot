@@ -835,7 +835,7 @@ def test_apply_title_scene_dot_with_symbols():
 
 
 def test_apply_title_keeps_artist_abbreviation_dots():
-    """点分隔少于 3 处的艺术家缩写点号不应被归一。"""
+    """保留艺术家缩写点号，无音质标记的单词曲名也不能被当成发布组剔除。"""
     meta = parse_title("E.S.Posthumus - Maraboot")
 
     assert meta.artists == ["E.S.Posthumus"]
@@ -860,13 +860,6 @@ def test_apply_title_va_scene_prefix():
     assert meta.artists == ["Various Artists"]
     assert meta.title == "Once Upon a Time in Hollywood Original Motion Picture Soundtrack"
     assert meta.year == 2019
-
-
-def test_apply_title_keeps_single_word_title():
-    """无音质标记时「艺术家 - 单词曲名」的曲名不应被当发布组标签剔除。"""
-    meta = parse_title("E.S.Posthumus - Maraboot")
-
-    assert meta.title == "Maraboot"
 
 
 def test_apply_title_keeps_title_with_quality_tokens():

@@ -123,6 +123,17 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 | `setUpClass` / `tearDownClass` | `@pytest.fixture(scope="class")` 或模块级 fixture |
 | `@unittest.skipIf(c, r)` | `@pytest.mark.skipif(c, reason=r)` |
 
+## 存量测试清理
+
+删除测试需要明确指出保留的等价覆盖，不能只依据文件年代、执行耗时、名称相似或覆盖率百分比。
+
+- **可删除的重复**：被测入口、输入、fixture、参数化和执行前状态一致，且保留用例包含全部断言。完全相同的执行体可保留一份；同输入的断言子集可并入更完整用例的说明。
+- **不能自动删除的相似用例**：同步与异步入口、冷启动与重复重置、过期清理前后、迁移前后、不同平台或可选依赖条件，均可能拥有独立行为。
+- **没有直接 `assert` 不等于空测试**：`pytest.raises`、辅助断言、迁移 round-trip、导入兼容和“不抛异常”都是有效契约；只有名称或注释声称存在的覆盖则需要进一步核实。
+- **删除后验证**：运行受影响文件，核对保留用例及生产代码行/分支覆盖；跨领域清理再运行 `python tests/run.py`。不降低覆盖率基线、不新增 skip、不削弱架构或兼容门禁。
+
+首轮扫描范围、删除映射和保留理由见 [后端测试清理审计](testing-cleanup.md)。
+
 ## 排查测试问题
 
 - **收集报错（collection error）**：多为 import 期副作用或顶层桩污染。优先改成真实 import（conftest 已隔离临时库，真实 `settings`/helper 可加载）+ 方法内 patch，而不是靠事后还原（收集期污染发生在 import 那一刻，事后还原太晚）。

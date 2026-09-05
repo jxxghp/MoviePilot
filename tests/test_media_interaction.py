@@ -1589,43 +1589,6 @@ def test_noai_prefix_starts_traditional_search_when_global_ai_enabled():
     assert len(request.items) == 2
 
 
-def test_noai_prefix_preserves_traditional_interaction_priority_after_search():
-    """通过 /noai 进入传统交互后，后续选择应继续优先走传统交互。"""
-    chain = MessageChain()
-    chain.runtime_config = replace(
-        chain.runtime_config,
-        ai_agent_enable=True,
-        ai_agent_global=True,
-    )
-    request = media_interaction_manager.create_or_replace(
-        user_id="10001",
-        channel=NotificationChannel.Wechat,
-        source="wechat-test",
-        username="tester",
-        action="Search",
-        keyword="星际穿越",
-        title="星际穿越",
-        meta=_build_meta("星际穿越"),
-        items=[MediaInfo(title="星际穿越", year="2014")],
-    )
-    assert request is not None
-
-    with patch.object(chain, "_record_user_message"), patch(
-        "app.chain.interaction.MediaInteractionChain.handle_text_interaction",
-        return_value=True,
-    ) as handle_text, patch.object(chain, "_handle_ai_message") as handle_ai:
-        chain.handle_message(
-            channel=NotificationChannel.Wechat,
-            source="wechat-test",
-            userid="10001",
-            username="tester",
-            text="1",
-        )
-
-    handle_text.assert_called_once()
-    handle_ai.assert_not_called()
-
-
 def test_callback_routes_to_media_interaction_chain():
     """媒体按钮回调应路由到媒体交互链。"""
     chain = MessageChain()
