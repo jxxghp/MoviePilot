@@ -788,6 +788,17 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                                 all_dirs.add(current_path)
                                 current_path = current_path.parent
 
+                        if (
+                                getattr(mediainfo, "type", None) == MediaType.TV
+                                and root_path.parent != root_path
+                                and (
+                                        root_path.name in self.runtime_config.season_zero_names
+                                        or MetaInfo(root_path.name).begin_season is not None
+                                )
+                        ):
+                            # 整理事件可能以季目录为根，补回剧集根目录才能触发电视剧分支。
+                            all_dirs.add(root_path.parent)
+
                         logger.debug(f"共收集到 {len(all_dirs)} 个目录")
 
                         # 2. 初始化一遍子目录，但不处理文件
