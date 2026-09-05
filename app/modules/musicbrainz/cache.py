@@ -1,3 +1,5 @@
+import hashlib
+import json
 import pickle
 import traceback
 from math import ceil
@@ -5,17 +7,16 @@ from threading import RLock
 from time import time
 from typing import Optional
 
-from app.runtime.cache import FileCache, TTLCache
-from app.runtime.settings import get_runtime_setting
-
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.runtime.log import logger
-from app.schemas.types import MUSIC_ENTITY_RECORDING
 from app.foundation.singleton import WeakSingleton
+from app.runtime.cache import FileCache, TTLCache
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MUSIC_ENTITY_RECORDING
 
 lock = RLock()
-PERSISTENCE_VERSION = 1
+PERSISTENCE_VERSION = 2
 PERSISTENCE_REGION = "recognize"
 PERSISTENCE_KEY = "musicbrainz"
 
@@ -119,20 +120,26 @@ class MusicBrainzCache(metaclass=WeakSingleton):
             return sorted(cache_items, key=lambda item: item["key"])
 
     @staticmethod
-    def __get_key(meta: MetaMusic) -> str:
-        """
-        获取缓存KEY，携带数据源原生 ID 时以 ID 为准身份
-        """
-        artists = "/".join(meta.artists or [])
-        return f"[音乐]{meta.media_id or meta.title}-{artists}-{meta.album}-{meta.year}"
+    def __get_key(meta: MetaMusic, music_type: Optional[str] = None) -> str:
+        """按来源身份或完整识别证据及请求实体编码键，避免版本串用和分隔符碰撞。"""
+        source = str(meta.media_source) if meta.media_source else None
+        identity: list[object]
+        if source and meta.media_id:
+            identity = ["id", source, str(meta.media_id)]
+        else:
+            identity = ["meta", source, meta.title, list(meta.artists or []), meta.album,
+                        meta.year, meta.version, meta.isrc]
+        payload = json.dumps([music_type, identity], ensure_ascii=False, separators=(",", ":"))
+        return f"[音乐:v{PERSISTENCE_VERSION}]{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
 
-    def get(self, meta: MetaMusic) -> Optional[MusicInfo]:
+    def get(self, meta: MetaMusic, music_type: Optional[str] = None) -> Optional[MusicInfo]:
         """
         根据元数据获取缓存的音乐识别结果
         @param meta: 音乐元数据
+        @param music_type: 本次请求的实体范围，未指定时与显式单曲、专辑请求隔离
         @return: 缓存命中的音乐信息，未命中返回 None
         """
-        key = self.__get_key(meta)
+        key = self.__get_key(meta, music_type)
         with lock:
             cache_data = self._cache.get(key)
             if not cache_data and self._expires_at.pop(key, None) is not None:
@@ -161,14 +168,14 @@ class MusicBrainzCache(metaclass=WeakSingleton):
                 return cache_data
             return {}
 
-    def update(self, meta: MetaMusic, info: Optional[MusicInfo]) -> None:
+    def update(self, meta: MetaMusic, info: Optional[MusicInfo], music_type: Optional[str] = None) -> None:
         """
         新增或更新缓存条目，无远端身份的兜底结果也写入内存负缓存，
         避免批量识别时反复请求 MusicBrainz 触发限流
         """
         if not meta or not info:
             return
-        key = self.__get_key(meta)
+        key = self.__get_key(meta, music_type)
         cache_data = info.to_dict()
         # 上游原始响应体积大且不参与身份恢复，不入缓存
         cache_data.pop("raw_data", None)

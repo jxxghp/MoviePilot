@@ -1,5 +1,7 @@
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from app.domain.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
@@ -90,7 +92,7 @@ def test_build_query_strips_audio_quality_tokens():
         )
     )
 
-    # CJK 短语在 Lucene 索引中是单一词元，检索式拆为逐字 OR，OR 组带括号避免 AND 优先级歧义
+    # 完整名称的繁简短语组优先，不把长标题拆成单字 OR。
     assert query == 'recording:("永远是朋友" OR "永遠是朋友") AND artist:"毛阿敏"'
 
 
@@ -109,6 +111,124 @@ def test_select_candidate_matches_traditional_chinese_title():
     selected = MusicBrainzModule._select_candidate(meta, candidates, media_source="musicbrainz")
 
     assert selected is candidates[0]
+
+
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+def test_recognition_accepts_trusted_title_and_artist_aliases(music_type):
+    """目录已经返回的同实体别名也必须用于身份确认，不能仅用于搜索展示排序。"""
+    meta = MetaMusic(title="Fine Day", artists=["Jay Chou"])
+    candidate = MusicInfo(media_source="musicbrainz", media_id="candidate", music_type=music_type,
+                          title="晴天", title_aliases=["Fine Day"], artists=["周杰倫"], artist_aliases=["Jay Chou"])
+    if music_type == "album":
+        assert MusicBrainzModule._select_album_candidate(meta, [candidate]) is candidate
+    else:
+        assert MusicBrainzModule._select_candidate(meta, [candidate], "musicbrainz") is candidate
+
+
+@pytest.mark.parametrize("artist", ["AC/DC", "Earth, Wind & Fire", "Beyoncé"])
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+def test_recognition_preserves_compound_and_accented_artist_names(artist, music_type):
+    """复合艺名的解析拆段和拉丁变音符差异不应导致身份确认漏配。"""
+    meta = MetaMusic.parse_query(f"{artist.replace('é', 'e')} - Example Work FLAC")
+    candidate = MusicInfo(media_source="musicbrainz", media_id="candidate", music_type=music_type,
+                          title="Example Work", artists=[artist])
+    if music_type == "album":
+        assert MusicBrainzModule._select_album_candidate(meta, [candidate]) is candidate
+    else:
+        assert MusicBrainzModule._select_candidate(meta, [candidate], "musicbrainz") is candidate
+
+
+@pytest.mark.parametrize("candidate_title", ["One Tree Hill", "One - Tree Hill", "One (Other Song)"])
+def test_recording_recognition_rejects_partial_title_identity(candidate_title):
+    """单曲确认与资源匹配一样要求作品名称边界，不能借首词或任意括号剥离误配。"""
+    meta = MetaMusic(title="One", artists=["U2"])
+    candidate = MusicInfo(media_source="musicbrainz", media_id="other", title=candidate_title, artists=["U2"])
+    assert MusicBrainzModule._select_candidate(meta, [candidate], "musicbrainz") is None
+
+
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+@pytest.mark.parametrize("input_version,candidate_version", [(None, "Live"), ("Live", None), ("Live", "Remix")])
+def test_recognition_rejects_conflicting_recording_versions(music_type, input_version, candidate_version):
+    """同名同艺人的不同录音版本仍是不同目标，不能以普通标题分数自动确认。"""
+    meta = MetaMusic(title="Example Work", artists=["Artist"], version=input_version)
+    candidate = MusicInfo(media_source="musicbrainz", media_id="candidate", music_type=music_type,
+                          title="Example Work", artists=["Artist"], version=candidate_version)
+    if music_type == "album":
+        assert MusicBrainzModule._select_album_candidate(meta, [candidate]) is None
+    else:
+        assert MusicBrainzModule._select_candidate(meta, [candidate], "musicbrainz") is None
+
+
+def test_recording_recognition_keeps_isrc_identity_priority():
+    """来源返回相同 ISRC 时保留显式录音身份优先级，不被不完整标题和署名阻断。"""
+    meta = MetaMusic(title="Unverified", artists=["Unknown"], isrc="USABC2600001")
+    candidate = MusicInfo(media_source="musicbrainz", media_id="recording", title="Real Title",
+                          artists=["Artist"], version="Live", isrc="USABC2600001")
+    misleading = MusicInfo(media_source="musicbrainz", media_id="other", title="Unverified", artists=["Unknown"])
+    assert MusicBrainzModule._select_candidate(meta, [misleading, candidate], "musicbrainz") is candidate
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+@pytest.mark.parametrize("has_match", [False, True])
+def test_recognition_continues_queries_after_rejected_candidates(monkeypatch, async_mode, music_type, has_match):
+    """与资源搜索一致，原始候选不能确认身份时继续后续检索式，而非提前宣告无匹配。"""
+    module = MusicBrainzModule()
+    module.cache = None
+    meta = MetaMusic(title="Example Work", artists=["Artist"])
+    queries = []
+
+    def request(_path, params):
+        """前一检索式仅有无关作品，下一检索式返回同名同署名实体。"""
+        queries.append(params["query"])
+        title = "Example Work" if has_match and len(queries) > 1 else "Other Work"
+        items_key = "recordings" if music_type == "recording" else "release-groups"
+        return {items_key: [{"id": "matched", "title": title, "artist-credit": [{"artist": {"name": "Artist"}}]}]}
+
+    monkeypatch.setattr(module, "_recording_queries", lambda _meta: ["first", "second", "third"])
+    monkeypatch.setattr(module, "_album_queries", lambda _meta: ["first", "second", "third"])
+    monkeypatch.setattr(module, "_request_json", request)
+    monkeypatch.setattr(module, "_async_request_json", AsyncMock(side_effect=request))
+    if async_mode:
+        result = asyncio.run(module.async_recognize_media(meta=meta, music_type=music_type, cache=False))
+    else:
+        result = module.recognize_media(meta=meta, music_type=music_type, cache=False)
+    if has_match:
+        assert result and result.media_id == "matched"
+    else:
+        assert not result or result.media_id is None
+    assert queries == (["first", "second"] if has_match else ["first", "second", "third"])
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+def test_catalog_browsing_keeps_unconfirmed_candidates(monkeypatch, async_mode, music_type):
+    """手动目录浏览仍展示来源原始候选，自动确认的严格规则不能抹掉浏览结果。"""
+    module = MusicBrainzModule()
+    meta = MetaMusic(title="Example Work", artists=["Artist"])
+    key = "recordings" if music_type == "recording" else "release-groups"
+    payload = {key: [{"id": "related", "title": "Other Work"}]}
+    sync_request = Mock(return_value=payload)
+    async_request = AsyncMock(return_value=payload)
+    monkeypatch.setattr(module, "_request_json", sync_request)
+    monkeypatch.setattr(module, "_async_request_json", async_request)
+    if music_type == "recording":
+        result = asyncio.run(module._async_search_recordings(meta, 10)) if async_mode else module._search_recordings(meta, 10)
+    else:
+        result = asyncio.run(module._async_search_albums(meta, 10)) if async_mode else module._search_albums(meta, 10)
+    assert [item.media_id for item in result] == ["related"]
+    assert sync_request.call_count == (0 if async_mode else 1)
+    assert async_request.await_count == (1 if async_mode else 0)
+
+
+def test_album_secondary_type_is_version_evidence():
+    """专辑来源通过 secondary_types 声明现场版时，与标题和独立版本字段同样参与确认。"""
+    candidate = MusicInfo(media_source="musicbrainz", media_id="live-album", music_type="album",
+                          title="Example Work", artists=["Artist"], secondary_types=["Live"])
+    meta = MetaMusic(title="Example Work", artists=["Artist"])
+    assert MusicBrainzModule._select_album_candidate(meta, [candidate]) is None
+    meta.version = "Live"
+    assert MusicBrainzModule._select_album_candidate(meta, [candidate]) is candidate
 
 
 def test_recording_to_info_maps_musicbrainz_payload():
@@ -966,7 +1086,7 @@ def test_select_album_candidate_matches_colon_subtitle():
 
 
 def test_select_album_candidate_matches_head_title():
-    """条目「曲名-歌手《巡演名》」连字符前置命名应与资源曲名弱匹配命中。"""
+    """说明性专辑标题可弱匹配，但仍须具有相同现场版本证据。"""
     meta = MetaMusic(title="为你盛开", artists=["许巍"])
     album = MusicInfo(
         media_source="musicbrainz",
@@ -976,6 +1096,8 @@ def test_select_album_candidate_matches_head_title():
         artists=["许巍"],
     )
 
+    assert MusicBrainzModule._select_album_candidate(meta, [album]) is None
+    meta.version = "现场"
     matched = MusicBrainzModule._select_album_candidate(meta, [album])
 
     assert matched is not None

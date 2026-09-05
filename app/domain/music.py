@@ -85,6 +85,16 @@ def music_artists(music: MusicInfo) -> list[str]:
     return artists
 
 
+def music_artist_matches(music: MusicInfo, parsed_artists: Iterable[str]) -> bool:
+    """使用同实体署名和别名核验解析艺人，兼容完整艺名被分隔符拆成多个片段。"""
+    artists = music_artists(music)
+    parsed = unique_music_texts(parsed_artists)
+    keys = {music_text_key(artist) for artist in parsed}
+    if len(parsed) > 1 and any(any(separator in artist for separator in ("/", "&", ",")) for artist in artists):
+        keys.add(music_text_key(" / ".join(parsed)))
+    return bool(keys & {music_text_key(artist) for artist in artists})
+
+
 def music_base_title(value: Optional[str]) -> str:
     """仅剥离已知发行版本后缀，保留未知括号和属于作品本身的文字。"""
     text = _VERSION_SUFFIX.sub("", _EDITION.sub("", str(value or "")))
@@ -134,6 +144,15 @@ def _version_markers(text: str) -> set[str]:
     return {name for name, pattern in _VERSIONS.items() if re.search(pattern, text, re.I)}
 
 
+def music_version_matches(music: MusicInfo, meta: MetaMusic) -> bool:
+    """资源匹配与候选确认共用录音版本约束，不从艺术家字段推断版本。"""
+    target_title = music.album or music.title if music.music_type == MUSIC_ENTITY_ALBUM else music.title
+    # 专辑类型描述整专版本，但单曲的所属专辑类型不能代替该录音自身的版本。
+    album_versions = " ".join(music.secondary_types or []) if music.music_type == MUSIC_ENTITY_ALBUM else ""
+    expected = _version_markers(f"{target_title or ''} {music.version or ''} {album_versions}")
+    return expected == _version_markers(f"{meta.title or ''} {meta.version or ''}")
+
+
 def match_music_resource(
     music: MusicInfo,
     title: str,
@@ -154,11 +173,7 @@ def match_music_resource(
     titles = music_titles(music)
     title_matched = any(music_text_key(music_base_title(item)) in names for item in titles)
     content = f"{title} {description}"
-    resource_artist_keys = {music_text_key(artist) for artist in resource.artists}
-    if len(resource.artists) > 1 and any(any(separator in artist for separator in ("/", "&", ",")) for artist in artists):
-        # 带分隔符的完整艺名可能被解析成多个片段，保留整段署名参与比较，不拼接无分隔符艺名。
-        resource_artist_keys.add(music_text_key(resource.artist))
-    artist_matched = bool(resource_artist_keys & {music_text_key(artist) for artist in artists}) if resource.artists \
+    artist_matched = music_artist_matches(music, resource.artists) if resource.artists \
         else any(_contains_artist(content, artist) for artist in artists)
     if not title_matched:
         if music.music_type != MUSIC_ENTITY_ALBUM and artist_matched and any(
@@ -182,9 +197,7 @@ def match_music_resource(
             return MusicMatch("candidate", "partial_album")
         if music.year and resource.year and str(music.year) != str(resource.year):
             return MusicMatch("candidate", "year_mismatch")
-    target_title = music.album or music.title if music.music_type == MUSIC_ENTITY_ALBUM else music.title
-    expected_version = _version_markers(f"{target_title or ''} {music.version or ''}")
-    if expected_version != _version_markers(f"{resource.title or ''} {resource.version or ''}"):
+    if not music_version_matches(music, resource):
         return MusicMatch("candidate", "version_mismatch")
     if _EDITION.search(music.title or "") and not any(music_text_key(item) in music_text_key(content) for item in titles):
         return MusicMatch("candidate", "edition_unverified")

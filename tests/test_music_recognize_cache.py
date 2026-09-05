@@ -6,7 +6,9 @@
 import asyncio
 import inspect
 import pickle
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from app.api.endpoints import music as music_endpoint
 from app.domain.context import MusicInfo
@@ -153,8 +155,19 @@ def test_music_cache_key_prefers_media_id():
 
     cache.update(meta, _music_info())
 
-    # 缓存键取自请求元数据，携带原生 ID 时以 ID 为主身份
-    assert list(cache._cache.data.keys()) == ["[音乐]rec-1-周杰伦-None-None"]
+    assert next(iter(cache._cache.data)).startswith("[音乐:v2]")
+    renamed = MetaMusic(title="不同展示名", artists=["不同署名"], media_source="musicbrainz", media_id="rec-1")
+    assert cache.get(renamed).media_id == "rec-1"
+
+
+def test_music_cache_rebuilds_legacy_identity_keys(monkeypatch):
+    """旧缓存未区分版本和实体范围，升级后不恢复其中可能串用的身份。"""
+    file_cache = _FileCacheStub(pickle.dumps({
+        "version": 1, "items": {"[音乐]legacy": {"expires_at": 2000, "value": _music_info().to_dict()}},
+    }))
+    runtime_cache = _TTLCacheStub()
+    _build_initialized_music_cache(monkeypatch, file_cache, runtime_cache)
+    assert runtime_cache.data == {}
 
 
 def test_music_cache_update_and_get_roundtrip():
@@ -172,6 +185,37 @@ def test_music_cache_update_and_get_roundtrip():
     assert hit.artists == ["周杰伦"]
     stored = next(iter(cache._cache.data.values()))
     assert "raw_data" not in stored
+
+
+@pytest.mark.parametrize("field,value", [("version", "Live"), ("isrc", "USABC2600001")])
+def test_music_cache_separates_recording_identity_evidence(field, value):
+    """相同标题署名但版本或 ISRC 不同的请求不能共用识别结果。"""
+    cache = _build_music_cache({})
+    original = MetaMusic(title="晴天", artists=["周杰伦"])
+    variant = MetaMusic.from_dict(original.to_dict())
+    setattr(variant, field, value)
+    cache.update(original, _music_info())
+    assert cache.get(variant) is None
+
+
+def test_music_cache_separates_requested_entity_scope():
+    """单曲、专辑与未限定实体的请求分别缓存，负缓存也不能跨实体阻止回退。"""
+    cache = _build_music_cache({})
+    meta = MetaMusic(title="晴天", artists=["周杰伦"])
+    cache.update(meta, _music_info(music_type="album"), music_type="album")
+    cache.update(meta, MusicInfo.from_meta(meta), music_type="recording")
+    assert cache.get(meta, music_type="album").music_type == "album"
+    assert cache.get(meta, music_type="recording").media_id is None
+    assert cache.get(meta) is None
+
+
+def test_music_cache_key_does_not_confuse_field_separators():
+    """名称中的连字符与多艺人分隔符不能把不同字段组合编码成同一个缓存键。"""
+    cache = _build_music_cache({})
+    original = MetaMusic(title="A-B", artists=["C"])
+    other = MetaMusic(title="A", artists=["B-C"])
+    cache.update(original, _music_info())
+    assert cache.get(other) is None
 
 
 def test_music_cache_get_miss_returns_none():
@@ -382,6 +426,32 @@ def test_module_recognize_media_hits_cache_without_search(monkeypatch):
     search_mock.assert_not_called()
 
 
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_module_recording_request_cannot_reuse_album_cache(monkeypatch, async_mode):
+    """显式单曲识别不能读取此前未限定请求缓存下来的同名专辑。"""
+    cache = _build_music_cache({})
+    module = _build_module_with_cache(cache)
+    meta = MetaMusic(title="晴天", artists=["周杰伦"])
+    cache.update(meta, _music_info(music_type="album", media_id="album-1"))
+    expected = _music_info()
+    monkeypatch.setattr(module, "_search_recordings", Mock(return_value=[expected]))
+    monkeypatch.setattr(module, "_async_search_recordings", AsyncMock(return_value=[expected]))
+    if async_mode:
+        result = asyncio.run(module.async_recognize_media(meta=meta, music_type="recording"))
+    else:
+        result = module.recognize_media(meta=meta, music_type="recording")
+    assert result is expected
+    assert cache.get(meta, music_type="recording").music_type == "recording"
+    if async_mode:
+        cached = asyncio.run(module.async_recognize_media(meta=meta, music_type="recording"))
+        module._async_search_recordings.assert_awaited_once()
+    else:
+        cached = module.recognize_media(meta=meta, music_type="recording")
+        module._search_recordings.assert_called_once()
+    assert cached.media_id == expected.media_id
+    assert cached.recognize_cache_hit is True
+
+
 def test_module_recognize_media_bypasses_cache_when_disabled(monkeypatch):
     """cache=False 时不读取缓存，重新走搜索识别流程。"""
     cache = _build_music_cache({})
@@ -445,3 +515,19 @@ def test_module_update_recognize_cache_only_for_musicbrainz_music():
     other_source = _music_info(media_source="theaudiodb", media_id="x-1")
     assert module.update_recognize_cache(meta=meta, mediainfo=other_source) is None
     assert module.update_recognize_cache(meta=None, mediainfo=_music_info()) is None
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_shared_recognition_replaces_entity_scoped_negative_cache(async_mode):
+    """共享回填的公开契约没有请求类型，也必须覆盖已确认单曲对应的旧负缓存。"""
+    cache = _build_music_cache({})
+    module = _build_module_with_cache(cache)
+    meta = MetaMusic(title="晴天", artists=["周杰伦"])
+    cache.update(meta, MusicInfo.from_meta(meta), music_type="recording")
+    if async_mode:
+        result = asyncio.run(module.async_update_recognize_cache(meta, _music_info()))
+    else:
+        result = module.update_recognize_cache(meta, _music_info())
+    assert result is True
+    assert cache.get(meta, music_type="recording").media_id == "rec-1"
+    assert cache.get(meta).media_id == "rec-1"

@@ -163,6 +163,9 @@ Call the gateway with this shape:
   browse-only. Music recognition-cache operations are administrator-only; call
   `music.cache.get` before deleting one exact key, and clear all entries only
   after explicit confirmation.
+- Cache keys are opaque. Use the exact key returned by `music.cache.get`; do not
+  construct one from a title or artist. Recognition caches separate recording,
+  album, and unspecified requests, as well as version and ISRC evidence.
 - Music resource metadata records applied recognition rules in `apply_words`.
   Explicit subtitle versions participate in matching. A track's `album` field
   does not prove whole-album coverage, even without a track number; keep

@@ -878,12 +878,14 @@ class MetaMusic(MetaBase):
         self.audio_lossless = infer_audio_lossless(self.audio_format, self.audio_lossless)
 
     def apply_title(self, value: Any) -> None:
-        """解析种子/文件名标题字符串，提取艺术家、曲名、年份并补充音质参数。
+        """解析种子/文件名标题字符串，提取艺术家、曲名、年份、版本并补充音质参数。
 
         公共层先完成字符归一、音质与干扰信息剔除；随后由注册中心依次匹配
         命名模式和对应解析器，最后统一回填结构化字段并提取曲序前缀。
         """
         raw = str(value or "")
+        if not self.version:
+            self.version = self._resource_version(raw, None)
         accelerator = get_metainfo_accelerator()
         if accelerator and MusicNameRegistry._uses_default_components():
             rust_result = accelerator.parse_metamusic(

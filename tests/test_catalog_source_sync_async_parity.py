@@ -435,8 +435,8 @@ def test_musicbrainz_candidate_sync_async_decision_parity() -> None:
 
     assert _music_signature(sync_result) == _music_signature(async_result)
     assert sync_result and sync_result.media_id == "recording-1"
-    module._search_recordings.assert_called_once_with(meta, limit=10)
-    module._async_search_recordings.assert_awaited_once_with(meta, limit=10)
+    module._search_recordings.assert_called_once_with(meta, limit=10, require_match=True)
+    module._async_search_recordings.assert_awaited_once_with(meta, limit=10, require_match=True)
     module._search_albums.assert_not_called()
     module._async_search_albums.assert_not_awaited()
 

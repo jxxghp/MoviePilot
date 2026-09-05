@@ -2,6 +2,7 @@
 
 import copy
 import pickle
+from pathlib import Path
 
 import pytest
 
@@ -11,7 +12,7 @@ from app.chain.search import SearchChain
 from app.domain.context import Context, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.runtime import get_metainfo_accelerator
-from app.domain.metainfo import MetaInfo
+from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.domain.music import match_music_resource
 from app.schemas.music import MusicMeta
 from app.schemas.types import MediaType
@@ -226,6 +227,10 @@ def test_resource_evidence_matches_python_and_native_parser_paths(monkeypatch, p
     assert live.apply_words == ["错误曲名 => 晴天"]
     album = MusicInfo(music_type="album", title="叶惠美", artists=["周杰伦"])
     assert match_music_resource(album, "周杰伦 - 晴天 FLAC", "专辑：叶惠美").reason == "partial_album"
+    query = MetaMusic.parse_query("周杰伦 - 晴天 [Live] FLAC")
+    assert query.version == "Live"
+    filename = MetaInfoPath(Path("/music/周杰伦/叶惠美/晴天 [Live].flac"))
+    assert filename.version == "Live"
 
 
 @pytest.mark.parametrize("factory", [MusicInfo, MusicAlbumInfo])

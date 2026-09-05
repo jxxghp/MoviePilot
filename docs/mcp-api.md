@@ -414,6 +414,9 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 `shared_recognized` 和开关字段 `shared_recognize_enabled`。共享命中次数仅在共享结果驱动的二次媒体识别成功后累计。
 
 音乐识别缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized` 和 `data`；条目字段包括缓存键、`media_id`、`title`、`artists`、`album`、`year`、`music_type` 和 `cover_url`。未携带远端身份的兜底负缓存仅保留在内存，不参与持久化。
+缓存键为不透明值，管理调用必须使用查询返回的原始键，不自行拼接。识别缓存按请求的
+单曲、专辑或未限定实体范围隔离，版本及 ISRC 不同的文本识别请求也不会共用结果；
+旧版未包含这些证据的派生缓存在升级后重新建立，不影响下载历史或订阅数据。
 
 ### 插件补充接口
 

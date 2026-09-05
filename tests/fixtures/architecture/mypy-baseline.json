@@ -1942,7 +1942,7 @@
     "override": 1
   },
   "app/modules/musicbrainz/__init__.py": {
-    "arg-type": 2,
+    "arg-type": 1,
     "assignment": 5,
     "misc": 4,
     "no-untyped-call": 4,

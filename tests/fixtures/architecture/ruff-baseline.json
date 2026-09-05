@@ -317,9 +317,6 @@
   "app/modules/lrclib/__init__.py": {
     "I001": 1
   },
-  "app/modules/musicbrainz/cache.py": {
-    "I001": 1
-  },
   "app/modules/navidrome/__init__.py": {
     "F401": 2,
     "I001": 1
