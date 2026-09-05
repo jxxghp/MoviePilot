@@ -26,6 +26,7 @@ from app.runtime.log import logger
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
     MediaType,
 )
 from app.schemas.workflow import FileItem
@@ -251,8 +252,13 @@ class FileFilterMixin(_TransferOwnerBase):
             cls,
             download_history: Optional[DownloadHistorySnapshot],
             file_path: Path,
+            discard_recording_identity: bool = False,
     ) -> tuple[Optional[MetaMusic], Optional[MusicInfo]]:
-        """从下载历史恢复音乐上下文，并用当前音频标签覆盖曲目级字段。"""
+        """从下载历史恢复音乐上下文，并用当前音频标签覆盖曲目级字段。
+
+        多音轨批次误带单曲身份时只保留文件自身标签，避免把同一 recording
+        身份传播到整张专辑；调用方随后可使用目录级证据重新匹配专辑。
+        """
         note = getattr(download_history, "note", None)
         music_note = note.get("music") if isinstance(note, dict) else None
         if not isinstance(music_note, dict) or music_note.get("version") != 1:
@@ -264,6 +270,18 @@ class FileFilterMixin(_TransferOwnerBase):
             return None, None
 
         file_tags = MediaChain.read_path_meta(file_path)
+        should_discard_identity = (
+            discard_recording_identity
+            and saved_info.music_type == MUSIC_ENTITY_RECORDING
+        )
+        if should_discard_identity:
+            # 共享 recording 上下文可能包含错误的专辑、年份等字段；整张丢弃，
+            # 只保留当前文件实际标签，目录级匹配失败时也不会回落到错误身份。
+            file_meta = deepcopy(file_tags)
+            file_meta.org_string = file_path.name
+            file_meta.title = file_meta.title or file_path.stem
+            return file_meta, None
+
         file_meta = deepcopy(saved_meta)
         file_meta.org_string = file_path.name
         # 曲目标题始终优先使用当前文件自身的标签（缺失时回退为文件名），
