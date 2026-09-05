@@ -103,7 +103,9 @@ def directory_settings(
     return _SchemaResponse(success=True, data=results)
 
 
-@router.get("/options", summary="查询可用存储选项", response_model=List[_SchemaStorageOption])
+@router.get(  # type: ignore[misc]
+    "/options", summary="查询可用存储选项", response_model=List[_SchemaStorageOption]
+)
 def storage_options(
     _: ApiPrincipal = Depends(get_current_active_user),
     page: CompatiblePageParam = None,

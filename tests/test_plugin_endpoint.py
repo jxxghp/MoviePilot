@@ -9,6 +9,7 @@ from starlette.responses import Response
 
 from app import schemas
 from app.api.endpoints import plugin as plugin_endpoint
+from app.api.endpoints import pluginfolder as plugin_folders_endpoint
 from app.api.endpoints.plugin import (
     plugin_capabilities,
     plugin_data_summary,
@@ -1265,7 +1266,7 @@ def test_sealed_http_folder_update_rejects_before_config_access(monkeypatch):
         config_provider,
     )
 
-    result = asyncio.run(plugin_endpoint.update_folder_plugins("常用", ["DemoPlugin"], None))
+    result = asyncio.run(plugin_folders_endpoint.update_folder_plugins("常用", ["DemoPlugin"], None))
 
     assert result.success is False
     assert "停机阶段" in result.message
@@ -1279,10 +1280,14 @@ def test_plugin_folder_incremental_endpoints_delegate_structured_payloads(monkey
     service.update_plugins = AsyncMock(return_value=SimpleNamespace(success=True, message=""))
     service.assign_plugin = AsyncMock(return_value=SimpleNamespace(success=True, message=""))
     service.remove_plugin_from_folder = AsyncMock(return_value=SimpleNamespace(success=True, message=""))
-    monkeypatch.setattr(plugin_endpoint, "get_plugin_folder_service", lambda: service)
+    monkeypatch.setattr(
+        plugin_folders_endpoint,
+        "get_plugin_folder_service",
+        lambda: service,
+    )
 
     patch_result = asyncio.run(
-        plugin_endpoint.update_plugin_folder(
+        plugin_folders_endpoint.update_plugin_folder(
             "常用",
             schemas.PluginFolderUpdateRequest(
                 new_name="工具",
@@ -1293,7 +1298,7 @@ def test_plugin_folder_incremental_endpoints_delegate_structured_payloads(monkey
         )
     )
     members_result = asyncio.run(
-        plugin_endpoint.update_folder_plugins(
+        plugin_folders_endpoint.update_folder_plugins(
             "工具",
             schemas.PluginFolderPluginsUpdateRequest(
                 plugins=["DemoPlugin"],
@@ -1302,8 +1307,8 @@ def test_plugin_folder_incremental_endpoints_delegate_structured_payloads(monkey
             None,
         )
     )
-    assign_result = asyncio.run(plugin_endpoint.assign_plugin_to_folder("工具", "DemoPlugin", None))
-    remove_result = asyncio.run(plugin_endpoint.remove_plugin_from_folder("工具", "DemoPlugin", None))
+    assign_result = asyncio.run(plugin_folders_endpoint.assign_plugin_to_folder("工具", "DemoPlugin", None))
+    remove_result = asyncio.run(plugin_folders_endpoint.remove_plugin_from_folder("工具", "DemoPlugin", None))
 
     assert all(result.success for result in (patch_result, members_result, assign_result, remove_result))
     service.update_folder.assert_awaited_once_with(
@@ -1327,10 +1332,14 @@ def test_plugin_folder_member_endpoint_keeps_legacy_array_request(monkeypatch):
     """旧客户端发送裸插件数组时仍应按无条件替换语义工作。"""
     service = MagicMock()
     service.update_plugins = AsyncMock(return_value=SimpleNamespace(success=True, message=""))
-    monkeypatch.setattr(plugin_endpoint, "get_plugin_folder_service", lambda: service)
+    monkeypatch.setattr(
+        plugin_folders_endpoint,
+        "get_plugin_folder_service",
+        lambda: service,
+    )
 
     result = asyncio.run(
-        plugin_endpoint.update_folder_plugins(
+        plugin_folders_endpoint.update_folder_plugins(
             "常用",
             ["DemoPlugin"],
             None,

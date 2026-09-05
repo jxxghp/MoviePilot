@@ -26,7 +26,7 @@ class StorageLoginStatusData(BaseModel):
     tip: str = Field(description="状态提示")
 
 
-class StorageOption(BaseModel):
+class StorageOption(BaseModel):  # type: ignore[misc]
     """前端选择控件可安全消费的存储摘要。"""
 
     name: str = Field(description="存储显示名称")

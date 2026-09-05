@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-import app.api.endpoints.system as system_endpoint
+import app.api.endpoints.identifier as system_endpoint
 from app.application.settings import SystemSettingConflictError
 from app.schemas.system import CustomIdentifiersUpdateRequest
 from app.schemas.types import SystemConfigKey

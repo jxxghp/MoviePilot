@@ -1,6 +1,6 @@
 import asyncio
 import mimetypes
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional
 
 import aiofiles
 from anyio import Path as AsyncPath
@@ -23,6 +23,7 @@ from app.api.dependencies.auth import (
     get_current_active_superuser_async,
 )
 from app.api.dependencies.plugin import get_plugin_config_command
+from app.api.endpoints.pluginfolder import router as plugin_folders_router
 from app.api.principal import ApiPrincipal
 from app.api.response import (
     COLLECTION_TOTAL_HEADER,
@@ -37,11 +38,7 @@ from app.application.configuration import get_api_runtime_config_snapshot, get_c
 from app.application.plugin.catalog import get_plugin_catalog_query
 from app.application.plugin.config import PluginConfigCommand
 from app.application.plugin.data import PluginDataQueryService, PluginDataSummaryService
-from app.application.plugin.folders import (
-    add_clone_to_plugin_folder,
-    get_plugin_folder_service,
-    remove_plugin_from_folders,
-)
+from app.application.plugin.folders import add_clone_to_plugin_folder, remove_plugin_from_folders
 from app.application.plugin.gateway import get_plugin_install_service
 from app.application.plugin.management import (
     get_plugin_snapshot,
@@ -64,9 +61,6 @@ from app.schemas.plugin import PluginCloneRequest as _SchemaPluginCloneRequest
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
 from app.schemas.plugin import PluginDataSummary as _SchemaPluginDataSummary
-from app.schemas.plugin import PluginFolderPluginsUpdateRequest as _SchemaPluginFolderPluginsUpdateRequest
-from app.schemas.plugin import PluginFoldersData as _SchemaPluginFoldersData
-from app.schemas.plugin import PluginFolderUpdateRequest as _SchemaPluginFolderUpdateRequest
 from app.schemas.plugin import PluginInstallOutcome as _SchemaPluginInstallOutcome
 from app.schemas.plugin import PluginRating as _SchemaPluginRating
 from app.schemas.plugin import PluginRatingMap as _SchemaPluginRatingMap
@@ -92,6 +86,7 @@ from app.schemas.types import SystemConfigKey
 from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
+router.include_router(plugin_folders_router)
 _plugin_release_refresh_tasks: set[asyncio.Task] = set()
 
 
@@ -769,132 +764,6 @@ async def plugin_static_file(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Internal Server Error")
-
-
-@router.get(
-    "/folders",
-    summary="获取插件文件夹配置",
-    response_model=_SchemaPluginFoldersData,
-)
-async def get_plugin_folders(
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> dict:
-    """
-    获取插件文件夹分组配置
-    """
-    return get_plugin_folder_service().get_or_empty()
-
-
-@router.post("/folders", summary="保存插件文件夹配置", response_model=_SchemaResponse[None])
-async def save_plugin_folders(
-    folders: _SchemaPluginFoldersData,
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> Any:
-    """
-    保存插件文件夹分组配置
-    """
-    result = await get_plugin_folder_service().save(folders.root)
-    return _SchemaResponse(success=result.success, message=result.message)
-
-
-@router.post("/folders/{folder_name}", summary="创建插件文件夹", response_model=_SchemaResponse[None])
-async def create_plugin_folder(folder_name: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)) -> Any:
-    """
-    创建新的插件文件夹
-    """
-    result = await get_plugin_folder_service().create(folder_name)
-    return _SchemaResponse(success=result.success, message=result.message)
-
-
-@router.delete("/folders/{folder_name}", summary="删除插件文件夹", response_model=_SchemaResponse[None])
-async def delete_plugin_folder(folder_name: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)) -> Any:
-    """
-    删除插件文件夹
-    """
-    result = await get_plugin_folder_service().delete(folder_name)
-    return _SchemaResponse(success=result.success, message=result.message)
-
-
-@router.patch(
-    "/folders/{folder_name}",
-    summary="更新插件文件夹",
-    response_model=_SchemaResponse[None],
-)
-async def update_plugin_folder(
-    folder_name: str,
-    folder: _SchemaPluginFolderUpdateRequest,
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> Any:
-    """增量更新插件文件夹名称或展示配置。"""
-    changes = folder.model_dump(
-        by_alias=True,
-        exclude={"new_name"},
-        exclude_unset=True,
-    )
-    result = await get_plugin_folder_service().update_folder(
-        folder_name,
-        new_name=folder.new_name,
-        changes=changes,
-    )
-    return _SchemaResponse(success=result.success, message=result.message)
-
-
-@router.put(
-    "/folders/{folder_name}/plugins",
-    summary="更新文件夹中的插件",
-    response_model=_SchemaResponse[None],
-)
-async def update_folder_plugins(
-    folder_name: str,
-    plugin_update: Union[List[str], _SchemaPluginFolderPluginsUpdateRequest],
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> Any:
-    """条件替换指定文件夹中的插件列表，并兼容旧数组请求。"""
-    if isinstance(plugin_update, list):
-        plugin_ids = plugin_update
-        expected_plugin_ids = None
-    else:
-        plugin_ids = plugin_update.plugins
-        expected_plugin_ids = plugin_update.expected_plugins
-    result = await get_plugin_folder_service().update_plugins(
-        folder_name,
-        plugin_ids,
-        expected_plugin_ids,
-    )
-    return _SchemaResponse(success=result.success, message=result.message)
-
-
-@router.put(
-    "/folders/{folder_name}/plugins/{plugin_id}",
-    summary="移动插件到文件夹",
-    response_model=_SchemaResponse[None],
-)
-async def assign_plugin_to_folder(
-    folder_name: str,
-    plugin_id: str,
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> Any:
-    """把一个插件原子迁移到目标文件夹。"""
-    result = await get_plugin_folder_service().assign_plugin(folder_name, plugin_id)
-    return _SchemaResponse(success=result.success, message=result.message)
-
-
-@router.delete(
-    "/folders/{folder_name}/plugins/{plugin_id}",
-    summary="从文件夹移除插件",
-    response_model=_SchemaResponse[None],
-)
-async def remove_plugin_from_folder(
-    folder_name: str,
-    plugin_id: str,
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> Any:
-    """只从指定文件夹移除一个插件。"""
-    result = await get_plugin_folder_service().remove_plugin_from_folder(
-        folder_name,
-        plugin_id,
-    )
-    return _SchemaResponse(success=result.success, message=result.message)
 
 
 @router.post("/clone/{plugin_id}", summary="创建插件分身", response_model=_SchemaResponse[None])

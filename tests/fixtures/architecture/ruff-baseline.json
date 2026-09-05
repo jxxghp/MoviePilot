@@ -635,9 +635,6 @@
   "tests/test_agent_tool_timeouts.py": {
     "I001": 1
   },
-  "tests/test_api_authorization.py": {
-    "I001": 1
-  },
   "tests/test_async_db_pooling.py": {
     "I001": 1
   },

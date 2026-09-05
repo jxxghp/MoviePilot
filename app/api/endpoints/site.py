@@ -300,7 +300,7 @@ async def update_site(
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(
+@router.post(  # type: ignore[misc]
     "/cookiecloud",
     summary="CookieCloud同步",
     response_model=_SchemaResponse[None],
@@ -325,7 +325,7 @@ async def cookie_cloud_sync(
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(
+@router.post(  # type: ignore[misc]
     "/reset",
     summary="重置站点",
     response_model=_SchemaResponse[None],

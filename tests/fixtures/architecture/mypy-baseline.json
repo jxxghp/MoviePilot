@@ -511,11 +511,11 @@
   "app/api/endpoints/plugin.py": {
     "assignment": 1,
     "import-untyped": 1,
-    "misc": 33,
+    "misc": 29,
     "no-any-return": 5,
     "no-untyped-call": 1,
     "no-untyped-def": 2,
-    "type-arg": 10
+    "type-arg": 9
   },
   "app/api/endpoints/recommend.py": {
     "attr-defined": 2,
@@ -549,7 +549,7 @@
     "arg-type": 11,
     "assignment": 3,
     "attr-defined": 2,
-    "misc": 28,
+    "misc": 23,
     "no-any-return": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 1,

@@ -7,7 +7,7 @@ from typing import Annotated, Any, Optional, Union
 
 import anyio
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
-from fastapi import Body, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import Body, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
@@ -17,6 +17,7 @@ from app.api.dependencies.auth import (
     get_current_active_superuser_async,
     get_current_active_user_async,
 )
+from app.api.endpoints.identifier import router as system_identifiers_router
 from app.api.principal import ApiPrincipal
 from app.api.response import CompatibleCountParam, CompatiblePageParam, ResponseAPIRouter
 from app.application.backup import DatabaseBackupInProgressError
@@ -32,7 +33,7 @@ from app.application.network import get_configured_network_test_service
 from app.application.rules import RuleHelper
 from app.application.scheduling import get_scheduler
 from app.application.security.url import SecurityUtils
-from app.application.settings import SystemSettingConflictError, SystemSettingsService
+from app.application.settings import SystemSettingsService
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.system import LogFileData, LogNotFoundError
 from app.chain.media import MediaChain
@@ -53,7 +54,6 @@ from app.schemas.common import JsonObjectList as _SchemaJsonObjectList
 from app.schemas.common import TimeData as _SchemaTimeData
 from app.schemas.common import ValueData as _SchemaValueData
 from app.schemas.response import Response as _SchemaResponse
-from app.schemas.system import CustomIdentifiersUpdateRequest as _SchemaCustomIdentifiersUpdateRequest
 from app.schemas.system import DatabaseBackupArtifactData as _SchemaDatabaseBackupArtifactData
 from app.schemas.system import DatabaseBackupVerificationData as _SchemaDatabaseBackupVerificationData
 from app.schemas.system import NetTestTarget as _SchemaNetTestTarget
@@ -70,6 +70,7 @@ from app.schemas.types import SystemConfigKey
 from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
+router.include_router(system_identifiers_router)
 
 _PUBLIC_SYSTEM_CONFIG_KEYS = {
     item.value: item
@@ -699,58 +700,6 @@ async def update_settings(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.get(  # type: ignore[misc]
-    "/identifiers",
-    summary="查询自定义识别词",
-    response_model=_SchemaResponse[_SchemaJsonObject],
-)
-async def query_custom_identifiers(
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
-) -> _SchemaResponse[Any]:
-    """返回完整的自定义识别词列表。"""
-    identifiers = [
-        item
-        for item in (get_configured_system_config().get(SystemConfigKey.CustomIdentifiers) or [])
-        if isinstance(item, str)
-    ]
-    return _SchemaResponse(
-        success=True,
-        data={"count": len(identifiers), "identifiers": identifiers},
-    )
-
-
-@router.post(  # type: ignore[misc]
-    "/identifiers",
-    summary="更新自定义识别词",
-    response_model=_SchemaResponse[_SchemaJsonObject],
-)
-async def update_custom_identifiers(
-    payload: _SchemaCustomIdentifiersUpdateRequest,
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
-    runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse[Any]:
-    """完整替换自定义识别词，并可拒绝基于过期快照的覆盖。"""
-    identifiers = list(payload.identifiers)
-    try:
-        data = await SystemSettingsService(
-            get_runtime_settings(),
-            get_configured_system_config(),
-            runtime.system.publish_config_changed,
-        ).update(
-            setting_key=SystemConfigKey.CustomIdentifiers.value,
-            value=identifiers or None,
-            expected_value=payload.expected_identifiers,
-            enforce_expected_value=payload.expected_identifiers is not None,
-        )
-    except SystemSettingConflictError as error:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(error),
-        ) from error
-    data.update({"count": len(identifiers), "identifiers": identifiers})
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
-
-
 @router.get(
     "/message",
     summary="实时消息",
@@ -976,7 +925,9 @@ def ruletest(
     summary="获取网络测试目标",
     response_model=_SchemaResponse[list[_SchemaNetTestTarget]],
 )
-async def nettest_targets(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None):
+async def nettest_targets(
+    _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None
+):
     """
     获取网络测试目标。
 
@@ -1106,7 +1057,9 @@ def check_system_update(
 
 
 @router.post(
-    "/update/download", summary="后台下载系统更新", response_model=_SchemaResponse[_SchemaSystemUpdateStatus],
+    "/update/download",
+    summary="后台下载系统更新",
+    response_model=_SchemaResponse[_SchemaSystemUpdateStatus],
 )
 def download_system_update(
     _: ApiPrincipal = Depends(get_current_active_superuser),
@@ -1119,7 +1072,9 @@ def download_system_update(
 
 
 @router.post(
-    "/update/install", summary="确认重启安装系统更新", response_model=_SchemaResponse[None],
+    "/update/install",
+    summary="确认重启安装系统更新",
+    response_model=_SchemaResponse[None],
 )
 def install_system_update(
     _: ApiPrincipal = Depends(get_current_active_superuser),

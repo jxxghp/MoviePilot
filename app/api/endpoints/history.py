@@ -417,7 +417,7 @@ def _clear_transfer_history(
     return _SchemaResponse(success=result.success, message=result.message)
 
 
-@router.delete(
+@router.delete(  # type: ignore[misc]
     "/transfer/all",
     summary="清空旧整理记录",
     response_model=_SchemaResponse[None],

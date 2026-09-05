@@ -154,7 +154,7 @@ class PluginRuntimeSummary(BaseModel):
     )
 
 
-class PluginRuntimeCommandCapability(BaseModel):
+class PluginRuntimeCommandCapability(BaseModel):  # type: ignore[misc]
     """插件运行时注册命令的安全只读投影。"""
 
     cmd: str = Field(description="命令标识")
@@ -162,14 +162,14 @@ class PluginRuntimeCommandCapability(BaseModel):
     plugin_id: Optional[str] = Field(default=None, description="注册命令的插件 ID")
 
 
-class PluginRuntimeActionCapability(BaseModel):
+class PluginRuntimeActionCapability(BaseModel):  # type: ignore[misc]
     """插件运行时注册动作的安全只读投影。"""
 
     id: str = Field(description="动作标识")
     name: Optional[str] = Field(default=None, description="动作名称")
 
 
-class PluginRuntimeActionGroup(BaseModel):
+class PluginRuntimeActionGroup(BaseModel):  # type: ignore[misc]
     """按插件归组的运行时动作投影。"""
 
     plugin_id: Optional[str] = Field(default=None, description="注册动作的插件 ID")
@@ -177,7 +177,7 @@ class PluginRuntimeActionGroup(BaseModel):
     actions: List[PluginRuntimeActionCapability] = Field(default_factory=list)
 
 
-class PluginRuntimeServiceCapability(BaseModel):
+class PluginRuntimeServiceCapability(BaseModel):  # type: ignore[misc]
     """插件定时服务的安全只读投影。"""
 
     id: str = Field(description="服务标识")
@@ -185,7 +185,7 @@ class PluginRuntimeServiceCapability(BaseModel):
     trigger: Optional[str] = Field(default=None, description="定时触发器说明")
 
 
-class PluginRuntimeCapabilities(BaseModel):
+class PluginRuntimeCapabilities(BaseModel):  # type: ignore[misc]
     """插件命令、动作和定时服务的公共安全能力快照。"""
 
     commands: List[PluginRuntimeCommandCapability] = Field(default_factory=list)
@@ -193,7 +193,7 @@ class PluginRuntimeCapabilities(BaseModel):
     services: List[PluginRuntimeServiceCapability] = Field(default_factory=list)
 
 
-class PluginDataKeySummary(BaseModel):
+class PluginDataKeySummary(BaseModel):  # type: ignore[misc]
     """单个插件持久化键的不含值诊断摘要。"""
 
     key: str = Field(description="持久化数据键")
@@ -208,7 +208,7 @@ class PluginDataKeySummary(BaseModel):
     sensitive: bool = Field(description="键名是否符合凭据字段规则")
 
 
-class PluginDataSummary(BaseModel):
+class PluginDataSummary(BaseModel):  # type: ignore[misc]
     """插件持久化数据的不含原值诊断摘要。"""
 
     plugin_id: str = Field(description="插件 ID")
@@ -490,7 +490,7 @@ class PluginFoldersData(RootModel[Dict[str, Union[List[str], PluginFolderConfigD
     """插件文件夹与插件配置映射，兼容旧版数组格式与新版对象格式。"""
 
 
-class PluginFolderUpdateRequest(BaseModel):
+class PluginFolderUpdateRequest(BaseModel):  # type: ignore[misc]
     """插件文件夹名称和展示字段的增量更新请求。"""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -521,7 +521,7 @@ class PluginFolderUpdateRequest(BaseModel):
     )
 
 
-class PluginFolderPluginsUpdateRequest(BaseModel):
+class PluginFolderPluginsUpdateRequest(BaseModel):  # type: ignore[misc]
     """插件文件夹成员顺序的条件替换请求。"""
 
     plugins: List[str] = Field(description="Ordered installed plugin IDs assigned to this folder.")

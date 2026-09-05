@@ -1,5 +1,5 @@
 import asyncio
-from contextlib import contextmanager, nullcontext
+from contextlib import nullcontext
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
