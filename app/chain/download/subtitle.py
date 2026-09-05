@@ -32,6 +32,7 @@ from app.runtime.log import logger
 from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import FileURI
 from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
+from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import (
     MediaSource,
 )
@@ -66,7 +67,7 @@ def _append_download_classification_path(
 
 
 def _resolve_torrent_content_dir(
-    list_torrents: Callable[..., List[Any]],
+    list_torrents: Callable[..., Optional[List[DownloaderTorrent]]],
     *,
     download_hash: Optional[str],
     downloader: Optional[str],
