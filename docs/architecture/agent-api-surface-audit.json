@@ -2,11 +2,11 @@
   "disposition_counts": {
     "alternate-auth-duplicate": 11,
     "consolidated": 72,
-    "gateway": 199,
+    "gateway": 202,
     "provider-skill": 11,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
-    "ui_presentation": 16
+    "ui_presentation": 20
   },
   "dynamic_gateway_routes": [
     {
@@ -18,10 +18,10 @@
       "reason": "The executor validates and expands this bounded source placeholder to one of tmdb, douban, bangumi, or anilist before calling the corresponding concrete OpenAPI route."
     }
   ],
-  "gateway_http_route_count": 200,
-  "gateway_operation_count": 202,
-  "matched_gateway_http_route_count": 199,
-  "openapi_operation_count": 385,
+  "gateway_http_route_count": 203,
+  "gateway_operation_count": 205,
+  "matched_gateway_http_route_count": 202,
+  "openapi_operation_count": 392,
   "operations": [
     {
       "disposition": "consolidated",
@@ -757,20 +757,6 @@
     },
     {
       "disposition": "gateway",
-      "method": "GET",
-      "operation_ids": [
-        "transfer.history.clear"
-      ],
-      "owner": "moviepilot-api",
-      "path": "/api/v1/history/empty/transfer",
-      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
-      "summary": "清空整理记录",
-      "tags": [
-        "history"
-      ]
-    },
-    {
-      "disposition": "gateway",
       "method": "DELETE",
       "operation_ids": [
         "transfer.history.delete"
@@ -807,6 +793,20 @@
       "path": "/api/v1/history/transfer/ai-redo",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "智能助手批量重新整理",
+      "tags": [
+        "history"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "transfer.history.clear"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/history/transfer/all",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "清空旧整理记录",
       "tags": [
         "history"
       ]
@@ -2053,6 +2053,20 @@
     },
     {
       "disposition": "gateway",
+      "method": "PATCH",
+      "operation_ids": [
+        "plugin.folder.update"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/folders/{folder_name}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "更新插件文件夹",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
       "method": "POST",
       "operation_ids": [
         "plugin.folder.create"
@@ -2075,6 +2089,34 @@
       "path": "/api/v1/plugin/folders/{folder_name}/plugins",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "更新文件夹中的插件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "plugin.folder.plugin.remove"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "从文件夹移除插件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "plugin.folder.plugin.assign"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "移动插件到文件夹",
       "tags": [
         "plugin"
       ]
@@ -2205,7 +2247,7 @@
     },
     {
       "disposition": "gateway",
-      "method": "GET",
+      "method": "POST",
       "operation_ids": [
         "plugin.reload"
       ],
@@ -2281,6 +2323,18 @@
       "path": "/api/v1/plugin/runtime/{plugin_id}/data",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "查询插件持久化数据",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/plugin/runtime/{plugin_id}/data/summary",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "查询插件持久化数据摘要",
       "tags": [
         "plugin"
       ]
@@ -2658,6 +2712,18 @@
       ]
     },
     {
+      "disposition": "ui_presentation",
+      "method": "PUT",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/rule/custom/reorder",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "调整自定义过滤规则顺序",
+      "tags": [
+        "rule"
+      ]
+    },
+    {
       "disposition": "gateway",
       "method": "DELETE",
       "operation_ids": [
@@ -2709,6 +2775,18 @@
       "path": "/api/v1/rule/groups",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "新增过滤规则组",
+      "tags": [
+        "rule"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "PUT",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/rule/groups/reorder",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "调整过滤规则组顺序",
       "tags": [
         "rule"
       ]
@@ -3023,7 +3101,7 @@
     },
     {
       "disposition": "gateway",
-      "method": "GET",
+      "method": "POST",
       "operation_ids": [
         "site.cookiecloud.sync"
       ],
@@ -3105,7 +3183,7 @@
     },
     {
       "disposition": "gateway",
-      "method": "GET",
+      "method": "POST",
       "operation_ids": [
         "site.reset"
       ],
@@ -3380,6 +3458,18 @@
       ]
     },
     {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/storage/options",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "查询可用存储选项",
+      "tags": [
+        "storage"
+      ]
+    },
+    {
       "disposition": "gateway",
       "method": "POST",
       "operation_ids": [
@@ -3437,7 +3527,7 @@
     },
     {
       "disposition": "gateway",
-      "method": "GET",
+      "method": "POST",
       "operation_ids": [
         "subscription.metadata.refresh"
       ],
@@ -3641,7 +3731,7 @@
     },
     {
       "disposition": "gateway",
-      "method": "GET",
+      "method": "POST",
       "operation_ids": [
         "subscription.refresh"
       ],
@@ -3655,7 +3745,7 @@
     },
     {
       "disposition": "gateway",
-      "method": "GET",
+      "method": "POST",
       "operation_ids": [
         "subscription.reset"
       ],
@@ -3669,7 +3759,7 @@
     },
     {
       "disposition": "gateway",
-      "method": "GET",
+      "method": "POST",
       "operation_ids": [
         "subscription.search_all"
       ],
@@ -3683,7 +3773,7 @@
     },
     {
       "disposition": "gateway",
-      "method": "GET",
+      "method": "POST",
       "operation_ids": [
         "subscription.search"
       ],

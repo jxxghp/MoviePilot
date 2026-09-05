@@ -121,6 +121,37 @@ def test_system_config_service_forwards_atomic_increment() -> None:
     writer.increment.assert_called_once_with(SystemConfigKey.MediaRecognizeShareCount, 1)
 
 
+def test_system_config_service_runs_atomic_mutation_through_database_executor() -> None:
+    """条件写入应在持久化原子回调内读取旧值并规范化最终值。"""
+    reader = MagicMock()
+    writer = MagicMock()
+    committed_values = []
+
+    def update_atomically(key, mutation):
+        """模拟仓储在写锁内向应用 mutation 提供当前值。"""
+        result, value = mutation(object(), ["old"])
+        committed_values.append((key, value))
+        return result
+
+    writer.update_atomically.side_effect = update_atomically
+    service = SystemConfigService(
+        reader=reader,
+        writer=writer,
+        async_executor=_InlineDatabaseExecutor(),
+        value_normalizer=lambda _key, value: [*value, "normalized"],
+    )
+
+    result = asyncio.run(
+        service.async_update_atomically(
+            "demo",
+            lambda current: ("updated", [*current, "new"]),
+        )
+    )
+
+    assert result == "updated"
+    assert committed_values == [("demo", ["old", "new", "normalized"])]
+
+
 def test_system_config_service_normalizes_sync_and_async_writes() -> None:
     """同步和异步配置写入必须共用组合根注入的值规范化边界。"""
     reader = MagicMock()

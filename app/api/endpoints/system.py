@@ -7,7 +7,7 @@ from typing import Annotated, Any, Optional, Union
 
 import anyio
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
-from fastapi import Body, Depends, Header, HTTPException, Query, Request, Response
+from fastapi import Body, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
@@ -32,7 +32,7 @@ from app.application.network import get_configured_network_test_service
 from app.application.rules import RuleHelper
 from app.application.scheduling import get_scheduler
 from app.application.security.url import SecurityUtils
-from app.application.settings import SystemSettingsService
+from app.application.settings import SystemSettingConflictError, SystemSettingsService
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.system import LogFileData, LogNotFoundError
 from app.chain.media import MediaChain
@@ -708,7 +708,11 @@ async def query_custom_identifiers(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse[Any]:
     """返回完整的自定义识别词列表。"""
-    identifiers = get_configured_system_config().get(SystemConfigKey.CustomIdentifiers) or []
+    identifiers = [
+        item
+        for item in (get_configured_system_config().get(SystemConfigKey.CustomIdentifiers) or [])
+        if isinstance(item, str)
+    ]
     return _SchemaResponse(
         success=True,
         data={"count": len(identifiers), "identifiers": identifiers},
@@ -725,16 +729,24 @@ async def update_custom_identifiers(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """完整替换自定义识别词。"""
-    identifiers = [item for item in payload.identifiers if item is not None]
-    data = await SystemSettingsService(
-        get_runtime_settings(),
-        get_configured_system_config(),
-        runtime.system.publish_config_changed,
-    ).update(
-        setting_key=SystemConfigKey.CustomIdentifiers.value,
-        value=identifiers or None,
-    )
+    """完整替换自定义识别词，并可拒绝基于过期快照的覆盖。"""
+    identifiers = list(payload.identifiers)
+    try:
+        data = await SystemSettingsService(
+            get_runtime_settings(),
+            get_configured_system_config(),
+            runtime.system.publish_config_changed,
+        ).update(
+            setting_key=SystemConfigKey.CustomIdentifiers.value,
+            value=identifiers or None,
+            expected_value=payload.expected_identifiers,
+            enforce_expected_value=payload.expected_identifiers is not None,
+        )
+    except SystemSettingConflictError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+        ) from error
     data.update({"count": len(identifiers), "identifiers": identifiers})
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 

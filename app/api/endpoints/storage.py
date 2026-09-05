@@ -21,6 +21,7 @@ from app.api.response import (
 )
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.directory import DirectoryHelper
+from app.application.storage import StorageHelper
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer.facade import TransferChain
@@ -28,6 +29,7 @@ from app.foundation import text as text_tools
 from app.runtime.progress import ProgressHelper
 from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.storage import StorageOption as _SchemaStorageOption
 from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
 from app.schemas.types import ProgressKey
 from app.schemas.workflow import FileItem as _SchemaFileItem
@@ -44,7 +46,7 @@ def directory_settings(
     directory_type: str = "all",
     storage_type: str = "all",
     name: Optional[str] = None,
-    _: ApiPrincipal = Depends(get_current_active_superuser),
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> _SchemaResponse[Any]:
@@ -85,6 +87,8 @@ def directory_settings(
                 "media_type": directory.media_type,
                 "media_category": directory.media_category,
                 "media_category_id": directory.media_category_id,
+                "download_type_folder": directory.download_type_folder,
+                "download_category_folder": directory.download_category_folder,
                 "monitor_type": directory.monitor_type,
                 "monitor_mode": directory.monitor_mode,
                 "transfer_type": directory.transfer_type,
@@ -92,9 +96,25 @@ def directory_settings(
                 "renaming": directory.renaming,
                 "scraping": directory.scraping,
                 "notify": directory.notify,
+                "library_type_folder": directory.library_type_folder,
+                "library_category_folder": directory.library_category_folder,
             }
         )
     return _SchemaResponse(success=True, data=results)
+
+
+@router.get("/options", summary="查询可用存储选项", response_model=List[_SchemaStorageOption])
+def storage_options(
+    _: ApiPrincipal = Depends(get_current_active_user),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
+) -> List[_SchemaStorageOption]:
+    """返回不包含连接配置和凭据的存储名称与类型。"""
+    return [
+        _SchemaStorageOption(name=storage.name or storage.type or "", type=storage.type or "")
+        for storage in StorageHelper.get_storagies()
+        if storage.type
+    ]
 
 
 @router.post("/manage", summary="网盘存储统一管理", response_model=_SchemaResponse[Dict[str, Any]])  # type: ignore[misc]

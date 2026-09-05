@@ -96,7 +96,11 @@ UI_PRESENTATION_PATHS = frozenset(
         "/api/v1/plugin/dashboard/{plugin_id}",
         "/api/v1/plugin/dashboard/{plugin_id}/{key}",
         "/api/v1/plugin/page/{plugin_id}",
+        "/api/v1/plugin/runtime/{plugin_id}/data/summary",
         "/api/v1/plugin/sidebar_nav",
+        "/api/v1/rule/custom/reorder",
+        "/api/v1/rule/groups/reorder",
+        "/api/v1/storage/options",
     }
 )
 EXPLICIT_TRANSPORT_PATHS = frozenset(
@@ -242,9 +246,7 @@ def generate_audit() -> dict[str, Any]:
             )
     counts = Counter(entry["disposition"] for entry in entries)
     matched_gateway_routes = {
-        (entry["method"], entry["path"])
-        for entry in entries
-        if entry["disposition"] == "gateway"
+        (entry["method"], entry["path"]) for entry in entries if entry["disposition"] == "gateway"
     }
     dynamic_gateway_routes = [
         {
@@ -354,10 +356,7 @@ def main() -> int:
         encoding="utf-8",
     )
     MARKDOWN_OUTPUT.write_text(render_markdown(audit), encoding="utf-8")
-    print(
-        "generated "
-        f"{JSON_OUTPUT.relative_to(PROJECT_ROOT)} and {MARKDOWN_OUTPUT.relative_to(PROJECT_ROOT)}"
-    )
+    print(f"generated {JSON_OUTPUT.relative_to(PROJECT_ROOT)} and {MARKDOWN_OUTPUT.relative_to(PROJECT_ROOT)}")
     return 0
 
 

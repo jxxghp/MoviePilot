@@ -18,10 +18,16 @@ from app.schemas.rule import (
     CustomFilterRuleCreateRequest as _SchemaCustomFilterRuleCreateRequest,
 )
 from app.schemas.rule import (
+    CustomFilterRuleReorderRequest as _SchemaCustomFilterRuleReorderRequest,
+)
+from app.schemas.rule import (
     CustomFilterRuleUpdateRequest as _SchemaCustomFilterRuleUpdateRequest,
 )
 from app.schemas.rule import (
     FilterRuleGroupCreateRequest as _SchemaFilterRuleGroupCreateRequest,
+)
+from app.schemas.rule import (
+    FilterRuleGroupReorderRequest as _SchemaFilterRuleGroupReorderRequest,
 )
 from app.schemas.rule import (
     FilterRuleGroupUpdateRequest as _SchemaFilterRuleGroupUpdateRequest,
@@ -140,6 +146,27 @@ async def add_custom_rule(
 
 
 @router.put(  # type: ignore[misc]
+    "/custom/reorder",
+    summary="调整自定义过滤规则顺序",
+    response_model=_SchemaResponse[_SchemaJsonObject],
+)
+async def reorder_custom_rules(
+    payload: _SchemaCustomFilterRuleReorderRequest,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> _SchemaResponse[Any]:
+    """只调整现有自定义规则顺序并拒绝过期集合覆盖。"""
+    try:
+        data = await _service(runtime).reorder_custom(
+            payload.rule_ids,
+            expected_rule_ids=payload.expected_rule_ids,
+        )
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+
+
+@router.put(  # type: ignore[misc]
     "/custom/{rule_id}",
     summary="更新自定义过滤规则",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -192,6 +219,27 @@ async def add_rule_group(
     """新增一个已经完成语法与引用校验的规则组。"""
     try:
         data = await _service(runtime).add_group(**payload.model_dump())
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(success=True, message=data.get("message"), data=data)
+
+
+@router.put(  # type: ignore[misc]
+    "/groups/reorder",
+    summary="调整过滤规则组顺序",
+    response_model=_SchemaResponse[_SchemaJsonObject],
+)
+async def reorder_rule_groups(
+    payload: _SchemaFilterRuleGroupReorderRequest,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> _SchemaResponse[Any]:
+    """只调整现有规则组顺序并拒绝过期集合覆盖。"""
+    try:
+        data = await _service(runtime).reorder_groups(
+            payload.group_names,
+            expected_group_names=payload.expected_group_names,
+        )
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))
     return _SchemaResponse(success=True, message=data.get("message"), data=data)

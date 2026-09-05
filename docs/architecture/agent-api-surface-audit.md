@@ -5,10 +5,10 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **385**
-- Stable `moviepilot_api` operations: **202**
-- Exact HTTP routes used by the gateway: **200**
-- OpenAPI routes matched directly by the gateway: **199**
+- OpenAPI HTTP operations: **392**
+- Stable `moviepilot_api` operations: **205**
+- Exact HTTP routes used by the gateway: **203**
+- OpenAPI routes matched directly by the gateway: **202**
 - Bounded dynamic gateway routes: **1**
 - Every gateway operation has a generated English oneOf input contract in MCP `tools/list` and `skills/moviepilot-api/SKILL.md`.
 - Every non-gateway OpenAPI operation is listed below with an explicit ownership boundary; it is not silently callable through arbitrary URL/method input.
@@ -19,11 +19,11 @@
 | :--- | ---: | :--- |
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
 | `consolidated` | 72 | Source/UI route represented by a stable aggregate Agent operation. |
-| `gateway` | 199 | Approved structured MoviePilot Agent operation. |
+| `gateway` | 202 | Approved structured MoviePilot Agent operation. |
 | `provider-skill` | 11 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 16 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 20 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -93,10 +93,10 @@
 | `PATCH` | `/api/v1/download/{hashString}` | download | `provider-skill` | downloader-operation | 高级更新下载任务 |
 | `DELETE` | `/api/v1/history/download` | history | `gateway` | download.history.delete | 删除下载历史记录 |
 | `GET` | `/api/v1/history/download` | history | `gateway` | download.history.list | 查询下载历史记录 |
-| `GET` | `/api/v1/history/empty/transfer` | history | `gateway` | transfer.history.clear | 清空整理记录 |
 | `DELETE` | `/api/v1/history/transfer` | history | `gateway` | transfer.history.delete | 删除整理记录 |
 | `GET` | `/api/v1/history/transfer` | history | `gateway` | transfer.history | 查询整理记录 |
 | `POST` | `/api/v1/history/transfer/ai-redo` | history | `gateway` | transfer.history.redo_batch | 智能助手批量重新整理 |
+| `DELETE` | `/api/v1/history/transfer/all` | history | `gateway` | transfer.history.clear | 清空旧整理记录 |
 | `POST` | `/api/v1/history/transfer/{history_id}/ai-redo` | history | `gateway` | transfer.history.redo | 智能助手重新整理 |
 | `POST` | `/api/v1/llm/manage` | llm | `transport_or_identity` | host-runtime | LLM提供商统一管理 |
 | `GET` | `/api/v1/llm/provider-auth/callback/{provider_id}` | llm | `transport_or_identity` | host-runtime | LLM提供商OAuth回调 |
@@ -195,8 +195,11 @@
 | `GET` | `/api/v1/plugin/folders` | plugin | `gateway` | plugin.folders.get | 获取插件文件夹配置 |
 | `POST` | `/api/v1/plugin/folders` | plugin | `gateway` | plugin.folders.update | 保存插件文件夹配置 |
 | `DELETE` | `/api/v1/plugin/folders/{folder_name}` | plugin | `gateway` | plugin.folder.delete | 删除插件文件夹 |
+| `PATCH` | `/api/v1/plugin/folders/{folder_name}` | plugin | `gateway` | plugin.folder.update | 更新插件文件夹 |
 | `POST` | `/api/v1/plugin/folders/{folder_name}` | plugin | `gateway` | plugin.folder.create | 创建插件文件夹 |
 | `PUT` | `/api/v1/plugin/folders/{folder_name}/plugins` | plugin | `gateway` | plugin.folder.plugins.update | 更新文件夹中的插件 |
+| `DELETE` | `/api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}` | plugin | `gateway` | plugin.folder.plugin.remove | 从文件夹移除插件 |
+| `PUT` | `/api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}` | plugin | `gateway` | plugin.folder.plugin.assign | 移动插件到文件夹 |
 | `GET` | `/api/v1/plugin/form/{plugin_id}` | plugin | `gateway` | plugin.config.get | 获取插件表单页面 |
 | `GET` | `/api/v1/plugin/history/{plugin_id}` | plugin | `gateway` | plugin.history | 获取插件更新说明 |
 | `GET` | `/api/v1/plugin/install/{plugin_id}` | plugin | `gateway` | plugin.install | 安装插件 |
@@ -206,12 +209,13 @@
 | `GET` | `/api/v1/plugin/rating/{plugin_id}` | plugin | `gateway` | plugin.rating | 查询插件评分 |
 | `POST` | `/api/v1/plugin/rating/{plugin_id}` | plugin | `gateway` | plugin.rating.submit | 提交插件评分 |
 | `GET` | `/api/v1/plugin/releases/{plugin_id}` | plugin | `gateway` | plugin.releases | 获取插件Release版本 |
-| `GET` | `/api/v1/plugin/reload/{plugin_id}` | plugin | `gateway` | plugin.reload | 重新加载插件 |
+| `POST` | `/api/v1/plugin/reload/{plugin_id}` | plugin | `gateway` | plugin.reload | 重新加载插件 |
 | `GET` | `/api/v1/plugin/remotes` | plugin | `transport_or_identity` | host-runtime | 获取插件联邦组件列表 |
 | `GET` | `/api/v1/plugin/reset/{plugin_id}` | plugin | `gateway` | plugin.reset | 重置插件配置及数据 |
 | `GET` | `/api/v1/plugin/runtime` | plugin | `gateway` | plugin.runtime.status | 插件运行时收敛状态 |
 | `GET` | `/api/v1/plugin/runtime/capabilities` | plugin | `gateway` | plugin.capabilities | 查询插件运行能力 |
 | `GET` | `/api/v1/plugin/runtime/{plugin_id}/data` | plugin | `gateway` | plugin.data | 查询插件持久化数据 |
+| `GET` | `/api/v1/plugin/runtime/{plugin_id}/data/summary` | plugin | `ui_presentation` | host-ui | 查询插件持久化数据摘要 |
 | `GET` | `/api/v1/plugin/sidebar_nav` | plugin | `ui_presentation` | host-ui | 获取插件侧栏导航项 |
 | `GET` | `/api/v1/plugin/source/{plugin_id}` | plugin | `gateway` | plugin.source.options | 获取插件来源身份 |
 | `POST` | `/api/v1/plugin/source/{plugin_id}` | plugin | `gateway` | plugin.source.change | 切换插件来源 |
@@ -241,10 +245,12 @@
 | `GET` | `/api/v1/rule/builtin` | rule | `gateway` | filter.builtin | 查询内置过滤规则 |
 | `GET` | `/api/v1/rule/custom` | rule | `gateway` | filter.custom | 查询自定义过滤规则 |
 | `POST` | `/api/v1/rule/custom` | rule | `gateway` | filter.custom.add | 新增自定义过滤规则 |
+| `PUT` | `/api/v1/rule/custom/reorder` | rule | `ui_presentation` | host-ui | 调整自定义过滤规则顺序 |
 | `DELETE` | `/api/v1/rule/custom/{rule_id}` | rule | `gateway` | filter.custom.delete | 删除自定义过滤规则 |
 | `PUT` | `/api/v1/rule/custom/{rule_id}` | rule | `gateway` | filter.custom.update | 更新自定义过滤规则 |
 | `GET` | `/api/v1/rule/groups` | rule | `gateway` | filter.groups | 查询过滤规则组 |
 | `POST` | `/api/v1/rule/groups` | rule | `gateway` | filter.group.add | 新增过滤规则组 |
+| `PUT` | `/api/v1/rule/groups/reorder` | rule | `ui_presentation` | host-ui | 调整过滤规则组顺序 |
 | `DELETE` | `/api/v1/rule/groups/{name}` | rule | `gateway` | filter.group.delete | 删除过滤规则组 |
 | `PUT` | `/api/v1/rule/groups/{name}` | rule | `gateway` | filter.group.update | 更新过滤规则组 |
 | `GET` | `/api/v1/search/last` | search | `consolidated` | search.results | 查询搜索结果 |
@@ -267,13 +273,13 @@
 | `GET` | `/api/v1/site/category/{site_id}` | site | `gateway` | site.category | 站点分类 |
 | `GET` | `/api/v1/site/cookie/{site_id}` | site | `consolidated` | site.cookie.update | 更新站点Cookie&UA |
 | `POST` | `/api/v1/site/cookie/{site_id}` | site | `gateway` | site.cookie.update | 更新站点Cookie&UA |
-| `GET` | `/api/v1/site/cookiecloud` | site | `gateway` | site.cookiecloud.sync | CookieCloud同步 |
+| `POST` | `/api/v1/site/cookiecloud` | site | `gateway` | site.cookiecloud.sync | CookieCloud同步 |
 | `GET` | `/api/v1/site/domain/{site_url}` | site | `consolidated` | site.list | 站点详情 |
 | `GET` | `/api/v1/site/icon/{site_id}` | site | `stream_or_binary` | host-transport | 站点图标 |
 | `GET` | `/api/v1/site/mapping` | site | `gateway` | site.mapping | 获取站点域名到名称的映射 |
 | `GET` | `/api/v1/site/media/{media_type}` | site | `gateway` | site.searchable | 按媒体类型获取可搜索站点 |
 | `POST` | `/api/v1/site/priorities` | site | `gateway` | site.priorities.update | 批量更新站点优先级 |
-| `GET` | `/api/v1/site/reset` | site | `gateway` | site.reset | 重置站点 |
+| `POST` | `/api/v1/site/reset` | site | `gateway` | site.reset | 重置站点 |
 | `GET` | `/api/v1/site/resource/{site_id}` | site | `gateway` | site.resource | 站点资源 |
 | `GET` | `/api/v1/site/rss` | site | `gateway` | site.rss | 所有订阅站点 |
 | `GET` | `/api/v1/site/statistic` | site | `gateway` | site.statistics | 所有站点统计信息 |
@@ -293,11 +299,12 @@
 | `POST` | `/api/v1/storage/list` | storage | `consolidated` | storage.list | 所有目录和文件 |
 | `POST` | `/api/v1/storage/manage` | storage | `gateway` | storage.manage | 网盘存储统一管理 |
 | `POST` | `/api/v1/storage/mkdir` | storage | `gateway` | storage.mkdir | 创建目录 |
+| `GET` | `/api/v1/storage/options` | storage | `ui_presentation` | host-ui | 查询可用存储选项 |
 | `POST` | `/api/v1/storage/rename` | storage | `gateway` | storage.rename | 重命名文件或目录 |
 | `GET` | `/api/v1/subscribe/` | subscribe | `gateway` | subscription.list | 查询所有订阅 |
 | `POST` | `/api/v1/subscribe/` | subscribe | `gateway` | subscription.add | 新增订阅 |
 | `PUT` | `/api/v1/subscribe/` | subscribe | `gateway` | subscription.update | 更新订阅 |
-| `GET` | `/api/v1/subscribe/check` | subscribe | `gateway` | subscription.metadata.refresh | 刷新订阅 TMDB 信息 |
+| `POST` | `/api/v1/subscribe/check` | subscribe | `gateway` | subscription.metadata.refresh | 刷新订阅 TMDB 信息 |
 | `GET` | `/api/v1/subscribe/execution/batches` | subscribe | `ui_presentation` | host-ui | 查询订阅搜索批次状态 |
 | `GET` | `/api/v1/subscribe/execution/batches/{batch_id}` | subscribe | `ui_presentation` | host-ui | 查询订阅搜索批次 |
 | `PUT` | `/api/v1/subscribe/execution/batches/{batch_id}/cancel` | subscribe | `ui_presentation` | host-ui | 取消订阅搜索批次 |
@@ -312,10 +319,10 @@
 | `DELETE` | `/api/v1/subscribe/media/{media_id}` | subscribe | `gateway` | subscription.delete_by_media | 删除订阅 |
 | `GET` | `/api/v1/subscribe/media/{media_id}` | subscribe | `gateway` | subscription.find | 查询订阅 |
 | `GET` | `/api/v1/subscribe/popular` | subscribe | `gateway` | subscription.popular | 热门订阅（基于用户共享数据） |
-| `GET` | `/api/v1/subscribe/refresh` | subscribe | `gateway` | subscription.refresh | 刷新订阅 |
-| `GET` | `/api/v1/subscribe/reset/{subid}` | subscribe | `gateway` | subscription.reset | 重置订阅 |
-| `GET` | `/api/v1/subscribe/search` | subscribe | `gateway` | subscription.search_all | 搜索所有订阅 |
-| `GET` | `/api/v1/subscribe/search/{subscribe_id}` | subscribe | `gateway` | subscription.search | 搜索订阅 |
+| `POST` | `/api/v1/subscribe/refresh` | subscribe | `gateway` | subscription.refresh | 刷新订阅 |
+| `POST` | `/api/v1/subscribe/reset/{subid}` | subscribe | `gateway` | subscription.reset | 重置订阅 |
+| `POST` | `/api/v1/subscribe/search` | subscribe | `gateway` | subscription.search_all | 搜索所有订阅 |
+| `POST` | `/api/v1/subscribe/search/{subscribe_id}` | subscribe | `gateway` | subscription.search | 搜索订阅 |
 | `POST` | `/api/v1/subscribe/seerr` | subscribe | `transport_or_identity` | host-runtime | OverSeerr/JellySeerr通知订阅 |
 | `POST` | `/api/v1/subscribe/share` | subscribe | `gateway` | subscription.share | 分享订阅 |
 | `GET` | `/api/v1/subscribe/share/statistics` | subscribe | `gateway` | subscription.share.statistics | 查询订阅分享统计 |

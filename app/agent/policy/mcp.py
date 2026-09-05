@@ -176,7 +176,7 @@ OPERATION_DESCRIPTIONS = {
     "torrent.cache.refresh": "Refresh torrent caches from configured RSS or spider sources.",
     "torrent.cache.reidentify": "Replace or recompute the media identity for one cached torrent context.",
     "transfer.episode_format.recommend": "Recommend an episode-number extraction template from supplied file samples.",
-    "transfer.history.clear": "Delete every transfer-history record while leaving transferred files untouched.",
+    "transfer.history.clear": "Delete legacy transfer-history records while leaving files and durable failed-task records untouched.",
     "transfer.history.redo": "Start AI-assisted reorganization for one transfer-history record.",
     "transfer.history.redo_batch": "Start AI-assisted reorganization for an explicit list of transfer-history records.",
     "transfer.manual_history": "Check whether supplied storage items already have successful transfer history.",
@@ -207,8 +207,11 @@ OPERATION_DESCRIPTIONS = {
     "plugin.folders.get": "Read the complete administrator plugin-folder grouping configuration.",
     "plugin.folders.update": "Replace the complete administrator plugin-folder grouping configuration.",
     "plugin.folder.create": "Create one named plugin folder.",
+    "plugin.folder.update": "Incrementally rename one plugin folder or update its presentation settings.",
     "plugin.folder.delete": "Delete one named plugin folder without uninstalling its plugins.",
     "plugin.folder.plugins.update": "Replace the ordered plugin IDs assigned to one named plugin folder.",
+    "plugin.folder.plugin.assign": "Move one installed plugin into one named folder and remove its other folder assignments.",
+    "plugin.folder.plugin.remove": "Remove one installed plugin from one named folder without uninstalling it.",
 }
 
 
@@ -587,6 +590,8 @@ MODEL_DESCRIPTIONS.update(
         "PluginRatingRequest": "Current user's numeric plugin-rating submission.",
         "PluginFoldersData": "Complete mapping from plugin folder names to ordered plugin IDs or display configuration.",
         "PluginFolderConfigData": "One plugin folder's ordered members and optional presentation settings.",
+        "PluginFolderUpdateRequest": "Incremental plugin-folder rename or presentation-settings update request.",
+        "PluginFolderPluginsUpdateRequest": "Conditional replacement of one plugin folder's ordered members.",
         "Body_recommend_search_results_api_v1_search_recommend_post": "Torrent search results and recommendation controls supplied to the configured model.",
         "SiteAuth": "Supported site-account authentication provider and its exact parameter values.",
         "SitePriorityUpdate": "One configured site ID and its replacement search priority.",

@@ -63,6 +63,13 @@ class CustomFilterRuleUpdateRequest(BaseModel):  # type: ignore[misc]
     publish_time: Optional[str] = None
 
 
+class CustomFilterRuleReorderRequest(BaseModel):  # type: ignore[misc]
+    """调整自定义过滤规则顺序请求。"""
+
+    rule_ids: list[str]
+    expected_rule_ids: Optional[list[str]] = None
+
+
 class FilterRuleGroupCreateRequest(BaseModel):  # type: ignore[misc]
     """新增过滤规则组请求。"""
 
@@ -79,3 +86,10 @@ class FilterRuleGroupUpdateRequest(BaseModel):  # type: ignore[misc]
     rule_string: Optional[str] = None
     media_type: Optional[str] = None
     category: Optional[str] = None
+
+
+class FilterRuleGroupReorderRequest(BaseModel):  # type: ignore[misc]
+    """调整过滤规则组顺序请求。"""
+
+    group_names: list[str]
+    expected_group_names: Optional[list[str]] = None

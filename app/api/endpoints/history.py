@@ -334,9 +334,7 @@ def _submit_legacy_batch_ai_redo(
         progress_key=progress_key,
         task_registry=task_registry,
     )
-    message = "；".join(
-        [*messages, f"已提交 {len(histories)} 条旧历史给智能助手处理"]
-    )
+    message = "；".join([*messages, f"已提交 {len(histories)} 条旧历史给智能助手处理"])
     return _SchemaResponse(
         success=True,
         message=message,
@@ -365,9 +363,7 @@ async def download_history(
     """
     results = await query.list_download(page=page, count=count)
     if response is not None:
-        response.headers[COLLECTION_TOTAL_HEADER] = str(
-            await query.count_download()
-        )
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download())
     return results
 
 
@@ -378,9 +374,7 @@ async def download_history(
 )
 def delete_download_history(
     history_in: _SchemaDownloadHistory,
-    command: DownloadHistoryMutationCommand = Depends(
-        get_download_history_mutation_command
-    ),
+    command: DownloadHistoryMutationCommand = Depends(get_download_history_mutation_command),
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
@@ -415,6 +409,27 @@ async def transfer_history(
     return _SchemaResponse(success=True, data=result)
 
 
+def _clear_transfer_history(
+    command: TransferHistoryMutationCommand,
+) -> _SchemaResponse[None]:
+    """执行旧整理历史清理，并统一构造兼容响应。"""
+    result = command.truncate()
+    return _SchemaResponse(success=result.success, message=result.message)
+
+
+@router.delete(
+    "/transfer/all",
+    summary="清空旧整理记录",
+    response_model=_SchemaResponse[None],
+)
+def clear_transfer_history(
+    command: TransferHistoryMutationCommand = Depends(get_transfer_history_mutation_command),
+    _: object = Depends(get_current_active_superuser),
+) -> Any:
+    """清空没有持久任务回执的旧整理记录，不删除任何文件。"""
+    return _clear_transfer_history(command)
+
+
 @router.delete(
     "/transfer",
     summary="删除整理记录",
@@ -424,9 +439,7 @@ def delete_transfer_history(
     history_in: _SchemaTransferHistory,
     deletesrc: Optional[bool] = False,
     deletedest: Optional[bool] = False,
-    command: TransferHistoryMutationCommand = Depends(
-        get_transfer_history_mutation_command
-    ),
+    command: TransferHistoryMutationCommand = Depends(get_transfer_history_mutation_command),
     _: object = Depends(get_current_active_manage_user),
 ) -> Any:
     """
@@ -455,9 +468,7 @@ async def ai_redo_transfer_history(
     runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
     _: object = Depends(get_current_active_manage_user),
     task_registry: TaskRegistry = Depends(get_background_task_registry),
-    execution_repository: TransferExecutionRepository = Depends(
-        get_transfer_execution_repository
-    ),
+    execution_repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
 ) -> Any:
     """
     手动触发单条历史记录的 AI 重新整理，并返回进度键。
@@ -519,9 +530,7 @@ async def batch_ai_redo_transfer_history(
     runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
     _: object = Depends(get_current_active_manage_user),
     task_registry: TaskRegistry = Depends(get_background_task_registry),
-    execution_repository: TransferExecutionRepository = Depends(
-        get_transfer_execution_repository
-    ),
+    execution_repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
 ) -> Any:
     """
     手动触发多条历史记录的 AI 批量重新整理，并返回进度键。
@@ -536,8 +545,7 @@ async def batch_ai_redo_transfer_history(
     if missing_ids:
         return _SchemaResponse(
             success=False,
-            message="整理记录不存在: "
-            + ", ".join(str(history_id) for history_id in missing_ids),
+            message="整理记录不存在: " + ", ".join(str(history_id) for history_id in missing_ids),
         )
 
     durable_histories, legacy_histories = _partition_durable_histories(histories)
@@ -558,18 +566,14 @@ async def batch_ai_redo_transfer_history(
         )
 
     if rejections:
-        response_message_parts.append(
-            f"{len(legacy_histories)} 条旧历史未提交：批量请求包含被拒绝的持久任务"
-        )
+        response_message_parts.append(f"{len(legacy_histories)} 条旧历史未提交：批量请求包含被拒绝的持久任务")
         return _SchemaResponse(
             success=False,
             message="；".join(response_message_parts),
         )
 
     if not runtime_config.ai_agent_enable:
-        response_message_parts.append(
-            f"{len(legacy_histories)} 条旧历史未处理：MoviePilot智能助手未启用"
-        )
+        response_message_parts.append(f"{len(legacy_histories)} 条旧历史未处理：MoviePilot智能助手未启用")
         return _SchemaResponse(
             success=False,
             message="；".join(response_message_parts),
@@ -587,15 +591,12 @@ async def batch_ai_redo_transfer_history(
     "/empty/transfer",
     summary="清空整理记录",
     response_model=_SchemaResponse[None],
+    include_in_schema=False,
+    deprecated=True,
 )
 def empty_transfer_history(
-    command: TransferHistoryMutationCommand = Depends(
-        get_transfer_history_mutation_command
-    ),
+    command: TransferHistoryMutationCommand = Depends(get_transfer_history_mutation_command),
     _: object = Depends(get_current_active_superuser),
 ) -> Any:
-    """
-    清空整理记录
-    """
-    result = command.truncate()
-    return _SchemaResponse(success=result.success, message=result.message)
+    """兼容旧客户端的清空入口；新调用应使用 DELETE /transfer/all。"""
+    return _clear_transfer_history(command)

@@ -24,6 +24,7 @@ from app.db.session import SessionFactory
 from app.scheduler import Scheduler
 from app.schemas.rule import CustomRule
 from app.schemas.system import FilterRuleGroup
+from app.schemas.types import SystemConfigKey
 from app.startup.initializers import agent as agent_initializer
 
 
@@ -132,6 +133,99 @@ async def test_custom_rule_rename_commits_rule_and_group_definitions_together(
         expected_custom_rules=[{"id": "OLD", "name": "旧规则", "include": "old"}],
     )
     assert publish.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_custom_rule_reorder_preserves_latest_definitions_and_checks_expected_order(
+    monkeypatch,
+) -> None:
+    """自定义规则重排只能改变顺序，并拒绝过期顺序覆盖当前列表。"""
+    mutation = MagicMock()
+    mutation.apply = AsyncMock(return_value=SimpleNamespace())
+
+    @asynccontextmanager
+    async def mutation_scope():
+        """提供可观测的异步组合事务作用域。"""
+        yield mutation
+
+    rules = [
+        CustomRule(id="A", name="A", include="latest-a"),
+        CustomRule(id="B", name="B", exclude="latest-b"),
+    ]
+    groups = [FilterRuleGroup(name="group", rule_string="A > B")]
+    monkeypatch.setattr("app.application.filtering.get_custom_rules", lambda: rules)
+    monkeypatch.setattr("app.application.filtering.get_rule_groups", lambda: groups)
+    publish = AsyncMock()
+    service = FilterRuleService(cast(object, MagicMock()), mutation_scope, publish)
+
+    result = await service.reorder_custom(["B", "A"], expected_rule_ids=["A", "B"])
+
+    assert result["rule_ids"] == ["B", "A"]
+    mutation.apply.assert_awaited_once_with(
+        [{"name": "group", "rule_string": "A > B"}],
+        expected_rule_groups=[{"name": "group", "rule_string": "A > B"}],
+        custom_rules=[
+            {"id": "B", "name": "B", "exclude": "latest-b"},
+            {"id": "A", "name": "A", "include": "latest-a"},
+        ],
+        expected_custom_rules=[
+            {"id": "A", "name": "A", "include": "latest-a"},
+            {"id": "B", "name": "B", "exclude": "latest-b"},
+        ],
+    )
+    publish.assert_awaited_once_with(
+        SystemConfigKey.CustomFilterRules,
+        [
+            {"id": "B", "name": "B", "exclude": "latest-b"},
+            {"id": "A", "name": "A", "include": "latest-a"},
+        ],
+    )
+
+    with pytest.raises(ValueError, match="顺序已被其他请求修改"):
+        await service.reorder_custom(["B", "A"], expected_rule_ids=["B", "A"])
+
+
+@pytest.mark.asyncio
+async def test_rule_group_reorder_uses_atomic_scope_and_rejects_changed_collection(
+    monkeypatch,
+) -> None:
+    """规则组重排必须走原子作用域，并拒绝缺项或新增项的列表。"""
+    mutation = MagicMock()
+    mutation.apply = AsyncMock(return_value=SimpleNamespace())
+
+    @asynccontextmanager
+    async def mutation_scope():
+        """提供可观测的规则组异步事务作用域。"""
+        yield mutation
+
+    groups = [
+        FilterRuleGroup(name="first", rule_string="4K"),
+        FilterRuleGroup(name="second", rule_string="1080P"),
+    ]
+    monkeypatch.setattr("app.application.filtering.get_rule_groups", lambda: groups)
+    publish = AsyncMock()
+    service = FilterRuleService(cast(object, MagicMock()), mutation_scope, publish)
+
+    result = await service.reorder_groups(
+        ["second", "first"],
+        expected_group_names=["first", "second"],
+    )
+
+    assert result["group_names"] == ["second", "first"]
+    mutation.apply.assert_awaited_once_with(
+        [
+            {"name": "second", "rule_string": "1080P"},
+            {"name": "first", "rule_string": "4K"},
+        ],
+        expected_rule_groups=[
+            {"name": "first", "rule_string": "4K"},
+            {"name": "second", "rule_string": "1080P"},
+        ],
+    )
+    publish.assert_awaited_once()
+
+    with pytest.raises(ValueError, match="集合已变化"):
+        await service.reorder_groups(["first"])
 
 
 def test_agent_service_facade_resolves_registered_dependencies(monkeypatch) -> None:

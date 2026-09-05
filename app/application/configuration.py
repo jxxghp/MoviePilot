@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Optional, Protocol, cast
+from typing import Any, Optional, Protocol, TypeVar, cast
 
 from app.application.database import AsyncDatabaseExecutor
 from app.schemas.common import JsonData
@@ -14,6 +14,8 @@ from app.schemas.types import MediaType, SystemConfigKey
 
 SystemConfigValueNormalizer = Callable[[Any, Any], Any]
 """系统配置值在进入持久化端口前使用的规范化函数。"""
+
+T = TypeVar("T")
 
 
 class SystemConfigReader(Protocol):
@@ -34,6 +36,13 @@ class SystemConfigWriter(Protocol):
 
     def increment(self, key: SystemConfigKey, step: int = 1) -> int:
         """原子递增整数配置并返回递增后的值。"""
+
+    def update_atomically(
+        self,
+        key: Any,
+        mutation: Callable[[Any, Any], tuple[T, Any]],
+    ) -> T:
+        """在持久化写锁内读取旧值、提交新值并返回业务结果。"""
 
 
 class ConfigurationRepository(SystemConfigReader, SystemConfigWriter, Protocol):
@@ -392,6 +401,27 @@ class SystemConfigService:
         return SystemConfigWriteResult(
             changed=cast(bool | None, result),
             normalized_value=normalized_value,
+        )
+
+    async def async_update_atomically(
+        self,
+        key: Any,
+        mutation: Callable[[Any], tuple[T, Any]],
+    ) -> T:
+        """在线程化短事务内原子读取旧值、规范化并写入新值。"""
+        if self._async_executor is None:
+            raise RuntimeError("系统配置异步数据库执行端口尚未配置")
+
+        def apply(_session: Any, current: Any) -> tuple[T, Any]:
+            """把不暴露数据库会话的应用层 mutation 适配到底层原子仓储。"""
+            result, value = mutation(current)
+            return result, self.normalize_value(key, value)
+
+        return cast(
+            T,
+            await self._async_executor.run(
+                partial(self._writer.update_atomically, key, apply)
+            ),
         )
 
     async def async_delete(self, key: Any) -> Any:

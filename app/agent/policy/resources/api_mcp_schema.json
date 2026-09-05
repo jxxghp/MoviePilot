@@ -658,6 +658,21 @@
     "CustomIdentifiersUpdateRequest": {
       "description": "Complete custom recognition-identifier replacement request.",
       "properties": {
+        "expected_identifiers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Previously read complete ordered list. When supplied, reject the replacement if the stored list has changed.",
+          "title": "Expected Identifiers"
+        },
         "identifiers": {
           "description": "Complete ordered list of custom recognition identifier rules.",
           "items": {
@@ -1889,6 +1904,121 @@
         }
       },
       "title": "PluginFolderConfigData",
+      "type": "object"
+    },
+    "PluginFolderPluginsUpdateRequest": {
+      "description": "Conditional replacement of one plugin folder's ordered members.",
+      "properties": {
+        "expected_plugins": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Last observed ordered plugin IDs used to reject stale replacements.",
+          "title": "Expected Plugins"
+        },
+        "plugins": {
+          "description": "Ordered installed plugin IDs assigned to this folder.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Plugins",
+          "type": "array"
+        }
+      },
+      "required": [
+        "plugins"
+      ],
+      "title": "PluginFolderPluginsUpdateRequest",
+      "type": "object"
+    },
+    "PluginFolderUpdateRequest": {
+      "additionalProperties": false,
+      "description": "Incremental plugin-folder rename or presentation-settings update request.",
+      "properties": {
+        "background": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional folder background color or style.",
+          "title": "Background"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional folder foreground color.",
+          "title": "Color"
+        },
+        "gradient": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional folder gradient definition.",
+          "title": "Gradient"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional folder icon name.",
+          "title": "Icon"
+        },
+        "new_name": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional replacement folder name.",
+          "title": "New Name"
+        },
+        "showIcon": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the frontend should display the folder icon.",
+          "title": "Showicon"
+        }
+      },
+      "title": "PluginFolderUpdateRequest",
       "type": "object"
     },
     "PluginFoldersData": {
@@ -8145,15 +8275,98 @@
     },
     {
       "additionalProperties": false,
+      "description": "Move one installed plugin into one named folder and remove its other folder assignments. Method: PUT. Path: /api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}. Effect: reversible_write.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.folder.plugin.assign",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.folder.plugin.assign. Move one installed plugin into one named folder and remove its other folder assignments. Use only the named fields below.",
+          "properties": {
+            "folder_name": {
+              "description": "Exact plugin folder name returned by plugin.folders.get.",
+              "title": "Folder Name",
+              "type": "string"
+            },
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "folder_name",
+            "plugin_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.folder.plugin.assign",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Remove one installed plugin from one named folder without uninstalling it. Method: DELETE. Path: /api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}. Effect: reversible_write.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.folder.plugin.remove",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.folder.plugin.remove. Remove one installed plugin from one named folder without uninstalling it. Use only the named fields below.",
+          "properties": {
+            "folder_name": {
+              "description": "Exact plugin folder name returned by plugin.folders.get.",
+              "title": "Folder Name",
+              "type": "string"
+            },
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "folder_name",
+            "plugin_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.folder.plugin.remove",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "Replace the ordered plugin IDs assigned to one named plugin folder. Method: PUT. Path: /api/v1/plugin/folders/{folder_name}/plugins. Effect: reversible_write.",
       "properties": {
         "body": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/PluginFolderPluginsUpdateRequest"
+            }
+          ],
           "description": "Request value for plugin.folder.plugins.update. Replace the ordered plugin IDs assigned to one named plugin folder. Use the exact type and fields below.",
-          "items": {
-            "type": "string"
-          },
-          "title": "Plugin Ids",
-          "type": "array"
+          "title": "Plugin Update"
         },
         "operation_id": {
           "const": "plugin.folder.plugins.update",
@@ -8182,6 +8395,43 @@
         "body"
       ],
       "title": "plugin.folder.plugins.update",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Incrementally rename one plugin folder or update its presentation settings. Method: PATCH. Path: /api/v1/plugin/folders/{folder_name}. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/PluginFolderUpdateRequest",
+          "description": "Request value for plugin.folder.update. Incrementally rename one plugin folder or update its presentation settings. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "plugin.folder.update",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.folder.update. Incrementally rename one plugin folder or update its presentation settings. Use only the named fields below.",
+          "properties": {
+            "folder_name": {
+              "description": "Exact plugin folder name returned by plugin.folders.get.",
+              "title": "Folder Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "folder_name"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "plugin.folder.update",
       "type": "object"
     },
     {
@@ -8729,7 +8979,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Reload one installed plugin into the running process. Method: GET. Path: /api/v1/plugin/reload/{plugin_id}. Effect: external_side_effect.",
+      "description": "Reload one installed plugin into the running process. Method: POST. Path: /api/v1/plugin/reload/{plugin_id}. Effect: external_side_effect.",
       "properties": {
         "operation_id": {
           "const": "plugin.reload",
@@ -9612,7 +9862,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start a CookieCloud synchronization of configured sites. Method: GET. Path: /api/v1/site/cookiecloud. Effect: external_side_effect.",
+      "description": "Start a CookieCloud synchronization of configured sites. Method: POST. Path: /api/v1/site/cookiecloud. Effect: external_side_effect.",
       "properties": {
         "operation_id": {
           "const": "site.cookiecloud.sync",
@@ -9780,7 +10030,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete all configured sites and start a fresh CookieCloud synchronization. Method: GET. Path: /api/v1/site/reset. Effect: destructive_write.",
+      "description": "Delete all configured sites and start a fresh CookieCloud synchronization. Method: POST. Path: /api/v1/site/reset. Effect: destructive_write.",
       "properties": {
         "operation_id": {
           "const": "site.reset",
@@ -11296,7 +11546,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start a system-wide refresh of subscription TMDB metadata. Method: GET. Path: /api/v1/subscribe/check. Effect: external_side_effect.",
+      "description": "Start a system-wide refresh of subscription TMDB metadata. Method: POST. Path: /api/v1/subscribe/check. Effect: external_side_effect.",
       "properties": {
         "operation_id": {
           "const": "subscription.metadata.refresh",
@@ -11436,7 +11686,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start the configured system-wide subscription refresh job. Method: GET. Path: /api/v1/subscribe/refresh. Effect: external_side_effect.",
+      "description": "Start the configured system-wide subscription refresh job. Method: POST. Path: /api/v1/subscribe/refresh. Effect: external_side_effect.",
       "properties": {
         "operation_id": {
           "const": "subscription.refresh",
@@ -11452,7 +11702,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Reset one accessible subscription so it can be processed again. Method: GET. Path: /api/v1/subscribe/reset/{subid}. Effect: reversible_write.",
+      "description": "Reset one accessible subscription so it can be processed again. Method: POST. Path: /api/v1/subscribe/reset/{subid}. Effect: reversible_write.",
       "properties": {
         "operation_id": {
           "const": "subscription.reset",
@@ -11484,7 +11734,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Run an immediate search for one existing subscription. Method: GET. Path: /api/v1/subscribe/search/{subscribe_id}. Effect: safe_read.",
+      "description": "Run an immediate search for one existing subscription. Method: POST. Path: /api/v1/subscribe/search/{subscribe_id}. Effect: external_side_effect.",
       "properties": {
         "operation_id": {
           "const": "subscription.search",
@@ -11516,7 +11766,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start immediate searches for all subscriptions accessible to the current user. Method: GET. Path: /api/v1/subscribe/search. Effect: external_side_effect.",
+      "description": "Start immediate searches for all subscriptions accessible to the current user. Method: POST. Path: /api/v1/subscribe/search. Effect: external_side_effect.",
       "properties": {
         "operation_id": {
           "const": "subscription.search_all",
@@ -12764,7 +13014,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete every transfer-history record while leaving transferred files untouched. Method: GET. Path: /api/v1/history/empty/transfer. Effect: destructive_write.",
+      "description": "Delete legacy transfer-history records while leaving files and durable failed-task records untouched. Method: DELETE. Path: /api/v1/history/transfer/all. Effect: destructive_write.",
       "properties": {
         "operation_id": {
           "const": "transfer.history.clear",
@@ -13919,7 +14169,10 @@
         "plugin.data",
         "plugin.folder.create",
         "plugin.folder.delete",
+        "plugin.folder.plugin.assign",
+        "plugin.folder.plugin.remove",
         "plugin.folder.plugins.update",
+        "plugin.folder.update",
         "plugin.folders.get",
         "plugin.folders.update",
         "plugin.history",

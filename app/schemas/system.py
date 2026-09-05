@@ -195,7 +195,16 @@ class SystemSettingsUpdateRequest(BaseModel):  # type: ignore[misc]
 class CustomIdentifiersUpdateRequest(BaseModel):  # type: ignore[misc]
     """完整替换自定义识别词的请求。"""
 
-    identifiers: list[str] = Field(default_factory=list)
+    identifiers: list[str] = Field(
+        default_factory=list,
+        description="Complete ordered list of custom recognition identifier rules.",
+    )
+    expected_identifiers: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Previously read complete ordered list. When supplied, reject the replacement if the stored list has changed."
+        ),
+    )
 
 
 SystemUpdateType = Literal["application", "resources"]

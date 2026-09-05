@@ -1,6 +1,6 @@
 import asyncio
-import io
 import inspect
+import io
 from types import SimpleNamespace
 
 import pytest
@@ -8,23 +8,25 @@ from fastapi import HTTPException
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.api.deps import (
+    get_current_active_manage_user,
+    get_current_active_manage_user_async,
+    get_current_active_superuser,
+    get_current_active_superuser_async,
+    get_current_active_user,
+    get_current_active_user_async,
+)
 from app.api.endpoints import dashboard as dashboard_endpoint
 from app.api.endpoints import history as history_endpoint
 from app.api.endpoints import login as login_endpoint
 from app.api.endpoints import plugin as plugin_endpoint
+from app.api.endpoints import rule as rule_endpoint
 from app.api.endpoints import site as site_endpoint
 from app.api.endpoints import storage as storage_endpoint
 from app.api.endpoints import system as system_endpoint
 from app.api.endpoints import transfer as transfer_endpoint
 from app.api.endpoints import user as user_endpoint
 from app.application.security.token import decode_access_token
-from app.api.deps import (
-    get_current_active_manage_user,
-    get_current_active_manage_user_async,
-    get_current_active_superuser,
-    get_current_active_superuser_async,
-    get_current_active_user_async,
-)
 from app.schemas.types import SystemConfigKey
 
 
@@ -52,6 +54,8 @@ def test_system_sensitive_read_endpoints_require_superuser():
     """系统敏感读取接口必须只允许管理员访问。"""
     assert _dependency_of(system_endpoint.get_env_setting, "_") is get_current_active_superuser_async
     assert _dependency_of(system_endpoint.get_setting, "_") is get_current_active_superuser_async
+    assert _dependency_of(system_endpoint.query_settings, "_") is get_current_active_superuser_async
+    assert _dependency_of(system_endpoint.update_settings, "_") is get_current_active_superuser_async
     assert _dependency_of(system_endpoint.list_database_backups, "_") is get_current_active_superuser_async
     assert _dependency_of(system_endpoint.create_database_backup, "_") is get_current_active_superuser_async
     assert _dependency_of(system_endpoint.verify_database_backup, "_") is get_current_active_superuser_async
@@ -62,6 +66,31 @@ def test_system_public_read_endpoints_require_active_user():
     """公开读取接口只要求登录且启用的用户。"""
     assert _dependency_of(system_endpoint.ping, "_") is get_current_active_user_async
     assert _dependency_of(system_endpoint.get_public_setting, "_") is get_current_active_user_async
+    assert _dependency_of(storage_endpoint.storage_options, "_") is get_current_active_user
+
+
+def test_rule_query_and_mutation_endpoints_keep_separate_permissions():
+    """规则查询允许活动用户，规则定义修改仍只允许管理员。"""
+    read_endpoints = [
+        rule_endpoint.query_builtin_rules,
+        rule_endpoint.query_custom_rules,
+        rule_endpoint.query_rule_groups,
+    ]
+    mutation_endpoints = [
+        rule_endpoint.add_custom_rule,
+        rule_endpoint.reorder_custom_rules,
+        rule_endpoint.update_custom_rule,
+        rule_endpoint.delete_custom_rule,
+        rule_endpoint.add_rule_group,
+        rule_endpoint.reorder_rule_groups,
+        rule_endpoint.update_rule_group,
+        rule_endpoint.delete_rule_group,
+    ]
+
+    for endpoint in read_endpoints:
+        assert _dependency_of(endpoint, "_") is get_current_active_user_async
+    for endpoint in mutation_endpoints:
+        assert _dependency_of(endpoint, "_") is get_current_active_superuser_async
 
 
 def test_dashboard_endpoints_require_superuser():
@@ -83,11 +112,27 @@ def test_plugin_dashboard_endpoints_require_superuser():
     assert _dependency_of(plugin_endpoint.plugin_dashboard_meta, "_") is get_current_active_superuser
     assert _dependency_of(plugin_endpoint.plugin_dashboard_by_key, "_") is get_current_active_superuser
     assert _dependency_of(plugin_endpoint.plugin_dashboard, "_") is get_current_active_superuser
+    assert _dependency_of(plugin_endpoint.plugin_capabilities, "_") is get_current_active_superuser_async
+    assert _dependency_of(plugin_endpoint.plugin_data_summary, "_") is get_current_active_superuser_async
+    assert _dependency_of(plugin_endpoint.reload_plugin, "_") is get_current_active_superuser
+
+
+def test_site_destructive_commands_require_superuser():
+    """CookieCloud 同步和站点重置必须保持超级管理员边界。"""
+    assert _dependency_of(site_endpoint.cookie_cloud_sync, "_") is get_current_active_superuser_async
+    assert _dependency_of(site_endpoint.reset, "_") is get_current_active_superuser_async
+
+
+def test_transfer_history_clear_requires_superuser():
+    """清空全部旧整理历史必须保持超级管理员边界。"""
+    assert _dependency_of(history_endpoint.clear_transfer_history, "_") is get_current_active_superuser
+    assert _dependency_of(history_endpoint.empty_transfer_history, "_") is get_current_active_superuser
 
 
 def test_manage_page_endpoints_accept_manage_permission():
     """管理页面接口允许具备 manage 权限的普通用户访问。"""
     sync_endpoints = [
+        storage_endpoint.directory_settings,
         storage_endpoint.list_files,
         storage_endpoint.mkdir,
         storage_endpoint.delete,
@@ -141,9 +186,7 @@ def test_system_public_setting_allows_only_non_sensitive_keys(monkeypatch):
         lambda: FakeSystemConfigOper(),
     )
 
-    response = asyncio.run(
-        system_endpoint.get_public_setting(SystemConfigKey.Directories.value)
-    )
+    response = asyncio.run(system_endpoint.get_public_setting(SystemConfigKey.Directories.value))
 
     assert response.success is True
     assert response.data == {"value": [{"path": "/downloads"}]}
@@ -152,9 +195,7 @@ def test_system_public_setting_allows_only_non_sensitive_keys(monkeypatch):
     response = asyncio.run(system_endpoint.get_public_setting("PLUGIN_MARKET"))
 
     assert response.success is True
-    assert response.data == {
-        "value": system_endpoint.get_runtime_settings().get("PLUGIN_MARKET")
-    }
+    assert response.data == {"value": system_endpoint.get_runtime_settings().get("PLUGIN_MARKET")}
     assert calls == [SystemConfigKey.Directories]
 
     with pytest.raises(HTTPException) as exc_info:
@@ -276,9 +317,9 @@ def test_upload_avatar_rejects_other_user_for_non_superuser():
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
-                user_endpoint.upload_avatar(
-                    user_id=2,
-                    service=SimpleNamespace(),
+            user_endpoint.upload_avatar(
+                user_id=2,
+                service=SimpleNamespace(),
                 file=upload_file,
                 current_user=current_user,
             )
@@ -294,6 +335,7 @@ def test_upload_avatar_returns_filename_in_data(monkeypatch):
     fake_user = SimpleNamespace()
     current_user = SimpleNamespace(id=1, is_superuser=False)
     upload_file = SimpleNamespace(file=io.BytesIO(b"avatar"), filename="avatar.png")
+
     class FakeService:
         """记录头像查询和更新的用户服务桩。"""
 

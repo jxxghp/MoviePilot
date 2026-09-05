@@ -16,8 +16,11 @@ from app.application.music.projection import simplify_music_album, simplify_musi
 from app.application.plugin.data import (
     DeletePluginDataCommand,
     PluginDataQueryService,
+    PluginDataSummaryService,
     build_preview_payload,
     clamp_preview_chars,
+    plugin_data_serialized_chars,
+    plugin_data_value_type,
 )
 from app.application.security.secrets import is_secret_setting_key
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo, MusicRelease
@@ -29,6 +32,7 @@ from app.schemas.types import EventType, MediaSource, SystemConfigKey
 def run_async(awaitable):
     """在普通 pytest 函数中执行一个短异步断言。"""
     import asyncio
+
     return asyncio.run(awaitable)
 
 
@@ -112,12 +116,25 @@ def test_filtering_normalizers_and_usage_collection(monkeypatch):
 
         async def async_list(self):
             """返回带规则组引用的订阅快照。"""
-            return [SimpleNamespace(id=1, name="Sub", season=1, type="电影", username="u", best_version=True, filter_groups=["search", "custom"]), SimpleNamespace(filter_groups=None)]
+            return [
+                SimpleNamespace(
+                    id=1,
+                    name="Sub",
+                    season=1,
+                    type="电影",
+                    username="u",
+                    best_version=True,
+                    filter_groups=["search", "custom"],
+                ),
+                SimpleNamespace(filter_groups=None),
+            ]
 
     usage = run_async(filtering.collect_rule_group_usages(SubscriptionPort(), ["search", "custom"]))
     assert usage["search"]["used_in_global_search"] is True
     assert usage["search"]["subscribes"][0]["subscribe_id"] == 1
-    refs = filtering.collect_custom_rule_group_refs([FilterRuleGroup(name="main", rule_string="CUSTOM & 4K"), FilterRuleGroup(name="none")], ["CUSTOM"])
+    refs = filtering.collect_custom_rule_group_refs(
+        [FilterRuleGroup(name="main", rule_string="CUSTOM & 4K"), FilterRuleGroup(name="none")], ["CUSTOM"]
+    )
     assert refs["CUSTOM"] == ["main"]
 
 
@@ -152,7 +169,9 @@ async def test_filter_rule_service_queries_and_mutations(monkeypatch):
     assert filtering.FilterRuleService.query_custom(["OLD"])["count"] == 1
     assert (await service.query_groups(include_usage=False))["count"] == 1
     assert (await service.query_groups(["missing"], include_usage=False))["count"] == 0
-    added = await service.add_custom(rule_id="NEW", name="New", include="new", exclude=None, size_range=None, seeders=None, publish_time=None)
+    added = await service.add_custom(
+        rule_id="NEW", name="New", include="new", exclude=None, size_range=None, seeders=None, publish_time=None
+    )
     assert added["custom_rule"]["id"] == "NEW"
     updated = await service.update_custom(current_rule_id="OLD", new_rule_id="RENAMED")
     assert updated["rule_groups_updated_for_rule_id_rename"] == ["group"]
@@ -177,7 +196,9 @@ async def test_save_system_config_and_settings_service(monkeypatch):
     runtime.get.side_effect = lambda key: {"LLM_MODEL": "model", "PLUGIN_MARKET": "a"}.get(key)
     runtime.update.return_value = (True, "updated")
     system = MagicMock()
-    system.get.side_effect = lambda key: [{"name": "qb", "token": "secret"}] if key == SystemConfigKey.Downloaders else {"a": 1}
+    system.get.side_effect = lambda key: (
+        [{"name": "qb", "token": "secret"}] if key == SystemConfigKey.Downloaders else {"a": 1}
+    )
     system.normalize_value.side_effect = lambda _key, value: value
     system.async_set = AsyncMock(return_value=True)
     system.async_set_with_normalized_value = AsyncMock(
@@ -216,13 +237,22 @@ async def test_save_system_config_and_settings_service(monkeypatch):
     assert runtime_definition["persistence"] == "app.env"
     spec = settings_module.resolve_setting_spec(SystemConfigKey.Downloaders.value)
     assert spec
-    assert service._prepare_next_value(spec, {"name": "old", "x": 1}, {"name": "old", "y": 2}, "merge_dict", ["x"], None, None) == {"name": "old", "y": 2}
-    assert service._prepare_next_value(spec, [{"name": "old"}], {"name": "old", "x": 2}, "upsert_list_item", None, None, None) == [{"name": "old", "x": 2}]
-    assert service._prepare_next_value(spec, [{"name": "old"}], {"name": "old"}, "remove_list_item", None, None, None) == []
+    assert service._prepare_next_value(
+        spec, {"name": "old", "x": 1}, {"name": "old", "y": 2}, "merge_dict", ["x"], None, None
+    ) == {"name": "old", "y": 2}
+    assert service._prepare_next_value(
+        spec, [{"name": "old"}], {"name": "old", "x": 2}, "upsert_list_item", None, None, None
+    ) == [{"name": "old", "x": 2}]
+    assert (
+        service._prepare_next_value(spec, [{"name": "old"}], {"name": "old"}, "remove_list_item", None, None, None)
+        == []
+    )
     with pytest.raises(ValueError, match="不支持"):
         service._prepare_next_value(spec, None, None, "bad", None, None, None)
     system.get.side_effect = [[], [{"name": "new"}]]
-    result = await service.update(setting_key=SystemConfigKey.Downloaders.value, value={"name": "new"}, operation="upsert_list_item")
+    result = await service.update(
+        setting_key=SystemConfigKey.Downloaders.value, value={"name": "new"}, operation="upsert_list_item"
+    )
     assert result["changed"] is True
     runtime.get.side_effect = lambda key: "old"
     assert (await service.update(setting_key="PLUGIN_MARKET", value="new"))["changed"] is True
@@ -259,6 +289,63 @@ async def test_settings_service_publishes_normalized_directory_value(monkeypatch
     publish.assert_awaited_once_with(SystemConfigKey.Directories.value, normalized)
 
 
+@pytest.mark.asyncio
+async def test_settings_service_conditionally_replaces_system_config_atomically(monkeypatch):
+    """条件替换应拒绝过期快照，并只为成功提交发布配置事件。"""
+    runtime = MagicMock()
+    system = MagicMock()
+    state = {"value": ["old"]}
+
+    def get_value(_key):
+        """返回原子测试维护的最新配置快照。"""
+        return list(state["value"])
+
+    async def update_atomically(_key, mutation):
+        """在测试内同步执行条件 mutation 并发布最终值。"""
+        result, value = mutation(list(state["value"]))
+        state["value"] = list(value or [])
+        return result
+
+    system.get.side_effect = get_value
+    system.async_update_atomically = AsyncMock(side_effect=update_atomically)
+    publish = AsyncMock()
+    monkeypatch.setattr(settings_module, "plugin_system_config_mutation", lambda _key: nullcontext())
+    service = settings_module.SystemSettingsService(runtime, system, publish)
+
+    result = await service.update(
+        setting_key=SystemConfigKey.CustomIdentifiers.value,
+        value=["new"],
+        expected_value=["old"],
+        enforce_expected_value=True,
+    )
+
+    assert result["changed"] is True
+    assert result["previous_value"] == ["old"]
+    assert result["saved_value"] == ["new"]
+    publish.assert_awaited_once_with(SystemConfigKey.CustomIdentifiers.value, ["new"])
+
+    state["value"] = ["new", 7]
+    repaired = await service.update(
+        setting_key=SystemConfigKey.CustomIdentifiers.value,
+        value=["fixed"],
+        expected_value=["new"],
+        enforce_expected_value=True,
+    )
+
+    assert repaired["saved_value"] == ["fixed"]
+
+    with pytest.raises(settings_module.SystemSettingConflictError, match="其他会话"):
+        await service.update(
+            setting_key=SystemConfigKey.CustomIdentifiers.value,
+            value=["mine"],
+            expected_value=["stale"],
+            enforce_expected_value=True,
+        )
+
+    assert state["value"] == ["fixed"]
+    assert publish.await_count == 2
+
+
 def test_settings_catalog_redaction_and_projection():
     """设置目录应支持分类别名、匹配字段和递归敏感值脱敏。"""
     assert settings_module.normalize_group("基础配置") == "settings"
@@ -280,7 +367,19 @@ def test_settings_catalog_redaction_and_projection():
 @pytest.mark.asyncio
 async def test_plugin_management_and_data_services(monkeypatch):
     """插件管理、来源补齐和数据预览应覆盖成功与安全失败路径。"""
-    plugin = SimpleNamespace(id="Demo", plugin_name="Demo Plugin", plugin_desc="desc", plugin_version="1", plugin_author="author", installed=True, has_update=True, state=True, repo_url=None, add_time=1)
+    plugin = SimpleNamespace(
+        id="Demo",
+        plugin_name="Demo Plugin",
+        plugin_desc="desc",
+        plugin_version="1",
+        plugin_author="author",
+        installed=True,
+        has_update=True,
+        state=True,
+        repo_url=None,
+        add_time=1,
+    )
+
     class SourceCandidate:
         """提供插件来源检查所需的公开投影。"""
 
@@ -308,14 +407,24 @@ async def test_plugin_management_and_data_services(monkeypatch):
     assert plugin_management.summarize_plugin(plugin)["source"] == "market"
     assert plugin_management.is_exact_plugin_match(plugin, "demo plugin")
     assert plugin_management.search_plugin_candidates("demo", [plugin])[0]["exact"] is True
-    assert plugin_management.summarize_candidates(plugin_management.search_plugin_candidates("demo", [plugin]), 1)[0]["id"] == "Demo"
+    assert (
+        plugin_management.summarize_candidates(plugin_management.search_plugin_candidates("demo", [plugin]), 1)[0]["id"]
+        == "Demo"
+    )
     assert await plugin_management.enrich_installed_plugin_sources([plugin]) == [plugin]
     assert plugin.repo_url == source.repo_url
     assert await plugin_management.load_market_plugins() == [source]
     assert plugin_management.list_installed_plugins() == [plugin]
     install_service = MagicMock()
     install_service.install = AsyncMock(return_value=SimpleNamespace(success=True, message="ok", refreshed_only=False))
-    install_service.inspect_source = AsyncMock(return_value=SimpleNamespace(online_candidates=[source], local_candidate=None, selection=SimpleNamespace(status=SimpleNamespace(value="selected"), reason="exact"), inventory_complete=True))
+    install_service.inspect_source = AsyncMock(
+        return_value=SimpleNamespace(
+            online_candidates=[source],
+            local_candidate=None,
+            selection=SimpleNamespace(status=SimpleNamespace(value="selected"), reason="exact"),
+            inventory_complete=True,
+        )
+    )
     monkeypatch.setattr(plugin_management, "get_plugin_install_service", lambda: install_service)
     assert await plugin_management.install_plugin_runtime("Demo", source.repo_url) == (True, "ok", False)
     assert (await plugin_management.inspect_plugin_sources("Demo"))["selection_status"] == "selected"
@@ -336,6 +445,63 @@ async def test_plugin_management_and_data_services(monkeypatch):
     assert (await query.query("Demo"))["count"] == 1
     with pytest.raises(ValueError, match="不存在"):
         await PluginDataQueryService(query_repo, lambda _id: None).query("Demo")
+
+
+@pytest.mark.asyncio
+async def test_plugin_data_summary_excludes_values_and_flags_sensitive_keys():
+    """插件数据摘要只返回类型与大小，并沿用统一敏感键规则。"""
+    query_repo = MagicMock()
+    query_repo.list = AsyncMock(
+        return_value={
+            "accessToken": "secret-value",
+            "items": [{"id": 1}],
+            "enabled": True,
+        }
+    )
+    service = PluginDataSummaryService(
+        query_repo,
+        lambda _id: {
+            "plugin_id": "Demo",
+            "plugin_name": "Demo Plugin",
+            "plugin_version": "1.0.0",
+            "state": True,
+        },
+    )
+
+    result = await service.summarize("Demo")
+
+    assert result == {
+        "plugin_id": "Demo",
+        "plugin_name": "Demo Plugin",
+        "plugin_version": "1.0.0",
+        "state": True,
+        "count": 3,
+        "total_chars": len('"secret-value"') + len('[{"id":1}]') + len("true"),
+        "keys": [
+            {
+                "key": "accessToken",
+                "value_type": "string",
+                "serialized_chars": len('"secret-value"'),
+                "sensitive": True,
+            },
+            {
+                "key": "items",
+                "value_type": "array",
+                "serialized_chars": len('[{"id":1}]'),
+                "sensitive": False,
+            },
+            {
+                "key": "enabled",
+                "value_type": "boolean",
+                "serialized_chars": len("true"),
+                "sensitive": False,
+            },
+        ],
+        "keys_truncated": False,
+    }
+    assert "secret-value" not in repr(result["keys"])
+    assert plugin_data_value_type(None) == "null"
+    assert plugin_data_serialized_chars(object()) is None
 
 
 def test_remaining_application_guard_paths(monkeypatch):
@@ -419,13 +585,26 @@ def test_command_application_facade_and_dispatch(monkeypatch):
 
 def test_music_projection_and_domain_projection():
     """音乐和豆瓣投影应保留稳定身份并裁剪大字段。"""
-    track = MusicInfo(media_source=MediaSource.MusicBrainz, media_id="track", title="Track", artists=["Artist"], year=2024)
+    track = MusicInfo(
+        media_source=MediaSource.MusicBrainz, media_id="track", title="Track", artists=["Artist"], year=2024
+    )
     assert simplify_music_info(track)["title"] == "Track"
-    album = MusicAlbumInfo(media_source=MediaSource.MusicBrainz, media_id="album", title="Album", artists=["Artist"], tracks=[track] * 3, releases=[MusicRelease(media_id="release", title="Release")])
+    album = MusicAlbumInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="album",
+        title="Album",
+        artists=["Artist"],
+        tracks=[track] * 3,
+        releases=[MusicRelease(media_id="release", title="Release")],
+    )
     assert simplify_music_album(album, track_limit=2)["tracks_truncated"] is True
-    artist = MusicArtistInfo(media_source=MediaSource.MusicBrainz, media_id="artist", name="Artist", raw_data={"secret": 1})
+    artist = MusicArtistInfo(
+        media_source=MediaSource.MusicBrainz, media_id="artist", name="Artist", raw_data={"secret": 1}
+    )
     assert simplify_music_artist(artist)["subscribable"] is False
-    projected = project_douban({}, {"id": "1", "title": "Movie", "subtype": "movie", "rating": {"value": 8.5}, "pic": {"large": "poster"}})
+    projected = project_douban(
+        {}, {"id": "1", "title": "Movie", "subtype": "movie", "rating": {"value": 8.5}, "pic": {"large": "poster"}}
+    )
     assert projected["poster_path"] == "poster"
     assert projected["douban_id"] == "1"
     assert project_douban({}, {}) == {}
@@ -434,14 +613,37 @@ def test_music_projection_and_domain_projection():
 def test_download_task_services_validate_and_delegate(monkeypatch):
     """下载任务服务应补齐历史媒体并严格校验高级修改。"""
     torrent = SimpleNamespace(hash="a" * 40, downloader="qb")
-    history = SimpleNamespace(media_source=MediaSource.TMDB, media_id="1", type="电影", title="Movie", seasons="1", episodes="2", poster="p", image="b", torrent_site="site", userid="u", username="name")
+    history = SimpleNamespace(
+        media_source=MediaSource.TMDB,
+        media_id="1",
+        type="电影",
+        title="Movie",
+        seasons="1",
+        episodes="2",
+        poster="p",
+        image="b",
+        torrent_site="site",
+        userid="u",
+        username="name",
+    )
     list_torrents = MagicMock(return_value=[torrent])
-    service = DownloadTaskService(list_torrents, lambda _hashes: {torrent.hash: history}, MagicMock(return_value=True), MagicMock(return_value=True), MagicMock(return_value=True))
+    service = DownloadTaskService(
+        list_torrents,
+        lambda _hashes: {torrent.hash: history},
+        MagicMock(return_value=True),
+        MagicMock(return_value=True),
+        MagicMock(return_value=True),
+    )
     assert service.downloading()[0].media.title == "Movie"
     assert service.set_downloading(torrent.hash, "start") is True
     assert service.set_downloading(torrent.hash, "bad") is False
     assert service.remove_downloading(torrent.hash) is True
-    mutation = DownloadTaskMutationService(list_torrents=lambda **_kwargs: [torrent], set_tags=MagicMock(return_value=True), set_downloading=MagicMock(return_value=True), update_torrent=MagicMock(return_value={"limits": True, "trackers": False}))
+    mutation = DownloadTaskMutationService(
+        list_torrents=lambda **_kwargs: [torrent],
+        set_tags=MagicMock(return_value=True),
+        set_downloading=MagicMock(return_value=True),
+        update_torrent=MagicMock(return_value={"limits": True, "trackers": False}),
+    )
     assert mutation.update(hash_value=torrent.hash, action="start", tags=["tag"], download_limit=1)["results"]
     with pytest.raises(ValueError, match="hash"):
         mutation.update(hash_value="bad", action="start")

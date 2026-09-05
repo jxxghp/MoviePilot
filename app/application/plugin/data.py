@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable
 from typing import Any, Optional, Protocol
 
+from app.application.security.secrets import is_secret_setting_key
 from app.schemas.common import JsonData
 
 
@@ -145,3 +146,77 @@ class PluginDataQueryService:
             }
         )
         return result
+
+
+def plugin_data_value_type(value: JsonData) -> str:
+    """把插件 JSON 值映射为不包含内容的稳定类型名称。"""
+    if value is None:
+        return "null"
+    if type(value) is bool:
+        return "boolean"
+    if type(value) in (int, float):
+        return "number"
+    if type(value) is str:
+        return "string"
+    if type(value) is list:
+        return "array"
+    if type(value) is dict:
+        return "object"
+    return "unknown"
+
+
+def plugin_data_serialized_chars(value: JsonData) -> Optional[int]:
+    """计算合法 JSON 值的紧凑字符数，异常对象不执行自定义字符串化。"""
+    try:
+        return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+    except TypeError, ValueError:
+        return None
+
+
+class PluginDataSummaryService:
+    """构建不包含插件持久化原值的有界诊断摘要。"""
+
+    def __init__(
+        self,
+        repository: PluginDataQueryRepository,
+        snapshot: Callable[[str], Optional[dict[str, Any]]],
+    ) -> None:
+        """注入插件数据仓储和安装态快照查询函数。"""
+        self._repository = repository
+        self._snapshot = snapshot
+
+    async def summarize(self, plugin_id: str) -> dict[str, Any]:
+        """返回键名、类型、大小和敏感标记，不返回或字符串化数据值。"""
+        plugin = self._snapshot(plugin_id)
+        if plugin is None:
+            raise ValueError(f"插件 {plugin_id} 不存在")
+
+        data = await self._repository.list(plugin_id)
+        items = []
+        total_chars = 0
+        for key, value in list(data.items())[:PLUGIN_DATA_KEY_PREVIEW_LIMIT]:
+            serialized_chars = plugin_data_serialized_chars(value)
+            if serialized_chars is not None:
+                total_chars += serialized_chars
+            items.append(
+                {
+                    "key": str(key),
+                    "value_type": plugin_data_value_type(value),
+                    "serialized_chars": serialized_chars,
+                    "sensitive": is_secret_setting_key(key),
+                }
+            )
+
+        if len(data) > PLUGIN_DATA_KEY_PREVIEW_LIMIT:
+            for value in list(data.values())[PLUGIN_DATA_KEY_PREVIEW_LIMIT:]:
+                serialized_chars = plugin_data_serialized_chars(value)
+                if serialized_chars is not None:
+                    total_chars += serialized_chars
+
+        return {
+            **plugin,
+            "count": len(data),
+            "total_chars": total_chars,
+            "keys": items,
+            "keys_truncated": len(data) > PLUGIN_DATA_KEY_PREVIEW_LIMIT,
+        }

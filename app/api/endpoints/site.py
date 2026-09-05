@@ -293,7 +293,18 @@ async def update_site(
     return _SchemaResponse(success=result.success, message=result.message)
 
 
-@router.get("/cookiecloud", summary="CookieCloud同步", response_model=_SchemaResponse[None])
+@router.get(
+    "/cookiecloud",
+    summary="CookieCloud同步（兼容入口）",
+    response_model=_SchemaResponse[None],
+    include_in_schema=False,
+    deprecated=True,
+)
+@router.post(
+    "/cookiecloud",
+    summary="CookieCloud同步",
+    response_model=_SchemaResponse[None],
+)
 async def cookie_cloud_sync(
     task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
@@ -307,7 +318,18 @@ async def cookie_cloud_sync(
     return _SchemaResponse(success=True, message="CookieCloud同步任务已启动！")
 
 
-@router.get("/reset", summary="重置站点", response_model=_SchemaResponse[None])
+@router.get(
+    "/reset",
+    summary="重置站点（兼容入口）",
+    response_model=_SchemaResponse[None],
+    include_in_schema=False,
+    deprecated=True,
+)
+@router.post(
+    "/reset",
+    summary="重置站点",
+    response_model=_SchemaResponse[None],
+)
 async def reset(
     task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
     command: SiteMutationCommand = Depends(get_site_mutation_command),

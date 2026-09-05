@@ -32,6 +32,10 @@ class PluginFolderResult:
     message: str = ""
 
 
+FolderChange = Callable[[PluginFolders], tuple[PluginFolderResult, PluginFolders]]
+FolderAtomicWriter = Callable[[FolderChange], Awaitable[PluginFolderResult]]
+
+
 class PluginFolderService:
     """集中管理插件文件夹快照和带准入的持久化变更。"""
 
@@ -42,12 +46,14 @@ class PluginFolderService:
         write: FolderWriter,
         write_sync: FolderSyncWriter,
         mutation: FolderMutation,
+        update: FolderAtomicWriter | None = None,
     ) -> None:
         """保存配置读写和插件运行态变更准入端口。"""
         self._read = read
         self._write = write
         self._write_sync = write_sync
         self._mutation = mutation
+        self._update = update
 
     def get(self) -> PluginFolders:
         """返回与配置存储隔离的当前文件夹快照。"""
@@ -77,44 +83,161 @@ class PluginFolderService:
 
     async def create(self, folder_name: str) -> PluginFolderResult:
         """创建不存在的文件夹，保留旧列表格式的兼容形态。"""
-        try:
-            with self._mutation(f"创建插件文件夹 {folder_name}"):
-                folders = self.get()
-                if folder_name in folders:
-                    return PluginFolderResult(False, f"文件夹 '{folder_name}' 已存在")
-                folders[folder_name] = []
-                await self._write(folders)
-            return PluginFolderResult(True, f"文件夹 '{folder_name}' 创建成功")
-        except PluginMutationRejectedError as error:
-            return PluginFolderResult(False, str(error))
+        folder_name = folder_name.strip()
+        if not folder_name:
+            return PluginFolderResult(False, "文件夹名称不能为空")
+
+        def change(folders: PluginFolders) -> tuple[PluginFolderResult, PluginFolders]:
+            """只在名称尚未占用时向最新快照追加空文件夹。"""
+            if folder_name in folders:
+                return PluginFolderResult(False, f"文件夹 '{folder_name}' 已存在"), folders
+            folders[folder_name] = []
+            return PluginFolderResult(True, f"文件夹 '{folder_name}' 创建成功"), folders
+
+        return await self._change(f"创建插件文件夹 {folder_name}", change)
 
     async def delete(self, folder_name: str) -> PluginFolderResult:
         """删除存在的文件夹并返回稳定业务结果。"""
-        try:
-            with self._mutation(f"删除插件文件夹 {folder_name}"):
-                folders = self.get()
-                if folder_name not in folders:
-                    return PluginFolderResult(False, f"文件夹 '{folder_name}' 不存在")
-                del folders[folder_name]
-                await self._write(folders)
-            return PluginFolderResult(True, f"文件夹 '{folder_name}' 删除成功")
-        except PluginMutationRejectedError as error:
-            return PluginFolderResult(False, str(error))
+        def change(folders: PluginFolders) -> tuple[PluginFolderResult, PluginFolders]:
+            """只从最新快照移除目标文件夹。"""
+            if folder_name not in folders:
+                return PluginFolderResult(False, f"文件夹 '{folder_name}' 不存在"), folders
+            del folders[folder_name]
+            return PluginFolderResult(True, f"文件夹 '{folder_name}' 删除成功"), folders
+
+        return await self._change(f"删除插件文件夹 {folder_name}", change)
+
+    async def update_folder(
+        self,
+        folder_name: str,
+        *,
+        new_name: str | None = None,
+        changes: dict[str, Any] | None = None,
+    ) -> PluginFolderResult:
+        """增量更新文件夹名称或展示配置，同时保留成员与未修改字段。"""
+        normalized_name = new_name.strip() if new_name is not None else folder_name
+        if not normalized_name:
+            return PluginFolderResult(False, "文件夹名称不能为空")
+        folder_changes = deepcopy(changes or {})
+
+        def change(folders: PluginFolders) -> tuple[PluginFolderResult, PluginFolders]:
+            """在最新快照中合并展示字段，并保持重命名前的字典位置。"""
+            if folder_name not in folders:
+                return PluginFolderResult(False, f"文件夹 '{folder_name}' 不存在"), folders
+            if normalized_name != folder_name and normalized_name in folders:
+                return PluginFolderResult(False, f"文件夹 '{normalized_name}' 已存在"), folders
+
+            current = folders[folder_name]
+            if folder_changes:
+                current = (
+                    {"plugins": list(current)}
+                    if isinstance(current, list)
+                    else deepcopy(current) if isinstance(current, dict) else {"plugins": []}
+                )
+                current.update(folder_changes)
+
+            if normalized_name == folder_name:
+                folders[folder_name] = current
+            else:
+                folders = {
+                    (normalized_name if name == folder_name else name): (current if name == folder_name else value)
+                    for name, value in folders.items()
+                }
+            return PluginFolderResult(True, f"文件夹 '{normalized_name}' 已更新"), folders
+
+        return await self._change(f"更新插件文件夹 {folder_name}", change)
 
     async def update_plugins(
-        self, folder_name: str, plugin_ids: list[str]
+        self,
+        folder_name: str,
+        plugin_ids: list[str],
+        expected_plugin_ids: list[str] | None = None,
     ) -> PluginFolderResult:
-        """更新指定文件夹的插件顺序和成员。"""
-        try:
-            with self._mutation(f"更新插件文件夹 {folder_name}"):
-                folders = self.get()
-                folders[folder_name] = list(plugin_ids)
-                await self._write(folders)
-            return PluginFolderResult(
-                True,
-                f"文件夹 '{folder_name}' 中的插件已更新",
+        """条件更新指定文件夹的插件顺序和成员，并保留展示配置。"""
+        next_plugin_ids = list(plugin_ids)
+
+        def change(folders: PluginFolders) -> tuple[PluginFolderResult, PluginFolders]:
+            """基于最新成员列表检查预期快照并替换目标列表。"""
+            if folder_name not in folders:
+                return PluginFolderResult(False, f"文件夹 '{folder_name}' 不存在"), folders
+            folder_data = folders[folder_name]
+            current_plugin_ids = _folder_plugins(folder_data) or []
+            if expected_plugin_ids is not None and current_plugin_ids != expected_plugin_ids:
+                return PluginFolderResult(False, "插件文件夹已被其他请求修改，请重新读取后再试"), folders
+            folders[folder_name] = _with_folder_plugins(folder_data, next_plugin_ids)
+            return PluginFolderResult(True, f"文件夹 '{folder_name}' 中的插件已更新"), folders
+
+        return await self._change(f"更新插件文件夹 {folder_name}", change)
+
+    async def assign_plugin(self, folder_name: str, plugin_id: str) -> PluginFolderResult:
+        """把一个插件原子迁移到目标文件夹，并从其他文件夹移除。"""
+        def change(folders: PluginFolders) -> tuple[PluginFolderResult, PluginFolders]:
+            """在同一最新快照内完成跨文件夹成员迁移。"""
+            if folder_name not in folders:
+                return PluginFolderResult(False, f"文件夹 '{folder_name}' 不存在"), folders
+
+            for name, folder_data in folders.items():
+                plugins = _folder_plugins(folder_data)
+                if plugins is None:
+                    if name == folder_name:
+                        folders[name] = _with_folder_plugins(folder_data, [])
+                    continue
+                folders[name] = _with_folder_plugins(
+                    folder_data,
+                    [item for item in plugins if item != plugin_id],
+                )
+
+            target = folders[folder_name]
+            target_plugins = list(_folder_plugins(target) or [])
+            target_plugins.append(plugin_id)
+            folders[folder_name] = _with_folder_plugins(target, target_plugins)
+            return PluginFolderResult(True, f"插件已移动到文件夹 '{folder_name}'"), folders
+
+        return await self._change(f"移动插件到文件夹 {folder_name}", change)
+
+    async def remove_plugin_from_folder(
+        self,
+        folder_name: str,
+        plugin_id: str,
+    ) -> PluginFolderResult:
+        """只从指定文件夹移除一个插件，不影响其他文件夹。"""
+        def change(folders: PluginFolders) -> tuple[PluginFolderResult, PluginFolders]:
+            """在最新快照内删除目标文件夹中的指定成员。"""
+            if folder_name not in folders:
+                return PluginFolderResult(False, f"文件夹 '{folder_name}' 不存在"), folders
+            folder_data = folders[folder_name]
+            plugins = _folder_plugins(folder_data) or []
+            if plugin_id not in plugins:
+                return PluginFolderResult(False, f"插件不在文件夹 '{folder_name}' 中"), folders
+            folders[folder_name] = _with_folder_plugins(
+                folder_data,
+                [item for item in plugins if item != plugin_id],
             )
+            return PluginFolderResult(True, f"插件已从文件夹 '{folder_name}' 移除"), folders
+
+        return await self._change(f"从文件夹 {folder_name} 移除插件", change)
+
+    async def _change(
+        self,
+        operation: str,
+        change: FolderChange,
+    ) -> PluginFolderResult:
+        """统一执行带运行时准入的增量文件夹写入并映射稳定失败结果。"""
+        try:
+            with self._mutation(operation):
+                if self._update is not None:
+                    return await self._update(change)
+                folders = self.get()
+                result, changed_folders = change(folders)
+                if result.success:
+                    await self._write(changed_folders)
+                return result
+        except PersistenceUnavailableError:
+            raise
         except PluginMutationRejectedError as error:
+            return PluginFolderResult(False, str(error))
+        except Exception as error:  # noqa: BLE001 - HTTP 兼容入口以业务结果表达失败
+            logger.error(f"[文件夹API] {operation}失败: {error}")
             return PluginFolderResult(False, str(error))
 
     def remove_plugin(self, plugin_id: str) -> None:
@@ -175,6 +298,10 @@ def get_plugin_folder_service() -> PluginFolderService:
             SystemConfigKey.PluginFolders, folders
         ),
         mutation=lambda operation: get_plugin_manager().mutation(operation),
+        update=lambda change: get_configured_system_config().async_update_atomically(
+            SystemConfigKey.PluginFolders,
+            lambda current: change(deepcopy(current) if isinstance(current, dict) else {}),
+        ),
     )
 
 
@@ -194,3 +321,10 @@ def _folder_plugins(folder_data: Any) -> list[str] | None:
         plugins = folder_data.get("plugins")
         return plugins if isinstance(plugins, list) else None
     return folder_data if isinstance(folder_data, list) else None
+
+
+def _with_folder_plugins(folder_data: Any, plugin_ids: list[str]) -> Any:
+    """替换成员列表，同时保留对象格式中的展示配置。"""
+    if isinstance(folder_data, dict):
+        return {**folder_data, "plugins": list(plugin_ids)}
+    return list(plugin_ids)

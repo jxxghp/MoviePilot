@@ -29,6 +29,10 @@ class SettingSpec:
     systemconfig_key: Optional[SystemConfigKey] = None
 
 
+class SystemSettingConflictError(ValueError):
+    """表示条件更新所依据的系统配置快照已经过期。"""
+
+
 SYSTEMCONFIG_SETTING_METADATA = {
     SystemConfigKey.Downloaders.value: {
         "group": "downloaders",
@@ -527,6 +531,15 @@ class SystemSettingsService:
             return filtered or None
         return value
 
+    @classmethod
+    def _normalize_comparison_value(cls, spec: SettingSpec, value: Any) -> Any:
+        """按专用 API 的公开投影规范化条件更新比较值。"""
+        normalized = cls._normalize_systemconfig_value(value)
+        if spec.systemconfig_key == SystemConfigKey.CustomIdentifiers and isinstance(normalized, list):
+            identifiers = [item for item in normalized if isinstance(item, str)]
+            return identifiers or None
+        return normalized
+
     @staticmethod
     def _resolve_list_match(
         spec: SettingSpec,
@@ -608,31 +621,77 @@ class SystemSettingsService:
         remove_keys: Optional[list[str]] = None,
         match_field: Optional[str] = None,
         match_value: Any = None,
+        expected_value: Any = None,
+        enforce_expected_value: bool = False,
     ) -> dict[str, Any]:
-        """更新登记设置并发布统一配置变更事件。"""
+        """更新登记设置，可选校验旧值，并发布统一配置变更事件。"""
         spec = resolve_setting_spec(setting_key)
         if spec is None:
             raise ValueError(f"系统设置项 '{setting_key}' 不存在")
+        if enforce_expected_value and spec.source != "systemconfig":
+            raise ValueError("条件更新仅支持数据库系统配置")
         mutation_key = spec.systemconfig_key if spec.source == "systemconfig" else None
         with plugin_system_config_mutation(mutation_key):
-            previous_value = self._load(spec)
-            next_value = self._prepare_next_value(
-                spec,
-                previous_value,
-                value,
-                operation,
-                remove_keys,
-                match_field,
-                match_value,
-            )
             message = ""
-            event_value = next_value
             if spec.source == "settings":
+                previous_value = self._load(spec)
+                next_value = self._prepare_next_value(
+                    spec,
+                    previous_value,
+                    value,
+                    operation,
+                    remove_keys,
+                    match_field,
+                    match_value,
+                )
+                event_value = next_value
                 success, message = self._runtime_settings.update(spec.key, next_value)
                 if success is False:
                     raise ValueError(message or f"更新设置 {spec.key} 失败")
                 changed = success is True
+            elif enforce_expected_value:
+                normalized_expected = self._normalize_comparison_value(spec, expected_value)
+
+                def mutate(current_value: Any) -> tuple[tuple[Any, Any, bool], Any]:
+                    """在配置写锁内校验旧值并构造本次替换结果。"""
+                    normalized_current = self._normalize_comparison_value(spec, current_value)
+                    if normalized_current != normalized_expected:
+                        raise SystemSettingConflictError(
+                            f"系统设置 {spec.key} 已被其他会话更新，请重新加载后再保存"
+                        )
+                    next_value = self._prepare_next_value(
+                        spec,
+                        current_value,
+                        value,
+                        operation,
+                        remove_keys,
+                        match_field,
+                        match_value,
+                    )
+                    normalized_next = self._normalize_systemconfig_value(next_value)
+                    return (
+                        current_value,
+                        normalized_next,
+                        normalized_current != normalized_next,
+                    ), normalized_next
+
+                previous_value, event_value, changed = (
+                    await self._system_config.async_update_atomically(
+                        spec.systemconfig_key,
+                        mutate,
+                    )
+                )
             else:
+                previous_value = self._load(spec)
+                next_value = self._prepare_next_value(
+                    spec,
+                    previous_value,
+                    value,
+                    operation,
+                    remove_keys,
+                    match_field,
+                    match_value,
+                )
                 event_value = self._normalize_systemconfig_value(next_value)
                 write_result = (
                     await self._system_config.async_set_with_normalized_value(

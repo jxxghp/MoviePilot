@@ -138,7 +138,7 @@ async def test_bundled_moviepilot_api_skill_loads_complete_contract() -> None:
     assert payload["content_limit_bytes"] == MAX_SKILL_CONTENT_BYTES
     assert payload["truncated"] is False
     assert payload["truncation_message"] is None
-    assert len(payload["skill"]["allowed_api_operations"]) == 203
+    assert len(payload["skill"]["allowed_api_operations"]) == 205
     assert "### `workflow.update`" in payload["content"]
 
 

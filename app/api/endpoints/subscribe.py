@@ -426,7 +426,14 @@ async def subscribe_media_identity(
     return result if result else _SchemaSubscribe()
 
 
-@router.get("/refresh", summary="刷新订阅", response_model=_SchemaResponse[None])
+@router.get(
+    "/refresh",
+    summary="刷新订阅（兼容入口）",
+    response_model=_SchemaResponse[None],
+    include_in_schema=False,
+    deprecated=True,
+)
+@router.post("/refresh", summary="刷新订阅", response_model=_SchemaResponse[None])
 def refresh_subscribes(
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
@@ -439,7 +446,14 @@ def refresh_subscribes(
     return _SchemaResponse(success=True)
 
 
-@router.get("/reset/{subid}", summary="重置订阅", response_model=_SchemaResponse[None])
+@router.get(
+    "/reset/{subid}",
+    summary="重置订阅（兼容入口）",
+    response_model=_SchemaResponse[None],
+    include_in_schema=False,
+    deprecated=True,
+)
+@router.post("/reset/{subid}", summary="重置订阅", response_model=_SchemaResponse[None])
 async def reset_subscribes(
     subid: int,
     mutation: SubscriptionMutationService = Depends(get_subscription_mutation_service),
@@ -458,7 +472,14 @@ async def reset_subscribes(
     return _SchemaResponse(success=False, message="订阅不存在")
 
 
-@router.get("/check", summary="刷新订阅 TMDB 信息", response_model=_SchemaResponse[None])
+@router.get(
+    "/check",
+    summary="刷新订阅 TMDB 信息（兼容入口）",
+    response_model=_SchemaResponse[None],
+    include_in_schema=False,
+    deprecated=True,
+)
+@router.post("/check", summary="刷新订阅 TMDB 信息", response_model=_SchemaResponse[None])
 def check_subscribes(
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
@@ -471,7 +492,14 @@ def check_subscribes(
     return _SchemaResponse(success=True)
 
 
-@router.get("/search", summary="搜索所有订阅", response_model=_SchemaResponse[None])
+@router.get(
+    "/search",
+    summary="搜索所有订阅（兼容入口）",
+    response_model=_SchemaResponse[None],
+    include_in_schema=False,
+    deprecated=True,
+)
+@router.post("/search", summary="搜索所有订阅", response_model=_SchemaResponse[None])
 async def search_subscribes(
     command: SearchSubscriptionsCommand = Depends(get_search_subscriptions_command),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
@@ -489,7 +517,16 @@ async def search_subscribes(
 
 
 @router.get(
-    "/search/{subscribe_id}", summary="搜索订阅", response_model=_SchemaResponse[None]
+    "/search/{subscribe_id}",
+    summary="搜索订阅（兼容入口）",
+    response_model=_SchemaResponse[None],
+    include_in_schema=False,
+    deprecated=True,
+)
+@router.post(
+    "/search/{subscribe_id}",
+    summary="搜索订阅",
+    response_model=_SchemaResponse[None],
 )
 async def search_subscribe(
     subscribe_id: int,

@@ -88,9 +88,7 @@ def test_transfer_delete_commits_before_event_and_retry_cleanup():
     calls = []
     command, dependencies = _transfer_command(history=_history())
     dependencies["unit_of_work"].commit.side_effect = lambda: calls.append("commit")
-    dependencies["publish_download_file_deleted"].side_effect = (
-        lambda _payload: calls.append("event")
-    )
+    dependencies["publish_download_file_deleted"].side_effect = lambda _payload: calls.append("event")
     dependencies["clear_failures"].side_effect = lambda *_args: calls.append("clear")
 
     result = command.delete(
@@ -102,9 +100,7 @@ def test_transfer_delete_commits_before_event_and_retry_cleanup():
     assert result.success is True
     assert result.source.status == "deleted"
     assert result.destination.status == "deleted"
-    dependencies["download_repository"].stage_delete_file_by_fullpath.assert_called_once_with(
-        "/downloads/demo.mkv"
-    )
+    dependencies["download_repository"].stage_delete_file_by_fullpath.assert_called_once_with("/downloads/demo.mkv")
     dependencies["repository"].stage_delete.assert_called_once_with(7)
     assert calls == ["commit", "event", "clear"]
 
@@ -136,18 +132,29 @@ def test_transfer_truncate_uses_single_transaction():
     dependencies["unit_of_work"].commit.assert_called_once_with()
 
 
+def test_transfer_truncate_rolls_back_commit_failure():
+    """清空旧整理历史提交失败时必须回滚请求级事务。"""
+    command, dependencies = _transfer_command(
+        commit_error=RuntimeError("commit failed"),
+    )
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        command.truncate()
+
+    dependencies["repository"].stage_truncate.assert_called_once_with()
+    dependencies["unit_of_work"].rollback.assert_called_once_with()
+
+
 def test_transfer_delete_rejects_nonfailed_durable_receipt_before_file_side_effects():
     """非 FAILED durable 回执不能被历史 API 连同文件一起删除。"""
     history = _history()
     history.transfer_task_id = "task-durable"
     history.transfer_settlement_revision = 2
     command, dependencies = _transfer_command(history=history)
-    dependencies["transfer_execution_repository"].discard_failed.return_value = (
-        TransferFailureDiscardResult(
-            discarded=False,
-            state=TransferExecutionState.MANUAL_REVIEW,
-            message="这条整理任务需要先完成人工确认，再重试",
-        )
+    dependencies["transfer_execution_repository"].discard_failed.return_value = TransferFailureDiscardResult(
+        discarded=False,
+        state=TransferExecutionState.MANUAL_REVIEW,
+        message="这条整理任务需要先完成人工确认，再重试",
     )
 
     result = command.delete(7, delete_source=True, delete_destination=True)
@@ -166,12 +173,10 @@ def test_transfer_delete_discards_failed_durable_receipt_before_cleanup():
     history.transfer_task_id = "task-durable"
     history.transfer_settlement_revision = 3
     command, dependencies = _transfer_command(history=history)
-    dependencies["transfer_execution_repository"].discard_failed.return_value = (
-        TransferFailureDiscardResult(
-            discarded=True,
-            state=TransferExecutionState.FAILED,
-            message="已放弃这条失败的整理任务",
-        )
+    dependencies["transfer_execution_repository"].discard_failed.return_value = TransferFailureDiscardResult(
+        discarded=True,
+        state=TransferExecutionState.FAILED,
+        message="已放弃这条失败的整理任务",
     )
 
     result = command.delete(7, delete_destination=True)
@@ -228,9 +233,7 @@ def test_transfer_delete_commits_completed_source_when_destination_fails():
     assert result.source.status == "deleted"
     assert result.history == "retained"
     repository.stage_delete.assert_not_called()
-    dependencies["download_repository"].stage_delete_file_by_fullpath.assert_called_once_with(
-        "/downloads/demo.mkv"
-    )
+    dependencies["download_repository"].stage_delete_file_by_fullpath.assert_called_once_with("/downloads/demo.mkv")
     dependencies["unit_of_work"].commit.assert_called_once_with()
     dependencies["publish_download_file_deleted"].assert_called_once()
     dependencies["clear_failures"].assert_not_called()
@@ -244,9 +247,7 @@ def test_transfer_delete_treats_missing_requested_file_as_completed():
     command = TransferHistoryMutationCommand(
         repository=dependencies["repository"],
         download_repository=dependencies["download_repository"],
-        transfer_execution_repository=dependencies[
-            "transfer_execution_repository"
-        ],
+        transfer_execution_repository=dependencies["transfer_execution_repository"],
         unit_of_work=dependencies["unit_of_work"],
         file_item_factory=dependencies["file_item_factory"],
         file_exists=dependencies["file_exists"],

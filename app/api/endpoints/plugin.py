@@ -1,6 +1,6 @@
 import asyncio
 import mimetypes
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional, Union
 
 import aiofiles
 from anyio import Path as AsyncPath
@@ -36,14 +36,18 @@ from app.application.commands import init_commands
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
 from app.application.plugin.catalog import get_plugin_catalog_query
 from app.application.plugin.config import PluginConfigCommand
-from app.application.plugin.data import PluginDataQueryService
+from app.application.plugin.data import PluginDataQueryService, PluginDataSummaryService
 from app.application.plugin.folders import (
     add_clone_to_plugin_folder,
     get_plugin_folder_service,
     remove_plugin_from_folders,
 )
 from app.application.plugin.gateway import get_plugin_install_service
-from app.application.plugin.management import get_plugin_snapshot, search_plugin_candidates
+from app.application.plugin.management import (
+    get_plugin_snapshot,
+    reload_plugin_runtime,
+    search_plugin_candidates,
+)
 from app.application.plugin.rating import PluginNotInstalledError, get_plugin_rating_service
 from app.application.plugin.release import get_plugin_release_service
 from app.application.plugin.routes import register_plugin_api, remove_plugin_api
@@ -59,13 +63,21 @@ from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginCloneRequest as _SchemaPluginCloneRequest
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
+from app.schemas.plugin import PluginDataSummary as _SchemaPluginDataSummary
+from app.schemas.plugin import PluginFolderPluginsUpdateRequest as _SchemaPluginFolderPluginsUpdateRequest
 from app.schemas.plugin import PluginFoldersData as _SchemaPluginFoldersData
+from app.schemas.plugin import PluginFolderUpdateRequest as _SchemaPluginFolderUpdateRequest
 from app.schemas.plugin import PluginInstallOutcome as _SchemaPluginInstallOutcome
 from app.schemas.plugin import PluginRating as _SchemaPluginRating
 from app.schemas.plugin import PluginRatingMap as _SchemaPluginRatingMap
 from app.schemas.plugin import PluginRatingRequest as _SchemaPluginRatingRequest
 from app.schemas.plugin import PluginReleaseData as _SchemaPluginReleaseData
 from app.schemas.plugin import PluginRemoteInfo as _SchemaPluginRemoteInfo
+from app.schemas.plugin import PluginRuntimeActionCapability as _SchemaPluginRuntimeActionCapability
+from app.schemas.plugin import PluginRuntimeActionGroup as _SchemaPluginRuntimeActionGroup
+from app.schemas.plugin import PluginRuntimeCapabilities as _SchemaPluginRuntimeCapabilities
+from app.schemas.plugin import PluginRuntimeCommandCapability as _SchemaPluginRuntimeCommandCapability
+from app.schemas.plugin import PluginRuntimeServiceCapability as _SchemaPluginRuntimeServiceCapability
 from app.schemas.plugin import PluginRuntimeStatus as _SchemaPluginRuntimeStatus
 from app.schemas.plugin import PluginRuntimeSummary as _SchemaPluginRuntimeSummary
 from app.schemas.plugin import PluginSidebarNavItem as _SchemaPluginSidebarNavItem
@@ -177,14 +189,17 @@ def _verify_plugin_static_file_access(
     verify_resource_token(resource_token)
 
 
-@router.get("/", summary="所有插件", response_model=List[_SchemaPlugin], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True})
+@router.get(
+    "/", summary="所有插件", response_model=List[_SchemaPlugin], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True}
+)
 async def all_plugins(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     state: Optional[str] = "all",
     force: bool = False,
     query: Optional[str] = None,
     max_results: Annotated[Optional[int], Query(ge=1, le=200)] = None,
-    page: CompatiblePageParam = None, count: CompatibleCountParam = None,
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
     response: Response = None,
 ) -> List[_SchemaPlugin]:
     """查询插件清单；未指定分页或限量时返回完整清单。"""
@@ -201,7 +216,11 @@ async def all_plugins(
 
 
 @router.get("/installed", summary="已安装插件", response_model=List[str])
-async def installed(_: ApiPrincipal = Depends(get_current_active_superuser_async), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
+async def installed(
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
+) -> Any:
     """
     查询用户已安装插件清单
     """
@@ -370,18 +389,11 @@ async def rate_plugin(
     return _SchemaResponse(success=True, data=rating)
 
 
-@router.get("/reload/{plugin_id}", summary="重新加载插件", response_model=_SchemaResponse[None])
+@router.post("/reload/{plugin_id}", summary="重新加载插件", response_model=_SchemaResponse[None])
 def reload_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)) -> Any:
-    """
-    重新加载插件
-    """
-    plugin_manager = get_plugin_manager()
+    """重新加载插件并刷新其命令、定时任务和动态 API 注册。"""
     try:
-        with plugin_manager.mutation(f"重载插件 {plugin_id}"):
-            # 重新加载插件
-            runtime_status = plugin_manager.reload_plugin(plugin_id)
-            # 注册插件服务
-            register_plugin(plugin_id)
+        runtime_status = reload_plugin_runtime(plugin_id)
     except PluginMutationRejectedError as error:
         return _SchemaResponse(success=False, message=str(error))
     if runtime_status is _SchemaPluginRuntimeStatus.ACTIVE:
@@ -553,7 +565,9 @@ async def remotes(token: str, page: CompatiblePageParam = None, count: Compatibl
 
 
 @router.get("/sidebar_nav", summary="获取插件侧栏导航项", response_model=List[_SchemaPluginSidebarNavItem])
-def plugin_sidebar_nav(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
+def plugin_sidebar_nav(
+    _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None
+) -> Any:
     """
     聚合已启用 Vue 插件声明的侧栏入口（get_sidebar_nav），供前端主界面侧栏展示。
     """
@@ -801,6 +815,30 @@ async def delete_plugin_folder(folder_name: str, _: ApiPrincipal = Depends(get_c
     return _SchemaResponse(success=result.success, message=result.message)
 
 
+@router.patch(
+    "/folders/{folder_name}",
+    summary="更新插件文件夹",
+    response_model=_SchemaResponse[None],
+)
+async def update_plugin_folder(
+    folder_name: str,
+    folder: _SchemaPluginFolderUpdateRequest,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> Any:
+    """增量更新插件文件夹名称或展示配置。"""
+    changes = folder.model_dump(
+        by_alias=True,
+        exclude={"new_name"},
+        exclude_unset=True,
+    )
+    result = await get_plugin_folder_service().update_folder(
+        folder_name,
+        new_name=folder.new_name,
+        changes=changes,
+    )
+    return _SchemaResponse(success=result.success, message=result.message)
+
+
 @router.put(
     "/folders/{folder_name}/plugins",
     summary="更新文件夹中的插件",
@@ -808,13 +846,54 @@ async def delete_plugin_folder(folder_name: str, _: ApiPrincipal = Depends(get_c
 )
 async def update_folder_plugins(
     folder_name: str,
-    plugin_ids: List[str],
+    plugin_update: Union[List[str], _SchemaPluginFolderPluginsUpdateRequest],
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Any:
-    """
-    更新指定文件夹中的插件列表
-    """
-    result = await get_plugin_folder_service().update_plugins(folder_name, plugin_ids)
+    """条件替换指定文件夹中的插件列表，并兼容旧数组请求。"""
+    if isinstance(plugin_update, list):
+        plugin_ids = plugin_update
+        expected_plugin_ids = None
+    else:
+        plugin_ids = plugin_update.plugins
+        expected_plugin_ids = plugin_update.expected_plugins
+    result = await get_plugin_folder_service().update_plugins(
+        folder_name,
+        plugin_ids,
+        expected_plugin_ids,
+    )
+    return _SchemaResponse(success=result.success, message=result.message)
+
+
+@router.put(
+    "/folders/{folder_name}/plugins/{plugin_id}",
+    summary="移动插件到文件夹",
+    response_model=_SchemaResponse[None],
+)
+async def assign_plugin_to_folder(
+    folder_name: str,
+    plugin_id: str,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> Any:
+    """把一个插件原子迁移到目标文件夹。"""
+    result = await get_plugin_folder_service().assign_plugin(folder_name, plugin_id)
+    return _SchemaResponse(success=result.success, message=result.message)
+
+
+@router.delete(
+    "/folders/{folder_name}/plugins/{plugin_id}",
+    summary="从文件夹移除插件",
+    response_model=_SchemaResponse[None],
+)
+async def remove_plugin_from_folder(
+    folder_name: str,
+    plugin_id: str,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+) -> Any:
+    """只从指定文件夹移除一个插件。"""
+    result = await get_plugin_folder_service().remove_plugin_from_folder(
+        folder_name,
+        plugin_id,
+    )
     return _SchemaResponse(success=result.success, message=result.message)
 
 
@@ -854,52 +933,60 @@ def clone_plugin(
 @router.get(  # type: ignore[misc]
     "/runtime/capabilities",
     summary="查询插件运行能力",
-    response_model=_SchemaResponse[_SchemaJsonObject],
+    response_model=_SchemaResponse[_SchemaPluginRuntimeCapabilities],
 )
 async def plugin_capabilities(
     plugin_id: Optional[str] = None,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse[Any]:
-    """查询运行中插件注册的命令、动作和定时服务。"""
+    """查询运行中插件注册的安全命令、动作和定时服务元数据。"""
     manager = get_plugin_manager()
-    data: dict[str, Any] = {}
-    commands = manager.get_plugin_commands(pid=plugin_id) or []
-    if commands:
-        data["commands"] = [
-            {
-                "cmd": command.get("cmd"),
-                "desc": command.get("desc"),
-                "plugin_id": command.get("pid"),
-                **({"data": command.get("data")} if command.get("data") else {}),
-            }
-            for command in commands
+    commands = [
+        _SchemaPluginRuntimeCommandCapability(
+            cmd=str(command["cmd"]),
+            desc=str(command["desc"]) if command.get("desc") else None,
+            plugin_id=str(command["pid"]) if command.get("pid") else None,
+        )
+        for command in (manager.get_plugin_commands(pid=plugin_id) or [])
+        if isinstance(command, dict) and command.get("cmd")
+    ]
+    action_groups = []
+    for group in manager.get_plugin_actions(pid=plugin_id) or []:
+        if not isinstance(group, dict):
+            continue
+        actions = [
+            _SchemaPluginRuntimeActionCapability(
+                id=str(item["id"]),
+                name=str(item["name"]) if item.get("name") else None,
+            )
+            for item in (group.get("actions") or [])
+            if isinstance(item, dict) and item.get("id")
         ]
-    actions = manager.get_plugin_actions(pid=plugin_id) or []
-    if actions:
-        data["actions"] = [
-            {
-                "plugin_id": group.get("plugin_id"),
-                "plugin_name": group.get("plugin_name"),
-                "actions": [{"id": item.get("id"), "name": item.get("name")} for item in group.get("actions", [])],
-            }
-            for group in actions
-        ]
-    services = manager.get_plugin_services(pid=plugin_id) or []
-    if services:
-        data["services"] = [
-            {
-                "id": service.get("id"),
-                "name": service.get("name"),
-                **({"trigger": str(service.get("trigger"))} if service.get("trigger") else {}),
-                **(
-                    {"trigger_kwargs": {key: str(value) for key, value in service.get("kwargs", {}).items()}}
-                    if service.get("kwargs")
-                    else {}
-                ),
-            }
-            for service in services
-        ]
-    return _SchemaResponse(success=True, data=data)
+        if actions:
+            action_groups.append(
+                _SchemaPluginRuntimeActionGroup(
+                    plugin_id=str(group["plugin_id"]) if group.get("plugin_id") else None,
+                    plugin_name=str(group["plugin_name"]) if group.get("plugin_name") else None,
+                    actions=actions,
+                )
+            )
+    services = [
+        _SchemaPluginRuntimeServiceCapability(
+            id=str(service["id"]),
+            name=str(service["name"]) if service.get("name") else None,
+            trigger=str(service["trigger"]) if service.get("trigger") else None,
+        )
+        for service in (manager.get_plugin_services(pid=plugin_id) or [])
+        if isinstance(service, dict) and service.get("id")
+    ]
+    return _SchemaResponse(
+        success=True,
+        data=_SchemaPluginRuntimeCapabilities(
+            commands=commands,
+            actions=action_groups,
+            services=services,
+        ),
+    )
 
 
 @router.get(  # type: ignore[misc]
@@ -926,6 +1013,27 @@ async def plugin_data(
 
 
 @router.get(
+    "/runtime/{plugin_id}/data/summary",
+    summary="查询插件持久化数据摘要",
+    response_model=_SchemaResponse[_SchemaPluginDataSummary],
+)
+async def plugin_data_summary(
+    plugin_id: str,
+    _: ApiPrincipal = Depends(get_current_active_superuser_async),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> _SchemaResponse[Any]:
+    """读取不包含插件持久化原值的键、类型和大小摘要。"""
+    try:
+        data = await PluginDataSummaryService(
+            runtime.agent.plugin_data,
+            get_plugin_snapshot,
+        ).summarize(plugin_id)
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(success=True, data=_SchemaPluginDataSummary.model_validate(data))
+
+
+@router.get(
     "/{plugin_id}",
     summary="获取插件配置",
     response_model=_SchemaJsonObject,
@@ -949,6 +1057,8 @@ def set_plugin_config(
     """
     result = command.update(plugin_id, conf)
     return _SchemaResponse(success=result.success, message=result.message)
+
+
 @router.delete("/{plugin_id}", summary="卸载插件", response_model=_SchemaResponse[None])
 def uninstall_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)) -> Any:
     """

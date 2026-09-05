@@ -24,3 +24,10 @@ class StorageLoginStatusData(BaseModel):
 
     status: int | str = Field(description="授权状态")
     tip: str = Field(description="状态提示")
+
+
+class StorageOption(BaseModel):
+    """前端选择控件可安全消费的存储摘要。"""
+
+    name: str = Field(description="存储显示名称")
+    type: str = Field(description="存储类型标识")
