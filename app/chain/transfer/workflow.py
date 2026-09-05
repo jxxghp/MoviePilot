@@ -36,6 +36,7 @@ from app.schemas.media import resolve_media_identity
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import EpisodeFormat, TransferInfo
 from app.schemas.types import (
+    MUSIC_ENTITY_RECORDING,
     MediaSource,
     MediaType,
     ProgressKey,
@@ -44,6 +45,25 @@ from app.schemas.types import (
 from app.schemas.workflow import FileItem
 
 from .request import _TransferCandidatePlanner
+
+
+def _should_discard_batch_recording_identity(
+        *,
+        multi_track_music_batch: bool,
+        manual: bool,
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+        mediainfo: Optional[MediaInfo | MusicInfo],
+        history_music_type: Optional[str],
+) -> bool:
+    """判断自动整专是否误带了共享单曲身份。"""
+    if not multi_track_music_batch or (manual and media_source and media_id):
+        return False
+    batch_music_type = getattr(mediainfo, "music_type", None)
+    return (
+        batch_music_type == MUSIC_ENTITY_RECORDING
+        or (not batch_music_type and history_music_type == MUSIC_ENTITY_RECORDING)
+    )
 
 
 class TransferWorkflowOwner(_TransferOwnerBase):
@@ -654,6 +674,10 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         skipped_history_count = 0
         skipped_torrents = set()
         cleanup_intent_assigned = False
+        multi_track_music_batch = (
+            batch_mtype == MediaType.MUSIC
+            and sum(self._is_audio_file(item) for item, _ in file_items) > 1
+        )
         try:
             for file_item, bluray_dir in file_items:
                 if runtime_stop_state.is_system_stopped:
@@ -749,9 +773,18 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     download_hash=download_hash,
                 )
 
+                discard_recording_identity = _should_discard_batch_recording_identity(
+                    multi_track_music_batch=multi_track_music_batch,
+                    manual=manual,
+                    media_source=media_source,
+                    media_id=media_id,
+                    mediainfo=mediainfo,
+                    history_music_type=self._download_history_music_type(download_history),
+                )
                 history_music_meta, history_music_info = self._restore_music_download_context(
                     download_history=download_history,
                     file_path=file_path,
+                    discard_recording_identity=discard_recording_identity,
                 )
 
                 if not meta:
@@ -784,10 +817,16 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     _download_hash = download_hash
 
                 # 自动整理预载的媒体信息来自整条下载历史；电影合集内文件年份冲突时逐文件识别。
-                task_mediainfo = mediainfo or history_music_info
+                task_mediainfo = (
+                    None
+                    if discard_recording_identity
+                    else mediainfo or history_music_info
+                )
                 if not task_mediainfo and isinstance(file_meta, MetaMusic):
-                    # 无标签音频按目录级专辑匹配补齐曲目身份，命中结果带缓存不会逐文件重复请求
+                    # 无标签音频或误带单曲身份的整包按目录级专辑匹配；命中结果带缓存不会逐文件重复请求
                     file_meta, task_mediainfo = self._match_music_album_context(file_item, file_path, file_meta)
+                    if not task_mediainfo and discard_recording_identity:
+                        task_mediainfo = self._music_info_from_meta(file_meta)
                 if not manual and task_mediainfo and self._is_movie_year_conflict(file_meta, task_mediainfo):
                     task_mediainfo = None
 
