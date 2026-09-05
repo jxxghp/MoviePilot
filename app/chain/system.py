@@ -102,14 +102,10 @@ def _close_system_response(response: SystemResponsePort) -> None:
         logger.debug(f"释放版本响应失败：{str(err)}")
 
 
-class SystemChain(ChainBase):
-    """
-    系统级处理链
-    """
+class _SystemUpdateChain(ChainBase):
+    """提供通知渠道主程序升级交互的 Chain 入口。"""
 
-    _restart_file = "__system_restart__"
     _update_restart_file = "__system_update_restart__"
-    _plugin_restore_pending_file = "__plugin_restore_pending__"
 
     def _update_interaction_handler(self) -> SystemUpdateInteractionHandler:
         """构造复用当前消息网关和系统应用服务的更新交互控制器。"""
@@ -200,6 +196,13 @@ class SystemChain(ChainBase):
             username=username,
             text=text,
         )
+
+
+class SystemChain(_SystemUpdateChain):
+    """系统级处理链。"""
+
+    _restart_file = "__system_restart__"
+    _plugin_restore_pending_file = "__plugin_restore_pending__"
 
     def remote_clear_cache(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None):
         """

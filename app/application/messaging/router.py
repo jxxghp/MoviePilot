@@ -43,6 +43,53 @@ class CallbackRoute:
     dispatch: Callable[[str, InteractionContext], InteractionDispatch]
 
 
+def adapt_session_text_handler(
+    handle: Callable[..., Any],
+) -> Callable[[InteractionContext, str], bool]:
+    """把传统关键字参数入口适配为文本会话路由处理器。"""
+
+    def _handle(context: InteractionContext, text: str) -> bool:
+        """使用统一交互上下文调用传统文本入口。"""
+        return bool(
+            handle(
+                channel=context.channel,
+                source=context.source,
+                userid=context.user_id,
+                username=context.username,
+                text=text,
+            )
+        )
+
+    return _handle
+
+
+def adapt_callback_handler(
+    handle: Callable[..., Any],
+) -> Callable[[str, InteractionContext], InteractionDispatch]:
+    """把传统关键字参数入口适配为按钮回调路由处理器。"""
+
+    def _dispatch(
+        callback_data: str,
+        context: InteractionContext,
+    ) -> InteractionDispatch:
+        """使用统一交互上下文调用传统回调入口。"""
+        return InteractionDispatch(
+            handled=bool(
+                handle(
+                    callback_data=callback_data,
+                    channel=context.channel,
+                    source=context.source,
+                    userid=context.user_id,
+                    username=context.username,
+                    original_message_id=context.original_message_id,
+                    original_chat_id=context.original_chat_id,
+                )
+            )
+        )
+
+    return _dispatch
+
+
 class InteractionRouter:
     """统一选择活动文本会话并按顺序派发按钮回调。"""
 

@@ -39,17 +39,11 @@ class SystemUpdateInteractionActions(Protocol):
         """立即检查主程序正式版本更新。"""
         ...
 
-    def download_update(
-        self,
-        target: SystemUpdateType = "application",
-    ) -> SystemOperationResult:
+    def download_update(self, target: SystemUpdateType = "application") -> SystemOperationResult:
         """启动主程序更新包下载。"""
         ...
 
-    def install_update(
-        self,
-        target: SystemUpdateType = "application",
-    ) -> SystemOperationResult:
+    def install_update(self, target: SystemUpdateType = "application") -> SystemOperationResult:
         """确认主程序更新包并请求重启安装。"""
         ...
 
@@ -72,7 +66,6 @@ class SystemUpdateInteractionHandler:
     """编排 `/update` 的检查、下载进度编辑和重启确认流程。"""
 
     _poll_interval_seconds = 3.0
-    _terminal_download_states = {"idle", "available", "ready", "failed", "installing"}
 
     def __init__(
         self,
@@ -87,10 +80,13 @@ class SystemUpdateInteractionHandler:
         """注入消息网关、系统更新用例和受管后台任务提交器。"""
         self._messenger = messenger
         self._actions = actions
-        self._submit_monitor = submit_monitor
         self._mark_restart = mark_restart
         self._clear_restart_marker = clear_restart_marker
-        self._poll_interval_seconds = max(0.0, poll_interval_seconds)
+        self._renderer = _SystemUpdateRenderer(messenger=messenger, actions=actions)
+        self._progress_monitor = _SystemUpdateProgressMonitor(
+            actions=actions, renderer=self._renderer, submit_monitor=submit_monitor,
+            poll_interval_seconds=poll_interval_seconds,
+        )
 
     def remote_update(
         self,
@@ -113,7 +109,7 @@ class SystemUpdateInteractionHandler:
             status = self._actions.check_update()
         except Exception as error:  # noqa: BLE001  交互入口必须回显稳定错误
             logger.warning(f"检查 MoviePilot 更新失败：{error}")
-            self._render_check_failure(
+            self._renderer.render_check_failure(
                 request=request,
                 channel=channel,
                 source=source,
@@ -132,7 +128,7 @@ class SystemUpdateInteractionHandler:
             text=normalized_arg,
         ):
             return
-        self._render_status(
+        self._renderer.render_status(
             request=request,
             status=status,
             channel=channel,
@@ -296,7 +292,7 @@ class SystemUpdateInteractionHandler:
         try:
             status = self._actions.update_status()
         except Exception as error:  # noqa: BLE001  文本交互错误必须回显
-            self._render_check_failure(
+            self._renderer.render_check_failure(
                 request=request,
                 channel=channel,
                 source=source,
@@ -305,7 +301,7 @@ class SystemUpdateInteractionHandler:
                 error=str(error),
             )
             return True
-        self._render_status(
+        self._renderer.render_status(
             request=request,
             status=status,
             channel=channel,
@@ -331,7 +327,7 @@ class SystemUpdateInteractionHandler:
             status = self._actions.check_update()
         except Exception as error:  # noqa: BLE001  交互入口必须回显稳定错误
             logger.warning(f"检查 MoviePilot 更新失败：{error}")
-            self._render_check_failure(
+            self._renderer.render_check_failure(
                 request=request,
                 channel=channel,
                 source=source,
@@ -342,7 +338,7 @@ class SystemUpdateInteractionHandler:
                 original_chat_id=original_chat_id,
             )
             return
-        self._render_status(
+        self._renderer.render_status(
             request=request,
             status=status,
             channel=channel,
@@ -370,7 +366,7 @@ class SystemUpdateInteractionHandler:
             status = result.data if isinstance(result.data, SystemUpdateStatus) else self._actions.update_status()
         except Exception as error:  # noqa: BLE001  交互入口必须回显稳定错误
             logger.warning(f"启动 MoviePilot 更新下载失败：{error}")
-            self._render_operation_failure(
+            self._renderer.render_operation_failure(
                 request=request,
                 channel=channel,
                 source=source,
@@ -383,7 +379,7 @@ class SystemUpdateInteractionHandler:
             return
 
         operation_error = None if result.success else result.message or "无法启动更新包下载"
-        self._render_status(
+        self._renderer.render_status(
             request=request,
             status=status,
             channel=channel,
@@ -394,9 +390,9 @@ class SystemUpdateInteractionHandler:
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
         )
-        item = self._application_item(status)
+        item = self._renderer.application_item(status)
         if result.success and item.state == "downloading":
-            self._schedule_monitor(
+            self._progress_monitor.schedule(
                 request=request,
                 channel=channel,
                 source=source,
@@ -422,7 +418,7 @@ class SystemUpdateInteractionHandler:
         try:
             status = self._actions.update_status()
         except Exception as error:  # noqa: BLE001  交互入口必须回显稳定错误
-            self._render_operation_failure(
+            self._renderer.render_operation_failure(
                 request=request,
                 channel=channel,
                 source=source,
@@ -433,9 +429,9 @@ class SystemUpdateInteractionHandler:
                 original_chat_id=original_chat_id,
             )
             return
-        item = self._application_item(status)
+        item = self._renderer.application_item(status)
         if item.state != "ready":
-            self._render_status(
+            self._renderer.render_status(
                 request=request,
                 status=status,
                 channel=channel,
@@ -449,7 +445,7 @@ class SystemUpdateInteractionHandler:
             return
 
         installing = item.model_copy(update={"state": "installing", "can_install": False})
-        self._render_item(
+        self._renderer.render_item(
             request=request,
             item=installing,
             channel=channel,
@@ -465,7 +461,7 @@ class SystemUpdateInteractionHandler:
         except Exception as error:  # noqa: BLE001  重启失败必须恢复交互
             self._clear_restart_marker()
             logger.warning(f"安装 MoviePilot 更新失败：{error}")
-            self._render_operation_failure(
+            self._renderer.render_operation_failure(
                 request=request,
                 channel=channel,
                 source=source,
@@ -489,7 +485,7 @@ class SystemUpdateInteractionHandler:
                 current_version=item.current_version or "unknown",
                 updates=[item],
             )
-        self._render_status(
+        self._renderer.render_status(
             request=request,
             status=status,
             channel=channel,
@@ -501,17 +497,27 @@ class SystemUpdateInteractionHandler:
             original_chat_id=original_chat_id,
         )
 
-    def _schedule_monitor(
-        self,
-        *,
-        request: PendingSlashInteraction,
-        channel: NotificationChannel,
-        source: Optional[str],
-        userid: Union[str, int],
-        username: Optional[str],
+class _SystemUpdateProgressMonitor:
+    """管理主程序更新下载的后台轮询与消息刷新。"""
+
+    _terminal_download_states = {"idle", "available", "ready", "failed", "installing"}
+
+    def __init__(
+        self, *, actions: SystemUpdateInteractionActions,
+        renderer: _SystemUpdateRenderer, submit_monitor: UpdateMonitorSubmitter,
+        poll_interval_seconds: float,
+    ) -> None:
+        """注入状态读取、消息渲染和后台任务提交能力。"""
+        self._actions = actions
+        self._renderer = renderer
+        self._submit_monitor = submit_monitor
+        self._poll_interval_seconds = max(0.0, poll_interval_seconds)
+
+    def schedule(
+        self, *, request: PendingSlashInteraction, channel: NotificationChannel,
+        source: Optional[str], userid: Union[str, int], username: Optional[str],
         initial_item: SystemUpdateItemStatus,
-        original_message_id: Optional[Union[str, int]],
-        original_chat_id: Optional[str],
+        original_message_id: Optional[Union[str, int]], original_chat_id: Optional[str],
     ) -> None:
         """确保同一交互只登记一个非阻塞下载进度监视任务。"""
         with _monitor_lock:
@@ -535,34 +541,24 @@ class SystemUpdateInteractionHandler:
             with _monitor_lock:
                 _monitored_requests.discard(request.request_id)
             logger.warning(f"登记 MoviePilot 更新进度监视失败：{error}")
-            self._messenger.post_message(
-                Message(
-                    channel=channel,
-                    source=source,
-                    userid=userid,
-                    username=username,
+            self._renderer.post_view(
+                view=SystemUpdateInteractionView(
                     title="更新包已开始下载",
                     text="自动进度更新暂不可用，可重新发送 /update 查看状态。",
-                    original_message_id=original_message_id,
-                    original_chat_id=original_chat_id,
-                    save_history=False,
-                )
+                ),
+                channel=channel, source=source, userid=userid, username=username,
+                original_message_id=original_message_id,
+                original_chat_id=original_chat_id,
             )
 
     async def _monitor_download(
-        self,
-        *,
-        request_id: str,
-        channel: NotificationChannel,
-        source: Optional[str],
-        userid: Union[str, int],
-        username: Optional[str],
+        self, *, request_id: str, channel: NotificationChannel,
+        source: Optional[str], userid: Union[str, int], username: Optional[str],
         initial_item: SystemUpdateItemStatus,
-        original_message_id: Optional[Union[str, int]],
-        original_chat_id: Optional[str],
+        original_message_id: Optional[Union[str, int]], original_chat_id: Optional[str],
     ) -> None:
         """按 Web 端三秒节奏轮询状态，并持续编辑原消息直到下载终态。"""
-        last_fingerprint = self._item_fingerprint(initial_item)
+        last_fingerprint = self._renderer.item_fingerprint(initial_item)
         last_progress_bucket = initial_item.progress // 10
         edit_fallback_sent = False
         try:
@@ -572,14 +568,18 @@ class SystemUpdateInteractionHandler:
                 if request is None:
                     return
                 status = await asyncio.to_thread(self._actions.update_status)
-                item = self._application_item(status)
-                fingerprint = self._item_fingerprint(item)
+                item = self._renderer.application_item(status)
+                fingerprint = self._renderer.item_fingerprint(item)
                 if fingerprint != last_fingerprint:
-                    request.awaiting_input = self._awaiting_input(item)
-                    view = self._build_view(request=request, item=item, channel=channel)
+                    request.awaiting_input = self._renderer.awaiting_input(item)
+                    view = self._renderer.build_view(
+                        request=request,
+                        item=item,
+                        channel=channel,
+                    )
                     if original_message_id and original_chat_id and ChannelCapabilityManager.supports_editing(channel):
                         edited = await asyncio.to_thread(
-                            self._edit_view,
+                            self._renderer.edit_view,
                             view=view,
                             channel=channel,
                             source=source,
@@ -589,7 +589,7 @@ class SystemUpdateInteractionHandler:
                         )
                         if not edited and (not edit_fallback_sent or item.state in self._terminal_download_states):
                             await asyncio.to_thread(
-                                self._post_view,
+                                self._renderer.post_view,
                                 view=view,
                                 channel=channel,
                                 source=source,
@@ -603,7 +603,7 @@ class SystemUpdateInteractionHandler:
                         progress_bucket = item.progress // 10
                         if progress_bucket != last_progress_bucket or item.state in self._terminal_download_states:
                             await asyncio.to_thread(
-                                self._post_view,
+                                self._renderer.post_view,
                                 view=view,
                                 channel=channel,
                                 source=source,
@@ -622,7 +622,7 @@ class SystemUpdateInteractionHandler:
             request = update_interaction_manager.get_by_id(request_id, userid)
             if request is not None:
                 await asyncio.to_thread(
-                    self._render_operation_failure,
+                    self._renderer.render_operation_failure,
                     request=request,
                     channel=channel,
                     source=source,
@@ -636,22 +636,26 @@ class SystemUpdateInteractionHandler:
             with _monitor_lock:
                 _monitored_requests.discard(request_id)
 
-    def _render_status(
-        self,
-        *,
-        request: PendingSlashInteraction,
-        status: SystemUpdateStatus,
-        channel: NotificationChannel,
-        source: Optional[str],
-        userid: Union[str, int],
-        username: Optional[str],
+class _SystemUpdateRenderer:
+    """把主程序更新状态转换为渠道消息并负责发送或编辑。"""
+
+    def __init__(
+        self, *, messenger: MessageGateway, actions: SystemUpdateInteractionActions,
+    ) -> None:
+        """注入消息网关与更新状态读取用例。"""
+        self._messenger = messenger
+        self._actions = actions
+
+    def render_status(
+        self, *, request: PendingSlashInteraction, status: SystemUpdateStatus,
+        channel: NotificationChannel, source: Optional[str],
+        userid: Union[str, int], username: Optional[str],
         operation_error: Optional[str] = None,
-        original_message_id: Optional[Union[str, int]] = None,
-        original_chat_id: Optional[str] = None,
+        original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
     ) -> None:
         """从聚合更新快照提取主程序状态并更新交互消息。"""
-        item = self._application_item(status)
-        self._render_item(
+        item = self.application_item(status)
+        self.render_item(
             request=request,
             item=item,
             channel=channel,
@@ -665,22 +669,16 @@ class SystemUpdateInteractionHandler:
         if item.state == "idle" and not item.error and not operation_error:
             update_interaction_manager.remove(request.request_id)
 
-    def _render_item(
-        self,
-        *,
-        request: PendingSlashInteraction,
-        item: SystemUpdateItemStatus,
-        channel: NotificationChannel,
-        source: Optional[str],
-        userid: Union[str, int],
-        username: Optional[str],
+    def render_item(
+        self, *, request: PendingSlashInteraction, item: SystemUpdateItemStatus,
+        channel: NotificationChannel, source: Optional[str],
+        userid: Union[str, int], username: Optional[str],
         operation_error: Optional[str] = None,
-        original_message_id: Optional[Union[str, int]] = None,
-        original_chat_id: Optional[str] = None,
+        original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
     ) -> None:
         """更新会话阶段并优先编辑原消息展示指定主程序状态。"""
-        request.awaiting_input = self._awaiting_input(item)
-        view = self._build_view(
+        request.awaiting_input = self.awaiting_input(item)
+        view = self.build_view(
             request=request,
             item=item,
             channel=channel,
@@ -699,17 +697,10 @@ class SystemUpdateInteractionHandler:
             original_chat_id=original_chat_id,
         )
 
-    def _render_check_failure(
-        self,
-        *,
-        request: PendingSlashInteraction,
-        channel: NotificationChannel,
-        source: Optional[str],
-        userid: Union[str, int],
-        username: Optional[str],
-        error: str,
-        original_message_id: Optional[Union[str, int]] = None,
-        original_chat_id: Optional[str] = None,
+    def render_check_failure(
+        self, *, request: PendingSlashInteraction, channel: NotificationChannel,
+        source: Optional[str], userid: Union[str, int], username: Optional[str], error: str,
+        original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
     ) -> None:
         """展示版本检查失败并保留刷新入口。"""
         request.awaiting_input = "refresh"
@@ -734,23 +725,16 @@ class SystemUpdateInteractionHandler:
             original_chat_id=original_chat_id,
         )
 
-    def _render_operation_failure(
-        self,
-        *,
-        request: PendingSlashInteraction,
-        channel: NotificationChannel,
-        source: Optional[str],
-        userid: Union[str, int],
-        username: Optional[str],
-        error: str,
-        original_message_id: Optional[Union[str, int]] = None,
-        original_chat_id: Optional[str] = None,
+    def render_operation_failure(
+        self, *, request: PendingSlashInteraction, channel: NotificationChannel,
+        source: Optional[str], userid: Union[str, int], username: Optional[str], error: str,
+        original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
     ) -> None:
         """读取最新状态后展示下载或安装动作失败。"""
         try:
             status = self._actions.update_status()
         except Exception:  # noqa: BLE001  保留原始动作错误
-            self._render_check_failure(
+            self.render_check_failure(
                 request=request,
                 channel=channel,
                 source=source,
@@ -761,7 +745,7 @@ class SystemUpdateInteractionHandler:
                 original_chat_id=original_chat_id,
             )
             return
-        self._render_status(
+        self.render_status(
             request=request,
             status=status,
             channel=channel,
@@ -773,11 +757,8 @@ class SystemUpdateInteractionHandler:
             original_chat_id=original_chat_id,
         )
 
-    def _build_view(
-        self,
-        *,
-        request: PendingSlashInteraction,
-        item: SystemUpdateItemStatus,
+    def build_view(
+        self, *, request: PendingSlashInteraction, item: SystemUpdateItemStatus,
         channel: NotificationChannel,
         operation_error: Optional[str] = None,
     ) -> SystemUpdateInteractionView:
@@ -850,7 +831,7 @@ class SystemUpdateInteractionHandler:
         )
 
     @staticmethod
-    def _application_item(status: SystemUpdateStatus) -> SystemUpdateItemStatus:
+    def application_item(status: SystemUpdateStatus) -> SystemUpdateItemStatus:
         """读取主程序明细，并兼容旧版只有聚合字段的状态。"""
         item = next((value for value in status.updates if value.type == "application"), None)
         if item is not None:
@@ -874,7 +855,7 @@ class SystemUpdateInteractionHandler:
         )
 
     @staticmethod
-    def _awaiting_input(item: SystemUpdateItemStatus) -> Optional[str]:
+    def awaiting_input(item: SystemUpdateItemStatus) -> Optional[str]:
         """把更新状态映射为文本渠道下一步输入阶段。"""
         if item.state in {"available", "failed"}:
             return "download"
@@ -885,7 +866,7 @@ class SystemUpdateInteractionHandler:
         return None
 
     @staticmethod
-    def _item_fingerprint(item: SystemUpdateItemStatus) -> tuple[Any, ...]:
+    def item_fingerprint(item: SystemUpdateItemStatus) -> tuple[Any, ...]:
         """生成需要刷新消息的状态指纹。"""
         return (
             item.state,
@@ -944,13 +925,9 @@ class SystemUpdateInteractionHandler:
             ]
         ]
 
-    def _edit_view(
-        self,
-        *,
-        view: SystemUpdateInteractionView,
-        channel: NotificationChannel,
-        source: Optional[str],
-        userid: Union[str, int],
+    def edit_view(
+        self, *, view: SystemUpdateInteractionView, channel: NotificationChannel,
+        source: Optional[str], userid: Union[str, int],
         original_message_id: Union[str, int],
         original_chat_id: str,
     ) -> bool:
@@ -971,16 +948,10 @@ class SystemUpdateInteractionHandler:
             )
         )
 
-    def _post_view(
-        self,
-        *,
-        view: SystemUpdateInteractionView,
-        channel: NotificationChannel,
-        source: Optional[str],
-        userid: Union[str, int],
-        username: Optional[str],
-        original_message_id: Optional[Union[str, int]] = None,
-        original_chat_id: Optional[str] = None,
+    def post_view(
+        self, *, view: SystemUpdateInteractionView, channel: NotificationChannel,
+        source: Optional[str], userid: Union[str, int], username: Optional[str],
+        original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
     ) -> None:
         """在无法编辑时发送一次进度或终态消息。"""
         self._messenger.post_message(

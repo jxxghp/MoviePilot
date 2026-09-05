@@ -9,7 +9,7 @@ from concurrent.futures import CancelledError as FutureCancelledError
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 from urllib.parse import unquote, urlparse
 
 from app.application.agent import (
@@ -18,11 +18,11 @@ from app.application.agent import (
     supports_image_input,
     transcribe_audio,
 )
+from app.application.messaging import router as interaction_router
 from app.application.messaging.agent import agent_interaction_manager, parse_agent_choice_callback
 from app.application.messaging.interaction import InteractionContext, InteractionDispatch
 from app.application.messaging.media import media_interaction_manager
 from app.application.messaging.plugin import PluginInputInteractionHandler
-from app.application.messaging.router import CallbackRoute, InteractionRouter, SessionRoute
 from app.application.messaging.session import MessageSessionService
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import SkillInteractionHandler, skill_interaction_manager
@@ -704,66 +704,41 @@ class MessageChain(ChainBase):
             chat_id=status.chat_id or original_chat_id,
         )
 
-    def _interaction_router(self) -> InteractionRouter:
+    def _interaction_router(self) -> interaction_router.InteractionRouter:
         """构造交互路由器，文本会话按创建时间选择，回调路由注册顺序即优先级。"""
-
-        def session_text(
-            handle: Callable[..., Any],
-        ) -> Callable[[InteractionContext, str], bool]:
-            """包装传统交互入口为会话路由的文本处理函数，保持懒构造。"""
-            def _handle(context: InteractionContext, text: str) -> bool:
-                return bool(handle(
-                    channel=context.channel,
-                    source=context.source,
-                    userid=context.user_id,
-                    username=context.username,
-                    text=text,
-                ))
-            return _handle
-
-        def callback_dispatch(
-            handle: Callable[..., Any],
-        ) -> Callable[[str, InteractionContext], InteractionDispatch]:
-            """包装传统回调入口为回调路由的派发函数，保持懒构造。"""
-            def _dispatch(callback_data: str, context: InteractionContext) -> InteractionDispatch:
-                return InteractionDispatch(handled=bool(handle(
-                    callback_data=callback_data,
-                    channel=context.channel,
-                    source=context.source,
-                    userid=context.user_id,
-                    username=context.username,
-                    original_message_id=context.original_message_id,
-                    original_chat_id=context.original_chat_id,
-                )))
-            return _dispatch
-
         session_routes = [
-            SessionRoute(
+            interaction_router.SessionRoute(
                 name="sites",
                 get_pending=site_interaction_manager.get_by_user,
-                handle_text=session_text(lambda **kw: SiteChain().handle_text_interaction(**kw)),
+                handle_text=interaction_router.adapt_session_text_handler(
+                    lambda **kw: SiteChain().handle_text_interaction(**kw)
+                ),
             ),
-            SessionRoute(
+            interaction_router.SessionRoute(
                 name="subscribes",
                 get_pending=subscribe_interaction_manager.get_by_user,
-                handle_text=session_text(lambda **kw: SubscribeChain().handle_text_interaction(**kw)),
+                handle_text=interaction_router.adapt_session_text_handler(
+                    lambda **kw: SubscribeChain().handle_text_interaction(**kw)
+                ),
             ),
-            SessionRoute(
+            interaction_router.SessionRoute(
                 name="skills",
                 get_pending=skill_interaction_manager.get_by_user,
-                handle_text=session_text(
+                handle_text=interaction_router.adapt_session_text_handler(
                     lambda **kw: SkillInteractionHandler(messenger=self).handle_text_interaction(**kw)
                 ),
             ),
-            SessionRoute(
+            interaction_router.SessionRoute(
                 name="media",
                 get_pending=media_interaction_manager.get_by_user,
-                handle_text=session_text(lambda **kw: _MediaInteractionChain().handle_text_interaction(**kw)),
+                handle_text=interaction_router.adapt_session_text_handler(
+                    lambda **kw: _MediaInteractionChain().handle_text_interaction(**kw)
+                ),
             ),
-            SessionRoute(
+            interaction_router.SessionRoute(
                 name="update",
                 get_pending=update_interaction_manager.get_by_user,
-                handle_text=session_text(lambda **kw: SystemChain().handle_update_text_interaction(**kw)),
+                handle_text=interaction_router.adapt_session_text_handler(lambda **kw: SystemChain().handle_update_text_interaction(**kw)),
             ),
         ]
 
@@ -796,7 +771,7 @@ class MessageChain(ChainBase):
             return InteractionDispatch(handled=True)
 
         callback_routes = [
-            CallbackRoute(
+            interaction_router.CallbackRoute(
                 name="transfer",
                 matches=lambda data: TransferChain.parse_failed_transfer_callback(data) is not None,
                 dispatch=lambda data, context: InteractionDispatch(
@@ -809,45 +784,54 @@ class MessageChain(ChainBase):
                     )
                 ),
             ),
-            CallbackRoute(
+            interaction_router.CallbackRoute(
                 name="skill",
                 matches=lambda data: data.startswith("skills:"),
-                dispatch=callback_dispatch(
+                dispatch=interaction_router.adapt_callback_handler(
                     lambda **kw: SkillInteractionHandler(messenger=self).handle_callback_interaction(**kw)
                 ),
             ),
-            CallbackRoute(
+            interaction_router.CallbackRoute(
                 name="site",
                 matches=lambda data: data.startswith("sites:"),
-                dispatch=callback_dispatch(lambda **kw: SiteChain().handle_callback_interaction(**kw)),
+                dispatch=interaction_router.adapt_callback_handler(
+                    lambda **kw: SiteChain().handle_callback_interaction(**kw)
+                ),
             ),
-            CallbackRoute(
+            interaction_router.CallbackRoute(
                 name="subscribe",
                 matches=lambda data: data.startswith("subscribes:"),
-                dispatch=callback_dispatch(lambda **kw: SubscribeChain().handle_callback_interaction(**kw)),
+                dispatch=interaction_router.adapt_callback_handler(
+                    lambda **kw: SubscribeChain().handle_callback_interaction(**kw)
+                ),
             ),
-            CallbackRoute(
+            interaction_router.CallbackRoute(
                 name="media",
                 matches=lambda data: _MediaInteractionChain.parse_callback(data) is not None,
-                dispatch=callback_dispatch(lambda **kw: _MediaInteractionChain().handle_callback_interaction(**kw)),
+                dispatch=interaction_router.adapt_callback_handler(
+                    lambda **kw: _MediaInteractionChain().handle_callback_interaction(**kw)
+                ),
             ),
-            CallbackRoute(
+            interaction_router.CallbackRoute(
                 name="update",
                 matches=lambda data: data.startswith("update:"),
-                dispatch=callback_dispatch(lambda **kw: SystemChain().handle_update_callback_interaction(**kw)),
+                dispatch=interaction_router.adapt_callback_handler(lambda **kw: SystemChain().handle_update_callback_interaction(**kw)),
             ),
-            CallbackRoute(
+            interaction_router.CallbackRoute(
                 name="agent_choice",
                 matches=lambda data: parse_agent_choice_callback(data) is not None,
                 dispatch=_dispatch_agent_choice,
             ),
-            CallbackRoute(
+            interaction_router.CallbackRoute(
                 name="plugin",
                 matches=lambda data: data.startswith("[PLUGIN]"),
                 dispatch=_dispatch_plugin_callback,
             ),
         ]
-        return InteractionRouter(session_routes=session_routes, callback_routes=callback_routes)
+        return interaction_router.InteractionRouter(
+            session_routes=session_routes,
+            callback_routes=callback_routes,
+        )
 
     def _handle_callback(
             self,
