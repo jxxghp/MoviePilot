@@ -242,6 +242,7 @@ SCHEMA_EXPORTS = {
     'MediaCompany': ('app.schemas.context', 'MediaCompany'),
     'MediaCountry': ('app.schemas.context', 'MediaCountry'),
     'MediaCredit': ('app.schemas.context', 'MediaCredit'),
+    'MediaDetailResult': ('app.schemas.context', 'MediaDetailResult'),
     'MediaEpisode': ('app.schemas.context', 'MediaEpisode'),
     'MediaEpisodeGroup': ('app.schemas.context', 'MediaEpisodeGroup'),
     'MediaEpisodeGroupNetwork': ('app.schemas.context', 'MediaEpisodeGroupNetwork'),

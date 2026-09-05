@@ -25,6 +25,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.schemas.category import CategoryConfig as _SchemaCategoryConfig
 from app.schemas.category import MediaCategoryMap as _SchemaMediaCategoryMap
+from app.schemas.context import MediaDetailResult as _SchemaMediaDetailResult
 from app.schemas.context import MediaEpisodeGroup as _SchemaMediaEpisodeGroup
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.context import MediaSearchResults as _SchemaMediaSearchResults
@@ -624,7 +625,7 @@ async def seasons(
     return []
 
 
-@router.get("/{media_id}", summary="查询媒体详情", response_model=_SchemaMediaInfo)
+@router.get("/{media_id}", summary="查询媒体详情", response_model=_SchemaMediaDetailResult)
 async def detail(
     media_id: str,
     media_source: MediaSource,
@@ -632,7 +633,7 @@ async def detail(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据媒体来源和原生 ID 查询媒体信息，type_name: 电影/电视剧
+    根据媒体来源和原生 ID 查询影视或音乐信息
     """
     mtype = MediaType(type_name)
     normalized_source, normalized_media_id = resolve_media_identity(

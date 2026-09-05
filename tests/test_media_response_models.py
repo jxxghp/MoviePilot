@@ -1,11 +1,15 @@
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app import schemas
+from app.api.endpoints import media as media_endpoint
 from app.api.endpoints import mediaserver as mediaserver_endpoint
 from app.api.response import ResponseAPIRouter
 from app.domain.context import MediaInfo as CoreMediaInfo
+from app.domain.context import MusicInfo as CoreMusicInfo
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -119,6 +123,43 @@ async def test_douban_media_response_filters_unknown_season_years() -> None:
 
     assert response.status_code == 200
     assert response.json()["data"][0]["season_years"] == {"2": "2025"}
+
+
+@pytest.mark.asyncio
+async def test_media_detail_response_accepts_music_numeric_year(monkeypatch) -> None:
+    """通用详情接口应按音乐模型序列化 MusicBrainz 的整数年份。"""
+    media_id = "b79e2ffd-7e44-4dbf-91f9-167c05d1fc91"
+    music = CoreMusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id=media_id,
+        title="示例单曲",
+        artists=["示例歌手"],
+        album="示例专辑",
+        year=2004,
+    )
+    media_chain = Mock()
+    media_chain.async_recognize_media = AsyncMock(return_value=music)
+    media_chain.async_obtain_images = AsyncMock(return_value=None)
+    monkeypatch.setattr(media_endpoint, "MediaChain", Mock(return_value=media_chain))
+
+    app = FastAPI()
+    app.dependency_overrides[media_endpoint.verify_token] = lambda: None
+    app.include_router(media_endpoint.router, prefix="/api/v1/media")
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(
+            f"/api/v1/media/{media_id}",
+            params={"media_source": "musicbrainz", "type_name": "音乐"},
+        )
+
+    assert response.status_code == 200
+    result = response.json()["data"]
+    assert result["type"] == MediaType.MUSIC.value
+    assert result["music_type"] == "recording"
+    assert result["artists"] == ["示例歌手"]
+    assert result["year"] == 2004
 
 
 @pytest.mark.asyncio

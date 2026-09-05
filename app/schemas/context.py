@@ -539,8 +539,8 @@ class MediaPerson(BaseModel):
     relation: Optional[str] = None
 
 
-def _media_search_result_kind(value: Any) -> str:
-    """按稳定字段区分音乐、人物与影视/合集搜索结果。"""
+def _media_result_kind(value: Any) -> str:
+    """按稳定字段区分音乐、人物与影视/合集结果。"""
     if isinstance(value, BaseModel):
         value = value.model_dump()
     if isinstance(value, dict):
@@ -551,13 +551,22 @@ def _media_search_result_kind(value: Any) -> str:
     return "media"
 
 
+MediaDetailResult = Annotated[
+    Union[
+        Annotated[MusicInfo, Tag("music")],
+        Annotated[MediaInfo, Tag("media")],
+    ],
+    Discriminator(_media_result_kind),
+]
+
+
 MediaSearchResult = Annotated[
     Union[
         Annotated[MusicInfo, Tag("music")],
         Annotated[MediaPerson, Tag("person")],
         Annotated[MediaInfo, Tag("media")],
     ],
-    Discriminator(_media_search_result_kind),
+    Discriminator(_media_result_kind),
 ]
 
 
