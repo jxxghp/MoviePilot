@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8156,
-  "edge_sha256": "9b9596b5e25de2e68a007dfb3934f027458a6741cfc2df1e92e936b7ffca0d1a",
+  "edge_count": 8161,
+  "edge_sha256": "25ffe69a9b335cc3eeb13ed5e6d4b55eda256eae747df6d0612c6ab5145786b3",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2655,6 +2655,7 @@
     "app.api.endpoints.storage -> app.application",
     "app.api.endpoints.storage -> app.application.configuration",
     "app.api.endpoints.storage -> app.application.directory",
+    "app.api.endpoints.storage -> app.application.storage",
     "app.api.endpoints.storage -> app.chain",
     "app.api.endpoints.storage -> app.chain.media",
     "app.api.endpoints.storage -> app.chain.storage",
@@ -2667,6 +2668,7 @@
     "app.api.endpoints.storage -> app.schemas",
     "app.api.endpoints.storage -> app.schemas.common",
     "app.api.endpoints.storage -> app.schemas.response",
+    "app.api.endpoints.storage -> app.schemas.storage",
     "app.api.endpoints.storage -> app.schemas.system",
     "app.api.endpoints.storage -> app.schemas.types",
     "app.api.endpoints.storage -> app.schemas.workflow",
@@ -3339,6 +3341,9 @@
     "app.application.plugin.catalog -> app.schemas.plugin",
     "app.application.plugin.config -> app.schemas",
     "app.application.plugin.config -> app.schemas.exception",
+    "app.application.plugin.data -> app.application",
+    "app.application.plugin.data -> app.application.security",
+    "app.application.plugin.data -> app.application.security.secrets",
     "app.application.plugin.data -> app.schemas",
     "app.application.plugin.data -> app.schemas.common",
     "app.application.plugin.folders -> app.application",
