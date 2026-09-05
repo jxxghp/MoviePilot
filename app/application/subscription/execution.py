@@ -206,6 +206,17 @@ class SubscriptionSearchRepository(Protocol):
         """按订阅 ID 和各自到期时间建立或合并活动任务。"""
         ...
 
+    async def async_enqueue(
+        self,
+        *,
+        subscription_ids: tuple[int, ...],
+        source: str,
+        priority: int,
+        available_at_by_subscription: Optional[Mapping[int, str]] = None,
+    ) -> SearchEnqueueResult:
+        """在异步会话中建立或合并活动任务。"""
+        ...
+
     def claim_next(self, *, owner: str, lease_seconds: int = 900) -> Optional[SearchTaskSnapshot]:
         """按优先级和稳定游标认领下一条可执行任务。"""
         ...

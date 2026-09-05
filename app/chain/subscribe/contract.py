@@ -36,6 +36,7 @@ if TYPE_CHECKING:
         _SubscribeChain__async_apply_episodes_refresh: Callable[..., Awaitable[Any]]
         _SubscribeChain__async_notify_subscribe_create_failure: Callable[..., Awaitable[Any]]
         _SubscribeChain__async_post_subscribe_added: Callable[..., Awaitable[Any]]
+        _SubscribeChain__async_queue_new_subscription_search: Callable[..., Awaitable[Any]]
         _SubscribeChain__build_completion_notification: Callable[..., Any]
         _SubscribeChain__build_subscribe_notification: Callable[..., Any]
         _SubscribeChain__download_best_version_with_full_pack_first: Callable[..., Any]

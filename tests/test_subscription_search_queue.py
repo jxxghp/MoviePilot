@@ -1,8 +1,11 @@
 """订阅搜索持久队列、single-flight、租约和取消测试。"""
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy import create_engine, select, update
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
@@ -15,6 +18,43 @@ def _repository(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'search-queue.db'}")
     Base.metadata.create_all(engine)
     return TransactionalSubscriptionSearchRepository(sessionmaker(bind=engine)), engine
+
+
+@pytest.mark.asyncio
+async def test_search_queue_async_enqueue_uses_async_session(tmp_path):
+    """异步新增订阅应通过 AsyncSession 入队，并可由同步消费者继续认领。"""
+    database_path = tmp_path / "async-search-queue.db"
+    async_engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+    async_factory = async_sessionmaker(bind=async_engine, expire_on_commit=False)
+
+    @asynccontextmanager
+    async def async_session_scope():
+        """为测试队列提供独立异步会话。"""
+        async with async_factory() as session:
+            yield session
+
+    async with async_engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sync_engine = create_engine(f"sqlite:///{database_path}")
+    repository = TransactionalSubscriptionSearchRepository(
+        sessionmaker(bind=sync_engine),
+        async_session_scope,
+    )
+
+    try:
+        enqueued = await repository.async_enqueue(
+            subscription_ids=(101,),
+            source="new",
+            priority=50,
+        )
+        claimed = repository.claim_next(owner="worker-async")
+
+        assert enqueued.created_count == 1
+        assert claimed is not None
+        assert claimed.subscription_id == 101
+    finally:
+        sync_engine.dispose()
+        await async_engine.dispose()
 
 
 def test_search_queue_coalesces_active_subscription_and_raises_priority(tmp_path):

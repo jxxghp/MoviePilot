@@ -139,7 +139,10 @@ def compose_runtime_dependencies() -> RuntimeDependencies:
         transfer_execution=TransactionalTransferExecutionRepository(SessionFactory),
         message_helper=message_helper_factory(),
         message_queue=MessageQueueManager(auto_start=False),
-        subscription_search=TransactionalSubscriptionSearchRepository(SessionFactory),
+        subscription_search=TransactionalSubscriptionSearchRepository(
+            SessionFactory,
+            async_session_scope,
+        ),
     )
 
 
