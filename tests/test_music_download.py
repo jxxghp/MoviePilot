@@ -171,6 +171,33 @@ def test_download_endpoint_builds_music_context():
     assert context.meta_info.type == MediaType.MUSIC
     assert context.meta_info.org_string == "周杰伦 - 叶惠美 FLAC"
     assert context.meta_info.title == "叶惠美"
+    assert context.meta_info.album == "叶惠美"
+    assert context.meta_info.media_id is None
+
+
+def test_download_endpoint_preserves_selected_music_album_when_resource_omits_it():
+    """单曲种子标题省略专辑时，下载上下文仍应保留已选媒体的专辑身份。"""
+    chain = Mock()
+    chain.download_single.return_value = "hash-1"
+
+    with patch("app.api.endpoints.download.DownloadChain", return_value=chain):
+        response = download(
+            media_in=MusicInfoSchema(**_music_info().to_dict()),
+            torrent_in=TorrentInfo(
+                title="周杰伦 - 晴天 FLAC",
+                enclosure="https://example.com/download?id=2",
+                category="音乐",
+            ),
+            downloader="qb",
+            save_path=None,
+            current_user=Mock(name="admin"),
+        )
+
+    assert response.success is True
+    context = chain.download_single.call_args.kwargs["context"]
+    assert context.meta_info.title == "晴天"
+    assert context.meta_info.album == "叶惠美"
+    assert context.meta_info.org_string == "周杰伦 - 晴天 FLAC"
     assert context.meta_info.media_id is None
 
 
