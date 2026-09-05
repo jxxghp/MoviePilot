@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 from app.modules.slack import SlackModule
 from app.modules.slack.slack import Slack
-from app.schemas import CommandRegisterEventData
+from app.schemas.event import CommandRegisterEventData
 
 
 def test_slack_module_register_commands_filters_event_subset():
@@ -33,9 +33,7 @@ def test_slack_module_register_commands_filters_event_subset():
     ):
         module.register_commands(original_commands)
 
-    client.register_commands.assert_called_once_with(
-        {"/sites": {"description": "管理站点"}}
-    )
+    client.register_commands.assert_called_once_with({"/sites": {"description": "管理站点"}})
     client.delete_commands.assert_not_called()
 
 
@@ -103,3 +101,41 @@ def test_slack_normalizes_slash_command_names():
     assert Slack._normalize_slack_command("CLEAR_CACHE") == "/clear_cache"
     assert Slack._normalize_slack_command("/中文") == ""
     assert Slack._normalize_slack_command("/" + "a" * 32) == ""
+
+
+def test_slack_plain_text_interaction_buttons_render_and_clear_on_edit():
+    """纯文本交互必须显示按钮，后续无按钮编辑应清除旧操作区。"""
+    client = Slack.__new__(Slack)
+    client._client = Mock()
+    client._client.chat_postMessage.return_value = {"ok": True, "ts": "1", "channel": "C1"}
+    client._client.chat_update.return_value = {"ok": True, "ts": "1", "channel": "C1"}
+    buttons = [[{"text": "确认升级", "callback_data": "update:req:download"}]]
+
+    assert (
+        client.send_msg(
+            title="发现更新",
+            text="v3.0.0 -> v3.1.0",
+            userid="C1",
+            buttons=buttons,
+        )[0]
+        is True
+    )
+
+    posted = client._client.chat_postMessage.call_args.kwargs
+    assert posted["text"] == "发现更新\nv3.0.0 -> v3.1.0"
+    assert [block["type"] for block in posted["blocks"]] == ["section", "actions"]
+    assert posted["blocks"][1]["elements"][0]["value"] == "update:req:download"
+
+    assert (
+        client.send_msg(
+            title="正在下载",
+            text="50%",
+            original_message_id="1",
+            original_chat_id="C1",
+        )[0]
+        is True
+    )
+
+    updated = client._client.chat_update.call_args.kwargs
+    assert updated["text"] == "正在下载\n50%"
+    assert updated["blocks"] == []

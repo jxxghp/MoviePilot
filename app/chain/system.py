@@ -4,15 +4,18 @@ import re
 import shutil
 import threading
 import uuid
-from collections.abc import Mapping
+from collections.abc import Coroutine, Mapping
 from pathlib import Path
 from typing import Any, Optional, Protocol, Union
 
 from app.application.configuration import get_chain_runtime_config_snapshot
+from app.application.messaging.update import SystemUpdateInteractionHandler
 from app.chain.base import ChainBase
 from app.runtime import version as runtime_version
 from app.runtime.log import logger
+from app.runtime.loop import main_loop_registry
 from app.runtime.state import SystemHelper
+from app.runtime.tasks import get_task_registry
 from app.schemas.message import Message
 from app.schemas.notification import NotificationChannel
 
@@ -105,7 +108,98 @@ class SystemChain(ChainBase):
     """
 
     _restart_file = "__system_restart__"
+    _update_restart_file = "__system_update_restart__"
     _plugin_restore_pending_file = "__plugin_restore_pending__"
+
+    def _update_interaction_handler(self) -> SystemUpdateInteractionHandler:
+        """构造复用当前消息网关和系统应用服务的更新交互控制器。"""
+        if self.system_service is None:
+            raise RuntimeError("系统更新服务尚未由启动组合根装配")
+        return SystemUpdateInteractionHandler(
+            messenger=self,
+            actions=self.system_service,
+            submit_monitor=self._submit_update_monitor,
+            mark_restart=self._mark_update_restart,
+            clear_restart_marker=self._clear_update_restart_marker,
+        )
+
+    @staticmethod
+    def _submit_update_monitor(monitor: Coroutine[Any, Any, None]) -> None:
+        """把进度监视协程跨线程登记到宿主事件循环。"""
+        get_task_registry().submit_threadsafe(
+            monitor,
+            loop=main_loop_registry.require(),
+            owner="chain.system.update_progress",
+        )
+
+    def _mark_update_restart(
+        self,
+        channel: NotificationChannel,
+        userid: Union[int, str],
+        source: Optional[str],
+    ) -> None:
+        """记录升级重启的回复目标，供服务恢复后发送完成通知。"""
+        self.save_cache(
+            {"channel": channel.value, "userid": userid, "source": source},
+            self._update_restart_file,
+        )
+
+    def _clear_update_restart_marker(self) -> None:
+        """升级安装未能进入重启阶段时删除完成通知标记。"""
+        self.remove_cache(self._update_restart_file)
+
+    def remote_update(
+        self,
+        arg_str: str = "",
+        channel: Optional[NotificationChannel] = None,
+        userid: Optional[Union[int, str]] = None,
+        source: Optional[str] = None,
+    ) -> None:
+        """检查正式版本并启动通知渠道中的升级确认交互。"""
+        self._update_interaction_handler().remote_update(
+            arg_str=arg_str,
+            channel=channel,
+            userid=userid,
+            source=source,
+        )
+
+    def handle_update_callback_interaction(
+        self,
+        callback_data: str,
+        channel: NotificationChannel,
+        source: Optional[str],
+        userid: Union[int, str],
+        username: Optional[str],
+        original_message_id: Optional[Union[str, int]] = None,
+        original_chat_id: Optional[str] = None,
+    ) -> bool:
+        """处理更新交互按钮并把原消息定位参数交给进度编辑器。"""
+        return self._update_interaction_handler().handle_callback_interaction(
+            callback_data=callback_data,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            original_message_id=original_message_id,
+            original_chat_id=original_chat_id,
+        )
+
+    def handle_update_text_interaction(
+        self,
+        channel: NotificationChannel,
+        source: Optional[str],
+        userid: Union[int, str],
+        username: Optional[str],
+        text: str,
+    ) -> bool:
+        """处理不支持按钮渠道中的升级或重启确认文本。"""
+        return self._update_interaction_handler().handle_text_interaction(
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            text=text,
+        )
 
     def remote_clear_cache(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None):
         """
@@ -444,6 +538,35 @@ class SystemChain(ChainBase):
                 userid=userid,
                 save_history=False))
             self.remove_cache(self._restart_file)
+
+        update_restart_channel = self.load_cache(self._update_restart_file)
+        if update_restart_channel:
+            if not isinstance(update_restart_channel, dict):
+                update_restart_channel = json.loads(update_restart_channel)
+            channel = next(
+                (
+                    candidate
+                    for candidate in NotificationChannel.__members__.values()
+                    if candidate.value == update_restart_channel.get("channel")
+                ),
+                None,
+            )
+            userid = update_restart_channel.get("userid")
+            source = update_restart_channel.get("source")
+            self.post_message(
+                Message(
+                    channel=channel,
+                    source=source,
+                    title=(
+                        "MoviePilot 更新安装完成！\n"
+                        f"当前后端版本：{runtime_version.get_app_version()}\n"
+                        f"当前前端版本：{runtime_version.get_frontend_version()}"
+                    ),
+                    userid=userid,
+                    save_history=False,
+                )
+            )
+            self.remove_cache(self._update_restart_file)
 
     @staticmethod
     def __get_server_release_version():

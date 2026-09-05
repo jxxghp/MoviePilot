@@ -9,7 +9,7 @@ from concurrent.futures import CancelledError as FutureCancelledError
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
 from urllib.parse import unquote, urlparse
 
 from app.application.agent import (
@@ -27,10 +27,12 @@ from app.application.messaging.session import MessageSessionService
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import SkillInteractionHandler, skill_interaction_manager
 from app.application.messaging.subscribe import subscribe_interaction_manager
+from app.application.messaging.update import update_interaction_manager
 from app.chain.base import ChainBase
 from app.chain.interaction import MediaInteractionChain as _MediaInteractionChain
 from app.chain.site import SiteChain
 from app.chain.subscribe.facade import SubscribeChain
+from app.chain.system import SystemChain
 from app.chain.transfer.facade import TransferChain
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
@@ -705,7 +707,9 @@ class MessageChain(ChainBase):
     def _interaction_router(self) -> InteractionRouter:
         """构造交互路由器，文本会话按创建时间选择，回调路由注册顺序即优先级。"""
 
-        def session_text(handle):
+        def session_text(
+            handle: Callable[..., Any],
+        ) -> Callable[[InteractionContext, str], bool]:
             """包装传统交互入口为会话路由的文本处理函数，保持懒构造。"""
             def _handle(context: InteractionContext, text: str) -> bool:
                 return bool(handle(
@@ -717,7 +721,9 @@ class MessageChain(ChainBase):
                 ))
             return _handle
 
-        def callback_dispatch(handle):
+        def callback_dispatch(
+            handle: Callable[..., Any],
+        ) -> Callable[[str, InteractionContext], InteractionDispatch]:
             """包装传统回调入口为回调路由的派发函数，保持懒构造。"""
             def _dispatch(callback_data: str, context: InteractionContext) -> InteractionDispatch:
                 return InteractionDispatch(handled=bool(handle(
@@ -753,6 +759,11 @@ class MessageChain(ChainBase):
                 name="media",
                 get_pending=media_interaction_manager.get_by_user,
                 handle_text=session_text(lambda **kw: _MediaInteractionChain().handle_text_interaction(**kw)),
+            ),
+            SessionRoute(
+                name="update",
+                get_pending=update_interaction_manager.get_by_user,
+                handle_text=session_text(lambda **kw: SystemChain().handle_update_text_interaction(**kw)),
             ),
         ]
 
@@ -819,6 +830,11 @@ class MessageChain(ChainBase):
                 name="media",
                 matches=lambda data: _MediaInteractionChain.parse_callback(data) is not None,
                 dispatch=callback_dispatch(lambda **kw: _MediaInteractionChain().handle_callback_interaction(**kw)),
+            ),
+            CallbackRoute(
+                name="update",
+                matches=lambda data: data.startswith("update:"),
+                dispatch=callback_dispatch(lambda **kw: SystemChain().handle_update_callback_interaction(**kw)),
             ),
             CallbackRoute(
                 name="agent_choice",

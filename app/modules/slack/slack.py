@@ -1,21 +1,20 @@
 import json
 import re
-from threading import Lock
 from pathlib import Path
+from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk import WebClient
 
-from app.runtime.settings import get_runtime_setting
-
-from app.application.messaging.ingress import forward_message_to_host
-from app.domain.context import MediaInfo, Context
-from app.domain.metainfo import MetaInfo
-from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
+from app.application.messaging.ingress import forward_message_to_host
+from app.domain.context import Context, MediaInfo
+from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 lock = Lock()
 
@@ -303,75 +302,79 @@ class Slack:
                 # 消息广播
                 channel = self.__find_public_channel()
             # 消息文本
-            message_text = ""
+            message_text = f"{title}\n{text or ''}"
             # 结构体
             blocks = []
-            if not image:
-                message_text = f"{title}\n{text or ''}"
-            else:
+            if image:
                 # 消息图片
-                if image:
-                    # 拼装消息内容
-                    blocks.append({"type": "section", "text": {
-                        "type": "mrkdwn",
-                        "text": f"*{title}*\n{text or ''}"
-                    }, 'accessory': {
+                blocks.append({"type": "section", "text": {
+                    "type": "mrkdwn",
+                    "text": f"*{title}*\n{text or ''}"
+                }, 'accessory': {
                         "type": "image",
                         "image_url": f"{image}",
                         "alt_text": f"{title}"
-                    }})
-                # 自定义按钮
-                if buttons:
-                    for button_row in buttons:
-                        elements = []
-                        for button in button_row:
-                            if "url" in button:
-                                # URL按钮
-                                elements.append({
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": button["text"],
-                                        "emoji": True
-                                    },
-                                    "url": button["url"],
-                                    "action_id": f"actionId-url-{button.get('text', 'url')}-{len(elements)}"
-                                })
-                            else:
-                                # 回调按钮
-                                elements.append({
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": button["text"],
-                                        "emoji": True
-                                    },
-                                    "value": button["callback_data"],
-                                    "action_id": f"actionId-{button['callback_data']}"
-                                })
-                        if elements:
-                            blocks.append({
-                                "type": "actions",
-                                "elements": elements
-                            })
-                elif link:
-                    # 默认链接按钮
-                    blocks.append({
-                        "type": "actions",
-                        "elements": [
-                            {
+                }})
+            elif buttons or link:
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{title}*\n{text or ''}",
+                    },
+                })
+            # 自定义按钮
+            if buttons:
+                for button_row in buttons:
+                    elements = []
+                    for button in button_row:
+                        if "url" in button:
+                            # URL按钮
+                            elements.append({
                                 "type": "button",
                                 "text": {
                                     "type": "plain_text",
-                                    "text": "查看详情",
+                                    "text": button["text"],
                                     "emoji": True
                                 },
-                                "value": "click_me_url",
-                                "url": f"{link}",
-                                "action_id": "actionId-url"
-                            }
-                        ]
-                    })
+                                "url": button["url"],
+                                "action_id": f"actionId-url-{button.get('text', 'url')}-{len(elements)}"
+                            })
+                        else:
+                            # 回调按钮
+                            elements.append({
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": button["text"],
+                                    "emoji": True
+                                },
+                                "value": button["callback_data"],
+                                "action_id": f"actionId-{button['callback_data']}"
+                            })
+                    if elements:
+                        blocks.append({
+                            "type": "actions",
+                            "elements": elements
+                        })
+            elif link:
+                # 默认链接按钮
+                blocks.append({
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "查看详情",
+                                "emoji": True
+                            },
+                            "value": "click_me_url",
+                            "url": f"{link}",
+                            "action_id": "actionId-url"
+                        }
+                    ]
+                })
 
             # 判断是编辑消息还是发送新消息
             if original_message_id and original_chat_id:

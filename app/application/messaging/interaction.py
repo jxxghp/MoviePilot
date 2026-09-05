@@ -34,7 +34,7 @@ class SlashInteractionManager:
 
     _ttl = timedelta(hours=24)
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化按请求和用户索引的 slash 会话表。"""
         self._by_id: Dict[str, PendingSlashInteraction] = {}
         self._by_user: Dict[str, str] = {}
@@ -140,9 +140,23 @@ class InteractionDispatch:
 class MessageGateway(Protocol):
     """声明交互控制器使用的消息发送和编辑能力。"""
 
-    def post_message(self, message: Message): ...
+    def post_message(self, message: Message) -> None:
+        """发送一条交互消息。"""
+        ...
 
-    def edit_message(self, **kwargs) -> bool: ...
+    def edit_message(
+            self,
+            channel: NotificationChannel,
+            source: str,
+            message_id: Union[str, int],
+            chat_id: Union[str, int],
+            text: str,
+            title: Optional[str] = None,
+            buttons: Optional[List[List[Dict[str, Any]]]] = None,
+            metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """编辑一条已发送的交互消息。"""
+        ...
 
 
 def supports_interaction_buttons(channel: Optional[NotificationChannel]) -> bool:

@@ -46,6 +46,7 @@ def _context() -> ChainRuntimeContext:
         user_repository=Mock(),
         configuration=ChainRuntimeConfig(media_extensions=(".mkv",)),
         durable_event_writer=Mock(),
+        system_service=Mock(),
     )
 
 
@@ -60,6 +61,7 @@ def test_chain_accepts_explicit_runtime_context() -> None:
     assert chain.eventmanager is context.event_manager
     assert chain.messagehelper is context.message_helper
     assert chain.durable_event_writer is context.durable_event_writer
+    assert chain.system_service is context.system_service
     context.message_queue.bind.assert_called_once_with(chain.run_module)
 
 
@@ -141,6 +143,7 @@ def test_chain_composition_registers_lazy_compatibility_provider(monkeypatch) ->
         "system_config": Mock(),
         "configuration": Mock(),
         "classification_service": Mock(),
+        "system_service": Mock(),
     }
     monkeypatch.setattr(chain_composition, "build_chain_runtime_context", builder)
     monkeypatch.setattr(

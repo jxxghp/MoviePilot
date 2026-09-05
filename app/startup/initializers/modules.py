@@ -711,6 +711,7 @@ async def _initialize_modules() -> HostRuntime:
         system_config=system_config,
         configuration=configuration.runtime.chain,
         classification_service=classification.execution,
+        system_service=host_runtime.system,
     )
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
     configure_security_access()

@@ -1,7 +1,7 @@
 """
 交互路由层：统一选择活动文本会话，并按固定顺序派发按钮回调。
 
-文本会话候选覆盖 Site、Subscribe、Skill、Media 四类，
+文本会话候选覆盖 Site、Subscribe、Skill、Media、Update 五类，
 按会话创建时间选择最近激活的一条，避免旧会话抢占新会话的输入。
 """
 
@@ -16,6 +16,7 @@ from app.application.messaging.media import media_interaction_manager
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import skill_interaction_manager
 from app.application.messaging.subscribe import subscribe_interaction_manager
+from app.application.messaging.update import update_interaction_manager
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,5 +118,6 @@ def has_pending_interaction(user_id: Union[str, int]) -> bool:
             subscribe_interaction_manager,
             skill_interaction_manager,
             media_interaction_manager,
+            update_interaction_manager,
         )
     )

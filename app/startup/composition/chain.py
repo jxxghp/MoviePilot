@@ -23,6 +23,7 @@ from app.application.image import (
     configure_wallpaper_providers,
     reset_wallpaper_providers,
 )
+from app.application.system import SystemService
 from app.chain._recognition import (
     RecognitionSharePort,
     configure_recognition_share_port,
@@ -85,6 +86,7 @@ def build_chain_runtime_context(
     system_config: SystemConfigOper,
     configuration: Callable[[], ChainRuntimeConfig],
     classification_service: ClassificationExecutionService,
+    system_service: SystemService,
 ) -> ChainRuntimeContext:
     """创建 Chain 无参兼容入口共享的运行时对象与数据端口。"""
     return ChainRuntimeContext(
@@ -125,6 +127,7 @@ def build_chain_runtime_context(
         configuration=configuration(),
         durable_event_writer=TransactionalChainDurableEventWriter(SessionFactory),
         stop_state=runtime_stop_state,
+        system_service=system_service,
     )
 
 
@@ -153,6 +156,7 @@ def configure_chain_runtime_context(
     system_config: SystemConfigOper,
     configuration: Callable[[], ChainRuntimeConfig],
     classification_service: ClassificationExecutionService,
+    system_service: SystemService,
 ) -> None:
     """登记按需构造的 Chain 上下文，保持无参 Chain 的插件兼容合同。"""
     configure_chain_runtime_context_provider(
@@ -161,6 +165,7 @@ def configure_chain_runtime_context(
             system_config=system_config,
             configuration=configuration,
             classification_service=classification_service,
+            system_service=system_service,
         )
     )
 

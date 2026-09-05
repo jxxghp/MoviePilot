@@ -679,7 +679,7 @@
     "type-arg": 8
   },
   "app/application/messaging/interaction.py": {
-    "no-untyped-def": 4,
+    "no-untyped-def": 1,
     "type-arg": 2
   },
   "app/application/messaging/media.py": {
@@ -707,7 +707,6 @@
   "app/application/messaging/site.py": {
     "arg-type": 1,
     "assignment": 2,
-    "no-untyped-call": 1,
     "no-untyped-def": 2
   },
   "app/application/messaging/skill.py": {
@@ -718,7 +717,6 @@
   "app/application/messaging/subscribe.py": {
     "arg-type": 1,
     "assignment": 2,
-    "no-untyped-call": 1,
     "no-untyped-def": 2
   },
   "app/application/module.py": {
@@ -890,11 +888,10 @@
     "type-arg": 1
   },
   "app/chain/message.py": {
-    "arg-type": 21,
+    "arg-type": 18,
     "assignment": 2,
     "no-any-return": 11,
-    "no-untyped-call": 8,
-    "no-untyped-def": 6,
+    "no-untyped-def": 4,
     "type-arg": 2,
     "union-attr": 1,
     "var-annotated": 1
@@ -922,7 +919,7 @@
     "var-annotated": 1
   },
   "app/chain/site.py": {
-    "arg-type": 2,
+    "arg-type": 1,
     "assignment": 6,
     "attr-defined": 1,
     "misc": 3,
@@ -1111,7 +1108,7 @@
     "union-attr": 2
   },
   "app/command.py": {
-    "arg-type": 3,
+    "arg-type": 2,
     "assignment": 5,
     "misc": 4,
     "no-untyped-call": 4,
