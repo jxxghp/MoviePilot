@@ -4,7 +4,7 @@ import re
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union, cast
 
 from app.application.classification.reference import (
     append_classification_category_path,
@@ -32,10 +32,12 @@ from app.runtime.log import logger
 from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import FileURI
 from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
-from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import (
     MediaSource,
 )
+
+if TYPE_CHECKING:
+    from app.schemas.transfer import DownloaderTorrent
 
 
 def _append_download_classification_path(
