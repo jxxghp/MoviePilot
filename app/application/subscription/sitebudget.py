@@ -27,20 +27,28 @@ class SubscriptionSearchDeferred(RuntimeError):
     """表示订阅搜索未失败，而是应在站点预算可用后重新入队。"""
 
     def __init__(self, *, retry_at: str, site_ids: tuple[int, ...]) -> None:
-        """保存队列恢复所需的时间和冲突站点，避免把临时冲突写成错误。"""
-        super().__init__(f"订阅搜索已延后，站点预算最早可重试：{retry_at}")
+        """保存队列恢复所需的时间和站点，避免把临时等待写成错误。"""
+        super().__init__("站点暂时忙，系统会自动继续搜索")
         self.retry_at = retry_at
         self.site_ids = site_ids
 
 
 class SubscriptionSiteBudgetUnavailable(RuntimeError):
-    """表示站点预算暂时不可用，调用方应记录为延后而非失败。"""
+    """表示站点暂时不可用，调用方应记录为等待而非失败。"""
 
-    def __init__(self, *, site_id: int, retry_at: str) -> None:
+    def __init__(
+        self,
+        *,
+        site_id: int,
+        retry_at: str,
+        wait_reason: Optional[str] = None,
+    ) -> None:
         """保存站点和下一次可尝试时间，供订阅队列恢复。"""
-        super().__init__(f"站点 {site_id} 冷却或已有在途搜索，最早可重试：{retry_at}")
+        message = "站点正在处理其他搜索，稍后会自动继续" if wait_reason == "busy" else "站点暂时不可用，稍后会自动重试"
+        super().__init__(message)
         self.site_id = site_id
         self.retry_at = retry_at
+        self.wait_reason = wait_reason
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +60,7 @@ class SiteBudgetClaim:
     retry_at: str
     consecutive_failures: int
     lease_token: Optional[str] = None
+    wait_reason: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +204,7 @@ class SubscriptionSiteBudget:
         raise SubscriptionSiteBudgetUnavailable(
             site_id=site_id,
             retry_at=claim.retry_at,
+            wait_reason=claim.wait_reason,
         )
 
     def _report_phase(self, phase: str, site_id: Optional[int]) -> None:
@@ -251,4 +261,4 @@ class SubscriptionSiteBudget:
     def _raise_if_cancelled(self) -> None:
         """在创建站点租约前传播取消或停机。"""
         if self._stop_state.is_system_stopped or self._cancelled():
-            raise SubscriptionSearchCancelled("订阅搜索已取消")
+            raise SubscriptionSearchCancelled("搜索已停止")

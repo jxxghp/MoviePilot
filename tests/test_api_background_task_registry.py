@@ -72,6 +72,34 @@ class _RunningTaskRegistry(TaskRegistry):
         )
 
 
+class _CompletedSearchTaskRegistry(_TaskRegistry):
+    """返回已完成结果，验证手工搜索先保存安排再启动后台处理。"""
+
+    def create_sync(self, function, *args, owner: str, **kwargs) -> asyncio.Future:
+        """记录同步任务，并为测试提供可等待的安排结果。"""
+        super().create_sync(function, *args, owner=owner, **kwargs)
+        future = asyncio.get_running_loop().create_future()
+        result = None
+        if owner == "api.subscribe.search.enqueue":
+            result = SimpleNamespace(
+                active_batch_ids=("batch-1", "batch-2"),
+                created_count=2,
+                coalesced_count=0,
+            )
+        future.set_result(result)
+        return future
+
+
+class _SubscriptionSearchTargets:
+    """为手工搜索命令提供当前用户可访问的订阅编号。"""
+
+    async def list_search_ids(self, username, state) -> list[int]:
+        """返回稳定目标，并校验超级用户读取全部运行中订阅。"""
+        assert username is None
+        assert state == "R"
+        return [11, 12]
+
+
 class _ProtocolManager:
     """提供兼容协议流结束时需要的最小 AgentManager 接口。"""
 
@@ -206,10 +234,14 @@ def test_seerr_subscribe_uses_task_registry(monkeypatch) -> None:
 
 def test_manual_subscription_search_uses_task_registry() -> None:
     """手工订阅搜索命令应以稳定 owner 提交顺序搜索批次。"""
-    registry = _TaskRegistry()
-    repository = object()
+    registry = _CompletedSearchTaskRegistry()
+    repository = _SubscriptionSearchTargets()
+    search_repository = SimpleNamespace(enqueue=lambda **_kwargs: None)
     runtime = SimpleNamespace(
-        subscription=SimpleNamespace(repository=lambda _db: repository)
+        subscription=SimpleNamespace(
+            repository=lambda _db: repository,
+            search_repository=search_repository,
+        )
     )
     command = subscription_dependencies.get_search_subscriptions_command(
         task_registry=registry,
@@ -221,12 +253,24 @@ def test_manual_subscription_search_uses_task_registry() -> None:
         command.execute(SubscribeSearchActor(username="admin", is_superuser=True))
     )
 
-    function, args, kwargs, owner = registry.calls[0]
-    assert found is True
-    assert function is subscription_dependencies._start_subscription_search_batch
-    assert args == (None, "R")
-    assert kwargs == {}
-    assert owner == "api.subscribe.search"
+    enqueue_function, enqueue_args, enqueue_kwargs, enqueue_owner = registry.calls[0]
+    run_function, run_args, run_kwargs, run_owner = registry.calls[1]
+    assert found is not None
+    assert found.batch_ids == ("batch-1", "batch-2")
+    assert found.queued_count == 2
+    assert found.ongoing_count == 0
+    assert enqueue_function is search_repository.enqueue
+    assert enqueue_args == ()
+    assert enqueue_kwargs == {
+        "subscription_ids": (11, 12),
+        "source": "manual",
+        "priority": 100,
+    }
+    assert enqueue_owner == "api.subscribe.search.enqueue"
+    assert run_function is subscription_dependencies._resume_submitted_subscription_search
+    assert run_args == ((11, 12),)
+    assert run_kwargs == {}
+    assert run_owner == "api.subscribe.search.run"
 
 
 def test_history_ai_redo_uses_task_registry() -> None:

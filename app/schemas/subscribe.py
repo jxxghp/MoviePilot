@@ -55,6 +55,7 @@ class SubscriptionExecutionStatus(BaseModel):  # type: ignore[misc]
     batch_id: Optional[str] = None
     task_id: Optional[str] = None
     current_site_id: Optional[int] = None
+    next_run_at: Optional[str] = None
     error: Optional[str] = None
     can_cancel: bool = False
 
@@ -82,6 +83,17 @@ class SubscriptionBatchStatus(BaseModel):  # type: ignore[misc]
     can_cancel: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SubscriptionSearchSubmission(BaseModel):  # type: ignore[misc]
+    """手工订阅搜索已安排后的轻量跟踪信息。"""
+
+    batch_id: Optional[str] = None
+    batch_ids: List[str] = Field(default_factory=list)
+    target_count: int = 0
+    queued_count: int = 0
+    ongoing_count: int = 0
+    single: bool = False
 
 
 class Subscribe(OptionalMediaIdentityMixin, BaseModel):

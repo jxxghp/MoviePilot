@@ -1,6 +1,7 @@
 """订阅搜索持久队列的 SQLAlchemy 适配器。"""
 
 from collections.abc import Callable, Mapping
+from datetime import datetime, timedelta, timezone
 from typing import Optional, TypeVar
 
 from sqlalchemy.orm import Session
@@ -19,6 +20,7 @@ from app.db.oper.subscriptionsearch import SubscriptionSearchOper
 from app.db.uow import SqlAlchemyUnitOfWork
 
 T = TypeVar("T")
+_BUSY_SITE_RETRY_SECONDS = 10
 
 
 def _batch(record: SubscriptionSearchBatch) -> SearchBatchSnapshot:
@@ -101,7 +103,7 @@ class TransactionalSubscriptionSearchRepository:
         """创建批次并返回 single-flight 合并计数。"""
         def operation(repository: SubscriptionSearchOper) -> SearchEnqueueResult:
             """在同一事务内创建批次和任务。"""
-            record, created, coalesced = repository.enqueue(
+            record, created, coalesced, active_batch_ids = repository.enqueue(
                 subscription_ids=subscription_ids,
                 source=source,
                 priority=priority,
@@ -111,6 +113,7 @@ class TransactionalSubscriptionSearchRepository:
                 batch=_batch(record),
                 created_count=created,
                 coalesced_count=coalesced,
+                active_batch_ids=active_batch_ids,
             )
 
         return self._write(operation)
@@ -183,13 +186,17 @@ class TransactionalSubscriptionSearchRepository:
         task_id: str,
         lease_token: str,
         available_at: str,
+        phase: str = "waiting_site_budget",
+        message: Optional[str] = None,
     ) -> bool:
-        """以站点预算的下一次可用时间重新排队任务。"""
+        """按指定时间和可见原因重新排队任务。"""
         return self._write(
             lambda repository: repository.defer_task(
                 task_id=task_id,
                 lease_token=lease_token,
                 available_at=available_at,
+                phase=phase,
+                message=message,
             )
         )
 
@@ -225,14 +232,32 @@ class TransactionalSubscriptionSearchRepository:
                 lease_seconds=lease_seconds,
             )
             retry_at = record.next_allowed_at
-            if not acquired and record.lease_token and record.lease_expires_at:
-                retry_at = max(retry_at, record.lease_expires_at)
+            wait_reason = None
+            now = datetime.now(timezone.utc)
+            cooldown_active = bool(
+                record.last_outcome not in {None, "success", "skipped"}
+                and record.next_allowed_at > now.isoformat(timespec="seconds")
+            )
+            lease_busy = bool(
+                record.lease_token
+                and record.lease_expires_at
+                and record.lease_expires_at > now.isoformat(timespec="seconds")
+            )
+            if not acquired and cooldown_active:
+                wait_reason = "cooldown"
+            elif not acquired and lease_busy:
+                wait_reason = "busy"
+                short_retry = (now + timedelta(seconds=_BUSY_SITE_RETRY_SECONDS)).isoformat(
+                    timespec="seconds"
+                )
+                retry_at = min(record.lease_expires_at, short_retry)
             return SiteBudgetClaim(
                 site_id=record.site_id,
                 acquired=acquired,
                 retry_at=retry_at,
                 consecutive_failures=record.consecutive_failures,
                 lease_token=record.lease_token if acquired else None,
+                wait_reason=wait_reason,
             )
 
         return self._write(operation)

@@ -154,8 +154,8 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             "interval",
             id="subscribe_search_queue",
             name="恢复订阅搜索队列",
-            minutes=1,
-            next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=10),
+            seconds=10,
+            next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=5),
             kwargs={"job_id": "subscribe_search_queue"},
         )
 

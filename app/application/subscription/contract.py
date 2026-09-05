@@ -596,8 +596,12 @@ class SubscriptionStagingPort(Protocol):
         """异步按媒体身份读取删除候选快照。"""
         ...
 
-    async def list_search_ids(self, username: str, state: str) -> builtins.list[int]:
-        """异步读取用户可搜索订阅主键。"""
+    async def list_search_ids(
+        self,
+        username: Optional[str],
+        state: str,
+    ) -> builtins.list[int]:
+        """异步读取用户或管理员全局范围内可搜索的订阅主键。"""
         ...
 
     async def stage_delete(self, subscribe_id: int) -> None:

@@ -169,7 +169,7 @@ def test_match_skips_subscription_paused_after_admission() -> None:
         "skipped": 1,
         "failed": 0,
     }
-    assert progress.call_args.kwargs["text"] == "订阅资源匹配完成，部分订阅跳过"
+    assert progress.call_args.kwargs["text"] == "订阅资源检查完成，部分订阅这次未检查"
     _assert_channel_and_subscription_released(chain, (listed.id,))
 
 
@@ -200,7 +200,7 @@ def test_match_progress_reports_completed_skipped_and_failed_counts() -> None:
         "skipped": 1,
         "failed": 1,
     }
-    assert progress.call_args.kwargs["text"] == "订阅资源匹配完成，部分订阅失败"
+    assert progress.call_args.kwargs["text"] == "订阅资源检查结束，部分订阅没有完成"
     assert chain._subscription_execution_admission.release(skipped_lease) is True
     _assert_channel_and_subscription_released(chain, (completed.id, failed.id))
 
@@ -220,7 +220,7 @@ def test_match_stop_does_not_report_unvisited_subscriptions_as_completed(monkeyp
 
     assert progress.call_args.kwargs == {
         "value": 100,
-        "text": "订阅资源匹配已停止，部分订阅未执行",
+        "text": "订阅资源检查已停止，部分订阅这次未检查",
         "data": {
             "total": 2,
             "finished": 0,
@@ -257,17 +257,12 @@ def test_match_logs_one_bounded_start_and_finish_summary(monkeypatch) -> None:
     chain.match({"site-a.example": [object()], "site-b.example": [object(), object()]})
 
     assert len(info_logs) == 2
-    assert info_logs[0].startswith("订阅治理轮次开始: operation=match ")
-    assert "subscriptions=3" in info_logs[0]
-    assert "sites=2" in info_logs[0]
-    assert "candidates=3" in info_logs[0]
-    assert info_logs[1].startswith("订阅治理轮次结束: operation=match ")
-    assert "state=skipped" in info_logs[1]
-    assert "task_completed=1" in info_logs[1]
-    assert "task_skipped=2" in info_logs[1]
-    assert "admission_conflicts=1" in info_logs[1]
-    assert "cancelled=1" in info_logs[1]
-    assert "ttl_timeouts=0" in info_logs[1]
+    assert info_logs[0] == "开始检查订阅资源，共 3 个订阅、3 个资源，来自 2 个站点。"
+    assert info_logs[1].startswith("订阅资源检查结束：部分订阅这次未检查。")
+    assert "本次检查 3/3 个订阅，完成 1 个，这次未检查 2 个，失败 0 个" in info_logs[1]
+    assert "其中 1 个订阅正在处理中，本次没有重复检查" in info_logs[1]
+    assert "另有 1 个订阅已停止" in info_logs[1]
+    assert "run_id" not in info_logs[1]
     assert "订阅成功" not in "\n".join(info_logs)
     assert chain._subscription_execution_admission.release(search_lease) is True
 
@@ -293,9 +288,8 @@ def test_match_summary_distinguishes_ttl_timeout(monkeypatch) -> None:
     chain.match({"site.example": [object()]})
 
     assert len(info_logs) == 2
-    assert "task_skipped=1" in info_logs[1]
-    assert "cancelled=0" in info_logs[1]
-    assert "ttl_timeouts=1" in info_logs[1]
+    assert "这次未检查 1 个" in info_logs[1]
+    assert "另有 1 个订阅检查时间过长，已停止" in info_logs[1]
 
 
 def test_match_logs_subscription_admission_release_failure(monkeypatch) -> None:
@@ -323,5 +317,5 @@ def test_match_logs_subscription_admission_release_failure(monkeypatch) -> None:
 
     chain.match({"site.example": [object()]})
 
-    assert any("订阅准入释放失败: operation=match subscription_id=17" in item for item in error_logs)
-    assert "release_failures=1" in info_logs[-1]
+    assert any("订阅 17 的搜索状态没有正常恢复，系统稍后会继续检查" in item for item in error_logs)
+    assert "另有 1 个订阅的搜索状态没有正常恢复" in info_logs[-1]

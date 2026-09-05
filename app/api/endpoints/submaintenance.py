@@ -22,10 +22,48 @@ from app.application.subscription.mutation import (
 from app.application.subscription.search import (
     SearchSubscriptionsCommand,
     SubscribeSearchActor,
+    SubscriptionSearchSubmission,
 )
 from app.schemas.response import Response
+from app.schemas.subscribe import (
+    SubscriptionSearchSubmission as SubscriptionSearchSubmissionSchema,
+)
 
 router = ResponseAPIRouter()
+
+
+def _search_submission_message(submission: SubscriptionSearchSubmission) -> str:
+    """把搜索安排结果转换为用户能直接理解的提示。"""
+    if submission.target_count == 0:
+        return "没有需要搜索的订阅"
+    if submission.queued_count == 0:
+        return (
+            "这个订阅已经在搜索中，请稍候"
+            if submission.single
+            else f"{submission.ongoing_count} 个订阅已经在搜索中，无需重复提交"
+        )
+    if submission.ongoing_count:
+        return (
+            f"已安排 {submission.queued_count} 个订阅搜索，"
+            f"另有 {submission.ongoing_count} 个正在处理中"
+        )
+    if submission.single:
+        return "已安排搜索，很快开始"
+    return f"已安排 {submission.queued_count} 个订阅搜索，系统会依次处理"
+
+
+def _search_submission_schema(
+    submission: SubscriptionSearchSubmission,
+) -> SubscriptionSearchSubmissionSchema:
+    """构造稳定的手工搜索响应数据。"""
+    return SubscriptionSearchSubmissionSchema(
+        batch_id=submission.batch_id,
+        batch_ids=list(submission.batch_ids),
+        target_count=submission.target_count,
+        queued_count=submission.queued_count,
+        ongoing_count=submission.ongoing_count,
+        single=submission.single,
+    )
 
 
 @router.get(  # type: ignore[misc]
@@ -97,38 +135,46 @@ def check_subscribes(
 @router.get(  # type: ignore[misc]
     "/search",
     summary="搜索所有订阅（兼容入口）",
-    response_model=Response[None],
+    response_model=Response[SubscriptionSearchSubmissionSchema],
     include_in_schema=False,
     deprecated=True,
 )
 @router.post(  # type: ignore[misc]
-    "/search", summary="搜索所有订阅", response_model=Response[None]
+    "/search",
+    summary="搜索所有订阅",
+    response_model=Response[SubscriptionSearchSubmissionSchema],
 )
 async def search_subscribes(
     command: SearchSubscriptionsCommand = Depends(get_search_subscriptions_command),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
     """搜索当前用户可管理的全部订阅。"""
-    await command.execute(
+    submission = await command.execute(
         SubscribeSearchActor(
             username=current_user.name,
             is_superuser=current_user.is_superuser,
         )
     )
-    return Response(success=True)
+    if submission is None:
+        return Response(success=False, message="没有需要搜索的订阅")
+    return Response(
+        success=True,
+        message=_search_submission_message(submission),
+        data=_search_submission_schema(submission),
+    )
 
 
 @router.get(  # type: ignore[misc]
     "/search/{subscribe_id}",
     summary="搜索订阅（兼容入口）",
-    response_model=Response[None],
+    response_model=Response[SubscriptionSearchSubmissionSchema],
     include_in_schema=False,
     deprecated=True,
 )
 @router.post(  # type: ignore[misc]
     "/search/{subscribe_id}",
     summary="搜索订阅",
-    response_model=Response[None],
+    response_model=Response[SubscriptionSearchSubmissionSchema],
 )
 async def search_subscribe(
     subscribe_id: int,
@@ -136,13 +182,17 @@ async def search_subscribe(
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
     """根据订阅编号搜索一个订阅。"""
-    found = await command.execute(
+    submission = await command.execute(
         SubscribeSearchActor(
             username=current_user.name,
             is_superuser=current_user.is_superuser,
         ),
         subscribe_id=subscribe_id,
     )
-    if not found:
+    if submission is None:
         return Response(success=False, message="订阅不存在")
-    return Response(success=True)
+    return Response(
+        success=True,
+        message=_search_submission_message(submission),
+        data=_search_submission_schema(submission),
+    )

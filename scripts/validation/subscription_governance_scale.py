@@ -799,7 +799,7 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
 
         @staticmethod
         def info(message: Any, *_args: Any, **_kwargs: Any) -> None:
-            """保存结构化批次摘要。"""
+            """保存开始和结束摘要。"""
             info_logs.append(str(message))
 
     class _ScaleMediaChain:
@@ -958,8 +958,10 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
         "info_log_count": len(info_logs),
         "info_log_bounded": bool(
             len(info_logs) == 2
-            and info_logs[0].startswith("订阅治理轮次开始: operation=match ")
-            and info_logs[1].startswith("订阅治理轮次结束: operation=match ")
+            and info_logs[0].startswith("开始检查订阅资源，共 ")
+            and info_logs[1].startswith("订阅资源检查结束：")
+            and "operation=" not in "\n".join(info_logs)
+            and "run_id=" not in "\n".join(info_logs)
         ),
         "first_settlement_local_ms": round(settlement_ms[0], 3),
         "subscription_settlement_local_p50_ms": _percentile(settlement_ms, 50),

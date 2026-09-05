@@ -769,9 +769,18 @@ class SessionSubscriptionRepository:
                 candidates.append(candidate)
         return candidates
 
-    async def list_search_ids(self, username: str, state: str) -> builtins.list[int]:
-        """异步读取用户指定状态下的订阅主键。"""
-        return [snapshot.id for snapshot in await self.async_list_by_username(username, state)]
+    async def list_search_ids(
+        self,
+        username: Optional[str],
+        state: str,
+    ) -> builtins.list[int]:
+        """异步读取用户或管理员全局范围内指定状态的订阅主键。"""
+        snapshots = (
+            await self.async_list_by_username(username, state)
+            if username is not None
+            else await self.async_list(state)
+        )
+        return [snapshot.id for snapshot in snapshots]
 
     async def stage_delete(self, subscribe_id: int) -> None:
         """异步暂存删除订阅。"""

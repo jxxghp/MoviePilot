@@ -14,13 +14,15 @@ def _task(
     phase: str = "searching",
     updated_at: str = "2026-09-01T01:00:00+00:00",
     batch_id: str = "batch-1",
+    source: str = "manual",
+    available_at: str | None = None,
 ) -> SearchTaskSnapshot:
     """构造最小搜索任务快照。"""
     return SearchTaskSnapshot(
         task_id=f"task-{subscription_id}",
         batch_id=batch_id,
         subscription_id=subscription_id,
-        source="manual",
+        source=source,
         priority=100,
         position=subscription_id,
         state=state,
@@ -30,8 +32,15 @@ def _task(
         lease_token="lease" if state == "running" else None,
         created_at="2026-09-01T00:00:00+00:00",
         updated_at=updated_at,
+        available_at=available_at,
         current_site_id=9 if phase == "waiting_site_budget" else None,
-        last_error=" provider\n timeout " if state == "failed" else None,
+        last_error=(
+            " provider\n timeout "
+            if state == "failed"
+            else "站点暂时忙，系统会自动继续搜索"
+            if state == "queued" and phase == "waiting_site_budget"
+            else None
+        ),
     )
 
 
@@ -85,16 +94,42 @@ def test_execution_status_exposes_site_wait_and_cancel_capability():
 
 
 def test_execution_status_exposes_queued_site_wait_without_error():
-    """重新入队的站点预算冲突应显示等待状态而不是失败。"""
+    """重新入队的站点繁忙应显示等待状态、说明和继续时间。"""
     repository = _Repository()
-    repository.tasks[2] = _task(2, state="queued", phase="waiting_site_budget")
+    retry_at = "2026-09-01T01:00:10+00:00"
+    repository.tasks[2] = _task(
+        2,
+        state="queued",
+        phase="waiting_site_budget",
+        available_at=retry_at,
+    )
 
     statuses = asyncio.run(SubscriptionExecutionStatusService(repository).for_subscriptions((2,)))
 
     assert statuses[2].state == "waiting_site_budget"
     assert statuses[2].phase == "waiting_site_budget"
-    assert statuses[2].error is None
+    assert statuses[2].error == "站点暂时忙，系统会自动继续搜索"
+    assert statuses[2].next_run_at == retry_at
     assert statuses[2].can_cancel is True
+
+
+def test_execution_status_exposes_scheduled_new_search_without_failure():
+    """新订阅编辑等待期应显示为已安排，而不是跳过或失败。"""
+    repository = _Repository()
+    retry_at = "2026-09-01T01:01:00+00:00"
+    repository.tasks[4] = _task(
+        4,
+        state="queued",
+        phase="scheduled",
+        source="new",
+        available_at=retry_at,
+    )
+
+    statuses = asyncio.run(SubscriptionExecutionStatusService(repository).for_subscriptions((4,)))
+
+    assert statuses[4].state == "scheduled"
+    assert statuses[4].next_run_at == retry_at
+    assert statuses[4].error is None
 
 
 def test_failed_search_exposes_safe_error():

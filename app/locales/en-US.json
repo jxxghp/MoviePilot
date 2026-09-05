@@ -137,6 +137,17 @@
     "当前管理用户缺少可审计身份": "The current administrator does not have an auditable identity",
     "人工复核任务不存在": "The manual review task does not exist",
     "任务添加失败": "Failed to add task",
+    "没有需要搜索的订阅": "No subscriptions need searching",
+    "这个订阅已经在搜索中，请稍候": "This subscription is already being searched. Please wait",
+    "已安排搜索，很快开始": "Search scheduled and will start soon",
+    "当前没有可检查的订阅资源": "No subscription resources are currently available to check",
+    "正在整理订阅资源 ...": "Organizing subscription resources ...",
+    "订阅资源检查完成": "Subscription resource check complete",
+    "订阅资源检查已停止，部分订阅这次未检查": "Subscription resource check stopped; some subscriptions were not checked this time",
+    "订阅资源检查结束，部分订阅没有完成": "Subscription resource check finished; some subscriptions did not complete",
+    "订阅资源检查完成，部分订阅这次未检查": "Subscription resource check complete; some subscriptions were not checked this time",
+    "订阅搜索正在处理中，本次不再重复开始": "A subscription search is already in progress. This run will not start again",
+    "订阅资源检查正在进行，本次不再重复开始": "A subscription resource check is already in progress. This run will not start again",
     "无法识别媒体信息": "Unable to recognize media information",
     "未识别到媒体信息": "Unable to recognize media information",
     "未识别到音乐信息": "Unable to recognize music information",
@@ -382,8 +393,8 @@
     "微信 ClawBot 通知未启用或配置尚未保存，请先保存并启用当前渠道": "WeChat ClawBot notification is not enabled or the configuration has not been saved. Please save and enable this channel first",
     "请输入至少一个有效的站点 ID": "Enter at least one valid site ID",
     "所有订阅搜索完成": "All subscription searches are complete",
-    "订阅搜索批次不存在": "The subscription search batch does not exist",
-    "订阅搜索批次已结束或无法取消": "The subscription search batch has ended or cannot be cancelled",
+    "没有找到这次搜索，请刷新后重试": "This search could not be found. Refresh and try again",
+    "这次搜索已经结束，暂时无法停止": "This search has already ended and cannot be stopped",
     "订阅搜索锁等待超时，已跳过本轮": "Subscription search lock timed out, this round was skipped",
     "订阅匹配锁等待超时，已跳过本轮": "Subscription matching lock timed out, this round was skipped",
     "请输入订阅 ID，多个 ID 用空格分隔，或输入 all": "Enter subscription IDs separated by spaces, or enter all",
@@ -764,6 +775,18 @@
     {
       "source": "已完成 {count} 个订阅搜索",
       "target": "Completed searches for {count} subscriptions"
+    },
+    {
+      "source": "{count} 个订阅已经在搜索中，无需重复提交",
+      "target": "{count} subscriptions are already being searched. No need to submit again"
+    },
+    {
+      "source": "已安排 {queued} 个订阅搜索，另有 {ongoing} 个正在处理中",
+      "target": "Scheduled searches for {queued} subscriptions; {ongoing} are already being processed"
+    },
+    {
+      "source": "已安排 {count} 个订阅搜索，系统会依次处理",
+      "target": "Scheduled searches for {count} subscriptions. They will be processed in order"
     },
     {
       "source": "请输入至少一个有效的订阅 ID",
@@ -1422,6 +1445,10 @@
       "target": "Subscription search ({index}/{total}) completed"
     },
     {
+      "source": "为了避免连续访问站点，约 {seconds} 秒后继续搜索 ...",
+      "target": "To avoid repeated site requests, search will continue in about {seconds} seconds ..."
+    },
+    {
       "source": "开始刷新订阅，共 {count} 个订阅 ...",
       "target": "Starting subscription refresh, {count} subscriptions ..."
     },
@@ -1432,6 +1459,18 @@
     {
       "source": "正在匹配订阅（{index}/{total}）{name} ...",
       "target": "Matching subscription ({index}/{total}) {name} ..."
+    },
+    {
+      "source": "资源整理完成，开始检查 {count} 个订阅 ...",
+      "target": "Resource organization complete. Checking {count} subscriptions ..."
+    },
+    {
+      "source": "正在检查订阅（{index}/{total}）{name} ...",
+      "target": "Checking subscription ({index}/{total}) {name} ..."
+    },
+    {
+      "source": "已检查订阅（{index}/{total}）",
+      "target": "Checked subscription ({index}/{total})"
     },
     {
       "source": "开始更新订阅元数据，共 {count} 个订阅 ...",

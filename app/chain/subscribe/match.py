@@ -85,14 +85,11 @@ def _release_match_admission(
     subscription_id: int,
     summary: MatchExecutionSummary,
 ) -> None:
-    """释放 Match 订阅准入，并让 token 冲突即时可见。"""
+    """结束当前订阅资源检查，并记录未能恢复的状态。"""
     if admission.release(lease):
         return
     summary.release_failures += 1
-    logger.error(
-        "订阅准入释放失败: operation=match "
-        f"subscription_id={subscription_id} run_id={summary.run_id}"
-    )
+    logger.error(f"订阅 {subscription_id} 的搜索状态没有正常恢复，系统稍后会继续检查")
 
 
 def _report_match_finished(
@@ -102,13 +99,13 @@ def _report_match_finished(
     """按实际计数发布 Match 最终进度。"""
     if not progress_callback:
         return
-    final_text = "订阅资源匹配完成"
+    final_text = "订阅资源检查完成"
     if summary.finished < summary.total:
-        final_text = "订阅资源匹配已停止，部分订阅未执行"
+        final_text = "订阅资源检查已停止，部分订阅这次未检查"
     elif summary.failed:
-        final_text = "订阅资源匹配完成，部分订阅失败"
+        final_text = "订阅资源检查结束，部分订阅没有完成"
     elif summary.skipped:
-        final_text = "订阅资源匹配完成，部分订阅跳过"
+        final_text = "订阅资源检查完成，部分订阅这次未检查"
     _report_match_progress(progress_callback, summary, value=100, text=final_text)
 
 
@@ -234,7 +231,7 @@ def _prepare_subscription_match(
     try:
         meta = build_subscribe_meta(subscribe)
     except ValueError:
-        logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
+        logger.error(f"订阅《{subscribe.name}》的媒体类型不受支持，暂时无法检查资源")
         return None
     domains = owner.site_repository.get_domains_by_ids(subscribe.sites) if subscribe.sites else []
     sub_sites = owner.get_sub_sites(subscribe)
@@ -337,12 +334,12 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         该入口保持订阅刷新、定时任务和插件调用的稳定签名，具体匹配流程由内部阶段执行。
         """
         if not torrents:
-            logger.warn("没有缓存资源，无法匹配订阅")
+            logger.warn("当前没有可检查的订阅资源")
             if progress_callback:
-                progress_callback(value=100, text="没有缓存资源，跳过订阅匹配")
+                progress_callback(value=100, text="当前没有可检查的订阅资源")
             return
         if progress_callback:
-            progress_callback(value=0, text="正在预处理订阅资源 ...")
+            progress_callback(value=0, text="正在整理订阅资源 ...")
         return self._run_match(
             torrents=torrents,
             progress_callback=progress_callback,
@@ -360,13 +357,13 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         :param progress_callback: 订阅匹配进度更新回调
         """
         if not torrents:
-            logger.warn("没有缓存资源，无法匹配订阅")
+            logger.warn("当前没有可检查的订阅资源")
             if progress_callback:
-                progress_callback(value=100, text="没有缓存资源，跳过订阅匹配")
+                progress_callback(value=100, text="当前没有可检查的订阅资源")
             return
 
         if progress_callback:
-            progress_callback(value=0, text="正在预处理订阅资源 ...")
+            progress_callback(value=0, text="正在整理订阅资源 ...")
 
         lock_acquired = False
         summary = MatchExecutionSummary.from_candidates(torrents)
@@ -390,7 +387,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     progress_callback,
                     summary,
                     value=20,
-                    text=f"资源预处理完成，开始匹配 {total_num} 个订阅 ...",
+                    text=f"资源整理完成，开始检查 {total_num} 个订阅 ...",
                 )
             try:
                 for index, listed_subscribe in enumerate(subscribes, start=1):
@@ -401,7 +398,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                             progress_callback,
                             summary,
                             value=20 + ((index - 1) / total_num * 80 if total_num else 80),
-                            text=(f"正在匹配订阅（{index}/{total_num}）{listed_subscribe.name} ..."),
+                            text=(f"正在检查订阅（{index}/{total_num}）{listed_subscribe.name} ..."),
                             current=listed_subscribe.id,
                         )
                     outcome: Optional[str] = "skipped"
@@ -413,7 +410,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     )
                     if lease is None:
                         reason = "admission_conflict"
-                        logger.debug(f"订阅 {listed_subscribe.name} 正在由其他通道处理，本轮匹配已跳过")
+                        logger.debug(f"订阅 {listed_subscribe.name} 正在处理中，本次不再重复检查资源")
                     else:
                         current_subscribe = None
                         execution_context = SubscriptionExecutionContext(
@@ -424,14 +421,12 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         try:
                             current_subscribe = self.subscription_repository.get(listed_subscribe.id)
                             if current_subscribe is None:
-                                logger.debug(f"订阅 {listed_subscribe.id} 已不存在，本轮匹配跳过")
+                                logger.debug(f"订阅 {listed_subscribe.id} 已删除，本次不再检查资源")
                             elif current_subscribe.state not in {"R", "P"}:
-                                logger.debug(
-                                    f"订阅 {current_subscribe.name} 当前状态为 {current_subscribe.state}，本轮匹配跳过"
-                                )
+                                logger.debug(f"订阅 {current_subscribe.name} 当前不需要检查资源，本次跳过")
                             elif execution_context.should_stop():
                                 reason = _match_stop_reason(execution_context)
-                                logger.debug(f"订阅 {current_subscribe.name} 已取消或超时，本轮匹配跳过")
+                                logger.debug(f"订阅 {current_subscribe.name} 的资源检查已停止")
                             else:
                                 outcome = self._match_subscription(
                                     subscribe=current_subscribe,
@@ -444,14 +439,14 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         except SubscriptionSearchCancelled as err:
                             outcome = "skipped"
                             reason = _match_stop_reason(execution_context) or "cancelled"
-                            logger.debug(f"订阅 {listed_subscribe.name} 匹配已取消：{str(err)}")
+                            logger.debug(f"订阅 {listed_subscribe.name} 的资源检查已停止：{str(err)}")
                         except Exception as err:
                             outcome = "failed"
                             reason = "error"
                             subscribe_name = (
                                 current_subscribe.name if current_subscribe is not None else listed_subscribe.name
                             )
-                            logger.error(f"订阅 {subscribe_name} 匹配失败：{str(err)}", exc_info=True)
+                            logger.error(f"订阅 {subscribe_name} 检查资源时出错：{str(err)}", exc_info=True)
                         finally:
                             _release_match_admission(
                                 self._subscription_execution_admission,
@@ -464,7 +459,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         progress_callback,
                         summary,
                         value=20 + (summary.finished / total_num * 80 if total_num else 80),
-                        text=(f"订阅匹配（{index}/{total_num}）处理完成"),
+                        text=(f"已检查订阅（{index}/{total_num}）"),
                     )
             finally:
                 processed_torrents.clear()
@@ -477,7 +472,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                 logger.info(summary.finish_log())
             if lock_acquired:
                 self._match_lock.release()
-                logger.debug(f"match Lock released at {datetime.now()}")
+                logger.debug(f"订阅资源检查已结束：{datetime.now()}")
 
     def _match_subscription(
         self,

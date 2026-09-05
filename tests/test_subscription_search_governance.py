@@ -82,6 +82,7 @@ def _chain(tmp_path, subscribes: list[SubscriptionSnapshot]):
     chain._match_lock = _ForbiddenLock()
     chain._search_queue_lock = threading.Lock()
     chain._subscription_execution_admission = SubscriptionExecutionAdmission()
+    chain.messagehelper = Mock()
     return chain
 
 
@@ -179,11 +180,9 @@ def test_successful_sites_remain_available_to_next_due_subscription(tmp_path, mo
 
     assert calls == [(40, 11), (40, 12), (41, 11), (41, 12)]
     assert chain.get_search_batch(batch_id).state == "completed"
-    assert "sites=2" in info_logs[-1]
-    assert "site_requests=4" in info_logs[-1]
-    assert "site_failures=0" in info_logs[-1]
-    assert "site_cooldown_skips=0" in info_logs[-1]
-    assert "candidates=4" in info_logs[-1]
+    assert "访问 2 个站点" in info_logs[-1]
+    assert "发出 4 次请求" in info_logs[-1]
+    assert "找到 4 个资源" in info_logs[-1]
 
 
 def test_fallback_queue_executes_without_match_global_lock(tmp_path, monkeypatch):
@@ -280,12 +279,12 @@ def test_site_budget_conflict_requeues_task_without_batch_failure(tmp_path, monk
         assert task.state == "queued"
         assert task.phase == "waiting_site_budget"
         assert task.available_at == retry_at
-        assert task.last_error is None
+        assert task.last_error == "站点暂时忙，系统会自动继续搜索"
     assert chain.subscription_search_repository.claim_next(owner="worker-after-retry") is None
 
 
-def test_search_logs_one_bounded_start_and_finish_summary(tmp_path, monkeypatch):
-    """Search INFO 只保留轮次摘要，并携带任务终态与耗时字段。"""
+def test_search_logs_one_readable_start_and_finish_summary(tmp_path, monkeypatch):
+    """Search INFO 只保留用户能直接读懂的开始和结束摘要。"""
     subscribes = [_subscribe(50), _subscribe(51)]
     chain = _chain(tmp_path, subscribes)
     _make_tasks_ready(monkeypatch)
@@ -305,19 +304,14 @@ def test_search_logs_one_bounded_start_and_finish_summary(tmp_path, monkeypatch)
 
     assert batch_id
     assert len(info_logs) == 2
-    assert info_logs[0].startswith("订阅治理轮次开始: operation=search ")
-    assert f"batch_id={batch_id}" in info_logs[0]
-    assert "subscriptions=2" in info_logs[0]
-    assert info_logs[1].startswith("订阅治理轮次结束: operation=search ")
-    assert "state=failed" in info_logs[1]
-    assert "processed=2" in info_logs[1]
-    assert "task_completed=1" in info_logs[1]
-    assert "task_failed=1" in info_logs[1]
-    assert "admission_conflicts=0" in info_logs[1]
-    assert "ttl_timeouts=0" in info_logs[1]
-    assert "site_requests=0" in info_logs[1]
-    assert "duration_ms=" in info_logs[1]
-    assert "订阅成功" not in "\n".join(info_logs)
+    assert info_logs[0] == "开始订阅定时检查，共 2 个订阅。"
+    assert info_logs[1].startswith("订阅定时检查结束：部分订阅没有完成。")
+    assert "本次处理 2/2 个" in info_logs[1]
+    assert "完成 1 个" in info_logs[1]
+    assert "失败 1 个" in info_logs[1]
+    assert "发出 0 次请求" in info_logs[1]
+    assert "用时 " in info_logs[1]
+    assert "operation=" not in "\n".join(info_logs)
 
 
 def test_search_logs_subscription_admission_release_failure(tmp_path, monkeypatch):
@@ -343,8 +337,8 @@ def test_search_logs_subscription_admission_release_failure(tmp_path, monkeypatc
     with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
         chain.search(state="R")
 
-    assert any("订阅准入释放失败: operation=search subscription_id=52" in item for item in error_logs)
-    assert "release_failures=1" in info_logs[-1]
+    assert any("订阅《治理电影 52》的搜索状态没有正常恢复" in item for item in error_logs)
+    assert "另有 1 个搜索状态没有正常恢复" in info_logs[-1]
 
 
 def test_queued_search_logs_failed_finish_summary_when_callback_raises(tmp_path, monkeypatch):
@@ -361,9 +355,7 @@ def test_queued_search_logs_failed_finish_summary_when_callback_raises(tmp_path,
         )
 
     assert len(info_logs) == 2
-    assert info_logs[-1].startswith("订阅治理轮次结束: operation=search ")
-    assert "state=failed" in info_logs[-1]
-    assert "round_failed=1" in info_logs[-1]
+    assert info_logs[-1].startswith("订阅定时检查结束：部分订阅没有完成。")
 
 
 def test_resume_search_logs_failed_finish_summary_when_drain_raises(tmp_path, monkeypatch):
@@ -380,11 +372,8 @@ def test_resume_search_logs_failed_finish_summary_when_drain_raises(tmp_path, mo
     with pytest.raises(RuntimeError, match="claim failed"):
         chain.resume_search_queue()
 
-    assert len(info_logs) == 2
-    assert info_logs[-1].startswith("订阅治理轮次结束: operation=search ")
-    assert "source=resume" in info_logs[-1]
-    assert "state=failed" in info_logs[-1]
-    assert "round_failed=1" in info_logs[-1]
+    assert len(info_logs) == 1
+    assert info_logs[-1].startswith("等待中的订阅搜索结束：部分订阅没有完成。")
 
 
 def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp_path, monkeypatch):
@@ -457,10 +446,9 @@ def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp
     assert batch.failed_count == 1
     assert "Flaky" in batch.last_error
     assert "HTTP 429" in batch.last_error
-    assert "sites=2" in info_logs[-1]
-    assert "site_requests=2" in info_logs[-1]
-    assert "site_failures=1" in info_logs[-1]
-    assert "cooldown_seconds=900.0" in info_logs[-1]
+    assert "失败 1 个" in info_logs[-1]
+    assert "访问 2 个站点" in info_logs[-1]
+    assert "发出 2 次请求" in info_logs[-1]
 
 
 def test_same_subscription_conflict_is_skipped_without_waiting(tmp_path, monkeypatch):
@@ -487,10 +475,114 @@ def test_same_subscription_conflict_is_skipped_without_waiting(tmp_path, monkeyp
     assert batch.state == "skipped"
     assert batch.finished_count == 0
     assert batch.skipped_count == 1
-    assert batch.last_error == "同一订阅正在由其他通道处理，本轮搜索已跳过"
-    assert "task_skipped=1" in info_logs[-1]
-    assert "admission_conflicts=1" in info_logs[-1]
+    assert batch.last_error == "这个订阅正在处理，本次自动检查无需重复执行"
+    assert "这次未搜索 1 个" in info_logs[-1]
     assert chain._subscription_execution_admission.release(match_lease) is True
+
+
+def test_manual_search_waits_for_same_subscription_then_continues(tmp_path, monkeypatch):
+    """手动搜索遇到同一订阅正在处理时应稍后自动继续，而不是结束为跳过。"""
+    subscribe = _subscribe(61)
+    chain = _chain(tmp_path, [subscribe])
+    _make_tasks_ready(monkeypatch)
+    process = Mock(return_value=subscribe)
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+    match_lease = chain._subscription_execution_admission.try_acquire(
+        subscription_id=subscribe.id,
+        operation="match",
+        ttl_seconds=60,
+    )
+    assert match_lease is not None
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(sid=subscribe.id, state=None, manual=True)
+
+    batch = chain.get_search_batch(batch_id)
+    assert batch.state == "queued"
+    process.assert_not_called()
+    with chain.subscription_search_repository._session_factory() as session:
+        task = session.query(SubscriptionSearchTask).filter_by(
+            subscription_id=subscribe.id,
+        ).one()
+        assert task.phase == "waiting_subscription"
+        assert task.last_error == "这个订阅正在处理，结束后会自动继续搜索"
+        task.available_at = "1970-01-01T00:00:00+00:00"
+        session.commit()
+
+    assert chain._subscription_execution_admission.release(match_lease) is True
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        chain.resume_search_queue(limit=1)
+
+    process.assert_called_once()
+    assert chain.get_search_batch(batch_id).state == "completed"
+
+
+def test_recent_new_subscription_is_scheduled_instead_of_skipped(tmp_path, monkeypatch):
+    """新订阅的一分钟编辑窗口应保留任务并在到时后自动继续。"""
+    subscribe = replace(
+        _subscribe(62),
+        state="N",
+        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    chain = _chain(tmp_path, [subscribe])
+    _make_tasks_ready(monkeypatch)
+    process = Mock(side_effect=AssertionError("编辑等待期内不应开始搜索"))
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(state="N")
+
+    batch = chain.get_search_batch(batch_id)
+    assert batch.state == "queued"
+    assert batch.skipped_count == 0
+    with chain.subscription_search_repository._session_factory() as session:
+        task = session.query(SubscriptionSearchTask).filter_by(
+            subscription_id=subscribe.id,
+        ).one()
+        assert task.phase == "scheduled"
+        assert task.last_error == "订阅刚刚创建，保存好设置后会自动开始搜索"
+        assert task.available_at > datetime.now(timezone.utc).isoformat(timespec="seconds")
+    process.assert_not_called()
+
+
+def test_new_subscription_post_commit_creates_scheduled_search(tmp_path):
+    """订阅保存后应立即写入自动搜索计划，无需等待五分钟扫描。"""
+    subscribe = replace(
+        _subscribe(64),
+        state="N",
+        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    chain = _chain(tmp_path, [subscribe])
+
+    batch_id = chain._SubscribeChain__queue_new_subscription_search(subscribe.id)
+
+    assert batch_id
+    assert chain.get_search_batch(batch_id).state == "queued"
+    with chain.subscription_search_repository._session_factory() as session:
+        task = session.query(SubscriptionSearchTask).filter_by(
+            subscription_id=subscribe.id,
+        ).one()
+        assert task.source == "new"
+        assert task.phase == "scheduled"
+        assert task.available_at > datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def test_manual_search_bypasses_new_subscription_edit_wait(tmp_path, monkeypatch):
+    """用户主动点击搜索时不受新订阅编辑等待时间限制。"""
+    subscribe = replace(
+        _subscribe(63),
+        date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    chain = _chain(tmp_path, [subscribe])
+    _make_tasks_ready(monkeypatch)
+    process = Mock(return_value=subscribe)
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(sid=subscribe.id, state=None, manual=True)
+
+    process.assert_called_once()
+    assert chain.get_search_batch(batch_id).state == "completed"
 
 
 def test_paused_subscription_is_skipped_after_admission_refresh(tmp_path, monkeypatch):
@@ -511,7 +603,7 @@ def test_paused_subscription_is_skipped_after_admission_refresh(tmp_path, monkey
     assert batch.state == "skipped"
     assert batch.finished_count == 0
     assert batch.skipped_count == 1
-    assert batch.last_error == "订阅已暂停，本轮搜索已跳过"
+    assert batch.last_error == "订阅已暂停，这次没有搜索"
 
 
 def test_cleanup_failures_cannot_leak_subscription_admission(tmp_path, monkeypatch):
@@ -699,9 +791,8 @@ def test_ttl_expiry_after_normal_return_marks_task_and_batch_failed(tmp_path, mo
     assert batch.finished_count == 0
     assert batch.failed_count == 1
     assert batch.cancelled_count == 0
-    assert batch.last_error == "订阅执行已超过协作截止时间"
-    assert "task_failed=1" in info_logs[-1]
-    assert "ttl_timeouts=1" in info_logs[-1]
+    assert batch.last_error == "这次搜索用时过长，已停止，可稍后重试"
+    assert "失败 1 个" in info_logs[-1]
 
 
 def test_ttl_expiry_after_download_started_completes_with_actual_result(tmp_path, monkeypatch):
@@ -758,4 +849,4 @@ def test_site_budget_ttl_expiry_marks_task_and_batch_failed(tmp_path, monkeypatc
     assert batch.finished_count == 0
     assert batch.failed_count == 1
     assert batch.cancelled_count == 0
-    assert batch.last_error == "订阅执行已超过协作截止时间"
+    assert batch.last_error == "这次搜索用时过长，已停止，可稍后重试"

@@ -556,9 +556,13 @@ class SubscribeOper(DbOper):
             )
         return candidates
 
-    async def list_search_ids(self, username: str, state: str) -> List[int]:
-        """返回用户指定状态的订阅编号，不向应用用例暴露 ORM 列表。"""
-        subscribes = await self.async_list_by_username(username, state=state)
+    async def list_search_ids(self, username: Optional[str], state: str) -> List[int]:
+        """返回用户或管理员全局范围内指定状态的订阅编号。"""
+        subscribes = (
+            await self.async_list_by_username(username, state=state)
+            if username is not None
+            else await self.async_list(state=state)
+        )
         return [subscribe.id for subscribe in subscribes if subscribe.id]
 
     def get_by(

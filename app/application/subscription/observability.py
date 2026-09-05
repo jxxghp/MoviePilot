@@ -16,30 +16,73 @@ from app.application.subscription.sitebudget import SubscriptionSiteBudgetMetric
 
 SearchTaskOutcome = Literal["completed", "skipped", "failed", "cancelled", "requeued"]
 
+_SEARCH_SOURCE_NAMES = {
+    "manual": "手动订阅搜索",
+    "targeted": "指定订阅搜索",
+    "new": "新订阅自动搜索",
+    "fallback": "订阅定时检查",
+    "resume": "等待中的订阅搜索",
+    "inline": "订阅搜索",
+}
+
+_SEARCH_STATE_NAMES = {
+    "completed": "已完成",
+    "failed": "部分订阅没有完成",
+    "cancelled": "已停止",
+    "skipped": "部分订阅这次未搜索",
+    "queued": "部分订阅稍后继续",
+    "running": "仍在处理中",
+    "cancelling": "正在停止",
+    "stopped": "部分订阅稍后继续",
+}
+
+_MATCH_STATE_NAMES = {
+    "completed": "检查完成",
+    "failed": "部分订阅没有完成",
+    "cancelled": "已停止",
+    "skipped": "部分订阅这次未检查",
+    "stopped": "已停止，部分订阅这次未检查",
+}
+
+
+def _search_source_name(source: str) -> str:
+    """返回搜索来源对应的可读名称。"""
+    return _SEARCH_SOURCE_NAMES.get(source, "订阅搜索")
+
+
+def _search_state_name(state: str) -> str:
+    """返回搜索结束状态对应的可读说明。"""
+    return _SEARCH_STATE_NAMES.get(state, "已结束")
+
+
+def _match_state_name(state: str) -> str:
+    """返回订阅资源检查状态对应的可读说明。"""
+    return _MATCH_STATE_NAMES.get(state, "已结束")
+
 
 def batch_progress_text(batch: Optional[SearchBatchSnapshot]) -> str:
     """把批次聚合终态转为兼容进度文案。"""
     if batch is None:
-        return "订阅搜索任务已提交"
+        return "搜索已安排"
     if batch.state == "failed":
-        return "订阅搜索完成，部分任务失败"
+        return "搜索结束，部分订阅没有完成"
     if batch.state == "cancelled":
-        return "订阅搜索已取消"
+        return "搜索已停止"
     if batch.state == "skipped":
-        return "订阅搜索完成，部分任务本轮已跳过"
+        return "搜索结束，部分订阅这次未搜索"
     if batch.state in {"queued", "running", "cancelling"}:
-        return "订阅搜索任务已排队"
+        return "搜索已安排，系统正在依次处理"
     if batch.skipped_count:
-        return "订阅搜索完成，部分任务本轮已跳过"
-    return "订阅搜索完成"
+        return "搜索结束，部分订阅这次未搜索"
+    return "搜索完成"
 
 
 def inline_search_result(total: int, finished: int) -> tuple[str, dict[str, int]]:
     """返回兼容搜索的真实终态文案与计数。"""
     text = (
-        "订阅搜索完成"
+        "搜索完成"
         if finished == total
-        else "订阅搜索结束，部分订阅本轮未执行或未完成"
+        else "搜索结束，部分订阅这次没有完成"
     )
     return text, {"total": total, "finished": finished}
 
@@ -77,14 +120,14 @@ def finish_returned_search_task(
                 task_id=task_id,
                 lease_token=lease_token,
                 state="completed",
-                error="执行截止时间晚于下载提交边界，已按实际结果完成",
+                error="下载已经提交，虽然搜索用时较长，结果仍然有效",
             )
             return subscription_id, "completed", "ttl_timeout"
         queue.finish_task(
             task_id=task_id,
             lease_token=lease_token,
             state="failed",
-            error="订阅执行已超过协作截止时间",
+            error="这次搜索用时过长，已停止，可稍后重试",
         )
         return None, "failed", "ttl_timeout"
     if system_stopped:
@@ -93,7 +136,7 @@ def finish_returned_search_task(
                 task_id=task_id,
                 lease_token=lease_token,
                 state="completed",
-                error="停机请求晚于下载提交边界，已按实际结果完成",
+                error="下载已经提交，系统停止后仍保留这次结果",
             )
             return subscription_id, "completed", "system_stop"
         queue.release_task(task_id=task_id, lease_token=lease_token)
@@ -104,7 +147,7 @@ def finish_returned_search_task(
                 task_id=task_id,
                 lease_token=lease_token,
                 state="completed",
-                error="取消请求晚于下载提交边界，已按实际结果完成",
+                error="下载已经提交，无法撤回，已保留这次结果",
             )
             return subscription_id, "completed", "cancelled"
         queue.release_task(task_id=task_id, lease_token=lease_token, cancelled=True)
@@ -173,26 +216,31 @@ class MatchExecutionSummary:
         return "completed"
 
     def start_log(self) -> str:
-        """构造 Match 轮次开始日志。"""
+        """构造不暴露内部标记的资源检查开始日志。"""
         return (
-            "订阅治理轮次开始: operation=match "
-            f"run_id={self.run_id} subscriptions={self.total} "
-            f"sites={self.site_count} candidates={self.candidate_count}"
+            f"开始检查订阅资源，共 {self.total} 个订阅、{self.candidate_count} 个资源，"
+            f"来自 {self.site_count} 个站点。"
         )
 
     def finish_log(self) -> str:
-        """构造 Match 轮次结束日志，completed 表示任务处理完成而非订阅成功。"""
-        elapsed_ms = (time.perf_counter() - self.started_at) * 1000
-        return (
-            "订阅治理轮次结束: operation=match "
-            f"run_id={self.run_id} state={self.state} subscriptions={self.total} "
-            f"processed={self.finished} task_completed={self.completed} "
-            f"task_skipped={self.skipped} task_failed={self.failed} "
-            f"admission_conflicts={self.admission_conflicts} cancelled={self.cancelled} "
-            f"ttl_timeouts={self.ttl_timeouts} release_failures={self.release_failures} "
-            f"sites={self.site_count} candidates={self.candidate_count} "
-            f"duration_ms={elapsed_ms:.1f}"
+        """构造可直接阅读的资源检查结束日志。"""
+        elapsed_seconds = time.perf_counter() - self.started_at
+        message = (
+            f"订阅资源检查结束：{_match_state_name(self.state)}。"
+            f"本次检查 {self.finished}/{self.total} 个订阅，完成 {self.completed} 个，"
+            f"这次未检查 {self.skipped} 个，失败 {self.failed} 个；"
+            f"共检查 {self.candidate_count} 个资源，来自 {self.site_count} 个站点，"
+            f"用时 {elapsed_seconds:.1f} 秒。"
         )
+        if self.admission_conflicts:
+            message += f"其中 {self.admission_conflicts} 个订阅正在处理中，本次没有重复检查。"
+        if self.cancelled:
+            message += f"另有 {self.cancelled} 个订阅已停止。"
+        if self.ttl_timeouts:
+            message += f"另有 {self.ttl_timeouts} 个订阅检查时间过长，已停止。"
+        if self.release_failures:
+            message += f"另有 {self.release_failures} 个订阅的搜索状态没有正常恢复，系统稍后会继续检查。"
+        return message
 
     def as_data(self, current: Optional[int] = None) -> dict[str, int]:
         """构造供进度消费者读取的实际计数。"""
@@ -256,15 +304,14 @@ class SearchExecutionSummary:
             self.ttl_timeouts += 1
 
     def start_log(self) -> str:
-        """构造 Search 轮次开始日志。"""
-        return (
-            "订阅治理轮次开始: operation=search "
-            f"run_id={self.run_id} batch_id={self.batch_id or '-'} source={self.source} "
-            f"subscriptions={self.requested} coalesced={self.coalesced}"
-        )
+        """构造不暴露内部术语的 Search 开始日志。"""
+        message = f"开始{_search_source_name(self.source)}，共 {self.requested} 个订阅"
+        if self.coalesced:
+            message += f"，其中 {self.coalesced} 个已经在处理中"
+        return f"{message}。"
 
     def finish_log(self, batch: Optional[SearchBatchSnapshot] = None) -> str:
-        """构造 Search 轮次结束日志，任务完成与订阅完成保持分离。"""
+        """构造可直接阅读的 Search 结束日志。"""
         sites = self.site_metrics.snapshot()
         if self.round_failed:
             state = "failed"
@@ -282,19 +329,16 @@ class SearchExecutionSummary:
             state = "skipped"
         else:
             state = "completed"
-        elapsed_ms = (time.perf_counter() - self.started_at) * 1000
-        return (
-            "订阅治理轮次结束: operation=search "
-            f"run_id={self.run_id} batch_id={self.batch_id or '-'} source={self.source} "
-            f"state={state} subscriptions={self.requested} processed={self.processed} "
-            f"task_completed={self.completed} task_skipped={self.skipped} "
-            f"task_failed={self.failed} task_cancelled={self.cancelled} task_requeued={self.requeued} "
-            f"admission_conflicts={self.admission_conflicts} cancelled={self.cancelled} "
-            f"ttl_timeouts={self.ttl_timeouts} consumer_conflicts={self.consumer_conflicts} "
-            f"round_failed={int(self.round_failed)} "
-            f"sites={sites.site_count} site_requests={sites.request_count} "
-            f"site_failures={sites.failure_count} site_cooldown_skips={sites.cooldown_skip_count} "
-            f"candidates={sites.candidate_count} cooldown_seconds={sites.cooldown_seconds:.1f} "
-            f"release_failures={self.release_failures + sites.release_failure_count} "
-            f"duration_ms={elapsed_ms:.1f}"
+        elapsed_seconds = time.perf_counter() - self.started_at
+        message = (
+            f"{_search_source_name(self.source)}结束：{_search_state_name(state)}。"
+            f"本次处理 {self.processed}/{self.requested} 个，完成 {self.completed} 个，"
+            f"这次未搜索 {self.skipped} 个，失败 {self.failed} 个，"
+            f"稍后继续 {self.requeued} 个，已停止 {self.cancelled} 个；"
+            f"访问 {sites.site_count} 个站点，发出 {sites.request_count} 次请求，"
+            f"找到 {sites.candidate_count} 个资源，用时 {elapsed_seconds:.1f} 秒。"
         )
+        unfinished_cleanup = self.release_failures + sites.release_failure_count
+        if unfinished_cleanup:
+            message += f"另有 {unfinished_cleanup} 个搜索状态没有正常恢复，系统稍后会继续处理。"
+        return message

@@ -83,6 +83,7 @@ class SessionSubscriptionExecutionStatusRepository:
         """返回最近更新的批次，访问范围由应用服务依据任务校验。"""
         result = await self._session.execute(
             select(SubscriptionSearchBatch)
+            .where(SubscriptionSearchBatch.total_count > 0)
             .order_by(
                 SubscriptionSearchBatch.updated_at.desc(),
                 SubscriptionSearchBatch.id.desc(),

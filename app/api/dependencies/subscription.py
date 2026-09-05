@@ -42,7 +42,10 @@ from app.application.subscription.mutation import (
     SubscriptionMutationService,
 )
 from app.application.subscription.query import SubscriptionQueryService
-from app.application.subscription.search import SearchSubscriptionsCommand
+from app.application.subscription.search import (
+    SearchSubscriptionsCommand,
+    SubscriptionSearchSubmission,
+)
 from app.application.subscription.status import (
     SubscriptionExecutionReadRepository,
     SubscriptionExecutionStatusService,
@@ -120,24 +123,14 @@ def get_delete_subscriptions_by_identity_command(
     )
 
 
-def _start_subscription_search_batch(
-    subscribe_ids: tuple[int, ...] | None,
-    state: str | None,
+def _resume_submitted_subscription_search(
+    subscribe_ids: tuple[int, ...],
 ) -> None:
-    """把一个请求的搜索目标作为同一调度任务提交。"""
-    if subscribe_ids is None:
-        start_scheduler_job(
-            "subscribe_search",
-            sid=None,
-            state=state,
-            manual=True,
-        )
-        return
+    """唤醒搜索队列，并优先处理本次手工选择的订阅。"""
     start_scheduler_job(
-        "subscribe_search",
-        sids=subscribe_ids,
-        state=None,
-        manual=True,
+        "subscribe_search_queue",
+        limit=max(1, len(subscribe_ids)),
+        manual_sids=subscribe_ids,
     )
 
 
@@ -146,23 +139,40 @@ def get_search_subscriptions_command(
     db: AsyncSession = Depends(get_async_session),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> SearchSubscriptionsCommand:
-    """组装手工订阅搜索用例，并把调度延迟到响应后的后台任务。"""
+    """组装手工搜索用例，请求内只入队，实际搜索交给后台继续。"""
 
-    def schedule_search(
-        subscribe_ids: tuple[int, ...] | None,
-        state: str | None,
-    ) -> None:
-        """把当前用户的搜索目标提交为一个顺序后台批次。"""
-        resolve_background_task_registry(task_registry).create_sync(
-            _start_subscription_search_batch,
+    registry = resolve_background_task_registry(task_registry)
+    search_repository = get_subscription_search_repository(runtime)
+
+    async def submit_search(
+        subscribe_ids: tuple[int, ...],
+        single: bool,
+    ) -> SubscriptionSearchSubmission:
+        """在线程 owner 中完成轻量入队，并返回前端可立即跟踪的批次。"""
+        enqueue_task = registry.create_sync(
+            search_repository.enqueue,
+            subscription_ids=subscribe_ids,
+            source="manual",
+            priority=120 if single else 100,
+            owner="api.subscribe.search.enqueue",
+        )
+        enqueued = await enqueue_task
+        registry.create_sync(
+            _resume_submitted_subscription_search,
             subscribe_ids,
-            state,
-            owner="api.subscribe.search",
+            owner="api.subscribe.search.run",
+        )
+        return SubscriptionSearchSubmission(
+            batch_ids=enqueued.active_batch_ids,
+            target_count=len(subscribe_ids),
+            queued_count=enqueued.created_count,
+            ongoing_count=enqueued.coalesced_count,
+            single=single,
         )
 
     return SearchSubscriptionsCommand(
         repository=runtime.subscription.repository(db),
-        schedule_search=schedule_search,
+        submit_search=submit_search,
     )
 
 

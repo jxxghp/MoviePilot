@@ -463,6 +463,7 @@ SCHEMA_EXPORTS = {
     'SubscriptionBatchStatus': ('app.schemas.subscribe', 'SubscriptionBatchStatus'),
     'SubscriptionExecutionStatus': ('app.schemas.subscribe', 'SubscriptionExecutionStatus'),
     'SubscriptionMessage': ('app.schemas.message', 'SubscriptionMessage'),
+    'SubscriptionSearchSubmission': ('app.schemas.subscribe', 'SubscriptionSearchSubmission'),
     'SubtitleDownloadData': ('app.schemas.download', 'SubtitleDownloadData'),
     'SubtitleInfo': ('app.schemas.search', 'SubtitleInfo'),
     'SystemEnvironmentUpdateData': ('app.schemas.system', 'SystemEnvironmentUpdateData'),

@@ -35,6 +35,7 @@ def _repository(tmp_path):
 def test_site_budget_allows_one_inflight_per_site_and_independent_sites(tmp_path):
     """同站点第二个调用必须等待，不同站点可立即并行。"""
     repository, _engine = _repository(tmp_path)
+    before_retry = datetime.now(timezone.utc)
 
     first = repository.claim_site(site_id=1, owner="worker-a", lease_seconds=900)
     same_site = repository.claim_site(site_id=1, owner="worker-b", lease_seconds=900)
@@ -43,6 +44,8 @@ def test_site_budget_allows_one_inflight_per_site_and_independent_sites(tmp_path
     assert first.acquired is True
     assert same_site.acquired is False
     assert same_site.lease_token is None
+    assert same_site.wait_reason == "busy"
+    assert datetime.fromisoformat(same_site.retry_at) <= before_retry + timedelta(seconds=11)
     assert other_site.acquired is True
 
 

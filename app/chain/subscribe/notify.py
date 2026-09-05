@@ -18,6 +18,7 @@ from app.domain.context import (
     MediaInfo,
 )
 from app.domain.meta.metabase import MetaBase
+from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.schemas.common import JsonData
 from app.schemas.message import Message as _SchemaMessage
@@ -143,6 +144,13 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
             },
         )
         try:
+            self._SubscribeChain__queue_new_subscription_search(subscribe_id)
+        except Exception as error:
+            logger.warning(
+                "订阅已保存，但自动搜索暂时没有安排成功，"
+                f"系统会在下一次检查时重试：{error}"
+            )
+        try:
             report_delivered = _subscription_share_snapshot().report_added(
                 self._SubscribeChain__subscribe_report_payload(context)
             )
@@ -177,6 +185,16 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
                 "mediainfo": context.mediainfo.to_dict(),
             },
         )
+        try:
+            await run_in_threadpool(
+                self._SubscribeChain__queue_new_subscription_search,
+                subscribe_id,
+            )
+        except Exception as error:
+            logger.warning(
+                "订阅已保存，但自动搜索暂时没有安排成功，"
+                f"系统会在下一次检查时重试：{error}"
+            )
         try:
             report_delivered = await _subscription_share_snapshot().async_report_added(
                 self._SubscribeChain__subscribe_report_payload(context)

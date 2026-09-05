@@ -653,8 +653,19 @@ class TestSubscribeEndpoint:
         普通用户批量搜索把用户身份交给应用命令。
         """
         from app.api.endpoints.subscribe import search_subscribes
+        from app.application.subscription.search import SubscriptionSearchSubmission
 
-        command = SimpleNamespace(execute=AsyncMock(return_value=True))
+        command = SimpleNamespace(
+            execute=AsyncMock(
+                return_value=SubscriptionSearchSubmission(
+                    batch_ids=("batch-1",),
+                    target_count=2,
+                    queued_count=1,
+                    ongoing_count=1,
+                    single=False,
+                )
+            )
+        )
         response = asyncio.run(
             search_subscribes(
                 command=command,
@@ -663,6 +674,8 @@ class TestSubscribeEndpoint:
         )
 
         assert response.success
+        assert response.message == "已安排 1 个订阅搜索，另有 1 个正在处理中"
+        assert response.data.queued_count == 1
         command.execute.assert_awaited_once()
         actor = command.execute.await_args.args[0]
         assert actor.username == "alice"

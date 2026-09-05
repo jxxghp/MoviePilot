@@ -32,7 +32,7 @@ async def _accessible_subscription_ids(
 
 @router.get(  # type: ignore[misc]
     "/execution/batches",
-    summary="查询订阅搜索批次状态",
+    summary="查看订阅搜索进度",
     response_model=List[_SchemaSubscriptionBatchStatus],
 )
 async def list_subscription_execution_batches(
@@ -52,7 +52,7 @@ async def list_subscription_execution_batches(
 
 @router.get(  # type: ignore[misc]
     "/execution/batches/{batch_id}",
-    summary="查询订阅搜索批次",
+    summary="查看一次订阅搜索",
     response_model=_SchemaSubscriptionBatchStatus,
 )
 async def get_subscription_execution_batch(
@@ -68,13 +68,13 @@ async def get_subscription_execution_batch(
         accessible_subscription_ids=accessible_ids,
     )
     if batch is None:
-        raise HTTPException(status_code=404, detail="订阅搜索批次不存在")
+        raise HTTPException(status_code=404, detail="没有找到这次搜索，请刷新后重试")
     return _SchemaSubscriptionBatchStatus.model_validate(batch)
 
 
 @router.put(  # type: ignore[misc]
     "/execution/batches/{batch_id}/cancel",
-    summary="取消订阅搜索批次",
+    summary="停止一次订阅搜索",
     response_model=_SchemaResponse[None],
 )
 async def cancel_subscription_execution_batch(
@@ -90,9 +90,9 @@ async def cancel_subscription_execution_batch(
         accessible_subscription_ids=accessible_ids,
     )
     if batch is None:
-        return _SchemaResponse(success=False, message="订阅搜索批次不存在")
+        return _SchemaResponse(success=False, message="没有找到这次搜索，请刷新后重试")
     cancelled = await status_service.request_cancel(batch_id)
     return _SchemaResponse(
         success=bool(cancelled),
-        message="" if cancelled else "订阅搜索批次已结束或无法取消",
+        message="" if cancelled else "这次搜索已经结束，暂时无法停止",
     )

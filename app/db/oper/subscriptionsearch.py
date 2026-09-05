@@ -31,7 +31,7 @@ class SubscriptionSearchOper(DbOper):
         source: str,
         priority: int,
         available_at_by_subscription: Optional[Mapping[int, str]],
-    ) -> tuple[SubscriptionSearchBatch, int, int]:
+    ) -> tuple[SubscriptionSearchBatch, int, int, tuple[str, ...]]:
         """创建批次，并以活动键合并同一订阅的重叠搜索入口。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索入队需要调用方提供同步 Session")
@@ -49,12 +49,18 @@ class SubscriptionSearchOper(DbOper):
         self._db.flush()
         created = 0
         coalesced = 0
+        active_batch_ids: list[str] = []
         for position, subscription_id in enumerate(dict.fromkeys(subscription_ids)):
             active_key = f"subscription:{subscription_id}"
             available_at = (
                 available_at_by_subscription.get(subscription_id, now)
                 if available_at_by_subscription
                 else now
+            )
+            initial_phase = (
+                "scheduled"
+                if source == "new" and available_at > now
+                else "queued"
             )
             task = SubscriptionSearchTask(
                 task_id=uuid4().hex,
@@ -65,7 +71,7 @@ class SubscriptionSearchOper(DbOper):
                 priority=priority,
                 position=position,
                 state="queued",
-                phase="queued",
+                phase=initial_phase,
                 available_at=available_at,
                 created_at=now,
                 updated_at=now,
@@ -77,14 +83,30 @@ class SubscriptionSearchOper(DbOper):
                 created += 1
             except IntegrityError:
                 coalesced += 1
+                promote_queued_task = and_(
+                    SubscriptionSearchTask.priority < priority,
+                    SubscriptionSearchTask.state == "queued",
+                )
                 execute_dml(
                     self._db,
                     update(SubscriptionSearchTask)
                     .where(SubscriptionSearchTask.active_key == active_key)
                     .values(
+                        source=case(
+                            (SubscriptionSearchTask.priority < priority, source),
+                            else_=SubscriptionSearchTask.source,
+                        ),
                         priority=case(
                             (SubscriptionSearchTask.priority < priority, priority),
                             else_=SubscriptionSearchTask.priority,
+                        ),
+                        phase=case(
+                            (promote_queued_task, "queued"),
+                            else_=SubscriptionSearchTask.phase,
+                        ),
+                        last_error=case(
+                            (promote_queued_task, None),
+                            else_=SubscriptionSearchTask.last_error,
                         ),
                         available_at=case(
                             (
@@ -100,11 +122,20 @@ class SubscriptionSearchOper(DbOper):
                     ),
                     execution_options={"synchronize_session": False},
                 )
+                active_task = self._db.execute(
+                    select(SubscriptionSearchTask).where(
+                        SubscriptionSearchTask.active_key == active_key
+                    )
+                ).scalars().first()
+                if active_task is not None:
+                    active_batch_ids.append(active_task.batch_id)
         batch.total_count = created
         if created == 0:
             batch.state = "completed"
             batch.finished_at = now
-        return batch, created, coalesced
+        else:
+            active_batch_ids.insert(0, batch.batch_id)
+        return batch, created, coalesced, tuple(dict.fromkeys(active_batch_ids))
 
     def claim_next(self, *, owner: str, lease_seconds: int) -> Optional[SubscriptionSearchTask]:
         """使用 CAS 认领最高优先级任务，过期 running 任务可被恢复。"""
@@ -139,6 +170,7 @@ class SubscriptionSearchOper(DbOper):
                 )
                 .order_by(
                     case(
+                        (SubscriptionSearchTask.priority >= 100, 2),
                         (SubscriptionSearchTask.created_at <= fairness_before, 1),
                         else_=0,
                     ).desc(),
@@ -369,8 +401,10 @@ class SubscriptionSearchOper(DbOper):
         task_id: str,
         lease_token: str,
         available_at: str,
+        phase: str,
+        message: Optional[str],
     ) -> bool:
-        """释放当前租约并在站点预算时间到达后恢复同一任务。"""
+        """释放当前租约并在指定时间后按可见原因恢复同一任务。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索延后需要调用方提供同步 Session")
         task = self._db.execute(
@@ -400,7 +434,7 @@ class SubscriptionSearchOper(DbOper):
             )
             .values(
                 state="queued",
-                phase="waiting_site_budget",
+                phase=phase,
                 current_site_id=None,
                 lease_owner=None,
                 lease_token=None,
@@ -408,7 +442,7 @@ class SubscriptionSearchOper(DbOper):
                 available_at=available_at,
                 updated_at=now,
                 finished_at=None,
-                last_error=None,
+                last_error=message,
             ),
             execution_options={"synchronize_session": False},
         )

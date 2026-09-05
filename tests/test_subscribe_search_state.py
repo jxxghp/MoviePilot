@@ -175,7 +175,7 @@ def test_subscribe_search_aborts_when_lock_times_out(monkeypatch) -> None:
     subscribe_oper.assert_not_called()
     progress.assert_called_once_with(
         value=100,
-        text="订阅搜索锁等待超时，已跳过本轮",
+        text="订阅搜索正在处理中，本次不再重复开始",
     )
 
 
@@ -265,7 +265,7 @@ def test_inline_search_conflict_does_not_report_false_completion(monkeypatch) ->
 
     assert progress.call_args.kwargs == {
         "value": 100,
-        "text": "订阅搜索结束，部分订阅本轮未执行或未完成",
+        "text": "搜索结束，部分订阅这次没有完成",
         "data": {"total": 1, "finished": 0},
     }
     assert chain._subscription_execution_admission.release(match_lease) is True
@@ -279,4 +279,4 @@ def test_subscribe_match_aborts_when_lock_times_out(monkeypatch) -> None:
     chain = object.__new__(SubscribeChain)
     chain.match({"example.org": []}, progress_callback=progress)
 
-    progress.assert_any_call(value=100, text="订阅匹配锁等待超时，已跳过本轮")
+    progress.assert_any_call(value=100, text="订阅资源检查正在进行，本次不再重复开始")
