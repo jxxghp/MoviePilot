@@ -21,7 +21,9 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import (
     music_artist_matches,
     music_base_title,
+    music_isrc_matches,
     music_text_key,
+    music_title_matches,
     music_titles,
     music_version_matches,
     unique_music_texts,
@@ -1092,6 +1094,8 @@ class MusicBrainzModule(_ModuleBase):
             return None
         if plan.music_type and cached_info.music_type != plan.music_type:
             return None
+        if cached_info.media_id and not music_isrc_matches(cached_info, meta) and not music_version_matches(cached_info, meta):
+            return None
         if cached_info.media_id:
             logger.info(f"{meta.title} 使用音乐识别缓存：{cached_info.title}")
         else:
@@ -1223,7 +1227,7 @@ class MusicBrainzModule(_ModuleBase):
         for candidate in candidates:
             if normalized_source and str(candidate.media_source or "").casefold() != normalized_source:
                 continue
-            if meta.isrc and cls._same_text(meta.isrc, candidate.isrc):
+            if music_isrc_matches(candidate, meta):
                 # 相同 ISRC 是明确录音身份，不能被另一条纯标题命中的得分压过。
                 return candidate
             score = 0
@@ -1237,7 +1241,7 @@ class MusicBrainzModule(_ModuleBase):
             elif (
                 bare_title
                 and artist_match
-                and any(cls._same_text(bare_title, music_base_title(title)) for title in titles)
+                and music_title_matches(candidate, clean_title)
             ):
                 score += 2
                 title_match = True

@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8259,
-  "edge_sha256": "a380bbd37ee23f66e7195b0c143b4d5b2a25b17254c18946789b45174ec2eb92",
+  "edge_count": 8261,
+  "edge_sha256": "062c4385a99cd29502ce65387bda0f768399c824f293db9b2d90e108f8c340b3",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -6214,6 +6214,7 @@
     "app.modules.douban -> app.domain.meta.metabase",
     "app.modules.douban -> app.domain.meta.metamusic",
     "app.modules.douban -> app.domain.metainfo",
+    "app.modules.douban -> app.domain.music",
     "app.modules.douban -> app.foundation",
     "app.modules.douban -> app.foundation.text",
     "app.modules.douban -> app.modules",
@@ -7228,6 +7229,7 @@
     "app.modules.theaudiodb -> app.domain.meta",
     "app.modules.theaudiodb -> app.domain.meta.metabase",
     "app.modules.theaudiodb -> app.domain.meta.metamusic",
+    "app.modules.theaudiodb -> app.domain.music",
     "app.modules.theaudiodb -> app.modules",
     "app.modules.theaudiodb -> app.runtime",
     "app.modules.theaudiodb -> app.runtime.cache",

@@ -10,6 +10,7 @@ from app.domain.context import (
 from app.domain.media import is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
+from app.domain.music import music_artist_matches, music_isrc_matches, music_title_matches, music_version_matches
 from app.modules import _ModuleBase
 from app.runtime.cache import cached
 from app.runtime.log import logger
@@ -483,9 +484,9 @@ class TheAudioDbModule(_ModuleBase):
 
     @staticmethod
     def _album_search_params(meta: MetaMusic) -> Optional[dict[str, str]]:
-        """从音乐元数据归一化专辑搜索参数。"""
+        """专辑查询优先使用专辑署名，不把合辑中的单曲表演者当作专辑艺人。"""
         album_name = meta.album or meta.title
-        artist = meta.artists[0] if meta.artists else meta.album_artist
+        artist = meta.album_artist or (meta.artists[0] if meta.artists else None)
         if not album_name or not artist:
             return None
         return {"a": album_name, "s": artist}
@@ -511,41 +512,37 @@ class TheAudioDbModule(_ModuleBase):
             for item in self._entities(payload, "artists", "artist")
         ]
 
-    @classmethod
+    @staticmethod
     def _select_track(
-            cls,
             meta: MetaMusic,
             candidates: list[MusicInfo],
     ) -> Optional[MusicInfo]:
-        """按曲名和可用艺术家线索选择可信单曲候选。"""
+        """复用统一音乐证据确认单曲，明确 ISRC 优先于名称候选。"""
+        identity = next((candidate for candidate in candidates if music_isrc_matches(candidate, meta)), None)
+        if identity is not None:
+            return identity
         for candidate in candidates:
-            if not cls._same_text(meta.title, candidate.title):
+            if not music_title_matches(candidate, meta.title, preserve_editions=True) or not music_version_matches(candidate, meta):
                 continue
-            if meta.artists and not any(
-                cls._same_text(expected, actual)
-                for expected in meta.artists
-                for actual in candidate.artists
-            ):
+            if meta.artists and not music_artist_matches(candidate, meta.artists):
                 continue
             return candidate
         return None
 
-    @classmethod
+    @staticmethod
     def _select_album(
-            cls,
             meta: MetaMusic,
             candidates: list[MusicAlbumInfo],
     ) -> Optional[MusicAlbumInfo]:
-        """按专辑名和可用艺术家线索选择可信专辑候选。"""
+        """将来源专辑投影到统一音乐模型，按专辑名、专辑署名与版本确认。"""
         expected_title = meta.album or meta.title
+        expected_artists = [meta.album_artist] if meta.album_artist else meta.artists
+        album_meta = MetaMusic(title=expected_title, version=meta.version)
         for candidate in candidates:
-            if not cls._same_text(expected_title, candidate.title):
+            music = candidate.to_music_info()
+            if not music_title_matches(music, expected_title, preserve_editions=True) or not music_version_matches(music, album_meta):
                 continue
-            if meta.artists and not any(
-                cls._same_text(expected, actual)
-                for expected in meta.artists
-                for actual in candidate.artists
-            ):
+            if expected_artists and not music_artist_matches(music, expected_artists):
                 continue
             return candidate
         return None
@@ -589,6 +586,7 @@ class TheAudioDbModule(_ModuleBase):
             metadata_category=" / ".join(genres),
             genres=genres,
             names=cls._unique_texts([title, item.get("strTrackAlternate")]),
+            title_aliases=cls._unique_texts([item.get("strTrackAlternate")]),
             detail_link=f"{cls._detail_url}/track/{media_id}",
             raw_data={
                 "musicbrainz_id": cls._text(item.get("strMusicBrainzID")),
@@ -874,8 +872,3 @@ class TheAudioDbModule(_ModuleBase):
             seen.add(identity)
             results.append(text)
         return results
-
-    @staticmethod
-    def _same_text(left: Optional[str], right: Optional[str]) -> bool:
-        """使用音乐元数据紧凑文本规则比较标题和艺术家。"""
-        return bool(left and right and MetaMusic.compact_text(left) == MetaMusic.compact_text(right))

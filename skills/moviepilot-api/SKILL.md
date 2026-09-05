@@ -170,6 +170,10 @@ Call the gateway with this shape:
   Explicit subtitle versions participate in matching. A track's `album` field
   does not prove whole-album coverage, even without a track number; keep
   `partial_album` candidates out of automatic downloads.
+- TheAudioDB and Douban Music use the same name, artist, and version evidence
+  rules. Album lookup uses the album credit without replacing the track's
+  performer. Conflicting explicit recording dates are version mismatches;
+  missing dates alone do not reject a candidate.
 
 ## Operation Catalog
 

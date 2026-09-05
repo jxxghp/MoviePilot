@@ -531,3 +531,25 @@ def test_shared_recognition_replaces_entity_scoped_negative_cache(async_mode):
     assert result is True
     assert cache.get(meta, music_type="recording").media_id == "rec-1"
     assert cache.get(meta).media_id == "rec-1"
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+@pytest.mark.parametrize("isrc_identity", [False, True])
+def test_cached_recording_rechecks_explicit_version_conflicts(monkeypatch, async_mode, isrc_identity):
+    """旧正缓存不能绕过版本冲突确认；已核验的同一 ISRC 则保留身份优先级。"""
+    cache = _build_music_cache({})
+    module = _build_module_with_cache(cache)
+    isrc = "USABC2600001" if isrc_identity else None
+    meta = MetaMusic(title="Example Work", artists=["Artist"], version="Live 2001-05-02", isrc=isrc)
+    cached = _music_info(title="Example Work", artists=["Artist"], version="Live 2001-05-03", isrc=isrc)
+    fresh = _music_info(title="Example Work", artists=["Artist"], version=meta.version, media_id="fresh")
+    cache.update(meta, cached, music_type="recording")
+    monkeypatch.setattr(module, "_search_recordings", Mock(return_value=[fresh]))
+    monkeypatch.setattr(module, "_async_search_recordings", AsyncMock(return_value=[fresh]))
+    if async_mode:
+        result = asyncio.run(module.async_recognize_media(meta=meta, music_type="recording"))
+        assert module._async_search_recordings.await_count == (0 if isrc_identity else 1)
+    else:
+        result = module.recognize_media(meta=meta, music_type="recording")
+        assert module._search_recordings.call_count == (0 if isrc_identity else 1)
+    assert result.media_id == (cached.media_id if isrc_identity else fresh.media_id)

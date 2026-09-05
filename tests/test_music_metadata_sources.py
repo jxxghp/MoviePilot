@@ -6,8 +6,9 @@ import pytest
 
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
-from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
+from app.domain.context import MUSIC_ENTITY_ALBUM, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
+from app.domain.music import match_music_resource
 from app.modules.douban import DoubanModule
 from app.modules.theaudiodb import TheAudioDbModule
 from app.schemas.types import MediaRecognizeType, MediaSource, MediaType
@@ -46,6 +47,157 @@ def test_theaudiodb_module_maps_track_and_album(monkeypatch):
     assert results[0].album_id == "2109619"
     assert results[0].duration == 269
     assert module.get_subtype() == MediaRecognizeType.TheAudioDB
+
+
+def _selected_music_candidate(source, music_type, meta, candidate):
+    """使用各来源真实确认入口，保留专辑与曲目各自的数据结构。"""
+    if source == MediaSource.TheAudioDB:
+        if music_type == "recording":
+            return TheAudioDbModule._select_track(meta, [candidate])
+        album = MusicAlbumInfo.from_dict(candidate.to_dict())
+        return TheAudioDbModule._select_album(meta, [album])
+    if music_type == "recording":
+        return DoubanModule._select_douban_music_track(meta, MusicAlbumInfo(tracks=[candidate]))
+    candidates = DoubanModule._matching_music_candidates(meta, [candidate])
+    plan = DoubanModule._music_recognition_plan(meta, source, None, "album")
+    return DoubanModule._direct_music_candidate(plan, candidates[0]) if candidates else None
+
+
+@pytest.mark.parametrize("source", [MediaSource.TheAudioDB, MediaSource.DoubanMusic])
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+@pytest.mark.parametrize("title,artists,candidate_title,candidate_artists", [
+    ("永遠是朋友", ["周華健"], "永远是朋友", ["周华健"]),
+    ("Example Work", ["AC", "DC"], "Example Work", ["AC/DC"]),
+    ("Example Work", ["Beyonce"], "Example Work", ["Beyoncé"]),
+    ("Fine Day", ["Jay Chou"], "晴天", ["周杰倫"]),
+])
+def test_alternate_sources_share_music_name_and_artist_rules(source, music_type, title, artists,
+                                                             candidate_title, candidate_artists):
+    """备选来源确认同样支持繁简、变音符、复合艺名和来自同一实体的可信别名。"""
+    meta = MetaMusic(title=title, artists=artists)
+    candidate = MusicInfo(media_source=source, media_id="candidate", music_type=music_type,
+                          title=candidate_title, artists=candidate_artists,
+                          title_aliases=["Fine Day"], artist_aliases=["Jay Chou"])
+    result = _selected_music_candidate(source, music_type, meta, candidate)
+    assert result and result.media_id == "candidate"
+
+
+@pytest.mark.parametrize("source", [MediaSource.TheAudioDB, MediaSource.DoubanMusic])
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+@pytest.mark.parametrize("candidate_title,matched", [
+    ("Example Work", False), ("Example Work (Live)", True), ("Ｅｘａｍｐｌｅ　Ｗｏｒｋ（Ｌｉｖｅ）", True),
+])
+def test_alternate_sources_verify_recording_versions(source, music_type, candidate_title, matched):
+    """标题中的版本与独立版本字段可以互认，但现场版不能被确认成普通录音。"""
+    meta = MetaMusic(title="Example Work", artists=["Artist"], version="Live")
+    candidate = MusicInfo(media_source=source, media_id="candidate", music_type=music_type,
+                          title=candidate_title, artists=["Artist"])
+    assert bool(_selected_music_candidate(source, music_type, meta, candidate)) is matched
+
+
+@pytest.mark.parametrize("source", [MediaSource.TheAudioDB, MediaSource.DoubanMusic])
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+@pytest.mark.parametrize("requested,candidate_title", [
+    ("Example Work (Deluxe Edition)", "Example Work"),
+    ("Example Work", "Example Work (Deluxe Edition)"),
+    ("Example Work (Live Deluxe Edition)", "Example Work (Live)"),
+])
+def test_alternate_sources_keep_existing_edition_boundaries(source, music_type, requested, candidate_title):
+    """共用录音版本规则时不能放宽备选来源原有的发行版名称约束。"""
+    candidate = MusicInfo(media_source=source, media_id="candidate", music_type=music_type,
+                          title=candidate_title, artists=["Artist"])
+    meta = MetaMusic(title=requested, artists=["Artist"])
+    assert _selected_music_candidate(source, music_type, meta, candidate) is None
+
+
+def test_theaudiodb_preserves_source_track_alias_for_all_matching():
+    """TheAudioDB 已提供的曲名别名应同时用于元数据确认和资源搜索匹配。"""
+    candidate = TheAudioDbModule._track_to_info({
+        "idTrack": "1", "strTrack": "晴天", "strTrackAlternate": "Fine Day", "strArtist": "Artist",
+    })
+    assert candidate.title_aliases == ["Fine Day"]
+    assert TheAudioDbModule._select_track(MetaMusic(title="Fine Day", artists=["Artist"]), [candidate]) is candidate
+    assert match_music_resource(candidate, "Artist - Fine Day FLAC").status == "exact"
+
+
+def test_theaudiodb_album_query_and_matching_use_album_artist():
+    """合辑的专辑艺人用于专辑检索和确认，单曲查询则保持独立表演者署名。"""
+    meta = MetaMusic(title="Song", artists=["Performer"], album="Sampler", album_artist="Various Artists")
+    album = MusicAlbumInfo(title="Sampler", artists=["Various Artists"])
+    assert TheAudioDbModule._track_search_params(meta) == {"t": "Song", "s": "Performer"}
+    assert TheAudioDbModule._album_search_params(meta) == {"a": "Sampler", "s": "Various Artists"}
+    assert TheAudioDbModule._select_album(meta, [album]) is album
+
+
+def test_theaudiodb_isrc_identity_precedes_title_matches():
+    """明确的 ISRC 录音身份必须优先于首条同名候选。"""
+    meta = MetaMusic(title="Song", artists=["Artist"], isrc="USABC2600001")
+    first = MusicInfo(title="Song", artists=["Artist"], media_source="theaudiodb", media_id="wrong")
+    exact = MusicInfo(title="Alternate Name", artists=["Other Credit"], media_source="theaudiodb",
+                      media_id="correct", isrc="USABC2600001")
+    assert TheAudioDbModule._select_track(meta, [first, exact]) is exact
+
+
+def test_theaudiodb_placeholder_isrc_does_not_override_music_evidence():
+    """外部数据中的相同 ISRC 占位值不能让另一首作品抢占正确候选。"""
+    meta = MetaMusic(title="Song", artists=["Artist"], isrc="N/A")
+    first = MusicInfo(title="Other Song", artists=["Other Artist"], isrc="N/A")
+    correct = MusicInfo(title="Song", artists=["Artist"])
+    assert TheAudioDbModule._select_track(meta, [first, correct]) is correct
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", [MediaSource.TheAudioDB, MediaSource.DoubanMusic])
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+@pytest.mark.parametrize("async_mode", [False, True])
+async def test_alternate_source_entrypoints_select_the_matching_version(source, music_type, async_mode):
+    """同步异步入口都跳过首条普通版本，并从真实响应投影中确认后续现场版本。"""
+    meta = MetaMusic(title="Example Work", artists=["Artist"], version="Live")
+    if music_type == "album":
+        meta.album = meta.title
+    if source == MediaSource.TheAudioDB:
+        module = TheAudioDbModule()
+        payload = {
+            "track": [{"idTrack": "wrong", "strTrack": "Example Work", "strArtist": "Artist"},
+                      {"idTrack": "right", "strTrack": "Example Work (Live)", "strArtist": "Artist"}],
+            "album": [{"idAlbum": "wrong", "strAlbum": "Example Work", "strArtist": "Artist"},
+                      {"idAlbum": "right", "strAlbum": "Example Work (Live)", "strArtist": "Artist"}],
+        }
+        module._request_json = Mock(return_value=payload)
+        module._async_request_json = AsyncMock(return_value=payload)
+        expected_id = "right"
+    else:
+        module = DoubanModule()
+        if music_type == "recording":
+            meta.album = "Sampler"
+            search = {"items": [{"id": "parent", "title": "Sampler", "artists": [{"name": "Artist"}]}]}
+            expected_id = "parent:2"
+        else:
+            search = {"items": [
+                {"id": "wrong", "title": "Example Work", "artists": [{"name": "Artist"}]},
+                {"id": "right", "title": "Example Work (Live)", "artists": [{"name": "Artist"}]},
+            ]}
+            expected_id = "right"
+        detail = {"id": "parent", "title": "Sampler", "artists": [{"name": "Artist"}],
+                  "songs": [{"title": "Example Work"}, {"title": "Example Work (Live)"}]}
+        module.doubanapi = Mock(
+            music_search=Mock(return_value=search), music_detail=Mock(return_value=detail),
+            async_music_search=AsyncMock(return_value=search), async_music_detail=AsyncMock(return_value=detail),
+        )
+    if async_mode:
+        result = await module.async_recognize_media(meta=meta, media_source=source, music_type=music_type)
+    else:
+        result = module.recognize_media(meta=meta, media_source=source, music_type=music_type)
+    assert result and result.media_id == expected_id
+    assert result.music_type == music_type
+    if source == MediaSource.TheAudioDB:
+        assert module._request_json.call_count == (0 if async_mode else 1)
+        assert module._async_request_json.await_count == (1 if async_mode else 0)
+    else:
+        assert module.doubanapi.music_search.call_count == (0 if async_mode else 1)
+        assert module.doubanapi.async_music_search.await_count == (1 if async_mode else 0)
+        assert module.doubanapi.music_detail.call_count == (1 if not async_mode and music_type == "recording" else 0)
+        assert module.doubanapi.async_music_detail.await_count == (1 if async_mode and music_type == "recording" else 0)
 
 
 def test_theaudiodb_module_ignores_other_sources(monkeypatch):
@@ -374,6 +526,29 @@ def test_douban_music_recognize_expands_album_to_matching_track(monkeypatch):
     assert result and result.music_type == "recording"
     assert result.media_id == "1401853:2"
     assert result.album == "范特西"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("async_mode", [False, True])
+async def test_douban_compilation_lookup_preserves_performer_evidence(async_mode):
+    """先按合辑署名确认所属专辑，再按实际表演者确认曲目，不用合辑署名覆盖单曲。"""
+    module = DoubanModule()
+    search_result = {"items": [{"id": "1", "title": "Sampler", "artists": [{"name": "Various Artists"}]}]}
+    detail = {"id": "1", "title": "Sampler", "artists": [{"name": "Various Artists"}],
+              "songs": [{"title": "Song", "artist_names": ["Performer"]}]}
+    module.doubanapi = Mock(
+        music_search=Mock(return_value=search_result), music_detail=Mock(return_value=detail),
+        async_music_search=AsyncMock(return_value=search_result), async_music_detail=AsyncMock(return_value=detail),
+    )
+    meta = MetaMusic(title="Song", artists=["Performer"], album="Sampler", album_artist="Various Artists")
+    if async_mode:
+        result = await module.async_recognize_media(meta=meta, media_source=MediaSource.DoubanMusic,
+                                                     music_type="recording")
+    else:
+        result = module.recognize_media(meta=meta, media_source=MediaSource.DoubanMusic, music_type="recording")
+    assert result and result.media_id == "1:1"
+    assert result.artists == ["Performer"]
+    assert meta.artists == ["Performer"]
 
 
 def test_douban_music_mapping_keeps_legacy_attrs_tracks():

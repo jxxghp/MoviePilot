@@ -13,7 +13,7 @@ from app.domain.context import Context, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.runtime import get_metainfo_accelerator
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.domain.music import match_music_resource
+from app.domain.music import match_music_resource, music_isrc_matches, music_version_matches
 from app.schemas.music import MusicMeta
 from app.schemas.types import MediaType
 
@@ -132,6 +132,45 @@ def test_resource_title_version_has_priority_over_subtitle():
     """标题版本已有明确证据时，冲突副标题不能覆盖；艺人字段也不是版本声明。"""
     assert MetaMusic.parse_resource("U2 - One (Live) FLAC", "版本：Remix").version == "Live"
     assert MetaMusic.parse_resource("Song FLAC", "艺术家：Live").version is None
+
+
+@pytest.mark.parametrize("expected,actual,matched", [
+    ("Live 1999", "Live 2000", False),
+    ("Live 1999-01-02", "Live 1999.01.03", False),
+    ("Live 1999-01-02", "Live 1999/1/2", True),
+    ("Live 1999", "Live 1999-01-02", True),
+    ("Live", "Live 1999", True),
+    ("Live 1999", "Live", True),
+    ("mix 1999", "mix 2000", False),
+    ("Live 1999-02-31", "Live 1999-03-01", True),
+    ("Ｌｉｖｅ １９９９－０１－０２", "Live 1999-01-02", True),
+    ("Live 1999年1月2日", "Live 1999-01-03", False),
+    ("Live 1999-2001", "Live 2000", True),
+    ("Live 1999-01-01 to 1999-01-03", "Live 1999-01-02", True),
+])
+def test_music_version_checks_only_explicit_conflicting_dates(expected, actual, matched):
+    """同类录音的明确日期或年份冲突仍须排除；缺失、部分日期或非法日期不能凭空补全。"""
+    target = MusicInfo(title="1999", artists=["Artist"], version=expected)
+    meta = MetaMusic(title="1999", artists=["Artist"], version=actual)
+    assert music_version_matches(target, meta) is matched
+
+
+def test_music_resource_rejects_different_dated_live_recording():
+    """版本日期可来自标题括号，不将两场同名现场录音自动绑定成同一作品。"""
+    target = MusicInfo(title="Song (Live 2001-05-02)", artists=["Artist"])
+    assert match_music_resource(target, "Artist - Song (Live 2001-05-03) FLAC").reason == "version_mismatch"
+
+
+@pytest.mark.parametrize("code", [None, "", "Unknown", "N/A", "0", "---", "USABC260001", "UŚABC2600001"])
+def test_invalid_isrc_cannot_be_strong_identity(code):
+    """空值、占位值与格式错误不能因为文本相同而绕过名称和版本匹配。"""
+    assert music_isrc_matches(MusicInfo(isrc=code), MetaMusic(isrc=code)) is False
+
+
+@pytest.mark.parametrize("code", ["USABC2600001", "us-abc-26-00001", "ISRC US-ABC-26-00001"])
+def test_valid_isrc_accepts_standard_display_format(code):
+    """标准代码、大小写和用于展示的前缀分隔格式应指向同一录音身份。"""
+    assert music_isrc_matches(MusicInfo(isrc="USABC2600001"), MetaMusic(isrc=code)) is True
 
 
 @pytest.mark.parametrize("mtype,suffix", [(MediaType.MUSIC, " FLAC"), (None, ".flac")])
