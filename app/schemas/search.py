@@ -5,14 +5,14 @@ from typing import Literal, Union
 from pydantic import BaseModel, Field
 
 from app.schemas.common import JsonData
-from app.schemas.context import SubtitleInfo, TorrentInfo
+from app.schemas.context import Context, SubtitleInfo
 
 
 class SearchLastContextData(BaseModel):
     """上一次搜索的请求参数与结果。"""
 
     params: dict[str, JsonData] = Field(default_factory=dict)
-    results: list[Union[TorrentInfo, SubtitleInfo]] = Field(default_factory=list)
+    results: list[Union[Context, SubtitleInfo]] = Field(default_factory=list)
 
 
 class SearchRecommendStatusData(BaseModel):
