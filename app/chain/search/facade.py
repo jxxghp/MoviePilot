@@ -52,17 +52,8 @@ class SearchChain(ChainBase):
         """仅为订阅搜索启用或清除站点预算，不影响其它搜索入口。"""
         self._subscription_site_budget = budget
         self._subscription_site_budget_failures: list[str] = []
-        self._subscription_site_budget_successes: set[int] = set()
         self._subscription_site_budget_deferrals: list[SubscriptionSiteBudgetDeferral] = []
         self._subscription_site_budget_failure_lock = threading.Lock()
-
-    def record_subscription_site_budget_success(self, site_id: int) -> None:
-        """线程安全地记录一个已正常完成真实请求的站点。"""
-        lock = getattr(self, "_subscription_site_budget_failure_lock", None)
-        if lock is None:
-            return
-        with lock:
-            self._subscription_site_budget_successes.add(site_id)
 
     def record_subscription_site_budget_failure(self, error: str) -> None:
         """线程安全地记录一个站点执行失败，供订阅任务判断轮次终态。"""
@@ -72,20 +63,16 @@ class SearchChain(ChainBase):
         with lock:
             self._subscription_site_budget_failures.append(error)
 
-    def consume_subscription_site_budget_failures(
-        self,
-        *,
-        has_results: bool = False,
-    ) -> tuple[str, ...]:
+    def consume_subscription_site_budget_failures(self, *, has_results: bool = False) -> tuple[str, ...]:
         """仅在没有成功搜索源时返回并清空本轮站点聚合失败。"""
         lock = getattr(self, "_subscription_site_budget_failure_lock", None)
         if lock is None:
             return ()
         with lock:
             failures = tuple(self._subscription_site_budget_failures)
-            has_successful_site = bool(self._subscription_site_budget_successes)
             self._subscription_site_budget_failures.clear()
-            self._subscription_site_budget_successes.clear()
+        budget = getattr(self, "_subscription_site_budget", None)
+        has_successful_site = isinstance(budget, SubscriptionSiteBudget) and budget.has_successful_site()
         return () if has_results or has_successful_site else failures
 
     def record_subscription_site_budget_deferred(

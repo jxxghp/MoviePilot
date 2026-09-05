@@ -186,6 +186,8 @@ class SubscriptionSiteBudget:
         self._clock = clock
         self._phase_changed = phase_changed
         self._metrics = metrics
+        self._outcome_lock = threading.Lock()
+        self._successful_site_ids: set[int] = set()
 
     def acquire(self, site_id: int) -> SiteBudgetClaim:
         """只认领一次指定站点，未就绪时留待下一次正常调度。"""
@@ -216,6 +218,16 @@ class SubscriptionSiteBudget:
         """把真实请求及返回候选数写入轮次聚合器。"""
         if self._metrics:
             self._metrics.record_request(site_id, candidate_count)
+
+    def record_success(self, site_id: int) -> None:
+        """记录一个已正常完成真实请求的站点。"""
+        with self._outcome_lock:
+            self._successful_site_ids.add(site_id)
+
+    def has_successful_site(self) -> bool:
+        """判断本轮是否至少有一个站点正常完成真实请求。"""
+        with self._outcome_lock:
+            return bool(self._successful_site_ids)
 
     def record_release_failure(self) -> None:
         """把站点租约释放异常写入轮次聚合器。"""

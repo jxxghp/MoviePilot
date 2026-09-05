@@ -97,7 +97,6 @@ if TYPE_CHECKING:
         matches_music_resource: Callable[..., Any]
         music_site_keywords: Callable[..., Any]
         process: Callable[..., Any]
-        record_subscription_site_budget_success: Callable[..., Any]
         record_subscription_site_budget_failure: Callable[..., Any]
         consume_subscription_site_budget_failures: Callable[..., Any]
         record_subscription_site_budget_deferred: Callable[..., Any]

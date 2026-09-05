@@ -245,7 +245,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                 budget.record_request(site_id, len(result or []))
                 if observation.attempted:
                     if observation.outcome == "success":
-                        self.record_subscription_site_budget_success(site_id)
+                        budget.record_success(site_id)
                     elif observation.outcome != "skipped":
                         failure = observation.error or observation.outcome
                         message = f"站点 {site.get('name') or site_id} 搜索失败：{failure}"
