@@ -752,7 +752,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         self,
         rule_groups: List[str],
         torrent_list: List[TorrentInfo],
-        mediainfo: MediaInfo = None,
+        mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
     ) -> List[TorrentInfo]:
         """
         过滤种子资源

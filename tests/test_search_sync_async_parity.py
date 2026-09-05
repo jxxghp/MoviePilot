@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from app.chain.search import execution as execution_module
 from app.chain.search import media as media_module
 from app.chain.search import title as title_module
 from app.chain.search.facade import SearchChain
@@ -169,9 +170,9 @@ def test_media_process_sync_async_share_keyword_stop_decision(monkeypatch):
         async_sleeps.append(delay)
 
     monkeypatch.setattr(media_module, "MediaChain", FakeMediaChain)
-    monkeypatch.setattr(media_module.random, "randint", lambda _start, _end: 1)
-    monkeypatch.setattr(media_module.time, "sleep", sync_sleeps.append)
-    monkeypatch.setattr(media_module.asyncio, "sleep", fake_async_sleep)
+    monkeypatch.setattr(execution_module.random, "randint", lambda _start, _end: 1)
+    monkeypatch.setattr(execution_module.time, "sleep", sync_sleeps.append)
+    monkeypatch.setattr(execution_module.asyncio, "sleep", fake_async_sleep)
     chain.runtime_config = SimpleNamespace(search_multiple_name=False)
     chain._copy_media_input = deepcopy
     chain._prepare_params = lambda **_kwargs: (None, ["first", "second", "third"])
@@ -188,46 +189,47 @@ def test_media_process_sync_async_share_keyword_stop_decision(monkeypatch):
     assert sync_result == async_result == [found]
 
 
-def test_keyword_resolution_searches_all_names_when_enabled():
-    """开启多名称搜索时共享状态机应完整执行并稳定聚合各关键字结果。"""
+def test_keyword_resolution_searches_all_names_when_enabled(monkeypatch):
+    """开启多名称搜索时同步、异步共用状态机须完整执行并稳定聚合结果。"""
+    chain = _chain()
+    target = _media()
     first = _torrent("First Result")
     third = _torrent("Third Result")
-    expected = {
-        "first": [first],
-        "second": [],
-        "third": [third],
-    }
-    sync_keywords: list[str] = []
-    async_keywords: list[str] = []
+    results = {"first": [first], "second": [], "third": [third]}
+    sync_keywords = []
+    async_keywords = []
 
-    def execute_sync(request):
-        """记录同步驱动顺序并返回关键字结果。"""
-        sync_keywords.append(request.keyword)
-        return expected[request.keyword]
+    def search(**kwargs):
+        """记录同步站点调用顺序。"""
+        sync_keywords.append(kwargs["keyword"])
+        return results[kwargs["keyword"]]
 
-    async def execute_async(request):
-        """记录异步驱动顺序并返回关键字结果。"""
-        async_keywords.append(request.keyword)
-        return expected[request.keyword]
+    async def async_search(**kwargs):
+        """记录异步站点调用顺序。"""
+        async_keywords.append(kwargs["keyword"])
+        return results[kwargs["keyword"]]
 
-    keywords = ["first", "second", "third"]
-    sync_result = media_module._run_keyword_search_sync(
-        media_module._keyword_search_resolution(keywords, search_multiple_name=True),
-        execute_sync,
-    )
-    async_result = asyncio.run(
-        media_module._run_keyword_search_async(
-            media_module._keyword_search_resolution(
-                keywords, search_multiple_name=True
-            ),
-            execute_async,
-        )
-    )
+    async def supplement(mediainfo):
+        """异步补充步骤在样例中不改变媒体对象。"""
+        return mediainfo
 
-    assert sync_keywords == async_keywords == keywords
-    assert sync_result == async_result
-    assert sync_result.torrents == [first, third]
-    assert sync_result.stopped_early is False
+    async def sleep(_delay):
+        """隔离关键词间隔，不执行实际等待。"""
+
+    provider = SimpleNamespace(supplement_media_info=lambda mediainfo: mediainfo,
+                               async_supplement_media_info=supplement)
+    monkeypatch.setattr(media_module, "MediaChain", lambda: provider)
+    monkeypatch.setattr(execution_module.time, "sleep", lambda _delay: None)
+    monkeypatch.setattr(execution_module.asyncio, "sleep", sleep)
+    chain.runtime_config = SimpleNamespace(search_multiple_name=True)
+    chain._prepare_params = lambda **_kwargs: (None, list(results))
+    chain._SearchChain__search_all_sites = search
+    chain._SearchChain__async_search_all_sites = async_search
+    chain._parse_result = lambda **kwargs: list(kwargs["torrents"])
+
+    assert chain.process(target) == [first, third]
+    assert asyncio.run(chain.async_process(target)) == [first, third]
+    assert sync_keywords == async_keywords == list(results)
 
 
 def test_media_process_stream_shares_keyword_order_and_stop_decision(monkeypatch):
@@ -272,8 +274,8 @@ def test_media_process_stream_shares_keyword_order_and_stop_decision(monkeypatch
         ]
 
     monkeypatch.setattr(media_module, "MediaChain", FakeMediaChain)
-    monkeypatch.setattr(media_module.random, "randint", lambda _start, _end: 1)
-    monkeypatch.setattr(media_module.asyncio, "sleep", fake_async_sleep)
+    monkeypatch.setattr(execution_module.random, "randint", lambda _start, _end: 1)
+    monkeypatch.setattr(execution_module.asyncio, "sleep", fake_async_sleep)
     chain.runtime_config = SimpleNamespace(search_multiple_name=False)
     chain._copy_media_input = deepcopy
     chain._prepare_params = lambda **_kwargs: (None, ["first", "second", "third"])
@@ -282,13 +284,14 @@ def test_media_process_stream_shares_keyword_order_and_stop_decision(monkeypatch
 
     events = asyncio.run(collect_events())
 
-    assert stream_keywords == ["first", "second"]
-    assert sleeps == [1]
+    assert stream_keywords == ["first", "second", "third"]
+    assert sleeps == [1, 1]
     assert parsed == [[found]]
     assert [event["type"] for event in events] == [
         "append",
         "append",
         "progress",
+        "append",
         "replace",
         "done",
     ]

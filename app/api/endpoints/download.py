@@ -25,7 +25,6 @@ from app.chain.media import MediaChain
 from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.domain.media import is_music_media_source, normalize_music_type
 from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.download import DownloadAddedData as _SchemaDownloadAddedData
@@ -162,11 +161,8 @@ def _resolve_add_media(
         )
     if is_music and not normalized_music_type:
         normalized_music_type = MUSIC_ENTITY_RECORDING
-    metainfo = (
-        MetaMusic.parse_query(torrent_in.title)
-        if is_music
-        else MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
-    )
+    metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description,
+                        mtype=MediaType.MUSIC if is_music else None)
     if media_source and media_id:
         mediainfo = MediaChain().recognize_media(
             meta=metainfo,
@@ -232,12 +228,10 @@ def download(
     """
     if isinstance(media_in, _SchemaMusicInfo):
         mediainfo = MusicInfo.from_dict(media_in.model_dump())
-        metainfo = MetaMusic.from_music_info(mediainfo)
-        metainfo.org_string = torrent_in.title
     else:
-        metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description)
         mediainfo = MediaInfo()
         mediainfo.from_dict(media_in.model_dump())
+    metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description, mtype=mediainfo.type)
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())

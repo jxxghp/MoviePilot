@@ -11,8 +11,6 @@ from app.application.configuration import get_configured_system_config
 from app.application.subscription.contract import (
     SubscriptionRepository,
     SubscriptionSnapshot,
-    build_subscribe_meta,
-    subscribe_media_key,
 )
 from app.application.subscription.execution import (
     SearchBatchSnapshot,
@@ -38,14 +36,14 @@ from app.application.subscription.sitebudget import (
 from app.chain.media import MediaChain
 from app.chain.search.facade import SearchChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
-from app.chain.subscribe.identity import subscribe_recognize_kwargs
-from app.chain.subscribe.metadata import apply_subscription_classification
+from app.chain.subscribe.metadata import apply_subscription_classification, prepare_search_target
 from app.chain.subscribe.searchtask import (
     SubscriptionSearchTaskRunner,
     retry_at_after,
 )
 from app.domain.context import (
     MediaInfo,
+    MusicInfo,
 )
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
@@ -679,44 +677,21 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
     def _process_search_subscription(
         self,
         subscribe: SubscriptionSnapshot,
-        searchchain: SearchChain,
+        searchchain: Optional[SearchChain],
         execution_context: Optional[SubscriptionExecutionContext] = None,
     ) -> Optional[SubscriptionSnapshot]:
         """处理单个订阅，并返回下载后重新读取的状态快照。"""
         _ensure_execution_active(execution_context)
         logger.debug(f"开始搜索订阅，标题：{subscribe.name} ...")
-        if subscribe.type == MediaType.MUSIC.value:
-            self._search_music_subscribe(subscribe, execution_context=execution_context)
-            return subscribe
-        try:
-            meta = build_subscribe_meta(subscribe)
-        except ValueError:
-            logger.error(f"订阅《{subscribe.name}》的媒体类型不受支持，暂时无法搜索")
-            return subscribe
-        mediainfo: MediaInfo = MediaChain().recognize_media(
-            meta=meta,
-            mtype=meta.type,
-            **subscribe_recognize_kwargs(subscribe),
-            episode_group=subscribe.episode_group,
-            cache=False,
+        target = prepare_search_target(
+            self, subscribe, MediaChain(), partial(_ensure_execution_active, execution_context),
         )
-        if not mediainfo:
-            logger.warning(
-                f"未识别到媒体信息，标题：{subscribe.name}，"
-                f"媒体来源：{subscribe.media_source}，媒体 ID：{subscribe.media_id}"
-            )
+        if target is None:
             return subscribe
-        _ensure_execution_active(execution_context)
-        mediainfo = apply_subscription_classification(mediainfo, subscribe)
-        mediakey = subscribe_media_key(subscribe)
-        exists, no_exists = self.check_and_handle_existing_media(
-            subscribe=subscribe,
-            meta=meta,
-            mediainfo=mediainfo,
-            mediakey=mediakey,
-        )
-        if exists:
-            return subscribe
+        subscribe, meta, mediainfo = target.subscribe, target.meta, target.media
+        mediakey, no_exists = target.media_key, target.missing
+        if searchchain is None:
+            searchchain = SearchChain()
         rule_key = (
             SystemConfigKey.BestVersionFilterRuleGroups
             if subscribe.best_version
@@ -733,6 +708,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
             area="imdbid" if subscribe.search_imdbid and mediainfo.imdb_id else "title",
             custom_words=subscribe.custom_words.split("\n") if subscribe.custom_words else None,
             filter_params=self.get_params(subscribe),
+            candidate_filter=partial(self._filter_search_contexts, subscribe),
         )
         site_budget_failures = searchchain.consume_subscription_site_budget_failures(
             has_results=bool(contexts),
@@ -751,19 +727,16 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
             )
             raise_subscription_site_budget_failures(site_budget_failures)
             return subscribe
-        matched = self._filter_search_contexts(subscribe, contexts)
-        if not matched:
-            logger.debug(f"订阅 {subscribe.name} 没有符合过滤条件的资源")
-            if not site_budget_failures:
-                raise_subscription_site_budget_deferral(site_budget_deferrals, execution_context)
-            self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, lefts=no_exists)
-            raise_subscription_site_budget_failures(site_budget_failures)
-            return subscribe
         if execution_context:
             execution_context.report_phase("preparing")
         _ensure_execution_active(execution_context)
+        if isinstance(mediainfo, MusicInfo):
+            self._download_music_subscribe(subscribe, mediainfo, contexts, execution_context=execution_context)
+            raise_subscription_site_budget_failures(site_budget_failures)
+            raise_subscription_site_budget_deferral(site_budget_deferrals, execution_context)
+            return cast(Optional[SubscriptionSnapshot], self.subscription_repository.get(subscribe.id))
         downloads, lefts = self._SubscribeChain__download_best_version_with_full_pack_first(
-            contexts=matched,
+            contexts=contexts,
             no_exists=no_exists,
             subscribe=subscribe,
             mediakey=mediakey,
@@ -800,6 +773,10 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
                 torrent_meta = context.meta_info
                 torrent_info = context.torrent_info
                 media = context.media_info
+                if getattr(context, "match_status", None) == "candidate" or media is None:
+                    continue
+                if isinstance(media, MusicInfo) and subscribe.best_version:
+                    torrent_info.pri_order = torrent_info.pri_order or torrent_meta.audio_quality_score
                 if subscribe.best_version and media.type == MediaType.TV:
                     if not self._SubscribeChain__is_full_season_best_version_resource(torrent_meta, subscribe):
                         logger.debug(f"{subscribe.name} 正在全集洗版，{torrent_info.title} 不是全集资源")

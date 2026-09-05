@@ -43,6 +43,8 @@ def normalize_search_params(
     }
     if params.get("music_type"):
         normalized["music_type"] = str(params["music_type"])
+    if str(params.get("include_candidates", "")).casefold() in ("true", "1"):
+        normalized["include_candidates"] = "true"
     return normalized if normalized["keyword"] or media_id else None
 
 
@@ -83,6 +85,7 @@ class SearchStateService:
         sites: Optional[List[int]] = None,
         music_type: Optional[str] = None,
         result_type: Optional[str] = "torrent",
+        include_candidates: bool = False,
     ) -> Optional[Dict[str, str]]:
         """把公开搜索参数构造成可持久化的兼容字典。"""
         return normalize_search_params(
@@ -99,6 +102,7 @@ class SearchStateService:
                 "sites": stringify_sites(sites),
                 "music_type": music_type,
                 "result_type": result_type or "torrent",
+                "include_candidates": include_candidates,
             }
         )
 

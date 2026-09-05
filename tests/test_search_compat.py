@@ -38,6 +38,7 @@ LUNA_PRIVATE_PATCH_POINTS = (
 )
 INTERNAL_EXPORTS = (
     "SearchCacheOwner",
+    "SearchExecutionOwner",
     "SearchMediaOwner",
     "SearchMusicOwner",
     "SearchPaginationOwner",
@@ -62,6 +63,8 @@ EXPECTED_SIGNATURES = {
         ("area", "title"),
         ("custom_words", None),
         ("filter_params", None),
+        ("include_candidates", False),
+        ("candidate_filter", None),
     ),
     "search_by_id": (
         ("self", REQUIRED),
@@ -73,6 +76,7 @@ EXPECTED_SIGNATURES = {
         ("sites", None),
         ("cache_local", False),
         ("music_type", None),
+        ("include_candidates", False),
     ),
     "search_by_title": (
         ("self", REQUIRED),
@@ -93,6 +97,8 @@ EXPECTED_SIGNATURES = {
         ("area", "title"),
         ("custom_words", None),
         ("filter_params", None),
+        ("include_candidates", False),
+        ("candidate_filter", None),
     ),
     "async_search_by_id": (
         ("self", REQUIRED),
@@ -104,6 +110,7 @@ EXPECTED_SIGNATURES = {
         ("sites", None),
         ("cache_local", False),
         ("music_type", None),
+        ("include_candidates", False),
     ),
     "async_search_by_title": (
         ("self", REQUIRED),
@@ -124,6 +131,8 @@ EXPECTED_SIGNATURES = {
         ("area", "title"),
         ("custom_words", None),
         ("filter_params", None),
+        ("include_candidates", False),
+        ("candidate_filter", None),
     ),
     "async_search_by_title_stream": (
         ("self", REQUIRED),

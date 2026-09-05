@@ -428,8 +428,8 @@
     "no-untyped-call": 2
   },
   "app/api/endpoints/download.py": {
-    "arg-type": 7,
-    "assignment": 6,
+    "arg-type": 6,
+    "assignment": 5,
     "attr-defined": 4,
     "misc": 10,
     "type-arg": 2
@@ -860,7 +860,7 @@
     "type-arg": 2
   },
   "app/chain/base.py": {
-    "assignment": 13,
+    "assignment": 12,
     "attr-defined": 1,
     "no-any-return": 47,
     "no-untyped-def": 7,
@@ -983,7 +983,7 @@
     "var-annotated": 2
   },
   "app/chain/subscribe/search.py": {
-    "assignment": 2
+    "assignment": 1
   },
   "app/chain/system.py": {
     "attr-defined": 1,
@@ -998,7 +998,7 @@
     "type-arg": 2
   },
   "app/chain/torrents.py": {
-    "arg-type": 22,
+    "arg-type": 21,
     "assignment": 2,
     "no-untyped-call": 1,
     "no-untyped-def": 15,
@@ -2924,7 +2924,7 @@
     "var-annotated": 1
   },
   "app/workflow/actions/filter_torrents.py": {
-    "arg-type": 3,
+    "arg-type": 2,
     "list-item": 1,
     "no-untyped-call": 1,
     "type-arg": 1,

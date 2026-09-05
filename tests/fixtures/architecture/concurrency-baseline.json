@@ -336,17 +336,9 @@
     },
     "target": "app.runtime.execution.run_in_threadpool"
   },
-  "app/chain/search/media.py:app.runtime.execution.run_in_threadpool": {
+  "app/chain/search/execution.py:app.runtime.execution.run_in_threadpool": {
     "owners": {
-      "SearchMediaOwner._run_media_process_async": 1,
-      "SearchMediaOwner.async_process_stream": 1
-    },
-    "target": "app.runtime.execution.run_in_threadpool"
-  },
-  "app/chain/search/music.py:app.runtime.execution.run_in_threadpool": {
-    "owners": {
-      "SearchMusicOwner._async_process_music": 1,
-      "SearchMusicOwner._async_process_music_stream": 1
+      "SearchExecutionOwner.events": 2
     },
     "target": "app.runtime.execution.run_in_threadpool"
   },

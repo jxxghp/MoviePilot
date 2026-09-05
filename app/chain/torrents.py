@@ -1,6 +1,6 @@
 import re
 import traceback
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union, cast
 
 from app.application.configuration import get_configured_system_config
 from app.application.rss import RssHelper
@@ -495,14 +495,8 @@ class TorrentsChain(ChainBase):
         meta: MetaBase
         mediainfo: MediaInfo | MusicInfo
         if torrent.category == MediaType.MUSIC.value:
-            meta = MetaMusic.parse_query(torrent.title)
-            mediainfo = MusicInfo(
-                title=meta.title,
-                artists=list(meta.artists),
-                album=meta.album,
-                year=meta.year,
-                names=[meta.title] if meta.title else [],
-            )
+            meta = MetaInfo(title=torrent.title, subtitle=torrent.description, mtype=MediaType.MUSIC)
+            mediainfo = MusicInfo.from_meta(cast(MetaMusic, meta))
             candidate_recognized = False
             match_source = "unknown"
         else:

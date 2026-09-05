@@ -293,7 +293,7 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/search/media/{media_id}` | 按统一媒体身份搜索站点种子资源；必填参数：`media_source`，其它参数：`mtype`、`area`、`season`、`sites`、`music_type` |
+| GET | `/api/v1/search/media/{media_id}` | 按统一媒体身份搜索站点种子资源；必填参数：`media_source`，其它参数：`mtype`、`area`、`season`、`sites`、`music_type`、`include_candidates` |
 | GET | `/api/v1/search/media/{media_id}/stream` | 按统一媒体身份渐进式搜索站点种子资源，返回 SSE，参数同上 |
 | GET | `/api/v1/search/title` | 按关键字模糊搜索站点种子资源，参数：`keyword`、`page`、`sites`，可选 `mtype=音乐` 仅搜索音乐分类 |
 | GET | `/api/v1/search/title/stream` | 按关键字渐进式搜索站点种子资源，返回 SSE，参数：`keyword`、`page`、`sites`，可选 `mtype=音乐` |
@@ -325,6 +325,17 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 #### 音乐元数据 / 推荐 / 探索
 
 音乐元数据使用 `MusicMeta` / `MusicInfo` 独立模型。`music_type=recording` 表示单曲，`album` 表示包含多首曲目的完整专辑，`artist` 仅用于浏览；稳定身份分别使用对应的 `musicbrainz:<mbid>`。单曲和专辑可进入搜索、订阅、下载、整理、刮削和已配置音乐媒体服务器的入库检查，艺术家不能作为订阅或下载目标。
+
+音乐与影视共用媒体搜索、资源查询、过滤、匹配和订阅搜索编排。资源 `meta_info` 来自
+标题、副标题的实际解析，不用目标媒体回填证据；`title_aliases`、`album_aliases`、
+`artist_aliases` 分别保留同一实体的可信别名及展示转简体前的原文。
+
+音乐资源搜索及对应 SSE 接口默认只返回精确匹配。手动调用可传 `include_candidates=true`，
+额外返回待确认资源及关联专辑：`match_status=candidate`、`match_reason` 描述原因，
+且 `media_info` 为空、不绑定目标 ID；精确结果为 `match_status=exact`。自动订阅和批量下载
+不采用待确认项。单曲的关联专辑不代表已经确认包含该单曲，专辑下载仍需检查曲目覆盖。
+SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身份、分类及规则淘汰原因。
+只有完整过滤后还有精确结果时才会按多名称设置提前停止；音乐元数据多来源结果先各自去重再公平合并。
 
 音乐识别结果同时提供 `audio_format`、`audio_lossless`、`audio_quality`、`bit_depth`、`sample_rate`、`bitrate`、`audio_specs` 和 `audio_quality_score`。本地文件识别读取实际音频流参数，并使用 Chromaprint 的 `fpcalc` 在本地生成指纹后查询 AcoustID；音频文件本身不会上传。站点资源识别从标题和描述提取声明参数；码率、采样率的存储单位分别为 bps 和 Hz。
 

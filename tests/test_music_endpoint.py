@@ -61,12 +61,12 @@ def test_music_routes_are_registered():
     )
 
 
-def test_media_search_routes_music_queries_with_query_kwarg():
-    """统一媒体搜索的音乐分支应以关键字参数调用 MediaChain。"""
+def test_media_search_routes_music_through_common_catalog_entry():
+    """音乐与影视应调用同一媒体搜索入口，仅传入不同的媒体类型。"""
 
     chain = Mock()
-    chain.async_search_music = AsyncMock(
-        return_value=[
+    chain.async_search = AsyncMock(
+        return_value=(None, [
             MusicInfo(
                 media_source="musicbrainz",
                 media_id="recording-1",
@@ -76,7 +76,7 @@ def test_media_search_routes_music_queries_with_query_kwarg():
                 release_date="2003-07-31",
                 category="Album / Studio",
             )
-        ]
+        ])
     )
 
     with (
@@ -95,14 +95,14 @@ def test_media_search_routes_music_queries_with_query_kwarg():
     assert result[0]["media_id"] == "recording-1"
     assert result[0]["music_type"] == "recording"
     assert result[0]["title"] == "晴天"
-    chain.async_search_music.assert_awaited_once_with(query="晴天", limit=30)
+    chain.async_search.assert_awaited_once_with(title="晴天", limit=30, mtype=MediaType.MUSIC, media_source=None)
     media_chain.assert_called_once()
 
 
 def test_media_search_forwards_explicit_music_source():
     """统一音乐搜索应把显式选择的可扩展音乐源转发给 MediaChain。"""
     chain = Mock()
-    chain.async_search_music = AsyncMock(return_value=[])
+    chain.async_search = AsyncMock(return_value=(None, []))
 
     with patch.object(media_endpoints, "MediaChain", return_value=chain):
         result = asyncio.run(
@@ -116,8 +116,9 @@ def test_media_search_forwards_explicit_music_source():
         )
 
     assert result == []
-    chain.async_search_music.assert_awaited_once_with(
-        query="Coldplay",
+    chain.async_search.assert_awaited_once_with(
+        title="Coldplay",
+        mtype=MediaType.MUSIC,
         limit=20,
         media_source=(MediaSource.TheAudioDB,),
     )

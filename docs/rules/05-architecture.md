@@ -629,6 +629,14 @@ The retired `app/chain/search.py` monolith, internal root re-exports and `source
 copies must not return. Search state normalization and persistence remain owned by
 `app.application.search.state`; the Chain package only adapts its cache ports.
 
+Movies, TV and music share the state machine in `search/execution.py` and the
+filter/match/context pipeline in `search/result.py`. `search/music.py` owns only
+music keyword policy and compatibility forwarding methods, not another provider
+loop. `MetaInfo(..., mtype=...)` chooses the resource parser; `domain/music.py`
+owns pure music identity rules. Unconfirmed candidates retain their own parsed
+evidence and never receive the selected target's identity. Subscription search
+uses the same SearchChain instance and site-budget result handling for all media.
+
 Media recognition orchestration is owned by the same-named `app.chain.media`
 package. Its root lazily exposes only the stable `MediaChain`; `facade.py` preserves
 the direct `MediaChain -> ChainBase` MRO, Singleton class identity and official
@@ -1047,7 +1055,7 @@ driven workflow registration.
 | `app/application/history.py` | History use cases; deeply frozen DownloadHistory/TransferHistory DTOs and typed query/write/staging ports |
 | `app/db/adapters/history/download.py` | DownloadHistory short-session snapshot, query and mutation adapter |
 | `app/chain/download/` | Stable DownloadChain facade plus single-owner selection, submission, batch, existence, failure, history, post-processing, subtitle, task and technical-port modules |
-| `app/chain/search/` | Stable SearchChain facade plus single-owner plan, provider, pagination, result, cache, title, media, music, subtitle, site and recommendation modules |
+| `app/chain/search/` | Stable SearchChain facade plus shared execution, plan, provider, pagination, result, cache, title, media, music policy, subtitle, site and recommendation owners |
 | `app/chain/media/` | Stable MediaChain facade plus single-owner recognition, plugin, auxiliary, projection, search, catalog, path, album and bounded cache modules |
 | `app/db/adapters/history/transfer.py` | TransferHistory short-session snapshot/query/mutation adapter and caller-owned transaction stager |
 | `app/application/security/user.py` | Frozen user/auth projections and atomic user aggregate service contracts |

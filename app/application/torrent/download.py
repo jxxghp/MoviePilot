@@ -365,7 +365,7 @@ class TorrentHelper:
             _torrent = _context.torrent_info
             _media = _context.media_info
             # 标题
-            _title = str(_media.title).ljust(200, ' ')
+            _title = str(_media.title if _media else _meta.name).ljust(200, ' ')
             # 站点优先级
             _site_order = str(999 - (_torrent.site_order or 0)).rjust(3, '0')
             # 站点上传量

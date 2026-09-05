@@ -50,6 +50,7 @@ class _ProjectionEventManagerPort(Protocol):
 
 
 if TYPE_CHECKING:
+    from app.application.music.catalog import MusicCatalogService
 
     class _MediaOwnerBase:
         """声明各媒体 owner 组合后可依赖的精确静态合同。"""
@@ -266,6 +267,20 @@ if TYPE_CHECKING:
             media_source: Optional[MediaSourceSelection] = None,
         ) -> Optional[list[MediaInfo]]:
             """同步搜索媒体候选。"""
+            ...
+
+        def _music_catalog(self) -> MusicCatalogService:
+            """提供音乐来源 ABI 的目录适配器。"""
+            ...
+
+        def search(self, title: str, media_source: Optional[MediaSourceSelection] = None,
+                   mtype: Optional[MediaType] = None, limit: int = 20) -> tuple[Optional[MetaBase], list[MediaInfo] | list[MusicInfo]]:
+            """通过共用入口搜索所有媒体类型。"""
+            ...
+
+        async def async_search(self, title: str, media_source: Optional[MediaSourceSelection] = None,
+                               mtype: Optional[MediaType] = None, limit: int = 20) -> tuple[Optional[MetaBase], list[MediaInfo] | list[MusicInfo]]:
+            """通过共用入口异步搜索所有媒体类型。"""
             ...
 
         async def async_search_medias(

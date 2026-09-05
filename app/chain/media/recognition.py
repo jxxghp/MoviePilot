@@ -101,7 +101,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
                         "media_source": self._music_primary_source,
                         "meta": meta,
                         "cache": cache,
-                        "music_type": MUSIC_ENTITY_RECORDING,
+                        "music_type": module_kwargs.get("music_type") or MUSIC_ENTITY_RECORDING,
                     },
                 )
             return _NativeRecognitionPlan(
@@ -182,7 +182,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
     @staticmethod
     def _has_remote_identity(result: Optional[MediaInfo]) -> bool:
         """音乐识别仅在取得远端来源身份后视为完整命中。"""
-        return bool(result and result.media_source)
+        return bool(result and result.media_source and result.media_id)
 
     @staticmethod
     def _accepted_recognition(

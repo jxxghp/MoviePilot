@@ -342,6 +342,22 @@ def test_media_chain_rejects_cross_entity_detail_result(monkeypatch):
     assert source_chain.recognize_music.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
 
 
+def test_default_music_source_preserves_explicit_album_intent(monkeypatch):
+    """没有原生 ID 或显式来源时，用户选择的专辑实体不能被默认单曲模式覆盖。"""
+    chain = MediaChain()
+    expected = MusicInfo(media_source=MediaSource.MusicBrainz, media_id="album-1",
+                         music_type=MUSIC_ENTITY_ALBUM, title="Album", artists=["Artist"])
+    recognize = Mock(return_value=expected)
+    monkeypatch.setattr(chain, "recognize_music_from_source", recognize)
+    with patch("app.adapters.external.server.MoviePilotServerHelper.report_recognize_share"), \
+            patch("app.adapters.external.server.MoviePilotServerHelper.query_recognize_share", return_value=None):
+        result = chain.recognize_media(meta=MetaMusic(title="Album", artists=["Artist"]),
+                                       mtype=MediaType.MUSIC, music_type=MUSIC_ENTITY_ALBUM)
+    assert result.music_type == MUSIC_ENTITY_ALBUM
+    assert recognize.call_args.kwargs["media_source"] == MediaSource.MusicBrainz
+    assert recognize.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
+
+
 def test_music_metadata_simplified_conversion_defaults_to_enabled():
     """音乐识别结果转简体开关应默认开启。"""
     assert ConfigModel.model_fields["MUSIC_METADATA_TO_SIMPLIFIED"].default is True

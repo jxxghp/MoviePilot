@@ -1,31 +1,30 @@
 import hashlib
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from functools import lru_cache
-from typing import Any, Mapping, Tuple, List, Optional
+from pathlib import Path
+from typing import Any, List, Mapping, Optional, Tuple
 
 import regex as re
 
-from app.domain.meta.metaanime import MetaAnime
-from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
-from app.domain.meta.metavideo import MetaVideo
+from app.domain.meta.customization import CustomizationMatcher, get_customization
 from app.domain.meta.infopath import (
     clear_parsed_title_for_parent_merge,
     should_use_parent_title_for_file_stem,
 )
-from app.domain.meta.words import WordsMatcher, get_custom_words
-from app.domain.meta.customization import CustomizationMatcher, get_customization
+from app.domain.meta.metaanime import MetaAnime
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.metavideo import MetaVideo
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
 from app.domain.meta.runtime import (
     get_audio_extensions,
     get_media_extensions,
     get_metainfo_accelerator,
 )
-from app.schemas.types import MediaSource, MediaType
+from app.domain.meta.words import WordsMatcher, get_custom_words
 from app.schemas.media import normalize_media_source, resolve_media_identity
-
+from app.schemas.types import MediaSource, MediaType
 
 _ANIME_BRACKET_RE = re.compile(r'【[+0-9XVPI-]+】\s*【', re.IGNORECASE)
 _ANIME_DASH_EPISODE_RE = re.compile(r'\s+-\s+[\dv]{1,4}\s+', re.IGNORECASE)
@@ -493,18 +492,21 @@ def _requires_python_metainfo(
 
 
 def MetaInfo(title: str, subtitle: Optional[str] = None, custom_words: List[str] = None,
-             force_video: bool = False) -> MetaBase:
+             force_video: bool = False, mtype: Optional[MediaType] = None) -> MetaBase:
     """
     根据标题和副标题识别元数据
     :param title: 标题、种子名、文件名
     :param subtitle: 副标题、描述
     :param custom_words: 自定义识别词列表
     :param force_video: 音频后缀的影视附加轨（如评论音轨）强制按视频解析，用于影视整理场景
+    :param mtype: 已由调用方确定的媒体类型；音乐资源无文件后缀时也使用音乐解析器
     :return: MetaAnime、MetaVideo、MetaMusic
     """
     # 音频文件名直接走音乐分支，避免进入影视季集解析，但影视附加音轨强制走视频解析
     audio_suffix = Path(title).suffix.lower() if title else ""
-    if not force_video and audio_suffix in get_audio_extensions():
+    if not force_video and mtype == MediaType.MUSIC:
+        return MetaMusic.parse_resource(title, subtitle)
+    if not force_video and mtype not in (MediaType.MOVIE, MediaType.TV) and audio_suffix in get_audio_extensions():
         return MetaMusic(
             org_string=title,
             title=Path(title).stem,

@@ -34,6 +34,14 @@ def _new_torrent_helper() -> TorrentHelper:
     return factory()
 
 
+def _confirmed_batch_contexts(contexts: List[Context]) -> List[Context]:
+    """排除待人工确认的资源，覆盖原始候选及插件替换候选两个入口。"""
+    confirmed = [context for context in contexts if getattr(context, "match_status", None) in (None, "exact")]
+    if len(confirmed) != len(contexts):
+        logger.warning(f"跳过 {len(contexts) - len(confirmed)} 个待人工确认的资源，不参与自动批量下载")
+    return confirmed
+
+
 class DownloadSelectionOwner(_DownloadOwnerBase):
     """下载候选规范化、排序和媒体选择 owner。"""
 
@@ -120,6 +128,9 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
 
         :return: 排序后的上下文和本轮失败冷却记录；资源选择事件仍可替换上下文列表
         """
+        contexts = _confirmed_batch_contexts(contexts)
+        if not contexts:
+            return [], {}
         logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
         event_data = ResourceSelectionEventData(
             contexts=contexts,
@@ -135,7 +146,7 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
                     f"items (source: {event_data.source})"
                 )
                 contexts = event_data.updated_contexts
-        contexts = _new_torrent_helper().sort_torrents(contexts)
+        contexts = _new_torrent_helper().sort_torrents(_confirmed_batch_contexts(contexts))
         active_failures: Dict[str, Optional[DownloadFailureSnapshot]] = {
             fingerprint: failure
             for fingerprint, failure in self._active_download_failure_fingerprints(

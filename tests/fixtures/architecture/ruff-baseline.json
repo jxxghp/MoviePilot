@@ -147,9 +147,6 @@
   "app/domain/meta/metabase.py": {
     "I001": 1
   },
-  "app/domain/meta/metamusic.py": {
-    "I001": 1
-  },
   "app/domain/meta/metavideo.py": {
     "I001": 1
   },
@@ -165,9 +162,6 @@
   },
   "app/domain/meta/words.py": {
     "E731": 1,
-    "I001": 1
-  },
-  "app/domain/metainfo.py": {
     "I001": 1
   },
   "app/domain/scraper.py": {
@@ -785,9 +779,6 @@
   "tests/test_media_scrape_endpoint.py": {
     "I001": 1
   },
-  "tests/test_media_search_source_selection.py": {
-    "I001": 1
-  },
   "tests/test_media_source_signature_compatibility.py": {
     "I001": 1
   },
@@ -849,9 +840,6 @@
     "I001": 1
   },
   "tests/test_music_torrents.py": {
-    "I001": 1
-  },
-  "tests/test_musicbrainz_module.py": {
     "I001": 1
   },
   "tests/test_navidrome_module.py": {

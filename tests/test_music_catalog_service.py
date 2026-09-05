@@ -50,3 +50,12 @@ def test_music_catalog_service_isolates_failed_source():
 
     assert service.search("artist title") == []
     assert errors and "broken" in errors[0]
+
+
+def test_music_catalog_merge_keeps_later_source_with_full_first_page():
+    """第一来源达到条数上限也不能挤掉后来来源的准确目标。"""
+    first = [MusicInfo(media_source=MediaSource.MusicBrainz, media_id=str(index), title=f"Other {index}") for index in range(30)]
+    second = MusicInfo(media_source=MediaSource.DoubanMusic, media_id="exact", title="Target")
+    result = MusicCatalogService.merge_sources([first, [second]], limit=30)
+    assert len(result) == 30
+    assert result[1] is second

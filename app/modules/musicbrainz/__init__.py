@@ -18,6 +18,7 @@ from app.domain.context import (
 from app.domain.media import is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
+from app.domain.music import music_text_key, unique_music_texts
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
 from app.modules.musicbrainz.cache import MusicBrainzCache
@@ -292,15 +293,37 @@ class MusicBrainzModule(_ModuleBase):
         if not is_media_source_selected(media_source, self._source):
             return None
         normalized_limit = max(1, min(limit, 100))
-        recordings = self._search_recordings(meta, limit=normalized_limit)
-        albums = self._search_albums(meta, limit=normalized_limit)
-        artists = self._search_artists(meta, limit=normalized_limit)
+        # 中文逐字召回可能包含很多局部命中，扩大单次窗口后按完整名称重新排序。
+        fetch_limit = min(100, normalized_limit * 3) if self._QUERY_CJK_RE.search(meta.title or "") else normalized_limit
+        recordings = self._rank_search_candidates(meta, self._search_recordings(meta, limit=fetch_limit))
+        albums = self._rank_search_candidates(meta, self._search_albums(meta, limit=fetch_limit))
+        artists = self._rank_search_candidates(meta, self._search_artists(meta, limit=fetch_limit))
         return self._interleave_results(
             recordings,
             albums,
             artists,
             limit=normalized_limit,
         )
+
+    @staticmethod
+    def _rank_search_candidates(meta: MetaMusic, candidates: list[MusicInfo]) -> list[MusicInfo]:
+        """按完整作品名及输入署名排序浏览候选，不把逐字 OR 命中视为精确身份。"""
+        expected = music_text_key(meta.title)
+        expected_artists = {music_text_key(artist) for artist in meta.artists}
+
+        def score(info: MusicInfo) -> tuple[bool, float, bool]:
+            """整名优先；普通组合输入同时比较艺术家与作品名，原始顺序用于同分稳定排序。"""
+            names = [info.title, *(info.title_aliases or [])]
+            if not meta.artists:
+                names.extend(f"{artist} {info.title or ''}" for artist in [*info.artists, *(info.artist_aliases or [])])
+            keys = [music_text_key(name) for name in names if name]
+            artist_match = bool(expected_artists & {
+                music_text_key(artist) for artist in [*info.artists, *(info.artist_aliases or [])]
+            })
+            similarity = max((SequenceMatcher(None, expected, key).ratio() for key in keys), default=0.0)
+            return expected in keys, similarity, artist_match
+
+        return sorted(candidates, key=score, reverse=True)
 
     def _search_recordings(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
         """按音频标签条件搜索 Recording，供全局搜索和文件识别复用。"""
@@ -365,11 +388,13 @@ class MusicBrainzModule(_ModuleBase):
         for query in [
             cls._build_query(meta),
             f"recording:{cls._query_phrase(title)}" if title else None,
-            f'recording:{cls._query_phrase(bare_title)} AND artist:"{cls._escape_query(artist)}"'
+            f'recording:{cls._query_phrase(bare_title)} AND artist:{cls._query_phrase(artist)}'
             if artist and bare_title and bare_title != title else None,
             # 艺术家署名变体（外文艺名等）导致 AND 条件零命中时，仅按主体曲名检索，
             # 候选挑选阶段要求艺术家命中兜住同名异曲
             f"recording:{cls._query_phrase(bare_title)}" if bare_title else None,
+            f"recording:{cls._query_phrase(bare_title or title, loose=True)}"
+            if cls._QUERY_CJK_RE.search(title) else None,
         ]:
             if query and query not in queries:
                 queries.append(query)
@@ -510,6 +535,7 @@ class MusicBrainzModule(_ModuleBase):
     @classmethod
     def _album_queries(cls, meta: MetaMusic) -> list[str]:
         """构造专辑检索式阶梯：专辑名+艺术家 → 仅专辑名 → 去括号/卷号变体。"""
+        original_title = cls._search_title(meta.album or meta.title, preserve_script=True)
         title = cls._search_title(meta.album or meta.title)
         if not title:
             return []
@@ -528,16 +554,20 @@ class MusicBrainzModule(_ModuleBase):
             soundtrack_body = ""
         queries: list[str] = []
         for query in [
-            f'releasegroup:{cls._query_phrase(title)} AND artist:"{cls._escape_query(artist)}"'
+            f'releasegroup:{cls._query_phrase(original_title)} AND artist:{cls._query_phrase(artist)}'
+            if artist else f"releasegroup:{cls._query_phrase(original_title)}",
+            f'releasegroup:{cls._query_phrase(title)} AND artist:{cls._query_phrase(artist)}'
             if artist else None,
             f"releasegroup:{cls._query_phrase(title)}" if title else None,
-            f'releasegroup:{cls._query_phrase(bare_title)} AND artist:"{cls._escape_query(artist)}"'
+            f'releasegroup:{cls._query_phrase(bare_title)} AND artist:{cls._query_phrase(artist)}'
             if artist and bare_title and bare_title != title else None,
-            f'releasegroup:{cls._query_phrase(soundtrack_body)} AND artist:"{cls._escape_query(artist)}"'
+            f'releasegroup:{cls._query_phrase(soundtrack_body)} AND artist:{cls._query_phrase(artist)}'
             if artist and soundtrack_body else None,
             f"releasegroup:{cls._query_phrase(soundtrack_body)}" if soundtrack_body else None,
             # 署名变体兜底：仅按去注释专辑名检索，挑选阶段要求艺术家同时命中
             f"releasegroup:{cls._query_phrase(bare_title)}" if bare_title else None,
+            f"releasegroup:{cls._query_phrase(bare_title or title, loose=True)}"
+            if cls._QUERY_CJK_RE.search(title) else None,
         ]:
             if query and query not in queries:
                 queries.append(query)
@@ -1376,7 +1406,7 @@ class MusicBrainzModule(_ModuleBase):
         text = re.sub(r"\s+", " ", str(value or "")).strip()
         if not text:
             return text
-        # MusicBrainz 中文条目以简体为主，资源标题可能是繁体，比对前统一转简体
+        # 仅归一化本地比较；实际查询使用原文和完整繁简变体。
         try:
             return zhconv_convert(text, "zh-hans")
         except Exception:  # pylint: disable=broad-except
@@ -1394,25 +1424,27 @@ class MusicBrainzModule(_ModuleBase):
     )
 
     @classmethod
-    def _search_title(cls, value: Optional[str]) -> str:
+    def _search_title(cls, value: Optional[str], *, preserve_script: bool = False) -> str:
         """剥离资源标题中的音频格式、规格参数与年份后缀，只保留曲名用于检索比对。"""
         text = cls._quality_token_pattern.sub(" ", str(value or ""))
+        normalize_text = (lambda value: re.sub(r"\s+", " ", str(value or "")).strip()) \
+            if preserve_script else cls._normalize_text
         # 流媒体文件名消毒产生的下划线转空格，避免破坏检索短语
         text = text.replace("_", " ")
         # 规格剥离后可能残留悬空分隔符，统一修剪
-        text = re.sub(r"^[\s\-–—/]+|[\s\-–—/]+$", "", cls._normalize_text(text))
+        text = re.sub(r"^[\s\-–—/]+|[\s\-–—/]+$", "", normalize_text(text))
         # 格式标记后紧跟的场景发布组标签（如 ALAC-HHWEB），整体剔除
         text = re.sub(r"[-–—]\s*[A-Z0-9]{3,}\s*$", "", text)
         # 曲名尾部独立年份是发行线索不是曲名一部分（解析阶段通常已提取），
         # 反复剥离尾部年份：场景命名可能重复携带（Live At Montreux 2011 2011）
-        text = cls._normalize_text(text)
+        text = normalize_text(text)
         while True:
             # 仅剔除空白分隔的尾部年份，纯年份标题（1999）无前导空白不受影响
             stripped = re.sub(r"\s+(?:19|20)\d{2}$", "", text)
             if stripped == text:
                 break
             text = stripped
-        return cls._normalize_text(text)
+        return normalize_text(text)
 
     def recognize_music(
             self,
@@ -1429,12 +1461,13 @@ class MusicBrainzModule(_ModuleBase):
             payload = self._request_json(
                 f"/recording/{plan.require_media_id()}",
                 params={
-                    "inc": "artists+releases+release-groups+isrcs+genres",
+                    "inc": "artists+releases+release-groups+isrcs+genres+aliases",
                     "fmt": "json",
                 },
             )
             result = self._project_recording_detail(payload)
             if result:
+                result.artist_aliases = self._lookup_artist_aliases(result.artist_ids, result.artist_aliases)
                 return result
         if not self._should_probe_album(plan, result):
             return None
@@ -1457,12 +1490,13 @@ class MusicBrainzModule(_ModuleBase):
             payload = await self._async_request_json(
                 f"/recording/{plan.require_media_id()}",
                 params={
-                    "inc": "artists+releases+release-groups+isrcs+genres",
+                    "inc": "artists+releases+release-groups+isrcs+genres+aliases",
                     "fmt": "json",
                 },
             )
             result = self._project_recording_detail(payload)
             if result:
+                result.artist_aliases = await self._async_lookup_artist_aliases(result.artist_ids, result.artist_aliases)
                 return result
         if not self._should_probe_album(plan, result):
             return None
@@ -1514,7 +1548,7 @@ class MusicBrainzModule(_ModuleBase):
         payload = await self._async_request_json(
             f"/release-group/{media_id}",
             params={
-                "inc": "artists+releases+media+genres+tags+ratings",
+                "inc": "artists+releases+media+genres+tags+ratings+aliases",
                 "fmt": "json",
             },
         )
@@ -1525,6 +1559,7 @@ class MusicBrainzModule(_ModuleBase):
             payload.get("releases") or []
         )
         album.tracks = self._project_album_tracks(album, tracks_payload)
+        album.artist_aliases = await self._async_lookup_artist_aliases(album.artist_ids, album.artist_aliases)
         return album
 
     def music_album(
@@ -1538,7 +1573,7 @@ class MusicBrainzModule(_ModuleBase):
         payload = self._request_json(
             f"/release-group/{media_id}",
             params={
-                "inc": "artists+releases+media+genres+tags+ratings",
+                "inc": "artists+releases+media+genres+tags+ratings+aliases",
                 "fmt": "json",
             },
         )
@@ -1547,7 +1582,38 @@ class MusicBrainzModule(_ModuleBase):
             return None
         tracks_payload = self._album_tracks_payload(payload.get("releases") or [])
         album.tracks = self._project_album_tracks(album, tracks_payload)
+        album.artist_aliases = self._lookup_artist_aliases(album.artist_ids, album.artist_aliases)
         return album
+
+    @staticmethod
+    def _alias_artist_ids(artist_ids: list[str]) -> list[str]:
+        """限制补充查询预算，仅使用来源返回的有效 MusicBrainz 艺术家 UUID。"""
+        return list(dict.fromkeys(artist_id for artist_id in artist_ids if re.fullmatch(
+            r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", artist_id,
+        )))[:3]
+
+    @classmethod
+    def _artist_alias_values(cls, payload: Optional[dict[str, Any]], artist_id: str) -> list[str]:
+        """只采信精确艺术家 ID 响应中的名称及别名，避免串入搜索得到的同名艺人。"""
+        if not payload or payload.get("id") != artist_id:
+            return []
+        return unique_music_texts([payload.get("name"), *cls._names_of(payload.get("aliases"))])
+
+    def _lookup_artist_aliases(self, artist_ids: list[str], aliases: list[str]) -> list[str]:
+        """利用现有请求缓存补全已识别艺术家的可信别名，不按文字猜测其他艺人。"""
+        values = list(aliases)
+        for artist_id in self._alias_artist_ids(artist_ids):
+            payload = self._request_json(f"/artist/{artist_id}", params={"inc": "aliases", "fmt": "json"})
+            values.extend(self._artist_alias_values(payload, artist_id))
+        return unique_music_texts(values)
+
+    async def _async_lookup_artist_aliases(self, artist_ids: list[str], aliases: list[str]) -> list[str]:
+        """原生异步补全同一艺术家别名，保留站点客户端的限流和请求缓存。"""
+        values = list(aliases)
+        for artist_id in self._alias_artist_ids(artist_ids):
+            payload = await self._async_request_json(f"/artist/{artist_id}", params={"inc": "aliases", "fmt": "json"})
+            values.extend(self._artist_alias_values(payload, artist_id))
+        return unique_music_texts(values)
 
     @classmethod
     def _project_album_detail(
@@ -1628,13 +1694,13 @@ class MusicBrainzModule(_ModuleBase):
         """构造 MusicBrainz Recording 搜索表达式。"""
         clauses = []
         # 资源标题先剥离音质标记，避免规格文本污染检索式导致零命中
-        title = cls._search_title(meta.title)
+        title = cls._search_title(meta.title, preserve_script=True)
         if title:
             clauses.append(f"recording:{cls._query_phrase(title)}")
         if meta.artists:
-            clauses.append(f'artist:"{cls._escape_query(meta.artists[0])}"')
+            clauses.append(f'artist:{cls._query_phrase(meta.artists[0])}')
         if meta.album:
-            clauses.append(f'release:"{cls._escape_query(meta.album)}"')
+            clauses.append(f'release:{cls._query_phrase(meta.album)}')
         if meta.isrc:
             clauses.append(f'isrc:"{cls._escape_query(meta.isrc)}"')
         return " AND ".join(clauses)
@@ -1644,7 +1710,7 @@ class MusicBrainzModule(_ModuleBase):
         """转义 MusicBrainz 查询中的引号和反斜线。"""
         return value.replace("\\", "\\\\").replace('"', '\\"').strip()
 
-    # 中日韩字符：Lucene 标准分词器不会切分连续 CJK，短语检索对中文标题永远零命中
+    # 中日韩名称优先完整短语，仅在前置查询无结果时启用逐字兜底。
     _QUERY_CJK_RE = re.compile(
         r"[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF]")
     # 检索词元切分：按空白、标点与括号拆分，保留 CJK 串与拉丁词（括号对逐字检索无意义）
@@ -1652,18 +1718,18 @@ class MusicBrainzModule(_ModuleBase):
         r"[\s\-–—−－。，、；：！？·．…()（）「」『』【】\[\]《》,;]+")
 
     @classmethod
-    def _query_phrase(cls, value: Optional[str]) -> Optional[str]:
-        """构造适配 Lucene 分词的检索表达式。
-
-        无 CJK 的普通文本返回带引号短语；含 CJK 的文本拆为词元后用 OR 交集检索，
-        MusicBrainz 索引中连续 CJK 是单一词元，逐字 OR 才能命中（「茹此精彩十三首」）；
-        过宽的召回由候选挑选阶段的标题与艺术家比对收紧。
-        """
+    def _query_phrase(cls, value: Optional[str], *, loose: bool = False) -> Optional[str]:
+        """优先构造完整名称的繁简短语组，逐字 OR 只作为显式请求的末级兜底。"""
         text = str(value or "").strip()
         if not text:
             return None
         if not cls._QUERY_CJK_RE.search(text):
             return f'"{cls._escape_query(text)}"'
+        if not loose:
+            variants = sorted(unique_music_texts([
+                text, zhconv_convert(text, "zh-hans"), zhconv_convert(text, "zh-hant"),
+            ]))
+            return cls._or_group([f'"{cls._escape_query(variant)}"' for variant in variants])
         tokens = [
             token for token in cls._QUERY_TOKEN_SPLIT_RE.split(text) if token.strip()
         ]
@@ -1726,6 +1792,9 @@ class MusicBrainzModule(_ModuleBase):
             genres=cls._names_of(recording.get("genres")),
             release_status=cls._stripped((release or {}).get("status")),
             names=[name for name in (title, album) if name],
+            title_aliases=cls._names_of(recording.get("aliases")),
+            album_aliases=cls._names_of(release_group.get("aliases")),
+            artist_aliases=cls._credit_aliases(recording.get("artist-credit")),
             detail_link=f"{cls._detail_url}/{media_id}",
             raw_data=recording,
         )
@@ -1746,6 +1815,8 @@ class MusicBrainzModule(_ModuleBase):
             artists=artists,
             artist_ids=artist_ids,
             album_type=cls._stripped(release_group.get("primary-type")),
+            title_aliases=cls._names_of(release_group.get("aliases")),
+            artist_aliases=cls._credit_aliases(release_group.get("artist-credit")),
             secondary_types=[cls._stripped(item) for item in release_group.get("secondary-types") or [] if cls._stripped(item)],
             release_date=release_group.get("first-release-date") or None,
             cover_url=cls._build_cover_url(media_id),
@@ -1797,6 +1868,17 @@ class MusicBrainzModule(_ModuleBase):
             # 名称与 ID 按下标一一对应，缺少 ID 时补空串，前端据此决定是否可跳转
             ids.append(str(artist.get("id") or ""))
         return names, ids
+
+    @classmethod
+    def _credit_aliases(cls, credits: Optional[list[dict[str, Any]]]) -> list[str]:
+        """保留 artist-credit 中同一人的实际署名与来源别名，不丢弃外文艺名。"""
+        names: list[str] = []
+        for credit in credits or []:
+            artist = credit.get("artist") or {}
+            names.extend(unique_music_texts([
+                credit.get("name"), artist.get("name"), *cls._names_of(artist.get("aliases")),
+            ]))
+        return unique_music_texts(names)
 
     @staticmethod
     def _names_of(items: Optional[list[dict[str, Any]]]) -> list[str]:

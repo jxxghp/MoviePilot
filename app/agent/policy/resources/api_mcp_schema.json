@@ -3673,6 +3673,18 @@
           "description": "Human-readable workflow, provider, or execution error message.",
           "title": "Error"
         },
+        "next_run_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Next scheduled subscription search time. Null when no future execution is planned.",
+          "title": "Next Run At"
+        },
         "phase": {
           "description": "Current phase of a subscription execution.",
           "title": "Phase",
@@ -9606,6 +9618,12 @@
               ],
               "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
               "title": "Count"
+            },
+            "include_candidates": {
+              "default": false,
+              "description": "Include unconfirmed music resources and related albums for manual review. Defaults to false; candidates have no target media identity and must not be used for automatic download.",
+              "title": "Include Candidates",
+              "type": "boolean"
             },
             "media_source": {
               "$ref": "#/$defs/MediaSource",

@@ -170,6 +170,28 @@ def test_download_endpoint_builds_music_context():
     assert context.media_info.media_id == "recording-1"
     assert context.meta_info.type == MediaType.MUSIC
     assert context.meta_info.org_string == "周杰伦 - 叶惠美 FLAC"
+    assert context.meta_info.title == "叶惠美"
+    assert context.meta_info.media_id is None
+
+
+def test_manual_album_without_id_uses_subtitle_evidence():
+    """没有 ID 的人工专辑下载保留实体意图，并使用副标题中的真实艺人识别。"""
+    media_chain = Mock()
+    media_chain.recognize_by_meta.return_value = _album_info()
+    download_chain = Mock()
+    download_chain.download_single.return_value = "album-task"
+    with patch("app.api.endpoints.download.MediaChain", return_value=media_chain), patch(
+        "app.api.endpoints.download.DownloadChain", return_value=download_chain
+    ):
+        response = add(
+            torrent_in=TorrentInfo(title="叶惠美 FLAC", description="艺术家：周杰伦", category="未知"),
+            music_type="album", current_user=Mock(name="admin"),
+        )
+    assert response.success is True
+    meta = media_chain.recognize_by_meta.call_args.args[0]
+    assert meta.artists == ["周杰伦"]
+    assert meta.title == "叶惠美"
+    assert media_chain.recognize_by_meta.call_args.kwargs["music_type"] == "album"
 
 
 def test_download_add_forwards_album_namespace_to_media_chain():

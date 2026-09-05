@@ -60,6 +60,7 @@ class SearchCacheOwner(_SearchOwnerBase):
         sites: Optional[List[int]] = None,
         music_type: Optional[str] = None,
         result_type: Optional[str] = "torrent",
+        include_candidates: bool = False,
     ) -> None:
         """
         保存最后一次资源搜索参数，标题搜索与精确身份搜索使用互斥字段。
@@ -77,6 +78,7 @@ class SearchCacheOwner(_SearchOwnerBase):
             sites=sites,
             music_type=music_type,
             result_type=result_type,
+            include_candidates=include_candidates,
         )
 
     async def async_save_last_search_params(
@@ -94,6 +96,7 @@ class SearchCacheOwner(_SearchOwnerBase):
         sites: Optional[List[int]] = None,
         music_type: Optional[str] = None,
         result_type: Optional[str] = "torrent",
+        include_candidates: bool = False,
     ) -> None:
         """
         异步保存最后一次资源搜索参数，标题搜索与精确身份搜索使用互斥字段。
@@ -111,6 +114,7 @@ class SearchCacheOwner(_SearchOwnerBase):
             sites=sites,
             music_type=music_type,
             result_type=result_type,
+            include_candidates=include_candidates,
         )
 
     def last_search_params(self) -> Optional[Dict[str, str]]:

@@ -322,16 +322,12 @@ async def search(
     source_selection = selected_sources or None
 
     media_chain = MediaChain()
-    if type == "music" or any(is_music_media_source(source) for source in selected_sources):
-        # 音乐搜索统一入口，与影视搜索共用 /media/search
-        music_search_params = {"query": title, "limit": count}
-        # 未指定来源时由 MediaChain 使用默认 MusicBrainz 来源。
-        if source_selection:
-            music_search_params["media_source"] = source_selection
-        music_infos = await media_chain.async_search_music(**music_search_params)
-        return [info.to_dict() for info in music_infos] if music_infos else []
-    if type == "media":
-        _, medias = await media_chain.async_search(title=title, media_source=source_selection)
+    is_music = type == "music" or any(is_music_media_source(source) for source in selected_sources)
+    if type == "media" or is_music:
+        _, medias = await media_chain.async_search(
+            title=title, media_source=source_selection,
+            **({"mtype": MediaType.MUSIC, "limit": count} if is_music else {}),
+        )
         result = [media.to_dict() for media in medias] if medias else []
     elif type == "collection":
         collections = await media_chain.async_search_collections(name=title, media_source=source_selection)

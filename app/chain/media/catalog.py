@@ -19,8 +19,10 @@ from app.foundation.text import convert as zhconv_convert
 from app.runtime.log import logger
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
     MediaSource,
     MediaSourceSelection,
+    MediaType,
 )
 
 
@@ -100,7 +102,8 @@ class MediaCatalogOwner(_MediaOwnerBase):
         media_source: Optional[MediaSourceSelection] = None,
     ) -> list[MusicInfo]:
         """按一个或多个音乐来源搜索候选，未指定时使用 MusicBrainz。"""
-        return self._music_catalog().search(query, limit, media_source)
+        _, candidates = self.search(title=query, media_source=media_source, mtype=MediaType.MUSIC, limit=limit)
+        return cast(list[MusicInfo], candidates)
 
     async def async_search_music(
         self,
@@ -109,11 +112,8 @@ class MediaCatalogOwner(_MediaOwnerBase):
         media_source: Optional[MediaSourceSelection] = None,
     ) -> list[MusicInfo]:
         """并行搜索一个或多个音乐来源，单一来源失败不影响其它结果。"""
-        return await self._music_catalog().async_search(
-            query,
-            limit,
-            media_source,
-        )
+        _, candidates = await self.async_search(title=query, media_source=media_source, mtype=MediaType.MUSIC, limit=limit)
+        return cast(list[MusicInfo], candidates)
 
     @classmethod
     def _validate_music_result(
@@ -160,6 +160,22 @@ class MediaCatalogOwner(_MediaOwnerBase):
         if not updates:
             return info
         simplified = deepcopy(info)
+        for field_name, alias_field in (
+            ("title", "title_aliases"),
+            ("album", "album_aliases"),
+            ("artists", "artist_aliases"),
+            ("album_artist", "artist_aliases"),
+            ("names", "title_aliases"),
+        ):
+            if field_name not in updates:
+                continue
+            if field_name in ("album_artist", "names") and info.music_type != MUSIC_ENTITY_ALBUM:
+                continue
+            original = getattr(info, field_name)
+            originals = original if isinstance(original, list) else [original]
+            setattr(simplified, alias_field, list(dict.fromkeys([
+                *(getattr(simplified, alias_field, None) or []), *originals,
+            ])))
         for field_name, value in updates.items():
             setattr(simplified, field_name, value)
         return simplified

@@ -95,6 +95,8 @@ def test_media_chain_preserves_official_plugin_method_contracts() -> None:
         ("self", inspect.Parameter.empty),
         ("title", inspect.Parameter.empty),
         ("media_source", None),
+        ("mtype", None),
+        ("limit", 20),
     )
     assert _parameter_contract(MediaChain.async_search) == _parameter_contract(MediaChain.search)
     assert inspect.iscoroutinefunction(MediaChain.async_search)

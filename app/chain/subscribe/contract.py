@@ -93,6 +93,8 @@ if TYPE_CHECKING:
             """异步发送订阅通知。"""
             raise NotImplementedError
         check_and_handle_existing_media: Callable[..., Any]
+        _prepare_music_subscribe: Callable[..., Any]
+        _download_music_subscribe: Callable[..., Any]
         check_and_reconcile: Callable[..., Any]
         filter_torrents: Callable[..., Any]
         finish_subscribe_or_not: Callable[..., Any]

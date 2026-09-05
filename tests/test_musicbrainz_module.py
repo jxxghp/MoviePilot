@@ -1,7 +1,62 @@
-from app.runtime.config import settings
+import asyncio
+from unittest.mock import AsyncMock
+
 from app.domain.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
+from app.runtime.config import settings
+
+
+def test_recording_search_uses_phrase_before_character_fallback(monkeypatch):
+    """完整中文名称命中时不应再执行逐字 OR 查询。"""
+    module = MusicBrainzModule()
+    queries = []
+
+    def request(_path, params):
+        """模拟完整名称检索返回同名录音。"""
+        queries.append(params["query"])
+        return {"recordings": [{"id": "recording", "title": "晴天"}]}
+
+    monkeypatch.setattr(module, "_request_json", request)
+    assert module._search_recordings(MetaMusic(title="晴天"), 30)[0].title == "晴天"
+    assert queries == ['recording:"晴天"']
+
+
+def test_recording_search_keeps_character_query_as_last_resort(monkeypatch):
+    """完整短语无结果后保留旧的宽召回能力，不能先用单字占满结果窗口。"""
+    module = MusicBrainzModule()
+    queries = []
+
+    def request(_path, params):
+        """首轮无结果，仅在末级检索式返回候选。"""
+        queries.append(params["query"])
+        return {"recordings": [] if len(queries) == 1 else [{"id": "recording", "title": "晴天"}]}
+
+    monkeypatch.setattr(module, "_request_json", request)
+    assert module._search_recordings(MetaMusic(title="晴天"), 30)
+    assert queries == ['recording:"晴天"', 'recording:("晴" OR "天")']
+
+
+def test_artist_alias_lookup_verifies_identity_in_both_io_modes(monkeypatch):
+    """同步和异步别名补充必须校验精确艺术家 ID，拒绝其它艺人的响应。"""
+    module = MusicBrainzModule()
+    artist_id = "a223958d-5c56-4b2c-a30a-87e357bc121b"
+    payload = {"id": artist_id, "name": "周杰倫", "aliases": [{"name": "Jay Chou"}]}
+    monkeypatch.setattr(module, "_request_json", lambda *_args, **_kwargs: payload)
+    monkeypatch.setattr(module, "_async_request_json", AsyncMock(return_value=payload))
+    expected = ["周杰倫", "Jay Chou"]
+    assert module._lookup_artist_aliases([artist_id], []) == expected
+    assert asyncio.run(module._async_lookup_artist_aliases([artist_id], [])) == expected
+    assert module._artist_alias_values(payload, "other-artist") == []
+
+
+def test_metadata_ranking_prefers_complete_name_over_partial_character_hit():
+    """宽召回之后也应按完整标题与署名排序，避免单字相关候选压过准确目标。"""
+    exact = MusicInfo(title="晴天", artists=["周杰倫"])
+    unrelated = MusicInfo(title="天", artists=["Other Artist"])
+    assert MusicBrainzModule._rank_search_candidates(
+        MetaMusic(title="周杰伦 晴天"), [unrelated, exact],
+    )[0] is exact
 
 
 def test_musicbrainz_cover_domains_are_allowed_by_image_proxy():
@@ -36,7 +91,7 @@ def test_build_query_strips_audio_quality_tokens():
     )
 
     # CJK 短语在 Lucene 索引中是单一词元，检索式拆为逐字 OR，OR 组带括号避免 AND 优先级歧义
-    assert query == 'recording:("永" OR "远" OR "是" OR "朋" OR "友") AND artist:"毛阿敏"'
+    assert query == 'recording:("永远是朋友" OR "永遠是朋友") AND artist:"毛阿敏"'
 
 
 def test_select_candidate_matches_traditional_chinese_title():
@@ -166,8 +221,8 @@ def test_search_music_interleaves_recordings_albums_and_artists(monkeypatch):
     assert results[1].album == "叶惠美"
     assert results[2].title == "周杰伦"
     assert results[2].artists == []
-    assert requested[1][1]["query"] == 'releasegroup:("晴" OR "天") AND artist:"周杰伦"'
-    assert requested[2][1]["query"] == 'artist:("周" OR "杰" OR "伦")'
+    assert requested[1][1]["query"] == 'releasegroup:"晴天" AND artist:("周杰伦" OR "周杰倫")'
+    assert requested[2][1]["query"] == 'artist:("周杰伦" OR "周杰倫")'
 
 
 def test_file_recognition_searches_recordings_only(monkeypatch):
@@ -660,19 +715,20 @@ def test_recording_queries_ladder_relaxes_to_bare_title_last():
         MetaMusic(title="晴天 (电影版)", artists=["周杰伦"])
     )
 
-    full = '("晴" OR "天") OR ("电" OR "影" OR "版")'
-    assert queries[0] == f'recording:({full}) AND artist:"周杰伦"'
-    assert queries[1] == f'recording:({full})'
-    assert queries[2] == 'recording:("晴" OR "天") AND artist:"周杰伦"'
-    # 署名变体兜底放在最后，由候选挑选的艺术家要求收紧
+    full = '("晴天 (电影版)" OR "晴天 (電影版)")'
+    assert queries[0] == f'recording:{full} AND artist:("周杰伦" OR "周杰倫")'
+    assert queries[1] == f'recording:{full}'
+    assert queries[2] == 'recording:"晴天" AND artist:("周杰伦" OR "周杰倫")'
+    # 全名查询之后才逐字兜底，避免单字噪声抢占召回窗口。
     assert queries[-1] == 'recording:("晴" OR "天")'
 
 
-def test_query_phrase_latin_unchanged_and_cjk_char_or():
-    """拉丁文本保持短语检索，CJK 文本拆为逐字 OR，混合文本按词元拆分。"""
+def test_query_phrase_prefers_complete_names_with_explicit_loose_fallback():
+    """所有文字优先完整短语，CJK 只有显式末级兜底才拆为逐字 OR。"""
     assert MusicBrainzModule._query_phrase("Fearless") == '"Fearless"'
-    assert MusicBrainzModule._query_phrase("晴天") == '("晴" OR "天")'
-    assert MusicBrainzModule._query_phrase("好歌茹芸 Vol. 3") == (
+    assert MusicBrainzModule._query_phrase("晴天") == '"晴天"'
+    assert MusicBrainzModule._query_phrase("好歌茹芸 Vol. 3") == '"好歌茹芸 Vol. 3"'
+    assert MusicBrainzModule._query_phrase("好歌茹芸 Vol. 3", loose=True) == (
         '(("好" OR "歌" OR "茹" OR "芸") OR "Vol." OR "3")'
     )
     assert MusicBrainzModule._query_phrase("") is None

@@ -7,13 +7,18 @@ from app.chain.media.contract import _MediaOwnerBase
 from app.domain import title as title_rules
 from app.domain.context import (
     MediaInfo,
+    MusicInfo,
 )
 from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.schemas.types import (
     MediaSourceSelection,
+    MediaType,
 )
+
+CatalogResults = List[MediaInfo] | List[MusicInfo]
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,8 +29,10 @@ class _MediaSearchRequest:
     meta: MetaBase
 
 
-def _build_media_search_request(title: str) -> _MediaSearchRequest:
+def _build_media_search_request(title: str, mtype: Optional[MediaType] = None) -> _MediaSearchRequest:
     """将搜索文本一次性投影为规范元数据，避免双入口规则漂移。"""
+    if mtype == MediaType.MUSIC:
+        return _MediaSearchRequest(content=title, meta=MetaInfo(title=title, mtype=mtype))
     mtype, _, season_num, episode_num, year, content = title_rules.parse_search_keyword(title)
     content = content or title
     meta = MetaInfo(content)
@@ -44,8 +51,8 @@ def _build_media_search_request(title: str) -> _MediaSearchRequest:
 
 def _finish_media_search(
     request: _MediaSearchRequest,
-    medias: Optional[List[MediaInfo]],
-) -> Tuple[MetaBase, List[MediaInfo]]:
+    medias: Optional[CatalogResults],
+) -> Tuple[MetaBase, CatalogResults]:
     """统一空结果与成功结果投影，并保持既有日志语义。"""
     if not medias:
         logger.warn(f"{request.meta.name} 没有找到对应的媒体信息！")
@@ -58,8 +65,9 @@ class MediaSearchOwner(_MediaOwnerBase):
     """媒体搜索入口 owner。"""
 
     def search(
-        self, title: str, media_source: Optional[MediaSourceSelection] = None
-    ) -> Tuple[Optional[MetaBase], List[MediaInfo]]:
+        self, title: str, media_source: Optional[MediaSourceSelection] = None,
+        mtype: Optional[MediaType] = None, limit: int = 20,
+    ) -> Tuple[Optional[MetaBase], CatalogResults]:
         """
         搜索媒体/人物信息
 
@@ -67,17 +75,16 @@ class MediaSearchOwner(_MediaOwnerBase):
         :param media_source: 请求级搜索数据源
         :return: 识别元数据，媒体信息列表
         """
-        request = _build_media_search_request(title)
+        request = _build_media_search_request(title, mtype)
         logger.info(f"开始搜索媒体信息：{request.meta.name}")
-        medias: Optional[List[MediaInfo]] = self.search_medias(
-            meta=request.meta,
-            media_source=media_source,
-        )
+        medias = self._music_catalog().search(request.meta, limit=limit, media_source=media_source) \
+            if isinstance(request.meta, MetaMusic) else self.search_medias(meta=request.meta, media_source=media_source)
         return _finish_media_search(request, medias)
 
     async def async_search(
-        self, title: str, media_source: Optional[MediaSourceSelection] = None
-    ) -> Tuple[Optional[MetaBase], List[MediaInfo]]:
+        self, title: str, media_source: Optional[MediaSourceSelection] = None,
+        mtype: Optional[MediaType] = None, limit: int = 20,
+    ) -> Tuple[Optional[MetaBase], CatalogResults]:
         """
         搜索媒体/人物信息（异步版本）
 
@@ -85,10 +92,8 @@ class MediaSearchOwner(_MediaOwnerBase):
         :param media_source: 请求级搜索数据源
         :return: 识别元数据，媒体信息列表
         """
-        request = _build_media_search_request(title)
+        request = _build_media_search_request(title, mtype)
         logger.info(f"开始搜索媒体信息：{request.meta.name}")
-        medias: Optional[List[MediaInfo]] = await self.async_search_medias(
-            meta=request.meta,
-            media_source=media_source,
-        )
+        medias = await self._music_catalog().async_search(request.meta, limit=limit, media_source=media_source) \
+            if isinstance(request.meta, MetaMusic) else await self.async_search_medias(meta=request.meta, media_source=media_source)
         return _finish_media_search(request, medias)

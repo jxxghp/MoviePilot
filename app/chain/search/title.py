@@ -19,7 +19,6 @@ from app.application.configuration import (
 )
 from app.chain.search.contract import _SearchOwnerBase as _SearchOwnerBase
 from app.domain.context import Context, TorrentInfo
-from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
@@ -415,14 +414,7 @@ class SearchTitleOwner(_SearchOwnerBase):
         mtype: Optional[MediaType],
     ) -> Any:
         """根据限定媒体类型构造模糊搜索结果的上下文元数据。"""
-        if mtype == MediaType.MUSIC:
-            meta = MetaMusic(
-                org_string=torrent.title,
-                title=torrent.title,
-            )
-            meta.apply_audio_quality(f"{torrent.title} {torrent.description or ''}")
-            return meta
-        return MetaInfo(title=torrent.title, subtitle=torrent.description)
+        return MetaInfo(title=torrent.title, subtitle=torrent.description, mtype=mtype)
 
     def _filter_title_search_torrents(
         self, torrents: List[TorrentInfo], rule_groups: Optional[List[str]] = None

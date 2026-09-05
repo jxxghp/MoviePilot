@@ -598,12 +598,22 @@ class MusicInfo:
     tags: list[str] = field(default_factory=list)
     artist_country: str | None = None
     names: list[str] = field(default_factory=list)
+    # 来源提供的同一实体别名及展示转换前的原文，不混入所属专辑或无关联艺术家。
+    title_aliases: list[str] = field(default_factory=list)
+    album_aliases: list[str] = field(default_factory=list)
+    artist_aliases: list[str] = field(default_factory=list)
     detail_link: str | None = None
     listen_count: int | None = None
     raw_data: dict[str, Any] = field(default_factory=dict)
     # 内部标记：是否命中本地识别缓存，不参与序列化；与 MediaInfo 保持一致，
     # 显式声明以保留 getattr(..., False) 的默认值语义（__getattr__ 兜底会覆盖它）
     recognize_cache_hit = False
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """恢复旧版本音乐缓存时补齐新增别名字段，避免列表字段被缺失属性兜底为 None。"""
+        self.__dict__.update(state)
+        for name in ("title_aliases", "album_aliases", "artist_aliases"):
+            self.__dict__.setdefault(name, [])
 
     def __post_init__(self) -> None:
         """规范化媒体身份，并兼容拆分旧音乐分类字段。"""
@@ -731,7 +741,7 @@ class MusicInfo:
 
     def clear(self) -> None:
         """清理不参与队列展示和持久化的上游原始响应。"""
-        self.raw_data.clear()
+        self.raw_data = {}
 
     def to_dict(self) -> dict[str, Any]:
         """转换为统一媒体身份的 Context 外层字典。"""
@@ -768,7 +778,7 @@ class MusicInfo:
         values["media_source"] = normalize_media_source(values.get("media_source"))
         values["artists"] = _music_string_list(values.get("artists") or data.get("artist"))
         values["artist_ids"] = _music_aligned_list(values.get("artist_ids"))
-        for key in ("secondary_types", "genres", "tags"):
+        for key in ("secondary_types", "genres", "tags", "title_aliases", "album_aliases", "artist_aliases"):
             values[key] = _music_string_list(values.get(key))
         values["names"] = _music_string_list(values.get("names"))
         values["music_type"] = str(values.get("music_type") or MUSIC_ENTITY_RECORDING)
@@ -885,6 +895,8 @@ class MusicAlbumInfo:
     title: str | None = None
     artists: list[str] = field(default_factory=list)
     artist_ids: list[str] = field(default_factory=list)
+    title_aliases: list[str] = field(default_factory=list)
+    artist_aliases: list[str] = field(default_factory=list)
     # 专辑主类型：Album、EP、Single、Broadcast、Other
     album_type: str | None = None
     # 专辑副类型：Live、Compilation、Soundtrack、Remix 等
@@ -909,6 +921,12 @@ class MusicAlbumInfo:
     # 同一专辑下的其它发行版本
     releases: list[MusicRelease] = field(default_factory=list)
     raw_data: dict[str, Any] = field(default_factory=dict)
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """恢复旧版专辑缓存时补齐别名列表，保留既有媒体身份及曲目数据。"""
+        self.__dict__.update(state)
+        for name in ("title_aliases", "artist_aliases"):
+            self.__dict__.setdefault(name, [])
 
     def __post_init__(self) -> None:
         """规范化媒体身份，并补全专辑描述分类和分类结果。"""
@@ -1024,7 +1042,7 @@ class MusicAlbumInfo:
         values = _music_init_values(cls, data)
         values["classification"] = _classification_result(values.get("classification"))
         values["media_source"] = normalize_media_source(values.get("media_source"))
-        for key in ("artists", "secondary_types", "genres", "tags"):
+        for key in ("artists", "secondary_types", "genres", "tags", "title_aliases", "artist_aliases"):
             values[key] = _music_string_list(values.get(key))
         values["artist_ids"] = _music_aligned_list(values.get("artist_ids"))
         values["rating"] = _music_optional_float(values.get("rating"))
@@ -1073,6 +1091,9 @@ class MusicAlbumInfo:
             album=self.title,
             album_artist=self.artist or None,
             album_id=self.media_id,
+            title_aliases=list(self.title_aliases),
+            album_aliases=list(self.title_aliases),
+            artist_aliases=list(self.artist_aliases),
             album_type=self.album_type,
             secondary_types=list(self.secondary_types),
             year=self.year,
@@ -1221,6 +1242,7 @@ class MusicArtistInfo:
             tags=list(self.tags),
             artist_country=self.country,
             names=[name for name in [self.name, *self.aliases] if name],
+            title_aliases=list(self.aliases),
             detail_link=self.detail_link,
             raw_data=dict(self.raw_data),
         )
@@ -1918,6 +1940,9 @@ class Context:
     candidate_recognized: bool = False
     # 当前 media_info 是否为目标媒体回填，而不是候选自身识别结果。
     media_info_is_target: bool = False
+    # 音乐资源的匹配等级及原因；待确认项不得绑定目标媒体身份。
+    match_status: Optional[str] = None
+    match_reason: Optional[str] = None
     # 调用方对本候选允许下载的剧集集合，None 表示不限制，空集合表示拒绝交付任何集。
     allowed_episodes: Optional[Set[int]] = None
     # 下载链实际提交的剧集集合；None 表示尚未执行下载选择。
@@ -1938,6 +1963,8 @@ class Context:
             "match_source": self.match_source,
             "candidate_recognized": self.candidate_recognized,
             "media_info_is_target": self.media_info_is_target,
+            "match_status": getattr(self, "match_status", None),
+            "match_reason": getattr(self, "match_reason", None),
             # 保留 None / 空集 / 非空集 三态语义，避免下游误把"显式拒绝"当成"不限制"。
             "allowed_episodes": sorted(self.allowed_episodes) if self.allowed_episodes is not None else None,
             "selected_episodes": self.selected_episodes,

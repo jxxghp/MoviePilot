@@ -1,6 +1,7 @@
 """订阅单条元数据刷新与完成对账协作者。"""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Optional, TypeVar, cast
 
 from app.application.classification.reference import (
@@ -16,11 +17,55 @@ from app.chain.media import MediaChain
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.identity import subscribe_recognize_kwargs
 from app.domain.context import MediaInfo, MusicInfo
+from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.media import resolve_media_identity
+from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
 
 SubscriptionMediaT = TypeVar("SubscriptionMediaT", MediaInfo, MusicInfo)
+
+
+@dataclass(frozen=True, slots=True)
+class SubscriptionSearchTarget:
+    """所有媒体订阅进入同一搜索编排前的目标和缺失范围快照。"""
+
+    subscribe: SubscriptionSnapshot
+    meta: MetaBase
+    media: MediaInfo | MusicInfo
+    missing: dict[str, dict[int, NotExistMediaInfo]]
+    media_key: Optional[str | int]
+
+
+def prepare_search_target(owner: _SubscribeOwnerBase, subscribe: SubscriptionSnapshot,
+                          media_chain: MediaChain, ensure_active: Callable[[], None]) -> Optional[SubscriptionSearchTarget]:
+    """在准备阶段保留实体差异，之后统一复用搜索、预算和交付流程。"""
+    if subscribe.type == MediaType.MUSIC.value:
+        target = owner._prepare_music_subscribe(subscribe)
+        if not target:
+            return None
+        current, media, meta = target
+        ensure_active()
+        return SubscriptionSearchTarget(current, meta, media, {}, subscribe_media_key(current))
+    try:
+        meta = build_subscribe_meta(subscribe)
+    except ValueError:
+        logger.error(f"订阅《{subscribe.name}》的媒体类型不受支持，暂时无法搜索")
+        return None
+    media = media_chain.recognize_media(
+        meta=meta, mtype=meta.type, **subscribe_recognize_kwargs(subscribe),
+        episode_group=subscribe.episode_group, cache=False,
+    )
+    if not media:
+        logger.warning(f"未识别到媒体信息，标题：{subscribe.name}，媒体来源：{subscribe.media_source}，媒体 ID：{subscribe.media_id}")
+        return None
+    ensure_active()
+    media = apply_subscription_classification(media, subscribe)
+    key = subscribe_media_key(subscribe)
+    exists, missing = owner.check_and_handle_existing_media(
+        subscribe=subscribe, meta=meta, mediainfo=media, mediakey=key,
+    )
+    return None if exists else SubscriptionSearchTarget(subscribe, meta, media, missing, key)
 
 
 def apply_subscription_classification(
