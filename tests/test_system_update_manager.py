@@ -102,6 +102,57 @@ def test_interrupted_download_becomes_retryable_failure(monkeypatch, tmp_path):
     assert "中断" in status.error
 
 
+def test_ready_resource_update_clears_after_loaded_version_reaches_target(
+    monkeypatch,
+    tmp_path,
+):
+    """运行资源已达到目标版本时应清除残留提示，并保留另一类待安装制品。"""
+    versions = ["3.0.1", "3.0.9"]
+    monkeypatch.setattr(
+        update_module,
+        "get_resource_versions",
+        lambda: tuple(versions),
+    )
+    manager = _manager(monkeypatch, tmp_path)
+    manager._merge_prepared_manifest(
+        {
+            "version": "v3.1.0",
+            "backend_archive": "/tmp/backend.zip",
+            "resource_package_version": "10",
+            "resource_files": [{"name": "user.sites.v3.bin"}],
+        }
+    )
+    manager._write_item(
+        "resources",
+        state="ready",
+        version="10",
+        current_auth_version="3.0.1",
+        current_indexer_version="3.0.9",
+        indexer_version="3.0.10",
+        can_update=False,
+        can_install=True,
+    )
+
+    pending = manager.get_status()
+    pending_resource = next(item for item in pending.updates if item.type == "resources")
+    assert pending_resource.state == "ready"
+
+    versions[1] = "3.0.10"
+    current = manager.get_status()
+    current_resource = next(item for item in current.updates if item.type == "resources")
+    prepared = json.loads((manager._root / "prepared.json").read_text(encoding="utf-8"))
+
+    assert current_resource.state == "idle"
+    assert current_resource.current_indexer_version == "3.0.10"
+    assert current_resource.indexer_version is None
+    assert current_resource.version is None
+    assert current_resource.can_install is False
+    assert prepared["version"] == "v3.1.0"
+    assert prepared["backend_archive"] == "/tmp/backend.zip"
+    assert "resource_package_version" not in prepared
+    assert "resource_files" not in prepared
+
+
 def test_download_prepares_matching_backend_and_frontend_archives(monkeypatch, tmp_path):
     manager = _manager(monkeypatch, tmp_path)
     backend_fixture = tmp_path / "source-backend.zip"

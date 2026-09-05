@@ -286,6 +286,15 @@ class SystemUpdateManager(metaclass=SingletonClass):
                 elif item.get("state") == "installing" and self._is_install_applied(item, target):
                     self._reset_item_after_install(item)
                     changed = True
+                elif (
+                    target == _RESOURCES
+                    and item.get("state") == "ready"
+                    and self._is_install_applied(item, target)
+                ):
+                    # 容器替换或手工安装可能先让运行资源达到目标版本，需丢弃残留待安装包。
+                    self._discard_prepared_target(target)
+                    self._reset_item_after_install(item)
+                    changed = True
             resources_changed = (
                 previous_auth_version != auth_version
                 or previous_indexer_version != indexer_version
