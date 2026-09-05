@@ -174,7 +174,11 @@ def match_music_resource(
     if category not in (MediaType.MUSIC, MediaType.MUSIC.value):
         return MusicMatch("candidate", "category_unknown")
     if music.music_type == MUSIC_ENTITY_ALBUM:
-        if resource.track_number and resource.album:
+        # 所属专辑只说明单曲归属，不能代替资源主标题证明整专范围。
+        primary_names = _resource_names(resource, artists)
+        if resource.track_number or (resource.album and not any(
+            music_text_key(music_base_title(item)) in primary_names for item in titles
+        )):
             return MusicMatch("candidate", "partial_album")
         if music.year and resource.year and str(music.year) != str(resource.year):
             return MusicMatch("candidate", "year_mismatch")

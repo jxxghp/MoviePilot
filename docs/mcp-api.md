@@ -329,6 +329,9 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 音乐与影视共用媒体搜索、资源查询、过滤、匹配和订阅搜索编排。资源 `meta_info` 来自
 标题、副标题的实际解析，不用目标媒体回填证据；`title_aliases`、`album_aliases`、
 `artist_aliases` 分别保留同一实体的可信别名及展示转简体前的原文。
+音乐资源解析同样应用全局或订阅自定义识别词，`MusicMeta.apply_words` 返回实际应用记录，
+旧结果缺少该字段时按空列表处理。副标题的明确录音版本参与匹配；单曲所属专辑字段
+不能证明资源覆盖整张专辑，无曲序的单曲也会标记为 `partial_album` 待确认项。
 
 音乐资源搜索及对应 SSE 接口默认只返回精确匹配。手动调用可传 `include_candidates=true`，
 额外返回待确认资源及关联专辑：`match_status=candidate`、`match_reason` 描述原因，

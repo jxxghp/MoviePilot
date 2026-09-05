@@ -20,10 +20,11 @@ from app.application.torrent.download import TorrentHelper
 from app.chain._contracts import MusicSubscribeMixinHost
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
-from app.chain.search.facade import SearchChain
 from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
 from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
+from app.domain.music import match_music_resource
 from app.runtime.log import logger
 from app.schemas.category import ClassificationSelection
 from app.schemas.common import JsonData
@@ -113,12 +114,6 @@ def _finalize_music_subscribe_recognition(
 
 
 class MusicSubscribeMixin:
-    __mixin_host_protocol__ = MusicSubscribeMixinHost
-    subscription_repository: SubscriptionRepository
-    sync_subscription_mutation_scope: "SyncSubscriptionMutationScope"
-    _SubscribeChain__candidate_contract_changed: Callable[
-        [SubscriptionSnapshot, SubscriptionSnapshot], bool
-    ]
     """
     音乐订阅功能域 mixin：单曲/专辑目标识别、实体快照同步、候选筛选、
     择优下载与完成推进。
@@ -129,6 +124,13 @@ class MusicSubscribeMixin:
     不独立成链。订阅元数据与媒体键由 Application 共享契约提供，避免 mixin 与
     SubscribeChain 主体形成双向模块依赖。
     """
+
+    __mixin_host_protocol__ = MusicSubscribeMixinHost
+    subscription_repository: SubscriptionRepository
+    sync_subscription_mutation_scope: "SyncSubscriptionMutationScope"
+    _SubscribeChain__candidate_contract_changed: Callable[
+        [SubscriptionSnapshot, SubscriptionSnapshot], bool
+    ]
 
     @staticmethod
     def _validate_music_subscribe_target(
@@ -376,6 +378,7 @@ class MusicSubscribeMixin:
         default_rule_key = SystemConfigKey.BestVersionFilterRuleGroups \
             if subscribe.best_version else SystemConfigKey.SubscribeFilterRuleGroups
         rule_groups = subscribe.filter_groups or get_configured_system_config().get(default_rule_key) or []
+        custom_words = subscribe.custom_words.split("\n") if subscribe.custom_words else []
         torrent_helper = TorrentHelper()
         matched: List[Context] = []
         for source_context in contexts or []:
@@ -386,11 +389,16 @@ class MusicSubscribeMixin:
             torrent = copy.copy(source_torrent)
             if sites and torrent.site not in sites:
                 continue
-            if not SearchChain.matches_music_resource(
-                    mediainfo,
-                    torrent.title,
-                    torrent.description,
-            ):
+            meta = cast(MetaMusic, MetaInfo(
+                title=torrent.title,
+                subtitle=torrent.description,
+                custom_words=custom_words,
+                mtype=MediaType.MUSIC,
+            ))
+            match = match_music_resource(
+                mediainfo, torrent.title, torrent.description, torrent.category, meta=meta,
+            )
+            if match.status != "exact":
                 continue
             if not torrent_helper.filter_torrent(torrent, self.get_params(subscribe)):
                 continue
@@ -406,7 +414,6 @@ class MusicSubscribeMixin:
 
             context = copy.copy(source_context)
             context.torrent_info = torrent
-            meta = MetaMusic.parse_resource(torrent.title, torrent.description)
             if subscribe.best_version:
                 # 用户规则组可用格式、码率等内置规则定义洗版顺序；未命中规则
                 # 优先级时再回退到规范化音质分数，确保零配置也能自动升级。
@@ -423,6 +430,8 @@ class MusicSubscribeMixin:
             context.match_source = str(mediainfo.media_source or "title")
             context.candidate_recognized = False
             context.media_info_is_target = True
+            context.match_status = "exact"
+            context.match_reason = match.reason
             context.media_info = _apply_music_subscription_classification(
                 context.media_info,
                 subscribe,

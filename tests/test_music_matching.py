@@ -11,7 +11,10 @@ from app.chain.search import SearchChain
 from app.domain.context import Context, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.runtime import get_metainfo_accelerator
+from app.domain.metainfo import MetaInfo
 from app.domain.music import match_music_resource
+from app.schemas.music import MusicMeta
+from app.schemas.types import MediaType
 
 
 @pytest.mark.parametrize("title", ["U2 - One Tree Hill FLAC", "U2 - Someone FLAC", "U2 - One - Tree Hill FLAC"])
@@ -92,6 +95,77 @@ def test_music_album_field_cannot_match_target_recording():
     assert match_music_resource(wanted, "Artist - Album - 01 - Other Song FLAC").status == "rejected"
 
 
+@pytest.mark.parametrize("title", [
+    "周杰伦 - 晴天 FLAC",
+    "周杰伦 - 03 - 晴天 FLAC",
+    "周杰伦 - 03 - 叶惠美 FLAC",
+])
+def test_album_match_cannot_promote_track_from_subtitle(title):
+    """即使没有曲序，单曲所属专辑字段也不能证明资源是整张专辑。"""
+    album = MusicInfo(music_type="album", title="叶惠美", artists=["周杰伦"])
+    match = match_music_resource(album, title, "专辑：叶惠美")
+    assert (match.status, match.reason) == ("candidate", "partial_album")
+
+
+@pytest.mark.parametrize("title", ["周杰伦 - 叶惠美 FLAC", "周杰伦《叶惠美》FLAC", "Jay Chou - Ye Hui Mei FLAC"])
+def test_album_match_keeps_primary_album_names_and_aliases(title):
+    """整专主标题及可信别名仍可精确命中，不因副标题补充专辑字段而降级。"""
+    album = MusicInfo(music_type="album", title="叶惠美", title_aliases=["Ye Hui Mei"],
+                      artists=["周杰伦"], artist_aliases=["Jay Chou"])
+    assert match_music_resource(album, title, "专辑：叶惠美").status == "exact"
+
+
+@pytest.mark.parametrize("subtitle", ["版本：Live", "錄音版本：Live", "Version: Live", "[Live]", "演唱：周杰伦；(Live)"])
+def test_resource_subtitle_version_is_matching_evidence(subtitle):
+    """明确的副标题版本只可匹配同一版本，不能自动绑定为普通录音。"""
+    title = "周杰伦 - 晴天 FLAC"
+    meta = MetaMusic.parse_resource(title, subtitle)
+    assert meta.version == "Live"
+    ordinary = MusicInfo(title="晴天", artists=["周杰伦"])
+    assert match_music_resource(ordinary, title, subtitle).reason == "version_mismatch"
+    live = MusicInfo(title="晴天 (Live)", artists=["周杰伦"])
+    assert match_music_resource(live, title, subtitle).status == "exact"
+
+
+def test_resource_title_version_has_priority_over_subtitle():
+    """标题版本已有明确证据时，冲突副标题不能覆盖；艺人字段也不是版本声明。"""
+    assert MetaMusic.parse_resource("U2 - One (Live) FLAC", "版本：Remix").version == "Live"
+    assert MetaMusic.parse_resource("Song FLAC", "艺术家：Live").version is None
+
+
+@pytest.mark.parametrize("mtype,suffix", [(MediaType.MUSIC, " FLAC"), (None, ".flac")])
+@pytest.mark.parametrize("global_words", [False, True])
+def test_music_metainfo_applies_shared_recognition_words(monkeypatch, mtype, suffix, global_words):
+    """音乐名称复用影视识别词语法，音频后缀与显式类型入口行为一致。"""
+    words = ["错误曲名 => 晴天"]
+    if global_words:
+        monkeypatch.setattr("app.domain.meta.words.get_custom_words", lambda: words)
+    meta = MetaInfo(f"周杰伦 - 错误曲名{suffix}", "版本：Live", mtype=mtype,
+                    custom_words=None if global_words else words)
+    assert (meta.title, meta.artists, meta.version) == ("晴天", ["周杰伦"], "Live")
+    assert meta.audio_format == "FLAC"
+    assert meta.apply_words == words
+    assert MetaMusic.from_dict(meta.to_dict()).apply_words == words
+    assert MusicMeta.model_validate(meta.to_dict()).apply_words == words
+
+
+def test_legacy_music_metainfo_keeps_empty_recognition_words():
+    """旧音乐缓存缺少识别词记录时仍能恢复，且实例之间不共享可变列表。"""
+    old = MetaMusic.from_dict({"title": "晴天"})
+    assert old.apply_words == []
+    changed = MetaMusic(title="晴天")
+    changed.apply_words = ["错误曲名 => 晴天"]
+    assert old.apply_words == []
+
+
+@pytest.mark.parametrize("suffix", ["mp2", "tta", "flac"])
+def test_music_recognition_words_keep_original_file_format(suffix):
+    """识别词可能删掉文件后缀，但不能丢失或覆盖文件原本声明的音频格式。"""
+    meta = MetaInfo(f"周杰伦 - 错误曲名.{suffix}", custom_words=[f"错误曲名\\.{suffix} => 晴天"])
+    assert meta.title == "晴天"
+    assert meta.audio_format == suffix.upper()
+
+
 def test_music_artist_in_subtitle_cannot_override_conflicting_title_credit():
     """另一位艺人的同名歌曲不能借副标题出现目标艺人而成为精确命中。"""
     music = MusicInfo(title="One", artists=["U2"])
@@ -146,6 +220,12 @@ def test_resource_evidence_matches_python_and_native_parser_paths(monkeypatch, p
     bracketed = MetaMusic.parse_resource("【永遠・是朋友】24bit／96kHz", "專輯藝人：周華健")
     assert bracketed.title and "永遠" in bracketed.title
     assert bracketed.artists == ["周華健"]
+    live = MetaInfo("周杰伦 - 错误曲名.flac", "版本：Live", mtype=MediaType.MUSIC,
+                    custom_words=["错误曲名 => 晴天"])
+    assert (live.title, live.version, live.audio_format) == ("晴天", "Live", "FLAC")
+    assert live.apply_words == ["错误曲名 => 晴天"]
+    album = MusicInfo(music_type="album", title="叶惠美", artists=["周杰伦"])
+    assert match_music_resource(album, "周杰伦 - 晴天 FLAC", "专辑：叶惠美").reason == "partial_album"
 
 
 @pytest.mark.parametrize("factory", [MusicInfo, MusicAlbumInfo])

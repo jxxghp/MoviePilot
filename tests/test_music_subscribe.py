@@ -508,6 +508,43 @@ def test_music_subscribe_matches_artist_from_resource_description():
     assert len(matched) == 1
 
 
+def test_music_rss_applies_subscription_words_without_mutating_cache():
+    """RSS 与主动搜索使用同一订阅识别词，并保持缓存中的资源原文独立。"""
+    subscribe = _subscribe(custom_words="错误曲名 => 晴天")
+    torrent = TorrentInfo(title="周杰伦 - 错误曲名 FLAC", category=MediaType.MUSIC.value)
+    original_meta = MetaMusic.parse_resource(torrent.title)
+    context = Context(torrent_info=torrent, meta_info=original_meta)
+    chain = SubscribeChain()
+    chain.filter_torrents = Mock(side_effect=lambda **kwargs: kwargs["torrent_list"])
+
+    matched = chain._filter_music_subscribe_contexts(subscribe, _music_info(), [context])
+
+    assert len(matched) == 1
+    assert matched[0].meta_info.title == "晴天"
+    assert matched[0].meta_info.apply_words == ["错误曲名 => 晴天"]
+    assert matched[0].meta_info is not original_meta
+    assert context.meta_info.title == "错误曲名"
+    assert context.torrent_info.title == "周杰伦 - 错误曲名 FLAC"
+
+
+@pytest.mark.parametrize("album_target", [False, True])
+def test_music_rss_rejects_subtitle_version_or_partial_album(album_target):
+    """RSS 不能把副标题现场版或单曲所属专辑当作可自动下载的目标。"""
+    target = _music_info()
+    if album_target:
+        target.music_type = MUSIC_ENTITY_ALBUM
+        target.title = target.album
+    context = Context(torrent_info=TorrentInfo(
+        title="周杰伦 - 晴天 FLAC",
+        description="专辑：叶惠美" if album_target else "版本：Live",
+        category=MediaType.MUSIC.value,
+    ))
+    chain = SubscribeChain()
+    chain.filter_torrents = Mock(side_effect=lambda **kwargs: kwargs["torrent_list"])
+
+    assert chain._filter_music_subscribe_contexts(_subscribe(), target, [context]) == []
+
+
 def test_album_best_version_requires_confirmed_full_coverage():
     """最高优先级的非完整专辑不得写入洗版基线或完成订阅。"""
     subscribe = _subscribe(
