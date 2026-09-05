@@ -691,23 +691,16 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     @eventmanager.register(EventType.MetadataScrape)
     def scrape_metadata_event(self, event: Event):
-        """
-        监控手动刮削事件
-        """
+        """监控手动刮削事件"""
         if not event:
             return
         event_data = event.event_data or {}
-        # 媒体根目录
+        # 读取事件载荷
         fileitem: FileItem = event_data.get("fileitem")
-        # 媒体文件列表
         file_list: List[str] = list(dict.fromkeys(event_data.get("file_list") or []))
-        # 媒体元数据
         meta: MetaBase = event_data.get("meta")
-        # 媒体信息
         mediainfo: MediaInfo = event_data.get("mediainfo")
-        # 是否覆盖
         overwrite = event_data.get("overwrite", False)
-        # 检查媒体根目录
         if not fileitem:
             return
 
@@ -768,18 +761,14 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             overwrite=overwrite,
                         )
                     else:
-                        # 1. 收集fileitem和file_list中每个文件之间所有子目录
                         all_dirs: set[Path] = set()
                         root_path = Path(fileitem.path)
 
                         logger.debug(f"开始收集目录，根目录：{root_path}")
-                        # 收集根目录
                         all_dirs.add(root_path)
 
-                        # 收集所有目录（包括所有层级）
                         for sub_file in file_list:
                             sub_path = Path(sub_file)
-                            # 收集从根目录到文件的所有父目录
                             current_path = sub_path.parent
                             while (
                                     current_path != root_path
