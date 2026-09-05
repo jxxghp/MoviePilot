@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -145,10 +145,20 @@ def _handler(
         messenger=messenger,
         actions=actions,
         submit_monitor=submitted.append,
+        run_sync=_run_sync,
         mark_restart=mark_restart or Mock(),
         clear_restart_marker=clear_restart_marker or Mock(),
         poll_interval_seconds=0,
     )
+
+
+async def _run_sync(
+    function: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """在测试事件循环内直接执行同步更新操作。"""
+    return function(*args, **kwargs)
 
 
 def test_update_command_prompts_for_download_when_release_is_available() -> None:

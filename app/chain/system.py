@@ -1,15 +1,15 @@
+import asyncio
 import errno
 import json
 import re
 import shutil
 import threading
 import uuid
-from collections.abc import Coroutine, Mapping
+from collections.abc import Callable, Coroutine, Mapping
 from pathlib import Path
-from typing import Any, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Any, Optional, Protocol, Union
 
 from app.application.configuration import get_chain_runtime_config_snapshot
-from app.application.messaging.update import SystemUpdateInteractionHandler
 from app.chain.base import ChainBase
 from app.runtime import version as runtime_version
 from app.runtime.log import logger
@@ -18,6 +18,9 @@ from app.runtime.state import SystemHelper
 from app.runtime.tasks import get_task_registry
 from app.schemas.message import Message
 from app.schemas.notification import NotificationChannel
+
+if TYPE_CHECKING:
+    from app.application.messaging.update import SystemUpdateInteractionHandler
 
 
 class SystemResponsePort(Protocol):
@@ -102,19 +105,38 @@ def _close_system_response(response: SystemResponsePort) -> None:
         logger.debug(f"释放版本响应失败：{str(err)}")
 
 
+async def _run_update_operation(
+    function: Callable[..., Any],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """通过任务登记器在线程池执行同步更新操作并等待真实终态。"""
+    task = get_task_registry().create_sync(
+        function,
+        *args,
+        owner="chain.system.update_progress.operation",
+        **kwargs,
+    )
+    return await asyncio.shield(task)
+
+
 class _SystemUpdateChain(ChainBase):
     """提供通知渠道主程序升级交互的 Chain 入口。"""
 
     _update_restart_file = "__system_update_restart__"
 
-    def _update_interaction_handler(self) -> SystemUpdateInteractionHandler:
+    def _update_interaction_handler(self) -> "SystemUpdateInteractionHandler":
         """构造复用当前消息网关和系统应用服务的更新交互控制器。"""
+        from app.application.messaging.update import SystemUpdateInteractionHandler
+
         if self.system_service is None:
             raise RuntimeError("系统更新服务尚未由启动组合根装配")
         return SystemUpdateInteractionHandler(
             messenger=self,
             actions=self.system_service,
             submit_monitor=self._submit_update_monitor,
+            run_sync=_run_update_operation,
             mark_restart=self._mark_update_restart,
             clear_restart_marker=self._clear_update_restart_marker,
         )

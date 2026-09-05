@@ -16,7 +16,6 @@ from app.application.messaging.media import media_interaction_manager
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import skill_interaction_manager
 from app.application.messaging.subscribe import subscribe_interaction_manager
-from app.application.messaging.update import update_interaction_manager
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +157,8 @@ class InteractionRouter:
 
 def has_pending_interaction(user_id: Union[str, int]) -> bool:
     """供 WebAgent 判断用户是否处于传统交互会话。"""
+    from app.application.messaging.update import update_interaction_manager
+
     return any(
         manager.get_by_user(user_id) is not None
         for manager in (

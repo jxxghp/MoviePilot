@@ -27,7 +27,6 @@ from app.application.messaging.session import MessageSessionService
 from app.application.messaging.site import site_interaction_manager
 from app.application.messaging.skill import SkillInteractionHandler, skill_interaction_manager
 from app.application.messaging.subscribe import subscribe_interaction_manager
-from app.application.messaging.update import update_interaction_manager
 from app.chain.base import ChainBase
 from app.chain.interaction import MediaInteractionChain as _MediaInteractionChain
 from app.chain.site import SiteChain
@@ -706,6 +705,8 @@ class MessageChain(ChainBase):
 
     def _interaction_router(self) -> interaction_router.InteractionRouter:
         """构造交互路由器，文本会话按创建时间选择，回调路由注册顺序即优先级。"""
+        from app.application.messaging.update import update_interaction_manager
+
         session_routes = [
             interaction_router.SessionRoute(
                 name="sites",

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Optional, Protocol, Union
@@ -49,6 +49,7 @@ class SystemUpdateInteractionActions(Protocol):
 
 
 UpdateMonitorSubmitter = Callable[[Coroutine[Any, Any, None]], Any]
+UpdateOperationRunner = Callable[..., Awaitable[Any]]
 RestartMarker = Callable[[NotificationChannel, Union[str, int], Optional[str]], None]
 RestartMarkerClearer = Callable[[], None]
 
@@ -73,6 +74,7 @@ class SystemUpdateInteractionHandler:
         messenger: MessageGateway,
         actions: SystemUpdateInteractionActions,
         submit_monitor: UpdateMonitorSubmitter,
+        run_sync: UpdateOperationRunner,
         mark_restart: RestartMarker,
         clear_restart_marker: RestartMarkerClearer,
         poll_interval_seconds: float = _poll_interval_seconds,
@@ -85,6 +87,7 @@ class SystemUpdateInteractionHandler:
         self._renderer = _SystemUpdateRenderer(messenger=messenger, actions=actions)
         self._progress_monitor = _SystemUpdateProgressMonitor(
             actions=actions, renderer=self._renderer, submit_monitor=submit_monitor,
+            run_sync=run_sync,
             poll_interval_seconds=poll_interval_seconds,
         )
 
@@ -505,12 +508,14 @@ class _SystemUpdateProgressMonitor:
     def __init__(
         self, *, actions: SystemUpdateInteractionActions,
         renderer: _SystemUpdateRenderer, submit_monitor: UpdateMonitorSubmitter,
+        run_sync: UpdateOperationRunner,
         poll_interval_seconds: float,
     ) -> None:
         """注入状态读取、消息渲染和后台任务提交能力。"""
         self._actions = actions
         self._renderer = renderer
         self._submit_monitor = submit_monitor
+        self._run_sync = run_sync
         self._poll_interval_seconds = max(0.0, poll_interval_seconds)
 
     def schedule(
@@ -567,7 +572,7 @@ class _SystemUpdateProgressMonitor:
                 request = update_interaction_manager.get_by_id(request_id, userid)
                 if request is None:
                     return
-                status = await asyncio.to_thread(self._actions.update_status)
+                status = await self._run_sync(self._actions.update_status)
                 item = self._renderer.application_item(status)
                 fingerprint = self._renderer.item_fingerprint(item)
                 if fingerprint != last_fingerprint:
@@ -578,7 +583,7 @@ class _SystemUpdateProgressMonitor:
                         channel=channel,
                     )
                     if original_message_id and original_chat_id and ChannelCapabilityManager.supports_editing(channel):
-                        edited = await asyncio.to_thread(
+                        edited = await self._run_sync(
                             self._renderer.edit_view,
                             view=view,
                             channel=channel,
@@ -588,7 +593,7 @@ class _SystemUpdateProgressMonitor:
                             original_chat_id=original_chat_id,
                         )
                         if not edited and (not edit_fallback_sent or item.state in self._terminal_download_states):
-                            await asyncio.to_thread(
+                            await self._run_sync(
                                 self._renderer.post_view,
                                 view=view,
                                 channel=channel,
@@ -602,7 +607,7 @@ class _SystemUpdateProgressMonitor:
                     else:
                         progress_bucket = item.progress // 10
                         if progress_bucket != last_progress_bucket or item.state in self._terminal_download_states:
-                            await asyncio.to_thread(
+                            await self._run_sync(
                                 self._renderer.post_view,
                                 view=view,
                                 channel=channel,
@@ -621,7 +626,7 @@ class _SystemUpdateProgressMonitor:
             logger.warning(f"监视 MoviePilot 更新下载进度失败：{error}")
             request = update_interaction_manager.get_by_id(request_id, userid)
             if request is not None:
-                await asyncio.to_thread(
+                await self._run_sync(
                     self._renderer.render_operation_failure,
                     request=request,
                     channel=channel,

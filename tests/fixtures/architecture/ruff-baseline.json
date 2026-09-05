@@ -364,9 +364,6 @@
     "F541": 1,
     "I001": 1
   },
-  "app/modules/slack/slack.py": {
-    "I001": 1
-  },
   "app/modules/subtitle/__init__.py": {
     "I001": 1
   },
