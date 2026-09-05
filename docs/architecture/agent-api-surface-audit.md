@@ -305,9 +305,9 @@
 | `POST` | `/api/v1/subscribe/` | subscribe | `gateway` | subscription.add | 新增订阅 |
 | `PUT` | `/api/v1/subscribe/` | subscribe | `gateway` | subscription.update | 更新订阅 |
 | `POST` | `/api/v1/subscribe/check` | subscribe | `gateway` | subscription.metadata.refresh | 刷新订阅 TMDB 信息 |
-| `GET` | `/api/v1/subscribe/execution/batches` | subscribe | `ui_presentation` | host-ui | 查询订阅搜索批次状态 |
-| `GET` | `/api/v1/subscribe/execution/batches/{batch_id}` | subscribe | `ui_presentation` | host-ui | 查询订阅搜索批次 |
-| `PUT` | `/api/v1/subscribe/execution/batches/{batch_id}/cancel` | subscribe | `ui_presentation` | host-ui | 取消订阅搜索批次 |
+| `GET` | `/api/v1/subscribe/execution/batches` | subscribe | `ui_presentation` | host-ui | 查看订阅搜索进度 |
+| `GET` | `/api/v1/subscribe/execution/batches/{batch_id}` | subscribe | `ui_presentation` | host-ui | 查看一次订阅搜索 |
+| `PUT` | `/api/v1/subscribe/execution/batches/{batch_id}/cancel` | subscribe | `ui_presentation` | host-ui | 停止一次订阅搜索 |
 | `GET` | `/api/v1/subscribe/files/{subscribe_id}` | subscribe | `gateway` | subscription.files | 订阅相关文件信息 |
 | `DELETE` | `/api/v1/subscribe/follow` | subscribe | `gateway` | subscription.follow.delete | 取消Follow订阅分享人 |
 | `GET` | `/api/v1/subscribe/follow` | subscribe | `gateway` | subscription.follow.list | 查询已Follow的订阅分享人 |

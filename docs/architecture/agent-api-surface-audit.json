@@ -3546,7 +3546,7 @@
       "owner": "host-ui",
       "path": "/api/v1/subscribe/execution/batches",
       "reason": "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
-      "summary": "查询订阅搜索批次状态",
+      "summary": "查看订阅搜索进度",
       "tags": [
         "subscribe"
       ]
@@ -3558,7 +3558,7 @@
       "owner": "host-ui",
       "path": "/api/v1/subscribe/execution/batches/{batch_id}",
       "reason": "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
-      "summary": "查询订阅搜索批次",
+      "summary": "查看一次订阅搜索",
       "tags": [
         "subscribe"
       ]
@@ -3570,7 +3570,7 @@
       "owner": "host-ui",
       "path": "/api/v1/subscribe/execution/batches/{batch_id}/cancel",
       "reason": "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
-      "summary": "取消订阅搜索批次",
+      "summary": "停止一次订阅搜索",
       "tags": [
         "subscribe"
       ]

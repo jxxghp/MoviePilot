@@ -131,7 +131,7 @@ class TransactionalSubscriptionSearchRepository:
         async with self._async_session_factory() as session:
             unit_of_work = SqlAlchemyAsyncUnitOfWork(session)
             try:
-                result = await session.run_sync(
+                result: T = await session.run_sync(
                     lambda sync_session: operation(SubscriptionSearchOper(sync_session))
                 )
                 await unit_of_work.commit()
