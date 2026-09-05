@@ -25,6 +25,7 @@ from app.chain.media import MediaChain
 from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.domain.media import is_music_media_source, normalize_music_type
 from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.download import DownloadAddedData as _SchemaDownloadAddedData
@@ -116,6 +117,44 @@ def _build_unrecognized_media_info(
         title=metainfo.name or torrent.title,
         year=metainfo.year,
     )
+
+
+def _merge_selected_music_meta(
+    metainfo: MetaBase,
+    mediainfo: MusicInfo,
+    torrent_title: str,
+) -> MetaBase:
+    """保留种子解析证据，并补齐已选音乐实体中缺失的高可信字段。"""
+    if not isinstance(metainfo, MetaMusic):
+        return metainfo
+
+    # MetaInfo 可能已经从种子标题解析出曲名、艺人和音质；这些资源证据优先保留。
+    # 但资源标题常省略所属专辑，整理历史随后又依赖 MetaMusic，因此把目标实体中
+    # 尚未解析出的身份字段补回。媒体来源和 ID 仍只放在 media_info，避免重复身份。
+    for field_name in (
+        "title",
+        "artists",
+        "album",
+        "album_artist",
+        "year",
+        "disc_number",
+        "track_number",
+        "total_discs",
+        "total_tracks",
+        "version",
+        "isrc",
+    ):
+        current_value = getattr(metainfo, field_name, None)
+        selected_value = getattr(mediainfo, field_name, None)
+        if current_value in (None, "", []) and selected_value not in (None, "", []):
+            setattr(
+                metainfo,
+                field_name,
+                list(selected_value) if isinstance(selected_value, list) else selected_value,
+            )
+    # org_string 应保留用户实际选择的种子标题，而不是识别词处理后的副本。
+    metainfo.org_string = torrent_title
+    return metainfo
 
 
 def _resolve_add_media(
@@ -232,6 +271,8 @@ def download(
         mediainfo = MediaInfo()
         mediainfo.from_dict(media_in.model_dump())
     metainfo = MetaInfo(title=torrent_in.title, subtitle=torrent_in.description, mtype=mediainfo.type)
+    if isinstance(mediainfo, MusicInfo):
+        metainfo = _merge_selected_music_meta(metainfo, mediainfo, torrent_in.title)
     # 种子信息
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())
