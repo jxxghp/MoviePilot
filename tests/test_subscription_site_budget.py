@@ -337,6 +337,17 @@ def test_search_provider_releases_successful_site_budget():
     assert snapshot.candidate_count == 1
     assert snapshot.failure_count == 0
     assert snapshot.release_failure_count == 0
+    chain.record_subscription_site_budget_failure("站点 Flaky 搜索失败：HTTP 429")
+    assert not chain.consume_subscription_site_budget_failures()
+
+
+def test_other_search_results_keep_site_failures_non_terminal():
+    """插件等其他搜索源已有候选时，站点失败不得覆盖可用结果。"""
+    chain = object.__new__(SearchChain)
+    chain.configure_subscription_site_budget(None)
+    chain.record_subscription_site_budget_failure("站点 Flaky 搜索失败：HTTP 429")
+
+    assert not chain.consume_subscription_site_budget_failures(has_results=True)
 
 
 def test_search_provider_aggregates_swallowed_indexer_failure(monkeypatch):
@@ -418,6 +429,80 @@ def test_search_provider_aggregates_swallowed_indexer_failure(monkeypatch):
     assert snapshot.request_count == 1
     assert snapshot.failure_count == 1
     assert snapshot.cooldown_seconds == 900.0
+
+
+def test_search_provider_explains_error_flag_without_exception(monkeypatch):
+    """索引器仅返回错误标志时也必须持久化可读原因，不能向任务暴露裸 `error`。"""
+    captured = {}
+
+    class _Repository(_WaitingRepository):
+        """提供立即可用租约并记录通用失败收口。"""
+
+        def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
+            """返回当前调用独占的站点租约。"""
+            del owner, lease_seconds
+            return SiteBudgetClaim(
+                site_id=site_id,
+                acquired=True,
+                retry_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                consecutive_failures=0,
+                lease_token="lease-token",
+            )
+
+        def finish_site(self, **kwargs) -> bool:
+            """记录预算收口参数供断言。"""
+            captured.update(kwargs)
+            return True
+
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__search_check",
+        staticmethod(lambda _site, _keyword=None: True),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__execute_search",
+        staticmethod(lambda _site, _request: (True, [])),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__indexer_statistic",
+        staticmethod(lambda **_kwargs: None),
+    )
+    monkeypatch.setattr(
+        IndexerModule,
+        "_IndexerModule__parse_result",
+        staticmethod(lambda **_kwargs: []),
+    )
+    budget = SubscriptionSiteBudget(
+        repository=_Repository(),
+        owner="fallback-worker",
+        cancelled=lambda: False,
+        stop_state=ProcessStopState(),
+    )
+    chain = object.__new__(SearchChain)
+    chain.configure_subscription_site_budget(budget)
+    chain.search_site_torrents = object.__new__(IndexerModule).search_torrents
+    warnings = []
+    monkeypatch.setattr(
+        "app.chain.search.provider.logger.warning",
+        warnings.append,
+    )
+
+    result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
+        site={"id": 15, "name": "Generic"},
+        keyword="movie",
+        mtype=None,
+        page=0,
+    )
+
+    assert result == []
+    assert captured["outcome"] == "error"
+    assert captured["error"] == "站点请求或页面解析失败"
+    assert chain.consume_subscription_site_budget_failures() == (
+        "站点 Generic 搜索失败：站点请求或页面解析失败",
+    )
+    assert warnings == ["站点 Generic 搜索失败：站点请求或页面解析失败"]
 
 
 def test_search_provider_logs_site_budget_release_failure(monkeypatch):

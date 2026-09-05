@@ -66,6 +66,10 @@ class SubscriptionExecutionAdmission:
         return self._clock() >= lease.expires_at
 
 
+class SubscriptionSiteSearchFailed(RuntimeError):
+    """表示本轮没有搜索源成功完成，无需输出内部异常堆栈。"""
+
+
 @dataclass(slots=True)
 class SubscriptionExecutionContext:
     """一次订阅执行的显式取消、阶段和副作用边界。"""
@@ -101,9 +105,9 @@ class SubscriptionExecutionContext:
 
 
 def raise_subscription_site_budget_failures(failures: tuple[str, ...]) -> None:
-    """在成功站点结果完成处理后暴露其余站点的聚合失败。"""
+    """在所有实际搜索源均未成功时暴露站点聚合失败。"""
     if failures:
-        raise RuntimeError("；".join(failures))
+        raise SubscriptionSiteSearchFailed("；".join(failures))
 
 
 def raise_subscription_site_budget_deferral(

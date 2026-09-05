@@ -19,6 +19,7 @@ from app.application.subscription.execution import (
     SearchTaskSnapshot,
     SubscriptionExecutionContext,
     SubscriptionSearchRepository,
+    SubscriptionSiteSearchFailed,
     raise_subscription_site_budget_deferral,
     raise_subscription_site_budget_failures,
 )
@@ -300,7 +301,10 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
                 except Exception as err:
                     outcome = "failed"
                     reason = "error"
-                    logger.error(f"订阅 {subscribe.name} 搜索失败：{str(err)}", exc_info=True)
+                    logger.error(
+                        f"订阅 {subscribe.name} 搜索失败：{str(err)}",
+                        exc_info=not isinstance(err, SubscriptionSiteSearchFailed),
+                    )
                 finally:
                     try:
                         if current and current.state == "N":
@@ -730,7 +734,9 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
             custom_words=subscribe.custom_words.split("\n") if subscribe.custom_words else None,
             filter_params=self.get_params(subscribe),
         )
-        site_budget_failures = searchchain.consume_subscription_site_budget_failures()
+        site_budget_failures = searchchain.consume_subscription_site_budget_failures(
+            has_results=bool(contexts),
+        )
         site_budget_deferrals = searchchain.consume_subscription_site_budget_deferrals()
         _ensure_execution_active(execution_context)
         if not contexts:

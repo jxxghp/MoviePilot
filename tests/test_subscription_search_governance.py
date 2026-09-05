@@ -12,7 +12,10 @@ from sqlalchemy.orm import sessionmaker
 
 from app.application.site.observation import report_site_search_outcome
 from app.application.subscription.contract import SubscriptionSnapshot
-from app.application.subscription.execution import SubscriptionExecutionAdmission
+from app.application.subscription.execution import (
+    SubscriptionExecutionAdmission,
+    raise_subscription_site_budget_failures,
+)
 from app.application.subscription.sitebudget import (
     SubscriptionSearchCancelled,
     SubscriptionSearchDeferred,
@@ -250,6 +253,73 @@ def test_fallback_queue_continues_after_one_subscription_failure(tmp_path, monke
         )
         assert lease is not None
         assert chain._subscription_execution_admission.release(lease) is True
+
+
+def test_site_search_failure_logs_without_internal_traceback(tmp_path, monkeypatch):
+    """可预期的站点聚合失败仍标记任务失败，但不输出误导性的内部堆栈。"""
+    chain = _chain(tmp_path, [_subscribe(15)])
+    _make_tasks_ready(monkeypatch)
+
+    def process(*_args, **_kwargs):
+        """通过正式聚合助手制造站点失败。"""
+        raise_subscription_site_budget_failures(
+            ("站点 Generic 搜索失败：站点请求或页面解析失败",)
+        )
+
+    monkeypatch.setattr(
+        chain,
+        "_process_search_subscription",
+        process,
+    )
+    error_logs = []
+    monkeypatch.setattr(
+        "app.chain.subscribe.searchtask.logger.error",
+        lambda message, **kwargs: error_logs.append((message, kwargs)),
+    )
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(state="R")
+
+    batch = chain.get_search_batch(batch_id)
+    assert batch.state == "failed"
+    assert batch.failed_count == 1
+    assert error_logs == [
+        (
+            "订阅《治理电影 15》搜索失败：站点 Generic 搜索失败：站点请求或页面解析失败",
+            {"exc_info": False},
+        )
+    ]
+
+
+def test_inline_site_search_failure_logs_without_internal_traceback(tmp_path, monkeypatch):
+    """兼容内联搜索遇到站点聚合失败时也不得输出内部堆栈。"""
+    chain = _chain(tmp_path, [_subscribe(16)])
+    del chain.subscription_search_repository
+    monkeypatch.setattr(chain, "_wait_before_scheduled_search", lambda *_args: None)
+
+    def process(*_args, **_kwargs):
+        """通过正式聚合助手制造内联站点失败。"""
+        raise_subscription_site_budget_failures(
+            ("站点 Generic 搜索失败：站点请求或页面解析失败",)
+        )
+
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+    error_logs = []
+    monkeypatch.setattr(
+        subscribe_search.logger,
+        "error",
+        lambda message, **kwargs: error_logs.append((message, kwargs)),
+    )
+
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        chain.search(state="R")
+
+    assert error_logs == [
+        (
+            "订阅 治理电影 16 搜索失败：站点 Generic 搜索失败：站点请求或页面解析失败",
+            {"exc_info": False},
+        )
+    ]
 
 
 def test_site_budget_conflict_requeues_task_without_batch_failure(tmp_path, monkeypatch):

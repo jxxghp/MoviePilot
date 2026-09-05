@@ -49,6 +49,8 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
     "RousiPro": ("keyword", "mtype", "cat", "page"),
 }
 
+_UNKNOWN_SEARCH_FAILURE_MESSAGE = "站点请求或页面解析失败"
+
 
 @dataclass(frozen=True)
 class _IndexerSearchRequest:
@@ -83,6 +85,15 @@ def _classify_search_failure(error: Optional[Exception]) -> str:
     if isinstance(error, TimeoutError) or "timeout" in text or "timed out" in text or "超时" in text:
         return "timeout"
     return "error"
+
+
+def _search_failure_message(outcome: _IndexerSearchOutcome) -> Optional[str]:
+    """返回供站点预算持久化和任务聚合展示的失败原因。"""
+    if outcome.error is not None:
+        return str(outcome.error)
+    if outcome.error_flag:
+        return _UNKNOWN_SEARCH_FAILURE_MESSAGE
+    return None
 
 
 class IndexerModule(_ModuleBase):
@@ -450,7 +461,7 @@ class IndexerModule(_ModuleBase):
                 if outcome.error_flag or outcome.error is not None
                 else "success"
             ),
-            error=str(outcome.error) if outcome.error is not None else None,
+            error=_search_failure_message(outcome),
         )
 
         # 返回结果
@@ -557,7 +568,7 @@ class IndexerModule(_ModuleBase):
                 if outcome.error_flag or outcome.error is not None
                 else "success"
             ),
-            error=str(outcome.error) if outcome.error is not None else None,
+            error=_search_failure_message(outcome),
         )
 
         # 返回结果

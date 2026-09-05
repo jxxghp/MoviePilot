@@ -15,6 +15,7 @@ from app.application.subscription.execution import (
     SubscriptionExecutionContext,
     SubscriptionExecutionLease,
     SubscriptionSearchRepository,
+    SubscriptionSiteSearchFailed,
     handle_subscription_search_deferred,
 )
 from app.application.subscription.observability import (
@@ -239,7 +240,10 @@ class SubscriptionSearchTaskRunner:
                 self.summary.record,
             )
         except Exception as err:
-            logger.error(f"订阅《{subscribe.name}》搜索失败：{str(err)}", exc_info=True)
+            logger.error(
+                f"订阅《{subscribe.name}》搜索失败：{str(err)}",
+                exc_info=not isinstance(err, SubscriptionSiteSearchFailed),
+            )
             self.queue.finish_task(
                 task_id=task_id,
                 lease_token=lease_token,
