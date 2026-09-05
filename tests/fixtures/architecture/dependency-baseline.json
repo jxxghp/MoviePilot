@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8206,
-  "edge_sha256": "c1bac8193a102557080e2ff07d49b8c7f4e34ad09831ffee1ac2d0cce5b89463",
+  "edge_count": 8208,
+  "edge_sha256": "1a7eee327467c99451ce338d7d2670b74c2e71aeefcf36ac27b6668cb30a71aa",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2728,6 +2728,7 @@
     "app.api.endpoints.submaintenance -> app.application.subscription.search",
     "app.api.endpoints.submaintenance -> app.schemas",
     "app.api.endpoints.submaintenance -> app.schemas.response",
+    "app.api.endpoints.submaintenance -> app.schemas.subscribe",
     "app.api.endpoints.subscribe -> app.adapters",
     "app.api.endpoints.subscribe -> app.adapters.external",
     "app.api.endpoints.subscribe -> app.adapters.external.server",
@@ -4778,6 +4779,7 @@
     "app.chain.subscribe.notify -> app.domain.meta",
     "app.chain.subscribe.notify -> app.domain.meta.metabase",
     "app.chain.subscribe.notify -> app.runtime",
+    "app.chain.subscribe.notify -> app.runtime.execution",
     "app.chain.subscribe.notify -> app.runtime.log",
     "app.chain.subscribe.notify -> app.schemas",
     "app.chain.subscribe.notify -> app.schemas.common",
