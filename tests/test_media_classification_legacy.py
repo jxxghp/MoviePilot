@@ -273,6 +273,37 @@ def test_mixed_genre_ids_keep_positive_or_and_negative_and_semantics() -> None:
     assert _category_name(result, _tmdb_facts(result, {}, "电影")) == "兜底"
 
 
+@pytest.mark.parametrize("negative", [False, True])
+@pytest.mark.parametrize("field_name", ["origin_country", "genre_ids"])
+def test_large_value_sets_remain_compact_and_preserve_legacy_semantics(
+    field_name: str,
+    negative: bool,
+) -> None:
+    """大枚举只产生集合条件，旧 API 投影后每个正向或排除值仍保持原语义。"""
+    values = [str(index) for index in range(1, 61)]
+    prefix = "!" if negative else ""
+    config = {
+        "movie": {
+            "目标": {field_name: ",".join(f"{prefix}{value}" for value in values)},
+            "兜底": None,
+        },
+        "tv": {},
+    }
+    result = migrate_legacy_category_config(config)
+    projection = project_policy_to_legacy_category_projection(result.policy)
+    remigrated = migrate_legacy_category_config(projection.config)
+
+    assert result.valid
+    assert ClassificationPolicyValidator.validate(result.policy, result.extra_fields).valid
+    assert len(_leaf_fields(result.policy.rules[0].when)) <= 2
+    assert projection.exact
+    for actual in [*([value] for value in values), ["999"], ["1", "999"], [], None]:
+        tmdb_info = {field_name: actual, "id": 1}
+        expected = _legacy_tmdb_category(config["movie"], tmdb_info)
+        assert _category_name(result, _tmdb_facts(result, tmdb_info, "电影")) == expected
+        assert _category_name(remigrated, _tmdb_facts(remigrated, tmdb_info, "电影")) == expected
+
+
 def test_safe_unknown_field_is_declared_but_unsafe_field_blocks_publish() -> None:
     """合法未知 TMDB 一级字段可迁移，非法字段段必须产生阻断错误。"""
     safe = migrate_legacy_category_config(
@@ -387,7 +418,15 @@ def test_release_year_supports_values_ranges_and_non_numeric_hyphen_endpoints() 
     assert _category_name(result, _tmdb_facts(result, {"release_date": "2023-01-01"}, "电影")) == "兜底"
     projection = project_policy_to_legacy_category_projection(result.policy)
     assert projection.exact
-    assert projection.config.movie == CategoryConfig.model_validate(config).movie
+    assert projection.config.movie == CategoryConfig.model_validate(
+        {
+            "movie": {
+                "近年": {"release_year": "2020,2021,2022,2024"},
+                "字母年": {"release_year": "ABCD,EFGH"},
+                "兜底": None,
+            }
+        }
+    ).movie
 
 
 def test_stable_ids_are_repeatable_ascii_and_media_type_scoped() -> None:
@@ -485,5 +524,9 @@ def test_migrated_policy_round_trips_to_category_config() -> None:
     projected = project_policy_to_legacy_category_projection(migrated.policy)
 
     assert projected.exact
-    assert projected.config == CategoryConfig.model_validate(config)
+    expected = CategoryConfig.model_validate(config)
+    assert expected.movie is not None
+    assert expected.movie["组合"] is not None
+    expected.movie["组合"].release_year = "2020,2021,2022,2024"
+    assert projected.config == expected
     assert project_policy_to_legacy_category_config(migrated.policy) == projected.config

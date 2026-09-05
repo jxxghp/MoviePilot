@@ -17,6 +17,7 @@ from app.application.classification.configuration import (
 from app.application.classification.contract import ClassificationPolicyConflictError
 from app.application.classification.runtime import ClassificationRuntime
 from app.schemas.category import (
+    ClassificationConditionGroup,
     ClassificationPolicyState,
 )
 from app.schemas.types import SystemConfigKey
@@ -149,6 +150,83 @@ async def test_absent_policy_migrates_yaml_once_without_rewriting_file(
     assert composition.migrated is True
     assert composition.runtime.require_policy().revision == 1
     assert store.write_count == 1
+    assert legacy_path.read_text(encoding="utf-8") == content
+
+
+@pytest.mark.asyncio
+async def test_large_legacy_enumerations_migrate_and_reload_without_losing_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """复现 56/31 个旧枚举值的升级场景，验证首次发布、重启和旧接口均保留全部值。"""
+    languages = ",".join(f"language{index}" for index in range(26))
+    countries = ",".join(f"country{index}" for index in range(30))
+    content = (
+        f"movie:\n  欧美电影:\n    original_language: '{languages}'\n"
+        f"    production_countries: '{countries}'\n  未分类:\n"
+        f"tv:\n  欧美漫:\n    genre_ids: '16'\n    origin_country: '{countries}'\n  未分类:\n"
+    )
+    legacy_path = tmp_path / "category.yaml"
+    legacy_path.write_text(content, encoding="utf-8")
+    store = _MemoryPolicyStore()
+    monkeypatch.setattr(classification_composition, "SystemConfigClassificationPolicyStore", lambda *_args: store)
+    system_config = _SystemConfig({})
+
+    composition = await classification_composition.compose_classification(
+        executor=cast(Any, _InlineExecutor()),
+        settings=cast(Any, SimpleNamespace(CONFIG_PATH=tmp_path)),
+        system_config=cast(Any, system_config),
+    )
+
+    assert composition.migrated is True
+    policy = composition.runtime.require_policy()
+    assert policy.revision == 1
+    assert len(policy.rules) == 2
+    for rule in policy.rules:
+        assert isinstance(rule.when, ClassificationConditionGroup)
+        assert rule.when.all is not None and len(rule.when.all) == 2
+    assert store.state is not None
+    system_config.publish_many({SystemConfigKey.MediaClassificationPolicy: store.state.model_dump(mode="json")})
+    reloaded = await classification_composition.compose_classification(
+        executor=cast(Any, _InlineExecutor()),
+        settings=cast(Any, SimpleNamespace(CONFIG_PATH=tmp_path)),
+        system_config=cast(Any, system_config),
+    )
+
+    assert reloaded.migrated is False
+    assert reloaded.runtime.require_policy() == policy
+    projected = reloaded.runtime.legacy_config().model_dump(exclude_none=True)
+    assert projected["movie"]["欧美电影"]["original_language"] == languages
+    assert projected["movie"]["欧美电影"]["production_countries"] == countries
+    assert projected["tv"]["欧美漫"]["origin_country"] == countries
+    assert store.write_count == 1
+    assert legacy_path.read_text(encoding="utf-8") == content
+
+
+@pytest.mark.asyncio
+async def test_publish_validation_failure_preserves_legacy_runtime_without_writes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """真正超出叶子上限的不同字段保留错误诊断和旧配置，不得中断启动或写入新策略。"""
+    content = "movie:\n  复杂规则:\n" + "".join(f"    field{index}: 'X'\n" for index in range(31))
+    legacy_path = tmp_path / "category.yaml"
+    legacy_path.write_text(content, encoding="utf-8")
+    store = _MemoryPolicyStore()
+    monkeypatch.setattr(classification_composition, "SystemConfigClassificationPolicyStore", lambda *_args: store)
+
+    composition = await classification_composition.compose_classification(
+        executor=cast(Any, _InlineExecutor()),
+        settings=cast(Any, SimpleNamespace(CONFIG_PATH=tmp_path)),
+        system_config=cast(Any, _SystemConfig({})),
+    )
+
+    assert composition.migrated is False
+    assert composition.runtime.active_policy() is None
+    assert any(issue.code == "max_conditions_exceeded" for issue in composition.runtime.diagnostics())
+    assert "复杂规则" in (composition.runtime.legacy_config().movie or {})
+    assert store.write_count == 0
+    assert store.state is None
     assert legacy_path.read_text(encoding="utf-8") == content
 
 

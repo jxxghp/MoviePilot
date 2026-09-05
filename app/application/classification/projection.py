@@ -219,11 +219,11 @@ def _project_rule(
             continue
         if not values:
             continue
-        token = _render_legacy_token(values)
-        rendered = f"!{token}" if negative else token
         field_tokens = tokens_by_field.setdefault(field_name, [])
-        if rendered not in field_tokens:
-            field_tokens.append(rendered)
+        for value in values:
+            rendered = f"!{value}" if negative else value
+            if rendered not in field_tokens:
+                field_tokens.append(rendered)
     return (
         {field_name: ",".join(tokens) for field_name, tokens in tokens_by_field.items()},
         diagnostics,
@@ -298,17 +298,6 @@ def _original_alias_value(value: str, aliases: Mapping[str, str]) -> str:
         if canonical == value.upper():
             return alias
     return value
-
-
-def _render_legacy_token(values: Sequence[str]) -> str:
-    """把一个迁移时保留边界的值集合恢复为单个旧逗号项。"""
-    if len(values) == 1:
-        return values[0]
-    if values and all(value.isdigit() for value in values):
-        numbers = [int(value) for value in values]
-        if numbers == list(range(numbers[0], numbers[-1] + 1)):
-            return f"{numbers[0]}-{numbers[-1]}"
-    return "-".join(values)
 
 
 def _projection_warning(

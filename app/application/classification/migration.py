@@ -121,7 +121,7 @@ class LegacyClassificationMigrationResult:
 
 @dataclass(frozen=True, slots=True)
 class _LegacyToken:
-    """保留一个旧逗号项展开后的值集合及其排除语义。"""
+    """保留旧字段展开后的同向值集合及其排除语义。"""
 
     negative: bool
     values: tuple[str, ...]
@@ -530,26 +530,20 @@ def _legacy_field_definition(
 
 
 def _parse_legacy_tokens(value: str) -> tuple[tuple[_LegacyToken, ...], bool]:
-    """逐项复现旧逗号、排除前缀和连字符范围展开算法。"""
+    """沿用旧范围展开语义，并合并同向枚举，避免值数量膨胀为叶子数量。"""
     raw_tokens = [item for item in value.split(",") if item]
-    parsed: list[_LegacyToken] = []
+    values_by_sign: dict[bool, list[str]] = {}
     requires_exists = not raw_tokens
     for raw_token in raw_tokens:
         expanded = _expand_legacy_token(raw_token)
         if not expanded:
             requires_exists = True
             continue
-        grouped: list[_LegacyToken] = []
         for expanded_value in expanded:
             negative = expanded_value.startswith("!")
             plain_value = expanded_value[1:] if negative else expanded_value
-            if grouped and grouped[-1].negative == negative:
-                previous = grouped[-1]
-                grouped[-1] = _LegacyToken(negative, (*previous.values, plain_value))
-            else:
-                grouped.append(_LegacyToken(negative, (plain_value,)))
-        parsed.extend(grouped)
-    return tuple(parsed), requires_exists
+            values_by_sign.setdefault(negative, []).append(plain_value)
+    return tuple(_LegacyToken(negative, tuple(values)) for negative, values in values_by_sign.items()), requires_exists
 
 
 def _expand_legacy_token(value: str) -> tuple[str, ...]:

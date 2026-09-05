@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from app.application.classification.configuration import (
     ClassificationPolicyConfigurationService,
+    ClassificationPolicyValidationError,
 )
 from app.application.classification.contract import (
     ClassificationPolicyStateCorruptError,
@@ -196,7 +197,18 @@ async def compose_classification(
         )
 
     service.register_extra_fields(migration.extra_fields)
-    await service.async_initialize(migration.policy)
+    try:
+        await service.async_initialize(migration.policy)
+    except ClassificationPolicyValidationError as error:
+        logger.error("旧分类策略未通过发布校验，继续保留 legacy 只读兼容行为")
+        return finish(
+            ClassificationRuntime(
+                service,
+                legacy_config=legacy_config,
+                diagnostics=(*_migration_issues(migration.issues), *error.result.issues),
+            ),
+            migrated=False,
+        )
     _log_migration_issues(migration)
     logger.info("已将 category.yaml 无损迁移为 MediaClassificationPolicy revision 1")
     return finish(
