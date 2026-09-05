@@ -88,7 +88,7 @@ from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.schemas.workflow import Subscribe as _SchemaSubscribe
 
 router = ResponseAPIRouter()
-router.include_router(subscribe_maintenance_router)
+router.routes.extend(subscribe_maintenance_router.routes)
 
 __all__ = [
     "check_subscribes",

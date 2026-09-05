@@ -162,6 +162,15 @@ def test_compatibility_api_router_keeps_public_contract():
     assert expected_paths <= paths
 
 
+def test_split_endpoint_routes_are_flattened_into_parent_routers():
+    """拆分端点合并后父路由只应暴露可执行路由，避免测试和工具遇到包装节点。"""
+    from app.api.endpoints import plugin, subscribe, system
+
+    for endpoint in (plugin, subscribe, system):
+        assert endpoint.router.routes
+        assert all(isinstance(route, APIRoute) for route in endpoint.router.routes)
+
+
 def test_init_routers_accepts_composition_root_api_prefix():
     """路由初始化应使用组合根传入的 API 前缀。"""
     from app.startup.initializers.routers import init_routers

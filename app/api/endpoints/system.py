@@ -70,7 +70,7 @@ from app.schemas.types import SystemConfigKey
 from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
-router.include_router(system_identifiers_router)
+router.routes.extend(system_identifiers_router.routes)
 
 _PUBLIC_SYSTEM_CONFIG_KEYS = {
     item.value: item

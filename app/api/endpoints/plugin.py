@@ -86,7 +86,7 @@ from app.schemas.types import SystemConfigKey
 from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
-router.include_router(plugin_folders_router)
+router.routes.extend(plugin_folders_router.routes)
 _plugin_release_refresh_tasks: set[asyncio.Task] = set()
 
 
