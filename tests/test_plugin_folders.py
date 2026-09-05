@@ -242,11 +242,11 @@ def test_folder_mutation_rejection_is_returned_without_accessing_storage():
     """运行时封口时应直接返回拒绝结果，不得继续访问配置存储。"""
     read = MagicMock()
 
-    @contextmanager
     def reject(operation):
         """模拟插件运行时拒绝新的可变事务。"""
-        raise PluginMutationRejectedError(operation)
-        yield
+        manager = MagicMock()
+        manager.__enter__.side_effect = PluginMutationRejectedError(operation)
+        return manager
 
     service = folders.PluginFolderService(
         read=read,
@@ -264,11 +264,11 @@ def test_folder_mutation_rejection_is_returned_without_accessing_storage():
 
 def test_all_folder_write_commands_map_runtime_sealing_to_results():
     """保存、创建和删除入口都应把运行时封口映射为稳定失败结果。"""
-    @contextmanager
     def reject(operation):
         """模拟每个写命令在进入配置存储前被运行时拒绝。"""
-        raise PluginMutationRejectedError(operation)
-        yield
+        manager = MagicMock()
+        manager.__enter__.side_effect = PluginMutationRejectedError(operation)
+        return manager
 
     service = folders.PluginFolderService(
         read=MagicMock(),
