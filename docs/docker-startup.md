@@ -12,13 +12,14 @@
 | --- | --- |
 | `docker/Dockerfile` | 构建 Python 环境、后端、前端、插件、站点资源和容器控制面；声明 `tini` 入口与 readiness 健康检查。 |
 | `docker/launcher.sh` | 构建时复制为镜像根目录 `/entrypoint.sh`；以 root 校验、选择并固化本轮启动使用的控制脚本。 |
-| `docker/entrypoint.sh` | 真正的容器启动编排器；加载配置，驱动更新、权限、浏览器、证书、Nginx、后端和退出处理。 |
+| `docker/entrypoint.sh` | 真正的容器启动编排器；加载配置，驱动更新、权限、浏览器和证书准备，最后启动 supervisor。 |
+| `docker/backend.sh` | supervisor 托管的后端进程命令，负责工作目录、权限和 Python 进程。 |
+| `docker/supervisord.conf` | 容器内 supervisor 配置，同时托管 Nginx 和后端。 |
 | `docker/update.sh` | 被 `entrypoint.sh` source；处理未完成更新恢复、已准备 Release 安装、Dev 更新、依赖同步和载荷事务。 |
 | `docker/browser.sh` | 被 `entrypoint.sh` source；选择持久化 CloakBrowser 缓存、校正权限并按需安装浏览器内核。 |
 | `docker/cert.sh` | 被 `entrypoint.sh` source；校验证书、按需安装 acme.sh、签发证书并配置续期任务。 |
 | `docker/nginx.template.conf` | 由环境变量渲染为 `/etc/nginx/nginx.conf`，提供前端静态文件、API 和 SSE 反向代理。 |
 | `docker/nginx.common.conf` | HTTP/HTTPS server 共用的前端、API、SSE 和静态资源规则。 |
-| `docker/docker_http_proxy.conf` | 挂载 Docker Socket 时启动的本地只监听代理，后端通过 `127.0.0.1:38379` 访问 Docker API。 |
 
 ## 2. 总体调用链
 
@@ -41,8 +42,9 @@ Docker
         -> 准备 CloakBrowser 内核
         -> source cert.sh
         -> 启动前端 Nginx
-        -> 可选启动 Docker Socket 代理
-        -> gosu moviepilot python3 app/main.py
+        -> supervisord
+          -> Nginx
+          -> gosu moviepilot python3 app/main.py
           -> Uvicorn/FastAPI lifespan
           -> 数据库迁移和全部生命周期组件
           -> /health/ready 返回 200
@@ -305,10 +307,11 @@ entrypoint 使用 `PUID`、`PGID` 修改镜像内 `moviepilot` 用户和组。�
 自动签发证书保存到 `/config/certs/<domain>/`，并维护 `/config/certs/latest` 符号链接。存在 `cron` 时，
 脚本写入 `/etc/cron.d/acme`，每天 03:00 执行续期检查。续期任务配置失败不会阻断已有证书启动。
 
-### 7.2 Nginx 和 Docker Proxy
+### 7.2 Nginx 和 supervisor
 
-证书检查完成后启动主 Nginx。若 `/var/run/docker.sock` 是 Unix Socket，再使用独立配置启动 root Nginx，
-监听 `127.0.0.1:38379` 代理 Docker API，之后重新修正 Nginx 目录权限。
+证书检查完成后，entrypoint 以前台模式启动 supervisor。supervisor 同时托管 `moviepilot-nginx` 与
+`moviepilot-backend`，两者异常退出时自动拉起。控制 socket 位于 `/run/moviepilot/supervisor.sock`，权限为
+`root:moviepilot`、`0770`，后端运行用户可访问；镜像不再挂载或代理 Docker Socket。
 
 ## 8. Python 后端启动
 
@@ -379,60 +382,30 @@ Transfer、Workflow 和 MoviePilot Server 服务，注册站点资源版本读�
 
 所有启用的 fail-fast 启动组件成功后，lifespan 才把应用标记为 `ready`。
 
-entrypoint 同时在后台每秒请求：
-
-```text
-http://127.0.0.1:${PORT}/health/ready
-```
-
-成功后输出容器总启动耗时和后端就绪耗时。默认等待 300 秒，可通过
-`MOVIEPILOT_BACKEND_READY_TIMEOUT` 调整。该等待任务只负责日志，不替代 Docker 健康状态。
-
-Dockerfile 的 `HEALTHCHECK` 每 30 秒请求同一地址：数据库迁移和完整 lifespan 成功后返回 200；启动、
+Dockerfile 的 `HEALTHCHECK` 每 30 秒请求 `http://127.0.0.1:${PORT}/health/ready`：数据库迁移和完整 lifespan 成功后返回 200；启动、
 失败或关停阶段返回 503。`/health/live` 只表示进程和事件循环仍可响应。
 
 ## 9. 异常、重启和退出
 
 ### 9.1 信号退出
 
-entrypoint 捕获 SIGINT/SIGTERM 后按顺序：
+容器的 supervisor 接收 SIGINT/SIGTERM 后按顺序停止受管进程：
 
 1. 停止前端 Nginx；
 2. 等待 Python 完成 lifespan 逆序关停；
-3. 停止 Docker Proxy Nginx；
-4. 使用原退出码退出容器。
+3. supervisor 退出，容器按原退出状态结束。
 
 Python lifespan 会先撤销 readiness，再按组件声明的 `stop_order` 停止工作流、命令、插件、事件、Agent、
 整理任务、模块服务、数据库和日志等资源。启动中途失败时，只清理已经启动或正在启动的组件。
 
 ### 9.2 应用内重启
 
-应用请求重启时写入：
+应用请求重启时，通过本地 `supervisorctl restart all` 同时重启 Nginx 和后端。supervisor 先向旧进程组发送
+SIGTERM，等待后端完成 lifespan 关停，再拉起新进程。该过程不访问 Docker API，也不依赖 Docker restart policy。
 
-```text
-/config/temp/moviepilot.intentional_restart
-```
+### 9.3 异常诊断
 
-Python 退出后，entrypoint 删除标记，并确保容器以非零状态退出，把真正的重新创建/重启交给 Docker
-restart policy。entrypoint 本身不在容器内递归拉起第二个 Python 主进程。
-
-### 9.3 异常诊断保活
-
-镜像默认：
-
-```text
-MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE=true
-```
-
-后端非预期退出、依赖恢复失败或更新回滚无法完成时，entrypoint 会运行一次 `moviepilot doctor`，然后
-通过长时间 sleep 保持容器存活，便于执行：
-
-```shell
-docker exec -it <container> moviepilot doctor
-```
-
-设置 `MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE=false` 可恢复异常后直接退出容器的行为。保活只保留诊断
-入口，不代表服务健康；Docker `HEALTHCHECK` 仍会保持失败。
+后端异常退出由 supervisor 自动拉起；启动前的依赖、更新或迁移失败会直接终止容器启动并保留日志。
 
 ## 10. 关键运行文件
 
@@ -451,7 +424,7 @@ docker exec -it <container> moviepilot doctor
 | `/public.__update_previous__` | 更新前前端备份。 |
 | `/config/temp/moviepilot-update/` | 后台下载的 Release/资源包及安装状态。 |
 | `/config/temp/moviepilot.pending_dev_update` | 单次 Dev 更新请求。 |
-| `/config/temp/moviepilot.intentional_restart` | 应用内重启请求。 |
+| `/run/moviepilot/supervisor.sock` | 容器内 supervisor 控制 socket，权限为 `root:moviepilot`、`0770`。 |
 | `/config/certs/latest/` | Nginx 使用的稳定证书路径。 |
 
 ## 11. 关键环境变量
@@ -465,9 +438,7 @@ docker exec -it <container> moviepilot doctor
 | `NGINX_PORT` | `3000` | HTTP 前端入口。 |
 | `MOVIEPILOT_AUTO_UPDATE` | `false` | 只有 `dev` 会触发启动时分支更新；稳定版使用准备清单。 |
 | `MOVIEPILOT_SAFE_MODE` | `false` | 跳过普通模式专属的插件及后台控制面。 |
-| `MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE` | `true` | 后端异常后是否保留容器供 doctor 诊断。 |
 | `MOVIEPILOT_FORCE_CHOWN` | `false` | 是否执行大范围递归权限修复。 |
-| `MOVIEPILOT_BACKEND_READY_TIMEOUT` | `300` | entrypoint readiness 日志等待秒数。 |
 | `PACKAGE_CACHE_ROOT` | `/config/.cache` | 包管理缓存根目录。 |
 | `UV_CACHE_DIR` | `/config/.cache/uv` | uv 缓存目录。 |
 | `PIP_PROXY` | 空 | Python 包索引镜像。 |

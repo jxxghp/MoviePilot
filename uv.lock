@@ -1669,7 +1669,6 @@ dependencies = [
     { name = "dateparser" },
     { name = "ddgs" },
     { name = "discord-py" },
-    { name = "docker" },
     { name = "fast-bencode" },
     { name = "fastapi" },
     { name = "google-genai" },
@@ -1743,6 +1742,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "cython" },
+    { name = "docker" },
     { name = "mypy" },
     { name = "pylint" },
     { name = "pytest" },
@@ -1788,7 +1788,6 @@ requires-dist = [
     { name = "dateparser", specifier = "~=1.4.0" },
     { name = "ddgs", specifier = "~=9.14.4" },
     { name = "discord-py", specifier = "==2.7.1" },
-    { name = "docker", specifier = "~=7.1.0" },
     { name = "fast-bencode", specifier = "~=1.1.8" },
     { name = "fastapi", specifier = "~=0.141.1" },
     { name = "google-genai", specifier = "~=2.8.0" },
@@ -1862,6 +1861,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "cython", specifier = "~=3.2.5" },
+    { name = "docker", specifier = "~=7.1.0" },
     { name = "mypy", specifier = "~=1.18.2" },
     { name = "pylint", specifier = "~=4.0.6" },
     { name = "pytest", specifier = "~=9.0.3" },

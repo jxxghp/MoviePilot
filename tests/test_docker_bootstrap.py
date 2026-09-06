@@ -1018,6 +1018,22 @@ def test_entrypoint_does_not_keep_retired_package_command_wrapper() -> None:
     assert "function run_package_command()" not in entrypoint
 
 
+def test_entrypoint_delegates_restart_to_external_supervisor() -> None:
+    """容器入口使用内部 supervisor 托管前后端且不包含 Docker 控制面。"""
+    entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
+    supervisor = (ROOT / "docker" / "supervisord.conf").read_text(encoding="utf-8")
+
+    assert "docker_http_proxy" not in entrypoint
+    assert "/var/run/docker.sock" not in entrypoint
+    assert "docker_http_proxy" not in dockerfile
+    assert "exec /usr/bin/supervisord -n" in entrypoint
+    assert "supervisor" in dockerfile
+    assert "[program:moviepilot-nginx]" in supervisor
+    assert "[program:moviepilot-backend]" in supervisor
+    assert supervisor.count("autorestart=true") == 2
+
+
 @pytest.mark.parametrize(
     ("pyproject_changed", "lock_changed", "expected_route_calls", "expected_sync_calls"),
     (

@@ -76,21 +76,16 @@ MoviePilot V3 的全功能模式只支持 `API_WORKERS=1`。配置更大的值�
 lifespan 都会在数据库迁移及后台任务启动前拒绝运行，Doctor 同时给出失败项。安全模式因跳过
 控制面而允许临时使用多 worker，但 Doctor 会将其标记为降级；故障排除后应恢复单 worker。
 
-## Docker 诊断保活
+## Docker 诊断
 
-Docker 镜像默认设置 `MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE=true`。当后端主进程非正常退出时，entrypoint 不会立刻退出容器，而是打印一次 doctor 报告并保持容器运行，方便执行：
+Docker 镜像由容器内 supervisor 托管 Nginx 和后端进程，后端异常退出时 supervisor 会自动拉起。需要诊断时可执行：
 
 ```shell
 docker exec -it <container> moviepilot doctor
 ```
 
-如果需要恢复旧行为，可设置：
-
-```env
-MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE=false
-```
-
-Dockerfile 同时提供 `HEALTHCHECK`，用于标记容器健康状态。是否自动重启仍由 Docker Compose、NAS 平台或 Docker restart policy 决定。
+Dockerfile 同时提供 `HEALTHCHECK`，用于标记容器健康状态。应用进程重启由容器内 supervisor 负责，
+Docker restart policy 只影响整个容器的恢复。
 
 镜像健康检查与 entrypoint 的后端就绪等待统一访问公开的 `/health/ready`：只有数据库迁移、
 Alembic head 校验和生命周期启动完成后才返回 200；启动失败或关停时返回 503。单纯确认进程

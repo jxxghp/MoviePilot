@@ -20,8 +20,6 @@ function WARN() {
     echo -e "${WARN} ${1}"
 }
 
-ENTRYPOINT_START_TIME="$(date +%s)"
-
 function normalize_env_value() {
     printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
 }
@@ -47,42 +45,6 @@ function apply_package_cache_env() {
     mkdir -p "${UV_CACHE_DIR}"
 }
 
-function wait_backend_ready() {
-    local entrypoint_start_time="${1:-$(date +%s)}"
-    local backend_start_time="${2:-$(date +%s)}"
-    local python_pid="${3:-}"
-    local backend_port="${PORT:-3001}"
-    local web_port="${NGINX_PORT:-3000}"
-    local timeout="${MOVIEPILOT_BACKEND_READY_TIMEOUT:-300}"
-    local ready_url="http://127.0.0.1:${backend_port}/health/ready"
-    local deadline
-    if ! [[ "${timeout}" =~ ^[0-9]+$ ]] || [ "$((10#${timeout}))" -le 0 ]; then
-        WARN "→ MOVIEPILOT_BACKEND_READY_TIMEOUT=${timeout} 无效，使用默认 300 秒。"
-        timeout=300
-    else
-        timeout=$((10#${timeout}))
-    fi
-    deadline=$(( $(date +%s) + timeout ))
-
-    while [ "$(date +%s)" -lt "${deadline}" ]; do
-        if [ -n "${python_pid}" ] && ! kill -0 "${python_pid}" >/dev/null 2>&1; then
-            WARN "→ 后端服务启动完成探测已停止：后端进程已退出。"
-            return 1
-        fi
-
-        if curl -fsS --max-time 2 "${ready_url}" >/dev/null 2>&1; then
-            local now
-            now="$(date +%s)"
-            INFO "→ MoviePilot Web 已可访问，启动总耗时 $(( now - entrypoint_start_time )) 秒，后端就绪耗时 $(( now - backend_start_time )) 秒，后端端口 ${backend_port}，前端端口 ${web_port}。"
-            return 0
-        fi
-        sleep 1
-    done
-
-    WARN "→ 后端服务启动完成探测超时，已等待 ${timeout} 秒，后端端口 ${backend_port}，继续等待进程日志..."
-    return 1
-}
-
 # 环境变量补全
 # 优先级: 系统环境变量 -> .env 文件 (即使为空字符串) -> 预设默认值
 # 精准适配 Python 端 set_key (quote_mode="always", 单引号包裹, \' 转义)
@@ -100,7 +62,6 @@ function load_config_from_app_env() {
         ["PROXY_HOST"]=""
         ["GITHUB_TOKEN"]=""
         ["MOVIEPILOT_AUTO_UPDATE"]="false"
-        ["MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE"]="true"
         ["MOVIEPILOT_FORCE_CHOWN"]="false"
         ["MOVIEPILOT_SAFE_MODE"]="false"
         ["BROWSER_EMULATION"]="cloakbrowser"
@@ -250,77 +211,6 @@ EOF
         envsubst '${NGINX_PORT}${PORT}${NGINX_CLIENT_MAX_BODY_SIZE}${HTTPS_SERVER_CONF}' < /etc/nginx/nginx.template.conf > /etc/nginx/nginx.conf
 }
 
-# 优雅退出
-function graceful_exit() {
-    local exit_code=${1:-0}
-    local reason=${2:-python_exit}
-
-    if [ "$reason" = "signal" ]; then
-        INFO "→ 收到停止信号，执行精准清理程序..."
-    elif [ "$reason" = "intentional_restart" ]; then
-        INFO "→ 检测到内置重启流程，执行清理程序..."
-    else
-        INFO "→ 主进程已退出 (代码: $exit_code)，执行清理程序..."
-    fi
-
-    # 第一步：停止前端 Nginx
-    # 默认配置启动的 Nginx，默认 PID 在 /var/run/nginx.pid
-    INFO "→ [1/3] 正在关闭前端 Nginx..."
-    nginx -c /etc/nginx/nginx.conf -s stop 2>/dev/null || true
-
-    # 第二步：等待 Python 退出
-    # 由于使用了 tini -g，Python 已经收到了信号，我们只需等待
-    if [ -n "$PYTHON_PID" ] && ps -p "$PYTHON_PID" > /dev/null; then
-        INFO "→ [2/3] 正在等待 Python (PID: $PYTHON_PID) 完成清理..."
-        # 这里的 wait 会阻塞，直到 Python 真正退出
-        wait "$PYTHON_PID" 2>/dev/null || true
-    fi
-
-    # 第三步：最后关闭 Docker Proxy
-    # 必须指定配置文件路径，否则 nginx -s stop 找不到它
-    INFO "→ [3/3] 后端已安全退出，正在关闭 Docker Proxy..."
-    if [ -S "/var/run/docker.sock" ]; then
-        nginx -c /etc/nginx/docker_http_proxy.conf -s stop 2>/dev/null || true
-    fi
-
-    # 根据退出码判断最终日志性质
-    # 0: 正常退出
-    # 130/143: 被系统信号终止（通常也视为预期的清理退出）
-    if [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 130 ] || [ "$exit_code" -eq 143 ] || [ "$reason" = "intentional_restart" ]; then
-        INFO "→ 所有服务已按序清理，容器正常退出 (ExitCode: $exit_code)。"
-    else
-        # 非预期退出码，使用 ERROR 级别并加重提示
-        ERROR "→ 清理完成，但主进程检测到异常退出 (ExitCode: $exit_code)！"
-    fi
-    exit "$exit_code"
-}
-
-# 后端异常退出时默认保留容器，避免无法 docker exec 进入容器运行 doctor。
-function diagnostic_keepalive() {
-    local exit_code=${1:-1}
-    local keepalive
-    keepalive="$(normalize_env_value "${MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE:-true}")"
-
-    if [ "${keepalive}" = "false" ] || [ "${keepalive}" = "0" ] || [ "${keepalive}" = "no" ]; then
-        graceful_exit "$exit_code" "python_exit"
-    fi
-
-    ERROR "→ 后端主进程异常退出 (ExitCode: ${exit_code})，容器将保持运行以便执行 moviepilot doctor。"
-    WARN "→ 可运行：docker exec <container> moviepilot doctor"
-    WARN "→ 如需恢复旧行为，可设置 MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE=false。"
-
-    if [ "${START_NOGOSU:-false}" = "true" ]; then
-        "${VENV_PATH}/bin/python3" -m app.cli doctor || true
-    else
-        gosu moviepilot:moviepilot "${VENV_PATH}/bin/python3" -m app.cli doctor || true
-    fi
-
-    while true; do
-        sleep 3600 &
-        wait $! || true
-    done
-}
-
 # 启动前先检查后端核心依赖是否仍然可导入。
 # 插件依赖和主程序共用同一套 venv 时，历史安装记录可能已经污染环境，
 # 这里优先在真正拉起后端前做一次自愈，避免容器反复起不来。
@@ -336,18 +226,18 @@ function ensure_backend_runtime_dependencies() {
     WARN "→ 检测到后端核心依赖异常，开始尝试恢复主程序依赖..."
     if ! configure_package_route; then
         ERROR "→ 无法选择可用的主程序依赖源，后端无法启动。"
-        diagnostic_keepalive 1
+        exit 1
     fi
     PACKAGE_ROUTE_READY="true"
     INFO "依赖源：${PACKAGE_LOG}"
     if ! sync_project_dependencies_for "/app" > /dev/stdout 2> /dev/stderr; then
         ERROR "→ 自动恢复主程序依赖失败，后端无法启动。"
-        diagnostic_keepalive 1
+        exit 1
     fi
 
     if ! "${VENV_PATH}/bin/python3" -m "${probe_module}" >/dev/null 2>&1; then
         ERROR "→ 主程序依赖恢复后仍然异常，后端无法启动。"
-        diagnostic_keepalive 1
+        exit 1
     fi
 
     INFO "→ 已自动恢复主程序依赖，继续启动后端。"
@@ -551,8 +441,8 @@ cd /
 source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/update.sh"
 if [ "${MOVIEPILOT_BOOTSTRAP_UPDATE_DONE:-0}" != "1" ]; then
     if ! recover_pending_update; then
-        ERROR "→ 上一次容器更新未能恢复，容器将保持运行以便执行 moviepilot doctor。"
-        diagnostic_keepalive 1
+        ERROR "→ 上一次容器更新未能恢复，停止启动。"
+        exit 1
     fi
     if [ "${UPDATE_RECOVERY_COMPLETED:-false}" = "true" ]; then
         INFO "→ 已恢复到更新前版本，本次启动跳过自动更新。"
@@ -567,8 +457,8 @@ if [ "${ONE_SHOT_DEV_UPDATE}" = "true" ]; then
     MOVIEPILOT_AUTO_UPDATE="${MOVIEPILOT_AUTO_UPDATE_ORIGINAL}"
 fi
 if [ "${UPDATE_RECOVERY_REQUIRED:-false}" = "true" ]; then
-    ERROR "→ 容器更新回滚未完成，容器将保持运行以便执行 moviepilot doctor。"
-    diagnostic_keepalive 1
+    ERROR "→ 容器更新回滚未完成，停止启动。"
+    exit 1
 fi
 
 maybe_reexec_control_bundle
@@ -581,7 +471,7 @@ groupmod -o -g "${PGID}" moviepilot
 usermod -o -u "${PUID}" moviepilot
 
 # 启动前优先确认主运行环境仍然健康，避免插件依赖污染导致服务直接起不来。
-ensure_backend_runtime_dependencies
+ensure_backend_runtime_dependencies || exit 1
 
 # 依赖阶段恢复会保留当前程序，待自愈成功后再清理旧代际备份和事务标记。
 if [ "${UPDATE_RECOVERY_BLOCKED:-false}" = "true" ]; then
@@ -608,58 +498,7 @@ ensure_browser_kernel
 # 证书管理
 source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/cert.sh"
 
-# 启动前端nginx服务
-INFO "→ 启动前端nginx服务..."
-nginx
-
-# 捕获信号并跳转到函数
-trap 'graceful_exit 130 "signal"' SIGINT
-trap 'graceful_exit 143 "signal"' SIGTERM
-
-# 启动docker http proxy nginx
-if [ -S "/var/run/docker.sock" ]; then
-    INFO "→ 启动 Docker Proxy..."
-    nginx -c /etc/nginx/docker_http_proxy.conf
-    # 上面nginx是通过root启动的，会将目录权限改成root，所以需要重新再设置一遍权限
-    chown -R moviepilot:moviepilot \
-        /var/lib/nginx \
-        /var/log/nginx
-fi
-
-# 设置后端服务权限掩码
-umask "${UMASK}"
-
-# 启动后端服务
-INFO "→ 启动后端服务..."
-BACKEND_START_TIME="$(date +%s)"
-if [ "${START_NOGOSU:-false}" = "true" ]; then
-    "${VENV_PATH}/bin/python3" app/main.py > /dev/stdout 2> /dev/stderr &
-else
-    gosu moviepilot:moviepilot "${VENV_PATH}/bin/python3" app/main.py > /dev/stdout 2> /dev/stderr &
-fi
-PYTHON_PID=$!
-wait_backend_ready "${ENTRYPOINT_START_TIME}" "${BACKEND_START_TIME}" "${PYTHON_PID}" &
-
-# 等待 Python 进程退出。
-# 如果收到信号，trap 会中断 wait，并执行 graceful_exit。
-# 如果 Python 正常退出，wait 会结束，然后我们手动调用 graceful_exit。
-wait "$PYTHON_PID" 2>/dev/null
-exit_code=$?
-
-# 如果 Python 自己退出了（非信号触发），执行清理
-INTENTIONAL_RESTART_FLAG="${CONFIG_DIR}/temp/moviepilot.intentional_restart"
-if [ -f "${INTENTIONAL_RESTART_FLAG}" ]; then
-    rm -f "${INTENTIONAL_RESTART_FLAG}"
-    restart_exit_code="$exit_code"
-    if [ "$restart_exit_code" -eq 0 ]; then
-        restart_exit_code=1
-    fi
-    WARN "→ 检测到内置手动重启标记，退出容器并交给 Docker 重启策略处理..."
-    graceful_exit "$restart_exit_code" "intentional_restart"
-fi
-
-if [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 130 ] || [ "$exit_code" -eq 143 ]; then
-    graceful_exit "$exit_code" "python_exit"
-fi
-
-diagnostic_keepalive "$exit_code"
+# supervisord 常驻前台并统一托管 Nginx 与后端；容器停止信号由它转发给两个进程组。
+install -d -m 0755 /run/moviepilot
+INFO "→ 启动容器进程 supervisor..."
+exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf

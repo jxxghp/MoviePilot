@@ -588,8 +588,6 @@ def fixed_environment(args: argparse.Namespace, instrument: bool) -> dict[str, s
         "DEBUG": "false",
         "MOVIEPILOT_SAFE_MODE": "false",
         "MOVIEPILOT_AUTO_UPDATE": "false",
-        "MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE": "false",
-        "MOVIEPILOT_BACKEND_READY_TIMEOUT": str(args.ready_timeout),
         "AUTO_UPDATE_RESOURCE": "false",
         "PLUGIN_MARKET": "",
         "PLUGIN_AUTO_RELOAD": "false",

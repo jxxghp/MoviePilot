@@ -677,9 +677,6 @@ class ConfigModel(BaseModel):
     # 对阿里云盘进行快照对比时，是否检查文件夹的修改时间（默认关闭，因为阿里云盘目录时间不随子文件变更而更新）
     ALIPAN_SNAPSHOT_CHECK_FOLDER_MODTIME: bool = False
 
-    # ==================== Docker配置 ====================
-    # Docker Client API地址
-    DOCKER_CLIENT_API: Optional[str] = "tcp://127.0.0.1:38379"
     # Playwright浏览器类型，供智能体浏览器工具和插件直接使用 Playwright 时读取
     PLAYWRIGHT_BROWSER_TYPE: str = "chromium"
 

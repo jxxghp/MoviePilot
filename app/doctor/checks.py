@@ -1111,9 +1111,9 @@ def _check_docker(runner: DoctorRunnerProtocol) -> None:
         title="Docker 诊断入口可用",
         detail=(
             f"CONFIG_DIR={get_runtime_setting('CONFIG_PATH')}；VENV_PATH={os.getenv('VENV_PATH', '/opt/venv')}；"
-            f"MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE={os.getenv('MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE', 'true')}"
+            "supervisor 托管 Nginx 和后端进程"
         ),
-        recommendation="主进程异常退出后容器会保活，仍可通过 `docker exec <container> moviepilot doctor` 诊断。",
+        recommendation="后端异常由 supervisor 自动拉起；启动失败时可通过 `docker exec <container> moviepilot doctor` 诊断。",
     )
 
 

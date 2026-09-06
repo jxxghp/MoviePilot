@@ -90,6 +90,7 @@ RUN apt-get update \
     nano \
     unar \
     openssl \
+    supervisor \
     postgresql-client-18 \
     libchromaprint-tools \
     libjemalloc2 \
@@ -278,7 +279,8 @@ RUN mkdir -p \
     && cp -f launcher.sh /bundle/rootfs/entrypoint.sh \
     && cp -f nginx.common.conf /bundle/rootfs/etc/nginx/common.conf \
     && cp -f nginx.template.conf /bundle/rootfs/etc/nginx/nginx.template.conf \
-    && cp -f docker_http_proxy.conf /bundle/rootfs/etc/nginx/docker_http_proxy.conf \
+    && mkdir -p /bundle/rootfs/etc/supervisor \
+    && cp -f supervisord.conf /bundle/rootfs/etc/supervisor/supervisord.conf \
     && printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'cd /app' 'exec "${VENV_PATH:-/opt/venv}/bin/python3" -m app.cli "$@"' > /bundle/rootfs/usr/local/bin/moviepilot \
     && bash -n /bundle/rootfs/entrypoint.sh \
     && for control_script in /bundle/rootfs/usr/local/lib/moviepilot/control/*.sh; do bash -n "${control_script}" || exit 1; done \
@@ -289,7 +291,7 @@ RUN mkdir -p \
 FROM prepare_package AS final
 
 ENV LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
-    MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE="true"
+    MOVIEPILOT_DOCKER_SUPERVISOR="true"
 
 # 引入支持 amr 编码的静态 ffmpeg
 COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/

@@ -28,7 +28,6 @@ dependencies = [
     "dateparser~=1.4.0",
     "ddgs~=9.14.4",
     "discord.py==2.7.1",
-    "docker~=7.1.0",
     "fast-bencode~=1.1.8",
     "fastapi~=0.141.1",
     "google-genai~=2.8.0",
@@ -102,6 +101,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "cython~=3.2.5",
+    "docker~=7.1.0",
     "mypy~=1.18.2",
     "pylint~=4.0.6",
     "pytest~=9.0.3",

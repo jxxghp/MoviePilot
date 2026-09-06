@@ -4,11 +4,9 @@ import signal
 import subprocess
 import sys
 import threading
-import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-import docker
 import psutil
 
 from app.runtime.settings import get_runtime_setting
@@ -40,11 +38,9 @@ class SystemHelper(ConfigReloadMixin):
     __one_shot_dev_update_flag_file = (
         get_runtime_setting('TEMP_PATH') / "moviepilot.pending_dev_update"
     )
-    __docker_restart_intent_file = (
-        get_runtime_setting('TEMP_PATH') / "moviepilot.intentional_restart"
-    )
-    __graceful_shutdown_monitor_lock = threading.Lock()
-    __graceful_shutdown_monitor: Optional[threading.Thread] = None
+    __supervisor_config = Path("/etc/supervisor/supervisord.conf")
+    __supervisorctl = Path("/usr/bin/supervisorctl")
+    __supervisor_socket = Path("/run/moviepilot/supervisor.sock")
 
     def on_config_changed(self):
         """配置变化后重新应用日志设置。"""
@@ -56,10 +52,17 @@ class SystemHelper(ConfigReloadMixin):
 
     @staticmethod
     def can_restart() -> bool:
-        """
-        判断是否可以内部重启
-        """
-        return is_docker() or SystemHelper._is_local_cli_managed() or (is_windows() and not is_frozen())
+        """判断当前部署是否具备宿主无关的进程重启能力。"""
+        return (
+            (
+                is_docker()
+                and SystemHelper.__supervisor_config.exists()
+                and SystemHelper.__supervisorctl.exists()
+                and SystemHelper.__supervisor_socket.exists()
+            )
+            or SystemHelper._is_local_cli_managed()
+            or (is_windows() and not is_frozen())
+        )
 
     @staticmethod
     def _load_runtime_file(path: Path) -> Optional[dict]:
@@ -170,81 +173,31 @@ class SystemHelper(ConfigReloadMixin):
         logger.info(f"已创建本地 CLI 重启任务，辅助进程 PID: {process.pid}")
 
     @staticmethod
-    def _get_container_id() -> str:
-        """
-        获取当前容器ID
-        """
-        container_id = None
-        try:
-            with open("/proc/self/mountinfo", "r", encoding="utf-8", errors="replace") as f:
-                data = f.read()
-                index_resolv_conf = data.find("resolv.conf")
-                if index_resolv_conf != -1:
-                    index_second_slash = data.rfind("/", 0, index_resolv_conf)
-                    index_first_slash = data.rfind("/", 0, index_second_slash) + 1
-                    container_id = data[index_first_slash:index_second_slash]
-                    if len(container_id) < 20:
-                        index_resolv_conf = data.find("/sys/fs/cgroup/devices")
-                        if index_resolv_conf != -1:
-                            index_second_slash = data.rfind(" ", 0, index_resolv_conf)
-                            index_first_slash = (
-                                    data.rfind("/", 0, index_second_slash) + 1
-                            )
-                            container_id = data[index_first_slash:index_second_slash]
-        except Exception as e:
-            logger.debug(f"获取容器ID失败: {str(e)}")
-        return container_id.strip() if container_id else None
+    def _schedule_supervisor_restart() -> None:
+        """延迟调用本地 supervisor，确保重启接口有机会完成响应。"""
+        def restart_backend() -> None:
+            command = [
+                str(SystemHelper.__supervisorctl),
+                "-c",
+                str(SystemHelper.__supervisor_config),
+                "restart",
+                "all",
+            ]
+            try:
+                subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    close_fds=True,
+                    start_new_session=True,
+                )
+            except OSError as err:
+                logger.error(f"调用 supervisor 重启后端失败: {err}")
 
-    @staticmethod
-    def _check_restart_policy() -> bool:
-        """
-        检查当前容器是否配置了自动重启策略
-        """
-        try:
-            # 获取当前容器ID
-            container_id = SystemHelper._get_container_id()
-            if not container_id:
-                return False
-
-            # 创建 Docker 客户端
-            client = docker.DockerClient(
-                base_url=get_runtime_setting('DOCKER_CLIENT_API')
-            )
-            # 获取容器信息
-            container = client.containers.get(container_id)
-            restart_policy = container.attrs.get('HostConfig', {}).get('RestartPolicy', {})
-            policy_name = restart_policy.get('Name', 'no')
-            # 检查是否有有效的重启策略
-            auto_restart_policies = ['always', 'unless-stopped', 'on-failure']
-            has_restart_policy = policy_name in auto_restart_policies
-
-            logger.info(f"容器重启策略: {policy_name}, 支持自动重启: {has_restart_policy}")
-            return has_restart_policy
-
-        except Exception as e:
-            logger.warning(f"检查重启策略失败: {str(e)}")
-            return False
-
-    @staticmethod
-    def _mark_docker_intentional_restart() -> None:
-        """写入 Docker 主动重启标记，避免守护逻辑误判崩溃。"""
-        try:
-            SystemHelper.__docker_restart_intent_file.parent.mkdir(
-                parents=True, exist_ok=True
-            )
-            SystemHelper.__docker_restart_intent_file.write_text(
-                str(os.getpid()), encoding="utf-8"
-            )
-        except OSError as err:
-            logger.warning(f"写入内置重启标记失败: {err}")
-
-    @staticmethod
-    def _clear_docker_intentional_restart() -> None:
-        """清理 Docker 主动重启标记。"""
-        try:
-            SystemHelper.__docker_restart_intent_file.unlink(missing_ok=True)
-        except OSError as err:
-            logger.warning(f"清理内置重启标记失败: {err}")
+        restart_timer = threading.Timer(0.5, restart_backend)
+        restart_timer.daemon = True
+        restart_timer.start()
 
     @staticmethod
     def _windows_restart() -> tuple[bool, str]:
@@ -269,9 +222,7 @@ class SystemHelper(ConfigReloadMixin):
 
     @staticmethod
     def restart() -> Tuple[bool, str]:
-        """
-        执行Docker重启操作
-        """
+        """请求容器内 supervisor 重启受管的前后端进程。"""
         if not is_frozen() and is_windows():
             success, message = SystemHelper._windows_restart()
             return success, message
@@ -287,28 +238,15 @@ class SystemHelper(ConfigReloadMixin):
                 logger.error(f"本地 CLI 重启失败: {str(err)}")
                 return False, f"本地 CLI 重启失败：{str(err)}"
 
-        try:
-            # 检查容器是否配置了自动重启策略
-            has_restart_policy = SystemHelper._check_restart_policy()
-            if has_restart_policy:
-                # 有重启策略，使用优雅退出方式
-                logger.info("检测到容器配置了自动重启策略，使用优雅重启方式...")
-                SystemHelper._mark_docker_intentional_restart()
-                # 启动优雅退出超时监控
-                SystemHelper._start_graceful_shutdown_monitor()
-                # 发送SIGTERM信号给当前进程，触发优雅停止
-                os.kill(os.getpid(), signal.SIGTERM)
-                return True, ""
-            else:
-                # 没有重启策略，使用Docker API强制重启
-                logger.info("容器未配置自动重启策略，使用Docker API重启...")
-                return SystemHelper._docker_api_restart()
-        except Exception as err:
-            logger.error(f"重启失败: {str(err)}")
-            SystemHelper._clear_docker_intentional_restart()
-            # 降级为Docker API重启
-            logger.warning("降级为Docker API重启...")
-            return SystemHelper._docker_api_restart()
+        if not (
+            SystemHelper.__supervisor_config.exists()
+            and SystemHelper.__supervisorctl.exists()
+            and SystemHelper.__supervisor_socket.exists()
+        ):
+            return False, "容器内 supervisor 未安装"
+        logger.info("请求容器内 supervisor 重启后端服务")
+        SystemHelper._schedule_supervisor_restart()
+        return True, ""
 
     @staticmethod
     def upgrade_dev() -> Tuple[bool, str]:
@@ -325,67 +263,6 @@ class SystemHelper(ConfigReloadMixin):
             SystemHelper.clear_one_shot_dev_update()
             return False, message
         return True, "已安排 Dev 更新并重启"
-
-    @staticmethod
-    def _start_graceful_shutdown_monitor():
-        """
-        启动唯一的优雅退出超时监控。
-
-        如果 180 秒内进程没有退出，则使用 Docker API 强制重启；重复重启请求
-        复用当前 monitor，避免并行触发多次容器重启。
-        """
-
-        def monitor_thread():
-            try:
-                time.sleep(180)
-                logger.warning("优雅退出超时180秒，使用Docker API强制重启...")
-                try:
-                    SystemHelper._docker_api_restart()
-                except Exception as e:
-                    logger.error(f"强制重启失败: {str(e)}")
-            finally:
-                with SystemHelper.__graceful_shutdown_monitor_lock:
-                    if (
-                        SystemHelper.__graceful_shutdown_monitor
-                        is threading.current_thread()
-                    ):
-                        SystemHelper.__graceful_shutdown_monitor = None
-
-        with SystemHelper.__graceful_shutdown_monitor_lock:
-            running = SystemHelper.__graceful_shutdown_monitor
-            if running is not None and running.is_alive():
-                logger.debug("优雅退出超时监控已在运行，跳过重复启动")
-                return
-            thread = threading.Thread(
-                target=monitor_thread,
-                name="MoviePilot-GracefulRestartFallback",
-                daemon=True,
-            )
-            SystemHelper.__graceful_shutdown_monitor = thread
-            try:
-                thread.start()
-            except BaseException:
-                SystemHelper.__graceful_shutdown_monitor = None
-                raise
-
-    @staticmethod
-    def _docker_api_restart() -> Tuple[bool, str]:
-        """
-        使用Docker API重启容器，并尝试优雅停止
-        """
-        try:
-            # 创建 Docker 客户端
-            client = docker.DockerClient(
-                base_url=get_runtime_setting('DOCKER_CLIENT_API')
-            )
-            container_id = SystemHelper._get_container_id()
-            if not container_id:
-                return False, "获取容器ID失败！"
-            # 重启容器
-            client.containers.get(container_id).restart()
-            return True, ""
-        except Exception as docker_err:
-            return False, f"重启时发生错误：{str(docker_err)}"
 
     def set_system_modified(self):
         """

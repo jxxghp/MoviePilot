@@ -6,7 +6,6 @@ import struct
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
@@ -15,7 +14,7 @@ import psutil
 import pytest
 
 from app.runtime.state import SystemHelper
-from app.runtime.config import ConfigModel, Settings, settings
+from app.runtime.config import ConfigModel, Settings
 from app.adapters.system.host import SystemUtils
 
 
@@ -86,94 +85,45 @@ def test_execute_with_subprocess_reports_empty_failure_output():
     assert "无标准输出或错误输出" in message
 
 
-def test_docker_restart_policy_marks_intent_before_sigterm():
-    """Docker 优雅重启前应写入意图标记，避免 entrypoint 误进入 doctor 保活。"""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        original_config_dir = settings.CONFIG_DIR
-        original_intent_file = SystemHelper._SystemHelper__docker_restart_intent_file
-        settings.CONFIG_DIR = temp_dir
-        SystemHelper._SystemHelper__docker_restart_intent_file = (
-            settings.TEMP_PATH / "moviepilot.intentional_restart"
-        )
-        try:
-            with patch("app.runtime.state.is_docker", return_value=True), \
-                    patch.object(SystemHelper, "_check_restart_policy", return_value=True), \
-                    patch.object(SystemHelper, "_start_graceful_shutdown_monitor"), \
-                    patch("app.runtime.state.os.kill") as kill_mock:
-                ret, msg = SystemHelper.restart()
+def test_docker_restart_delegates_to_supervisor():
+    """容器内重启只委托 supervisor，不向当前进程或 Docker daemon 发信号。"""
+    with patch("app.runtime.state.is_docker", return_value=True), \
+            patch.object(SystemHelper, "_SystemHelper__supervisor_config") as supervisor_config, \
+            patch.object(SystemHelper, "_SystemHelper__supervisorctl") as supervisorctl, \
+            patch.object(SystemHelper, "_SystemHelper__supervisor_socket") as supervisor_socket, \
+            patch.object(SystemHelper, "_schedule_supervisor_restart") as restart_mock, \
+            patch("app.runtime.state.os.kill") as kill_mock:
+        supervisor_config.exists.return_value = True
+        supervisorctl.exists.return_value = True
+        supervisor_socket.exists.return_value = True
+        ret, msg = SystemHelper.restart()
 
-            assert ret
-            assert msg == ""
-            assert (settings.TEMP_PATH / "moviepilot.intentional_restart").exists()
-            kill_mock.assert_called_once()
-        finally:
-            SystemHelper._SystemHelper__docker_restart_intent_file = original_intent_file
-            settings.CONFIG_DIR = original_config_dir
+    assert ret
+    assert msg == ""
+    restart_mock.assert_called_once_with()
+    kill_mock.assert_not_called()
 
 
-def test_graceful_shutdown_monitor_has_single_owner_and_releases_it(monkeypatch):
-    """重复重启请求应共享唯一兜底线程，线程结束后必须释放 owner。"""
-    sleep_started = threading.Event()
-    release_sleep = threading.Event()
-    restart = MagicMock(return_value=(True, ""))
-    monitor_attr = "_SystemHelper__graceful_shutdown_monitor"
-    original_monitor = getattr(SystemHelper, monitor_attr)
-    thread = None
+def test_supervisor_restart_command_restarts_frontend_and_backend(monkeypatch):
+    """延迟任务必须通过本地 supervisor 同时重启前后端进程。"""
+    callback = None
 
-    def wait_for_shutdown(_seconds: float) -> None:
-        """用事件屏障模拟 180 秒等待，确保第二次启动发生在首线程存活期间。"""
-        sleep_started.set()
-        release_sleep.wait(timeout=1)
-
-    setattr(SystemHelper, monitor_attr, None)
-    try:
-        monkeypatch.setattr("app.runtime.state.time.sleep", wait_for_shutdown)
-        monkeypatch.setattr(SystemHelper, "_docker_api_restart", restart)
-
-        SystemHelper._start_graceful_shutdown_monitor()
-        assert sleep_started.wait(timeout=1)
-        thread = getattr(SystemHelper, monitor_attr)
-        SystemHelper._start_graceful_shutdown_monitor()
-
-        assert getattr(SystemHelper, monitor_attr) is thread
-        release_sleep.set()
-        thread.join(timeout=1)
-
-        assert thread.is_alive() is False
-        assert getattr(SystemHelper, monitor_attr) is None
-        restart.assert_called_once_with()
-    finally:
-        release_sleep.set()
-        if thread is not None:
-            thread.join(timeout=1)
-        setattr(SystemHelper, monitor_attr, original_monitor)
-
-
-def test_graceful_shutdown_monitor_releases_owner_when_thread_start_fails(monkeypatch):
-    """兜底线程启动失败时必须释放 owner，允许后续请求重试。"""
-    monitor_attr = "_SystemHelper__graceful_shutdown_monitor"
-    original_monitor = getattr(SystemHelper, monitor_attr)
-
-    class FailingThread:
-        """模拟在登记 owner 后启动失败的线程对象。"""
-
-        def __init__(self, **_kwargs):
-            """接收真实 Thread 构造参数，但不创建系统线程。"""
+    class ImmediateTimer:
+        def __init__(self, _delay, timer_callback):
+            nonlocal callback
+            callback = timer_callback
+            self.daemon = False
 
         def start(self):
-            """模拟底层线程资源不足导致的启动失败。"""
-            raise RuntimeError("thread start failed")
+            callback()
 
-    setattr(SystemHelper, monitor_attr, None)
-    try:
-        monkeypatch.setattr("app.runtime.state.threading.Thread", FailingThread)
+    popen_mock = MagicMock()
+    monkeypatch.setattr("app.runtime.state.threading.Timer", ImmediateTimer)
+    monkeypatch.setattr("app.runtime.state.subprocess.Popen", popen_mock)
 
-        with pytest.raises(RuntimeError, match="thread start failed"):
-            SystemHelper._start_graceful_shutdown_monitor()
+    SystemHelper._schedule_supervisor_restart()
 
-        assert getattr(SystemHelper, monitor_attr) is None
-    finally:
-        setattr(SystemHelper, monitor_attr, original_monitor)
+    assert popen_mock.call_args.args[0][-2:] == ["restart", "all"]
 
 
 def test_execute_with_subprocess_passes_env_to_subprocess():
