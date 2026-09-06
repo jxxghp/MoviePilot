@@ -6,9 +6,9 @@ from contextlib import asynccontextmanager, contextmanager
 import pytest
 
 from app.adapters.external.plugin.client import (
-    PLUGIN_INDEX_REQUEST_TIMEOUT,
     PLUGIN_INDEX_MAX_BYTES,
     PLUGIN_INDEX_MAX_ENTRIES,
+    PLUGIN_INDEX_REQUEST_TIMEOUT,
     PluginMarketClient,
     PluginMarketTransport,
     _format_request_error,
