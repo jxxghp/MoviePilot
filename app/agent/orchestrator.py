@@ -33,6 +33,10 @@ from app.agent.middleware.config import RuntimeConfigMiddleware
 from app.agent.middleware.jobs import (
     JobsMiddleware,
 )
+from app.agent.middleware.loop_detection import (
+    AgentLoopDetectedError,
+    LoopDetectionMiddleware,
+)
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.patching import PatchToolCallsMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
@@ -1950,6 +1954,8 @@ class MoviePilotAgent:
                 *([activity_log_middleware] if activity_log_middleware else []),
                 # 错误工具调用修复
                 PatchToolCallsMiddleware(),
+                # 循环检测：识别重复工具调用/重复输出并中断
+                LoopDetectionMiddleware(),
                 # 子代理委派
                 *subagent_middlewares,
             ]
@@ -2336,6 +2342,19 @@ class MoviePilotAgent:
             await self._invalidate_cached_agent()
             execution_error = "任务已取消"
             raise
+        except AgentLoopDetectedError as e:
+            await self._invalidate_cached_agent()
+            execution_error = str(e)
+            logger.warning(
+                f"检测到Agent循环已中断: session_id={self.session_id}, "
+                f"loop_type={e.loop_type}, detail={e}"
+            )
+            friendly_message = (
+                "检测到智能体陷入重复循环，已自动中断以避免无意义执行。"
+                "请尝试换一种更明确的描述，或缩小任务范围后重试。"
+            )
+            await self._dispatch_execution_notice(friendly_message)
+            return friendly_message, {}
         except Exception as e:
             await self._invalidate_cached_agent()
             execution_error = str(e)
