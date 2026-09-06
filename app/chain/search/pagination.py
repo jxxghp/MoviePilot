@@ -1,6 +1,7 @@
 """搜索分页计划与异步逐页调度 owner。"""
 
 import asyncio
+import time
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from app.application.configuration import (
@@ -10,7 +11,7 @@ from app.chain.search.contract import _SearchOwnerBase
 from app.runtime.stop import runtime_stop_state
 from app.runtime.tasks import get_task_registry
 
-PageResult = Tuple[List[Any], Optional[Exception]]
+PageResult = Tuple[List[Any], Optional[Exception], float]
 PageTask = asyncio.Task[PageResult]
 SiteIndexer = Dict[str, Any]
 PendingPages = dict[PageTask, Tuple[SiteIndexer, int, int]]
@@ -24,14 +25,15 @@ async def _run_site_page(
 ) -> PageResult:
     """执行一页请求，并把业务异常交回编排层统一传播。"""
     async with semaphore:
+        started_at = time.perf_counter()
         try:
-            return await search_page(site, page_number) or [], None
+            return await search_page(site, page_number) or [], None, time.perf_counter() - started_at
         except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001
             # TaskRegistry 会报告未收口的后台异常；这里由等待方同步传播，
             # 避免同一 provider 故障同时被登记器和调用链重复记录。
-            return [], error
+            return [], error, time.perf_counter() - started_at
 
 
 def _submit_site_page(
@@ -126,7 +128,7 @@ class SearchPaginationOwner(_SearchOwnerBase):
         search_page: Callable[[SiteIndexer, int], Awaitable[Optional[List[Any]]]],
         should_continue: Callable[[SiteIndexer, List[Any]], bool],
         task_owner: str,
-    ) -> AsyncIterator[Tuple[SiteIndexer, int, List[Any], bool]]:
+    ) -> AsyncIterator[Tuple[SiteIndexer, int, List[Any], bool, float]]:
         """统一调度站点逐页请求，并在调用方退出时取消、等待全部请求。"""
         total_num = len(indexer_sites) * len(search_pages)
         semaphore = asyncio.Semaphore(self.runtime_config.search_threadpool_size or max(1, total_num))
@@ -153,7 +155,7 @@ class SearchPaginationOwner(_SearchOwnerBase):
                 )
                 for task in done_tasks:
                     site, page_index, page_number = pending_tasks.pop(task)
-                    page_results, error = await task
+                    page_results, error, elapsed = await task
                     if error is not None:
                         raise error
                     continued = should_continue(site, page_results) and page_index + 1 < len(search_pages)
@@ -167,6 +169,6 @@ class SearchPaginationOwner(_SearchOwnerBase):
                             search_page=search_page,
                             task_owner=task_owner,
                         )
-                    yield site, page_number, page_results, continued
+                    yield site, page_number, page_results, continued, elapsed
         finally:
             await _cancel_pending_pages(pending_tasks)
