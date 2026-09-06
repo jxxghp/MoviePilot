@@ -136,7 +136,9 @@ class LoopDetectionMiddleware(AgentMiddleware):
                 if isinstance(content, list):
                     parts = []
                     for item in content:
-                        if isinstance(item, dict) and item.get("type") == "text":
+                        if isinstance(item, str):
+                            parts.append(item)
+                        elif isinstance(item, dict) and item.get("type") == "text":
                             parts.append(str(item.get("text", "")))
                     return "".join(parts)
                 return str(content)
@@ -144,32 +146,36 @@ class LoopDetectionMiddleware(AgentMiddleware):
 
     @staticmethod
     def _similarity(a: str, b: str) -> float:
-        """计算两条文本的相似度（0~1），基于字符集合与长度差异的简单近似。"""
+        """计算两条文本的相似度（0~1）。
+
+        使用字符 bigram 集合的 Jaccard 相似度，并叠加长度差异惩罚。
+        bigram 覆盖完整文本内容，能区分"相同前缀但后续不同"的文本，
+        同时计算开销为 O(n)，避免 LCS 在长文本上的 O(n*m) 开销。
+        """
         if not a and not b:
             return 1.0
         if not a or not b:
             return 0.0
         if a == b:
             return 1.0
-        # 使用最长公共子序列长度 / 较长串长度作为相似度近似
-        shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
-        if not longer:
+
+        def _bigrams(s: str) -> set:
+            if len(s) <= 1:
+                return {s}
+            return {s[i:i + 2] for i in range(len(s) - 1)}
+
+        bigrams_a = _bigrams(a)
+        bigrams_b = _bigrams(b)
+        if not bigrams_a or not bigrams_b:
             return 0.0
-        # 简单字符级 LCS（限制长度避免极端开销）
-        if len(shorter) > 2000:
-            shorter = shorter[:2000]
-            longer = longer[:2000]
-        prev = [0] * (len(shorter) + 1)
-        for ch in longer:
-            curr = [0] * (len(shorter) + 1)
-            for i, s_ch in enumerate(shorter, 1):
-                if ch == s_ch:
-                    curr[i] = prev[i - 1] + 1
-                else:
-                    curr[i] = max(prev[i], curr[i - 1])
-            prev = curr
-        lcs = prev[-1]
-        return lcs / max(len(longer), 1)
+
+        intersection = len(bigrams_a & bigrams_b)
+        union = len(bigrams_a | bigrams_b)
+        jaccard = intersection / union if union else 0.0
+
+        # 长度差异惩罚：长度差异越大，相似度越低
+        len_ratio = min(len(a), len(b)) / max(len(a), len(b))
+        return jaccard * len_ratio
 
     async def awrap_model_call(
         self,
