@@ -344,7 +344,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
         media_type: Optional[MediaType],
         results: List[TorrentInfo],
         progress: ProgressHelper,
-    ) -> None:
+    ) -> Dict[str, tuple[str, float]]:
         """在共享线程池中按站点串行翻页，并把结果合并到调用方集合。"""
         total_num = len(indexer_sites) * len(search_pages)
         pending: SyncPending = {}

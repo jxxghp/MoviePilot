@@ -2668,9 +2668,8 @@
   "app/runtime/state.py": {
     "attr-defined": 2,
     "no-any-return": 2,
-    "no-untyped-call": 2,
-    "no-untyped-def": 5,
-    "return-value": 1,
+    "no-untyped-call": 1,
+    "no-untyped-def": 3,
     "type-arg": 1
   },
   "app/runtime/thread.py": {
