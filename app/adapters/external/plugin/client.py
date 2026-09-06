@@ -50,6 +50,7 @@ PLUGIN_INDEX_MAX_ENTRIES = 4096
 PLUGIN_INDEX_MAX_HISTORY_ENTRIES = 512
 PLUGIN_INDEX_MAX_NESTING = 64
 PLUGIN_INDEX_READ_CHUNK_SIZE = 64 * 1024
+PLUGIN_INDEX_REQUEST_TIMEOUT = 15
 PLUGIN_INDEX_COMPATIBILITY_FLAG_PATTERN = re.compile(r"^v\d+t?$")
 PLUGIN_INDEX_TEXT_LIMITS = {
     "name": 256,
@@ -66,6 +67,12 @@ PLUGIN_INDEX_TEXT_LIMITS = {
 
 class _PluginIndexTooLargeError(RuntimeError):
     """插件索引的声明长度或实际读取字节超过资源边界。"""
+
+
+def _format_request_error(error: Exception) -> str:
+    """保留异常类型，避免无消息异常在运行日志中显示为空白。"""
+    detail = str(error).strip()
+    return f"{type(error).__name__}: {detail}" if detail else type(error).__name__
 
 
 def build_local_repo_url(
@@ -903,7 +910,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         cls,
         url: str,
         headers: Optional[dict[str, str]] = None,
-        timeout: Optional[int] = 60,
+        timeout: Optional[int] = PLUGIN_INDEX_REQUEST_TIMEOUT,
     ) -> Optional[tuple[int, str]]:
         """按 GitHub 降级顺序流式读取同步插件索引，并限制解压后字节数。"""
         strategies = cls._build_github_request_strategies(
@@ -929,7 +936,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             except Exception as error:  # noqa: BLE001 - 失败后尝试下一传输策略
                 logger.error(
                     f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
-                    f"URL：{target_url}，错误：{error}"
+                    f"URL：{target_url}，错误：{_format_request_error(error)}"
                 )
         logger.error(f"[GitHub] 所有策略均无法读取插件索引，URL：{url}")
         return None
@@ -939,7 +946,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         cls,
         url: str,
         headers: Optional[dict[str, str]] = None,
-        timeout: Optional[int] = 60,
+        timeout: Optional[int] = PLUGIN_INDEX_REQUEST_TIMEOUT,
     ) -> Optional[tuple[int, str]]:
         """按 GitHub 降级顺序流式读取异步插件索引，并限制解压后字节数。"""
         strategies = cls._build_github_request_strategies(
@@ -965,7 +972,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             except Exception as error:  # noqa: BLE001 - 失败后尝试下一传输策略
                 logger.error(
                     f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
-                    f"URL：{target_url}，错误：{error}"
+                    f"URL：{target_url}，错误：{_format_request_error(error)}"
                 )
         logger.error(f"[GitHub] 所有策略均无法读取插件索引，URL：{url}")
         return None
@@ -1251,7 +1258,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             timeout: Optional[int] = 60,
             is_api: bool = False,
     ) -> list[tuple[str, str, PluginRequestOptions]]:
-        """构造同步与异步 GitHub 请求共用的镜像、代理和直连顺序。"""
+        """构造同步与异步 GitHub 请求共用的镜像和单一出口顺序。"""
         strategies: list[tuple[str, str, PluginRequestOptions]] = []
         if not is_api and get_runtime_setting('GITHUB_PROXY'):
             proxy_url = (
@@ -1272,9 +1279,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                     },
                 )
             )
-        strategies.append(
-            ("直连", url, {"headers": headers, "timeout": timeout})
-        )
+        else:
+            strategies.append(
+                ("直连", url, {"headers": headers, "timeout": timeout})
+            )
         return strategies
 
     @staticmethod
@@ -1283,7 +1291,8 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                                 timeout: Optional[int] = 60,
                                 is_api: bool = False) -> Optional[Response]:
         """
-        使用自动降级策略，请求资源，优先级依次为镜像站、代理、直连
+        使用自动降级策略，请求资源：可选镜像站后只使用一个出口；
+        显式配置代理时不再追加无效直连。
         :param url: 目标URL
         :param headers: 请求头信息
         :param timeout: 请求超时时间
@@ -1306,7 +1315,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                 logger.debug(f"[GitHub] 请求成功，策略：{strategy_name}, URL: {target_url}")
                 return res
             except Exception as e:
-                logger.error(f"[GitHub] 请求失败，策略：{strategy_name}, URL: {target_url}，错误：{str(e)}")
+                logger.error(
+                    f"[GitHub] 请求失败，策略：{strategy_name}, URL: {target_url}，"
+                    f"错误：{_format_request_error(e)}"
+                )
 
         logger.error(f"[GitHub] 所有策略均请求失败，URL: {url}，请检查网络连接或 GitHub 配置")
         return None
@@ -1404,7 +1416,8 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                                             timeout: Optional[int] = 60,
                                             is_api: bool = False) -> Optional[httpx2.Response]:
         """
-        使用自动降级策略，异步请求资源，优先级依次为镜像站、代理、直连
+        使用自动降级策略，异步请求资源：可选镜像站后只使用一个出口；
+        显式配置代理时不再追加无效直连。
         :param url: 目标URL
         :param headers: 请求头信息
         :param timeout: 请求超时时间
@@ -1427,7 +1440,10 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                 logger.debug(f"[GitHub] 请求成功，策略：{strategy_name}, URL: {target_url}")
                 return res
             except Exception as e:
-                logger.error(f"[GitHub] 请求失败，策略：{strategy_name}, URL: {target_url}，错误：{str(e)}")
+                logger.error(
+                    f"[GitHub] 请求失败，策略：{strategy_name}, URL: {target_url}，"
+                    f"错误：{_format_request_error(e)}"
+                )
 
         logger.error(f"[GitHub] 所有策略均请求失败，URL: {url}，请检查网络连接或 GitHub 配置")
         return None
