@@ -74,6 +74,7 @@ def test_emby_format_ids():
             1399,
         ),
         ("/movies/Avatar (2009) {tmdb-19995}/Avatar.2009.1080p.mkv", 19995),
+        ("/movies/狩猎 (2022) (tmdb-727340)/狩猎.mkv", 727340),
     ]
 
     for path_str, expected_media_id in test_paths:
@@ -686,6 +687,15 @@ def test_emby_tmdbid_overrides_braced_metainfo_tmdbid():
     assert metainfo["media_id"] == "222"
     assert "tmdbid" not in metainfo
     assert "[tmdbid=222]" not in title
+
+
+def test_parenthesized_tmdb_id_is_extracted_from_title():
+    """测试圆括号 TMDB 标签可从标题中提取并移除。"""
+    title, metainfo = find_metainfo("狩猎 (2022) (tmdb-727340)")
+
+    assert title.strip() == "狩猎 (2022)"
+    assert metainfo["media_source"] == MediaSource.TMDB
+    assert metainfo["media_id"] == "727340"
 
 
 def test_custom_identifier_uses_source_specific_id_and_returns_unified_identity():
