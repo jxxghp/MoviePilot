@@ -6,14 +6,63 @@ from contextlib import asynccontextmanager, contextmanager
 import pytest
 
 from app.adapters.external.plugin.client import (
+    PLUGIN_INDEX_REQUEST_TIMEOUT,
     PLUGIN_INDEX_MAX_BYTES,
     PLUGIN_INDEX_MAX_ENTRIES,
     PluginMarketClient,
     PluginMarketTransport,
+    _format_request_error,
 )
 
 SYNC_INDEX_REQUEST = "_PluginMarketTransport__request_plugin_index_with_fallback"
 ASYNC_INDEX_REQUEST = "_PluginMarketTransport__async_request_plugin_index_with_fallback"
+
+
+def test_plugin_index_request_timeout_is_bounded() -> None:
+    """插件索引故障应在有限时间内返回，不能沿用一分钟等待。"""
+    assert PLUGIN_INDEX_REQUEST_TIMEOUT == 15
+
+
+def test_github_request_strategies_do_not_retry_direct_when_proxy_is_configured(
+    monkeypatch,
+) -> None:
+    """显式代理失败后不得绕过同一出口策略再等待一次直连超时。"""
+    settings = {
+        "GITHUB_PROXY": None,
+        "PROXY_HOST": "http://proxy:7891",
+        "PROXY": {"http": "http://proxy:7891", "https": "http://proxy:7891"},
+    }
+    monkeypatch.setattr(
+        "app.adapters.external.plugin.client.get_runtime_setting",
+        lambda key: settings.get(key),
+    )
+
+    strategies = PluginMarketTransport._build_github_request_strategies(
+        url="https://raw.githubusercontent.com/example/repo/main/package.v3.json",
+    )
+
+    assert [name for name, _url, _params in strategies] == ["代理"]
+
+
+def test_github_request_strategies_use_direct_without_configured_proxy(
+    monkeypatch,
+) -> None:
+    """未配置代理时仍保留直连出口。"""
+    monkeypatch.setattr(
+        "app.adapters.external.plugin.client.get_runtime_setting",
+        lambda _key: None,
+    )
+
+    strategies = PluginMarketTransport._build_github_request_strategies(
+        url="https://raw.githubusercontent.com/example/repo/main/package.v3.json",
+    )
+
+    assert [name for name, _url, _params in strategies] == ["直连"]
+
+
+def test_request_error_formatter_keeps_type_for_blank_exception() -> None:
+    """无消息异常也必须给运行日志留下可诊断类型。"""
+    assert _format_request_error(TimeoutError()) == "TimeoutError"
 
 
 class _SyncStreamResponse:

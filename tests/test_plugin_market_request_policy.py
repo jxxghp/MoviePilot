@@ -12,7 +12,7 @@ from app.adapters.external.plugin.client import PluginMarketTransport
 async def test_sync_and_async_github_requests_share_fallback_policy(
     monkeypatch,
 ) -> None:
-    """同步与异步请求必须使用相同镜像、代理、直连顺序和参数。"""
+    """同步与异步请求必须使用相同镜像和单一出口顺序及参数。"""
     proxy = {"all": "http://proxy.example:7890"}
     runtime_settings = SimpleNamespace(
             GITHUB_PROXY="https://mirror.example",
@@ -29,16 +29,16 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
     response = object()
 
     class SyncRequest:
-        """记录同步请求，并让前两种策略失败以遍历完整顺序。"""
+        """记录同步请求，并让镜像策略失败以验证代理接管。"""
 
         def __init__(self, **kwargs) -> None:
             self._kwargs = kwargs
 
         def get_res(self, *, url: str, raise_exception: bool):
-            """记录请求目标，第三次返回固定响应。"""
+            """记录请求目标，第二次返回固定响应。"""
             assert raise_exception is True
             sync_requests.append((self._kwargs, url))
-            if len(sync_requests) < 3:
+            if len(sync_requests) < 2:
                 raise RuntimeError("next strategy")
             return response
 
@@ -49,10 +49,10 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
             self._kwargs = kwargs
 
         async def get_res(self, *, url: str, raise_exception: bool):
-            """记录请求目标，第三次返回固定响应。"""
+            """记录请求目标，第二次返回固定响应。"""
             assert raise_exception is True
             async_requests.append((self._kwargs, url))
-            if len(async_requests) < 3:
+            if len(async_requests) < 2:
                 raise RuntimeError("next strategy")
             return response
 
@@ -78,10 +78,6 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
         ),
         (
             {"headers": {"X-Test": "1"}, "proxies": proxy, "timeout": 12},
-            "https://api.example/resource",
-        ),
-        (
-            {"headers": {"X-Test": "1"}, "timeout": 12},
             "https://api.example/resource",
         ),
     ]
