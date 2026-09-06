@@ -1089,8 +1089,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8261,
-  "edge_sha256": "062c4385a99cd29502ce65387bda0f768399c824f293db9b2d90e108f8c340b3",
+  "edge_count": 8263,
+  "edge_sha256": "461585d4f5b0334163e10192294a20261e68f47f39094326f7c4590c4f1451cc",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2452,7 +2452,6 @@
     "app.api.endpoints.mfa -> app.application.security.auth",
     "app.api.endpoints.mfa -> app.application.security.otp",
     "app.api.endpoints.mfa -> app.application.security.passkey",
-    "app.api.endpoints.mfa -> app.application.security.token",
     "app.api.endpoints.mfa -> app.application.security.user",
     "app.api.endpoints.mfa -> app.runtime",
     "app.api.endpoints.mfa -> app.runtime.log",
@@ -3554,6 +3553,9 @@
     "app.application.security.url -> app.runtime",
     "app.application.security.url -> app.runtime.coalesce",
     "app.application.security.url -> app.runtime.log",
+    "app.application.security.user -> app.application",
+    "app.application.security.user -> app.application.security",
+    "app.application.security.user -> app.application.security.token",
     "app.application.security.userconfig -> app.application",
     "app.application.security.userconfig -> app.application.database",
     "app.application.security.userconfig -> app.schemas",
