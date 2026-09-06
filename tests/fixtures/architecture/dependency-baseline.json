@@ -40,9 +40,9 @@
       "app.application": 0,
       "app.chain": 0
     },
-    "count": 53,
+    "count": 52,
     "counts_by_kind": {
-      "network_sdk": 27,
+      "network_sdk": 26,
       "protocol_operation": 7,
       "raw_transport": 19
     },
@@ -984,21 +984,6 @@
         "source": "app.modules.zspace.zspace",
         "target": "requests",
         "uses": []
-      },
-      {
-        "bindings": [
-          "import:docker as docker"
-        ],
-        "fingerprint": "20a91ec521f7dfe6a0153dfd8ea49c4bac7f0a16b55f1c0655dfb33f54a01215",
-        "kind": "network_sdk",
-        "source": "app.runtime.state",
-        "target": "docker",
-        "uses": [
-          "SystemHelper._check_restart_policy|call:DockerClient",
-          "SystemHelper._check_restart_policy|call:containers.get",
-          "SystemHelper._docker_api_restart|call:DockerClient",
-          "SystemHelper._docker_api_restart|call:containers.get"
-        ]
       },
       {
         "bindings": [

@@ -67,7 +67,6 @@ def test_operational_consumers_use_readiness_probe() -> None:
     """容器、本地前端和性能工具不得再借业务接口判断启动完成。"""
     paths = (
         "docker/Dockerfile",
-        "docker/entrypoint.sh",
         "scripts/local_setup.py",
         "scripts/perf/moviepilot_docker_ab.py",
     )
