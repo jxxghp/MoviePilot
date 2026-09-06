@@ -325,7 +325,7 @@ def test_metainfo_path_uses_rust_once_and_keeps_python_directory_context(
             "[CD][FLAC+CUE+LOG+BK][KDSD-01049]",
             ["中恵光城"],
             "SELENiTE -Mitsuki Nakae Works Best Album",
-            None,
+            2022,
             "FLAC",
         ),
         (

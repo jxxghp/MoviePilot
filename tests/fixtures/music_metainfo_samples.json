@@ -1,0 +1,209 @@
+{
+  "sampled_on": "2026-09-06",
+  "provenance": "Read-only authenticated music listing samples; only original titles and subtitles retained. Expected fields are manually annotated from naming evidence, not external catalog guesses.",
+  "samples": [
+    {
+      "id": "wintersakura-pinyin-prefers-native-title",
+      "site": "wintersakura",
+      "title": "Yisa Yu 2019 SanShiErLi FLAC",
+      "subtitle": "郁可唯 - 三十而慄 2019 - FLAC 分軌",
+      "expected": {"artists": ["Yisa Yu"], "title": "三十而慄", "album": null, "year": 2019}
+    },
+    {
+      "id": "ptsbao-explicit-subtitle-album-marker",
+      "site": "ptsbao",
+      "title": "Wagner: Das Rheingold 2010 1080i Blu-ray AVC DTS 5.1",
+      "subtitle": "瓦格纳《莱茵的黄金》 / 大都会歌剧院高清转播系列 / Wagner: Das Rheingold | 类别：音乐 歌剧",
+      "expected": {"artists": ["瓦格纳"], "title": "Wagner: Das Rheingold", "album": "莱茵的黄金", "year": 2010}
+    },
+    {
+      "id": "hdhome-catalog-year-is-not-artist",
+      "site": "HDHome",
+      "title": "Emiri Miyamoto-Renaissance",
+      "subtitle": "2012 - Sony Records Int'l / SICC 10115 / SACD - DSF / Lossless / 频谱图",
+      "expected": {"artists": [], "album": null}
+    },
+    {
+      "id": "hdhome-description-is-not-artist",
+      "site": "HDHome",
+      "title": "Headphone Acoustics Reference CD [金耳朵]录音监察员专用测试天碟 编号：STS digital 611143",
+      "subtitle": "欧洲权威电器硬件生产制造商\"PHILIPS\"授权荷兰发烧录音制作品牌STS-Digital命名及合作录制的首张专业测试音乐CD，立体动感..",
+      "expected": {"artists": [], "album": null, "year": null}
+    },
+    {
+      "id": "hhan-single-pipe-fields",
+      "site": "hhanclub",
+      "title": "李佳薇 - 词不达意 (2020) - WEB-DL - 24bit ALAC-HHWEB",
+      "subtitle": "李佳薇 - 词不达意 | ALAC | 苹果音乐 | 单曲专辑",
+      "expected": {"artists": ["李佳薇"], "title": "词不达意", "album": "词不达意", "year": 2020, "audio_format": "ALAC", "bit_depth": 24}
+    },
+    {
+      "id": "hhan-featured-artist",
+      "site": "hhanclub",
+      "title": "黄明志 - 一起飙高音 (feat. 李佳薇) (2018) - WEB-DL - 24bit ALAC-HHWEB",
+      "subtitle": "黄明志 - 一起飙高音 (feat. 李佳薇) | ALAC | 苹果音乐 | 单曲专辑",
+      "expected": {"artists": ["黄明志", "李佳薇"], "title": "一起飙高音 (feat. 李佳薇)", "album": "一起飙高音 (feat. 李佳薇)", "year": 2018}
+    },
+    {
+      "id": "hhan-featured-compact",
+      "site": "hhanclub",
+      "title": "李佳薇 - 追心者2.0 (feat.舒灏) (2023) - WEB-DL - 16bit ALAC-HHWEB",
+      "subtitle": "李佳薇 - 追心者2.0 (feat.舒灏) | ALAC | 苹果音乐 | 录音室专辑",
+      "expected": {"artists": ["李佳薇", "舒灏"], "title": "追心者2.0 (feat.舒灏)", "album": "追心者2.0 (feat.舒灏)", "year": 2023}
+    },
+    {
+      "id": "hhan-soundtrack-book-title",
+      "site": "hhanclub",
+      "title": "群星 - 电视剧《如果奔跑是我的人生》原声带 (2024) - WEB-DL - 24bit ALAC-HHWEB",
+      "subtitle": "周深& 李佳薇& 金玟岐 & PMP Music - 电视剧《如果奔跑是我的人生》原声带 | ALAC | 苹果音乐 | 录音室专辑",
+      "expected": {"artists": ["群星"], "title": "电视剧《如果奔跑是我的人生》原声带", "album": "电视剧《如果奔跑是我的人生》原声带", "year": 2024}
+    },
+    {
+      "id": "hhan-soundtrack-leading-book-title",
+      "site": "hhanclub",
+      "title": "群星 - 《破事精英2》影视剧原声带 (2023) - WEB-DL - 24bit ALAC-HHWEB",
+      "subtitle": "李佳薇& 王弦& 池约翰C.J & 常佳宁 - 《破事精英2》影视剧原声带 | ALAC | 苹果音乐 | 录音室专辑",
+      "expected": {"artists": ["群星"], "title": "《破事精英2》影视剧原声带", "album": "《破事精英2》影视剧原声带", "year": 2023}
+    },
+    {
+      "id": "hhan-release-type-bit-abbreviation",
+      "site": "hhanclub",
+      "title": "李佳薇 - 大火 (Reborn) - Single(2024) - ALAC [16B-44.1kHz]",
+      "subtitle": "李佳薇 - 大火 (Reborn) | ALAC | 苹果音乐 | 录音室专辑",
+      "expected": {"artists": ["李佳薇"], "title": "大火 (Reborn)", "album": "大火 (Reborn)", "year": 2024, "bit_depth": 16, "sample_rate": 44100}
+    },
+    {
+      "id": "hhan-book-title-in-comment",
+      "site": "hhanclub",
+      "title": "李佳薇 - 黎明所愿 (电视剧《暗夜与黎明》插曲) (2024) - WEB-DL - 24bit ALAC-HHWEB",
+      "subtitle": "李佳薇 - 黎明所愿 (电视剧《暗夜与黎明》插曲) | ALAC | 苹果音乐 | 录音室专辑",
+      "expected": {"artists": ["李佳薇"], "title": "黎明所愿 (电视剧《暗夜与黎明》插曲)", "album": "黎明所愿 (电视剧《暗夜与黎明》插曲)", "year": 2024}
+    },
+    {
+      "id": "hhan-primary-artist-preserved",
+      "site": "hhanclub",
+      "title": "群星 - 风过留痕 影视原声带 (2026) - WEB-DL - 16bit ALAC-HHWEB",
+      "subtitle": "李佳薇& 杨宝心& 刘宇宁 & 诗和远方 - 风过留痕 影视原声带 | ALAC | 苹果音乐 | 录音室专辑",
+      "expected": {"artists": ["群星"], "title": "风过留痕 影视原声带", "album": "风过留痕 影视原声带", "year": 2026}
+    },
+    {
+      "id": "ptsbao-album-full-date",
+      "site": "ptsbao",
+      "title": "[Album] Aoi Teshima - Tokyo [2017.11.22]",
+      "subtitle": "[Album] Aoi Teshima - Tokyo [2017.11.22]",
+      "expected": {"artists": ["Aoi Teshima"], "title": "Tokyo", "album": "Tokyo", "year": 2017}
+    },
+    {
+      "id": "ptsbao-spaced-release-date",
+      "site": "ptsbao",
+      "title": "[2021 10 20]手嶌葵(Aoi Teshima) - Highlights from Simple is best Vol  2 [24bit／96kHz] (Flac)",
+      "subtitle": "手嶌葵(Aoi Teshima) - Highlights from Simple is best Vol 2",
+      "expected": {"artists": ["手嶌葵(Aoi Teshima)"], "title": "Highlights from Simple is best Vol 2", "album": null, "year": 2021, "bit_depth": 24, "sample_rate": 96000}
+    },
+    {
+      "id": "ssd-explicit-subtitle-artist",
+      "site": "ssd",
+      "title": "Shan.Ge.Liao.Zai.2023.WEB-DL.FLAC-CMCTA",
+      "subtitle": "音乐专辑 | 山歌廖哉 - 歌手：刀郎 - FLAC分轨[~1600kbps]",
+      "expected": {"artists": ["刀郎"], "title": "山歌廖哉", "album": "山歌廖哉", "year": 2023, "audio_format": "FLAC"}
+    },
+    {
+      "id": "ssd-various-artists-compact-alias",
+      "site": "ssd",
+      "title": "VariousArtists-Top.100.Classical.Music.1994.Flac.16bit.44.1khz",
+      "subtitle": "群星-古典音乐1685年-1928年10CD|Delta",
+      "expected": {"artists": ["Various Artists"], "title": "Top 100 Classical Music", "album": null, "year": 1994, "sample_rate": 44100}
+    },
+    {
+      "id": "ssd-various-artists-dotted-alias",
+      "site": "ssd",
+      "title": "Various.Artists-Sci-Trance.2014-Redacted",
+      "subtitle": "Smiling Corpse / SCAA001 / CD / Log (100%) / Cue",
+      "expected": {"artists": ["Various Artists"], "album": null}
+    },
+    {
+      "id": "wintersakura-year-album-suffix",
+      "site": "wintersakura",
+      "title": "Sophie Zelmani-Sophie Zelmani 1995 Album",
+      "subtitle": "FLAC / Lossless / Log (100%) / Cue",
+      "expected": {"artists": ["Sophie Zelmani"], "title": "Sophie Zelmani", "album": "Sophie Zelmani", "year": 1995, "audio_format": "FLAC"}
+    },
+    {
+      "id": "wintersakura-year-album-second",
+      "site": "wintersakura",
+      "title": "Sophie Zelmani-Sing and Dance 2002 Album",
+      "subtitle": "FLAC / Lossless / Log (100%) / Cue",
+      "expected": {"artists": ["Sophie Zelmani"], "title": "Sing and Dance", "album": "Sing and Dance", "year": 2002}
+    },
+    {
+      "id": "wintersakura-spaced-sample-rate",
+      "site": "wintersakura",
+      "title": "Gene Clark-White Light 1971 - FLAC 16bit 44 1khz",
+      "subtitle": "吉恩·克拉克-白光 | 专辑 | 转自RED",
+      "expected": {"artists": ["Gene Clark"], "title": "White Light", "album": "White Light", "year": 1971, "sample_rate": 44100}
+    },
+    {
+      "id": "wintersakura-collection-not-recording",
+      "site": "wintersakura",
+      "title": "周杰伦 - 合集  2000-2022 - FLAC 16bit 44 1khz",
+      "subtitle": "周杰伦 音乐作品合集 2000-2022 | 专辑合集",
+      "expected": {"artists": ["周杰伦"], "title": null, "album": null, "year": 2022, "sample_rate": 44100}
+    },
+    {
+      "id": "0ff-spaced-sample-rate",
+      "site": "0ff",
+      "title": "Aimer - A World Where the Sun Never Rises 2025-FLAC 16bit 44 1khz-Mmx",
+      "subtitle": "",
+      "expected": {"artists": ["Aimer"], "title": "A World Where the Sun Never Rises", "album": null, "year": 2025, "sample_rate": 44100}
+    },
+    {
+      "id": "0ff-multiple-artists",
+      "site": "0ff",
+      "title": "Eric W  Brown & Yasunori Mitsuda - Sea of Stars: Original Soundtrack 2023-FLAC 16bit 44 1khz-Mmx",
+      "subtitle": "",
+      "expected": {"artists": ["Eric W Brown", "Yasunori Mitsuda"], "title": "Sea of Stars: Original Soundtrack", "album": null, "year": 2023, "sample_rate": 44100}
+    },
+    {
+      "id": "0ff-hyphenated-artist",
+      "site": "0ff",
+      "title": "A-Lin - 出道十周年情歌精选 2016 FLAC 16bit 44 1kHz",
+      "subtitle": "",
+      "expected": {"artists": ["A-Lin"], "title": "出道十周年情歌精选", "album": null, "year": 2016, "sample_rate": 44100}
+    },
+    {
+      "id": "hdfans-volume-before-year",
+      "site": "hdfans",
+      "title": "VA - Bar Groove Analog 17 2026 FLAC",
+      "subtitle": "",
+      "expected": {"artists": ["Various Artists"], "title": "Bar Groove Analog 17", "album": null, "year": 2026}
+    },
+    {
+      "id": "btschool-known-good-title",
+      "site": "btschool",
+      "title": "Bonnie Tyler - The Very Best Of 2001 FLAC",
+      "subtitle": "()",
+      "expected": {"artists": ["Bonnie Tyler"], "title": "The Very Best Of", "album": null, "year": 2001}
+    },
+    {
+      "id": "hdsky-hyphenated-artist",
+      "site": "hdsky",
+      "title": "Anti-Flag - American Reckoning - 2009 - FLAC分轨",
+      "subtitle": "",
+      "expected": {"artists": ["Anti-Flag"], "title": "American Reckoning", "album": null, "year": 2009}
+    },
+    {
+      "id": "audiences-classical-composer",
+      "site": "audiences",
+      "title": "德沃夏克 - 第三、第七交响曲【1995】【CD】【FLAC分轨】",
+      "subtitle": "德沃夏克：第三、第七交响曲 郑明勋(1995) [维也纳爱乐乐团175周年纪念套装cd_14]",
+      "expected": {"artists": ["德沃夏克"], "title": "第三、第七交响曲", "album": null, "year": 1995}
+    },
+    {
+      "id": "hdhome-subtitle-translation-not-album",
+      "site": "HDHome",
+      "title": "罗文 & 甄妮 – 射雕英雄传 Roman Tam & Jenny Tseng – Legends of the Condor Heroes  1983 [APE整轨+CUE]",
+      "subtitle": "羅文 & 甄妮 – 射雕英雄傳 (粤语) [APE整轨+CUE]",
+      "expected": {"artists": ["罗文", "甄妮"], "title": "射雕英雄传 Roman Tam & Jenny Tseng – Legends of the Condor Heroes", "album": null, "year": 1983}
+    }
+  ]
+}
