@@ -74,3 +74,23 @@ class DownloadTaskUpdateData(BaseModel):  # type: ignore[misc]
     hash: str = Field(description="下载任务 Hash")
     downloader: str = Field(description="实际使用的下载器实例")
     results: list[DownloadTaskMutationResult] = Field(default_factory=list, description="各修改动作结果")
+
+
+class DownloadSourceClassificationRequest(BaseModel):  # type: ignore[misc]
+    """已有下载任务的资源目录分类请求。"""
+
+    downloader: Optional[str] = Field(default=None, description="下载器实例")
+    execute: bool = Field(default=False, description="是否执行下载器位置移动")
+    media_category: Optional[str] = Field(default=None, description="可选的手动媒体分类路径")
+
+
+class DownloadSourceClassificationData(BaseModel):  # type: ignore[misc]
+    """资源目录分类预览或执行结果。"""
+
+    hash: str = Field(description="下载任务 Hash")
+    downloader: str = Field(description="实际使用的下载器实例")
+    current_save_path: str = Field(description="当前保存目录")
+    target_save_path: str = Field(description="按类别分类后的目标目录")
+    category: str = Field(description="命中的媒体分类路径")
+    changed: bool = Field(description="当前目录是否需要变更")
+    executed: bool = Field(description="是否已请求下载器移动")

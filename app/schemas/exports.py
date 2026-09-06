@@ -153,6 +153,8 @@ SCHEMA_EXPORTS = {
     'DownloadDirectory': ('app.schemas.download', 'DownloadDirectory'),
     'DownloadFileDeletedEventData': ('app.schemas.event', 'DownloadFileDeletedEventData'),
     'DownloadHistory': ('app.schemas.history', 'DownloadHistory'),
+    'DownloadSourceClassificationData': ('app.schemas.download', 'DownloadSourceClassificationData'),
+    'DownloadSourceClassificationRequest': ('app.schemas.download', 'DownloadSourceClassificationRequest'),
     'DownloadTask': ('app.schemas.workflow', 'DownloadTask'),
     'DownloadTaskMedia': ('app.schemas.transfer', 'DownloadTaskMedia'),
     'DownloadTaskMutationResult': ('app.schemas.download', 'DownloadTaskMutationResult'),

@@ -372,9 +372,15 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 | POST | `/api/v1/download/subtitle` | 下载字幕到识别出的媒体下载目录，请求体包含 `subtitle_in`，并必须提供 `media_source` + `media_id`；可选 `save_path` |
 | GET | `/api/v1/download/start/{hashString}` | 恢复下载任务，参数：`name` |
 | GET | `/api/v1/download/stop/{hashString}` | 暂停下载任务，参数：`name` |
+| PATCH | `/api/v1/download/{hashString}` | 高级更新下载任务，可修改限速、标签、Tracker、保存目录和下载器分类 |
+| POST | `/api/v1/download/{hashString}/classify-source` | 按下载历史中的媒体分类和当前资源目录规则重新计算保存位置；`execute=false` 只预览，`execute=true` 由下载器移动任务数据；旧历史没有分类时可传当前策略中已启用的 `media_category` 路径 |
 | GET | `/api/v1/download/clients` | 查询可用下载器 |
 | GET | `/api/v1/download/paths` | 查询可用于下载接口 `save_path` 参数的下载路径 |
 | DELETE | `/api/v1/download/{hashString}` | 删除下载任务，参数：`name` |
+
+资源目录重新分类只接受仍存在于下载器且具有可恢复媒体类型的下载历史任务；默认使用历史分类快照，旧历史缺少分类时必须显式传入当前策略中已启用且媒体类型匹配的 `media_category`。
+目标路径必须落在已配置的资源根目录内，并且目录需开启“资源目录按类别分类”或绑定固定分类。
+执行时 MoviePilot 调用下载器的位置更新能力，不直接移动或改写 PT 数据文件。
 
 #### 历史
 

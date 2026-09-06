@@ -9,6 +9,8 @@ from pydantic import ValidationError
 from app.application.classification.reference import (
     ClassificationCategoryResolution,
     ClassificationCategoryResolver,
+    append_classification_category_path,
+    category_path_below_media_type,
     classification_category_resolver_snapshot,
     classification_media_type,
     configure_classification_category_resolver,
@@ -36,6 +38,36 @@ WINDOWS_DRIVE_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 WINDOWS_DRIVE_PREFIX_PATTERN = re.compile(r"^[A-Za-z]:")
 DirectoryMedia = MediaInfo | MusicInfo
 """目录选择支持的完整影视或音乐媒体对象。"""
+
+
+def build_media_download_path(
+    root_path: Path,
+    directory: _SchemaTransferDirectoryConf,
+    media: DirectoryMedia,
+    directory_helper: Optional["DirectoryHelper"] = None,
+) -> Path:
+    """按下载目录开关和稳定分类快照构造保存路径。"""
+    download_path = root_path
+    type_folder_enabled = bool(
+        not directory.media_type and directory.download_type_folder
+    )
+    if type_folder_enabled:
+        download_path = download_path / media.type.value
+
+    helper = directory_helper or DirectoryHelper()
+    if helper.has_fixed_category(directory) or not directory.download_category_folder:
+        return download_path
+    category_path = helper.resolve_media_category(media).path
+    if not category_path:
+        return download_path
+    category_path = category_path_below_media_type(
+        category_path,
+        media.type,
+        type_folder_enabled=type_folder_enabled,
+    )
+    if not category_path:
+        return download_path
+    return append_classification_category_path(download_path, category_path)
 
 
 class DiskTopology(Protocol):
@@ -344,6 +376,41 @@ class DirectoryHelper:
         if not candidates:
             return None
         return min(candidates, key=lambda item: item[0])[1]
+
+    def get_download_dir_by_task_path(
+            self,
+            media: Optional[DirectoryMedia],
+            task_path: str,
+    ) -> Optional[_SchemaTransferDirectoryConf]:
+        """按下载器返回的任务保存路径匹配最深层配置根目录。"""
+        value = str(task_path or "").strip()
+        try:
+            storage, raw_path = _split_file_uri(value)
+            target_style, target_path = _normalize_download_path(raw_path, storage)
+        except ValueError:
+            return None
+
+        candidates: list[tuple[int, int, int, _SchemaTransferDirectoryConf]] = []
+        for index, directory in enumerate(self.get_download_dirs()):
+            root = _normalize_download_root(directory)
+            if not root:
+                continue
+            root_storage, root_style, root_path = root
+            if storage != root_storage or target_style != root_style:
+                continue
+            if target_path != root_path and not target_path.is_relative_to(root_path):
+                continue
+            rank = self.media_match_rank(
+                directory,
+                media,
+                allow_stale_reference=True,
+            )
+            if rank is None:
+                continue
+            candidates.append((-len(root_path.parts), rank, index, directory))
+        if not candidates:
+            return None
+        return min(candidates, key=lambda item: item[:3])[3]
 
     def get_library_dirs(self) -> List[_SchemaTransferDirectoryConf]:
         """

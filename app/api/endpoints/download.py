@@ -14,6 +14,7 @@ from app.api.response import (
 )
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
+from app.application.download.classification import DownloadSourceClassificationService
 from app.application.download.tasks import DownloadTaskMutationService
 from app.application.security.url import SecurityUtils
 from app.application.site.query import (
@@ -29,6 +30,8 @@ from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.download import DownloadAddedData as _SchemaDownloadAddedData
 from app.schemas.download import DownloadDirectory as _SchemaDownloadDirectory
+from app.schemas.download import DownloadSourceClassificationData as _SchemaDownloadSourceClassificationData
+from app.schemas.download import DownloadSourceClassificationRequest as _SchemaDownloadSourceClassificationRequest
 from app.schemas.download import DownloadTaskUpdateData as _SchemaDownloadTaskUpdateData
 from app.schemas.download import DownloadTaskUpdateRequest as _SchemaDownloadTaskUpdateRequest
 from app.schemas.download import SubtitleDownloadData as _SchemaSubtitleDownloadData
@@ -396,6 +399,37 @@ async def update_task(
         success=all(item.get("success") for item in data["results"]),
         data=data,
     )
+
+
+@router.post(  # type: ignore[misc]
+    "/{hashString}/classify-source",
+    summary="按媒体类别重新定位资源目录",
+    response_model=_SchemaResponse[_SchemaDownloadSourceClassificationData],
+)
+async def classify_source(
+    hashString: str,
+    payload: _SchemaDownloadSourceClassificationRequest,
+    _: ApiPrincipal = Depends(get_current_active_user),
+) -> _SchemaResponse[Any]:
+    """预览或通过下载器执行已有任务的资源目录分类。"""
+    chain = DownloadChain()
+    service = DownloadSourceClassificationService(
+        list_torrents=chain.list_torrents,
+        get_history_by_hash=chain.download_history_repository.get_by_hash,
+        update_torrent=chain.update_torrent,
+    )
+    try:
+        data = await anyio.to_thread.run_sync(
+            lambda: service.plan(
+                hash_value=hashString,
+                downloader=payload.downloader,
+                execute=payload.execute,
+                media_category=payload.media_category,
+            )
+        )
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(success=True, data=data)
 
 
 @router.get(
