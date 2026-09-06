@@ -481,7 +481,7 @@
     "union-attr": 4
   },
   "app/api/endpoints/mfa.py": {
-    "attr-defined": 6,
+    "attr-defined": 4,
     "call-overload": 1,
     "index": 2,
     "misc": 16,
