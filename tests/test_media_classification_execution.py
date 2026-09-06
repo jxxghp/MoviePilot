@@ -181,6 +181,39 @@ def test_execution_classifies_copy_and_preserves_source_identity() -> None:
     assert source.classification.policy_revision == 1
 
 
+def test_legacy_tmdb_rules_use_non_tmdb_standard_facts() -> None:
+    """旧 TMDB 分类规则应使用豆瓣等来源已有的标准国家事实。"""
+    migration = migrate_legacy_category_config(
+        {
+            "movie": {},
+            "tv": {
+                "国产剧": {"origin_country": "CN,TW,HK"},
+                "未分类": None,
+            },
+        }
+    )
+    source = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="35593344",
+        type=MediaType.TV,
+        title="测试剧",
+        production_countries=[{"name": "中国大陆"}],
+    )
+
+    finalized = ClassificationExecutionService(
+        _Runtime(migration.policy)
+    ).finalize(source)
+
+    assert finalized.media_source == MediaSource.Douban
+    assert finalized.library_category == "国产剧"
+    assert finalized.classification is not None
+    assert finalized.classification.effective.category_id == next(
+        category.id
+        for category in migration.policy.categories
+        if category.name == "国产剧"
+    )
+
+
 def test_execution_builds_complete_facts_without_mutating_media() -> None:
     """影响分析事实入口应复用插件字段构造，并保持原媒体对象不变。"""
     source = MediaInfo(

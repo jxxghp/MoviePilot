@@ -25,6 +25,7 @@ from app.application.directory import normalize_directory_configurations_for_pol
 from app.db.adapters.classification import (
     SystemConfigClassificationPolicyStore,
     SystemConfigDirectoryConfigurationStore,
+    discard_removed_source_fallbacks,
 )
 from app.db.models.systemconfig import SystemConfig
 from app.db.oper.systemconfig import SystemConfigOper
@@ -73,6 +74,37 @@ def _store(db: Any) -> tuple[SystemConfigClassificationPolicyStore, SystemConfig
         ),
         oper,
     )
+
+
+def test_old_source_fallback_is_promoted_to_global_fallback() -> None:
+    """旧策略读取时应保留迁移生成的分类兜底，并移除废弃字段。"""
+    state = {
+        "active": {
+            "fallbacks": {
+                "电影": "movie.uncategorized",
+                "电视剧": "tv.uncategorized",
+                "音乐": "music.uncategorized",
+            },
+            "source_fallbacks": {
+                "themoviedb": {"电视剧": "legacy.tv.uncategorized"},
+            },
+        },
+        "history": [
+            {
+                "fallbacks": {"电视剧": "tv.uncategorized"},
+                "source_fallbacks": {
+                    "themoviedb": {"电视剧": "legacy.tv.previous"},
+                },
+            }
+        ],
+    }
+
+    normalized = discard_removed_source_fallbacks(state)
+
+    assert normalized["active"]["fallbacks"]["电视剧"] == "legacy.tv.uncategorized"
+    assert normalized["history"][0]["fallbacks"]["电视剧"] == "legacy.tv.previous"
+    assert "source_fallbacks" not in normalized["active"]
+    assert "source_fallbacks" not in normalized["history"][0]
 
 
 def test_adapter_initializes_and_round_trips_json_datetime(db: Any) -> None:
