@@ -9,7 +9,6 @@ import shutil
 import subprocess
 import sys
 import sysconfig
-from importlib import import_module
 from importlib.util import find_spec
 from pathlib import Path
 
