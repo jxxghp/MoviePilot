@@ -588,6 +588,12 @@
     },
     "target": "asyncio.to_thread"
   },
+  "app/runtime/state.py:threading.Timer": {
+    "owners": {
+      "SystemHelper._schedule_supervisor_restart": 1
+    },
+    "target": "threading.Timer"
+  },
   "app/runtime/tasks.py:asyncio.create_task": {
     "owners": {
       "TaskRegistry.create": 1
