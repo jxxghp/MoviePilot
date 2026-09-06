@@ -9,11 +9,14 @@
 
 达到阈值时抛出 `AgentLoopDetectedError`，由 orchestrator 专门捕获并终止
 本轮 Agent 执行，同时向用户返回友好提示。
+
+循环检测状态保存在每次 Agent 执行的独立状态（``request.state``）中，而非
+中间件实例字段，避免共享同一已编译 Agent 的并发执行互相串扰。
 """
 
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Annotated, Any, NotRequired
 
 from langchain.agents.middleware import AgentMiddleware, ToolCallRequest
 from langchain.agents.middleware.types import (
@@ -21,6 +24,7 @@ from langchain.agents.middleware.types import (
     ContextT,
     ModelRequest,
     ModelResponse,
+    PrivateStateAttr,
     ResponseT,
 )
 from langchain_core.messages import AIMessage
@@ -43,12 +47,25 @@ DEFAULT_MAX_REPEATED_OUTPUTS = 3
 DEFAULT_OUTPUT_SIMILARITY_THRESHOLD = 0.95
 
 
+class LoopDetectionState(AgentState):
+    """循环检测中间件私有状态。"""
+
+    tool_call_history: NotRequired[Annotated[list[str], PrivateStateAttr]]
+    """当前这条 Agent 执行的工具调用签名历史。"""
+
+    output_history: NotRequired[Annotated[list[str], PrivateStateAttr]]
+    """当前这条 Agent 执行的模型输出文本历史。"""
+
+
 class LoopDetectionMiddleware(AgentMiddleware):
     """检测并中断模型重复循环的中间件。
 
-    状态保存在中间件实例上，并在每次 Agent 执行开始时（``abefore_agent``）
-    重置，避免跨用户请求残留。
+    循环检测状态保存在 ``request.state`` 中，并在每次 Agent 执行开始时
+    （``abefore_agent``）初始化，避免共享同一已编译 Agent 的并发执行互相
+    串扰。
     """
+
+    state_schema = LoopDetectionState
 
     def __init__(
         self,
@@ -60,21 +77,20 @@ class LoopDetectionMiddleware(AgentMiddleware):
         self._max_repeated_tool_calls = max_repeated_tool_calls
         self._max_repeated_outputs = max_repeated_outputs
         self._output_similarity_threshold = output_similarity_threshold
-        self._tool_call_history: list[str] = []
-        self._output_history: list[str] = []
 
     # ------------------------------------------------------------------
-    # 状态重置
+    # 状态初始化
     # ------------------------------------------------------------------
     async def abefore_agent(
         self,
         state: AgentState,
         runtime: Any,  # noqa: ARG002
-    ) -> None:
-        """每次 Agent 执行开始时重置循环检测状态。"""
-        self._tool_call_history = []
-        self._output_history = []
-        return None
+    ) -> dict[str, Any] | None:
+        """每次 Agent 执行开始时初始化循环检测状态。"""
+        return {
+            "tool_call_history": [],
+            "output_history": [],
+        }
 
     # ------------------------------------------------------------------
     # 工具调用签名规范化
@@ -110,8 +126,10 @@ class LoopDetectionMiddleware(AgentMiddleware):
         args = tool_call.get("args") or {}
         signature = self._normalize_tool_call_signature(tool_name, args)
 
-        self._tool_call_history.append(signature)
-        if self._is_repeating(self._tool_call_history, self._max_repeated_tool_calls):
+        history = list(request.state.get("tool_call_history") or [])
+        history.append(signature)
+        request.state["tool_call_history"] = history
+        if self._is_repeating(history, self._max_repeated_tool_calls):
             logger.warning(
                 f"检测到重复工具调用循环: tool={tool_name}, "
                 f"连续 {self._max_repeated_tool_calls} 次相同调用"
@@ -143,6 +161,14 @@ class LoopDetectionMiddleware(AgentMiddleware):
                     return "".join(parts)
                 return str(content)
         return ""
+
+    @staticmethod
+    def _has_tool_calls(response: ModelResponse[Any]) -> bool:
+        """判断模型响应是否包含工具调用（即是否还会继续执行）。"""
+        for msg in reversed(response.result):
+            if isinstance(msg, AIMessage):
+                return bool(msg.tool_calls)
+        return False
 
     @staticmethod
     def _similarity(a: str, b: str) -> float:
@@ -184,15 +210,24 @@ class LoopDetectionMiddleware(AgentMiddleware):
             [ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]
         ],
     ) -> ModelResponse[ResponseT]:
-        """在模型输出后检测重复文本，命中循环则中断。"""
+        """在模型输出后检测重复文本，命中循环则中断。
+
+        仅当模型响应仍包含工具调用（即 Agent 还会继续执行）时才检测，
+        避免把已正常结束的最终回复误判为循环。
+        """
         response = await handler(request)
+        if not self._has_tool_calls(response):
+            return response
+
         text = self._extract_output_text(response)
         if not text:
             return response
 
-        self._output_history.append(text)
-        if len(self._output_history) >= self._max_repeated_outputs:
-            recent = self._output_history[-self._max_repeated_outputs:]
+        history = list(request.state.get("output_history") or [])
+        history.append(text)
+        request.state["output_history"] = history
+        if len(history) >= self._max_repeated_outputs:
+            recent = history[-self._max_repeated_outputs:]
             # 全部完全相同
             if len(set(recent)) == 1:
                 logger.warning(
