@@ -256,6 +256,8 @@ class FileFilterMixin(_TransferOwnerBase):
     ) -> tuple[Optional[MetaMusic], Optional[MusicInfo]]:
         """从下载历史恢复音乐上下文，并用当前音频标签覆盖曲目级字段。
 
+        种子未提供的语义字段由历史中已选媒体补缺；实体类型和来源身份始终
+        沿用已选媒体，不根据专辑名或文件曲名在单曲与专辑之间转换。
         多音轨批次误带单曲身份时只保留文件自身标签，避免把同一 recording
         身份传播到整张专辑；调用方随后可使用目录级证据重新匹配专辑。
         """
@@ -283,6 +285,22 @@ class FileFilterMixin(_TransferOwnerBase):
             return file_meta, None
 
         file_meta = deepcopy(saved_meta)
+        # 新旧历史都可能仅在 media 中保留已选专辑；先补缺，再沿用文件标签的
+        # 覆盖规则。音质不从目标媒体补写，曲名仍取当前文件，避免混淆资源证据。
+        for field_name in (
+                "artists",
+                "album",
+                "album_artist",
+                "year",
+                "disc_number",
+                "track_number",
+                "total_tracks",
+                "version",
+                "isrc",
+        ):
+            saved_value = getattr(saved_info, field_name, None)
+            if getattr(file_meta, field_name, None) in (None, "", []) and saved_value not in (None, "", []):
+                setattr(file_meta, field_name, deepcopy(saved_value))
         file_meta.org_string = file_path.name
         # 曲目标题始终优先使用当前文件自身的标签（缺失时回退为文件名），
         # 防止整包目录继续沿用订阅/下载标题（单曲名、专辑名等）导致所有文件重名。

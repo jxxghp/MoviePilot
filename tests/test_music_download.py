@@ -1,10 +1,21 @@
+import json
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
+
+import pytest
+from jinja2 import Template
 
 import app.chain.download.submission as download_submission
 from app.api.endpoints.download import add, download
+from app.application.audio import AudioMetadataHelper
+from app.application.messaging.message import TemplateHelper
 from app.chain.download import DownloadChain
+from app.chain.media import MediaChain
+from app.chain.transfer.facade import TransferChain
 from app.domain.context import MUSIC_ENTITY_ALBUM, Context, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
+from app.runtime.config import settings
 from app.schemas.context import TorrentInfo
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.music import MusicInfo as MusicInfoSchema
@@ -172,6 +183,72 @@ def test_download_endpoint_builds_music_context():
     assert context.meta_info.org_string == "周杰伦 - 叶惠美 FLAC"
     assert context.meta_info.title == "叶惠美"
     assert context.meta_info.media_id is None
+
+
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+def test_download_history_restores_selected_music_album(music_type, monkeypatch):
+    """手动下载保留独立种子证据，历史恢复仍能为无标签音频补齐已选专辑。"""
+    selected = _music_info()
+    selected.music_type = music_type
+    selected.album_artist = "周杰伦"
+    if music_type == "album":
+        selected.title = selected.album
+        selected.media_id = "release-group-1"
+    torrent_title = f"周杰伦 - {selected.title} FLAC"
+    chain = Mock()
+    chain.download_single.return_value = "hash-1"
+    monkeypatch.setattr("app.api.endpoints.download.DownloadChain", lambda: chain)
+
+    response = download(
+        media_in=MusicInfoSchema(**selected.to_dict()),
+        torrent_in=TorrentInfo(
+            title=torrent_title,
+            enclosure="https://example.com/download?id=2",
+            category="音乐",
+        ),
+        downloader="qb",
+        save_path=None,
+        current_user=SimpleNamespace(name="admin"),
+    )
+
+    assert response.success is True
+    context = chain.download_single.call_args.kwargs["context"]
+    assert context.meta_info.album is None
+    assert context.meta_info.media_id is None
+    assert context.meta_info.org_string == torrent_title
+    assert context.media_info.music_type == music_type
+    note = json.loads(json.dumps(DownloadChain._build_download_note(
+        "Manual", context.media_info, context.meta_info,
+    )))
+    assert note["music"]["meta"]["album"] is None
+    assert note["music"]["media"]["album"] == "叶惠美"
+    assert note["music"]["media"]["music_type"] == music_type
+    audio_path = Path("/03 - 晴天.flac")
+    file_meta = AudioMetadataHelper.read_filename(audio_path)
+    assert file_meta.album is None
+    monkeypatch.setattr(MediaChain, "read_path_meta", Mock(return_value=file_meta))
+
+    restored_meta, restored_info = TransferChain._restore_music_download_context(
+        SimpleNamespace(note=note), audio_path,
+    )
+
+    assert restored_meta.album == restored_info.album == "叶惠美"
+    assert restored_meta.year == restored_info.year == 2003
+    assert restored_meta.title == restored_info.title == "晴天"
+    assert restored_meta.track_number == restored_info.track_number == 3
+    assert restored_info.music_type == music_type
+    assert restored_info.media_source == selected.media_source
+    assert restored_info.media_id == selected.media_id
+    naming_context = TemplateHelper().builder.build(
+        meta=restored_meta,
+        mediainfo=restored_info,
+        file_extension=".flac",
+        include_raw_objects=False,
+    )
+    assert Template(settings.MUSIC_RENAME_FORMAT).render(naming_context) == (
+        "周杰伦/叶惠美 (2003)/03 - 晴天.flac"
+    )
+    assert note["music"]["meta"]["album"] is None
 
 
 def test_manual_album_without_id_uses_subtitle_evidence():

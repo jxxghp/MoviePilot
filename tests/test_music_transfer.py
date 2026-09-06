@@ -1,7 +1,9 @@
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
 from jinja2 import Template
 
 from app.application.history import DownloadHistorySnapshot
@@ -248,7 +250,8 @@ def test_restore_music_context_from_download_history():
     assert restored_info.album == "Random Access Memories"
 
 
-def test_restore_music_context_discards_shared_recording_identity(tmp_path, monkeypatch):
+@pytest.mark.parametrize("file_album", ["Local Album", None])
+def test_restore_music_context_discards_shared_recording_identity(tmp_path, monkeypatch, file_album):
     """多音轨批次不得把下载记录中的单曲身份恢复到每个音频文件。"""
     meta, info = _music_context()
     history = DownloadHistorySnapshot(
@@ -270,9 +273,9 @@ def test_restore_music_context_discards_shared_recording_identity(tmp_path, monk
         org_string=audio_file.name,
         title="Give Life Back to Music",
         artists=["Daft Punk"],
-        album="Local Album",
-        album_artist="Daft Punk",
-        year=2020,
+        album=file_album,
+        album_artist="Daft Punk" if file_album else None,
+        year=2020 if file_album else None,
         track_number=1,
     )
     monkeypatch.setattr(MediaChain, "read_path_meta", Mock(return_value=file_meta))
@@ -285,8 +288,8 @@ def test_restore_music_context_discards_shared_recording_identity(tmp_path, monk
 
     assert restored_meta is not None
     assert restored_meta.title == "Give Life Back to Music"
-    assert restored_meta.album == "Local Album"
-    assert restored_meta.year == 2020
+    assert restored_meta.album == file_meta.album
+    assert restored_meta.year == file_meta.year
     assert restored_meta.media_source is None
     assert restored_meta.media_id is None
     assert restored_info is None
@@ -307,7 +310,10 @@ def test_download_history_music_type_falls_back_to_versioned_note():
     assert TransferChain._download_history_music_type(history) == "album"
 
 
-def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_path, monkeypatch):
+@pytest.mark.parametrize("resource_meta_only", [False, True])
+def test_restore_album_context_keeps_album_identity_and_track_specific_tags(
+        tmp_path, monkeypatch, resource_meta_only,
+):
     """整专整理应保留选中的专辑身份，同时使用每个文件自己的曲名、艺术家和曲序。"""
     album = MusicInfo(
         media_source="musicbrainz",
@@ -320,7 +326,10 @@ def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_
         year=2003,
         total_tracks=11,
     )
-    meta = MetaMusic.from_music_info(album)
+    meta = (
+        MetaMusic.parse_resource("周杰伦 - 叶惠美 FLAC")
+        if resource_meta_only else MetaMusic.from_music_info(album)
+    )
     history = SimpleNamespace(note={
         "music": {
             "version": 1,
@@ -348,7 +357,9 @@ def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_
         ),
     )
 
-    restored_meta, restored_info = TransferChain._restore_music_download_context(history, audio_file)
+    restored_meta, restored_info = TransferChain._restore_music_download_context(
+        history, audio_file, discard_recording_identity=True,
+    )
 
     assert restored_meta.title == "晴天"
     assert restored_meta.track_number == 3
@@ -358,6 +369,62 @@ def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_
     assert restored_meta.total_tracks == 11
     assert restored_info.music_type == "album"
     assert restored_info.media_id == "release-group-1"
+
+
+@pytest.mark.parametrize("field_source", ["selected", "resource", "file"])
+def test_restore_music_context_only_fills_missing_selected_fields(monkeypatch, field_source):
+    """已选语义字段仅补缺，不覆盖种子证据、文件标签或注入目标音质。"""
+    saved_meta, info = _music_context()
+    info.disc_number = 1
+    info.version = "Studio"
+    info.isrc = "USQX91300108"
+    info.audio_format = "MP3"
+    info.bit_depth = 16
+    if field_source == "selected":
+        saved_meta = MetaMusic()
+    else:
+        saved_meta.album = "Resource Album"
+        saved_meta.album_artist = "Resource Artist"
+        saved_meta.year = 2014
+        saved_meta.total_tracks = 15
+        saved_meta.disc_number = 2
+        saved_meta.version = "Live"
+        saved_meta.isrc = "USQX91400108"
+    note = {"music": {"version": 1, "meta": saved_meta.to_dict(), "media": info.to_dict()}}
+    original_note = deepcopy(note)
+    file_meta = MetaMusic(title="File Title")
+    if field_source == "file":
+        file_meta.artists = ["File Artist"]
+        file_meta.album = "File Album"
+        file_meta.album_artist = "File Album Artist"
+        file_meta.year = 2020
+        file_meta.total_tracks = 20
+        file_meta.disc_number = 3
+        file_meta.track_number = 10
+        file_meta.version = "Remix"
+        file_meta.isrc = "USQX92000108"
+    monkeypatch.setattr(MediaChain, "read_path_meta", Mock(return_value=file_meta))
+
+    restored_meta, restored_info = TransferChain._restore_music_download_context(
+        SimpleNamespace(note=note), Path("/downloads/03 - File Title.flac"),
+    )
+
+    expected = {"selected": info, "resource": saved_meta, "file": file_meta}[field_source]
+    for field_name in (
+            "artists", "album", "album_artist", "year", "total_tracks",
+            "disc_number", "track_number", "version", "isrc",
+    ):
+        assert getattr(restored_meta, field_name) == getattr(expected, field_name)
+        assert getattr(restored_info, field_name) == getattr(expected, field_name)
+    assert restored_meta.title == "File Title"
+    assert restored_info.music_type == "recording"
+    assert restored_info.media_source == info.media_source
+    assert restored_info.media_id == info.media_id
+    assert restored_meta.audio_format is None
+    assert restored_meta.bit_depth is None
+    assert note == original_note
+    restored_meta.artists.append("Another Artist")
+    assert file_meta.artists == (["File Artist"] if field_source == "file" else [])
 
 
 def test_restore_music_context_uses_file_title_over_subscription_title(tmp_path, monkeypatch):
