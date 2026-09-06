@@ -916,13 +916,12 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         if not isinstance(data, dict):
             return data
 
-        # Release 已迁移到后台状态机，历史 release/true 不能继续启用启动时更新。
+        # 仅 true 表示启用后台 Release 检查，其他模式不注册该定时服务。
         if "MOVIEPILOT_AUTO_UPDATE" in data:
             original_update_mode = data["MOVIEPILOT_AUTO_UPDATE"]
+            mode = str(original_update_mode or "").strip().lower()
             normalized_update_mode = (
-                "dev"
-                if str(original_update_mode or "").strip().lower() == "dev"
-                else "false"
+                mode if mode in {"true", "dev", "false"} else "false"
             )
             if normalized_update_mode != str(original_update_mode):
                 cls.update_env_config(

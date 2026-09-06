@@ -57,6 +57,7 @@ def _config(**changes) -> SchedulerRuntimeConfig:
         ai_agent_job_interval=None,
         usage_statistic_share=False,
         site_link=None,
+        auto_update=False,
     )
     return replace(config, **changes)
 
@@ -70,6 +71,11 @@ def test_database_backup_schedule_only_watches_job_shape() -> None:
         "DB_BACKUP_RETENTION_DAYS",
         "DB_BACKUP_MAX_COUNT",
     }) == {"DB_BACKUP_ENABLE", "DB_BACKUP_CRON"}
+
+
+def test_auto_update_setting_is_hot_reloadable() -> None:
+    """自动更新开关变更时应触发 Scheduler 重建。"""
+    assert "MOVIEPILOT_AUTO_UPDATE" in Scheduler.CONFIG_WATCH
 
 
 def test_disabled_database_backup_does_not_register_job() -> None:
@@ -100,6 +106,34 @@ def test_enabled_database_backup_registers_single_replaceable_job(monkeypatch) -
 
     assert list(scheduler._scheduler.jobs) == ["database_backup"]
     assert scheduler._scheduler.jobs["database_backup"]["replace_existing"] is True
+
+
+def test_auto_update_check_is_registered_only_when_enabled(monkeypatch) -> None:
+    """只有显式开启自动更新时才注册 Release 检查任务。"""
+    scheduler = _scheduler()
+    scheduler._services = Mock()
+    background_scheduler = Mock()
+    monkeypatch.setattr(scheduler_catalog, "BackgroundScheduler", lambda **_kwargs: background_scheduler)
+    monkeypatch.setattr(scheduler_catalog, "get_plugin_manager", lambda: Mock())
+    monkeypatch.setattr(scheduler_catalog, "get_mediaserver_configs", lambda **_kwargs: [])
+    monkeypatch.setattr(scheduler, "init_workflow_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_agent_task_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_plugin_jobs", lambda: None)
+
+    scheduler_catalog.SchedulerCatalogOwner._initialize_catalog(scheduler, _config(auto_update=False))
+    assert not any(
+        call.kwargs.get("id") == "system_update_check"
+        for call in background_scheduler.add_job.call_args_list
+    )
+    assert "system_update_check" not in scheduler._jobs
+
+    background_scheduler.add_job.reset_mock()
+    scheduler_catalog.SchedulerCatalogOwner._initialize_catalog(scheduler, _config(auto_update=True))
+    assert any(
+        call.kwargs.get("id") == "system_update_check"
+        for call in background_scheduler.add_job.call_args_list
+    )
+    assert "system_update_check" in scheduler._jobs
 
 
 def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> None:

@@ -473,8 +473,8 @@ def test_btrfs_fsid_dedup_setting_is_opt_in():
     assert ConfigModel(BTRFS_FSID_DEDUP="true").BTRFS_FSID_DEDUP is True
 
 
-def test_legacy_release_auto_update_mode_is_disabled(monkeypatch):
-    """历史 Release 启动更新值迁移为关闭，Dev 值继续保留。"""
+def test_auto_update_mode_is_normalized(monkeypatch):
+    """自动更新仅保留 true、dev 和 false 三种运行模式。"""
     updates = []
     monkeypatch.setattr(
         Settings,
@@ -485,11 +485,10 @@ def test_legacy_release_auto_update_mode_is_disabled(monkeypatch):
     )
 
     assert Settings(MOVIEPILOT_AUTO_UPDATE="release").MOVIEPILOT_AUTO_UPDATE == "false"
-    assert Settings(MOVIEPILOT_AUTO_UPDATE="true").MOVIEPILOT_AUTO_UPDATE == "false"
+    assert Settings(MOVIEPILOT_AUTO_UPDATE="true").MOVIEPILOT_AUTO_UPDATE == "true"
     assert Settings(MOVIEPILOT_AUTO_UPDATE="dev").MOVIEPILOT_AUTO_UPDATE == "dev"
     assert updates == [
         ("MOVIEPILOT_AUTO_UPDATE", "release", "false"),
-        ("MOVIEPILOT_AUTO_UPDATE", "true", "false"),
     ]
 
 

@@ -189,6 +189,7 @@ def build_scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig
         ai_agent_job_interval=settings.AI_AGENT_JOB_INTERVAL,
         usage_statistic_share=settings.USAGE_STATISTIC_SHARE,
         site_link=settings.MP_DOMAIN("#/site"),
+        auto_update=str(settings.MOVIEPILOT_AUTO_UPDATE).strip().lower() == "true",
     )
 
 

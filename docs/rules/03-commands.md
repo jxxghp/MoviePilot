@@ -177,7 +177,7 @@ moviepilot update all --ref latest --frontend-version latest
 moviepilot update all --skip-resources
 ```
 
-`MOVIEPILOT_AUTO_UPDATE` defaults to `false`. Setting it to `dev` retains branch-tracking updates during `start/restart`; stable Release updates use the authenticated background check/download/install API flow and do not use this setting.
+`MOVIEPILOT_AUTO_UPDATE` defaults to `false`. Setting it to `true` enables the background Release check; setting it to `dev` retains branch-tracking updates during `start/restart`. The setting is hot-reloaded by the scheduler.
 
 ---
 

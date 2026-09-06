@@ -178,6 +178,7 @@ class SchedulerRuntimeConfig:
     ai_agent_job_interval: Any
     usage_statistic_share: bool
     site_link: str | None
+    auto_update: bool = False
 
 
 @dataclass(frozen=True, slots=True)

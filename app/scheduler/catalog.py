@@ -203,7 +203,11 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
                 JobSpec("full_gc", "主动内存回收", self.full_gc, "runtime"),
                 JobSpec("agent_heartbeat", "智能体定时任务", self.agent_heartbeat, "agent"),
                 JobSpec("usage_report", "安装版本统计上报", MoviePilotServerHelper.report_usage, "server"),
-                JobSpec("system_update_check", "检查系统更新", system_update_manager.check, "system"),
+                *(
+                    [JobSpec("system_update_check", "检查系统更新", system_update_manager.check, "system")]
+                    if config.auto_update
+                    else []
+                ),
             ]
         ).runtime_states()
         for job_id, job in self._jobs.items():
@@ -424,16 +428,17 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             kwargs={"job_id": "plugin_market_refresh"},
         )
 
-        # 更新检查只缓存 Release 元数据，不会在未授权时下载或重启。
-        self._scheduler.add_job(
-            self.start,
-            "interval",
-            id="system_update_check",
-            name="检查系统更新",
-            hours=6,
-            next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(minutes=1),
-            kwargs={"job_id": "system_update_check"},
-        )
+        if config.auto_update:
+            # 更新检查只缓存 Release 元数据，不会在未授权时下载或重启。
+            self._scheduler.add_job(
+                self.start,
+                "interval",
+                id="system_update_check",
+                name="检查系统更新",
+                hours=6,
+                next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(minutes=1),
+                kwargs={"job_id": "system_update_check"},
+            )
 
         # 订阅日历缓存
         self._scheduler.add_job(
