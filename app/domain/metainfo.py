@@ -51,6 +51,12 @@ _EMBY_TMDB_RE_LIST = (
     re.compile(r'\[tmdb[=\-](\d+)\]'),
     re.compile(r'\{tmdbid[=\-](\d+)\}'),
     re.compile(r'\{tmdb[=\-](\d+)\}'),
+    re.compile(r'\(tmdbid[=\-]\s*(\d+)\s*\)', re.IGNORECASE),
+    re.compile(r'\(tmdb[=\-]\s*(\d+)\s*\)', re.IGNORECASE),
+)
+_PARENTHESIZED_TMDB_RE = re.compile(
+    r'\(tmdb(?:id)?[=\-]\s*\d+\s*\)',
+    re.IGNORECASE,
 )
 _EXTENDED_MEDIA_ID_RE_LIST = {
     "bangumi": (
@@ -232,7 +238,7 @@ def _find_metainfo_python(title: str) -> Tuple[str, dict]:
             ):
                 title = title.replace(f"{{[{result}]}}", '')
 
-    # 支持Emby格式的ID标签；第一个 [tmdbid] 历史上始终优先处理，用于覆盖前面 {[...]} 中的旧标签。
+    # 支持 Emby 格式及常见圆括号格式的 ID 标签；第一个 [tmdbid] 历史上始终优先处理，用于覆盖前面 {[...]} 中的旧标签。
     tmdb_match = _EMBY_TMDB_RE_LIST[0].search(title)
     if tmdb_match:
         if tmdb_match.group(1) != "0":
@@ -481,6 +487,8 @@ def _requires_python_metainfo(
     """
     candidates = [title or "", *(custom_words or [])]
     if any(_GENERIC_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates):
+        return True
+    if any(_PARENTHESIZED_TMDB_RE.search(candidate) for candidate in candidates):
         return True
     contains_extended_id = any(
         _EXTENDED_MEDIA_ID_TAG_RE.search(candidate) for candidate in candidates

@@ -56,6 +56,18 @@ def test_metainfo_path_inherits_bangumi_id_from_parent() -> None:
     assert meta.begin_episode == 1
 
 
+def test_parenthesized_tmdb_id_uses_python_fallback_for_old_rust() -> None:
+    """旧 Rust 扩展不识别圆括号 TMDB 标签时应回退到 Python 解析。"""
+    with patch(
+        "app.adapters.system.rust.parse_metainfo_path",
+        side_effect=AssertionError("旧 Rust 扩展不应处理圆括号 TMDB 标签"),
+    ):
+        meta = MetaInfoPath(Path("/movies/狩猎 (2022) (tmdb-727340)/狩猎.mkv"))
+
+    assert meta.media_source == "themoviedb"
+    assert meta.media_id == "727340"
+
+
 def test_extended_ids_fall_back_when_installed_rust_is_old() -> None:
     """当前Rust扩展缺少新字段时应直接使用Python解析器。"""
     with patch(
