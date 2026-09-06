@@ -1,9 +1,11 @@
 """用户应用服务的请求级事务边界测试。"""
 
-from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.application.security import user as user_service_module
 from app.application.security.user import UserService, UserSnapshot, UserUpdateResult
 
 
@@ -139,3 +141,26 @@ async def test_user_service_does_not_rollback_committed_publish_failure() -> Non
 
     unit_of_work.commit.assert_awaited_once_with()
     unit_of_work.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_user_service_verifies_password_from_auth_snapshot() -> None:
+    """密码校验应读取认证快照，而不是依赖公开用户资料。"""
+    repository = MagicMock()
+    repository.async_get_auth_by_id = AsyncMock(
+        return_value=SimpleNamespace(
+            user=SimpleNamespace(is_active=True),
+            hashed_password="hashed",
+        )
+    )
+    service = UserService(repository, MagicMock(), MagicMock())
+
+    with patch.object(
+        user_service_module,
+        "_verify_password",
+        return_value=True,
+    ) as verify_password:
+        assert await service.verify_password(7, "password") is True
+
+    repository.async_get_auth_by_id.assert_awaited_once_with(7)
+    verify_password.assert_called_once_with("password", "hashed")

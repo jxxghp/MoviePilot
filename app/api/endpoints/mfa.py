@@ -34,7 +34,6 @@ from app.application.security.passkey import (
     PassKeyRegistrationVerificationError,
     PasskeyService,
 )
-from app.application.security.token import verify_password
 from app.application.security.user import (
     UserService,
     get_configured_user_id_lookup,
@@ -185,7 +184,7 @@ async def otp_disable(
 ) -> Any:
     """关闭当前用户的 OTP 验证功能"""
     # 验证密码
-    if not verify_password(data.password, str(current_user.hashed_password)):
+    if not await service.verify_password(current_user.id, data.password):
         return _SchemaResponse(success=False, message="密码错误")
     await service.update_otp(current_user.name, False, "")
     return _SchemaResponse(success=True)
@@ -508,13 +507,12 @@ async def passkey_delete(
     data: PassKeyDeleteRequest,
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
     service: PasskeyService = Depends(get_passkey_service),
+    user_service: UserService = Depends(get_user_service),
 ) -> Any:
     """删除指定的 PassKey"""
     try:
         # 验证密码
-        if not verify_password(
-            data.password, str(current_user.hashed_password)
-        ):
+        if not await user_service.verify_password(current_user.id, data.password):
             return _SchemaResponse(success=False, message="密码错误")
 
         success = service.delete_by_id(data.passkey_id, current_user.id)

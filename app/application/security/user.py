@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Optional, Protocol, TypeAlias, TypeVar, Union, cast
 
+from app.application.security.token import verify_password as _verify_password
+
 FrozenJson: TypeAlias = Union[
     str,
     int,
@@ -195,6 +197,9 @@ class UserRepository(Protocol):
     async def async_get_by_id(self, user_id: int) -> Optional[UserSnapshot]:
         """按用户 ID 返回用户。"""
 
+    async def async_get_auth_by_id(self, user_id: int) -> Optional[UserAuthSnapshot]:
+        """按用户 ID 返回密码校验所需的认证快照。"""
+
     async def async_create(
         self,
         payload: dict[str, Any],
@@ -282,6 +287,16 @@ class UserService:
     async def get_by_id(self, user_id: int) -> Optional[UserSnapshot]:
         """按用户 ID 查询用户。"""
         return await self._repository.async_get_by_id(user_id)
+
+    async def verify_password(self, user_id: int, password: str) -> bool:
+        """按用户 ID 读取认证快照并校验密码。"""
+        user = await self._repository.async_get_auth_by_id(user_id)
+        return bool(
+            user
+            and user.user.is_active
+            and user.hashed_password
+            and _verify_password(password, user.hashed_password)
+        )
 
     async def create(self, payload: dict[str, Any]) -> Optional[UserSnapshot]:
         """创建用户。"""

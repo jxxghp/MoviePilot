@@ -115,6 +115,14 @@ class SqlAlchemyUserRepository(UserRepository):
         model = await self._oper.async_get_by_id(user_id)
         return _to_snapshot(model) if model else None
 
+    async def async_get_auth_by_id(
+        self,
+        user_id: int,
+    ) -> Optional[UserAuthSnapshot]:
+        """在异步请求会话中按 ID 读取密码校验所需的认证快照。"""
+        model = await self._oper.async_get_by_id(user_id)
+        return _to_auth_snapshot(model) if model else None
+
     async def async_create(
         self,
         payload: dict[str, Any],
