@@ -38,7 +38,7 @@ For work that changes or reviews repository behavior, identify the domains actua
 
 ### Quality and Security
 * **Primary Reference:** `docs/rules/11-quality-and-security.md`
-* **Required Constraints:** All code changes must pass the relevant pytest tests and pylint checks. Dependency changes require a current `uv.lock`, locked environment verification, and a passing locked dependency vulnerability audit.
+* **Required Constraints:** All code changes must pass the relevant pytest tests, changed-file pylint checks, and the mandatory pre-commit gates below. Dependency changes require a current `uv.lock`, locked environment verification, and a passing locked dependency vulnerability audit.
 
 ### Testing
 * **Primary Reference:** `docs/testing.md`
@@ -132,6 +132,50 @@ Architecture, persistence, security, external protocols, cross-module lifecycle,
 * **Minimal Change Principle:** Prefer the smallest correct change. Do not perform unrelated refactors, mass renames, or formatting-only cleanup.
 * **Output Language:** Summaries, validation results, and risk notes default to Chinese unless the user requests otherwise.
 
+### Mandatory Pre-Commit Gate
+
+These checks are part of implementation, not optional follow-up work. Before creating a commit that contains host code, tests, dependencies, architecture fixtures, or CI changes, inspect the final diff and reproduce every applicable local gate. If the user requests commit or push, do not commit first and defer validation to GitHub Actions. `.github/workflows/test.yml` and `.github/workflows/pylint.yml` are the source of truth; re-read them when they change instead of relying on this command list alone.
+
+Run the architecture policy tests before snapshot checks, in the same order as CI:
+
+```bash
+uv run --locked --no-sync pytest \
+  tests/test_architecture_dependencies.py \
+  tests/test_architecture_adapter_imports.py \
+  tests/test_architecture_egress.py \
+  tests/test_architecture_event_facts.py \
+  tests/test_architecture_event_policy.py -q
+uv run --locked --no-sync python scripts/architecture/event_policy.py
+uv run --locked --no-sync pytest \
+  tests/test_architecture_contract_baseline.py \
+  tests/test_architecture_baseline_cli.py -q
+uv run --locked --no-sync python scripts/architecture/baseline.py --check-host
+uv run --locked --no-sync mypy --config-file mypy.ini
+uv run --locked --no-sync python scripts/architecture/complexity.py
+uv run --locked --no-sync python scripts/architecture/complexity.py --v2
+uv run --locked --no-sync python scripts/architecture/concurrency.py
+uv run --locked --no-sync python scripts/architecture/async_blocking.py
+uv run --locked --no-sync python scripts/architecture/task_ownership.py
+uv run --locked --no-sync python scripts/architecture/service_locator.py
+uv run --locked --no-sync python scripts/architecture/ruff_ratchet.py
+uv run --locked --no-sync python scripts/architecture/mypy_ratchet.py
+uv run --locked --no-sync python scripts/startup/performance.py --check --repeat 3
+```
+
+Apply the following acceptance rules:
+
+* **No baseline laundering:** A failed baseline or ratchet is evidence to inspect, not permission to regenerate fixtures. Never use `--write-host`, `--write-plugins`, or any ratchet `--write` merely to make a gate pass. Fix added dependencies, cycles, layer violations, direct egress, service locators, blocking calls, unmanaged tasks, type/lint growth, complexity growth, or concurrency growth in the implementation.
+* **Reviewed baseline updates only:** Update a fixture only when the task intentionally changes the governed contract or the tool reports a genuine lower debt watermark. First prove the change complies with architecture policy, inspect the semantic diff, update coupled documentation/tests, run the non-writing check again, and include the fixture diff in the same commit. Complexity, concurrency, async-blocking, and host snapshot writers can overwrite regressions mechanically, so their ability to write is not approval to do so.
+* **Diagnose snapshot failures:** When `baseline.py --check-host` fails unexpectedly, rerun it with `--diagnostics` and inspect the affected JSON under `tests/fixtures/architecture/`. Do not infer that a changed snapshot is acceptable from test success alone.
+* **Test the behavior:** Run focused pytest coverage for every changed behavior. Run `uv run --locked --no-sync python tests/run.py` before commit for dependency/lock changes, shared test infrastructure, database or startup paths, cross-module lifecycle, compatibility layers, or broad behavior changes. Do not weaken, skip, or delete tests to satisfy a gate without proving equivalent coverage.
+* **Check changed Python files:** Run pylint on every Python file in the final diff using the same comparison scope as `.github/workflows/pylint.yml`; deleted files are excluded. Obtain the list with `git diff --name-only --diff-filter=ACMRT HEAD -- '*.py'`, then pass the non-empty result to `uv run --locked --no-sync pylint <paths...>`. For broad Python changes, also run `uv run --locked --no-sync pylint app/`.
+* **Verify dependency changes:** If `pyproject.toml` or `uv.lock` changed, run `uv lock --check`, `uv sync --locked --offline --inexact --no-dev --check`, the full `uv run --locked --no-sync python tests/run.py`, and the locked `pip-audit` commands in `docs/rules/03-commands.md`. Do not commit an out-of-date or locally generated alternative lock file.
+* **Protect coverage:** Changes in `app/application/` or `app/domain/` must preserve the CI line-coverage floor. Add focused tests for new branches. Local macOS coverage is diagnostic only; never write or commit the canonical coverage baseline from it.
+* **Verify the final tree:** Re-run affected gates after all fixes and generated fixture updates, then inspect `git diff --check`, `git status --short`, and the complete diff. Report the exact commands and outcomes; never claim a gate was run if it was skipped or failed.
+* **Close the remote loop:** After an authorized push or PR creation, inspect GitHub checks for the exact pushed commit. Do not describe delivery as complete while a required check is pending or failing. Diagnose failures from logs, fix the root cause locally, rerun the relevant pre-commit gates, and push a new commit; do not weaken the workflow or ratchet to obtain green CI.
+
+Documentation-only changes may use applicable text, link, structure, and diff checks instead of the full local Python suite, but must state that scope explicitly. If an applicable gate cannot run because of a confirmed platform or infrastructure limitation, stop before commit unless the user explicitly accepts the exception, and report the unverified gate and expected CI coverage.
+
 ### Conflict Resolution
 
 If existing code appears to contradict the documentation, identify the exact contradiction and decide which current-task gate it affects. Stop and ask only when it blocks acceptance, creates a security or data-safety ambiguity, or cannot be resolved from current source and maintained documentation. Otherwise preserve the evidence, continue unaffected work, and report the discrepancy without silently expanding scope.
@@ -160,4 +204,4 @@ For the full documentation map and cross-references, refer to:
 
 **[Documentation Hub Index](./docs/rules/README.md)**
 
-*Last Updated: 2026-08-19*
+*Last Updated: 2026-09-06*
