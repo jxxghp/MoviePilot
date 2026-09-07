@@ -32,6 +32,8 @@ def _docker_manager(monkeypatch, tmp_path: Path):
         "FRONTEND_PATH": tmp_path / "public",
         "VENV_PATH": tmp_path / "venv",
         "UV_BIN": tmp_path / "uv",
+        "MOVIEPILOT_AUTO_UPDATE": False,
+        "AUTO_UPDATE_RESOURCE": True,
         "PIP_PROXY": "",
         "PROXY_HOST": "",
     }
@@ -50,6 +52,52 @@ def _docker_manager(monkeypatch, tmp_path: Path):
 
 def _response(payload, status_code=200):
     return SimpleNamespace(status_code=status_code, json=lambda: payload)
+
+
+def test_status_reads_live_auto_update_setting_without_discarding_cached_update(monkeypatch, tmp_path):
+    """切换提醒设置立即反映到状态，缓存版本仍供手动升级使用。"""
+    manager = _manager(monkeypatch, tmp_path)
+    manager._write_state(state="available", version="v3.1.0", can_update=True)
+    for enabled in (True, False, True):
+        monkeypatch.setattr(
+            update_module, "get_runtime_setting",
+            lambda key: tmp_path if key == "TEMP_PATH" else enabled,
+        )
+        status = manager.get_status()
+        assert status.auto_update is enabled
+        assert status.state == "available"
+        assert status.version == "v3.1.0"
+        assert status.can_update is True
+
+
+@pytest.mark.parametrize("auto_update", [False, True])
+@pytest.mark.parametrize("auto_update_resource", [False, True])
+def test_scheduled_check_respects_independent_switches(
+    monkeypatch, tmp_path, auto_update, auto_update_resource
+):
+    """自动检查只访问已开启的目标；手动检查仍可访问两类更新。"""
+    manager = _manager(monkeypatch, tmp_path)
+    values = {
+        "TEMP_PATH": tmp_path,
+        "MOVIEPILOT_AUTO_UPDATE": auto_update,
+        "AUTO_UPDATE_RESOURCE": auto_update_resource,
+    }
+    monkeypatch.setattr(update_module, "get_runtime_setting", values.get)
+    checked = []
+    monkeypatch.setattr(manager, "_check_application", lambda: checked.append("application"))
+    monkeypatch.setattr(manager, "_check_resources", lambda: checked.append("resources"))
+
+    status = manager.check_scheduled()
+    assert checked == [
+        target for target, enabled in (("application", auto_update), ("resources", auto_update_resource))
+        if enabled
+    ]
+    assert status.auto_update is auto_update
+    assert status.auto_update_resource is auto_update_resource
+
+    checked.clear()
+    manager.check()
+    assert checked == ["application", "resources"]
 
 
 def test_check_exposes_new_stable_release(monkeypatch, tmp_path):

@@ -73,6 +73,7 @@ class Scheduler(
         "DB_BACKUP_CRON",
         "USAGE_STATISTIC_SHARE",
         "MOVIEPILOT_AUTO_UPDATE",
+        "AUTO_UPDATE_RESOURCE",
     }
 
     def __init__(self) -> None:

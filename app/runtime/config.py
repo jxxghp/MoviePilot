@@ -335,8 +335,10 @@ class ConfigModel(BaseModel):
     ALIPAN_APP_ID: str = "ac1bf04dc9fd4d9aaabb65b4a668d403"
 
     # ==================== 系统升级配置 ====================
-    # 开发版仍可在启动时跟踪 v3 分支；Release 更新由后台更新服务管理。
-    MOVIEPILOT_AUTO_UPDATE: str = "false"
+    # 自动检查稳定版本并提示升级，不自动下载或安装。
+    MOVIEPILOT_AUTO_UPDATE: bool = False
+    # 独立控制启动时跟踪 v3 开发分支。
+    MOVIEPILOT_UPDATE_DEV: bool = False
     # 后台检查站点资源包，确认后由启动器在进程拉起前应用
     AUTO_UPDATE_RESOURCE: bool = True
 
@@ -820,6 +822,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
     ) -> Tuple[Any, bool]:
         """
         通用类型转换函数，根据预期类型转换值。如果转换失败，返回默认值
+        旧自动更新模式 dev/release 统一兼容为开启检查，运行时只保留布尔值。
         :return: 元组 (转换后的值, 是否需要更新)
         """
         if isinstance(value, (list, dict, set)):
@@ -830,6 +833,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
 
         if isinstance(value, str):
             value = value.strip()
+            if field_name == "MOVIEPILOT_AUTO_UPDATE" and value.lower() in {"dev", "release"}:
+                value = True
 
         # 处理 Optional 类型：当值为空字符串且类型允许 None 时，转为 None
         # 兼容 typing.Union (Python 3.9) 与 types.UnionType (Python 3.10+ PEP 604)
@@ -911,25 +916,18 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
     @classmethod
     def generic_type_validator(cls, data: Any):  # noqa
         """
-        通用校验器，尝试将配置值转换为期望的类型
+        通用校验器，迁移旧 Dev 跟踪偏好后将配置值转换为期望的类型。
         """
         if not isinstance(data, dict):
             return data
 
-        # 仅 true 表示启用后台 Release 检查，其他模式不注册该定时服务。
-        if "MOVIEPILOT_AUTO_UPDATE" in data:
-            original_update_mode = data["MOVIEPILOT_AUTO_UPDATE"]
-            mode = str(original_update_mode or "").strip().lower()
-            normalized_update_mode = (
-                mode if mode in {"true", "dev", "false"} else "false"
-            )
-            if normalized_update_mode != str(original_update_mode):
-                cls.update_env_config(
-                    "MOVIEPILOT_AUTO_UPDATE",
-                    original_update_mode,
-                    normalized_update_mode,
-                )
-                data["MOVIEPILOT_AUTO_UPDATE"] = normalized_update_mode
+        # 新开关未配置时保留旧 Dev 跟踪偏好，显式设置的新开关始终优先。
+        if (
+            str(data.get("MOVIEPILOT_AUTO_UPDATE", "")).strip().lower() == "dev"
+            and "MOVIEPILOT_UPDATE_DEV" not in data
+        ):
+            cls.update_env_config("MOVIEPILOT_UPDATE_DEV", None, True)
+            data["MOVIEPILOT_UPDATE_DEV"] = True
 
         # 处理 API_TOKEN 特殊验证
         if "API_TOKEN" in data:
@@ -964,7 +962,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         field_name: str, original_value: Any, converted_value: Any
     ) -> Tuple[bool, str]:
         """
-        更新 env 配置
+        更新 env 配置；版本更新开关以小写 true/false 持久化，供启动脚本读取。
         """
         # 成功且无提示时使用空字符串，保证与 Tuple[bool, str] 返回类型一致
         message = ""
@@ -993,6 +991,8 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             # 如果是列表、字典或集合类型，将其转换为JSON字符串
             if isinstance(converted_value, (list, dict, set)):
                 value_to_write = json.dumps(converted_value)
+            elif field_name in {"MOVIEPILOT_AUTO_UPDATE", "MOVIEPILOT_UPDATE_DEV"}:
+                value_to_write = str(converted_value).lower()
             else:
                 value_to_write = str(converted_value)
 

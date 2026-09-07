@@ -159,7 +159,7 @@ source 其他脚本，可能出现同一次启动混用新旧脚本的情况。�
 /config/temp/moviepilot.pending_dev_update
 ```
 
-entrypoint 会删除该标记，并只在本次启动中把 `MOVIEPILOT_AUTO_UPDATE` 临时设为 `dev`。更新阶段结束后
+entrypoint 会删除该标记，并只在本次启动中把 `MOVIEPILOT_UPDATE_DEV` 临时设为 `true`。更新阶段结束后
 恢复原值，避免把一次性操作变成永久自动更新。
 
 ### 5.2 未完成更新恢复
@@ -213,7 +213,7 @@ Alembic migration。保留当前载荷并恢复其依赖，可以避免形成“
 
 ### 5.4 Dev 自动更新
 
-仅当 `MOVIEPILOT_AUTO_UPDATE=dev` 时，启动脚本会联网获取 `v3` 分支源码和最新 V3 前端 Release。
+仅当 `MOVIEPILOT_UPDATE_DEV=true` 时（首次升级兼容尚未迁移且未配置新开关的旧 `MOVIEPILOT_AUTO_UPDATE=dev`），启动脚本会联网获取 `v3` 分支源码和最新 V3 前端 Release。
 GitHub 访问按 `GITHUB_PROXY`、`PROXY_HOST`、直连顺序选择；包索引按 `PIP_PROXY`、`PROXY_HOST`、
 直连顺序选择。
 
@@ -458,7 +458,8 @@ Docker restart policy。
 | `UMASK` | `000` | 后端进程文件权限掩码。 |
 | `PORT` | `3001` | 后端监听和 readiness 端口。 |
 | `NGINX_PORT` | `3000` | HTTP 前端入口。 |
-| `MOVIEPILOT_AUTO_UPDATE` | `false` | 只有 `dev` 会触发 `update.sh` 的启动时分支更新；稳定版由后台下载和 root worker 安装。 |
+| `MOVIEPILOT_AUTO_UPDATE` | `false` | 布尔开关，仅 `true` 开启后台版本检查和升级提醒；关闭后不检查主程序；`AUTO_UPDATE_RESOURCE=true` 时仍启用服务且只检查站点资源。稳定版下载及安装需手动确认。旧 `dev/release` 统一迁移为 `true`。 |
+| `MOVIEPILOT_UPDATE_DEV` | `false` | 独立布尔开关，`true` 触发 `update.sh` 的启动时 Dev 分支更新；旧 `dev` 在未显式配置此开关时保留跟踪偏好。 |
 | `MOVIEPILOT_SAFE_MODE` | `false` | 跳过普通模式专属的插件及后台控制面。 |
 | `MOVIEPILOT_FORCE_CHOWN` | `false` | 是否执行大范围递归权限修复。 |
 | `PACKAGE_CACHE_ROOT` | `/config/.cache` | 包管理缓存根目录。 |

@@ -53,6 +53,7 @@ function apply_package_cache_env() {
 # 优先级: 系统环境变量 -> .env 文件 (即使为空字符串) -> 预设默认值
 # 精准适配 Python 端 set_key (quote_mode="always", 单引号包裹, \' 转义)
 function load_config_from_app_env() {
+    # 保留未配置的新 Dev 开关为空，交由更新器兼容旧模式、Python 持久化迁移。
 
     local env_file="${CONFIG_DIR}/app.env"
 
@@ -66,6 +67,7 @@ function load_config_from_app_env() {
         ["PROXY_HOST"]=""
         ["GITHUB_TOKEN"]=""
         ["MOVIEPILOT_AUTO_UPDATE"]="false"
+        ["MOVIEPILOT_UPDATE_DEV"]=""
         ["MOVIEPILOT_FORCE_CHOWN"]="false"
         ["MOVIEPILOT_SAFE_MODE"]="false"
         ["BROWSER_EMULATION"]="cloakbrowser"
@@ -323,10 +325,10 @@ function run_pending_dev_update_after_supervisor_shutdown() {
     fi
 
     local update_exit_code=0
-    MOVIEPILOT_AUTO_UPDATE="dev"
+    MOVIEPILOT_UPDATE_DEV="true"
     INFO "检测到受管重启的 Dev 更新请求"
     run_moviepilot_update || update_exit_code=$?
-    MOVIEPILOT_AUTO_UPDATE="${MOVIEPILOT_AUTO_UPDATE_ORIGINAL}"
+    MOVIEPILOT_UPDATE_DEV="${MOVIEPILOT_UPDATE_DEV_ORIGINAL}"
 
     [ "${update_exit_code}" -eq 0 ] \
         && [ "${MOVIEPILOT_UPDATE_RESULT:-noop}" = "updated" ]
@@ -460,10 +462,10 @@ apply_package_cache_env
 ONE_SHOT_DEV_UPDATE_FLAG="${CONFIG_DIR}/temp/moviepilot.pending_dev_update"
 SUPERVISOR_RESTART_REQUEST_FILE="${CONFIG_DIR}/temp/moviepilot.pending_supervisor_restart"
 ONE_SHOT_DEV_UPDATE="false"
-MOVIEPILOT_AUTO_UPDATE_ORIGINAL="${MOVIEPILOT_AUTO_UPDATE}"
+MOVIEPILOT_UPDATE_DEV_ORIGINAL="${MOVIEPILOT_UPDATE_DEV}"
 if [ -f "${ONE_SHOT_DEV_UPDATE_FLAG}" ]; then
     rm -f "${ONE_SHOT_DEV_UPDATE_FLAG}"
-    MOVIEPILOT_AUTO_UPDATE="dev"
+    MOVIEPILOT_UPDATE_DEV="true"
     ONE_SHOT_DEV_UPDATE="true"
     INFO "检测到一次性 Dev 更新标记，本次启动将更新开发分支"
 fi
@@ -489,7 +491,7 @@ else
     MOVIEPILOT_UPDATE_RESULT="noop"
 fi
 if [ "${ONE_SHOT_DEV_UPDATE}" = "true" ]; then
-    MOVIEPILOT_AUTO_UPDATE="${MOVIEPILOT_AUTO_UPDATE_ORIGINAL}"
+    MOVIEPILOT_UPDATE_DEV="${MOVIEPILOT_UPDATE_DEV_ORIGINAL}"
 fi
 if [ "${UPDATE_RECOVERY_REQUIRED:-false}" = "true" ]; then
     ERROR "→ 容器更新回滚未完成，停止启动。"

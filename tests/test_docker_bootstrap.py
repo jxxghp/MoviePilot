@@ -794,17 +794,27 @@ def test_updater_package_proxy_stays_command_scoped(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("mode", "install_result", "expected"),
-    (("false", "unused", "noop"), ("dev", "success", "updated"), ("dev", "failure", "failed")),
+    ("mode", "dev_update", "install_result", "expected"),
+    (
+        ("false", "false", "unused", "noop"),
+        ("true", "false", "unused", "noop"),
+        ("false", "true", "success", "updated"),
+        ("true", "True", "failure", "failed"),
+        ("dev", "", "success", "updated"),
+        ("dev", "false", "unused", "noop"),
+        ("release", "", "unused", "noop"),
+    ),
 )
 def test_updater_exposes_explicit_result(
-    tmp_path: Path, mode: str, install_result: str, expected: str
+    tmp_path: Path, mode: str, dev_update: str, install_result: str, expected: str
 ) -> None:
+    """Docker 由独立 Dev 开关决定启动更新，并兼容首次迁移的旧模式。"""
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
         MOVIEPILOT_AUTO_UPDATE="$2"
         INSTALL_RESULT="$3"
+        MOVIEPILOT_UPDATE_DEV="$4"
         PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
         source {UPDATER!s}
         INFO() {{ :; }}
@@ -825,7 +835,7 @@ def test_updater_exposes_explicit_result(
     )
 
     result = subprocess.run(
-        ["bash", "-c", script, "updater-test", str(tmp_path / "config"), mode, install_result],
+        ["bash", "-c", script, "updater-test", str(tmp_path / "config"), mode, install_result, dev_update],
         text=True,
         capture_output=True,
         check=True,

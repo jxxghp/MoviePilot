@@ -292,7 +292,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
         return min(100, int(downloaded_value * 100 / total_value))
 
     def get_status(self) -> SystemUpdateStatus:
-        """返回状态快照，并在新进程中收敛已完成的安装状态。"""
+        """收敛安装状态并返回快照；提醒开关实时读取，避免缓存绕过关闭设置。"""
         with self._lock:
             state = self._read_state()
             changed = False
@@ -334,6 +334,8 @@ class SystemUpdateManager(metaclass=SingletonClass):
                 state = self._persist_state(self._sync_aggregate(state))
             else:
                 state = self._sync_aggregate(state)
+            state["auto_update"] = get_runtime_setting("MOVIEPILOT_AUTO_UPDATE") is True
+            state["auto_update_resource"] = get_runtime_setting("AUTO_UPDATE_RESOURCE") is True
             return cast(SystemUpdateStatus, SystemUpdateStatus.model_validate(state))
 
     def _is_install_applied(self, item: dict[str, Any], target: SystemUpdateType) -> bool:
@@ -373,6 +375,16 @@ class SystemUpdateManager(metaclass=SingletonClass):
                 "can_install": False,
             }
         )
+
+    def check_scheduled(self) -> SystemUpdateStatus:
+        """按实时开关分别检查主程序和资源，避免热重载前的排队任务越过关闭设置。"""
+        for target, setting in (
+            (_APPLICATION, "MOVIEPILOT_AUTO_UPDATE"),
+            (_RESOURCES, "AUTO_UPDATE_RESOURCE"),
+        ):
+            if get_runtime_setting(setting) is True:
+                self.check(target)
+        return self.get_status()
 
     def check(self, target: SystemUpdateType | None = None) -> SystemUpdateStatus:
         """检查主程序和站点资源更新，定时检查失败只记录在对应明细中。"""

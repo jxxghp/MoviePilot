@@ -538,8 +538,9 @@ def test_btrfs_fsid_dedup_setting_is_opt_in():
     assert ConfigModel(BTRFS_FSID_DEDUP="true").BTRFS_FSID_DEDUP is True
 
 
-def test_auto_update_mode_is_normalized(monkeypatch):
-    """自动更新仅保留 true、dev 和 false 三种运行模式。"""
+@pytest.mark.parametrize("mode", ["release", "dev", " DEV ", "RELEASE"])
+def test_auto_update_mode_is_normalized(monkeypatch, mode):
+    """旧模式规范化为布尔 true，已有的新 Dev 偏好不被覆盖。"""
     updates = []
     monkeypatch.setattr(
         Settings,
@@ -549,12 +550,49 @@ def test_auto_update_mode_is_normalized(monkeypatch):
         ),
     )
 
-    assert Settings(MOVIEPILOT_AUTO_UPDATE="release").MOVIEPILOT_AUTO_UPDATE == "false"
-    assert Settings(MOVIEPILOT_AUTO_UPDATE="true").MOVIEPILOT_AUTO_UPDATE == "true"
-    assert Settings(MOVIEPILOT_AUTO_UPDATE="dev").MOVIEPILOT_AUTO_UPDATE == "dev"
+    config = Settings(MOVIEPILOT_AUTO_UPDATE=mode, MOVIEPILOT_UPDATE_DEV=False)
+    assert config.MOVIEPILOT_AUTO_UPDATE is True
+    assert config.MOVIEPILOT_UPDATE_DEV is False
     assert updates == [
-        ("MOVIEPILOT_AUTO_UPDATE", "release", "false"),
+        ("MOVIEPILOT_AUTO_UPDATE", mode, True),
     ]
+
+
+def test_legacy_dev_tracking_is_migrated_once(monkeypatch, tmp_path):
+    """首次拆分配置时持久化两个开关，重读后继续保留 Dev 跟踪。"""
+    env_file = tmp_path / "app.env"
+    env_file.write_text("MOVIEPILOT_AUTO_UPDATE='dev'\n", encoding="utf-8")
+    monkeypatch.setattr("app.runtime.config.get_env_path", lambda: env_file)
+    config = Settings(_env_file=env_file)
+    assert config.MOVIEPILOT_AUTO_UPDATE is True
+    assert config.MOVIEPILOT_UPDATE_DEV is True
+    assert "MOVIEPILOT_AUTO_UPDATE='true'" in env_file.read_text(encoding="utf-8")
+    assert "MOVIEPILOT_UPDATE_DEV='true'" in env_file.read_text(encoding="utf-8")
+    reloaded = Settings(_env_file=env_file)
+    assert reloaded.MOVIEPILOT_AUTO_UPDATE is True
+    assert reloaded.MOVIEPILOT_UPDATE_DEV is True
+
+
+@pytest.mark.parametrize("enabled", [True, False, "true", "false"])
+def test_update_switches_remain_independent_booleans(enabled):
+    """部署设置与调度快照仅暴露布尔值，Dev 跟踪不影响自动检查。"""
+    from app.startup.composition.configuration import build_scheduler_runtime_config
+
+    expected = str(enabled).lower() == "true"
+    config = Settings(MOVIEPILOT_AUTO_UPDATE=enabled, MOVIEPILOT_UPDATE_DEV=not expected)
+    assert config.MOVIEPILOT_AUTO_UPDATE is expected
+    assert config.MOVIEPILOT_UPDATE_DEV is not expected
+    assert build_scheduler_runtime_config(config).auto_update is expected
+
+
+@pytest.mark.parametrize("value", ["dev", "release", True, False])
+def test_update_setting_normalizes_auto_update_on_save(monkeypatch, value):
+    """设置写入入口与启动读取入口使用同一套布尔转换规则。"""
+    config = Settings(MOVIEPILOT_AUTO_UPDATE=False, MOVIEPILOT_UPDATE_DEV=False)
+    monkeypatch.setattr(Settings, "update_env_config", lambda *_args: (True, ""))
+    config.update_setting("MOVIEPILOT_AUTO_UPDATE", value)
+    assert config.MOVIEPILOT_AUTO_UPDATE is (value is not False)
+    assert config.MOVIEPILOT_UPDATE_DEV is False
 
 
 def test_space_usage_default_path_does_not_read_fsid():

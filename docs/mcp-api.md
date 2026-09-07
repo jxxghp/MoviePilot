@@ -253,11 +253,11 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 #### 系统更新
 
-系统 Release 更新采用“检查、后台下载、确认安装”三阶段流程，以下接口均要求超级管理员登录态。后台每 6 小时自动检查一次稳定版 v3 GitHub Release 和站点资源包；升级类型只有 `application`（主程序，前端版本由后端 Release 中的 `version.py` 决定）与 `resources`（认证资源和索引资源）。下载完成前不重启服务，安装接口只消费已下载并校验的完整制品，启动器会先应用主程序包，再应用资源包，之后才启动进程；启动后的初始化不会再次下载或触发资源重启。原 Dev 更新入口继续保留，但 `/system/upgrade` 只接受请求体 `"dev"`，不再处理 Release 更新。
+系统 Release 更新采用“检查、后台下载、确认安装”三阶段流程，以下接口均要求超级管理员登录态。后台每 6 小时按独立开关检查更新：`MOVIEPILOT_AUTO_UPDATE=true` 检查稳定版 v3 GitHub Release，`AUTO_UPDATE_RESOURCE=true` 检查站点资源包，并分别提示升级。任一开关开启即启用定时服务；两者均关闭时移除定时服务并隐藏版本提醒。手动检查、下载和安装仍可用。独立布尔配置 `MOVIEPILOT_UPDATE_DEV` 控制启动时跟踪 Dev 分支；升级类型只有 `application`（主程序，前端版本由后端 Release 中的 `version.py` 决定）与 `resources`（认证资源和索引资源）。下载完成前不重启服务，安装接口只消费已下载并校验的完整制品，启动器会先应用主程序包，再应用资源包，之后才启动进程；启动后的初始化不会再次下载或触发资源重启。原 Dev 更新入口继续保留，但 `/system/upgrade` 只接受请求体 `"dev"`，不再处理 Release 更新。
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/system/update/status` | 查询聚合状态及 `updates` 中两类升级明细的 `idle`、`available`、`downloading`、`ready`、`installing` 或 `failed` 状态，以及版本、字节数和进度 |
+| GET | `/api/v1/system/update/status` | 查询聚合状态、实时提醒开关 `auto_update` / `auto_update_resource` 及 `updates` 中两类升级明细的 `idle`、`available`、`downloading`、`ready`、`installing` 或 `failed` 状态，以及版本、字节数和进度 |
 | POST | `/api/v1/system/update/check` | 立即检查最新稳定版 v3 Release 和当前平台站点资源包 |
 | POST | `/api/v1/system/update/download` | 请求体可传 `{"target":"application"}` 或 `{"target":"resources"}`；后台下载并校验对应制品 |
 | POST | `/api/v1/system/update/install` | 请求体可传 `{"target":"application"}` 或 `{"target":"resources"}`；再次校验对应制品，写入安装意图并重启 |

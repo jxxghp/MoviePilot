@@ -243,9 +243,10 @@ def _git_current_branch() -> Optional[str]:
 
 
 def _auto_update_mode() -> str:
+    """启动时仅由独立 Dev 开关或一次性更新请求选择开发分支。"""
     if SystemHelper.consume_one_shot_dev_update():
         return "dev"
-    return str(get_runtime_setting("MOVIEPILOT_AUTO_UPDATE") or "").strip().lower()
+    return "dev" if get_runtime_setting("MOVIEPILOT_UPDATE_DEV") is True else "false"
 
 
 def _file_sha256(path: Path) -> str:
@@ -490,6 +491,7 @@ def _resolve_auto_update_targets(mode: str) -> Optional[str]:
 
 
 def _best_effort_auto_update() -> None:
+    """优先应用已确认的安装包，再按 Dev 跟踪偏好更新；失败不阻断启动。"""
     if _apply_prepared_release_update():
         return
 
@@ -521,7 +523,7 @@ def _best_effort_auto_update() -> None:
         str(get_runtime_setting("CONFIG_PATH")),
     ]
 
-    click.echo(f"检测到 MOVIEPILOT_AUTO_UPDATE={mode}，启动前执行本地自动更新")
+    click.echo("检测到 Dev 跟踪开关或一次性更新请求，启动前执行本地开发版更新")
     result = subprocess.run(
         update_command,
         cwd=str(_repo_root()),

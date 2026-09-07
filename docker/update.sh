@@ -595,8 +595,13 @@ function configure_package_route() {
 }
 
 function run_moviepilot_update() {
+    # 新 Dev 开关独立于自动检查；仅在未配置新开关时兼容首次启动的旧 dev 值。
     MOVIEPILOT_UPDATE_RESULT="noop"
-    if [ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]; then
+    local dev_update="${MOVIEPILOT_UPDATE_DEV:-}"
+    if [ -z "${dev_update}" ] && [[ "${MOVIEPILOT_AUTO_UPDATE:-}" == [Dd][Ee][Vv] ]]; then
+        dev_update="true"
+    fi
+    if [[ "${dev_update}" == [Tt][Rr][Uu][Ee] ]]; then
         TMP_PATH=$(mktemp -d)
         if [ ! -d "${TMP_PATH}" ]; then
             TMP_PATH=/tmp/mp_update_path
