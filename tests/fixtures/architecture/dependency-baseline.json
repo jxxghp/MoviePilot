@@ -1074,8 +1074,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8336,
-  "edge_sha256": "c6098d46bbcd88b20694497f0ea9991ec1c7184077f634d611c09ab1c70bfeea",
+  "edge_count": 8338,
+  "edge_sha256": "181d760e7da33f12022ca86f906617a11e1d672d95e7e3fd4c3bc324a9d9dd63",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3178,6 +3178,8 @@
     "app.application.download.organization -> app.application.configuration",
     "app.application.download.organization -> app.application.directory",
     "app.application.download.organization -> app.domain",
+    "app.application.download.organization -> app.domain.classification",
+    "app.application.download.organization -> app.domain.classification.validation",
     "app.application.download.organization -> app.domain.meta",
     "app.application.download.organization -> app.domain.meta.metabase",
     "app.application.download.organization -> app.domain.meta.metamusic",

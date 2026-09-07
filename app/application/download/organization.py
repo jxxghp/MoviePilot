@@ -1,17 +1,19 @@
 """下载器已有任务的媒体识别、资源归类与根目录重命名。"""
 
 import re
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper, validate_download_save_path
+from app.domain.classification.validation import validate_classification_category_path
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 _INVALID_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
 _MUSIC_PRIMARY_TYPES = {
     "album": "Album",
     "ep": "EP",
@@ -28,6 +30,29 @@ def _safe_relative_name(value: Any, *, label: str) -> str:
     if not text or text in (".", ".."):
         raise ValueError(f"{label}为空或无法生成安全名称")
     return text
+
+
+def _source_value(value: Any) -> str | None:
+    """把媒体来源枚举或字符串归一化，供来源与 ID 成对比较。"""
+    normalized = str(getattr(value, "value", value) or "").strip()
+    return normalized.casefold() or None
+
+
+def _local_path(value: Any, *, label: str, validate: bool = False) -> PurePath:
+    """按 POSIX/Windows 风格解析本地路径，并统一输出正斜杠形式。"""
+    text = str(value or "").strip()
+    if _WINDOWS_DRIVE_PATH.match(text):
+        text = text.replace("\\", "/")
+    if validate:
+        text = validate_download_save_path(text)
+    path: PurePath
+    if _WINDOWS_DRIVE_PATH.match(text):
+        path = PureWindowsPath(text)
+    else:
+        path = PurePosixPath(text)
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"{label}无效")
+    return path
 
 
 def _normalize_music_category(media: Any) -> tuple[str, list[str]]:
@@ -62,8 +87,15 @@ def _resolve_media(request: Any, history: Any, torrent: Any, media_chain: Any) -
         if is_music
         else MetaInfo(title=title, subtitle=history.torrent_description)
     )
-    source = request.media_source or getattr(history, "media_source", None)
-    media_id = request.media_id or (getattr(history, "media_id", None) if source else None)
+    history_source = getattr(history, "media_source", None)
+    source = request.media_source or history_source
+    media_id = request.media_id
+    if (
+        not media_id
+        and source
+        and _source_value(source) == _source_value(history_source)
+    ):
+        media_id = getattr(history, "media_id", None)
     music_type = (
         request.music_type.value
         if getattr(request.music_type, "value", None)
@@ -95,14 +127,17 @@ def _resolve_media(request: Any, history: Any, torrent: Any, media_chain: Any) -
     return metainfo, media
 
 
-def _download_root(current: PurePosixPath, media_type: str, category: str) -> tuple[Any, PurePosixPath]:
+def _download_root(current: PurePath, media_type: str, category: str) -> tuple[Any, PurePath]:
     """按媒体类型与主类别选择资源目录，优先保持在当前配置根内。"""
     candidates = []
     for directory in DirectoryHelper().get_download_dirs():
         if directory.storage != "local" or not directory.download_path:
             continue
-        root = PurePosixPath(directory.download_path)
-        if not root.is_absolute() or ".." in root.parts:
+        try:
+            root = _local_path(directory.download_path, label="资源目录")
+        except ValueError:
+            continue
+        if type(root) is not type(current):
             continue
         if directory.media_type and directory.media_type != media_type:
             continue
@@ -126,13 +161,19 @@ def _download_root(current: PurePosixPath, media_type: str, category: str) -> tu
     return directory, target
 
 
-def _manual_target(value: str) -> PurePosixPath:
+def _manual_target(value: str) -> PurePath:
     """校验手动目录是已配置资源目录本身或其子目录。"""
-    validated = validate_download_save_path(value)
-    target = PurePosixPath(validated)
-    if not target.is_absolute() or ".." in target.parts:
-        raise ValueError("手动目标路径无效")
-    return target
+    return _local_path(value, label="手动目标路径", validate=True)
+
+
+def _requested_category(value: Any, media_type: Any) -> str:
+    """校验手动分类属于当前媒体类型的启用分类策略。"""
+    path = validate_classification_category_path(
+        tuple(segment.strip() for segment in str(value or "").split("/") if segment.strip())
+    )
+    if path not in DirectoryHelper().classification_category_paths(media_type):
+        raise ValueError("手动指定的媒体分类不存在、已停用或与媒体类型不匹配")
+    return "/".join(path)
 
 
 def _root_name(media: Any) -> str:
@@ -165,8 +206,8 @@ def _qb_root_folder(
     chain: Any,
     downloader: str,
     hash_value: str,
-    current: PurePosixPath,
-    content: PurePosixPath | None,
+    current: PurePath,
+    content: PurePath | None,
 ) -> str | None:
     """确认 qB 任务是否拥有一个独立顶层目录。
 
@@ -244,9 +285,7 @@ def organize_existing_source(hash_value: str, request: Any, chain: Any, media_ch
     downloader = downloader or torrent.downloader
     if not downloader:
         raise ValueError("无法确定下载器实例")
-    current = PurePosixPath(str(torrent.save_path or "").strip())
-    if not current.is_absolute() or ".." in current.parts:
-        raise ValueError("下载器返回的保存路径无效")
+    current = _local_path(torrent.save_path, label="下载器返回的保存路径", validate=True)
 
     media = None
     category = None
@@ -254,11 +293,15 @@ def organize_existing_source(hash_value: str, request: Any, chain: Any, media_ch
     if request.mode == "recognize" or request.smart_rename:
         _, media = _resolve_media(request, history, torrent, media_chain)
         media_type = media.type.value
-        if media.type == MediaType.MUSIC:
+        if request.media_category:
+            category = _requested_category(request.media_category, media.type)
+            if media.type == MediaType.MUSIC:
+                _, secondary_categories = _normalize_music_category(media)
+        elif media.type == MediaType.MUSIC:
             category, secondary_categories = _normalize_music_category(media)
         else:
             category = _safe_relative_name(
-                request.media_category or getattr(media, "category", None) or history.media_category,
+                getattr(media, "category", None) or history.media_category,
                 label="媒体类别",
             )
     else:
@@ -270,10 +313,10 @@ def organize_existing_source(hash_value: str, request: Any, chain: Any, media_ch
         if category is None:
             raise ValueError("识别结果缺少可用的媒体类别")
         _, target = _download_root(current, media_type, category)
-        target = PurePosixPath(validate_download_save_path(target.as_posix()))
+        target = _local_path(target.as_posix(), label="目标保存路径", validate=True)
 
     content_text = str(torrent.content_path or torrent.path or "").strip()
-    content = PurePosixPath(content_text) if content_text else None
+    content = _local_path(content_text, label="下载器返回的内容路径") if content_text else None
     current_root_name = _qb_root_folder(chain, downloader, hash_value, current, content)
     rename_supported = current_root_name is not None
     proposed_root_name = _root_name(media) if request.smart_rename and media else current_root_name

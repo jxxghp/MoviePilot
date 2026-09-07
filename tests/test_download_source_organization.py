@@ -137,6 +137,11 @@ class SourceOrganizationTests(unittest.TestCase):
                 priority=2,
             )
         ]
+        directory_module.DirectoryHelper.return_value.classification_category_paths.return_value = (
+            ("Album",),
+            ("EP",),
+            ("Action",),
+        )
 
     def preview(self):
         return organization.organize_existing_source(
@@ -231,6 +236,41 @@ class SourceOrganizationTests(unittest.TestCase):
         self.torrent_files = [NS(name="Hotel California.dsf")]
         with self.assertRaisesRegex(ValueError, "单文件或散列文件"):
             self.preview()
+
+    def test_changing_source_does_not_reuse_history_media_id(self):
+        self.history.media_source = "other-source"
+        self.history.media_id = "other-id"
+        self.request.media_source = MediaSource.MusicBrainz
+        self.preview()
+        self.media_chain.recognize_media.assert_not_called()
+        self.media_chain.recognize_by_meta.assert_called_once()
+
+    def test_manual_category_must_exist_in_active_policy(self):
+        self.request.type_name = "电影"
+        self.request.media_category = "Unlisted"
+        self.media.type = MediaType.MOVIE
+        self.media.category = "Action"
+        with self.assertRaisesRegex(ValueError, "不存在、已停用"):
+            self.preview()
+
+    def test_active_manual_category_overrides_recognized_music_category(self):
+        self.request.media_category = "EP"
+        result = self.preview()
+        self.assertEqual(result["category"], "EP")
+        self.assertEqual(result["target_save_path"], "/volume1/UT/Musics/EP")
+
+    def test_windows_downloader_paths_are_parsed_by_path_style(self):
+        folder = "Eagles.2011 - Hotel California SACD"
+        self.torrent.save_path = r"D:\Downloads"
+        self.torrent.content_path = rf"D:\Downloads\{folder}"
+        self.torrent_files = [NS(name=f"{folder}/01.dsf"), NS(name=f"{folder}/02.dsf")]
+        directory_module.DirectoryHelper.return_value.get_download_dirs.return_value[0].download_path = (
+            "D:/Downloads"
+        )
+        result = self.preview()
+        self.assertEqual(result["current_save_path"], "D:/Downloads")
+        self.assertEqual(result["target_save_path"], "D:/Downloads/Album")
+        self.assertEqual(result["current_root_name"], folder)
 
 
 if __name__ == "__main__":
