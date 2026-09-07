@@ -1811,3 +1811,5 @@ After every update, call `config.system.get` again with the exact setting_key an
 3. Downloads, transfers, configuration/rule/plugin writes, scheduler/workflow runs, and deletions have side effects; obtain confirmation and inspect the result.
 4. `success=false`, HTTP errors, validation errors, and empty results are real outcomes. Never report them as success.
 5. Use `database-operation`, `downloader-operation`, or `mediaserver-operation` for their native capabilities. Never bypass the gateway with an arbitrary URL.
+
+Classification field catalogs expose source-independent `options` and source-specific open suggestions in `source_options`. Save the option `value`, never its display label or source annotation. Changing source scope must preserve existing conditions; keep values outside the catalog when `allow_custom_values` permits them.

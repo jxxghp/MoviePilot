@@ -530,3 +530,22 @@ def test_migrated_policy_round_trips_to_category_config() -> None:
     expected.movie["组合"].release_year = "2020,2021,2022,2024"
     assert projected.config == expected
     assert project_policy_to_legacy_category_config(migrated.policy) == projected.config
+
+
+def test_migration_does_not_create_unused_duplicate_fallback_categories() -> None:
+    """已有旧默认分类时直接复用，不能再创建未分类/通用的无用目录。"""
+    result = migrate_legacy_category_config({"movie": {"未分类": None}, "tv": {"未分类": None}})
+    assert result.valid
+    assert [item.path for item in result.policy.categories if item.media_type == "电影"] == [["未分类"]]
+    assert [item.path for item in result.policy.categories if item.media_type == "电视剧"] == [["未分类"]]
+    assert result.policy.fallbacks["音乐"] == "music.uncategorized"
+    assert ClassificationPolicyValidator.validate(result.policy, result.extra_fields).valid
+
+
+def test_legacy_country_dictionary_keeps_country_codes_and_genre_ids_distinct() -> None:
+    """旧地区条件能直接选择代码，未知旧风格编号不能误填为标准风格键。"""
+    result = migrate_legacy_category_config({"tv": {"日韩剧": {"origin_country": "JP,KR", "genre_ids": "999"}}})
+    fields = {item.id: item for item in result.extra_fields}
+    countries = fields["extensions.themoviedb.origin_country"]
+    assert any(item.value == "JP" and item.label == "日本" for item in countries.options)
+    assert not fields["extensions.themoviedb.genre_ids"].options

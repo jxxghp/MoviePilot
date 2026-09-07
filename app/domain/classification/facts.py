@@ -5,6 +5,15 @@ from collections.abc import Mapping
 from enum import Enum
 from typing import TypeAlias, cast
 
+from app.domain.classification.vocabulary import (
+    COUNTRY_CODE_ALIASES as _COUNTRY_CODE_ALIASES,
+)
+from app.domain.classification.vocabulary import (
+    GENRE_KEY_ALIASES as _GENRE_KEY_ALIASES,
+)
+from app.domain.classification.vocabulary import (
+    TMDB_GENRE_KEYS as _TMDB_GENRE_KEYS,
+)
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.schemas.category import (
     ClassificationFacts,
@@ -17,168 +26,6 @@ from app.schemas.category import (
 
 ClassificationMedia: TypeAlias = MediaInfo | MusicInfo | MusicAlbumInfo | MusicArtistInfo
 """可以投影为标准分类事实的领域媒体对象。"""
-
-_TMDB_GENRE_KEYS = {
-    "12": "adventure",
-    "14": "fantasy",
-    "16": "animation",
-    "18": "drama",
-    "27": "horror",
-    "28": "action",
-    "35": "comedy",
-    "36": "history",
-    "37": "western",
-    "53": "thriller",
-    "80": "crime",
-    "99": "documentary",
-    "878": "science_fiction",
-    "9648": "mystery",
-    "10402": "music",
-    "10749": "romance",
-    "10751": "family",
-    "10752": "war",
-    "10762": "kids",
-    "10764": "reality",
-    "10767": "talk",
-    "10770": "tv_movie",
-}
-
-_GENRE_KEY_ALIASES = {
-    "action": "action",
-    "动作": "action",
-    "adventure": "adventure",
-    "冒险": "adventure",
-    "animation": "animation",
-    "anime": "animation",
-    "动画": "animation",
-    "动漫": "animation",
-    "comedy": "comedy",
-    "喜剧": "comedy",
-    "crime": "crime",
-    "犯罪": "crime",
-    "documentary": "documentary",
-    "纪录": "documentary",
-    "纪录片": "documentary",
-    "drama": "drama",
-    "剧情": "drama",
-    "family": "family",
-    "家庭": "family",
-    "fantasy": "fantasy",
-    "奇幻": "fantasy",
-    "history": "history",
-    "历史": "history",
-    "horror": "horror",
-    "恐怖": "horror",
-    "kids": "kids",
-    "children": "kids",
-    "儿童": "kids",
-    "music": "music",
-    "音乐": "music",
-    "mystery": "mystery",
-    "悬疑": "mystery",
-    "reality": "reality",
-    "reality tv": "reality",
-    "game show": "reality",
-    "真人秀": "reality",
-    "综艺": "reality",
-    "romance": "romance",
-    "爱情": "romance",
-    "science fiction": "science_fiction",
-    "sci fi": "science_fiction",
-    "科幻": "science_fiction",
-    "talk": "talk",
-    "talk show": "talk",
-    "脱口秀": "talk",
-    "thriller": "thriller",
-    "惊悚": "thriller",
-    "tv movie": "tv_movie",
-    "电视电影": "tv_movie",
-    "war": "war",
-    "战争": "war",
-    "western": "western",
-    "西部": "western",
-    "classical": "classical",
-    "古典": "classical",
-    "electronic": "electronic",
-    "电子": "electronic",
-    "folk": "folk",
-    "民谣": "folk",
-    "hip hop": "hip_hop",
-    "hip hop rap": "hip_hop",
-    "说唱": "hip_hop",
-    "jazz": "jazz",
-    "爵士": "jazz",
-    "pop": "pop",
-    "流行": "pop",
-    "rock": "rock",
-    "摇滚": "rock",
-    "soundtrack": "soundtrack",
-    "原声": "soundtrack",
-}
-
-_COUNTRY_CODE_ALIASES = {
-    "中国": "CN",
-    "中国大陆": "CN",
-    "内地": "CN",
-    "china": "CN",
-    "香港": "HK",
-    "中国香港": "HK",
-    "hong kong": "HK",
-    "台湾": "TW",
-    "中国台湾": "TW",
-    "taiwan": "TW",
-    "澳门": "MO",
-    "中国澳门": "MO",
-    "macao": "MO",
-    "日本": "JP",
-    "japan": "JP",
-    "韩国": "KR",
-    "南韩": "KR",
-    "south korea": "KR",
-    "republic of korea": "KR",
-    "朝鲜": "KP",
-    "north korea": "KP",
-    "美国": "US",
-    "united states": "US",
-    "united states of america": "US",
-    "英国": "GB",
-    "united kingdom": "GB",
-    "great britain": "GB",
-    "法国": "FR",
-    "france": "FR",
-    "德国": "DE",
-    "germany": "DE",
-    "意大利": "IT",
-    "italy": "IT",
-    "西班牙": "ES",
-    "spain": "ES",
-    "俄罗斯": "RU",
-    "russia": "RU",
-    "加拿大": "CA",
-    "canada": "CA",
-    "澳大利亚": "AU",
-    "australia": "AU",
-    "新西兰": "NZ",
-    "new zealand": "NZ",
-    "印度": "IN",
-    "india": "IN",
-    "泰国": "TH",
-    "thailand": "TH",
-    "新加坡": "SG",
-    "singapore": "SG",
-    "马来西亚": "MY",
-    "malaysia": "MY",
-    "越南": "VN",
-    "vietnam": "VN",
-    "印度尼西亚": "ID",
-    "indonesia": "ID",
-    "菲律宾": "PH",
-    "philippines": "PH",
-    "巴西": "BR",
-    "brazil": "BR",
-    "墨西哥": "MX",
-    "mexico": "MX",
-}
 
 
 def build_classification_facts(
@@ -239,9 +86,7 @@ def _music_facts(media: ClassificationMedia) -> ClassificationMusicFacts:
         genres=_genre_names(getattr(media, "genres", None)),
         tags=_optional_string_list(getattr(media, "tags", None)),
         artists=_optional_string_list(getattr(media, "artists", None)),
-        artist_country=_country_code(
-            getattr(media, "artist_country", None) or getattr(media, "country", None)
-        ),
+        artist_country=_country_code(getattr(media, "artist_country", None) or getattr(media, "country", None)),
         release_status=_optional_text(getattr(media, "release_status", None)),
     )
 
@@ -281,9 +126,7 @@ def _video_runtime(media: ClassificationMedia) -> int | None:
 def _classification_genre_keys(media: ClassificationMedia) -> list[str] | None:
     """把来源 Genre ID、类型名和音乐流派投影为稳定跨来源键。"""
     values: list[str] = []
-    for item in _optional_string_list(
-        getattr(media, "classification_genre_keys", None)
-    ) or []:
+    for item in _optional_string_list(getattr(media, "classification_genre_keys", None)) or []:
         _append_unique(values, item)
     for item in getattr(media, "genre_ids", None) or []:
         if key := _TMDB_GENRE_KEYS.get(str(item)):
@@ -388,7 +231,7 @@ def _optional_int(value: object) -> int | None:
         return None
     try:
         return int(str(value))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 

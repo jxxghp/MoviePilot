@@ -3,6 +3,7 @@ from math import isfinite
 from typing import Final, NotRequired, TypedDict, cast
 
 from app.domain.classification.sources import builtin_field_source_support
+from app.domain.classification.vocabulary import classification_field_options, classification_source_options
 from app.schemas.category import (
     ClassificationFactScalar,
     ClassificationFieldDefinition,
@@ -91,6 +92,8 @@ VALUE_TYPE_OPERATORS: Final[dict[str, tuple[str, ...]]] = {
 
 
 class _FieldSpec(TypedDict):
+    """标准字段的只读声明。"""
+
     id: str
     label: str
     group: NotRequired[str]
@@ -340,10 +343,9 @@ def _build_field_definition(values: _FieldSpec) -> ClassificationFieldDefinition
             cast(ClassificationOperator, operator) for operator in operators_for_value_type(values["value_type"])
         ],
         media_types=[cast(ClassificationMediaType, media_type) for media_type in values["media_types"]],
-        options=[
-            ClassificationFieldOption(value=option, label=option)
-            for option in values.get("options", ())
-        ],
+        options=classification_field_options(values["id"])
+        or [ClassificationFieldOption(value=option, label=option) for option in values.get("options", ())],
+        source_options=classification_source_options(values["id"]),
         allow_custom_values=values["value_type"] != "enum",
         source_support=builtin_field_source_support(values["id"]),
     )

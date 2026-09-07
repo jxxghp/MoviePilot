@@ -1150,3 +1150,5 @@ modules only through `run_module` dispatch), and downloader SDK
 (`qbittorrentapi`, `transmission_rpc`) imports inside `app/chain`.
 
 *Last Updated: 2026-08-29*
+
+分类词表由 `app/domain/classification/vocabulary.py` 拥有，供 `facts.py`、`fields.py` 和旧配置迁移复用；只含离线词表及纯选项投影，不读取运行时配置、数据库或具体来源模块。
