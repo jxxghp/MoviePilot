@@ -105,6 +105,7 @@ class SourceOrganizationTests(unittest.TestCase):
             type=MediaType.MUSIC,
             album_type="Album",
             secondary_types=["Compilation"],
+            classification_path=("Album", "Compilation"),
             album="含情脉脉",
             title="含情脉脉",
             album_artist="莫文蔚",
@@ -139,8 +140,12 @@ class SourceOrganizationTests(unittest.TestCase):
         ]
         directory_module.DirectoryHelper.return_value.classification_category_paths.return_value = (
             ("Album",),
+            ("Album", "Compilation"),
             ("EP",),
             ("Action",),
+        )
+        directory_module.DirectoryHelper.return_value.resolve_media_category.side_effect = (
+            lambda media: NS(path=getattr(media, "classification_path", ()))
         )
 
     def preview(self):
@@ -151,12 +156,20 @@ class SourceOrganizationTests(unittest.TestCase):
             self.media_chain,
         )
 
-    def test_music_secondary_type_never_becomes_a_path_segment(self):
+    def test_music_effective_classification_path_drives_source_directory(self):
+        result = self.preview()
+        self.assertEqual(result["category"], "Album/Compilation")
+        self.assertEqual(result["secondary_categories"], ["Compilation"])
+        self.assertEqual(
+            result["target_save_path"],
+            "/volume1/UT/Musics/Album/Compilation",
+        )
+
+    def test_music_category_falls_back_to_primary_type_without_classification(self):
+        self.media.classification_path = ()
         result = self.preview()
         self.assertEqual(result["category"], "Album")
-        self.assertEqual(result["secondary_categories"], ["Compilation"])
         self.assertEqual(result["target_save_path"], "/volume1/UT/Musics/Album")
-        self.assertNotIn("Compilation", result["target_save_path"])
 
     def test_preview_is_read_only_and_includes_qb_root_rename(self):
         result = self.preview()
@@ -189,7 +202,7 @@ class SourceOrganizationTests(unittest.TestCase):
         self.chain.update_torrent.assert_called_once_with(
             hash_string=self.hash_value,
             downloader="qb",
-            save_path="/volume1/UT/Musics/Album",
+            save_path="/volume1/UT/Musics/Album/Compilation",
         )
 
     def test_manual_directory_without_rename_skips_recognition(self):
@@ -269,7 +282,7 @@ class SourceOrganizationTests(unittest.TestCase):
         )
         result = self.preview()
         self.assertEqual(result["current_save_path"], "D:/Downloads")
-        self.assertEqual(result["target_save_path"], "D:/Downloads/Album")
+        self.assertEqual(result["target_save_path"], "D:/Downloads/Album/Compilation")
         self.assertEqual(result["current_root_name"], folder)
 
 

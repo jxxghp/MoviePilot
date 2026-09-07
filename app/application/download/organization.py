@@ -56,7 +56,13 @@ def _local_path(value: Any, *, label: str, validate: bool = False) -> PurePath:
 
 
 def _normalize_music_category(media: Any) -> tuple[str, list[str]]:
-    """音乐目录只使用主类型，副类型只作识别信息展示。"""
+    """优先使用已生效分类路径，缺失时兼容退回音乐主类型。"""
+    classified_path = DirectoryHelper().resolve_media_category(media).path
+    if classified_path:
+        path = validate_classification_category_path(classified_path)
+        category = "/".join(path)
+    else:
+        category = ""
     primary = str(getattr(media, "album_type", None) or "").strip()
     if not primary:
         primary = str(getattr(media, "category", None) or "").split("/")[0].strip()
@@ -68,7 +74,7 @@ def _normalize_music_category(media: Any) -> tuple[str, list[str]]:
         for item in (getattr(media, "secondary_types", None) or [])
         if str(item).strip() and str(item).strip() != primary
     ]
-    return _safe_relative_name(primary, label="音乐主类型"), secondary
+    return category or _safe_relative_name(primary, label="音乐主类型"), secondary
 
 
 def _resolve_media(request: Any, history: Any, torrent: Any, media_chain: Any) -> tuple[MetaBase, Any]:
