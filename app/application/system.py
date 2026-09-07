@@ -389,7 +389,7 @@ class SystemService:
         return SystemOperationResult(status.state != "failed", status.error, status)
 
     def install_update(self, target: SystemUpdateType = "application") -> SystemOperationResult:
-        """确认指定制品并在重启失败时回滚安装请求。"""
+        """确认指定制品并安排 Docker worker 在受管重启前完成替换。"""
         if not self._control.can_restart():
             return SystemOperationResult(False, "当前运行环境不支持升级操作！")
         prepared, message = self._updates.prepare_install(target)

@@ -1213,6 +1213,20 @@ def restart(start_timeout: int, stop_timeout: int, force: bool) -> None:
     click.echo(f"Frontend URL: {_frontend_base_url(frontend_result['runtime'])}")
 
 
+@cli.command("apply-prepared-update", hidden=True, context_settings=CONTEXT_SETTINGS)
+def apply_prepared_update() -> None:
+    """由 Docker root 更新 worker 应用已确认的下载制品。"""
+    from app.adapters.system.update import system_update_manager
+    from app.foundation.environment import is_docker
+
+    if not is_docker():
+        raise click.ClickException("仅 Docker 更新 worker 可以执行该操作")
+    success, message = system_update_manager.apply_prepared_update()
+    if not success:
+        raise click.ClickException(message)
+    click.echo(message)
+
+
 @cli.command(context_settings=CONTEXT_SETTINGS)
 def status() -> None:
     """查看本地 MoviePilot 前后端服务状态"""

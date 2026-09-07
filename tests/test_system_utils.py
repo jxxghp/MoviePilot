@@ -13,9 +13,9 @@ from unittest.mock import MagicMock, call, patch
 import psutil
 import pytest
 
-from app.runtime.state import SystemHelper
-from app.runtime.config import ConfigModel, Settings
 from app.adapters.system.host import SystemUtils
+from app.runtime.config import ConfigModel, Settings
+from app.runtime.state import SystemHelper
 
 
 def test_get_config_path_uses_repository_config_for_source_runtime():
@@ -91,17 +91,48 @@ def test_docker_restart_delegates_to_supervisor():
             patch.object(SystemHelper, "_SystemHelper__supervisor_config") as supervisor_config, \
             patch.object(SystemHelper, "_SystemHelper__supervisorctl") as supervisorctl, \
             patch.object(SystemHelper, "_SystemHelper__supervisor_socket") as supervisor_socket, \
+            patch.object(SystemHelper, "_SystemHelper__prepared_update_manifest") as prepared_manifest, \
+            patch.object(SystemHelper, "_SystemHelper__one_shot_dev_update_flag_file") as dev_update_flag, \
             patch.object(SystemHelper, "_schedule_supervisor_restart") as restart_mock, \
+            patch.object(SystemHelper, "_schedule_supervisor_shutdown") as shutdown_mock, \
             patch("app.runtime.state.os.kill") as kill_mock:
         supervisor_config.exists.return_value = True
         supervisorctl.exists.return_value = True
         supervisor_socket.exists.return_value = True
+        prepared_manifest.is_file.return_value = False
+        dev_update_flag.is_file.return_value = False
         ret, msg = SystemHelper.restart()
 
     assert ret
     assert msg == ""
     restart_mock.assert_called_once_with()
+    shutdown_mock.assert_not_called()
     kill_mock.assert_not_called()
+
+
+def test_docker_update_restart_reenters_entrypoint_for_pending_install():
+    """待安装更新先启动 root worker 替换 Docker 程序目录。"""
+    with patch("app.runtime.state.is_docker", return_value=True), \
+            patch.object(SystemHelper, "_SystemHelper__supervisor_config") as supervisor_config, \
+            patch.object(SystemHelper, "_SystemHelper__supervisorctl") as supervisorctl, \
+            patch.object(SystemHelper, "_SystemHelper__supervisor_socket") as supervisor_socket, \
+            patch.object(SystemHelper, "_SystemHelper__prepared_update_manifest") as prepared_manifest, \
+            patch.object(SystemHelper, "_SystemHelper__one_shot_dev_update_flag_file") as dev_update_flag, \
+            patch.object(SystemHelper, "_schedule_supervisor_restart") as restart_mock, \
+            patch.object(SystemHelper, "_schedule_supervisor_shutdown") as shutdown_mock, \
+            patch.object(SystemHelper, "_schedule_supervisor_command") as command_mock:
+        supervisor_config.exists.return_value = True
+        supervisorctl.exists.return_value = True
+        supervisor_socket.exists.return_value = True
+        prepared_manifest.is_file.return_value = True
+        dev_update_flag.is_file.return_value = False
+        ret, msg = SystemHelper.restart()
+
+    assert ret
+    assert msg == ""
+    command_mock.assert_called_once_with("start", "moviepilot-update-worker")
+    restart_mock.assert_not_called()
+    shutdown_mock.assert_not_called()
 
 
 def test_supervisor_restart_command_restarts_frontend_and_backend(monkeypatch):
@@ -124,6 +155,40 @@ def test_supervisor_restart_command_restarts_frontend_and_backend(monkeypatch):
     SystemHelper._schedule_supervisor_restart()
 
     assert popen_mock.call_args.args[0][-2:] == ["restart", "all"]
+
+
+def test_supervisor_shutdown_command(monkeypatch):
+    """一次性 Dev 更新使用 supervisor shutdown，交回 root 入口执行更新流程。"""
+    callback = None
+
+    class ImmediateTimer:
+        def __init__(self, _delay, timer_callback):
+            nonlocal callback
+            callback = timer_callback
+            self.daemon = False
+
+        def start(self):
+            callback()
+
+    popen_mock = MagicMock()
+    monkeypatch.setattr("app.runtime.state.threading.Timer", ImmediateTimer)
+    monkeypatch.setattr("app.runtime.state.subprocess.Popen", popen_mock)
+
+    SystemHelper._schedule_supervisor_shutdown()
+
+    assert popen_mock.call_args.args[0][-1:] == ["shutdown"]
+
+
+def test_upgrade_dev_always_marks_bootstrap_update():
+    """Dev 更新即使已配置 dev 模式也要留下入口消费标记。"""
+    with patch.object(SystemHelper, "queue_one_shot_dev_update", return_value=(True, "")) as queue_mock, \
+            patch.object(SystemHelper, "restart", return_value=(True, "")) as restart_mock:
+        ret, msg = SystemHelper.upgrade_dev()
+
+    assert ret
+    assert msg == "已安排 Dev 更新并重启"
+    queue_mock.assert_called_once_with()
+    restart_mock.assert_called_once_with()
 
 
 def test_execute_with_subprocess_passes_env_to_subprocess():

@@ -32,11 +32,15 @@ function is_truthy_value() {
 
 # 设置虚拟环境路径（兼容群晖等系统必须这样配置）
 VENV_PATH="${VENV_PATH:-/opt/venv}"
+export VENV_PATH
 export PATH="${VENV_PATH}/bin:$PATH"
 UV_BIN="${UV_BIN:-/usr/local/bin/uv}"
 
 # 校正设置目录
 CONFIG_DIR="${CONFIG_DIR:-/config}"
+export CONFIG_DIR
+MP_CONTROL_DIR="${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}"
+export MP_CONTROL_DIR
 
 function apply_package_cache_env() {
     PACKAGE_CACHE_ROOT="${PACKAGE_CACHE_ROOT:-${CONFIG_DIR}/.cache}"
@@ -310,6 +314,36 @@ function maybe_reexec_control_bundle() {
     fi
 }
 
+function run_pending_dev_update_after_supervisor_shutdown() {
+    # 消费由受管重启请求留下的一次性 Dev 更新标记。
+    [ -f "${ONE_SHOT_DEV_UPDATE_FLAG}" ] || return 1
+    if ! rm -f "${ONE_SHOT_DEV_UPDATE_FLAG}"; then
+        ERROR "→ 无法消费一次性 Dev 更新标记，停止启动。"
+        return 1
+    fi
+
+    local update_exit_code=0
+    MOVIEPILOT_AUTO_UPDATE="dev"
+    INFO "检测到受管重启的 Dev 更新请求"
+    run_moviepilot_update || update_exit_code=$?
+    MOVIEPILOT_AUTO_UPDATE="${MOVIEPILOT_AUTO_UPDATE_ORIGINAL}"
+
+    [ "${update_exit_code}" -eq 0 ] \
+        && [ "${MOVIEPILOT_UPDATE_RESULT:-noop}" = "updated" ]
+}
+
+function apply_pending_release_update_at_startup() {
+    # worker 尚未启动就发生容器重启时，由 root 入口兜底消费安装清单。
+    local install_manifest="${CONFIG_DIR}/temp/moviepilot-update/install.json"
+    [ -f "${install_manifest}" ] || return 1
+    INFO "检测到未完成的 Release 安装请求，启动前由 root 安装器恢复"
+    if ! "${VENV_PATH}/bin/python3" -m app.cli apply-prepared-update; then
+        WARN "→ 启动前 Release 更新恢复失败，继续使用当前程序启动。"
+        return 1
+    fi
+    return 0
+}
+
 function correct_home_permissions() {
     local child
 
@@ -422,8 +456,9 @@ function correct_file_permissions() {
 load_config_from_app_env
 apply_package_cache_env
 
-# Dev 手动更新仍沿用一次性标记；Release 安装只消费已下载并校验的清单。
+# Dev 手动更新仍沿用一次性标记；Release 安装由 root 更新 worker 在重启前完成。
 ONE_SHOT_DEV_UPDATE_FLAG="${CONFIG_DIR}/temp/moviepilot.pending_dev_update"
+SUPERVISOR_RESTART_REQUEST_FILE="${CONFIG_DIR}/temp/moviepilot.pending_supervisor_restart"
 ONE_SHOT_DEV_UPDATE="false"
 MOVIEPILOT_AUTO_UPDATE_ORIGINAL="${MOVIEPILOT_AUTO_UPDATE}"
 if [ -f "${ONE_SHOT_DEV_UPDATE_FLAG}" ]; then
@@ -464,6 +499,14 @@ fi
 maybe_reexec_control_bundle
 cd /app || exit
 
+if [ "${MOVIEPILOT_BOOTSTRAP_UPDATE_DONE:-0}" != "1" ] \
+    && [ -f "${CONFIG_DIR}/temp/moviepilot-update/install.json" ]; then
+    if apply_pending_release_update_at_startup; then
+        INFO "→ 未完成的 Release 更新已安装，重新执行入口加载新代码。"
+        exec /entrypoint.sh --post-update-reexec
+    fi
+fi
+
 source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/browser.sh"
 
 # 更改 moviepilot userid 和 groupid
@@ -498,7 +541,62 @@ ensure_browser_kernel
 # 证书管理
 source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/cert.sh"
 
-# supervisord 常驻前台并统一托管 Nginx 与后端；容器停止信号由它转发给两个进程组。
+# supervisord 常驻前台并统一托管 Nginx 与后端；带更新标记的 shutdown 会回到本入口消费更新包。
 install -d -m 0755 /run/moviepilot
-INFO "→ 启动容器进程 supervisor..."
-exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf
+# Supervisor 的控制面只在容器内使用；未显式传入时生成本次容器启动专用的随机凭据，避免固定密码进入镜像。
+if [ -z "${MOVIEPILOT_SUPERVISOR_PASSWORD:-}" ]; then
+    MOVIEPILOT_SUPERVISOR_PASSWORD="$(openssl rand -hex 32)" || {
+        ERROR "→ 无法生成 supervisor 控制面认证凭据，停止启动。"
+        exit 1
+    }
+fi
+if [ -z "${MOVIEPILOT_SUPERVISOR_PASSWORD}" ]; then
+    ERROR "→ supervisor 控制面认证凭据为空，停止启动。"
+    exit 1
+fi
+export MOVIEPILOT_SUPERVISOR_PASSWORD
+SUPERVISOR_SIGNAL_RECEIVED="false"
+SUPERVISOR_PID=""
+function forward_supervisor_signal() {
+    SUPERVISOR_SIGNAL_RECEIVED="true"
+    if [ -n "${SUPERVISOR_PID}" ]; then
+        kill -TERM "${SUPERVISOR_PID}" 2>/dev/null || true
+    fi
+}
+trap 'forward_supervisor_signal' SIGINT SIGTERM
+while true; do
+    INFO "→ 启动容器进程 supervisor..."
+    /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf &
+    SUPERVISOR_PID=$!
+    wait "${SUPERVISOR_PID}"
+    supervisor_exit_code=$?
+    SUPERVISOR_PID=""
+
+    if [ "${SUPERVISOR_SIGNAL_RECEIVED}" = "true" ] || [ "${supervisor_exit_code}" -ne 0 ]; then
+        exit "${supervisor_exit_code}"
+    fi
+
+    if [ -f "${SUPERVISOR_RESTART_REQUEST_FILE}" ]; then
+        if ! rm -f "${SUPERVISOR_RESTART_REQUEST_FILE}"; then
+            ERROR "→ 无法消费更新后的重启请求，停止启动。"
+            exit 1
+        fi
+        INFO "→ 更新代码已落盘，重新执行容器入口以加载新版本。"
+        exec /entrypoint.sh --post-update-reexec
+    fi
+
+    if [ -f "${ONE_SHOT_DEV_UPDATE_FLAG}" ]; then
+        if run_pending_dev_update_after_supervisor_shutdown; then
+            INFO "→ 更新包已安装，重新执行容器入口以加载新版本。"
+            exec /entrypoint.sh --post-update-reexec
+        fi
+        if [ -f "${ONE_SHOT_DEV_UPDATE_FLAG}" ]; then
+            ERROR "→ 更新请求未能完成且标记仍存在，停止启动。"
+            exit 1
+        fi
+        WARN "→ Dev 更新失败，继续启动当前版本。"
+        continue
+    fi
+
+    exit 0
+done
