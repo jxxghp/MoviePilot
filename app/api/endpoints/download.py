@@ -4,7 +4,7 @@ import anyio
 from fastapi import Body, Depends
 
 from app.adapters.web.security.access import verify_token
-from app.api.dependencies.auth import get_current_active_user
+from app.api.dependencies.auth import get_current_active_user, get_current_active_manage_user
 from app.api.dependencies.site import get_site_sync_query_service
 from app.api.principal import ApiPrincipal
 from app.api.response import (
@@ -14,7 +14,7 @@ from app.api.response import (
 )
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
-from app.application.download.classification import DownloadSourceClassificationService
+from app.application.download.source_organization import organize_existing_source
 from app.application.download.tasks import DownloadTaskMutationService
 from app.application.security.url import SecurityUtils
 from app.application.site.query import (
@@ -401,31 +401,21 @@ async def update_task(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/{hashString}/classify-source",
-    summary="按媒体类别重新定位资源目录",
+    summary="识别并归类已有下载任务",
     response_model=_SchemaResponse[_SchemaDownloadSourceClassificationData],
 )
 async def classify_source(
     hashString: str,
     payload: _SchemaDownloadSourceClassificationRequest,
-    _: ApiPrincipal = Depends(get_current_active_user),
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
 ) -> _SchemaResponse[Any]:
-    """预览或通过下载器执行已有任务的资源目录分类。"""
+    """复用媒体识别链生成资源目录和根目录名，确认后仅通过下载器执行。"""
     chain = DownloadChain()
-    service = DownloadSourceClassificationService(
-        list_torrents=chain.list_torrents,
-        get_history_by_hash=chain.download_history_repository.get_by_hash,
-        update_torrent=chain.update_torrent,
-    )
     try:
         data = await anyio.to_thread.run_sync(
-            lambda: service.plan(
-                hash_value=hashString,
-                downloader=payload.downloader,
-                execute=payload.execute,
-                media_category=payload.media_category,
-            )
+            lambda: organize_existing_source(hashString, payload, chain, MediaChain())
         )
     except ValueError as error:
         return _SchemaResponse(success=False, message=str(error))

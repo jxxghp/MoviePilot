@@ -1,6 +1,8 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.schemas.types import MediaSource, MusicTargetEntityType
 
 
 class DownloadTask(BaseModel):
@@ -76,21 +78,57 @@ class DownloadTaskUpdateData(BaseModel):  # type: ignore[misc]
     results: list[DownloadTaskMutationResult] = Field(default_factory=list, description="各修改动作结果")
 
 
-class DownloadSourceClassificationRequest(BaseModel):  # type: ignore[misc]
-    """已有下载任务的资源目录分类请求。"""
+class DownloadSourceClassificationRequest(BaseModel):
+    """已有任务的识别、归类与种子根目录重命名请求。"""
 
-    downloader: Optional[str] = Field(default=None, description="下载器实例")
-    execute: bool = Field(default=False, description="是否执行下载器位置移动")
-    media_category: Optional[str] = Field(default=None, description="可选的手动媒体分类路径")
+    downloader: Optional[str] = None
+    execute: bool = False
+    mode: Literal["recognize", "manual"] = "recognize"
+    target_path: Optional[str] = None
+    type_name: Optional[Literal["电影", "电视剧", "音乐"]] = None
+    media_source: Optional[MediaSource] = None
+    media_id: Optional[str] = None
+    music_type: Optional[MusicTargetEntityType] = None
+    episode_group: Optional[str] = None
+    media_category: Optional[str] = None
+    smart_rename: bool = True
+    expected_current_path: Optional[str] = None
+    expected_target_path: Optional[str] = None
+    expected_content_path: Optional[str] = None
+    expected_root_name: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_mode_and_identity(self):
+        """手动模式必须给出目录，ID 不能脱离其所属数据源。"""
+        if self.mode == "manual" and not str(self.target_path or "").strip():
+            raise ValueError("手动指定目录模式必须填写目标路径")
+        if self.media_source is None and str(self.media_id or "").strip():
+            raise ValueError("填写媒体 ID 时必须选择数据源")
+        return self
 
 
-class DownloadSourceClassificationData(BaseModel):  # type: ignore[misc]
-    """资源目录分类预览或执行结果。"""
+class DownloadSourceClassificationData(BaseModel):
+    """识别与资源目录变更计划，包含可审计的执行结果。"""
 
-    hash: str = Field(description="下载任务 Hash")
-    downloader: str = Field(description="实际使用的下载器实例")
-    current_save_path: str = Field(description="当前保存目录")
-    target_save_path: str = Field(description="按类别分类后的目标目录")
-    category: str = Field(description="命中的媒体分类路径")
-    changed: bool = Field(description="当前目录是否需要变更")
-    executed: bool = Field(description="是否已请求下载器移动")
+    hash: str
+    downloader: str
+    mode: Literal["recognize", "manual"]
+    recognized: bool
+    media_type: Optional[str] = None
+    media_source: Optional[str] = None
+    media_id: Optional[str] = None
+    title: Optional[str] = None
+    year: Optional[str] = None
+    current_save_path: str
+    target_save_path: str
+    current_content_path: Optional[str] = None
+    category: Optional[str] = None
+    secondary_categories: list[str] = Field(default_factory=list)
+    current_root_name: Optional[str] = None
+    proposed_root_name: Optional[str] = None
+    rename_supported: bool = False
+    rename_required: bool = False
+    changed: bool
+    executed: bool
+    relocated: bool = False
+    renamed: bool = False
