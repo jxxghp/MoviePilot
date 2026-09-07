@@ -1,8 +1,8 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator as _model_validator
 
-from app.schemas.types import MediaSource, MusicTargetEntityType
+from app.schemas.types import MediaSource as _MediaSource, MusicTargetEntityType as _MusicTargetEntityType
 
 
 class DownloadTask(BaseModel):
@@ -86,9 +86,9 @@ class DownloadSourceClassificationRequest(BaseModel):
     mode: Literal["recognize", "manual"] = "recognize"
     target_path: Optional[str] = None
     type_name: Optional[Literal["电影", "电视剧", "音乐"]] = None
-    media_source: Optional[MediaSource] = None
+    media_source: Optional[_MediaSource] = None
     media_id: Optional[str] = None
-    music_type: Optional[MusicTargetEntityType] = None
+    music_type: Optional[_MusicTargetEntityType] = None
     episode_group: Optional[str] = None
     media_category: Optional[str] = None
     smart_rename: bool = True
@@ -97,7 +97,7 @@ class DownloadSourceClassificationRequest(BaseModel):
     expected_content_path: Optional[str] = None
     expected_root_name: Optional[str] = None
 
-    @model_validator(mode="after")
+    @_model_validator(mode="after")
     def validate_mode_and_identity(self):
         """手动模式必须给出目录，ID 不能脱离其所属数据源。"""
         if self.mode == "manual" and not str(self.target_path or "").strip():
