@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.api.endpoints.transfer import (
     manual_transfer as manual_transfer_endpoint,
 )
@@ -208,6 +210,86 @@ def test_history_endpoint_reorganize_uses_chain_cleanup(monkeypatch):
     assert captured["force"] is True
     assert captured["reorganize"] is True
     assert captured["cleanup_dest_fileitem"] is None
+
+
+@pytest.mark.parametrize("accepted", [True, False])
+@pytest.mark.parametrize("background", [True, False])
+def test_failed_history_manual_auto_uses_durable_retry(monkeypatch, accepted, background):
+    """历史入口选择自动识别时仍须检查失败任务，不能绕过调度器重新准入。"""
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=14,
+        transfer_task_id="transfer-task-14",
+        status=False,
+        mode="copy",
+        src_fileitem=fileitem.model_dump(),
+        dest_fileitem=None,
+        download_hash=None,
+        downloader=None,
+    )
+    planned, deleted, retries = [], [], []
+    _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, deleted)
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", lambda: chain)
+
+    def request_retry(record, *, requested_by):
+        """记录旧任务重试，模拟调度器接受或拒绝请求。"""
+        retries.append((record.transfer_task_id, requested_by))
+        return accepted, "已提交重试" if accepted else "任务需要人工处理"
+
+    def reject_new_admission(task):
+        """模拟旧任务仍占用源路径时，新规划输入必然冲突。"""
+        raise AssertionError(f"旧任务重试不应重新准入：{task.fileitem.path}")
+
+    monkeypatch.setattr(chain, "_request_durable_transfer_retry", request_retry)
+    monkeypatch.setattr(chain, "put_to_queue", reject_new_admission)
+
+    response = manual_transfer_endpoint(
+        transer_item=ManualTransferItem(logid=history.id, from_history=False),
+        background=background,
+        history_query=SimpleNamespace(get=lambda _history_id: history),
+        _="token",
+    )
+
+    assert response.success is accepted
+    assert retries == [(history.transfer_task_id, "manual_reorganize")]
+    assert planned == []
+    assert deleted == []
+    if not accepted:
+        assert "任务需要人工处理" in response.message
+
+
+@pytest.mark.parametrize("status", [True, False])
+def test_manual_history_auto_preserves_legacy_retry_and_success_force(monkeypatch, status):
+    """旧版失败历史仍清理后重试，成功历史保留原有强制整理行为。"""
+    chain = make_transfer_chain()
+    fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    history = SimpleNamespace(
+        id=15,
+        status=status,
+        mode="copy",
+        src=fileitem.path,
+        src_storage=fileitem.storage,
+        src_fileitem=fileitem.model_dump(),
+        dest_fileitem=None,
+        download_hash=None,
+        downloader=None,
+    )
+    planned, deleted = [], []
+    _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, deleted)
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", lambda: chain)
+    chain.transfer_execution_repository = None
+
+    response = manual_transfer_endpoint(
+        transer_item=ManualTransferItem(logid=history.id, from_history=False),
+        background=False,
+        history_query=SimpleNamespace(get=lambda _history_id: history),
+        _="token",
+    )
+
+    assert response.success is True
+    assert planned == [fileitem.path]
+    assert deleted == ([] if status else [("history", history.id)])
 
 
 def test_success_history_directory_query_excludes_failed_and_siblings():

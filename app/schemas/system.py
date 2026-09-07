@@ -253,6 +253,9 @@ class SystemUpdateRequest(BaseModel):  # type: ignore[misc]
 class SystemUpdateStatus(BaseModel):
     """主程序与站点资源后台更新的聚合状态快照。"""
 
+    auto_update: bool = Field(default=False, description="是否启用主程序自动检查及升级提醒")
+    auto_update_resource: bool = Field(default=True, description="是否启用站点资源自动检查及升级提醒")
+
     state: Literal[
         "idle",
         "available",

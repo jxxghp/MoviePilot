@@ -25,6 +25,7 @@ ALL_PROVIDERS = (
     "ugreen",
     "trimemedia",
     "navidrome",
+    "mediavault",
 )
 PROVIDER_CLASSES = {
     "emby": "app.modules.emby.emby:Emby",
@@ -34,6 +35,7 @@ PROVIDER_CLASSES = {
     "ugreen": "app.modules.ugreen.ugreen:Ugreen",
     "trimemedia": "app.modules.trimemedia.trimemedia:TrimeMedia",
     "navidrome": "app.modules.navidrome.navidrome:Navidrome",
+    "mediavault": "app.modules.mediavault.mediavault:MediaVault",
 }
 _UNSET = object()
 
@@ -122,7 +124,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "server.users.count": ActionSpec(
         "Read provider user count.",
         "safe_read",
-        ("emby", "jellyfin", "zspace", "ugreen", "trimemedia", "navidrome"),
+        ("emby", "jellyfin", "zspace", "ugreen", "trimemedia", "navidrome", "mediavault"),
     ),
     "server.user.library_folders": ActionSpec(
         "Read the current user's visible library folders.",
@@ -157,7 +159,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "items.movies.search": ActionSpec(
         "Search provider-native movie items by title and optional year.",
         "safe_read",
-        ("emby", "jellyfin", "plex", "zspace", "ugreen", "trimemedia"),
+        ("emby", "jellyfin", "plex", "zspace", "ugreen", "trimemedia", "mediavault"),
         (
             ArgumentSpec("title", "string", "Movie title.", required=True),
             ArgumentSpec("year", "string|integer", "Optional release year."),
@@ -177,7 +179,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "items.season_episodes": ActionSpec(
         "Read native episode coverage for one series and optional season.",
         "safe_read",
-        ("emby", "jellyfin", "plex", "zspace", "ugreen", "trimemedia"),
+        ("emby", "jellyfin", "plex", "zspace", "ugreen", "trimemedia", "mediavault"),
         (
             ITEM_ID,
             ArgumentSpec("title", "string", "Series title; provide it or item_id."),
@@ -199,7 +201,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "activity.backdrops": ActionSpec(
         "Read recent provider backdrop images.",
         "safe_read",
-        ("ugreen", "trimemedia"),
+        ("ugreen", "trimemedia", "mediavault"),
         (
             LIMIT,
             ArgumentSpec("remote", "boolean", "Return provider URLs that are remotely accessible.", default=False),

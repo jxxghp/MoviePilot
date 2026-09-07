@@ -103,17 +103,17 @@ def test_music_rename_context_contains_audio_fields():
     assert context["fileExt"] == ".flac"
 
 
-def test_music_rename_prefers_track_meta_over_album_media():
-    """专辑整理时应使用每个文件的曲名和曲序，不能把专辑名写成所有目标文件名。"""
+def test_music_rename_uses_album_identity_and_track_meta():
+    """专辑整理应采用所选专辑身份，同时保留每个文件的曲名和曲序。"""
     meta = MetaMusic(
         org_string="10. 明天晴天.m4a",
         title="明天晴天",
         artists=["孙燕姿"],
-        album="完美的一天",
-        album_artist="孙燕姿",
-        year=2005,
+        album="错误专辑·全精选集",
+        album_artist="错误艺术家（资源发布者）",
+        year=1999,
         track_number=10,
-        total_tracks=11,
+        total_tracks=99,
     )
     album = MusicInfo(
         media_source="musicbrainz",
@@ -137,6 +137,9 @@ def test_music_rename_prefers_track_meta_over_album_media():
 
     assert context["title"] == "明天晴天"
     assert context["track"] == "10"
+    assert context["album"] == "完美的一天"
+    assert context["album_artist"] == "孙燕姿"
+    assert context["year"] == 2005
     assert rendered == "孙燕姿/完美的一天 (2005)/10 - 明天晴天.m4a"
 
 

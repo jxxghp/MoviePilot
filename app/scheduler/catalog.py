@@ -204,8 +204,8 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
                 JobSpec("agent_heartbeat", "智能体定时任务", self.agent_heartbeat, "agent"),
                 JobSpec("usage_report", "安装版本统计上报", MoviePilotServerHelper.report_usage, "server"),
                 *(
-                    [JobSpec("system_update_check", "检查系统更新", system_update_manager.check, "system")]
-                    if config.auto_update
+                    [JobSpec("system_update_check", "检查系统更新", system_update_manager.check_scheduled, "system")]
+                    if config.update_check_enabled
                     else []
                 ),
             ]
@@ -428,8 +428,8 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             kwargs={"job_id": "plugin_market_refresh"},
         )
 
-        if config.auto_update:
-            # 更新检查只缓存 Release 元数据，不会在未授权时下载或重启。
+        if config.update_check_enabled:
+            # 任一更新开关开启即注册，执行时分别检查已启用的主程序或资源。
             self._scheduler.add_job(
                 self.start,
                 "interval",

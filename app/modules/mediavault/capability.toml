@@ -1,0 +1,22 @@
+schema_version = 1
+id = "MediaVaultModule"
+kind = "host_module"
+entrypoint = "app.modules.mediavault:MediaVaultModule"
+depends_on = []
+
+[metadata]
+name = "MediaVault"
+type = "mediaserver"
+subtype = "MediaVault"
+priority = 7
+
+[activation]
+policy = "when_configured"
+watch = ["MediaServers"]
+
+[activation.selector]
+kind = "system_config_item"
+key = "MediaServers"
+match_field = "type"
+match_value = "mediavault"
+enabled_field = "enabled"

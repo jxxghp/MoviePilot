@@ -243,9 +243,10 @@ def _git_current_branch() -> Optional[str]:
 
 
 def _auto_update_mode() -> str:
+    """启动时仅由独立 Dev 开关或一次性更新请求选择开发分支。"""
     if SystemHelper.consume_one_shot_dev_update():
         return "dev"
-    return str(get_runtime_setting("MOVIEPILOT_AUTO_UPDATE") or "").strip().lower()
+    return "dev" if get_runtime_setting("MOVIEPILOT_UPDATE_DEV") is True else "false"
 
 
 def _file_sha256(path: Path) -> str:
@@ -490,6 +491,7 @@ def _resolve_auto_update_targets(mode: str) -> Optional[str]:
 
 
 def _best_effort_auto_update() -> None:
+    """优先应用已确认的安装包，再按 Dev 跟踪偏好更新；失败不阻断启动。"""
     if _apply_prepared_release_update():
         return
 
@@ -521,7 +523,7 @@ def _best_effort_auto_update() -> None:
         str(get_runtime_setting("CONFIG_PATH")),
     ]
 
-    click.echo(f"检测到 MOVIEPILOT_AUTO_UPDATE={mode}，启动前执行本地自动更新")
+    click.echo("检测到 Dev 跟踪开关或一次性更新请求，启动前执行本地开发版更新")
     result = subprocess.run(
         update_command,
         cwd=str(_repo_root()),
@@ -1211,6 +1213,20 @@ def restart(start_timeout: int, stop_timeout: int, force: bool) -> None:
     click.echo("MoviePilot 已重启")
     click.echo(f"Backend URL: {_backend_base_url(backend_result['runtime'])}")
     click.echo(f"Frontend URL: {_frontend_base_url(frontend_result['runtime'])}")
+
+
+@cli.command("apply-prepared-update", hidden=True, context_settings=CONTEXT_SETTINGS)  # type: ignore[misc]
+def apply_prepared_update() -> None:
+    """由 Docker root 更新 worker 应用已确认的下载制品。"""
+    from app.adapters.system.update import system_update_manager
+    from app.foundation.environment import is_docker
+
+    if not is_docker():
+        raise click.ClickException("仅 Docker 更新 worker 可以执行该操作")
+    success, message = system_update_manager.apply_prepared_update()
+    if not success:
+        raise click.ClickException(message)
+    click.echo(message)
 
 
 @cli.command(context_settings=CONTEXT_SETTINGS)

@@ -1,5 +1,3 @@
-import hashlib
-import json
 import os
 import shlex
 import subprocess
@@ -796,17 +794,27 @@ def test_updater_package_proxy_stays_command_scoped(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("mode", "install_result", "expected"),
-    (("false", "unused", "noop"), ("dev", "success", "updated"), ("dev", "failure", "failed")),
+    ("mode", "dev_update", "install_result", "expected"),
+    (
+        ("false", "false", "unused", "noop"),
+        ("true", "false", "unused", "noop"),
+        ("false", "true", "success", "updated"),
+        ("true", "True", "failure", "failed"),
+        ("dev", "", "success", "updated"),
+        ("dev", "false", "unused", "noop"),
+        ("release", "", "unused", "noop"),
+    ),
 )
 def test_updater_exposes_explicit_result(
-    tmp_path: Path, mode: str, install_result: str, expected: str
+    tmp_path: Path, mode: str, dev_update: str, install_result: str, expected: str
 ) -> None:
+    """Docker 由独立 Dev 开关决定启动更新，并兼容首次迁移的旧模式。"""
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
         MOVIEPILOT_AUTO_UPDATE="$2"
         INSTALL_RESULT="$3"
+        MOVIEPILOT_UPDATE_DEV="$4"
         PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
         source {UPDATER!s}
         INFO() {{ :; }}
@@ -827,7 +835,7 @@ def test_updater_exposes_explicit_result(
     )
 
     result = subprocess.run(
-        ["bash", "-c", script, "updater-test", str(tmp_path / "config"), mode, install_result],
+        ["bash", "-c", script, "updater-test", str(tmp_path / "config"), mode, install_result, dev_update],
         text=True,
         capture_output=True,
         check=True,
@@ -836,130 +844,14 @@ def test_updater_exposes_explicit_result(
     assert result.stdout == f"{expected}\n"
 
 
-def test_prepared_release_is_verified_and_installed_without_release_lookup(tmp_path: Path) -> None:
-    config_dir = tmp_path / "config"
-    update_root = config_dir / "temp" / "moviepilot-update"
-    update_root.mkdir(parents=True)
-    backend = update_root / "backend.zip"
-    frontend = update_root / "frontend.zip"
-    backend.write_bytes(b"backend-package")
-    frontend.write_bytes(b"frontend-package")
-    backend_sha256 = hashlib.sha256(backend.read_bytes()).hexdigest()
-    frontend_sha256 = hashlib.sha256(frontend.read_bytes()).hexdigest()
-    (update_root / "install.json").write_text(
-        json.dumps(
-            {
-                "version": "v3.1.0",
-                "frontend_version": "v3.1.0",
-                "backend_archive": str(backend),
-                "frontend_archive": str(frontend),
-                "backend_sha256": backend_sha256,
-                "frontend_sha256": frontend_sha256,
-            }
-        ),
-        encoding="utf-8",
-    )
-    release_probe = tmp_path / "release-probe"
-    script = textwrap.dedent(
-        f"""\
-        CONFIG_DIR="$1"
-        MOVIEPILOT_AUTO_UPDATE=release
-        PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
-        RELEASE_PROBE="$2"
-        source {UPDATER!s}
-        INFO() {{ :; }}
-        WARN() {{ :; }}
-        ERROR() {{ :; }}
-        test_connectivity_github() {{ touch "${{RELEASE_PROBE}}"; return 1; }}
-        install_backend_and_download_resources() {{
-            test "${{MOVIEPILOT_PREPARED_UPDATE}}" = true
-            test "$1" = tags/v3.1.0.zip
-            MOVIEPILOT_UPDATE_RESULT=updated
-        }}
-        run_moviepilot_update
-        printf '%s\n' "${{MOVIEPILOT_UPDATE_RESULT}}"
-        """
-    )
-
-    result = subprocess.run(
-        ["bash", "-c", script, "prepared-update-test", str(config_dir), str(release_probe)],
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-
-    assert result.stdout == "updated\n"
-    assert not release_probe.exists()
-    assert not (update_root / "install.json").exists()
-
-
-def test_prepared_resource_update_is_applied_without_backend_or_release_lookup(tmp_path: Path) -> None:
-    config_dir = tmp_path / "config"
-    update_root = config_dir / "temp" / "moviepilot-update"
-    resource_dir = update_root / "resources"
-    resource_dir.mkdir(parents=True)
-    resource_files = []
-    for name, content in (("user.sites.v3.bin", b"index"), ("sites.cpython-test.so", b"auth")):
-        path = resource_dir / name
-        path.write_bytes(content)
-        resource_files.append(
-            {
-                "name": name,
-                "path": str(path),
-                "sha256": hashlib.sha256(content).hexdigest(),
-            }
-        )
-    (update_root / "install.json").write_text(
-        json.dumps({"targets": ["resources"], "resource_files": resource_files}),
-        encoding="utf-8",
-    )
-    release_probe = tmp_path / "release-probe"
-    backend_probe = tmp_path / "backend-probe"
-    script = textwrap.dedent(
-        f"""\
-        CONFIG_DIR="$1"
-        MOVIEPILOT_AUTO_UPDATE=release
-        PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
-        RELEASE_PROBE="$2"
-        BACKEND_PROBE="$3"
-        source {UPDATER!s}
-        INFO() {{ :; }}
-        WARN() {{ :; }}
-        ERROR() {{ :; }}
-        test_connectivity_github() {{ touch "${{RELEASE_PROBE}}"; return 1; }}
-        install_backend_and_download_resources() {{ touch "${{BACKEND_PROBE}}"; return 1; }}
-        apply_prepared_resources() {{ test "${{MOVIEPILOT_PREPARED_UPDATE}}" = true; return 0; }}
-        run_moviepilot_update
-        printf '%s\\n' "${{MOVIEPILOT_UPDATE_RESULT}}"
-        """
-    )
-
-    result = subprocess.run(
-        [
-            "bash",
-            "-c",
-            script,
-            "prepared-resource-update-test",
-            str(config_dir),
-            str(release_probe),
-            str(backend_probe),
-        ],
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-
-    assert result.stdout == "noop\n"
-    assert not release_probe.exists()
-    assert not backend_probe.exists()
-    assert not (update_root / "install.json").exists()
-
-
 def test_release_mode_no_longer_checks_or_installs_during_restart(
     tmp_path: Path,
 ) -> None:
-    """Release 模式只能消费准备清单，不得保留启动时查版本的旧实现。"""
+    """非 Dev 模式不再由 update.sh 查版本或替换已下载程序。"""
     updater = UPDATER.read_text(encoding="utf-8")
+    assert "install.json" not in updater
+    assert "MOVIEPILOT_PREPARED_UPDATE" not in updater
+    assert "apply_prepared" not in updater
     for retired_function in (
         "fetch_latest_v3_release",
         "compare_versions",
@@ -1027,11 +919,27 @@ def test_entrypoint_delegates_restart_to_external_supervisor() -> None:
     assert "docker_http_proxy" not in entrypoint
     assert "/var/run/docker.sock" not in entrypoint
     assert "docker_http_proxy" not in dockerfile
-    assert "exec /usr/bin/supervisord -n" in entrypoint
+    assert "/usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf" in entrypoint
+    assert "run_pending_dev_update_after_supervisor_shutdown" in entrypoint
+    assert "apply_pending_release_update_at_startup" in entrypoint
+    assert "-m app.cli apply-prepared-update" in entrypoint
+    assert "supervisor_exit_code=$?" in entrypoint
     assert "supervisor" in dockerfile
     assert "[program:moviepilot-nginx]" in supervisor
     assert "[program:moviepilot-backend]" in supervisor
+    assert "[program:moviepilot-update-worker]" in supervisor
+    assert "user=root" in supervisor
+    assert "-name '*.sh' ! -name 'launcher.sh'" in dockerfile
     assert supervisor.count("autorestart=true") == 2
+
+
+def test_release_update_worker_applies_before_supervisor_shutdown() -> None:
+    """Release worker 必须先调用后端安装器，再关闭 supervisor 触发入口重载。"""
+    worker = (ROOT / "docker" / "update-worker.sh").read_text(encoding="utf-8")
+
+    assert "-m app.cli apply-prepared-update" in worker
+    assert "supervisorctl -c \"${SUPERVISOR_CONFIG}\" shutdown" in worker
+    assert worker.index("apply-prepared-update") < worker.index("shutdown")
 
 
 @pytest.mark.parametrize(

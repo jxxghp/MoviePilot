@@ -179,6 +179,12 @@ class SchedulerRuntimeConfig:
     usage_statistic_share: bool
     site_link: str | None
     auto_update: bool = False
+    auto_update_resource: bool = True
+
+    @property
+    def update_check_enabled(self) -> bool:
+        """主程序或资源任一检查开启时保留共享的定时检测服务。"""
+        return self.auto_update or self.auto_update_resource
 
 
 @dataclass(frozen=True, slots=True)

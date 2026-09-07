@@ -590,7 +590,7 @@
   },
   "app/runtime/state.py:threading.Timer": {
     "owners": {
-      "SystemHelper._schedule_supervisor_restart": 1
+      "SystemHelper._schedule_supervisor_command": 1
     },
     "target": "threading.Timer"
   },

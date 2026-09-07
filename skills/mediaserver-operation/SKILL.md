@@ -139,46 +139,46 @@ A field name ending in `*` is required. Put every action parameter in the `argum
 | `server.users.count` | Read provider user count.; no arguments |
 
 ### `activity.backdrops`
-Read recent provider backdrop images. Effect: `safe_read`. Providers: `ugreen, trimemedia`.
+Read recent provider backdrop images. Effect: `safe_read`. Providers: `ugreen, trimemedia, mediavault`.
 - `limit` (integer; default `50`): Number of items to return, from 1 to 200.
 - `remote` (boolean; default `False`): Return provider URLs that are remotely accessible.
 
 ### `activity.latest`
-Read recently added provider items. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome`.
+Read recently added provider items. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `limit` (integer; default `50`): Number of items to return, from 1 to 200.
 - `username` (string): Read for this username; supported by Emby, Jellyfin, and ZSpace.
 
 ### `activity.resume`
-Read in-progress/resumable provider items. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome`.
+Read in-progress/resumable provider items. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `limit` (integer; default `50`): Number of items to return, from 1 to 200.
 - `username` (string): Read for this username; supported by Emby, Jellyfin, and ZSpace.
 
 ### `capabilities.list`
-List supported media-server actions and their complete argument contracts. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome`.
+List supported media-server actions and their complete argument contracts. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `action_name` (string): Optional exact action name used to return one capability contract.
 
 ### `instances.list`
-List configured media-server instances without connection secrets. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome`.
+List configured media-server instances without connection secrets. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `arguments`: `{}`
 
 ### `items.count`
-Count items below one library or parent. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome`.
+Count items below one library or parent. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `parent` (string|integer): Library or parent item ID; Navidrome may omit it and use music.
 - Rule: parent is required except for Navidrome, which defaults to music.
 
 ### `items.detail`
-Read one provider item by native ID. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome`.
+Read one provider item by native ID. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `item_id*` (string): Provider-native item ID returned by the selected media server.
 
 ### `items.list`
-Page items below one library or parent. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome`.
+Page items below one library or parent. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `parent` (string|integer): Library or parent item ID; Navidrome may omit it and use music.
 - `offset` (integer; default `0`): Zero-based list offset.
 - `limit` (integer; default `50`): Number of items to return, from 1 to 200.
 - Rule: parent is required except for Navidrome, which ignores it.
 
 ### `items.movies.search`
-Search provider-native movie items by title and optional year. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia`.
+Search provider-native movie items by title and optional year. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, mediavault`.
 - `title*` (string): Movie title.
 - `year` (string|integer): Optional release year.
 
@@ -190,7 +190,7 @@ Search provider-native music by title, artist, or album. Effect: `safe_read`. Pr
 - Rule: Provide at least one of title, artist, and album.
 
 ### `items.season_episodes`
-Read native episode coverage for one series and optional season. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia`.
+Read native episode coverage for one series and optional season. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, mediavault`.
 - `item_id` (string): Provider-native item ID returned by the selected media server.
 - `title` (string): Series title; provide it or item_id.
 - `year` (string|integer): Optional premiere year.
@@ -198,12 +198,12 @@ Read native episode coverage for one series and optional season. Effect: `safe_r
 - Rule: Provide at least one of item_id and title.
 
 ### `libraries.list`
-List visible provider libraries. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome`.
+List visible provider libraries. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `hidden` (boolean; default `False`): Return only libraries configured for synchronization.
 - `username` (string): Read libraries visible to this username; supported by Emby, Jellyfin, and ZSpace.
 
 ### `library.scan`
-Trigger a provider library scan. Effect: `external_side_effect`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome`.
+Trigger a provider library scan. Effect: `external_side_effect`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `scan_mode` (string|integer): UGREEN-native scan mode; omit it for every other provider.
 
 ### `metadata.refresh`
@@ -215,11 +215,11 @@ Read active playback sessions. Effect: `safe_read`. Providers: `emby, jellyfin, 
 - `arguments`: `{}`
 
 ### `playback.url`
-Build the provider play URL for one item. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome`.
+Build the provider play URL for one item. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `item_id*` (string): Provider-native item ID returned by the selected media server.
 
 ### `server.statistics`
-Read media counts and provider statistics. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome`.
+Read media counts and provider statistics. Effect: `safe_read`. Providers: `emby, jellyfin, plex, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `arguments`: `{}`
 
 ### `server.user.library_folders`
@@ -227,7 +227,7 @@ Read the current user's visible library folders. Effect: `safe_read`. Providers:
 - `arguments`: `{}`
 
 ### `server.users.count`
-Read provider user count. Effect: `safe_read`. Providers: `emby, jellyfin, zspace, ugreen, trimemedia, navidrome`.
+Read provider user count. Effect: `safe_read`. Providers: `emby, jellyfin, zspace, ugreen, trimemedia, navidrome, mediavault`.
 - `arguments`: `{}`
 
 ## Safety And Verification

@@ -561,8 +561,8 @@ def _execute_manual_transfer(
             return _SchemaResponse(
                 success=False, message=f"整理记录不存在，ID：{transer_item.logid}"
             )
-        # 强制转移
-        force = True
+        # 失败历史必须经过整理链的重试/重整判定，不能绕过旧任务直接重新准入。
+        force = bool(history.status)
         # 下载器与 Hash 是同一组下载上下文，重新识别时由当前文件路径重新匹配。
         downloader = history.downloader if transer_item.from_history else None
         download_hash = history.download_hash if transer_item.from_history else None

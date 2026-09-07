@@ -1395,39 +1395,34 @@
     "empty-body": 4,
     "misc": 3,
     "no-any-return": 1,
-    "no-untyped-call": 5,
+    "no-untyped-call": 4,
     "no-untyped-def": 7,
     "union-attr": 4
   },
   "app/modules/_base/downloader.py": {
     "assignment": 1,
-    "attr-defined": 5,
-    "no-untyped-call": 1
+    "attr-defined": 5
   },
   "app/modules/_base/mediaserver.py": {
     "arg-type": 2,
     "assignment": 3,
     "attr-defined": 5,
     "no-any-return": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "var-annotated": 1
   },
   "app/modules/_base/notification.py": {
     "arg-type": 1,
     "assignment": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 3,
     "type-arg": 5
   },
   "app/modules/acoustid/__init__.py": {
     "arg-type": 1,
-    "list-item": 1,
-    "no-untyped-call": 1
+    "list-item": 1
   },
   "app/modules/anilist/__init__.py": {
     "assignment": 4,
-    "no-untyped-call": 1,
     "no-untyped-def": 5,
     "return-value": 1,
     "type-arg": 12
@@ -1442,7 +1437,6 @@
   "app/modules/bangumi/__init__.py": {
     "arg-type": 2,
     "assignment": 4,
-    "no-untyped-call": 1,
     "no-untyped-def": 5,
     "return-value": 1,
     "type-arg": 7
@@ -1452,9 +1446,7 @@
   },
   "app/modules/dingtalk/__init__.py": {
     "arg-type": 2,
-    "no-untyped-call": 1,
-    "no-untyped-def": 1,
-    "override": 1
+    "no-untyped-def": 1
   },
   "app/modules/dingtalk/dingtalk.py": {
     "no-untyped-def": 1
@@ -1466,7 +1458,6 @@
     "empty-body": 1,
     "misc": 1,
     "no-any-return": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1,
     "truthy-function": 1,
     "type-arg": 8
@@ -1487,7 +1478,7 @@
     "empty-body": 1,
     "misc": 2,
     "no-any-return": 1,
-    "no-untyped-call": 4,
+    "no-untyped-call": 3,
     "no-untyped-def": 7,
     "return-value": 2,
     "type-arg": 13,
@@ -1512,7 +1503,6 @@
     "arg-type": 3,
     "assignment": 13,
     "empty-body": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1,
     "type-arg": 1
   },
@@ -1530,7 +1520,6 @@
   "app/modules/fanart/__init__.py": {
     "misc": 2,
     "no-any-return": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "type-arg": 10,
     "var-annotated": 1
@@ -1539,7 +1528,6 @@
     "arg-type": 4,
     "assignment": 6,
     "attr-defined": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1,
     "return-value": 1,
     "type-arg": 5,
@@ -1561,7 +1549,7 @@
     "attr-defined": 1,
     "empty-body": 1,
     "no-any-return": 2,
-    "no-untyped-call": 3,
+    "no-untyped-call": 2,
     "no-untyped-def": 5,
     "type-arg": 3,
     "var-annotated": 3
@@ -1668,7 +1656,7 @@
     "assignment": 4,
     "empty-body": 1,
     "index": 1,
-    "no-untyped-call": 2,
+    "no-untyped-call": 1,
     "no-untyped-def": 3,
     "operator": 2,
     "return": 1,
@@ -1678,9 +1666,7 @@
   "app/modules/imdb/__init__.py": {
     "assignment": 10,
     "no-any-return": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 3,
-    "override": 1,
     "type-arg": 5
   },
   "app/modules/imdb/api.py": {
@@ -1694,7 +1680,7 @@
     "attr-defined": 1,
     "empty-body": 1,
     "no-any-return": 2,
-    "no-untyped-call": 4,
+    "no-untyped-call": 3,
     "no-untyped-def": 1,
     "return-value": 5,
     "type-arg": 19,
@@ -1913,7 +1899,6 @@
     "arg-type": 3,
     "assignment": 13,
     "empty-body": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1,
     "type-arg": 1
   },
@@ -1932,22 +1917,17 @@
   },
   "app/modules/listenbrainz/__init__.py": {
     "misc": 2,
-    "no-any-return": 2,
-    "no-untyped-call": 1,
-    "override": 1
+    "no-any-return": 2
   },
   "app/modules/lrclib/__init__.py": {
-    "misc": 1,
-    "no-untyped-call": 1,
-    "override": 1
+    "misc": 1
   },
   "app/modules/musicbrainz/__init__.py": {
     "arg-type": 1,
     "assignment": 5,
     "misc": 4,
-    "no-untyped-call": 4,
+    "no-untyped-call": 3,
     "no-untyped-def": 2,
-    "override": 1,
     "type-arg": 2
   },
   "app/modules/musicbrainz/cache.py": {
@@ -1958,13 +1938,10 @@
     "union-attr": 1
   },
   "app/modules/musixmatch/__init__.py": {
-    "no-any-return": 1,
-    "no-untyped-call": 1
+    "no-any-return": 1
   },
   "app/modules/navidrome/__init__.py": {
     "arg-type": 9,
-    "no-untyped-call": 1,
-    "override": 1,
     "type-arg": 1,
     "union-attr": 1
   },
@@ -1976,7 +1953,7 @@
     "arg-type": 7,
     "assignment": 16,
     "empty-body": 1,
-    "no-untyped-call": 2,
+    "no-untyped-call": 1,
     "no-untyped-def": 5,
     "type-arg": 1
   },
@@ -1994,7 +1971,6 @@
   },
   "app/modules/postgresql/__init__.py": {
     "empty-body": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1
   },
   "app/modules/qbittorrent/__init__.py": {
@@ -2002,7 +1978,6 @@
     "assignment": 16,
     "empty-body": 1,
     "no-redef": 2,
-    "no-untyped-call": 1,
     "operator": 1,
     "str-bytes-safe": 2,
     "type-arg": 8,
@@ -2029,7 +2004,6 @@
     "attr-defined": 1,
     "empty-body": 1,
     "no-any-return": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1,
     "type-arg": 4,
     "var-annotated": 1
@@ -2042,7 +2016,7 @@
   },
   "app/modules/redis/__init__.py": {
     "empty-body": 1,
-    "no-untyped-call": 2,
+    "no-untyped-call": 1,
     "no-untyped-def": 1
   },
   "app/modules/rtorrent/__init__.py": {
@@ -2050,7 +2024,6 @@
     "assignment": 16,
     "empty-body": 1,
     "no-redef": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1,
     "operator": 1,
     "str-bytes-safe": 2,
@@ -2072,7 +2045,6 @@
     "attr-defined": 1,
     "empty-body": 1,
     "index": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1,
     "type-arg": 7
   },
@@ -2089,7 +2061,6 @@
   "app/modules/subtitle/__init__.py": {
     "arg-type": 1,
     "empty-body": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "var-annotated": 1
   },
@@ -2099,7 +2070,6 @@
     "attr-defined": 1,
     "empty-body": 1,
     "no-any-return": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "type-arg": 4,
     "var-annotated": 1
@@ -2115,7 +2085,6 @@
     "assignment": 9,
     "attr-defined": 1,
     "empty-body": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1,
     "type-arg": 11,
     "union-attr": 1
@@ -2135,9 +2104,7 @@
   "app/modules/theaudiodb/__init__.py": {
     "assignment": 4,
     "misc": 2,
-    "no-untyped-call": 1,
-    "no-untyped-def": 2,
-    "override": 1
+    "no-untyped-def": 2
   },
   "app/modules/themoviedb/__init__.py": {
     "arg-type": 5,
@@ -2145,7 +2112,7 @@
     "empty-body": 1,
     "index": 2,
     "no-any-return": 4,
-    "no-untyped-call": 6,
+    "no-untyped-call": 5,
     "no-untyped-def": 3,
     "return-value": 2,
     "type-arg": 19,
@@ -2291,7 +2258,7 @@
   "app/modules/thetvdb/__init__.py": {
     "empty-body": 1,
     "no-any-return": 2,
-    "no-untyped-call": 2,
+    "no-untyped-call": 1,
     "no-untyped-def": 4,
     "type-arg": 2
   },
@@ -2311,7 +2278,7 @@
     "empty-body": 1,
     "no-any-return": 1,
     "no-redef": 2,
-    "no-untyped-call": 10,
+    "no-untyped-call": 9,
     "no-untyped-def": 7,
     "str-bytes-safe": 1,
     "type-arg": 6
@@ -2333,7 +2300,7 @@
     "assignment": 1,
     "empty-body": 1,
     "no-any-return": 3,
-    "no-untyped-call": 2,
+    "no-untyped-call": 1,
     "no-untyped-def": 7,
     "return": 1,
     "type-arg": 2
@@ -2363,7 +2330,6 @@
     "assignment": 1,
     "empty-body": 1,
     "no-any-return": 3,
-    "no-untyped-call": 1,
     "no-untyped-def": 7,
     "type-arg": 2
   },
@@ -2383,7 +2349,6 @@
     "assignment": 6,
     "attr-defined": 1,
     "empty-body": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 3,
     "type-arg": 4,
     "union-attr": 1
@@ -2398,7 +2363,6 @@
     "arg-type": 1,
     "assignment": 1,
     "empty-body": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "type-arg": 1,
     "union-attr": 1
@@ -2409,7 +2373,7 @@
     "attr-defined": 1,
     "empty-body": 1,
     "no-any-return": 2,
-    "no-untyped-call": 3,
+    "no-untyped-call": 2,
     "no-untyped-def": 5,
     "type-arg": 4,
     "union-attr": 4
@@ -2435,7 +2399,6 @@
     "assignment": 3,
     "empty-body": 1,
     "no-any-return": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 4,
     "type-arg": 2,
     "union-attr": 1
@@ -2453,7 +2416,6 @@
     "arg-type": 3,
     "assignment": 12,
     "empty-body": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 2,
     "type-arg": 1
   },
@@ -2653,7 +2615,7 @@
   "app/runtime/reload.py": {
     "misc": 1,
     "no-untyped-call": 5,
-    "no-untyped-def": 6
+    "no-untyped-def": 5
   },
   "app/runtime/scheduling.py": {
     "import-untyped": 1,
@@ -2668,7 +2630,6 @@
   "app/runtime/state.py": {
     "attr-defined": 2,
     "no-any-return": 2,
-    "no-untyped-call": 1,
     "no-untyped-def": 3,
     "type-arg": 1
   },

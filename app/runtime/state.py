@@ -9,10 +9,10 @@ from typing import Optional, Tuple
 
 import psutil
 
-from app.runtime.settings import get_runtime_setting
+from app.foundation.environment import is_docker, is_frozen, is_windows
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
-from app.foundation.environment import is_windows,is_frozen,is_docker
+from app.runtime.settings import get_runtime_setting
 
 
 class SystemHelper(ConfigReloadMixin):
@@ -38,9 +38,13 @@ class SystemHelper(ConfigReloadMixin):
     __one_shot_dev_update_flag_file = (
         get_runtime_setting('TEMP_PATH') / "moviepilot.pending_dev_update"
     )
+    __prepared_update_manifest = (
+        get_runtime_setting('TEMP_PATH') / "moviepilot-update/install.json"
+    )
     __supervisor_config = Path("/etc/supervisor/supervisord.conf")
     __supervisorctl = Path("/usr/bin/supervisorctl")
     __supervisor_socket = Path("/run/moviepilot/supervisor.sock")
+    __supervisor_update_worker = "moviepilot-update-worker"
 
     def on_config_changed(self):
         """配置变化后重新应用日志设置。"""
@@ -175,14 +179,25 @@ class SystemHelper(ConfigReloadMixin):
     @staticmethod
     def _schedule_supervisor_restart() -> None:
         """延迟调用本地 supervisor，确保重启接口有机会完成响应。"""
-        def restart_backend() -> None:
+        SystemHelper._schedule_supervisor_command("restart", "all")
+
+    @staticmethod
+    def _schedule_supervisor_shutdown() -> None:
+        """延迟关闭 supervisor，让容器入口重新执行更新和启动准备流程。"""
+        SystemHelper._schedule_supervisor_command("shutdown")
+
+    @staticmethod
+    def _schedule_supervisor_command(action: str, target: Optional[str] = None) -> None:
+        """延迟调用本地 supervisor 控制命令，确保重启接口有机会完成响应。"""
+        def run_command() -> None:
             command = [
                 str(SystemHelper.__supervisorctl),
                 "-c",
                 str(SystemHelper.__supervisor_config),
-                "restart",
-                "all",
+                action,
             ]
+            if target is not None:
+                command.append(target)
             try:
                 subprocess.Popen(
                     command,
@@ -193,9 +208,9 @@ class SystemHelper(ConfigReloadMixin):
                     start_new_session=True,
                 )
             except OSError as err:
-                logger.error(f"调用 supervisor 重启后端失败: {err}")
+                logger.error(f"调用 supervisor {action} 失败: {err}")
 
-        restart_timer = threading.Timer(0.5, restart_backend)
+        restart_timer = threading.Timer(0.5, run_command)
         restart_timer.daemon = True
         restart_timer.start()
 
@@ -222,7 +237,7 @@ class SystemHelper(ConfigReloadMixin):
 
     @staticmethod
     def restart() -> Tuple[bool, str]:
-        """请求容器内 supervisor 重启受管的前后端进程。"""
+        """执行当前部署支持的受管重启流程。"""
         if not is_frozen() and is_windows():
             success, message = SystemHelper._windows_restart()
             return success, message
@@ -244,20 +259,25 @@ class SystemHelper(ConfigReloadMixin):
             and SystemHelper.__supervisor_socket.exists()
         ):
             return False, "容器内 supervisor 未安装"
-        logger.info("请求容器内 supervisor 重启后端服务")
-        SystemHelper._schedule_supervisor_restart()
+        if SystemHelper.__prepared_update_manifest.is_file():
+            logger.info("检测到已确认的更新包，请求 root 更新 worker 替换程序目录")
+            SystemHelper._schedule_supervisor_command(
+                "start", SystemHelper.__supervisor_update_worker
+            )
+        elif SystemHelper.__one_shot_dev_update_flag_file.is_file():
+            logger.info("检测到一次性 Dev 更新，请求 supervisor 关闭并重新执行容器启动流程")
+            SystemHelper._schedule_supervisor_shutdown()
+        else:
+            logger.info("请求容器内 supervisor 重启前后端服务")
+            SystemHelper._schedule_supervisor_restart()
         return True, ""
 
     @staticmethod
     def upgrade_dev() -> Tuple[bool, str]:
         """保留原 Dev 模式：重启后跟踪当前 v3 开发分支。"""
-        configured_mode = str(
-            get_runtime_setting('MOVIEPILOT_AUTO_UPDATE') or ""
-        ).strip().lower()
-        if configured_mode != "dev":
-            queued, message = SystemHelper.queue_one_shot_dev_update()
-            if not queued:
-                return False, message
+        queued, message = SystemHelper.queue_one_shot_dev_update()
+        if not queued:
+            return False, message
         ret, message = SystemHelper.restart()
         if not ret:
             SystemHelper.clear_one_shot_dev_update()

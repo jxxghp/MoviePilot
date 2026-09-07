@@ -8,8 +8,21 @@ import shutil
 import sys
 import threading
 from asyncio import AbstractEventLoop
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Type, Union, get_args, get_origin
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    get_args,
+    get_origin,
+)
 from urllib.parse import quote, urlencode, urlparse
 
 from dotenv import set_key, unset_key
@@ -35,6 +48,86 @@ from app.runtime.stop import runtime_stop_state
 from app.runtime.version import get_app_version
 from app.runtime.webpush import WebPushRegistry, webpush_registry
 from app.schemas.types import MediaType
+
+SettingConverter = Callable[[Any, Any], Tuple[Any, bool]]
+SettingMigration = Callable[[Dict[str, Any]], Dict[str, Tuple[Any, Any]]]
+SettingValidator = Callable[[Any], Optional[str]]
+SettingSerializer = Callable[[Any], str]
+
+
+@dataclass(frozen=True, slots=True)
+class SettingPolicy:
+    """
+    部署配置字段的专属处理策略，供通用更新流程按字段声明执行
+    """
+
+    before_convert: Optional[Callable[[Any], Any]] = None
+    converter: Optional[SettingConverter] = None
+    migrate: Optional[SettingMigration] = None
+    validate: Optional[SettingValidator] = None
+    serialize: Optional[SettingSerializer] = None
+    sensitive: bool = False
+
+
+def _get_setting_policy(field_info: Any) -> Optional[SettingPolicy]:
+    """读取 Pydantic 字段声明上的部署配置策略"""
+    return next(
+        (
+            metadata
+            for metadata in getattr(field_info, "metadata", ())
+            if isinstance(metadata, SettingPolicy)
+        ),
+        None,
+    )
+
+
+def _normalize_legacy_update_mode(value: Any) -> Any:
+    """将旧自动更新模式转换为布尔开关"""
+    if isinstance(value, str) and value.strip().lower() in {"dev", "release"}:
+        return True
+    return value
+
+
+def _migrate_legacy_update_mode(
+    data: Dict[str, Any],
+) -> Dict[str, Tuple[Any, Any]]:
+    """迁移旧自动更新配置中的开发分支跟踪偏好"""
+    if (
+        str(data.get("MOVIEPILOT_AUTO_UPDATE", "")).strip().lower() != "dev"
+        or "MOVIEPILOT_UPDATE_DEV" in data
+    ):
+        return {}
+
+    data["MOVIEPILOT_UPDATE_DEV"] = True
+    return {"MOVIEPILOT_UPDATE_DEV": (None, True)}
+
+
+def _normalize_api_token(value: Any, original_value: Any) -> Tuple[Any, bool]:
+    """校验并规范化 API_TOKEN，避免把令牌原文写入日志"""
+    if isinstance(value, (list, dict, set)):
+        value = copy.deepcopy(value)
+    value = value.strip() if isinstance(value, str) else None
+    if not value:
+        return None, str(original_value) not in {"", "None"}
+    if len(value) < 16:
+        new_token = secrets.token_urlsafe(16)
+        logger.warning(
+            "'API_TOKEN' 长度不足 16 个字符，存在安全隐患，已随机生成新的安全令牌"
+        )
+        return new_token, True
+    return value, str(value) != str(original_value)
+
+
+def _validate_rust_accel(value: Any) -> Optional[str]:
+    """校验 free-threaded 运行时的 Rust 加速约束"""
+    if is_free_threaded_runtime() and value is not True:
+        return "free-threaded 运行时必须启用 Rust 加速"
+    return None
+
+
+def _serialize_bool(value: Any) -> str:
+    """将布尔配置按启动脚本兼容的形式持久化"""
+    return str(value).lower()
 
 
 class SystemConfModel(BaseModel):
@@ -124,7 +217,10 @@ class ConfigModel(BaseModel):
     # 辅助认证，允许通过外部服务进行认证、单点登录以及自动创建用户
     AUXILIARY_AUTH_ENABLE: bool = False
     # API密钥，需要更换
-    API_TOKEN: Optional[str] = None
+    API_TOKEN: Annotated[
+        Optional[str],
+        SettingPolicy(converter=_normalize_api_token, sensitive=True),
+    ] = None
     # 用户认证站点
     AUTH_SITE: str = ""
 
@@ -335,8 +431,19 @@ class ConfigModel(BaseModel):
     ALIPAN_APP_ID: str = "ac1bf04dc9fd4d9aaabb65b4a668d403"
 
     # ==================== 系统升级配置 ====================
-    # 开发版仍可在启动时跟踪 v3 分支；Release 更新由后台更新服务管理。
-    MOVIEPILOT_AUTO_UPDATE: str = "false"
+    # 自动检查稳定版本并提示升级，不自动下载或安装。
+    MOVIEPILOT_AUTO_UPDATE: Annotated[
+        bool,
+        SettingPolicy(
+            before_convert=_normalize_legacy_update_mode,
+            migrate=_migrate_legacy_update_mode,
+            serialize=_serialize_bool,
+        ),
+    ] = False
+    # 独立控制启动时跟踪 v3 开发分支。
+    MOVIEPILOT_UPDATE_DEV: Annotated[
+        bool, SettingPolicy(serialize=_serialize_bool)
+    ] = False
     # 后台检查站点资源包，确认后由启动器在进程拉起前应用
     AUTO_UPDATE_RESOURCE: bool = True
 
@@ -621,7 +728,7 @@ class ConfigModel(BaseModel):
     # 大内存模式
     BIG_MEMORY_MODE: bool = False
     # Rust 加速总开关，free-threaded 运行时固定启用
-    RUST_ACCEL: bool = True
+    RUST_ACCEL: Annotated[bool, SettingPolicy(validate=_validate_rust_accel)] = True
     # 是否启用编码探测的性能模式
     ENCODING_DETECTION_PERFORMANCE_MODE: bool = True
     # 编码探测的最低置信度阈值
@@ -796,18 +903,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         """
         校验 API_TOKEN
         """
-        if isinstance(value, (list, dict, set)):
-            value = copy.deepcopy(value)
-        value = value.strip() if isinstance(value, str) else None
-        if not value:
-            return None, str(original_value) not in {"", "None"}
-        if len(value) < 16:
-            new_token = secrets.token_urlsafe(16)
-            logger.warning(
-                f"'API_TOKEN' 长度不足 16 个字符，存在安全隐患，已随机生成新的【API_TOKEN】{new_token}"
-            )
-            return new_token, True
-        return value, str(value) != str(original_value)
+        return _normalize_api_token(value, original_value)
 
     @staticmethod
     def generic_type_converter(
@@ -819,11 +915,20 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         raise_exception: bool = False,
     ) -> Tuple[Any, bool]:
         """
-        通用类型转换函数，根据预期类型转换值。如果转换失败，返回默认值
+        先执行字段声明的转换策略，再根据预期类型转换值。如果转换失败，返回默认值
         :return: 元组 (转换后的值, 是否需要更新)
         """
         if isinstance(value, (list, dict, set)):
             value = copy.deepcopy(value)
+
+        field = Settings.model_fields.get(field_name)
+        policy = _get_setting_policy(field)
+        if policy:
+            if policy.before_convert:
+                value = policy.before_convert(value)
+            if policy.converter:
+                return policy.converter(value, original_value)
+
         # 如果 value 是 None，仍需要检查与 original_value 是否不一致
         if value is None:
             return default, str(value) != str(original_value)
@@ -911,51 +1016,34 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
     @classmethod
     def generic_type_validator(cls, data: Any):  # noqa
         """
-        通用校验器，尝试将配置值转换为期望的类型
+        通用校验器，迁移旧 Dev 跟踪偏好后将配置值转换为期望的类型。
         """
         if not isinstance(data, dict):
             return data
 
-        # 仅 true 表示启用后台 Release 检查，其他模式不注册该定时服务。
-        if "MOVIEPILOT_AUTO_UPDATE" in data:
-            original_update_mode = data["MOVIEPILOT_AUTO_UPDATE"]
-            mode = str(original_update_mode or "").strip().lower()
-            normalized_update_mode = (
-                mode if mode in {"true", "dev", "false"} else "false"
-            )
-            if normalized_update_mode != str(original_update_mode):
-                cls.update_env_config(
-                    "MOVIEPILOT_AUTO_UPDATE",
-                    original_update_mode,
-                    normalized_update_mode,
-                )
-                data["MOVIEPILOT_AUTO_UPDATE"] = normalized_update_mode
-
-        # 处理 API_TOKEN 特殊验证
-        if "API_TOKEN" in data:
-            converted_value, needs_update = cls.validate_api_token(
-                data["API_TOKEN"], data["API_TOKEN"]
-            )
-            if needs_update:
-                cls.update_env_config("API_TOKEN", data["API_TOKEN"], converted_value)
-                data["API_TOKEN"] = converted_value
+        # 字段策略负责兼容迁移，公共校验器只负责执行并持久化迁移结果。
+        for field_info in cls.model_fields.values():
+            policy = _get_setting_policy(field_info)
+            if not policy or not policy.migrate:
+                continue
+            updates = policy.migrate(data)
+            for field_name, (original_value, converted_value) in updates.items():
+                cls.update_env_config(field_name, original_value, converted_value)
 
         # 对其他字段进行类型转换
-        for field_name, field_info in cls.model_fields.items():
+        for field_name, field in cls.model_fields.items():
             if field_name not in data:
                 continue
             value = data[field_name]
             if value is None:
                 continue
 
-            field = cls.model_fields.get(field_name)
-            if field:
-                converted_value, needs_update = cls.generic_type_converter(
-                    value, value, field.annotation, field.default, field_name
-                )
-                if needs_update:
-                    cls.update_env_config(field_name, value, converted_value)
-                    data[field_name] = converted_value
+            converted_value, needs_update = cls.generic_type_converter(
+                value, value, field.annotation, field.default, field_name
+            )
+            if needs_update:
+                cls.update_env_config(field_name, value, converted_value)
+                data[field_name] = converted_value
 
         return data
 
@@ -964,15 +1052,19 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
         field_name: str, original_value: Any, converted_value: Any
     ) -> Tuple[bool, str]:
         """
-        更新 env 配置
+        按字段策略序列化并更新 env 配置。
         """
+        policy = _get_setting_policy(Settings.model_fields.get(field_name))
         # 成功且无提示时使用空字符串，保证与 Tuple[bool, str] 返回类型一致
         message = ""
         is_converted = original_value is not None and str(original_value) != str(
             converted_value
         )
         if is_converted:
-            message = f"配置项 '{field_name}' 的值 '{original_value}' 无效，已替换为 '{converted_value}'"
+            if policy and policy.sensitive:
+                message = f"配置项 '{field_name}' 的值无效，已替换为安全值"
+            else:
+                message = f"配置项 '{field_name}' 的值 '{original_value}' 无效，已替换为 '{converted_value}'"
             logger.warning(message)
 
         if field_name in os.environ:
@@ -990,8 +1082,10 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 )
                 logger.info(f"配置项 '{field_name}' 已清空，从 'app.env' 中移除")
                 return True, message
+            if policy and policy.serialize:
+                value_to_write = policy.serialize(converted_value)
             # 如果是列表、字典或集合类型，将其转换为JSON字符串
-            if isinstance(converted_value, (list, dict, set)):
+            elif isinstance(converted_value, (list, dict, set)):
                 value_to_write = json.dumps(converted_value)
             else:
                 value_to_write = str(converted_value)
@@ -1021,20 +1115,14 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             if not field:
                 return False, f"配置项 '{key}' 不存在"
             original_value = getattr(self, key)
-            if key == "API_TOKEN":
-                converted_value, needs_update = self.validate_api_token(
-                    value, original_value
-                )
-            else:
-                converted_value, needs_update = self.generic_type_converter(
-                    value, original_value, field.annotation, field.default, key
-                )
-            if (
-                key == "RUST_ACCEL"
-                and is_free_threaded_runtime()
-                and converted_value is not True
-            ):
-                return False, "free-threaded 运行时必须启用 Rust 加速"
+            converted_value, needs_update = self.generic_type_converter(
+                value, original_value, field.annotation, field.default, key
+            )
+            policy = _get_setting_policy(field)
+            if policy and policy.validate:
+                validation_message = policy.validate(converted_value)
+                if validation_message:
+                    return False, validation_message
             # 如果没有抛出异常，则统一使用 converted_value 进行更新
             if needs_update or str(value) != str(converted_value):
                 success, message = self.update_env_config(key, value, converted_value)

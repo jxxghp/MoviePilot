@@ -10,6 +10,8 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 MODULE_PATH = Path(__file__).resolve().parents[1] / "app" / "cli.py"
 
 
@@ -20,6 +22,7 @@ class _DummySystemHelper:
 
 
 def load_cli_module():
+    """隔离加载 CLI，使用真实布尔配置形状验证启动更新决策。"""
     with tempfile.TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
         settings = SimpleNamespace(
@@ -35,7 +38,8 @@ def load_cli_module():
             PROXY_HOST="",
             PIP_PROXY="",
             GITHUB_TOKEN="",
-            MOVIEPILOT_AUTO_UPDATE="false",
+            MOVIEPILOT_AUTO_UPDATE=False,
+            MOVIEPILOT_UPDATE_DEV=False,
             PROXY={},
             REPO_GITHUB_HEADERS=lambda _repo: {},
         )
@@ -95,13 +99,24 @@ def test_resolve_auto_update_targets_keeps_dev_branch_tracking():
 
 
 def test_one_shot_dev_update_overrides_disabled_default():
+    """一次性手动更新不受两个自动开关关闭的影响。"""
     module = load_cli_module()
-    module.settings.MOVIEPILOT_AUTO_UPDATE = "false"
+    module.settings.MOVIEPILOT_AUTO_UPDATE = False
 
     with patch.object(
         module.SystemHelper, "consume_one_shot_dev_update", return_value=True
     ):
         assert module._auto_update_mode() == "dev"
+
+
+@pytest.mark.parametrize("auto_update", [True, False])
+@pytest.mark.parametrize("update_dev", [True, False])
+def test_dev_tracking_is_independent_of_automatic_checks(auto_update, update_dev):
+    """检查开关不触发启动更新，Dev 开关单独选择开发分支。"""
+    module = load_cli_module()
+    module.settings.MOVIEPILOT_AUTO_UPDATE = auto_update
+    module.settings.MOVIEPILOT_UPDATE_DEV = update_dev
+    assert module._auto_update_mode() == ("dev" if update_dev else "false")
 
 
 def test_release_mode_does_not_update_during_start():

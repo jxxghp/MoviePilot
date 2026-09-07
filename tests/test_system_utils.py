@@ -13,9 +13,9 @@ from unittest.mock import MagicMock, call, patch
 import psutil
 import pytest
 
-from app.runtime.state import SystemHelper
-from app.runtime.config import ConfigModel, Settings
 from app.adapters.system.host import SystemUtils
+from app.runtime.config import ConfigModel, Settings
+from app.runtime.state import SystemHelper
 
 
 def test_get_config_path_uses_repository_config_for_source_runtime():
@@ -91,17 +91,48 @@ def test_docker_restart_delegates_to_supervisor():
             patch.object(SystemHelper, "_SystemHelper__supervisor_config") as supervisor_config, \
             patch.object(SystemHelper, "_SystemHelper__supervisorctl") as supervisorctl, \
             patch.object(SystemHelper, "_SystemHelper__supervisor_socket") as supervisor_socket, \
+            patch.object(SystemHelper, "_SystemHelper__prepared_update_manifest") as prepared_manifest, \
+            patch.object(SystemHelper, "_SystemHelper__one_shot_dev_update_flag_file") as dev_update_flag, \
             patch.object(SystemHelper, "_schedule_supervisor_restart") as restart_mock, \
+            patch.object(SystemHelper, "_schedule_supervisor_shutdown") as shutdown_mock, \
             patch("app.runtime.state.os.kill") as kill_mock:
         supervisor_config.exists.return_value = True
         supervisorctl.exists.return_value = True
         supervisor_socket.exists.return_value = True
+        prepared_manifest.is_file.return_value = False
+        dev_update_flag.is_file.return_value = False
         ret, msg = SystemHelper.restart()
 
     assert ret
     assert msg == ""
     restart_mock.assert_called_once_with()
+    shutdown_mock.assert_not_called()
     kill_mock.assert_not_called()
+
+
+def test_docker_update_restart_reenters_entrypoint_for_pending_install():
+    """待安装更新先启动 root worker 替换 Docker 程序目录。"""
+    with patch("app.runtime.state.is_docker", return_value=True), \
+            patch.object(SystemHelper, "_SystemHelper__supervisor_config") as supervisor_config, \
+            patch.object(SystemHelper, "_SystemHelper__supervisorctl") as supervisorctl, \
+            patch.object(SystemHelper, "_SystemHelper__supervisor_socket") as supervisor_socket, \
+            patch.object(SystemHelper, "_SystemHelper__prepared_update_manifest") as prepared_manifest, \
+            patch.object(SystemHelper, "_SystemHelper__one_shot_dev_update_flag_file") as dev_update_flag, \
+            patch.object(SystemHelper, "_schedule_supervisor_restart") as restart_mock, \
+            patch.object(SystemHelper, "_schedule_supervisor_shutdown") as shutdown_mock, \
+            patch.object(SystemHelper, "_schedule_supervisor_command") as command_mock:
+        supervisor_config.exists.return_value = True
+        supervisorctl.exists.return_value = True
+        supervisor_socket.exists.return_value = True
+        prepared_manifest.is_file.return_value = True
+        dev_update_flag.is_file.return_value = False
+        ret, msg = SystemHelper.restart()
+
+    assert ret
+    assert msg == ""
+    command_mock.assert_called_once_with("start", "moviepilot-update-worker")
+    restart_mock.assert_not_called()
+    shutdown_mock.assert_not_called()
 
 
 def test_supervisor_restart_command_restarts_frontend_and_backend(monkeypatch):
@@ -124,6 +155,40 @@ def test_supervisor_restart_command_restarts_frontend_and_backend(monkeypatch):
     SystemHelper._schedule_supervisor_restart()
 
     assert popen_mock.call_args.args[0][-2:] == ["restart", "all"]
+
+
+def test_supervisor_shutdown_command(monkeypatch):
+    """一次性 Dev 更新使用 supervisor shutdown，交回 root 入口执行更新流程。"""
+    callback = None
+
+    class ImmediateTimer:
+        def __init__(self, _delay, timer_callback):
+            nonlocal callback
+            callback = timer_callback
+            self.daemon = False
+
+        def start(self):
+            callback()
+
+    popen_mock = MagicMock()
+    monkeypatch.setattr("app.runtime.state.threading.Timer", ImmediateTimer)
+    monkeypatch.setattr("app.runtime.state.subprocess.Popen", popen_mock)
+
+    SystemHelper._schedule_supervisor_shutdown()
+
+    assert popen_mock.call_args.args[0][-1:] == ["shutdown"]
+
+
+def test_upgrade_dev_always_marks_bootstrap_update():
+    """Dev 更新即使已配置 dev 模式也要留下入口消费标记。"""
+    with patch.object(SystemHelper, "queue_one_shot_dev_update", return_value=(True, "")) as queue_mock, \
+            patch.object(SystemHelper, "restart", return_value=(True, "")) as restart_mock:
+        ret, msg = SystemHelper.upgrade_dev()
+
+    assert ret
+    assert msg == "已安排 Dev 更新并重启"
+    queue_mock.assert_called_once_with()
+    restart_mock.assert_called_once_with()
 
 
 def test_execute_with_subprocess_passes_env_to_subprocess():
@@ -473,8 +538,9 @@ def test_btrfs_fsid_dedup_setting_is_opt_in():
     assert ConfigModel(BTRFS_FSID_DEDUP="true").BTRFS_FSID_DEDUP is True
 
 
-def test_auto_update_mode_is_normalized(monkeypatch):
-    """自动更新仅保留 true、dev 和 false 三种运行模式。"""
+@pytest.mark.parametrize("mode", ["release", "dev", " DEV ", "RELEASE"])
+def test_auto_update_mode_is_normalized(monkeypatch, mode):
+    """旧模式规范化为布尔 true，已有的新 Dev 偏好不被覆盖。"""
     updates = []
     monkeypatch.setattr(
         Settings,
@@ -484,12 +550,49 @@ def test_auto_update_mode_is_normalized(monkeypatch):
         ),
     )
 
-    assert Settings(MOVIEPILOT_AUTO_UPDATE="release").MOVIEPILOT_AUTO_UPDATE == "false"
-    assert Settings(MOVIEPILOT_AUTO_UPDATE="true").MOVIEPILOT_AUTO_UPDATE == "true"
-    assert Settings(MOVIEPILOT_AUTO_UPDATE="dev").MOVIEPILOT_AUTO_UPDATE == "dev"
+    config = Settings(MOVIEPILOT_AUTO_UPDATE=mode, MOVIEPILOT_UPDATE_DEV=False)
+    assert config.MOVIEPILOT_AUTO_UPDATE is True
+    assert config.MOVIEPILOT_UPDATE_DEV is False
     assert updates == [
-        ("MOVIEPILOT_AUTO_UPDATE", "release", "false"),
+        ("MOVIEPILOT_AUTO_UPDATE", mode, True),
     ]
+
+
+def test_legacy_dev_tracking_is_migrated_once(monkeypatch, tmp_path):
+    """首次拆分配置时持久化两个开关，重读后继续保留 Dev 跟踪。"""
+    env_file = tmp_path / "app.env"
+    env_file.write_text("MOVIEPILOT_AUTO_UPDATE='dev'\n", encoding="utf-8")
+    monkeypatch.setattr("app.runtime.config.get_env_path", lambda: env_file)
+    config = Settings(_env_file=env_file)
+    assert config.MOVIEPILOT_AUTO_UPDATE is True
+    assert config.MOVIEPILOT_UPDATE_DEV is True
+    assert "MOVIEPILOT_AUTO_UPDATE='true'" in env_file.read_text(encoding="utf-8")
+    assert "MOVIEPILOT_UPDATE_DEV='true'" in env_file.read_text(encoding="utf-8")
+    reloaded = Settings(_env_file=env_file)
+    assert reloaded.MOVIEPILOT_AUTO_UPDATE is True
+    assert reloaded.MOVIEPILOT_UPDATE_DEV is True
+
+
+@pytest.mark.parametrize("enabled", [True, False, "true", "false"])
+def test_update_switches_remain_independent_booleans(enabled):
+    """部署设置与调度快照仅暴露布尔值，Dev 跟踪不影响自动检查。"""
+    from app.startup.composition.configuration import build_scheduler_runtime_config
+
+    expected = str(enabled).lower() == "true"
+    config = Settings(MOVIEPILOT_AUTO_UPDATE=enabled, MOVIEPILOT_UPDATE_DEV=not expected)
+    assert config.MOVIEPILOT_AUTO_UPDATE is expected
+    assert config.MOVIEPILOT_UPDATE_DEV is not expected
+    assert build_scheduler_runtime_config(config).auto_update is expected
+
+
+@pytest.mark.parametrize("value", ["dev", "release", True, False])
+def test_update_setting_normalizes_auto_update_on_save(monkeypatch, value):
+    """设置写入入口与启动读取入口使用同一套布尔转换规则。"""
+    config = Settings(MOVIEPILOT_AUTO_UPDATE=False, MOVIEPILOT_UPDATE_DEV=False)
+    monkeypatch.setattr(Settings, "update_env_config", lambda *_args: (True, ""))
+    config.update_setting("MOVIEPILOT_AUTO_UPDATE", value)
+    assert config.MOVIEPILOT_AUTO_UPDATE is (value is not False)
+    assert config.MOVIEPILOT_UPDATE_DEV is False
 
 
 def test_space_usage_default_path_does_not_read_fsid():

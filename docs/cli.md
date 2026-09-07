@@ -393,7 +393,7 @@ moviepilot version
 
 - `start` 会先启动后端，再启动前端
 - `start --safe` 会以安全模式启动后端，本次启动跳过插件、调度器、监控、命令和工作流等后台扩展能力，不修改用户配置
-- `MOVIEPILOT_AUTO_UPDATE` 默认关闭；设置为 `true` 时启用后台 Release 检查，设置为 `dev` 时保留启动前跟踪当前 v3 开发分支的行为，更新失败只告警，不阻断当前启动
+- `MOVIEPILOT_AUTO_UPDATE` 为布尔开关，默认 `false`；只有 `true` 启用后台 Release 检查和版本提醒，保存后定时服务热更新。`AUTO_UPDATE_RESOURCE` 独立控制站点资源检查和提醒；任一开关开启即启用检测服务，且只检查对应目标，两者均关闭才移除服务。`MOVIEPILOT_UPDATE_DEV` 为独立布尔开关，默认 `false`；设为 `true` 时在每次启动/重启前跟踪当前 v3 开发分支，更新失败只告警，不阻断当前启动。旧 `dev/release` 值统一转换为 `MOVIEPILOT_AUTO_UPDATE=true`；旧 `dev` 在未显式配置新开关时迁移为 `MOVIEPILOT_UPDATE_DEV=true`
 - Release 更新由后台每 6 小时检查 GitHub Release；管理员确认后先静默下载安装包并显示进度，下载完成后再次确认重启，启动阶段只安装已下载且通过 SHA-256 校验的包
 - 页面中的“稍后”会在当前浏览器暂停提醒 24 小时，“忽略此版本”只屏蔽当前版本；出现更高版本时会重新提示
 - 通过系统内置的重启入口触发重启时，本地 CLI 安装模式也会复用同一套前后端进程管理完成重启

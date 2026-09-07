@@ -6,6 +6,8 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
+
 from app.application.configuration import SchedulerRuntimeConfig
 from app.scheduler import catalog as scheduler_catalog
 from app.scheduler import maintenance as scheduler_maintenance
@@ -58,6 +60,7 @@ def _config(**changes) -> SchedulerRuntimeConfig:
         usage_statistic_share=False,
         site_link=None,
         auto_update=False,
+        auto_update_resource=False,
     )
     return replace(config, **changes)
 
@@ -74,8 +77,9 @@ def test_database_backup_schedule_only_watches_job_shape() -> None:
 
 
 def test_auto_update_setting_is_hot_reloadable() -> None:
-    """自动更新开关变更时应触发 Scheduler 重建。"""
+    """主程序或资源开关变更时均应触发 Scheduler 重建。"""
     assert "MOVIEPILOT_AUTO_UPDATE" in Scheduler.CONFIG_WATCH
+    assert "AUTO_UPDATE_RESOURCE" in Scheduler.CONFIG_WATCH
 
 
 def test_disabled_database_backup_does_not_register_job() -> None:
@@ -108,8 +112,12 @@ def test_enabled_database_backup_registers_single_replaceable_job(monkeypatch) -
     assert scheduler._scheduler.jobs["database_backup"]["replace_existing"] is True
 
 
-def test_auto_update_check_is_registered_only_when_enabled(monkeypatch) -> None:
-    """只有显式开启自动更新时才注册 Release 检查任务。"""
+@pytest.mark.parametrize("auto_update", [False, True])
+@pytest.mark.parametrize("auto_update_resource", [False, True])
+def test_auto_update_check_is_registered_only_when_enabled(
+    monkeypatch, auto_update, auto_update_resource
+) -> None:
+    """任一开关开启即注册检查任务，均关闭则不注册。"""
     scheduler = _scheduler()
     scheduler._services = Mock()
     background_scheduler = Mock()
@@ -120,20 +128,14 @@ def test_auto_update_check_is_registered_only_when_enabled(monkeypatch) -> None:
     monkeypatch.setattr(scheduler, "init_agent_task_jobs", lambda: None)
     monkeypatch.setattr(scheduler, "init_plugin_jobs", lambda: None)
 
-    scheduler_catalog.SchedulerCatalogOwner._initialize_catalog(scheduler, _config(auto_update=False))
-    assert not any(
-        call.kwargs.get("id") == "system_update_check"
-        for call in background_scheduler.add_job.call_args_list
+    scheduler_catalog.SchedulerCatalogOwner._initialize_catalog(
+        scheduler, _config(auto_update=auto_update, auto_update_resource=auto_update_resource)
     )
-    assert "system_update_check" not in scheduler._jobs
-
-    background_scheduler.add_job.reset_mock()
-    scheduler_catalog.SchedulerCatalogOwner._initialize_catalog(scheduler, _config(auto_update=True))
     assert any(
         call.kwargs.get("id") == "system_update_check"
         for call in background_scheduler.add_job.call_args_list
-    )
-    assert "system_update_check" in scheduler._jobs
+    ) is (auto_update or auto_update_resource)
+    assert ("system_update_check" in scheduler._jobs) is (auto_update or auto_update_resource)
 
 
 def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> None:

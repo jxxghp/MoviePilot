@@ -3,7 +3,6 @@ import subprocess
 import textwrap
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -588,7 +587,13 @@ def test_supervisor_manages_backend_and_nginx() -> None:
     assert "supervisord -n" in entrypoint
     assert "[program:moviepilot-nginx]" in supervisor
     assert "[program:moviepilot-backend]" in supervisor
+    assert "[program:moviepilot-update-worker]" in supervisor
+    assert "command=/bin/bash /usr/local/lib/moviepilot/control/update-worker.sh" in supervisor
+    assert "user=root" in supervisor
     assert "file=/run/moviepilot/supervisor.sock" in supervisor
     assert "chmod=0770" in supervisor
     assert "chown=root:moviepilot" in supervisor
+    assert "username=moviepilot" in supervisor
+    assert supervisor.count("password=%(ENV_MOVIEPILOT_SUPERVISOR_PASSWORD)s") == 2
+    assert "openssl rand -hex 32" in entrypoint
     assert supervisor.count("autorestart=true") == 2

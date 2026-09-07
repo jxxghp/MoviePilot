@@ -4,7 +4,7 @@
 `docker/` 下的控制脚本、更新事务、依赖自愈、浏览器和证书准备、Nginx、Python lifespan、
 异常保活与退出清理。
 
-本文基于 `v3` 分支 2026-09-02 的实现整理。实际行为以当前源码为准。
+本文基于 `v3` 分支 2026-09-07 的实现整理。实际行为以当前源码为准。
 
 ## 1. 文件职责
 
@@ -15,7 +15,8 @@
 | `docker/entrypoint.sh` | 真正的容器启动编排器；加载配置，驱动更新、权限、浏览器和证书准备，最后启动 supervisor。 |
 | `docker/backend.sh` | supervisor 托管的后端进程命令，负责工作目录、权限和 Python 进程。 |
 | `docker/supervisord.conf` | 容器内 supervisor 配置，同时托管 Nginx 和后端。 |
-| `docker/update.sh` | 被 `entrypoint.sh` source；处理未完成更新恢复、已准备 Release 安装、Dev 更新、依赖同步和载荷事务。 |
+| `docker/update.sh` | 被 `entrypoint.sh` source；处理未完成更新恢复、Dev 更新、依赖同步和载荷事务，不再安装 Release 程序包。 |
+| `docker/update-worker.sh` | 由 Supervisor 以 root 按需运行；将已确认的 Release/资源制品替换到 Docker 程序目录，然后请求入口重新加载新代码。 |
 | `docker/browser.sh` | 被 `entrypoint.sh` source；选择持久化 CloakBrowser 缓存、校正权限并按需安装浏览器内核。 |
 | `docker/cert.sh` | 被 `entrypoint.sh` source；校验证书、按需安装 acme.sh、签发证书并配置续期任务。 |
 | `docker/nginx.template.conf` | 由环境变量渲染为 `/etc/nginx/nginx.conf`，提供前端静态文件、API 和 SSE 反向代理。 |
@@ -33,7 +34,7 @@ Docker
         -> 渲染 Nginx 配置
         -> source update.sh
           -> 恢复未完成更新
-          -> 安装已准备的 Release/资源包，或执行 Dev 更新
+          -> 仅执行 Dev 更新
         -> 必要时用更新后的控制脚本重新 exec 一次
         -> source browser.sh
         -> 映射 PUID/PGID
@@ -45,6 +46,7 @@ Docker
         -> supervisord
           -> Nginx
           -> gosu moviepilot python3 app/main.py
+          -> 按需启动 root update-worker.sh 安装已确认 Release/资源制品
           -> Uvicorn/FastAPI lifespan
           -> 数据库迁移和全部生命周期组件
           -> /health/ready 返回 200
@@ -63,7 +65,7 @@ Docker
 
 ### 3.1 为什么不直接执行 `/app/docker/entrypoint.sh`
 
-Docker 的 Dev 更新可以在启动过程中整体替换 `/app`。如果当前 Shell 正在从 `/app/docker` 继续
+Docker 的 Dev 更新和 root 更新 worker 都可能整体替换 `/app`。如果当前 Shell 正在从 `/app/docker` 继续
 source 其他脚本，可能出现同一次启动混用新旧脚本的情况。因此 launcher 会先选择完整的一代控制脚本，
 再复制到只属于本轮启动的运行时快照目录。
 
@@ -157,7 +159,7 @@ source 其他脚本，可能出现同一次启动混用新旧脚本的情况。�
 /config/temp/moviepilot.pending_dev_update
 ```
 
-entrypoint 会删除该标记，并只在本次启动中把 `MOVIEPILOT_AUTO_UPDATE` 临时设为 `dev`。更新阶段结束后
+entrypoint 会删除该标记，并只在本次启动中把 `MOVIEPILOT_UPDATE_DEV` 临时设为 `true`。更新阶段结束后
 恢复原值，避免把一次性操作变成永久自动更新。
 
 ### 5.2 未完成更新恢复
@@ -184,8 +186,8 @@ Alembic migration。保留当前载荷并恢复其依赖，可以避免形成“
 
 ### 5.3 已准备的 Release/资源更新
 
-稳定版更新不在容器启动时联网检查 GitHub Release，也不在 Shell 中比较版本号。后台更新服务会提前
-下载并校验制品，用户确认重启后生成：
+稳定版更新不在容器启动时联网检查 GitHub Release，也不在 `update.sh` 中比较版本号或替换程序。
+后台更新服务负责下载和校验制品；用户确认安装后生成：
 
 ```text
 /config/temp/moviepilot-update/prepared.json
@@ -193,18 +195,25 @@ Alembic migration。保留当前载荷并恢复其依赖，可以避免形成“
 /config/temp/moviepilot-update/state.json
 ```
 
-启动时 `install.json` 优先于 `MOVIEPILOT_AUTO_UPDATE`。处理顺序：
+随后 `SystemHelper` 请求 Supervisor 启动 root 更新 worker，处理顺序：
 
-1. 识别 `application`、`resources` 目标。
+1. root worker 识别 `application`、`resources` 目标。
 2. 校验后端、前端和资源文件存在且 SHA-256 一致。
 3. 应用更新时解压后端和前端到临时目录，保留当前插件运行目录和 V3 站点资源。
 4. 同时包含资源目标时，把已准备资源写入新后端的 `app/application/site/`。
-5. 只有资源目标时，使用临时目录和备份目录原子替换当前资源文件。
-6. 安装成功后逐项消费 `prepared.json`，删除 `install.json`；失败时写入 `state.json` 并保留可重试状态。
+5. 只有资源目标时，使用临时目录和备份目录原子替换当前源码携带的资源文件。
+6. 后端依赖清单变化时，由 root worker 使用共享虚拟环境同步锁定依赖。
+7. 源码和资源替换完成后消费下载清单，写入重启标记并关闭 Supervisor；外层入口重新执行 launcher，加载新代码。
+8. 校验、依赖或替换失败时不关闭当前服务，写入 `state.json` 的可重试失败状态。
+
+如果 worker 尚未启动就发生外部容器重启，入口会在启动 Supervisor 前调用同一个 root 安装器兜底消费
+`install.json`，成功后重新执行 launcher；这条恢复路径也不经过 `update.sh`。
+
+因此，制品下载完成后仍保留用户确认安装这一安全边界；确认后先替换 Docker 中的程序目录，重启只负责加载已经落盘的新代码。
 
 ### 5.4 Dev 自动更新
 
-仅当 `MOVIEPILOT_AUTO_UPDATE=dev` 时，启动脚本会联网获取 `v3` 分支源码和最新 V3 前端 Release。
+仅当 `MOVIEPILOT_UPDATE_DEV=true` 时（首次升级兼容尚未迁移且未配置新开关的旧 `MOVIEPILOT_AUTO_UPDATE=dev`），启动脚本会联网获取 `v3` 分支源码和最新 V3 前端 Release。
 GitHub 访问按 `GITHUB_PROXY`、`PROXY_HOST`、直连顺序选择；包索引按 `PIP_PROXY`、`PROXY_HOST`、
 直连顺序选择。
 
@@ -212,9 +221,9 @@ GitHub 访问按 `GITHUB_PROXY`、`PROXY_HOST`、直连顺序选择；包索引�
 
 ### 5.5 载荷切换事务
 
-应用更新的提交顺序为：
+Release root worker 的应用更新提交顺序为：
 
-1. 下载、解压并验证后端和前端。
+1. 后台下载后，在 worker 中解压并验证后端和前端。
 2. 暂存插件和站点资源。
 3. 写入 `prepared`。
 4. 依赖清单变化时写入 `dependencies`，再同步临时后端声明的依赖。
@@ -222,6 +231,9 @@ GitHub 访问按 `GITHUB_PROXY`、`PROXY_HOST`、直连顺序选择；包索引�
 6. 把临时 `App`、`dist` 移到 `/app`、`/public`。
 7. 写入 `committed`。
 8. 删除旧代备份和事务标记。
+
+Dev 更新仍由 `update.sh` 使用同一组事务标记处理；非 Dev 的制品替换只在
+`app.adapters.system.update.SystemUpdateManager` 和 `docker/update-worker.sh` 中执行。
 
 依赖同步固定使用当前虚拟环境解释器，并执行等价于：
 
@@ -235,7 +247,7 @@ uv sync --project <project> --locked --inexact --no-dev --no-install-project \
 
 ### 5.6 控制脚本更新后重入
 
-应用更新成功后，entrypoint 通过根目录 launcher 的 `--source-generation` 重新计算 `/app/docker` 代际。
+Release 或 Dev 应用更新成功后，entrypoint 通过根目录 launcher 的 `--source-generation` 重新计算 `/app/docker` 代际。
 如果新代际与当前 `MP_CONTROL_GENERATION` 不同，会：
 
 ```text
@@ -250,7 +262,10 @@ launcher 设置“更新已完成”和“已经重入”标志，新 entrypoint
 ### 6.1 运行用户映射
 
 entrypoint 使用 `PUID`、`PGID` 修改镜像内 `moviepilot` 用户和组。后端、浏览器安装及 doctor 默认通过
-`gosu moviepilot:moviepilot` 执行；`START_NOGOSU=true` 仅用于不降权的特殊运行场景。
+`gosu moviepilot:moviepilot` 执行；Release 更新 worker 明确以 root 运行来替换 root 所有的 `/app` 和
+`/public`，不会把运行权限提升给后端；`START_NOGOSU=true` 仅用于不降权的特殊运行场景。即使 `PUID/PGID`
+设置为非 0，内置重启仍然可用，因为 Supervisor socket 会使用映射后的 `moviepilot` 组权限；但容器入口
+本身必须以 root 启动，不能额外使用 Docker 的 `--user` 覆盖入口用户。
 
 ### 6.2 后端依赖自愈
 
@@ -310,8 +325,10 @@ entrypoint 使用 `PUID`、`PGID` 修改镜像内 `moviepilot` 用户和组。�
 ### 7.2 Nginx 和 supervisor
 
 证书检查完成后，entrypoint 以前台模式启动 supervisor。supervisor 同时托管 `moviepilot-nginx` 与
-`moviepilot-backend`，两者异常退出时自动拉起。控制 socket 位于 `/run/moviepilot/supervisor.sock`，权限为
-`root:moviepilot`、`0770`，后端运行用户可访问；镜像不再挂载或代理 Docker Socket。
+`moviepilot-backend`，两者异常退出时自动拉起；显式安装更新时还会按需启动 root worker。控制 socket 位于 `/run/moviepilot/supervisor.sock`，权限为
+`root:moviepilot`、`0770`，后端运行用户可访问；控制面同时启用认证，密码默认在每次容器启动时随机生成，
+不写入配置卷。supervisor 本身显式以 root 运行以管理 Nginx，后端仍由 `backend.sh` 降权为
+`moviepilot`；镜像不再挂载或代理 Docker Socket。
 
 ## 8. Python 后端启动
 
@@ -400,8 +417,12 @@ Python lifespan 会先撤销 readiness，再按组件声明的 `stop_order` 停�
 
 ### 9.2 应用内重启
 
-应用请求重启时，通过本地 `supervisorctl restart all` 同时重启 Nginx 和后端。supervisor 先向旧进程组发送
-SIGTERM，等待后端完成 lifespan 关停，再拉起新进程。该过程不访问 Docker API，也不依赖 Docker restart policy。
+普通应用重启通过本地 `supervisorctl restart all` 同时重启 Nginx 和后端。确认安装 Release 时，
+`SystemHelper` 只启动 root `moviepilot-update-worker`；worker 先替换 `/app`、`/public` 或站点资源，
+再写入 `moviepilot.pending_supervisor_restart` 并执行 `supervisorctl shutdown`。外层 entrypoint 看到标记后
+重新执行 launcher，加载新代码。Dev 更新仍通过一次性 Dev 标记关闭 Supervisor，再由 entrypoint 调用
+`update.sh`。这样更新包不会因只重启受管进程而停留在暂存目录；整个过程不访问 Docker API，也不依赖
+Docker restart policy。
 
 ### 9.3 异常诊断
 
@@ -423,8 +444,9 @@ SIGTERM，等待后端完成 lifespan 关停，再拉起新进程。该过程不
 | `/app.__update_previous__` | 更新前后端备份。 |
 | `/public.__update_previous__` | 更新前前端备份。 |
 | `/config/temp/moviepilot-update/` | 后台下载的 Release/资源包及安装状态。 |
+| `/config/temp/moviepilot.pending_supervisor_restart` | Release worker 已替换程序、等待入口重新加载的标记。 |
 | `/config/temp/moviepilot.pending_dev_update` | 单次 Dev 更新请求。 |
-| `/run/moviepilot/supervisor.sock` | 容器内 supervisor 控制 socket，权限为 `root:moviepilot`、`0770`。 |
+| `/run/moviepilot/supervisor.sock` | 容器内 supervisor 控制 socket，权限为 `root:moviepilot`、`0770`，并启用本次容器启动的认证凭据。 |
 | `/config/certs/latest/` | Nginx 使用的稳定证书路径。 |
 
 ## 11. 关键环境变量
@@ -436,7 +458,8 @@ SIGTERM，等待后端完成 lifespan 关停，再拉起新进程。该过程不
 | `UMASK` | `000` | 后端进程文件权限掩码。 |
 | `PORT` | `3001` | 后端监听和 readiness 端口。 |
 | `NGINX_PORT` | `3000` | HTTP 前端入口。 |
-| `MOVIEPILOT_AUTO_UPDATE` | `false` | 只有 `dev` 会触发启动时分支更新；稳定版使用准备清单。 |
+| `MOVIEPILOT_AUTO_UPDATE` | `false` | 布尔开关，仅 `true` 开启后台版本检查和升级提醒；关闭后不检查主程序；`AUTO_UPDATE_RESOURCE=true` 时仍启用服务且只检查站点资源。稳定版下载及安装需手动确认。旧 `dev/release` 统一迁移为 `true`。 |
+| `MOVIEPILOT_UPDATE_DEV` | `false` | 独立布尔开关，`true` 触发 `update.sh` 的启动时 Dev 分支更新；旧 `dev` 在未显式配置此开关时保留跟踪偏好。 |
 | `MOVIEPILOT_SAFE_MODE` | `false` | 跳过普通模式专属的插件及后台控制面。 |
 | `MOVIEPILOT_FORCE_CHOWN` | `false` | 是否执行大范围递归权限修复。 |
 | `PACKAGE_CACHE_ROOT` | `/config/.cache` | 包管理缓存根目录。 |
@@ -455,7 +478,7 @@ SIGTERM，等待后端完成 lifespan 关停，再拉起新进程。该过程不
 后续修改 Docker 启动流程时应保持以下边界：
 
 1. 控制脚本必须按完整代际执行，不能在同一次启动中直接混用更新前后的 `/app/docker/*.sh`。
-2. Release 更新由后台下载和用户确认驱动；启动脚本只消费已校验清单，不恢复启动时 GitHub Release 查询和 Shell 版本比较。
+2. Release 更新由后台下载、用户确认和 root worker 驱动；`update.sh` 不得恢复 Release 程序/资源替换、启动时 GitHub Release 查询或 Shell 版本比较。
 3. 更新载荷与共享虚拟环境必须作为一个可恢复事务处理，不能留下新源码配旧依赖或旧源码配新数据库的混合状态。
 4. 标准 V3 与 V3t 依赖恢复必须复用 `app.runtime.dependencies.profile`，不能使用默认组覆盖当前 ABI profile。
 5. 站点资源只安装到 `app/application/site/`；历史目录仅用于更新旧载荷时读取兼容资源。
