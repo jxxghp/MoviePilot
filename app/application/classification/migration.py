@@ -8,6 +8,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final, Literal, Optional, TypeAlias, Union, cast
 
+from app.domain.classification.vocabulary import (
+    TMDB_GENRE_KEYS as _TMDB_GENRE_KEYS,
+)
+from app.domain.classification.vocabulary import (
+    classification_field_options,
+)
 from app.schemas.category import (
     CategoryConfig,
     CategoryRule,
@@ -49,30 +55,6 @@ _COMMON_FALLBACKS: Final[dict[ClassificationMediaType, str]] = {
     "电影": "movie.uncategorized",
     "电视剧": "tv.uncategorized",
     "音乐": "music.uncategorized",
-}
-_TMDB_GENRE_KEYS: Final[dict[str, str]] = {
-    "12": "adventure",
-    "14": "fantasy",
-    "16": "animation",
-    "18": "drama",
-    "27": "horror",
-    "28": "action",
-    "35": "comedy",
-    "36": "history",
-    "37": "western",
-    "53": "thriller",
-    "80": "crime",
-    "99": "documentary",
-    "878": "science_fiction",
-    "9648": "mystery",
-    "10402": "music",
-    "10749": "romance",
-    "10751": "family",
-    "10752": "war",
-    "10762": "kids",
-    "10764": "reality",
-    "10767": "talk",
-    "10770": "tv_movie",
 }
 _LEGACY_FIELD_PRESENTATION: Final[dict[str, tuple[str, str]]] = {
     "genre_ids": ("风格（旧规则）", "media.genre_keys"),
@@ -206,7 +188,7 @@ def migrate_legacy_category_config(
             context=context,
         )
 
-    categories.extend(_common_fallback_categories(categories))
+    categories.extend(_common_fallback_categories(categories, fallbacks))
     policy_payload: dict[str, object] = {
         "schema_version": 2,
         "revision": 1,
@@ -514,16 +496,17 @@ def _legacy_field_definition(
     presentation = _LEGACY_FIELD_PRESENTATION.get(field_name)
     label = presentation[0] if presentation else f"TMDB {field_name}"
     replacement_field = presentation[1] if presentation else None
-    replacement_hint = f"；新规则请使用 {replacement_field}" if replacement_field else ""
+    replacement_hint = f"；新增条件请使用{presentation[0].replace('（旧规则）', '')}" if presentation else ""
     return ClassificationFieldDefinition(
         id=field_id,
         label=label,
         group="旧规则",
-        description=(f"仅用于保持已迁移 category.yaml 的原始比较语义{replacement_hint}"),
+        description=(f"从旧分类配置迁移，保留原有匹配方式{replacement_hint}"),
         value_type="string_list",
         operators=["contains_any", "contains_none", "exists", "not_exists"],
         media_types=media_types,
         source_support={_TMDB_SOURCE: "extension"},
+        options=classification_field_options("media.countries") if field_name == "origin_country" else [],
         selectable=False,
         replacement_field=replacement_field,
     )
@@ -779,11 +762,14 @@ def _stable_category_id(media_key: LegacyMediaKey, name: str) -> str:
 
 def _common_fallback_categories(
     legacy_categories: Sequence[ClassificationCategory],
+    fallbacks: Mapping[ClassificationMediaType, str],
 ) -> list[ClassificationCategory]:
     """构造不受来源限制且不与同类型旧目录冲突的稳定未分类目录。"""
     occupied = {(category.media_type, tuple(category.path)) for category in legacy_categories}
     categories: list[ClassificationCategory] = []
     for media_type, category_id in _COMMON_FALLBACKS.items():
+        if fallbacks.get(media_type) != category_id:
+            continue
         path = ["未分类"]
         if (media_type, tuple(path)) in occupied:
             path.append("通用")

@@ -11,12 +11,12 @@ from app.application.classification.migration import (
     _EXTENSION_PREFIX,
     _MEDIA_KEYS,
     _SAFE_FIELD_SEGMENT,
-    _TMDB_GENRE_KEYS,
     _TMDB_SOURCE,
     LegacyClassificationDiagnostic,
     LegacyDiagnosticPathPart,
     LegacyMediaKey,
 )
+from app.domain.classification.vocabulary import TMDB_GENRE_KEYS
 from app.schemas.category import (
     CategoryConfig,
     CategoryRule,
@@ -29,7 +29,7 @@ from app.schemas.category import (
     ClassificationRule,
 )
 
-_TMDB_GENRE_IDS: Final[dict[str, str]] = {value: key for key, value in _TMDB_GENRE_KEYS.items()}
+_TMDB_GENRE_IDS: Final[dict[str, str]] = {value: key for key, value in TMDB_GENRE_KEYS.items()}
 
 LegacyPolicyOrFields: TypeAlias = ClassificationPolicy | Iterable[ClassificationFieldDefinition]
 """受控 TMDB 扩展事实可以从策略或字段声明中发现。"""

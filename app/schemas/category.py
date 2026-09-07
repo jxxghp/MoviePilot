@@ -422,6 +422,10 @@ class ClassificationFieldDefinition(_ClassificationModel):
     operators: list[ClassificationOperator] = Field(default_factory=list, description="字段允许的操作符")
     media_types: list[ClassificationMediaType] = Field(default_factory=list, description="字段适用的媒体类型")
     options: list[ClassificationFieldOption] = Field(default_factory=list, description="字段可选值目录")
+    source_options: dict[str, list[ClassificationFieldOption]] = Field(
+        default_factory=dict,
+        description="按数据源区分的开放候选值；与通用选项合并展示",
+    )
     allow_custom_values: bool = Field(
         default=True,
         description="前端是否允许输入选项目录之外的值",

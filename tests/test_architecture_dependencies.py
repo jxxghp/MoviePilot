@@ -397,6 +397,7 @@ def test_domain_classification_is_a_pure_direct_import_package() -> None:
         "fields.py",
         "sources.py",
         "validation.py",
+        "vocabulary.py",
     }
 
     init_path = package / "__init__.py"
