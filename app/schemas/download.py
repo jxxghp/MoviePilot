@@ -1,8 +1,10 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator as _model_validator
+from pydantic import BaseModel, Field
+from pydantic import model_validator as _model_validator
 
-from app.schemas.types import MediaSource as _MediaSource, MusicTargetEntityType as _MusicTargetEntityType
+from app.schemas.types import MediaSource as _MediaSource
+from app.schemas.types import MusicTargetEntityType as _MusicTargetEntityType
 
 
 class DownloadTask(BaseModel):
@@ -78,7 +80,7 @@ class DownloadTaskUpdateData(BaseModel):  # type: ignore[misc]
     results: list[DownloadTaskMutationResult] = Field(default_factory=list, description="各修改动作结果")
 
 
-class DownloadSourceClassificationRequest(BaseModel):
+class DownloadSourceClassificationRequest(BaseModel):  # type: ignore[misc]
     """已有任务的识别、归类与种子根目录重命名请求。"""
 
     downloader: Optional[str] = None
@@ -97,8 +99,8 @@ class DownloadSourceClassificationRequest(BaseModel):
     expected_content_path: Optional[str] = None
     expected_root_name: Optional[str] = None
 
-    @_model_validator(mode="after")
-    def validate_mode_and_identity(self):
+    @_model_validator(mode="after")  # type: ignore[misc]
+    def validate_mode_and_identity(self) -> "DownloadSourceClassificationRequest":
         """手动模式必须给出目录，ID 不能脱离其所属数据源。"""
         if self.mode == "manual" and not str(self.target_path or "").strip():
             raise ValueError("手动指定目录模式必须填写目标路径")
@@ -107,7 +109,7 @@ class DownloadSourceClassificationRequest(BaseModel):
         return self
 
 
-class DownloadSourceClassificationData(BaseModel):
+class DownloadSourceClassificationData(BaseModel):  # type: ignore[misc]
     """识别与资源目录变更计划，包含可审计的执行结果。"""
 
     hash: str

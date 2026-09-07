@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, cast
 
 from app.application.classification.reference import (
     apply_persisted_classification_snapshot,
@@ -40,8 +40,13 @@ def _history_media(history: DownloadHistorySnapshot) -> MediaInfo | MusicInfo:
     if media_type == MediaType.MUSIC:
         note = history.note
         music_note = note.get("music") if isinstance(note, dict) else None
-        media_payload = music_note.get("media") if isinstance(music_note, dict) else None
-        if isinstance(media_payload, dict) and music_note.get("version") == 1:
+        if isinstance(music_note, dict):
+            media_payload = music_note.get("media")
+            music_version = music_note.get("version")
+        else:
+            media_payload = None
+            music_version = None
+        if isinstance(media_payload, dict) and music_version == 1:
             media: MediaInfo | MusicInfo = MusicInfo.from_dict(media_payload)
         else:
             try:
@@ -57,12 +62,13 @@ def _history_media(history: DownloadHistorySnapshot) -> MediaInfo | MusicInfo:
             )
     else:
         media = MediaInfo(
-            media_source=history.media_source,
-            media_id=history.media_id,
             type=media_type,
-            title=history.title,
-            year=history.year,
+            title=history.title or "",
+            year=history.year or "",
         )
+        if history.media_source and history.media_id:
+            media.media_source = history.media_source
+            media.media_id = history.media_id
 
     snapshot = persisted_classification_snapshot(
         category_id=history.media_category_id,
@@ -71,7 +77,10 @@ def _history_media(history: DownloadHistorySnapshot) -> MediaInfo | MusicInfo:
         policy_revision=history.classification_policy_revision,
         source=history.classification_source,
     )
-    return apply_persisted_classification_snapshot(media, snapshot) or media
+    return cast(
+        MediaInfo | MusicInfo,
+        apply_persisted_classification_snapshot(media, snapshot) or media,
+    )
 
 
 def resolve_download_source_classification(
@@ -93,13 +102,16 @@ def resolve_download_source_classification(
         )
         if manual_path not in helper.classification_category_paths(media.type):
             raise ValueError("手动指定的媒体分类不存在、已停用或与媒体类型不匹配")
-        media = apply_persisted_classification_snapshot(
-            media,
-            persisted_classification_snapshot(
-                category_path=manual_path,
-                source="manual",
-            ),
-        ) or media
+        media = cast(
+            MediaInfo | MusicInfo,
+            apply_persisted_classification_snapshot(
+                media,
+                persisted_classification_snapshot(
+                    category_path=manual_path,
+                    source="manual",
+                ),
+            ) or media,
+        )
     directory = helper.get_download_dir_by_task_path(media, current_save_path)
     if not directory or not directory.download_path:
         raise ValueError("当前保存目录不在已配置的资源目录中")

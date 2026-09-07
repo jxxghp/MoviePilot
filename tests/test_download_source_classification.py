@@ -5,18 +5,18 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import app.application.download.classification as classification_module
 import app.api.endpoints.download as download_endpoint
+import app.application.download.classification as classification_module
+from app.application.directory import DirectoryHelper
 from app.application.download.classification import (
     DownloadSourceClassificationPlan,
     DownloadSourceClassificationService,
     resolve_download_source_classification,
 )
-from app.application.directory import DirectoryHelper
 from app.application.history import DownloadHistorySnapshot
 from app.domain.context import MusicInfo
-from app.schemas.system import TransferDirectoryConf
 from app.schemas.download import DownloadSourceClassificationRequest
+from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import DownloaderTorrent
 from app.schemas.types import MediaType
 
@@ -226,7 +226,8 @@ async def test_classify_source_endpoint_preserves_preview_mode(monkeypatch):
         download_history_repository=SimpleNamespace(get_by_hash=MagicMock()),
         update_torrent=MagicMock(),
     )
-    plan = MagicMock(
+    media_chain = object()
+    organize = MagicMock(
         return_value={
             "hash": HASH,
             "downloader": "qb-main",
@@ -237,25 +238,21 @@ async def test_classify_source_endpoint_preserves_preview_mode(monkeypatch):
             "executed": False,
         }
     )
-    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: chain)
-    monkeypatch.setattr(
-        download_endpoint,
-        "DownloadSourceClassificationService",
-        lambda **_kwargs: SimpleNamespace(plan=plan),
+    payload = DownloadSourceClassificationRequest(
+        downloader="qb-main",
+        execute=False,
     )
+    monkeypatch.setattr(download_endpoint, "DownloadChain", lambda: chain)
+    monkeypatch.setattr(download_endpoint, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(download_endpoint, "organize_existing_source", organize)
 
     response = await download_endpoint.classify_source(
         HASH,
-        DownloadSourceClassificationRequest(downloader="qb-main", execute=False),
+        payload,
         SimpleNamespace(),
     )
 
     assert response.success is True
     assert response.data["target_save_path"] == "/downloads/Album"
     assert response.data["executed"] is False
-    plan.assert_called_once_with(
-        hash_value=HASH,
-        downloader="qb-main",
-        execute=False,
-        media_category=None,
-    )
+    organize.assert_called_once_with(HASH, payload, chain, media_chain)

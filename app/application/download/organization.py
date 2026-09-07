@@ -108,7 +108,13 @@ def _download_root(current: PurePosixPath, media_type: str, category: str) -> tu
             continue
         if directory.media_category and directory.media_category != category:
             continue
-        candidates.append((int(current.is_relative_to(root)), -directory.priority, len(root.parts), directory, root))
+        candidates.append((
+            int(current.is_relative_to(root)),
+            -int(directory.priority or 0),
+            len(root.parts),
+            directory,
+            root,
+        ))
     if not candidates:
         raise ValueError("没有找到匹配识别结果的本地资源目录")
     _, _, _, directory, root = max(candidates, key=lambda item: item[:3])
@@ -261,6 +267,8 @@ def organize_existing_source(hash_value: str, request: Any, chain: Any, media_ch
     if request.mode == "manual":
         target = _manual_target(str(request.target_path))
     else:
+        if category is None:
+            raise ValueError("识别结果缺少可用的媒体类别")
         _, target = _download_root(current, media_type, category)
         target = PurePosixPath(validate_download_save_path(target.as_posix()))
 
@@ -294,6 +302,8 @@ def organize_existing_source(hash_value: str, request: Any, chain: Any, media_ch
         if not expected:
             raise ValueError("任务路径或识别计划已变化，请重新预览后确认")
         if rename_required:
+            if current_root_name is None or proposed_root_name is None:
+                raise ValueError("根目录重命名计划不完整，请重新预览")
             renamed = _rename_qb_root(
                 chain,
                 downloader,
@@ -312,6 +322,8 @@ def organize_existing_source(hash_value: str, request: Any, chain: Any, media_ch
             relocated = bool(result.get("save_path"))
             if not relocated:
                 if renamed:
+                    if current_root_name is None or proposed_root_name is None:
+                        raise ValueError("根目录重命名计划不完整，无法自动回滚")
                     rolled_back = _rename_qb_root(
                         chain,
                         downloader,

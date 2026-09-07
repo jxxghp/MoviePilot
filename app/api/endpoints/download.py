@@ -4,7 +4,7 @@ import anyio
 from fastapi import Body, Depends
 
 from app.adapters.web.security.access import verify_token
-from app.api.dependencies.auth import get_current_active_user, get_current_active_manage_user
+from app.api.dependencies.auth import get_current_active_manage_user, get_current_active_user
 from app.api.dependencies.site import get_site_sync_query_service
 from app.api.principal import ApiPrincipal
 from app.api.response import (
@@ -401,7 +401,7 @@ async def update_task(
     )
 
 
-@router.post(
+@router.post(  # type: ignore[misc]
     "/{hashString}/classify-source",
     summary="识别并归类已有下载任务",
     response_model=_SchemaResponse[_SchemaDownloadSourceClassificationData],

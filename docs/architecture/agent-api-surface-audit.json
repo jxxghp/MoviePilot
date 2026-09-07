@@ -734,7 +734,7 @@
       "owner": "downloader-operation",
       "path": "/api/v1/download/{hashString}/classify-source",
       "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
-      "summary": "按媒体类别重新定位资源目录",
+      "summary": "识别并归类已有下载任务",
       "tags": [
         "download"
       ]

@@ -91,7 +91,7 @@
 | `POST` | `/api/v1/download/subtitle` | download | `provider-skill` | downloader-operation | 下载字幕 |
 | `DELETE` | `/api/v1/download/{hashString}` | download | `provider-skill` | downloader-operation | 删除下载任务 |
 | `PATCH` | `/api/v1/download/{hashString}` | download | `provider-skill` | downloader-operation | 高级更新下载任务 |
-| `POST` | `/api/v1/download/{hashString}/classify-source` | download | `provider-skill` | downloader-operation | 按媒体类别重新定位资源目录 |
+| `POST` | `/api/v1/download/{hashString}/classify-source` | download | `provider-skill` | downloader-operation | 识别并归类已有下载任务 |
 | `DELETE` | `/api/v1/history/download` | history | `gateway` | download.history.delete | 删除下载历史记录 |
 | `GET` | `/api/v1/history/download` | history | `gateway` | download.history.list | 查询下载历史记录 |
 | `DELETE` | `/api/v1/history/transfer` | history | `gateway` | transfer.history.delete | 删除整理记录 |
