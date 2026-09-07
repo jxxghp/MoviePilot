@@ -111,7 +111,7 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
         "note", "state", "last_update", "username", "current_priority", "episode_priority", "date",
         "current_audio_format", "current_bitrate", "current_bit_depth", "current_sample_rate",
         "classification_rule_id", "classification_policy_revision", "classification_source",
-        "execution_status",
+        "execution_status", "last_search",
     })
 
     id: Optional[int] = None
@@ -121,6 +121,10 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
     year: Optional[str] = None
     # 订阅类型 电影/电视剧
     type: Optional[str] = None
+    # 定时搜索间隔（小时）；空值跟随系统设置
+    search_interval: Optional[int] = Field(default=None, ge=1, le=8760)
+    # 最近一次主动搜索开始时间，仅供读取
+    last_search: Optional[str] = None
     # 搜索关键字
     keyword: Optional[str] = None
     media_source: Optional[MediaSource] = None
@@ -262,7 +266,7 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
             data = dict(data)
             for key, value in list(data.items()):
                 if isinstance(value, str) and value == "":
-                    if key in {"media_source", "media_id"} or key in cls.CLEARABLE_FILTER_FIELDS:
+                    if key in {"media_source", "media_id", "search_interval"} or key in cls.CLEARABLE_FILTER_FIELDS:
                         data[key] = None
                     else:
                         data.pop(key)

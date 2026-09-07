@@ -103,6 +103,7 @@
     }
   },
   "messages": {
+    "暂无到期订阅，无需搜索": "No subscriptions are due for search",
     "调用工具失败": "Tool call failed",
     "无效的媒体来源": "Invalid media source",
     "该媒体来源不支持此音乐接口": "This media source is not supported by this music endpoint",

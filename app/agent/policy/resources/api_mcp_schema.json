@@ -2862,6 +2862,18 @@
           "description": "Number of episodes still missing from the subscription.",
           "title": "Lack Episode"
         },
+        "last_search": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Read-only UTC timestamp of the most recent subscription search attempt.",
+          "title": "Last Search"
+        },
         "last_update": {
           "anyOf": [
             {
@@ -3056,6 +3068,20 @@
           "default": 0,
           "description": "Use IMDb identity during subscription search when set to 1.",
           "title": "Search Imdbid"
+        },
+        "search_interval": {
+          "anyOf": [
+            {
+              "maximum": 8760.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Scheduled search interval in whole hours (1-8760); null uses the system interval.",
+          "title": "Search Interval"
         },
         "season": {
           "anyOf": [

@@ -36,11 +36,14 @@ class _MediaServerSchedule(TypedDict):
     interval: int
 
 
-def _subscription_search_job_specs(services: SchedulerServices) -> tuple[JobSpec, ...]:
+def _subscription_search_job_specs(
+    services: SchedulerServices, search_interval: int = 24,
+) -> tuple[JobSpec, ...]:
     """构造订阅搜索、新增搜索与持久队列恢复任务目录。"""
     return (
         JobSpec(
-            "subscribe_search", "订阅搜索补全", services.search_subscribe, "subscription", kwargs={"state": "R"}
+            "subscribe_search", "订阅搜索补全", services.search_subscribe, "subscription",
+            kwargs={"state": "R", "scheduled_interval": search_interval}
         ),
         JobSpec(
             "new_subscribe_search",
@@ -168,7 +171,7 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
                 JobSpec("cookiecloud", "同步CookieCloud站点", services.sync_cookies, "site"),
                 JobSpec("mediaserver_sync", "同步媒体服务器", services.sync_mediaserver, "mediaserver"),
                 JobSpec("subscribe_tmdb", "订阅元数据更新", services.check_subscribe, "subscription"),
-                *_subscription_search_job_specs(services),
+                *_subscription_search_job_specs(services, config.subscribe_search_interval),
                 JobSpec("subscribe_refresh", "订阅刷新", services.refresh_subscribe, "subscription"),
                 JobSpec("subscribe_follow", "关注的订阅分享", services.follow_subscribe, "subscription"),
                 JobSpec(
@@ -298,14 +301,14 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             kwargs={"job_id": "subscribe_tmdb"},
         )
 
-        # 订阅状态每隔24小时搜索一次
+        # 每五分钟检查逐条订阅到期时间；实际搜索仍受系统或独立周期约束。
         if config.subscribe_search:
             self._scheduler.add_job(
                 self.start,
                 "interval",
                 id="subscribe_search",
                 name="订阅搜索补全",
-                hours=config.subscribe_search_interval,
+                minutes=5,
                 kwargs={"job_id": "subscribe_search"},
             )
 

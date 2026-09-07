@@ -22,6 +22,8 @@ class Subscribe(Base):
     year: Mapped[Optional[str]] = mapped_column(String)
     # 类型
     type: Mapped[Optional[str]] = mapped_column(String)
+    # 自定义定时搜索间隔（小时）；空值跟随系统
+    search_interval: Mapped[Optional[int]] = mapped_column(Integer)
     # 搜索关键字
     keyword: Mapped[Optional[str]] = mapped_column(String)
     media_source: Mapped[Optional[str]] = mapped_column(String, index=True)
@@ -72,6 +74,8 @@ class Subscribe(Base):
     note: Mapped[Optional[Any]] = mapped_column(JSON)
     # 状态：N-新建 R-订阅中 P-待定 S-暂停
     state: Mapped[str] = mapped_column(String, nullable=False, index=True, default="N")
+    # 最近一次主动搜索开始时间，使用带时区的 UTC 时间
+    last_search: Mapped[Optional[str]] = mapped_column(String)
     # 最后更新时间
     last_update: Mapped[Optional[str]] = mapped_column(String)
     # 创建时间
