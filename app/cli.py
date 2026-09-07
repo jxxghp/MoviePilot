@@ -1213,7 +1213,7 @@ def restart(start_timeout: int, stop_timeout: int, force: bool) -> None:
     click.echo(f"Frontend URL: {_frontend_base_url(frontend_result['runtime'])}")
 
 
-@cli.command("apply-prepared-update", hidden=True, context_settings=CONTEXT_SETTINGS)
+@cli.command("apply-prepared-update", hidden=True, context_settings=CONTEXT_SETTINGS)  # type: ignore[misc]
 def apply_prepared_update() -> None:
     """由 Docker root 更新 worker 应用已确认的下载制品。"""
     from app.adapters.system.update import system_update_manager
