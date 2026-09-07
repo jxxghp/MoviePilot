@@ -594,6 +594,8 @@ class MediaServerType(Enum):
     Ugreen = "Ugreen"
     # Navidrome 音乐服务器
     Navidrome = "Navidrome"
+    # MediaVault 自建媒体库
+    MediaVault = "MediaVault"
 
 
 # 识别器类型

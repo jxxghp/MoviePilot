@@ -413,7 +413,7 @@ class MediaServerOperationTool(_ServiceOperationTool):
     name: str = "mediaserver_operation"
     description: str = (
         "Operate a configured Emby, Jellyfin, Plex, ZSpace, UGREEN, TrimeMedia, "
-        "or Navidrome server. The input schema contains one exact branch per action, "
+        "Navidrome, or MediaVault server. The input schema contains one exact branch per action, "
         "including providers, effects, required fields, types, defaults, enums, nested "
         "item fields, and cross-field constraints."
     )
