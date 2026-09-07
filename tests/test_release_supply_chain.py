@@ -126,6 +126,10 @@ def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> 
     assert "ARG MOVIEPILOT_PYTHON_VERSION" in free_threaded_stage
     assert 'uv python install --no-bin "${MOVIEPILOT_PYTHON_VERSION}t"' in free_threaded_stage
     assert "apt-get upgrade" not in dockerfile
+    assert (
+        "apt-get install -y --no-install-recommends libde265-0"
+        in dockerfile
+    )
     assert "\n    openssl \\\n" in dockerfile
     assert "\n    util-linux \\\n" in dockerfile
 
