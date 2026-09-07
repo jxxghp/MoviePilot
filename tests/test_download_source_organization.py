@@ -115,7 +115,11 @@ class SourceOrganizationTests(unittest.TestCase):
         self.media_chain = Mock()
         self.media_chain.recognize_by_meta.return_value = self.media
         self.qbc = Mock()
-        module = NS(get_instance=lambda _name: NS(qbc=self.qbc))
+        self.torrent_files = [NS(name="Karen Mok - Loving Gaze 2002 FLAC/01.flac")]
+        module = NS(
+            get_instance=lambda _name: NS(qbc=self.qbc),
+            torrent_files=lambda **_kwargs: self.torrent_files,
+        )
         self.chain = Mock()
         self.chain.download_history_repository.get_by_hash.return_value = self.history
         self.chain.list_torrents.return_value = [self.torrent]
@@ -210,7 +214,21 @@ class SourceOrganizationTests(unittest.TestCase):
 
     def test_smart_rename_rejects_multi_root_tasks(self):
         self.torrent.content_path = self.torrent.save_path
-        with self.assertRaisesRegex(ValueError, "无法安全智能重命名"):
+        with self.assertRaisesRegex(ValueError, "单文件或散列文件"):
+            self.preview()
+
+    def test_dotted_folder_name_is_not_treated_as_a_file(self):
+        folder = "Eagles.2011 - Hotel California SACD"
+        self.torrent.content_path = f"/volume1/UT/Musics/{folder}"
+        self.torrent_files = [NS(name=f"{folder}/01.dsf"), NS(name=f"{folder}/02.dsf")]
+        result = self.preview()
+        self.assertEqual(result["current_root_name"], folder)
+        self.assertTrue(result["rename_supported"])
+
+    def test_single_file_task_is_not_treated_as_a_folder(self):
+        self.torrent.content_path = "/volume1/UT/Musics/Hotel California.dsf"
+        self.torrent_files = [NS(name="Hotel California.dsf")]
+        with self.assertRaisesRegex(ValueError, "单文件或散列文件"):
             self.preview()
 
 

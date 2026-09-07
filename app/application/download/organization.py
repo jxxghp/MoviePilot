@@ -1,7 +1,7 @@
 """下载器已有任务的媒体识别、资源归类与根目录重命名。"""
 
 import re
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.application.configuration import get_configured_system_config
@@ -150,12 +150,59 @@ def _downloader_kind(name: str) -> str | None:
     return str(match.get("type") or "").casefold() if match else None
 
 
+def _qb_module(chain: Any) -> Any:
+    """返回当前运行的 qBittorrent 模块。"""
+    return chain.modulemanager.get_running_module("QbittorrentModule")
+
+
+def _qb_root_folder(
+    chain: Any,
+    downloader: str,
+    hash_value: str,
+    current: PurePosixPath,
+    content: PurePosixPath | None,
+) -> str | None:
+    """确认 qB 任务是否拥有一个独立顶层目录。
+
+    文件夹名称允许包含点号；不能使用 ``Path.suffix`` 猜测它是不是文件。
+    优先检查已挂载文件系统，路径尚不存在时再用 qB 文件清单确认。
+    """
+    if _downloader_kind(downloader) != "qbittorrent" or not content:
+        return None
+    if not content.is_absolute() or not content.is_relative_to(current):
+        return None
+    relative_content = content.relative_to(current)
+    if len(relative_content.parts) != 1:
+        return None
+
+    local_content = Path(content.as_posix())
+    if local_content.is_dir():
+        return relative_content.name
+    if local_content.is_file():
+        return None
+
+    module = _qb_module(chain)
+    try:
+        torrent_files = module.torrent_files(tid=hash_value, downloader=downloader) if module else None
+    except Exception:
+        torrent_files = None
+    file_paths = [
+        PurePosixPath(str(getattr(item, "name", "")).replace("\\", "/"))
+        for item in (torrent_files or [])
+        if str(getattr(item, "name", "")).strip()
+    ]
+    if not file_paths or not all(len(path.parts) >= 2 for path in file_paths):
+        return None
+    top_levels = {path.parts[0] for path in file_paths}
+    return relative_content.name if top_levels == {relative_content.name} else None
+
+
 def _rename_qb_root(chain: Any, downloader: str, hash_value: str, old_name: str, new_name: str) -> bool:
     """通过已运行的 qBittorrent 模块调用官方 renameFolder API。
 
     此变更由下载器维护任务与文件的对应关系，不直接操作文件系统。
     """
-    module = chain.modulemanager.get_running_module("QbittorrentModule")
+    module = _qb_module(chain)
     server = module.get_instance(downloader) if module else None
     client = getattr(server, "qbc", None)
     if client is None:
@@ -219,12 +266,8 @@ def organize_existing_source(hash_value: str, request: Any, chain: Any, media_ch
 
     content_text = str(torrent.content_path or torrent.path or "").strip()
     content = PurePosixPath(content_text) if content_text else None
-    current_root_name = None
-    if content and content.is_absolute() and content.is_relative_to(current):
-        relative_content = content.relative_to(current)
-        if len(relative_content.parts) == 1 and not content.suffix:
-            current_root_name = relative_content.name
-    rename_supported = _downloader_kind(downloader) == "qbittorrent" and current_root_name is not None
+    current_root_name = _qb_root_folder(chain, downloader, hash_value, current, content)
+    rename_supported = current_root_name is not None
     proposed_root_name = _root_name(media) if request.smart_rename and media else current_root_name
     rename_required = bool(
         request.smart_rename
@@ -233,7 +276,9 @@ def organize_existing_source(hash_value: str, request: Any, chain: Any, media_ch
         and proposed_root_name != current_root_name
     )
     if request.smart_rename and not rename_supported:
-        raise ValueError("当前任务不是 qBittorrent 的单根目录任务，无法安全智能重命名")
+        if _downloader_kind(downloader) != "qbittorrent":
+            raise ValueError("智能根目录重命名目前仅支持 qBittorrent")
+        raise ValueError("该 qBittorrent 任务没有可重命名的独立顶层目录；单文件或散列文件任务请关闭智能重命名")
 
     target_text = target.as_posix()
     changed = current.as_posix() != target_text or rename_required
