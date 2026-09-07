@@ -6,7 +6,7 @@ import threading
 from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from functools import partial
-from typing import cast
+from typing import Union, cast
 
 from app.application.classification.contract import (
     ClassificationPolicyConflictError,
@@ -19,13 +19,28 @@ from app.domain.classification.fields import merge_field_definitions
 from app.domain.classification.validation import ClassificationPolicyValidator
 from app.schemas.category import (
     ClassificationCategory,
+    ClassificationCondition,
     ClassificationFieldDefinition,
+    ClassificationOperator,
     ClassificationPolicy,
     ClassificationPolicyState,
+    ClassificationRule,
+    ClassificationTarget,
     ClassificationValidationResult,
 )
 
 CLASSIFICATION_POLICY_HISTORY_LIMIT = 10
+
+_DEFAULT_MUSIC_CATEGORIES = (
+    ("music.album", "Album", ("Album",)),
+    (
+        "music.compilation",
+        "Album / Compilation",
+        ("Album", "Compilation"),
+    ),
+    ("music.ep", "EP", ("EP",)),
+    ("music.single", "Single", ("Single",)),
+)
 
 
 class ClassificationPolicyNotInitializedError(RuntimeError):
@@ -45,8 +60,8 @@ class ClassificationPolicyValidationError(ValueError):
         super().__init__("分类策略校验失败")
 
 
-def build_default_classification_policy() -> ClassificationPolicy:
-    """构造电影、电视剧和音乐均有稳定兜底分类的初始草稿。"""
+def _build_uncategorized_classification_policy() -> ClassificationPolicy:
+    """构造旧版仅包含媒体类型兜底分类的初始草稿。"""
     categories = [
         ClassificationCategory(
             id="movie.uncategorized",
@@ -74,6 +89,106 @@ def build_default_classification_policy() -> ClassificationPolicy:
             "电视剧": "tv.uncategorized",
             "音乐": "music.uncategorized",
         },
+    )
+
+
+def with_default_music_classification(policy: ClassificationPolicy) -> ClassificationPolicy:
+    """为尚未配置音乐分类的策略追加安全、结构化的常用专辑分类。"""
+    music_categories = [
+        item for item in policy.categories if item.media_type == "音乐"
+    ]
+    music_rules = [item for item in policy.rules if "音乐" in item.media_types]
+    if music_rules or any(item.id != "music.uncategorized" for item in music_categories):
+        return cast(ClassificationPolicy, policy.model_copy(deep=True))
+
+    categories = [
+        *(item.model_copy(deep=True) for item in policy.categories),
+        *(
+            ClassificationCategory(
+                id=category_id,
+                media_type="音乐",
+                name=name,
+                path=list(path),
+            )
+            for category_id, name, path in _DEFAULT_MUSIC_CATEGORIES
+        ),
+    ]
+    priority = max((item.priority for item in policy.rules), default=-1) + 1
+    rules = [*(item.model_copy(deep=True) for item in policy.rules)]
+
+    def append_rule(
+        *,
+        rule_id: str,
+        name: str,
+        field: str,
+        operator: ClassificationOperator,
+        value: Union[str, list[str]],
+        category_id: str,
+    ) -> None:
+        nonlocal priority
+        rules.append(
+            ClassificationRule(
+                id=rule_id,
+                name=name,
+                kind="category",
+                priority=priority,
+                media_types=["音乐"],
+                when=ClassificationCondition(
+                    field=field,
+                    operator=operator,
+                    value=value,
+                ),
+                target=ClassificationTarget(category_id=category_id),
+            )
+        )
+        priority += 1
+
+    # 精选集同时具有 Album 主类型，必须在普通 Album 之前匹配。
+    append_rule(
+        rule_id="music.compilation.default",
+        name="音乐精选集",
+        field="music.secondary_types",
+        operator="contains_any",
+        value=["Compilation"],
+        category_id="music.compilation",
+    )
+    for album_type, suffix, category_id in (
+        ("EP", "ep", "music.ep"),
+        ("Single", "single", "music.single"),
+        ("Album", "album", "music.album"),
+    ):
+        append_rule(
+            rule_id=f"music.{suffix}.default",
+            name=f"音乐{album_type}",
+            field="music.album_type",
+            operator="equals",
+            value=album_type,
+            category_id=category_id,
+        )
+    return cast(
+        ClassificationPolicy,
+        policy.model_copy(
+            deep=True,
+            update={"categories": categories, "rules": rules},
+        ),
+    )
+
+
+def is_untouched_legacy_default_policy(state: ClassificationPolicyState) -> bool:
+    """判断状态是否为旧版本自动创建且从未编辑的 revision 1 默认策略。"""
+    if state.active.revision != 1 or state.history:
+        return False
+    normalized = state.active.model_copy(
+        deep=True,
+        update={"revision": 0, "updated_at": None},
+    )
+    return bool(normalized == _build_uncategorized_classification_policy())
+
+
+def build_default_classification_policy() -> ClassificationPolicy:
+    """构造带稳定兜底和常用音乐专辑分类的初始草稿。"""
+    return with_default_music_classification(
+        _build_uncategorized_classification_policy()
     )
 
 
