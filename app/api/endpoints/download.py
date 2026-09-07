@@ -14,7 +14,7 @@ from app.api.response import (
 )
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
-from app.application.download.source_organization import organize_existing_source
+from app.application.download.organization import organize_existing_source
 from app.application.download.tasks import DownloadTaskMutationService
 from app.application.security.url import SecurityUtils
 from app.application.site.query import (

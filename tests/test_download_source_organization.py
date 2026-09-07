@@ -54,7 +54,7 @@ with patch.dict(
 ):
     spec = importlib.util.spec_from_file_location(
         "source_organization",
-        Path(__file__).parent.parent / "app/application/download/source_organization.py",
+        Path(__file__).parent.parent / "app/application/download/organization.py",
     )
     organization = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(organization)
