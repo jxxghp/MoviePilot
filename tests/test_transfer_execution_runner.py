@@ -1,5 +1,6 @@
 """验证 TransferChain 步骤 runner 与文件执行器的崩溃恢复边界。"""
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock
@@ -30,7 +31,10 @@ from app.db.base import Base
 from app.db.models.transferexecutionstep import TransferExecutionStep
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
 from app.modules.filemanager.transhandler import TransHandler
+from app.schemas.types import MediaType
 from app.schemas.workflow import FileItem
 
 
@@ -384,7 +388,7 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
 
     result, error = TransHandler._TransHandler__execute_transfer_with_steps(
         step_runner=runner,
-        fileitem=source_item,
+        source_fileitem=source_item.model_dump(mode="json"),
         target_storage="remote",
         source_oper=source_oper,
         target_oper=target_oper,
@@ -444,3 +448,79 @@ def test_remote_to_local_transfer_creates_target_directory_before_download(tmp_p
         path=target_file.parent,
     )
     source_oper.delete.assert_called_once_with(source_item)
+
+
+@pytest.mark.parametrize("sparse", [False, True])
+@pytest.mark.parametrize("directory", [False, True])
+def test_frozen_disc_plan_executes_and_replays_with_real_step_ledger(
+        execution_repository, monkeypatch, sparse, directory,
+):
+    """原盘及旧快照必须通过真实意图校验，重启后不再复制或重复删除源。"""
+    source = FileItem(
+        storage="local", path="/disc" if directory else "/disc.iso",
+        name="disc" if directory else "disc.iso", type="dir" if directory else "file",
+        size=100,
+    ).model_dump(mode="json", exclude_unset=sparse)
+    leaf = (
+        FileItem(storage="local", path="/disc/BDMV/STREAM/00001.m2ts",
+                 name="00001.m2ts", type="file", size=200).model_dump(
+                     mode="json", exclude_unset=sparse,
+                 )
+        if directory else dict(source)
+    )
+    target = "/library/disc" if directory else "/library/disc.iso"
+    planning_input = TransferPlanningInput(source_fileitem=source)
+    checkpoint = replace(
+        _runner_plan_checkpoint(), planning_input=planning_input,
+        target_storage="remote", final_target_path=target,
+        resolved_transfer_type="move",
+        items=(TransferPlanItem(
+            sequence=0, source_fileitem=leaf, target_storage="remote",
+            target_path=f"{target}/BDMV/STREAM/00001.m2ts" if directory else target,
+        ),),
+    )
+    with execution_repository._session_factory() as session:
+        pending = session.query(TransferPending).one()
+        pending.planning_input = planning_input.to_payload()
+        pending.input_fingerprint = planning_input.fingerprint
+        pending.checkpoint_payload = checkpoint.to_payload()
+        session.commit()
+
+    def intercept(**kwargs):
+        """模拟插件修正运行期大小，冻结计划和步骤身份不应随之变化。"""
+        kwargs["fileitem"].size = 999
+        return True, ""
+
+    def materialize(**kwargs):
+        """模拟存储适配器更新临时链接，源删除步骤仍须沿用冻结输入。"""
+        assert kwargs["fileitem"].size == leaf["size"]
+        kwargs["fileitem"].url = "https://temporary.invalid/refreshed"
+        return FileItem(storage="remote", path=kwargs["target_file"].as_posix()), ""
+
+    handler = TransHandler()
+    monkeypatch.setattr(handler, "_TransHandler__intercept_transfer", intercept)
+    transfer = Mock(side_effect=materialize)
+    monkeypatch.setattr(TransHandler, "_TransHandler__transfer_command", transfer)
+    source_oper = Mock()
+    target_oper = Mock()
+    target_oper.get_item_strict.return_value = None
+    target_oper.get_folder.return_value = FileItem(storage="remote", path="/library", type="dir")
+
+    for _ in range(2):
+        runner = transfer_chain_module._DurableTransferStepRunner(
+            task_id="task-runner", lease_token="lease",
+            checkpoint_fingerprint=checkpoint.fingerprint,
+            repository=execution_repository,
+        )
+        result = handler.execute_transfer_plan(
+            checkpoint, meta=MetaBase("disc.iso"),
+            mediainfo=MediaInfo(type=MediaType.MOVIE, title="Disc"),
+            source_oper=source_oper, target_oper=target_oper, step_runner=runner,
+        )
+        assert result.success
+    assert runner.checkpoint(result).payload["outcome"] == "succeeded"
+    transfer.assert_called_once()
+    source_oper.delete.assert_called_once()
+    assert source_oper.delete.call_args.args[0].url is None
+    assert checkpoint.planning_input.source_fileitem == source
+    assert checkpoint.items[0].source_fileitem == leaf

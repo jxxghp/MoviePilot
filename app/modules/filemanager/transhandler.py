@@ -794,20 +794,25 @@ class TransHandler:
             cls,
             *,
             step_runner: Optional[TransferStepRunner],
-            fileitem: FileItem,
+            source_fileitem: dict[str, Any],
             target_storage: str,
             source_oper: StorageBase,
             target_oper: StorageBase,
             target_file: Path,
             transfer_type: str,
     ) -> tuple[Optional[FileItem], str]:
-        """执行稳定传输步骤，并把跨存储 move 拆为落地与源删除。"""
+        """按冻结叶节点执行传输，并把跨存储 move 拆为落地与源删除。
+
+        意图直接消费原始快照，避免旧快照补默认字段或适配器更新运行期文件信息
+        导致步骤身份漂移；每个外部操作单独恢复文件对象。
+        """
+        fileitem = FileItem(**source_fileitem)
         cross_storage_move = (
             transfer_type == "move" and fileitem.storage != target_storage
         )
         materialize_type = "copy" if cross_storage_move else transfer_type
         intent_payload = {
-            "source": fileitem.model_dump(mode="json"),
+            "source": source_fileitem,
             "target_storage": target_storage,
             "target_path": target_file.as_posix(),
             "transfer_type": materialize_type,
@@ -853,7 +858,7 @@ class TransHandler:
 
         def execute_source_delete() -> TransferStepResult:
             """在目标已落地后单独删除跨存储 move 的源文件。"""
-            if not source_oper.delete(fileitem):
+            if not source_oper.delete(FileItem(**source_fileitem)):
                 raise RuntimeError(f"{fileitem.path} 源文件删除失败")
             return TransferStepResult(payload={
                 "source_path": fileitem.path,
@@ -865,7 +870,7 @@ class TransHandler:
             phase="transfer",
             kind="delete_move_source",
             payload={
-                "source": fileitem.model_dump(mode="json"),
+                "source": source_fileitem,
                 "target_storage": target_storage,
                 "target_path": target_file.as_posix(),
             },
@@ -998,6 +1003,7 @@ class TransHandler:
             *,
             step_runner: Optional[TransferStepRunner],
             fileitem: FileItem,
+            source_fileitem: dict[str, Any],
             meta: MetaBase,
             mediainfo: MediaInfo | MusicInfo,
             target_oper: StorageBase,
@@ -1007,7 +1013,7 @@ class TransHandler:
             overwrite_mode: Optional[str],
             need_notify: bool,
     ) -> tuple[bool, bool, Optional[TransferInfo]]:
-        """冻结覆盖策略判定，避免目标变化后重启得到不同步骤序列。"""
+        """以原始源快照冻结覆盖判定，避免模型补字段改变旧任务的步骤身份。"""
         def execute() -> TransferStepResult:
             """执行一次覆盖策略判定并冻结完整裁决。"""
             over_flag, delete_versions, failure = self.__resolve_overwrite(
@@ -1032,7 +1038,7 @@ class TransHandler:
             phase="decision",
             kind="resolve_overwrite",
             payload={
-                "source": fileitem.model_dump(mode="json"),
+                "source": source_fileitem,
                 "target_storage": target_storage,
                 "target_path": target_file.as_posix(),
                 "transfer_type": transfer_type,
@@ -1224,7 +1230,7 @@ class TransHandler:
                 source_item = FileItem(**planned_item.source_fileitem)
                 new_item, error = self.__execute_transfer_with_steps(
                     step_runner=step_runner,
-                    fileitem=source_item,
+                    source_fileitem=planned_item.source_fileitem,
                     target_storage=planned_item.target_storage,
                     source_oper=source_oper,
                     target_oper=target_oper,
@@ -1283,6 +1289,7 @@ class TransHandler:
         over_flag, delete_versions, overwrite_failure = self.__resolve_overwrite_with_step(
             step_runner=step_runner,
             fileitem=fileitem,
+            source_fileitem=frozen_source_payload,
             meta=meta,
             mediainfo=mediainfo,
             target_oper=target_oper,
@@ -1375,7 +1382,7 @@ class TransHandler:
                 )
             new_item, error = self.__execute_transfer_with_steps(
                 step_runner=step_runner,
-                fileitem=fileitem,
+                source_fileitem=planned_item.source_fileitem,
                 target_storage=target_storage,
                 source_oper=source_oper,
                 target_oper=target_oper,
