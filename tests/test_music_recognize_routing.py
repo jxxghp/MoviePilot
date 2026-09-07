@@ -363,6 +363,12 @@ def test_music_metadata_simplified_conversion_defaults_to_enabled():
     assert ConfigModel.model_fields["MUSIC_METADATA_TO_SIMPLIFIED"].default is True
 
 
+def test_music_release_preference_defaults_favor_mainland_simplified():
+    """默认发行排序应先大陆、再台港，并优先简体字形。"""
+    assert ConfigModel.model_fields["MUSIC_RELEASE_REGION_PRIORITY"].default == "CN,TW,HK"
+    assert ConfigModel.model_fields["MUSIC_RELEASE_SCRIPT_PRIORITY"].default == "Hans,Hant,Latn"
+
+
 def test_media_chain_converts_recognized_music_metadata_without_mutating_source(monkeypatch):
     """开启开关时应转换标准音乐字段，并保留模块缓存对象和歌词原文。"""
     source_info = MusicInfo(

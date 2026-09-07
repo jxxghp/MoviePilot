@@ -167,6 +167,8 @@ if TYPE_CHECKING:
         def recognize_music_album_directory(
             self,
             path: Union[str, Path],
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
         ) -> dict[str, MusicInfo]:
             """同步识别音乐专辑目录。"""
             ...
@@ -174,6 +176,8 @@ if TYPE_CHECKING:
         async def async_recognize_music_album_directory(
             self,
             path: Union[str, Path],
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
         ) -> dict[str, MusicInfo]:
             """异步识别音乐专辑目录。"""
             ...

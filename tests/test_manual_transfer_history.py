@@ -900,3 +900,29 @@ def test_forced_manual_reorganize_still_removes_history(monkeypatch):
         ("history", history.id),
     ]
     assert planned == [fileitem.path]
+
+
+def test_manual_transfer_music_release_preferences_are_normalized():
+    """手动整理应规范地区和文字代码，并保留用户给出的优先顺序。"""
+    item = ManualTransferItem(
+        music_release_regions=["cn", "TW"],
+        music_release_scripts=["hans", "Hant"],
+    )
+
+    assert item.music_release_regions == ["CN", "TW"]
+    assert item.music_release_scripts == ["Hans", "Hant"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("music_release_regions", ["CHN"]),
+        ("music_release_regions", ["CN", "cn"]),
+        ("music_release_scripts", ["Chinese"]),
+        ("music_release_scripts", ["Hans", "hans"]),
+    ],
+)
+def test_manual_transfer_music_release_preferences_reject_invalid_codes(field, value):
+    """非法或重复的发行偏好不能进入整理链。"""
+    with pytest.raises(ValueError):
+        ManualTransferItem(**{field: value})

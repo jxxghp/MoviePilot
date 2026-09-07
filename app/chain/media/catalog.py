@@ -261,13 +261,20 @@ class MediaCatalogOwner(_MediaOwnerBase):
         self,
         media_source: MediaSource,
         media_id: str,
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按音乐来源和原生 ID 同步获取专辑详情。"""
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return None
         chain = self._music_source_chain(source)
-        result = chain.get_music_album(normalized_id) if chain else None
+        preference_kwargs = {}
+        if music_release_regions is not None:
+            preference_kwargs["music_release_regions"] = music_release_regions
+        if music_release_scripts is not None:
+            preference_kwargs["music_release_scripts"] = music_release_scripts
+        result = chain.get_music_album(normalized_id, **preference_kwargs) if chain else None
         return cast(
             Optional[MusicAlbumInfo],
             self._finalize_recognition_result(result),
@@ -277,13 +284,20 @@ class MediaCatalogOwner(_MediaOwnerBase):
         self,
         media_source: MediaSource,
         media_id: str,
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按音乐来源和原生 ID 异步获取专辑详情。"""
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return None
         chain = self._music_source_chain(source)
-        result = await chain.async_get_music_album(normalized_id) if chain else None
+        preference_kwargs = {}
+        if music_release_regions is not None:
+            preference_kwargs["music_release_regions"] = music_release_regions
+        if music_release_scripts is not None:
+            preference_kwargs["music_release_scripts"] = music_release_scripts
+        result = await chain.async_get_music_album(normalized_id, **preference_kwargs) if chain else None
         return cast(
             Optional[MusicAlbumInfo],
             await self._async_finalize_recognition_result(result),

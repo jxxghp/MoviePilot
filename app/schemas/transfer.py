@@ -276,6 +276,10 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     media_id: Optional[str] = None
     # 音乐实体类型
     music_type: Optional[MusicTargetEntityType] = None
+    # 本次手动整理的 MusicBrainz 发行地区优先级；空值继承系统设置
+    music_release_regions: Optional[List[str]] = Field(default=None, max_length=3)
+    # 本次手动整理的 MusicBrainz 文字字形优先级；空值继承系统设置
+    music_release_scripts: Optional[List[str]] = Field(default=None, max_length=3)
     # 类型
     type_name: Optional[str] = None
     # 季号
@@ -306,6 +310,25 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     preview: Optional[bool] = False
     # 重新整理，清理命中的成功历史及其旧目标
     reorganize: Optional[bool] = False
+
+    @model_validator(mode="after")  # type: ignore[misc]
+    def normalize_music_release_preferences(self) -> "ManualTransferItem":
+        """规范手动发行偏好并拒绝重复或非法 ISO 代码。"""
+        if self.music_release_regions is not None:
+            regions = [str(value).strip().upper() for value in self.music_release_regions]
+            if any(len(value) != 2 or not value.isascii() or not value.isalpha() for value in regions):
+                raise ValueError("音乐发行地区必须使用两位代码")
+            if len(set(regions)) != len(regions):
+                raise ValueError("音乐发行地区优先级不能重复")
+            self.music_release_regions = regions
+        if self.music_release_scripts is not None:
+            scripts = [str(value).strip().title() for value in self.music_release_scripts]
+            if any(len(value) != 4 or not value.isascii() or not value.isalpha() for value in scripts):
+                raise ValueError("音乐文字字形必须使用四位 ISO 15924 代码")
+            if len(set(scripts)) != len(scripts):
+                raise ValueError("音乐文字字形优先级不能重复")
+            self.music_release_scripts = scripts
+        return self
 
 
 class ManualTransferHistoryInfo(BaseModel):

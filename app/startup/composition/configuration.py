@@ -232,6 +232,12 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         data_cleanup_outbox_dead_days=settings.DATA_CLEANUP_OUTBOX_DEAD_DAYS,
         download_subtitle=settings.DOWNLOAD_SUBTITLE,
         music_metadata_to_simplified=settings.MUSIC_METADATA_TO_SIMPLIFIED,
+        music_release_region_priority=tuple(
+            item.strip().upper() for item in settings.MUSIC_RELEASE_REGION_PRIORITY.split(",") if item.strip()
+        ),
+        music_release_script_priority=tuple(
+            item.strip().title() for item in settings.MUSIC_RELEASE_SCRIPT_PRIORITY.split(",") if item.strip()
+        ),
         recognize_plugin_first=settings.RECOGNIZE_PLUGIN_FIRST,
         ai_agent_enable=settings.AI_AGENT_ENABLE,
         ai_agent_global=settings.AI_AGENT_GLOBAL,

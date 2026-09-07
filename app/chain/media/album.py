@@ -22,9 +22,13 @@ def _is_directory(path: Path) -> bool:
     return path.is_dir()
 
 
-def _album_directory_cache_key(directory: Path) -> str:
-    """返回保留符号链接别名的绝对目录键，避免不同目录语义错误共享结果。"""
-    return os.path.abspath(directory)
+def _album_directory_cache_key(
+    directory: Path,
+    regions: tuple[str, ...],
+    scripts: tuple[str, ...],
+) -> str:
+    """返回包含发行偏好的目录键，避免不同手动选择错误共享结果。"""
+    return "|".join((os.path.abspath(directory), ",".join(regions), ",".join(scripts)))
 
 
 class MediaAlbumOwner(_MediaOwnerBase):
@@ -159,11 +163,22 @@ class MediaAlbumOwner(_MediaOwnerBase):
         self,
         directory: Path,
         files: list[Path],
+        music_release_regions: Optional[tuple[str, ...]] = None,
+        music_release_scripts: Optional[tuple[str, ...]] = None,
     ) -> dict[str, MusicInfo]:
         """同步汇总本地专辑证据并委托 MusicBrainz 来源链匹配。"""
         metas = AudioMetadataHelper.read_many(files)
         album_meta = MetaMusic.from_album_context(directory.name, metas)
-        album = MusicBrainzChain().match_music_album(album_meta, metas)
+        regions, scripts = self._music_release_preferences(
+            list(music_release_regions) if music_release_regions is not None else None,
+            list(music_release_scripts) if music_release_scripts is not None else None,
+        )
+        album = MusicBrainzChain().match_music_album(
+            album_meta,
+            metas,
+            music_release_regions=list(regions),
+            music_release_scripts=list(scripts),
+        )
         if not album or not album.tracks:
             return {}
         return {
@@ -175,11 +190,22 @@ class MediaAlbumOwner(_MediaOwnerBase):
         self,
         directory: Path,
         files: list[Path],
+        music_release_regions: Optional[tuple[str, ...]] = None,
+        music_release_scripts: Optional[tuple[str, ...]] = None,
     ) -> dict[str, MusicInfo]:
         """异步汇总本地专辑证据并委托 MusicBrainz 来源链匹配。"""
         metas = await run_in_threadpool(AudioMetadataHelper.read_many, files)
         album_meta = MetaMusic.from_album_context(directory.name, metas)
-        album = await MusicBrainzChain().async_match_music_album(album_meta, metas)
+        regions, scripts = self._music_release_preferences(
+            list(music_release_regions) if music_release_regions is not None else None,
+            list(music_release_scripts) if music_release_scripts is not None else None,
+        )
+        album = await MusicBrainzChain().async_match_music_album(
+            album_meta,
+            metas,
+            music_release_regions=list(regions),
+            music_release_scripts=list(scripts),
+        )
         if not album or not album.tracks:
             return {}
         return {
@@ -190,6 +216,8 @@ class MediaAlbumOwner(_MediaOwnerBase):
     def recognize_music_album_directory(
         self,
         path: Union[str, Path],
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
     ) -> dict[str, MusicInfo]:
         """按目录级线索批量识别整张专辑并返回文件到曲目的映射。"""
         directory = Path(path)
@@ -198,12 +226,21 @@ class MediaAlbumOwner(_MediaOwnerBase):
         files = self._directory_audio_files(directory)
         if len(files) < self._album_match_min_files:
             return {}
-        key = _album_directory_cache_key(directory)
+        regions, scripts = self._music_release_preferences(
+            music_release_regions,
+            music_release_scripts,
+        )
+        custom_preference = music_release_regions is not None or music_release_scripts is not None
+        key = _album_directory_cache_key(directory, regions, scripts)
         signature = self._album_directory_signature(directory, files)
         matched = self._album_dir_cache.resolve(
             key,
             signature,
-            lambda: self._match_music_album_directory(directory, files),
+            lambda: (
+                self._match_music_album_directory(directory, files, regions, scripts)
+                if custom_preference
+                else self._match_music_album_directory(directory, files)
+            ),
         )
         simplified = self._simplify_recognized_music_mapping(matched)
         finalized: dict[str, MusicInfo] = {}
@@ -217,6 +254,8 @@ class MediaAlbumOwner(_MediaOwnerBase):
     async def async_recognize_music_album_directory(
         self,
         path: Union[str, Path],
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
     ) -> dict[str, MusicInfo]:
         """异步按目录级线索批量识别整张专辑。"""
         directory = Path(path)
@@ -225,12 +264,21 @@ class MediaAlbumOwner(_MediaOwnerBase):
         files = await run_in_threadpool(self._directory_audio_files, directory)
         if len(files) < self._album_match_min_files:
             return {}
-        key = _album_directory_cache_key(directory)
+        regions, scripts = self._music_release_preferences(
+            music_release_regions,
+            music_release_scripts,
+        )
+        custom_preference = music_release_regions is not None or music_release_scripts is not None
+        key = _album_directory_cache_key(directory, regions, scripts)
         signature = self._album_directory_signature(directory, files)
         matched = await self._album_dir_cache.async_resolve(
             key,
             signature,
-            lambda: self._async_match_music_album_directory(directory, files),
+            lambda: (
+                self._async_match_music_album_directory(directory, files, regions, scripts)
+                if custom_preference
+                else self._async_match_music_album_directory(directory, files)
+            ),
         )
         simplified = self._simplify_recognized_music_mapping(matched)
         return {
@@ -240,3 +288,14 @@ class MediaAlbumOwner(_MediaOwnerBase):
             )
             for item_path, info in simplified.items()
         }
+
+    @staticmethod
+    def _music_release_preferences(
+        regions: Optional[list[str]],
+        scripts: Optional[list[str]],
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """解析请求级发行偏好；未指定时继承一次稳定的系统配置快照。"""
+        runtime = get_chain_runtime_config_snapshot()
+        normalized_regions = tuple(regions) if regions is not None else runtime.music_release_region_priority
+        normalized_scripts = tuple(scripts) if scripts is not None else runtime.music_release_script_priority
+        return normalized_regions, normalized_scripts

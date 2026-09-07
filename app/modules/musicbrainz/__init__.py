@@ -93,6 +93,14 @@ class _MusicBrainzRecognitionPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class _MusicReleasePreference:
+    """一次 MusicBrainz 发行版本选择使用的地区与文字字形顺序。"""
+
+    regions: tuple[str, ...]
+    scripts: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _MusicBrainzResponseDecision:
     """描述一次 MusicBrainz 响应的投影结果与退避决策。"""
 
@@ -156,6 +164,66 @@ class MusicBrainzModule(_ModuleBase):
         "youtube",
         "purchase for download",
     )
+
+    @staticmethod
+    def _preference_values(
+            values: Optional[Iterable[str]],
+            setting_name: str,
+            *,
+            upper: bool,
+    ) -> tuple[str, ...]:
+        """规范请求级代码；未传入时读取系统默认并稳定去重。"""
+        configured: Iterable[str]
+        if values is None:
+            configured = str(get_runtime_setting(setting_name, "") or "").split(",")
+        else:
+            configured = values
+        normalized: list[str] = []
+        for value in configured:
+            code = str(value).strip()
+            code = code.upper() if upper else code.title()
+            if code and code not in normalized:
+                normalized.append(code)
+        return tuple(normalized[:3])
+
+    @classmethod
+    def _release_preference(
+            cls,
+            regions: Optional[Iterable[str]] = None,
+            scripts: Optional[Iterable[str]] = None,
+    ) -> _MusicReleasePreference:
+        """返回本次发行选择的显式偏好或部署默认值。"""
+        return _MusicReleasePreference(
+            regions=cls._preference_values(
+                regions,
+                "MUSIC_RELEASE_REGION_PRIORITY",
+                upper=True,
+            ),
+            scripts=cls._preference_values(
+                scripts,
+                "MUSIC_RELEASE_SCRIPT_PRIORITY",
+                upper=False,
+            ),
+        )
+
+    @staticmethod
+    def _release_script(release: dict[str, Any]) -> str:
+        """提取 MusicBrainz Release 的 ISO 15924 文字字形。"""
+        representation = release.get("text-representation") or {}
+        return str(representation.get("script") or "").strip().title()
+
+    @classmethod
+    def _release_preference_sort_key(
+            cls,
+            release: dict[str, Any],
+            preference: _MusicReleasePreference,
+    ) -> tuple[int, int]:
+        """生成地区与字形的稳定升序键；未匹配项排在显式偏好之后。"""
+        country = str(release.get("country") or "").strip().upper()
+        script = cls._release_script(release)
+        region_rank = preference.regions.index(country) if country in preference.regions else len(preference.regions)
+        script_rank = preference.scripts.index(script) if script in preference.scripts else len(preference.scripts)
+        return region_rank, script_rank
 
     def init_module(self) -> None:
         """初始化 MusicBrainz 模块并挂载本地识别缓存。"""
@@ -616,6 +684,8 @@ class MusicBrainzModule(_ModuleBase):
             meta: MetaMusic,
             tracks: list[MetaMusic],
             limit: int = 5,
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按目录线索和曲目特征把本地音频集合对位到 MusicBrainz 发行版本。
 
@@ -624,29 +694,45 @@ class MusicBrainzModule(_ModuleBase):
         """
         if not tracks:
             return None
+        preference = self._release_preference(
+            music_release_regions,
+            music_release_scripts,
+        )
         details: list[dict[str, Any]] = []
-        releases = self._search_release_candidates(meta, tracks, limit=limit)
+        releases = self._search_release_candidates(
+            meta,
+            tracks,
+            limit=limit,
+            preference=preference,
+        )
         for request in self._release_detail_requests(releases):
             detail = self._request_json(request.path, params=request.params)
             if not detail:
                 continue
             details.append(detail)
-        return self._select_release_match(meta, tracks, details)
+        return self._select_release_match(meta, tracks, details, preference)
 
     async def async_match_music_album(
             self,
             meta: MetaMusic,
             tracks: list[MetaMusic],
             limit: int = 5,
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """异步按目录线索和曲目特征匹配 MusicBrainz 发行版本。"""
         if not tracks:
             return None
+        preference = self._release_preference(
+            music_release_regions,
+            music_release_scripts,
+        )
         details: list[dict[str, Any]] = []
         releases = await self._async_search_release_candidates(
             meta,
             tracks,
             limit=limit,
+            preference=preference,
         )
         for request in self._release_detail_requests(releases):
             detail = await self._async_request_json(
@@ -655,7 +741,7 @@ class MusicBrainzModule(_ModuleBase):
             if not detail:
                 continue
             details.append(detail)
-        return self._select_release_match(meta, tracks, details)
+        return self._select_release_match(meta, tracks, details, preference)
 
     @classmethod
     def _select_release_match(
@@ -663,15 +749,24 @@ class MusicBrainzModule(_ModuleBase):
             meta: MetaMusic,
             tracks: list[MetaMusic],
             details: Iterable[dict[str, Any]],
+            preference: Optional[_MusicReleasePreference] = None,
     ) -> Optional[MusicAlbumInfo]:
         """对已获取的发行详情统一打分并投影最佳专辑。"""
         best_album: Optional[MusicAlbumInfo] = None
         best_score = 0.0
+        best_key: Optional[tuple[float, int, int]] = None
+        selected_preference = preference or cls._release_preference()
         for detail in details:
             summary = cls._release_track_summary(detail)
             score = cls._score_release(meta, tracks, detail, summary)
-            if score > best_score:
+            region_rank, script_rank = cls._release_preference_sort_key(
+                detail,
+                selected_preference,
+            )
+            candidate_key = (score, -region_rank, -script_rank)
+            if best_key is None or candidate_key > best_key:
                 best_score = score
+                best_key = candidate_key
                 best_album = cls._release_to_album(detail)
         # 得分低于阈值时宁可不匹配，避免把曲目写到错误的专辑上
         return best_album if best_score >= cls._album_match_threshold else None
@@ -683,36 +778,68 @@ class MusicBrainzModule(_ModuleBase):
             meta: MetaMusic,
             tracks: list[MetaMusic],
             limit: int,
+            preference: Optional[_MusicReleasePreference] = None,
     ) -> list[dict[str, Any]]:
         """按专辑名和曲名线索搜索候选发行版本，多个查询按命中顺序去重。"""
         releases: list[dict[str, Any]] = []
         seen: set[str] = set()
-        for request in self._release_search_requests(meta, tracks, limit):
+        search_limit = max(25, min(100, limit * 5))
+        for request in self._release_search_requests(meta, tracks, search_limit):
             payload = self._request_json(
                 request.path, params=request.params
             )
             self._merge_release_candidates(releases, seen, payload)
-            if len(releases) >= limit:
+            if len(releases) >= search_limit:
                 break
-        return releases[:limit]
+        return self._rank_release_candidates(
+            releases,
+            preference or self._release_preference(),
+        )[:limit]
 
     async def _async_search_release_candidates(
             self,
             meta: MetaMusic,
             tracks: list[MetaMusic],
             limit: int,
+            preference: Optional[_MusicReleasePreference] = None,
     ) -> list[dict[str, Any]]:
         """异步按专辑名和曲名线索搜索并去重候选发行版本。"""
         releases: list[dict[str, Any]] = []
         seen: set[str] = set()
-        for request in self._release_search_requests(meta, tracks, limit):
+        search_limit = max(25, min(100, limit * 5))
+        for request in self._release_search_requests(meta, tracks, search_limit):
             payload = await self._async_request_json(
                 request.path, params=request.params
             )
             self._merge_release_candidates(releases, seen, payload)
-            if len(releases) >= limit:
+            if len(releases) >= search_limit:
                 break
-        return releases[:limit]
+        return self._rank_release_candidates(
+            releases,
+            preference or self._release_preference(),
+        )[:limit]
+
+    @classmethod
+    def _rank_release_candidates(
+            cls,
+            releases: list[dict[str, Any]],
+            preference: _MusicReleasePreference,
+    ) -> list[dict[str, Any]]:
+        """在相近搜索相关度内优先目标地区与字形，保留强相关性边界。"""
+
+        def sort_key(release: dict[str, Any]) -> tuple[int, int, int, int]:
+            """相关度每五分成组，组内应用发行偏好并保留原始得分。"""
+            try:
+                score = int(release.get("score") or 0)
+            except TypeError, ValueError:
+                score = 0
+            region_rank, script_rank = cls._release_preference_sort_key(
+                release,
+                preference,
+            )
+            return -(score // 5), region_rank, script_rank, -score
+
+        return sorted(releases, key=sort_key)
 
     @staticmethod
     def _merge_release_candidates(
@@ -943,7 +1070,11 @@ class MusicBrainzModule(_ModuleBase):
             cover_url=cls._build_cover_url(group_id),
             genres=cls._names_of(detail.get("genres")),
             detail_link=f"https://musicbrainz.org/release/{release_id}",
-            raw_data={"release_id": str(release_id)},
+            raw_data={
+                "release_id": str(release_id),
+                "release_country": cls._stripped(detail.get("country")),
+                "release_script": cls._release_script(detail) or None,
+            },
         )
         album.tracks = [
             info
@@ -1521,6 +1652,8 @@ class MusicBrainzModule(_ModuleBase):
             self,
             media_source: MediaSource,
             media_id: str,
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """异步按 MusicBrainz Release Group ID 获取专辑详情及曲目。"""
         if not self._detail_plan(media_source, media_id, MUSIC_ENTITY_ALBUM):
@@ -1536,8 +1669,13 @@ class MusicBrainzModule(_ModuleBase):
         if not album:
             return None
         tracks_payload = await self._async_album_tracks_payload(
-            payload.get("releases") or []
+            payload.get("releases") or [],
+            preference=self._release_preference(
+                music_release_regions,
+                music_release_scripts,
+            ),
         )
+        self._apply_selected_release(album, tracks_payload)
         album.tracks = self._project_album_tracks(album, tracks_payload)
         album.artist_aliases = await self._async_lookup_artist_aliases(album.artist_ids, album.artist_aliases)
         return album
@@ -1546,6 +1684,8 @@ class MusicBrainzModule(_ModuleBase):
             self,
             media_source: MediaSource,
             media_id: str,
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按 MusicBrainz Release Group ID 获取标准化专辑详情及曲目。"""
         if not self._detail_plan(media_source, media_id, MUSIC_ENTITY_ALBUM):
@@ -1560,7 +1700,14 @@ class MusicBrainzModule(_ModuleBase):
         album = self._project_album_detail(payload)
         if not album:
             return None
-        tracks_payload = self._album_tracks_payload(payload.get("releases") or [])
+        tracks_payload = self._album_tracks_payload(
+            payload.get("releases") or [],
+            preference=self._release_preference(
+                music_release_regions,
+                music_release_scripts,
+            ),
+        )
+        self._apply_selected_release(album, tracks_payload)
         album.tracks = self._project_album_tracks(album, tracks_payload)
         album.artist_aliases = self._lookup_artist_aliases(album.artist_ids, album.artist_aliases)
         return album
@@ -1868,8 +2015,12 @@ class MusicBrainzModule(_ModuleBase):
         return [str(item["name"]) for item in entries]
 
     @classmethod
-    def _select_track_release(cls, releases: list[dict[str, Any]]) -> dict[str, Any]:
-        """选择曲目最完整且发行最早的正式版本，作为专辑曲目来源。"""
+    def _select_track_release(
+            cls,
+            releases: list[dict[str, Any]],
+            preference: Optional[_MusicReleasePreference] = None,
+    ) -> dict[str, Any]:
+        """选择曲目完整的正式版本，并按地区、字形和日期确定代表版本。"""
         candidates = [
             release
             for release in releases
@@ -1877,19 +2028,27 @@ class MusicBrainzModule(_ModuleBase):
             and sum(int(item.get("track-count") or 0) for item in release.get("media") or [])
         ]
         if not candidates:
-            return next((release for release in releases if release.get("id")), {})
+            candidates = [release for release in releases if release.get("id")]
+        if not candidates:
+            return {}
         official = [release for release in candidates if release.get("status") == "Official"]
+        selected_preference = preference or cls._release_preference()
         return min(
             official or candidates,
-            key=lambda release: cls._date_sort_key(release.get("date")),
+            key=lambda release: (
+                *cls._release_preference_sort_key(release, selected_preference),
+                cls._date_sort_key(release.get("date")),
+            ),
         )
 
     @classmethod
     def _album_tracks_payload(
-            cls, releases: list[dict[str, Any]]
+            cls,
+            releases: list[dict[str, Any]],
+            preference: Optional[_MusicReleasePreference] = None,
     ) -> Optional[dict[str, Any]]:
         """同步读取专辑代表性发行版本的原始曲目响应。"""
-        release = cls._select_track_release(releases)
+        release = cls._select_track_release(releases, preference)
         if not release.get("id"):
             return None
         payload = cls._request_json(
@@ -1900,10 +2059,12 @@ class MusicBrainzModule(_ModuleBase):
 
     @classmethod
     async def _async_album_tracks_payload(
-            cls, releases: list[dict[str, Any]]
+            cls,
+            releases: list[dict[str, Any]],
+            preference: Optional[_MusicReleasePreference] = None,
     ) -> Optional[dict[str, Any]]:
         """异步读取专辑代表性发行版本的原始曲目响应。"""
-        release = cls._select_track_release(releases)
+        release = cls._select_track_release(releases, preference)
         if not release.get("id"):
             return None
         payload = await cls._async_request_json(
@@ -1911,6 +2072,26 @@ class MusicBrainzModule(_ModuleBase):
             params={"inc": "recordings+artist-credits", "fmt": "json"},
         )
         return payload if isinstance(payload, dict) else None
+
+    @classmethod
+    def _apply_selected_release(
+            cls,
+            album: MusicAlbumInfo,
+            payload: Optional[dict[str, Any]],
+    ) -> None:
+        """把代表 Release 的标题、日期和来源身份回填到 Release Group 专辑。"""
+        if not payload:
+            return
+        if title := cls._stripped(payload.get("title")):
+            album.title = title
+        if release_date := cls._stripped(payload.get("date")):
+            album.release_date = release_date
+        album.raw_data = {
+            **(album.raw_data or {}),
+            "release_id": cls._stripped(payload.get("id")),
+            "release_country": cls._stripped(payload.get("country")),
+            "release_script": cls._release_script(payload) or None,
+        }
 
     @classmethod
     def _project_album_tracks(
@@ -1973,14 +2154,18 @@ class MusicBrainzModule(_ModuleBase):
 
     @classmethod
     def _select_release(cls, releases: list[dict[str, Any]]) -> dict[str, Any]:
-        """优先选择正式且日期最早的发行记录。"""
+        """优先选择正式且符合系统地区、字形优先级的发行记录。"""
         if not releases:
             return {}
         official = [release for release in releases if release.get("status") == "Official"]
         candidates = official or releases
+        preference = cls._release_preference()
         return min(
             candidates,
-            key=lambda release: cls._date_sort_key(release.get("date")),
+            key=lambda release: (
+                *cls._release_preference_sort_key(release, preference),
+                cls._date_sort_key(release.get("date")),
+            ),
         )
 
     @staticmethod

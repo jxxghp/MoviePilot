@@ -125,6 +125,8 @@ def test_transfer_chain_do_transfer_keeps_legacy_signature():
         ("cleanup_dest_fileitem", None),
         ("continue_callback", None),
         ("reorganize", False),
+        ("music_release_regions", None),
+        ("music_release_scripts", None),
     )
 
 

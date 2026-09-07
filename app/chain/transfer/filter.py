@@ -166,6 +166,8 @@ class FileFilterMixin(_TransferOwnerBase):
             file_item: FileItem,
             file_path: Path,
             file_meta: MetaMusic,
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
     ) -> tuple[MetaMusic, Optional[MusicInfo]]:
         """为缺少远端身份的本地音频尝试目录级专辑匹配，命中后回填文件元数据。
 
@@ -176,7 +178,14 @@ class FileFilterMixin(_TransferOwnerBase):
         if file_meta.media_id or getattr(file_item, "storage", "local") != "local":
             return file_meta, None
         try:
-            matched = MediaChain().recognize_music_album_directory(file_path.parent)
+            if music_release_regions is None and music_release_scripts is None:
+                matched = MediaChain().recognize_music_album_directory(file_path.parent)
+            else:
+                matched = MediaChain().recognize_music_album_directory(
+                    file_path.parent,
+                    music_release_regions=music_release_regions,
+                    music_release_scripts=music_release_scripts,
+                )
         except Exception as err:
             logger.debug(f"音乐专辑目录匹配失败：{file_path} - {err}")
             return file_meta, None
