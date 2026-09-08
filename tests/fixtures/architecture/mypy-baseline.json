@@ -457,7 +457,7 @@
   },
   "app/api/endpoints/media.py": {
     "arg-type": 2,
-    "assignment": 8,
+    "assignment": 7,
     "attr-defined": 3,
     "misc": 13,
     "no-untyped-call": 5,

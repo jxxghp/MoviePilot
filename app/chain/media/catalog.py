@@ -23,6 +23,7 @@ from app.schemas.types import (
     MediaSource,
     MediaSourceSelection,
     MediaType,
+    MusicEntityType,
 )
 
 
@@ -100,20 +101,46 @@ class MediaCatalogOwner(_MediaOwnerBase):
         query: str,
         limit: int = 20,
         media_source: Optional[MediaSourceSelection] = None,
+        music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
         """按一个或多个音乐来源搜索候选，未指定时使用 MusicBrainz。"""
-        _, candidates = self.search(title=query, media_source=media_source, mtype=MediaType.MUSIC, limit=limit)
-        return cast(list[MusicInfo], candidates)
+        if music_types is not None:
+            return self._music_catalog().search(
+                MetaMusic.parse_query(query),
+                limit=limit,
+                media_source=media_source,
+                music_types=music_types,
+            )
+        _meta, results = self.search(
+            query,
+            limit=limit,
+            media_source=media_source,
+            mtype=MediaType.MUSIC,
+        )
+        return cast(list[MusicInfo], results)
 
     async def async_search_music(
         self,
         query: str,
         limit: int = 20,
         media_source: Optional[MediaSourceSelection] = None,
+        music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
         """并行搜索一个或多个音乐来源，单一来源失败不影响其它结果。"""
-        _, candidates = await self.async_search(title=query, media_source=media_source, mtype=MediaType.MUSIC, limit=limit)
-        return cast(list[MusicInfo], candidates)
+        if music_types is not None:
+            return await self._music_catalog().async_search(
+                MetaMusic.parse_query(query),
+                limit=limit,
+                media_source=media_source,
+                music_types=music_types,
+            )
+        _meta, results = await self.async_search(
+            query,
+            limit=limit,
+            media_source=media_source,
+            mtype=MediaType.MUSIC,
+        )
+        return cast(list[MusicInfo], results)
 
     @classmethod
     def _validate_music_result(
