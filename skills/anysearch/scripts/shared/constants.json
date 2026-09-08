@@ -1,8 +1,0 @@
-{
-  "endpoint": "https://api.anysearch.com/mcp",
-  "available_domains": [
-    "general", "resource", "social_media", "finance", "academic",
-    "legal", "health", "business", "security", "ip", "code",
-    "energy", "environment", "agriculture", "travel", "film", "gaming"
-  ]
-}
