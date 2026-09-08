@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **392**
+- OpenAPI HTTP operations: **393**
 - Stable `moviepilot_api` operations: **205**
 - Exact HTTP routes used by the gateway: **203**
 - OpenAPI routes matched directly by the gateway: **202**
@@ -20,7 +20,7 @@
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
 | `consolidated` | 72 | Source/UI route represented by a stable aggregate Agent operation. |
 | `gateway` | 202 | Approved structured MoviePilot Agent operation. |
-| `provider-skill` | 11 | Low-level downloader or media-server capability owned by a provider Skill. |
+| `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
 | `ui_presentation` | 20 | Frontend or plugin-rendered presentation contract. |
@@ -91,6 +91,7 @@
 | `POST` | `/api/v1/download/subtitle` | download | `provider-skill` | downloader-operation | 下载字幕 |
 | `DELETE` | `/api/v1/download/{hashString}` | download | `provider-skill` | downloader-operation | 删除下载任务 |
 | `PATCH` | `/api/v1/download/{hashString}` | download | `provider-skill` | downloader-operation | 高级更新下载任务 |
+| `POST` | `/api/v1/download/{hashString}/classify-source` | download | `provider-skill` | downloader-operation | 识别并归类已有下载任务 |
 | `DELETE` | `/api/v1/history/download` | history | `gateway` | download.history.delete | 删除下载历史记录 |
 | `GET` | `/api/v1/history/download` | history | `gateway` | download.history.list | 查询下载历史记录 |
 | `DELETE` | `/api/v1/history/transfer` | history | `gateway` | transfer.history.delete | 删除整理记录 |

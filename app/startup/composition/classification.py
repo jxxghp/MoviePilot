@@ -14,8 +14,11 @@ from pydantic import ValidationError
 from app.application.classification.configuration import (
     ClassificationPolicyConfigurationService,
     ClassificationPolicyValidationError,
+    needs_default_music_classification,
+    with_default_music_classification,
 )
 from app.application.classification.contract import (
+    ClassificationPolicyConflictError,
     ClassificationPolicyStateCorruptError,
 )
 from app.application.classification.execution import (
@@ -104,6 +107,7 @@ async def compose_classification(
     values = system_config.all()
     policy_key = SystemConfigKey.MediaClassificationPolicy.value
     stored_value = values.get(policy_key)
+    stored_state: ClassificationPolicyState | None = None
     extra_fields: tuple[ClassificationFieldDefinition, ...] = ()
     existing_issue: tuple[ClassificationValidationIssue, ...] = ()
     if policy_key in values:
@@ -155,6 +159,29 @@ async def compose_classification(
                 ClassificationRuntime(service, diagnostics=(issue,)),
                 migrated=False,
             )
+        if stored_state is not None and needs_default_music_classification(
+            stored_state.active
+        ):
+            try:
+                await service.async_publish(
+                    with_default_music_classification(stored_state.active),
+                    expected_revision=stored_state.active.revision,
+                )
+            except ClassificationPolicyConflictError:
+                # 多进程同时启动时由首个成功 CAS 的进程完成升级，其余进程刷新事实源。
+                await service.async_reload()
+            except ClassificationPolicyValidationError as error:
+                logger.error("默认音乐分类策略升级未通过校验，保留原策略")
+                return finish(
+                    ClassificationRuntime(service, diagnostics=tuple(error.result.issues)),
+                    migrated=False,
+                )
+            else:
+                logger.info("已为仅有旧版兜底的分类策略补充常用音乐分类")
+                return finish(
+                    ClassificationRuntime(service),
+                    migrated=True,
+                )
         return finish(
             ClassificationRuntime(service),
             migrated=False,
@@ -198,7 +225,9 @@ async def compose_classification(
 
     service.register_extra_fields(migration.extra_fields)
     try:
-        await service.async_initialize(migration.policy)
+        await service.async_initialize(
+            with_default_music_classification(migration.policy)
+        )
     except ClassificationPolicyValidationError as error:
         logger.error("旧分类策略未通过发布校验，继续保留 legacy 只读兼容行为")
         return finish(

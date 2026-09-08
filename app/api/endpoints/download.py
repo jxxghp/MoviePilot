@@ -4,7 +4,7 @@ import anyio
 from fastapi import Body, Depends
 
 from app.adapters.web.security.access import verify_token
-from app.api.dependencies.auth import get_current_active_user
+from app.api.dependencies.auth import get_current_active_manage_user, get_current_active_user
 from app.api.dependencies.site import get_site_sync_query_service
 from app.api.principal import ApiPrincipal
 from app.api.response import (
@@ -14,6 +14,7 @@ from app.api.response import (
 )
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
+from app.application.download.organization import organize_existing_source
 from app.application.download.tasks import DownloadTaskMutationService
 from app.application.security.url import SecurityUtils
 from app.application.site.query import (
@@ -29,6 +30,8 @@ from app.domain.metainfo import MetaInfo
 from app.schemas.common import ServiceClientInfo as _SchemaServiceClientInfo
 from app.schemas.download import DownloadAddedData as _SchemaDownloadAddedData
 from app.schemas.download import DownloadDirectory as _SchemaDownloadDirectory
+from app.schemas.download import DownloadSourceClassificationData as _SchemaDownloadSourceClassificationData
+from app.schemas.download import DownloadSourceClassificationRequest as _SchemaDownloadSourceClassificationRequest
 from app.schemas.download import DownloadTaskUpdateData as _SchemaDownloadTaskUpdateData
 from app.schemas.download import DownloadTaskUpdateRequest as _SchemaDownloadTaskUpdateRequest
 from app.schemas.download import SubtitleDownloadData as _SchemaSubtitleDownloadData
@@ -396,6 +399,27 @@ async def update_task(
         success=all(item.get("success") for item in data["results"]),
         data=data,
     )
+
+
+@router.post(  # type: ignore[misc]
+    "/{hashString}/classify-source",
+    summary="识别并归类已有下载任务",
+    response_model=_SchemaResponse[_SchemaDownloadSourceClassificationData],
+)
+async def classify_source(
+    hashString: str,
+    payload: _SchemaDownloadSourceClassificationRequest,
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
+) -> _SchemaResponse[Any]:
+    """复用媒体识别链生成资源目录和根目录名，确认后仅通过下载器执行。"""
+    chain = DownloadChain()
+    try:
+        data = await anyio.to_thread.run_sync(
+            lambda: organize_existing_source(hashString, payload, chain, MediaChain())
+        )
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(success=True, data=data)
 
 
 @router.get(

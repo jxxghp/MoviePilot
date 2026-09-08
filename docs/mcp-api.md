@@ -374,9 +374,16 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 | POST | `/api/v1/download/subtitle` | 下载字幕到识别出的媒体下载目录，请求体包含 `subtitle_in`，并必须提供 `media_source` + `media_id`；可选 `save_path` |
 | GET | `/api/v1/download/start/{hashString}` | 恢复下载任务，参数：`name` |
 | GET | `/api/v1/download/stop/{hashString}` | 暂停下载任务，参数：`name` |
+| PATCH | `/api/v1/download/{hashString}` | 高级更新下载任务，可修改限速、标签、Tracker、保存目录和下载器分类 |
+| POST | `/api/v1/download/{hashString}/classify-source` | `recognize` 模式重新识别媒体并按当前生效分类计算保存位置，`manual` 模式使用明确目标目录；`execute=false` 只预览，`execute=true` 由下载器移动任务数据；可传当前策略中已启用的 `media_category` 路径覆盖自动分类 |
 | GET | `/api/v1/download/clients` | 查询可用下载器 |
 | GET | `/api/v1/download/paths` | 查询可用于下载接口 `save_path` 参数的下载路径 |
 | DELETE | `/api/v1/download/{hashString}` | 删除下载任务，参数：`name` |
+
+资源目录重新分类只接受仍存在于下载器且具有可恢复媒体类型的下载历史任务；识别模式可复用历史中的媒体来源和同来源媒体 ID，也可在请求中指定来源、媒体 ID 或当前策略中已启用且媒体类型匹配的 `media_category`。
+目标路径必须落在已配置的资源根目录内，并且目录需开启“资源目录按类别分类”或绑定固定分类。
+识别模式会优先使用媒体识别链产生的当前生效分类路径；例如 MusicBrainz 返回 `Album` 主类型和 `Compilation` 副类型并命中默认精选集规则时，目标分类为 `Album/Compilation`。识别结果尚无可用分类路径时，音乐兼容退回主类型目录。
+执行时 MoviePilot 调用下载器的位置更新能力，不直接移动或改写 PT 数据文件。
 
 #### 历史
 

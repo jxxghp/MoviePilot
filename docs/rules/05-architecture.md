@@ -449,7 +449,11 @@ moving classification semantics into the endpoint. `app/startup/composition/clas
 owner allowed to decide whether the one-time YAML migration runs: an existing
 `MediaClassificationPolicy` always wins, while invalid legacy input leaves the
 new runtime unavailable with structured diagnostics instead of publishing a
-partial policy. The
+partial policy. It may CAS-upgrade only the exact, history-free revision-1 legacy
+default by adding explicit music rules for `Album`, `Album/Compilation`, `EP`, and
+`Single`; user-edited policies always win. The display label
+`Album / Compilation` maps to the two path segments `Album` and `Compilation`, so
+spaces around the separator never become directory-name suffixes. The
 `app/db/adapters/classification.py` implementation stores `active + history` in
 the single `SystemConfigKey.MediaClassificationPolicy` value, verifies revision
 inside a short row-lock transaction and publishes the shared SystemConfig

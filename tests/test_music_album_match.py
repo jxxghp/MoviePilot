@@ -54,11 +54,14 @@ def test_match_music_album_selects_release_by_count_and_duration(monkeypatch):
     """曲目数和时长一致的发行版本应被选中并返回曲目表。"""
     module = MusicBrainzModule()
     detail = _release_detail("release-1", "七里香", "周杰伦", ALBUM_TRACKS)
+    detail_request_params = None
 
     def fake_request(path, params=None):
+        nonlocal detail_request_params
         if path == "/release":
             return {"releases": [{"id": "release-1", "title": "七里香"}]}
         if path == "/release/release-1":
+            detail_request_params = params
             return detail
         return None
 
@@ -76,6 +79,10 @@ def test_match_music_album_selects_release_by_count_and_duration(monkeypatch):
     assert [track.media_id for track in album.tracks] == ["rec-1", "rec-2", "rec-3"]
     assert album.tracks[0].track_number == 1
     assert album.tracks[0].album == "七里香"
+    assert detail_request_params is not None
+    assert "release-groups" in detail_request_params["inc"].split("+")
+    assert album.album_type == "Album"
+    assert album.tracks[0].album_type == "Album"
 
 
 def test_match_music_album_rejects_mismatched_trackset(monkeypatch):
