@@ -1020,7 +1020,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
             logger.warning(f"Docker 更新已完成但旧载荷清理失败：{error}")
 
     def _apply_docker_resources(self, prepared: dict[str, Any]) -> None:
-        """原子替换 Docker 当前源码携带的站点资源目录。"""
+        """备份并替换 Docker 站点资源，失败时恢复旧目录。"""
         resource_dir = self._resource_source_dir(self._docker_app_dir)
         resource_dir.parent.mkdir(parents=True, exist_ok=True)
         with TemporaryDirectory(
@@ -1035,11 +1035,14 @@ class SystemUpdateManager(metaclass=SingletonClass):
             backup_dir = resource_dir.with_name(f"{resource_dir.name}.__prepared_previous__")
             self._remove_path(backup_dir)
             if resource_dir.exists() or resource_dir.is_symlink():
-                resource_dir.replace(backup_dir)
+                # OverlayFS 下镜像层目录不能直接重命名，先复制完整备份再移除。
+                shutil.copytree(resource_dir, backup_dir, symlinks=True)
             try:
+                self._remove_path(resource_dir)
                 stage_dir.replace(resource_dir)
             except OSError:
                 if backup_dir.exists():
+                    self._remove_path(resource_dir)
                     backup_dir.replace(resource_dir)
                 raise
             self._remove_path(backup_dir)

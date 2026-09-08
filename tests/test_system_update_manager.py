@@ -1,5 +1,6 @@
 """系统后台更新状态机测试。"""
 
+import errno
 import json
 import threading
 import zipfile
@@ -12,6 +13,7 @@ from app.adapters.system import update as update_module
 
 
 def _manager(monkeypatch, tmp_path: Path):
+    """创建使用临时状态目录的更新管理器。"""
     monkeypatch.setattr(
         update_module,
         "get_runtime_setting",
@@ -488,10 +490,11 @@ def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugin
     assert not manager._docker_previous_public_dir.exists()
 
 
+@pytest.mark.parametrize("failure", [None, "backup", "install"])
 def test_apply_prepared_resources_replaces_complete_docker_resource_package(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, failure
 ):
-    """Docker root worker 应原子替换完整站点资源包而不触碰主程序目录。"""
+    """镜像层目录禁止重命名时仍能更新，备份或安装失败则保留旧资源。"""
     manager = _docker_manager(monkeypatch, tmp_path)
     monkeypatch.setattr(
         update_module.ResourceHelper,
@@ -527,8 +530,34 @@ def test_apply_prepared_resources_replaces_complete_docker_resource_package(
     )
     manager._install_file.write_text(json.dumps(prepared), encoding="utf-8")
 
+    original_replace = Path.replace
+    original_copytree = update_module.shutil.copytree
+
+    def replace(source, target):
+        """模拟 OverlayFS 镜像层重命名限制及新资源提交失败。"""
+        if source == resource_dir:
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        if failure == "install" and source.parent.name.startswith(".moviepilot-resource-update-"):
+            raise OSError(errno.EIO, "install failed")
+        return original_replace(source, target)
+
+    def copytree(source, target, *args, **kwargs):
+        """模拟备份复制失败，确保尚未触碰运行目录。"""
+        if failure == "backup" and Path(target).name.endswith(".__prepared_previous__"):
+            raise OSError(errno.ENOSPC, "backup failed")
+        return original_copytree(source, target, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "replace", replace)
+    monkeypatch.setattr(update_module.shutil, "copytree", copytree)
     success, _message = manager.apply_prepared_update()
 
+    if failure:
+        assert success is False
+        assert (resource_dir / "user.sites.v3.bin").read_bytes() == b"old-index"
+        assert (resource_dir / "sites.cpython-old.so").read_bytes() == b"old-native"
+        assert not (resource_dir / "sites.cpython-test.so").exists()
+        assert (manager._root / "prepared.json").exists()
+        return
     assert success is True
     assert (manager._docker_app_dir / "keep.py").read_text(encoding="utf-8") == "keep\n"
     assert (resource_dir / "user.sites.v3.bin").read_bytes() == b"new-index"
