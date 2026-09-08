@@ -288,3 +288,35 @@ def test_all_unmanaged_config_reload_classes_have_explicit_providers(
         "SystemHelper",
         "TransferChain",
     }
+
+
+def test_error_alert_dedup_preserves_distinct_events_handlers_and_errors():
+    """只合并同一持久事件同一处理器的相同错误，不压制新故障或普通事件。"""
+    notify, emit = Mock(), Mock()
+    policy = EventErrorPolicy(notifier=lambda: notify, emit_system_error=emit)
+    for event_key, handler, error in [
+        ("one", "handle", "broken"), ("one", "handle", "broken"),
+        ("two", "handle", "broken"), ("one", "other", "broken"),
+        ("one", "handle", "new error"), (None, "handle", "broken"),
+        (None, "handle", "broken"),
+    ]:
+        policy.handle(event=Event(EventType.TransferFailed, {"idempotency_key": event_key}),
+                      module_name="plugin", class_name="Handler", method_name=handler,
+                      error=RuntimeError(error))
+    assert notify.call_count == 6
+    assert emit.call_count == 6
+
+
+def test_durable_error_alert_cache_is_bounded(monkeypatch):
+    """长时间运行只保留最近事件的提示记录，淘汰后允许重新提示。"""
+    from app.runtime.event import errors
+
+    monkeypatch.setattr(errors, "_MAX_REPORTED_ERRORS", 2)
+    notify = Mock()
+    policy = EventErrorPolicy(notifier=lambda: notify, emit_system_error=Mock())
+    for key in ("one", "two", "one", "three", "two"):
+        policy.handle(event=Event(EventType.TransferFailed, {"idempotency_key": key}),
+                      module_name="plugin", class_name="Handler", method_name="handle",
+                      error=RuntimeError("broken"))
+    assert notify.call_count == 4
+    assert len(policy._reported_errors) == 2
