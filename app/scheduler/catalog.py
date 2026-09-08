@@ -150,16 +150,20 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             replace_existing=True,
         )
 
+    def _poll_subscription_search_queue(self) -> None:
+        """仅在消费者空闲时唤醒托管协程，轮询不等待搜索也不重复报告重入。"""
+        if not self._is_job_active("subscribe_search_queue"):
+            self.start("subscribe_search_queue")
+
     def _register_subscription_search_queue_job(self, config: SchedulerRuntimeConfig) -> None:
-        """注册短周期持久搜索队列恢复任务。"""
+        """注册轻量轮询；搜索协程的真实生命周期由 Scheduler 持有。"""
         self._scheduler.add_job(
-            self.start,
+            self._poll_subscription_search_queue,
             "interval",
             id="subscribe_search_queue",
             name="恢复订阅搜索队列",
             seconds=10,
             next_run_time=datetime.now(pytz.timezone(config.timezone)) + timedelta(seconds=5),
-            kwargs={"job_id": "subscribe_search_queue"},
         )
 
     def _initialize_catalog(self, config: SchedulerRuntimeConfig) -> None:

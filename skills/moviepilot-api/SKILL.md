@@ -1247,6 +1247,10 @@ Purpose: Reset one accessible subscription so it can be processed again.
 - `query`: none
 - `body`: none
 
+Subscription search uses a durable queue. Automatic batches share a single 0–60 second startup jitter; site rate limits and cooldowns still apply.
+Deferred attempts resume only pending sites, including after restart. Treat `waiting_site_budget` as recoverable waiting and use `next_run_at` for the next attempt;
+its `error` text is a waiting reason and is cleared when execution resumes. Do not interpret the configured search interval as a completion deadline.
+
 ### `subscription.search`
 `POST /api/v1/subscribe/search/{subscribe_id}`; policy effect: `external_side_effect`.
 Purpose: Run an immediate search for one existing subscription.

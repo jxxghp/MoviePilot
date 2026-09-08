@@ -362,3 +362,54 @@ def test_search_queue_keeps_manual_work_ahead_of_aged_fallback(tmp_path):
 
     assert claimed.subscription_id == 9
     assert claimed.source == "manual"
+
+
+def test_retry_sites_survive_reopen_and_admission_wait_without_stale_error(tmp_path):
+    """站点游标跨重建仓储和准入等待保留，真正恢复时清除上轮等待提示。"""
+    repository, engine = _repository(tmp_path)
+    repository.enqueue(subscription_ids=(701,), source="fallback", priority=10)
+    first = repository.claim_next(owner="before-restart")
+    ready_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec="seconds")
+    assert repository.defer_task(
+        task_id=first.task_id, lease_token=first.lease_token, available_at=ready_at,
+        message="站点冷却中", pending_site_ids=(8, 9),
+    )
+    reopened = TransactionalSubscriptionSearchRepository(sessionmaker(bind=engine))
+    resumed = reopened.claim_next(owner="after-restart")
+    assert resumed.task_id == first.task_id
+    assert resumed.pending_site_ids == (8, 9)
+    assert resumed.state == "running"
+    assert resumed.last_error is None
+    assert reopened.defer_task(
+        task_id=resumed.task_id, lease_token=resumed.lease_token, available_at=ready_at,
+        phase="waiting_subscription", message="等待任务",
+    )
+    continued = reopened.claim_next(owner="after-match")
+    assert continued.pending_site_ids == (8, 9)
+    assert continued.last_error is None
+    assert reopened.defer_task(
+        task_id=continued.task_id, lease_token=first.lease_token, available_at=ready_at,
+        pending_site_ids=(99,),
+    ) is False
+    assert reopened.finish_task(task_id=continued.task_id, lease_token=continued.lease_token, state="completed")
+    engine.dispose()
+
+
+def test_manual_search_restarts_full_scope_but_automatic_merge_keeps_cursor(tmp_path):
+    """自动调度合并保留进度，用户主动重搜可包含新配置的站点。"""
+    repository, engine = _repository(tmp_path)
+    repository.enqueue(subscription_ids=(702,), source="fallback", priority=10)
+    first = repository.claim_next(owner="worker")
+    ready_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec="seconds")
+    assert repository.defer_task(
+        task_id=first.task_id, lease_token=first.lease_token, available_at=ready_at,
+        pending_site_ids=(9,),
+    )
+    repository.enqueue(subscription_ids=(702,), source="fallback", priority=10)
+    with Session(engine) as session:
+        assert session.scalar(select(SubscriptionSearchTask.pending_site_ids)) == [9]
+    repository.enqueue(subscription_ids=(702,), source="manual", priority=100)
+    resumed = repository.claim_next(owner="manual")
+    assert resumed.pending_site_ids is None
+    assert resumed.source == "manual"
+    engine.dispose()

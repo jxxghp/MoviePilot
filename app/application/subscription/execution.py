@@ -119,7 +119,8 @@ def raise_subscription_site_budget_deferral(
         return
     retry_at = min(deferrals, key=lambda item: item.retry_at).retry_at
     site_ids = tuple(dict.fromkeys(item.site_id for item in deferrals))
-    raise SubscriptionSearchDeferred(retry_at=retry_at, site_ids=site_ids)
+    wait_reason = "cooldown" if all(item.wait_reason == "cooldown" for item in deferrals) else "busy"
+    raise SubscriptionSearchDeferred(retry_at=retry_at, site_ids=site_ids, wait_reason=wait_reason)
 
 
 def handle_subscription_search_deferred(
@@ -135,7 +136,8 @@ def handle_subscription_search_deferred(
         lease_token=lease_token,
         available_at=deferred.retry_at,
         phase="waiting_site_budget",
-        message="站点暂时忙，系统会自动继续搜索",
+        message=str(deferred),
+        pending_site_ids=deferred.site_ids,
     )
     if requeued:
         record("requeued", "site_budget_deferred")
@@ -184,6 +186,7 @@ class SearchTaskSnapshot:
     finished_at: Optional[str] = None
     last_error: Optional[str] = None
     current_site_id: Optional[int] = None
+    pending_site_ids: Optional[tuple[int, ...]] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,8 +268,9 @@ class SubscriptionSearchRepository(Protocol):
         available_at: str,
         phase: str = "waiting_site_budget",
         message: Optional[str] = None,
+        pending_site_ids: Optional[tuple[int, ...]] = None,
     ) -> bool:
-        """把临时不可执行任务退回队列，并保留用户可理解的等待原因。"""
+        """延后任务并保存等待原因与待搜站点；省略站点时保留已有游标。"""
         ...
 
     def is_cancel_requested(self, task_id: str) -> bool:

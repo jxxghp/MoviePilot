@@ -21,14 +21,17 @@ class SubscriptionSiteBudgetDeferral:
 
     site_id: int
     retry_at: str
+    wait_reason: Optional[str] = None
 
 
 class SubscriptionSearchDeferred(RuntimeError):
     """表示订阅搜索未失败，而是应在站点预算可用后重新入队。"""
 
-    def __init__(self, *, retry_at: str, site_ids: tuple[int, ...]) -> None:
+    def __init__(
+        self, *, retry_at: str, site_ids: tuple[int, ...], wait_reason: Optional[str] = None,
+    ) -> None:
         """保存队列恢复所需的时间和站点，避免把临时等待写成错误。"""
-        super().__init__("站点暂时忙，系统会自动继续搜索")
+        super().__init__("站点冷却中" if wait_reason == "cooldown" else "等待站点")
         self.retry_at = retry_at
         self.site_ids = site_ids
 
@@ -176,8 +179,10 @@ class SubscriptionSiteBudget:
         clock: Callable[[], datetime] = _utc_now,
         phase_changed: Optional[Callable[[str, Optional[int]], None]] = None,
         metrics: Optional[SubscriptionSiteBudgetMetrics] = None,
+        pending_site_ids: Optional[tuple[int, ...]] = None,
     ) -> None:
-        """保存持久化端口及可注入的时钟和阶段回调。"""
+        """保存站点预算及恢复范围；首次搜索的 pending_site_ids 为 None。"""
+        self.pending_site_ids = pending_site_ids
         self._repository = repository
         self._owner = owner
         self._cancelled = cancelled

@@ -1,5 +1,6 @@
 """订阅主动搜索编排"""
 
+import asyncio
 import random
 import time
 from datetime import datetime, timedelta, timezone
@@ -46,8 +47,10 @@ from app.domain.context import (
     MusicInfo,
 )
 from app.domain.meta.metabase import MetaBase
+from app.runtime.execution import await_task_to_terminal
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.runtime.tasks import get_task_registry
 from app.schemas.types import (
     MediaType,
     SystemConfigKey,
@@ -92,19 +95,14 @@ def _search_task_available_at(
     *,
     now: Optional[datetime] = None,
 ) -> dict[int, str]:
-    """把兜底搜索的随机节奏持久化为逐订阅到期时间。"""
+    """整批仅抖动一次；请求节奏由站点限流控制，不随订阅数量累计空等。"""
     ordered_ids = tuple(dict.fromkeys(subscription_ids))
     if not ordered_ids:
         return {}
     cursor = now or datetime.now(timezone.utc)
     if source == "fallback":
         cursor += timedelta(seconds=random.randint(0, 60))
-    available_at: dict[int, str] = {}
-    for position, subscription_id in enumerate(ordered_ids):
-        if source == "fallback" and position:
-            cursor += timedelta(seconds=random.randint(60, 300))
-        available_at[subscription_id] = cursor.isoformat(timespec="seconds")
-    return available_at
+    return dict.fromkeys(ordered_ids, cursor.isoformat(timespec="seconds"))
 
 
 class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
@@ -517,6 +515,27 @@ class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
             stop_state=stop_state,
         )
         return runner.execute()
+
+    async def async_resume_search_queue(
+        self,
+        progress_callback: Optional[Callable[..., None]] = None,
+        limit: int = 50,
+        manual_sids: Optional[tuple[int, ...]] = None,
+    ) -> None:
+        """托管恢复协程及手工反馈，等待同步消费者真实结束后才释放运行所有权。"""
+        task = get_task_registry().create_sync(
+            self.resume_search_queue,
+            owner="subscription.search_queue",
+            progress_callback=progress_callback,
+            limit=limit,
+            manual_sids=manual_sids,
+        )
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # 同步线程不可强制取消；真实收尾前不能让下一次轮询取得消费者所有权。
+            await await_task_to_terminal(task)
+            raise
 
     def resume_search_queue(
         self,

@@ -67,6 +67,7 @@ def _task(record: SubscriptionSearchTask) -> SearchTaskSnapshot:
         finished_at=record.finished_at,
         last_error=record.last_error,
         current_site_id=record.current_site_id,
+        pending_site_ids=tuple(record.pending_site_ids) if record.pending_site_ids is not None else None,
     )
 
 
@@ -248,8 +249,9 @@ class TransactionalSubscriptionSearchRepository:
         available_at: str,
         phase: str = "waiting_site_budget",
         message: Optional[str] = None,
+        pending_site_ids: Optional[tuple[int, ...]] = None,
     ) -> bool:
-        """按指定时间和可见原因重新排队任务。"""
+        """重新排队并保存待搜站点；未提供站点时保留原游标。"""
         return self._write(
             lambda repository: repository.defer_task(
                 task_id=task_id,
@@ -257,6 +259,7 @@ class TransactionalSubscriptionSearchRepository:
                 available_at=available_at,
                 phase=phase,
                 message=message,
+                pending_site_ids=pending_site_ids,
             )
         )
 

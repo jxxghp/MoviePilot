@@ -209,6 +209,7 @@ class SubscriptionSearchTaskRunner:
                     stop_state=self.stop_state,
                     phase_changed=phase_changed,
                     metrics=self.summary.site_metrics,
+                    pending_site_ids=self.task.pending_site_ids,
                 )
             )
             current = self.process_subscription(
