@@ -42,12 +42,15 @@ from app.schemas.category import (
 )
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_ARTIST,
     MUSIC_ENTITY_RECORDING,
+    MUSIC_ENTITY_TYPES,
     MediaRecognizeType,
     MediaSource,
     MediaSourceSelection,
     MediaType,
     ModuleType,
+    MusicEntityType,
 )
 
 
@@ -366,20 +369,46 @@ class MusicBrainzModule(_ModuleBase):
             meta: MetaMusic,
             limit: int = 20,
             media_source: Optional[MediaSourceSelection] = None,
+            music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> Optional[list[MusicInfo]]:
-        """搜索单曲、专辑和艺术家，并交错返回可浏览的 MusicBrainz 候选。"""
+        """按请求的音乐实体搜索 MusicBrainz，多实体时交错返回候选。"""
         if not is_media_source_selected(media_source, self._source):
             return None
         normalized_limit = max(1, min(limit, 100))
+        requested_types = {
+            music_type
+            for music_type in (music_types or MUSIC_ENTITY_TYPES)
+            if music_type in MUSIC_ENTITY_TYPES
+        }
+        if not requested_types:
+            return []
         # 中文逐字召回可能包含很多局部命中，扩大单次窗口后按完整名称重新排序。
         fetch_limit = min(100, normalized_limit * 3) if self._QUERY_CJK_RE.search(meta.title or "") else normalized_limit
-        recordings = self._rank_search_candidates(meta, self._search_recordings(meta, limit=fetch_limit))
-        albums = self._rank_search_candidates(meta, self._search_albums(meta, limit=fetch_limit))
-        artists = self._rank_search_candidates(meta, self._search_artists(meta, limit=fetch_limit))
+        # 同名发行组远多于一页；专辑实体单独搜索时扩大召回，再用年份、艺人与发行类型重排。
+        album_fetch_limit = min(100, normalized_limit * 5) if requested_types == {MUSIC_ENTITY_ALBUM} else fetch_limit
+        recordings = (
+            self._rank_search_candidates(meta, self._search_recordings(meta, limit=fetch_limit))
+            if MUSIC_ENTITY_RECORDING in requested_types else []
+        )
+        albums = (
+            self._rank_album_search_candidates(meta, self._search_albums(meta, limit=album_fetch_limit))
+            if MUSIC_ENTITY_ALBUM in requested_types else []
+        )
+        artists = (
+            self._rank_search_candidates(meta, self._search_artists(meta, limit=fetch_limit))
+            if MUSIC_ENTITY_ARTIST in requested_types else []
+        )
+        groups = {
+            MUSIC_ENTITY_RECORDING: recordings,
+            MUSIC_ENTITY_ALBUM: albums,
+            MUSIC_ENTITY_ARTIST: artists,
+        }
         return self._interleave_results(
-            recordings,
-            albums,
-            artists,
+            *(groups[music_type] for music_type in (
+                MUSIC_ENTITY_RECORDING,
+                MUSIC_ENTITY_ALBUM,
+                MUSIC_ENTITY_ARTIST,
+            ) if music_type in requested_types),
             limit=normalized_limit,
         )
 
@@ -400,6 +429,31 @@ class MusicBrainzModule(_ModuleBase):
             })
             similarity = max((SequenceMatcher(None, expected, key).ratio() for key in keys), default=0.0)
             return expected in keys, similarity, artist_match
+
+        return sorted(candidates, key=score, reverse=True)
+
+    @staticmethod
+    def _rank_album_search_candidates(meta: MetaMusic, candidates: list[MusicInfo]) -> list[MusicInfo]:
+        """按完整专辑名、艺人、年份和发行类型排序 Release Group 候选。"""
+        expected = music_text_key(meta.album or meta.title)
+        expected_artists = {music_text_key(artist) for artist in meta.artists}
+
+        def score(info: MusicInfo) -> tuple[bool, bool, bool, bool, bool, float]:
+            names = [info.title, *(info.title_aliases or [])]
+            keys = [music_text_key(name) for name in names if name]
+            candidate_artists = {
+                music_text_key(artist)
+                for artist in [*info.artists, *(info.artist_aliases or [])]
+            }
+            similarity = max((SequenceMatcher(None, expected, key).ratio() for key in keys), default=0.0)
+            return (
+                expected in keys,
+                bool(expected_artists and expected_artists & candidate_artists),
+                bool(meta.year and info.year and int(meta.year) == int(info.year)),
+                str(info.album_type or "").casefold() == "album",
+                not bool(info.secondary_types),
+                similarity,
+            )
 
         return sorted(candidates, key=score, reverse=True)
 

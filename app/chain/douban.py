@@ -1,10 +1,10 @@
-from typing import Any, List, Optional
+from typing import Any, Iterable, List, Optional
 
 from app.chain.base import ChainBase
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType, MusicEntityType
 
 
 class DoubanChain(ChainBase):
@@ -14,7 +14,12 @@ class DoubanChain(ChainBase):
 
     music_source = MediaSource.DoubanMusic
 
-    def search_music(self, meta: MetaMusic, limit: int = 20) -> list[MusicInfo]:
+    def search_music(
+            self,
+            meta: MetaMusic,
+            limit: int = 20,
+            music_types: Optional[Iterable[MusicEntityType]] = None,
+    ) -> list[MusicInfo]:
         """按音乐元数据搜索豆瓣音乐候选。"""
         result = self.run_module(
             "search_music",
@@ -22,12 +27,15 @@ class DoubanChain(ChainBase):
             limit=limit,
             media_source=self.music_source,
         )
-        return self._music_infos(result, limit=limit)
+        infos = self._music_infos(result, limit=limit)
+        selected_types = set(music_types or [])
+        return [info for info in infos if info.music_type in selected_types] if selected_types else infos
 
     async def async_search_music(
             self,
             meta: MetaMusic,
             limit: int = 20,
+            music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
         """异步按音乐元数据搜索豆瓣音乐候选。"""
         result = await self.async_run_module(
@@ -36,7 +44,9 @@ class DoubanChain(ChainBase):
             limit=limit,
             media_source=self.music_source,
         )
-        return self._music_infos(result, limit=limit)
+        infos = self._music_infos(result, limit=limit)
+        selected_types = set(music_types or [])
+        return [info for info in infos if info.music_type in selected_types] if selected_types else infos
 
     def recognize_music(
             self,

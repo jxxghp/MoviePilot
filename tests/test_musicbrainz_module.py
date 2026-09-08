@@ -345,6 +345,74 @@ def test_search_music_interleaves_recordings_albums_and_artists(monkeypatch):
     assert requested[2][1]["query"] == 'artist:("周杰伦" OR "周杰倫")'
 
 
+def test_search_music_limits_album_selector_to_release_groups_and_ranks_identity(monkeypatch):
+    """专辑选择器只应请求 Release Group，并把艺人、年份与主类型匹配的录音室专辑排在前面。"""
+    module = MusicBrainzModule()
+    requested = []
+
+    def fake_request(path, params=None):
+        requested.append((path, params))
+        return {
+            "release-groups": [
+                {
+                    "id": "live-single",
+                    "title": "Hotel California",
+                    "primary-type": "Single",
+                    "secondary-types": ["Live"],
+                    "artist-credit": [{"artist": {"id": "eagles", "name": "Eagles"}}],
+                },
+                {
+                    "id": "cover-album",
+                    "title": "Hotel California",
+                    "first-release-date": "2004",
+                    "primary-type": "Album",
+                    "artist-credit": [{"artist": {"id": "cover", "name": "Banda Dos"}}],
+                },
+                {
+                    "id": "studio-album",
+                    "title": "Hotel California",
+                    "first-release-date": "1976-12-08",
+                    "primary-type": "Album",
+                    "artist-credit": [{"artist": {"id": "eagles", "name": "Eagles"}}],
+                },
+            ]
+        }
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+
+    results = module.search_music(
+        MetaMusic(title="Hotel California", artists=["Eagles"], year=1976),
+        limit=20,
+        music_types=("album",),
+    )
+
+    assert [item.music_type for item in results] == ["album", "album", "album"]
+    assert results[0].media_id == "studio-album"
+    assert [path for path, _params in requested] == ["/release-group"]
+    assert requested[0][1]["limit"] == 100
+
+
+def test_search_music_limits_recording_selector_to_recordings(monkeypatch):
+    """单曲选择器不应额外请求发行组或艺术家。"""
+    module = MusicBrainzModule()
+    requested_paths = []
+
+    def fake_request(path, params=None):
+        requested_paths.append(path)
+        return {"recordings": [{"id": "recording-1", "title": "Hotel California"}]}
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+
+    results = module.search_music(
+        MetaMusic(title="Hotel California"),
+        limit=20,
+        music_types=("recording",),
+    )
+
+    assert [item.media_id for item in results] == ["recording-1"]
+    assert requested_paths == ["/recording"]
+
+
 def test_file_recognition_searches_recordings_only(monkeypatch):
     """本地音轨识别不得把同名专辑或艺术家候选当成 Recording。"""
     module = MusicBrainzModule()

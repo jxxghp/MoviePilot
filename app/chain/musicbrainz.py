@@ -1,9 +1,9 @@
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 from app.chain.base import ChainBase
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.schemas.types import MediaSource, MediaType
+from app.schemas.types import MediaSource, MediaType, MusicEntityType
 
 
 class MusicMetadataSourceChain(ChainBase):
@@ -11,25 +11,35 @@ class MusicMetadataSourceChain(ChainBase):
 
     source: MediaSource
 
-    def search_music(self, meta: MetaMusic, limit: int = 20) -> list[MusicInfo]:
+    def search_music(
+            self,
+            meta: MetaMusic,
+            limit: int = 20,
+            music_types: Optional[Iterable[MusicEntityType]] = None,
+    ) -> list[MusicInfo]:
         """按音乐元数据搜索当前来源候选。"""
-        result = self.run_module(
-            "search_music",
-            meta=meta,
-            limit=limit,
-            media_source=self.source,
-        )
-        return self._music_infos(result, limit=limit)
+        kwargs: dict[str, Any] = {"meta": meta, "limit": limit, "media_source": self.source}
+        if self.source == MediaSource.MusicBrainz and music_types is not None:
+            kwargs["music_types"] = music_types
+        result = self.run_module("search_music", **kwargs)
+        infos = self._music_infos(result, limit=limit)
+        selected_types = set(music_types or [])
+        return [info for info in infos if info.music_type in selected_types] if selected_types else infos
 
-    async def async_search_music(self, meta: MetaMusic, limit: int = 20) -> list[MusicInfo]:
+    async def async_search_music(
+            self,
+            meta: MetaMusic,
+            limit: int = 20,
+            music_types: Optional[Iterable[MusicEntityType]] = None,
+    ) -> list[MusicInfo]:
         """异步按音乐元数据搜索当前来源候选。"""
-        result = await self.async_run_module(
-            "search_music",
-            meta=meta,
-            limit=limit,
-            media_source=self.source,
-        )
-        return self._music_infos(result, limit=limit)
+        kwargs: dict[str, Any] = {"meta": meta, "limit": limit, "media_source": self.source}
+        if self.source == MediaSource.MusicBrainz and music_types is not None:
+            kwargs["music_types"] = music_types
+        result = await self.async_run_module("search_music", **kwargs)
+        infos = self._music_infos(result, limit=limit)
+        selected_types = set(music_types or [])
+        return [info for info in infos if info.music_type in selected_types] if selected_types else infos
 
     def recognize_music(
             self,

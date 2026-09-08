@@ -71,7 +71,7 @@ def test_media_search_endpoint_forwards_multi_source() -> None:
 async def test_media_search_route_accepts_comma_separated_music_sources() -> None:
     """真实路由在旧逗号格式兼容边界后应把每项转换为 MediaSource。"""
     chain = Mock()
-    chain.async_search = AsyncMock(return_value=(None, []))
+    chain.async_search_music = AsyncMock(return_value=[])
     app = FastAPI()
     app.include_router(media_endpoints.router, prefix="/api/v1/media")
     app.dependency_overrides[verify_token] = lambda: Mock()
@@ -87,16 +87,17 @@ async def test_media_search_route_accepts_comma_separated_music_sources() -> Non
                     "title": "周杰伦",
                     "type": "music",
                     "count": 30,
+                    "music_type": "album",
                     "media_source": "musicbrainz,theaudiodb,doubanmusic",
                 },
             )
 
     assert response.status_code == 200
     assert response.json() == {"success": True, "message": "", "data": []}
-    chain.async_search.assert_awaited_once_with(
-        title="周杰伦",
-        mtype=MediaType.MUSIC,
+    chain.async_search_music.assert_awaited_once_with(
+        query="周杰伦",
         limit=30,
+        music_types=("album",),
         media_source=(
             MediaSource.MusicBrainz,
             MediaSource.TheAudioDB,

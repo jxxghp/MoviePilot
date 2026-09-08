@@ -52,6 +52,28 @@ def test_music_catalog_service_isolates_failed_source():
     assert errors and "broken" in errors[0]
 
 
+def test_music_catalog_service_forwards_stable_entity_filter_to_every_source():
+    """实体过滤即使由生成器传入，也应完整转发给每个音乐来源。"""
+    received = []
+
+    class _FilteredSource:
+        def search_music(self, _meta, limit=20, music_types=None):
+            received.append((limit, music_types))
+            return []
+
+    service = MusicCatalogService(
+        source_resolver=lambda _source: _FilteredSource(),
+        warning=lambda _message: None,
+    )
+
+    assert service.search(
+        "Hotel California",
+        media_source=(MediaSource.MusicBrainz, MediaSource.DoubanMusic),
+        music_types=(item for item in ["album"]),
+    ) == []
+    assert received == [(20, ("album",)), (20, ("album",))]
+
+
 def test_music_catalog_merge_keeps_later_source_with_full_first_page():
     """第一来源达到条数上限也不能挤掉后来来源的准确目标。"""
     first = [MusicInfo(media_source=MediaSource.MusicBrainz, media_id=str(index), title=f"Other {index}") for index in range(30)]

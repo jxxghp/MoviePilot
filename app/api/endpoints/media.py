@@ -34,7 +34,7 @@ from app.schemas.event import MediaSourceInfo as _SchemaMediaSourceInfo
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType
+from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType, MusicEntityType
 from app.schemas.workflow import Context as _SchemaContext
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
@@ -285,6 +285,7 @@ async def search(
     page: int = 1,
     count: int = 8,
     media_source: MediaSourceQuery = (),
+    music_type: Optional[MusicEntityType] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
@@ -295,6 +296,7 @@ async def search(
     :param page: 页码
     :param count: 每页数量
     :param media_source: 请求级搜索数据源枚举；可重复传入，逗号格式仅用于兼容旧客户端
+    :param music_type: 可选音乐实体类型，用于限制 MusicBrainz 只搜索单曲、发行组或艺术家
     :param _: Token校验
     :return: 搜索结果列表
     """
@@ -318,12 +320,19 @@ async def search(
 
     media_chain = MediaChain()
     is_music = type == "music" or any(is_music_media_source(source) for source in selected_sources)
-    if type == "media" or is_music:
-        _, medias = await media_chain.async_search(
-            title=title, media_source=source_selection,
-            **({"mtype": MediaType.MUSIC, "limit": count} if is_music else {}),
+    if is_music:
+        music_results = await media_chain.async_search_music(
+            query=title,
+            limit=count,
+            media_source=source_selection,
+            music_types=(music_type,) if music_type else None,
         )
-        result = [media.to_dict() for media in medias] if medias else []
+        result = [media.to_dict() for media in music_results] if music_results else []
+    elif type == "media":
+        _media_meta, media_results = await media_chain.async_search(
+            title=title, media_source=source_selection,
+        )
+        result = [media.to_dict() for media in media_results] if media_results else []
     elif type == "collection":
         collections = await media_chain.async_search_collections(name=title, media_source=source_selection)
         result = [collection.to_dict() for collection in collections] if collections else []
