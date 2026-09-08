@@ -1,7 +1,7 @@
 """媒体搜索入口 owner。"""
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from app.chain.media.contract import _MediaOwnerBase
 from app.domain import title as title_rules
@@ -16,6 +16,7 @@ from app.runtime.log import logger
 from app.schemas.types import (
     MediaSourceSelection,
     MediaType,
+    MusicEntityType,
 )
 
 CatalogResults = List[MediaInfo] | List[MusicInfo]
@@ -67,6 +68,7 @@ class MediaSearchOwner(_MediaOwnerBase):
     def search(
         self, title: str, media_source: Optional[MediaSourceSelection] = None,
         mtype: Optional[MediaType] = None, limit: int = 20,
+        music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> Tuple[Optional[MetaBase], CatalogResults]:
         """
         搜索媒体/人物信息
@@ -77,13 +79,19 @@ class MediaSearchOwner(_MediaOwnerBase):
         """
         request = _build_media_search_request(title, mtype)
         logger.info(f"开始搜索媒体信息：{request.meta.name}")
-        medias = self._music_catalog().search(request.meta, limit=limit, media_source=media_source) \
+        medias = self._music_catalog().search(
+            request.meta,
+            limit=limit,
+            media_source=media_source,
+            music_types=music_types,
+        ) \
             if isinstance(request.meta, MetaMusic) else self.search_medias(meta=request.meta, media_source=media_source)
         return _finish_media_search(request, medias)
 
     async def async_search(
         self, title: str, media_source: Optional[MediaSourceSelection] = None,
         mtype: Optional[MediaType] = None, limit: int = 20,
+        music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> Tuple[Optional[MetaBase], CatalogResults]:
         """
         搜索媒体/人物信息（异步版本）
@@ -94,6 +102,11 @@ class MediaSearchOwner(_MediaOwnerBase):
         """
         request = _build_media_search_request(title, mtype)
         logger.info(f"开始搜索媒体信息：{request.meta.name}")
-        medias = await self._music_catalog().async_search(request.meta, limit=limit, media_source=media_source) \
+        medias = await self._music_catalog().async_search(
+            request.meta,
+            limit=limit,
+            media_source=media_source,
+            music_types=music_types,
+        ) \
             if isinstance(request.meta, MetaMusic) else await self.async_search_medias(meta=request.meta, media_source=media_source)
         return _finish_media_search(request, medias)

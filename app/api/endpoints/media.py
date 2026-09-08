@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated, Any, List, Optional, Union
+from typing import Annotated, Any, List, Optional, Union, cast
 from uuid import UUID
 
 from fastapi import Depends, Query
@@ -321,13 +321,23 @@ async def search(
     media_chain = MediaChain()
     is_music = type == "music" or any(is_music_media_source(source) for source in selected_sources)
     if is_music:
-        music_results = await media_chain.async_search_music(
-            query=title,
-            limit=count,
-            media_source=source_selection,
-            music_types=(music_type,) if music_type else None,
-        )
-        result = [media.to_dict() for media in music_results] if music_results else []
+        if music_type:
+            _music_meta, music_results = await media_chain.async_search(
+                title=title,
+                limit=count,
+                mtype=MediaType.MUSIC,
+                media_source=source_selection,
+                music_types=(music_type,),
+            )
+        else:
+            _music_meta, music_results = await media_chain.async_search(
+                title=title,
+                limit=count,
+                mtype=MediaType.MUSIC,
+                media_source=source_selection,
+            )
+        typed_music_results = cast(list[MusicInfo], music_results)
+        result = [media.to_dict() for media in typed_music_results] if typed_music_results else []
     elif type == "media":
         _media_meta, media_results = await media_chain.async_search(
             title=title, media_source=source_selection,

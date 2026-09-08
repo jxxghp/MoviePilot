@@ -22,6 +22,7 @@ from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MediaSource,
     MediaSourceSelection,
+    MediaType,
     MusicEntityType,
 )
 
@@ -103,13 +104,14 @@ class MediaCatalogOwner(_MediaOwnerBase):
         music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
         """按一个或多个音乐来源搜索候选，未指定时使用 MusicBrainz。"""
-        meta = MetaMusic.parse_query(query)
-        return self._music_catalog().search(
-            meta,
+        _meta, results = self.search(
+            query,
             limit=limit,
             media_source=media_source,
+            mtype=MediaType.MUSIC,
             music_types=music_types,
         )
+        return cast(list[MusicInfo], results)
 
     async def async_search_music(
         self,
@@ -119,13 +121,14 @@ class MediaCatalogOwner(_MediaOwnerBase):
         music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
         """并行搜索一个或多个音乐来源，单一来源失败不影响其它结果。"""
-        meta = MetaMusic.parse_query(query)
-        return await self._music_catalog().async_search(
-            meta,
+        _meta, results = await self.async_search(
+            query,
             limit=limit,
             media_source=media_source,
+            mtype=MediaType.MUSIC,
             music_types=music_types,
         )
+        return cast(list[MusicInfo], results)
 
     @classmethod
     def _validate_music_result(
