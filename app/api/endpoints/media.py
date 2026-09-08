@@ -116,7 +116,7 @@ def _is_valid_source_media_id(
         try:
             UUID(normalized_media_id)
             return True
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return False
     if normalized_source == MediaSource.DoubanMusic and ":" in normalized_media_id:
         album_id, track_number = normalized_media_id.split(":", 1)

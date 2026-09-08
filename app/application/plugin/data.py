@@ -1,3 +1,4 @@
+from __future__ import annotations
 """插件持久化数据查询、投影与写用例。"""
 
 import json
@@ -169,7 +170,7 @@ def plugin_data_serialized_chars(value: JsonData) -> Optional[int]:
     """计算合法 JSON 值的紧凑字符数，异常对象不执行自定义字符串化。"""
     try:
         return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None
 
 

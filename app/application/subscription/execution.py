@@ -1,3 +1,4 @@
+from __future__ import annotations
 """订阅执行准入、搜索上下文、批次任务与持久队列端口。"""
 
 import threading

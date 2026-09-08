@@ -164,7 +164,7 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         try:
             tmdb_id = int(raw_tmdb_id)
             media_type = MediaType(request.media_type)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None
         info = self.tmdb_info(tmdbid=tmdb_id, mtype=media_type)
         if not info:

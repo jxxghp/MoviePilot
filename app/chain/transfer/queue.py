@@ -1407,7 +1407,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                     logger.error(
                         f"{fileitem.name} 整理任务处理出现错误：{e} - {traceback.format_exc()}"
                     )
-                    self._TransferChain__fail_transfer_task(task)
+                    self._TransferChain__fail_transfer_task(task, e)
                     with task_lock:
                         self._processed_num += 1
                         self._fail_num += 1

@@ -1209,6 +1209,70 @@ class TransactionalTransferExecutionRepository:
                 self._rollback(transaction)
                 raise
 
+    def discard_corrupt_task(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            error: str,
+    ) -> bool:
+        """在当前有效租约下清理损坏 pending、步骤及历史任务映射。"""
+        if not task_id or not lease_token or not error:
+            return False
+        now_utc, updated_at = self._times()
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                pending = TransferPendingOper(session).get_by_task_id(task_id=task_id)
+                self._require_active_lease(pending, lease_token=lease_token, now_utc=now_utc)
+                history = TransferHistoryOper(session).get_by_transfer_task_id(task_id=task_id)
+                if history is not None:
+                    history.transfer_task_id = None
+                    history.transfer_settlement_revision = None
+                TransferExecutionStepOper(session).stage_delete_task(task_id=task_id)
+                deleted = session.query(TransferPending).filter(
+                    TransferPending.task_id == task_id,
+                    TransferPending.lease_token == lease_token,
+                ).delete(synchronize_session=False)
+                if deleted != 1:
+                    raise TransferExecutionConflictError("损坏整理任务清理未完成，请刷新后重试")
+                transaction.commit()
+                return True
+            except Exception:
+                self._rollback(transaction)
+                raise
+
+    def discard_corrupt_by_history(
+            self,
+            *,
+            task_id: str,
+            history_id: int,
+    ) -> TransferFailureDiscardResult:
+        """在无活动租约时删除损坏任务、步骤并解除历史绑定。"""
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                pending_oper = TransferPendingOper(session)
+                history_oper = TransferHistoryOper(session)
+                pending = pending_oper.get_by_task_id(task_id=task_id)
+                history = history_oper.get(history_id)
+                if pending is None:
+                    return TransferFailureDiscardResult(True, None, "整理任务已被清理")
+                state = TransferExecutionState(pending.execution_state)
+                if pending.lease_owner is not None or pending.lease_token is not None:
+                    return TransferFailureDiscardResult(False, state, "整理任务正在处理中，暂时无法放弃")
+                if history is None or history.transfer_task_id != task_id:
+                    return TransferFailureDiscardResult(False, state, "整理历史与任务绑定已变化，请刷新后重试")
+                history.transfer_task_id = None
+                history.transfer_settlement_revision = None
+                TransferExecutionStepOper(session).stage_delete_task(task_id=task_id)
+                session.delete(pending)
+                transaction.commit()
+                return TransferFailureDiscardResult(True, state, "已放弃损坏整理任务")
+            except Exception:
+                self._rollback(transaction)
+                raise
+
     def discard_failed(
             self,
             *,

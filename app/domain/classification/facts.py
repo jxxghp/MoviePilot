@@ -231,7 +231,7 @@ def _optional_int(value: object) -> int | None:
         return None
     try:
         return int(str(value))
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None
 
 

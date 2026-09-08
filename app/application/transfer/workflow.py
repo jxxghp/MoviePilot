@@ -1030,6 +1030,7 @@ class TransferFailureNotification:
     image: Optional[str]
     username: Optional[str]
     manual_identity: bool = False
+    task_id: Optional[str] = None
 
 
 def build_transfer_failure_group_key(task: TransferTask) -> str:

@@ -120,7 +120,7 @@ class RuntimeClassificationEnrichmentCache:
             return ClassificationEnrichmentCacheEntry(response=None)
         try:
             response = ClassificationEnrichmentResponse.model_validate(value.get("response"))
-        except TypeError, ValidationError:
+        except (TypeError, ValidationError):
             return None
         return ClassificationEnrichmentCacheEntry(response=response)
 

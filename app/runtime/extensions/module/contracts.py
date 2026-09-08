@@ -1809,7 +1809,7 @@ def diagnose_module_callable(method: str, callback: Callable[..., Any]) -> tuple
         return ()
     try:
         parameters = inspect.signature(callback).parameters
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return ("signature-unavailable",)
     missing = tuple(
         name

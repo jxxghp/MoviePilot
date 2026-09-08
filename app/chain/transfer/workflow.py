@@ -1039,7 +1039,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                             f"{transfer_task.fileitem.name} 整理任务处理出现错误：{e} - {traceback.format_exc()}"
                         )
                         if not preview:
-                            self._TransferChain__fail_transfer_task(transfer_task)
+                            self._TransferChain__fail_transfer_task(transfer_task, e)
                         state, err_msg = False, "整理任务处理失败，请稍后重试"
                     finally:
                         durable_settled = self._TransferChain__finish_job_execution(

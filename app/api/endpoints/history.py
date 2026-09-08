@@ -458,6 +458,31 @@ def delete_transfer_history(
 
 
 @router.post(
+    "/transfer/{history_id}/discard-corrupt",
+    summary="放弃损坏的整理任务",
+    response_model=_SchemaResponse[dict],
+)
+async def discard_corrupt_transfer_history(
+    history_id: int,
+    query: HistoryQueryService = Depends(get_history_query_service),
+    execution_repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
+    _: object = Depends(get_current_active_manage_user),
+) -> Any:
+    """清理无活动租约的损坏 durable 任务，保留历史供重新生成计划。"""
+    history = await query.get_transfer(history_id)
+    if not history:
+        return _SchemaResponse(success=False, message="整理记录不存在")
+    if not history.transfer_task_id:
+        return _SchemaResponse(success=True, message="整理任务已清理", data={"history_id": history_id})
+    result = await asyncio.to_thread(
+        TransferExecutionCommand(execution_repository).discard_corrupt_by_history,
+        task_id=history.transfer_task_id,
+        history_id=history_id,
+    )
+    return _SchemaResponse(success=result.discarded, message=result.message, data={"history_id": history_id})
+
+
+@router.post(
     "/transfer/{history_id}/ai-redo",
     summary="智能助手重新整理",
     response_model=_SchemaResponse[_SchemaProgressKeyData],

@@ -831,7 +831,7 @@ class MusicBrainzModule(_ModuleBase):
             """相关度每五分成组，组内应用发行偏好并保留原始得分。"""
             try:
                 score = int(release.get("score") or 0)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 score = 0
             region_rank, script_rank = cls._release_preference_sort_key(
                 release,
