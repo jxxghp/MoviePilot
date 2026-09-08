@@ -94,11 +94,7 @@ def _build_uncategorized_classification_policy() -> ClassificationPolicy:
 
 def with_default_music_classification(policy: ClassificationPolicy) -> ClassificationPolicy:
     """为尚未配置音乐分类的策略追加安全、结构化的常用专辑分类。"""
-    music_categories = [
-        item for item in policy.categories if item.media_type == "音乐"
-    ]
-    music_rules = [item for item in policy.rules if "音乐" in item.media_types]
-    if music_rules or any(item.id != "music.uncategorized" for item in music_categories):
+    if not needs_default_music_classification(policy):
         return cast(ClassificationPolicy, policy.model_copy(deep=True))
 
     categories = [
@@ -174,15 +170,23 @@ def with_default_music_classification(policy: ClassificationPolicy) -> Classific
     )
 
 
-def is_untouched_legacy_default_policy(state: ClassificationPolicyState) -> bool:
-    """判断状态是否为旧版本自动创建且从未编辑的 revision 1 默认策略。"""
-    if state.active.revision != 1 or state.history:
+def needs_default_music_classification(policy: ClassificationPolicy) -> bool:
+    """判断音乐侧是否仍为旧版原始兜底，未包含任何用户分类。"""
+    music_rules = [item for item in policy.rules if "音乐" in item.media_types]
+    music_categories = [
+        item for item in policy.categories if item.media_type == "音乐"
+    ]
+    if music_rules or len(music_categories) != 1:
         return False
-    normalized = state.active.model_copy(
-        deep=True,
-        update={"revision": 0, "updated_at": None},
+    category = music_categories[0]
+    return bool(
+        category.id == "music.uncategorized"
+        and category.name == "未分类"
+        and category.path == ["未分类"]
+        and category.enabled
+        and not category.labels
+        and policy.fallbacks.get("音乐") == category.id
     )
-    return bool(normalized == _build_uncategorized_classification_policy())
 
 
 def build_default_classification_policy() -> ClassificationPolicy:

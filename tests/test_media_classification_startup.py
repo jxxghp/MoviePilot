@@ -211,6 +211,66 @@ async def test_untouched_legacy_default_policy_gains_music_rules_once(
 
 
 @pytest.mark.asyncio  # type: ignore[misc]
+async def test_custom_movie_policy_with_legacy_music_fallback_gains_music_rules(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """其它媒体已自定义时，仍应只升级完全未编辑的旧版音乐兜底。"""
+    state = _published_legacy_default_state()
+    categories = [
+        category.model_copy(
+            deep=True,
+            update={"name": "我的电影", "path": ["我的电影"]},
+        )
+        if category.id == "movie.uncategorized"
+        else category.model_copy(deep=True)
+        for category in state.active.categories
+    ]
+    state = ClassificationPolicyState(
+        active=state.active.model_copy(
+            deep=True,
+            update={"categories": categories},
+        )
+    )
+    store = _MemoryPolicyStore(state)
+    system_config = _SystemConfig(
+        {
+            SystemConfigKey.MediaClassificationPolicy.value: state.model_dump(
+                mode="json"
+            )
+        }
+    )
+    monkeypatch.setattr(
+        classification_composition,
+        "SystemConfigClassificationPolicyStore",
+        lambda *_args: store,
+    )
+
+    composition = await classification_composition.compose_classification(
+        executor=cast(Any, _InlineExecutor()),
+        settings=cast(Any, SimpleNamespace(CONFIG_PATH=tmp_path)),
+        system_config=cast(Any, system_config),
+    )
+
+    policy = composition.runtime.require_policy()
+    assert composition.migrated is True
+    assert policy.revision == 2
+    assert next(
+        category for category in policy.categories if category.id == "movie.uncategorized"
+    ).path == ["我的电影"]
+    assert [
+        category.id for category in policy.categories if category.media_type == "音乐"
+    ] == [
+        "music.uncategorized",
+        "music.album",
+        "music.compilation",
+        "music.ep",
+        "music.single",
+    ]
+    assert store.write_count == 1
+
+
+@pytest.mark.asyncio  # type: ignore[misc]
 async def test_edited_legacy_default_policy_is_not_automatically_changed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from app.application.classification.configuration import (
     ClassificationPolicyConfigurationService,
     ClassificationPolicyValidationError,
-    is_untouched_legacy_default_policy,
+    needs_default_music_classification,
     with_default_music_classification,
 )
 from app.application.classification.contract import (
@@ -159,8 +159,8 @@ async def compose_classification(
                 ClassificationRuntime(service, diagnostics=(issue,)),
                 migrated=False,
             )
-        if stored_state is not None and is_untouched_legacy_default_policy(
-            stored_state
+        if stored_state is not None and needs_default_music_classification(
+            stored_state.active
         ):
             try:
                 await service.async_publish(
@@ -177,7 +177,7 @@ async def compose_classification(
                     migrated=False,
                 )
             else:
-                logger.info("已为未编辑的默认分类策略补充常用音乐分类 revision 2")
+                logger.info("已为仅有旧版兜底的分类策略补充常用音乐分类")
                 return finish(
                     ClassificationRuntime(service),
                     migrated=True,
