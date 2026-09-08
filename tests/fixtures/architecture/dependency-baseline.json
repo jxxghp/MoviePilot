@@ -7975,6 +7975,8 @@
     "app.runtime.extensions.module.manager -> app.schemas.types",
     "app.runtime.extensions.plugin.admission -> app.schemas",
     "app.runtime.extensions.plugin.admission -> app.schemas.exception",
+    "app.runtime.extensions.plugin.catalog -> app.domain",
+    "app.runtime.extensions.plugin.catalog -> app.domain.plugin",
     "app.runtime.extensions.plugin.catalog -> app.foundation",
     "app.runtime.extensions.plugin.catalog -> app.foundation.version",
     "app.runtime.extensions.plugin.catalog -> app.runtime",
