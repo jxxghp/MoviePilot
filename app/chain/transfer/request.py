@@ -22,6 +22,19 @@ from app.schemas.types import (
 from app.schemas.workflow import FileItem
 
 
+def preview_media_title(
+    mediainfo: Optional[Union[MediaInfo, MusicInfo]],
+) -> Optional[str]:
+    """音乐预览以专辑为批次标题，影视继续使用原有标题。"""
+    if isinstance(mediainfo, MusicInfo) and mediainfo.album:
+        return (
+            f"{mediainfo.album} ({mediainfo.year})"
+            if mediainfo.year
+            else mediainfo.album
+        )
+    return mediainfo.title_year if mediainfo else None
+
+
 def _should_discard_batch_recording_identity(
         *,
         multi_track_music_batch: bool,
@@ -38,6 +51,28 @@ def _should_discard_batch_recording_identity(
     return (
         batch_music_type == MUSIC_ENTITY_RECORDING
         or (not batch_music_type and history_music_type == MUSIC_ENTITY_RECORDING)
+    )
+
+
+def _should_discard_batch_music_identity(
+    *,
+    manual: bool,
+    multi_track_music_batch: bool,
+    media_source: Optional[MediaSource],
+    media_id: Optional[str],
+    mediainfo: Optional[MediaInfo | MusicInfo],
+    history_music_type: Optional[str],
+) -> bool:
+    """批次误带单曲身份或未显式指定媒体时重新识别整张专辑。"""
+    if manual and multi_track_music_batch and not (media_source and media_id):
+        return True
+    return _should_discard_batch_recording_identity(
+        multi_track_music_batch=multi_track_music_batch,
+        manual=manual,
+        media_source=media_source,
+        media_id=media_id,
+        mediainfo=mediainfo,
+        history_music_type=history_music_type,
     )
 
 

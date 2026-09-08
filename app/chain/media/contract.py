@@ -173,6 +173,16 @@ if TYPE_CHECKING:
             """同步识别音乐专辑目录。"""
             ...
 
+        @classmethod
+        def _album_track_map(
+            cls,
+            files: list[Path],
+            metas: list[MetaMusic],
+            album: MusicAlbumInfo,
+        ) -> dict[str, MusicInfo]:
+            """将专辑级分类上下文传递给对位曲目。"""
+            ...
+
         async def async_recognize_music_album_directory(
             self,
             path: Union[str, Path],

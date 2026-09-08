@@ -1,6 +1,7 @@
 """专辑目录扫描、曲目对齐与缓存编排 owner。"""
 
 import os
+from copy import deepcopy
 from pathlib import Path
 from typing import Optional, Union, cast
 
@@ -62,7 +63,8 @@ class MediaAlbumOwner(_MediaOwnerBase):
         except OSError:
             subdirectories = []
         for subdirectory in subdirectories:
-            collect(subdirectory)
+            if MetaMusic.parse_disc_dir(subdirectory.name) is not None:
+                collect(subdirectory)
         return files
 
     @staticmethod
@@ -177,6 +179,24 @@ class MediaAlbumOwner(_MediaOwnerBase):
             ).items()
         }
 
+    @classmethod
+    def _album_track_map(
+        cls,
+        files: list[Path],
+        metas: list[MetaMusic],
+        album: MusicAlbumInfo,
+    ) -> dict[str, MusicInfo]:
+        """将专辑分类与识别事实传递给每条已对位曲目。"""
+        aligned = cls._align_music_album_tracks(files, metas, album.tracks)
+        for info in aligned.values():
+            info.set_library_category(album.library_category)
+            info.classification = deepcopy(album.classification)
+            info.classification_facts = dict(album.classification_facts)
+        return {
+            str(file.resolve()): info
+            for file, info in aligned.items()
+        }
+
     def _match_music_album_directory(
         self,
         directory: Path,
@@ -199,10 +219,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
         )
         if not album or not album.tracks:
             return {}
-        return {
-            str(file.resolve()): info
-            for file, info in self._align_music_album_tracks(files, metas, album.tracks).items()
-        }
+        return self._album_track_map(files, metas, album)
 
     async def _async_match_music_album_directory(
         self,
@@ -226,10 +243,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
         )
         if not album or not album.tracks:
             return {}
-        return {
-            str(file.resolve()): info
-            for file, info in self._align_music_album_tracks(files, metas, album.tracks).items()
-        }
+        return self._album_track_map(files, metas, album)
 
     def recognize_music_album_directory(
         self,

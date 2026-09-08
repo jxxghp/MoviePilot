@@ -374,6 +374,53 @@ def test_restore_album_context_keeps_album_identity_and_track_specific_tags(
     assert restored_info.media_id == "release-group-1"
 
 
+def test_manual_batch_can_discard_saved_album_identity(tmp_path, monkeypatch):
+    """手动批次关闭历史复用时应丢弃旧专辑身份，仅保留当前文件标签。"""
+    album = MusicInfo(
+        media_source="musicbrainz",
+        media_id="stale-release-group",
+        music_type="album",
+        title="旧专辑",
+        artists=["旧艺人"],
+        album="旧专辑",
+        album_artist="旧艺人",
+        year=1999,
+        category="",
+    )
+    history = SimpleNamespace(note={
+        "music": {
+            "version": 1,
+            "meta": MetaMusic.from_music_info(album).to_dict(),
+            "media": album.to_dict(),
+        }
+    })
+    audio_file = tmp_path / "01 - 我的地盘.flac"
+    audio_file.write_bytes(b"fake-flac")
+    file_meta = MetaMusic(
+        org_string=audio_file.name,
+        title="我的地盘",
+        artists=["周杰伦"],
+        album="七里香",
+        album_artist="周杰伦",
+        year=2004,
+        track_number=1,
+        total_tracks=10,
+    )
+    monkeypatch.setattr(MediaChain, "read_path_meta", Mock(return_value=file_meta))
+
+    restored_meta, restored_info = TransferChain._restore_music_download_context(
+        history,
+        audio_file,
+        discard_saved_identity=True,
+    )
+
+    assert restored_meta.title == "我的地盘"
+    assert restored_meta.album == "七里香"
+    assert restored_meta.media_source is None
+    assert restored_meta.media_id is None
+    assert restored_info is None
+
+
 @pytest.mark.parametrize("field_source", ["selected", "resource", "file"])
 def test_restore_music_context_only_fills_missing_selected_fields(monkeypatch, field_source):
     """已选语义字段仅补缺，不覆盖种子证据、文件标签或注入目标音质。"""
@@ -934,6 +981,138 @@ def test_automatic_multi_track_recording_context_rematches_album(tmp_path, monke
     assert {task.mediainfo.cover_url for task in captured_tasks} == {
         "https://example.com/correct-cover.jpg"
     }
+    assert album_match.call_count == 2
+
+
+def test_manual_history_batch_rematches_album_and_groups_preview(tmp_path, monkeypatch):
+    """手动多选历史不复用身份时应重识别整专，并以专辑标题汇总预览。"""
+    source_dir = tmp_path / "未分类" / "周杰伦 - 七里香 (2004) [FLAC]"
+    source_dir.mkdir(parents=True)
+    audio_paths = [
+        source_dir / "01 - 我的地盘.flac",
+        source_dir / "02 - 七里香.flac",
+    ]
+    for audio_path in audio_paths:
+        audio_path.write_bytes(b"fake-flac")
+    source_items = [
+        FileItem(
+            storage="local",
+            path=audio_path.as_posix(),
+            name=audio_path.name,
+            basename=audio_path.stem,
+            type="file",
+            extension="flac",
+            size=audio_path.stat().st_size,
+        )
+        for audio_path in audio_paths
+    ]
+    source_item = source_items[0]
+    stale_album = MusicInfo(
+        media_source="musicbrainz",
+        media_id="stale-release-group",
+        music_type="album",
+        title="七里香",
+        artists=["周杰伦"],
+        album="七里香",
+        album_artist="周杰伦",
+        year=2004,
+        category="",
+    )
+    history = DownloadHistorySnapshot(
+        id=1,
+        path=source_dir.as_posix(),
+        type=MediaType.MUSIC.value,
+        title="七里香",
+        note={
+            "music": {
+                "version": 1,
+                "meta": MetaMusic.from_music_info(stale_album).to_dict(),
+                "media": stale_album.to_dict(),
+            }
+        },
+        music_type="album",
+        downloader="qbittorrent",
+        download_hash="hash-1",
+    )
+    file_metas = {
+        path: MetaMusic(
+            org_string=path.name,
+            title=title,
+            artists=["周杰伦"],
+            album="七里香",
+            album_artist="周杰伦",
+            year=2004,
+            track_number=index,
+            total_tracks=10,
+        )
+        for index, (path, title) in enumerate(
+            zip(audio_paths, ("我的地盘", "七里香")), start=1
+        )
+    }
+    matched_tracks = {
+        str(path.resolve()): MusicInfo(
+            media_source="musicbrainz",
+            media_id=f"recording-{index}",
+            music_type="recording",
+            title=file_metas[path].title,
+            artists=["周杰伦"],
+            album="七里香",
+            album_artist="周杰伦",
+            album_id="correct-release-group",
+            album_type="Album",
+            year=2004,
+            track_number=index,
+            total_tracks=10,
+            library_category="Album",
+        )
+        for index, path in enumerate(audio_paths, start=1)
+    }
+    chain = TransferChain()
+    monkeypatch.setattr(chain, "_resolve_download_history", Mock(return_value=history))
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        Mock(side_effect=lambda path: file_metas[Path(path)]),
+    )
+    album_match = Mock(return_value=matched_tracks)
+    monkeypatch.setattr(MediaChain, "recognize_music_album_directory", album_match)
+    captured_tasks = []
+
+    def execute(task, **_kwargs):
+        captured_tasks.append(task)
+        target_dir = tmp_path / "library" / "Album" / "周杰伦" / "七里香 (2004)"
+        target_item = target_dir / task.fileitem.name
+        return TransferInfo(
+            success=True,
+            fileitem=task.fileitem,
+            target_item=FileItem(storage="local", path=target_item.as_posix(), type="file"),
+            target_diritem=FileItem(storage="local", path=target_dir.as_posix(), type="dir"),
+        )
+
+    monkeypatch.setattr(chain, "_plan_checkpoint_and_execute", execute)
+
+    state, preview = chain._execute_transfer(
+        fileitem=source_item,
+        mtype=MediaType.MUSIC,
+        target_directory=TransferDirectoryConf(
+            library_path=(tmp_path / "library").as_posix(),
+            library_storage="local",
+            library_category_folder=True,
+        ),
+        selected_fileitems=source_items,
+        manual=True,
+        force=True,
+        preview=True,
+    )
+
+    assert state is True
+    assert preview["summary"] == {"total": 2, "success": 2, "failed": 0}
+    assert {item["title"] for item in preview["items"]} == {"七里香 (2004)"}
+    assert [task.mediainfo.media_id for task in captured_tasks] == [
+        "recording-1",
+        "recording-2",
+    ]
+    assert {task.mediainfo.library_category for task in captured_tasks} == {"Album"}
     assert album_match.call_count == 2
 
 

@@ -149,6 +149,116 @@ def test_selected_album_tracks_override_source_tag_names(tmp_path, monkeypatch):
     ]
 
 
+def test_selected_music_fileitems_keep_album_batch_context(tmp_path, monkeypatch):
+    """显式多选音轨应在单个批次中应用专辑曲目和分类。"""
+    album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
+    album_dir.mkdir()
+    paths = [album_dir / "01.flac", album_dir / "02.flac"]
+    for path in paths:
+        path.write_bytes(b"audio")
+    fileitems = [make_fileitem(path.as_posix()) for path in paths]
+    local_metas = {
+        paths[0]: MetaMusic(title="我的地盤", artists=["周杰倫"], track_number=1),
+        paths[1]: MetaMusic(title="藉口", artists=["周杰倫"], track_number=2),
+    }
+    chain = _prepare_chain(monkeypatch, fileitems)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        "app.chain.media.album.AudioMetadataHelper.read_many",
+        lambda requested: [deepcopy(local_metas[path]) for path in requested],
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda path: deepcopy(local_metas[path])),
+    )
+    planned = []
+
+    def handle_transfer(task, callback=None):
+        del callback
+        planned.append((task.meta.title, task.mediainfo.library_category))
+        return True, ""
+
+    monkeypatch.setattr(chain, "_TransferChain__handle_transfer", handle_transfer)
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitems[0],
+        selected_fileitems=fileitems,
+        mediainfo=_album(),
+        mtype=MediaType.MUSIC,
+        media_source=MediaSource.MusicBrainz,
+        media_id="release-group-1",
+        background=False,
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == [("我的地盘", "Album"), ("借口", "Album")]
+
+
+def test_automatic_music_fileitems_receive_album_identity_and_category(tmp_path, monkeypatch):
+    """自动多选音轨应用目录级专辑识别结果覆盖本地繁体标签。"""
+    album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
+    album_dir.mkdir()
+    paths = [album_dir / "01.flac", album_dir / "02.flac"]
+    for path in paths:
+        path.write_bytes(b"audio")
+    fileitems = [make_fileitem(path.as_posix()) for path in paths]
+    local_metas = {
+        paths[0]: MetaMusic(title="我的地盤", artists=["周杰倫"], track_number=1),
+        paths[1]: MetaMusic(title="藉口", artists=["周杰倫"], track_number=2),
+    }
+    album = _album()
+    matched = {}
+    for path, track in zip(paths, album.tracks):
+        matched_track = deepcopy(track)
+        matched_track.set_library_category(album.library_category)
+        matched_track.classification = deepcopy(album.classification)
+        matched[str(path.resolve())] = matched_track
+    chain = _prepare_chain(monkeypatch, fileitems)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda path: deepcopy(local_metas[path])),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _path, **_kwargs: matched,
+    )
+    planned = []
+
+    def handle_transfer(task, callback=None):
+        del callback
+        planned.append((task.meta.title, task.mediainfo.album, task.mediainfo.library_category))
+        return True, ""
+
+    monkeypatch.setattr(chain, "_TransferChain__handle_transfer", handle_transfer)
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitems[0],
+        selected_fileitems=fileitems,
+        mtype=MediaType.MUSIC,
+        background=False,
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == [
+        ("我的地盘", "七里香", "Album"),
+        ("借口", "七里香", "Album"),
+    ]
+
+
 def test_manual_album_identity_forwards_full_selected_album(monkeypatch):
     """手动指定专辑 ID 时不应在进入整理链前丢失曲目表。"""
     chain = make_transfer_chain()

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Annotated, Any, List, Literal, Optional, cast
 
@@ -6,6 +7,7 @@ from fastapi import Depends, HTTPException, Query, status
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.dependencies.auth import get_current_active_manage_user
 from app.api.dependencies.history import get_transfer_execution_repository, get_transfer_history_lookup_service
+from app.api.endpoints.transferhistory import restore_manual_transfer_history_batch
 from app.api.response import (
     CompatibleCountParam,
     CompatiblePageParam,
@@ -113,6 +115,58 @@ def _merge_transfer_messages(messages: List[str]) -> str:
     return "、".join(valid_messages[:2]) + (
         f"，等{len(valid_messages)}条消息" if len(valid_messages) > 2 else ""
     )
+
+
+def _is_music_file_batch(fileitems: List[FileItem]) -> bool:
+    """判断显式选中项是否为可按专辑识别的多音轨批次。"""
+    if len(fileitems) < 2 or any(fileitem.type != "file" for fileitem in fileitems):
+        return False
+    audio_extensions = set(get_api_runtime_config_snapshot().audio_extensions)
+    return all(
+        Path(fileitem.path or fileitem.name or "").suffix.lower() in audio_extensions
+        for fileitem in fileitems
+    )
+
+
+def _selected_music_fileitems(
+    fileitems: List[FileItem],
+    *,
+    explicitly_selected: bool,
+    media_type: Optional[MediaType],
+) -> Optional[List[FileItem]]:
+    """返回需要共享专辑上下文的显式多选音轨。"""
+    if not explicitly_selected or media_type not in (None, MediaType.MUSIC):
+        return None
+    if not _is_music_file_batch(fileitems):
+        return None
+    paths = [Path(fileitem.path) for fileitem in fileitems if fileitem.path]
+    parent_counts: dict[Path, int] = {}
+    for path in paths:
+        parent_counts[path.parent] = parent_counts.get(path.parent, 0) + 1
+    album_roots = [
+        parent
+        for parent in parent_counts
+        if all(path.parent == parent or parent in path.parents for path in paths)
+    ]
+    if not album_roots:
+        return fileitems
+    album_root = max(album_roots, key=lambda path: len(path.parts))
+    filtered = []
+    for fileitem, path in zip(fileitems, paths):
+        if path.parent == album_root:
+            filtered.append(fileitem)
+            continue
+        relative_parent = path.parent.relative_to(album_root)
+        first_directory = relative_parent.parts[0] if relative_parent.parts else ""
+        if re.fullmatch(r"(?:cd|disc|disk)\s*\d{1,2}", first_directory.strip(), re.IGNORECASE):
+            filtered.append(fileitem)
+    if filtered and len(filtered) < len(fileitems):
+        logger.info(
+            "音乐专辑批次忽略 %s 个非碟片子目录中的重复或附加音频",
+            len(fileitems) - len(filtered),
+        )
+        return filtered
+    return fileitems
 
 
 def _manual_review_actor(current_user: object) -> str:
@@ -535,10 +589,50 @@ def manual_transfer(
     :param history_query: 整理历史投影服务
     :param _: Token校验
     """
+    return _route_manual_transfer(
+        transer_item=transer_item,
+        background=background,
+        history_query=history_query,
+    )
+
+
+def _route_manual_transfer(
+    transer_item: ManualTransferItem,
+    background: Optional[bool],
+    history_query: TransferHistoryLookupService,
+) -> Any:
+    """执行历史恢复、批量预览与 TransferChain 兼容编排。"""
+    if not transer_item.logids:
+        return _execute_manual_transfer(
+            transer_item=transer_item,
+            background=background,
+            history_query=history_query,
+        )
+
+    (
+        src_fileitems,
+        force,
+        downloader,
+        download_hash,
+        history_error,
+    ) = restore_manual_transfer_history_batch(
+        transer_item=transer_item,
+        history_query=history_query,
+    )
+    if history_error or not src_fileitems:
+        return _SchemaResponse(
+            success=False,
+            message=history_error or "缺少参数",
+        )
+    transer_item.fileitems = src_fileitems
+    transer_item.logids = None
     return _execute_manual_transfer(
         transer_item=transer_item,
         background=background,
         history_query=history_query,
+        force=force,
+        downloader=downloader,
+        download_hash=download_hash,
     )
 
 
@@ -546,11 +640,11 @@ def _execute_manual_transfer(
     transer_item: ManualTransferItem,
     background: Optional[bool],
     history_query: TransferHistoryLookupService,
+    force: bool = False,
+    downloader: Optional[str] = None,
+    download_hash: Optional[str] = None,
 ) -> Any:
-    """执行历史恢复、批量预览与 TransferChain 兼容编排。"""
-    force = False
-    downloader = None
-    download_hash = None
+    """执行已还原源文件项的手动整理兼容编排。"""
     src_fileitems: List[FileItem] = []
     cleanup_dest_fileitem: Optional[FileItem] = None
     target_path = Path(transer_item.target_path) if transer_item.target_path else None
@@ -673,7 +767,12 @@ def _execute_manual_transfer(
             part=transer_item.episode_part,
             offset=transer_item.episode_offset,
         )
-    explicit_selected_files = bool(transer_item.fileitems)
+    explicit_selected_files = bool(transer_item.fileitems or transer_item.logids)
+    selected_music_fileitems = _selected_music_fileitems(
+        src_fileitems, explicitly_selected=explicit_selected_files, media_type=mtype
+    )
+    mtype = MediaType.MUSIC if selected_music_fileitems is not None else mtype
+    explicit_selected_files = explicit_selected_files and selected_music_fileitems is None
 
     # 前端显式传入文件列表时，按选中的文件逐个处理，避免将目录整体展开。
     if explicit_selected_files:
@@ -784,7 +883,11 @@ def _execute_manual_transfer(
         target_path=target_path,
         media_source=transer_item.media_source,
         media_id=transer_item.media_id,
-        music_type=_resolve_music_type(src_fileitem),
+        music_type=(
+            MUSIC_ENTITY_ALBUM
+            if selected_music_fileitems is not None
+            else _resolve_music_type(src_fileitem)
+        ),
         music_release_regions=transer_item.music_release_regions,
         music_release_scripts=transer_item.music_release_scripts,
         mtype=mtype,
@@ -802,8 +905,9 @@ def _execute_manual_transfer(
         download_hash=download_hash,
         preview=transer_item.preview,
         reorganize=transer_item.reorganize,
-        sync_extra_files=True,
+        sync_extra_files=selected_music_fileitems is None,
         cleanup_dest_fileitem=cleanup_dest_fileitem,
+        selected_fileitems=selected_music_fileitems,
     )
     # 失败
     if not state:

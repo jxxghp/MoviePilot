@@ -235,6 +235,7 @@ class FileFilterMixin(_TransferOwnerBase):
         merged_info.set_library_category(info.library_category)
         merged_info.metadata_category = info.metadata_category
         merged_info.classification = deepcopy(info.classification)
+        merged_info.classification_facts = dict(info.classification_facts)
         merged_info.genres = list(info.genres)
         merged_info.tags = list(info.tags)
         merged_info.artist_country = info.artist_country
@@ -319,6 +320,7 @@ class FileFilterMixin(_TransferOwnerBase):
             download_history: Optional[DownloadHistorySnapshot],
             file_path: Path,
             discard_recording_identity: bool = False,
+            discard_saved_identity: bool = False,
     ) -> tuple[Optional[MetaMusic], Optional[MusicInfo]]:
         """从下载历史恢复音乐上下文，并用当前音频标签覆盖曲目级字段。
 
@@ -326,6 +328,8 @@ class FileFilterMixin(_TransferOwnerBase):
         沿用已选媒体，不根据专辑名或文件曲名在单曲与专辑之间转换。
         多音轨批次误带单曲身份时只保留文件自身标签，避免把同一 recording
         身份传播到整张专辑；调用方随后可使用目录级证据重新匹配专辑。
+        手动选中多条历史且未要求复用历史身份时，专辑身份也必须丢弃，确保
+        目录级识别能够重新补齐发行版、分类和规范名称。
         """
         note = getattr(download_history, "note", None)
         music_note = note.get("music") if isinstance(note, dict) else None
@@ -338,7 +342,7 @@ class FileFilterMixin(_TransferOwnerBase):
             return None, None
 
         file_tags = MediaChain.read_path_meta(file_path)
-        should_discard_identity = (
+        should_discard_identity = discard_saved_identity or (
             discard_recording_identity
             and saved_info.music_type == MUSIC_ENTITY_RECORDING
         )

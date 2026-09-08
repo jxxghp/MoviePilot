@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union, cast
 
 from app.chain.media import MediaChain
 from app.chain.transfer.contract import _TransferOwnerBase
@@ -53,6 +53,25 @@ def _recognize_manual_media(
 
 class TransferHistoryOwner(_TransferOwnerBase):
     """唯一持有手动历史、重整命令和通知公开入口。"""
+
+    def _run_manual_transfer_request(
+            self,
+            transfer_kwargs: dict[str, Any],
+            selected_fileitems: Optional[list[FileItem]],
+    ) -> Tuple[bool, Union[str, dict[str, Any]]]:
+        """显式文件批次走内部入口，普通请求继续保持公开签名兼容。"""
+        if selected_fileitems is not None:
+            return cast(
+                Tuple[bool, Union[str, dict[str, Any]]],
+                self._execute_transfer(
+                    **transfer_kwargs,
+                    selected_fileitems=selected_fileitems,
+                ),
+            )
+        return cast(
+            Tuple[bool, Union[str, dict[str, Any]]],
+            self.do_transfer(**transfer_kwargs),
+        )
 
     def remote_transfer(
             self,
@@ -171,6 +190,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
             music_type: Optional[str] = None,
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
+            selected_fileitems: Optional[list[FileItem]] = None,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         手动整理，支持复杂条件，带进度显示
@@ -199,6 +219,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
         :param music_type: 音乐实体类型；为保持位置参数兼容，必须追加在签名末尾
         :param music_release_regions: 本次音乐整理的发行地区优先级，空值继承系统设置
         :param music_release_scripts: 本次音乐整理的文字字形优先级，空值继承系统设置
+        :param selected_fileitems: 前端显式选中的批量文件
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         explicit_identity = media_source is not None or media_id is not None
@@ -226,7 +247,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 self.obtain_images(mediainfo=mediainfo)
 
             # 开始整理
-            state, errmsg = self.do_transfer(
+            transfer_kwargs = dict(
                 fileitem=fileitem,
                 target_storage=target_storage,
                 target_path=target_path,
@@ -253,6 +274,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
             )
+            state, errmsg = self._run_manual_transfer_request(transfer_kwargs, selected_fileitems)
             if not state:
                 return False, errmsg
 
@@ -260,7 +282,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
             return True, errmsg if preview else ""
         else:
             # 没有输入媒体ID时，按文件识别
-            state, errmsg = self.do_transfer(
+            transfer_kwargs = dict(
                 fileitem=fileitem,
                 target_storage=target_storage,
                 target_path=target_path,
@@ -285,6 +307,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
             )
+            state, errmsg = self._run_manual_transfer_request(transfer_kwargs, selected_fileitems)
             return state, errmsg
 
     def send_transfer_message(
