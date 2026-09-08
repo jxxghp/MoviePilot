@@ -44,8 +44,9 @@ from app.schemas.types import (
 from app.schemas.workflow import FileItem
 
 from .request import (
-    _should_discard_batch_recording_identity,
+    _should_discard_batch_music_identity,
     _TransferCandidatePlanner,
+    preview_media_title,
 )
 
 
@@ -789,9 +790,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     download_hash=download_hash,
                 )
 
-                discard_recording_identity = _should_discard_batch_recording_identity(
-                    multi_track_music_batch=multi_track_music_batch,
-                    manual=manual,
+                discard_music_identity = _should_discard_batch_music_identity(
+                    multi_track_music_batch=multi_track_music_batch, manual=manual,
                     media_source=media_source,
                     media_id=media_id,
                     mediainfo=mediainfo,
@@ -800,7 +800,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 history_music_meta, history_music_info = self._restore_music_download_context(
                     download_history=download_history,
                     file_path=file_path,
-                    discard_recording_identity=discard_recording_identity,
+                    discard_saved_identity=discard_music_identity,
                 )
 
                 if not meta:
@@ -835,14 +835,15 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 # 自动整理预载的媒体信息来自整条下载历史；电影合集内文件年份冲突时逐文件识别。
                 file_meta, task_mediainfo = self._selected_music_task_context(
                     file_item, file_path, file_meta, selected_music_track_map,
-                    None if discard_recording_identity else mediainfo or history_music_info,
+                    None if discard_music_identity
+                    else mediainfo or history_music_info,
                 )
                 if not task_mediainfo and isinstance(file_meta, MetaMusic):
                     # 无标签音频或误带单曲身份的整包按目录级专辑匹配；命中结果带缓存不会逐文件重复请求
                     file_meta, task_mediainfo = self._match_music_album_context(
                         file_item, file_path, file_meta, music_release_regions, music_release_scripts,
                     )
-                    if not task_mediainfo and discard_recording_identity:
+                    if not task_mediainfo and discard_music_identity:
                         task_mediainfo = self._music_info_from_meta(file_meta)
                 if not manual and task_mediainfo and self._is_movie_year_conflict(file_meta, task_mediainfo):
                     task_mediainfo = None
@@ -956,7 +957,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     "success": transferinfo.success,
                     "message": transferinfo.message,
                     "type": item_media.type.value if item_media and item_media.type else None,
-                    "title": item_media.title_year if item_media else None,
+                    "title": preview_media_title(item_media),
                     "season": item_meta.begin_season if item_meta else None,
                     "episode": item_meta.begin_episode if item_meta else None,
                     "episode_end": item_meta.end_episode if item_meta else None,

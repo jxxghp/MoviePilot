@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, Query, status
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.dependencies.auth import get_current_active_manage_user
 from app.api.dependencies.history import get_transfer_execution_repository, get_transfer_history_lookup_service
+from app.api.endpoints.transferhistory import restore_manual_transfer_history_batch
 from app.api.response import (
     CompatibleCountParam,
     CompatiblePageParam,
@@ -588,10 +589,50 @@ def manual_transfer(
     :param history_query: 整理历史投影服务
     :param _: Token校验
     """
+    return _route_manual_transfer(
+        transer_item=transer_item,
+        background=background,
+        history_query=history_query,
+    )
+
+
+def _route_manual_transfer(
+    transer_item: ManualTransferItem,
+    background: Optional[bool],
+    history_query: TransferHistoryLookupService,
+) -> Any:
+    """执行历史恢复、批量预览与 TransferChain 兼容编排。"""
+    if not transer_item.logids:
+        return _execute_manual_transfer(
+            transer_item=transer_item,
+            background=background,
+            history_query=history_query,
+        )
+
+    (
+        src_fileitems,
+        force,
+        downloader,
+        download_hash,
+        history_error,
+    ) = restore_manual_transfer_history_batch(
+        transer_item=transer_item,
+        history_query=history_query,
+    )
+    if history_error or not src_fileitems:
+        return _SchemaResponse(
+            success=False,
+            message=history_error or "缺少参数",
+        )
+    transer_item.fileitems = src_fileitems
+    transer_item.logids = None
     return _execute_manual_transfer(
         transer_item=transer_item,
         background=background,
         history_query=history_query,
+        force=force,
+        downloader=downloader,
+        download_hash=download_hash,
     )
 
 
@@ -599,11 +640,11 @@ def _execute_manual_transfer(
     transer_item: ManualTransferItem,
     background: Optional[bool],
     history_query: TransferHistoryLookupService,
+    force: bool = False,
+    downloader: Optional[str] = None,
+    download_hash: Optional[str] = None,
 ) -> Any:
-    """执行历史恢复、批量预览与 TransferChain 兼容编排。"""
-    force = False
-    downloader = None
-    download_hash = None
+    """执行已还原源文件项的手动整理兼容编排。"""
     src_fileitems: List[FileItem] = []
     cleanup_dest_fileitem: Optional[FileItem] = None
     target_path = Path(transer_item.target_path) if transer_item.target_path else None
@@ -726,7 +767,7 @@ def _execute_manual_transfer(
             part=transer_item.episode_part,
             offset=transer_item.episode_offset,
         )
-    explicit_selected_files = bool(transer_item.fileitems)
+    explicit_selected_files = bool(transer_item.fileitems or transer_item.logids)
     selected_music_fileitems = _selected_music_fileitems(
         src_fileitems, explicitly_selected=explicit_selected_files, media_type=mtype
     )

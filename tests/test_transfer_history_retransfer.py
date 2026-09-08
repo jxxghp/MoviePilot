@@ -1,6 +1,5 @@
 from types import SimpleNamespace
 
-
 from app.api.endpoints.transfer import (
     manual_transfer,
     match_manual_transfer_target_path,
@@ -537,6 +536,69 @@ def test_manual_transfer_music_batch_ignores_non_disc_alternate_directory(monkey
 
     assert response.success is True
     assert len(captured) == 1
+    assert [item.path for item in captured[0]["selected_fileitems"]] == [
+        "/downloads/七里香/01.flac",
+        "/downloads/七里香/02.flac",
+    ]
+
+
+def test_manual_transfer_history_ids_share_one_music_album_batch(monkeypatch):
+    """多选整理历史应先还原文件集合，再以一个专辑批次进入整理链。"""
+    paths = (
+        "/downloads/七里香/01.flac",
+        "/downloads/七里香/02.flac",
+        "/downloads/七里香/附加原版/01.flac",
+        "/downloads/七里香/附加原版/02.flac",
+    )
+    histories = {
+        index: SimpleNamespace(
+            status=1,
+            mode="copy",
+            src_fileitem={
+                "storage": "local",
+                "path": path,
+                "name": path.rsplit("/", 1)[-1],
+                "extension": "flac",
+                "type": "file",
+            },
+            dest_fileitem=None,
+        )
+        for index, path in enumerate(paths, start=41)
+    }
+    captured = []
+
+    class FakeTransferChain:
+        def manual_transfer(self, **kwargs):
+            captured.append(kwargs)
+            selected = kwargs["selected_fileitems"]
+            return True, {
+                "summary": {"total": len(selected), "success": len(selected), "failed": 0},
+                "items": [],
+                "message": "",
+            }
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+    monkeypatch.setattr(
+        "app.api.endpoints.transfer.get_api_runtime_config_snapshot",
+        lambda: SimpleNamespace(audio_extensions=(".flac",)),
+    )
+
+    response = manual_transfer(
+        transer_item=ManualTransferItem(
+            logids=list(histories),
+            preview=True,
+            reorganize=True,
+            type_name="自动",
+        ),
+        background=False,
+        history_query=SimpleNamespace(get=histories.get),
+        _="token",
+    )
+
+    assert response.success is True
+    assert len(captured) == 1
+    assert captured[0]["mtype"].value == "音乐"
+    assert captured[0]["music_type"] == "album"
     assert [item.path for item in captured[0]["selected_fileitems"]] == [
         "/downloads/七里香/01.flac",
         "/downloads/七里香/02.flac",

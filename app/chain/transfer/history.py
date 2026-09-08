@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union, cast
 
 from app.chain.media import MediaChain
 from app.chain.transfer.contract import _TransferOwnerBase
@@ -58,14 +58,20 @@ class TransferHistoryOwner(_TransferOwnerBase):
             self,
             transfer_kwargs: dict[str, Any],
             selected_fileitems: Optional[list[FileItem]],
-    ) -> Tuple[bool, Union[str, dict]]:
+    ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """显式文件批次走内部入口，普通请求继续保持公开签名兼容。"""
         if selected_fileitems is not None:
-            return self._execute_transfer(
-                **transfer_kwargs,
-                selected_fileitems=selected_fileitems,
+            return cast(
+                Tuple[bool, Union[str, dict[str, Any]]],
+                self._execute_transfer(
+                    **transfer_kwargs,
+                    selected_fileitems=selected_fileitems,
+                ),
             )
-        return self.do_transfer(**transfer_kwargs)
+        return cast(
+            Tuple[bool, Union[str, dict[str, Any]]],
+            self.do_transfer(**transfer_kwargs),
+        )
 
     def remote_transfer(
             self,

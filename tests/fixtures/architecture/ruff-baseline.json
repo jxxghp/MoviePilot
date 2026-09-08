@@ -964,9 +964,6 @@
   "tests/test_transfer_download_history_oper_sessions.py": {
     "I001": 1
   },
-  "tests/test_transfer_history_retransfer.py": {
-    "I001": 1
-  },
   "tests/test_transfer_rename_build_event.py": {
     "I001": 1
   },
