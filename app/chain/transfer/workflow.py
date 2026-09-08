@@ -373,7 +373,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         reorganize: Optional[bool] = False,
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
-        selected_fileitems: Optional[list[FileItem]] = None,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         兼容公开整理入口，委托给内部批次执行阶段。
@@ -410,7 +409,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             reorganize=reorganize,
             music_release_regions=music_release_regions,
             music_release_scripts=music_release_scripts,
-            selected_fileitems=selected_fileitems,
         )
 
     def _execute_transfer(self, *args: Any, **kwargs: Any) -> Tuple[bool, Union[str, dict]]:

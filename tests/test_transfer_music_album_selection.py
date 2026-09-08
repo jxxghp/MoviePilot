@@ -184,7 +184,7 @@ def test_selected_music_fileitems_keep_album_batch_context(tmp_path, monkeypatch
 
     monkeypatch.setattr(chain, "_TransferChain__handle_transfer", handle_transfer)
 
-    state, message = TransferChain.do_transfer(
+    state, message = TransferChain._execute_transfer(
         chain,
         fileitem=fileitems[0],
         selected_fileitems=fileitems,
@@ -243,7 +243,7 @@ def test_automatic_music_fileitems_receive_album_identity_and_category(tmp_path,
 
     monkeypatch.setattr(chain, "_TransferChain__handle_transfer", handle_transfer)
 
-    state, message = TransferChain.do_transfer(
+    state, message = TransferChain._execute_transfer(
         chain,
         fileitem=fileitems[0],
         selected_fileitems=fileitems,

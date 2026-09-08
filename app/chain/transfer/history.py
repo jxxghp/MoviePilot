@@ -228,7 +228,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 self.obtain_images(mediainfo=mediainfo)
 
             # 开始整理
-            state, errmsg = self.do_transfer(
+            transfer_kwargs = dict(
                 fileitem=fileitem,
                 target_storage=target_storage,
                 target_path=target_path,
@@ -254,8 +254,14 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 cleanup_dest_fileitem=cleanup_dest_fileitem,
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
-                selected_fileitems=selected_fileitems,
             )
+            if selected_fileitems is not None:
+                state, errmsg = self._execute_transfer(
+                    **transfer_kwargs,
+                    selected_fileitems=selected_fileitems,
+                )
+            else:
+                state, errmsg = self.do_transfer(**transfer_kwargs)
             if not state:
                 return False, errmsg
 
@@ -263,7 +269,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
             return True, errmsg if preview else ""
         else:
             # 没有输入媒体ID时，按文件识别
-            state, errmsg = self.do_transfer(
+            transfer_kwargs = dict(
                 fileitem=fileitem,
                 target_storage=target_storage,
                 target_path=target_path,
@@ -287,8 +293,14 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 cleanup_dest_fileitem=cleanup_dest_fileitem,
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
-                selected_fileitems=selected_fileitems,
             )
+            if selected_fileitems is not None:
+                state, errmsg = self._execute_transfer(
+                    **transfer_kwargs,
+                    selected_fileitems=selected_fileitems,
+                )
+            else:
+                state, errmsg = self.do_transfer(**transfer_kwargs)
             return state, errmsg
 
     def send_transfer_message(
