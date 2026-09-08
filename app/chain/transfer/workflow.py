@@ -338,7 +338,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         self,
         fileitem: FileItem,
         meta: MetaBase = None,
-        mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
+        mediainfo: Optional[Union[MediaInfo, MusicInfo, MusicAlbumInfo]] = None,
         mtype: Optional[MediaType] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
@@ -364,7 +364,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         reorganize: Optional[bool] = False,
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
-        selected_music_album: Optional[MusicAlbumInfo] = None,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         兼容公开整理入口，委托给内部批次执行阶段。
@@ -401,7 +400,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             reorganize=reorganize,
             music_release_regions=music_release_regions,
             music_release_scripts=music_release_scripts,
-            selected_music_album=selected_music_album,
         )
 
     def _execute_transfer(self, *args: Any, **kwargs: Any) -> Tuple[bool, Union[str, dict]]:
@@ -412,7 +410,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         self,
         fileitem: FileItem,
         meta: MetaBase = None,
-        mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
+        mediainfo: Optional[Union[MediaInfo, MusicInfo, MusicAlbumInfo]] = None,
         mtype: Optional[MediaType] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
@@ -439,7 +437,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         recovery_admission: Optional[TransferAdmission] = None,
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
-        selected_music_album: Optional[MusicAlbumInfo] = None,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         执行一个复杂目录的整理操作
@@ -472,9 +469,14 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param recovery_admission: 内部恢复调用绑定的既有 durable 记录
         :param music_release_regions: 本次音乐整理的发行地区优先级
         :param music_release_scripts: 本次音乐整理的文字字形优先级
-        :param selected_music_album: 手动指定的音乐专辑，用于按已选发行版逐曲对齐
         返回：成功标识，错误信息
         """
+        selected_music_album: Optional[MusicAlbumInfo]
+        if isinstance(mediainfo, MusicAlbumInfo):
+            selected_music_album = mediainfo
+            mediainfo = mediainfo.to_music_info()
+        else:
+            selected_music_album = None
         mediainfo, media_source, media_id, identity_error = _normalize_transfer_identity(
             mediainfo=mediainfo,
             mtype=mtype,

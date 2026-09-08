@@ -32,7 +32,7 @@ def _recognize_manual_media(
     episode_group: Optional[str],
     music_release_regions: Optional[list[str]],
     music_release_scripts: Optional[list[str]],
-) -> tuple[Optional[Union[MediaInfo, MusicInfo]], Optional[MusicAlbumInfo]]:
+) -> Optional[Union[MediaInfo, MusicInfo, MusicAlbumInfo]]:
     """识别手动指定的媒体，并为音乐专辑保留完整曲目表。"""
     if mtype == MediaType.MUSIC and music_type == MUSIC_ENTITY_ALBUM:
         album = MediaChain().get_music_album(
@@ -41,14 +41,14 @@ def _recognize_manual_media(
             music_release_regions=music_release_regions,
             music_release_scripts=music_release_scripts,
         )
-        return (album.to_music_info() if album else None), album
+        return album
     return MediaChain().recognize_media(
         media_source=media_source,
         media_id=media_id,
         music_type=music_type,
         mtype=mtype,
         episode_group=episode_group,
-    ), None
+    )
 
 
 class TransferHistoryOwner(_TransferOwnerBase):
@@ -202,12 +202,11 @@ class TransferHistoryOwner(_TransferOwnerBase):
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         explicit_identity = media_source is not None or media_id is not None
-        selected_music_album: Optional[MusicAlbumInfo] = None
         if explicit_identity and (not media_source or not media_id):
             return False, "手动整理需要同时提供 media_source 和 media_id"
         if media_source and media_id:
             # 有输入媒体ID时预先识别，音乐与影视统一走 recognize_media 按类型分发
-            mediainfo, selected_music_album = _recognize_manual_media(
+            mediainfo = _recognize_manual_media(
                 media_source=media_source,
                 media_id=media_id,
                 mtype=mtype,
@@ -221,9 +220,9 @@ class TransferHistoryOwner(_TransferOwnerBase):
                     False,
                     "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试",
                 )
-            if media_source and not isinstance(mediainfo, MusicInfo):
+            if media_source and not isinstance(mediainfo, (MusicInfo, MusicAlbumInfo)):
                 mediainfo.scrape_source = media_source
-            if not isinstance(mediainfo, MusicInfo):
+            if not isinstance(mediainfo, (MusicInfo, MusicAlbumInfo)):
                 self.obtain_images(mediainfo=mediainfo)
 
             # 开始整理
@@ -253,7 +252,6 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 cleanup_dest_fileitem=cleanup_dest_fileitem,
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
-                selected_music_album=selected_music_album,
             )
             if not state:
                 return False, errmsg

@@ -134,11 +134,10 @@ def test_selected_album_tracks_override_source_tag_names(tmp_path, monkeypatch):
     state, message = TransferChain.do_transfer(
         chain,
         fileitem=_directory_item(album_dir),
-        mediainfo=album.to_music_info(),
+        mediainfo=album,
         mtype=MediaType.MUSIC,
         media_source=MediaSource.MusicBrainz,
         media_id=album.media_id,
-        selected_music_album=album,
         background=False,
     )
 
@@ -179,9 +178,9 @@ def test_manual_album_identity_forwards_full_selected_album(monkeypatch):
 
     assert state is True
     assert message == ""
-    assert captured["selected_music_album"] is album
+    assert captured["mediainfo"] is album
     assert captured["mediainfo"].title == "七里香"
-    assert [track.title for track in captured["selected_music_album"].tracks] == [
+    assert [track.title for track in captured["mediainfo"].tracks] == [
         "我的地盘",
         "借口",
     ]
@@ -214,11 +213,10 @@ def test_selected_album_rejects_duplicate_local_editions(tmp_path, monkeypatch):
     state, message = TransferChain.do_transfer(
         chain,
         fileitem=_directory_item(album_dir),
-        mediainfo=album.to_music_info(),
+        mediainfo=album,
         mtype=MediaType.MUSIC,
         media_source=MediaSource.MusicBrainz,
         media_id=album.media_id,
-        selected_music_album=album,
         background=False,
         preview=True,
     )
