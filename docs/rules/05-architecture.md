@@ -833,6 +833,10 @@ Durable post-commit side effects have a separate boundary:
   context carry the stable event key, and consumers that support deduplication
   should use it. Legacy notification plugins retain their existing method
   signature, so the host must not claim provider-level exactly-once delivery.
+  Event handler failures still propagate to the strict dispatcher. The runtime
+  error policy bounds and deduplicates identical system alerts by event key,
+  handler and error within one process; every failed attempt remains in logs.
+  This alert cache is not a durable delivery receipt.
 - Terminal history is part of the shared data-maintenance policy and is cleaned
   in bounded daily batches only when that policy is enabled. Completed intents
   default to 30-day retention and dead letters to 90 days; both values are
@@ -841,6 +845,11 @@ Durable post-commit side effects have a separate boundary:
 - `app/runtime/tasks.py` is only the in-process TaskRegistry boundary. It owns
   cancellation and bounded shutdown waiting, but it is not a durable queue and
   must not replace an Outbox or persistent task table.
+
+The transfer queue owner tracks actual queued and executing task objects separately
+from `JobManager` display rows. Recovery reuses only an identical task/lease receipt;
+when no actual owner remains, a stale display row is replaced and the recovered
+work is queued. A display row alone must never acknowledge successful recovery.
 
 Transfer durable admission follows the same ownership direction without using
 the Outbox as an execution queue: `app/application/transfer/workflow.py` owns the typed

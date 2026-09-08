@@ -767,3 +767,46 @@ async def test_async_broadcast_submission_is_registered_before_stop_snapshot(
 
     await isolated_eventmanager.stop_async()
     assert isolated_eventmanager._EventManager__async_handles == {}
+
+
+@pytest.mark.parametrize("event_type", [EventType.TransferFailed, EventType.SubtitleTransferFailed,
+                                       EventType.AudioTransferFailed])
+def test_outbox_retries_strict_failure_without_repeating_system_alert(
+        isolated_eventmanager, monkeypatch, event_type):
+    """真实失败 handler 仍重试至死信，相同事件的系统错误提示只发送一次。"""
+    from unittest.mock import Mock
+
+    from app.application.outbox import ClaimedOutboxMessage, OutboxDispatcher
+    from app.runtime.event.errors import EventErrorPolicy
+    from app.startup.composition import outbox
+
+    isolated_eventmanager._EventManager__lifecycle_state = "running"
+    notify, emit = Mock(), Mock()
+    monkeypatch.setattr(isolated_eventmanager, "_EventManager__error_policy",
+                        EventErrorPolicy(notifier=lambda: notify, emit_system_error=emit))
+    monkeypatch.setattr(outbox, "EventManager", lambda: isolated_eventmanager)
+    attempts = []
+
+    def failed_handler(event):
+        """模拟稳定重现的插件处理器故障。"""
+        attempts.append(event.event_data["idempotency_key"])
+        raise RuntimeError("broken transfer consumer")
+
+    isolated_eventmanager.add_event_listener(event_type, failed_handler)
+    store = Mock()
+    event_key = f"{event_type.value}:task-1:1"
+    store.claim.side_effect = [
+        ClaimedOutboxMessage(1, event_key, event_type.value,
+                            {"idempotency_key": event_key,
+                             "transferinfo": {"success": False, "message": "failed"}}, 1, attempt)
+        for attempt in range(1, 6)
+    ] + [None]
+    dispatcher = OutboxDispatcher(store, outbox.build_outbox_handlers())
+    for _ in range(5):
+        assert dispatcher.dispatch_one()
+    assert not dispatcher.dispatch_one()
+    assert attempts == [event_key] * 5
+    assert [call.kwargs["dead"] for call in store.retry.call_args_list] == [False] * 4 + [True]
+    store.complete.assert_not_called()
+    notify.assert_called_once()
+    emit.assert_called_once()

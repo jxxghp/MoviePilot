@@ -1372,6 +1372,36 @@ def test_host_planning_value_error_commits_rejection_instead_of_retrying():
     repository.record_planning_failure.assert_not_called()
 
 
+def test_missing_library_directory_commits_rejection_without_file_execution():
+    """真实目录匹配失败应提交业务拒绝检查点，无文件副作用或异常重试。"""
+    repository = Mock()
+    task = _task()
+    task.target_path = None
+    task.mediainfo = MediaInfo(title="Movie", year="2026")
+    task.bind_admission_task_id("task-missing-library")
+    _bind_planning_input(task, replace(
+        _planning_input(), target_directory=None, target_path=None,
+    ))
+    repository.checkpoint_plan.side_effect = lambda **kwargs: _planned_admission(
+        task, kwargs["checkpoint"],
+    )
+    chain = _chain(repository=repository)
+    module = object.__new__(FileManagerModule)
+    chain.plan_transfer.side_effect = module.plan_transfer
+
+    with patch("app.modules.filemanager.module.Path.exists", return_value=True):
+        result = chain._plan_checkpoint_and_execute(task)
+
+    assert result.success is False
+    assert result.message == "未找到有效的媒体库目录"
+    assert task.plan_checkpoint.rejection_error == result.message
+    assert task.plan_checkpoint.items == ()
+    assert task.execution_checkpoint is not None
+    repository.checkpoint_plan.assert_called_once()
+    repository.record_planning_failure.assert_not_called()
+    chain.execute_transfer_plan.assert_not_called()
+
+
 def test_post_commit_crash_replays_frozen_plan_without_replanning():
     """commit 后执行崩溃仍保留 planned checkpoint，重启后跳过 rename 规划。"""
     repository = Mock()

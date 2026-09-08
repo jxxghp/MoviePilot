@@ -396,6 +396,10 @@ class ConfigModel(BaseModel):
     ACOUSTID_API_KEY: str = "b1auxfOzAg"
     # 是否将识别到的音乐标题、艺术家、专辑等标准元数据转换为简体中文
     MUSIC_METADATA_TO_SIMPLIFIED: bool = True
+    # MusicBrainz 发行地区优先级，按 ISO 3166-1 两位代码从高到低排列
+    MUSIC_RELEASE_REGION_PRIORITY: str = "CN,TW,HK"
+    # MusicBrainz 发行文字字形优先级，按 ISO 15924 四位代码从高到低排列
+    MUSIC_RELEASE_SCRIPT_PRIORITY: str = "Hans,Hant,Latn"
     # TheAudioDB API Key，默认使用官方公开的免费 V1 Key，可通过环境变量覆盖
     THEAUDIODB_API_KEY: str = "123"
     # LRCLIB 服务地址，可指向兼容官方 API 的自建实例

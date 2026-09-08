@@ -114,6 +114,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         self._worker_owner_id = uuid.uuid4().hex
         self._owned_leases: Dict[str, Tuple[str, float]] = {}
         self._queued_lease_tokens: set[Tuple[str, str]] = set()
+        self._resident_tasks: Dict[Tuple[str, str], TransferTask] = {}
         self._replay_thread: Optional[threading.Thread] = None
         self._replay_stop_event = threading.Event()
         self._recovery_wakeup_event = threading.Event()
@@ -358,9 +359,10 @@ class TransferQueueOwner(_TransferOwnerBase):
         """
         添加到待整理队列
         :param task: 任务信息
-        :return: True表示任务已添加，False表示链已关闭或任务无效/重复
+        :return: 新任务入队或相同恢复租约已被接收时返回 True；关闭、无效或冲突返回 False
         :raises Exception: 持久准入、批次登记或内存入队失败
         """
+        self._TransferChain__ensure_lease_runtime_state()
         with self._worker_state_lock:
             if self._closing:
                 logger.warning("文件整理链已关闭，拒绝新的队列任务")
@@ -374,7 +376,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         return TransferQueueService(
             register_task=self._TransferChain__put_to_jobview,
             admit_task=self._TransferChain__admit_transfer,
-            enqueue=self._queue.put,
+            enqueue=self._enqueue_transfer_task,
             before_enqueue=self._register_scrape_batch_task,
             enqueue_failed=self._TransferChain__record_enqueue_failure,
             remove_task=self.jobview.remove_task,
@@ -445,6 +447,8 @@ class TransferQueueOwner(_TransferOwnerBase):
             self._owned_leases = {}
         if not hasattr(self, "_queued_lease_tokens"):
             self._queued_lease_tokens = set()
+        if not hasattr(self, "_resident_tasks"):
+            self._resident_tasks = {}
         if not hasattr(self, "_recovery_wakeup_event"):
             self._recovery_wakeup_event = threading.Event()
         if not hasattr(self, "_lease_heartbeat_thread"):
@@ -541,9 +545,12 @@ class TransferQueueOwner(_TransferOwnerBase):
             self._queued_lease_tokens.discard((task_id, lease_token))
 
     def _TransferChain__is_claimed_task_enqueued(self, task_id: str, lease_token: str) -> bool:
-        """返回指定 claim 是否已经成功进入普通 worker 队列。"""
+        """返回 claim 是否已被队列接收，包含刚被 worker 取走但尚未完成的任务。"""
         with self._worker_state_lock:
-            return (task_id, lease_token) in self._queued_lease_tokens
+            return (task_id, lease_token) in self._queued_lease_tokens or any(
+                (task.admission_task_id, task.lease_token) == (task_id, lease_token)
+                for task in getattr(self, "_resident_tasks", {}).values()
+            )
 
     def _TransferChain__owns_lease(self, task_id: str, lease_token: Optional[str]) -> bool:
         """返回本地续期镜像是否仍持有指定 token。"""
@@ -657,26 +664,52 @@ class TransferQueueOwner(_TransferOwnerBase):
         release_thread.start()
         return release_thread
 
+    @staticmethod
+    def _resident_task_key(task: TransferTask) -> Tuple[str, str]:
+        """真实队列凭证使用存储与路径，不依赖媒体识别分组或视图状态。"""
+        assert task.fileitem is not None
+        assert task.fileitem.path
+        path = Path(str(task.fileitem.path).replace("\\", "/")).as_posix().rstrip("/") or "/"
+        return task.fileitem.storage or "local", path
+
+    def _enqueue_transfer_task(self, item: TransferQueue) -> None:
+        """入队成功后登记真实任务及其租约，登记持续到 worker 完成该队列项。"""
+        task = item.task
+        assert task is not None
+        key = self._resident_task_key(task)
+        with self._worker_state_lock:
+            self._queue.put(item)
+            self._resident_tasks[key] = task
+            if task.admission_task_id and task.lease_token:
+                self._queued_lease_tokens.add((task.admission_task_id, task.lease_token))
+
+    def _finish_queue_item(self, task: TransferTask) -> None:
+        """仅移除当前队列项的执行登记，避免旧 worker 清掉同源新任务。"""
+        with self._worker_state_lock:
+            residents = getattr(self, "_resident_tasks", {})
+            key = self._resident_task_key(task)
+            if residents.get(key) is task:
+                residents.pop(key)
+            if task.admission_task_id and task.lease_token:
+                self._queued_lease_tokens.discard((task.admission_task_id, task.lease_token))
+        self._queue.task_done()
+
     def _TransferChain__enqueue_claimed_task(self, task: TransferTask) -> bool:
-        """把已 claim 的恢复任务送入普通队列，禁止再次准入或二次 claim。"""
+        """复用持有相同租约的真实队列任务；残留视图必须重新入队才能算恢复。"""
         self._TransferChain__assert_owned_lease(task)
-        if not self._TransferChain__put_to_jobview(task):
-            logger.warning(
-                "恢复任务被内存作业视图判定为重复，未进入队列：task_id=%s, source=%s:%s",
-                task.admission_task_id,
-                task.fileitem.storage,
-                task.fileitem.path,
+        resident = self._resident_tasks.get(self._resident_task_key(task))
+        if resident is not None:
+            return (resident.admission_task_id, resident.lease_token) == (
+                task.admission_task_id, task.lease_token
             )
-            return False
+        if not self._TransferChain__put_to_jobview(task):
+            # 作业组未完成时会保留单个文件的旧终态；视图不等于真实队列。
+            self.jobview.remove_task(task.fileitem)
+            if not self._TransferChain__put_to_jobview(task):
+                return False
         try:
             self._register_scrape_batch_task(task)
-            assert task.admission_task_id is not None
-            assert task.lease_token is not None
-            with self._worker_state_lock:
-                self._queued_lease_tokens.add(
-                    (task.admission_task_id, task.lease_token)
-                )
-            self._queue.put(
+            self._enqueue_transfer_task(
                 TransferQueue(task=task, callback=self._TransferChain__default_callback)
             )
         except Exception as err:
@@ -884,13 +917,13 @@ class TransferQueueOwner(_TransferOwnerBase):
             raise RuntimeError("整理恢复缺少 execution repository")
         snapshot = repository.get_snapshot(task_id=admission.task_id)
         if snapshot is None:
-            raise TransferExecutionConflictError("整理恢复任务缺少执行状态投影")
+            raise TransferExecutionConflictError("整理恢复状态不完整，请重新识别文件后再整理")
         if (
                 snapshot.state is TransferExecutionState.SETTLING
                 and snapshot.checkpoint is None
         ):
             raise TransferExecutionConflictError(
-                "settling 整理任务缺少可重放终态检查点"
+                "整理任务记录不完整，请重新识别文件后再整理"
             )
         return snapshot
 
@@ -1270,7 +1303,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                     self._TransferChain__release_task_claim(task, error=str(err))
                     self.jobview.try_remove_job(task)
                     self._finish_scrape_batch_task(task)
-                    self._queue.task_done()
+                    self._finish_queue_item(task)
                     self._TransferChain__settle_transfer_progress_if_idle()
                     continue
                 except Exception as err:
@@ -1279,7 +1312,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                     )
                     self.jobview.try_remove_job(task)
                     self._finish_scrape_batch_task(task)
-                    self._queue.task_done()
+                    self._finish_queue_item(task)
                     self._TransferChain__settle_transfer_progress_if_idle()
                     self._TransferChain__ensure_recovery_scheduler(immediate=False)
                     continue
@@ -1391,7 +1424,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                             f"整理任务终态结算异常：{task.admission_task_id} - {err}"
                         )
                     finally:
-                        self._queue.task_done()
+                        self._finish_queue_item(task)
                         with task_lock:
                             # 减少运行中的任务数
                             self._active_tasks -= 1
