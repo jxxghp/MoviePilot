@@ -1,7 +1,7 @@
 """MediaChain owner 的静态组合合同。"""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Iterable, Optional, Protocol, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional, Protocol, TypeVar, Union
 
 from app.chain.base import ChainBase
 from app.chain.media.cache import AlbumDirectoryCache
@@ -14,7 +14,6 @@ from app.schemas.types import (
     MediaSource,
     MediaSourceSelection,
     MediaType,
-    MusicEntityType,
 )
 
 _RecognitionCallback = Callable[[], Optional[MediaInfo]]
@@ -289,14 +288,12 @@ if TYPE_CHECKING:
             ...
 
         def search(self, title: str, media_source: Optional[MediaSourceSelection] = None,
-                   mtype: Optional[MediaType] = None, limit: int = 20,
-                   music_types: Optional[Iterable[MusicEntityType]] = None) -> tuple[Optional[MetaBase], list[MediaInfo] | list[MusicInfo]]:
+                   mtype: Optional[MediaType] = None, limit: int = 20) -> tuple[Optional[MetaBase], list[MediaInfo] | list[MusicInfo]]:
             """通过共用入口搜索所有媒体类型。"""
             ...
 
         async def async_search(self, title: str, media_source: Optional[MediaSourceSelection] = None,
-                               mtype: Optional[MediaType] = None, limit: int = 20,
-                               music_types: Optional[Iterable[MusicEntityType]] = None) -> tuple[Optional[MetaBase], list[MediaInfo] | list[MusicInfo]]:
+                               mtype: Optional[MediaType] = None, limit: int = 20) -> tuple[Optional[MetaBase], list[MediaInfo] | list[MusicInfo]]:
             """通过共用入口异步搜索所有媒体类型。"""
             ...
 

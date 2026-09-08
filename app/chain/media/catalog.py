@@ -104,12 +104,18 @@ class MediaCatalogOwner(_MediaOwnerBase):
         music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
         """按一个或多个音乐来源搜索候选，未指定时使用 MusicBrainz。"""
+        if music_types is not None:
+            return self._music_catalog().search(
+                MetaMusic.parse_query(query),
+                limit=limit,
+                media_source=media_source,
+                music_types=music_types,
+            )
         _meta, results = self.search(
             query,
             limit=limit,
             media_source=media_source,
             mtype=MediaType.MUSIC,
-            music_types=music_types,
         )
         return cast(list[MusicInfo], results)
 
@@ -121,12 +127,18 @@ class MediaCatalogOwner(_MediaOwnerBase):
         music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
         """并行搜索一个或多个音乐来源，单一来源失败不影响其它结果。"""
+        if music_types is not None:
+            return await self._music_catalog().async_search(
+                MetaMusic.parse_query(query),
+                limit=limit,
+                media_source=media_source,
+                music_types=music_types,
+            )
         _meta, results = await self.async_search(
             query,
             limit=limit,
             media_source=media_source,
             mtype=MediaType.MUSIC,
-            music_types=music_types,
         )
         return cast(list[MusicInfo], results)
 
