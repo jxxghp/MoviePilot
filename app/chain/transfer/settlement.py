@@ -24,8 +24,10 @@ from app.application.outbox import (
 )
 from app.application.transfer.execution import (
     TransferExecutionConflictError,
+    TransferExecutionRepository,
     TransferSettlementResult,
 )
+from app.application.transfer.recovery import TransferRecoveryCommand
 from app.application.transfer.workflow import (
     TransferFailureNotification,
     TransferLeaseLostError,
@@ -49,6 +51,19 @@ from app.schemas.types import (
     MessageType,
     SystemConfigKey,
 )
+
+
+def _discard_corrupt_transfer_task(
+    repository: TransferExecutionRepository, task: TransferTask, error: object,
+) -> None:
+    """清理失败时继续结束内存作业，持久层保留的证据仍可用于后续恢复。"""
+    if not task.preview:
+        try:
+            TransferRecoveryCommand(repository).discard_conflict(
+                task_id=task.admission_task_id, lease_token=task.lease_token, error=error,
+            )
+        except Exception as cleanup_error:
+            logger.error(f"清理损坏整理任务 durable 证据失败：{task.admission_task_id} - {cleanup_error}")
 
 
 class TransferSettlementOwner(_TransferOwnerBase):
@@ -695,29 +710,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
 
     def _TransferChain__fail_transfer_task(self, task: TransferTask, error: object = "整理任务处理失败"):
         """清理作业视图，并在执行冲突时原子删除 durable 恢复证据。"""
-        error_text = str(error)
-        corrupt_plan = any(
-            marker in error_text
-            for marker in ("记录已失效", "记录不完整", "版本不一致", "检查点", "恢复状态不完整")
-        )
-        if (
-                isinstance(error, TransferExecutionConflictError)
-                and corrupt_plan
-                and not task.preview
-                and task.admission_task_id
-                and task.lease_token
-        ):
-            try:
-                self._transfer_executions.discard_corrupt_task(
-                    task_id=task.admission_task_id,
-                    lease_token=task.lease_token,
-                    error=str(error),
-                )
-            except Exception as cleanup_error:
-                logger.error(
-                    "清理损坏整理任务 durable 证据失败：%s - %s",
-                    task.admission_task_id, cleanup_error,
-                )
+        _discard_corrupt_transfer_task(self.transfer_execution_repository, task, error)
         self.jobview.fail_unfinished_task(task)
         self.jobview.try_remove_job(task)
         self._finish_scrape_batch_task(task)

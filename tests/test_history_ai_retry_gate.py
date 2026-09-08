@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import Mock
+
+import pytest
 
 from app.api.endpoints import history as history_endpoint
 from app.application.configuration import ApiRuntimeConfig
 from app.application.transfer.execution import (
     TransferExecutionState,
+    TransferFailureDiscardResult,
     TransferRetryRequestResult,
 )
 from app.runtime.progress import AsyncProgressHelper
@@ -368,3 +372,50 @@ def test_batch_ai_redo_sends_only_legacy_records_after_durable_acceptance(
     assert response.data["history_ids"] == [24, 25]
     assert prompted == [[25]]
     assert started[0]["history_ids"] == [25]
+
+
+@pytest.mark.parametrize("discarded", [True, False])
+def test_discard_corrupt_history_returns_typed_result(discarded):
+    """清理端点保留历史 ID，并透传持久层的清理成功或拒绝结果。"""
+    repository = Mock()
+    repository.discard_corrupt_by_history.return_value = TransferFailureDiscardResult(
+        discarded=discarded, state=None, message="清理结果",
+    )
+    response = history_endpoint.discard_corrupt_transfer_history(
+        history_id=7,
+        history=TransferHistory(id=7, transfer_task_id="task-7"),
+        execution_repository=repository,
+        _=None,
+    )
+    assert response.success is discarded
+    assert response.message == "清理结果"
+    assert response.data.model_dump() == {"history_id": 7}
+    repository.discard_corrupt_by_history.assert_called_once_with(task_id="task-7", history_id=7)
+
+
+@pytest.mark.parametrize("exists", [True, False])
+def test_discard_corrupt_history_without_task_is_idempotent(exists):
+    """已清理历史返回同一结构，缺失历史返回失败且均不调用持久层清理。"""
+    repository = Mock()
+    response = history_endpoint.discard_corrupt_transfer_history(
+        history_id=7,
+        history=TransferHistory(id=7) if exists else None,
+        execution_repository=repository,
+        _=None,
+    )
+    assert response.success is exists
+    if exists:
+        assert response.data.model_dump() == {"history_id": 7}
+        assert response.message == "整理任务已清理"
+    else:
+        assert response.data is None
+        assert response.message == "整理记录不存在"
+    repository.discard_corrupt_by_history.assert_not_called()
+
+
+def test_discard_corrupt_history_dependency_loads_dto():
+    """同步清理前通过异步依赖读取历史，避免在事件循环运行同步写事务。"""
+    result = asyncio.run(history_endpoint._get_discard_transfer_history(
+        history_id=7, query=_HistoryQuery([TransferHistory(id=7)]),
+    ))
+    assert result.id == 7

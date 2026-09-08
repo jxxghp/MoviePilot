@@ -500,6 +500,7 @@ SCHEMA_EXPORTS = {
     'TransferHistory': ('app.schemas.history', 'TransferHistory'),
     'TransferHistoryDeleteResult': ('app.schemas.history', 'TransferHistoryDeleteResult'),
     'TransferHistoryDeleteStep': ('app.schemas.history', 'TransferHistoryDeleteStep'),
+    'TransferHistoryDiscardResult': ('app.schemas.history', 'TransferHistoryDiscardResult'),
     'TransferHistoryPage': ('app.schemas.history', 'TransferHistoryPage'),
     'TransferInfo': ('app.schemas.transfer', 'TransferInfo'),
     'TransferInterceptEventData': ('app.schemas.event', 'TransferInterceptEventData'),

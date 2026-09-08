@@ -22,6 +22,7 @@ from app.application.transfer.execution import (
     build_transfer_checkpoint_fingerprint,
     build_transfer_operation_id,
 )
+from app.application.transfer.recovery import TransferRecoveryCommand
 from app.application.transfer.workflow import (
     TransferPlanCheckpoint,
     TransferPlanItem,
@@ -888,7 +889,8 @@ def test_discard_failed_removes_execution_evidence_and_detaches_history(
 ) -> None:
     """放弃匹配的 FAILED 任务应删除执行证据，并把历史恢复为普通记录。"""
     history_id = _seed_failed_receipt(execution_store)
-    _, command = _repository(execution_store)
+    repository, _ = _repository(execution_store)
+    command = TransferRecoveryCommand(repository)
 
     result = command.discard_failed(
         task_id="task-1",
@@ -918,7 +920,8 @@ def test_discard_failed_rejects_nonfailed_execution_state(
         execution_store,
         execution_state=execution_state,
     )
-    _, command = _repository(execution_store)
+    repository, _ = _repository(execution_store)
+    command = TransferRecoveryCommand(repository)
 
     result = command.discard_failed(
         task_id="task-1",
@@ -939,7 +942,8 @@ def test_discard_failed_rejects_nonfailed_execution_state(
 def test_discard_failed_rejects_stale_settlement_revision(execution_store) -> None:
     """陈旧页面携带的结算版本不能放弃已经变化的失败任务。"""
     history_id = _seed_failed_receipt(execution_store, settlement_revision=3)
-    _, command = _repository(execution_store)
+    repository, _ = _repository(execution_store)
+    command = TransferRecoveryCommand(repository)
 
     result = command.discard_failed(
         task_id="task-1",

@@ -8,7 +8,7 @@ import pytest
 
 from app.application.messaging.interaction import InteractionContext
 from app.chain.message import MessageChain
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.runtime.config import settings
 from app.runtime.loop import main_loop_registry
 from app.runtime.tasks import TaskRegistry
@@ -26,11 +26,12 @@ def replace_main_loop() -> Callable[[object], None]:
 
 
 def test_build_failed_transfer_buttons():
-    """整理失败消息应提供重试与智能助手接管按钮。"""
+    """整理失败消息应提供重试、重新生成计划与智能助手接管按钮。"""
     buttons = TransferChain.build_failed_transfer_buttons(12)
 
     assert buttons == [[
         {"text": "重试", "callback_data": "transfer_retry_12"},
+        {"text": "重新生成计划", "callback_data": "transfer_regenerate_12"},
         {
             "text": "智能助手接管",
             "callback_data": "transfer_ai_retry_12",
@@ -134,12 +135,15 @@ def test_transfer_ai_retry_callback_schedules_agent_takeover(replace_main_loop):
     async_messages = []
 
     def _run_pending_coro(coro, *args, **kwargs):
+        """在测试线程执行协程，避免提交真实后台任务。"""
         asyncio.run(coro)
 
     async def _capture_message(message):
+        """记录异步消息以核对接管反馈。"""
         async_messages.append(message)
 
     async def _finish_immediately(**kwargs):
+        """立即回调完成结果，避免启动真实 Agent。"""
         kwargs["output_callback"]("ok")
 
     manager = SimpleNamespace(run_background_prompt=_finish_immediately)
@@ -286,16 +290,19 @@ def test_transfer_ai_retry_callback_uses_successful_move_dest_as_source(
     )
 
     def _run_pending_coro(coro, *args, **kwargs):
+        """同步执行协程并返回调度占位结果。"""
         asyncio.run(coro)
         return SimpleNamespace()
 
     async def fake_run_background_prompt(**kwargs):
+        """记录接管提示并回调模拟完成结果。"""
         captured["message"] = kwargs["message"]
         output_callback = kwargs.get("output_callback")
         if output_callback:
             output_callback("ok")
 
     async def fake_async_post_message(*args, **kwargs):
+        """隔离通知发送，避免测试访问真实消息渠道。"""
         return None
 
     from app.agent.prompt.transfer import build_manual_redo_prompt

@@ -17,9 +17,9 @@ from app.application.history import (
     resolve_history,
 )
 from app.application.transfer.execution import (
-    TransferExecutionCommand,
     TransferExecutionRepository,
 )
+from app.application.transfer.recovery import TransferRecoveryCommand
 from app.chain._contracts import TransferMixinHost
 from app.chain.storage import StorageChain
 from app.chain.subscribe.facade import SubscribeChain
@@ -528,7 +528,7 @@ class ManualHistoryMixin(_TransferOwnerBase):
             )
             if not settlement_revision:
                 return False, "持久整理失败记录缺少结算版本，请刷新后重试"
-            discard = TransferExecutionCommand(
+            discard = TransferRecoveryCommand(
                 self.transfer_execution_repository
             ).discard_failed(
                 task_id=task_id,

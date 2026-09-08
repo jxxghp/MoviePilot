@@ -44,6 +44,7 @@ from app.application.transfer.execution import (
     TransferExecutionRepository,
     TransferRetryRequestResult,
 )
+from app.application.transfer.recovery import TransferRecoveryCommand
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.runtime.progress import AsyncProgressHelper
@@ -54,6 +55,7 @@ from app.schemas.history import BatchTransferHistoryRedoRequest as _SchemaBatchT
 from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
 from app.schemas.history import TransferHistory as _SchemaTransferHistory
 from app.schemas.history import TransferHistoryDeleteResult as _SchemaTransferHistoryDeleteResult
+from app.schemas.history import TransferHistoryDiscardResult as _SchemaTransferHistoryDiscardResult
 from app.schemas.history import TransferHistoryPage as _SchemaTransferHistoryPage
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -457,29 +459,42 @@ def delete_transfer_history(
     )
 
 
-@router.post(
-    "/transfer/{history_id}/discard-corrupt",
-    summary="放弃损坏的整理任务",
-    response_model=_SchemaResponse[dict],
-)
-async def discard_corrupt_transfer_history(
+async def _get_discard_transfer_history(
     history_id: int,
     query: HistoryQueryService = Depends(get_history_query_service),
+) -> Optional[_SchemaTransferHistory]:
+    """异步加载历史 DTO，随后由 FastAPI 工作线程执行同步原子清理。"""
+    return await query.get_transfer(history_id)
+
+
+# FastAPI 装饰器在当前 mypy 配置下视为无类型，响应仍由具体 Pydantic 模型约束。
+@router.post(  # type: ignore[misc]
+    "/transfer/{history_id}/discard-corrupt",
+    summary="放弃损坏的整理任务",
+    response_model=_SchemaResponse[_SchemaTransferHistoryDiscardResult],
+)
+def discard_corrupt_transfer_history(
+    history_id: int,
+    history: Optional[_SchemaTransferHistory] = Depends(_get_discard_transfer_history),
     execution_repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
     _: object = Depends(get_current_active_manage_user),
 ) -> Any:
     """清理无活动租约的损坏 durable 任务，保留历史供重新生成计划。"""
-    history = await query.get_transfer(history_id)
     if not history:
         return _SchemaResponse(success=False, message="整理记录不存在")
     if not history.transfer_task_id:
-        return _SchemaResponse(success=True, message="整理任务已清理", data={"history_id": history_id})
-    result = await asyncio.to_thread(
-        TransferExecutionCommand(execution_repository).discard_corrupt_by_history,
+        return _SchemaResponse(
+            success=True, message="整理任务已清理",
+            data=_SchemaTransferHistoryDiscardResult(history_id=history_id),
+        )
+    result = TransferRecoveryCommand(execution_repository).discard_corrupt_by_history(
         task_id=history.transfer_task_id,
         history_id=history_id,
     )
-    return _SchemaResponse(success=result.discarded, message=result.message, data={"history_id": history_id})
+    return _SchemaResponse(
+        success=result.discarded, message=result.message,
+        data=_SchemaTransferHistoryDiscardResult(history_id=history_id),
+    )
 
 
 @router.post(

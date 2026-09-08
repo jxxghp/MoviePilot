@@ -849,49 +849,6 @@ class TransferExecutionCommand:
             requested_by=requested_by,
         )
 
-    def discard_corrupt_task(
-            self,
-            *,
-            task_id: str,
-            lease_token: str,
-            error: str,
-    ) -> bool:
-        """以当前租约清理损坏任务，避免恢复线程再次回放旧步骤。"""
-        if not task_id or not lease_token or not error:
-            raise ValueError("损坏任务收口缺少任务、租约或错误原因")
-        return self._repository.discard_corrupt_task(
-            task_id=task_id, lease_token=lease_token, error=error
-        )
-
-    def discard_corrupt_by_history(
-            self,
-            *,
-            task_id: str,
-            history_id: int,
-    ) -> TransferFailureDiscardResult:
-        """放弃无法重试的损坏任务，保留历史记录供重新生成计划。"""
-        if not task_id or history_id <= 0:
-            raise ValueError("放弃损坏任务缺少任务或历史")
-        return self._repository.discard_corrupt_by_history(
-            task_id=task_id, history_id=history_id
-        )
-
-    def discard_failed(
-            self,
-            *,
-            task_id: str,
-            history_id: int,
-            settlement_revision: int,
-    ) -> TransferFailureDiscardResult:
-        """放弃确定失败任务，使对应历史恢复为普通可维护记录。"""
-        if not task_id or history_id <= 0 or settlement_revision <= 0:
-            raise ValueError("放弃失败整理任务缺少任务、历史或结算版本")
-        return self._repository.discard_failed(
-            task_id=task_id,
-            history_id=history_id,
-            settlement_revision=settlement_revision,
-        )
-
     def resolve_manual_review(
             self,
             *,

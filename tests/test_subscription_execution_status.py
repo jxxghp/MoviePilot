@@ -132,15 +132,15 @@ def test_execution_status_exposes_scheduled_new_search_without_failure():
     assert statuses[4].error is None
 
 
-def test_failed_search_exposes_safe_error():
-    """搜索失败文本必须压平且不暴露内部错误细节。"""
+def test_failed_search_preserves_normalized_business_error():
+    """搜索失败文本必须压平空白并保留业务层给出的失败原因。"""
     repository = _Repository()
     repository.tasks[3] = _task(3, state="failed", phase="failed")
 
     statuses = asyncio.run(SubscriptionExecutionStatusService(repository).for_subscriptions((3,)))
 
     assert statuses[3].state == "failed"
-    assert statuses[3].error == "订阅操作失败，请刷新后重试"
+    assert statuses[3].error == "provider timeout"
 
 
 def test_batch_requires_complete_subscription_access():

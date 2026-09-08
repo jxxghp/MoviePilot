@@ -1,5 +1,6 @@
-from __future__ import annotations
 """字幕获取、解压和存储 owner。"""
+
+from __future__ import annotations
 
 import re
 import shutil

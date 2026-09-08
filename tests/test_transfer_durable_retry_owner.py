@@ -79,7 +79,7 @@ def _install_discard_port(monkeypatch) -> object:
         message="已放弃这条失败的整理任务",
     )
     monkeypatch.setattr(
-        "app.chain.transfer.records.TransferExecutionCommand",
+        "app.chain.transfer.records.TransferRecoveryCommand",
         _DiscardCommand,
     )
     return repository

@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **393**
+- OpenAPI HTTP operations: **394**
 - Stable `moviepilot_api` operations: **205**
 - Exact HTTP routes used by the gateway: **203**
 - OpenAPI routes matched directly by the gateway: **202**
@@ -23,7 +23,7 @@
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 20 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 21 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -99,6 +99,7 @@
 | `POST` | `/api/v1/history/transfer/ai-redo` | history | `gateway` | transfer.history.redo_batch | 智能助手批量重新整理 |
 | `DELETE` | `/api/v1/history/transfer/all` | history | `gateway` | transfer.history.clear | 清空旧整理记录 |
 | `POST` | `/api/v1/history/transfer/{history_id}/ai-redo` | history | `gateway` | transfer.history.redo | 智能助手重新整理 |
+| `POST` | `/api/v1/history/transfer/{history_id}/discard-corrupt` | history | `ui_presentation` | host-ui | 放弃损坏的整理任务 |
 | `POST` | `/api/v1/llm/manage` | llm | `transport_or_identity` | host-runtime | LLM提供商统一管理 |
 | `GET` | `/api/v1/llm/provider-auth/callback/{provider_id}` | llm | `transport_or_identity` | host-runtime | LLM提供商OAuth回调 |
 | `POST` | `/api/v1/login/access-token` | login | `transport_or_identity` | host-runtime | 获取token |

@@ -19,6 +19,8 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 - 不要在缺少 HTTPS、访问控制和网络隔离的情况下，将 MCP、OpenAI 或 Anthropic 兼容接口直接暴露到公网。
 - MCP 隐藏工具列表只用于减少默认暴露面，不是 per-user 权限系统。
 
+`POST /api/v1/history/transfer/{history_id}/discard-corrupt` 属于需要管理权限的整理恢复 REST 接口，不向 Agent gateway 暴露。成功响应的 `data.history_id` 为保留的整理历史 ID；任务已清理时同样返回该结构，历史不存在时返回业务失败。
+
 ## 2. 标准 MCP 协议 (JSON-RPC 2.0)
 
 ### 端点
@@ -52,25 +54,25 @@ MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。
 
 `app/agent/policy/resources/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。
 
-当前完整 FastAPI OpenAPI 包含 375 个 HTTP 操作，其中 203 个稳定业务操作进入
-`moviepilot_api`，使用 201 个固定路由模板：200 条 OpenAPI 路由直接匹配，另有 1 条只允许
+当前完整 FastAPI OpenAPI 包含 394 个 HTTP 操作，其中 205 个稳定业务操作进入
+`moviepilot_api`，使用 203 个固定路由模板：202 条 OpenAPI 路由直接匹配，另有 1 条只允许
 `tmdb`、`douban`、`bangumi`、`anilist` 四个来源的受限人物作品动态路由。每个 operation
 均同时具备固定 method/path、角色权限、副作用等级、确认与恢复策略、结果敏感性、英文用途说明，
 以及可直接提交的 path/query/body JSON Schema；Skill front matter、正文 operation 章节、运行时
-注册表和 MCP `tools/list` 的 203 个 `oneOf` 分支必须完全一致。
+注册表和 MCP `tools/list` 的 205 个 `oneOf` 分支必须完全一致。
 
-数量不相等是明确的安全与语义边界，而不是漏生成。当前 375 条路由均被审计并锁定为以下一种
+数量不相等是明确的安全与语义边界，而不是漏生成。当前 394 条路由均被审计并锁定为以下一种
 归属，审计生成器不再提供“未归类”兜底：
 
 | 归属 | 数量 | Agent 使用方式 |
 | :--- | ---: | :--- |
-| `gateway` | 200 | 通过 `moviepilot_api` 的稳定 operation 和精确参数合同调用 |
+| `gateway` | 202 | 通过 `moviepilot_api` 的稳定 operation 和精确参数合同调用 |
 | `consolidated` | 72 | 通过同领域聚合 operation 调用，不复制数据源或前端专用路由 |
-| `provider-skill` | 11 | 通过下载器或媒体服务器 Skill 调用第三方 provider API |
+| `provider-skill` | 12 | 通过下载器或媒体服务器 Skill 调用第三方 provider API |
 | `alternate-auth-duplicate` | 11 | 使用对应 bearer-authenticated gateway operation，不暴露 API_TOKEN 兼容副本 |
 | `transport_or_identity` | 66 | 由登录、令牌、MCP、会话、回调、健康检查等宿主传输/身份边界拥有 |
 | `stream_or_binary` | 10 | 由直接客户端处理流式日志、消息、文件、图片等非结构化响应 |
-| `ui_presentation` | 5 | 由前端或插件渲染面拥有，不作为业务 Agent operation |
+| `ui_presentation` | 21 | 由前端或插件渲染面拥有，不作为业务 Agent operation |
 
 逐路由归属见 `docs/architecture/agent-api-surface-audit.md`，并由
 `tests/test_agent_api_surface_audit.py` 对当前 OpenAPI、固定注册表、MCP schema、英文 Skill

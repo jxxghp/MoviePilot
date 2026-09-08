@@ -103,6 +103,7 @@
     }
   },
   "messages": {
+    "整理任务已清理": "The organization task has been cleared",
     "暂无到期订阅，无需搜索": "No subscriptions are due for search",
     "调用工具失败": "Tool call failed",
     "无效的媒体来源": "Invalid media source",

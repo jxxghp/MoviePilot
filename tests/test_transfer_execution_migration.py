@@ -779,7 +779,7 @@ def test_migrated_legacy_reviews_are_discoverable_resolvable_and_retryable(
 
     with pytest.raises(
             TransferExecutionConflictError,
-            match="没有足够证据证明外部操作已发生",
+            match="这条整理步骤无法确认是否已经执行，请人工确认文件状态后再继续",
     ):
         command.resolve_manual_review(
             task_id="planned",
@@ -840,7 +840,7 @@ def test_migrated_legacy_reviews_are_discoverable_resolvable_and_retryable(
             assert pending.state in {"accepted", "planned"}
         with pytest.raises(
                 TransferExecutionConflictError,
-                match="可执行规划状态|完整计划检查点|无法恢复",
+                match="整理任务记录不完整，请重新识别文件后再整理|整理任务尚未准备完成，请稍后再试",
         ):
             command.prepare(
                 task_id=task_id,

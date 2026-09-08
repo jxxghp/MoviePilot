@@ -167,6 +167,12 @@ class BatchTransferHistoryRedoRequest(BaseModel):
     history_ids: list[int] = Field(default_factory=list)
 
 
+class TransferHistoryDiscardResult(BaseModel):  # type: ignore[misc]
+    """损坏整理任务清理结果，标识保留供后续操作的历史记录。"""
+
+    history_id: int = Field(description="保留的整理历史记录 ID")
+
+
 class TransferHistoryPage(BaseModel):
     """整理历史分页数据。"""
 

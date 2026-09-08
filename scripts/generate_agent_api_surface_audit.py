@@ -168,6 +168,13 @@ def _classify(
             "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
             [],
         )
+    if path == "/api/v1/history/transfer/{history_id}/discard-corrupt":
+        return (
+            "ui_presentation",
+            "host-ui",
+            "Discarding corrupt transfer state is owned by the authenticated management recovery workflow; it is not a stable Agent gateway operation.",
+            [],
+        )
     if path.startswith(SUBSCRIPTION_EXECUTION_UI_PREFIX):
         return (
             "ui_presentation",

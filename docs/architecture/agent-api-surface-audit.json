@@ -6,7 +6,7 @@
     "provider-skill": 12,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
-    "ui_presentation": 20
+    "ui_presentation": 21
   },
   "dynamic_gateway_routes": [
     {
@@ -21,7 +21,7 @@
   "gateway_http_route_count": 203,
   "gateway_operation_count": 205,
   "matched_gateway_http_route_count": 202,
-  "openapi_operation_count": 393,
+  "openapi_operation_count": 394,
   "operations": [
     {
       "disposition": "consolidated",
@@ -833,6 +833,18 @@
       "path": "/api/v1/history/transfer/{history_id}/ai-redo",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "智能助手重新整理",
+      "tags": [
+        "history"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/history/transfer/{history_id}/discard-corrupt",
+      "reason": "Discarding corrupt transfer state is owned by the authenticated management recovery workflow; it is not a stable Agent gateway operation.",
+      "summary": "放弃损坏的整理任务",
       "tags": [
         "history"
       ]

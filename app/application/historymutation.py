@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any, Callable, Optional, Protocol
 
 from app.application.transfer.execution import (
-    TransferExecutionCommand,
     TransferExecutionRepository,
 )
+from app.application.transfer.recovery import TransferRecoveryCommand
 from app.schemas.common import JsonData
 from app.schemas.history import TransferHistoryDeleteResult, TransferHistoryDeleteStep
 
@@ -185,7 +185,7 @@ class TransferHistoryMutationCommand:
                     history="retained",
                     message="持久整理失败记录缺少结算版本，请刷新后重试",
                 )
-            discard = TransferExecutionCommand(
+            discard = TransferRecoveryCommand(
                 self._transfer_execution_repository
             ).discard_failed(
                 task_id=history.transfer_task_id,
