@@ -54,6 +54,19 @@ def _recognize_manual_media(
 class TransferHistoryOwner(_TransferOwnerBase):
     """唯一持有手动历史、重整命令和通知公开入口。"""
 
+    def _run_manual_transfer_request(
+            self,
+            transfer_kwargs: dict[str, Any],
+            selected_fileitems: Optional[list[FileItem]],
+    ) -> Tuple[bool, Union[str, dict]]:
+        """显式文件批次走内部入口，普通请求继续保持公开签名兼容。"""
+        if selected_fileitems is not None:
+            return self._execute_transfer(
+                **transfer_kwargs,
+                selected_fileitems=selected_fileitems,
+            )
+        return self.do_transfer(**transfer_kwargs)
+
     def remote_transfer(
             self,
             arg_str: str,
@@ -255,13 +268,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
             )
-            if selected_fileitems is not None:
-                state, errmsg = self._execute_transfer(
-                    **transfer_kwargs,
-                    selected_fileitems=selected_fileitems,
-                )
-            else:
-                state, errmsg = self.do_transfer(**transfer_kwargs)
+            state, errmsg = self._run_manual_transfer_request(transfer_kwargs, selected_fileitems)
             if not state:
                 return False, errmsg
 
@@ -294,13 +301,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
             )
-            if selected_fileitems is not None:
-                state, errmsg = self._execute_transfer(
-                    **transfer_kwargs,
-                    selected_fileitems=selected_fileitems,
-                )
-            else:
-                state, errmsg = self.do_transfer(**transfer_kwargs)
+            state, errmsg = self._run_manual_transfer_request(transfer_kwargs, selected_fileitems)
             return state, errmsg
 
     def send_transfer_message(
