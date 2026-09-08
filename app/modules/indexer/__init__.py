@@ -12,7 +12,7 @@ from app.domain.context import Context, SubtitleInfo, TorrentInfo
 from app.foundation import text as text_tools
 from app.foundation.reflection import ModuleHelper
 from app.modules import _ModuleBase
-from app.modules.indexer.parser import SiteParserBase
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.modules.indexer.spider import SiteSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.hddolby import HddolbySpider
@@ -50,6 +50,14 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
 }
 
 _UNKNOWN_SEARCH_FAILURE_MESSAGE = "站点请求或页面解析失败"
+
+# NexusPHP、Gazelle 和 Unit3d 覆盖大多数站点，其余模型多为专站适配，
+# 不参与自动探测，避免对同一站点重复请求专用接口。
+_COMMON_SITE_USERDATA_FALLBACK_SCHEMAS = frozenset({
+    SiteSchema.Gazelle.value,
+    SiteSchema.NexusPhp.value,
+    SiteSchema.Unit3d.value,
+})
 
 
 @dataclass(frozen=True)
@@ -758,7 +766,11 @@ class IndexerModule(_ModuleBase):
             if not site_obj.userid and not site.get("public"):
                 tried = {site.get("schema")}
                 for site_schema in self._site_schemas:
-                    if not site_schema.schema or site_schema.schema.value in tried:
+                    if (
+                        not site_schema.schema
+                        or site_schema.schema.value in tried
+                        or site_schema.schema.value not in _COMMON_SITE_USERDATA_FALLBACK_SCHEMAS
+                    ):
                         continue
                     tried.add(site_schema.schema.value)
                     logger.info(f"站点 {site.get('name')} schema {site.get('schema')} 解析失败, "
