@@ -266,7 +266,13 @@ def test_preview_returns_condition_path_and_structured_missing_fact_warning() ->
         )
     )
 
-    assert evaluation.trace[0].conditions[0].path == ["rules", 0, "when"]
+    rule_index = next(
+        index for index, rule in enumerate(policy.rules) if rule.id == "rule.language"
+    )
+    language_trace = next(
+        trace for trace in evaluation.trace if trace.rule_id == "rule.language"
+    )
+    assert language_trace.conditions[0].path == ["rules", rule_index, "when"]
     assert evaluation.warnings[0].code == "missing_fact"
     assert evaluation.warnings[0].field == "media.language"
     assert evaluation.warnings[0].source == "themoviedb"

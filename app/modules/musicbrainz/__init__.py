@@ -884,7 +884,10 @@ class MusicBrainzModule(_ModuleBase):
             _MusicBrainzRequestPlan(
                 path=f"/release/{release_id}",
                 params={
-                    "inc": "recordings+media+artist-credits",
+                    # Release lookup 默认只返回 Release Group 的最小引用，
+                    # 不包含 primary-type / secondary-types。目录级专辑识别
+                    # 后续需要这些字段执行音乐分类，因此必须显式展开。
+                    "inc": "recordings+media+artist-credits+release-groups",
                     "fmt": "json",
                 },
             )

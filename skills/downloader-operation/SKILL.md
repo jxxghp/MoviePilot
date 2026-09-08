@@ -28,6 +28,10 @@ username, password, API key, Cookie, or arbitrary URL.
   the user explicitly wants direct provider submission.
 - Paths passed to `tasks.location.set` and `tasks.add.direct` are downloader-side
   paths, not MoviePilot storage paths.
+- `tasks.location.set` is a raw provider operation and does not evaluate
+  MoviePilot media categories. For an existing MoviePilot task, use the Web UI
+  resource-category preview and confirmation flow when the target should come
+  from MoviePilot's download history and resource-directory rules.
 
 ## Instance And Provider Discovery
 
