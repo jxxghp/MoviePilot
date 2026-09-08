@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from app.adapters.system.host import SystemUtils
 from app.application.directory import DirectoryHelper
 from app.application.messaging.message import MessageHelper
-from app.application.transfer.execution import TransferStepRunner
+from app.application.transfer.execution import TransferPlanningRejectedError, TransferStepRunner
 from app.application.transfer.workflow import TransferPlanCheckpoint, TransferPlanningInput
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
@@ -492,10 +492,10 @@ class FileManagerModule(_ModuleBase):
                                                 need_type_folder=library_type_folder,
                                                 need_category_folder=library_category_folder)
         else:
-            # 未找到有效的媒体库目录
+            # 目录匹配失败按业务拒绝结算，避免进入异常重试和堆栈日志路径。
             logger.error(
                 f"{mediainfo.type.value if mediainfo.type else '未知类型'} {mediainfo.title_year} 未找到有效的媒体库目录，无法整理文件，源路径：{fileitem.path}")
-            raise ValueError("未找到有效的媒体库目录")
+            raise TransferPlanningRejectedError("未找到有效的媒体库目录")
         # 整理方式
         if not transfer_type:
             directory_name = target_directory.name if target_directory else "目标目录"
