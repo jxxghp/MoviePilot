@@ -549,3 +549,48 @@ def test_search_provider_logs_site_budget_release_failure(monkeypatch):
     assert result == ["torrent"]
     assert metrics.snapshot().release_failure_count == 1
     assert errors == ["订阅站点预算释放失败: site_id=14 site=Stale"]
+
+
+def test_retry_provider_only_searches_pending_enabled_sites(monkeypatch):
+    """恢复时不重搜成功站点和插件源，也不重新启用已经移除的站点。"""
+    from unittest.mock import Mock
+
+    from app.chain.search.provider import SearchProviderOwner
+
+    chain = object.__new__(SearchChain)
+    chain.configure_subscription_site_budget(SubscriptionSiteBudget(
+        repository=_WaitingRepository(), owner="retry", cancelled=lambda: False,
+        stop_state=ProcessStopState(), pending_site_ids=(2, 3),
+    ))
+    chain._sync_indexers = lambda _sites: [{"id": 1}, {"id": 2}]
+    chain._torrent_type = lambda *_args: None
+    chain._torrent_keyword = lambda *_args: "movie"
+    chain._build_search_pages = lambda _page: [0]
+    chain.search_plugin_torrents = Mock(return_value=[])
+    captured = []
+
+    def collect(**kwargs):
+        """只观察 provider 选择，禁止真实站点和插件调用。"""
+        captured.extend(site["id"] for site in kwargs["indexer_sites"])
+        return {}
+
+    monkeypatch.setattr(SearchProviderOwner, "_collect_sync_site_results", lambda _self, **kwargs: collect(**kwargs))
+    monkeypatch.setattr("app.chain.search.provider.ProgressHelper", Mock())
+    SearchProviderOwner._search_all_sites(chain, keyword="movie", sites=[1, 2])
+    assert captured == [2]
+    chain.search_plugin_torrents.assert_not_called()
+
+
+def test_deferral_reports_cooldown_separately_from_busy():
+    """冷却提示不伪装成站点占用，并保留所有未完成站点。"""
+    from app.application.subscription.execution import raise_subscription_site_budget_deferral
+    from app.application.subscription.sitebudget import SubscriptionSearchDeferred, SubscriptionSiteBudgetDeferral
+
+    deferred_sites = (
+        SubscriptionSiteBudgetDeferral(site_id=1, retry_at="2026-09-08T10:00:00+00:00", wait_reason="cooldown"),
+        SubscriptionSiteBudgetDeferral(site_id=2, retry_at="2026-09-08T11:00:00+00:00", wait_reason="cooldown"),
+    )
+    with pytest.raises(SubscriptionSearchDeferred, match="站点冷却中") as caught:
+        raise_subscription_site_budget_deferral(deferred_sites, None)
+    assert caught.value.site_ids == (1, 2)
+    assert caught.value.retry_at == deferred_sites[0].retry_at

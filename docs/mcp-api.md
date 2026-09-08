@@ -265,7 +265,9 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 #### 媒体识别 / 整理
 
-媒体识别、搜索和手动整理统一使用 `media_source` + `media_id` 表示媒体主身份。内置来源通过 `MediaSource` 提供 `themoviedb`、`douban`、`bangumi`、`anilist`、`imdb`、`tvdb`、`musicbrainz`、`theaudiodb`、`doubanmusic`、`bilibili`、`mangguodiscover`、`migu` 和 `tencentvideodiscover` 等常量；该列表不是插件来源白名单，插件可以注册符合 OpenAPI 格式约束的稳定扩展标识。`media_id` 是该来源的原生 ID，不添加 `tmdb:` 等前缀。需要精确身份时两个字段必须同时提供，不能只传其中一个。
+媒体识别、搜索和手动整理统一使用 `media_source` + `media_id` 表示媒体主身份。内置来源通过 `MediaSource` 提供 `themoviedb`、`douban`、`bangumi`、`anilist`、`imdb`、`tvdb`、`musicbrainz`、`theaudiodb`、`doubanmusic` 九个具有宿主模块实现的常量；该列表不是插件来源白名单，插件可以注册符合 OpenAPI 格式约束的稳定扩展标识。`media_id` 是该来源的原生 ID，不添加 `tmdb:` 等前缀。需要精确身份时两个字段必须同时提供，不能只传其中一个。
+
+媒体来源列表 `/api/v1/media/source` 仅预置上述九个来源，其余来源由启用插件注册后提供。哔哩哔哩、芒果 TV、咪咕视频、腾讯视频、爱奇艺不再占用内置来源标识，宿主也不再转换这些插件来源的旧别名；调用方应使用插件声明的准确来源 ID。
 
 影视自动识别在未指定来源时只使用 TMDB，未命中时不会继续查询其它影视源。音乐路径识别严格按 AcoustID 音频指纹、文件标签、文件名三级依次执行；指纹或标签直接提供 MusicBrainz Recording ID 时，会直接查询 MusicBrainz 详情，标签和文件名标题识别也只使用 MusicBrainz。其它元数据源仅在手动操作通过请求级 `media_source`，或通过完整的 `media_source` + `media_id` 精确指定时使用，不修改系统默认值，也不会跨来源兜底。`MediaInfo` 响应仍可能包含 `tmdb_id`、`douban_id`、`bangumi_id`、`anilist_id` 等跨源映射辅助字段，但这些字段不是通用请求入口。明确归属 `/tmdb`、`/douban`、`/bangumi`、`/anilist` 的接口，以及固定使用 TMDB 的剧集组和排期接口，仍可按其单数据源契约接收原生 ID。
 
@@ -428,6 +430,24 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 单曲、专辑或未限定实体范围隔离，版本及 ISRC 不同的文本识别请求也不会共用结果；
 旧版未包含这些证据的派生缓存在升级后重新建立，不影响下载历史或订阅数据。
 名称确认规则更新时同样重建旧派生缓存，避免艺术家前后缀误截断的旧结果继续命中。
+
+### 单条订阅搜索周期
+
+`POST /api/v1/subscribe/` 和 `PUT /api/v1/subscribe/` 支持 `search_interval`：
+取值为 1–8760 的整数小时数，`null` 表示跟随系统的 `SUBSCRIBE_SEARCH_INTERVAL`。
+更新时省略该字段保留原值，显式传入 `null` 恢复系统周期。默认订阅规则同样可保存此字段。
+
+仅在启用 `SUBSCRIBE_SEARCH` 时执行定时搜索，每五分钟检查到期订阅，再通过原有搜索队列和站点限流执行；
+实际开始时间可能因站点忙而延后。`last_search` 为系统维护的 UTC 搜索尝试开始时间，重启后仍有效，公共写接口忽略它。
+旧订阅尚无搜索时间时，以添加时间计算到期。新订阅首次搜索、手动搜索和 RSS 刷新不受周期过滤影响；
+手动主动搜索会更新最近搜索时间。电影、电视剧和音乐均支持独立周期。
+
+自动批次只在启动时随机错峰 0–60 秒，不再按订阅数量累加分钟级等待；同站点访问间隔、唯一在途租约和错误冷却继续生效。
+站点暂不可用时，任务保存未完成站点并按 `next_run_at` 恢复，不重复查询已完成站点或插件源；队列和站点游标可跨重启恢复。
+`waiting_site_budget` 表示可恢复等待，`error` 中的“等待站点”或“站点冷却中”是原因提示，不表示搜索失败；重新执行时清除旧提示。
+卡片应按 `state` / `phase` 展示简短标签，原因放入详情提示。恢复调度每 10 秒检查空闲消费者，长搜索由调度器持续托管。
+实际吞吐仍受站点访问限制和网络响应时间影响，配置周期不是全部站点必须完成的截止时间。
+
 
 ### 插件补充接口
 

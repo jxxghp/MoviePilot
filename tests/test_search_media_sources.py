@@ -7,7 +7,7 @@ import pytest
 from app.api.endpoints import media as media_endpoint
 from app.api.endpoints import search as search_endpoint
 from app.chain.subscribe import create as subscribe_create
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
 from app.schemas.media import normalize_media_source
@@ -21,11 +21,16 @@ def test_media_source_normalization_accepts_plugin_source() -> None:
     assert normalize_media_source("plugin source:invalid") is None
 
 
-def test_iqiyi_media_source_aliases_are_normalized() -> None:
-    """爱奇艺探索来源的历史前缀和规范前缀应归一到同一媒体来源。"""
-    assert normalize_media_source("iqiyi") is MediaSource.Iqiyi
-    assert normalize_media_source("iqiyidiscover") is MediaSource.Iqiyi
-    assert MediaSource("iqiyi") is MediaSource.Iqiyi
+@pytest.mark.parametrize("source_id", [
+    "bilibili", "mangguodiscover", "migu", "tencentvideodiscover", "iqiyidiscover",
+    "mango_tv", "migu_video", "tencent_video", "iqiyi",
+])
+def test_plugin_media_sources_preserve_exact_identifiers(source_id: str) -> None:
+    """插件来源不再属于内置枚举，也不替插件转换来源别名。"""
+    source = normalize_media_source(source_id)
+    assert source is MediaSource(source_id)
+    assert source.value == source_id
+    assert source not in list(MediaSource)
 
 
 def test_resolve_anilist_search_params_preserves_identity() -> None:

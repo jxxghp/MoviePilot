@@ -1,5 +1,6 @@
 """订阅主动搜索编排"""
 
+import asyncio
 import random
 import time
 from datetime import datetime, timedelta, timezone
@@ -28,7 +29,7 @@ from app.application.subscription.observability import (
     batch_progress_text,
     inline_search_result,
 )
-from app.application.subscription.query import SubscriptionQueryService
+from app.application.subscription.query import SubscriptionQueryService, subscription_search_due
 from app.application.subscription.sitebudget import (
     SubscriptionSearchCancelled,
     SubscriptionSearchDeferred,
@@ -46,8 +47,10 @@ from app.domain.context import (
     MusicInfo,
 )
 from app.domain.meta.metabase import MetaBase
+from app.runtime.execution import await_task_to_terminal
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.runtime.tasks import get_task_registry
 from app.schemas.types import (
     MediaType,
     SystemConfigKey,
@@ -92,19 +95,14 @@ def _search_task_available_at(
     *,
     now: Optional[datetime] = None,
 ) -> dict[int, str]:
-    """把兜底搜索的随机节奏持久化为逐订阅到期时间。"""
+    """整批仅抖动一次；请求节奏由站点限流控制，不随订阅数量累计空等。"""
     ordered_ids = tuple(dict.fromkeys(subscription_ids))
     if not ordered_ids:
         return {}
     cursor = now or datetime.now(timezone.utc)
     if source == "fallback":
         cursor += timedelta(seconds=random.randint(0, 60))
-    available_at: dict[int, str] = {}
-    for position, subscription_id in enumerate(ordered_ids):
-        if source == "fallback" and position:
-            cursor += timedelta(seconds=random.randint(60, 300))
-        available_at[subscription_id] = cursor.isoformat(timespec="seconds")
-    return available_at
+    return dict.fromkeys(ordered_ids, cursor.isoformat(timespec="seconds"))
 
 
 class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
@@ -160,11 +158,12 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         manual: Optional[bool] = False,
         progress_callback: Optional[Callable[..., None]] = None,
         sids: Optional[tuple[int, ...]] = None,
+        scheduled_interval: Optional[int] = None,
     ) -> Optional[str]:
         """
         执行订阅搜索。
 
-        保持定时任务、API 和插件使用的公开签名，搜索实现委托给内部执行阶段。
+        scheduled_interval 仅供定时调度传入系统间隔；手动和指定目标搜索不受周期限制。
         """
         return self._execute_search(
             sid=sid,
@@ -172,6 +171,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
             state=state,
             manual=manual,
             progress_callback=progress_callback,
+            scheduled_interval=scheduled_interval,
         )
 
     def _execute_search(
@@ -181,6 +181,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         manual: Optional[bool] = False,
         progress_callback: Optional[Callable[..., None]] = None,
         sids: Optional[tuple[int, ...]] = None,
+        scheduled_interval: Optional[int] = None,
     ) -> Optional[str]:
         """
         订阅搜索
@@ -202,6 +203,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
                 state=state,
                 manual=manual,
                 progress_callback=progress_callback,
+                scheduled_interval=scheduled_interval,
             )
         self._execute_inline_search(
             sid=sid,
@@ -209,6 +211,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
             state=state,
             manual=manual,
             progress_callback=progress_callback,
+            scheduled_interval=scheduled_interval,
         )
         return None
 
@@ -219,6 +222,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         state: Optional[str],
         manual: Optional[bool],
         progress_callback: Optional[Callable[..., None]],
+        scheduled_interval: Optional[int] = None,
     ) -> None:
         """在独立 Search 通道内按订阅准入执行兼容搜索。"""
         lock_acquired = self._acquire_run_lock("search", progress_callback)
@@ -228,7 +232,10 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         processed = []
         summary: Optional[SearchExecutionSummary] = None
         try:
-            subscribes = self._load_search_subscriptions(sid=sid, sids=sids, state=state)
+            subscribes = self._load_search_subscriptions(
+                sid=sid, sids=sids, state=state,
+                scheduled_interval=None if manual else scheduled_interval,
+            )
             total = len(subscribes)
             source, _priority = _search_source_and_priority(
                 sid=sid,
@@ -352,9 +359,17 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         state: Optional[str],
         manual: Optional[bool],
         progress_callback: Optional[Callable[..., None]],
-    ) -> str:
+        scheduled_interval: Optional[int] = None,
+    ) -> Optional[str]:
         """将搜索转为持久任务并在无 Match 长锁的短租约中串行消费。"""
-        subscribes = self._load_search_subscriptions(sid=sid, sids=sids, state=state)
+        subscribes = self._load_search_subscriptions(
+            sid=sid, sids=sids, state=state,
+            scheduled_interval=None if manual else scheduled_interval,
+        )
+        if scheduled_interval is not None and not subscribes:
+            if progress_callback:
+                progress_callback(value=100, text="暂无到期订阅，无需搜索")
+            return None
         source, priority = _search_source_and_priority(
             sid=sid,
             sids=sids,
@@ -501,6 +516,27 @@ class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
         )
         return runner.execute()
 
+    async def async_resume_search_queue(
+        self,
+        progress_callback: Optional[Callable[..., None]] = None,
+        limit: int = 50,
+        manual_sids: Optional[tuple[int, ...]] = None,
+    ) -> None:
+        """托管恢复协程及手工反馈，等待同步消费者真实结束后才释放运行所有权。"""
+        task = get_task_registry().create_sync(
+            self.resume_search_queue,
+            owner="subscription.search_queue",
+            progress_callback=progress_callback,
+            limit=limit,
+            manual_sids=manual_sids,
+        )
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # 同步线程不可强制取消；真实收尾前不能让下一次轮询取得消费者所有权。
+            await await_task_to_terminal(task)
+            raise
+
     def resume_search_queue(
         self,
         progress_callback: Optional[Callable[..., None]] = None,
@@ -573,6 +609,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         sid: Optional[int],
         sids: Optional[tuple[int, ...]],
         state: Optional[str],
+        scheduled_interval: Optional[int] = None,
     ) -> list[SubscriptionSnapshot]:
         """按单条、指定批次或状态读取本轮搜索订阅。"""
         repository = self.subscription_repository
@@ -581,7 +618,11 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
             return [subscribe] if subscribe else []
         if sids is not None:
             return [item for current_id in sids if (item := repository.get(current_id)) is not None]
-        return cast(list[SubscriptionSnapshot], repository.list(self.get_states_for_search(state or "N")))
+        subscribes = cast(list[SubscriptionSnapshot], repository.list(self.get_states_for_search(state or "N")))
+        if scheduled_interval is None:
+            return subscribes
+        now = datetime.now(timezone.utc)
+        return [item for item in subscribes if subscription_search_due(item, scheduled_interval, now)]
 
     @staticmethod
     def _recent_subscription_retry_at(
@@ -682,6 +723,11 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
     ) -> Optional[SubscriptionSnapshot]:
         """处理单个订阅，并返回下载后重新读取的状态快照。"""
         _ensure_execution_active(execution_context)
+        subscribe = self._SubscribeChain__apply_subscribe_update(
+            subscribe,
+            {"last_search": datetime.now(timezone.utc).isoformat(timespec="seconds")},
+            scene="search",
+        )
         logger.debug(f"开始搜索订阅，标题：{subscribe.name} ...")
         target = prepare_search_target(
             self, subscribe, MediaChain(), partial(_ensure_execution_active, execution_context),

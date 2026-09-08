@@ -108,6 +108,11 @@ class SubscriptionSearchOper(DbOper):
                             (promote_queued_task, None),
                             else_=SubscriptionSearchTask.last_error,
                         ),
+                        # 用户重新指定搜索时按当前站点配置重搜；自动周期合并保留恢复游标。
+                        pending_site_ids=case(
+                            (and_(SubscriptionSearchTask.state == "queued", source in {"manual", "targeted"}), None),
+                            else_=SubscriptionSearchTask.pending_site_ids,
+                        ),
                         available_at=case(
                             (
                                 or_(
@@ -138,7 +143,7 @@ class SubscriptionSearchOper(DbOper):
         return batch, created, coalesced, tuple(dict.fromkeys(active_batch_ids))
 
     def claim_next(self, *, owner: str, lease_seconds: int) -> Optional[SubscriptionSearchTask]:
-        """使用 CAS 认领最高优先级任务，过期 running 任务可被恢复。"""
+        """CAS 认领任务并清除旧等待提示，过期 running 任务保留站点游标恢复。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索认领需要调用方提供同步 Session")
         now = utc_now_text()
@@ -209,6 +214,7 @@ class SubscriptionSearchOper(DbOper):
                 .values(
                     state="running",
                     phase="matching",
+                    last_error=None,
                     current_site_id=None,
                     lease_owner=owner,
                     lease_token=lease_token,
@@ -403,8 +409,9 @@ class SubscriptionSearchOper(DbOper):
         available_at: str,
         phase: str,
         message: Optional[str],
+        pending_site_ids: Optional[tuple[int, ...]] = None,
     ) -> bool:
-        """释放当前租约并在指定时间后按可见原因恢复同一任务。"""
+        """释放租约并保存重试站点；普通准入等待保留已有站点游标。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索延后需要调用方提供同步 Session")
         task = self._db.execute(
@@ -443,6 +450,7 @@ class SubscriptionSearchOper(DbOper):
                 updated_at=now,
                 finished_at=None,
                 last_error=message,
+                pending_site_ids=list(pending_site_ids) if pending_site_ids is not None else task.pending_site_ids,
             ),
             execution_options={"synchronize_session": False},
         )

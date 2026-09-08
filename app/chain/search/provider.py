@@ -262,6 +262,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                 SubscriptionSiteBudgetDeferral(
                     site_id=error.site_id,
                     retry_at=error.retry_at,
+                    wait_reason=error.wait_reason,
                 )
             )
             logger.debug(str(error))
@@ -429,11 +430,16 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
         area: Optional[str] = "title",
         mtype: Optional[MediaType] = None,
     ) -> Optional[List[TorrentInfo]]:
-        """通过共享线程 owner 按站点顺序翻页并汇总同步 provider 结果。"""
+        """共享线程按站点翻页；恢复搜索仅查询待完成且仍启用的站点。"""
         indexer_sites = self._sync_indexers(sites)
         media_type = self._torrent_type(mediainfo, mtype)
         search_keyword = self._torrent_keyword(keyword, mediainfo, area)
-        plugin_results = self.search_plugin_torrents(
+        budget = getattr(self, "_subscription_site_budget", None)
+        pending_site_ids = budget.pending_site_ids if isinstance(budget, SubscriptionSiteBudget) else None
+        # 已完成的站点和插件源不再重复查询；仍按当前启用配置过滤被移除的站点。
+        if pending_site_ids is not None:
+            indexer_sites = [site for site in indexer_sites if site.get("id") in pending_site_ids]
+        plugin_results = [] if pending_site_ids is not None else self.search_plugin_torrents(
             keyword=search_keyword,
             mtype=media_type,
             page=page,

@@ -396,6 +396,8 @@ FIELD_DESCRIPTIONS = {
     "sample_rate": "Recorded audio sample rate in hertz.",
     "save_path": "Configured downloader-side save path for the download or subscription.",
     "scrape": "Generate metadata and images after manual transfer.",
+    "search_interval": "Scheduled search interval in whole hours (1-8760); null uses the system interval.",
+    "last_search": "Read-only UTC timestamp of the most recent subscription search attempt.",
     "search_imdbid": "Use IMDb identity during subscription search when set to 1.",
     "season": "Season number used by the media, search, subscription, or transfer operation.",
     "seasons": "Season-number expression recorded in history.",

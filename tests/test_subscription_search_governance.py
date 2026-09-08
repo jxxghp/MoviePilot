@@ -100,25 +100,15 @@ def _make_tasks_ready(monkeypatch) -> None:
     )
 
 
-def test_fallback_task_schedule_staggers_each_subscription(monkeypatch):
-    """兜底批次首条抖动后，每条后续订阅都按独立随机间隔到期。"""
+def test_fallback_task_schedule_jitters_once_for_large_batch(monkeypatch):
+    """千条订阅共享一次启动抖动，不能再累计成数日空等。"""
     now = datetime(2026, 9, 3, 1, 2, 3, tzinfo=timezone.utc)
-    delays = iter((12, 60, 300))
-    monkeypatch.setattr(
-        "app.chain.subscribe.search.random.randint",
-        lambda _low, _high: next(delays),
-    )
-
-    schedule = _search_task_available_at(
-        "fallback",
-        (1, 2, 3),
-        now=now,
-    )
-
-    available = [datetime.fromisoformat(schedule[subscribe_id]) for subscribe_id in (1, 2, 3)]
-    assert (available[0] - now).total_seconds() == 12
-    assert (available[1] - available[0]).total_seconds() == 60
-    assert (available[2] - available[1]).total_seconds() == 300
+    jitter = Mock(return_value=12)
+    monkeypatch.setattr("app.chain.subscribe.search.random.randint", jitter)
+    schedule = _search_task_available_at("fallback", tuple(range(1000)), now=now)
+    assert len(schedule) == 1000
+    assert set(schedule.values()) == {(now + timedelta(seconds=12)).isoformat(timespec="seconds")}
+    jitter.assert_called_once_with(0, 60)
 
 
 def test_inline_fallback_search_preserves_site_pressure_stagger(tmp_path, monkeypatch):
@@ -349,7 +339,8 @@ def test_site_budget_conflict_requeues_task_without_batch_failure(tmp_path, monk
         assert task.state == "queued"
         assert task.phase == "waiting_site_budget"
         assert task.available_at == retry_at
-        assert task.last_error == "站点暂时忙，系统会自动继续搜索"
+        assert task.last_error == "等待站点"
+        assert task.pending_site_ids == [31]
     assert chain.subscription_search_repository.claim_next(owner="worker-after-retry") is None
 
 

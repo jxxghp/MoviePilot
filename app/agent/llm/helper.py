@@ -7,6 +7,7 @@ import time
 from functools import wraps
 from typing import TYPE_CHECKING, Any, List, Optional
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 
@@ -881,11 +882,17 @@ class LLMHelper:
             default_headers: dict[str, str] | None,
             model_kwargs: dict[str, Any],
     ) -> tuple[dict[str, str] | None, dict[str, Any]]:
-        """为 OpenAI 与 xAI 官方端点构造稳定提示词缓存路由参数。"""
+        """为官方端点构造稳定会话及提示词缓存路由参数。"""
         cache_key = str(prompt_cache_key or "").strip()
         headers = dict(default_headers or {})
         kwargs = dict(model_kwargs)
         provider_name = str(provider or "").strip().lower()
+        if cls._matches_endpoint_host(base_url, "opencode.ai"):
+            # 主对话沿用脱敏缓存键；独立测试、摘要调用的标识在模型实例内复用。
+            headers["x-opencode-session"] = cache_key or f"moviepilot-{uuid4().hex}"
+            if not any(key.lower() == "user-agent" for key in headers):
+                headers["User-Agent"] = "MoviePilot"
+            return headers, kwargs
         if not cache_key:
             return headers or None, kwargs
 

@@ -849,3 +849,46 @@ def test_cancelled_cross_thread_proxy_waits_for_target_loop_cleanup(
     assert scheduler._registry.is_active("cancel-before-start") is False
     assert scheduler._registry.handles() == ()
     assert not any("was never awaited" in str(item.message) for item in captured)
+
+
+@pytest.mark.anyio
+async def test_subscription_queue_poll_returns_while_owned_search_is_running(monkeypatch) -> None:
+    """长搜索不占用轮询调用，重复轮询不重入且取消必须等待同步 worker 结束。"""
+    from app.chain.subscribe.facade import SubscribeChain
+
+    _patch_progress(monkeypatch)
+    chain = object.__new__(SubscribeChain)
+    started = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    def consume(**kwargs):
+        """模拟慢搜索并捕获手工搜索参数，禁止真实业务调用。"""
+        calls.append(kwargs)
+        started.set()
+        assert release.wait(timeout=5)
+
+    chain.resume_search_queue = consume
+    job_id = "subscribe_search_queue"
+    scheduler = _scheduler(job_id, chain.async_resume_search_queue)
+    scheduler._jobs[job_id]["kwargs"] = {"limit": 2, "manual_sids": (1, 2)}
+    scheduler._poll_subscription_search_queue()
+    try:
+        assert await asyncio.to_thread(started.wait, 2)
+        assert scheduler._is_job_active(job_id)
+        for _ in range(3):
+            scheduler._poll_subscription_search_queue()
+        assert len(calls) == 1
+        assert calls[0]["limit"] == 2
+        assert calls[0]["manual_sids"] == (1, 2)
+        handles = scheduler._registry.handles()
+        assert handles
+        stopping = asyncio.create_task(scheduler.stop_async())
+        await asyncio.sleep(0)
+        assert not stopping.done()
+        assert scheduler._is_job_active(job_id)
+    finally:
+        release.set()
+    await asyncio.wait_for(stopping, timeout=3)
+    assert not scheduler._is_job_active(job_id)
+    assert scheduler._registry.handles() == ()

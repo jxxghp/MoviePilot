@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timedelta
 from typing import Optional
 
 from app.application.subscription.contract import (
@@ -253,3 +254,25 @@ class SubscriptionQueryService:
         return any(
             subscribe.type == MediaType.MUSIC.value for subscribe in self._repository.list(searchable_states) or []
         )
+
+
+def subscription_search_due(
+    subscribe: SubscriptionSnapshot,
+    default_interval: int,
+    now: datetime,
+) -> bool:
+    """按最近一次主动搜索计算定时搜索到期；旧记录以本地创建时间起算。"""
+    if subscribe.state not in {"R", "P"}:
+        return False
+    previous = subscribe.last_search or subscribe.date
+    if not previous:
+        return True
+    try:
+        started = datetime.fromisoformat(previous)
+    except ValueError:
+        return True
+    # 旧创建时间没有时区，保持其本地时间语义；新搜索时间始终携带 UTC 时区。
+    if started.tzinfo is None:
+        started = started.astimezone()
+    interval = subscribe.search_interval or default_interval
+    return now >= started + timedelta(hours=interval)

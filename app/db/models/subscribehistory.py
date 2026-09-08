@@ -20,6 +20,8 @@ class SubscribeHistory(Base):
     year: Mapped[Optional[str]] = mapped_column(String)
     # 类型
     type: Mapped[Optional[str]] = mapped_column(String)
+    # 自定义定时搜索间隔（小时）；空值跟随系统
+    search_interval: Mapped[Optional[int]] = mapped_column(Integer)
     # 搜索关键字
     keyword: Mapped[Optional[str]] = mapped_column(String)
     media_source: Mapped[Optional[str]] = mapped_column(String, index=True)

@@ -158,8 +158,8 @@ def test_collection_json_schemas_define_items_or_tuple_members():
     assert crew_schema["items"]["$ref"].endswith("/TmdbEpisodeCrew")
 
 
-def test_discover_media_source_keeps_legacy_prefix_compatible():
-    """发现源应兼容旧插件前缀，并同时输出规范媒体来源。"""
+def test_discover_media_source_preserves_plugin_identifiers():
+    """发现源按插件标识补齐身份字段，不转换插件特定前缀。"""
     legacy = DiscoverMediaSource(
         name="哔哩哔哩",
         mediaid_prefix="bilibili",
@@ -167,7 +167,7 @@ def test_discover_media_source_keeps_legacy_prefix_compatible():
     )
     current = DiscoverMediaSource(
         name="腾讯视频",
-        media_source=MediaSource.TencentVideo,
+        media_source=MediaSource("tencentvideodiscover"),
         api_path="plugin/TencentVideoDiscover/discover",
     )
     historical_alias = DiscoverMediaSource(
@@ -181,9 +181,9 @@ def test_discover_media_source_keeps_legacy_prefix_compatible():
         api_path="plugin/AcmeVideo/discover",
     )
 
-    assert legacy.media_source is MediaSource.Bilibili
+    assert legacy.media_source == MediaSource("bilibili")
     assert legacy.model_dump(mode="json")["mediaid_prefix"] == "bilibili"
-    assert current.mediaid_prefix == MediaSource.TencentVideo.value
-    assert historical_alias.media_source is MediaSource.MangoTV
+    assert current.mediaid_prefix == "tencentvideodiscover"
+    assert historical_alias.media_source == MediaSource("mangguo")
     assert plugin_source.media_source == MediaSource("acme.video")
     assert plugin_source.mediaid_prefix == "acme.video"

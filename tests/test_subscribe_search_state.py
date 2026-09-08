@@ -125,8 +125,9 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
         chain.search(state="N", manual=False)
 
     media_chain.recognize_media.assert_called_once()
-    assert len(_SubscribeOper.updates) == 1
-    subscribe_id, subscription_patch = _SubscribeOper.updates[0]
+    assert len(_SubscribeOper.updates) == 2
+    assert "last_search" in _SubscribeOper.updates[0][1].to_payload()
+    subscribe_id, subscription_patch = _SubscribeOper.updates[1]
     assert subscribe_id == 31
     assert subscription_patch == SubscriptionPatch({"state": "R"})
 
@@ -150,6 +151,7 @@ def test_targeted_batch_searches_all_ids_without_state_scan(monkeypatch) -> None
     with patch.object(subscribe_search, "MediaChain", return_value=media_chain):
         chain = object.__new__(SubscribeChain)
         chain.subscription_repository = subscribe_oper
+        monkeypatch.setattr(chain, "_SubscribeChain__apply_subscribe_update", lambda sub, *_args, **_kwargs: sub)
         chain.search(sids=(31, 32), state=None, manual=False)
 
     assert [item.args for item in subscribe_oper.get.call_args_list] == [

@@ -307,6 +307,61 @@ def test_registry_rejects_builtin_duplicate_and_cross_plugin_sources() -> None:
 
 
 @pytest.mark.parametrize(
+    "media_source",
+    ["bilibili", "mangguodiscover", "migu", "tencentvideodiscover", "iqiyidiscover"],
+)
+def test_plugin_owned_sources_follow_registration_lifecycle(
+    media_source: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """无内置模块的来源由插件注册，API 和分类字段随插件启停增删。"""
+    from app.api.endpoints.media import _registered_media_sources
+    from app.application.classification.catalog import build_classification_field_catalog
+    from app.domain.classification.sources import BUILTIN_CLASSIFICATION_SOURCES
+
+    registry = _registry()
+    monkeypatch.setattr(
+        "app.application.plugin.runtime.get_plugin_manager",
+        lambda: SimpleNamespace(get_media_sources=registry.sources),
+    )
+    source_id = media_source
+    field_id = f"extensions.{source_id}.region_group"
+    baseline_sources = _registered_media_sources()
+    assert {source.media_source.value for source in baseline_sources} == set(
+        BUILTIN_CLASSIFICATION_SOURCES
+    )
+    assert media_source not in {source.media_source for source in baseline_sources}
+    assert all(
+        source_id not in field.source_support
+        for field in build_classification_field_catalog()
+    )
+
+    registry.replace(PLUGIN_ID, [_source(
+        source_id=source_id,
+        fields=[_field("region_group", source_id=source_id)],
+    )])
+    sources = _registered_media_sources()
+    assert [source for source in sources if source.media_source == media_source] == [
+        MediaSourceInfo.model_validate(registry.sources()[0])
+    ]
+    fields = {field.id: field for field in build_classification_field_catalog(registry.fields())}
+    assert fields[field_id].source_support == {source_id: "extension"}
+    media = MediaInfo(
+        media_source=media_source,
+        media_id="native-1",
+        type=MediaType.MOVIE,
+        classification_facts={field_id: "亚洲"},
+    )
+    assert registry.facts(media) == {source_id: {"region_group": "亚洲"}}
+
+    registry.remove(PLUGIN_ID)
+    assert _registered_media_sources() == baseline_sources
+    assert field_id not in {
+        field.id for field in build_classification_field_catalog(registry.fields())
+    }
+
+
+@pytest.mark.parametrize(
     ("field", "error_text"),
     [
         (_field("region_group", source_id="other.source"), "命名空间"),

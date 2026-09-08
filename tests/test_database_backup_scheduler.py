@@ -148,6 +148,29 @@ def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> No
     governance.create_backup.assert_called_once_with()
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_subscription_search_scans_due_items_only_when_enabled(monkeypatch, enabled) -> None:
+    """系统开关控制到期扫描，五分钟扫描节奏与实际搜索间隔分别传递。"""
+    scheduler = _scheduler()
+    scheduler._services = Mock()
+    background_scheduler = Mock()
+    monkeypatch.setattr(scheduler_catalog, "BackgroundScheduler", lambda **_kwargs: background_scheduler)
+    monkeypatch.setattr(scheduler_catalog, "get_plugin_manager", lambda: Mock())
+    monkeypatch.setattr(scheduler_catalog, "get_mediaserver_configs", lambda **_kwargs: [])
+    monkeypatch.setattr(scheduler, "init_workflow_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_agent_task_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_plugin_jobs", lambda: None)
+
+    scheduler._initialize_catalog(_config(subscribe_search=enabled, subscribe_search_interval=48))
+
+    calls = [call for call in background_scheduler.add_job.call_args_list
+             if call.kwargs.get("id") == "subscribe_search"]
+    assert bool(calls) is enabled
+    if enabled:
+        assert calls[0].kwargs["minutes"] == 5
+        assert scheduler._jobs["subscribe_search"]["kwargs"]["scheduled_interval"] == 48
+
+
 def test_scheduler_database_dependencies_are_explicit_module_imports() -> None:
     scheduler_root = Path(__file__).parents[1] / "app" / "scheduler"
     trees = [ast.parse(path.read_text(encoding="utf-8")) for path in scheduler_root.glob("*.py")]

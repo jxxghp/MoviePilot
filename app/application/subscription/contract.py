@@ -21,6 +21,8 @@ _SUBSCRIPTION_FIELDS = frozenset(
         "year",
         "type",
         "keyword",
+        "search_interval",
+        "last_search",
         "media_source",
         "media_id",
         "music_type",
@@ -83,6 +85,7 @@ _SUBSCRIPTION_HISTORY_FIELDS = (_SUBSCRIPTION_FIELDS - {
     "note",
     "state",
     "last_update",
+    "last_search",
     "downloader",
     "manual_total_episode",
 }) | _CLASSIFICATION_HISTORY_FIELDS
@@ -153,6 +156,7 @@ class SubscriptionSnapshot:
     year: Optional[str] = None
     type: Optional[str] = None
     keyword: Optional[str] = None
+    search_interval: Optional[int] = None
     media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
     music_type: Optional[str] = None
@@ -179,6 +183,7 @@ class SubscriptionSnapshot:
     note: Optional[builtins.list[int]] = None
     state: str = "N"
     last_update: Optional[str] = None
+    last_search: Optional[str] = None
     date: Optional[str] = None
     username: Optional[str] = None
     sites: Optional[builtins.list[int]] = None
@@ -219,6 +224,7 @@ class SubscriptionHistorySnapshot:
     year: Optional[str] = None
     type: Optional[str] = None
     keyword: Optional[str] = None
+    search_interval: Optional[int] = None
     media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
     music_type: Optional[str] = None

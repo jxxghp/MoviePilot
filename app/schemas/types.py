@@ -85,10 +85,6 @@ _MEDIA_SOURCE_VALUE_ALIASES = {
     "tmdb": "themoviedb",
     "audio_db": "theaudiodb",
     "douban_music": "doubanmusic",
-    "mango_tv": "mangguodiscover",
-    "migu_video": "migu",
-    "tencent_video": "tencentvideodiscover",
-    "iqiyi": "iqiyidiscover",
 }
 
 
@@ -104,11 +100,6 @@ class MediaSource(str, Enum):
     MusicBrainz = "musicbrainz"
     TheAudioDB = "theaudiodb"
     DoubanMusic = "doubanmusic"
-    Bilibili = "bilibili"
-    MangoTV = "mangguodiscover"
-    MiguVideo = "migu"
-    TencentVideo = "tencentvideodiscover"
-    Iqiyi = "iqiyidiscover"
 
     def __str__(self) -> str:
         """返回可直接用于 API 和数据库的规范值。"""

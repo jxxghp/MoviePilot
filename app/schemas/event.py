@@ -900,21 +900,8 @@ class DiscoverMediaSource(BaseModel):
         if media_source and not mediaid_prefix:
             normalized["mediaid_prefix"] = str(media_source)
         elif mediaid_prefix and not media_source:
-            normalized["media_source"] = cls._media_source_from_prefix(
-                str(mediaid_prefix)
-            )
+            normalized["media_source"] = MediaSource(str(mediaid_prefix))
         return normalized
-
-    @staticmethod
-    def _media_source_from_prefix(mediaid_prefix: str) -> MediaSource:
-        """将旧插件前缀映射为内置或插件扩展媒体来源。"""
-        aliases = {
-            "mangguo": MediaSource.MangoTV,
-            "tencentvideo": MediaSource.TencentVideo,
-        }
-        if mediaid_prefix in aliases:
-            return aliases[mediaid_prefix]
-        return MediaSource(mediaid_prefix)
 
 
 class MediaSourceInfo(BaseModel):

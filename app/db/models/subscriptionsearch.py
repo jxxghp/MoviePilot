@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from sqlalchemy import Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, get_id_column
@@ -48,6 +48,8 @@ class SubscriptionSearchTask(Base):
     state: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
     phase: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
     current_site_id: Mapped[Optional[int]] = mapped_column(Integer)
+    # None 表示首次完整搜索；重试只保留尚未完成的站点，跨重启不重复请求成功站点。
+    pending_site_ids: Mapped[Optional[list[int]]] = mapped_column(JSON(none_as_null=True))
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cancel_requested: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lease_owner: Mapped[Optional[str]] = mapped_column(String(128))

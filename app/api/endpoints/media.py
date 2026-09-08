@@ -64,11 +64,6 @@ _BUILTIN_MEDIA_SOURCES = (
         media_source=MediaSource.DoubanMusic,
         media_types=[MediaType.MUSIC],
     ),
-    _SchemaMediaSourceInfo(name="哔哩哔哩", media_source=MediaSource.Bilibili),
-    _SchemaMediaSourceInfo(name="芒果TV", media_source=MediaSource.MangoTV),
-    _SchemaMediaSourceInfo(name="咪咕视频", media_source=MediaSource.MiguVideo),
-    _SchemaMediaSourceInfo(name="腾讯视频", media_source=MediaSource.TencentVideo),
-    _SchemaMediaSourceInfo(name="爱奇艺", media_source=MediaSource.Iqiyi),
 )
 
 
