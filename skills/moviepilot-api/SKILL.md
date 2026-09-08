@@ -552,6 +552,7 @@ Purpose: List seasons for one exact media identity or a title-and-year fallback.
 ### `media.sources`
 `GET /api/v1/media/source`; policy effect: `safe_read`.
 Purpose: List metadata sources currently registered for MoviePilot media operations.
+Only sources implemented by host modules are built in. Other sources appear after an enabled plugin registers them; use the exact returned identifier without converting plugin source aliases.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.

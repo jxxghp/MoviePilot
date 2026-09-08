@@ -98,20 +98,16 @@ def test_catalog_separates_retired_fields_from_new_rule_options() -> None:
     assert retired_fields[0].replacement_field == "media.countries"
 
 
-def test_discover_only_builtin_sources_are_explicitly_unavailable() -> None:
-    """仅提供发现入口的内置来源不能被误认为可形成分类事实。"""
+def test_plugin_sources_have_no_builtin_capability_declarations() -> None:
+    """无宿主模块的来源不得预占插件标识或预设不可用的字段能力。"""
     discover_sources = {
-        MediaSource.Bilibili.value,
-        MediaSource.MangoTV.value,
-        MediaSource.MiguVideo.value,
-        MediaSource.TencentVideo.value,
-        MediaSource.Iqiyi.value,
+        "bilibili", "mangguodiscover", "migu", "tencentvideodiscover", "iqiyidiscover",
     }
 
-    for media_source in discover_sources:
-        assert set(builtin_source_field_support(media_source).values()) == {
-            "unavailable"
-        }
+    assert discover_sources.isdisjoint(BUILTIN_CLASSIFICATION_SOURCES)
+    assert discover_sources.isdisjoint(source.value for source in MediaSource)
+    for field in get_standard_classification_fields():
+        assert discover_sources.isdisjoint(field.source_support)
 
 
 def test_catalog_dictionary_values_match_normalized_facts() -> None:

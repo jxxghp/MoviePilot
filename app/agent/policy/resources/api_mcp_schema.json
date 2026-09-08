@@ -1706,12 +1706,7 @@
         "tvdb",
         "musicbrainz",
         "theaudiodb",
-        "doubanmusic",
-        "bilibili",
-        "mangguodiscover",
-        "migu",
-        "tencentvideodiscover",
-        "iqiyidiscover"
+        "doubanmusic"
       ],
       "pattern": "^[a-z][a-z0-9._-]{0,63}$",
       "title": "MediaSource",

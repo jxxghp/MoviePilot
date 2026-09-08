@@ -26,13 +26,14 @@ def test_generic_source_id_resolves_as_fixed_enum() -> None:
 def test_iqiyi_source_routes_through_unified_identity() -> None:
     """爱奇艺探索来源应支持选择解析、身份解析和媒体键构造。"""
     assert parse_media_source_selection("iqiyi,iqiyidiscover") == (
-        MediaSource.Iqiyi,
+        MediaSource("iqiyi"), MediaSource("iqiyidiscover"),
     )
     assert resolve_media_identity(
-        media_source="iqiyi",
+        media_source="iqiyidiscover",
         media_id="album-1",
-    ) == (MediaSource.Iqiyi, "album-1")
-    assert build_media_key("iqiyi", "album-1") == "iqiyidiscover:album-1"
+    ) == (MediaSource("iqiyidiscover"), "album-1")
+    assert build_media_key("iqiyidiscover", "album-1") == "iqiyidiscover:album-1"
+    assert build_media_key("iqiyi", "album-1") == "iqiyi:album-1"
 
 
 def test_plugin_source_is_preserved_as_dynamic_enum() -> None:

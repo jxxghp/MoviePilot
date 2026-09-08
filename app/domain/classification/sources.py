@@ -18,15 +18,8 @@ FIXTURE_CLASSIFICATION_SOURCES: Final[tuple[str, ...]] = (
 )
 """首版分类体系具备真实标准投影 fixture 的内置来源顺序。"""
 
-BUILTIN_CLASSIFICATION_SOURCES: Final[tuple[str, ...]] = (
-    *FIXTURE_CLASSIFICATION_SOURCES,
-    MediaSource.Bilibili.value,
-    MediaSource.MangoTV.value,
-    MediaSource.MiguVideo.value,
-    MediaSource.TencentVideo.value,
-    MediaSource.Iqiyi.value,
-)
-"""媒体来源 API 当前暴露的全部内置来源顺序。"""
+BUILTIN_CLASSIFICATION_SOURCES: Final[tuple[str, ...]] = FIXTURE_CLASSIFICATION_SOURCES
+"""仅保留宿主模块实现的来源；插件来源由启用插件声明，不预占标识。"""
 
 STANDARD_CLASSIFICATION_FIELD_IDS: Final[tuple[str, ...]] = (
     "identity.media_source",
@@ -155,11 +148,6 @@ _SOURCE_FIELD_SUPPORT: Final[dict[str, dict[str, ClassificationSourceSupport]]] 
         "music.genres": _PARTIAL,
         "music.tags": _PARTIAL,
     },
-    MediaSource.Bilibili.value: {},
-    MediaSource.MangoTV.value: {},
-    MediaSource.MiguVideo.value: {},
-    MediaSource.TencentVideo.value: {},
-    MediaSource.Iqiyi.value: {},
 }
 
 
