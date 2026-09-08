@@ -10,7 +10,7 @@ from app.chain.media import MediaChain
 from app.chain.media.cache import AlbumDirectoryCache
 from app.domain.context import MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.modules.musicbrainz import MusicBrainzModule
+from app.modules.musicbrainz import MusicBrainzModule, _MusicReleasePreference
 
 
 def _release_detail(release_id: str, title: str, artist: str, tracks: list[tuple[str, int]]):
@@ -99,6 +99,72 @@ def test_match_music_album_rejects_mismatched_trackset(monkeypatch):
     )
 
     assert album is None
+
+
+def test_release_match_prefers_mainland_simplified_when_structure_is_equal():
+    """曲目结构等价时应按请求优先选择大陆简体发行版。"""
+    traditional = _release_detail("release-tw", "七里香", "周杰伦", ALBUM_TRACKS)
+    traditional.update({"country": "TW", "text-representation": {"script": "Hant"}})
+    simplified = _release_detail("release-cn", "七里香", "周杰伦", ALBUM_TRACKS)
+    simplified.update({"country": "CN", "text-representation": {"script": "Hans"}})
+
+    album = MusicBrainzModule._select_release_match(
+        MetaMusic(album="七里香", artists=["周杰伦"]),
+        _local_tracks(),
+        [traditional, simplified],
+        _MusicReleasePreference(regions=("CN", "TW"), scripts=("Hans", "Hant")),
+    )
+
+    assert album is not None
+    assert album.raw_data["release_id"] == "release-cn"
+    assert album.raw_data["release_country"] == "CN"
+    assert album.raw_data["release_script"] == "Hans"
+
+
+def test_release_match_keeps_structural_accuracy_above_region_preference():
+    """地区偏好最多只做近似候选排序，不能压过更准确的曲目结构。"""
+    accurate = _release_detail("release-tw", "七里香", "周杰伦", ALBUM_TRACKS)
+    accurate.update({"country": "TW", "text-representation": {"script": "Hant"}})
+    inaccurate_tracks = [(name, length + 45) for name, length in ALBUM_TRACKS]
+    preferred = _release_detail("release-cn", "七里香", "周杰伦", inaccurate_tracks)
+    preferred.update({"country": "CN", "text-representation": {"script": "Hans"}})
+
+    album = MusicBrainzModule._select_release_match(
+        MetaMusic(album="七里香", artists=["周杰伦"]),
+        _local_tracks(),
+        [preferred, accurate],
+        _MusicReleasePreference(regions=("CN", "TW"), scripts=("Hans", "Hant")),
+    )
+
+    assert album is not None
+    assert album.raw_data["release_id"] == "release-tw"
+
+
+def test_select_track_release_uses_manual_preference_before_date():
+    """Release Group 的代表曲目版本应复用同一套请求级偏好。"""
+    selected = MusicBrainzModule._select_track_release(
+        [
+            {
+                "id": "release-tw",
+                "status": "Official",
+                "date": "2004-01-01",
+                "country": "TW",
+                "text-representation": {"script": "Hant"},
+                "media": [{"track-count": 10}],
+            },
+            {
+                "id": "release-cn",
+                "status": "Official",
+                "date": "2005-01-01",
+                "country": "CN",
+                "text-representation": {"script": "Hans"},
+                "media": [{"track-count": 10}],
+            },
+        ],
+        _MusicReleasePreference(regions=("CN", "TW"), scripts=("Hans", "Hant")),
+    )
+
+    assert selected["id"] == "release-cn"
 
 
 def test_release_queries_fallback_to_track_titles():

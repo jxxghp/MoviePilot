@@ -25,7 +25,7 @@ from app.application.transfer.workflow import (
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer.contract import _TransferOwnerBase
-from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
+from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
@@ -36,7 +36,6 @@ from app.schemas.media import resolve_media_identity
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import EpisodeFormat, TransferInfo
 from app.schemas.types import (
-    MUSIC_ENTITY_RECORDING,
     MediaSource,
     MediaType,
     ProgressKey,
@@ -44,26 +43,54 @@ from app.schemas.types import (
 )
 from app.schemas.workflow import FileItem
 
-from .request import _TransferCandidatePlanner
+from .request import (
+    _should_discard_batch_recording_identity,
+    _TransferCandidatePlanner,
+)
 
 
-def _should_discard_batch_recording_identity(
-        *,
-        multi_track_music_batch: bool,
-        manual: bool,
-        media_source: Optional[MediaSource],
-        media_id: Optional[str],
-        mediainfo: Optional[MediaInfo | MusicInfo],
-        history_music_type: Optional[str],
-) -> bool:
-    """判断自动整专是否误带了共享单曲身份。"""
-    if not multi_track_music_batch or (manual and media_source and media_id):
-        return False
-    batch_music_type = getattr(mediainfo, "music_type", None)
-    return (
-        batch_music_type == MUSIC_ENTITY_RECORDING
-        or (not batch_music_type and history_music_type == MUSIC_ENTITY_RECORDING)
+def _normalize_transfer_identity(
+    mediainfo: Optional[Union[MediaInfo, MusicInfo]],
+    mtype: Optional[MediaType],
+    media_source: Optional[MediaSource],
+    media_id: Optional[str],
+    meta: Optional[MetaBase],
+) -> tuple[
+    Optional[Union[MediaInfo, MusicInfo]],
+    Optional[MediaSource],
+    Optional[str],
+    Optional[str],
+]:
+    """规范整理请求的媒体身份，并在显式身份缺失时短路。"""
+    explicit_identity = media_source is not None or media_id is not None
+    normalized_source, normalized_media_id = resolve_media_identity(
+        media_source=media_source,
+        media_id=media_id,
     )
+    if explicit_identity and (not normalized_source or not normalized_media_id):
+        return (
+            mediainfo,
+            normalized_source,
+            normalized_media_id,
+            "整理任务需要同时提供有效的 media_source 和 media_id",
+        )
+    if not explicit_identity and mediainfo:
+        normalized_source, normalized_media_id = resolve_media_identity(media=mediainfo)
+    if explicit_identity and not mediainfo:
+        mediainfo = MediaChain().recognize_media(
+            mtype=mtype,
+            media_source=normalized_source,
+            media_id=normalized_media_id,
+            music_type=getattr(meta, "music_type", None),
+        )
+        if not mediainfo:
+            return (
+                mediainfo,
+                normalized_source,
+                normalized_media_id,
+                "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试",
+            )
+    return mediainfo, normalized_source, normalized_media_id, None
 
 
 class TransferWorkflowOwner(_TransferOwnerBase):
@@ -241,54 +268,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
 
         return shared_roots
 
-    @staticmethod
-    def _normalize_transfer_identity(
-        mediainfo: Optional[Union[MediaInfo, MusicInfo]],
-        mtype: Optional[MediaType],
-        media_source: Optional[MediaSource],
-        media_id: Optional[str],
-        meta: Optional[MetaBase],
-    ) -> Tuple[
-        Optional[Union[MediaInfo, MusicInfo]],
-        Optional[MediaSource],
-        Optional[str],
-        Optional[str],
-    ]:
-        """
-        规范整理请求的媒体身份，并在显式身份缺失时短路。
-
-        :return: ``(媒体信息、媒体来源、媒体 ID、错误信息)``；错误信息为空表示可继续执行
-        """
-        explicit_identity = media_source is not None or media_id is not None
-        normalized_source, normalized_media_id = resolve_media_identity(
-            media_source=media_source,
-            media_id=media_id,
-        )
-        if explicit_identity and (not normalized_source or not normalized_media_id):
-            return (
-                mediainfo,
-                normalized_source,
-                normalized_media_id,
-                "整理任务需要同时提供有效的 media_source 和 media_id",
-            )
-        if not explicit_identity and mediainfo:
-            normalized_source, normalized_media_id = resolve_media_identity(media=mediainfo)
-        if explicit_identity and not mediainfo:
-            mediainfo = MediaChain().recognize_media(
-                mtype=mtype,
-                media_source=normalized_source,
-                media_id=normalized_media_id,
-                music_type=getattr(meta, "music_type", None),
-            )
-            if not mediainfo:
-                return (
-                    mediainfo,
-                    normalized_source,
-                    normalized_media_id,
-                    "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试",
-                )
-        return mediainfo, normalized_source, normalized_media_id, None
-
     def _collect_transfer_candidates(
         self,
         fileitem: FileItem,
@@ -359,7 +338,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         self,
         fileitem: FileItem,
         meta: MetaBase = None,
-        mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
+        mediainfo: Optional[Union[MediaInfo, MusicInfo, MusicAlbumInfo]] = None,
         mtype: Optional[MediaType] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
@@ -383,6 +362,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         cleanup_dest_fileitem: Optional[FileItem] = None,
         continue_callback: Callable = None,
         reorganize: Optional[bool] = False,
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         兼容公开整理入口，委托给内部批次执行阶段。
@@ -417,6 +398,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             cleanup_dest_fileitem=cleanup_dest_fileitem,
             continue_callback=continue_callback,
             reorganize=reorganize,
+            music_release_regions=music_release_regions,
+            music_release_scripts=music_release_scripts,
         )
 
     def _execute_transfer(self, *args: Any, **kwargs: Any) -> Tuple[bool, Union[str, dict]]:
@@ -427,7 +410,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         self,
         fileitem: FileItem,
         meta: MetaBase = None,
-        mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
+        mediainfo: Optional[Union[MediaInfo, MusicInfo, MusicAlbumInfo]] = None,
         mtype: Optional[MediaType] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
@@ -452,6 +435,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         continue_callback: Callable = None,
         reorganize: Optional[bool] = False,
         recovery_admission: Optional[TransferAdmission] = None,
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         执行一个复杂目录的整理操作
@@ -482,9 +467,17 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param cleanup_dest_fileitem: 确认存在待整理任务后需要清理的旧目标文件
         :param continue_callback: 继续处理回调
         :param recovery_admission: 内部恢复调用绑定的既有 durable 记录
+        :param music_release_regions: 本次音乐整理的发行地区优先级
+        :param music_release_scripts: 本次音乐整理的文字字形优先级
         返回：成功标识，错误信息
         """
-        mediainfo, media_source, media_id, identity_error = self._normalize_transfer_identity(
+        selected_music_album: Optional[MusicAlbumInfo]
+        if isinstance(mediainfo, MusicAlbumInfo):
+            selected_music_album = mediainfo
+            mediainfo = mediainfo.to_music_info()
+        else:
+            selected_music_album = None
+        mediainfo, media_source, media_id, identity_error = _normalize_transfer_identity(
             mediainfo=mediainfo,
             mtype=mtype,
             media_source=media_source,
@@ -562,6 +555,12 @@ class TransferWorkflowOwner(_TransferOwnerBase):
 
         file_items, inherited_meta_map = candidate_planner._plan_file_items(file_items)
 
+        selected_music_track_map, selected_music_error = self._selected_music_track_map(
+            file_items, selected_music_album
+        )
+        if selected_music_error:
+            return False, selected_music_error
+
         planned_file_count = len(file_items)
 
         if preview:
@@ -603,6 +602,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 continue_callback=continue_callback,
                 cleanup_dest_fileitem=cleanup_dest_fileitem,
                 recovery_admission=recovery_admission,
+                music_release_regions=music_release_regions,
+                music_release_scripts=music_release_scripts,
+                selected_music_track_map=selected_music_track_map,
             )
         except OperationInterrupted:
             return False, f"{fileitem.name} 已取消"
@@ -664,6 +666,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         continue_callback: Optional[Callable[[], bool]],
         cleanup_dest_fileitem: Optional[FileItem],
         recovery_admission: Optional[TransferAdmission],
+        music_release_regions: Optional[list[str]],
+        music_release_scripts: Optional[list[str]],
+        selected_music_track_map: dict[str, MusicInfo],
     ) -> Tuple[List[TransferTask], bool, List[str], int, set[Tuple[str, str]]]:
         """从冻结候选构建任务，并集中执行历史去重与 durable 绑定。"""
         _build_file_meta = build_file_meta
@@ -817,14 +822,15 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     _download_hash = download_hash
 
                 # 自动整理预载的媒体信息来自整条下载历史；电影合集内文件年份冲突时逐文件识别。
-                task_mediainfo = (
-                    None
-                    if discard_recording_identity
-                    else mediainfo or history_music_info
+                file_meta, task_mediainfo = self._selected_music_task_context(
+                    file_item, file_path, file_meta, selected_music_track_map,
+                    None if discard_recording_identity else mediainfo or history_music_info,
                 )
                 if not task_mediainfo and isinstance(file_meta, MetaMusic):
                     # 无标签音频或误带单曲身份的整包按目录级专辑匹配；命中结果带缓存不会逐文件重复请求
-                    file_meta, task_mediainfo = self._match_music_album_context(file_item, file_path, file_meta)
+                    file_meta, task_mediainfo = self._match_music_album_context(
+                        file_item, file_path, file_meta, music_release_regions, music_release_scripts,
+                    )
                     if not task_mediainfo and discard_recording_identity:
                         task_mediainfo = self._music_info_from_meta(file_meta)
                 if not manual and task_mediainfo and self._is_movie_year_conflict(file_meta, task_mediainfo):

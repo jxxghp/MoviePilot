@@ -71,27 +71,51 @@ class MusicMetadataSourceChain(ChainBase):
         )
         return self._music_info(result, media_id=normalized_id)
 
-    def get_music_album(self, media_id: str) -> Optional[MusicAlbumInfo]:
+    def get_music_album(
+        self,
+        media_id: str,
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
+    ) -> Optional[MusicAlbumInfo]:
         """按当前来源原生 ID 获取专辑详情。"""
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return None
+        preference_kwargs = {}
+        if self.source == MediaSource.MusicBrainz:
+            if music_release_regions is not None:
+                preference_kwargs["music_release_regions"] = music_release_regions
+            if music_release_scripts is not None:
+                preference_kwargs["music_release_scripts"] = music_release_scripts
         result = self.run_module(
             "music_album",
             media_source=self.source,
             media_id=normalized_id,
+            **preference_kwargs,
         )
         return self._music_album(result, media_id=normalized_id)
 
-    async def async_get_music_album(self, media_id: str) -> Optional[MusicAlbumInfo]:
+    async def async_get_music_album(
+        self,
+        media_id: str,
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
+    ) -> Optional[MusicAlbumInfo]:
         """异步按当前来源原生 ID 获取专辑详情。"""
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return None
+        preference_kwargs = {}
+        if self.source == MediaSource.MusicBrainz:
+            if music_release_regions is not None:
+                preference_kwargs["music_release_regions"] = music_release_regions
+            if music_release_scripts is not None:
+                preference_kwargs["music_release_scripts"] = music_release_scripts
         result = await self.async_run_module(
             "music_album",
             media_source=self.source,
             media_id=normalized_id,
+            **preference_kwargs,
         )
         return self._music_album(result, media_id=normalized_id)
 
@@ -263,6 +287,8 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             meta: MetaMusic,
             tracks: list[MetaMusic],
             limit: int = 5,
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按目录元数据与曲目证据匹配 MusicBrainz 发行版本。"""
         result = self.run_module(
@@ -270,6 +296,8 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             meta=meta,
             tracks=tracks,
             limit=limit,
+            music_release_regions=music_release_regions,
+            music_release_scripts=music_release_scripts,
         )
         return self._music_album(result)
 
@@ -278,6 +306,8 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             meta: MetaMusic,
             tracks: list[MetaMusic],
             limit: int = 5,
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """异步按目录元数据与曲目证据匹配 MusicBrainz 发行版本。"""
         result = await self.async_run_module(
@@ -285,6 +315,8 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             meta=meta,
             tracks=tracks,
             limit=limit,
+            music_release_regions=music_release_regions,
+            music_release_scripts=music_release_scripts,
         )
         return self._music_album(result)
 
