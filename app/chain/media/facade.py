@@ -123,6 +123,9 @@ class MediaChain(ChainBase, metaclass=Singleton):
     _align_music_album_tracks = classmethod(  # type: ignore[var-annotated]
         MediaAlbumOwner._align_music_album_tracks.__func__  # type: ignore[attr-defined]
     )
+    _align_selected_music_album = classmethod(  # type: ignore[var-annotated]
+        MediaAlbumOwner._align_selected_music_album.__func__  # type: ignore[attr-defined]
+    )
     _match_music_album_directory = MediaAlbumOwner._match_music_album_directory
     _async_match_music_album_directory = MediaAlbumOwner._async_match_music_album_directory
     recognize_music_album_directory = cast(

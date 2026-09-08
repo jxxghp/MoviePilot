@@ -15,9 +15,30 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfoPath
 from app.schemas.exception import OperationInterrupted
 from app.schemas.types import (
+    MUSIC_ENTITY_RECORDING,
+    MediaSource,
     MediaType,
 )
 from app.schemas.workflow import FileItem
+
+
+def _should_discard_batch_recording_identity(
+        *,
+        multi_track_music_batch: bool,
+        manual: bool,
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+        mediainfo: Optional[MediaInfo | MusicInfo],
+        history_music_type: Optional[str],
+) -> bool:
+    """判断自动整专是否误带了共享单曲身份。"""
+    if not multi_track_music_batch or (manual and media_source and media_id):
+        return False
+    batch_music_type = getattr(mediainfo, "music_type", None)
+    return (
+        batch_music_type == MUSIC_ENTITY_RECORDING
+        or (not batch_music_type and history_music_type == MUSIC_ENTITY_RECORDING)
+    )
 
 
 class _TransferCandidatePlanner:

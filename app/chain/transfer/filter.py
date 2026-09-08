@@ -2,7 +2,7 @@
 import threading
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, Optional, Protocol, Union
+from typing import Any, Dict, Optional, Protocol, Union
 
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
@@ -19,7 +19,7 @@ from app.chain._contracts import TransferMixinHost
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer.contract import _TransferOwnerBase
-from app.domain.context import MediaInfo, MusicInfo
+from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
@@ -193,6 +193,15 @@ class FileFilterMixin(_TransferOwnerBase):
         if not info or not info.media_id:
             return file_meta, None
         logger.info(f"{file_path.name} 通过专辑目录匹配识别为：{info.artist} - {info.title}")
+        return cls._merge_music_track_context(file_meta, info)
+
+    @classmethod
+    def _merge_music_track_context(
+            cls,
+            file_meta: MetaMusic,
+            info: MusicInfo,
+    ) -> tuple[MetaMusic, MusicInfo]:
+        """以已选发行版的曲目身份更新文件元数据，同时保留本地音频参数。"""
         merged_meta = deepcopy(file_meta)
         # 保留本地音频的实际技术参数，仅回填身份和名称字段
         if info.title:
@@ -234,6 +243,54 @@ class FileFilterMixin(_TransferOwnerBase):
         merged_info.listen_count = info.listen_count
         merged_info.raw_data = deepcopy(info.raw_data)
         return merged_meta, merged_info
+
+    def _selected_music_track_map(
+            self,
+            file_items: list[tuple[FileItem, bool]],
+            album: Optional[MusicAlbumInfo],
+    ) -> tuple[dict[str, MusicInfo], Optional[str]]:
+        """对齐手选发行版的全部曲目，并拒绝混有重复版本的目录。"""
+        if not album:
+            return {}, None
+        audio_paths = [
+            Path(item.path)
+            for item, _ in file_items
+            if item.storage == "local" and item.path and self._is_audio_file(item)
+        ]
+        if not audio_paths:
+            return {}, None
+        aligned_tracks = MediaChain._align_selected_music_album(audio_paths, album)
+        if len(aligned_tracks) != len(audio_paths):
+            return {}, (
+                f"所选专辑只能对齐 {len(aligned_tracks)} / {len(audio_paths)} "
+                "个音频文件，目录中可能包含重复版本或额外曲目；"
+                "请分别选择单个版本后再整理"
+            )
+        selected_tracks: dict[str, MusicInfo] = {}
+        for resolved_path, track in aligned_tracks.items():
+            selected_track = deepcopy(track)
+            selected_track.set_library_category(album.library_category)
+            selected_track.classification = deepcopy(album.classification)
+            selected_tracks[resolved_path] = selected_track
+        return selected_tracks, None
+
+    def _selected_music_task_context(
+            self,
+            file_item: FileItem,
+            file_path: Path,
+            file_meta: Any,
+            selected_tracks: dict[str, MusicInfo],
+            fallback: Optional[Union[MediaInfo, MusicInfo]],
+    ) -> tuple[Any, Optional[Union[MediaInfo, MusicInfo]]]:
+        """为当前任务应用手选发行版曲目，未命中时返回原上下文。"""
+        selected = (
+            selected_tracks.get(str(file_path.resolve()))
+            if file_item.storage == "local"
+            else None
+        )
+        if selected and isinstance(file_meta, MetaMusic):
+            return self._merge_music_track_context(file_meta, selected)
+        return file_meta, fallback
 
     @staticmethod
     def _download_history_music_type(

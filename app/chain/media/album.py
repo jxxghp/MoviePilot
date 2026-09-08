@@ -10,6 +10,7 @@ from app.chain.media.cache import AlbumSignature
 from app.chain.media.contract import _MediaOwnerBase
 from app.chain.musicbrainz import MusicBrainzChain
 from app.domain.context import (
+    MusicAlbumInfo,
     MusicInfo,
 )
 from app.domain.meta.metamusic import MetaMusic
@@ -158,6 +159,23 @@ class MediaAlbumOwner(_MediaOwnerBase):
         for (file, _), track in zip(unresolved, remaining):
             matched[file] = track
         return matched
+
+    @classmethod
+    def _align_selected_music_album(
+        cls,
+        files: list[Path],
+        album: MusicAlbumInfo,
+    ) -> dict[str, MusicInfo]:
+        """读取本地标签，并把手动选择发行版的曲目对齐到文件。"""
+        metas = AudioMetadataHelper.read_many(files)
+        return {
+            str(file.resolve()): info
+            for file, info in cls._align_music_album_tracks(
+                files,
+                metas,
+                album.tracks,
+            ).items()
+        }
 
     def _match_music_album_directory(
         self,

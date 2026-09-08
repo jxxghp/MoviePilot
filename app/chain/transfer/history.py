@@ -6,7 +6,7 @@ from typing import Any, List, Optional, Tuple, Union
 
 from app.chain.media import MediaChain
 from app.chain.transfer.contract import _TransferOwnerBase
-from app.domain.context import MediaInfo, MusicInfo
+from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.message import Message
@@ -21,6 +21,34 @@ from app.schemas.types import (
     NotificationChannel,
 )
 from app.schemas.workflow import FileItem
+
+
+def _recognize_manual_media(
+    *,
+    media_source: MediaSource,
+    media_id: str,
+    mtype: Optional[MediaType],
+    music_type: Optional[str],
+    episode_group: Optional[str],
+    music_release_regions: Optional[list[str]],
+    music_release_scripts: Optional[list[str]],
+) -> tuple[Optional[Union[MediaInfo, MusicInfo]], Optional[MusicAlbumInfo]]:
+    """识别手动指定的媒体，并为音乐专辑保留完整曲目表。"""
+    if mtype == MediaType.MUSIC and music_type == MUSIC_ENTITY_ALBUM:
+        album = MediaChain().get_music_album(
+            media_source=media_source,
+            media_id=media_id,
+            music_release_regions=music_release_regions,
+            music_release_scripts=music_release_scripts,
+        )
+        return (album.to_music_info() if album else None), album
+    return MediaChain().recognize_media(
+        media_source=media_source,
+        media_id=media_id,
+        music_type=music_type,
+        mtype=mtype,
+        episode_group=episode_group,
+    ), None
 
 
 class TransferHistoryOwner(_TransferOwnerBase):
@@ -174,27 +202,20 @@ class TransferHistoryOwner(_TransferOwnerBase):
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         explicit_identity = media_source is not None or media_id is not None
+        selected_music_album: Optional[MusicAlbumInfo] = None
         if explicit_identity and (not media_source or not media_id):
             return False, "手动整理需要同时提供 media_source 和 media_id"
         if media_source and media_id:
             # 有输入媒体ID时预先识别，音乐与影视统一走 recognize_media 按类型分发
-            mediainfo: Optional[Union[MediaInfo, MusicInfo]]
-            if mtype == MediaType.MUSIC and music_type == MUSIC_ENTITY_ALBUM:
-                album = MediaChain().get_music_album(
-                    media_source=media_source,
-                    media_id=media_id,
-                    music_release_regions=music_release_regions,
-                    music_release_scripts=music_release_scripts,
-                )
-                mediainfo = album.to_music_info() if album else None
-            else:
-                mediainfo = MediaChain().recognize_media(
-                    media_source=media_source,
-                    media_id=media_id,
-                    music_type=music_type,
-                    mtype=mtype,
-                    episode_group=episode_group,
-                )
+            mediainfo, selected_music_album = _recognize_manual_media(
+                media_source=media_source,
+                media_id=media_id,
+                mtype=mtype,
+                music_type=music_type,
+                episode_group=episode_group,
+                music_release_regions=music_release_regions,
+                music_release_scripts=music_release_scripts,
+            )
             if not mediainfo:
                 return (
                     False,
@@ -232,6 +253,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 cleanup_dest_fileitem=cleanup_dest_fileitem,
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
+                selected_music_album=selected_music_album,
             )
             if not state:
                 return False, errmsg
