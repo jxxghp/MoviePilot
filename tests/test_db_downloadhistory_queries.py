@@ -115,6 +115,15 @@ def test_list_by_page_is_newest_first_and_paged(db):
     )] == ["p-3", "p-2"]
 
 
+def test_get_by_path_returns_latest_history_for_reused_directory(db):
+    """同目录周更下载应返回最新 hash，不依赖数据库碰巧返回的第一行。"""
+    older = _history("旧集", download_hash="old-hash", path="/downloads/reused")
+    latest = _history("新集", download_hash="new-hash", path="/downloads/reused")
+    db.add(older, latest)
+
+    assert DownloadHistory.get_by_path(db.session, "/downloads/reused").download_hash == "new-hash"
+
+
 def test_get_by_path_finds_the_download_directory(db):
     """
     按保存路径查询用于把落地文件反查回下载任务，查不到时返回 None。

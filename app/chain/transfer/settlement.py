@@ -666,13 +666,13 @@ class TransferSettlementOwner(_TransferOwnerBase):
     def _TransferChain__is_torrent_download_completed(
             self, download_hash: str, downloader: Optional[str]
     ) -> bool:
-        """
-        检查种子在下载器中是否已完成下载；查询不到或查询失败时视为未完成，
-        留待下载器定时轮询兜底，避免误打已整理标签。
-        """
+        """确认种子下载完成；查询失败或缺失时记录原因，不把未知状态当作完成。"""
         try:
             torrents = self.list_torrents(hashs=download_hash, downloader=downloader)
             if not torrents:
+                logger.warning(
+                    f"下载器 {downloader} 中未查询到种子 {download_hash}，无法回写已整理标签，请检查种子是否已移除或历史关联是否正确"
+                )
                 return False
             return all((torrent.progress or 0) >= 100 for torrent in torrents)
         except Exception as e:
