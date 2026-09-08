@@ -276,6 +276,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         epformat: Optional[EpisodeFormat],
         season: Optional[int],
         continue_callback: Optional[Callable],
+        selected_fileitems: Optional[list[FileItem]] = None,
     ) -> Tuple[List[Tuple[FileItem, bool]], bool]:
         """
         收集并过滤本次整理的候选文件。
@@ -329,7 +330,15 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 return False
             return not self._is_blocked_by_exclude_words(item.path, exclude_words)
 
-        candidates = self._TransferChain__get_trans_fileitems(fileitem, predicate=keep_candidate)
+        if selected_fileitems is None:
+            candidates = self._TransferChain__get_trans_fileitems(fileitem, predicate=keep_candidate)
+        else:
+            storage_chain = StorageChain()
+            candidates = [
+                (latest_fileitem, False)
+                for selected_fileitem in selected_fileitems
+                if (latest_fileitem := storage_chain.get_item(selected_fileitem))
+            ]
         return [
             (item, is_bluray_dir) for item, is_bluray_dir in candidates if is_allowed(item, is_bluray_dir)
         ], matched_template
@@ -364,6 +373,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         reorganize: Optional[bool] = False,
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
+        selected_fileitems: Optional[list[FileItem]] = None,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         兼容公开整理入口，委托给内部批次执行阶段。
@@ -400,6 +410,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             reorganize=reorganize,
             music_release_regions=music_release_regions,
             music_release_scripts=music_release_scripts,
+            selected_fileitems=selected_fileitems,
         )
 
     def _execute_transfer(self, *args: Any, **kwargs: Any) -> Tuple[bool, Union[str, dict]]:
@@ -437,6 +448,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         recovery_admission: Optional[TransferAdmission] = None,
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
+        selected_fileitems: Optional[list[FileItem]] = None,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         执行一个复杂目录的整理操作
@@ -469,6 +481,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param recovery_admission: 内部恢复调用绑定的既有 durable 记录
         :param music_release_regions: 本次音乐整理的发行地区优先级
         :param music_release_scripts: 本次音乐整理的文字字形优先级
+        :param selected_fileitems: 前端显式选中的文件，按同一批次规划
         返回：成功标识，错误信息
         """
         selected_music_album: Optional[MusicAlbumInfo]
@@ -487,7 +500,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         if identity_error:
             return False, identity_error
 
-        # 是否全部成功
         all_success = True
         transfer_batch_id = str(uuid.uuid4())
         batch_mtype = getattr(mediainfo, "type", None)
@@ -536,6 +548,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 epformat=epformat,
                 season=season,
                 continue_callback=continue_callback,
+                selected_fileitems=selected_fileitems,
             )
         except OperationInterrupted:
             return False, f"{fileitem.name} 已取消"

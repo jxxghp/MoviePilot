@@ -171,6 +171,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
             music_type: Optional[str] = None,
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
+            selected_fileitems: Optional[list[FileItem]] = None,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         手动整理，支持复杂条件，带进度显示
@@ -199,6 +200,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
         :param music_type: 音乐实体类型；为保持位置参数兼容，必须追加在签名末尾
         :param music_release_regions: 本次音乐整理的发行地区优先级，空值继承系统设置
         :param music_release_scripts: 本次音乐整理的文字字形优先级，空值继承系统设置
+        :param selected_fileitems: 前端显式选中的批量文件
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         explicit_identity = media_source is not None or media_id is not None
@@ -252,6 +254,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 cleanup_dest_fileitem=cleanup_dest_fileitem,
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
+                selected_fileitems=selected_fileitems,
             )
             if not state:
                 return False, errmsg
@@ -284,6 +287,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 cleanup_dest_fileitem=cleanup_dest_fileitem,
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
+                selected_fileitems=selected_fileitems,
             )
             return state, errmsg
 

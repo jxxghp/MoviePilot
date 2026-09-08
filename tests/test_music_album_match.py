@@ -203,6 +203,7 @@ def test_recognize_album_directory_maps_files(tmp_path, media_chain, monkeypatch
         media_id="rg-1",
         title="七里香",
         artists=["周杰伦"],
+        library_category="Album",
         tracks=[
             MusicInfo(
                 media_source="musicbrainz",
@@ -230,9 +231,28 @@ def test_recognize_album_directory_maps_files(tmp_path, media_chain, monkeypatch
         info = matched[str(file.resolve())]
         assert info.media_id == f"rec-{index + 1}"
         assert info.title == ALBUM_TRACKS[index][0]
+        assert info.library_category == "Album"
     # 同一目录再次识别直接命中缓存，不重复请求模块
     assert media_chain.recognize_music_album_directory(album_dir) == matched
     source_chain.match_music_album.assert_called_once()
+
+
+def test_directory_audio_files_only_includes_disc_subdirectories(tmp_path):
+    """专辑根目录只应合并 CD/Disc 子目录，不得把附加版本当成额外碟。"""
+    album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
+    disc_dir = album_dir / "CD2"
+    alternate_dir = album_dir / "附加原版"
+    disc_dir.mkdir(parents=True)
+    alternate_dir.mkdir()
+    root_track = album_dir / "01.flac"
+    disc_track = disc_dir / "01.flac"
+    alternate_track = alternate_dir / "01.flac"
+    for path in (root_track, disc_track, alternate_track):
+        path.write_bytes(b"audio")
+
+    files = MediaChain._directory_audio_files(album_dir)
+
+    assert files == [root_track, disc_track]
 
 
 def test_align_album_tracks_prefers_exact_titles_over_conflicting_positions():

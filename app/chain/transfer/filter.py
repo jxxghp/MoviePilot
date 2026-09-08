@@ -235,6 +235,7 @@ class FileFilterMixin(_TransferOwnerBase):
         merged_info.set_library_category(info.library_category)
         merged_info.metadata_category = info.metadata_category
         merged_info.classification = deepcopy(info.classification)
+        merged_info.classification_facts = dict(info.classification_facts)
         merged_info.genres = list(info.genres)
         merged_info.tags = list(info.tags)
         merged_info.artist_country = info.artist_country
