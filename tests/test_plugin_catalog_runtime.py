@@ -2,9 +2,57 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from app.runtime.extensions.plugin.catalog import PluginCatalogFacade
 from app.schemas.plugin import PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
+
+
+@pytest.mark.asyncio
+async def test_async_online_normalizes_market_configuration(monkeypatch) -> None:
+    """目录入口与候选库存使用相同的规范化市场列表。"""
+    from app.runtime.extensions.plugin import catalog as catalog_module
+
+    requested_markets: list[str] = []
+
+    class FakeMarketCatalog:
+        async def async_collect(self, **kwargs):
+            requested_markets.extend(kwargs["markets"])
+            return []
+
+    monkeypatch.setattr(
+        catalog_module,
+        "get_runtime_setting",
+        lambda key: {
+            "PLUGIN_MARKET": (
+                " https://github.com/Example/Plugins.git/ ,"
+                "https://github.com/example/plugins"
+            ),
+            "VERSION_FLAG": "v3",
+        }[key],
+    )
+    facade = PluginCatalogFacade(
+        classes=lambda: {},
+        running=lambda: {},
+        storage=lambda: SimpleNamespace(read=lambda _key: []),
+        system=lambda: SimpleNamespace(
+            compatible_flags=lambda _flag: [],
+        ),
+        market_catalog=lambda: FakeMarketCatalog(),
+        market_loader=lambda *_args, **_kwargs: [],
+        async_market_loader=lambda *_args, **_kwargs: [],
+        map_plugin=lambda **_kwargs: None,
+        auth_checker=lambda **_kwargs: True,
+        plugin_attr=lambda _plugin_id, _attr: None,
+        plugin_instance=lambda _plugin_id: None,
+        plugin_instances=lambda: {},
+        runtime_status=lambda _plugin_id: None,
+        log=SimpleNamespace(info=lambda *_args: None),
+    )
+
+    assert await facade.async_online() == []
+    assert requested_markets == ["https://github.com/Example/Plugins"]
 
 
 def test_installed_catalog_keeps_plugins_that_are_not_loaded():

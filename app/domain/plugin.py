@@ -19,6 +19,39 @@ PLUGIN_GENERATION_COMPATIBILITY: dict[str, tuple[str, ...]] = {
 }
 
 
+def normalize_plugin_market_repo_url(repo_url: str) -> str | None:
+    """规范化 GitHub 插件市场地址，便于配置读取和请求去重。"""
+    value = str(repo_url or "").strip().rstrip("/")
+    if not value:
+        return None
+    value = value.removesuffix(".git")
+    try:
+        parsed_url = urlsplit(value)
+    except ValueError:
+        return None
+    if parsed_url.scheme not in {"http", "https"}:
+        return None
+    if (parsed_url.hostname or "").lower() != "github.com":
+        return None
+    parts = [item for item in parsed_url.path.split("/") if item]
+    if len(parts) < 2:
+        return None
+    return f"https://github.com/{parts[0]}/{parts[1]}"
+
+
+def split_plugin_market_repo_urls(value: str | None) -> list[str]:
+    """拆分插件市场配置并按大小写不敏感规则保持顺序去重。"""
+    repos: list[str] = []
+    seen_repos: set[str] = set()
+    for item in re.split(r"[\n,，]+", value or ""):
+        normalized_repo = normalize_plugin_market_repo_url(item)
+        if not normalized_repo or normalized_repo.lower() in seen_repos:
+            continue
+        repos.append(normalized_repo)
+        seen_repos.add(normalized_repo.lower())
+    return repos
+
+
 @dataclass(frozen=True, slots=True)
 class PluginReleaseInstallPlan:
     """描述远端插件内容准备模式，不持有同步或异步 I/O 实现。"""
