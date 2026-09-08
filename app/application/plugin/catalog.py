@@ -29,6 +29,7 @@ AsyncMarketLoader = Callable[
 ]
 PluginMapper = Callable[[str, dict, str, list[str], int, Optional[str]], Any]
 ProgressCallback = Callable[..., Any]
+DEFAULT_MARKET_FETCH_CONCURRENCY = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,8 +104,11 @@ class PluginCatalogService:
             version_compare: Callable[[str, str, str], bool],
             warning: Callable[[str], Any],
             error: Callable[[str], Any],
+            max_concurrency: int = DEFAULT_MARKET_FETCH_CONCURRENCY,
     ) -> None:
         """保存市场读取、插件映射和版本比较端口。"""
+        if max_concurrency < 1:
+            raise ValueError("插件市场读取并发必须大于 0")
         self._market_loader = market_loader
         self._async_market_loader = async_market_loader
         self._installed_plugins_provider = installed_plugins_provider
@@ -113,6 +117,7 @@ class PluginCatalogService:
         self._version_compare = version_compare
         self._warning = warning
         self._error = error
+        self._max_concurrency = max_concurrency
 
     @staticmethod
     def _load_request(
@@ -192,7 +197,9 @@ class PluginCatalogService:
             loader: Callable[[str, Optional[str], bool], list[Any]],
     ) -> list[Any]:
         """并发读取多个市场和代际，并按稳定优先级合并。"""
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=self._max_concurrency
+        ) as executor:
             futures_meta: dict[
                 concurrent.futures.Future,
                 tuple[int, bool, int],
@@ -210,7 +217,11 @@ class PluginCatalogService:
 
             collected = []
             for future in concurrent.futures.as_completed(futures_meta):
-                plugins = future.result()
+                try:
+                    plugins = future.result()
+                except Exception as error:  # noqa: BLE001 - 单个市场失败不能中断全量刷新
+                    self._error(f"获取插件市场数据失败：{str(error)}")
+                    plugins = []
                 market_index, is_higher, flag_priority = futures_meta[future]
                 collected.append((
                     market_index,
@@ -240,6 +251,8 @@ class PluginCatalogService:
             progress_callback: Optional[ProgressCallback] = None,
     ) -> list[Any]:
         """异步读取多个市场和代际，并按调用方需要合并或保留仓库候选。"""
+        semaphore = asyncio.Semaphore(self._max_concurrency)
+
         async def fetch(
                 market: str,
                 package_version: Optional[str],
@@ -247,7 +260,8 @@ class PluginCatalogService:
                 task_index: int,
         ) -> tuple[int, str, list[Any]]:
             """读取一个市场代际并保留创建时的稳定任务序号。"""
-            plugins = await loader(market, package_version, force)
+            async with semaphore:
+                plugins = await loader(market, package_version, force)
             return task_index, result_version, plugins or []
 
         tasks: list[asyncio.Task[tuple[int, str, list[Any]]]] = []
