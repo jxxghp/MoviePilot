@@ -126,7 +126,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 and frozen_transferinfo != transferinfo.model_dump(mode="json")
         ):
             raise TransferExecutionConflictError(
-                "整理终态与冻结 TransferInfo 不一致"
+                "整理任务状态已发生变化，请刷新整理历史后再试"
             )
         return TransferResultSettlement(
             task_id=task.admission_task_id,

@@ -325,14 +325,14 @@ class TransferPlanningOwner(_TransferOwnerBase):
         if repository is None or not task_id:
             if task.execution_checkpoint is not None:
                 raise TransferExecutionConflictError(
-                    "绑定执行检查点的整理任务缺少持久状态仓储"
+                    "整理任务暂时无法继续，请稍后再试"
                 )
             return None
         snapshot = repository.get_snapshot(task_id=task_id)
         if snapshot is None:
             if task.execution_checkpoint is not None:
                 raise TransferExecutionConflictError(
-                    "绑定执行检查点的整理任务缺少持久执行状态"
+                    "整理任务状态暂时无法确认，请刷新整理历史后再试"
                 )
             return None
         if snapshot.state is not TransferExecutionState.SETTLING:
@@ -345,11 +345,11 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 and bound_checkpoint.fingerprint != checkpoint.fingerprint
         ):
             raise TransferExecutionConflictError(
-                "内存整理任务与持久结算检查点不一致"
+                "整理任务状态已发生变化，请刷新整理历史后再试"
             )
         if checkpoint is None:
             raise TransferExecutionConflictError(
-                "settling 整理任务缺少可重放终态检查点"
+                "整理任务记录不完整，请重新识别文件后再整理"
             )
         self._TransferChain__assert_owned_lease(task)
         payload = checkpoint.payload
@@ -360,7 +360,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
             )
         except (TypeError, ValueError) as error:
             raise TransferExecutionConflictError(
-                "整理执行检查点缺少确定终态"
+                "整理任务记录不完整，请重新识别文件后再整理"
             ) from error
         transfer_payload = payload.get("transferinfo")
         if isinstance(transfer_payload, dict):
@@ -388,7 +388,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
             )
         else:
             raise TransferExecutionConflictError(
-                "成功整理执行检查点缺少可重放 TransferInfo"
+                "整理任务记录不完整，请重新识别文件后再整理"
             )
         expected_success = outcome is TransferExecutionOutcome.SUCCEEDED
         expected_overwrite_skip = (
@@ -399,7 +399,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 or bool(transferinfo.overwrite_skipped) != expected_overwrite_skip
         ):
             raise TransferExecutionConflictError(
-                "整理执行检查点终态与 TransferInfo 不一致"
+                "整理任务状态已发生变化，请刷新整理历史后再试"
             )
         task.bind_execution_checkpoint(checkpoint)
         return transferinfo

@@ -27,24 +27,19 @@ def test_transfer_status_uses_human_readable_messages(source: str, expected: str
     assert public_error_message(source, context="transfer") == expected
 
 
-def test_technical_transfer_message_is_hidden() -> None:
-    """整理检查点、操作身份等内部信息应统一降级为可执行提示。"""
+def test_public_error_message_preserves_source_wording() -> None:
+    """错误文本由业务源头负责生成，公共函数只做空白规范化。"""
     message = public_error_message(
         "整理步骤意图 operation_id=op-1 的 checkpoint evidence 无效",
         context="transfer",
     )
 
-    assert message == "整理失败，请刷新后重试"
-    assert "意图" not in message
-    assert "checkpoint" not in message
+    assert message == "整理步骤意图 operation_id=op-1 的 checkpoint evidence 无效"
 
 
 def test_subscription_status_does_not_expose_provider_timeout() -> None:
     """订阅执行状态不应把服务商和超时实现细节展示给前端。"""
-    assert (
-        public_error_message("provider timeout", context="subscription")
-        == "订阅操作失败，请刷新后重试"
-    )
+    assert public_error_message("provider timeout", context="subscription") == "provider timeout"
 
 
 def test_post_commit_failure_explains_background_retry() -> None:
@@ -78,7 +73,7 @@ def test_transfer_history_hides_internal_error_in_nested_public_data() -> None:
         errmsg="整理步骤意图 operation_id=op-1 的 checkpoint evidence 无效",
     )
 
-    assert history.errmsg == "整理失败，请刷新后重试"
+    assert history.errmsg == "整理步骤意图 operation_id=op-1 的 checkpoint evidence 无效"
 
 
 def test_post_commit_error_keeps_background_retry_message() -> None:
