@@ -21,6 +21,7 @@ from app.application.subscription.sitebudget import (
     SubscriptionSearchDeferred,
 )
 from app.chain.search.facade import SearchChain
+from app.chain.search.provider import SearchProviderOwner
 from app.chain.subscribe import search as subscribe_search
 from app.chain.subscribe.facade import SubscribeChain
 from app.chain.subscribe.search import _search_task_available_at
@@ -47,6 +48,7 @@ class _SubscriptionRepository:
     """为搜索队列返回稳定的多订阅快照。"""
 
     def __init__(self, subscribes: list[SubscriptionSnapshot]) -> None:
+        """保存各订阅的不可变测试快照。"""
         self._subscribes = {subscribe.id: subscribe for subscribe in subscribes}
 
     def list(self, _state: str = None) -> list[SubscriptionSnapshot]:
@@ -207,6 +209,61 @@ def test_fallback_queue_executes_without_match_global_lock(tmp_path, monkeypatch
     assert batch.state == "completed"
     assert batch.finished_count == 2
     assert batch.failed_count == 0
+
+
+@pytest.mark.parametrize("scheduled_interval", [None, 24])
+def test_due_search_restores_healthy_sites_while_ordinary_resume_keeps_scope(
+    tmp_path, monkeypatch, scheduled_interval,
+):
+    """到期轮次恢复完整站点和插件源，普通合并仍只补查未完成的站点。"""
+    subscribe = replace(
+        _subscribe(91),
+        last_search=(datetime.now(timezone.utc) - timedelta(hours=25)).isoformat(timespec="seconds"),
+    )
+    chain = _chain(tmp_path, [subscribe])
+    _make_tasks_ready(monkeypatch)
+    queue = chain.subscription_search_repository
+    original = queue.enqueue(subscription_ids=(subscribe.id,), source="fallback", priority=10)
+    first = queue.claim_next(owner="initial")
+    assert queue.defer_task(
+        task_id=first.task_id, lease_token=first.lease_token,
+        available_at=(datetime.now(timezone.utc) + timedelta(hours=6)).isoformat(timespec="seconds"),
+        pending_site_ids=(9,),
+    )
+    searchchain = object.__new__(SearchChain)
+    searchchain._sync_indexers = lambda _sites: [{"id": 1}, {"id": 9}]
+    searchchain._torrent_type = lambda *_args: None
+    searchchain._torrent_keyword = lambda *_args: subscribe.name
+    searchchain._build_search_pages = lambda _page: [0]
+    searchchain.search_plugin_torrents = Mock(return_value=[])
+    scopes = []
+    searched_sites = []
+
+    def collect(_self, **kwargs):
+        """记录实际 provider 选择的站点，同时隔离外部请求。"""
+        searched_sites.extend(site["id"] for site in kwargs["indexer_sites"])
+        return {}
+
+    monkeypatch.setattr(SearchProviderOwner, "_collect_sync_site_results", collect)
+    monkeypatch.setattr("app.chain.search.provider.ProgressHelper", Mock())
+
+    def process(item, current_searchchain, *, execution_context):
+        """记录真实消费者为本轮 provider 注入的范围，禁止外部搜索。"""
+        scopes.append((
+            execution_context.resuming_sites,
+            execution_context.task_id,
+        ))
+        SearchProviderOwner._search_all_sites(current_searchchain, keyword=item.name, sites=[1, 9])
+        return item
+
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+    with patch("app.chain.subscribe.search.SearchChain", return_value=searchchain):
+        chain.search(state="R", scheduled_interval=scheduled_interval)
+
+    assert scopes == [(scheduled_interval is None, first.task_id)]
+    assert searched_sites == ([1, 9] if scheduled_interval else [9])
+    assert searchchain.search_plugin_torrents.call_count == (1 if scheduled_interval else 0)
+    assert queue.get_batch(original.batch.batch_id).state == "completed"
 
 
 def test_fallback_queue_continues_after_one_subscription_failure(tmp_path, monkeypatch):

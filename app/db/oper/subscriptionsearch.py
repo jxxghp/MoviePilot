@@ -31,6 +31,7 @@ class SubscriptionSearchOper(DbOper):
         source: str,
         priority: int,
         available_at_by_subscription: Optional[Mapping[int, str]],
+        refresh_pending: bool = False,
     ) -> tuple[SubscriptionSearchBatch, int, int, tuple[str, ...]]:
         """创建批次，并以活动键合并同一订阅的重叠搜索入口。"""
         if not isinstance(self._db, Session):
@@ -87,6 +88,11 @@ class SubscriptionSearchOper(DbOper):
                     SubscriptionSearchTask.priority < priority,
                     SubscriptionSearchTask.state == "queued",
                 )
+                refresh_queued_task = and_(
+                    refresh_pending,
+                    SubscriptionSearchTask.state == "queued",
+                    SubscriptionSearchTask.pending_site_ids.is_not(None),
+                )
                 execute_dml(
                     self._db,
                     update(SubscriptionSearchTask)
@@ -101,16 +107,19 @@ class SubscriptionSearchOper(DbOper):
                             else_=SubscriptionSearchTask.priority,
                         ),
                         phase=case(
-                            (promote_queued_task, "queued"),
+                            (or_(promote_queued_task, refresh_queued_task), "queued"),
                             else_=SubscriptionSearchTask.phase,
                         ),
                         last_error=case(
-                            (promote_queued_task, None),
+                            (or_(promote_queued_task, refresh_queued_task), None),
                             else_=SubscriptionSearchTask.last_error,
                         ),
-                        # 用户重新指定搜索时按当前站点配置重搜；自动周期合并保留恢复游标。
+                        # 用户重搜和已到期的新周期恢复完整范围；普通合并仍保留补查游标。
                         pending_site_ids=case(
-                            (and_(SubscriptionSearchTask.state == "queued", source in {"manual", "targeted"}), None),
+                            (or_(
+                                and_(SubscriptionSearchTask.state == "queued", source in {"manual", "targeted"}),
+                                refresh_queued_task,
+                            ), None),
                             else_=SubscriptionSearchTask.pending_site_ids,
                         ),
                         available_at=case(

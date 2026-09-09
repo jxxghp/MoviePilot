@@ -1,15 +1,16 @@
 import threading
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 
 from app.application.subscription.contract import SubscriptionPatch, SubscriptionSnapshot
-from app.application.subscription.execution import SubscriptionExecutionAdmission
+from app.application.subscription.execution import SubscriptionExecutionAdmission, SubscriptionExecutionContext
 from app.application.subscription.mutation import SubscriptionMutation
+from app.application.subscription.query import subscription_search_due
 from app.chain.subscribe import search as subscribe_search
 from app.chain.subscribe.facade import SubscribeChain
 from app.schemas.types import MediaType
@@ -130,6 +131,36 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
     subscribe_id, subscription_patch = _SubscribeOper.updates[1]
     assert subscribe_id == 31
     assert subscription_patch == SubscriptionPatch({"state": "R"})
+
+
+@pytest.mark.parametrize("resuming_sites", [False, True])
+def test_site_resume_preserves_the_full_search_schedule(monkeypatch, resuming_sites) -> None:
+    """补查坏站点不推迟健康站点的新周期，完整搜索才更新周期起点。"""
+    now = datetime.now(timezone.utc)
+    subscribe = replace(
+        _new_subscribe(datetime.now() - timedelta(days=2)), state="R",
+        last_search=(now - timedelta(hours=25)).isoformat(timespec="seconds"),
+    )
+    admission = SubscriptionExecutionAdmission()
+    lease = admission.try_acquire(subscription_id=subscribe.id, operation="search", ttl_seconds=60)
+    context = SubscriptionExecutionContext(
+        lease=lease, admission=admission, resuming_sites=resuming_sites,
+    )
+    chain = object.__new__(SubscribeChain)
+    monkeypatch.setattr(subscribe_search, "prepare_search_target", Mock(return_value=None))
+    monkeypatch.setattr(subscribe_search, "MediaChain", Mock())
+    update = Mock(side_effect=lambda item, payload, **_kwargs: replace(item, **payload))
+    monkeypatch.setattr(chain, "_SubscribeChain__apply_subscribe_update", update)
+
+    result = chain._process_search_subscription(subscribe, Mock(), execution_context=context)
+
+    assert subscription_search_due(result, 24, now) is resuming_sites
+    if resuming_sites:
+        update.assert_not_called()
+        assert result.last_search == subscribe.last_search
+    else:
+        assert result.last_search != subscribe.last_search
+    assert admission.release(lease)
 
 
 def test_targeted_batch_searches_all_ids_without_state_scan(monkeypatch) -> None:

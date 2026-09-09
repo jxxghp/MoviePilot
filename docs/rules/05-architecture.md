@@ -602,6 +602,10 @@ own the remaining focused capabilities. Startup imports the subscription share P
 directly from `notify.py`; canonical callers import identity projection directly from
 `identity.py`. The retired `app/chain/subscribe.py` monolith must not return, package
 owners must not be re-exported, and `_music` must not import its concrete chain owner.
+`app.chain.search.execution` reads the Application-owned `SubscriptionSiteBudget`
+contract to apply subscription-only keyword scheduling and IMDb query deduplication;
+the site budget and provider retain request admission, per-site intervals and cooldown
+ownership. Ordinary resource search retains its existing keyword policy.
 A concrete chain that exposes slash-command interaction inherits
 `InteractionChainMixin`, injects its handler class via `_interaction_handler_type` and
 implements only `_interaction_handler`; it must not re-export application-layer

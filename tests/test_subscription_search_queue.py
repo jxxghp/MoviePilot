@@ -413,3 +413,42 @@ def test_manual_search_restarts_full_scope_but_automatic_merge_keeps_cursor(tmp_
     assert resumed.pending_site_ids is None
     assert resumed.source == "manual"
     engine.dispose()
+
+
+@pytest.mark.parametrize("running", [False, True])
+@pytest.mark.parametrize("source,priority", [("fallback", 10), ("new", 50), ("manual", 120)])
+def test_new_search_cycle_refreshes_only_waiting_site_scope(tmp_path, running, source, priority):
+    """新周期重搜等待任务的完整站点，不能覆盖在途游标或丢失原手动优先级。"""
+    repository, engine = _repository(tmp_path)
+    original = repository.enqueue(subscription_ids=(703,), source=source, priority=priority)
+    first = repository.claim_next(owner="initial")
+    ready_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec="seconds")
+    later_at = (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat(timespec="seconds")
+    assert repository.defer_task(
+        task_id=first.task_id, lease_token=first.lease_token,
+        available_at=ready_at if running else later_at,
+        message="站点冷却中", pending_site_ids=(9,),
+    )
+    if running:
+        assert repository.claim_next(owner="resuming").task_id == first.task_id
+    renewed = repository.enqueue(
+        subscription_ids=(703,), source="fallback", priority=10,
+        available_at_by_subscription={703: ready_at}, refresh_pending=True,
+    )
+
+    assert renewed.created_count == 0
+    assert renewed.coalesced_count == 1
+    assert renewed.active_batch_ids == (original.batch.batch_id,)
+    with Session(engine) as session:
+        task = session.scalar(select(SubscriptionSearchTask))
+        assert task.task_id == first.task_id
+        assert task.active_key == "subscription:703"
+        assert task.source == source
+        assert task.priority == priority
+        assert task.pending_site_ids == ([9] if running else None)
+        assert task.state == ("running" if running else "queued")
+        assert task.phase == ("matching" if running else "queued")
+        assert task.last_error is None
+        if not running:
+            assert task.available_at == ready_at
+    engine.dispose()

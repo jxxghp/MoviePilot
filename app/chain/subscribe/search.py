@@ -385,6 +385,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
                 source,
                 subscription_ids,
             ),
+            refresh_pending=scheduled_interval is not None,
         )
         total = len(subscribes)
         summary = SearchExecutionSummary(
@@ -723,11 +724,13 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
     ) -> Optional[SubscriptionSnapshot]:
         """处理单个订阅，并返回下载后重新读取的状态快照。"""
         _ensure_execution_active(execution_context)
-        subscribe = self._SubscribeChain__apply_subscribe_update(
-            subscribe,
-            {"last_search": datetime.now(timezone.utc).isoformat(timespec="seconds")},
-            scene="search",
-        )
+        # 站点补查属于同一轮搜索，不能反复推迟下一轮健康站点的完整检查。
+        if execution_context is None or not execution_context.resuming_sites:
+            subscribe = self._SubscribeChain__apply_subscribe_update(
+                subscribe,
+                {"last_search": datetime.now(timezone.utc).isoformat(timespec="seconds")},
+                scene="search",
+            )
         logger.debug(f"开始搜索订阅，标题：{subscribe.name} ...")
         target = prepare_search_target(
             self, subscribe, MediaChain(), partial(_ensure_execution_active, execution_context),

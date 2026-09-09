@@ -207,7 +207,8 @@ class SubscriptionSiteBudget:
             return claim
         if self._metrics:
             self._metrics.record_unavailable(site_id)
-        self._report_phase("waiting_site_budget", site_id)
+        # 单站点不可用不代表整条订阅已等待；其它站点可能仍在搜索。
+        # 由任务所有者在全部请求收口并持久化续跑时间后发布等待阶段。
         raise SubscriptionSiteBudgetUnavailable(
             site_id=site_id,
             retry_at=claim.retry_at,

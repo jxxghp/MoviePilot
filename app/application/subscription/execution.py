@@ -82,6 +82,7 @@ class SubscriptionExecutionContext:
     cancel_requested: Optional[Callable[[], bool]] = None
     phase_changed: Optional[Callable[[str, Optional[int]], None]] = None
     download_started: bool = False
+    resuming_sites: bool = False
 
     def is_cancel_requested(self) -> bool:
         """判断调用入口是否请求在下一个安全边界退出。"""
@@ -211,8 +212,9 @@ class SubscriptionSearchRepository(Protocol):
         source: str,
         priority: int,
         available_at_by_subscription: Optional[Mapping[int, str]] = None,
+        refresh_pending: bool = False,
     ) -> SearchEnqueueResult:
-        """按订阅 ID 和各自到期时间建立或合并活动任务。"""
+        """建立或合并活动任务；新自动周期可恢复等待任务的完整搜索范围。"""
         ...
 
     async def async_enqueue(
@@ -222,8 +224,9 @@ class SubscriptionSearchRepository(Protocol):
         source: str,
         priority: int,
         available_at_by_subscription: Optional[Mapping[int, str]] = None,
+        refresh_pending: bool = False,
     ) -> SearchEnqueueResult:
-        """在异步会话中建立或合并活动任务。"""
+        """异步建立或合并活动任务，可为新周期刷新尚未运行的站点游标。"""
         ...
 
     def claim_next(self, *, owner: str, lease_seconds: int = 900) -> Optional[SearchTaskSnapshot]:

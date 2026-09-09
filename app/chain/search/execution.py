@@ -7,6 +7,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Callable, Dict, Generator, Iterator, List, Literal, Optional, cast
 
+from app.application.subscription.sitebudget import SubscriptionSiteBudget
 from app.chain.media import MediaChain
 from app.chain.search.contract import _SearchOwnerBase
 from app.chain.search.plan import SearchPlanOwner
@@ -52,6 +53,27 @@ class _SearchOutcome:
     recognition_failed: bool = False
 
 
+def _has_subscription_budget(owner: _SearchOwnerBase) -> bool:
+    """识别已启用站点预算的订阅搜索，普通搜索保留原有查询策略。"""
+    return isinstance(getattr(owner, "_subscription_site_budget", None), SubscriptionSiteBudget)
+
+
+def _keyword_delay(owner: _SearchOwnerBase, search_count: int) -> int:
+    """订阅已有逐站流控，不再叠加换词时的整轮随机等待。"""
+    if not search_count or _has_subscription_budget(owner):
+        return 0
+    return random.randint(1, 10)
+
+
+def _query_keywords(
+    owner: _SearchOwnerBase, plan: MediaSearchPlan, mediainfo: MediaInfo | MusicInfo, keywords: List[str],
+) -> List[str]:
+    """订阅按 IMDb ID 查询时只执行一轮，避免每个别名被投影成相同请求。"""
+    if _has_subscription_budget(owner) and plan.area == "imdbid" and getattr(mediainfo, "imdb_id", None):
+        return keywords[:1]
+    return keywords
+
+
 def _result_params(plan: MediaSearchPlan, mediainfo: MediaInfo | MusicInfo,
                    torrents: List[TorrentInfo], season_episodes: Any, counts: Counter[str]) -> Dict[str, Any]:
     """为每次完整过滤建立统一参数，计数只描述当前累计候选而不重复叠加。"""
@@ -86,7 +108,7 @@ def _search_resolution(owner: _SearchOwnerBase, plan: MediaSearchPlan) -> Genera
     contexts: List[Context] = []
     counts: Counter[str] = Counter()
     parsed = False
-    for index, keyword in enumerate(keywords):
+    for index, keyword in enumerate(_query_keywords(owner, plan, mediainfo, keywords)):
         batch = yield _SearchStep("search", {
             "mediainfo": mediainfo, "keyword": keyword, "sites": plan.sites, "area": plan.area,
         }, search_count=index)
@@ -133,8 +155,8 @@ class SearchExecutionOwner:
             elif step.kind == "supplement":
                 response = media_chain.supplement_media_info(**step.params)
             elif step.kind == "search":
-                if step.search_count:
-                    time.sleep(random.randint(1, 10))
+                if delay := _keyword_delay(owner, step.search_count):
+                    time.sleep(delay)
                 response = owner._SearchChain__search_all_sites(**step.params) or []
             else:
                 response = owner._parse_result(**step.params)
@@ -151,8 +173,8 @@ class SearchExecutionOwner:
     async def _provider_events(owner: _SearchOwnerBase, step: _SearchStep,
                                streaming: bool) -> AsyncIterator[Dict[str, Any]]:
         """只在 I/O 适配层区分普通请求和站点事件流。"""
-        if step.search_count:
-            await asyncio.sleep(random.randint(1, 10))
+        if delay := _keyword_delay(owner, step.search_count):
+            await asyncio.sleep(delay)
         if streaming:
             async for event in owner._SearchChain__async_search_all_sites_stream(**step.params):
                 yield event

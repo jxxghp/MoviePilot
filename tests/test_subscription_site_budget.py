@@ -68,6 +68,35 @@ def test_site_budget_recovers_expired_inflight_lease(tmp_path):
     assert recovered.lease_token != first.lease_token
 
 
+def test_busy_site_does_not_hide_other_inflight_search(tmp_path):
+    """一个站点繁忙时，任务仍应展示其它已取得租约的站点正在搜索。"""
+    repository, engine = _repository(tmp_path)
+    busy_claim = repository.claim_site(site_id=1, owner="other-search", lease_seconds=900)
+    phases = []
+    budget = SubscriptionSiteBudget(
+        repository=repository,
+        owner="current-search",
+        cancelled=lambda: False,
+        stop_state=ProcessStopState(),
+        phase_changed=lambda phase, site_id: phases.append((phase, site_id)),
+    )
+    try:
+        searching_claim = budget.acquire(2)
+        with pytest.raises(SubscriptionSiteBudgetUnavailable) as deferred:
+            budget.acquire(1)
+        assert deferred.value.site_id == 1
+        assert phases[-1] == ("searching", 2)
+        assert budget.finish(searching_claim, SiteSearchObservation())
+        assert repository.finish_site(
+            site_id=1,
+            lease_token=busy_claim.lease_token,
+            outcome="success",
+            next_allowed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        )
+    finally:
+        engine.dispose()
+
+
 def test_site_budget_applies_error_cooldown_and_gradual_success_recovery(tmp_path):
     """失败增加冷却计数，后续成功每次只恢复一级而非直接清零。"""
     repository, engine = _repository(tmp_path)

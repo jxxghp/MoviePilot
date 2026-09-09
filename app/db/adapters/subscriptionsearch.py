@@ -78,6 +78,7 @@ def _enqueue_result(
     source: str,
     priority: int,
     available_at_by_subscription: Optional[Mapping[int, str]],
+    refresh_pending: bool,
 ) -> SearchEnqueueResult:
     """在当前事务中创建搜索批次并投影返回结果。"""
     record, created, coalesced, active_batch_ids = repository.enqueue(
@@ -85,6 +86,7 @@ def _enqueue_result(
         source=source,
         priority=priority,
         available_at_by_subscription=available_at_by_subscription,
+        refresh_pending=refresh_pending,
     )
     return SearchEnqueueResult(
         batch=_batch(record),
@@ -148,6 +150,7 @@ class TransactionalSubscriptionSearchRepository:
         source: str,
         priority: int,
         available_at_by_subscription: Optional[Mapping[int, str]] = None,
+        refresh_pending: bool = False,
     ) -> SearchEnqueueResult:
         """创建批次并返回 single-flight 合并计数。"""
         return self._write(
@@ -157,6 +160,7 @@ class TransactionalSubscriptionSearchRepository:
                 source=source,
                 priority=priority,
                 available_at_by_subscription=available_at_by_subscription,
+                refresh_pending=refresh_pending,
             )
         )
 
@@ -167,6 +171,7 @@ class TransactionalSubscriptionSearchRepository:
         source: str,
         priority: int,
         available_at_by_subscription: Optional[Mapping[int, str]] = None,
+        refresh_pending: bool = False,
     ) -> SearchEnqueueResult:
         """在短异步事务中创建批次并返回合并计数。"""
         return await self._async_write(
@@ -176,6 +181,7 @@ class TransactionalSubscriptionSearchRepository:
                 source=source,
                 priority=priority,
                 available_at_by_subscription=available_at_by_subscription,
+                refresh_pending=refresh_pending,
             )
         )
 

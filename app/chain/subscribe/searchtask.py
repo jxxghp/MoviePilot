@@ -190,6 +190,7 @@ class SubscriptionSearchTaskRunner:
             task_id=task_id,
             cancel_requested=lambda: cancelled() or self.stop_state.is_system_stopped,
             phase_changed=phase_changed,
+            resuming_sites=self.task.pending_site_ids is not None,
         )
         current: Optional[SubscriptionSnapshot] = subscribe
         try:

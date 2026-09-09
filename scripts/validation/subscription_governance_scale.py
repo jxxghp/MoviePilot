@@ -423,6 +423,9 @@ def _run_site_pressure_case(
             """同步启动一个 owner，并保存 wrapper 的结果或异常。"""
             try:
                 start_barrier.wait(timeout=_SITE_PRESSURE_SYNC_TIMEOUT)
+                # 租约取得不代表请求已经开始；竞争方必须在真实请求在途时验证拒绝。
+                if owner == owners[1] and not boundary.first_started.wait(timeout=_SITE_PRESSURE_SYNC_TIMEOUT):
+                    raise TimeoutError("首个站点请求未进入受控请求边界")
                 with result_lock:
                     owner_invocations[owner] += 1
                 result = chains[owner]._search_site_torrents_with_budget(  # pylint: disable=protected-access
