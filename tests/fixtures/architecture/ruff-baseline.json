@@ -676,9 +676,6 @@
   "tests/test_event_dispatch_snapshot.py": {
     "I001": 1
   },
-  "tests/test_execute_command_tool.py": {
-    "I001": 1
-  },
   "tests/test_extensible_media_source_migration.py": {
     "I001": 1
   },

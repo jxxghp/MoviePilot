@@ -226,7 +226,7 @@ class ExecuteCommandInput(BaseModel):
     )
     env: Optional[dict[str, Any]] = Field(
         None,
-        description="Additional environment variables for action=start.",
+        description="Additional environment variables for action=start or action=run.",
     )
     use_pty: Optional[bool] = Field(
         True,
@@ -272,7 +272,9 @@ class ExecuteCommandTool(MoviePilotTool):
         "last_seq/output_until_seq. Call the same tool with action=read, wait, "
         "write, or kill to poll output, wait in short segments, send stdin, or "
         "terminate it. Use action=run only when a one-shot bounded command result "
-        "is preferred."
+        "is preferred. run returns JSON with exit_code, timed_out, execution_outcome, "
+        "output preview and optional output_file. Only a normal zero exit is success; "
+        "a timeout does not undo any side effects."
     )
     args_schema: Type[BaseModel] = ExecuteCommandInput
     require_admin: bool = True
@@ -428,8 +430,10 @@ class ExecuteCommandTool(MoviePilotTool):
         timed_out: bool,
         timeout_note: Optional[str],
     ) -> str:
-        """格式化 action=run 的兼容文本结果。"""
-        if timed_out:
+        """分开返回机器可判定的执行状态与有界输出，不能靠完成提示推断成功。"""
+        if exit_code is None:
+            result = "无法确认命令进程已结束，请先核对实际状态"
+        elif timed_out:
             result = f"命令执行超时 (限制: {timeout}秒，已终止进程)"
         else:
             result = f"命令执行完成 (退出码: {exit_code})"
@@ -437,7 +441,7 @@ class ExecuteCommandTool(MoviePilotTool):
         if timeout_note:
             result += f"\n\n提示:\n{timeout_note}"
         if output.temp_file_path:
-            file_note = "截至命令终止前的完整输出" if timed_out else "完整输出"
+            file_note = "截至返回时已捕获的输出" if exit_code is None else ("截至命令终止前的完整输出" if timed_out else "完整输出")
             result += (
                 "\n\n提示:\n"
                 f"命令输出超过 {MAX_OUTPUT_PREVIEW_BYTES // 1024}KB，"
@@ -445,13 +449,19 @@ class ExecuteCommandTool(MoviePilotTool):
                 f"{file_note}已写入临时文件: {output.temp_file_path}\n"
                 "如需完整内容，请继续读取该文件。"
             )
-        if output.combined_preview:
-            result += f"\n\n命令输出预览:\n{output.combined_preview}"
         if output.preview_truncated:
             result += "\n\n...(仅展示前后各 16KB 内容)"
         if not output.combined_preview:
             result += "\n\n(无输出内容)"
-        return result
+        succeeded = exit_code == 0 and not timed_out
+        outcome = "unknown" if exit_code is None else ("succeeded" if succeeded else "failed")
+        return ExecuteCommandTool._dump({
+            "action": "run", "success": succeeded, "execution_outcome": outcome,
+            "status": "unknown" if exit_code is None else ("timed_out" if timed_out else "exited"),
+            "exit_code": exit_code, "timed_out": timed_out, "timeout": timeout,
+            "output_truncated": output.preview_truncated, "output_file": output.temp_file_path,
+            "output": output.combined_preview, "message": result,
+        })
 
     async def _run_once(
         self,
@@ -459,9 +469,10 @@ class ExecuteCommandTool(MoviePilotTool):
         command: str,
         timeout: Optional[int],
         cwd: Optional[str] = None,
+        env: Optional[dict[str, Any]] = None,
         confirm_dangerous: bool = False,
     ) -> str:
-        """按旧模式一次性执行命令，等待完成或超时后返回文本结果。"""
+        """一次性执行命令并返回结构化终态；退出路径都必须释放读取任务和归档句柄。"""
         self._validate_command(command, confirmed=confirm_dangerous)
         normalized_timeout, timeout_note = self._normalize_timeout(timeout)
 
@@ -471,13 +482,14 @@ class ExecuteCommandTool(MoviePilotTool):
                 process = await asyncio.create_subprocess_exec(
                     *shell.build_argv(command),
                     cwd=cwd,
-                    env=build_agent_subprocess_env(),
+                    env=build_agent_subprocess_env(env),
                     **self._subprocess_kwargs(),
                 )
             else:
                 process = await asyncio.create_subprocess_shell(
                     command,
                     cwd=cwd,
+                    env=build_agent_subprocess_env(env),
                     **self._subprocess_kwargs(),
                 )
             output = _CommandOutput(preview_limit_bytes=MAX_OUTPUT_PREVIEW_BYTES)
@@ -499,10 +511,11 @@ class ExecuteCommandTool(MoviePilotTool):
                 await self._cleanup_process(process, wait_task)
                 raise
 
-            try:
-                await self._finish_reader_tasks(reader_tasks)
             finally:
-                output.close()
+                try:
+                    await self._finish_reader_tasks(reader_tasks)
+                finally:
+                    output.close()
 
         return self._format_run_result(
             exit_code=process.returncode,
@@ -589,6 +602,7 @@ class ExecuteCommandTool(MoviePilotTool):
                     command=self._require_command(command),
                     timeout=timeout,
                     cwd=cwd,
+                    env=env,
                     confirm_dangerous=bool(confirm_dangerous),
                 )
 

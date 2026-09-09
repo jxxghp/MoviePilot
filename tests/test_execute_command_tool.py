@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import re
 import shlex
 import subprocess
 import sys
@@ -10,8 +9,8 @@ import unittest
 from unittest.mock import patch
 
 from app.agent.tools.impl.execute_command import (
-    ExecuteCommandTool,
     MAX_OUTPUT_PREVIEW_BYTES,
+    ExecuteCommandTool,
 )
 
 
@@ -24,11 +23,13 @@ def _python_command(code: str) -> str:
 
 
 class TestExecuteCommandTool(unittest.TestCase):
+    """验证一次性命令的输出保留、超时收尾与参数安全。"""
+
     def _temp_file_path_from_result(self, result: str) -> str:
-        """从工具返回文本中提取完整输出临时文件路径。"""
-        match = re.search(r"临时文件: (.+)", result)
-        self.assertIsNotNone(match)
-        return match.group(1).strip()
+        """从结构化回执读取完整归档路径，不再解析人类提示文案。"""
+        path = json.loads(result)["output_file"]
+        self.assertTrue(path)
+        return path
 
     def _run_command(self, command: str, timeout: int = 60) -> str:
         """按一次性执行模式运行命令，兼容旧测试断言。"""
@@ -167,6 +168,8 @@ class TestExecuteCommandTool(unittest.TestCase):
 
 
 class TestExecuteCommandSessionTool(unittest.IsolatedAsyncioTestCase):
+    """验证后台终端会话的启动、增量读取、交互和终止。"""
+
     async def asyncSetUp(self):
         """创建每个测试复用的统一命令工具。"""
         self.tool = ExecuteCommandTool(session_id="session-1", user_id="10001")

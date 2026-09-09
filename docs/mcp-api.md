@@ -513,6 +513,13 @@ MCP、HTTP 工具管理接口、本地 CLI 和内置 Agent 都从同一严格目
 `search_web` 不通过 MCP 暴露。隐藏列表只负责收敛接口暴露面，不替代各工具自身的
 权限、路径和网络边界。
 
+内置命令工具 `execute_command(action="run")` 的返回值为 JSON 字符串，包含
+`success`、`execution_outcome`、`status`、`exit_code`、`timed_out`、`timeout`、
+`output_truncated`、`output_file`、`output` 和 `message`。正常退出码 0 才是成功，
+非零退出及已停止的超时执行为失败，无法确认进程结束时为 unknown。输出预览与状态分开，
+不再通过中文完成提示判断成功。后台 `start/read/wait/write/kill` 保持会话状态与游标协议；
+`env` 同时适用于 `start` 和 `run`，此工具仍不通过 MCP 暴露。
+
 下载器和媒体服务器的第三方原生高级能力不注册成永久 MCP 工具。内置 Agent 按需
 加载 `downloader-operation` 或 `mediaserver-operation` Skill，通过固定脚本读取本机
 配置、发现 provider 能力并调用受控 action；脚本不接受任意 URL、认证信息或任意

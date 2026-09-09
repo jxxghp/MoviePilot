@@ -66,6 +66,10 @@ a local plugin source and installed into the running MoviePilot instance.
 - Use `execute_command(action="run")` for short validation, Git, and diagnostic
   commands. Use `action="start"` only for interactive or long-running commands,
   then continue through the returned session ID.
+- Read the structured command result: only `execution_outcome="succeeded"`
+  with `exit_code=0` means a completed command passed. Inspect `output` on
+  failure and `output_file` for a truncated log. A timeout or unknown result
+  does not undo side effects and must not trigger a blind retry of a write.
 - Do not use shell redirection or inline scripts to perform source edits or to
   bypass a file-tool permission error.
 - When the plugin uses Vue federation, also read
