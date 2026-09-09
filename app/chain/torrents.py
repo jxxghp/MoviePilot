@@ -14,6 +14,7 @@ from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
+from app.foundation.url import UrlUtils
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.media import resolve_media_identity
@@ -318,7 +319,7 @@ class TorrentsChain(ChainBase):
         if not site:
             logger.error(f'站点 {domain} 不存在！')
             return []
-        rss_url = RssHelper.normalize_url(site.get("rss"))
+        rss_url = UrlUtils.normalize_http_url(site.get("rss"))
         if rss_url is None:
             logger.warning(f'站点 {domain} RSS地址无效，跳过获取')
             return []

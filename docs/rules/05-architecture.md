@@ -338,6 +338,11 @@ site extension owns the configured catalog/authentication/index capability and
 lives in `app/application/site/`; only its download and file installation
 mechanism remains in `app/adapters/system/resource.py`.
 
+HTTP(S) 地址的无 I/O 格式校验归属 `app/foundation/url.py` 的
+`UrlUtils.normalize_http_url()`，只去除首尾空白，不补协议或改写地址。
+RSS 用例在入口调用该能力，并拥有无效地址的跳过行为与返回约定；
+Foundation 不承担 RSS 内容判断、站点续期或运行日志职责。
+
 可选的进程级技术资源使用 Managed Resource 合同：实现及其 data-only
 `capability.toml` 与适配器同目录，`runtime/extensions` 只解释通用的同步/异步
 `start`、`stop` 生命周期，`startup` 负责构建 Capability Runtime。声明必须使用

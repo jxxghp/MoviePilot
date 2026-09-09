@@ -9,6 +9,34 @@ class UrlUtils:
     """提供不发起网络请求的 URL 解析与组合能力。"""
 
     @staticmethod
+    def normalize_http_url(url: object) -> Optional[str]:
+        """校验绝对 HTTP(S) 地址，无效输入返回 None。
+
+        仅去除首尾空白，不补协议或重写路径、查询串和 fragment，避免改变地址语义。
+        此处只检查地址格式，不保证远端可访问或响应内容有效。
+        """
+        if not isinstance(url, str):
+            return None
+        normalized_url = url.strip()
+        if not normalized_url:
+            return None
+        if any(character.isspace() for character in normalized_url):
+            return None
+        try:
+            parsed_url = urlparse(normalized_url)
+            hostname = parsed_url.hostname
+            port = parsed_url.port
+        except ValueError:
+            return None
+        if (
+            parsed_url.scheme.lower() not in ("http", "https")
+            or not hostname
+            or (port is not None and not 0 <= port <= 65535)
+        ):
+            return None
+        return normalized_url
+
+    @staticmethod
     def standardize_base_url(host: str) -> str:
         """
         标准化提供的主机地址，确保它以http://或https://开头，并且以斜杠(/)结尾
