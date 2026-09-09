@@ -267,6 +267,7 @@ def _patch_async_remote_install(helper, monkeypatch, meta: dict,
 
 
 class TestPluginHelper:
+    """覆盖插件目录、安装流程和依赖运行环境的宿主合同。"""
 
     def test_sanitize_plugin_repo_url_keeps_remote_url(self):
         """
@@ -2038,10 +2039,13 @@ demo = { index = "private" }
         constraints_file = tmp_path / "runtime-constraints.txt"
         marker = tmp_path / "install-pids"
         child_code = "import time; time.sleep(60)"
+        # 就绪标记必须原子发布，避免轮询方在文件创建后、PID 内容写完前读到空值。
         install_code = (
             "from pathlib import Path; import os, subprocess, time; "
             f"child = subprocess.Popen([{sys.executable!r}, '-c', {child_code!r}]); "
-            f"Path({str(marker)!r}).write_text(str(os.getpid()) + ':' + str(child.pid)); "
+            f"marker = Path({str(marker)!r}); pending = marker.with_suffix('.tmp'); "
+            "pending.write_text(str(os.getpid()) + ':' + str(child.pid)); "
+            "pending.replace(marker); "
             "time.sleep(60)"
         )
         strategy = Mock(
@@ -2056,10 +2060,12 @@ demo = { index = "private" }
         }
 
         def create_constraints(_protected_packages):
+            """生成临时约束文件以验证取消后的清理责任。"""
             constraints_file.write_text("fastapi==0\n", encoding="utf-8")
             return constraints_file
 
         async def run_install():
+            """等安装父子进程就绪后取消，并检查全部生命周期资源已释放。"""
             task = asyncio.create_task(
                 helper.async_install_packages_with_fallback(requirements_file)
             )
