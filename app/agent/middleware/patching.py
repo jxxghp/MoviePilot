@@ -11,17 +11,20 @@ class PatchToolCallsMiddleware(AgentMiddleware):
 
     @staticmethod
     def _build_cancelled_tool_message(tool_call: dict[str, Any]) -> ToolMessage:
-        """构造取消状态的工具响应消息。"""
+        """缺少回执只表示结果未知，不能据此重放可能已生效的写操作。"""
         tool_name = tool_call.get("name") or "unknown_tool"
         tool_call_id = tool_call.get("id") or ""
         tool_msg = (
             f"Tool call {tool_name} with id {tool_call_id} was "
-            "cancelled - another message came in before it could be completed."
+            "interrupted before its result was recorded; its outcome is unknown. "
+            "It may already have changed external state. Before retrying any mutation, "
+            "verify the actual state with read-only tools and avoid duplicate side effects."
         )
         return ToolMessage(
             content=tool_msg,
             name=tool_name,
             tool_call_id=tool_call_id,
+            status="error",
         )
 
     @classmethod

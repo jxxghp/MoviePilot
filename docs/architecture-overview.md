@@ -583,6 +583,8 @@ flowchart LR
 
 ## 七、AI Agent 子系统
 
+复杂任务的计划、工具发现和中断恢复使用说明见 [Agent 复杂任务执行与恢复](agent.md)。
+
 Agent 采用**门面 + 惰性物化**设计，避免 `application → agent` 形成静态依赖边：
 
 ```mermaid
@@ -754,8 +756,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 986 |
-| 内部导入边 | 8,385 |
+| Python 模块 | 987 |
+| 内部导入边 | 8,395 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |

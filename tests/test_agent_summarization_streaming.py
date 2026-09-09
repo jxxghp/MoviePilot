@@ -26,6 +26,8 @@ from pydantic import Field
 import app.agent.orchestrator as agent_module
 from app.agent.memory import MemoryManager
 from app.agent.middleware.config import RuntimeConfigMiddleware
+from app.agent.middleware.plan import PLAN_TOOL_NAME, PlanMiddleware
+from app.agent.middleware.selection import TOOL_DISCOVERY_NAME, ToolSelectorMiddleware
 from app.agent.middleware.summarization import (
     ContextPreservingSummarizationMiddleware,
     ContextSummarizationError,
@@ -236,21 +238,14 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares():
     non_streaming_llm = _FakeLLM("non-streaming")
     captured: dict = {}
 
-    class _FakeToolSelectorMiddleware:
-        """记录工具选择中间件初始化参数。"""
+    class _FakeToolSelectorMiddleware(ToolSelectorMiddleware):
+        """保留工具选择和发现目录，仅替换无需调用的测试模型。"""
 
-        def __init__(
-            self,
-            model,
-            max_tools,
-            always_include=None,
-            selection_tools=None,
-        ):
-            """保存测试断言需要的参数。"""
+        def __init__(self, **kwargs):
+            """通过真实构造函数校验启用发现后的工具与状态合同。"""
+            model = kwargs.pop("model")
+            super().__init__(model=None, **kwargs)
             self.model = model
-            self.max_tools = max_tools
-            self.always_include = always_include or []
-            self.selection_tools = selection_tools or []
 
     def _fake_create_agent(**kwargs):
         """捕获 create_agent 参数。"""
@@ -302,11 +297,33 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares():
         "execute_command",
         "agent_task",
         "read_skill",
+        PLAN_TOOL_NAME,
+        TOOL_DISCOVERY_NAME,
     ]
     assert tool_selector_middleware.selection_tools[: len(fake_tools)] == fake_tools
     assert [getattr(tool, "name", None) for tool in tool_selector_middleware.selection_tools[len(fake_tools) :]] == [
-        "read_skill"
+        "read_skill", PLAN_TOOL_NAME, TOOL_DISCOVERY_NAME,
     ]
+    middlewares = captured["middleware"]
+    plan_middleware = next(item for item in middlewares if isinstance(item, PlanMiddleware))
+    compaction_middleware = next(item for item in middlewares if isinstance(item, FinalRequestCompactionMiddleware))
+    assert compaction_middleware.summarizer.model is non_streaming_llm
+    assert [item.name for item in middlewares] == [
+        "AgentPolicyMiddleware",
+        "SkillsMiddleware",
+        "JobsMiddleware",
+        "RuntimeConfigMiddleware",
+        "PlanMiddleware",
+        "MemoryMiddleware",
+        "PatchToolCallsMiddleware",
+        "_FakeToolSelectorMiddleware",
+        "FinalRequestCompactionMiddleware",
+        "UsageMiddleware",
+    ]
+    policy_middleware = middlewares[0]
+    for internal_tool in [*plan_middleware.tools, *tool_selector_middleware.tools]:
+        assert policy_middleware.catalog.resolve_unique(internal_tool.name).tool is internal_tool
+        assert internal_tool in tool_selector_middleware.selection_tools
 
 
 def test_non_streaming_agent_reuses_main_llm_for_summary():

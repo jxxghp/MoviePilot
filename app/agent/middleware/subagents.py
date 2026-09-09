@@ -25,6 +25,10 @@ from pydantic import BaseModel, Field
 
 from app.agent.llm.helper import LLMHelper
 from app.agent.middleware.policy import AgentPolicyMiddleware
+from app.agent.middleware.summarization import (
+    ContextPreservingSummarizationMiddleware,
+    FinalRequestCompactionMiddleware,
+)
 from app.agent.middleware.utils import append_to_system_message
 from app.agent.policy.contracts import (
     AuthSource,
@@ -469,7 +473,13 @@ class _SubAgentAgentProvider:
                 AgentPolicyMiddleware(
                     context=self._policy_context,
                     catalog=subagent_catalog,
-                )
+                ),
+                FinalRequestCompactionMiddleware(
+                    summarizer=ContextPreservingSummarizationMiddleware(
+                        model=self._model,
+                        keep=("messages", 20),
+                    ),
+                ),
             ],
         )
         self._agents[profile.name] = agent
@@ -946,6 +956,10 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
     async def close(self) -> bool:
         """有限等待 detached 子代理；超时保留记录并返回 False。"""
         self.seal()
+        return await self._drain_tasks()
+
+    async def _drain_tasks(self) -> bool:
+        """清理本轮子任务，正常收敛后允许缓存图继续处理下一轮。"""
         if not hasattr(self, "_close_cancel_requested"):
             self._close_cancel_requested = set()
         unfinished_records = [
@@ -960,6 +974,8 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             cancel_requested=self._close_cancel_requested,
         )
         if pending_records:
+            # 未收敛的子任务仍由该 owner 持有，不能让下一轮叠加新任务。
+            self.seal()
             self._tasks = {
                 record.task_id: record
                 for record in pending_records
@@ -1232,8 +1248,8 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         return self._json_response(response)
 
     async def aafter_agent(self, state: Any, runtime: Any) -> None:
-        """Agent 结束时取消未完成的子代理任务，避免后台泄漏。"""
-        await self.close()
+        """本轮结束时回收子任务；永久关闭只由会话生命周期触发。"""
+        await self._drain_tasks()
 
     async def awrap_tool_call(
         self,
