@@ -141,6 +141,13 @@ class TransferHistorySnapshot:
     download_hash: Optional[str] = None
     status: bool = True
     errmsg: Optional[str] = None
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    retry_count: Optional[int] = None
+    retry_exhausted: bool = False
+    auto_paused: bool = False
+    cleanup_status: Optional[str] = None
+    cleanup_error: Optional[str] = None
     date: Optional[str] = None
     files: Optional[JsonData] = None
     episode_group: Optional[str] = None
@@ -187,6 +194,13 @@ class TransferHistoryWrite:
     download_hash: Optional[str] = None
     status: bool = True
     errmsg: Optional[str] = None
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    # 连续失败次数和自动暂停状态，写入历史后可跨重启恢复查重闸状态。
+    retry_count: Optional[int] = None
+    auto_paused: bool = False
+    cleanup_status: Optional[str] = None
+    cleanup_error: Optional[str] = None
     files: Optional[JsonData] = None
     episode_group: Optional[str] = None
 
@@ -253,6 +267,14 @@ class TransferHistoryQueryPort(Protocol):
         task_id: str,
     ) -> Optional[TransferHistorySnapshot]:
         """按 durable 整理任务标识返回终态历史快照。"""
+        ...
+
+    async def async_get_by_transfer_task_id(
+        self,
+        *,
+        task_id: str,
+    ) -> Optional[TransferHistorySnapshot]:
+        """异步按 durable 整理任务标识返回终态历史快照。"""
         ...
 
     def get_by_media_identity(
@@ -359,6 +381,15 @@ class TransferHistoryWritePort(Protocol):
 
     def update_download_hash(self, history_id: int, download_hash: str) -> None:
         """在独立事务中补充整理历史的下载任务 Hash。"""
+        ...
+
+    def update_cleanup_status(
+            self,
+            history_id: int,
+            status: str,
+            error: Optional[str] = None,
+    ) -> None:
+        """在独立事务中记录媒体入库后的下载器清理结果。"""
         ...
 
 
@@ -1174,13 +1205,15 @@ def describe_history_gate(history: Optional[TransferHistorySnapshot],
         fileid=fileid,
     )
     if not history.status:
-        count = failed_retry_count(
-            getattr(history, "src", None),
-            getattr(history, "src_storage", None),
-            file_size=file_size,
-            file_modify_time=file_modify_time,
-            fileid=fileid,
-        )
+        count = getattr(history, "retry_count", None)
+        if count is None:
+            count = failed_retry_count(
+                getattr(history, "src", None),
+                getattr(history, "src_storage", None),
+                file_size=file_size,
+                file_modify_time=file_modify_time,
+                fileid=fileid,
+            )
         if _is_file_version_changed(recorded_fingerprint, current_fingerprint):
             return f"失败记录 #{history.id}，文件版本已变化，重试预算将重置"
         return f"失败记录 #{history.id}，已重试 {count}/{max_failed_retries()} 次"
@@ -1189,6 +1222,50 @@ def describe_history_gate(history: Optional[TransferHistorySnapshot],
     if recorded_size is None and current_size is None:
         return f"成功记录 #{history.id}，大小不可比对"
     return f"成功记录 #{history.id}，大小 {recorded_size} -> {current_size}"
+
+
+def next_failed_retry_count(
+    history: Optional[TransferHistorySnapshot],
+    *,
+    src_path: Optional[str],
+    storage: Optional[str] = None,
+    file_size: Optional[float] = None,
+    file_modify_time: Optional[float] = None,
+    fileid: Optional[str] = None,
+) -> int:
+    """
+    计算下一次失败应持久化的连续次数，合并缓存与数据库记录。
+
+    进程重启会清空本地缓存，因此同一文件版本必须以历史中的 retry_count 续算；
+    文件指纹已变化时则视为新版本，从第一次失败重新开始。
+    :param history: 当前源路径对应的整理历史
+    :param src_path: 当前源路径
+    :param storage: 当前源存储
+    :param file_size: 当前文件大小
+    :param file_modify_time: 当前文件修改时间
+    :param fileid: 当前文件唯一标识
+    :return: 本次失败写入历史的连续次数
+    """
+    cached_count = failed_retry_count(
+        src_path,
+        storage,
+        file_size=file_size,
+        file_modify_time=file_modify_time,
+        fileid=fileid,
+    )
+    persisted_count = 0
+    if history is not None and not history.status:
+        history_retry_count = getattr(history, "retry_count", None) or 0
+        gate_action = evaluate_history_gate(
+            history,
+            file_size=file_size,
+            file_modify_time=file_modify_time,
+            fileid=fileid,
+            retry_count=history_retry_count,
+        )
+        if gate_action != HistoryGateAction.PASS_FAILED_VERSION_CHANGED:
+            persisted_count = max(history_retry_count, 0)
+    return max(cached_count, persisted_count) + 1
 
 
 # --------------------------------------------------------------------------- #
@@ -1252,6 +1329,8 @@ def add_transfer_success(
         downloader=downloader,
         download_hash=download_hash,
         status=True,
+        retry_count=0,
+        auto_paused=False,
         files=transferinfo.file_list,
     ))
 
@@ -1264,6 +1343,8 @@ def add_transfer_fail(
     transferinfo: Optional[TransferInfo] = None,
     downloader: Optional[str] = None,
     download_hash: Optional[str] = None,
+    retry_count: Optional[int] = None,
+    auto_paused: bool = False,
     transfer_history_oper: Optional[TransferHistoryReplacePort] = None,
 ) -> TransferHistorySnapshot:
     """
@@ -1278,10 +1359,22 @@ def add_transfer_fail(
     :param transferinfo: 整理结果，未进入整理时为 None
     :param downloader: 下载器
     :param download_hash: 种子 hash
+    :param retry_count: 当前文件版本累计失败次数
+    :param auto_paused: 是否已达到自动整理暂停阈值
     :param transfer_history_oper: 兼容旧关键字的暂存端口，未传时使用组合根仓储
     :return: 落库后的整理记录
     """
     repository = transfer_history_oper or get_transfer_history_repository()
+    from app.application.transfer.feedback import classify_transfer_failure
+
+    raw_error = transferinfo.message if transferinfo else "未识别到媒体信息"
+    feedback = classify_transfer_failure(
+        raw_error,
+        overwrite_skipped=bool(transferinfo and transferinfo.overwrite_skipped),
+    )
+    # 源/目标路径已经是历史的一等字段，errmsg 继续保持旧接口的单条原因文本，
+    # 阶段和恢复动作由独立字段承载，避免破坏已有客户端和导出脚本的解析。
+    public_error = raw_error or "未知错误"
     if mediainfo and transferinfo:
         media_source, media_id = resolve_media_identity(media=mediainfo)
         history = repository.replace(TransferHistoryWrite(
@@ -1312,7 +1405,13 @@ def add_transfer_fail(
             download_hash=download_hash,
             episode_group=mediainfo.episode_group,
             status=False,
-            errmsg=transferinfo.message or '未知错误',
+            errmsg=public_error,
+            failure_stage=transferinfo.failure_stage or feedback.stage.value,
+            recovery_action=transferinfo.recovery_action or feedback.action,
+            retry_count=retry_count,
+            auto_paused=auto_paused,
+            cleanup_status=transferinfo.cleanup_status,
+            cleanup_error=transferinfo.cleanup_error,
             files=transferinfo.file_list,
         ))
     else:
@@ -1338,6 +1437,10 @@ def add_transfer_fail(
             downloader=downloader,
             download_hash=download_hash,
             status=False,
-            errmsg="未识别到媒体信息",
+            errmsg=public_error,
+            failure_stage=feedback.stage.value,
+            recovery_action=feedback.action,
+            retry_count=retry_count,
+            auto_paused=auto_paused,
         ))
     return history

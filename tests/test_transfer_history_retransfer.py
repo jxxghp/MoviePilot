@@ -46,6 +46,42 @@ def test_manual_music_transfer_forwards_entity_namespace(monkeypatch):
     assert captured["music_type"] == "album"
 
 
+def test_manual_transfer_failure_returns_path_stage_and_recovery_action(monkeypatch):
+    """文件管理器手动整理失败时，应直接返回源路径、失败阶段和恢复动作。"""
+
+    class FakeTransferChain:
+        """模拟目标存储写入失败的整理链。"""
+
+        @staticmethod
+        def manual_transfer(**_kwargs):
+            """返回稳定的目标写入失败原因。"""
+            return False, "目标路径不可写"
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+    source = "/downloads/manual-failed.mkv"
+
+    response = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitem=FileItem(
+                storage="local",
+                path=source,
+                name="manual-failed.mkv",
+                type="file",
+            ),
+            target_path="/media/movies",
+        ),
+        background=False,
+        history_query=SimpleNamespace(get=lambda _history_id: None),
+        _="token",
+    )
+
+    assert response.success is False
+    assert f"源文件：{source}" in response.message
+    assert "目标路径：/media/movies" in response.message
+    assert "失败阶段：目标存储访问" in response.message
+    assert "下一步：检查目标存储连接" in response.message
+
+
 def test_manual_music_directory_defaults_to_album_namespace(monkeypatch):
     """旧客户端只声明音乐目录时，后端应按整张专辑而不是单曲解释媒体 ID。"""
     captured = {}

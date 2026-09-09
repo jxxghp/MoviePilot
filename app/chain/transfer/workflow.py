@@ -760,6 +760,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                                 file_size=file_item.size,
                                 file_modify_time=file_item.modify_time,
                                 fileid=file_item.fileid,
+                                retry_count=getattr(transferd, "retry_count", None),
                             )
                             if not is_skip_action(gate_action):
                                 logger.info(f"{file_item.path} 命中{history_description}，重新送入整理")
@@ -947,8 +948,14 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         preview_items: List[dict[str, Any]] = []
 
         def _preview_callback(task: TransferTask, transferinfo: TransferInfo) -> Tuple[bool, str]:
+            from app.application.transfer.feedback import classify_transfer_failure
+
             item_meta = task.meta
             item_media = task.mediainfo
+            feedback = classify_transfer_failure(
+                transferinfo.message,
+                overwrite_skipped=bool(transferinfo.overwrite_skipped),
+            )
             preview_items.append(
                 {
                     "source": task.fileitem.path,
@@ -956,6 +963,17 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     "target_dir": transferinfo.target_diritem.path if transferinfo.target_diritem else None,
                     "success": transferinfo.success,
                     "message": transferinfo.message,
+                    "failure_stage": (
+                        transferinfo.failure_stage or feedback.stage.value
+                        if not transferinfo.success
+                        else None
+                    ),
+                    "recovery_action": (
+                        transferinfo.recovery_action or feedback.action
+                        if not transferinfo.success
+                        else None
+                    ),
+                    "overwrite_skipped": bool(transferinfo.overwrite_skipped),
                     "type": item_media.type.value if item_media and item_media.type else None,
                     "title": preview_media_title(item_media),
                     "season": item_meta.begin_season if item_meta else None,
@@ -1068,6 +1086,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                                     "target_dir": None,
                                     "success": False,
                                     "message": err_msg,
+                                    "failure_stage": "execution",
+                                    "recovery_action": "刷新整理历史，等待任务结束；仍无法继续时提交人工复核",
                                     "type": None,
                                     "title": None,
                                     "season": transfer_task.meta.begin_season if transfer_task.meta else None,

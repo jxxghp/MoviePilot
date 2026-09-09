@@ -142,6 +142,15 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
     status: bool = True
     # 失败原因
     errmsg: Optional[str] = None
+    # 从失败原因和失败计数派生的用户可操作状态。
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    retry_count: Optional[int] = None
+    retry_exhausted: bool = False
+    auto_paused: bool = False
+    # 下载器清理独立于媒体入库结果。
+    cleanup_status: Optional[str] = None
+    cleanup_error: Optional[str] = None
     # 日期
     date: Optional[str] = None
     # 文件清单

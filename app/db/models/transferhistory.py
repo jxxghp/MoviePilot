@@ -89,6 +89,14 @@ class TransferHistory(Base):
     status: Mapped[Optional[bool]] = mapped_column(Boolean(), default=True)
     # 转移失败信息
     errmsg: Mapped[Optional[str]] = mapped_column(String)
+    # 连续失败次数和自动暂停状态，跨进程保留自动整理的终态
+    retry_count: Mapped[Optional[int]] = mapped_column(Integer)
+    auto_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # 失败阶段、恢复动作和下载器清理状态，供历史页面给出可执行建议
+    failure_stage: Mapped[Optional[str]] = mapped_column(String)
+    recovery_action: Mapped[Optional[str]] = mapped_column(String)
+    cleanup_status: Mapped[Optional[str]] = mapped_column(String)
+    cleanup_error: Mapped[Optional[str]] = mapped_column(String)
     # 时间
     date: Mapped[Optional[str]] = mapped_column(String)
     # 文件清单，以JSON存储
@@ -239,6 +247,25 @@ class TransferHistory(Base):
             Optional["TransferHistory"],
             db.execute(
                 select(cls).where(cls.transfer_task_id == task_id)
+            ).scalars().first(),
+        )
+
+    @classmethod
+    async def async_get_by_transfer_task_id(
+            cls,
+            db: AsyncSession,
+            *,
+            task_id: str,
+    ) -> Optional["TransferHistory"]:
+        """异步按稳定整理任务标识读取终态结算历史。"""
+        if not task_id:
+            return None
+        return cast(
+            Optional["TransferHistory"],
+            (
+                await db.execute(
+                    select(cls).where(cls.transfer_task_id == task_id)
+                )
             ).scalars().first(),
         )
 
@@ -633,6 +660,43 @@ class TransferHistory(Base):
         """在调用方事务中暂存下载任务哈希更新。"""
         db.execute(
             update(cls).where(cls.id == historyid).values(download_hash=download_hash)
+        )
+
+    @classmethod
+    def update_cleanup_status(
+            cls,
+            db: Session,
+            historyid: int,
+            cleanup_status: str,
+            cleanup_error: Optional[str] = None,
+    ) -> None:
+        """记录媒体已入库后下载器任务的独立清理结果。"""
+        values = {
+            "cleanup_status": cleanup_status,
+            "cleanup_error": cleanup_error,
+        }
+        if cleanup_status == "failed":
+            # 清理失败发生在媒体入库成功之后，单独覆盖阶段字段，避免历史页把
+            # 空 errmsg 解释成普通文件转移失败。
+            from app.application.transfer.feedback import classify_transfer_failure
+
+            feedback = classify_transfer_failure("下载器清理失败")
+            values.update(
+                failure_stage=feedback.stage.value,
+                recovery_action=feedback.action,
+            )
+        elif cleanup_status == "resolved":
+            # 用户已在下载器中人工完成清理时，同时关闭专属于清理步骤的失败提示；
+            # 媒体整理成功状态及其余历史字段保持不变。
+            values.update(
+                failure_stage=None,
+                recovery_action=None,
+                cleanup_error=None,
+            )
+        db.execute(
+            update(cls)
+            .where(cls.id == historyid)
+            .values(**values)
         )
 
     @classmethod

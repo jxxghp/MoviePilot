@@ -38,10 +38,12 @@ from app.application.history import (
     DownloadHistoryMutationCommand,
     HistoryQueryService,
     TransferHistoryMutationCommand,
+    get_transfer_history_repository,
 )
 from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionRepository,
+    TransferExecutionState,
     TransferRetryRequestResult,
 )
 from app.application.transfer.recovery import TransferRecoveryCommand
@@ -150,6 +152,8 @@ async def _complete_durable_retry_batch(
     histories: list[_SchemaTransferHistory],
     messages: list[str],
     rejections: list[tuple[int, TransferRetryRequestResult]],
+    execution_repository: TransferExecutionRepository | None = None,
+    task_registry: TaskRegistry | None = None,
 ) -> Any:
     """完成纯 durable 批量响应；存在拒绝时不伪造成功进度。"""
     message = "；".join(messages)
@@ -161,6 +165,9 @@ async def _complete_durable_retry_batch(
         progress_key=progress_key,
         text=message,
         history_ids=history_ids,
+        task_ids=[history.transfer_task_id for history in histories if history.transfer_task_id],
+        execution_repository=execution_repository,
+        task_registry=task_registry,
     )
     return _SchemaResponse(
         success=True,
@@ -174,19 +181,133 @@ async def _complete_durable_retry_progress(
     progress_key: str,
     text: str,
     history_ids: list[int],
+    task_ids: list[str] | None = None,
+    execution_repository: TransferExecutionRepository | None = None,
+    task_registry: TaskRegistry | None = None,
 ) -> None:
-    """写入可被现有 SSE 客户端立即消费的 durable 重试完成进度。"""
+    """写入 durable 重试进度，并在提供任务依赖时等待真实终态再收口。"""
     progress = AsyncProgressHelper(progress_key)
     await progress.start()
-    await progress.end(
-        text=text,
+    if not execution_repository or not task_ids or not task_registry:
+        await progress.end(
+            text=text,
+            data={
+                "history_ids": history_ids,
+                "success": True,
+                "completed": True,
+                "message": text,
+            },
+        )
+        return
+
+    await progress.update(
+        text="已提交重新整理，等待后台任务处理",
         data={
             "history_ids": history_ids,
             "success": True,
-            "completed": True,
+            "completed": False,
             "message": text,
+            "state": TransferExecutionState.RETRY_WAIT.value,
         },
     )
+
+    async def watcher() -> None:
+        """轮询 durable 任务和历史回执，直到成功、失败或人工复核终态。"""
+        pending_task_ids = set(task_ids)
+        task_history_ids = dict(zip(task_ids, history_ids))
+        terminal: dict[str, dict[str, object]] = {}
+        missed_snapshots: dict[str, int] = {}
+        max_polls = 60 * 30
+        for _ in range(max_polls):
+            for task_id in tuple(pending_task_ids):
+                try:
+                    snapshot = await execution_repository.async_get_snapshot(
+                        task_id=task_id
+                    )
+                except Exception as error:
+                    logger.warning("读取 durable 重试状态失败：%s - %s", task_id, error)
+                    continue
+
+                if snapshot is None:
+                    missed_snapshots[task_id] = missed_snapshots.get(task_id, 0) + 1
+                    if missed_snapshots[task_id] < 2:
+                        continue
+                    history_repository = get_transfer_history_repository()
+                    history = await history_repository.async_get_by_transfer_task_id(
+                        task_id=task_id,
+                    )
+                    terminal[task_id] = {
+                        "task_id": task_id,
+                        "history_id": task_history_ids.get(task_id),
+                        "state": "completed" if history and history.status else "failed",
+                        "success": bool(history and history.status),
+                        "error": None if history and history.status else "后台任务已结束，但未写入成功历史",
+                    }
+                    pending_task_ids.remove(task_id)
+                    continue
+
+                missed_snapshots[task_id] = 0
+                if snapshot.state is TransferExecutionState.FAILED:
+                    terminal[task_id] = {
+                        "task_id": task_id,
+                        "history_id": task_history_ids.get(task_id),
+                        "state": snapshot.state.value,
+                        "success": False,
+                        "error": snapshot.last_error or "整理任务已达到失败终态，请处理失败记录",
+                    }
+                    pending_task_ids.remove(task_id)
+                elif snapshot.state is TransferExecutionState.MANUAL_REVIEW:
+                    terminal[task_id] = {
+                        "task_id": task_id,
+                        "history_id": task_history_ids.get(task_id),
+                        "state": snapshot.state.value,
+                        "success": False,
+                        "error": snapshot.last_error or "整理任务需要人工复核后才能继续",
+                    }
+                    pending_task_ids.remove(task_id)
+
+            completed_count = len(terminal)
+            if not pending_task_ids:
+                success = all(bool(item["success"]) for item in terminal.values())
+                errors = [str(item["error"]) for item in terminal.values() if item["error"]]
+                final_text = "后台重新整理完成" if success else "后台重新整理未全部成功，请按失败记录中的动作处理"
+                await progress.end(
+                    text=final_text,
+                    data={
+                        "history_ids": history_ids,
+                        "success": success,
+                        "completed": True,
+                        "message": final_text,
+                        "states": list(terminal.values()),
+                        "error": "；".join(errors) if errors else None,
+                    },
+                )
+                return
+
+            await progress.update(
+                text=f"后台正在重新整理（已完成 {completed_count}/{len(task_ids)}）",
+                data={
+                    "history_ids": history_ids,
+                    "success": True,
+                    "completed": False,
+                    "state": TransferExecutionState.RETRY_WAIT.value,
+                    "states": list(terminal.values()),
+                },
+            )
+            await asyncio.sleep(1)
+
+        await progress.end(
+            text="后台整理仍未结束，请刷新整理历史查看最新状态",
+            data={
+                "history_ids": history_ids,
+                "success": False,
+                "completed": True,
+                "message": "后台整理仍未结束，请刷新整理历史查看最新状态",
+                "error": "后台整理状态等待超时",
+            },
+        )
+
+    task_registry.create(watcher(), owner="api.history.durable_retry.progress")
 
 
 def _build_progress_output_callback(
@@ -459,6 +580,21 @@ def delete_transfer_history(
     )
 
 
+@router.post(
+    "/transfer/{history_id}/cleanup-resolved",
+    summary="确认下载器清理已完成",
+    response_model=_SchemaResponse[None],
+)
+def resolve_transfer_cleanup(
+    history_id: int,
+    command: TransferHistoryMutationCommand = Depends(get_transfer_history_mutation_command),
+    _: object = Depends(get_current_active_manage_user),
+) -> Any:
+    """确认用户已在下载器中人工完成清理，并关闭该历史的清理失败提示。"""
+    result = command.resolve_cleanup(history_id)
+    return _SchemaResponse(success=result.success, message=result.message)
+
+
 async def _get_discard_transfer_history(
     history_id: int,
     query: HistoryQueryService = Depends(get_history_query_service),
@@ -537,6 +673,9 @@ async def ai_redo_transfer_history(
             progress_key=progress_key,
             text=retry_message,
             history_ids=[history.id],
+            task_ids=[history.transfer_task_id] if history.transfer_task_id else [],
+            execution_repository=execution_repository,
+            task_registry=task_registry,
         )
         return _SchemaResponse(
             success=True,
@@ -603,6 +742,8 @@ async def batch_ai_redo_transfer_history(
             histories=durable_histories,
             messages=response_message_parts,
             rejections=rejections,
+            execution_repository=execution_repository,
+            task_registry=task_registry,
         )
 
     if rejections:

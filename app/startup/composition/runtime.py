@@ -136,7 +136,10 @@ def compose_runtime_dependencies() -> RuntimeDependencies:
         subscription_history=TransactionalSubscriptionHistoryRepository(
             async_session=async_session_scope,
         ),
-        transfer_execution=TransactionalTransferExecutionRepository(SessionFactory),
+        transfer_execution=TransactionalTransferExecutionRepository(
+            SessionFactory,
+            async_session=async_session_scope,
+        ),
         message_helper=message_helper_factory(),
         message_queue=MessageQueueManager(auto_start=False),
         subscription_search=TransactionalSubscriptionSearchRepository(

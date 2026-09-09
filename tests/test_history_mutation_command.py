@@ -43,6 +43,7 @@ def _history():
         download_hash="abc",
         src_fileitem={"path": "/downloads/demo.mkv"},
         dest_fileitem={"path": "/media/demo.mkv"},
+        cleanup_status=None,
         transfer_task_id=None,
         transfer_settlement_revision=None,
     )
@@ -143,6 +144,54 @@ def test_transfer_truncate_rolls_back_commit_failure():
 
     dependencies["repository"].stage_truncate.assert_called_once_with()
     dependencies["unit_of_work"].rollback.assert_called_once_with()
+
+
+def test_transfer_cleanup_resolution_commits_and_clears_failure_state():
+    """人工完成下载器清理后应在单一事务中关闭清理失败状态。"""
+    history = _history()
+    history.cleanup_status = "failed"
+    command, dependencies = _transfer_command(history=history)
+
+    result = command.resolve_cleanup(7)
+
+    assert result.success is True
+    assert result.message == "已标记下载器任务为人工清理完成"
+    dependencies["repository"].stage_update_cleanup_status.assert_called_once_with(
+        7,
+        "resolved",
+        None,
+    )
+    dependencies["unit_of_work"].commit.assert_called_once_with()
+
+
+def test_transfer_cleanup_resolution_is_idempotent():
+    """重复确认已完成的下载器清理不得再次写库。"""
+    history = _history()
+    history.cleanup_status = "resolved"
+    command, dependencies = _transfer_command(history=history)
+
+    result = command.resolve_cleanup(7)
+
+    assert result.success is True
+    assert result.message == "下载器清理状态已确认"
+    dependencies["repository"].stage_update_cleanup_status.assert_not_called()
+    dependencies["unit_of_work"].commit.assert_not_called()
+
+
+@pytest.mark.parametrize("history, message", [
+    (None, "整理记录不存在"),
+    (_history(), "这条记录没有待确认的下载器清理失败"),
+])
+def test_transfer_cleanup_resolution_rejects_unclosable_history(history, message):
+    """缺失记录或没有清理失败的记录应返回明确原因且不写库。"""
+    command, dependencies = _transfer_command(history=history)
+
+    result = command.resolve_cleanup(7)
+
+    assert result.success is False
+    assert result.message == message
+    dependencies["repository"].stage_update_cleanup_status.assert_not_called()
+    dependencies["unit_of_work"].commit.assert_not_called()
 
 
 def test_transfer_delete_rejects_nonfailed_durable_receipt_before_file_side_effects():

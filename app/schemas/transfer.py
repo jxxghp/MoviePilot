@@ -146,6 +146,12 @@ class TransferInfo(BaseModel):
     # 是否因覆盖模式判定「不覆盖」而放弃整理。
     # 这是一次正常的策略裁决而非整理故障，调用方据此决定是否写失败历史与推送失败通知
     overwrite_skipped: Optional[bool] = False
+    # 失败所在阶段和建议动作，供通知、历史和前端统一展示。
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    # 清理下载器任务的结果；整理成功但清理失败时保留独立状态。
+    cleanup_status: Optional[str] = None
+    cleanup_error: Optional[str] = None
 
     def to_dict(self):
         """
@@ -377,6 +383,10 @@ class ManualTransferPreviewItem(BaseModel):
     target_dir: Optional[str] = None
     success: bool = False
     message: Optional[str] = None
+    # 失败阶段、建议动作和覆盖策略裁决，供前端直接给出下一步处理方式。
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    overwrite_skipped: bool = False
     type: Optional[str] = None
     title: Optional[str] = None
     season: Optional[int] = None

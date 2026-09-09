@@ -506,6 +506,13 @@ class TransferExecutionRepository(Protocol):
     def get_snapshot(self, *, task_id: str) -> Optional[TransferExecutionSnapshot]:
         """读取任务执行快照。"""
 
+    async def async_get_snapshot(
+            self,
+            *,
+            task_id: str,
+    ) -> Optional[TransferExecutionSnapshot]:
+        """异步读取任务执行快照，供事件循环内状态观察使用。"""
+
     def list_manual_reviews(
             self,
             *,

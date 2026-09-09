@@ -19,6 +19,7 @@ from app.application.history import (
     history_src_size,
     is_skip_action,
     max_failed_retries,
+    next_failed_retry_count,
     record_transfer_failure,
     resolve_history,
 )
@@ -186,6 +187,48 @@ def test_evaluate_history_gate_explicit_retry_count_overrides_realtime_lookup(mo
         assert action == HistoryGateAction.PASS_FAILED
     finally:
         _reset_failed_retries(src_path, "local")
+
+
+def test_next_failed_retry_count_continues_persisted_budget_after_restart(monkeypatch):
+    """进程缓存清空后，同一文件版本应继续数据库中的失败次数。"""
+    monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 3)
+    src_path = "/downloads/gate-test-persisted-retry.mkv"
+    _reset_failed_retries(src_path, "local")
+    history = make_history(
+        status=False,
+        size=1024,
+        src=src_path,
+        src_storage="local",
+    )
+    history.retry_count = 2
+
+    assert next_failed_retry_count(
+        history,
+        src_path=src_path,
+        storage="local",
+        file_size=1024,
+    ) == 3
+
+
+def test_next_failed_retry_count_resets_for_changed_file_version(monkeypatch):
+    """同一路径文件指纹变化后，应获得新的失败重试预算。"""
+    monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 3)
+    src_path = "/downloads/gate-test-persisted-new-version.mkv"
+    _reset_failed_retries(src_path, "local")
+    history = make_history(
+        status=False,
+        size=1024,
+        src=src_path,
+        src_storage="local",
+    )
+    history.retry_count = 3
+
+    assert next_failed_retry_count(
+        history,
+        src_path=src_path,
+        storage="local",
+        file_size=2048,
+    ) == 1
 
 
 def test_failed_history_new_size_passes_and_resets_retry_budget(monkeypatch):

@@ -1031,6 +1031,15 @@ class TransferFailureNotification:
     username: Optional[str]
     manual_identity: bool = False
     task_id: Optional[str] = None
+    source_path: Optional[str] = None
+    target_path: Optional[str] = None
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    retry_count: Optional[int] = None
+    max_retries: Optional[int] = None
+    auto_paused: bool = False
+    cleanup_status: Optional[str] = None
+    cleanup_error: Optional[str] = None
 
 
 def build_transfer_failure_group_key(task: TransferTask) -> str:

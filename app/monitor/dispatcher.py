@@ -2,7 +2,7 @@ import re
 import traceback
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.adapters.system.fsproxy import fsproxy
 from app.application.directory import DirectoryHelper
@@ -32,11 +32,17 @@ class TransferDispatcher:
     # 单个文件的最大重试次数（按健康检查周期计，60 次约 1 小时）
     MAX_RETRY_ATTEMPTS = 60
 
-    def __init__(self, all_exts: Optional[List[str]] = None, cache: Optional[Any] = None):
+    def __init__(
+            self,
+            all_exts: Optional[List[str]] = None,
+            cache: Optional[Any] = None,
+            retry_abandoned_callback: Optional[Callable[[str, Path, str], None]] = None,
+    ):
         """
         初始化整理分发器。
         :param all_exts: 监控的文件扩展名，默认取系统配置
         :param cache: 去重缓存，默认使用 10 秒 TTL 缓存
+        :param retry_abandoned_callback: 自动重试最终放弃时的用户告警回调
         """
         self.all_exts = all_exts if all_exts is not None else (
             get_runtime_setting('RMT_MEDIAEXT')
@@ -48,6 +54,7 @@ class TransferDispatcher:
         # 历史查询失败待重试的文件
         self._pending_retries: Dict[str, Dict[str, Any]] = {}
         self._pending_guard = Lock()
+        self._retry_abandoned_callback = retry_abandoned_callback
 
     @staticmethod
     def _is_bluray_sub(_path: Path) -> bool:
@@ -120,6 +127,7 @@ class TransferDispatcher:
             file_size=file_size,
             file_modify_time=file_modify_time,
             fileid=fileid,
+            retry_count=getattr(history, "retry_count", None),
         )
         history_description = describe_history_gate(
             history,
@@ -198,6 +206,7 @@ class TransferDispatcher:
         :param reason: 登记原因，用于日志
         """
         key = self._pending_key(storage, event_path)
+        abandoned_reason: Optional[str] = None
         with self._pending_guard:
             entry = self._pending_retries.get(key)
             if entry:
@@ -205,19 +214,34 @@ class TransferDispatcher:
                 if entry["attempts"] >= self.MAX_RETRY_ATTEMPTS:
                     self._pending_retries.pop(key, None)
                     logger.error(f"{reason}持续失败，已放弃重试: {key}")
-                return
-            if len(self._pending_retries) >= self.MAX_PENDING_RETRIES:
+                    abandoned_reason = f"{reason}连续失败 {self.MAX_RETRY_ATTEMPTS} 次"
+            elif len(self._pending_retries) >= self.MAX_PENDING_RETRIES:
                 logger.error(f"整理重试队列已满，丢弃: {key}")
-                return
-            self._pending_retries[key] = {
-                "storage": storage,
-                "event_path": event_path,
-                "file_size": file_size,
-                "file_modify_time": file_modify_time,
-                "fileid": fileid,
-                "attempts": 1
-            }
+                abandoned_reason = f"整理重试队列已达到 {self.MAX_PENDING_RETRIES} 条上限"
+            else:
+                self._pending_retries[key] = {
+                    "storage": storage,
+                    "event_path": event_path,
+                    "file_size": file_size,
+                    "file_modify_time": file_modify_time,
+                    "fileid": fileid,
+                    "attempts": 1
+                }
+        if abandoned_reason:
+            self._notify_retry_abandoned(storage, event_path, abandoned_reason)
+            return
+        if entry:
+            return
         logger.warn(f"{reason}，已登记待重试: {key}")
+
+    def _notify_retry_abandoned(self, storage: str, event_path: Path, reason: str) -> None:
+        """通知上层自动重试已停止；告警失败只记日志，不影响其他目录继续处理。"""
+        if not self._retry_abandoned_callback:
+            return
+        try:
+            self._retry_abandoned_callback(storage, event_path, reason)
+        except Exception as err:
+            logger.error(f"发送目录监控重试放弃告警失败: {storage}:{event_path} - {err}")
 
     def register_unreadable(self, storage: str, event_path: Path):
         """

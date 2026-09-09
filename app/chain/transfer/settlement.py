@@ -7,11 +7,14 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from app.application.chain.events import TransferResultSettlement
 from app.application.configuration import get_configured_system_config
 from app.application.history import (
+    TransferHistoryRepository,
     TransferHistorySnapshot,
     TransferHistoryStagingPort,
     add_transfer_fail,
     add_transfer_success,
     clear_transfer_failures,
+    max_failed_retries,
+    next_failed_retry_count,
     record_transfer_failure,
 )
 from app.application.outbox import (
@@ -26,6 +29,10 @@ from app.application.transfer.execution import (
     TransferExecutionConflictError,
     TransferExecutionRepository,
     TransferSettlementResult,
+)
+from app.application.transfer.feedback import (
+    classify_transfer_failure,
+    transfer_failure_stage_label,
 )
 from app.application.transfer.recovery import TransferRecoveryCommand
 from app.application.transfer.workflow import (
@@ -136,9 +143,21 @@ class TransferSettlementOwner(_TransferOwnerBase):
         settlement_outcome = "succeeded" if successful_outcome else "failed"
         checkpoint.validate_settlement_outcome(settlement_outcome)
         frozen_transferinfo = checkpoint.payload.get("transferinfo")
+        current_transferinfo = transferinfo.model_dump(mode="json")
+        # 新增的用户反馈字段对旧检查点保持向后兼容；只有明确写入的值才参与指纹比较。
+        for key in ("failure_stage", "recovery_action", "cleanup_status", "cleanup_error"):
+            if current_transferinfo.get(key) is None:
+                current_transferinfo.pop(key, None)
+        normalized_frozen_transferinfo = (
+            dict(frozen_transferinfo) if isinstance(frozen_transferinfo, dict) else frozen_transferinfo
+        )
+        if isinstance(normalized_frozen_transferinfo, dict):
+            for key in ("failure_stage", "recovery_action", "cleanup_status", "cleanup_error"):
+                if normalized_frozen_transferinfo.get(key) is None:
+                    normalized_frozen_transferinfo.pop(key, None)
         if (
-                isinstance(frozen_transferinfo, dict)
-                and frozen_transferinfo != transferinfo.model_dump(mode="json")
+                isinstance(normalized_frozen_transferinfo, dict)
+                and normalized_frozen_transferinfo != current_transferinfo
         ):
             raise TransferExecutionConflictError(
                 "整理任务状态已发生变化，请刷新整理历史后再试"
@@ -245,6 +264,44 @@ class TransferSettlementOwner(_TransferOwnerBase):
         if isinstance(history, TransferSettlementResult):
             return history.history_id
         return getattr(history, "id", None) if history is not None else None
+
+    @staticmethod
+    def _record_downloader_cleanup_failure(
+            transferhis: TransferHistoryRepository,
+            *,
+            download_hash: str,
+            fallback_history_id: Optional[int],
+            cleanup_error: str,
+    ) -> None:
+        """把同一下载任务下所有成功入库记录标记为清理失败，单条写入失败不阻断其余记录。"""
+        try:
+            history_ids = {
+                item.id
+                for item in transferhis.list_by_hash(download_hash)
+                if item.status and item.id
+            }
+        except Exception as cleanup_history_error:
+            logger.error(
+                "查询下载器清理关联历史异常：任务 %s - %s",
+                download_hash,
+                cleanup_history_error,
+            )
+            history_ids = set()
+        if fallback_history_id:
+            history_ids.add(fallback_history_id)
+        for history_id in history_ids:
+            try:
+                transferhis.update_cleanup_status(
+                    history_id,
+                    "failed",
+                    cleanup_error,
+                )
+            except Exception as cleanup_record_error:
+                logger.error(
+                    "记录下载器清理失败状态异常：历史 #%s - %s",
+                    history_id,
+                    cleanup_record_error,
+                )
 
     def _publish_transfer_result(
         self,
@@ -355,9 +412,21 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 if not isinstance(history, TransferSettlementResult):
                     raise RuntimeError("覆盖跳过的 durable 终态没有返回结算结果")
                 task.mark_terminal_settled()
+                ret_message = transferinfo.message
             else:
                 logger.warn(f"{task.fileitem.name} 入库失败：{transferinfo.message}")
-
+                previous_history = transferhis.get_by_src(
+                    task.fileitem.path,
+                    task.fileitem.storage,
+                )
+                failure_count = next_failed_retry_count(
+                    previous_history,
+                    src_path=task.fileitem.path if task.fileitem else None,
+                    storage=task.fileitem.storage if task.fileitem else None,
+                    file_size=task.fileitem.size if task.fileitem else None,
+                    file_modify_time=task.fileitem.modify_time if task.fileitem else None,
+                    fileid=task.fileitem.fileid if task.fileitem else None,
+                )
                 durable_event = self._durable_transfer_event(task, success=False)
                 topic = durable_event[0] if durable_event else None
                 event_type = durable_event[1] if durable_event else None
@@ -372,6 +441,8 @@ class TransferSettlementOwner(_TransferOwnerBase):
                         meta=task.meta,
                         mediainfo=task.mediainfo,
                         transferinfo=transferinfo,
+                        retry_count=failure_count,
+                        auto_paused=failure_count >= max_failed_retries(),
                         transfer_history_oper=writer,
                     ),
                     event_payload=event_payload,
@@ -401,14 +472,16 @@ class TransferSettlementOwner(_TransferOwnerBase):
                     task=task,
                     transferinfo=transferinfo,
                     history_id=self._TransferChain__transfer_history_id(history),
+                    retry_count=failure_count,
+                    auto_paused=failure_count >= max_failed_retries(),
                 )
+                ret_message = transferinfo.message
 
             # 设置任务失败
             self.jobview.fail_task(task)
 
             # 返回失败
             ret_status = False
-            ret_message = transferinfo.message
 
         else:
             # 转移成功
@@ -515,6 +588,34 @@ class TransferSettlementOwner(_TransferOwnerBase):
                                     logger.info(
                                         f"移动模式删除种子成功：{t.download_hash}"
                                     )
+                                else:
+                                    cleanup_error = (
+                                        f"下载器 {t.downloader or '默认'} 未能清理任务 {t.download_hash}"
+                                    )
+                                    logger.error(
+                                        "媒体已入库，但下载器任务清理失败：%s",
+                                        t.download_hash,
+                                    )
+                                    self._record_downloader_cleanup_failure(
+                                        transferhis,
+                                        download_hash=t.download_hash,
+                                        fallback_history_id=(
+                                            self._TransferChain__transfer_history_id(history)
+                                        ),
+                                        cleanup_error=cleanup_error,
+                                    )
+                                    self.post_message(
+                                        Message(
+                                            mtype=MessageType.Manual,
+                                            title="媒体已入库，但下载器清理失败",
+                                            text=(
+                                                f"任务：{t.download_hash}\n{cleanup_error}\n"
+                                                "请检查下载器连接和任务状态后手动清理。"
+                                            ),
+                                            username=t.username,
+                                            link=self.runtime_config.history_url,
+                                        )
+                                    )
                     if (
                             not t.download_hash
                             and t.fileitem
@@ -536,9 +637,12 @@ class TransferSettlementOwner(_TransferOwnerBase):
             transferinfo: TransferInfo,
             history_id: Optional[int],
             manual_identity: bool = False,
+            retry_count: Optional[int] = None,
+            auto_paused: bool = False,
     ) -> None:
         """按配置逐条发送或按媒体聚合整理失败通知，供第三方整理补丁复用。"""
         from app.runtime.errors import public_error_message
+        feedback = classify_transfer_failure(transferinfo.message)
         notification = TransferFailureNotification(
             media_title=(
                 task.mediainfo.title_year
@@ -555,6 +659,15 @@ class TransferSettlementOwner(_TransferOwnerBase):
             username=task.username,
             manual_identity=manual_identity,
             task_id=task.admission_task_id,
+            source_path=task.fileitem.path if task.fileitem else None,
+            target_path=transferinfo.target_item.path if transferinfo.target_item else None,
+            failure_stage=transferinfo.failure_stage or feedback.stage.value,
+            recovery_action=transferinfo.recovery_action or feedback.action,
+            retry_count=retry_count,
+            max_retries=max_failed_retries(),
+            auto_paused=auto_paused,
+            cleanup_status=transferinfo.cleanup_status,
+            cleanup_error=transferinfo.cleanup_error,
         )
         if not self.runtime_config.transfer_failure_notification_aggregation:
             self._send_transfer_failure_notifications([notification])
@@ -592,7 +705,26 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 if history_ids
                 else ""
             )
-            text = "\n".join([f"原因：{first.reason}", history_hint]).strip()
+            context_lines = [
+                f"失败阶段：{transfer_failure_stage_label(first.failure_stage)}",
+                f"源文件：{first.source_path}" if first.source_path else None,
+                f"目标路径：{first.target_path}" if first.target_path else None,
+                f"原因：{first.reason}",
+                f"下一步：{first.recovery_action}" if first.recovery_action else None,
+                (
+                    f"重试状态：已尝试 {first.retry_count}/{first.max_retries} 次"
+                    if first.retry_count is not None and first.max_retries is not None
+                    else None
+                ),
+                (
+                    "当前状态：自动整理已暂停，请修复原因后点击“重新整理”，"
+                    "或删除失败记录后重新扫描"
+                    if first.auto_paused
+                    else None
+                ),
+                history_hint,
+            ]
+            text = "\n".join(line for line in context_lines if line).strip()
             buttons = self.build_failed_transfer_buttons(
                 history_ids[0] if history_ids else None
             )
@@ -613,6 +745,11 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 "原因统计：",
                 *reason_lines,
             ]
+            source_paths = [item.source_path for item in notifications if item.source_path]
+            if source_paths:
+                text_parts.append("源文件：" + "、".join(source_paths[:3]))
+            if any(item.auto_paused for item in notifications):
+                text_parts.append("部分文件已达到自动重试上限，自动整理已暂停，请在整理历史中处理。")
             if history_text:
                 text_parts.extend([f"整理记录：{history_text}", "可在整理历史中批量处理。"])
             text = "\n".join(text_parts)

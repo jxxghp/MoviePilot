@@ -159,6 +159,27 @@ def test_transactional_repository_sync_mutations_use_committed_uow(db) -> None:
     assert repository.get(second.id) is None
 
 
+def test_transactional_repository_persists_downloader_cleanup_failure(db) -> None:
+    """下载器清理失败应独立更新历史，并投影为可执行的清理阶段。"""
+    repository = _repository()
+    created = repository.replace(_history_write(src="/downloads/cleanup.mkv"))
+
+    repository.update_cleanup_status(
+        created.id,
+        "failed",
+        "qb 未能删除任务 hash-cleanup",
+    )
+
+    current = repository.get(created.id)
+    assert current is not None
+    assert current.status is True
+    assert current.cleanup_status == "failed"
+    assert current.cleanup_error == "qb 未能删除任务 hash-cleanup"
+    assert current.failure_stage == "downloader_cleanup"
+    assert current.recovery_action is not None
+    assert "下载器" in current.recovery_action
+
+
 def test_transactional_repository_preserves_durable_history(db) -> None:
     """普通删除和清空不得破坏 durable 任务恢复证据。"""
     durable = db.add(

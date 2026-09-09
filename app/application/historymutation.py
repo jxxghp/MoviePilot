@@ -68,6 +68,11 @@ class TransferHistoryMutationRecord(Protocol):
         """返回下载任务 Hash。"""
         ...
 
+    @property
+    def cleanup_status(self) -> Optional[str]:
+        """返回媒体入库后的下载器清理状态。"""
+        ...
+
 
 class TransferHistoryMutationRepository(Protocol):
     """整理历史删除与清理用例需要的最小持久化端口。"""
@@ -82,6 +87,15 @@ class TransferHistoryMutationRepository(Protocol):
 
     def stage_truncate(self) -> None:
         """暂存全部整理历史删除。"""
+        ...
+
+    def stage_update_cleanup_status(
+        self,
+        history_id: int,
+        cleanup_status: str,
+        cleanup_error: Optional[str] = None,
+    ) -> None:
+        """暂存整理历史的下载器清理状态更新。"""
         ...
 
 
@@ -254,6 +268,19 @@ class TransferHistoryMutationCommand:
                 )
             ),
         )
+
+    def resolve_cleanup(self, history_id: int) -> HistoryMutationResult:
+        """确认下载器任务已由用户清理，并关闭历史中的独立清理失败状态。"""
+        history = self._repository.get(history_id)
+        if not history:
+            return HistoryMutationResult(False, "整理记录不存在")
+        if history.cleanup_status == "resolved":
+            return HistoryMutationResult(True, "下载器清理状态已确认")
+        if history.cleanup_status != "failed":
+            return HistoryMutationResult(False, "这条记录没有待确认的下载器清理失败")
+        self._repository.stage_update_cleanup_status(history_id, "resolved", None)
+        self._commit()
+        return HistoryMutationResult(True, "已标记下载器任务为人工清理完成")
 
     def _delete_file(
         self,

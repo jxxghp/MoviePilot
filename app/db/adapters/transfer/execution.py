@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.application.transfer.execution import (
@@ -69,11 +71,15 @@ class TransactionalTransferExecutionRepository:
             self,
             session_factory: Callable[[], Session],
             *,
+            async_session: Optional[
+                Callable[[], AbstractAsyncContextManager[AsyncSession]]
+            ] = None,
             local_clock: Callable[[], datetime] = _local_now,
             lease_clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         """保存 Session 工厂及可测试时钟，不持有跨外部 I/O 事务。"""
         self._session_factory = session_factory
+        self._async_session = async_session
         self._local_clock = local_clock
         self._lease_clock = lease_clock
 
@@ -621,6 +627,33 @@ class TransactionalTransferExecutionRepository:
             if pending is None:
                 return None
             steps = TransferExecutionStepOper(session).list_by_task_id(task_id=task_id)
+            return self._project_snapshot(pending, steps)
+
+    async def async_get_snapshot(
+            self,
+            *,
+            task_id: str,
+    ) -> Optional[TransferExecutionSnapshot]:
+        """使用异步只读短 Session 获取任务执行快照。"""
+        if self._async_session is None:
+            raise RuntimeError("整理执行仓储未配置异步 Session 工厂")
+        async with self._async_session() as session:
+            pending = (
+                await session.scalars(
+                    select(TransferPending).where(TransferPending.task_id == task_id)
+                )
+            ).first()
+            if pending is None:
+                return None
+            steps = list(
+                (
+                    await session.scalars(
+                        select(TransferExecutionStepModel)
+                        .where(TransferExecutionStepModel.task_id == task_id)
+                        .order_by(TransferExecutionStepModel.ordinal.asc())
+                    )
+                ).all()
+            )
             return self._project_snapshot(pending, steps)
 
     def list_manual_reviews(
