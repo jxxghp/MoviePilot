@@ -2,16 +2,19 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 
 import pytest
 
 TESTS_DIR = Path(__file__).resolve().parent
 RUNNER_PATH = Path(__file__).resolve()
 DEFAULT_SHARD_COUNT = 4
+DURATIONS_PATH = TESTS_DIR / "fixtures" / "durations.json"
+DEFAULT_TEST_DURATION = 1.0
 
 
 def collect_test_files() -> list[Path]:
@@ -19,20 +22,30 @@ def collect_test_files() -> list[Path]:
     return sorted(TESTS_DIR.glob("test_*.py"))
 
 
+def load_test_durations() -> dict[str, float]:
+    """读取受版本控制的 CI 慢文件耗时估算，避免依赖本机缓存改变分片。"""
+    return json.loads(DURATIONS_PATH.read_text(encoding="utf-8"))["files"]
+
+
 def split_test_files(
-    test_files: Sequence[Path], shard_count: int
+    test_files: Sequence[Path], shard_count: int,
+    durations: Mapping[str, float] | None = None,
 ) -> list[list[Path]]:
-    """把排序后的文件连续均分，保持 CI 分片归属稳定且易于复现。"""
+    """把慢文件优先分给预计耗时最短的分片，并保持路径和平局选择确定。"""
     if shard_count <= 0:
         raise ValueError("shard_count 必须大于 0")
-    shard_size = (len(test_files) + shard_count - 1) // shard_count
-    if shard_size == 0:
-        return [[] for _ in range(shard_count)]
-    shards = [
-        list(test_files[start:start + shard_size])
-        for start in range(0, len(test_files), shard_size)
-    ]
-    return shards + [[] for _ in range(shard_count - len(shards))]
+    durations = load_test_durations() if durations is None else durations
+    shards: list[list[Path]] = [[] for _ in range(shard_count)]
+    shard_durations = [0.0] * shard_count
+    weighted_files = sorted(
+        test_files,
+        key=lambda path: (-durations.get(path.name, DEFAULT_TEST_DURATION), path),
+    )
+    for test_file in weighted_files:
+        shard_index = min(range(shard_count), key=shard_durations.__getitem__)
+        shards[shard_index].append(test_file)
+        shard_durations[shard_index] += durations.get(test_file.name, DEFAULT_TEST_DURATION)
+    return [sorted(shard) for shard in shards]
 
 
 def parse_shard(value: str) -> tuple[int, int]:

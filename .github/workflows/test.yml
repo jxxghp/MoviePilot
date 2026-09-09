@@ -1,7 +1,7 @@
 name: Unit Tests
 
 on:
-  # 指向 v3 的 PR 与推送都跑全量单测，作为合并门禁
+  # PR 完整验证；合并推送仅在代码树和成功证明匹配时复用
   pull_request:
     branches:
       - v3
@@ -19,7 +19,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  reuse:
+    name: Check reusable PR verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      reused: ${{ steps.check.outputs.reuse }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Test reuse decision
+        run: node --test .github/scripts/reuse.test.mjs
+      - name: Check successful PR merge tree
+        id: check
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { reuse } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/reuse.mjs`);
+            await reuse({ github, context, core });
+
   architecture:
+    needs: reuse
+    if: needs.reuse.outputs.reused != 'true'
     runs-on: ubuntu-latest
     name: Architecture Contract Gate
     timeout-minutes: 10
@@ -90,42 +115,11 @@ jobs:
           uv run --locked --no-sync python
           scripts/startup/performance.py --check --repeat 3
 
-  pytest:
-    runs-on: ubuntu-latest
-    name: Unit Tests (${{ matrix.shard }})
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - shard: '1/4'
-          - shard: '2/4'
-          - shard: '3/4'
-          - shard: '4/4'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v10.0.1
-        with:
-          python-version: '3.14'
-          enable-cache: true
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
-
-      - name: Install dependencies
-        run: uv sync --locked
-
-      - name: Run tests
-        timeout-minutes: 10
-        run: uv run --locked --no-sync python tests/run.py --shard "${{ matrix.shard }}"
-
   coverage-shard:
+    needs: reuse
+    if: needs.reuse.outputs.reused != 'true'
     runs-on: ubuntu-latest
-    name: Coverage Shard (${{ matrix.shard }})
+    name: Unit Tests with Coverage (${{ matrix.shard }})
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -222,3 +216,13 @@ jobs:
             coverage.xml
             coverage.json
           retention-days: 7
+
+  proof:
+    name: CI proof (${{ github.sha }})
+    needs: [architecture, coverage-shard, coverage-report]
+    if: github.event_name == 'pull_request' && needs.architecture.result == 'success' && needs.coverage-shard.result == 'success' && needs.coverage-report.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Record fully verified merge commit
+        run: echo 'All required checks passed for this PR merge commit.'

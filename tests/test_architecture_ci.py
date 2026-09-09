@@ -86,6 +86,7 @@ def test_official_plugin_observation_is_scheduled_and_never_writes_fixture():
 def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
     """Coverage 分片并行采集数据，再由单一报告 job 合并并检查全局低水位。"""
     workflow = _load_workflow("test.yml")
+    assert "pytest" not in workflow["jobs"]
     shard_job = workflow["jobs"]["coverage-shard"]
     shard_steps = shard_job["steps"]
     report_job = workflow["jobs"]["coverage-report"]
@@ -94,6 +95,7 @@ def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
     assert workflow["on"]["push"]["branches"] == ["v3"]
     assert "workflow_dispatch" in workflow["on"]
     assert shard_job["runs-on"] == "ubuntu-latest"
+    assert shard_job["name"] == "Unit Tests with Coverage (${{ matrix.shard }})"
     assert shard_job["timeout-minutes"] == 15
     shard_matrix = shard_job["strategy"]["matrix"]["include"]
     assert [item["shard"] for item in shard_matrix] == [
@@ -168,6 +170,34 @@ def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
     coverage_config.read(PROJECT_ROOT / ".coveragerc", encoding="utf-8")
     assert coverage_config["run"]["source"].strip() == "app"
     assert "app/plugins/*/*" in coverage_config["run"]["omit"].splitlines()
+
+
+def test_ci_reuse_requires_successful_proof_for_every_gate() -> None:
+    """证明必须依赖全部硬门禁，推送只能通过保守判定跳过昂贵任务。"""
+    for filename, gates in {
+        "test.yml": ["architecture", "coverage-shard", "coverage-report"],
+        "pylint.yml": ["pylint"],
+    }.items():
+        jobs = _load_workflow(filename)["jobs"]
+        reuse = jobs["reuse"]
+        assert reuse["permissions"] == {
+            "contents": "read", "actions": "read", "pull-requests": "read"
+        }
+        assert reuse["outputs"]["reused"] == "${{ steps.check.outputs.reuse }}"
+        assert "node --test .github/scripts/reuse.test.mjs" in _step_commands(
+            _load_workflow(filename), "reuse"
+        )
+        for gate in gates:
+            if gate == "coverage-report":
+                continue
+            assert jobs[gate]["needs"] == "reuse"
+            assert jobs[gate]["if"] == "needs.reuse.outputs.reused != 'true'"
+        proof = jobs["proof"]
+        assert proof["name"] == "CI proof (${{ github.sha }})"
+        assert proof["needs"] == gates
+        assert proof["if"] == "github.event_name == 'pull_request' && " + " && ".join(
+            f"needs.{gate}.result == 'success'" for gate in gates
+        )
 
 
 def test_pylint_workflow_runs_for_v3_pull_requests_and_pushes():

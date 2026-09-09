@@ -17,7 +17,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  reuse:
+    name: Check reusable PR verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      reused: ${{ steps.check.outputs.reuse }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Test reuse decision
+        run: node --test .github/scripts/reuse.test.mjs
+      - name: Check successful PR merge tree
+        id: check
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { reuse } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/reuse.mjs`);
+            await reuse({ github, context, core });
+
   pylint:
+    needs: reuse
+    if: needs.reuse.outputs.reused != 'true'
     runs-on: ubuntu-latest
     name: Pylint Code Quality Check
 
@@ -105,3 +130,13 @@ jobs:
         echo "🎉 Pylint 检查完成！"
         echo "✅ 改动 Python 文件没有新增语法错误或严重问题"
         echo "📊 全仓建议性报告已保存为构建工件"
+
+  proof:
+    name: CI proof (${{ github.sha }})
+    needs: [pylint]
+    if: github.event_name == 'pull_request' && needs.pylint.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Record fully verified merge commit
+        run: echo 'All required checks passed for this PR merge commit.'
