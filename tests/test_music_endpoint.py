@@ -16,6 +16,7 @@ from app.api.endpoints.music import (
     recognize_music,
 )
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo, MusicRelease
+from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.music import MusicLibraryStatusRequest, MusicRecognizeRequest
 from app.schemas.types import MediaSource, MediaType
 
@@ -461,7 +462,10 @@ def test_music_artist_albums_forwards_pagination_and_type():
 def test_music_library_status_marks_existing_albums():
     """批量状态接口应保留专辑身份，并根据入库检查返回状态。"""
     media_chain = Mock()
-    media_chain.media_exists.side_effect = [object(), None]
+    media_chain.media_exists.side_effect = [
+        ExistMediaInfo(type=MediaType.MUSIC, itemid="library-album-1"),
+        None,
+    ]
     request = MusicLibraryStatusRequest(
         items=[
             {
@@ -498,7 +502,10 @@ def test_music_library_status_marks_existing_albums():
 def test_music_library_status_treats_release_group_without_track_count_as_existing():
     """Release Group 无曲数时应查询“是否存在”，而不是永久返回未入库。"""
     media_chain = Mock()
-    media_chain.media_exists.return_value = object()
+    media_chain.media_exists.return_value = ExistMediaInfo(
+        type=MediaType.MUSIC,
+        itemid="library-release-group-1",
+    )
     request = MusicLibraryStatusRequest(
         items=[
             {

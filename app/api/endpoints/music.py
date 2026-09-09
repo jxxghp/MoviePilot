@@ -303,7 +303,7 @@ def music_library_status(
         # 是“已存在/已入库”，无曲数时一首匹配曲目即足以阻止重复下载。
         expected_tracks = info.total_tracks or 1
         info.total_tracks = expected_tracks
-        exists = bool(media_chain.media_exists(mediainfo=info))  # type: ignore[arg-type]
+        exists = media_chain.media_exists(mediainfo=info) is not None  # type: ignore[arg-type]
         assert item.media_source is not None
         assert item.media_id is not None
         statuses.append(
