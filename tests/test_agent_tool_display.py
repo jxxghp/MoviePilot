@@ -79,19 +79,21 @@ def test_web_tool_display_keeps_original_command_and_separate_calls():
 
 
 @pytest.mark.parametrize("channel", list(NotificationChannel))
-def test_channel_tool_buffer_preserves_multiline_parameters(channel):
+@pytest.mark.parametrize("separator", ["\n", "\r\n", "\r", "\u2028"])
+def test_channel_tool_buffer_preserves_multiline_parameters(channel, separator):
     """外部渠道继续使用完整文本；Telegram 的全部工具参数行保持引用格式。"""
     handler = StreamingHandler()
     handler._channel = channel.value
+    command = COMMAND.replace("\n", separator)
     handler.emit("准备提交。")
-    handler.emit_tool_message(f"执行系统命令: {COMMAND}")
+    handler.emit_tool_message(f"执行系统命令: {command}")
     handler.emit("提交完成。")
     text = handler._buffer
 
-    assert text == f"准备提交。\n\n⚙️ => 执行系统命令: {COMMAND}\n\n提交完成。"
+    assert text == f"准备提交。\n\n⚙️ => 执行系统命令: {command}\n\n提交完成。"
     if channel == NotificationChannel.Telegram:
         assert handler._get_rich_message(text) == (
-            '准备提交。\n\n> ⚙️ => 执行系统命令: python /config/agent/submit_feedback_issue.py \\\n'
+            f'准备提交。\n\n> ⚙️ => 执行系统命令: python /config/agent/submit_feedback_issue.py \\{separator}'
             '>   --payload-file "/config/feedback/payload.json"\n\n提交完成。'
         )
     else:

@@ -584,10 +584,14 @@ class StreamingHandler:
 
         富文本会把普通段落间的空行折叠成紧凑排版，引用块作为独立 block 类型
         渲染，保证工具执行信息在 Telegram 上始终与正文有可辨识的视觉分隔。
+        匹配与登记均按 splitlines 识别换行，同时保留原换行符，兼容 CRLF 续行参数。
         """
         if not self._tool_summaries or not text:
             return text
-        return "\n".join(f"> {line}" if line in self._tool_summaries else line for line in text.split("\n"))
+        return "".join(
+            f"> {line}" if line.splitlines()[0] in self._tool_summaries else line
+            for line in text.splitlines(keepends=True)
+        )
 
     async def _flush_loop(self):
         """
