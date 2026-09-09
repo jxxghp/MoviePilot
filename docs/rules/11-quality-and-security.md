@@ -2,6 +2,8 @@
 
 ## Testing Requirements
 
+Verification preparation below is the contributor default. Confirmed maintainers may adjust scope, timing, and evidence reuse under `AGENTS.md`; shared correctness, compatibility, isolation, and honest reporting still apply. Full-suite triggers follow `docs/testing.md` and the affected behavior, not a directory name alone.
+
 ### What to Run
 
 ```bash
@@ -14,7 +16,7 @@ uv run --locked --no-sync pytest
 
 ### When to Expand Scope
 
-Run the full test suite when changing:
+Use the following as likely shared-impact boundaries. Run the full test suite when changes affect their shared behavior, lifecycle, or compatibility contract:
 - `app/runtime/`, `app/adapters/`, or `app/runtime/compat/` - config, events, managers, adapters, and compatibility boundaries
 - `app/chain/base.py` — chain base class
 - `app/modules/__init__.py` — module base class
@@ -25,7 +27,7 @@ Run the full test suite when changing:
 
 ### Honest Reporting
 
-- If a task only changes documentation, state explicitly that tests were not run.
+- For documentation tasks, report the actual text/structure checks and documentation contract tests; distinguish these from product tests that were not run.
 - Do not claim "all tests pass" unless you ran them.
 - Do not describe unexecuted checks as completed.
 
@@ -42,11 +44,12 @@ Run the full test suite when changing:
 ## Static Analysis
 
 ```bash
+# Full application report; use the AGENTS.md selector for changed-file checks
 uv run --locked --no-sync pylint app/
 ```
 
-- After any Python code change, ensure no new **error-level** pylint issues are introduced.
-- Warning-level issues in new code should be minimized but are not an absolute gate for submission.
+- Changed-file pylint must pass the workflow's configured check under the applicable preparation arrangement; select the PR-base plus uncommitted union from `AGENTS.md`. The full application report is advisory for ordinary scoped changes.
+- Do not introduce error-level issues; handle warning-level findings according to the configured changed-file check rather than treating all warnings as exempt.
 - Do not suppress pylint warnings with `# pylint: disable` without a documented reason.
 
 ---
@@ -130,12 +133,12 @@ The `API_TOKEN` value in `settings` is the source of truth. It is set at initial
 
 ---
 
-## Pre-Submission Checklist
+## Contributor Pre-Submission Checklist
 
-Before marking any task as complete:
+Before contributor submission, check applicable items below. Maintainer execution arrangements follow `AGENTS.md`; a local anchor does not imply completion or acceptance. The quality contracts remain shared.
 
 - [ ] Related pytest tests pass
-- [ ] No new pylint error-level issues in `pylint app/`
+- [ ] Changed-file pylint passes for the PR-base plus uncommitted union defined in `AGENTS.md`; use full `pylint app/` for broad Python changes
 - [ ] If dependencies changed: the package is in the correct `pyproject.toml` group, `uv.lock` is current, the locked project consistency check and runtime dependency audit pass
 - [ ] If CLI behavior changed: `docs/cli.md` and related tests are updated
 - [ ] If MCP/API behavior changed: `docs/mcp-api.md` and related skill files are updated

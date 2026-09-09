@@ -29,6 +29,26 @@ uv sync --locked
 uv sync --locked --no-dev --no-install-project
 ```
 
+以上命令以独立 checkout 的仓内 `.venv` 为默认。多仓工作区若已有共享运行环境 `.venv` 和
+隔离测试环境 `.venv-test`，按工作区说明选择，不创建另一套仓内环境。以下变量指向实际工作区
+根目录，路径使用绝对路径，避免 `--directory` 改变相对环境路径的含义：
+
+```bash
+MOVIEPILOT_WORKSPACE="${MOVIEPILOT_WORKSPACE:?set absolute workspace root}"
+UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv" \
+  uv sync --locked --directory "${MOVIEPILOT_WORKSPACE}/MoviePilot"
+UV_PROJECT_ENVIRONMENT="${MOVIEPILOT_WORKSPACE}/.venv-test" \
+  uv run --directory "${MOVIEPILOT_WORKSPACE}/MoviePilot" --locked --no-sync \
+  python -c 'import sys; print(sys.executable)'
+```
+
+测试与静态检查均在目标后端 checkout 工作目录执行：把公共命令中的
+`uv run --locked --no-sync` 映射到上述 `.venv-test`，或直接用该环境的 Python 执行
+`-m pytest`、`-m pylint` 及检查脚本。先确认解释器、锁文件和所需依赖组相符；`--no-sync`
+只避免同步，不证明已安装依赖匹配。环境创建/重建按工作区指令执行，不在普通验证中重建或
+同步共享环境。测试不加载运行用 `app.env`，由测试引导隔离临时 `CONFIG_DIR`；本地服务启动
+则遵循工作区的子进程环境加载约定。
+
 ### 2. 依赖分层与事实源
 
 主程序只维护以下依赖事实源：
@@ -198,55 +218,30 @@ Docker 镜像发布前还会使用 Trivy 扫描 OS 与语言包；根目录 `.tr
 - 核查时官方稳定版 `v1.75.1` 和主分支仍引用同一 gRPC 版本。例外只匹配镜像内 `usr/bin/rclone`
   和上述精确依赖 PURL；更新 rclone 摘要时必须重新核查两个架构，包含修复后应移除例外。
 
-### 6. 提交代码前的检查
+### 6. Contributor 提交准备
 
-在提交代码之前，请确保完成以下步骤：
+公共提交准备按 [AGENTS.md](../AGENTS.md) 的 contributor default 执行；已确认的维护者可以
+依据有效证据明确调整适用检查范围、时机和交付顺序，包括先保存本地 anchor 再补验证。记录
+决定、证据、未验证项和后续安排，已有同范围授权不重问；这不取消架构、兼容、正确性和真实报告。
 
-1. **确认依赖分层正确**：运行时包进入 `[project].dependencies`；测试、覆盖率、静态检查和构建辅助进入 `[dependency-groups].dev`；插件依赖不并入主程序运行时依赖。
+按改动选择检查，命令入口统一见 [命令参考](rules/03-commands.md) 与
+[测试规范](testing.md)：
 
-2. **运行依赖漏洞检查**：确保锁定的运行时依赖通过 `pip-audit`。
+1. **依赖变化**：确认依赖分层、`uv.lock`、锁定环境一致性和 `pip-audit`；平台条件依赖还需对应平台安装证据。
+2. **行为变化**：运行受影响测试；依赖/锁文件、共享脚手架、数据库、启动、跨模块生命周期、兼容或大范围行为变化运行 `python tests/run.py` 全量。纯文档及其契约测试使用对应文本、结构、链接和 focused 检查。
+3. **架构与静态检查**：按受影响合同选择架构策略、snapshot 和 ratchet；策略测试先于 snapshot。Pylint 候选范围分别取 PR base 到 HEAD、暂存 diff、未暂存 diff 及本次新文件的并集；以实际待提交的索引 tree 过滤路径并检查内容。仅暂存本次选择的路径/hunks；代码、项目配置与仓内 lint 依赖必须来自同一 tree。只有全部 tracked 工作树与索引一致（`git diff --quiet`）且没有会影响 lint 的额外配置或导入输入时才使用工作树快捷路径，否则（含部分暂存）按 `AGENTS.md` 导出索引验证。这是现有 lint 的输入选择，不增加门禁；大范围 Python 变化在同一待提交 tree 中检查 `app/`。
+4. **最终核对**：复用仍有效的证据，只重跑被后续变化失效的检查；检查最终 diff、`git diff --check` 和工作树。CI 失败归属及维护者预授权按 [协作规则](rules/12-collaboration-and-distribution.md) 处理。
 
-3. **运行测试**：如果项目中包含测试，请确保所有测试都通过。运行以下命令以执行测试：
+主仓架构检查不依赖独立插件仓；官方插件兼容观察通过每周或手工工作流单独运行，仅上传语义差异
+报告，不自动更新基线。普通主仓改动不要求额外检出插件仓或运行观察任务。宿主架构门禁和 changed-file
+Pylint 由 `v3` PR/push 的 GitHub Actions 执行，`app/` 全量 Pylint 是建议性报告。
 
-   ```bash
-   uv run --locked --no-sync pytest
-   ```
-
-   `python tests/run.py` 在本地默认把排序后的测试文件按向上取整的连续区间切成 4 片，
-   并启动 4 个独立 pytest 进程；GitHub Actions 使用同一入口的 `--shard N/TOTAL`
-   参数启动对应分片。需要单进程调试时使用 `python tests/run.py --serial`。Coverage job
-   会在 `v3` 的 PR / push 中将同一全量入口切成 8 个并行分片，分别上传覆盖率数据，再由
-   单一报告 job 合并并检查 Application 与 Domain 的固定 80% 基线；它不是只在手工触发时
-   运行的建议性报告。每个 Coverage 分片预算为 15 分钟（其中测试 step 为 10 分钟），
-   报告合并与 ratchet 预算为 10 分钟，用于容纳 Ubuntu Runner 的性能波动，不得通过跳过
-   测试文件或覆盖率产物规避超时。
-
-4. **运行架构与静态门禁**：主仓架构检查不依赖独立插件仓；官方插件兼容观察单独运行，
-   任何检查命令都不会写入 fixture。
-
-   ```bash
-   uv run --locked --no-sync python scripts/architecture/baseline.py --check-host
-   uv run --locked --no-sync python scripts/architecture/baseline.py \
-     --check-plugins --plugin-repo ../MoviePilot-Plugins \
-     --report official-plugin-architecture-report.json
-   uv run --locked --no-sync pylint app/
-   uv run --locked --no-sync python scripts/architecture/ruff_ratchet.py
-   uv run --locked --no-sync python scripts/architecture/mypy_ratchet.py
-   uv run --locked --no-sync python -m coverage erase
-   uv run --locked --no-sync python -m coverage run tests/run.py --serial
-   uv run --locked --no-sync python -m coverage json
-   uv run --locked --no-sync python scripts/architecture/coverage_ratchet.py
-   ```
-
-   GitHub Actions 会在 `v3` 的 PR/push 中独立执行宿主架构门禁，并对本次改动的 Python
-   文件执行 Pylint 硬门禁；`app/` 全量结果作为建议性报告上传。最新官方插件仓通过每周
-   或手工观察工作流检查，只上传语义差异报告，不会自动更新已提交基线。
-
-   Ruff/Mypy 基线只允许收紧：新增诊断或类型错误增长都会被拒绝；覆盖率门禁固定要求
-   Application 与 Domain 均不低于 80%，不随运行时语句计数变化。Mypy 完整
-   ratchet 固定按 Linux/Python 3.14 分析；Coverage 检查只接受 GitHub Actions 的
-   Ubuntu/Python 3.14、locked 依赖和串行全量测试工件，本机 macOS 报告仅用于诊断，
-   不得直接写入并提交。受治零错误文件仍由 `mypy.ini` 的 `files=` 维护。
+Ruff/Mypy 基线只允许收紧，不接受新增诊断或类型错误增长；受治零错误文件由 `mypy.ini` 的
+`files=` 维护。Mypy 完整 ratchet 固定按 Linux/Python 3.14 分析。Coverage job 在 `v3` PR/push
+运行，按 `tests/run.py` 的分片合同执行并合并报告，Application 与 Domain 固定不低于 80%。
+每个 Coverage 分片预算为 15 分钟（测试 step 为 10 分钟），报告与 ratchet 为 10 分钟；不得靠
+跳过测试或产物规避超时。Coverage 只接受 GitHub Actions 的 Ubuntu/Python 3.14、locked
+依赖和全量测试工件，本机 macOS 报告仅供诊断，不得写入并提交 canonical baseline。
 
 ### 7. 参考资源
 

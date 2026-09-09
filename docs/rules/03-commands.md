@@ -7,12 +7,14 @@ This document is the project command reference, not an exhaustive shell allowlis
 ## Development Environment Setup
 
 ```bash
-# Create the locked development/test environment
+# Create the locked development/test environment (standalone checkout)
 uv sync --locked
 
 # Create a runtime-only environment
 uv sync --locked --no-dev --no-install-project
 ```
+
+Shared workspaces may map the environment to an explicit absolute path as documented in `docs/development-setup.md`. Choose the environment before running these commands; a runtime environment and an isolated test environment need not be the same directory.
 
 ---
 
@@ -55,9 +57,8 @@ uv run --locked --no-sync pytest tests/test_xxx.py::test_function_name
 ```
 
 **Rules:**
-- Run at minimum the tests directly related to the change.
-- If the change affects common modules, startup flow, CLI, or agent runtime behavior, expand the scope to the full test suite.
-- If the task only changes documentation, state explicitly that tests were not run. Do not claim checks that were not executed.
+- Contributor preparation runs related tests and expands to the full suite for the shared-impact triggers in `docs/testing.md`. Maintainer execution arrangements follow `AGENTS.md`.
+- For documentation tasks, report actual text/structure checks and documentation contract tests separately from unrun product tests. Do not claim checks that were not executed.
 
 ---
 
@@ -73,7 +74,7 @@ uv run --locked --no-sync pylint app/chain/download.py
 
 **Rules:**
 - After Python code changes, ensure no new error-level issues are introduced.
-- Warning-level issues in new code should be minimized but are not an absolute gate.
+- Use the changed-file selection and preparation arrangement in `AGENTS.md`; the workflow's configured changed-file result is the gate, while the full application report is advisory for ordinary scoped changes.
 
 ---
 

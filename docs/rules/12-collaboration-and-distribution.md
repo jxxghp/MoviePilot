@@ -41,7 +41,7 @@ ci: improve docker build cache
 
 ### Rules
 
-- Local commits follow the active workflow, an approved plan, or current user authorization. Existing authorization does not require a second confirmation; push, PR, merge, and release remain separate delivery boundaries.
+- Local commits follow the active workflow, an approved plan, or current user authorization. Existing scoped authorization does not require a second confirmation, including when the confirmed project context defines a requested PR as tracking through merge. Push, PR, merge, and release each need coverage by that authorization; a PR request does not by itself authorize a release. Maintainer arrangements and local anchors follow `AGENTS.md`.
 - Keep the subject line under 72 characters.
 - Use the imperative mood in the subject line ("add", "fix", "remove", not "added", "fixed", "removed").
 - If a commit introduces a breaking change, append `!` after the type and include `BREAKING CHANGE:` in the footer.
@@ -81,11 +81,15 @@ ci: improve docker build cache
   - pytest test suite
   - pylint static analysis
   - Docker image build (on main branch or tags)
-- Do not merge code that fails CI unless there is an explicit, documented reason and user approval.
+- Contributors must report CI failures and obtain a documented maintainer decision before merging with failed checks. A documented maintainer decision may preauthorize the same scoped failures; an existing applicable decision plus merge authorization does not require another approval.
+- Record the failed check, evidence of its cause and relationship to the change, and the applicable decision. Maintainers may authorize proceeding with proven unrelated base failures, automation/infrastructure/quota failures, or non-actionable review feedback. Logs, a current target-base reproduction, or other sufficient evidence must show the change did not cause, worsen, or newly expose the issue; failure status alone is insufficient. Do not silently expand the PR to fix unrelated issues or report failed/unrun checks as passed.
+- Follow actual required checks, Rulesets, and platform merge restrictions. Unresolved substantive issues owned by the change block merge; a scoped failure decision is not permission to bypass protection or waive shared architecture, compatibility, and correctness contracts. Maintainer authority follows the confirmed user/project context in `AGENTS.md`, not GitHub `WRITE` or a contributor's self-declaration.
 
 ---
 
 ## Pull Request Guidelines
+
+The following preparation is the contributor default. Confirmed maintainers may adjust verification timing and delivery order under `AGENTS.md`, while keeping the evidence and remaining work explicit.
 
 - Keep PRs focused on a single concern. Separate refactors, features, and bug fixes into distinct PRs when practical.
 - Include in the PR description:
