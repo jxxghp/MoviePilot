@@ -12,10 +12,12 @@ from app.api.endpoints.music import (
     music_artist,
     music_artist_albums,
     music_artist_related,
+    music_library_status,
     recognize_music,
 )
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo, MusicRelease
-from app.schemas.music import MusicRecognizeRequest
+from app.schemas.mediaserver import ExistMediaInfo
+from app.schemas.music import MusicLibraryStatusRequest, MusicRecognizeRequest
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -41,6 +43,10 @@ def test_music_routes_are_registered():
     assert any(path == "/music/artist/{artist_id}" and "GET" in methods for path, methods in routes)
     assert any(
         path == "/music/artist/{artist_id}/albums" and "GET" in methods
+        for path, methods in routes
+    )
+    assert any(
+        path == "/music/library/status" and "POST" in methods
         for path, methods in routes
     )
     assert any(
@@ -455,6 +461,103 @@ def test_music_artist_albums_forwards_pagination_and_type():
         count=10,
         album_type="ep",
     )
+
+
+def test_music_library_status_marks_existing_albums():
+    """批量状态接口应保留专辑身份，并根据入库检查返回状态。"""
+    media_chain = Mock()
+    media_chain.media_exists.side_effect = [
+        ExistMediaInfo(type=MediaType.MUSIC, itemid="library-album-1"),
+        None,
+    ]
+    request = MusicLibraryStatusRequest(
+        items=[
+            {
+                "media_source": "musicbrainz",
+                "media_id": "album-1",
+                "music_type": "album",
+                "title": "First Album",
+                "artists": ["Artist"],
+                "total_tracks": 10,
+            },
+            {
+                "media_source": "musicbrainz",
+                "media_id": "album-2",
+                "music_type": "album",
+                "title": "Second Album",
+                "artists": ["Artist"],
+                "total_tracks": 8,
+            },
+        ]
+    )
+
+    with patch("app.api.endpoints.music.MediaChain", return_value=media_chain):
+        result = music_library_status(request=request, _=Mock())
+
+    assert [(item.media_id, item.exists) for item in result] == [
+        ("album-1", True),
+        ("album-2", False),
+    ]
+    calls = media_chain.media_exists.call_args_list
+    assert calls[0].kwargs["mediainfo"].music_type == "album"
+    assert calls[0].kwargs["mediainfo"].media_id == "album-1"
+
+
+def test_music_library_status_treats_release_group_without_track_count_as_existing():
+    """Release Group 无曲数时应查询“是否存在”，而不是永久返回未入库。"""
+    media_chain = Mock()
+    media_chain.media_exists.return_value = ExistMediaInfo(
+        type=MediaType.MUSIC,
+        itemid="library-release-group-1",
+    )
+    request = MusicLibraryStatusRequest(
+        items=[
+            {
+                "media_source": "musicbrainz",
+                "media_id": "release-group-1",
+                "music_type": "album",
+                "title": "Catalog Album",
+                "artists": ["Artist"],
+            }
+        ]
+    )
+
+    with patch("app.api.endpoints.music.MediaChain", return_value=media_chain):
+        result = music_library_status(request=request, _=Mock())
+
+    assert result[0].exists is True
+    call = media_chain.media_exists.call_args
+    assert call.kwargs["mediainfo"].total_tracks == 1
+
+
+def test_music_library_status_rejects_recordings():
+    """批量状态接口不得把单曲按专辑完整性规则查询。"""
+    with pytest.raises(ValueError, match="仅支持"):
+        MusicLibraryStatusRequest(
+            items=[
+                {
+                    "media_source": "musicbrainz",
+                    "media_id": "recording-1",
+                    "music_type": "recording",
+                    "title": "Track",
+                }
+            ]
+        )
+
+
+def test_music_library_status_rejects_non_music_sources():
+    """批量状态接口不得接受影视等非音乐媒体身份。"""
+    with pytest.raises(ValueError, match="稳定音乐来源"):
+        MusicLibraryStatusRequest(
+            items=[
+                {
+                    "media_source": "tmdb",
+                    "media_id": "12345",
+                    "music_type": "album",
+                    "title": "Not a Music Album",
+                }
+            ]
+        )
 
 
 def test_music_artist_related_returns_relationship_text():

@@ -291,6 +291,8 @@ SCHEMA_EXPORTS = {
     'MusicArtistInfo': ('app.schemas.music', 'MusicArtistInfo'),
     'MusicEntityType': ('app.schemas.music', 'MusicEntityType'),
     'MusicInfo': ('app.schemas.transfer', 'MusicInfo'),
+    'MusicLibraryStatus': ('app.schemas.music', 'MusicLibraryStatus'),
+    'MusicLibraryStatusRequest': ('app.schemas.music', 'MusicLibraryStatusRequest'),
     'MusicMediaRecognizeEventData': ('app.schemas.event', 'MusicMediaRecognizeEventData'),
     'MusicMeta': ('app.schemas.transfer', 'MusicMeta'),
     'MusicNameRecognizeEventData': ('app.schemas.event', 'MusicNameRecognizeEventData'),

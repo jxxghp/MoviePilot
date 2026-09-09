@@ -132,6 +132,38 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
         return None
 
 
+class MusicLibraryStatusRequest(BaseModel):  # type: ignore[misc]
+    """批量查询音乐媒体库状态的请求。"""
+
+    items: list[MusicInfo] = Field(min_length=1, max_length=500)
+
+    @field_validator("items")  # type: ignore[misc]
+    @classmethod
+    def _validate_album_identities(cls, items: list[MusicInfo]) -> list[MusicInfo]:
+        """只接受带稳定来源身份的专辑，避免按模糊标题误报已入库。"""
+        supported_sources = {
+            MediaSource.MusicBrainz,
+            MediaSource.TheAudioDB,
+            MediaSource.DoubanMusic,
+        }
+        if any(
+            item.music_type != "album"
+            or item.media_source not in supported_sources
+            or not item.media_id
+            for item in items
+        ):
+            raise ValueError("仅支持带稳定音乐来源和媒体 ID 的专辑")
+        return items
+
+
+class MusicLibraryStatus(BaseModel):  # type: ignore[misc]
+    """音乐专辑在媒体库中的存在状态。"""
+
+    media_source: MediaSource
+    media_id: str
+    exists: bool
+
+
 class MusicRelease(BaseModel):
     """音乐专辑下的单个发行版本。"""
 

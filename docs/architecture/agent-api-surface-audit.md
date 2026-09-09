@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **395**
+- OpenAPI HTTP operations: **396**
 - Stable `moviepilot_api` operations: **205**
 - Exact HTTP routes used by the gateway: **203**
 - OpenAPI routes matched directly by the gateway: **202**
@@ -23,7 +23,7 @@
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 22 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 23 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -183,6 +183,7 @@
 | `GET` | `/api/v1/music/cache` | music | `gateway` | music.cache.get | 查询音乐识别缓存 |
 | `DELETE` | `/api/v1/music/cache/{cache_key}` | music | `gateway` | music.cache.delete | 删除指定音乐识别缓存 |
 | `GET` | `/api/v1/music/explore` | music | `gateway` | music.explore | 探索音乐 |
+| `POST` | `/api/v1/music/library/status` | music | `ui_presentation` | host-ui | 批量查询音乐专辑入库状态 |
 | `POST` | `/api/v1/music/recognize` | music | `gateway` | music.recognize | 识别音乐元数据详情 |
 | `POST` | `/api/v1/notification/config` | notification | `transport_or_identity` | host-runtime | 保存通知渠道并同步登录缓存 |
 | `POST` | `/api/v1/notification/manage` | notification | `transport_or_identity` | host-runtime | 通知渠道统一管理 |
