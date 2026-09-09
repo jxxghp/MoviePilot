@@ -6,6 +6,7 @@ import dateutil.parser
 from lxml import etree
 
 from app.application.configuration import get_chain_runtime_config_snapshot
+from app.foundation.url import UrlUtils
 from app.runtime.log import logger
 
 
@@ -305,30 +306,6 @@ class RssHelper:
         return ".".join(parts[-2:]) if len(parts) >= 2 else hostname
 
     @staticmethod
-    def normalize_url(url: Any) -> Optional[str]:
-        """校验并规范化 RSS HTTP 地址，保留合法地址中的 fragment。"""
-        if not isinstance(url, str):
-            return None
-        normalized_url = url.strip()
-        if not normalized_url:
-            return None
-        if any(character.isspace() for character in normalized_url):
-            return None
-        try:
-            parsed_url = urlparse(normalized_url)
-            hostname = parsed_url.hostname
-            port = parsed_url.port
-        except ValueError:
-            return None
-        if (
-            parsed_url.scheme.lower() not in ("http", "https")
-            or not hostname
-            or (port is not None and not 0 <= port <= 65535)
-        ):
-            return None
-        return normalized_url
-
-    @staticmethod
     def _parse_publish_time(value: str):
         """将 RSS 常见日期表达解析为 datetime，无法解析时返回 None。"""
         try:
@@ -356,6 +333,9 @@ class RssHelper:
     def parse(self, url, proxy: bool = False,
               timeout: Optional[int] = 15, headers: dict = None, ua: str = None) -> Union[List[dict], None, bool]:
         """解析 RSS 地址并保留插件兼容的返回约定。"""
+        url = UrlUtils.normalize_http_url(url)
+        if url is None:
+            return False
         return self._parse_impl(url, proxy=proxy, timeout=timeout, headers=headers, ua=ua)
 
     def _parse_impl(self, url, proxy: bool = False,
@@ -372,11 +352,6 @@ class RssHelper:
         """
         # 开始处理
         ret_array: list = []
-        normalized_url = self.normalize_url(url)
-        if normalized_url is None:
-            return False
-        url = normalized_url
-
         http_port, _, _ = _require_rss_ports()
 
         try:
