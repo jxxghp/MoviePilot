@@ -1927,9 +1927,6 @@
     "type-arg": 3,
     "union-attr": 1
   },
-  "app/modules/musixmatch/__init__.py": {
-    "no-any-return": 1
-  },
   "app/modules/navidrome/__init__.py": {
     "arg-type": 9,
     "type-arg": 1,

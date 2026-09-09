@@ -69,7 +69,6 @@ BASELINE_ASSESSED_MODULES = frozenset(
         "lrclib",
         "mediavault",
         "musicbrainz",
-        "musixmatch",
         "navidrome",
         "plex",
         "postgresql",

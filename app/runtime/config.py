@@ -404,10 +404,6 @@ class ConfigModel(BaseModel):
     THEAUDIODB_API_KEY: str = "123"
     # LRCLIB 服务地址，可指向兼容官方 API 的自建实例
     LRCLIB_BASE_URL: str = "https://lrclib.net"
-    # Musixmatch 官方 API Key；留空时不加载该歌词来源
-    MUSIXMATCH_API_KEY: str = ""
-    # Musixmatch 官方或授权代理 API 根地址
-    MUSIXMATCH_BASE_URL: str = "https://api.musixmatch.com/ws/1.1"
     # 单次音乐刮削批次用于在线歌词查询的总预算（秒）
     LYRICS_BATCH_TIMEOUT: int = 120
     # 供应商要求的重试等待超过该值时进入冷却，不阻塞整个批次

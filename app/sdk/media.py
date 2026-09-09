@@ -1,6 +1,6 @@
-"""插件使用的媒体上下文、标题解析、识别类型和媒体身份规则。"""
+"""插件使用的媒体上下文、歌词候选、标题解析、识别类型和媒体身份规则。"""
 
-from app.domain.context import Context, MediaInfo, TorrentInfo
+from app.domain.context import Context, MediaInfo, MusicInfo, MusicLyrics, TorrentInfo
 from app.domain.meta.customization import set_custom_separator
 from app.domain.meta.metaanime import MetaAnime
 from app.domain.meta.metabase import MetaBase
@@ -52,6 +52,8 @@ __all__ = [
     "MetaInfoPath",
     "MetaMusic",
     "MetaVideo",
+    "MusicInfo",
+    "MusicLyrics",
     "NfoReader",
     "Tokens",
     "MusicNameContext",

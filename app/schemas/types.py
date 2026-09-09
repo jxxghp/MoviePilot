@@ -643,8 +643,9 @@ class ModuleType(Enum):
     Other = "other"
 
 
-# 其他杂项模块类型
 class OtherModulesType(Enum):
+    """标识字幕、歌词等不属于专用服务分类的模块。"""
+
     # 字幕
     Subtitle = "站点字幕"
     # Fanart
@@ -663,8 +664,6 @@ class OtherModulesType(Enum):
     ListenBrainz = "ListenBrainz"
     # LRCLIB 歌词
     Lrclib = "LRCLIB"
-    # Musixmatch 授权歌词
-    Musixmatch = "Musixmatch"
     # AcoustID 音频指纹
     AcoustId = "AcoustID"
 

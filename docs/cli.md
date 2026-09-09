@@ -466,7 +466,6 @@ moviepilot config set ACOUSTID_API_KEY your-acoustid-client-key
 moviepilot config set LRCLIB_BASE_URL https://lrclib.net
 moviepilot config set LYRICS_BATCH_TIMEOUT 120
 moviepilot config set LYRICS_PROVIDER_RETRY_MAX_WAIT 5
-moviepilot config set MUSIXMATCH_API_KEY your-authorized-api-key
 moviepilot config set MUSIC_METADATA_TO_SIMPLIFIED true
 moviepilot config set MUSIC_RELEASE_REGION_PRIORITY CN,TW,HK
 moviepilot config set MUSIC_RELEASE_SCRIPT_PRIORITY Hans,Hant,Latn
@@ -489,7 +488,7 @@ moviepilot config describe API_TOKEN --show-secrets
 - `config keys` 显示配置项名称、类型和默认值
 - `ACOUSTID_API_KEY` 内置可用默认值，也可在前端“高级设置 - 媒体”或配置命令中覆盖；本地安装需要系统可执行路径中存在 Chromaprint `fpcalc`，官方 Docker 镜像已内置
 - `LRCLIB_BASE_URL` 默认使用官方实例，也可指向兼容 LRCLIB API 的自建实例；`LYRICS_BATCH_TIMEOUT` 限制单次专辑刮削的在线歌词总预算，`LYRICS_PROVIDER_RETRY_MAX_WAIT` 决定长 `Retry-After` 进入来源冷却而非阻塞批次
-- `THEAUDIODB_API_KEY` 用于音乐元数据及纯文本歌词兜底，默认 `123` 为官方公开 V1 Key；`MUSIXMATCH_API_KEY` 留空时不加载 Musixmatch，配置后只调用官方或 `MUSIXMATCH_BASE_URL` 指定的授权代理，使用者必须遵守对应账户的歌词存储和展示授权
+- `THEAUDIODB_API_KEY` 用于音乐元数据及纯文本歌词兜底，默认 `123` 为官方公开 V1 Key；额外歌词来源可通过插件提供，接入方式见[歌词插件开发说明](https://github.com/jxxghp/MoviePilot-Plugins/blob/main/docs/faq/21-register-lyrics-provider.md)
 - `MUSIC_METADATA_TO_SIMPLIFIED` 默认开启；开启后会将识别结果中的曲名、艺术家、专辑和分类等标准音乐元数据转换为简体中文，不转换歌词与来源原始响应
 - `MUSIC_RELEASE_REGION_PRIORITY` 与 `MUSIC_RELEASE_SCRIPT_PRIORITY` 分别使用逗号分隔的 ISO 3166-1 地区代码和 ISO 15924 文字代码；仅在 MusicBrainz 候选结构同样可信时作为发行版本排序依据，最多使用前三项
 - `config describe` 显示单个配置项的类型、默认值和当前值

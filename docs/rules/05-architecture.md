@@ -560,6 +560,11 @@ is itself part of the plugin ABI stays at its established path as a thin facade;
 new plugin-facing symbols are exported deliberately through `app/sdk` and its
 architecture snapshot, not through incidental module globals.
 
+歌词来源插件通过 `get_module()` 注册 `music_lyrics_candidates(music)`，使用
+`app.sdk.media` 的 `MetaMusic`、`MusicInfo` 和 `MusicLyrics` 公共类型。插件拥有
+来源匹配与歌词内容下载；`LyricsChain` 聚合插件和内置来源候选，`ScrapingChain`
+拥有质量保护与存储写入。SDK 仅导出既有领域类型，不复制歌词解析或刮削实现。
+
 ## Existing Chain, Module and DB Layers
 
 ### Chain layer

@@ -1074,8 +1074,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8458,
-  "edge_sha256": "77a25667756a4b63d8487ac44252d77662044f1ea74d7c77dc0e4383a22d5f10",
+  "edge_count": 8445,
+  "edge_sha256": "7acc7fea7e9d6568c856c6227994ac8ffb6557e93ff575f1e7650783d081acd2",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7117,19 +7117,6 @@
     "app.modules.musicbrainz.cache -> app.runtime.settings",
     "app.modules.musicbrainz.cache -> app.schemas",
     "app.modules.musicbrainz.cache -> app.schemas.types",
-    "app.modules.musixmatch -> app.adapters",
-    "app.modules.musixmatch -> app.adapters.network",
-    "app.modules.musixmatch -> app.adapters.network.http",
-    "app.modules.musixmatch -> app.domain",
-    "app.modules.musixmatch -> app.domain.context",
-    "app.modules.musixmatch -> app.domain.meta",
-    "app.modules.musixmatch -> app.domain.meta.metamusic",
-    "app.modules.musixmatch -> app.modules",
-    "app.modules.musixmatch -> app.runtime",
-    "app.modules.musixmatch -> app.runtime.log",
-    "app.modules.musixmatch -> app.runtime.settings",
-    "app.modules.musixmatch -> app.schemas",
-    "app.modules.musixmatch -> app.schemas.types",
     "app.modules.navidrome -> app.application",
     "app.modules.navidrome -> app.application.mediaserver",
     "app.modules.navidrome -> app.domain",
@@ -9536,7 +9523,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 995,
+  "module_count": 994,
   "modules": [
     "app",
     "app.adapters",
@@ -10218,7 +10205,6 @@
     "app.modules.mediavault.module",
     "app.modules.musicbrainz",
     "app.modules.musicbrainz.cache",
-    "app.modules.musixmatch",
     "app.modules.navidrome",
     "app.modules.navidrome.navidrome",
     "app.modules.plex",

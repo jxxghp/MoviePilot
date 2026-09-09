@@ -10002,6 +10002,16 @@
       },
       {
         "kind": "import",
+        "name": "MusicInfo",
+        "target": "app.domain.context.MusicInfo"
+      },
+      {
+        "kind": "import",
+        "name": "MusicLyrics",
+        "target": "app.domain.context.MusicLyrics"
+      },
+      {
+        "kind": "import",
         "name": "MusicNameContext",
         "target": "app.domain.meta.metamusic.MusicNameContext"
       },
