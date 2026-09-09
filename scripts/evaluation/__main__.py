@@ -1,4 +1,4 @@
-"""离线回放评测轨迹；此入口不会调用模型、真实 MoviePilot 或外部服务。"""
+"""分别提供离线轨迹回放与显式真实模型评测；业务操作只进入假世界。"""
 
 import argparse
 import hashlib
@@ -16,6 +16,15 @@ MAX_REPLAY_CALLS = 32
 _CALL_FIELDS = frozenset({"operation_id", "path_params", "query", "body"})
 
 
+def _source_digest(root: Path) -> str:
+    """按路径和内容记录生产运行时或内置技能，不把源码正文送进模型或报告。"""
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc":
+            digest.update(path.relative_to(root).as_posix().encode("utf-8") + b"\0" + path.read_bytes() + b"\0")
+    return digest.hexdigest()
+
+
 def _provenance(world: EvaluationWorld) -> dict[str, Any]:
     """记录实际场景与判定代码指纹，避免未提交或修改后的轨迹被混为同一基线。"""
     fixture = json.dumps({"scenario": asdict(world.scenario), "initial": world.initial_snapshot()},
@@ -23,7 +32,10 @@ def _provenance(world: EvaluationWorld) -> dict[str, Any]:
     digest = hashlib.sha256()
     for path in sorted(Path(__file__).parent.glob("*.py")):
         digest.update(path.name.encode("utf-8") + b"\0" + path.read_bytes() + b"\0")
+    repository = Path(__file__).resolve().parents[2]
     return {"schema_version": 1, "scenario_sha256": hashlib.sha256(fixture.encode("utf-8")).hexdigest(),
+            "production_agent_sha256": _source_digest(repository / "app" / "agent"),
+            "skills_sha256": _source_digest(repository / "skills"),
             "harness_sha256": digest.hexdigest(), "model": None, "model_calls": 0, "tokens": None}
 
 
@@ -44,24 +56,43 @@ def replay(scenario_id: str, payload: Any) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """打印公开场景或回放文件，并以非零退出码表达验收未通过。"""
-    parser = argparse.ArgumentParser(description="MoviePilot Agent 离线轨迹验收；不代表真实模型评分")
-    parser.add_argument("--list", action="store_true", help="列出公开场景，不输出初态或答案")
+    """显式区分回放与真实调用，并以非零退出码表达验收未通过。"""
+    parser = argparse.ArgumentParser(description="MoviePilot Agent 隔离任务评测；--live 才会调用真实模型")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--list", action="store_true", help="列出公开场景，不输出初态或答案")
+    mode.add_argument("--replay", type=Path, help="包含 calls 与 final 的 JSON 轨迹")
+    mode.add_argument("--live", action="store_true", help="显式调用真实模型，业务只进入隔离假世界")
     parser.add_argument("--scenario", choices=[item.scenario_id for item in list_scenarios()])
-    parser.add_argument("--replay", type=Path, help="包含 calls 与 final 的 JSON 轨迹")
     parser.add_argument("--output", type=Path, help="可选 JSON 报告路径")
+    parser.add_argument("--codex-config", type=Path, default=Path.home() / ".codex" / "config.toml")
+    parser.add_argument("--model", help="真实评测的模型名称，默认沿用显式 Codex provider 配置")
+    parser.add_argument("--reasoning-effort", help="真实评测推理预算，默认沿用配置")
+    parser.add_argument("--max-model-calls", type=int, default=12)
+    parser.add_argument("--max-output-tokens", type=int, default=8192)
+    parser.add_argument("--timeout-seconds", type=int, default=180)
     args = parser.parse_args(argv)
     if args.list:
         print(json.dumps([{"id": item.scenario_id, "task": item.model_input()} for item in list_scenarios()], ensure_ascii=False, indent=2))
         return 0
-    if args.scenario is None or args.replay is None:
-        parser.error("回放需要 --scenario 和 --replay")
+    if args.scenario is None:
+        parser.error("评测需要 --scenario")
     try:
-        if args.replay.stat().st_size > MAX_REPLAY_BYTES:
-            raise ValueError("回放文件超过 256 KiB")
-        payload = json.loads(args.replay.read_text(encoding="utf-8"))
-        result = replay(args.scenario, payload)
-    except (OSError, UnicodeError, ValueError, TypeError) as error:
+        if args.live:
+            from scripts.evaluation.live import run_live
+            from scripts.evaluation.models import load_codex_model_settings
+
+            settings = load_codex_model_settings(
+                args.codex_config, model=args.model, reasoning_effort=args.reasoning_effort,
+                max_model_calls=args.max_model_calls, max_output_tokens=args.max_output_tokens,
+                timeout_seconds=args.timeout_seconds,
+            )
+            result = run_live(args.scenario, settings)
+        else:
+            if args.replay.stat().st_size > MAX_REPLAY_BYTES:
+                raise ValueError("回放文件超过 256 KiB")
+            payload = json.loads(args.replay.read_text(encoding="utf-8"))
+            result = replay(args.scenario, payload)
+    except (OSError, UnicodeError, ValueError, TypeError, RuntimeError) as error:
         parser.error(str(error))
     rendered = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output is not None:

@@ -7,6 +7,8 @@ _PUBLIC_INSTRUCTIONS = (
     "不要重复提交已有订阅或资源。"
     "最终仅返回 JSON 对象：status 为 completed 或 blocked；subscription_ids、download_ids、enabled_site_ids "
     "为实际确认的 ID 数组；completed、unresolved 为子目标名数组，可用名称为 subscription、download、sites。"
+    "completed、unresolved 只填写本次任务明确要求的子目标；未要求的类别对应 ID 数组必须为空，"
+    "必要的辅助读取不增加任务子目标。"
     "无证据的 ID 不要编造，暂时无法确认的事项放入 unresolved。"
 )
 
