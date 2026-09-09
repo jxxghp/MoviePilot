@@ -21,7 +21,7 @@
     "app/chain/search/media.py:SearchMediaOwner": 522,
     "app/chain/search/provider.py:SearchProviderOwner": 662,
     "app/chain/search/subtitle.py:SearchSubtitleOwner": 528,
-    "app/chain/site.py:SiteChain": 1015,
+    "app/chain/site.py:SiteChain": 1003,
     "app/chain/subscribe/create.py:SubscribeCreateOwner": 646,
     "app/chain/subscribe/match.py:SubscribeMatchOwner": 571,
     "app/chain/subscribe/refresh.py:SubscribeRefreshOwner": 760,
@@ -45,7 +45,7 @@
     "app/chain/interaction.py": 1571,
     "app/chain/message.py": 1984,
     "app/chain/scraping.py": 2065,
-    "app/chain/site.py": 1199,
+    "app/chain/site.py": 1187,
     "app/chain/transfer/queue.py": 1631,
     "app/chain/transfer/workflow.py": 1106,
     "app/chain/workflow.py": 1391

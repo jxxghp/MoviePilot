@@ -26,10 +26,14 @@ from app.domain.plugin import (
     is_local_plugin_source,
     is_physical_plugin_id,
     is_plugin_generation_compatible,
-    normalize_plugin_market_repo_url as _normalize_plugin_market_repo_url,
     parse_local_plugin_generation,
     parse_local_plugin_path,
     parse_local_plugin_reference,
+)
+from app.domain.plugin import (
+    normalize_plugin_market_repo_url as _normalize_plugin_market_repo_url,
+)
+from app.domain.plugin import (
     split_plugin_market_repo_urls as _split_plugin_market_repo_urls,
 )
 from app.foundation.environment import is_free_threaded_runtime
