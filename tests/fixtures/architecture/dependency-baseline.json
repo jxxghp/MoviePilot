@@ -1074,8 +1074,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8356,
-  "edge_sha256": "62b05583fcf296d4f33f9c5ba77eeb8f5a8a200a3809e74ad4df28726587ece4",
+  "edge_count": 8358,
+  "edge_sha256": "c0785c61259ea746f28fa0e13d65fb72c3d0d438d52bc624177f0787f98f8728",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
