@@ -51,6 +51,13 @@ recognition, transfer, and history tools are not available.
 - Detail: `media.detail` with `path_params.media_id` and identity/type in `query`.
 - Library check: `library.exists` with the exact identity in `query`.
 - Transfer: `transfer.file` with the manual-transfer request in `body`.
+- Actual transfer responses include `data.items` even when the batch reports
+  failure. Inspect every item's `state`: `accepted` and `retry_wait` mean that
+  background work remains; only `completed` confirms execution and settlement.
+  `manual_review` requires resolving the task in the transfer queue first;
+  `failed` and `skipped` do not mean imported. Do not resubmit an entire batch
+  that already contains accepted or completed items. Preview responses remain
+  planning data and do not contain execution states.
 - Scrape: `media.scrape` with `path_params.storage`, file item in `body`, and
   exact identity/type fields in `query`.
 

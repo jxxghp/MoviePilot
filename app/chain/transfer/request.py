@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from app.application.formatting import FormatParser
 from app.application.history import (
@@ -509,3 +509,96 @@ def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) 
             "customization": item_meta.customization if item_meta else None,
         }
     )
+
+
+class _TransferSubmissionCollector:
+    """按当前请求收集真实阶段回执，不改变任务、重试或结算的所有权。"""
+
+    def __init__(self, enabled: bool = False, source: Optional[FileItem] = None) -> None:
+        """普通整理调用默认关闭回执，维持原有字符串返回契约。"""
+        self.enabled = enabled
+        self.source = source
+        self.items: list[dict[str, Any]] = []
+        self._results: dict[int, TransferInfo] = {}
+        self._pending: dict[tuple[Optional[str], Optional[str]], FileItem] = {}
+
+    def expect(self, fileitems: list[tuple[FileItem, bool]]) -> None:
+        """保留候选快照，取消发生后仍能说明哪些文件没有被执行。"""
+        if self.enabled:
+            self._pending.update({(item.storage, item.path): item for item, _bluray in fileitems})
+
+    def record(
+        self, fileitem: FileItem,
+        state: Literal["accepted", "completed", "failed", "retry_wait", "skipped", "manual_review"],
+        message: Optional[str] = None,
+        *, target_dir: Optional[Path] = None,
+    ) -> None:
+        """在准入、历史跳过或重试决策发生时记录回执。"""
+        if not self.enabled:
+            return
+        self._pending.pop((fileitem.storage, fileitem.path), None)
+        self.items.append({
+            "source": fileitem.path, "state": state,
+            "success": state in {"accepted", "completed", "retry_wait"},
+            "message": message,
+            "target_dir": target_dir.as_posix() if target_dir else None,
+        })
+
+    def capture(self, task: TransferTask, transferinfo: TransferInfo) -> None:
+        """暂存执行结果，等终态原子结算确认后再公布 completed。"""
+        if self.enabled:
+            self._results[id(task)] = transferinfo
+
+    def execution(
+        self, task: TransferTask, success: bool, message: str,
+        *, durable_state: Optional[str],
+    ) -> None:
+        """只有已确认的终态可报告完成，未确认终态保留后台重试状态。"""
+        if not self.enabled:
+            return
+        info = self._results.pop(id(task), None)
+        state: Literal["accepted", "completed", "failed", "retry_wait", "skipped", "manual_review"] = "failed"
+        if task.terminal_settled:
+            state = "completed" if (info.success if info else success) else "failed"
+            if info and info.overwrite_skipped:
+                state = "skipped"
+        elif durable_state == "manual_review":
+            state = "manual_review"
+        elif durable_state in {"not_started", "running", "retry_wait", "settling"}:
+            state = "retry_wait"
+        elif durable_state == "unknown":
+            state = "accepted"
+            message = f"{message}；任务状态暂未确认，请刷新整理历史"
+        elif success:
+            state = "accepted"
+        if state == "completed" and not success:
+            message = "文件已完成整理，但后续处理失败，请检查整理日志，无需重复整理"
+        self.record(task.fileitem, state, message, target_dir=task.target_path)
+        if info:
+            projected = build_transfer_preview_item(task, info)
+            self.items[-1].update({key: projected[key] for key in (
+                "target", "target_dir", "failure_stage", "recovery_action", "overwrite_skipped",
+            )})
+        if state == "manual_review":
+            self.items[-1]["recovery_action"] = "打开整理队列，先完成人工复核，再决定是否重试"
+
+    def result(
+        self, success: bool, errors: list[str], *, preview: bool,
+        preview_items: list[dict[str, Any]],
+    ) -> tuple[bool, Union[str, dict[str, Any]]]:
+        """保持预览与旧调用返回值，同时让管理界面收到完整执行回执。"""
+        message = "、".join(errors[:2]) + (f"，等{len(errors)}个文件错误！" if len(errors) > 2 else "")
+        if preview:
+            return success, {
+                "summary": {
+                    "total": len(preview_items),
+                    "success": sum(bool(item.get("success")) for item in preview_items),
+                    "failed": sum(not item.get("success") for item in preview_items),
+                },
+                "items": preview_items, "message": message,
+            }
+        for pending in list(self._pending.values()):
+            self.record(pending, "skipped" if success else "failed", message or "本次整理未执行")
+        if self.enabled and not self.items and self.source:
+            self.record(self.source, "skipped" if success else "failed", message or "没有需要执行的整理任务")
+        return success, {"items": self.items, "message": message} if self.enabled else message

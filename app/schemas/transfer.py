@@ -400,10 +400,33 @@ class ManualTransferPreviewItem(BaseModel):
 
 
 class ManualTransferResultData(BaseModel):
-    """手动整理预览或执行结果数据。"""
+    """手动整理预览数据，不表示执行或入库已完成。"""
 
     summary: Optional[ManualTransferPreviewSummary] = None
     items: list[ManualTransferPreviewItem] = Field(default_factory=list)
+    message: Optional[str] = None
+
+
+# 现有 mypy 配置把 Pydantic 基类视为 Any，公开字段仍由显式模型校验。
+class ManualTransferSubmissionItem(BaseModel):  # type: ignore[misc]
+    """实际提交的逐文件回执，接收和等待重试均不表示已入库。"""
+
+    state: Literal["accepted", "completed", "failed", "retry_wait", "skipped", "manual_review"]
+    source: Optional[str] = None
+    target: Optional[str] = None
+    target_dir: Optional[str] = None
+    # 表示本次操作被接收或完成；实际入库只以 completed 为准。
+    success: bool = False
+    message: Optional[str] = None
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    overwrite_skipped: bool = False
+
+
+class ManualTransferSubmissionData(BaseModel):  # type: ignore[misc]
+    """实际提交结果，即使批次失败也保留已接收、完成和跳过的文件。"""
+
+    items: list[ManualTransferSubmissionItem] = Field(default_factory=list)
     message: Optional[str] = None
 
 

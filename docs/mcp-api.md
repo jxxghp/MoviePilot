@@ -289,6 +289,14 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | GET | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员查询单个 durable 人工复核任务详情；仅可读取 `manual_review` 或已经人工判定的 `retry_wait` 任务，其余状态按不存在处理 |
 | POST | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员判定处于 `manual_review` 的 durable 整理步骤；请求包含 `operation_id`、`decision=not_applied|applied`、`reason`，`applied` 还必须提供 `result_payload`。`failed` 不属于公开决策，失败终态只能由持租约的 durable 结算写入；响应仅返回任务、操作、决策、后续状态和复核修订号 |
 
+`transfer/manual` 在 `preview=true` 时保留预览的 `summary/items/message`，不返回执行状态。
+实际提交返回独立的 `data.items` 回执，即使批次 `success=false` 也保留其他文件的结果。
+每项包含 `source/target/target_dir/success/message/failure_stage/recovery_action/overwrite_skipped/state`；
+`state=accepted` 仅表示已接收，`retry_wait` 表示原计划已交给后台恢复，均不代表入库。
+仅 `completed` 表示执行和终态原子结算已确认；`failed` 表示本次失败，`skipped` 表示历史、模板或覆盖策略跳过。
+`manual_review` 表示等待人工复核，应先在整理队列中确认执行结果，不能自动重提。
+`success` 表示本次操作被接收或完成，不能代替 `state` 判断入库；客户端不得在部分接收后原样重提整个批次。
+
 #### 站点
 
 | 方法 | 路径 | 说明 |

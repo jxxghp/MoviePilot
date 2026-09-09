@@ -58,14 +58,16 @@ class TransferHistoryOwner(_TransferOwnerBase):
             self,
             transfer_kwargs: dict[str, Any],
             selected_fileitems: Optional[list[FileItem]],
+            report_results: bool = False,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """显式文件批次走内部入口，普通请求继续保持公开签名兼容。"""
-        if selected_fileitems is not None:
+        if selected_fileitems is not None or report_results:
             return cast(
                 Tuple[bool, Union[str, dict[str, Any]]],
                 self._execute_transfer(
                     **transfer_kwargs,
                     selected_fileitems=selected_fileitems,
+                    report_results=report_results,
                 ),
             )
         return cast(
@@ -191,6 +193,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
             selected_fileitems: Optional[list[FileItem]] = None,
+            report_results: bool = False,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         手动整理，支持复杂条件，带进度显示
@@ -220,6 +223,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
         :param music_release_regions: 本次音乐整理的发行地区优先级，空值继承系统设置
         :param music_release_scripts: 本次音乐整理的文字字形优先级，空值继承系统设置
         :param selected_fileitems: 前端显式选中的批量文件
+        :param report_results: 返回实际阶段回执，后台接收不表示入库完成
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         explicit_identity = media_source is not None or media_id is not None
@@ -274,12 +278,12 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
             )
-            state, errmsg = self._run_manual_transfer_request(transfer_kwargs, selected_fileitems)
+            state, errmsg = self._run_manual_transfer_request(transfer_kwargs, selected_fileitems, report_results)
             if not state:
                 return False, errmsg
 
-            logger.info(f"{fileitem.path} 整理完成")
-            return True, errmsg if preview else ""
+            logger.info(f"{fileitem.path} 整理请求处理完成")
+            return True, errmsg if preview or report_results else ""
         else:
             # 没有输入媒体ID时，按文件识别
             transfer_kwargs = dict(
@@ -307,7 +311,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
             )
-            state, errmsg = self._run_manual_transfer_request(transfer_kwargs, selected_fileitems)
+            state, errmsg = self._run_manual_transfer_request(transfer_kwargs, selected_fileitems, report_results)
             return state, errmsg
 
     def send_transfer_message(

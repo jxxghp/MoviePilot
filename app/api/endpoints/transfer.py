@@ -42,6 +42,8 @@ from app.schemas.transfer import EpisodeFormatRecommendData as _SchemaEpisodeFor
 from app.schemas.transfer import EpisodeFormatRecommendItem, ManualTransferItem
 from app.schemas.transfer import ManualTransferHistoryInfo as _SchemaManualTransferHistoryInfo
 from app.schemas.transfer import ManualTransferResultData as _SchemaManualTransferResultData
+from app.schemas.transfer import ManualTransferSubmissionData as _SchemaManualTransferSubmissionData
+from app.schemas.transfer import ManualTransferSubmissionItem as _SchemaManualTransferSubmissionItem
 from app.schemas.transfer import ManualTransferTargetPath as _SchemaManualTransferTargetPath
 from app.schemas.transfer import TransferJob as _SchemaTransferJob
 from app.schemas.transfer import TransferManualReviewData as _SchemaTransferManualReviewData
@@ -87,8 +89,8 @@ def _public_transfer_result(data: dict[str, Any]) -> dict[str, Any]:
                     public_item.get("message"),
                     overwrite_skipped=bool(public_item.get("overwrite_skipped")),
                 )
-                public_item.setdefault("failure_stage", feedback.stage.value)
-                public_item.setdefault("recovery_action", feedback.action)
+                public_item["failure_stage"] = public_item.get("failure_stage") or feedback.stage.value
+                public_item["recovery_action"] = public_item.get("recovery_action") or feedback.action
             public_items.append(public_item)
         result["items"] = public_items
     return result
@@ -151,6 +153,41 @@ def _merge_transfer_messages(messages: List[str]) -> str:
         return ""
     return "、".join(valid_messages[:2]) + (
         f"，等{len(valid_messages)}条消息" if len(valid_messages) > 2 else ""
+    )
+
+
+def _manual_submission_items(
+    fileitem: FileItem, success: bool, result: object, target_path: Optional[Path],
+) -> list[_SchemaManualTransferSubmissionItem]:
+    """映射真实执行回执，旧返回值最多确认接收，不能推断入库完成。"""
+    if isinstance(result, dict):
+        items = _public_transfer_result(result).get("items")
+        if isinstance(items, list):
+            return [_SchemaManualTransferSubmissionItem.model_validate(item) for item in items]
+    message = _public_transfer_message(result)
+    data = _public_transfer_result({"items": [{
+        "source": fileitem.path, "success": success,
+        "state": "accepted" if success else "failed", "message": message,
+        "target_dir": target_path.as_posix() if target_path else None,
+    }]})
+    return [_SchemaManualTransferSubmissionItem.model_validate(item) for item in data["items"]]
+
+
+def _manual_submission_response(
+    success: bool, items: list[_SchemaManualTransferSubmissionItem],
+) -> Any:
+    """保留部分成功文件，并继续为旧客户端提供包含失败路径的总提示。"""
+    errors = [
+        _format_manual_transfer_failure(
+            message=item.message, source_path=item.source,
+            target_path=item.target or item.target_dir,
+        )
+        for item in items if item.state in {"failed", "retry_wait", "manual_review"} and item.message
+    ]
+    message = _merge_transfer_messages(errors or [item.message for item in items if item.message and not success])
+    return _SchemaResponse(
+        success=success, message=message,
+        data=_SchemaManualTransferSubmissionData(items=items, message=message),
     )
 
 
@@ -608,7 +645,7 @@ def query_manual_transfer_history(
 @router.post(
     "/manual",
     summary="手动转移",
-    response_model=_SchemaResponse[_SchemaManualTransferResultData],
+    response_model=_SchemaResponse[_SchemaManualTransferSubmissionData | _SchemaManualTransferResultData],
 )
 def manual_transfer(
     transer_item: ManualTransferItem,
@@ -781,6 +818,7 @@ def _execute_manual_transfer(
     # 前端显式传入文件列表时，按选中的文件逐个处理，避免将目录整体展开。
     if explicit_selected_files:
         preview_items: List[dict] = []
+        submission_items: list[_SchemaManualTransferSubmissionItem] = []
         error_messages: List[str] = []
         all_success = True
         for src_fileitem in src_fileitems:
@@ -810,6 +848,7 @@ def _execute_manual_transfer(
                 reorganize=transer_item.reorganize,
                 sync_extra_files=False,
                 cleanup_dest_fileitem=cleanup_dest_fileitem,
+                report_results=not transer_item.preview,
             )
             if transer_item.preview:
                 if isinstance(errormsg, dict):
@@ -832,19 +871,9 @@ def _execute_manual_transfer(
                         )
                     )
                     all_success = False
-            elif not state:
-                all_success = False
-                if isinstance(errormsg, list):
-                    failure_message = "；".join(str(msg) for msg in errormsg if msg)
-                else:
-                    failure_message = str(errormsg or "整理失败")
-                error_messages.append(
-                    _format_manual_transfer_failure(
-                        message=failure_message,
-                        source_path=src_fileitem.path,
-                        target_path=target_path.as_posix() if target_path else None,
-                    )
-                )
+            else:
+                all_success = all_success and state
+                submission_items.extend(_manual_submission_items(src_fileitem, state, errormsg, target_path))
 
         if transer_item.preview:
             merged_preview_items: List[dict] = []
@@ -879,12 +908,7 @@ def _execute_manual_transfer(
                 data=preview_data,
             )
 
-        if not all_success:
-            return _SchemaResponse(
-                success=False,
-                message=_merge_transfer_messages(error_messages),
-            )
-        return _SchemaResponse(success=True)
+        return _manual_submission_response(all_success, submission_items)
 
     src_fileitem = src_fileitems[0]
     # 开始转移
@@ -919,30 +943,20 @@ def _execute_manual_transfer(
         sync_extra_files=selected_music_fileitems is None,
         cleanup_dest_fileitem=cleanup_dest_fileitem,
         selected_fileitems=selected_music_fileitems,
+        report_results=not transer_item.preview,
     )
-    # 失败
-    if not state:
-        if isinstance(errormsg, list):
-            errormsg = f"整理完成，{len(errormsg)} 个文件转移失败！"
-        if isinstance(errormsg, dict):
-            public_result = _public_transfer_result(errormsg)
-            return _SchemaResponse(
-                success=True,
-                message=public_result.get("message"),
-                data=public_result,
-            )
-        return _SchemaResponse(
-            success=False,
-            message=_format_manual_transfer_failure(
-                message=errormsg,
-                source_path=src_fileitem.path,
-                target_path=target_path.as_posix() if target_path else None,
-            ),
-        )
-    # 成功
-    if transer_item.preview:
+    if not transer_item.preview:
+        return _manual_submission_response(state, _manual_submission_items(src_fileitem, state, errormsg, target_path))
+    # 预览失败仍返回完整预览列表，实际提交的总状态已在上方独立处理。
+    if isinstance(errormsg, dict):
+        public_result = _public_transfer_result(errormsg)
+        return _SchemaResponse(success=True, message=public_result.get("message"), data=public_result)
+    if state:
         return _SchemaResponse(success=True, data=errormsg or {})
-    return _SchemaResponse(success=True)
+    return _SchemaResponse(success=False, message=_format_manual_transfer_failure(
+        message=errormsg, source_path=src_fileitem.path,
+        target_path=target_path.as_posix() if target_path else None,
+    ))
 
 
 @router.post(

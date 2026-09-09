@@ -216,6 +216,8 @@ SCHEMA_EXPORTS = {
     'ManualTransferPreviewItem': ('app.schemas.transfer', 'ManualTransferPreviewItem'),
     'ManualTransferPreviewSummary': ('app.schemas.transfer', 'ManualTransferPreviewSummary'),
     'ManualTransferResultData': ('app.schemas.transfer', 'ManualTransferResultData'),
+    'ManualTransferSubmissionData': ('app.schemas.transfer', 'ManualTransferSubmissionData'),
+    'ManualTransferSubmissionItem': ('app.schemas.transfer', 'ManualTransferSubmissionItem'),
     'ManualTransferTargetPath': ('app.schemas.transfer', 'ManualTransferTargetPath'),
     'McpJsonRpcCapabilities': ('app.schemas.mcp', 'McpJsonRpcCapabilities'),
     'McpJsonRpcClientInfo': ('app.schemas.mcp', 'McpJsonRpcClientInfo'),
