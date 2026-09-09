@@ -112,6 +112,7 @@ EXPLICIT_TRANSPORT_PATHS = frozenset(
 )
 SUBSCRIPTION_EXECUTION_UI_PREFIX = "/api/v1/subscribe/execution/"
 CLASSIFICATION_POLICY_UI_PREFIX = "/api/v1/media/classification/"
+MUSIC_LIBRARY_STATUS_UI_PATH = "/api/v1/music/library/status"
 
 
 def _gateway_routes() -> dict[tuple[str, str], list[str]]:
@@ -194,6 +195,13 @@ def _classify(
             "ui_presentation",
             "host-ui",
             "Classification policy authoring, validation, preview, impact analysis, and publication are owned by the authenticated frontend editor until a stable Agent governance contract is approved.",
+            [],
+        )
+    if method == "POST" and path == MUSIC_LIBRARY_STATUS_UI_PATH:
+        return (
+            "ui_presentation",
+            "host-ui",
+            "Batch music-library presence is a bounded projection for the authenticated artist resource matrix; it is not a standalone Agent business action.",
             [],
         )
     if path in EXPLICIT_TRANSPORT_PATHS:

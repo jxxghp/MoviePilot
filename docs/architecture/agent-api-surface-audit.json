@@ -6,7 +6,7 @@
     "provider-skill": 12,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
-    "ui_presentation": 22
+    "ui_presentation": 23
   },
   "dynamic_gateway_routes": [
     {
@@ -21,7 +21,7 @@
   "gateway_http_route_count": 203,
   "gateway_operation_count": 205,
   "matched_gateway_http_route_count": 202,
-  "openapi_operation_count": 395,
+  "openapi_operation_count": 396,
   "operations": [
     {
       "disposition": "consolidated",
@@ -1890,6 +1890,18 @@
       "path": "/api/v1/music/explore",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "探索音乐",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/music/library/status",
+      "reason": "Batch music-library presence is a bounded projection for the authenticated artist resource matrix; it is not a standalone Agent business action.",
+      "summary": "批量查询音乐专辑入库状态",
       "tags": [
         "music"
       ]
