@@ -470,16 +470,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 return False, "Cookie已过期"
             return False, f"错误：{res.status_code} {res.reason}"
 
-    @staticmethod
-    def __resolve_site_page_url(site_url: str, page_path: Optional[str]) -> str:
-        """将站点资源声明的相对页面路径解析为绝对地址。"""
-        page_path = str(page_path or "").strip()
-        if not page_path:
-            return site_url
-        if page_path.startswith(("http://", "https://")):
-            return page_path
-        return urljoin(f"{str(site_url).rstrip('/')}/", page_path.lstrip("/"))
-
     def __hddolby_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
         判断站点是否已经登陆：hddolby
@@ -693,7 +683,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             logger.warning(f"站点 {domain} 已在黑名单中，不添加站点")
             return 0, 0, 0, False
         domain_url = self._cookiecloud_indexer_domain(indexer, domain)
-        login_url = self.__resolve_site_page_url(domain_url, indexer.get("login_path"))
+        login_url = site_rules.resolve_page_url(domain_url, indexer.get("login_path"))
         proxy, response = self._cookiecloud_connect(login_url, cookie, indexer)
         if response is None:
             return 0, 0, 1, False
@@ -886,16 +876,14 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 state, message = special_test(site_info)
             else:
                 indexer = SitesHelper().get_indexer(domain) or {}
-                login_path = indexer.get("login_path")
-                if login_path:
-                    state, message = self.__test(
-                        replace(
-                            site_info,
-                            url=self.__resolve_site_page_url(site_info.url, login_path),
-                        )
+                state, message = self.__test(
+                    replace(
+                        site_info,
+                        url=site_rules.resolve_page_url(
+                            site_info.url, indexer.get("login_path")
+                        ),
                     )
-                else:
-                    state, message = self.__test(site_info)
+                )
             # 统计
             seconds = (datetime.now() - start_time).seconds
             if state:

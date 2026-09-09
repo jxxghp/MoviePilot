@@ -26,10 +26,14 @@ from app.domain.plugin import (
     is_local_plugin_source,
     is_physical_plugin_id,
     is_plugin_generation_compatible,
-    normalize_plugin_market_repo_url as _normalize_plugin_market_repo_url,
     parse_local_plugin_generation,
     parse_local_plugin_path,
     parse_local_plugin_reference,
+)
+from app.domain.plugin import (
+    normalize_plugin_market_repo_url as _normalize_plugin_market_repo_url,
+)
+from app.domain.plugin import (
     split_plugin_market_repo_urls as _split_plugin_market_repo_urls,
 )
 from app.foundation.environment import is_free_threaded_runtime
@@ -1157,7 +1161,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     def _remove_index_task(
         cls,
         key: tuple[asyncio.AbstractEventLoop, str, str],
-        task: asyncio.Task[Optional[PluginIndex]],
+        task: asyncio.Future[Optional[PluginIndex]],
     ) -> None:
         """异步索引请求结束后释放事件循环和仓库引用。"""
         with cls._index_task_lock:
@@ -1219,10 +1223,14 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         key = self._plugin_index_key(repo_url, package_version)
         with self._index_future_lock:
             future = self._index_futures.get(key)
-            owner = future is None
-            if owner:
-                future = Future()
+            if future is None:
+                future = Future[Optional[PluginIndex]]()
                 self._index_futures[key] = future
+                owner = True
+            else:
+                owner = False
+
+        assert future is not None
 
         if not owner:
             return future.result()
@@ -1588,12 +1596,13 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                     ),
                 )
                 self._index_tasks[task_key] = task
-                task.add_done_callback(
-                    lambda completed_task, key=task_key: self._remove_index_task(
-                        key,
-                        completed_task,
-                    )
-                )
+
+                def on_index_task_done(
+                    completed_task: asyncio.Future[Optional[PluginIndex]],
+                ) -> None:
+                    self._remove_index_task(task_key, completed_task)
+
+                task.add_done_callback(on_index_task_done)
 
         # 单个调用方取消等待时不能连带取消共享请求。
         return await asyncio.shield(task)

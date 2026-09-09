@@ -167,9 +167,6 @@
   "app/domain/scraper.py": {
     "I001": 1
   },
-  "app/domain/site.py": {
-    "I001": 1
-  },
   "app/domain/title.py": {
     "I001": 1
   },
