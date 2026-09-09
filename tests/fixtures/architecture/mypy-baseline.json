@@ -2248,9 +2248,8 @@
     "assignment": 1,
     "attr-defined": 3,
     "no-redef": 2,
-    "no-untyped-call": 36,
-    "no-untyped-def": 44,
-    "operator": 1
+    "no-untyped-call": 34,
+    "no-untyped-def": 44
   },
   "app/modules/thetvdb/__init__.py": {
     "empty-body": 1,

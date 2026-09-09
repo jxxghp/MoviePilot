@@ -56,6 +56,8 @@ def _is_empty_result_snapshot(snapshot) -> bool:
 
 
 class TMDb(object):
+    """封装 TMDB 请求、响应缓存及有界的连接和限流重试。"""
+
     _RESPONSE_SNAPSHOT_MARKER = "__mp_tmdb_response_snapshot__"
 
     def __init__(self, session=None, language=None):
@@ -365,26 +367,21 @@ class TMDb(object):
         )
 
     def _handle_headers(self, headers):
+        """只记录当前响应的限流状态，缺失字段不能沿用上次耗尽的配额。"""
         normalized_headers = {
             str(key).lower(): value for key, value in dict(headers or {}).items()
         }
 
-        if "x-ratelimit-remaining" in normalized_headers:
-            self._remaining = int(normalized_headers["x-ratelimit-remaining"])
-
-        if "x-ratelimit-reset" in normalized_headers:
-            self._reset = int(normalized_headers["x-ratelimit-reset"])
+        self._remaining = int(normalized_headers.get("x-ratelimit-remaining", 40))
+        reset = normalized_headers.get("x-ratelimit-reset")
+        self._reset = int(reset) if reset is not None else None
 
     def _handle_rate_limit(self):
+        """计算尚未到期的限流等待；缺少重置时间时直接报告限流。"""
         if self._remaining < 1:
-            current_time = int(time.time())
-            sleep_time = self._reset - current_time
-
-            if self.wait_on_rate_limit:
-                logger.warning("达到请求频率限制，休眠：%d 秒..." % sleep_time)
-                return abs(sleep_time)
-            else:
+            if not self.wait_on_rate_limit or self._reset is None:
                 raise TMDbException("达到请求频率限制，请稍后再试！")
+            return max(0, self._reset - int(time.time()))
         return 0
 
     def _process_json_response(self, json_data, is_async=False):
@@ -419,23 +416,30 @@ class TMDb(object):
 
     def _request_obj(self, action, params="", call_cached=True,
                      method="GET", data=None, json=None, key=None):
+        """同步解析响应；限流最多等待重试一次，避免递归耗尽请求调用栈。"""
         self._validate_api_key()
         url = self._build_url(action, params)
 
-        with fresh(not call_cached or method == "POST"):
-            req = self.request(method, url, data, json,
-                                      _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+        rate_limit_retried = False
+        while True:
+            with fresh(not call_cached or method == "POST"):
+                req = self.request(method, url, data, json,
+                                   _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
 
-        if req is None:
-            return None
+            if req is None:
+                return None
 
-        self._handle_headers(self._get_response_headers(req))
+            self._handle_headers(self._get_response_headers(req))
 
-        rate_limit_result = self._handle_rate_limit()
-        if rate_limit_result:
-            logger.warning("达到请求频率限制，将在 %d 秒后重试..." % rate_limit_result)
+            rate_limit_result = self._handle_rate_limit()
+            if not rate_limit_result:
+                break
+            if rate_limit_retried:
+                raise TMDbException("达到请求频率限制，请稍后再试！")
+            logger.warning(f"达到请求频率限制，将在 {rate_limit_result} 秒后重试...")
             time.sleep(rate_limit_result)
-            return self._request_obj(action, params, False, method, data, json, key)
+            rate_limit_retried = True
+            call_cached = False
 
         json_data = self._get_response_json(req)
         self._validate_json_response(json_data)
@@ -448,23 +452,30 @@ class TMDb(object):
 
     async def _async_request_obj(self, action, params="", call_cached=True,
                                  method="GET", data=None, json=None, key=None):
+        """异步解析响应，沿用同步入口的单次限流重试上限。"""
         self._validate_api_key()
         url = self._build_url(action, params)
 
-        async with async_fresh(not call_cached or method == "POST"):
-            req = await self.async_request(method, url, data, json,
-                                           _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
+        rate_limit_retried = False
+        while True:
+            async with async_fresh(not call_cached or method == "POST"):
+                req = await self.async_request(method, url, data, json,
+                                               _ts=datetime.strftime(datetime.now(), '%Y%m%d'))
 
-        if req is None:
-            return None
+            if req is None:
+                return None
 
-        self._handle_headers(self._get_response_headers(req))
+            self._handle_headers(self._get_response_headers(req))
 
-        rate_limit_result = self._handle_rate_limit()
-        if rate_limit_result:
-            logger.warning("达到请求频率限制，将在 %d 秒后重试..." % rate_limit_result)
+            rate_limit_result = self._handle_rate_limit()
+            if not rate_limit_result:
+                break
+            if rate_limit_retried:
+                raise TMDbException("达到请求频率限制，请稍后再试！")
+            logger.warning(f"达到请求频率限制，将在 {rate_limit_result} 秒后重试...")
             await asyncio.sleep(rate_limit_result)
-            return await self._async_request_obj(action, params, False, method, data, json, key)
+            rate_limit_retried = True
+            call_cached = False
 
         json_data = self._get_response_json(req)
         self._validate_json_response(json_data)
