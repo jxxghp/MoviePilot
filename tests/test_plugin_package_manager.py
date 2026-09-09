@@ -182,13 +182,14 @@ async def test_file_list_download_rejects_traversal_directory_names(
 
 
 @pytest.mark.asyncio
-async def test_file_list_download_maps_valid_paths_into_injected_plugin_root(
+async def test_file_list_download_preserves_binary_payload_in_injected_plugin_root(
     monkeypatch,
     tmp_path,
 ):
-    """同步与异步文件列表都只写入显式装配的插件根目录。"""
+    """同步与异步文件列表都应在受控根目录内保留原始文件字节。"""
     plugin_root = tmp_path / "plugins"
-    response = SimpleNamespace(status_code=200, text="payload")
+    payload = b"\x00\xffwheel-payload"
+    response = SimpleNamespace(status_code=200, content=payload, text="wrong-text")
     manager = PluginPackageManager(source=Mock(), plugin_root=plugin_root)
     monkeypatch.setattr(
         manager,
@@ -211,9 +212,7 @@ async def test_file_list_download_maps_valid_paths_into_injected_plugin_root(
     assert await manager._PluginPackageManager__async_download_files(
         "DemoPlugin", [item], "owner/repo", "v2"
     ) == (True, "")
-    assert (plugin_root / "demoplugin" / "nested" / "file.py").read_text(
-        encoding="utf-8"
-    ) == "payload"
+    assert (plugin_root / "demoplugin" / "nested" / "file.py").read_bytes() == payload
 
 
 def test_checkpoint_does_not_scan_native_dependencies(monkeypatch, tmp_path):
