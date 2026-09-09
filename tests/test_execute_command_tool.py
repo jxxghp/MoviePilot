@@ -195,10 +195,25 @@ class TestExecuteCommandSessionTool(unittest.IsolatedAsyncioTestCase):
             self._created_sessions.append(session_id)
         return payload
 
+    async def _wait_until_complete(self, session_id: str, since_seq: int = 0) -> dict:
+        """按真实消费游标排空尾部，不把第一批新输出误当成进程和读取器已退出。"""
+        output = []
+        offset = 0
+        for _ in range(10):
+            payload = self._loads(await self.tool.run(
+                action="wait", session_id=session_id, timeout_ms=3000,
+                since_seq=since_seq, since_offset=offset,
+            ))
+            output.append(payload["output"])
+            since_seq, offset = payload["output_until_seq"], payload["output_until_offset"]
+            if payload["output_complete"] and since_seq == payload["last_seq"] and offset == 0:
+                return {**payload, "output": "".join(output)}
+        self.fail("命令未在有限读取次数内完成输出")
+
     async def test_default_action_starts_session_promptly(self):
         """不传 action 时应默认后台启动，并快速返回会话 ID。"""
         command = _python_command(
-            "import time; print('ready', flush=True); time.sleep(1); print('done', flush=True)"
+            "print('ready', flush=True); input()"
         )
 
         started_at = time.monotonic()
@@ -213,7 +228,7 @@ class TestExecuteCommandSessionTool(unittest.IsolatedAsyncioTestCase):
     async def test_read_and_wait_get_incremental_output(self):
         """同一个 execute_command 工具应能分段等待并读取增量输出。"""
         command = _python_command(
-            "import time; print('ready', flush=True); time.sleep(1); print('done', flush=True)"
+            "print('ready', flush=True); input(); print('done', flush=True)"
         )
         start_payload = await self._start(command)
 
@@ -229,13 +244,9 @@ class TestExecuteCommandSessionTool(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(wait_payload["status"], "running")
         self.assertIn("ready", wait_payload["output"])
 
-        final_payload = self._loads(
-            await self.tool.run(
-                action="wait",
-                session_id=start_payload["session_id"],
-                timeout_ms=3000,
-                since_seq=wait_payload["output_until_seq"],
-            )
+        await self.tool.run(action="write", session_id=start_payload["session_id"], input_text="continue\n")
+        final_payload = await self._wait_until_complete(
+            start_payload["session_id"], since_seq=wait_payload["output_until_seq"],
         )
 
         self.assertEqual(final_payload["status"], "exited")
@@ -254,14 +265,7 @@ class TestExecuteCommandSessionTool(unittest.IsolatedAsyncioTestCase):
             session_id=start_payload["session_id"],
             input_text="moviepilot\n",
         )
-        wait_payload = self._loads(
-            await self.tool.run(
-                action="wait",
-                session_id=start_payload["session_id"],
-                timeout_ms=3000,
-                since_seq=0,
-            )
-        )
+        wait_payload = await self._wait_until_complete(start_payload["session_id"])
 
         self.assertEqual(wait_payload["status"], "exited")
         self.assertIn("hello moviepilot", wait_payload["output"])

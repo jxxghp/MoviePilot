@@ -522,6 +522,16 @@ MCP、HTTP 工具管理接口、本地 CLI 和内置 Agent 都从同一严格目
 不再通过中文完成提示判断成功。后台 `start/read/wait/write/kill` 保持会话状态与游标协议；
 `env` 同时适用于 `start` 和 `run`，此工具仍不通过 MCP 暴露。
 
+后台命令的 `start` 新增 `yield_time_ms`（默认 250、上限 10000，0 不等待）。
+`read/wait/write/kill` 接受 `since_seq` 和 `since_offset`：一起传回上次响应的
+`output_until_seq/output_until_offset`，后者表示下一分片内的 UTF-8 字节位置；
+首次显式传 offset=0 开启部分分片读取。不传 offset 的旧调用只返回完整分片，
+页预算过小时返回 `read_limit_too_small` 和 `minimum_read_bytes`。
+所有后台动作都返回实际交付的输出游标，`last_seq` 不代表已读位置。
+`wait` 可由新增输出提前唤醒，0ms 表示非阻塞读取；`output_complete` 表示读取器已收尾，
+`output_lost` 表示输出存在不可恢复缺口。动作已执行后的分页错误放在 `output_error` 中，
+保留会话 ID，调用方应仅重试读取；纯读错误返回 `execution_outcome=failed`。
+
 下载器和媒体服务器的第三方原生高级能力不注册成永久 MCP 工具。内置 Agent 按需
 加载 `downloader-operation` 或 `mediaserver-operation` Skill，通过固定脚本读取本机
 配置、发现 provider 能力并调用受控 action；脚本不接受任意 URL、认证信息或任意

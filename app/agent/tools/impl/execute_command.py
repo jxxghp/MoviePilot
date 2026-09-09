@@ -15,12 +15,14 @@ from typing import Any, Literal, Optional, TextIO, Type
 from pydantic import BaseModel, Field
 
 from app.agent.shell import build_agent_subprocess_env, resolve_agent_shell
-from app.agent.tools.base import MoviePilotTool
+from app.agent.tools.base import DEFAULT_TOOL_RESULT_MAX_CHARS, MoviePilotTool
 from app.agent.tools.impl._command_safety import validate_command_safety
 from app.agent.tools.impl._terminal_session import (
     TERMINAL_DEFAULT_READ_BYTES,
     TERMINAL_MAX_READ_BYTES,
     TERMINAL_WAIT_DEFAULT_MS,
+    TERMINAL_YIELD_DEFAULT_MS,
+    TerminalOutputError,
     get_terminal_session_manager,
 )
 from app.agent.tools.tags import ToolTag
@@ -233,16 +235,27 @@ class ExecuteCommandInput(BaseModel):
         description="Use a pseudo terminal for action=start when supported.",
     )
     since_seq: Optional[int] = Field(
-        None,
-        description="For action=read/wait, return output chunks after this seq.",
+        None, ge=0, strict=True,
+        description="For read/wait/write/kill, last fully delivered output seq. Resume with output_until_seq, never last_seq.",
+    )
+    since_offset: Optional[int] = Field(
+        None, ge=0, strict=True,
+        description=(
+            "UTF-8 byte offset within the chunk after since_seq. Pass 0 to enable partial-chunk paging; "
+            "resume using output_until_seq and output_until_offset together. Omit for legacy whole-chunk reads."
+        ),
     )
     max_bytes: Optional[int] = Field(
         TERMINAL_DEFAULT_READ_BYTES,
-        description="For action=read/wait, maximum output bytes to return.",
+        description="For start/read/wait/write/kill, maximum output bytes to return.",
     )
     timeout_ms: Optional[int] = Field(
         TERMINAL_WAIT_DEFAULT_MS,
-        description="For action=wait, maximum segmented wait time in milliseconds.",
+        description="For action=wait, wait for unread output or output completion; 0 returns immediately without stopping the process.",
+    )
+    yield_time_ms: Optional[int] = Field(
+        TERMINAL_YIELD_DEFAULT_MS, ge=0, strict=True,
+        description="For action=start, first-output wait budget in milliseconds (default 250, capped at 10000); 0 returns immediately.",
     )
     timeout: Optional[int] = Field(
         60,
@@ -268,8 +281,9 @@ class ExecuteCommandTool(MoviePilotTool):
     ]
     description: str = (
         "Start and manage shell commands on the server. By default action=start "
-        "launches a background session and immediately returns session_id/status/"
-        "last_seq/output_until_seq. Call the same tool with action=read, wait, "
+        "launches a background session, waits briefly for initial output, then returns its session_id and output cursor. "
+        "Continue with both output_until_seq and output_until_offset; last_seq is not a consumed cursor. "
+        "Call the same tool with action=read, wait, "
         "write, or kill to poll output, wait in short segments, send stdin, or "
         "terminate it. Use action=run only when a one-shot bounded command result "
         "is preferred. run returns JSON with exit_code, timed_out, execution_outcome, "
@@ -536,8 +550,10 @@ class ExecuteCommandTool(MoviePilotTool):
         env: Optional[dict[str, Any]] = None,
         use_pty: Optional[bool] = True,
         since_seq: Optional[int] = None,
+        since_offset: Optional[int] = None,
         max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
         timeout_ms: Optional[int] = TERMINAL_WAIT_DEFAULT_MS,
+        yield_time_ms: Optional[int] = TERMINAL_YIELD_DEFAULT_MS,
         timeout: Optional[int] = 60,
         confirm_dangerous: Optional[bool] = False,
         **kwargs,
@@ -551,6 +567,9 @@ class ExecuteCommandTool(MoviePilotTool):
 
         try:
             terminal_session_manager = get_terminal_session_manager()
+            output_budget = DEFAULT_TOOL_RESULT_MAX_CHARS
+            if self.result_max_chars and self.result_max_chars > 0:
+                output_budget = min(self.result_max_chars, output_budget)
             if normalized_action == "start":
                 start_command = self._require_command(command)
                 self._validate_command(
@@ -563,6 +582,10 @@ class ExecuteCommandTool(MoviePilotTool):
                     env=env,
                     use_pty=use_pty,
                     confirm_dangerous=bool(confirm_dangerous),
+                    yield_time_ms=yield_time_ms,
+                    since_offset=since_offset,
+                    max_bytes=max_bytes,
+                    max_output_chars=output_budget,
                 )
                 return self._dump(payload)
 
@@ -570,7 +593,9 @@ class ExecuteCommandTool(MoviePilotTool):
                 payload = await terminal_session_manager.read(
                     session_id=self._require_session_id(session_id),
                     since_seq=since_seq,
+                    since_offset=since_offset,
                     max_bytes=max_bytes,
+                    max_output_chars=output_budget,
                 )
                 return self._dump(payload)
 
@@ -579,7 +604,9 @@ class ExecuteCommandTool(MoviePilotTool):
                     session_id=self._require_session_id(session_id),
                     timeout_ms=timeout_ms,
                     since_seq=since_seq,
+                    since_offset=since_offset,
                     max_bytes=max_bytes,
+                    max_output_chars=output_budget,
                 )
                 return self._dump(payload)
 
@@ -587,6 +614,10 @@ class ExecuteCommandTool(MoviePilotTool):
                 payload = await terminal_session_manager.write(
                     session_id=self._require_session_id(session_id),
                     input_text=input_text or "",
+                    since_seq=since_seq,
+                    since_offset=since_offset,
+                    max_bytes=max_bytes,
+                    max_output_chars=output_budget,
                 )
                 return self._dump(payload)
 
@@ -594,6 +625,10 @@ class ExecuteCommandTool(MoviePilotTool):
                 payload = await terminal_session_manager.kill(
                     session_id=self._require_session_id(session_id),
                     sig=signal_name,
+                    since_seq=since_seq,
+                    since_offset=since_offset,
+                    max_bytes=max_bytes,
+                    max_output_chars=output_budget,
                 )
                 return self._dump(payload)
 
@@ -607,6 +642,12 @@ class ExecuteCommandTool(MoviePilotTool):
                 )
 
             raise ValueError(f"不支持的 action: {action}")
+        except TerminalOutputError as err:
+            return self._dump({
+                "error": str(err), "status": "error", "action": normalized_action,
+                "success": False, "execution_outcome": "failed",
+                "code": err.code, "minimum_read_bytes": err.minimum_read_bytes,
+            })
         except Exception as err:
             logger.error(f"执行命令 action 失败: {err}", exc_info=True)
             return self._dump({"error": str(err), "status": "error", "action": normalized_action})

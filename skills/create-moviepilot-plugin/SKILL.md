@@ -70,6 +70,13 @@ a local plugin source and installed into the running MoviePilot instance.
   with `exit_code=0` means a completed command passed. Inspect `output` on
   failure and `output_file` for a truncated log. A timeout or unknown result
   does not undo side effects and must not trigger a blind retry of a write.
+- For background commands, resume using both `output_until_seq` and
+  `output_until_offset` as `since_seq` and `since_offset`. Start with offset 0
+  for partial-chunk paging; `last_seq` is not a consumed position. Wait for new
+  output in bounded intervals, and drain the remaining pages until
+  `output_complete=true` for a complete log. Report any `output_lost` gap.
+  An `output_error` after start/write/kill requires another read with a suitable
+  byte limit, not another execution of the action.
 - Do not use shell redirection or inline scripts to perform source edits or to
   bypass a file-tool permission error.
 - When the plugin uses Vue federation, also read

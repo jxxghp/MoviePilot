@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import codecs
 import errno
+import json
 import os
 import signal
 import subprocess
@@ -35,7 +37,19 @@ TERMINAL_READ_CHUNK_SIZE = 4096
 TERMINAL_PTY_POLL_INTERVAL = 0.05
 TERMINAL_WAIT_DEFAULT_MS = 1000
 TERMINAL_WAIT_MAX_MS = 60 * 1000
+TERMINAL_YIELD_DEFAULT_MS = 250
+TERMINAL_YIELD_MAX_MS = 10 * 1000
 TERMINAL_KILL_GRACE_SECONDS = 3
+
+
+class TerminalOutputError(ValueError):
+    """携带稳定错误码和最小页预算的可恢复输出读取错误。"""
+
+    def __init__(self, message: str, *, code: str = "invalid_output_cursor", minimum_read_bytes: Optional[int] = None) -> None:
+        """保留结构化恢复提示，调用方不必解析中文消息。"""
+        super().__init__(message)
+        self.code = code
+        self.minimum_read_bytes = minimum_read_bytes
 
 
 @dataclass
@@ -72,18 +86,51 @@ class _TerminalSession:
     error: Optional[str] = None
     reader_tasks: list[asyncio.Task] = field(default_factory=list)
     wait_task: Optional[asyncio.Task] = None
+    changed_event: asyncio.Event = field(default_factory=asyncio.Event)
+    output_complete: bool = False
+    output_lost: bool = False
+    _decoders: dict[str, Any] = field(default_factory=dict, repr=False)
+    _finished_streams: set[str] = field(default_factory=set, repr=False)
+    _last_stream: Optional[str] = None
+
+    def notify_changed(self) -> None:
+        """轮换事件并唤醒全部旧等待者，避免 clear 造成检查与等待之间丢失通知。"""
+        previous = self.changed_event
+        self.changed_event = asyncio.Event()
+        previous.set()
 
     def append_output(self, stream: str, data: bytes) -> None:
-        """追加输出并按容量上限丢弃最旧分片，避免长任务撑爆内存。"""
-        if not data:
+        """每个流独立增量解码，跨 OS 读取的半个字符不会提前替换。"""
+        if not data or stream in self._finished_streams:
             return
+        decoder = self._decoders.setdefault(stream, codecs.getincrementaldecoder("utf-8")(errors="replace"))
+        self._append_text(stream, decoder.decode(data))
 
-        text = data.decode("utf-8", errors="replace")
+    def finish_stream(self, stream: str, *, complete: bool = True) -> None:
+        """流收尾时冲洗最后字符，非 EOF 收尾显式记录输出可能丢失。"""
+        if stream in self._finished_streams:
+            return
+        self._finished_streams.add(stream)
+        if not complete:
+            self.output_lost = True
+        decoder = self._decoders.get(stream)
+        if decoder is not None:
+            self._append_text(stream, decoder.decode(b"", final=True))
+        self.notify_changed()
+
+    def _append_text(self, stream: str, text: str) -> None:
+        """把流标签与正文固定成不可变显示分片，游标也覆盖标签的字节。"""
+        if not text:
+            return
+        if not self.use_pty and stream != self._last_stream:
+            title = "标准输出" if stream == "stdout" else "错误输出"
+            text = f"\n[{title}]\n{text}"
+        self._last_stream = stream
         chunk = _TerminalChunk(
             seq=self.next_seq,
             stream=stream,
             text=text,
-            byte_size=len(data),
+            byte_size=len(text.encode("utf-8")),
             created_at=time.time(),
         )
         self.next_seq += 1
@@ -91,6 +138,14 @@ class _TerminalSession:
         self.retained_bytes += chunk.byte_size
         self.updated_at = chunk.created_at
         self._trim_output()
+        self.notify_changed()
+
+    def finish_output(self) -> None:
+        """读取器全部停止后发布最终边界，进程退出不能提前代表日志收齐。"""
+        for stream in self._decoders:
+            self.finish_stream(stream, complete=stream in self._finished_streams)
+        self.output_complete = True
+        self.notify_changed()
 
     def _trim_output(self) -> None:
         """移除超出保留上限的旧输出分片。"""
@@ -104,12 +159,14 @@ class _TerminalSession:
         self.exit_code = exit_code
         self.status = "killed" if self.kill_requested else "exited"
         self.updated_at = time.time()
+        self.notify_changed()
 
     def mark_error(self, message: str) -> None:
         """标记会话异常，保留错误信息供后续读取。"""
         self.error = message
         self.status = "error"
         self.updated_at = time.time()
+        self.notify_changed()
 
     def close_pty(self) -> None:
         """关闭父进程持有的 PTY master fd。"""
@@ -202,9 +259,17 @@ class _TerminalSessionManager:
         env: Optional[dict[str, Any]] = None,
         use_pty: Any = True,
         confirm_dangerous: bool = False,
+        yield_time_ms: Optional[int] = TERMINAL_YIELD_DEFAULT_MS,
+        max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
+        since_offset: Optional[int] = None,
+        max_output_chars: Optional[int] = None,
     ) -> dict[str, Any]:
-        """启动后台命令并立即返回会话 ID。"""
+        """启动后台命令，在首个输出、完成或首次等待预算到期时交付会话。"""
         self._validate_command(command, confirmed=confirm_dangerous)
+        self._validate_output_budget(max_output_chars)
+        if since_offset is not None and (type(since_offset) is not int or since_offset != 0):
+            raise TerminalOutputError("新会话的 since_offset 只能为 0 或 null")
+        initial_wait = self._normalize_yield_timeout(yield_time_ms)
         normalized_cwd = self._normalize_cwd(cwd)
         normalized_env = self._build_env(env)
         should_use_pty = self._normalize_bool(use_pty, default=True) and os.name == "posix"
@@ -225,7 +290,7 @@ class _TerminalSessionManager:
 
         session: Optional[_TerminalSession] = None
         reject_session = False
-        session_registered = False
+        slot_released = False
         session_released = False
         try:
             session = (
@@ -240,35 +305,48 @@ class _TerminalSessionManager:
                 reject_session = self._closed
                 if not reject_session:
                     self._sessions[session.session_id] = session
-                    session_registered = True
+                    self._starting -= 1
+                    slot_released = True
+                    if self._starting == 0:
+                        self._starts_idle.set()
 
             if reject_session:
                 await self._terminate_session(session)
                 session_released = True
                 raise RuntimeError("终端会话管理器已关闭")
+            logger.info(
+                "启动后台终端会话: session_id=%s, pid=%s, use_pty=%s, command=%s",
+                session.session_id, session.pid, session.use_pty, command,
+            )
+            payload = await self._wait_for_output(
+                session, timeout_ms=initial_wait, since_seq=0, since_offset=since_offset,
+                max_bytes=max_bytes, preserve_output_error=True, max_output_chars=max_output_chars,
+                extra_fields={"yield_time_ms": initial_wait},
+            )
+            if self._closed:
+                raise RuntimeError("终端会话管理器已关闭")
+            return payload
         except BaseException:
-            if session is not None and not session_registered and not session_released:
-                cleanup_task = asyncio.create_task(self._terminate_session(session))
+            if session is not None and not session_released:
+                cleanup_task = asyncio.create_task(self._discard_started_session(session))
                 try:
                     await asyncio.shield(cleanup_task)
                 except asyncio.CancelledError:
                     await cleanup_task
             raise
         finally:
-            async with self._lock:
-                self._starting -= 1
-                if self._starting == 0:
-                    self._starts_idle.set()
+            if not slot_released:
+                async with self._lock:
+                    self._starting -= 1
+                    if self._starting == 0:
+                        self._starts_idle.set()
 
-        logger.info(
-            "启动后台终端会话: session_id=%s, pid=%s, use_pty=%s, command=%s",
-            session.session_id,
-            session.pid,
-            session.use_pty,
-            command,
-        )
-        await asyncio.sleep(0)
-        return self._session_payload(session, output="", output_truncated=False)
+    async def _discard_started_session(self, session: _TerminalSession) -> None:
+        """首次返回前取消时回收无从寻址的进程，并撤销其会话登记。"""
+        await self._terminate_session(session)
+        async with self._lock:
+            if self._sessions.get(session.session_id) is session:
+                self._sessions.pop(session.session_id)
 
     async def _start_pty_session(
         self, command: str, cwd: str, env: dict[str, str]
@@ -338,36 +416,43 @@ class _TerminalSessionManager:
     @staticmethod
     async def _read_pty(session: _TerminalSession) -> None:
         """持续从 PTY 读取增量输出。"""
-        while session.master_fd is not None:
-            try:
-                data = os.read(session.master_fd, TERMINAL_READ_CHUNK_SIZE)
-            except BlockingIOError:
-                await asyncio.sleep(TERMINAL_PTY_POLL_INTERVAL)
-                continue
-            except OSError as err:
-                if err.errno not in {errno.EIO, errno.EBADF}:
-                    logger.debug(
-                        f"PTY 输出读取异常: session_id={session.session_id}, "
-                        f"error={err}"
-                    )
-                break
-
-            if not data:
-                break
-            session.append_output("pty", data)
+        complete = False
+        try:
+            while session.master_fd is not None:
+                try:
+                    data = os.read(session.master_fd, TERMINAL_READ_CHUNK_SIZE)
+                except BlockingIOError:
+                    await asyncio.sleep(TERMINAL_PTY_POLL_INTERVAL)
+                    continue
+                except OSError as err:
+                    complete = err.errno == errno.EIO
+                    if err.errno not in {errno.EIO, errno.EBADF}:
+                        logger.debug(f"PTY 输出读取异常: session_id={session.session_id}, error={err}")
+                    break
+                if not data:
+                    complete = True
+                    break
+                session.append_output("pty", data)
+        finally:
+            session.finish_stream("pty", complete=complete)
 
     @staticmethod
     async def _read_pipe(
-            session: _TerminalSession,
+        session: _TerminalSession,
         stream: asyncio.StreamReader,
         stream_name: str,
     ) -> None:
         """持续从普通管道读取增量输出。"""
-        while True:
-            data = await stream.read(TERMINAL_READ_CHUNK_SIZE)
-            if not data:
-                break
-            session.append_output(stream_name, data)
+        complete = False
+        try:
+            while True:
+                data = await stream.read(TERMINAL_READ_CHUNK_SIZE)
+                if not data:
+                    complete = True
+                    break
+                session.append_output(stream_name, data)
+        finally:
+            session.finish_stream(stream_name, complete=complete)
 
     async def _wait_pty_process(self, session: _TerminalSession) -> None:
         """等待 PTY 子进程结束并完成输出读取任务收尾。"""
@@ -405,32 +490,28 @@ class _TerminalSessionManager:
     @staticmethod
     async def _finish_reader_tasks(session: _TerminalSession) -> None:
         """等待输出读取任务退出，超时后取消残留任务。"""
-        if not session.reader_tasks:
-            return
-        done, pending = await asyncio.wait(session.reader_tasks, timeout=1)
-        for task in pending:
-            task.cancel()
-        await asyncio.gather(*done, *pending, return_exceptions=True)
+        if session.reader_tasks:
+            done, pending = await asyncio.wait(session.reader_tasks, timeout=1)
+            for task in pending:
+                task.cancel()
+            results = await asyncio.gather(*done, *pending, return_exceptions=True)
+            if pending or any(isinstance(result, BaseException) for result in results):
+                session.output_lost = True
+        session.finish_output()
 
     async def read(
         self,
         *,
         session_id: str,
         since_seq: Optional[int] = None,
+        since_offset: Optional[int] = None,
         max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
+        max_output_chars: Optional[int] = None,
     ) -> dict[str, Any]:
         """读取会话当前保留的增量输出。"""
         session = self.get_session(session_id)
-        output, output_truncated, output_until_seq = self._collect_output(
-            session,
-            since_seq=since_seq,
-            max_bytes=max_bytes,
-        )
-        return self._session_payload(
-            session,
-            output=output,
-            output_truncated=output_truncated,
-            output_until_seq=output_until_seq,
+        return self._read_payload(
+            session, since_seq=since_seq, since_offset=since_offset, max_bytes=max_bytes, max_output_chars=max_output_chars,
         )
 
     async def wait(
@@ -439,37 +520,62 @@ class _TerminalSessionManager:
         session_id: str,
         timeout_ms: Optional[int] = TERMINAL_WAIT_DEFAULT_MS,
         since_seq: Optional[int] = None,
+        since_offset: Optional[int] = None,
         max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
+        max_output_chars: Optional[int] = None,
     ) -> dict[str, Any]:
-        """短暂等待会话结束，并返回等待期间可见的增量输出。"""
+        """等待未读输出或输出最终收尾；零预算只取快照，不终止后台命令。"""
         session = self.get_session(session_id)
         normalized_timeout = self._normalize_wait_timeout(timeout_ms)
-        if session.wait_task and not session.wait_task.done():
-            try:
-                await asyncio.wait_for(
-                    asyncio.shield(session.wait_task),
-                    timeout=normalized_timeout / 1000,
-                )
-            except asyncio.TimeoutError:
-                pass
-
-        output, output_truncated, output_until_seq = self._collect_output(
-            session,
-            since_seq=since_seq,
-            max_bytes=max_bytes,
+        payload = await self._wait_for_output(
+            session, timeout_ms=normalized_timeout, since_seq=since_seq, since_offset=since_offset, max_bytes=max_bytes,
+            max_output_chars=max_output_chars, extra_fields={"wait_timeout_ms": normalized_timeout},
         )
-        payload = self._session_payload(
-            session,
-            output=output,
-            output_truncated=output_truncated,
-            output_until_seq=output_until_seq,
-        )
-        payload["wait_timeout_ms"] = normalized_timeout
         return payload
 
-    async def write(self, *, session_id: str, input_text: str) -> dict[str, Any]:
+    async def _wait_for_output(
+        self, session: _TerminalSession, *, timeout_ms: int, since_seq: Optional[int] = None,
+        since_offset: Optional[int] = None, max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
+        preserve_output_error: bool = False, max_output_chars: Optional[int] = None,
+        extra_fields: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """先捕获通知再查输出，无数据到 await 之间的变化也能唤醒所有等待者。"""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout_ms / 1000
+        while True:
+            changed = session.changed_event
+            payload = self._read_payload(
+                session, since_seq=since_seq, since_offset=since_offset, max_bytes=max_bytes,
+                preserve_output_error=preserve_output_error, max_output_chars=max_output_chars,
+                extra_fields={**(extra_fields or {}), "wait_reason": "completed"},
+            )
+            # 捕获丢失是持久事实；只有本次请求落在已淘汰位置才是新的可读缺口。
+            new_gap = since_seq is not None and since_seq < session.retained_from_seq - 1
+            if payload["output"] or new_gap or payload.get("output_error"):
+                payload["wait_reason"] = "output"
+                return payload
+            if session.output_complete:
+                payload["wait_reason"] = "completed"
+                return payload
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                payload["wait_reason"] = "timeout"
+                return payload
+            try:
+                await asyncio.wait_for(changed.wait(), timeout=remaining)
+            except asyncio.TimeoutError:
+                # 到期时再取一次一致快照，避免刚到达的数据只体现在高水位里。
+                pass
+
+    async def write(
+        self, *, session_id: str, input_text: str, since_seq: Optional[int] = None,
+        since_offset: Optional[int] = None, max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
+        max_output_chars: Optional[int] = None,
+    ) -> dict[str, Any]:
         """向会话 stdin 写入文本，PTY 模式下写入 master fd。"""
         session = self.get_session(session_id)
+        self._validate_output_budget(max_output_chars)
+        self._resolve_cursor(session, since_seq=since_seq, since_offset=since_offset)
         if session.status != "running":
             raise RuntimeError(f"会话已结束，当前状态: {session.status}")
 
@@ -485,8 +591,10 @@ class _TerminalSessionManager:
             await session.process.stdin.drain()
 
         session.updated_at = time.time()
-        payload = self._session_payload(session, output="", output_truncated=False)
-        payload["written_bytes"] = len(data)
+        payload = self._read_payload(
+            session, since_seq=since_seq, since_offset=since_offset, max_bytes=max_bytes, preserve_output_error=True,
+            max_output_chars=max_output_chars, extra_fields={"written_bytes": len(data)},
+        )
         return payload
 
     async def kill(
@@ -494,11 +602,20 @@ class _TerminalSessionManager:
         *,
         session_id: str,
         sig: Optional[str | int] = "TERM",
+        since_seq: Optional[int] = None,
+        since_offset: Optional[int] = None,
+        max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
+        max_output_chars: Optional[int] = None,
     ) -> dict[str, Any]:
         """向会话进程组发送信号并等待短暂清理。"""
         session = self.get_session(session_id)
+        self._validate_output_budget(max_output_chars)
+        self._resolve_cursor(session, since_seq=since_seq, since_offset=since_offset)
         if session.status != "running":
-            return self._session_payload(session, output="", output_truncated=False)
+            return self._read_payload(
+                session, since_seq=since_seq, since_offset=since_offset, max_bytes=max_bytes, preserve_output_error=True,
+                max_output_chars=max_output_chars,
+            )
 
         session.kill_requested = True
         signal_number = self._resolve_signal(sig)
@@ -514,7 +631,10 @@ class _TerminalSessionManager:
                 force_signal = getattr(signal, "SIGKILL", signal.SIGTERM)
                 self._send_signal(session, force_signal)
 
-        return self._session_payload(session, output="", output_truncated=False)
+        return self._read_payload(
+            session, since_seq=since_seq, since_offset=since_offset, max_bytes=max_bytes, preserve_output_error=True,
+            max_output_chars=max_output_chars,
+        )
 
     async def close(self) -> None:
         """停止所有后台终端会话并释放 PTY、读取任务和会话记录。"""
@@ -570,6 +690,7 @@ class _TerminalSessionManager:
                 task.cancel()
         if session.reader_tasks:
             await asyncio.gather(*session.reader_tasks, return_exceptions=True)
+        session.finish_output()
         session.close_pty()
 
     def get_session(self, session_id: str) -> _TerminalSession:
@@ -583,12 +704,27 @@ class _TerminalSessionManager:
     def _normalize_wait_timeout(timeout_ms: Optional[int]) -> int:
         """限制 wait 单次等待时间，避免工具调用长时间占用模型回合。"""
         try:
-            normalized = int(timeout_ms or TERMINAL_WAIT_DEFAULT_MS)
+            normalized = int(TERMINAL_WAIT_DEFAULT_MS if timeout_ms is None else timeout_ms)
         except (TypeError, ValueError):
             normalized = TERMINAL_WAIT_DEFAULT_MS
         if normalized < 0:
             return 0
         return min(normalized, TERMINAL_WAIT_MAX_MS)
+
+    @staticmethod
+    def _normalize_yield_timeout(yield_time_ms: Optional[int]) -> int:
+        """首次等待接受显式零值，直调入口也拒绝布尔和非法负数。"""
+        if yield_time_ms is None:
+            return TERMINAL_YIELD_DEFAULT_MS
+        if type(yield_time_ms) is not int or yield_time_ms < 0:
+            raise ValueError("yield_time_ms 必须为非负整数")
+        return min(yield_time_ms, TERMINAL_YIELD_MAX_MS)
+
+    @staticmethod
+    def _validate_output_budget(max_output_chars: Optional[int]) -> None:
+        """宿主内部预算必须容纳有界命令预览和完整恢复元数据。"""
+        if max_output_chars is not None and (type(max_output_chars) is not int or max_output_chars < 4096):
+            raise ValueError("max_output_chars 必须为空或至少 4096 的整数")
 
     @staticmethod
     def _normalize_read_limit(max_bytes: Optional[int]) -> int:
@@ -601,56 +737,142 @@ class _TerminalSessionManager:
             return TERMINAL_DEFAULT_READ_BYTES
         return min(normalized, TERMINAL_MAX_READ_BYTES)
 
+    @staticmethod
+    def _resolve_cursor(
+        session: _TerminalSession, *, since_seq: Optional[int], since_offset: Optional[int],
+    ) -> tuple[int, int, bool]:
+        """保留旧序号含义，验证下一分片偏移，并显式恢复已过保留窗口的游标。"""
+        for name, value in (("since_seq", since_seq), ("since_offset", since_offset)):
+            if value is not None and (type(value) is not int or value < 0):
+                raise TerminalOutputError(f"{name} 必须为非负整数")
+        if since_seq is None and since_offset:
+            raise TerminalOutputError("非零 since_offset 必须同时提供 since_seq")
+        seq = session.retained_from_seq - 1 if since_seq is None else since_seq
+        offset = since_offset or 0
+        if seq > session.next_seq - 1:
+            raise TerminalOutputError("since_seq 超过当前输出高水位")
+        if seq < session.retained_from_seq - 1:
+            return session.retained_from_seq - 1, 0, True
+        if not offset:
+            return seq, 0, session.output_lost
+        chunk = next((item for item in session.chunks if item.seq == seq + 1), None)
+        if chunk is None or offset > chunk.byte_size:
+            raise TerminalOutputError("since_offset 超出下一输出分片")
+        try:
+            chunk.text.encode("utf-8")[:offset].decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise TerminalOutputError("since_offset 必须位于完整 UTF-8 字符边界") from error
+        if offset == chunk.byte_size:
+            return chunk.seq, 0, session.output_lost
+        return seq, offset, session.output_lost
+
+    @staticmethod
+    def _slice_output(encoded: bytes, limit: int, *, partial: bool) -> bytes:
+        """遵守页预算和完整字符边界；零进展明确报错，不能伪装成成功分页。"""
+        if len(encoded) <= limit:
+            return encoded
+        if not partial:
+            raise TerminalOutputError(
+                "当前页无法容纳完整分片；增大 max_bytes 或传 since_offset=0 后继续 read",
+                code="read_limit_too_small", minimum_read_bytes=len(encoded),
+            )
+        text = encoded[:limit].decode("utf-8", errors="ignore")
+        if not text:
+            minimum = len(encoded.decode("utf-8")[0].encode("utf-8"))
+            raise TerminalOutputError(
+                "当前页无法容纳下一个完整 UTF-8 字符；增大 max_bytes 后继续 read",
+                code="read_limit_too_small", minimum_read_bytes=minimum,
+            )
+        return text.encode("utf-8")
+
     def _collect_output(
         self,
         session: _TerminalSession,
         *,
         since_seq: Optional[int],
+        since_offset: Optional[int] = None,
         max_bytes: Optional[int],
-    ) -> tuple[str, bool, int]:
-        """按 seq 和大小限制收集输出文本。"""
+    ) -> dict[str, Any]:
+        """按完整分片序号及下一分片字节偏移返回实际交付的输出页。"""
         read_limit = self._normalize_read_limit(max_bytes)
-        selected_chunks = [
-            chunk
-            for chunk in session.chunks
-            if since_seq is None or chunk.seq > since_seq
-        ]
+        seq, offset, lost = self._resolve_cursor(session, since_seq=since_seq, since_offset=since_offset)
+        selected_chunks = [chunk for chunk in session.chunks if chunk.seq > seq]
         output_parts: list[str] = []
         output_bytes = 0
-        output_truncated = False
-        last_stream: Optional[str] = None
-        output_until_seq = since_seq or session.retained_from_seq - 1
-
         for chunk in selected_chunks:
-            prefix = self._stream_prefix(chunk.stream, last_stream, session.use_pty)
-            text = f"{prefix}{chunk.text}" if prefix else chunk.text
-            encoded = text.encode("utf-8")
+            encoded = chunk.text.encode("utf-8")[offset:]
             remaining = read_limit - output_bytes
-            if len(encoded) > remaining:
-                if remaining > 0:
-                    output_parts.append(
-                        encoded[:remaining].decode("utf-8", errors="replace")
-                    )
-                output_truncated = True
+            if remaining == 0:
                 break
-            output_parts.append(text)
-            output_bytes += len(encoded)
-            last_stream = chunk.stream
-            output_until_seq = chunk.seq
+            try:
+                piece = self._slice_output(encoded, remaining, partial=since_offset is not None)
+            except TerminalOutputError:
+                if not output_parts:
+                    raise
+                break
+            output_parts.append(piece.decode("utf-8"))
+            output_bytes += len(piece)
+            if len(piece) < len(encoded):
+                offset += len(piece)
+                break
+            seq, offset = chunk.seq, 0
+        return {
+            "output": "".join(output_parts), "output_until_seq": seq, "output_until_offset": offset,
+            "output_truncated": lost or seq < session.next_seq - 1, "output_lost": lost,
+        }
 
-        if since_seq is not None and since_seq < session.retained_from_seq - 1:
-            output_truncated = True
-        if not output_truncated:
-            output_until_seq = session.next_seq - 1
-        return "".join(output_parts), output_truncated, output_until_seq
-
-    @staticmethod
-    def _stream_prefix(stream: str, last_stream: Optional[str], use_pty: bool) -> str:
-        """为普通管道输出增加 stdout/stderr 分段标识。"""
-        if use_pty or stream == last_stream:
-            return ""
-        title = "标准输出" if stream == "stdout" else "错误输出"
-        return f"\n[{title}]\n"
+    def _read_payload(
+        self, session: _TerminalSession, *, since_seq: Optional[int], since_offset: Optional[int],
+        max_bytes: Optional[int], preserve_output_error: bool = False,
+        max_output_chars: Optional[int] = None, extra_fields: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """动作已发生时保留会话句柄和未消费游标，只把分页错误作为附加恢复信息。"""
+        self._validate_output_budget(max_output_chars)
+        try:
+            page = self._collect_output(session, since_seq=since_seq, since_offset=since_offset, max_bytes=max_bytes)
+        except TerminalOutputError as error:
+            if not preserve_output_error or error.code != "read_limit_too_small":
+                raise
+            seq, offset, lost = self._resolve_cursor(session, since_seq=since_seq, since_offset=since_offset)
+            page = {
+                "output": "", "output_until_seq": seq, "output_until_offset": offset,
+                "output_truncated": True, "output_lost": lost,
+                "output_error": {
+                    "code": error.code, "message": str(error), "minimum_read_bytes": error.minimum_read_bytes,
+                },
+            }
+        payload = {**self._session_payload(session, page), **(extra_fields or {})}
+        if max_output_chars is None or len(json.dumps(payload, ensure_ascii=False, indent=2)) <= max_output_chars:
+            return payload
+        low, high = 1, self._normalize_read_limit(max_bytes) - 1
+        best = None
+        while low <= high:
+            middle = (low + high) // 2
+            try:
+                candidate = self._read_payload(
+                    session, since_seq=since_seq, since_offset=since_offset, max_bytes=middle, extra_fields=extra_fields,
+                )
+            except TerminalOutputError:
+                low = middle + 1
+                continue
+            if len(json.dumps(candidate, ensure_ascii=False, indent=2)) <= max_output_chars:
+                best, low = candidate, middle + 1
+            else:
+                high = middle - 1
+        if best is not None:
+            return best
+        budget_error = TerminalOutputError(
+            "Agent 结果预算无法容纳完整分片；传 since_offset=0 并调整 max_bytes 后继续 read，勿重复执行动作",
+            code="read_limit_too_small",
+        )
+        if not preserve_output_error:
+            raise budget_error
+        payload = self._read_payload(
+            session, since_seq=since_seq, since_offset=since_offset, max_bytes=1,
+            preserve_output_error=True, extra_fields=extra_fields,
+        )
+        payload["output_error"]["message"] = str(budget_error)
+        return payload
 
     @staticmethod
     def _resolve_signal(sig: Optional[str | int]) -> int:
@@ -696,30 +918,48 @@ class _TerminalSessionManager:
             session.close_pty()
 
     @staticmethod
+    def _text_preview(value: str, limit: int = 1024) -> str:
+        """按 JSON 实际转义开销限制元数据预览，极长命令不能挤掉输出游标。"""
+        low, high = 0, min(len(value), limit)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if len(json.dumps(value[:middle], ensure_ascii=False)) <= limit:
+                low = middle
+            else:
+                high = middle - 1
+        return value[:low]
+
+    @staticmethod
     def _session_payload(
         session: _TerminalSession,
-        *,
-        output: str,
-        output_truncated: bool,
-        output_until_seq: Optional[int] = None,
+        page: dict[str, Any],
     ) -> dict[str, Any]:
         """生成工具返回的结构化会话状态。"""
+        command = _TerminalSessionManager._text_preview(session.command)
+        cwd = _TerminalSessionManager._text_preview(session.cwd)
+        error = _TerminalSessionManager._text_preview(session.error, 512) if session.error else session.error
+        if session.status == "running":
+            outcome = "pending"
+        elif session.status == "error":
+            outcome = "failed"
+        elif session.exit_code is None:
+            outcome = "unknown"
+        else:
+            outcome = "succeeded" if session.exit_code == 0 and session.status != "killed" else "failed"
         return {
             "session_id": session.session_id,
-            "command": session.command,
-            "cwd": session.cwd,
+            "command": command, "command_truncated": command != session.command,
+            "command_total_chars": len(session.command), "cwd": cwd, "cwd_truncated": cwd != session.cwd,
             "pid": session.pid,
             "status": session.status,
             "exit_code": session.exit_code,
+            "execution_outcome": outcome,
             "use_pty": session.use_pty,
             "last_seq": session.next_seq - 1,
-            "output_until_seq": (
-                session.next_seq - 1 if output_until_seq is None else output_until_seq
-            ),
             "retained_from_seq": session.retained_from_seq,
-            "output_truncated": output_truncated,
-            "output": output,
-            "error": session.error,
+            "output_complete": session.output_complete,
+            "error": error, "error_truncated": error != session.error,
+            **page,
         }
 
 

@@ -30,6 +30,12 @@ MoviePilot Agent 通过模型、Skills、工具和会话状态共同完成任务
 
 `execute_command(action="run")` 返回结构化 JSON：`exit_code`、`timed_out`、`execution_outcome` 和 `status` 表示实际执行结果，`output` 保存输出预览，`output_file` 指向超长输出的临时归档。仅正常退出且退出码为 0 时成功；非零退出或已停止的超时命令为失败，无法确认进程结束时为未知，不能凭“有输出”判断成功。超时和取消不会撤销命令已经产生的外部副作用。取消继续向外传播，同时回收输出读取任务、关闭归档文件；`run` 与 `start` 都支持 `env`，并保留指定工作目录。
 
+后台命令 `start` 默认最多等待 250ms 的首次输出，可用 `yield_time_ms=0` 立即返回。后续 `read/wait/write/kill` 用返回的 `output_until_seq` 和 `output_until_offset` 一起续读：前者是完整交付的最后一个分片，后者是下一分片中已交付的 UTF-8 字节位置。首次传 `since_offset=0` 开启分片内分页；不传 offset 时保持完整分片模式，小页装不下一个分片会明确提示调整限额。`last_seq` 只表示已经产生的输出，不能用于跳过未读内容。
+
+`wait` 在有未读输出时立即返回，等待中产生新输出或读取结束也会唤醒；`timeout_ms=0` 只查询，不终止命令。进程退出后仍可能有尾部输出，获取完整日志应继续到游标读完且 `output_complete=true`；退出码缺失时仍为 `unknown`。缓冲保留窗口之外的缺口由 `output_lost=true` 明确标记。若 `start/write/kill` 已执行动作但返回 `output_error`，会保留会话 ID 和未消费游标；只需调整 `max_bytes` 后用 `read` 获取输出，不应重新执行动作。首次 `start` 尚未交付会话 ID 时被取消会回收该进程，取消已有会话的 `wait` 则保留进程。
+
+终端分页还受最终 JSON 字符预算约束：必要时减少本页正文并重新计算游标，避免 JSON 转义后又被通用工具预览截断。过长的命令、目录和错误回显会带显式截断标记；会话内部保留完整命令。
+
 ## 写工具的持久执行记录
 
 生产 Agent 在副作用之前向 `agentinvocation` 表提交原子认领。记录只包含用户、会话、工具身份、参数指纹、执行 token、状态和固定宿主文案，不保存原始参数或工具输出。无法认领时不执行写入；相同调用 ID 携带不同参数时拒绝执行。
