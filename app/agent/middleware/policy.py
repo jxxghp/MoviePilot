@@ -8,6 +8,8 @@ from langchain.agents.middleware import AgentMiddleware, ToolCallRequest, hook_c
 from langchain_core.messages import AIMessage, ToolMessage
 
 from app.agent.policy.contracts import (
+    ExecutionOutcome,
+    ExecutionReceipt,
     ToolOrigin,
     ToolPolicyContext,
 )
@@ -17,15 +19,18 @@ from app.agent.policy.orchestrator import (
     call_policy_hook,
 )
 from app.agent.policy.registry import requests_system_setting_secrets
+from app.agent.policy.sanitizer import stable_type_name
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.impl.api import MoviePilotApiTool
+from app.agent.tools.result import EXECUTION_OUTCOME_KEY, ToolExecutionError, annotate_tool_result
 
 POLICY_DENIED_MESSAGE = "当前宿主策略不允许执行该工具。"
 POLICY_UNAVAILABLE_MESSAGE = "宿主策略暂时不可用，未执行该工具。"
 TOOL_TIMEOUT_MESSAGE = "工具执行超时，已停止等待结果；若工具包含外部写操作，操作可能仍在继续，请先确认实际状态再重试。"
 
 
-class AgentPolicyMiddleware(AgentMiddleware):
+# follow_imports=skip 下只在第三方中间件基类和装饰器边界忽略 misc。
+class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
     """观测进入本地 ToolNode 的 client-side 工具调用和结果。
 
     模型供应商原生 server tools 在供应商侧执行，不经过本地 middleware，
@@ -46,7 +51,7 @@ class AgentPolicyMiddleware(AgentMiddleware):
         self.catalog = catalog
         self._tools = {tool.name: tool for tool in (tools or []) if getattr(tool, "name", None)}
 
-    @hook_config(can_jump_to=["end"])
+    @hook_config(can_jump_to=["end"])  # type: ignore[misc]
     async def aafter_model(self, state: dict[str, Any], runtime: Any) -> Any:
         """在 ToolNode 前暂停需要用户确认的敏感设置读取。"""
         messages = state.get("messages") or []
@@ -104,24 +109,37 @@ class AgentPolicyMiddleware(AgentMiddleware):
         arguments = tool_call.get("args") or {}
         if not isinstance(arguments, dict):
             arguments = {}
-        try:
-            _, result = await self.execute_tool_call(
-                tool=request.tool,
-                arguments=arguments,
-                invocation_id=tool_call.get("id"),
-                handler=lambda: handler(request),
-                enforce_decision=False,
-            )
-        except TimeoutError:
-            tool_name = str(getattr(request.tool, "name", None) or "unknown")
-            return ToolMessage(
-                content=TOOL_TIMEOUT_MESSAGE,
-                tool_call_id=str(tool_call.get("id") or ""),
-                name=tool_name,
-                status="error",
-            )
+        _, result = await self.execute_tool_call(
+            tool=request.tool,
+            arguments=arguments,
+            invocation_id=tool_call.get("id"),
+            handler=lambda: handler(request),
+            enforce_decision=False,
+        )
         # 普通 ToolNode 保持 shadow 观测；已确认调用使用默认的强制决策语义。
-        return result
+        return annotate_tool_result(result)
+
+    @staticmethod
+    def _error_result(
+        tool: Any, invocation_id: str | None, error: Exception, receipt: ExecutionReceipt | None,
+    ) -> ToolMessage:
+        """把普通故障转为可恢复回执，异常私有正文不进入模型上下文。"""
+        outcome = receipt.outcome if isinstance(receipt, ExecutionReceipt) else ExecutionOutcome.FAILED
+        if isinstance(error, TimeoutError):
+            content = TOOL_TIMEOUT_MESSAGE
+            if not isinstance(receipt, ExecutionReceipt):
+                outcome = ExecutionOutcome.UNKNOWN
+        elif isinstance(error, ToolExecutionError):
+            content = str(error)
+        else:
+            content = f"工具执行失败（{stable_type_name(error)}）。请检查调用参数或查询当前状态后继续处理。"
+        return ToolMessage(
+            content=content,
+            tool_call_id=str(invocation_id or ""),
+            name=str(getattr(tool, "name", None) or "unknown"),
+            status="error",
+            additional_kwargs={EXECUTION_OUTCOME_KEY: outcome.value},
+        )
 
     async def execute_tool_call(
         self,
@@ -143,7 +161,7 @@ class AgentPolicyMiddleware(AgentMiddleware):
         )
         if enforce_decision and observation is None:
             return False, POLICY_UNAVAILABLE_MESSAGE
-        if enforce_decision and observation.decision.allowed is False:
+        if enforce_decision and observation is not None and observation.decision.allowed is False:
             return False, POLICY_DENIED_MESSAGE
         try:
             result = await handler()
@@ -157,13 +175,16 @@ class AgentPolicyMiddleware(AgentMiddleware):
                 )
             raise
         except Exception as error:
+            receipt = None
             if observation is not None:
-                call_policy_hook(
+                receipt = call_policy_hook(
                     "fail",
                     self.orchestrator.fail,
                     observation,
                     error,
                 )
+            if not enforce_decision:
+                return True, self._error_result(tool, invocation_id, error, receipt)
             raise
         if observation is not None:
             call_policy_hook(

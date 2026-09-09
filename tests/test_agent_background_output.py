@@ -8,6 +8,8 @@ from app.agent.contracts import ReplyMode
 from app.agent.manager import AgentManager
 from app.agent.memory import memory_manager
 from app.agent.middleware.activity import QUERY_ACTIVITY_LOG_TOOL_NAME
+from app.agent.middleware.invocation import GET_TOOL_EXECUTION_NAME, InvocationMiddleware
+from app.agent.middleware.output import READ_TOOL_RESULT_NAME, ToolOutputMiddleware
 from app.agent.middleware.plan import PLAN_TOOL_NAME, PlanMiddleware
 from app.agent.middleware.selection import TOOL_DISCOVERY_NAME, ToolSelectorMiddleware
 from app.agent.middleware.skills import SKILL_TOOL_NAME
@@ -97,15 +99,19 @@ def _capture_tool_selector(captured, **kwargs):
 
 
 def _assert_internal_tool_registration(created, captured):
-    """核实计划与发现工具同时注册到严格目录和强制保留集合。"""
+    """核实内部计划、续读和发现工具的目录身份、常驻筛选及外层顺序。"""
     middlewares = created["middleware"]
     plan = next(item for item in middlewares if isinstance(item, PlanMiddleware))
+    output = next(item for item in middlewares if isinstance(item, ToolOutputMiddleware))
     selector = captured["selector"]
     policy = middlewares[0]
     assert policy.name == "AgentPolicyMiddleware"
+    assert middlewares[1] is output
+    assert not any(isinstance(item, InvocationMiddleware) for item in middlewares)
+    assert policy.catalog.resolve_unique(GET_TOOL_EXECUTION_NAME) is None
     assert captured["enable_discovery"] is True
-    assert {PLAN_TOOL_NAME, TOOL_DISCOVERY_NAME} <= set(selector.always_include)
-    for tool in [*plan.tools, *selector.tools]:
+    assert {PLAN_TOOL_NAME, READ_TOOL_RESULT_NAME, TOOL_DISCOVERY_NAME} <= set(selector.always_include)
+    for tool in [*plan.tools, *output.tools, *selector.tools]:
         assert policy.catalog.resolve_unique(tool.name).tool is tool
         assert tool in selector.selection_tools
     assert middlewares.index(plan) < middlewares.index(selector)
@@ -453,6 +459,7 @@ class TestAgentBackgroundOutput:
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
                 "AgentPolicyMiddleware",
+                "ToolOutputMiddleware",
                 "skills",
                 "jobs",
                 "runtime",
@@ -567,6 +574,7 @@ class TestAgentBackgroundOutput:
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
                 "AgentPolicyMiddleware",
+                "ToolOutputMiddleware",
                 "skills",
                 "jobs",
                 "runtime",
@@ -771,6 +779,7 @@ class TestAgentBackgroundOutput:
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
                 "AgentPolicyMiddleware",
+                "ToolOutputMiddleware",
                 "skills",
                 "jobs",
                 "runtime",

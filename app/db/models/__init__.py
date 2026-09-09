@@ -7,6 +7,7 @@ from . import _identity  # noqa: F401  注册全局媒体身份写入不变量
 
 _MODEL_EXPORTS = {
     "AgentChat": ("app.db.models.agentchat", "AgentChat"),
+    "AgentInvocation": ("app.db.models.agentinvocation", "AgentInvocation"),
     "AgentTask": ("app.db.models.agenttask", "AgentTask"),
     "AgentTaskRun": ("app.db.models.agenttaskrun", "AgentTaskRun"),
     "DownloadFailure": ("app.db.models.downloadfailure", "DownloadFailure"),

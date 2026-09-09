@@ -8,11 +8,13 @@ from typing import Any, Dict, Optional, Type
 
 from pydantic import BaseModel, Field, PrivateAttr
 
+from app.agent.api.arguments import canonical_api_arguments
 from app.agent.api.executor import ApiExecutionContext, ApiExecutionError, MoviePilotApiExecutor
 from app.agent.policy.api import resolve_api_operation
-from app.agent.policy.contracts import PrincipalRole
+from app.agent.policy.contracts import ExecutionOutcome, PrincipalRole
 from app.agent.policy.sanitizer import summarize_input
 from app.agent.tools.base import MoviePilotTool
+from app.agent.tools.result import inspect_tool_result
 from app.agent.tools.tags import ToolTag
 from app.schemas.types import NotificationChannel
 
@@ -127,6 +129,11 @@ class MoviePilotApiTool(MoviePilotTool):
     def get_mcp_input_schema(self) -> dict[str, Any]:
         """返回包含全部白名单 operation 精确参数的 MCP JSON Schema。"""
         return deepcopy(_load_api_mcp_input_schema())
+
+    def canonical_arguments(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """用缓存的 operation 合同生成实际执行与持久指纹共用的参数。"""
+        validated = MoviePilotApiInput.model_validate(arguments).model_dump(mode="json")
+        return canonical_api_arguments(validated, _load_api_mcp_input_schema())
 
     async def _resolve_superuser_integration_identity(
         self,
@@ -271,19 +278,29 @@ class MoviePilotApiTool(MoviePilotTool):
                     },
                     ensure_ascii=False,
                 )
-            return await executor.execute(
+            result = await executor.execute(
                 operation_id,
                 path_params=path_params,
                 query=query,
                 body=body,
             )
+            if operation_id == "scheduler.run" and inspect_tool_result(result) is ExecutionOutcome.SUCCEEDED:
+                payload = json.loads(result)
+                if isinstance(payload, dict) and payload.get("success") is True:
+                    payload["execution_outcome"] = "pending"
+                    return json.dumps(payload, ensure_ascii=False)
+            return result
         except ApiExecutionError as error:
+            failure: dict[str, Any] = {
+                "success": False,
+                "error": "operation_unavailable",
+                "message": str(error),
+            }
+            if error.external_may_continue:
+                failure["execution_outcome"] = "unknown"
+                failure["message"] += "；操作可能已生效，请先只读核验实际状态，避免重复执行。"
             return json.dumps(
-                {
-                    "success": False,
-                    "error": "operation_unavailable",
-                    "message": str(error),
-                },
+                failure,
                 ensure_ascii=False,
             )
 

@@ -445,7 +445,7 @@ def test_middleware_observation_failure_does_not_replace_success(
 
 
 def test_middleware_fail_observation_does_not_mask_tool_error() -> None:
-    """shadow fail hook 故障后仍必须抛出原始工具异常。"""
+    """shadow fail hook 故障后仍返回真实工具故障，模型可以继续处理。"""
     orchestrator = MagicMock()
     orchestrator.start.return_value = SimpleNamespace(decision=SimpleNamespace(allowed=True))
     orchestrator.fail.side_effect = RuntimeError("policy-fail-hook-failure")
@@ -462,10 +462,12 @@ def test_middleware_fail_observation_does_not_mask_tool_error() -> None:
     async def _handler(_request):
         raise tool_error
 
-    with pytest.raises(ValueError) as error_info:
-        asyncio.run(middleware.awrap_tool_call(request, _handler))
+    result = asyncio.run(middleware.awrap_tool_call(request, _handler))
 
-    assert error_info.value is tool_error
+    assert result.status == "error"
+    assert "ValueError" in result.content
+    assert "original-tool-failure" not in result.content
+    assert "policy-fail-hook-failure" not in result.content
 
 
 def test_middleware_keeps_shadow_observation_without_enforcing_decision() -> None:
@@ -630,7 +632,12 @@ def test_agent_admin_dynamic_tool_keeps_existing_authorization_authority(
     ):
         result = asyncio.run(middleware.awrap_tool_call(request, _handler))
 
-    assert result.content == expected_result
+    if legacy_admin:
+        assert result.content == expected_result
+        assert result.status == "success"
+    else:
+        assert json.loads(result.content) == {"success": False, "error": expected_result}
+        assert result.status == "error"
     assert events.count("run") == expected_run_count
     assert len(observations) == 1
     assert observations[0].policy.effect is ActionEffect.UNKNOWN

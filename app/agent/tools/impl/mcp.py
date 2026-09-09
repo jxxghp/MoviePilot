@@ -26,6 +26,7 @@ class McpExternalTool(MoviePilotTool):
     _spec: AgentMcpToolSpec = PrivateAttr()
 
     def __init__(self, spec: AgentMcpToolSpec, session_id: str, user_id: str) -> None:
+        """绑定已配置的 MCP 工具及其输入协议。"""
         super().__init__(
             session_id=session_id,
             user_id=user_id,
@@ -58,6 +59,8 @@ class McpExternalTool(MoviePilotTool):
     def _format_mcp_result(result: Any) -> str:
         """将 MCP tools/call 返回结构转换为 Agent 可读文本。"""
         if isinstance(result, dict):
+            if result.get("isError") is True:
+                return json.dumps(result, ensure_ascii=False, indent=2, default=str)
             content = result.get("content")
             if isinstance(content, list):
                 parts = []
@@ -70,8 +73,6 @@ class McpExternalTool(MoviePilotTool):
                         parts.append(json.dumps(item, ensure_ascii=False, default=str))
                 if parts:
                     return "\n".join(parts)
-            if result.get("isError"):
-                return json.dumps(result, ensure_ascii=False, indent=2, default=str)
         if isinstance(result, str):
             return result
         return json.dumps(result, ensure_ascii=False, indent=2, default=str)

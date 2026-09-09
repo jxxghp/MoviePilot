@@ -10,12 +10,18 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agent.contracts import ReplyMode
 from app.agent.mcp import AgentMcpToolSpec
+from app.agent.middleware.invocation import GET_TOOL_EXECUTION_NAME
+from app.agent.middleware.output import READ_TOOL_RESULT_NAME
+from app.agent.middleware.plan import PLAN_TOOL_NAME
+from app.agent.middleware.selection import TOOL_DISCOVERY_NAME
 from app.agent.orchestrator import MoviePilotAgent, _CompiledAgentBundle
 from app.agent.tools.catalog import (
     ToolCatalogSnapshot,
     ToolIdentityAmbiguousError,
 )
+from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.mcp import create_external_mcp_tools
+from app.agent.tools.manager import MoviePilotToolsManager
 from app.runtime.config import settings
 from app.schemas.agent import AgentMcpServerConfig
 
@@ -24,6 +30,27 @@ from app.schemas.agent import AgentMcpServerConfig
 def anyio_backend():
     """使用 asyncio 后端运行 anyio 异步测试。"""
     return "asyncio"
+
+
+@pytest.mark.parametrize("with_invocations", [False, True])
+def test_internal_graph_tools_do_not_enter_external_mcp_catalog(with_invocations):
+    """内部计划、结果续读和回执查询只属于会话图，不进入 HTTP/MCP 工具目录。"""
+    data = SimpleNamespace(invocations=object()) if with_invocations else None
+    with (
+        patch("app.agent.tools.factory._get_plugin_agent_tools", return_value=[]),
+        patch("app.agent.tools.factory.AgentCapabilityManager.supports_audio_output", return_value=False),
+    ):
+        tools = MoviePilotToolFactory.create_tools(
+            session_id="mcp-isolation", user_id="owner", data=data,
+        )
+    manager = MoviePilotToolsManager(session_id="mcp-isolation", user_id="owner", is_admin=True, data=data)
+    manager.tools = tools
+    published_names = {definition.name for definition in manager.list_tools()}
+    assert "moviepilot_api" in published_names
+    assert "agent_task" in published_names
+    assert {PLAN_TOOL_NAME, READ_TOOL_RESULT_NAME, GET_TOOL_EXECUTION_NAME, TOOL_DISCOVERY_NAME}.isdisjoint(published_names)
+    for name in (PLAN_TOOL_NAME, READ_TOOL_RESULT_NAME, GET_TOOL_EXECUTION_NAME, TOOL_DISCOVERY_NAME):
+        assert manager.get_strict_tool(name) is None
 
 
 class _FakeGraphState:

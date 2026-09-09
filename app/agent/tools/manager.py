@@ -434,12 +434,13 @@ class MoviePilotToolsManager:
                 call_policy_hook("cancel", policy_orchestrator.fail, observation, e)
             raise
         except ToolExecutionTimeoutError as e:
+            receipt = None
             if observation is not None and policy_orchestrator is not None:
-                call_policy_hook("fail", policy_orchestrator.fail, observation, e)
+                receipt = call_policy_hook("fail", policy_orchestrator.fail, observation, e)
             error_summary = self._summarize_error(e)
             logger.warning(error_summary)
             return format_tool_result_for_agent(
-                error_summary,
+                {"error": error_summary, "execution_outcome": receipt.outcome.value if receipt else "unknown"},
                 tool_name=tool_name,
                 max_chars=getattr(tool_instance, "result_max_chars", None),
             )
@@ -458,7 +459,7 @@ class MoviePilotToolsManager:
                 "finish",
                 policy_orchestrator.finish,
                 observation,
-                str_result,
+                result,
             )
         return str_result
 

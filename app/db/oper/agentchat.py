@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.agentchat import AgentChat
+from app.db.oper.agentinvocation import AgentInvocationOper, terminal_session_delete
 from app.schemas.types import NotificationChannel
 
 DEFAULT_AGENT_CHAT_TITLE = "未命名会话"
@@ -17,6 +18,7 @@ class AgentChatOper(DbOper):
     """
 
     def __init__(self, db: Optional[Union[Session, AsyncSession]] = None):
+        """复用调用方会话，兼容既有插件入口的事务委托。"""
         super().__init__(db)
 
     @staticmethod
@@ -315,15 +317,24 @@ class AgentChatOper(DbOper):
         """
         异步删除 Agent 会话历史。
         """
-        chat = await self.async_get(session_id=session_id, user_id=user_id)
-        if not chat:
-            return False
-        await self._stage_async_delete(AgentChat, chat.id)
-        return True
+        async def stage(session: AsyncSession) -> bool:
+            """在同一事务删除会话和已确认回执，保留未知写入的恢复依据。"""
+            return await AgentChatOper(session).async_stage_delete(session_id, user_id)
+
+        return await self._execute_async_write(stage)
 
     def delete_by_id(self, chat_id: int) -> None:
-        """在 Oper 事务边界内按主键删除 Agent 会话。"""
-        self._stage_delete(AgentChat, chat_id)
+        """在同一事务按主键删除 Agent 会话及对应已确认回执。"""
+        def stage(session: Session) -> None:
+            """仅在会话存在时回收成功、失败或已确认提交的调用记录。"""
+            chat = AgentChat.get(session, chat_id)
+            if chat is None:
+                return
+            if chat.user_id is not None:
+                AgentInvocationOper(session).stage_delete_session(chat.user_id, chat.session_id)
+            session.delete(chat)
+
+        self._execute_sync_write(stage)
 
     async def async_stage_delete(
         self,
@@ -336,6 +347,10 @@ class AgentChatOper(DbOper):
         chat = await self.async_get(session_id=session_id, user_id=user_id)
         if not chat:
             return False
+        if chat.user_id is not None:
+            await self._db.execute(
+                terminal_session_delete(chat.user_id, chat.session_id)
+            )
         await self._db.delete(chat)
         await self._db.flush()
         return True

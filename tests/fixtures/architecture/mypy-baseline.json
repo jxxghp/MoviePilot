@@ -175,10 +175,6 @@
   "app/agent/middleware/patching.py": {
     "misc": 1
   },
-  "app/agent/middleware/policy.py": {
-    "misc": 2,
-    "union-attr": 1
-  },
   "app/agent/middleware/selection.py": {
     "misc": 2,
     "no-any-return": 1,
@@ -216,9 +212,6 @@
     "type-arg": 13,
     "union-attr": 3,
     "var-annotated": 1
-  },
-  "app/agent/policy/orchestrator.py": {
-    "no-any-return": 1
   },
   "app/agent/policy/sanitizer.py": {
     "var-annotated": 1

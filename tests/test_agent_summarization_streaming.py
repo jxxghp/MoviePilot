@@ -26,6 +26,8 @@ from pydantic import Field
 import app.agent.orchestrator as agent_module
 from app.agent.memory import MemoryManager
 from app.agent.middleware.config import RuntimeConfigMiddleware
+from app.agent.middleware.invocation import GET_TOOL_EXECUTION_NAME, InvocationMiddleware
+from app.agent.middleware.output import READ_TOOL_RESULT_NAME, ToolOutputMiddleware
 from app.agent.middleware.plan import PLAN_TOOL_NAME, PlanMiddleware
 from app.agent.middleware.selection import TOOL_DISCOVERY_NAME, ToolSelectorMiddleware
 from app.agent.middleware.summarization import (
@@ -231,9 +233,12 @@ def test_streaming_agent_uses_non_streaming_llm_for_summary():
     )
 
 
-def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares():
-    """流式 Agent 的模型型中间件应使用非流式 LLM。"""
-    agent = agent_module.MoviePilotAgent(session_id="session-1", user_id="10001")
+@pytest.mark.parametrize("with_invocations", [False, True])
+def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares(with_invocations):
+    """流式图保持非流式筛选与压缩，并按持久端口正确装配内部常驻工具。"""
+    repository = object() if with_invocations else None
+    data = SimpleNamespace(invocations=repository) if with_invocations else None
+    agent = agent_module.MoviePilotAgent(session_id="session-1", user_id="10001", data=data)
     main_llm = _FakeLLM("main")
     non_streaming_llm = _FakeLLM("non-streaming")
     captured: dict = {}
@@ -298,18 +303,25 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares():
         "agent_task",
         "read_skill",
         PLAN_TOOL_NAME,
+        READ_TOOL_RESULT_NAME,
+        *([GET_TOOL_EXECUTION_NAME] if with_invocations else []),
         TOOL_DISCOVERY_NAME,
     ]
     assert tool_selector_middleware.selection_tools[: len(fake_tools)] == fake_tools
     assert [getattr(tool, "name", None) for tool in tool_selector_middleware.selection_tools[len(fake_tools) :]] == [
-        "read_skill", PLAN_TOOL_NAME, TOOL_DISCOVERY_NAME,
+        "read_skill", PLAN_TOOL_NAME, READ_TOOL_RESULT_NAME,
+        *([GET_TOOL_EXECUTION_NAME] if with_invocations else []), TOOL_DISCOVERY_NAME,
     ]
     middlewares = captured["middleware"]
     plan_middleware = next(item for item in middlewares if isinstance(item, PlanMiddleware))
+    output_middleware = next(item for item in middlewares if isinstance(item, ToolOutputMiddleware))
+    invocation_middlewares = [item for item in middlewares if isinstance(item, InvocationMiddleware)]
     compaction_middleware = next(item for item in middlewares if isinstance(item, FinalRequestCompactionMiddleware))
     assert compaction_middleware.summarizer.model is non_streaming_llm
     assert [item.name for item in middlewares] == [
         "AgentPolicyMiddleware",
+        "ToolOutputMiddleware",
+        *(["InvocationMiddleware"] if with_invocations else []),
         "SkillsMiddleware",
         "JobsMiddleware",
         "RuntimeConfigMiddleware",
@@ -321,9 +333,23 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares():
         "UsageMiddleware",
     ]
     policy_middleware = middlewares[0]
-    for internal_tool in [*plan_middleware.tools, *tool_selector_middleware.tools]:
+    assert output_middleware.context is policy_middleware.context
+    assert bool(invocation_middlewares) is with_invocations
+    if with_invocations:
+        assert invocation_middlewares[0].repository is repository
+        assert invocation_middlewares[0].context is policy_middleware.context
+        assert invocation_middlewares[0]._guarded_tools == tuple(fake_tools)
+    else:
+        assert policy_middleware.catalog.resolve_unique(GET_TOOL_EXECUTION_NAME) is None
+    internal_tools = [
+        *plan_middleware.tools, *output_middleware.tools, *tool_selector_middleware.tools,
+        *(tool for middleware in invocation_middlewares for tool in middleware.tools),
+    ]
+    for internal_tool in internal_tools:
         assert policy_middleware.catalog.resolve_unique(internal_tool.name).tool is internal_tool
         assert internal_tool in tool_selector_middleware.selection_tools
+        assert internal_tool.name in tool_selector_middleware.always_include
+        assert internal_tool not in captured["tools"]
 
 
 def test_non_streaming_agent_reuses_main_llm_for_summary():

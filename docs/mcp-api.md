@@ -35,7 +35,7 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 
 ### 动态插件工具
 
-内置 Agent 的 `update_plan`、`search_tools` 为会话中间件工具，不通过外部 `tools/list` 发布；它们只维护计划或发现当前目录内的工具，不能授予业务操作权限。使用与恢复语义见 [Agent 复杂任务执行与恢复](agent.md)。
+内置 Agent 的 `update_plan`、`search_tools`、`read_tool_result`、`get_tool_execution` 为会话中间件工具，不通过外部 `tools/list` 发布；它们维护计划、发现工具、续读结果或查询执行回执，不能授予业务操作权限。使用与恢复语义见 [Agent 复杂任务执行与恢复](agent.md)。
 
 `tools/list` 会同时返回 MoviePilot 内置工具和已启用插件通过 `get_agent_tools()` 声明的工具。插件启动、停止、重载或配置生效后，MCP 工具管理器会在下一次列出或调用工具时按注册表版本惰性刷新，避免继续暴露已移除的工具或遗漏新工具。
 

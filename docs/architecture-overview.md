@@ -756,8 +756,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 987 |
-| 内部导入边 | 8,395 |
+| Python 模块 | 995 |
+| 内部导入边 | 8,455 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |
@@ -767,7 +767,7 @@ flowchart LR
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 
-整理失败反馈由 `app.application.transfer.feedback` 集中投影，冷启动各入口增加这一个纯应用模块：`app.startup.lifecycle` 为 542、`app.factory` 为 554、`app.main` 为 556。性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
+整理失败反馈由 `app.application.transfer.feedback` 集中投影；Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。当前 `app.startup.lifecycle` 为 546、`app.factory` 为 558、`app.main` 为 560。性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
 
 架构专项验证分为两个 CI 投影：`Check event semantic policy` 先运行依赖、Adapter、出口和 Event
 语义门禁，`Check host architecture snapshot` 再执行快照测试及一次

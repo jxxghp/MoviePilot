@@ -6,6 +6,7 @@ from sqlalchemy import delete, exists, select
 
 from app.db.base import execute_dml
 from app.db.models.agentchat import AgentChat
+from app.db.models.agentinvocation import AgentInvocation
 from app.db.models.agenttask import AgentTask
 from app.db.models.agenttaskrun import AgentTaskRun
 from app.db.models.downloadfailure import DownloadFailure
@@ -88,14 +89,52 @@ class DatabaseCleanupRepository:
 
     @staticmethod
     def delete_agent_chats(db: Any, cutoff: str, limit: int) -> int:
-        """清理旧会话，但保留仍被 Agent 定时任务引用的上下文。"""
+        """回收旧会话和已确认回执，保留任务引用和投递结果不确定的上下文。"""
         task_reference = exists(
             select(AgentTask.id).where(AgentTask.session_id == AgentChat.session_id)
         )
+        invocation_reference = exists(
+            select(AgentInvocation.id).where(
+                AgentInvocation.principal_id == AgentChat.user_id,
+                AgentInvocation.session_id == AgentChat.session_id,
+                AgentInvocation.status.in_(("running", "unknown")),
+            )
+        )
+        ids = list(db.execute(
+            select(AgentChat.id).where(
+                AgentChat.updated_at < cutoff, ~task_reference, ~invocation_reference,
+            ).order_by(AgentChat.id).limit(limit)
+        ).scalars())
+        if not ids:
+            return 0
+        execute_dml(
+            db,
+            delete(AgentInvocation).where(
+                AgentInvocation.status.in_(("succeeded", "failed", "pending")),
+                exists(select(AgentChat.id).where(
+                    AgentChat.id.in_(ids),
+                    AgentChat.user_id == AgentInvocation.principal_id,
+                    AgentChat.session_id == AgentInvocation.session_id,
+                )),
+            ),
+        )
+        return execute_dml(db, delete(AgentChat).where(AgentChat.id.in_(ids)))
+
+    @staticmethod
+    def delete_agent_invocations(db: Any, cutoff: str, limit: int) -> int:
+        """清理无聊天行的旧提交回执和终态历史，不回收投递结果不确定的恢复状态。"""
+        chat_reference = exists(select(AgentChat.id).where(
+            AgentChat.user_id == AgentInvocation.principal_id,
+            AgentChat.session_id == AgentInvocation.session_id,
+        ))
         return DatabaseCleanupRepository._delete_selected_ids(
             db=db,
-            model=AgentChat,
-            condition=(AgentChat.updated_at < cutoff) & ~task_reference,
+            model=AgentInvocation,
+            condition=(
+                AgentInvocation.status.in_(("succeeded", "failed", "pending"))
+                & (AgentInvocation.updated_at < cutoff)
+                & ~chat_reference
+            ),
             limit=limit,
         )
 

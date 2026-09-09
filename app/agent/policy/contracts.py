@@ -93,10 +93,12 @@ class MigrationState(str, Enum):
 
 
 class ExecutionOutcome(str, Enum):
-    """工具 handler 观测终态；成功不代表业务授权或副作用已完成。"""
+    """工具实际回执状态；提交未完成和结果未知不能视为业务成功。"""
 
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    PENDING = "pending"
+    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)

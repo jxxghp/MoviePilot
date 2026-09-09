@@ -68,6 +68,7 @@ to make the directory tree look symmetrical.
 | `app/application/music/` | Multi-source music catalog orchestration |
 | `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the typed runtime and persistence dependency aggregate, and `events.py` owns durable event write contracts plus replayable payload conversion |
 | `app/application/agent.py` | Agent orchestration facade and typed `AgentDataContext`; startup injects one explicit data context into the manager, memory, tool and scheduler owners without a process-wide persistence locator |
+| `app/application/invocation.py` | Frozen Agent write-call identity, claim and receipt contracts; the injected repository provides atomic claim, fenced settlement and unresolved-state reads, while `db/adapters/invocation.py` owns short transactions and cold-start recovery is invoked by startup |
 | `app/application/network.py` | System network-test target catalog, immutable public/private projections, URL and redirect admission, response validation and the injected transport Port; startup owns concrete HTTP Adapter assembly |
 | `app/application/outbox.py` | Durable intent, transaction-only stager, short-transaction dispatch store, claim fencing and structured post-commit result contracts |
 | `app/application/transfer/` | Durable transfer use cases: `workflow.py` owns admission/planning/queue behavior; `execution.py` owns stable operation identity, step/checkpoint state, retry/manual-review commands and terminal-settlement DTOs; `recovery.py` owns failed/corrupt task cleanup and history detachment through the execution repository; `history.py` projects history write fields and file fingerprints; `feedback.py` owns failure stages, notification snapshots and message text, while Chain owns notification delivery and cleanup side effects |
@@ -88,6 +89,10 @@ to make the directory tree look symmetrical.
 | `app/agent/orchestrator.py` | One `MoviePilotAgent` execution instance: prompt/tool/middleware assembly, model invocation, streaming and per-agent state |
 | `app/agent/middleware/plan.py` | Current task objective, step status and evidence in graph state; sanitized snapshots travel through existing message persistence and never authorize tool effects |
 | `app/agent/middleware/selection.py` | First-turn tool selection and bounded, on-demand discovery within the same authorized catalog; discovered tool names remain local to the current user request |
+| `app/agent/middleware/invocation.py` | Claims write executions through the injected Application port; owns per-turn API deduplication, durable receipt projection and narrowly scoped read-only reconciliation |
+| `app/agent/middleware/output.py` | Bounded, expiring in-memory tool output and thread-scoped pagination; never persists raw tool results |
+| `app/agent/tools/result.py` | Pure interpretation of explicit tool result protocols into succeeded, failed, pending and unknown outcomes |
+| `app/agent/api/arguments.py` | Canonical API request fingerprints from the generated operation schema and the executor's GET projection; no endpoint imports or live discovery |
 | `app/agent/shell.py` | Agent command-shell selection and subprocess text-encoding policy; Windows prefers Git Bash, then PowerShell 7, while POSIX keeps native shell/PTY behavior |
 | `app/agent/policy/api.py` | Fixed `moviepilot_api` operation registry, HTTP route templates and per-operation authorization/effect policy; no arbitrary URL or method input |
 | `app/agent/policy/mcp.py` | Generated external MCP input-contract builder for the fixed API registry; owns exact English oneOf parameter projection, not runtime authorization |

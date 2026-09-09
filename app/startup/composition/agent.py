@@ -26,6 +26,7 @@ from app.db.adapters.agent import (
     TransactionalAgentTaskRepository,
     TransactionalPluginDataRepository,
 )
+from app.db.adapters.invocation import TransactionalInvocationRepository
 from app.db.oper.agentchat import AgentChatOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.session import SessionFactory, async_session_scope
@@ -92,6 +93,7 @@ def compose_agent(
         transfer_execution=dependencies.transfer_execution,
         download_history=dependencies.download_history,
         plugin_data=TransactionalPluginDataRepository(async_session_scope),
+        invocations=TransactionalInvocationRepository(SessionFactory),
     )
     return AgentComposition(
         data=data,

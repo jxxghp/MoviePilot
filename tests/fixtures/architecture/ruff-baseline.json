@@ -608,9 +608,6 @@
   "tests/test_agent_tokens_events.py": {
     "I001": 1
   },
-  "tests/test_agent_tool_result_policy.py": {
-    "I001": 1
-  },
   "tests/test_agent_tool_timeouts.py": {
     "I001": 1
   },

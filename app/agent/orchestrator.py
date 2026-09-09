@@ -29,10 +29,12 @@ from app.agent.mcp import agent_mcp_manager
 from app.agent.memory import MemoryManager, memory_manager
 from app.agent.middleware.activity import ActivityLogMiddleware
 from app.agent.middleware.config import RuntimeConfigMiddleware
+from app.agent.middleware.invocation import InvocationMiddleware
 from app.agent.middleware.jobs import (
     JobsMiddleware,
 )
 from app.agent.middleware.memory import MemoryMiddleware
+from app.agent.middleware.output import ToolOutputMiddleware
 from app.agent.middleware.patching import PatchToolCallsMiddleware
 from app.agent.middleware.plan import PLAN_SNAPSHOT_KEY, PlanMiddleware, attach_plan_snapshot
 from app.agent.middleware.policy import AgentPolicyMiddleware
@@ -1893,8 +1895,13 @@ class MoviePilotAgent:
             )
             temporary_subagent_middlewares = tuple(subagent_middlewares)
             plan_middleware = PlanMiddleware()
+            output_middleware = ToolOutputMiddleware(policy_context)
+            invocation_repository = getattr(self._data, "invocations", None)
+            invocation_middlewares = [InvocationMiddleware(policy_context, invocation_repository, tools)] if invocation_repository else []
             internal_tools = [
                 *skill_tools, *activity_log_tools, *subagent_task_tools, *plan_middleware.tools,
+                *output_middleware.tools,
+                *(tool for middleware in invocation_middlewares for tool in middleware.tools),
             ]
             tool_selector = self._initialize_tool_selector(tools, internal_tools, non_streaming_model)
             # 严格目录必须覆盖 LangGraph ToolNode 可执行的全部 client-side 工具。
@@ -1940,6 +1947,8 @@ class MoviePilotAgent:
                     catalog=tool_catalog,
                     tools=tools,
                 ),
+                output_middleware,
+                *invocation_middlewares,
                 # Skills
                 skills_middleware,
                 # Jobs 任务管理

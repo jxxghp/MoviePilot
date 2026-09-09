@@ -79,6 +79,10 @@ class FakeCleanupRepository:
         """模拟 Agent 会话删除。"""
         return self._delete("agentchat")
 
+    def delete_agent_invocations(self, db, cutoff: str, limit: int) -> int:
+        """模拟无会话已确认写工具回执的历史清理。"""
+        return self._delete("agentinvocation")
+
     def delete_agent_task_runs(self, db, cutoff: str, limit: int) -> int:
         """模拟 Agent 运行历史删除。"""
         return self._delete("agenttaskrun")
@@ -140,6 +144,7 @@ def test_cleanup_service_owns_batching_report_and_progress() -> None:
         "downloadfailure",
         "subscribehistory",
         "agentchat",
+        "agentinvocation",
         "agenttaskrun",
         "outbox_completed",
         "outbox_dead",

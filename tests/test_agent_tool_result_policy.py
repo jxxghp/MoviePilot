@@ -20,10 +20,12 @@ from pydantic.dataclasses import dataclass as pydantic_dataclass
 from pydantic_core import PydanticCustomError
 
 import app.agent.policy.sanitizer as sanitizer_module
+
 # pylint: disable=no-name-in-module  # 策略包根通过 __getattr__ 惰性导出，Pylint 无法静态解析。
 from app.agent.policy import sanitize_for_host, summarize_error, summarize_input, summarize_result
 from app.agent.tools.base import MoviePilotTool, serialize_tool_result_for_agent
 from app.agent.tools.manager import MoviePilotToolsManager
+from app.agent.tools.result import ToolExecutionError
 
 SECRET_MARKER = "nested-secret-marker-8472"
 
@@ -1632,8 +1634,9 @@ def test_tool_error_does_not_echo_secret_to_logs_or_result() -> None:
     mock_logger = MagicMock()
 
     with patch("app.agent.tools.base.logger", mock_logger):
-        result = asyncio.run(tool._arun(payload=payload))
+        with pytest.raises(ToolExecutionError) as failure:
+            asyncio.run(tool._arun(payload=payload))
 
-    assert SECRET_MARKER not in result
+    assert SECRET_MARKER not in str(failure.value)
     assert SECRET_MARKER not in _logged_text(mock_logger)
-    assert "***" in result
+    assert "RuntimeError" in str(failure.value)

@@ -205,6 +205,20 @@ shared `DATA_CLEANUP_ENABLE` policy when it has a safe time boundary:
 - `agentchat` removes only expired sessions not referenced by an `agenttask`;
   `agenttaskrun` removes only expired terminal runs that are neither running nor
   the task's current `last_run_id`.
+- `agentinvocation` stores only write-call identity, argument digests and fixed
+  host status summaries. Successful/failed receipts and pending receipts that
+  confirm an asynchronous submission are deleted in the same transaction as
+  their owning chat, including shared chat retention cleanup. Pending means
+  submission is confirmed while downstream completion has not been observed;
+  it is history rather than a queue to execute. Replaying the same invocation
+  never repeats submission, but a new user intent may submit again.
+  These history receipts without a chat (including background task calls) use the
+  same Agent chat retention period, based on their UTC settlement timestamp;
+  both the shared cleanup switch and a zero-day retention disable this cleanup.
+  Running/unknown receipts are recovery state and have no age-based deletion;
+  they also protect their chat from automatic retention cleanup. Cold startup
+  changes running receipts to unknown and rotates their fencing token; elapsed
+  time never grants permission to repeat the write.
 - `outboxmessage` has separate completed and dead-letter retention periods;
   pending and processing intents are recovery state and are never age-deleted.
 

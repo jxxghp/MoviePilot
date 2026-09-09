@@ -23,6 +23,7 @@ urllib3.disable_warnings(InsecureRequestWarning)
 
 # 业务模块只依赖网络适配器暴露的异常边界，不直接导入具体 transport。
 HttpRequestError = requests.exceptions.RequestException
+AsyncHttpRequestError = httpx2.RequestError
 
 _default_user_agent: Optional[str] = None
 

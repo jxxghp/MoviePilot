@@ -4,7 +4,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Callable
-from typing import Any, Mapping, Optional, TypeVar
+from typing import Any, Mapping, Optional, TypeVar, cast
 
 from langchain_core.messages import ToolMessage
 from pydantic import ValidationError
@@ -29,6 +29,7 @@ from app.agent.policy.sanitizer import (
     summarize_input,
     summarize_result,
 )
+from app.agent.tools.result import inspect_tool_result
 from app.runtime.log import logger
 
 _HookResult = TypeVar("_HookResult")
@@ -59,7 +60,7 @@ def _normalize_policy_arguments(tool: Any, arguments: Mapping[str, Any]) -> dict
         return raw_arguments
     try:
         validated = args_schema.model_validate(raw_arguments)
-        return validated.model_dump(mode="json")
+        return cast(dict[str, Any], validated.model_dump(mode="json"))
     except (AttributeError, TypeError, ValueError, ValidationError):
         # 实际 handler 仍负责既有参数错误语义；策略观测按原始值保守处理。
         return raw_arguments
@@ -143,7 +144,8 @@ class AgentToolPolicyOrchestrator:
 
     @staticmethod
     def finish(observation: PolicyObservation, result: Any) -> ExecutionReceipt:
-        """生成成功回执 envelope，并只记录脱敏结果摘要。"""
+        """依据实际工具协议生成回执，提交中或业务失败不能标为成功。"""
+        outcome = inspect_tool_result(result)
         if observation.policy.result_sensitivity is ResultSensitivity.SECRET:
             result_summary = '{"protected_result": "***"}'
         else:
@@ -153,18 +155,20 @@ class AgentToolPolicyOrchestrator:
             tool_name=observation.invocation.tool_name,
             origin=observation.invocation.origin,
             decision=observation.decision,
-            outcome=ExecutionOutcome.SUCCEEDED,
+            outcome=outcome,
             input_summary=observation.input_summary,
             result_summary=result_summary,
+            external_may_continue=outcome in {ExecutionOutcome.PENDING, ExecutionOutcome.UNKNOWN},
+            needs_reconcile=outcome is ExecutionOutcome.UNKNOWN,
             duration_ms=max(
                 0,
                 int((time.monotonic() - observation.started_at) * 1000),
             ),
         )
         logger.info(
-            f"Agent工具执行完成: tool={receipt.tool_name}, "
+            f"Agent工具执行结果: tool={receipt.tool_name}, "
             f"origin={receipt.origin.value}, shadow={receipt.decision.shadow}, "
-            f"duration_ms={receipt.duration_ms}, result={result_summary}"
+            f"duration_ms={receipt.duration_ms}, outcome={outcome.value}, result={result_summary}"
         )
         return receipt
 
@@ -199,7 +203,7 @@ class AgentToolPolicyOrchestrator:
             tool_name=observation.invocation.tool_name,
             origin=observation.invocation.origin,
             decision=observation.decision,
-            outcome=ExecutionOutcome.FAILED,
+            outcome=ExecutionOutcome.UNKNOWN if external_may_continue else ExecutionOutcome.FAILED,
             input_summary=observation.input_summary,
             error_summary=error_summary,
             duration_ms=max(

@@ -665,6 +665,8 @@ async def _initialize_modules() -> HostRuntime:
         system_config=system_config,
         dependencies=runtime_dependencies,
     )
+    if agent_composition.data.invocations is not None:
+        await database_runtime.worker.run(agent_composition.data.invocations.recover_running)
     security_composition = configure_security_services()
     runtime_composition = compose_runtime(
         RuntimeInputs(

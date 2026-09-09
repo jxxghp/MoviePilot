@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 6
+version: 7
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -121,6 +121,12 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Useful queries: Tracing Agent history or context restoration by user, session, or update time.
 - Write boundary: Owned by the Agent conversation service; do not rewrite message JSON, counters, or ownership.
 - Columns: `id`, `session_id`, `client_session_id`, `user_id`, `username`, `channel`, `source`, `original_chat_id`, `title`, `preview`, `agent_messages`, `display_messages`, `message_count`, `created_at`, `updated_at`
+
+### `agentinvocation`
+- Purpose: Durable Agent write invocation identity and last observed outcome, including confirmed asynchronous submission.
+- Useful queries: Inspect an exact principal and session's running, unknown, pending, succeeded, or failed receipts; compare timestamps when diagnosing an interrupted write.
+- Write boundary: Owned by the host's atomic claim and reconciliation path. Never change IDs, fingerprints, claim tokens, or statuses to bypass duplicate protection. Running and unknown records are recovery state; ordinary retention does not delete them. Pending means submission was confirmed, not that the external task finished.
+- Columns: `id`, `principal_id`, `session_id`, `invocation_id`, `tool_name`, `arguments_digest`, `claim_token`, `status`, `summary`, `created_at`, `updated_at`. Raw arguments and tool output are not stored here.
 
 ### `agenttask`
 - Purpose: Stores one-shot or recurring Agent task definitions, triggers, and the latest execution summary.

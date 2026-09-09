@@ -7,8 +7,10 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 from urllib.parse import quote
 
-from app.adapters.network.http import AsyncRequestUtils
-from app.agent.policy.api import ApiOperationRoute, resolve_api_route
+from app.adapters.network.http import AsyncHttpRequestError, AsyncRequestUtils
+from app.agent.policy.api import ApiOperationRoute, resolve_api_operation, resolve_api_route
+from app.agent.policy.contracts import ActionEffect
+from app.agent.policy.sanitizer import stable_type_name
 from app.application.security.token import create_access_token
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -16,6 +18,11 @@ from app.runtime.settings import get_runtime_setting
 
 class ApiExecutionError(RuntimeError):
     """固定 API 路由无法构造或请求失败。"""
+
+    def __init__(self, message: str, *, external_may_continue: bool = False) -> None:
+        """区分调用前拒绝和请求发出后无法确认的外部副作用。"""
+        super().__init__(message)
+        self.external_may_continue = external_may_continue
 
 
 @dataclass(frozen=True)
@@ -175,6 +182,9 @@ class MoviePilotApiExecutor:
             verify=False,
             trust_env=False,
         )
+        spec = resolve_api_operation(operation_id)
+        may_change_state = spec is None or spec.effect not in {ActionEffect.SAFE_READ, ActionEffect.SENSITIVE_READ}
+        status_code: int | None = None
         try:
             response = await request.request(
                 method=route.method,
@@ -184,18 +194,23 @@ class MoviePilotApiExecutor:
                 raise_exception=True,
             )
             if response is None:
-                raise ApiExecutionError("MoviePilot API 没有返回响应")
+                raise ApiExecutionError("MoviePilot API 没有返回响应", external_may_continue=may_change_state)
             try:
-                payload = response.json()
                 status_code = response.status_code
+                payload = response.json()
                 response_headers = dict(response.headers)
             finally:
                 await response.aclose()
         except ApiExecutionError:
             raise
         except Exception as error:
-            logger.warning(f"Agent API 请求失败: operation={operation_id} error={error}")
-            raise ApiExecutionError(f"MoviePilot API 请求失败: {operation_id}") from error
+            logger.warning(f"Agent API 请求失败: operation={operation_id} error_type={stable_type_name(error)}")
+            transport_failed = isinstance(error, (AsyncHttpRequestError, ConnectionError, TimeoutError))
+            response_unreadable = status_code is not None and status_code < 400
+            raise ApiExecutionError(
+                f"MoviePilot API 请求失败: {operation_id}",
+                external_may_continue=may_change_state and (transport_failed or response_unreadable),
+            ) from error
         if status_code >= 400:
             return json.dumps(
                 {"success": False, "error": "api_error", "status_code": status_code, "data": payload},

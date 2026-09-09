@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 25
+version: 26
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -129,6 +129,14 @@ Call the gateway with this shape:
   `music_type=recording|album|artist`; an artist is browse-only.
 - Treat `success=false`, HTTP error data, empty results, and validation errors as
   real outcomes. Do not claim success without checking the response.
+- Respect an explicit `execution_outcome`: `pending` is accepted but unfinished,
+  while `unknown` means a write may have happened. Do not repeat an unknown write
+  or change defaults merely to evade duplicate protection. In the built-in Agent,
+  use `get_tool_execution` with the returned invocation ID; the host can reconcile
+  supported non-sensitive setting replacements through a read-only check.
+- When a built-in Agent preview contains `result_id` and `next_offset`, use
+  `read_tool_result` for the next page instead of repeating the operation. These
+  receipt and result tools are internal to the Agent, not external MCP tools.
 
 ## Collection Counts And Pagination
 
