@@ -119,9 +119,6 @@
   "app/db/uow.py": {
     "I001": 1
   },
-  "app/db/worker.py": {
-    "I001": 1
-  },
   "app/doctor/__init__.py": {
     "I001": 1
   },
