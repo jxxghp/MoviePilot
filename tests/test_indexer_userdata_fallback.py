@@ -2,6 +2,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import app.modules.indexer as indexer_module
 from app.modules.indexer import IndexerModule
 from app.modules.indexer.parser import SiteSchema
 
@@ -65,3 +66,53 @@ def test_refresh_userdata_fallback_only_uses_common_schemas(monkeypatch):
     ]
     assert not parser_constructors[3].called
     assert not parser_constructors[4].called
+
+
+def test_refresh_userdata_uses_declared_page_and_runtime_user_agent(monkeypatch):
+    """用户数据刷新应使用站点声明页面，并为未配置站点 UA 补充运行时 UA。"""
+    captured = {}
+    constructor = Mock(name="NexusPhpParser")
+    constructor.schema = SimpleNamespace(value=SiteSchema.NexusPhp.value)
+
+    def build_parser(**kwargs):
+        """构造一个成功返回用户 ID 的解析器桩。"""
+        captured.update(kwargs)
+        parser = Mock()
+        parser.userid = "123"
+        parser.username = "tester"
+        parser.user_level = None
+        parser.join_at = None
+        parser.upload = 0
+        parser.download = 0
+        parser.ratio = 0
+        parser.bonus = 0
+        parser.seeding = 0
+        parser.seeding_size = 0
+        parser.seeding_info = []
+        parser.leeching = 0
+        parser.leeching_size = 0
+        parser.message_unread = 0
+        parser.message_unread_contents = []
+        parser.err_msg = None
+        return parser
+
+    constructor.side_effect = build_parser
+    monkeypatch.setattr(IndexerModule, "_site_schemas", [constructor])
+    monkeypatch.setattr(
+        indexer_module,
+        "get_runtime_setting",
+        lambda key: "MoviePilot-Test-UA" if key == "USER_AGENT" else None,
+    )
+
+    module = object.__new__(IndexerModule)
+    result = module.refresh_userdata({
+        "name": "音乐乌托邦",
+        "url": "https://www.musopia.vip/",
+        "schema": SiteSchema.NexusPhp.value,
+        "userdata_path": "index.php",
+        "public": False,
+    })
+
+    assert result.userid == "123"
+    assert captured["url"] == "https://www.musopia.vip/index.php"
+    assert captured["ua"] == "MoviePilot-Test-UA"

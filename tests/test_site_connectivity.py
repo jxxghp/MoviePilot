@@ -29,23 +29,33 @@ def test_site_connectivity_records_result_without_injected_session(db, monkeypat
     assert statistic.lst_state == 0
 
 
-def test_indexphp_connectivity_uses_derived_snapshot_without_mutation(monkeypatch):
-    """index.php 特殊测试应派生新快照，不得修改冻结站点配置。"""
+def test_resource_login_path_uses_generic_connectivity_test(db, monkeypatch):
+    """站点资源声明登录页后，通用检测应访问该页且不修改站点快照。"""
+    db.watermark(Site, SiteStatistic)
+    db.add(Site(
+        name="资源路径站点",
+        domain="resource-path.test",
+        url="https://resource-path.test/",
+        is_active=True,
+    ))
     observed: list[SiteSnapshot] = []
+
+    class _SitesHelper:
+        """为资源路径测试提供最小站点索引器接口。"""
+
+        def get_indexer(self, domain: str) -> dict:
+            """返回测试站点的登录页配置。"""
+            assert domain == "resource-path.test"
+            return {"login_path": "index.php"}
+
+    monkeypatch.setattr("app.chain.site.SitesHelper", _SitesHelper)
     monkeypatch.setattr(
         SiteChain,
         "_SiteChain__test",
         lambda _self, site: observed.append(site) or (True, "连接成功"),
     )
-    chain = SiteChain.__new__(SiteChain)
-    original = SiteSnapshot(
-        id=1,
-        name="Index PHP",
-        url="https://index.example/",
-    )
 
-    result = chain._SiteChain__indexphp_test(original)
+    status, message = SiteChain().test("https://resource-path.test/")
 
-    assert result == (True, "连接成功")
-    assert original.url == "https://index.example/"
-    assert observed[0].url == "https://index.example/index.php"
+    assert (status, message) == (True, "连接成功")
+    assert observed[0].url == "https://resource-path.test/index.php"

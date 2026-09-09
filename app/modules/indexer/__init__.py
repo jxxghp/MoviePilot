@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
 from typing import Any, Callable, List, Mapping, Optional, Tuple, Union, cast
+from urllib.parse import urljoin
 
 from app.application.site.health import get_configured_site_health_service
 from app.application.site.observation import report_site_search_outcome
@@ -23,6 +24,7 @@ from app.modules.indexer.spider.tnode import TNodeSpider
 from app.modules.indexer.spider.torrentleech import TorrentLeech
 from app.modules.indexer.spider.yema import YemaSpider
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.media import resolve_media_identity
 from app.schemas.site import SiteUserData
 from app.schemas.types import MediaSource, MediaType, ModuleType, OtherModulesType
@@ -738,13 +740,23 @@ class IndexerModule(_ModuleBase):
             schema_value = schema_value or site.get("schema")
             for site_schema in self._site_schemas:
                 if site_schema.schema and site_schema.schema.value == schema_value:
+                    site_url = site.get("url")
+                    userdata_path = str(site.get("userdata_path") or "").strip()
+                    if userdata_path and site_url:
+                        if userdata_path.startswith(("http://", "https://")):
+                            site_url = userdata_path
+                        else:
+                            site_url = urljoin(
+                                f"{str(site_url).rstrip('/')}/",
+                                userdata_path.lstrip("/"),
+                            )
                     return site_schema(
                         site_name=site.get("name"),
-                        url=site.get("url"),
+                        url=site_url,
                         site_cookie=site.get("cookie"),
                         apikey=site.get("apikey"),
                         token=site.get("token"),
-                        ua=site.get("ua"),
+                        ua=site.get("ua") or get_runtime_setting("USER_AGENT"),
                         proxy=site.get("proxy"),
                         api_url=site.get("api_url"))
             return None
