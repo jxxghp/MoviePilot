@@ -18,6 +18,7 @@ class _WebAgentStreamingHandlerMixin:
     _pending_tool_stats: dict[str, int]
 
     def __init__(self, on_emit: Callable[[str], None]) -> None:
+        """绑定当前 Web 请求的输出回调。"""
         super().__init__()
         self._on_emit = on_emit
 
@@ -43,6 +44,14 @@ class _WebAgentStreamingHandlerMixin:
             tool_kwargs=tool_kwargs,
         )
         self.flush_pending_tool_summary()
+
+    def emit_tool_message(self, message: str) -> str:
+        """将工具摘要压成一行，防止多行参数被 SSE 文本解析器拆入正文。
+
+        仅处理展示文案；实际工具参数保持原样，由前端在工具提示条内自动折行。
+        """
+        normalized_message = " ".join(str(message or "").splitlines())
+        return str(super().emit_tool_message(normalized_message))  # type: ignore[misc]
 
     def emit(self, token: str) -> str:
         """追加 token 并同步通知 SSE 生产者。"""
