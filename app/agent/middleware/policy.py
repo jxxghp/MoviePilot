@@ -1,13 +1,16 @@
 """LangChain 工具调用的 MoviePilot 宿主策略中间件。"""
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ToolCallRequest, hook_config
 from langchain_core.messages import AIMessage, ToolMessage
 
+from app.agent.policy.api import resolve_api_operation
 from app.agent.policy.contracts import (
+    ActionEffect,
     ExecutionOutcome,
     ExecutionReceipt,
     ToolOrigin,
@@ -22,11 +25,19 @@ from app.agent.policy.registry import requests_system_setting_secrets
 from app.agent.policy.sanitizer import stable_type_name
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.impl.api import MoviePilotApiTool
+from app.agent.tools.impl.mcp import McpExternalTool
 from app.agent.tools.result import EXECUTION_OUTCOME_KEY, ToolExecutionError, annotate_tool_result
+from app.agent.tools.tags import ToolTag
 
 POLICY_DENIED_MESSAGE = "当前宿主策略不允许执行该工具。"
 POLICY_UNAVAILABLE_MESSAGE = "宿主策略暂时不可用，未执行该工具。"
 TOOL_TIMEOUT_MESSAGE = "工具执行超时，已停止等待结果；若工具包含外部写操作，操作可能仍在继续，请先确认实际状态再重试。"
+SUBAGENT_READ_ACTIONS = {
+    "execute_command": frozenset({"read", "wait"}),
+    "browse_webpage": frozenset({"snapshot", "get_content", "screenshot", "wait", "list_tabs"}),
+    "persona": frozenset({"list"}),
+    "agent_task": frozenset({"list"}),
+}
 
 
 # follow_imports=skip 下只在第三方中间件基类和装饰器边界忽略 misc。
@@ -35,6 +46,7 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     模型供应商原生 server tools 在供应商侧执行，不经过本地 middleware，
     因而不具备这里生成的 start/finish/fail 回执。
+    只读子代理的动作范围由宿主强制执行，不受主代理兼容观测模式影响。
     """
 
     def __init__(
@@ -151,6 +163,17 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
         enforce_decision: bool = True,
     ) -> tuple[bool, Any]:
         """执行一次本地工具调用，并复用 ToolNode 的策略生命周期。"""
+        if self.context.origin is ToolOrigin.SUBAGENT and not self._subagent_read_allowed(tool, arguments):
+            return False, ToolMessage(
+                content=json.dumps({
+                    "success": False, "error": "subagent_read_only",
+                    "message": "子代理只允许已声明的只读操作；请由主代理核验并执行已获授权的写入。",
+                }, ensure_ascii=False),
+                tool_call_id=str(invocation_id or ""),
+                name=str(getattr(tool, "name", None) or "unknown"),
+                status="error",
+                additional_kwargs={EXECUTION_OUTCOME_KEY: ExecutionOutcome.FAILED.value},
+            )
         observation = call_policy_hook(
             "start",
             self.orchestrator.start,
@@ -194,6 +217,32 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
                 result,
             )
         return True, result
+
+    @staticmethod
+    def _subagent_read_allowed(tool: Any, arguments: dict[str, Any]) -> bool:
+        """按真实 API 操作限制子代理，MCP 的兼容 Read 标签不构成只读证明。"""
+        if isinstance(tool, MoviePilotApiTool):
+            operation = resolve_api_operation(str(arguments.get("operation_id") or ""))
+            if operation is None or operation.effect is not ActionEffect.SAFE_READ:
+                return False
+            try:
+                normalized = tool.canonical_arguments(arguments)
+            except (TypeError, ValueError):
+                return False
+            return not requests_system_setting_secrets(normalized)
+        if isinstance(tool, McpExternalTool):
+            return False
+        name = getattr(tool, "name", None)
+        if name in SUBAGENT_READ_ACTIONS:
+            action = arguments.get("action")
+            return bool(
+                isinstance(action, str) and action in SUBAGENT_READ_ACTIONS[name]
+                and not arguments.get("cookies") and not arguments.get("user_agent")
+            )
+        tags = set(getattr(tool, "tags", None) or [])
+        return ToolTag.Read in tags and not tags.intersection({
+            ToolTag.Write, ToolTag.Message, ToolTag.UserInteraction,
+        })
 
 
 __all__ = [

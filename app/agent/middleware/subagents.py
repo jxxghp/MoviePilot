@@ -79,6 +79,7 @@ Rules:
 - Subagents must not send messages to the user, ask for interaction, or reveal their internal tool activity.
 - Give the user only your synthesized final answer and the minimum necessary next step.
 - If a task requires configuration changes, deletion, adding downloads, adding subscriptions, or any high-impact action, the main agent must handle it directly under the confirmation policy.
+- Child tools enforce read-only operations. Perform command launches, browser navigation/interactions, and external MCP calls in the main agent; pass the resulting evidence to a child for analysis when useful.
 </subagents>"""
 
 SUBAGENT_TASK_DESCRIPTION = (
@@ -103,7 +104,7 @@ Requirements:
 - Handle only the delegated subtask from the main agent. Do not converse with the user.
 - Do not send messages, request user interaction, or output progress updates.
 - Use tool results only for analysis, and return the final result only to the main agent.
-- Unless the task explicitly requires it and your tool set permits it, limit yourself to read-only inspection and diagnosis.
+- Limit yourself to the read-only operations permitted by the host. Command launches, browser navigation/interactions, external MCP calls, and writes must be handled by the main agent; request the resulting evidence instead of bypassing a denial.
 - If user confirmation or a high-impact change is needed, explain why the main agent must confirm it instead of executing it yourself.
 - Return a concise structured Chinese result with key evidence, judgment, and recommended next step.
 """

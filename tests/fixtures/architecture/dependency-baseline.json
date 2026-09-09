@@ -1074,8 +1074,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8455,
-  "edge_sha256": "d989cabfc34fcff77f417e01f671915adb188f00d7beb00deb82fdff2d135bdf",
+  "edge_count": 8458,
+  "edge_sha256": "77a25667756a4b63d8487ac44252d77662044f1ea74d7c77dc0e4383a22d5f10",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1492,6 +1492,7 @@
     "app.agent.middleware.plan -> app.agent.tools.tags",
     "app.agent.middleware.policy -> app.agent",
     "app.agent.middleware.policy -> app.agent.policy",
+    "app.agent.middleware.policy -> app.agent.policy.api",
     "app.agent.middleware.policy -> app.agent.policy.contracts",
     "app.agent.middleware.policy -> app.agent.policy.orchestrator",
     "app.agent.middleware.policy -> app.agent.policy.registry",
@@ -1500,7 +1501,9 @@
     "app.agent.middleware.policy -> app.agent.tools.catalog",
     "app.agent.middleware.policy -> app.agent.tools.impl",
     "app.agent.middleware.policy -> app.agent.tools.impl.api",
+    "app.agent.middleware.policy -> app.agent.tools.impl.mcp",
     "app.agent.middleware.policy -> app.agent.tools.result",
+    "app.agent.middleware.policy -> app.agent.tools.tags",
     "app.agent.middleware.selection -> app.agent",
     "app.agent.middleware.selection -> app.agent.llm",
     "app.agent.middleware.selection -> app.agent.llm.helper",
