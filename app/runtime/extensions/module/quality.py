@@ -54,6 +54,7 @@ COMMON_ASSESSED_RULES = frozenset(
 BASELINE_ASSESSED_MODULES = frozenset(
     {
         "acoustid",
+        "amll",
         "anilist",
         "discord",
         "douban",

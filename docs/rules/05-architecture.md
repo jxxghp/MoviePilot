@@ -565,6 +565,11 @@ architecture snapshot, not through incidental module globals.
 来源匹配与歌词内容下载；`LyricsChain` 聚合插件和内置来源候选，`ScrapingChain`
 拥有质量保护与存储写入。SDK 仅导出既有领域类型，不复制歌词解析或刮削实现。
 
+`app/modules/amll/` 拥有 AMLL 原生 HTTP 协议、录音匹配和 TTML 来源转换：
+`module.py` 编排搜索与下载，`matching.py` 核对身份，`lyrics.py` 安全转换为既有
+`MusicLyrics` / Lyricsfile。包根只提供 capability manifest 要求的惰性入口，
+宿主及测试中的具体实现依赖必须直接指向 owner 子模块。
+
 ## Existing Chain, Module and DB Layers
 
 ### Chain layer

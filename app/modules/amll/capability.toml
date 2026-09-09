@@ -1,0 +1,15 @@
+schema_version = 1
+id = "AmllModule"
+kind = "host_module"
+entrypoint = "app.modules.amll:AmllModule"
+depends_on = []
+
+[metadata]
+name = "AMLL TTML"
+type = "other"
+subtype = "Amll"
+priority = 6
+
+[activation]
+policy = "bootstrap"
+watch = ["AMLL_BASE_URL"]

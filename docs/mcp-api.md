@@ -377,7 +377,9 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 | GET | `/api/v1/recommend/music_weekly` | 浏览本周热门音乐，参数：`page`、`count` |
 | GET | `/api/v1/recommend/music_douban` | 浏览豆瓣音乐新碟榜，参数：`page`、`count` |
 
-专辑下载与订阅按“整包”处理：下载层会读取种子文件清单并以专辑 `total_tracks` 校验独立音频文件数量；未确认完整覆盖时不会把专辑订阅销订，也不会把部分曲目报告为完整专辑已入库。音乐整理会迁移与音轨同目录、同主干名的 `.lrc`、`.txt` 和 `.lyricsfile.yaml` 旁挂歌词。音乐刮削默认使用“质量升级”策略：先读取已有旁挂和 MP3/FLAC/Ogg/MP4 内嵌歌词，再聚合插件、LRCLIB 和 TheAudioDB 纯文本候选；逐字 Lyricsfile、逐行同步 LRC、纯文本依次降级，任何覆盖入口都不会用低质量结果替换高质量歌词。Lyricsfile 会保留为 `.lyricsfile.yaml`，同时生成播放器兼容的 `.lrc`。
+专辑下载与订阅按“整包”处理：下载层会读取种子文件清单并以专辑 `total_tracks` 校验独立音频文件数量；未确认完整覆盖时不会把专辑订阅销订，也不会把部分曲目报告为完整专辑已入库。音乐整理会迁移与音轨同目录、同主干名的 `.lrc`、`.txt` 和 `.lyricsfile.yaml` 旁挂歌词。音乐刮削默认使用“质量升级”策略：先读取已有旁挂和 MP3/FLAC/Ogg/MP4 内嵌歌词，再聚合插件、LRCLIB、AMLL TTML 和 TheAudioDB 纯文本候选；逐字 Lyricsfile、逐行同步 LRC、纯文本依次降级，任何覆盖入口都不会用低质量结果替换高质量歌词。Lyricsfile 会保留为 `.lyricsfile.yaml`，同时生成播放器兼容的 `.lrc`。
+
+AMLL 使用无需鉴权的原生搜索与获取接口，先尝试 ISRC，再核对完整曲名、艺术家和已有专辑；搜索最多读取 20 项并下载 3 个匹配候选。TTML 只转换主唱内容，排除翻译、音译和背景人声；可靠的逐词或逐行时轴会保留，缺乏完整行时轴时降为纯文本。`AMLL_BASE_URL` 可配置兼容实例地址，网络超时为 10 秒，限流时进入最多 300 秒的有界冷却。动态搜索和 ISRC 查询缓存 1 小时，固定 ID 歌词缓存 7 天，未命中缓存 5 分钟。接口与格式依据见 [AMLL HTTP API](https://amll.dev/reference/http-api/overview)。
 
 插件可通过 `get_module()` 注册 `music_lyrics_candidates(music)`，负责匹配并下载歌词内容，返回 `list[MusicLyrics]` 参与宿主择优；`MetaMusic`、`MusicInfo` 和 `MusicLyrics` 均可从 `app.sdk.media` 导入。该接口不需要注册 HTTP 路由，歌词文件仍由刮削链统一写入。完整契约和示例见[歌词插件开发说明](https://github.com/jxxghp/MoviePilot-Plugins/blob/main/docs/faq/21-register-lyrics-provider.md)。
 

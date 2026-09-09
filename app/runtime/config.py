@@ -404,6 +404,8 @@ class ConfigModel(BaseModel):
     THEAUDIODB_API_KEY: str = "123"
     # LRCLIB 服务地址，可指向兼容官方 API 的自建实例
     LRCLIB_BASE_URL: str = "https://lrclib.net"
+    # AMLL TTML 歌词 API 地址，可指向兼容原生接口的自建实例
+    AMLL_BASE_URL: str = "https://api.amll.dev"
     # 单次音乐刮削批次用于在线歌词查询的总预算（秒）
     LYRICS_BATCH_TIMEOUT: int = 120
     # 供应商要求的重试等待超过该值时进入冷却，不阻塞整个批次

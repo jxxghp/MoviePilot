@@ -664,6 +664,8 @@ class OtherModulesType(Enum):
     ListenBrainz = "ListenBrainz"
     # LRCLIB 歌词
     Lrclib = "LRCLIB"
+    # AMLL TTML 歌词
+    Amll = "AMLL TTML"
     # AcoustID 音频指纹
     AcoustId = "AcoustID"
 
