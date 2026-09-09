@@ -184,8 +184,9 @@ def make_transfer_chain() -> TransferChain:
     admissions_by_identity = {}
     admissions_by_id = {}
 
-    def admit(*, storage, src_path, planning_input=None):
+    def admit(*, storage, src_path, planning_input=None, replace_inactive=False):
         """按源身份幂等返回测试用 durable admission。"""
+        del replace_inactive
         identity = storage, src_path
         existing = admissions_by_identity.get(identity)
         if existing is not None:

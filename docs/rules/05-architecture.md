@@ -894,6 +894,15 @@ database-authorized worker, not physical exactly-once behavior for an already
 issued file or legacy-plugin side effect; step idempotency and unknown outcomes
 remain explicit execution concerns.
 
+Manual admission explicitly replaces an inactive task with no history receipts,
+including damaged planning and execution records, to create a new task identity
+and current planning input without deleting source or target files. Automatic
+admission remains idempotent. History retry clears expired leases through CAS
+and preserves execution evidence; explicit abandonment may delete that evidence.
+A concurrent valid claim or heartbeat always prevents deletion. Queue admission uses the
+lifecycle lock without holding the heartbeat state lock across database I/O,
+and waiting producers observe shutdown so they cannot block owner convergence.
+
 Canonical host chains never obtain `TransferPendingOper`. The canonical Model,
 Oper and Application Port do not retain the historical `register`, `list_all`,
 `discard`, `clear` or `list_by_*` surface. The exact

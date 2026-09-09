@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -15,8 +16,11 @@ from app.application.history import (
     max_failed_retries,
     record_transfer_failure,
 )
+from app.application.transfer.workflow import TransferPlanningInput
 from app.chain.transfer.facade import TransferChain
 from app.db.adapters.history.transfer import TransactionalTransferHistoryRepository
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
+from app.db.models.transferpending import TransferPending
 from app.db.session import SessionFactory, async_session_scope
 from app.runtime.config import settings
 from app.schemas.transfer import ManualTransferItem
@@ -27,6 +31,48 @@ from tests.test_transfer_sync_extra_files import (
     make_fileitem,
     make_transfer_chain,
 )
+
+
+def test_manual_transfer_restarts_orphaned_admission_after_target_directory_removed(
+        monkeypatch, tmp_path,
+) -> None:
+    """旧自动任务失效且无历史时，删除目标后手动重整应进入全新任务执行。"""
+    chain = make_transfer_chain()
+    fileitem = make_fileitem(str(tmp_path / "Test.Show.S01E01.mkv"))
+    old_target = tmp_path / "old-library"
+    old_target.mkdir()
+    planning_input = TransferPlanningInput(
+        source_fileitem=fileitem.model_dump(mode="json"), meta=None, mediainfo=None,
+        target_path=str(old_target), options={"manual": False, "background": True},
+    )
+    repository = TransactionalTransferAdmissionRepository(SessionFactory)
+    old = repository.admit(
+        storage=fileitem.storage, src_path=fileitem.path, planning_input=planning_input,
+    )
+    with monkeypatch.context() as expired_clock:
+        expired_clock.setattr(repository, "_lease_now", lambda: datetime.now(timezone.utc) - timedelta(minutes=5))
+        assert repository.claim_task(task_id=old.task_id, owner_id="old-worker", lease_seconds=120)
+    old_target.rmdir()
+    planned, deleted = [], []
+    _patch_transfer_planning(monkeypatch, chain, fileitem, None, planned, deleted)
+    chain._transfer_admissions = repository
+
+    state, message = chain.do_transfer(
+        fileitem=fileitem, background=False, manual=True, target_path=tmp_path / "new-library",
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == [fileitem.path]
+    assert deleted == []
+    assert repository.claim_task(task_id=old.task_id, owner_id="old-worker", lease_seconds=120) is None
+    # 读回确认手动入口实际提交了新规划意图，而非只绕过返回值检查。
+    with repository._session_factory() as session:
+        pending = TransferPending.get_by_identity(session, storage=fileitem.storage, src_path=fileitem.path)
+        assert pending is not None
+        assert pending.task_id != old.task_id
+        assert pending.planning_input["options"]["manual"] is True
+        assert pending.planning_input["target_path"] == str(tmp_path / "new-library")
 
 
 def _reset_failed_retries(src_path, storage=None):

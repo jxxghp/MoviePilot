@@ -501,7 +501,7 @@ class ManualHistoryMixin(_TransferOwnerBase):
         """将 durable 历史重试交还持久调度器，旧历史返回 ``None``。
 
         普通重试和 AI 接管只登记重试意图；显式重新整理由
-        ``_delete_manual_transfer_history`` 先放弃确定失败任务，再重新准入。
+        ``_delete_manual_transfer_history`` 先放弃无有效租约的旧任务，再重新准入。
 
         :param history: 整理历史
         :param requested_by: 发起重试的稳定入口身份
@@ -518,22 +518,18 @@ class ManualHistoryMixin(_TransferOwnerBase):
             history: TransferHistorySnapshot,
             transfer_history_oper: TransferHistoryRepository,
     ) -> Tuple[bool, str]:
-        """删除手动重整历史；失败 durable 回执先原子放弃再清理旧目标。"""
+        """显式重新规划先原子放弃无有效租约的旧任务，再清理历史和旧目标。
+
+        用户已明确重新整理，缺失结算版本或停在重试、人工复核态的旧记录也必须
+        能放弃；普通重试仍由持久调度器沿原计划继续，有效租约拒绝任何清理。
+        """
         task_id = getattr(history, "transfer_task_id", None)
         if task_id:
-            settlement_revision = getattr(
-                history,
-                "transfer_settlement_revision",
-                None,
-            )
-            if not settlement_revision:
-                return False, "持久整理失败记录缺少结算版本，请刷新后重试"
             discard = TransferRecoveryCommand(
                 self.transfer_execution_repository
-            ).discard_failed(
+            ).discard_corrupt_by_history(
                 task_id=task_id,
                 history_id=history.id,
-                settlement_revision=settlement_revision,
             )
             if not discard.discarded:
                 return False, discard.message

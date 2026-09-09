@@ -248,6 +248,15 @@ class TransferPending(Base):
         )
 
     @classmethod
+    def get_task_id_by_identity(
+            cls, db: Session, *, storage: str, src_path: str,
+    ) -> Optional[str]:
+        """仅查询源文件的稳定身份，使显式重做不依赖损坏规划 JSON 的反序列化。"""
+        return cast(Optional[str], db.scalar(select(cls.task_id).where(
+            cls.storage == storage, cls.src_path == src_path,
+        )))
+
+    @classmethod
     def list_claimable_candidates(
             cls,
             db: Session,
@@ -990,6 +999,46 @@ class TransferPending(Base):
                 ~exists(
                     select(_TRANSFER_HISTORY.c.transfer_task_id).where(
                         _TRANSFER_HISTORY.c.transfer_task_id == cls.task_id
+                    )
+                ),
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def delete_inactive_for_replacement(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            storage: str,
+            src_path: str,
+            now_time: str,
+    ) -> int:
+        """仅为显式重做删除无有效租约且无真实历史绑定的旧任务。
+
+        旧规划或执行状态可能损坏，放弃权只由稳定身份、当前租约和实际历史决定；
+        悬空历史标识不能永久阻挡重做。步骤由调用方在同一事务中清理。
+        """
+        if not all((task_id, storage, src_path, now_time)):
+            return 0
+        return execute_dml(
+            db,
+            delete(cls).where(
+                cls.task_id == task_id,
+                cls.storage == storage,
+                cls.src_path == src_path,
+                or_(
+                    cls.lease_token.is_(None),
+                    cls.lease_expires_at.is_(None),
+                    cls.lease_expires_at <= now_time,
+                ),
+                ~exists(
+                    select(_TRANSFER_HISTORY.c.id).where(
+                        or_(
+                            _TRANSFER_HISTORY.c.transfer_task_id == cls.task_id,
+                            _TRANSFER_HISTORY.c.id == cls.terminal_history_id,
+                        )
                     )
                 ),
             ),

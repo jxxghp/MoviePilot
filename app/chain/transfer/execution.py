@@ -362,6 +362,7 @@ class TransferExecutionOwner(_TransferOwnerBase):
                 storage=fileitem.storage,
                 src_path=fileitem.path,
                 planning_input=planning_input,
+                replace_inactive=bool(task.manual),
             ),
         )
         task.bind_admission_task_id(admission.task_id)

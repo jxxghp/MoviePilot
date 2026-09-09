@@ -2,12 +2,21 @@
 
 from types import SimpleNamespace
 
+import pytest
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+
 from app.application.transfer.execution import (
     TransferExecutionState,
     TransferFailureDiscardResult,
     TransferRetryRequestResult,
 )
 from app.chain.transfer.facade import TransferChain
+from app.db.adapters.transfer.execution import TransactionalTransferExecutionRepository
+from app.db.base import Base
+from app.db.models.transferexecutionstep import TransferExecutionStep
+from app.db.models.transferhistory import TransferHistory
+from app.db.models.transferpending import TransferPending
 from app.schemas.types import MediaSource, MediaType, NotificationChannel
 
 
@@ -33,7 +42,7 @@ class _RetryCommand:
 
 
 class _DiscardCommand:
-    """记录显式重新整理提交的失败任务放弃请求。"""
+    """记录显式重新整理提交的旧任务放弃请求。"""
 
     calls: list[tuple[object, dict]] = []
     result = TransferFailureDiscardResult(
@@ -46,7 +55,7 @@ class _DiscardCommand:
         """保存测试仓储实例。"""
         self._repository = repository
 
-    def discard_failed(self, **kwargs) -> TransferFailureDiscardResult:
+    def discard_corrupt_by_history(self, **kwargs) -> TransferFailureDiscardResult:
         """记录放弃请求并返回用例指定结果。"""
         self.calls.append((self._repository, kwargs))
         return self.result
@@ -196,7 +205,6 @@ def test_explicit_history_redo_discards_failed_task_before_replanning(monkeypatc
             {
                 "task_id": "transfer-task-86",
                 "history_id": 86,
-                "settlement_revision": 5,
             },
         )
     ]
@@ -256,7 +264,6 @@ def test_durable_manual_cleanup_discards_task_and_removes_old_state(monkeypatch)
             {
                 "task_id": "transfer-task-82",
                 "history_id": 82,
-                "settlement_revision": 4,
             },
         )
     ]
@@ -267,13 +274,13 @@ def test_durable_manual_cleanup_discards_task_and_removes_old_state(monkeypatch)
     assert cleared == [("/downloads/source.mkv", "local")]
 
 
-def test_durable_manual_cleanup_rejects_nonfailed_state(monkeypatch):
-    """非 FAILED durable 任务被拒绝后不得删除目标、历史或失败计数。"""
+def test_durable_manual_cleanup_rejection_preserves_history_and_files(monkeypatch):
+    """活动租约或状态并发变化被拒绝后不得删除目标、历史或失败计数。"""
     repository = _install_discard_port(monkeypatch)
     _DiscardCommand.result = TransferFailureDiscardResult(
         discarded=False,
         state=TransferExecutionState.MANUAL_REVIEW,
-        message="这条整理任务需要先完成人工确认，再重试",
+        message="整理任务正在处理中或状态已变化，暂时无法放弃",
     )
     history = SimpleNamespace(
         id=85,
@@ -313,7 +320,102 @@ def test_durable_manual_cleanup_rejects_nonfailed_state(monkeypatch):
     )
 
     assert state is False
-    assert message == "这条整理任务需要先完成人工确认，再重试"
+    assert message == "整理任务正在处理中或状态已变化，暂时无法放弃"
+
+
+@pytest.fixture
+def history_recovery_store():
+    """构造可验证显式重整跨事务清理顺序的独立内存数据库。"""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine, tables=[
+        TransferPending.__table__, TransferHistory.__table__, TransferExecutionStep.__table__,
+    ])
+    try:
+        yield sessionmaker(bind=engine, expire_on_commit=False)
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("execution_state", ("failed", "retry_wait", "manual_review"))
+@pytest.mark.parametrize("active_lease", (False, True))
+def test_manual_replan_without_settlement_revision_obeys_current_lease(
+        history_recovery_store, monkeypatch, execution_state, active_lease,
+):
+    """缺结算版本的旧任务可明确重整，活动租约必须保留全部历史和文件。"""
+    factory = history_recovery_store
+    with factory() as session:
+        history = TransferHistory(
+            transfer_task_id="history-replan", src="/downloads/source.mkv",
+            src_storage="local", status=False, mode="copy",
+            dest_fileitem={"storage": "local", "path": "/library/source.mkv", "type": "file"},
+        )
+        session.add(history)
+        session.flush()
+        pending = TransferPending(
+            task_id=history.transfer_task_id, storage="local", src_path=history.src,
+            state="planned", planning_input={}, input_fingerprint="damaged",
+            execution_state=execution_state, terminal_history_id=history.id,
+            lease_owner="old-worker", lease_token="old-token",
+            lease_expires_at=(
+                "2099-01-01 00:00:00.000000" if active_lease else "2000-01-01 00:00:00.000000"
+            ),
+        )
+        session.add(pending)
+        session.flush()
+        session.add(TransferExecutionStep(
+            task_id=pending.task_id, operation_id="history-replan-step",
+            checkpoint_fingerprint="damaged", ordinal=0, phase="transfer", kind="copy",
+            state="manual_review", intent_version=1, intent_payload={},
+            prepared_at="2000-01-01 00:00:00", updated_at="2000-01-01 00:00:00",
+        ))
+        session.commit()
+
+    effects = []
+
+    def remove_target(fileitem):
+        """文件清理之前必须已提交放弃，且旧历史仍保留到目标清理完成。"""
+        with factory() as session:
+            assert session.scalar(select(TransferPending)) is None
+            assert session.scalar(select(TransferExecutionStep)) is None
+            assert session.get(TransferHistory, history.id).transfer_task_id is None
+        effects.append(("target", fileitem.path))
+        return True
+
+    def remove_history(history_id):
+        """提交历史删除，使断言覆盖完整重整清理链。"""
+        with factory() as session:
+            session.delete(session.get(TransferHistory, history_id))
+            session.commit()
+        effects.append(("history", history_id))
+
+    monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
+        exists=lambda _fileitem: True, delete_media_file=remove_target,
+    ))
+    monkeypatch.setattr("app.chain.transfer.records.clear_transfer_failures", lambda *args: effects.append(args))
+    chain = object.__new__(TransferChain)
+    chain.transfer_execution_repository = TransactionalTransferExecutionRepository(factory)
+
+    state, message = chain._delete_manual_transfer_history(
+        history=history, transfer_history_oper=SimpleNamespace(delete=remove_history),
+    )
+
+    assert state is not active_lease
+    with factory() as session:
+        if active_lease:
+            assert "正在处理中" in message
+            assert effects == []
+            assert session.scalar(select(TransferPending)).lease_token == "old-token"
+            assert session.scalar(select(TransferExecutionStep)) is not None
+            assert session.get(TransferHistory, history.id).transfer_task_id == "history-replan"
+        else:
+            assert message == ""
+            assert effects == [
+                ("target", "/library/source.mkv"), ("history", history.id),
+                ("/downloads/source.mkv", "local"),
+            ]
+            assert session.scalar(select(TransferPending)) is None
+            assert session.scalar(select(TransferExecutionStep)) is None
+            assert session.get(TransferHistory, history.id) is None
 
 
 def test_durable_ai_button_bypasses_agent_and_requests_scheduler(monkeypatch):

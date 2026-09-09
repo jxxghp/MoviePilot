@@ -23,6 +23,7 @@ from app.application.transfer.workflow import (
     TransferPlanningStateError,
 )
 from app.db.models.transferpending import TransferPending
+from app.db.oper.transferexecutionstep import TransferExecutionStepOper
 from app.db.oper.transferpending import TransferPendingOper
 from app.db.uow import SqlAlchemyUnitOfWork
 
@@ -33,6 +34,9 @@ class TransactionalTransferAdmissionRepository:
     """以短生命周期 Session 实现整理任务持久准入端口。"""
 
     _MAX_RECOVERY_SCAN_TASKS = 5000
+    _REPLACEMENT_CONFLICT = (
+        "源文件已有活动整理任务或关联整理历史，请等待当前任务结束，或在整理历史中重新整理"
+    )
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
         """保存由组合根提供的同步会话工厂。"""
@@ -143,8 +147,9 @@ class TransactionalTransferAdmissionRepository:
             storage: str,
             src_path: str,
             planning_input: TransferPlanningInput,
+            replace_inactive: bool = False,
     ) -> TransferAdmission:
-        """按输入指纹幂等持久化准入事实，并返回跨重启稳定身份。"""
+        """幂等持久化准入；显式重做可放弃无有效租约且无历史绑定的旧任务及步骤。"""
         if not storage or not src_path:
             raise ValueError("整理任务的存储与源路径不能为空")
         if (
@@ -153,12 +158,17 @@ class TransactionalTransferAdmissionRepository:
         ):
             raise ValueError("整理规划输入的源文件身份与准入参数不一致")
         now_time = self._now()
+        new_task_id = uuid4().hex
         try:
             with self._session_factory() as session:
                 transaction = SqlAlchemyUnitOfWork(session)
                 try:
+                    if replace_inactive:
+                        self._stage_inactive_replacement(
+                            session=session, storage=storage, src_path=src_path,
+                        )
                     pending = TransferPendingOper(db=session).stage_admit(
-                        task_id=uuid4().hex,
+                        task_id=new_task_id,
                         storage=storage,
                         src_path=src_path,
                         state=TRANSFER_ADMISSION_ACCEPTED,
@@ -171,6 +181,8 @@ class TransactionalTransferAdmissionRepository:
                         raise TransferAdmissionConflictError(
                             f"整理源文件已有持久终态回执: {storage}:{src_path}"
                         )
+                    if replace_inactive and pending.task_id != new_task_id:
+                        raise TransferAdmissionConflictError(self._REPLACEMENT_CONFLICT)
                     session.flush()
                     self._assert_input_match(pending, planning_input)
                     admission = self._project(pending)
@@ -188,8 +200,33 @@ class TransactionalTransferAdmissionRepository:
                 )
                 if pending is None:
                     raise RuntimeError("并发准入冲突后未找到已提交记录") from error
+                if replace_inactive:
+                    raise TransferAdmissionConflictError(self._REPLACEMENT_CONFLICT) from error
                 self._assert_input_match(pending, planning_input)
                 return self._project(pending)
+
+    def _stage_inactive_replacement(
+            self,
+            *,
+            session: Session,
+            storage: str,
+            src_path: str,
+    ) -> None:
+        """显式放弃失效旧任务及步骤，新身份准入失败时必须一起回滚。"""
+        oper = TransferPendingOper(db=session)
+        task_id = oper.get_task_id_by_identity(storage=storage, src_path=src_path)
+        if task_id is None:
+            return
+        deleted = oper.stage_delete_inactive_for_replacement(
+            task_id=task_id,
+            storage=storage,
+            src_path=src_path,
+            now_time=self._format_lease_time(self._lease_now()),
+        )
+        if not deleted:
+            raise TransferAdmissionConflictError(self._REPLACEMENT_CONFLICT)
+        # 生产库会级联删除；显式清理兼容未启用外键的 SQLite，且不读取旧步骤 JSON。
+        TransferExecutionStepOper(session).stage_delete_task(task_id=task_id)
 
     def claim_task(
             self,

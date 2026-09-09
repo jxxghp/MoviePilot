@@ -45,6 +45,7 @@ def _build_chain(admissions) -> TransferChain:
     chain._owned_leases = {}
     chain._queued_lease_tokens = set()
     chain._worker_state_lock = threading.RLock()
+    chain._worker_lifecycle_lock = threading.RLock()
     chain._closing = False
     chain._recovery_wakeup_event = threading.Event()
     chain._replay_stop_event = threading.Event()
@@ -553,6 +554,46 @@ def test_claimed_enqueue_failure_never_uses_unfenced_error_writer() -> None:
         error="queue closed",
     )
     assert chain._owned_leases == {}
+
+
+@pytest.mark.parametrize("state", ["waiting", "running", "failed", "completed"])
+@pytest.mark.parametrize("active", [False, True])
+def test_manual_restart_replaces_only_finished_inactive_jobview(state, active):
+    """手动重做清理批次残留终态，仍在执行或等待的同源任务必须保留。"""
+    import queue
+
+    from app.application.transfer.workflow import JobManager
+    from tests.test_transfer_job_manager import make_task
+
+    chain = _build_chain(MagicMock())
+    chain._queue = queue.Queue()
+    chain.jobview = JobManager()
+    chain._register_scrape_batch_task = MagicMock()
+    previous = make_task(1)
+    sibling = make_task(2)
+    assert chain.jobview.add_task(previous, state=state)
+    assert chain.jobview.add_task(sibling)
+    if active:
+        chain.jobview.start_execution(previous)
+    restart = make_task(1)
+    restart.manual = True
+    admission = _admission(restart.fileitem.path)
+    restart.bind_planning_input(admission.planning_input)
+    chain._transfer_admissions.admit.return_value = admission
+    chain._transfer_admissions.claim_task.return_value = admission
+
+    accepted = chain.put_to_queue(restart)
+
+    assert accepted is (state in {"failed", "completed"} and not active)
+    assert chain._queue.qsize() == int(accepted)
+    assert chain.jobview.total() == 2
+    if accepted:
+        assert chain._transfer_admissions.admit.call_args.kwargs["replace_inactive"] is True
+        assert chain.jobview.pending_total() == 2
+        chain._queue.get_nowait()
+        chain._finish_queue_item(restart)
+    else:
+        chain._transfer_admissions.admit.assert_not_called()
 
 
 @pytest.mark.parametrize("state", ["waiting", "running", "failed", "completed"])

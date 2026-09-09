@@ -21,6 +21,7 @@ from app.application.history import (
 from app.application.transfer.history import history_file_fingerprint
 from app.application.transfer.workflow import (
     TransferAdmission,
+    TransferAdmissionConflictError,
     TransferTask,
 )
 from app.chain.media import MediaChain
@@ -898,7 +899,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                             f"{file_path.name} 加入整理队列失败：{err}",
                             exc_info=True,
                         )
-                        err_msgs.append(f"{file_path.name} 未能加入整理队列，请稍后重试")
+                        message = str(err) if isinstance(err, TransferAdmissionConflictError) else "未能加入整理队列，请稍后重试"
+                        err_msgs.append(f"{file_path.name} {message}")
                         continue
                     if queued:
                         if cleanup_intent:
@@ -908,13 +910,17 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         logger.debug(f"{file_path.name} 已在整理队列中，跳过")
                 else:
                     # 加入列表
-                    if self._TransferChain__put_to_jobview(transfer_task):
+                    queued = self._TransferChain__put_to_jobview(transfer_task)
+                    if queued:
                         self._register_scrape_batch_task(transfer_task)
                         transfer_tasks.append(transfer_task)
                         if cleanup_intent:
                             cleanup_intent_assigned = True
                     else:
                         logger.debug(f"{file_path.name} 已在整理列表中，跳过")
+                if not queued and manual:
+                    all_success = False
+                    err_msgs.append(f"{file_path.name} 已在整理队列中，请等待当前任务结束后重新整理")
         except OperationInterrupted:
             raise
         finally:
@@ -1018,7 +1024,10 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         )
                         if not preview:
                             self._TransferChain__fail_transfer_task(transfer_task, e)
-                        state, err_msg = False, "整理任务处理失败，请稍后重试"
+                        state, err_msg = False, (
+                            str(e) if isinstance(e, TransferAdmissionConflictError)
+                            else "整理任务处理失败，请稍后重试"
+                        )
                     finally:
                         durable_settled = self._TransferChain__finish_job_execution(
                             transfer_task,

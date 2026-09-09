@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.application.transfer.workflow import (
     TransferAdmission,
+    TransferAdmissionConflictError,
     TransferPlanningInput,
     TransferQueueService,
 )
@@ -183,14 +184,25 @@ def test_transfer_queue_service_lists_and_removes_through_ports():
     dependencies["remove_task"].assert_called_once_with(fileitem)
 
 
-def test_do_transfer_reports_durable_admission_failure():
+@pytest.mark.parametrize("failure, manual, expected", [
+    (RuntimeError("db locked"), False, "未能加入整理队列，请稍后重试"),
+    (TransferAdmissionConflictError("原任务正在执行，请先处理整理任务"), True, "原任务正在执行，请先处理整理任务"),
+    (None, True, "已在整理队列中，请等待当前任务结束后重新整理"),
+])
+@pytest.mark.parametrize("background", [True, False])
+def test_do_transfer_reports_durable_admission_failure(failure, manual, expected, background):
     """背景整理准入失败必须返回批次失败，不能伪装成重复任务成功。"""
     chain = make_transfer_chain()
     fileitem = make_task(1).fileitem
     chain._TransferChain__get_trans_fileitems = lambda _item, **_kwargs: [
         (fileitem, False)
     ]
-    chain.put_to_queue = Mock(side_effect=RuntimeError("db locked"))
+    chain.put_to_queue = Mock(side_effect=failure, return_value=False)
+    if not background:
+        if failure is None:
+            chain._TransferChain__put_to_jobview = Mock(return_value=False)
+        else:
+            chain._TransferChain__claim_task_for_execution = Mock(side_effect=failure)
     no_history = SimpleNamespace(
         get_by_src=lambda _src, storage=None: None,
         get_success_by_src=lambda _src, storage=None: None,
@@ -208,8 +220,8 @@ def test_do_transfer_reports_durable_admission_failure():
         "app.chain.transfer.workflow.get_configured_system_config",
         return_value=SimpleNamespace(get=lambda _key: None),
     ):
-        state, message = chain.do_transfer(fileitem=fileitem, background=True)
+        state, message = chain.do_transfer(fileitem=fileitem, background=background, manual=manual)
 
     assert state is False
-    assert "未能加入整理队列，请稍后重试" in message
+    assert ("整理任务处理失败，请稍后重试" if not background and not manual else expected) in message
     assert "db locked" not in message

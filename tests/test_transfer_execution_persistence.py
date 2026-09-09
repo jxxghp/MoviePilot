@@ -4,7 +4,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import create_engine, create_mock_engine, select
+from sqlalchemy import create_engine, create_mock_engine, select, text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -30,6 +30,7 @@ from app.application.transfer.workflow import (
     TransferProviderInvocationSnapshot,
     TransferProviderReference,
 )
+from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.adapters.transfer.execution import (
     TransactionalTransferExecutionRepository,
 )
@@ -37,6 +38,8 @@ from app.db.base import Base
 from app.db.models.transferexecutionstep import TransferExecutionStep
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
+from app.db.oper.transferexecutionstep import TransferExecutionStepOper
+from app.db.oper.transferpending import TransferPendingOper
 
 
 @pytest.fixture
@@ -884,6 +887,149 @@ def test_user_retry_is_single_generation_and_rejects_manual_review(execution_sto
     assert "人工" in rejected.message
 
 
+@pytest.mark.parametrize("expires_at", (
+    None, "2026-08-27 01:29:59.000000", "2026-08-27 01:30:00.000000",
+))
+def test_user_retry_clears_expired_claim_once_and_keeps_execution_evidence(
+        execution_store, expires_at,
+) -> None:
+    """失败任务残留的失效 token 应允许直接重试，重复点击不重复增加世代。"""
+    history_id = _seed_failed_receipt(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.lease_owner = "old-owner"
+        pending.lease_token = "old-token"
+        pending.lease_expires_at = expires_at
+        session.commit()
+    _, command = _repository(execution_store)
+
+    first = command.request_retry(task_id="task-1", reason="重试", requested_by="admin")
+    repeated = command.request_retry(task_id="task-1", reason="再次点击", requested_by="admin")
+
+    assert first.accepted and repeated.accepted
+    assert first.retry_generation == repeated.retry_generation == 1
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.execution_state == "retry_wait"
+        assert pending.lease_token is None
+        assert pending.lease_owner is None
+        assert pending.lease_expires_at is None
+        assert pending.heartbeat_at is None
+        assert pending.retry_reason == "重试"
+        assert session.scalar(select(TransferExecutionStep)) is not None
+        assert session.get(TransferHistory, history_id).transfer_task_id == "task-1"
+
+
+def test_user_retry_preserves_active_failed_claim(execution_store) -> None:
+    """失败状态仍持有有效租约时，重试不得撤销活动 owner 的执行资格。"""
+    history_id = _seed_failed_receipt(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.lease_owner = "active-owner"
+        pending.lease_token = "active-token"
+        pending.lease_expires_at = "2026-08-27 01:30:01.000000"
+        session.commit()
+    _, command = _repository(execution_store)
+
+    result = command.request_retry(task_id="task-1", reason="重试", requested_by="admin")
+
+    assert result.accepted is False
+    assert "正在处理中" in result.message
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.execution_state == "failed"
+        assert pending.lease_token == "active-token"
+        assert pending.retry_generation == 0
+        assert session.scalar(select(TransferExecutionStep)) is not None
+        assert session.get(TransferHistory, history_id).transfer_task_id == "task-1"
+
+
+@pytest.mark.parametrize("winner", ("heartbeat", "retry_claim"))
+def test_user_retry_cas_preserves_newly_committed_lease(
+        execution_store, monkeypatch, winner,
+) -> None:
+    """并发续租或重试接管先提交时，迟到的重试不能清掉新 owner 或重复调度。"""
+    history_id = _seed_failed_receipt(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.lease_owner = "old-owner"
+        pending.lease_token = "old-token"
+        pending.lease_expires_at = "2026-08-27 01:29:59.000000"
+        session.commit()
+    repository, command = _repository(execution_store)
+    _, winning_command = _repository(execution_store)
+    admissions = TransactionalTransferAdmissionRepository(execution_store)
+    clear_claim = repository._clear_inactive_claim
+    claimed = []
+
+    def commit_winning_lease(session, *, pending, now_utc):
+        """在读取旧状态后由另一仓储提交续租或重试领取，再执行实际 CAS。"""
+        if winner == "heartbeat":
+            monkeypatch.setattr(admissions, "_lease_now", lambda: datetime(
+                2026, 8, 27, 1, 29, 30, tzinfo=timezone.utc,
+            ))
+            claimed.append(admissions.heartbeat(
+                task_id="task-1", lease_token="old-token", lease_seconds=120,
+            ))
+        else:
+            assert winning_command.request_retry(
+                task_id="task-1", reason="先提交的重试", requested_by="admin",
+            ).accepted
+            monkeypatch.setattr(admissions, "_lease_now", lambda: datetime(
+                2026, 8, 27, 1, 30, 0, tzinfo=timezone.utc,
+            ))
+            claimed.append(admissions.claim_task(
+                task_id="task-1", owner_id="new-owner", lease_seconds=120,
+            ))
+        return clear_claim(session, pending=pending, now_utc=now_utc)
+
+    monkeypatch.setattr(repository, "_clear_inactive_claim", commit_winning_lease)
+
+    result = command.request_retry(task_id="task-1", reason="迟到的重试", requested_by="admin")
+
+    assert result.accepted is False
+    assert "正在处理中或状态已变化" in result.message
+    assert len(claimed) == 1 and claimed[0] is not None
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.lease_owner == claimed[0].lease_owner
+        assert pending.lease_token == claimed[0].lease_token
+        assert pending.lease_expires_at == claimed[0].lease_expires_at
+        assert pending.retry_generation == (1 if winner == "retry_claim" else 0)
+        assert session.scalar(select(TransferExecutionStep)) is not None
+        assert session.get(TransferHistory, history_id).transfer_task_id == "task-1"
+
+
+def test_user_retry_failure_rolls_back_expired_claim(execution_store, monkeypatch) -> None:
+    """调度写入失败必须回滚失效租约清理，保持原任务、世代和历史完整。"""
+    history_id = _seed_failed_receipt(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.lease_owner = "old-owner"
+        pending.lease_token = "old-token"
+        pending.lease_expires_at = "2026-08-27 01:29:59.000000"
+        session.commit()
+    _, command = _repository(execution_store)
+
+    def reject_retry(_self, **_kwargs):
+        """模拟取得恢复权后持久重试调度写入失败。"""
+        raise RuntimeError("重试写入失败")
+
+    monkeypatch.setattr(TransferPendingOper, "stage_request_execution_retry", reject_retry)
+
+    with pytest.raises(RuntimeError, match="重试写入失败"):
+        command.request_retry(task_id="task-1", reason="重试", requested_by="admin")
+
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.execution_state == "failed"
+        assert pending.lease_token == "old-token"
+        assert pending.lease_expires_at == "2026-08-27 01:29:59.000000"
+        assert pending.retry_generation == 0
+        assert session.scalar(select(TransferExecutionStep)) is not None
+        assert session.get(TransferHistory, history_id).transfer_task_id == "task-1"
+
+
 def test_discard_failed_removes_execution_evidence_and_detaches_history(
         execution_store,
 ) -> None:
@@ -960,6 +1106,189 @@ def test_discard_failed_rejects_stale_settlement_revision(execution_store) -> No
         assert pending.settlement_revision == 3
         assert history is not None
         assert history.transfer_settlement_revision == 3
+
+
+def _discard_history_task(repository, history_id: int, method_name: str):
+    """统一调用普通失败与损坏历史的显式放弃入口。"""
+    arguments = {"task_id": "task-1", "history_id": history_id}
+    if method_name == "discard_failed":
+        arguments["settlement_revision"] = 1
+    return getattr(TransferRecoveryCommand(repository), method_name)(**arguments)
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_explicit_history_discard_does_not_decode_corrupt_planning_json(execution_store, active):
+    """历史重整可放弃无法反序列化的旧记录，同时有效租约仍保护全部证据。"""
+    history_id = _seed_failed_receipt(execution_store)
+    with execution_store() as session:
+        session.execute(text(
+            "UPDATE transferpending SET planning_input=:bad, checkpoint_payload=:bad, "
+            "execution_payload=:bad, execution_state='corrupt-state', lease_token='old-token', "
+            "lease_owner='old-owner', lease_expires_at=:expires"
+        ), {"bad": "{", "expires": "2026-08-27 01:31:00.000000" if active else "2026-08-27 01:29:00.000000"})
+        session.commit()
+    repository, _ = _repository(execution_store)
+
+    result = TransferRecoveryCommand(repository).discard_corrupt_by_history(
+        task_id="task-1", history_id=history_id,
+    )
+
+    assert result.discarded is not active
+    assert result.state is None
+    with execution_store() as session:
+        assert session.scalar(select(TransferPending.task_id)) == ("task-1" if active else None)
+        assert session.scalar(select(TransferExecutionStep.task_id)) == ("task-1" if active else None)
+        assert session.get(TransferHistory, history_id).transfer_task_id == ("task-1" if active else None)
+
+
+@pytest.mark.parametrize("method_name, state", (
+    ("discard_failed", "failed"),
+    ("discard_corrupt_by_history", "failed"),
+    ("discard_corrupt_by_history", "corrupt-state"),
+))
+@pytest.mark.parametrize("expires_at", (
+    None, "2026-08-27 01:29:59.000000", "2026-08-27 01:30:00.000000",
+))
+def test_discard_history_releases_expired_claim_and_preserves_history(
+        execution_store, method_name, state, expires_at,
+) -> None:
+    """过期或缺失期限的残留 token 不得永久阻止用户放弃旧任务重新整理。"""
+    history_id = _seed_failed_receipt(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.lease_owner = "old-owner"
+        pending.lease_token = "old-token"
+        pending.lease_expires_at = expires_at
+        pending.execution_state = state
+        session.commit()
+    repository, _ = _repository(execution_store)
+
+    result = _discard_history_task(repository, history_id, method_name)
+
+    assert result.discarded is True
+    with execution_store() as session:
+        assert session.scalar(select(TransferPending)) is None
+        assert session.scalar(select(TransferExecutionStep)) is None
+        history = session.get(TransferHistory, history_id)
+        assert history is not None
+        assert history.transfer_task_id is None
+        assert history.transfer_settlement_revision is None
+
+
+@pytest.mark.parametrize("method_name", ("discard_failed", "discard_corrupt_by_history"))
+def test_discard_history_preserves_active_claim_and_execution_evidence(
+        execution_store, method_name,
+) -> None:
+    """有效租约必须保留，不能因用户放弃旧历史而让活动执行失去证据。"""
+    history_id = _seed_failed_receipt(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.lease_owner = "active-owner"
+        pending.lease_token = "active-token"
+        pending.lease_expires_at = "2026-08-27 01:30:01.000000"
+        session.commit()
+    repository, _ = _repository(execution_store)
+
+    result = _discard_history_task(repository, history_id, method_name)
+
+    assert result.discarded is False
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.lease_token == "active-token"
+        assert pending.lease_expires_at == "2026-08-27 01:30:01.000000"
+        assert session.scalar(select(TransferExecutionStep)) is not None
+        assert session.get(TransferHistory, history_id).transfer_task_id == "task-1"
+
+
+@pytest.mark.parametrize("method_name", ("discard_failed", "discard_corrupt_by_history"))
+@pytest.mark.parametrize("winner", ("heartbeat", "retry_claim"))
+def test_discard_history_cas_preserves_newly_committed_lease(
+        execution_store, monkeypatch, method_name, winner,
+) -> None:
+    """读到无活动租约后若续租或重试接管先提交，放弃必须保留新 owner。"""
+    history_id = _seed_failed_receipt(execution_store)
+    if winner == "heartbeat":
+        with execution_store() as session:
+            pending = session.scalar(select(TransferPending))
+            pending.lease_owner = "old-owner"
+            pending.lease_token = "old-token"
+            pending.lease_expires_at = "2026-08-27 01:29:59.000000"
+            session.commit()
+    repository, _ = _repository(execution_store)
+    _, retry_command = _repository(execution_store)
+    admissions = TransactionalTransferAdmissionRepository(execution_store)
+    clear_claim = repository._clear_inactive_claim
+    claimed = []
+
+    def commit_winning_lease(session, *, pending, now_utc):
+        """在旧投影读取与实际 CAS 之间提交另一条真实仓储续租或领取操作。"""
+        if winner == "heartbeat":
+            # 心跳在到期前开始，但数据库提交晚于放弃入口读到旧期限。
+            monkeypatch.setattr(admissions, "_lease_now", lambda: datetime(
+                2026, 8, 27, 1, 29, 30, tzinfo=timezone.utc,
+            ))
+            claimed.append(admissions.heartbeat(
+                task_id="task-1", lease_token="old-token", lease_seconds=120,
+            ))
+        else:
+            assert retry_command.request_retry(
+                task_id="task-1", reason="重新整理", requested_by="admin",
+            ).accepted
+            monkeypatch.setattr(admissions, "_lease_now", lambda: datetime(
+                2026, 8, 27, 1, 30, 0, tzinfo=timezone.utc,
+            ))
+            claimed.append(admissions.claim_task(
+                task_id="task-1", owner_id="new-owner", lease_seconds=120,
+            ))
+        return clear_claim(session, pending=pending, now_utc=now_utc)
+
+    monkeypatch.setattr(repository, "_clear_inactive_claim", commit_winning_lease)
+
+    result = _discard_history_task(repository, history_id, method_name)
+
+    assert result.discarded is False
+    assert len(claimed) == 1 and claimed[0] is not None
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.lease_owner == claimed[0].lease_owner
+        assert pending.lease_token == claimed[0].lease_token
+        assert pending.lease_expires_at == claimed[0].lease_expires_at
+        assert session.scalar(select(TransferExecutionStep)) is not None
+        assert session.get(TransferHistory, history_id).transfer_task_id == "task-1"
+
+
+@pytest.mark.parametrize("method_name", ("discard_failed", "discard_corrupt_by_history"))
+def test_discard_history_cleanup_failure_rolls_back_expired_claim(
+        execution_store, monkeypatch, method_name,
+) -> None:
+    """清理步骤失败必须回滚租约、任务和历史，避免只解锁却留下半份证据。"""
+    history_id = _seed_failed_receipt(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.lease_owner = "old-owner"
+        pending.lease_token = "old-token"
+        pending.lease_expires_at = "2026-08-27 01:29:59.000000"
+        session.commit()
+    repository, _ = _repository(execution_store)
+
+    def reject_cleanup(_self, *, task_id):
+        """模拟取得放弃权后，步骤证据删除失败。"""
+        assert task_id == "task-1"
+        raise RuntimeError("步骤清理失败")
+
+    monkeypatch.setattr(TransferExecutionStepOper, "stage_delete_task", reject_cleanup)
+
+    with pytest.raises(RuntimeError, match="步骤清理失败"):
+        _discard_history_task(repository, history_id, method_name)
+
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.lease_token == "old-token"
+        assert pending.lease_expires_at == "2026-08-27 01:29:59.000000"
+        assert session.scalar(select(TransferExecutionStep)) is not None
+        history = session.get(TransferHistory, history_id)
+        assert history.transfer_task_id == "task-1"
+        assert history.transfer_settlement_revision == 1
 
 
 def test_manual_not_applied_decision_is_audited_and_schedules_same_step(

@@ -11,7 +11,7 @@ from typing import Any, Optional
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
@@ -1199,6 +1199,13 @@ class TransactionalTransferExecutionRepository:
                         retry_generation=pending.retry_generation,
                         message=message,
                     )
+                if not self._clear_inactive_claim(session, pending=pending, now_utc=retry_due_at):
+                    return TransferRetryRequestResult(
+                        accepted=False,
+                        state=state,
+                        retry_generation=pending.retry_generation,
+                        message="整理任务正在处理中或状态已变化，请刷新后重试",
+                    )
                 updated = oper.stage_request_execution_retry(
                     task_id=task_id,
                     reason=reason,
@@ -1282,20 +1289,27 @@ class TransactionalTransferExecutionRepository:
             history_id: int,
     ) -> TransferFailureDiscardResult:
         """在无活动租约时删除损坏任务、步骤并解除历史绑定。"""
+        now_utc, _updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
             try:
-                pending_oper = TransferPendingOper(session)
                 history_oper = TransferHistoryOper(session)
-                pending = pending_oper.get_by_task_id(task_id=task_id)
+                # 放弃旧任务只读取身份与状态，损坏 JSON 不能挡住显式重新规划。
+                pending = session.scalar(select(TransferPending).where(
+                    TransferPending.task_id == task_id,
+                ).options(load_only(TransferPending.task_id, TransferPending.execution_state)))
                 history = history_oper.get(history_id)
                 if pending is None:
                     return TransferFailureDiscardResult(True, None, "整理任务已被清理")
-                state = TransferExecutionState(pending.execution_state)
-                if pending.lease_owner is not None or pending.lease_token is not None:
-                    return TransferFailureDiscardResult(False, state, "整理任务正在处理中，暂时无法放弃")
+                # 显式放弃必须能处理损坏的状态字段，仍由原始状态和租约 CAS 保护。
+                try:
+                    state: Optional[TransferExecutionState] = TransferExecutionState(pending.execution_state)
+                except ValueError:
+                    state = None
                 if history is None or history.transfer_task_id != task_id:
                     return TransferFailureDiscardResult(False, state, "整理历史与任务绑定已变化，请刷新后重试")
+                if not self._clear_inactive_claim(session, pending=pending, now_utc=now_utc):
+                    return TransferFailureDiscardResult(False, state, "整理任务正在处理中或状态已变化，暂时无法放弃")
                 history.transfer_task_id = None
                 history.transfer_settlement_revision = None
                 TransferExecutionStepOper(session).stage_delete_task(task_id=task_id)
@@ -1314,6 +1328,7 @@ class TransactionalTransferExecutionRepository:
             settlement_revision: int,
     ) -> TransferFailureDiscardResult:
         """原子删除指定 FAILED pending、步骤证据并解除历史回执映射。"""
+        now_utc, _updated_at = self._times()
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
             try:
@@ -1346,12 +1361,6 @@ class TransactionalTransferExecutionRepository:
                         state=state,
                         message=message,
                     )
-                if pending.lease_owner is not None or pending.lease_token is not None:
-                    return TransferFailureDiscardResult(
-                        discarded=False,
-                        state=state,
-                        message="整理任务正在处理中，暂时无法放弃，请稍后重试",
-                    )
                 if (
                         pending.terminal_history_id != history_id
                         or pending.settlement_revision != settlement_revision
@@ -1360,6 +1369,12 @@ class TransactionalTransferExecutionRepository:
                         discarded=False,
                         state=state,
                         message="整理任务状态已变化，请刷新后重试",
+                    )
+                if not self._clear_inactive_claim(session, pending=pending, now_utc=now_utc):
+                    return TransferFailureDiscardResult(
+                        discarded=False,
+                        state=state,
+                        message="整理任务正在处理中或状态已变化，暂时无法放弃，请稍后重试",
                     )
 
                 deleted = pending_oper.stage_delete_terminal_failure(
@@ -1409,6 +1424,33 @@ class TransactionalTransferExecutionRepository:
             except Exception:
                 self._rollback(transaction)
                 raise
+
+    @staticmethod
+    def _clear_inactive_claim(
+            session: Session,
+            *,
+            pending: TransferPending,
+            now_utc: str,
+    ) -> bool:
+        """以状态和期限 CAS 取得用户恢复权，持有行写锁直到重试或清理提交。"""
+        updated = session.query(TransferPending).filter(
+            TransferPending.task_id == pending.task_id,
+            TransferPending.execution_state == pending.execution_state,
+            or_(
+                TransferPending.lease_token.is_(None),
+                TransferPending.lease_expires_at.is_(None),
+                TransferPending.lease_expires_at <= now_utc,
+            ),
+        ).update(
+            {
+                "lease_owner": None,
+                "lease_token": None,
+                "lease_expires_at": None,
+                "heartbeat_at": None,
+            },
+            synchronize_session=False,
+        )
+        return bool(updated == 1)
 
     def resolve_manual_review(
             self,

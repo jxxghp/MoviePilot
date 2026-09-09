@@ -4,12 +4,14 @@ import asyncio
 import queue
 import threading
 import time
+from collections.abc import Iterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.application.transfer.workflow import (
+    JobManager,
     TransferAdmission,
     TransferPlanningInput,
     TransferQueue,
@@ -21,6 +23,7 @@ from app.runtime.config import global_vars
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
 from app.startup.initializers import transfer as transfer_initializer
+from tests.test_transfer_job_manager import make_task
 
 
 def _planning_input(fileitem: FileItem) -> TransferPlanningInput:
@@ -108,6 +111,199 @@ def _claimed_admission(task: TransferTask, task_id: str) -> TransferAdmission:
         heartbeat_at="2026-08-27 10:00:00.000000",
         attempt_count=1,
     )
+
+
+@pytest.fixture
+def blocked_queue_admission(request: pytest.FixtureRequest) -> Iterator[SimpleNamespace]:
+    """在准入数据库边界暂停生产者，并保留可按事件触发的真实续租线程。"""
+    chain = _build_chain()
+    chain.jobview = MagicMock()
+    chain.jobview.add_task.return_value = True
+    chain._register_scrape_batch_task = MagicMock()
+    task = TransferTask(fileitem=FileItem(
+        storage="local", path="/downloads/test.mkv", type="file",
+    ))
+    task.bind_planning_input(_planning_input(task.fileitem))
+    current = _claimed_admission(task, "existing-task")
+    initial_deadline = time.monotonic() + 60
+    chain._owned_leases[current.task_id] = (current.lease_token, initial_deadline)
+    chain._transfer_admissions.heartbeat.return_value = current
+    database_entered = threading.Event()
+    release_database = threading.Event()
+    heartbeat_requested = threading.Event()
+    heartbeat_finished = threading.Event()
+    producer_results: list[bool] = []
+    failures: list[Exception] = []
+    database_method = getattr(chain._transfer_admissions, request.param)
+    original_operation = database_method.side_effect
+
+    def block_database(**kwargs) -> TransferAdmission:
+        """保持仓储调用未返回，直到测试完成并发行为断言后显式放行。"""
+        database_entered.set()
+        release_database.wait()
+        return original_operation(**kwargs)
+
+    def enqueue_task() -> None:
+        """从独立生产者执行真实入队路径，并回传结果与异常。"""
+        try:
+            producer_results.append(chain.put_to_queue(task))
+        except Exception as error:
+            failures.append(error)
+
+    def renew_lease() -> None:
+        """收到事件后执行真实续租，再等待宿主关闭信号。"""
+        heartbeat_requested.wait()
+        try:
+            chain._TransferChain__heartbeat_owned_leases()
+        except Exception as error:
+            failures.append(error)
+        finally:
+            heartbeat_finished.set()
+        chain._lease_heartbeat_stop_event.wait()
+
+    database_method.side_effect = block_database
+    producer = threading.Thread(target=enqueue_task, daemon=True)
+    heartbeat = threading.Thread(target=renew_lease, daemon=True)
+    chain._lease_heartbeat_thread = heartbeat
+    state = SimpleNamespace(
+        chain=chain,
+        task=task,
+        initial_deadline=initial_deadline,
+        database_entered=database_entered,
+        release_database=release_database,
+        heartbeat_requested=heartbeat_requested,
+        heartbeat_finished=heartbeat_finished,
+        producer=producer,
+        heartbeat=heartbeat,
+        producer_results=producer_results,
+        failures=failures,
+        closer=None,
+    )
+    heartbeat.start()
+    producer.start()
+    try:
+        assert database_entered.wait(timeout=1)
+        yield state
+    finally:
+        release_database.set()
+        heartbeat_requested.set()
+        producer.join(timeout=1)
+        if state.closer is not None:
+            state.closer.join(timeout=1)
+        chain.close_workers(timeout_seconds=1)
+        chain._lease_heartbeat_stop_event.set()
+        heartbeat.join(timeout=1)
+        assert producer.is_alive() is False
+        assert heartbeat.is_alive() is False
+        assert state.closer is None or not state.closer.is_alive()
+
+
+@pytest.mark.parametrize("blocked_queue_admission", ["admit", "claim_task"], indirect=True)
+def test_slow_queue_admission_does_not_block_owned_lease_heartbeat(
+        blocked_queue_admission: SimpleNamespace,
+) -> None:
+    """新任务数据库阻塞期间，已有任务必须独立续租并刷新本地期限。"""
+    state = blocked_queue_admission
+    state.heartbeat_requested.set()
+
+    assert state.heartbeat_finished.wait(timeout=0.5)
+    assert state.release_database.is_set() is False
+    assert state.producer.is_alive() is True
+    assert state.failures == []
+    assert state.chain._owned_leases["existing-task"][1] > state.initial_deadline
+
+    state.release_database.set()
+    state.producer.join(timeout=1)
+    assert state.producer_results == [True]
+    assert state.chain._queue.get_nowait().task is state.task
+
+
+@pytest.mark.parametrize("blocked_queue_admission", ["admit", "claim_task"], indirect=True)
+def test_close_during_queue_admission_respects_budget_and_keeps_heartbeat(
+        blocked_queue_admission: SimpleNamespace,
+) -> None:
+    """关闭不得越过阻塞生产者释放租约，超时后续租和已接收的入队仍可完成。"""
+    state = blocked_queue_admission
+    close_finished = threading.Event()
+    close_results: list[tuple[bool, float]] = []
+
+    def close_chain() -> None:
+        """独立执行关闭，使旧实现无界等锁时测试仍能显式释放生产者。"""
+        started_at = time.monotonic()
+        try:
+            result = state.chain.close_workers(timeout_seconds=0.02)
+            close_results.append((result, time.monotonic() - started_at))
+        finally:
+            close_finished.set()
+
+    state.closer = threading.Thread(target=close_chain, daemon=True)
+    state.closer.start()
+
+    assert close_finished.wait(timeout=0.5)
+    assert close_results[0][0] is False
+    assert close_results[0][1] < 0.5
+    assert state.chain._lease_heartbeat_stop_event.is_set() is False
+    assert state.heartbeat.is_alive() is True
+    state.heartbeat_requested.set()
+    assert state.heartbeat_finished.wait(timeout=0.5)
+    assert state.chain._owned_leases["existing-task"][1] > state.initial_deadline
+    assert state.release_database.is_set() is False
+
+    state.release_database.set()
+    state.producer.join(timeout=1)
+    assert state.producer_results == [True]
+    assert state.failures == []
+    assert state.chain.close_workers(timeout_seconds=1) is True
+
+
+@pytest.mark.parametrize("owner", ["worker", "replay"])
+def test_closing_owner_rejects_enqueue_without_waiting_for_lifecycle_lock(owner: str) -> None:
+    """已经等待准入锁的 owner 必须察觉关闭并退出，不能与关闭的 join 反等。"""
+    chain = _build_chain()
+    lifecycle_lock = threading.RLock()
+    enqueue_waiting_for_lock = threading.Event()
+    enqueue_results: list[bool] = []
+    enqueue_failures: list[Exception] = []
+
+    def acquire_lifecycle_lock(*, timeout: float) -> bool:
+        """只观测 owner 已经开始等锁，实际竞争和主线程重入均交给真实 RLock。"""
+        if threading.current_thread() is thread:
+            enqueue_waiting_for_lock.set()
+        return lifecycle_lock.acquire(timeout=timeout)
+
+    def enqueue_before_close() -> None:
+        """在关闭尚未开始时进入准入并阻塞于主线程持有的生命周期锁。"""
+        try:
+            enqueue_results.append(chain.put_to_queue(MagicMock()))
+        except Exception as error:
+            enqueue_failures.append(error)
+
+    chain._worker_lifecycle_lock = SimpleNamespace(
+        acquire=acquire_lifecycle_lock,
+        release=lifecycle_lock.release,
+    )
+    thread = threading.Thread(target=enqueue_before_close, daemon=True)
+    if owner == "worker":
+        chain._threads = [thread]
+    else:
+        chain._replay_thread = thread
+    lifecycle_lock.acquire()
+    thread.start()
+    try:
+        assert enqueue_waiting_for_lock.wait(timeout=1)
+        assert chain._closing is False
+        started_at = time.monotonic()
+        assert chain.close_workers(timeout_seconds=1) is True
+        assert time.monotonic() - started_at < 0.5
+        assert enqueue_results == [False]
+        assert enqueue_failures == []
+        chain._transfer_admissions.admit.assert_not_called()
+        chain._transfer_admissions.claim_task.assert_not_called()
+    finally:
+        lifecycle_lock.release()
+        thread.join(timeout=1)
+        chain.close_workers(timeout_seconds=1)
+        assert thread.is_alive() is False
 
 
 def test_config_reload_replaces_worker_generation_and_keeps_accepting() -> None:
@@ -819,17 +1015,15 @@ def test_worker_fenced_releases_lost_lease_and_completes_queue_bookkeeping(
 ) -> None:
     """本地租约失效时仍尝试 token CAS release，并完整结算内存队列。"""
     chain = _build_chain()
-    task = TransferTask(fileitem=FileItem(
-        storage="local",
-        path="/downloads/lost-lease.mkv",
-        type="file",
-    ))
+    task = make_task(1)
     task.bind_admission_task_id("lost-lease")
     task.bind_execution_lease(
         owner_id="worker-owner",
         lease_token="lost-token",
     )
-    chain.jobview = MagicMock()
+    chain.jobview = JobManager()
+    assert chain.jobview.add_task(task)
+    assert chain.jobview.add_task(make_task(2))
     chain._finish_scrape_batch_task = MagicMock()
     chain._TransferChain__settle_transfer_progress_if_idle = MagicMock()
     stop_event = threading.Event()
@@ -855,6 +1049,16 @@ def test_worker_fenced_releases_lost_lease_and_completes_queue_bookkeeping(
     )
     assert chain._queue.unfinished_tasks == 0
     assert chain._recovery_wakeup_event.is_set() is False
+    assert chain.jobview.pending_total() == 1
+
+    restart = make_task(1)
+    restart.manual = True
+    restart.bind_planning_input(_planning_input(restart.fileitem))
+    chain._register_scrape_batch_task = MagicMock()
+    assert chain.put_to_queue(restart) is True
+    assert chain.jobview.pending_total() == 2
+    assert chain._queue.get_nowait().task is restart
+    chain._finish_queue_item(restart)
 
 
 def test_callback_without_terminal_settlement_releases_claim_and_counts_failure(
