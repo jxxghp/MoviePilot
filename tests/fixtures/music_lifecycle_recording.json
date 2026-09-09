@@ -1,0 +1,1812 @@
+{
+  "source": "MusicBrainz public WS/2 responses captured 2026-09-09",
+  "title": "李佳薇 - 碧苍 (电视剧《与凤行》“碧海苍穹”主题曲) (2024) - WEB-DL - 16bit ALAC-HHWEB",
+  "description": "李佳薇 - 碧苍 (电视剧《与凤行》“碧海苍穹”主题曲) | ALAC | 苹果音乐 | 录音室专辑",
+  "expected_id": "b64cad55-4c77-49cc-964a-fc3aaee5fa15",
+  "requests": [
+    {
+      "path": "/recording",
+      "params": {
+        "fmt": "json",
+        "limit": 10,
+        "query": "recording:(\"碧苍 (电视剧《与凤行》“碧海苍穹”主题曲)\" OR \"碧蒼 (電視劇《與鳳行》「碧海蒼穹」主題曲)\") AND artist:\"李佳薇\" AND release:(\"碧苍 (电视剧《与凤行》“碧海苍穹”主题曲)\" OR \"碧蒼 (電視劇《與鳳行》「碧海蒼穹」主題曲)\")"
+      },
+      "payload": {
+        "created": "2026-09-09T07:27:00.387Z",
+        "count": 0,
+        "offset": 0,
+        "recordings": []
+      }
+    },
+    {
+      "path": "/recording",
+      "params": {
+        "fmt": "json",
+        "limit": 10,
+        "query": "recording:(\"碧苍 (电视剧《与凤行》“碧海苍穹”主题曲)\" OR \"碧蒼 (電視劇《與鳳行》「碧海蒼穹」主題曲)\")"
+      },
+      "payload": {
+        "created": "2026-09-09T07:27:01.393Z",
+        "count": 0,
+        "offset": 0,
+        "recordings": []
+      }
+    },
+    {
+      "path": "/recording",
+      "params": {
+        "fmt": "json",
+        "limit": 10,
+        "query": "recording:(\"碧苍\" OR \"碧蒼\") AND artist:\"李佳薇\""
+      },
+      "payload": {
+        "created": "2026-09-09T07:27:10.896Z",
+        "count": 3,
+        "offset": 0,
+        "recordings": [
+          {
+            "id": "b64cad55-4c77-49cc-964a-fc3aaee5fa15",
+            "score": 100,
+            "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+            "title": "碧苍",
+            "length": 229000,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "李佳薇",
+                "artist": {
+                  "id": "6c603138-0195-4798-9676-5b57e3380094",
+                  "name": "李佳薇",
+                  "sort-name": "Lee, Jess",
+                  "disambiguation": "Malaysian mandopop singer, active in Taiwan",
+                  "aliases": [
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "Jess Lee",
+                      "locale": "en",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "李佳薇",
+                      "locale": "zh",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2024-03-21",
+            "releases": [
+              {
+                "id": "df5ce252-c947-4fc7-8f49-aa60719ee93a",
+                "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+                "count": 1,
+                "title": "碧苍",
+                "artist-credit": [
+                  {
+                    "name": "李佳薇",
+                    "artist": {
+                      "id": "6c603138-0195-4798-9676-5b57e3380094",
+                      "name": "李佳薇",
+                      "sort-name": "Lee, Jess",
+                      "disambiguation": "Malaysian mandopop singer, active in Taiwan"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "b9281b1d-c2d5-41c8-8a43-92104bbd7938",
+                  "type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "primary-type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "title": "碧苍",
+                  "disambiguation": "from《与凤行》[The Legend of Shen Li] OST",
+                  "primary-type": "Single",
+                  "secondary-types": [
+                    "Soundtrack"
+                  ],
+                  "secondary-type-ids": [
+                    "22a628ad-c082-3c4f-b1b6-d41665107b88"
+                  ]
+                },
+                "date": "2024-03-21",
+                "country": "CN",
+                "release-events": [
+                  {
+                    "date": "2024-03-21",
+                    "area": {
+                      "id": "7c81bb69-a99b-3487-b6d4-0f76d7a29ca0",
+                      "name": "China",
+                      "sort-name": "China",
+                      "iso-3166-1-codes": [
+                        "CN"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 2,
+                "media": [
+                  {
+                    "id": "08168b29-8f01-4c41-b2a8-af49c429e9e0",
+                    "position": 1,
+                    "format": "Digital Media",
+                    "track": [
+                      {
+                        "id": "8b0046fa-8a1b-4d6e-ad42-cd7ea6656481",
+                        "number": "2",
+                        "title": "碧苍",
+                        "length": 229000
+                      }
+                    ],
+                    "track-count": 2,
+                    "track-offset": 1
+                  }
+                ]
+              }
+            ],
+            "isrcs": [
+              "HKD012291069"
+            ]
+          },
+          {
+            "id": "9f29834c-f965-4f70-a7f2-17171bba2338",
+            "score": 100,
+            "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+            "title": "碧苍",
+            "length": 229000,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "李佳薇",
+                "artist": {
+                  "id": "6c603138-0195-4798-9676-5b57e3380094",
+                  "name": "李佳薇",
+                  "sort-name": "Lee, Jess",
+                  "disambiguation": "Malaysian mandopop singer, active in Taiwan",
+                  "aliases": [
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "Jess Lee",
+                      "locale": "en",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "李佳薇",
+                      "locale": "zh",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2024-03-21",
+            "releases": [
+              {
+                "id": "df5ce252-c947-4fc7-8f49-aa60719ee93a",
+                "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+                "count": 1,
+                "title": "碧苍",
+                "artist-credit": [
+                  {
+                    "name": "李佳薇",
+                    "artist": {
+                      "id": "6c603138-0195-4798-9676-5b57e3380094",
+                      "name": "李佳薇",
+                      "sort-name": "Lee, Jess",
+                      "disambiguation": "Malaysian mandopop singer, active in Taiwan"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "b9281b1d-c2d5-41c8-8a43-92104bbd7938",
+                  "type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "primary-type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "title": "碧苍",
+                  "disambiguation": "from《与凤行》[The Legend of Shen Li] OST",
+                  "primary-type": "Single",
+                  "secondary-types": [
+                    "Soundtrack"
+                  ],
+                  "secondary-type-ids": [
+                    "22a628ad-c082-3c4f-b1b6-d41665107b88"
+                  ]
+                },
+                "date": "2024-03-21",
+                "country": "CN",
+                "release-events": [
+                  {
+                    "date": "2024-03-21",
+                    "area": {
+                      "id": "7c81bb69-a99b-3487-b6d4-0f76d7a29ca0",
+                      "name": "China",
+                      "sort-name": "China",
+                      "iso-3166-1-codes": [
+                        "CN"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 2,
+                "media": [
+                  {
+                    "id": "08168b29-8f01-4c41-b2a8-af49c429e9e0",
+                    "position": 1,
+                    "format": "Digital Media",
+                    "track": [
+                      {
+                        "id": "6e459647-d5dc-49e5-bd5d-18262169db1c",
+                        "number": "1",
+                        "title": "碧苍",
+                        "length": 229000
+                      }
+                    ],
+                    "track-count": 2,
+                    "track-offset": 0
+                  }
+                ]
+              }
+            ],
+            "isrcs": [
+              "HKD012291068"
+            ]
+          },
+          {
+            "id": "f8e2eb16-76d9-4c50-a5d7-f03f9a91fc1c",
+            "score": 72,
+            "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+            "title": "碧苍《与凤行》",
+            "length": 229532,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "李佳薇",
+                "artist": {
+                  "id": "6c603138-0195-4798-9676-5b57e3380094",
+                  "name": "李佳薇",
+                  "sort-name": "Lee, Jess",
+                  "disambiguation": "Malaysian mandopop singer, active in Taiwan",
+                  "aliases": [
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "Jess Lee",
+                      "locale": "en",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "李佳薇",
+                      "locale": "zh",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2026-04-05",
+            "releases": [
+              {
+                "id": "d7cfe830-ece7-4f4c-9e7d-e01eadca4451",
+                "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+                "artist-credit-id": "949a7fd5-fe73-3e8f-922e-01ff4ca958f7",
+                "count": 1,
+                "title": "与凤行 电视剧原声带",
+                "status": "Official",
+                "artist-credit": [
+                  {
+                    "name": "Various Artists",
+                    "artist": {
+                      "id": "89ad4ac3-39f7-470e-963a-56509c546377",
+                      "name": "Various Artists",
+                      "sort-name": "Various Artists",
+                      "disambiguation": "add compilations to this artist"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "c1f51e58-c25d-4aa6-8d25-1cec9daf960c",
+                  "type-id": "6d0c5bf6-7a33-3420-a519-44fc63eedebf",
+                  "primary-type-id": "6d0c5bf6-7a33-3420-a519-44fc63eedebf",
+                  "title": "与凤行 电视剧原声带",
+                  "primary-type": "EP",
+                  "secondary-types": [
+                    "Soundtrack"
+                  ],
+                  "secondary-type-ids": [
+                    "22a628ad-c082-3c4f-b1b6-d41665107b88"
+                  ]
+                },
+                "track-count": 6,
+                "media": [
+                  {
+                    "id": "5af7293c-54ca-4aa9-8082-33af9560a48d",
+                    "position": 1,
+                    "format": "Digital Media",
+                    "track": [
+                      {
+                        "id": "2bd972a9-97be-421b-a3a9-6b06387264fc",
+                        "number": "5",
+                        "title": "碧苍《与凤行》",
+                        "length": 229532
+                      }
+                    ],
+                    "track-count": 6,
+                    "track-offset": 4
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "/recording",
+      "params": {
+        "fmt": "json",
+        "limit": 10,
+        "query": "recording:(\"碧苍\" OR \"碧蒼\")"
+      },
+      "payload": {
+        "created": "2026-09-09T07:27:34.737Z",
+        "count": 3,
+        "offset": 0,
+        "recordings": [
+          {
+            "id": "b64cad55-4c77-49cc-964a-fc3aaee5fa15",
+            "score": 100,
+            "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+            "title": "碧苍",
+            "length": 229000,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "李佳薇",
+                "artist": {
+                  "id": "6c603138-0195-4798-9676-5b57e3380094",
+                  "name": "李佳薇",
+                  "sort-name": "Lee, Jess",
+                  "disambiguation": "Malaysian mandopop singer, active in Taiwan",
+                  "aliases": [
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "Jess Lee",
+                      "locale": "en",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "李佳薇",
+                      "locale": "zh",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2024-03-21",
+            "releases": [
+              {
+                "id": "df5ce252-c947-4fc7-8f49-aa60719ee93a",
+                "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+                "count": 1,
+                "title": "碧苍",
+                "artist-credit": [
+                  {
+                    "name": "李佳薇",
+                    "artist": {
+                      "id": "6c603138-0195-4798-9676-5b57e3380094",
+                      "name": "李佳薇",
+                      "sort-name": "Lee, Jess",
+                      "disambiguation": "Malaysian mandopop singer, active in Taiwan"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "b9281b1d-c2d5-41c8-8a43-92104bbd7938",
+                  "type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "primary-type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "title": "碧苍",
+                  "disambiguation": "from《与凤行》[The Legend of Shen Li] OST",
+                  "primary-type": "Single",
+                  "secondary-types": [
+                    "Soundtrack"
+                  ],
+                  "secondary-type-ids": [
+                    "22a628ad-c082-3c4f-b1b6-d41665107b88"
+                  ]
+                },
+                "date": "2024-03-21",
+                "country": "CN",
+                "release-events": [
+                  {
+                    "date": "2024-03-21",
+                    "area": {
+                      "id": "7c81bb69-a99b-3487-b6d4-0f76d7a29ca0",
+                      "name": "China",
+                      "sort-name": "China",
+                      "iso-3166-1-codes": [
+                        "CN"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 2,
+                "media": [
+                  {
+                    "id": "08168b29-8f01-4c41-b2a8-af49c429e9e0",
+                    "position": 1,
+                    "format": "Digital Media",
+                    "track": [
+                      {
+                        "id": "8b0046fa-8a1b-4d6e-ad42-cd7ea6656481",
+                        "number": "2",
+                        "title": "碧苍",
+                        "length": 229000
+                      }
+                    ],
+                    "track-count": 2,
+                    "track-offset": 1
+                  }
+                ]
+              }
+            ],
+            "isrcs": [
+              "HKD012291069"
+            ]
+          },
+          {
+            "id": "9f29834c-f965-4f70-a7f2-17171bba2338",
+            "score": 100,
+            "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+            "title": "碧苍",
+            "length": 229000,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "李佳薇",
+                "artist": {
+                  "id": "6c603138-0195-4798-9676-5b57e3380094",
+                  "name": "李佳薇",
+                  "sort-name": "Lee, Jess",
+                  "disambiguation": "Malaysian mandopop singer, active in Taiwan",
+                  "aliases": [
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "Jess Lee",
+                      "locale": "en",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "李佳薇",
+                      "locale": "zh",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2024-03-21",
+            "releases": [
+              {
+                "id": "df5ce252-c947-4fc7-8f49-aa60719ee93a",
+                "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+                "count": 1,
+                "title": "碧苍",
+                "artist-credit": [
+                  {
+                    "name": "李佳薇",
+                    "artist": {
+                      "id": "6c603138-0195-4798-9676-5b57e3380094",
+                      "name": "李佳薇",
+                      "sort-name": "Lee, Jess",
+                      "disambiguation": "Malaysian mandopop singer, active in Taiwan"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "b9281b1d-c2d5-41c8-8a43-92104bbd7938",
+                  "type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "primary-type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "title": "碧苍",
+                  "disambiguation": "from《与凤行》[The Legend of Shen Li] OST",
+                  "primary-type": "Single",
+                  "secondary-types": [
+                    "Soundtrack"
+                  ],
+                  "secondary-type-ids": [
+                    "22a628ad-c082-3c4f-b1b6-d41665107b88"
+                  ]
+                },
+                "date": "2024-03-21",
+                "country": "CN",
+                "release-events": [
+                  {
+                    "date": "2024-03-21",
+                    "area": {
+                      "id": "7c81bb69-a99b-3487-b6d4-0f76d7a29ca0",
+                      "name": "China",
+                      "sort-name": "China",
+                      "iso-3166-1-codes": [
+                        "CN"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 2,
+                "media": [
+                  {
+                    "id": "08168b29-8f01-4c41-b2a8-af49c429e9e0",
+                    "position": 1,
+                    "format": "Digital Media",
+                    "track": [
+                      {
+                        "id": "6e459647-d5dc-49e5-bd5d-18262169db1c",
+                        "number": "1",
+                        "title": "碧苍",
+                        "length": 229000
+                      }
+                    ],
+                    "track-count": 2,
+                    "track-offset": 0
+                  }
+                ]
+              }
+            ],
+            "isrcs": [
+              "HKD012291068"
+            ]
+          },
+          {
+            "id": "f8e2eb16-76d9-4c50-a5d7-f03f9a91fc1c",
+            "score": 58,
+            "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+            "title": "碧苍《与凤行》",
+            "length": 229532,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "李佳薇",
+                "artist": {
+                  "id": "6c603138-0195-4798-9676-5b57e3380094",
+                  "name": "李佳薇",
+                  "sort-name": "Lee, Jess",
+                  "disambiguation": "Malaysian mandopop singer, active in Taiwan",
+                  "aliases": [
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "Jess Lee",
+                      "locale": "en",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "李佳薇",
+                      "locale": "zh",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2026-04-05",
+            "releases": [
+              {
+                "id": "d7cfe830-ece7-4f4c-9e7d-e01eadca4451",
+                "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+                "artist-credit-id": "949a7fd5-fe73-3e8f-922e-01ff4ca958f7",
+                "count": 1,
+                "title": "与凤行 电视剧原声带",
+                "status": "Official",
+                "artist-credit": [
+                  {
+                    "name": "Various Artists",
+                    "artist": {
+                      "id": "89ad4ac3-39f7-470e-963a-56509c546377",
+                      "name": "Various Artists",
+                      "sort-name": "Various Artists",
+                      "disambiguation": "add compilations to this artist"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "c1f51e58-c25d-4aa6-8d25-1cec9daf960c",
+                  "type-id": "6d0c5bf6-7a33-3420-a519-44fc63eedebf",
+                  "primary-type-id": "6d0c5bf6-7a33-3420-a519-44fc63eedebf",
+                  "title": "与凤行 电视剧原声带",
+                  "primary-type": "EP",
+                  "secondary-types": [
+                    "Soundtrack"
+                  ],
+                  "secondary-type-ids": [
+                    "22a628ad-c082-3c4f-b1b6-d41665107b88"
+                  ]
+                },
+                "track-count": 6,
+                "media": [
+                  {
+                    "id": "5af7293c-54ca-4aa9-8082-33af9560a48d",
+                    "position": 1,
+                    "format": "Digital Media",
+                    "track": [
+                      {
+                        "id": "2bd972a9-97be-421b-a3a9-6b06387264fc",
+                        "number": "5",
+                        "title": "碧苍《与凤行》",
+                        "length": 229532
+                      }
+                    ],
+                    "track-count": 6,
+                    "track-offset": 4
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "/recording",
+      "params": {
+        "fmt": "json",
+        "limit": 10,
+        "query": "recording:(\"碧\" OR \"苍\")"
+      },
+      "payload": {
+        "created": "2026-09-09T07:27:36.453Z",
+        "count": 2861,
+        "offset": 0,
+        "recordings": [
+          {
+            "id": "84b41603-d706-4f26-b700-7ca0178a79a7",
+            "score": 100,
+            "artist-credit-id": "e77a3d65-d8c3-3f0e-8ce1-fc09c54c32fd",
+            "title": "蒼碧",
+            "length": 224000,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "Alice in the hole!",
+                "artist": {
+                  "id": "7c962ad6-8dec-4efc-b928-cf58c3e1fb33",
+                  "name": "Alice in the hole!",
+                  "sort-name": "Alice in the hole"
+                }
+              }
+            ],
+            "first-release-date": "2012-10-28",
+            "releases": [
+              {
+                "id": "02947cc8-37d0-4e50-9340-5c682b7846d9",
+                "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+                "count": 1,
+                "title": "Perpetual Burn",
+                "status": "Official",
+                "release-group": {
+                  "id": "cfd04d6a-0cd8-4c51-8f51-7e47df0999b1",
+                  "type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "title": "Perpetual Burn",
+                  "primary-type": "Album"
+                },
+                "date": "2012-10-28",
+                "country": "JP",
+                "release-events": [
+                  {
+                    "date": "2012-10-28",
+                    "area": {
+                      "id": "2db42837-c832-3c27-b4a3-08198f75693c",
+                      "name": "Japan",
+                      "sort-name": "Japan",
+                      "iso-3166-1-codes": [
+                        "JP"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 7,
+                "media": [
+                  {
+                    "id": "b30608ec-359d-312a-9447-94e7f1310807",
+                    "position": 1,
+                    "format": "CD",
+                    "track": [
+                      {
+                        "id": "25327847-ae0a-494d-9f08-f5249c4ac0c1",
+                        "number": "3",
+                        "title": "蒼碧",
+                        "length": 224000
+                      }
+                    ],
+                    "track-count": 7,
+                    "track-offset": 2
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "0f41bd13-68a8-4bc2-bdf8-acf205b13ad8",
+            "score": 100,
+            "artist-credit-id": "e77a3d65-d8c3-3f0e-8ce1-fc09c54c32fd",
+            "title": "蒼碧",
+            "length": 222000,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "Alice in the hole!",
+                "artist": {
+                  "id": "7c962ad6-8dec-4efc-b928-cf58c3e1fb33",
+                  "name": "Alice in the hole!",
+                  "sort-name": "Alice in the hole"
+                }
+              }
+            ],
+            "first-release-date": "2014-04-26",
+            "releases": [
+              {
+                "id": "240b0f83-9d9c-4b18-b85d-3e4bbbdae0d4",
+                "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+                "count": 1,
+                "title": "Alice in the hole!",
+                "status": "Official",
+                "release-group": {
+                  "id": "30c346a1-8198-480a-b86d-ff819c6c8cd9",
+                  "type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "title": "Alice in the hole!",
+                  "primary-type": "Album"
+                },
+                "date": "2014-04-26",
+                "country": "JP",
+                "release-events": [
+                  {
+                    "date": "2014-04-26",
+                    "area": {
+                      "id": "2db42837-c832-3c27-b4a3-08198f75693c",
+                      "name": "Japan",
+                      "sort-name": "Japan",
+                      "iso-3166-1-codes": [
+                        "JP"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 10,
+                "media": [
+                  {
+                    "id": "27cc86d6-d157-35ae-b174-1d2c9009928e",
+                    "position": 1,
+                    "format": "CD",
+                    "track": [
+                      {
+                        "id": "b189645b-0f0f-4dc8-a984-c20bd1889674",
+                        "number": "6",
+                        "title": "蒼碧",
+                        "length": 222000
+                      }
+                    ],
+                    "track-count": 10,
+                    "track-offset": 5
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "9f29834c-f965-4f70-a7f2-17171bba2338",
+            "score": 100,
+            "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+            "title": "碧苍",
+            "length": 229000,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "李佳薇",
+                "artist": {
+                  "id": "6c603138-0195-4798-9676-5b57e3380094",
+                  "name": "李佳薇",
+                  "sort-name": "Lee, Jess",
+                  "disambiguation": "Malaysian mandopop singer, active in Taiwan",
+                  "aliases": [
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "Jess Lee",
+                      "locale": "en",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "李佳薇",
+                      "locale": "zh",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2024-03-21",
+            "releases": [
+              {
+                "id": "df5ce252-c947-4fc7-8f49-aa60719ee93a",
+                "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+                "count": 1,
+                "title": "碧苍",
+                "artist-credit": [
+                  {
+                    "name": "李佳薇",
+                    "artist": {
+                      "id": "6c603138-0195-4798-9676-5b57e3380094",
+                      "name": "李佳薇",
+                      "sort-name": "Lee, Jess",
+                      "disambiguation": "Malaysian mandopop singer, active in Taiwan"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "b9281b1d-c2d5-41c8-8a43-92104bbd7938",
+                  "type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "primary-type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "title": "碧苍",
+                  "disambiguation": "from《与凤行》[The Legend of Shen Li] OST",
+                  "primary-type": "Single",
+                  "secondary-types": [
+                    "Soundtrack"
+                  ],
+                  "secondary-type-ids": [
+                    "22a628ad-c082-3c4f-b1b6-d41665107b88"
+                  ]
+                },
+                "date": "2024-03-21",
+                "country": "CN",
+                "release-events": [
+                  {
+                    "date": "2024-03-21",
+                    "area": {
+                      "id": "7c81bb69-a99b-3487-b6d4-0f76d7a29ca0",
+                      "name": "China",
+                      "sort-name": "China",
+                      "iso-3166-1-codes": [
+                        "CN"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 2,
+                "media": [
+                  {
+                    "id": "08168b29-8f01-4c41-b2a8-af49c429e9e0",
+                    "position": 1,
+                    "format": "Digital Media",
+                    "track": [
+                      {
+                        "id": "6e459647-d5dc-49e5-bd5d-18262169db1c",
+                        "number": "1",
+                        "title": "碧苍",
+                        "length": 229000
+                      }
+                    ],
+                    "track-count": 2,
+                    "track-offset": 0
+                  }
+                ]
+              }
+            ],
+            "isrcs": [
+              "HKD012291068"
+            ]
+          },
+          {
+            "id": "b64cad55-4c77-49cc-964a-fc3aaee5fa15",
+            "score": 100,
+            "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+            "title": "碧苍",
+            "length": 229000,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "李佳薇",
+                "artist": {
+                  "id": "6c603138-0195-4798-9676-5b57e3380094",
+                  "name": "李佳薇",
+                  "sort-name": "Lee, Jess",
+                  "disambiguation": "Malaysian mandopop singer, active in Taiwan",
+                  "aliases": [
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "Jess Lee",
+                      "locale": "en",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "Lee, Jess",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "李佳薇",
+                      "locale": "zh",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2024-03-21",
+            "releases": [
+              {
+                "id": "df5ce252-c947-4fc7-8f49-aa60719ee93a",
+                "artist-credit-id": "d7aa3250-3750-3754-857d-b90d2a8ab263",
+                "count": 1,
+                "title": "碧苍",
+                "artist-credit": [
+                  {
+                    "name": "李佳薇",
+                    "artist": {
+                      "id": "6c603138-0195-4798-9676-5b57e3380094",
+                      "name": "李佳薇",
+                      "sort-name": "Lee, Jess",
+                      "disambiguation": "Malaysian mandopop singer, active in Taiwan"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "b9281b1d-c2d5-41c8-8a43-92104bbd7938",
+                  "type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "primary-type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "title": "碧苍",
+                  "disambiguation": "from《与凤行》[The Legend of Shen Li] OST",
+                  "primary-type": "Single",
+                  "secondary-types": [
+                    "Soundtrack"
+                  ],
+                  "secondary-type-ids": [
+                    "22a628ad-c082-3c4f-b1b6-d41665107b88"
+                  ]
+                },
+                "date": "2024-03-21",
+                "country": "CN",
+                "release-events": [
+                  {
+                    "date": "2024-03-21",
+                    "area": {
+                      "id": "7c81bb69-a99b-3487-b6d4-0f76d7a29ca0",
+                      "name": "China",
+                      "sort-name": "China",
+                      "iso-3166-1-codes": [
+                        "CN"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 2,
+                "media": [
+                  {
+                    "id": "08168b29-8f01-4c41-b2a8-af49c429e9e0",
+                    "position": 1,
+                    "format": "Digital Media",
+                    "track": [
+                      {
+                        "id": "8b0046fa-8a1b-4d6e-ad42-cd7ea6656481",
+                        "number": "2",
+                        "title": "碧苍",
+                        "length": 229000
+                      }
+                    ],
+                    "track-count": 2,
+                    "track-offset": 1
+                  }
+                ]
+              }
+            ],
+            "isrcs": [
+              "HKD012291069"
+            ]
+          },
+          {
+            "id": "f88010d2-4fa1-43d6-87d6-7bf577084857",
+            "score": 87,
+            "artist-credit-id": "8509ec49-d730-3447-8ff2-755b0aadbbb6",
+            "title": "蒼碧緋",
+            "length": 304000,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "The Miceteeth",
+                "artist": {
+                  "id": "cbeb84c4-11b1-4715-9500-a655b9c761f3",
+                  "name": "The Miceteeth",
+                  "sort-name": "Miceteeth, The"
+                }
+              }
+            ],
+            "first-release-date": "2003",
+            "releases": [
+              {
+                "id": "f309eb5f-ff33-4657-95f5-9eee1189b996",
+                "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+                "artist-credit-id": "949a7fd5-fe73-3e8f-922e-01ff4ca958f7",
+                "count": 2,
+                "title": "Big Shot ~ Japanese Authentic Ska & Rock Steady Bands Convention",
+                "status": "Official",
+                "artist-credit": [
+                  {
+                    "name": "Various Artists",
+                    "artist": {
+                      "id": "89ad4ac3-39f7-470e-963a-56509c546377",
+                      "name": "Various Artists",
+                      "sort-name": "Various Artists",
+                      "disambiguation": "add compilations to this artist"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "fdac29ce-4a76-4e16-96cf-b05fe9aa2cd8",
+                  "type-id": "dd2a21e1-0c00-3729-a7a0-de60b84eb5d1",
+                  "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "title": "Big Shot ~ Japanese Authentic Ska & Rock Steady Bands Convention",
+                  "primary-type": "Album",
+                  "secondary-types": [
+                    "Compilation"
+                  ],
+                  "secondary-type-ids": [
+                    "dd2a21e1-0c00-3729-a7a0-de60b84eb5d1"
+                  ]
+                },
+                "date": "2003",
+                "country": "JP",
+                "release-events": [
+                  {
+                    "date": "2003",
+                    "area": {
+                      "id": "2db42837-c832-3c27-b4a3-08198f75693c",
+                      "name": "Japan",
+                      "sort-name": "Japan",
+                      "iso-3166-1-codes": [
+                        "JP"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 14,
+                "media": [
+                  {
+                    "id": "e515570f-1a79-3eed-8201-9c840e1e1380",
+                    "position": 1,
+                    "format": "12\" Vinyl",
+                    "track": [
+                      {
+                        "id": "438a5b8a-51b0-46a4-a706-630c0380a758",
+                        "number": "A3",
+                        "title": "蒼碧緋",
+                        "length": 304000
+                      }
+                    ],
+                    "track-count": 8,
+                    "track-offset": 2
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "d737f648-f4e3-4861-ae6f-7eb48facf3fd",
+            "score": 87,
+            "artist-credit-id": "43ddcb38-e435-42be-aec1-0bb81b71d956",
+            "title": "蒼碧のスターゲイザー",
+            "length": 242630,
+            "video": null,
+            "artist-credit": [
+              {
+                "joinphrase": " feat. ",
+                "name": "red glasses",
+                "artist": {
+                  "id": "40474aa2-7b7d-4edc-8080-3a17f569fff5",
+                  "name": "red glasses",
+                  "sort-name": "red glasses",
+                  "disambiguation": "BEMANI"
+                }
+              },
+              {
+                "name": "うどんタイマーP",
+                "artist": {
+                  "id": "fb7c7609-de60-4a1b-a835-8d2ba06f8597",
+                  "name": "うどんタイマーP",
+                  "sort-name": "Udon Timer P",
+                  "aliases": [
+                    {
+                      "sort-name": "ウドンタイマーピー",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "うどんタイマーP",
+                      "locale": "ja",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "Udon Timer P",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "Udon Timer P",
+                      "locale": "en",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2018-04-29",
+            "releases": [
+              {
+                "id": "9f23457e-cf13-4747-8869-b05b6a22fa97",
+                "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+                "artist-credit-id": "d181000a-44ab-3007-9db2-505514f16082",
+                "count": 1,
+                "title": "Speed Star 4",
+                "status": "Official",
+                "artist-credit": [
+                  {
+                    "name": "ぽんきち",
+                    "artist": {
+                      "id": "cd5f5333-1af9-4a3a-8b1d-39b5aecac4a2",
+                      "name": "ぽんきち",
+                      "sort-name": "Ponkichi",
+                      "disambiguation": "RTTF Records"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "1d4b18d8-e32b-4ef1-a08a-fddd23bf0a9b",
+                  "type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "title": "Speed Star 4",
+                  "primary-type": "Album"
+                },
+                "date": "2018-04-29",
+                "country": "XW",
+                "release-events": [
+                  {
+                    "date": "2018-04-29",
+                    "area": {
+                      "id": "525d4e18-3d00-31b9-a58b-a146a916de8f",
+                      "name": "[Worldwide]",
+                      "sort-name": "[Worldwide]",
+                      "iso-3166-1-codes": [
+                        "XW"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 27,
+                "media": [
+                  {
+                    "id": "0956c80a-afb6-4ac9-8973-e514a170c84f",
+                    "position": 1,
+                    "format": "Digital Media",
+                    "track": [
+                      {
+                        "id": "d625bcfa-052a-4e8a-8c23-91aece65ccef",
+                        "number": "4",
+                        "title": "蒼碧のスターゲイザー",
+                        "length": 242630
+                      }
+                    ],
+                    "track-count": 27,
+                    "track-offset": 3
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "8b20472c-e551-44c9-8b06-17898b5d56c2",
+            "score": 78,
+            "artist-credit-id": "ae6029f9-3ee9-327e-8a17-bacfaed3f2b1",
+            "title": "蒼碧の森",
+            "length": 263160,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "志方あきこ",
+                "artist": {
+                  "id": "3c2f9f5c-7fef-448e-bef3-ff2c50604537",
+                  "name": "志方あきこ",
+                  "sort-name": "Shikata, Akiko",
+                  "aliases": [
+                    {
+                      "sort-name": "Shikata, Akiko",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "Akiko Shikata",
+                      "locale": "en",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "しかた あきこ",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "志方あきこ",
+                      "locale": "ja",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "志方 あきこ",
+                      "name": "志方 あきこ",
+                      "locale": null,
+                      "type": null,
+                      "primary": null,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "SHIKATA Akiko",
+                      "name": "SHIKATA Akiko",
+                      "locale": null,
+                      "type": null,
+                      "primary": null,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "しかた あきこ",
+                      "name": "しかた あきこ",
+                      "locale": null,
+                      "type": null,
+                      "primary": null,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "しかたあきこ",
+                      "name": "しかたあきこ",
+                      "locale": null,
+                      "type": null,
+                      "primary": null,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2006-10-25",
+            "releases": [
+              {
+                "id": "02892869-8957-41c6-87b0-b446226d38f1",
+                "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+                "artist-credit-id": "ae6029f9-3ee9-327e-8a17-bacfaed3f2b1",
+                "count": 1,
+                "title": "RAKA",
+                "status": "Official",
+                "artist-credit": [
+                  {
+                    "name": "志方あきこ",
+                    "artist": {
+                      "id": "3c2f9f5c-7fef-448e-bef3-ff2c50604537",
+                      "name": "志方あきこ",
+                      "sort-name": "Shikata, Akiko"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "a7d6f2d9-8cec-300f-b149-30df274b010a",
+                  "type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "title": "RAKA",
+                  "primary-type": "Album"
+                },
+                "date": "2006-10-25",
+                "country": "JP",
+                "release-events": [
+                  {
+                    "date": "2006-10-25",
+                    "area": {
+                      "id": "2db42837-c832-3c27-b4a3-08198f75693c",
+                      "name": "Japan",
+                      "sort-name": "Japan",
+                      "iso-3166-1-codes": [
+                        "JP"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 12,
+                "media": [
+                  {
+                    "id": "5820639c-492a-3e4c-9e09-501e16e3f1c4",
+                    "position": 1,
+                    "format": "CD",
+                    "track": [
+                      {
+                        "id": "7f712f90-1edf-3046-8442-8866ea156ce8",
+                        "number": "5",
+                        "title": "蒼碧の森",
+                        "length": 263160
+                      }
+                    ],
+                    "track-count": 12,
+                    "track-offset": 4
+                  }
+                ]
+              }
+            ],
+            "tags": [
+              {
+                "count": 1,
+                "name": "folk"
+              },
+              {
+                "count": 1,
+                "name": "celtic"
+              },
+              {
+                "count": 1,
+                "name": "medieval"
+              }
+            ]
+          },
+          {
+            "id": "a883ed89-7737-4fc0-831c-27accba15dc7",
+            "score": 78,
+            "artist-credit-id": "ae6029f9-3ee9-327e-8a17-bacfaed3f2b1",
+            "title": "蒼碧の森",
+            "length": 296000,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "志方あきこ",
+                "artist": {
+                  "id": "3c2f9f5c-7fef-448e-bef3-ff2c50604537",
+                  "name": "志方あきこ",
+                  "sort-name": "Shikata, Akiko",
+                  "aliases": [
+                    {
+                      "sort-name": "Shikata, Akiko",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "Akiko Shikata",
+                      "locale": "en",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "しかた あきこ",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "志方あきこ",
+                      "locale": "ja",
+                      "type": "Artist name",
+                      "primary": true,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "志方 あきこ",
+                      "name": "志方 あきこ",
+                      "locale": null,
+                      "type": null,
+                      "primary": null,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "SHIKATA Akiko",
+                      "name": "SHIKATA Akiko",
+                      "locale": null,
+                      "type": null,
+                      "primary": null,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "しかた あきこ",
+                      "name": "しかた あきこ",
+                      "locale": null,
+                      "type": null,
+                      "primary": null,
+                      "begin-date": null,
+                      "end-date": null
+                    },
+                    {
+                      "sort-name": "しかたあきこ",
+                      "name": "しかたあきこ",
+                      "locale": null,
+                      "type": null,
+                      "primary": null,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2006-07-22",
+            "releases": [
+              {
+                "id": "13d4d17a-ea9f-4cf2-a1a7-9d0ee01c348f",
+                "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+                "artist-credit-id": "949a7fd5-fe73-3e8f-922e-01ff4ca958f7",
+                "count": 1,
+                "title": "SUMMER MIX Vol.01",
+                "status": "Official",
+                "artist-credit": [
+                  {
+                    "name": "Various Artists",
+                    "artist": {
+                      "id": "89ad4ac3-39f7-470e-963a-56509c546377",
+                      "name": "Various Artists",
+                      "sort-name": "Various Artists",
+                      "disambiguation": "add compilations to this artist"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "dcf66fef-4cf2-48ce-9c9d-c6653300463a",
+                  "type-id": "dd2a21e1-0c00-3729-a7a0-de60b84eb5d1",
+                  "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "title": "SUMMER MIX Vol.01",
+                  "primary-type": "Album",
+                  "secondary-types": [
+                    "Compilation"
+                  ],
+                  "secondary-type-ids": [
+                    "dd2a21e1-0c00-3729-a7a0-de60b84eb5d1"
+                  ]
+                },
+                "date": "2006-07-22",
+                "country": "JP",
+                "release-events": [
+                  {
+                    "date": "2006-07-22",
+                    "area": {
+                      "id": "2db42837-c832-3c27-b4a3-08198f75693c",
+                      "name": "Japan",
+                      "sort-name": "Japan",
+                      "iso-3166-1-codes": [
+                        "JP"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 12,
+                "media": [
+                  {
+                    "id": "c4031baa-dcc4-4f0c-8d7b-b23cca477b01",
+                    "position": 1,
+                    "format": "CD",
+                    "track": [
+                      {
+                        "id": "0b3b70e3-e9cf-4bdc-9ecf-9608972a3f6d",
+                        "number": "11",
+                        "title": "蒼碧の森",
+                        "length": 296000
+                      }
+                    ],
+                    "track-count": 12,
+                    "track-offset": 10
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "ca6381ab-b563-4c1a-870e-72b12d564381",
+            "score": 70,
+            "artist-credit-id": "67e4e428-4a94-41fb-a8de-8ae1d27d797b",
+            "title": "青・蒼・碧",
+            "length": 277946,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "パクスプエラ",
+                "artist": {
+                  "id": "13d7a3a2-878c-4300-84c4-3b6e8f6f57c3",
+                  "name": "パクスプエラ",
+                  "sort-name": "pax puella",
+                  "aliases": [
+                    {
+                      "sort-name": "mImi",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "mImi",
+                      "locale": "ja",
+                      "type": "Artist name",
+                      "primary": null,
+                      "begin-date": null,
+                      "end-date": "2016-03-19"
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2016-08-17",
+            "releases": [
+              {
+                "id": "a4b0bc4b-aedc-4e45-ae8e-aa7efe5a0076",
+                "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+                "artist-credit-id": "67e4e428-4a94-41fb-a8de-8ae1d27d797b",
+                "count": 2,
+                "title": "リングを駆けろ!",
+                "status": "Official",
+                "disambiguation": "Type-A",
+                "artist-credit": [
+                  {
+                    "name": "パクスプエラ",
+                    "artist": {
+                      "id": "13d7a3a2-878c-4300-84c4-3b6e8f6f57c3",
+                      "name": "パクスプエラ",
+                      "sort-name": "pax puella"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "cbd538f3-d683-40eb-8ca0-e9fd3a945241",
+                  "type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "primary-type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "title": "リングを駆けろ!",
+                  "primary-type": "Single"
+                },
+                "date": "2016-08-17",
+                "country": "JP",
+                "release-events": [
+                  {
+                    "date": "2016-08-17",
+                    "area": {
+                      "id": "2db42837-c832-3c27-b4a3-08198f75693c",
+                      "name": "Japan",
+                      "sort-name": "Japan",
+                      "iso-3166-1-codes": [
+                        "JP"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 5,
+                "media": [
+                  {
+                    "id": "4e49171e-25d9-3bce-80ee-4e089a81ea72",
+                    "position": 1,
+                    "format": "CD",
+                    "track": [
+                      {
+                        "id": "02c42e89-bd82-4ff2-b60c-2143e061227b",
+                        "number": "2",
+                        "title": "青・蒼・碧",
+                        "length": 277946
+                      }
+                    ],
+                    "track-count": 4,
+                    "track-offset": 1
+                  }
+                ]
+              },
+              {
+                "id": "786e1d5d-763b-4935-a2a4-b9cff83fb7ec",
+                "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+                "artist-credit-id": "67e4e428-4a94-41fb-a8de-8ae1d27d797b",
+                "count": 1,
+                "title": "リングを駆けろ!",
+                "status": "Official",
+                "disambiguation": "Type-B",
+                "artist-credit": [
+                  {
+                    "name": "パクスプエラ",
+                    "artist": {
+                      "id": "13d7a3a2-878c-4300-84c4-3b6e8f6f57c3",
+                      "name": "パクスプエラ",
+                      "sort-name": "pax puella"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "cbd538f3-d683-40eb-8ca0-e9fd3a945241",
+                  "type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "primary-type-id": "d6038452-8ee0-3f68-affc-2de9a1ede0b9",
+                  "title": "リングを駆けろ!",
+                  "primary-type": "Single"
+                },
+                "date": "2016-08-17",
+                "country": "JP",
+                "release-events": [
+                  {
+                    "date": "2016-08-17",
+                    "area": {
+                      "id": "2db42837-c832-3c27-b4a3-08198f75693c",
+                      "name": "Japan",
+                      "sort-name": "Japan",
+                      "iso-3166-1-codes": [
+                        "JP"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 4,
+                "media": [
+                  {
+                    "id": "66327ada-3e76-3ffa-b12e-998c7e8c7989",
+                    "position": 1,
+                    "format": "CD",
+                    "track": [
+                      {
+                        "id": "24731178-d205-429b-a16b-8962df6c4c23",
+                        "number": "2",
+                        "title": "青・蒼・碧",
+                        "length": 277946
+                      }
+                    ],
+                    "track-count": 4,
+                    "track-offset": 1
+                  }
+                ]
+              }
+            ],
+            "isrcs": [
+              "JPB601602517"
+            ]
+          },
+          {
+            "id": "f75cffd7-3dff-4c0e-a854-4853fe126be2",
+            "score": 68,
+            "artist-credit-id": "42efe948-b48e-4a0d-bab0-c8bbee08e111",
+            "title": "碧碧",
+            "length": 309358,
+            "video": null,
+            "artist-credit": [
+              {
+                "name": "みなな",
+                "artist": {
+                  "id": "13b54bff-0d88-425e-bff7-c6fefc26d505",
+                  "name": "みなな",
+                  "sort-name": "Minana",
+                  "aliases": [
+                    {
+                      "sort-name": "Fukami, Nanako",
+                      "type-id": "894afba6-2816-3c24-8072-eadb66bd04bc",
+                      "name": "深見菜々子",
+                      "locale": "ja",
+                      "type": "Artist name",
+                      "primary": null,
+                      "begin-date": null,
+                      "end-date": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "first-release-date": "2022-11-23",
+            "releases": [
+              {
+                "id": "fe6f1288-3b98-4316-959c-5c59f3befd1d",
+                "status-id": "4e304316-386d-3409-af2e-78857eec5cfe",
+                "artist-credit-id": "42efe948-b48e-4a0d-bab0-c8bbee08e111",
+                "count": 1,
+                "title": "incidents",
+                "status": "Official",
+                "artist-credit": [
+                  {
+                    "name": "みなな",
+                    "artist": {
+                      "id": "13b54bff-0d88-425e-bff7-c6fefc26d505",
+                      "name": "みなな",
+                      "sort-name": "Minana"
+                    }
+                  }
+                ],
+                "release-group": {
+                  "id": "a8c1dbcb-01fa-4730-a3d0-8c4f89757cf9",
+                  "type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+                  "title": "incidents",
+                  "primary-type": "Album"
+                },
+                "date": "2022-11-23",
+                "country": "JP",
+                "release-events": [
+                  {
+                    "date": "2022-11-23",
+                    "area": {
+                      "id": "2db42837-c832-3c27-b4a3-08198f75693c",
+                      "name": "Japan",
+                      "sort-name": "Japan",
+                      "iso-3166-1-codes": [
+                        "JP"
+                      ]
+                    }
+                  }
+                ],
+                "track-count": 6,
+                "media": [
+                  {
+                    "id": "821b58b6-e629-332e-800d-3799fb2c79f4",
+                    "position": 1,
+                    "format": "Digital Media",
+                    "track": [
+                      {
+                        "id": "4f8a400e-957a-474a-8b02-f69b9b144fe9",
+                        "number": "6",
+                        "title": "碧碧",
+                        "length": 309358
+                      }
+                    ],
+                    "track-count": 6,
+                    "track-offset": 5
+                  }
+                ]
+              }
+            ],
+            "isrcs": [
+              "TCJPT2254719"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

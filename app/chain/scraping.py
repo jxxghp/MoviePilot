@@ -1467,8 +1467,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         merged.album_artist = album.album_artist or album.artist or local_meta.album_artist
         merged.year = album.year or local_meta.year
         merged.total_tracks = album.total_tracks or local_meta.total_tracks
-        merged.media_source = album.media_source or local_meta.media_source
-        merged.media_id = album.media_id or local_meta.media_id
+        # MetaMusic 的身份代表音轨；保留已有单曲 ID，不能用专辑 ID 补位，
+        # 否则会误写 musicbrainz_trackid，使下次拿 release-group 查询 recording。
         return merged
 
     @classmethod

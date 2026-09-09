@@ -31,7 +31,7 @@ def _album_info() -> MusicInfo:
     )
 
 
-def test_album_scrape_merge_preserves_track_fields_and_applies_album_identity() -> None:
+def test_album_scrape_merge_preserves_track_fields_and_applies_album_metadata() -> None:
     """专辑批量刮削应保留每首歌自己的曲名和曲序，只统一专辑级字段。"""
     local = MetaMusic(
         title="晴天",
@@ -52,8 +52,8 @@ def test_album_scrape_merge_preserves_track_fields_and_applies_album_identity() 
     assert merged.album_artist == "周杰伦"
     assert merged.year == 2003
     assert merged.total_tracks == 11
-    assert merged.media_source == "musicbrainz"
-    assert merged.media_id == "release-group-1"
+    assert merged.media_source is None
+    assert merged.media_id is None
 
 
 def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:

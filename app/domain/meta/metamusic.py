@@ -280,6 +280,14 @@ _MUSIC_PAREN_SPEC_RE = re.compile(
 _MUSIC_EMPTY_BRACKET_RE = re.compile(r"[\(（\[]\s*(?:[/+,\-]\s*)*[\)）\]]")
 # 尾部花括号通常是唱片目录号或发布标记，仅在末尾剔除，保护正文中的花括号文本。
 _MUSIC_TRAILING_CATALOG_RE = re.compile(r"\s*\{[A-Za-z0-9][^{}]{0,40}\}\s*$")
+# 标准抓轨发布尾链有介质、音频格式和厂牌目录三重证据；不删除正文中的 CD 或花括号。
+_MUSIC_RESOURCE_CATALOG_TAIL_RE = re.compile(
+    rf"(?<=[)）])\s+-\s+(?:CD|SACD|WEB)\s+-\s+\[[^\]\r\n]*"
+    rf"(?:{_MUSIC_FORMAT_TOKEN_ALT})[^\]\r\n]*\]"
+    r"(?:\s+-\s+\d+(?:\.\d+)?\s*(?:bits?|kHz|Hz))*"
+    r"\s+-\s+\{[^{}\r\n]+\}(?:\s+-\s+[A-Za-z0-9][A-Za-z0-9@._-]*)?\s*$",
+    re.IGNORECASE,
+)
 # 年份及完整发行日期括号提供候选消歧线索，规格或目录号不作为日期。
 _MUSIC_YEAR_RE = re.compile(
     r"[\(\[（【]((?:19|20)\d{2})"
@@ -742,7 +750,10 @@ class MetaMusic(MetaBase):
         标题解析仍复用 Python/Rust 公共入口；副标题只补缺失字段，保留标题中
         已有的署名。专辑、曲序、曲名的明确多段格式在资源层统一补充。
         """
-        meta = cls.parse_query(title)
+        meta = cls.parse_query(_MUSIC_RESOURCE_CATALOG_TAIL_RE.sub("", title))
+        meta.org_string = title
+        meta.apply_audio_quality(title)
+        subtitle = (subtitle or "").replace("丨", "|")
         if not meta.title:
             # 整个作品名位于中文展示括号内时，旧解析器可能把它误当发布标签删除。
             bracket = re.match(r"^\s*[【《「]([^】》」]+)[】》」]", title)
