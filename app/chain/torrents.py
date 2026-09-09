@@ -318,11 +318,12 @@ class TorrentsChain(ChainBase):
         if not site:
             logger.error(f'站点 {domain} 不存在！')
             return []
-        if not site.get("rss"):
-            logger.error(f'站点 {domain} 未配置RSS地址！')
+        rss_url = RssHelper.normalize_url(site.get("rss"))
+        if rss_url is None:
+            logger.warning(f'站点 {domain} RSS地址无效，跳过获取')
             return []
         # 解析RSS
-        rss_items = RssHelper().parse(site.get("rss"), True if site.get("proxy") else False,
+        rss_items = RssHelper().parse(rss_url, True if site.get("proxy") else False,
                                       timeout=int(site.get("timeout") or 30),
                                       ua=site.get("ua") if site.get("ua") else None)
         if rss_items is None:
