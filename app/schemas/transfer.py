@@ -316,6 +316,8 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     preview: Optional[bool] = False
     # 重新整理，清理命中的成功历史及其旧目标
     reorganize: Optional[bool] = False
+    # 跳过成功历史，优先于重新整理；预览与执行使用相同过滤范围
+    skip_success: bool = False
 
     @model_validator(mode="after")  # type: ignore[misc]
     def normalize_music_release_preferences(self) -> "ManualTransferItem":

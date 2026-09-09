@@ -758,19 +758,7 @@ def _execute_manual_transfer(
     else:
         return _SchemaResponse(success=False, message="缺少参数")
 
-    dedup_fileitems: List[FileItem] = []
-    seen_paths = set()
-    for current_fileitem in src_fileitems:
-        storage = current_fileitem.storage or "local"
-        path = current_fileitem.path
-        if not path:
-            continue
-        key = (storage, path)
-        if key in seen_paths:
-            continue
-        seen_paths.add(key)
-        dedup_fileitems.append(current_fileitem)
-    src_fileitems = dedup_fileitems
+    src_fileitems = _deduplicate_fileitems(src_fileitems)
     if not src_fileitems:
         return _SchemaResponse(success=False, message="缺少参数")
 
@@ -846,6 +834,7 @@ def _execute_manual_transfer(
                 download_hash=download_hash,
                 preview=transer_item.preview,
                 reorganize=transer_item.reorganize,
+                skip_success=transer_item.skip_success,
                 sync_extra_files=False,
                 cleanup_dest_fileitem=cleanup_dest_fileitem,
                 report_results=not transer_item.preview,
@@ -940,6 +929,7 @@ def _execute_manual_transfer(
         download_hash=download_hash,
         preview=transer_item.preview,
         reorganize=transer_item.reorganize,
+        skip_success=transer_item.skip_success,
         sync_extra_files=selected_music_fileitems is None,
         cleanup_dest_fileitem=cleanup_dest_fileitem,
         selected_fileitems=selected_music_fileitems,

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -23,7 +24,7 @@ from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRep
 from app.db.models.transferpending import TransferPending
 from app.db.session import SessionFactory, async_session_scope
 from app.runtime.config import settings
-from app.schemas.transfer import ManualTransferItem
+from app.schemas.transfer import ManualTransferItem, TransferInfo
 from app.schemas.types import MediaSource, MediaType
 from tests.test_transfer_job_manager import FakeMedia
 from tests.test_transfer_sync_extra_files import (
@@ -119,6 +120,12 @@ def _patch_transfer_planning(monkeypatch, chain, fileitem, history, planned, del
         get_success_by_src=lambda src, storage=None: history if history and history.status else None,
         get_by_dest=lambda dest, storage=None: None,
         delete=lambda history_id: deleted.append(("history", history_id)),
+    )
+    history_oper.list_success_by_src = lambda src, storage=None, recursive=False: (
+        [record] if (record := history_oper.get_success_by_src(src, storage=storage)) else []
+    )
+    history_oper.list_success_move_by_dest = lambda dest, storage=None, recursive=False: (
+        [record] if chain._is_successful_move_history(record := history_oper.get_by_dest(dest, storage=storage)) else []
     )
     chain.transfer_history_repository = history_oper
     chain.download_history_repository = SimpleNamespace(
@@ -707,6 +714,143 @@ def test_manual_transfer_keeps_success_history_without_confirmation(monkeypatch)
     assert message == f"{fileitem.name} 已整理过"
     assert deleted == []
     assert planned == []
+
+
+@pytest.mark.parametrize("source_kind", ["fileitem", "fileitems", "logid", "logids"])
+@pytest.mark.parametrize("preview", [False, True])
+@pytest.mark.parametrize("move", [False, True])
+def test_manual_skip_success_preserves_history_and_target_for_every_entry(
+        monkeypatch: pytest.MonkeyPatch, source_kind: str, preview: bool, move: bool,
+) -> None:
+    """跳过成功记录覆盖单选、多选与历史入口，且优先于重整及历史入口的强制标志。"""
+    chain = make_transfer_chain()
+    original = make_fileitem("/downloads/Test.Show.S01E01.mkv")
+    destination = make_fileitem("/library/Test Show/Test.Show.S01E01.mkv")
+    fileitem = destination if move else original
+    history = SimpleNamespace(
+        id=901, status=True, mode="move" if move else "copy",
+        src=original.path, src_storage="local", src_fileitem=original.model_dump(),
+        dest=destination.path, dest_storage="local", dest_fileitem=destination.model_dump(),
+        download_hash=None, downloader=None,
+    )
+    planned: list[str] = []
+    deleted: list[tuple[str, Any]] = []
+    _patch_transfer_planning(monkeypatch, chain, fileitem, None if move else history, planned, deleted)
+    monkeypatch.setattr(chain.transfer_history_repository, "get_by_dest", lambda *args, **kwargs: history if move else None)
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", lambda: chain)
+    source_values = {"fileitem": fileitem, "fileitems": [fileitem], "logid": history.id, "logids": [history.id]}
+
+    response = manual_transfer_endpoint(
+        transer_item=ManualTransferItem(
+            **{source_kind: source_values[source_kind]},
+            reorganize=True, skip_success=True, preview=preview,
+        ),
+        background=False, history_query=SimpleNamespace(get=lambda _logid: history), _="token",
+    )
+
+    assert response.success is True
+    assert planned == []
+    assert deleted == []
+    data = response.model_dump()["data"]
+    if preview:
+        assert data["summary"] == {"total": 0, "success": 0, "failed": 0}
+        assert data["items"] == []
+        assert data["message"] == "已跳过 1 条成功整理记录"
+    else:
+        assert [(item["source"], item["state"]) for item in data["items"]] == [(fileitem.path, "skipped")]
+
+
+@pytest.mark.parametrize("preview", [False, True])
+@pytest.mark.parametrize("success_count", [1, 903])
+def test_manual_skip_success_continues_failed_durable_and_new_files(
+        monkeypatch: pytest.MonkeyPatch, preview: bool, success_count: int,
+) -> None:
+    """混合目录跳过成功项；失败项保留原任务重试，新项继续整理，预览只展示待处理文件。"""
+    chain = make_transfer_chain()
+    files = [make_fileitem(f"/downloads/Test.Show.S01E{episode:02d}.mkv") for episode in range(1, success_count + 3)]
+    source = files[0].model_copy(update={"path": "/downloads/", "type": "dir"})
+    histories = {
+        fileitem.path: SimpleNamespace(id=index, status=True, mode="copy", download_hash=None, downloader=None)
+        for index, fileitem in enumerate(files[:success_count])
+    }
+    histories[files[-2].path] = SimpleNamespace(id=success_count, status=False, transfer_task_id="failed-task", mode="copy")
+    planned: list[str] = []
+    deleted: list[tuple[str, Any]] = []
+    retries: list[str] = []
+    _patch_transfer_planning(monkeypatch, chain, files[0], None, planned, deleted)
+    monkeypatch.setattr(chain, "_TransferChain__get_trans_fileitems", lambda *args, **kwargs: [(item, False) for item in files])
+    monkeypatch.setattr(chain.transfer_history_repository, "get_by_src", lambda src, **kwargs: histories.get(src))
+    monkeypatch.setattr(
+        chain.transfer_history_repository, "get_success_by_src",
+        lambda src, **kwargs: record if (record := histories.get(src)) and record.status else None,
+    )
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", lambda: chain)
+
+    def request_retry(history: Any, **_kwargs: Any) -> tuple[bool, str]:
+        """记录失败任务的原计划重试，避免进入真实恢复调度器。"""
+        retries.append(history.transfer_task_id)
+        return True, "已提交重试"
+
+    def execute(task: Any, callback: Any = None) -> tuple[bool, str]:
+        """记录真正到达执行器的候选，并通过正式回调形成预览内容。"""
+        planned.append(task.fileitem.path)
+        if preview:
+            callback(task, TransferInfo(success=True, message="", target_item=task.fileitem))
+        return True, ""
+
+    monkeypatch.setattr(chain, "_request_durable_transfer_retry", request_retry)
+    monkeypatch.setattr(chain, "_TransferChain__handle_transfer", execute)
+    response = manual_transfer_endpoint(
+        transer_item=ManualTransferItem(fileitem=source, skip_success=True, preview=preview),
+        background=False, history_query=SimpleNamespace(), _="token",
+    )
+
+    assert response.success is True
+    assert deleted == []
+    data = response.model_dump()["data"]
+    if preview:
+        assert retries == []
+        assert planned == [files[-2].path, files[-1].path]
+        assert data["summary"] == {"total": 2, "success": 2, "failed": 0}
+        assert [item["source"] for item in data["items"]] == planned
+        assert data["message"] == f"已跳过 {success_count} 条成功整理记录"
+    else:
+        assert retries == ["failed-task"]
+        assert planned == [files[-1].path]
+        assert [item["state"] for item in data["items"]] == ["skipped"] * success_count + ["retry_wait", "accepted"]
+
+
+def test_manual_skip_success_matches_storage_and_move_destination() -> None:
+    """成功匹配遵守存储边界，失败源记录不能遮蔽成功移动目标，普通复制目标仍可整理。"""
+    repository = _history_repository()
+    destination = make_fileitem("/skip-success/library/Test.Show.S01E01.mkv")
+    histories = [
+        repository.replace(TransferHistoryWrite(
+            src="/skip-success/downloads/Test.Show.S01E01.mkv", src_storage="local",
+            dest=destination.path, dest_storage="local", mode="move", status=True,
+        )),
+        repository.replace(TransferHistoryWrite(src=destination.path, src_storage="local", status=False)),
+        repository.replace(TransferHistoryWrite(
+            src="/skip-success/failed-download/Test.Show.S01E01.mkv", src_storage="local",
+            dest=destination.path, dest_storage="local", mode="move", status=False,
+        )),
+    ]
+    chain = make_transfer_chain()
+    chain.transfer_history_repository = repository
+    try:
+        assert chain._has_successful_manual_transfer_history(destination) is True
+        assert [history.id for history in chain.get_manual_transfer_histories([destination])] == [histories[0].id]
+        assert chain._has_successful_manual_transfer_history(destination.model_copy(update={"storage": "alist"})) is False
+        assert chain._has_successful_manual_transfer_history(make_fileitem(histories[0].src)) is True
+        repository.delete(histories[0].id)
+        histories[0] = repository.replace(TransferHistoryWrite(
+            src="/skip-success/downloads/Test.Show.S01E01.mkv", src_storage="local",
+            dest=destination.path, dest_storage="local", mode="copy", status=True,
+        ))
+        assert chain._has_successful_manual_transfer_history(destination) is False
+    finally:
+        for history in histories:
+            repository.delete(history.id)
 
 
 def test_manual_reorganize_removes_success_history_and_old_target(monkeypatch):

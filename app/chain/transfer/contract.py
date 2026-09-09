@@ -70,6 +70,8 @@ if TYPE_CHECKING:
         _finish_scrape_batch_task: Callable[..., Any]
         _get_file_key: Callable[..., Any]
         _get_manual_transfer_history: Callable[..., Any]
+        _has_successful_manual_transfer_history: Callable[..., bool]
+        _filter_manual_transfer_history: Callable[..., Any]
         _get_shared_download_roots: Callable[..., Any]
         _get_subscribe_custom_words: Callable[..., Any]
         _is_allow_filesize: Callable[..., Any]

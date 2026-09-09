@@ -519,6 +519,7 @@ class _TransferSubmissionCollector:
         self.enabled = enabled
         self.source = source
         self.items: list[dict[str, Any]] = []
+        self._skipped_history_count = 0
         self._results: dict[int, TransferInfo] = {}
         self._pending: dict[tuple[Optional[str], Optional[str]], FileItem] = {}
 
@@ -543,6 +544,11 @@ class _TransferSubmissionCollector:
             "message": message,
             "target_dir": target_dir.as_posix() if target_dir else None,
         })
+
+    def record_history_skip(self, fileitem: FileItem) -> None:
+        """逐项保留跳过回执，总提示只累计数量，避免大目录产生冗长的文件名列表。"""
+        self._skipped_history_count += 1
+        self.record(fileitem, "skipped", f"已跳过成功整理记录：{fileitem.name}")
 
     def capture(self, task: TransferTask, transferinfo: TransferInfo) -> None:
         """暂存执行结果，等终态原子结算确认后再公布 completed。"""
@@ -588,6 +594,8 @@ class _TransferSubmissionCollector:
     ) -> tuple[bool, Union[str, dict[str, Any]]]:
         """保持预览与旧调用返回值，同时让管理界面收到完整执行回执。"""
         message = "、".join(errors[:2]) + (f"，等{len(errors)}个文件错误！" if len(errors) > 2 else "")
+        if self._skipped_history_count:
+            message = "；".join(filter(None, [f"已跳过 {self._skipped_history_count} 条成功整理记录", message]))
         if preview:
             return success, {
                 "summary": {

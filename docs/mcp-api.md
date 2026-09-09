@@ -290,6 +290,10 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | POST | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员判定处于 `manual_review` 的 durable 整理步骤；请求包含 `operation_id`、`decision=not_applied|applied`、`reason`，`applied` 还必须提供 `result_payload`。`failed` 不属于公开决策，失败终态只能由持租约的 durable 结算写入；响应仅返回任务、操作、决策、后续状态和复核修订号 |
 
 `transfer/manual` 在 `preview=true` 时保留预览的 `summary/items/message`，不返回执行状态。
+请求可传入 `skip_success=true`，在预览与执行中跳过同存储、同源路径已成功整理的文件，
+也识别成功移动后的目标现址。该选项优先于 `reorganize` 和历史入口的强制整理，
+不清理被跳过文件的历史和旧目标；失败记录及未处理文件继续原有流程，默认 `false` 保持现有行为。
+被跳过文件不进入预览列表；全部跳过时返回空列表、零计数和跳过数量提示。
 实际提交返回独立的 `data.items` 回执，即使批次 `success=false` 也保留其他文件的结果。
 每项包含 `source/target/target_dir/success/message/failure_stage/recovery_action/overwrite_skipped/state`；
 `state=accepted` 仅表示已接收，`retry_wait` 表示原计划已交给后台恢复，均不代表入库。

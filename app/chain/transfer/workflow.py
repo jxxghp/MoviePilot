@@ -453,6 +453,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         music_release_scripts: Optional[list[str]] = None,
         selected_fileitems: Optional[list[FileItem]] = None,
         report_results: bool = False,
+        skip_success: bool = False,
     ) -> Tuple[bool, Union[str, dict]]:
         """
         执行一个复杂目录的整理操作
@@ -486,6 +487,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         :param music_release_regions: 本次音乐整理的发行地区优先级
         :param music_release_scripts: 本次音乐整理的文字字形优先级
         :param selected_fileitems: 前端显式选中的文件，按同一批次规划
+        :param report_results: 返回实际阶段回执，后台接收不表示入库完成
+        :param skip_success: 在预览、历史清理及任务准入前跳过成功记录
         返回：成功标识，错误信息
         """
         selected_music_album: Optional[MusicAlbumInfo]
@@ -561,17 +564,14 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         if not file_items:
             if has_episode_format_template and not matched_episode_format_template:
                 logger.info(f"{fileitem.path} 未匹配到集数定位模板，跳过整理")
-                if preview:
-                    return True, {
-                        "summary": {"total": 0, "success": 0, "failed": 0},
-                        "items": [],
-                        "message": "",
-                    }
                 submission.record(fileitem, "skipped", "未匹配到集数定位模板，跳过整理")
-                return submission.result(True, [], preview=False, preview_items=[])
+                return submission.result(True, [], preview=bool(preview), preview_items=[])
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
+        file_items = self._filter_manual_transfer_history(file_items, bool(manual and skip_success), submission.record_history_skip)
+        if not file_items:
+            return submission.result(True, [], preview=bool(preview), preview_items=[])
         file_items, inherited_meta_map = candidate_planner._plan_file_items(file_items)
 
         selected_music_track_map, selected_music_error = self._selected_music_track_map(
