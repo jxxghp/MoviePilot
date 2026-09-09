@@ -7,6 +7,7 @@ import time
 import traceback
 import uuid
 import warnings
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
@@ -51,6 +52,7 @@ from app.agent.middleware.summarization import (
     FinalRequestCompactionMiddleware,
 )
 from app.agent.middleware.usage import UsageMiddleware
+from app.agent.middleware.vision import VisionMiddleware
 from app.agent.policy.contracts import (
     AuthSource,
     PrincipalType,
@@ -64,6 +66,7 @@ from app.agent.runtime import agent_runtime_manager
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.mcp import create_external_mcp_tools
+from app.agent.tools.result import is_image_content_block, sanitize_tool_image_message
 from app.application.agent import AgentDataContext
 from app.application.messaging.chat import (
     get_configured_agent_chat_persistence,
@@ -1329,51 +1332,9 @@ class MoviePilotAgent:
         return any(cls._has_image_input_content(getattr(message, "content", None)) for message in messages or [])
 
     @staticmethod
-    def _exception_detail_text(error: Exception) -> str:
-        """
-        提取异常对象里可用于匹配的文本。
-        OpenAI 兼容端点的错误详情可能藏在 body/code/status_code 等属性中。
-        """
-        parts = [str(error)]
-        for attr in ("message", "code", "status_code"):
-            value = getattr(error, attr, None)
-            if value is not None:
-                parts.append(str(value))
-        body = getattr(error, "body", None)
-        if body is not None:
-            try:
-                parts.append(json.dumps(body, ensure_ascii=False))
-            except (TypeError, ValueError):
-                parts.append(str(body))
-        return " ".join(part for part in parts if part)
-
-    @classmethod
-    def _is_unsupported_image_input_error(cls, error: Exception) -> bool:
-        """
-        判断模型服务是否在拒绝图片输入。
-        兼容 OpenAI 及 OpenAI-compatible 服务常见的错误文案，避免把普通 404 当作图片能力问题。
-        """
-        detail = cls._exception_detail_text(error).lower()
-        if "no endpoints found that support image input" in detail:
-            return True
-        if "not a vlm" in detail or "text-only prompts" in detail:
-            return True
-        if "unknown variant" in detail and "image_url" in detail:
-            return True
-        if "image input" not in detail and "images" not in detail:
-            return False
-        return any(
-            marker in detail
-            for marker in (
-                "does not support",
-                "do not support",
-                "not support",
-                "not supported",
-                "unsupported",
-                "no endpoint",
-                "no endpoints",
-            )
-        )
+    def _is_unsupported_image_input_error(error: Exception) -> bool:
+        """用户附件与工具截图共享同一明确的模型图片拒绝判定。"""
+        return LLMHelper.is_unsupported_image_input_error(error)
 
     @staticmethod
     def _payload_error_message(payload: Any) -> str:
@@ -1979,6 +1940,7 @@ class MoviePilotAgent:
                     summarizer=summarization_middleware,
                 )
             )
+            middlewares.append(VisionMiddleware())
 
             # 预算观察器必须位于最内层，才能看到动态 system 和最终筛选后的工具。
             middlewares.append(
@@ -2213,8 +2175,14 @@ class MoviePilotAgent:
     @staticmethod
     def _sanitize_recovery_message(message: BaseMessage) -> BaseMessage:
         """为中断恢复复制消息，只保留脱敏正文与工具协议需要的字段。"""
+        message = sanitize_tool_image_message(message)
+        if isinstance(message, HumanMessage) and isinstance(message.content, list):
+            # 用户主动提供的附件须保持有效，日志去像素策略不能用于恢复请求的图片块。
+            content = [deepcopy(block) if is_image_content_block(block) else sanitize_for_host(block) for block in message.content]
+        else:
+            content = sanitize_for_host(message.content)
         updates: dict[str, Any] = {
-            "content": sanitize_for_host(message.content),
+            "content": content,
             "additional_kwargs": {},
             "response_metadata": {},
         }
@@ -2444,7 +2412,7 @@ class MoviePilotAgent:
         except Exception as e:
             await self._recover_interrupted_agent(agent, agent_config)
             execution_error = str(e)
-            if self._messages_have_image_input(messages) and self._is_unsupported_image_input_error(e):
+            if (self._messages_have_image_input(messages) or self._session_usage.last_image_count) and self._is_unsupported_image_input_error(e):
                 logger.warning(f"当前模型不支持图片输入，已向用户发送友好提示: {e}")
                 await self._dispatch_execution_notice(UNSUPPORTED_IMAGE_INPUT_MESSAGE)
                 return UNSUPPORTED_IMAGE_INPUT_MESSAGE, {}

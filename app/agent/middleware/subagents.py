@@ -30,6 +30,7 @@ from app.agent.middleware.summarization import (
     FinalRequestCompactionMiddleware,
 )
 from app.agent.middleware.utils import append_to_system_message
+from app.agent.middleware.vision import VisionMiddleware
 from app.agent.policy.contracts import (
     AuthSource,
     PrincipalType,
@@ -481,6 +482,7 @@ class _SubAgentAgentProvider:
                         keep=("messages", 20),
                     ),
                 ),
+                VisionMiddleware(),
             ],
         )
         self._agents[profile.name] = agent

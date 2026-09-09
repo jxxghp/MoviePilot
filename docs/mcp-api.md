@@ -515,6 +515,11 @@ MCP、HTTP 工具管理接口、本地 CLI 和内置 Agent 都从同一严格目
 `search_web` 不通过 MCP 暴露。隐藏列表只负责收敛接口暴露面，不替代各工具自身的
 权限、路径和网络边界。
 
+`browse_webpage(action="screenshot")` 的外部直调仍返回 JSON 字符串，保留
+`url/title/screenshot_base64/format/note` 并用 `success/execution_outcome` 明确状态。
+内置 Agent 在专用格式化路径把成功截图转换为图像输入，外部 HTTP/MCP 客户端仍按
+原 JSON 合同消费；本次不宣称外部 MCP 已提供原生 image content block。
+
 内置命令工具 `execute_command(action="run")` 的返回值为 JSON 字符串，包含
 `success`、`execution_outcome`、`status`、`exit_code`、`timed_out`、`timeout`、
 `output_truncated`、`output_file`、`output` 和 `message`。正常退出码 0 才是成功，

@@ -842,6 +842,50 @@ class LLMHelper:
             return image_support
         return True
 
+    @classmethod
+    def supports_model_image_input(cls, model: Any) -> bool:
+        """按本次实际模型的 profile 和目录判断图像输入，每次请求重新读取用户总开关。"""
+        if not get_runtime_setting('LLM_SUPPORT_IMAGE_INPUT'):
+            return False
+        profile = getattr(model, "profile", None)
+        profile = profile if isinstance(profile, dict) else {}
+        supported = profile.get("image_inputs")
+        if isinstance(supported, bool):
+            return supported
+        provider = getattr(model, "_moviepilot_llm_provider_id", None) or profile.get("moviepilot_provider_id")
+        model_name = next((value for name in ("model_name", "model", "model_id")
+                           if isinstance(value := getattr(model, name, None), str) and value), None)
+        if not provider or not model_name:
+            # 未知自定义模型沿用用户图片开关，不能套用另一个全局默认模型的能力。
+            return True
+        base_url = getattr(model, "_moviepilot_llm_base_url", None) or profile.get("moviepilot_base_url") or ""
+        supported = cls._resolve_catalog_image_input_support(
+            provider=str(provider), model=model_name, base_url=str(base_url), base_url_preset="",
+        )
+        return supported is not False
+
+    @staticmethod
+    def is_unsupported_image_input_error(error: BaseException) -> bool:
+        """仅识别图片能力拒绝，不把认证、限流或普通请求故障降级为图片问题。"""
+        status = getattr(error, "status_code", None)
+        if isinstance(status, int) and status not in {400, 404, 422}:
+            return False
+        parts = [str(error)]
+        for name in ("message", "code", "body"):
+            value = getattr(error, name, None)
+            if value is not None:
+                parts.append(str(value))
+        detail = " ".join(parts).lower()
+        if "no endpoints found that support image input" in detail:
+            return True
+        if "not a vlm" in detail or "text-only prompts" in detail:
+            return True
+        if "unknown variant" in detail and "image_url" in detail:
+            return True
+        return ("image input" in detail or "images" in detail) and any(
+            marker in detail for marker in ("does not support", "do not support", "not support", "unsupported", "no endpoint")
+        )
+
     @staticmethod
     def _build_openai_default_headers(
             default_headers: dict[str, str] | None = None,

@@ -115,8 +115,9 @@ def _assert_internal_tool_registration(created, captured):
         assert policy.catalog.resolve_unique(tool.name).tool is tool
         assert tool in selector.selection_tools
     assert middlewares.index(plan) < middlewares.index(selector)
-    assert middlewares.index(selector) == len(middlewares) - 3
-    assert middlewares[-2].name == "FinalRequestCompactionMiddleware"
+    assert middlewares.index(selector) == len(middlewares) - 4
+    assert middlewares[-3].name == "FinalRequestCompactionMiddleware"
+    assert middlewares[-2].name == "VisionMiddleware"
     assert middlewares[-1] == "usage"
 
 
@@ -467,6 +468,7 @@ class TestAgentBackgroundOutput:
                 "memory",
                 "patch",
                 "FinalRequestCompactionMiddleware",
+                "VisionMiddleware",
                 "usage",
         ]
 
@@ -582,6 +584,7 @@ class TestAgentBackgroundOutput:
                 "memory",
                 "patch",
                 "FinalRequestCompactionMiddleware",
+                "VisionMiddleware",
                 "usage",
         ]
 
@@ -788,6 +791,7 @@ class TestAgentBackgroundOutput:
                 "activity",
                 "patch",
                 "FinalRequestCompactionMiddleware",
+                "VisionMiddleware",
                 "usage",
         ]
 

@@ -4,13 +4,15 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import ToolException
 from langgraph.types import Command
 
 from app.agent.policy.contracts import ExecutionOutcome
 
 EXECUTION_OUTCOME_KEY = "moviepilot_execution_outcome"
+TOOL_OBSERVATION_MARKER = "moviepilot_tool_observation"
+_TOOL_IMAGE_HISTORY_NOTE = "历史图像未保留；如需视觉细节，请重新调用工具获取截图。"
 _ERROR_ENVELOPE_KEYS = frozenset({
     "error", "message", "detail", "code", "status", "state", "success", "tool_name", "action",
     "execution_outcome", EXECUTION_OUTCOME_KEY,
@@ -20,6 +22,35 @@ _ERROR_ENVELOPE_KEYS = frozenset({
 # follow_imports=skip 下第三方异常基类按 Any 处理，仅忽略 SDK 边界。
 class ToolExecutionError(ToolException):  # type: ignore[misc]
     """携带宿主已脱敏说明的可恢复工具故障，避免伪装为成功字符串。"""
+
+
+def is_image_content_block(value: Any) -> bool:
+    """识别已声明的图像块类别；此分类不代替视觉发送前的 MIME 和载荷校验。"""
+    return type(value) is dict and type(value.get("type")) is str and value["type"] in ("image", "image_url", "input_image")
+
+
+def sanitize_tool_image_message(message: BaseMessage) -> BaseMessage:
+    """持久化工具图像的无像素副本，保留文本、调用归属和状态，不修改运行图或用户附件。"""
+    if not isinstance(message, ToolMessage) or not isinstance(message.content, list):
+        return message
+    if not any(is_image_content_block(block) for block in message.content):
+        return message
+    # artifact 可能再次携带截图或不可复制的运行资源；先从临时副本移除，再深拷贝保留内容。
+    sanitized = message.model_copy(update={"artifact": None}).model_copy(deep=True)
+    sanitized.content = [
+        {"type": "text", "text": _TOOL_IMAGE_HISTORY_NOTE} if is_image_content_block(block) else block
+        for block in sanitized.content
+    ]
+    return sanitized
+
+
+def messages_for_persistence(messages: list[BaseMessage]) -> list[BaseMessage]:
+    """仅过滤宿主明确标记的临时观察消息，再移除工具图像；真实用户消息原样保留。"""
+    return [
+        sanitize_tool_image_message(message)
+        for message in messages
+        if not (isinstance(message, HumanMessage) and message.additional_kwargs.get(TOOL_OBSERVATION_MARKER) is True)
+    ]
 
 
 def _aggregate_outcomes(outcomes: list[ExecutionOutcome]) -> ExecutionOutcome:

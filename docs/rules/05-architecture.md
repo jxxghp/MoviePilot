@@ -91,7 +91,8 @@ to make the directory tree look symmetrical.
 | `app/agent/middleware/selection.py` | First-turn tool selection and bounded, on-demand discovery within the same authorized catalog; discovered tool names remain local to the current user request |
 | `app/agent/middleware/invocation.py` | Claims write executions through the injected Application port; owns per-turn API deduplication, durable receipt projection and narrowly scoped read-only reconciliation |
 | `app/agent/middleware/output.py` | Bounded, expiring in-memory tool output and thread-scoped pagination; never persists raw tool results |
-| `app/agent/tools/result.py` | Pure interpretation of explicit tool result protocols into succeeded, failed, pending and unknown outcomes |
+| `app/agent/middleware/vision.py` | Request-only tool-image observations after compaction; complete tool-reply batches, per-invocation visual fallback and unchanged user authorization |
+| `app/agent/tools/result.py` | Pure interpretation of explicit tool outcomes and portable tool-image history; image observation copies never replace original user attachments |
 | `app/agent/api/arguments.py` | Canonical API request fingerprints from the generated operation schema and the executor's GET projection; no endpoint imports or live discovery |
 | `app/agent/shell.py` | Agent command-shell selection and subprocess text-encoding policy; Windows prefers Git Bash, then PowerShell 7, while POSIX keeps native shell/PTY behavior |
 | `app/agent/policy/api.py` | Fixed `moviepilot_api` operation registry, HTTP route templates and per-operation authorization/effect policy; no arbitrary URL or method input |

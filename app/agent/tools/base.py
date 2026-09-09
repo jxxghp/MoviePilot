@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextvars import Context, ContextVar, copy_context
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Protocol, Union
 
 from langchain_core.tools import BaseTool
 from pydantic import PrivateAttr
@@ -443,7 +443,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         """拒绝同步执行，确保工具遵循异步超时与宿主策略边界。"""
         raise NotImplementedError("MoviePilotTool 只支持异步调用，请使用 _arun")
 
-    async def _arun(self, *args: Any, **kwargs: Any) -> str:
+    async def _arun(self, *args: Any, **kwargs: Any) -> Union[str, list[dict[str, Any]]]:
         """
         异步运行工具，负责：
         1. 在工具调用前将流式消息推送给用户
@@ -521,10 +521,11 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         # 执行具体工具逻辑
         try:
             result = await self.run_with_timeout(**kwargs)
+            formatted_result = self.format_agent_result(result, **kwargs)
             
             logger.info(
-                f"Agent工具 {self.name} 返回结果，状态: {inspect_tool_result(result).value}，"
-                f"结果摘要: {summarize_result(result)}"
+                f"Agent工具 {self.name} 返回结果，状态: {inspect_tool_result(formatted_result).value}，"
+                f"结果摘要: {summarize_result(formatted_result)}"
             )
             
         except ToolExecutionTimeoutError as e:
@@ -536,6 +537,10 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             logger.error(f"Tool {self.name} execution failed: {summarize_error(e)}")
             raise ToolExecutionError(error_message) from e
 
+        return formatted_result
+
+    def format_agent_result(self, result: Any, **tool_arguments: Any) -> Union[str, list[dict[str, Any]]]:
+        """Agent 专用输出入口；默认仍为有界文本，专用工具可覆写为真实多模态块。"""
         return format_tool_result_for_agent(
             result, tool_name=self.name, max_chars=self.result_max_chars
         )

@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
 
+from app.agent.tools.result import messages_for_persistence
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
     AgentChatRecord,
@@ -115,11 +116,11 @@ class MemoryManager:
         user_id: str,
         chat: Optional[AgentChatRecord],
     ) -> List[BaseMessage]:
-        """统一校验持久化快照、反序列化消息并回填内存缓存。"""
+        """反序列化后清理历史工具图像并回填缓存，真实用户附件保持原样。"""
         if not chat or not chat.agent_messages:
             return []
         try:
-            messages = messages_from_dict(chat.agent_messages)
+            messages = messages_for_persistence(messages_from_dict(chat.agent_messages))
         except Exception as e:
             logger.debug(f"恢复持久化Agent消息失败: {e}")
             return []
@@ -202,7 +203,7 @@ class MemoryManager:
             self, session_id: str, user_id: str, messages: List[BaseMessage]
     ) -> None:
         """
-        保存Agent消息到内存缓存与持久化会话表。
+        当前会话在缓存保留原图，持久化副本只保存工具截图的失效说明。
         """
         self._update_agent_messages(
             session_id=session_id,
@@ -213,7 +214,7 @@ class MemoryManager:
             self._chat_service().save_agent_messages(
                 session_id=session_id,
                 user_id=user_id,
-                messages=messages_to_dict(messages),
+                messages=messages_to_dict(messages_for_persistence(messages)),
             )
         except Exception as e:
             logger.debug(f"持久化Agent消息失败: {e}")
@@ -221,7 +222,7 @@ class MemoryManager:
     async def async_save_agent_messages(
         self, session_id: str, user_id: str, messages: List[BaseMessage]
     ) -> None:
-        """异步保存 Agent 消息，持久化写入经有界数据库 worker 承接。"""
+        """缓存保留原图，去除工具截图的副本经有界数据库 worker 持久化。"""
         self._update_agent_messages(
             session_id=session_id,
             user_id=user_id,
@@ -232,7 +233,7 @@ class MemoryManager:
             await persistence.async_save_agent_messages(
                 session_id=session_id,
                 user_id=user_id,
-                messages=messages_to_dict(messages),
+                messages=messages_to_dict(messages_for_persistence(messages)),
             )
         except Exception as e:
             logger.debug(f"持久化Agent消息失败: {e}")

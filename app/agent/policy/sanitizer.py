@@ -31,6 +31,7 @@ _SECRET_KEYS = {
     "private_key",
     "pwd",
     "refresh_token",
+    "screenshot_base64",
     "secret",
     "secret_access_key",
     "token",
@@ -91,6 +92,9 @@ _SENSITIVE_HEADER_PATTERN = re.compile(
     r"x-api-key|api[_-]?key|api[_-]?token)\s*[:=]\s*)[^\r\n]+"
 )
 _OPENAI_KEY_PATTERN = re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b")
+_IMAGE_DATA_URL_PATTERN = re.compile(r"(?i)data:image/[a-z0-9.+-]+(?:;[^,\s\"'<>]*)?,[^\s\"'<>]+")
+_IMAGE_PAYLOAD_FIELDS = frozenset({"base64", "data", "url", "image_url", "source", "image", "file_id"})
+_IMAGE_METADATA_FIELDS = ("type", "mime_type", "media_type", "width", "height", "detail")
 _PRIVATE_KEY_PATTERN = re.compile(
     r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----",
     re.DOTALL,
@@ -536,11 +540,12 @@ def _redact_basic_auth(
 
 
 def _sanitize_text(value: str, *, truncated_input: bool = False) -> str:
-    """清理非结构化文本中的常见凭据表达。"""
+    """清理非结构化文本中的常见凭据和图像数据 URL。"""
     truncated = truncated_input or len(value) > _MAX_TEXT_CHARS
     bounded_value = value[:_MAX_TEXT_CHARS]
     truncated_json = truncated and bounded_value.lstrip().startswith(("{", "["))
-    sanitized = _PRIVATE_KEY_PATTERN.sub(REDACTED_VALUE, bounded_value)
+    sanitized = _IMAGE_DATA_URL_PATTERN.sub(REDACTED_VALUE, bounded_value)
+    sanitized = _PRIVATE_KEY_PATTERN.sub(REDACTED_VALUE, sanitized)
     sanitized = _PRIVATE_KEY_OPEN_PATTERN.sub(REDACTED_VALUE, sanitized)
     sanitized = _SENSITIVE_HEADER_PATTERN.sub(r"\1***", sanitized)
     sanitized = _BEARER_PATTERN.sub(r"\1***", sanitized)
@@ -708,6 +713,27 @@ def _consume_work_item(budget: list[int]) -> bool:
     return True
 
 
+def _image_log_projection(value: Any) -> Any:
+    """在日志遍历前去掉已声明图像块的像素载荷，保留类型、尺寸和文本元信息。"""
+    if type(value) is not dict or type(value.get("type")) is not str:
+        return value
+    if value["type"] not in ("image", "image_url", "input_image"):
+        return value
+    sanitized = {}
+    for index, (key, item) in enumerate(value.items()):
+        if index >= _MAX_ITEMS:
+            sanitized["<truncated>"] = "more items"
+            break
+        if type(key) is str and key in _IMAGE_PAYLOAD_FIELDS:
+            if type(item) is dict:
+                item = {name: item[name] for name in _IMAGE_METADATA_FIELDS if name in item}
+                item["data"] = REDACTED_VALUE
+            else:
+                item = REDACTED_VALUE
+        sanitized[key] = item
+    return sanitized
+
+
 def sanitize_for_host(
     value: Any,
     *,
@@ -722,6 +748,7 @@ def sanitize_for_host(
             return "<work-limit>"
         if _depth >= _MAX_DEPTH:
             return "<max-depth>"
+        value = _image_log_projection(value)
         value_type = type(value)
         if value is None or value_type in (bool, int, float):
             return value

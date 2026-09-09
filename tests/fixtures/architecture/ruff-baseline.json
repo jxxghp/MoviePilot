@@ -35,9 +35,6 @@
   "app/agent/tools/impl/ask_user_choice.py": {
     "I001": 1
   },
-  "app/agent/tools/impl/browse_webpage.py": {
-    "I001": 1
-  },
   "app/agent/tools/impl/recognize_captcha.py": {
     "I001": 1
   },
