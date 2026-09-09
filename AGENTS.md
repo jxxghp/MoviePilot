@@ -4,6 +4,16 @@ This file is the primary instruction set for all AI agents and LLMs working in t
 
 ---
 
+## Shared Contract and Execution Authority
+
+Architecture, business correctness, SDK/Compat compatibility, test isolation, useful contract documentation, and truthful verification reports apply to everyone. Maintainer discretion over execution does not waive these engineering contracts or permit baseline laundering.
+
+Submission preparation and checklists in this file and the linked rules are **contributor defaults**. A confirmed maintainer may explicitly adjust applicable verification scope, timing, evidence reuse, and delivery order, including saving a local anchor before remaining checks. Record the decision, supporting evidence, unverified items, and follow-up; an anchor is a recoverable state, not a claim of validation or acceptance.
+
+Maintainer execution authority comes from the current user or established project context that confirms their maintainer role and authorization. GitHub `WRITE` proves platform capability only; a contributor's self-declared role does not grant an exception. Without confirmed maintainer authorization, follow the contributor defaults. Reuse an existing scoped authorization without requesting it again; an explicit current restriction takes precedence. CI failure decisions follow `docs/rules/12-collaboration-and-distribution.md` and cannot bypass platform protection.
+
+---
+
 ## Task-to-Documentation Mapping
 
 For work that changes or reviews repository behavior, identify the domains actually touched and load only the applicable documents. Simple factual checks and unrelated domains do not require preloading rule files.
@@ -38,11 +48,11 @@ For work that changes or reviews repository behavior, identify the domains actua
 
 ### Quality and Security
 * **Primary Reference:** `docs/rules/11-quality-and-security.md`
-* **Required Constraints:** All code changes must pass the relevant pytest tests, changed-file pylint checks, and the mandatory pre-commit gates below. Dependency changes require a current `uv.lock`, locked environment verification, and a passing locked dependency vulnerability audit.
+* **Required Constraints:** Preserve the quality contracts below and run applicable pytest, changed-file pylint, and architecture checks under the contributor preparation defaults or a documented maintainer arrangement. Dependency changes require a current `uv.lock`, locked environment verification, and the locked dependency vulnerability audit; execution discretion does not waive dependency or release policy.
 
 ### Testing
 * **Primary Reference:** `docs/testing.md`
-* **Required Constraints:** pytest is the only runner; `tests/conftest.py` isolates each run to a temporary `CONFIG_DIR`. Tests must not touch the real database, network, or external services (TMDB, LLM catalogs, downloaders, media servers, MP server) — mock at the boundary or replay recorded responses; the bar is zero real outbound traffic. Tests must restore any process-level state they stub (`sys.modules`, singletons, caches, settings). New tests must be pytest-native (function + `assert` + fixtures); do not add new `unittest.TestCase`. Convert existing `TestCase` files to pytest-native opportunistically when you modify them. Before opening a PR to `v3`, run the affected tests and applicable local checks. Run the full local suite (`uv run --locked --no-sync python tests/run.py`) for dependency or lock changes, shared test infrastructure, database or startup paths, cross-module lifecycle, compatibility layers, broad behavior changes, or an explicit maintainer requirement. The changed path must pass; any unrelated failure must be reported and reproduced against the current `upstream/v3` baseline instead of silently expanding the PR. Documentation-only changes use applicable text and structure checks; the `.github/workflows/test.yml` gate verifies every PR/push to `v3`; a merge push may reuse a complete successful PR verification only when the tested merge tree and base match exactly (see `docs/testing.md`).
+* **Required Constraints:** pytest is the only runner; `tests/conftest.py` isolates each run to a temporary `CONFIG_DIR`. Tests must not touch the real database, network, or external services (TMDB, LLM catalogs, downloaders, media servers, MP server); mock at the boundary or replay recorded responses for zero real outbound traffic. Restore any process-level state stubbed by tests (`sys.modules`, singletons, caches, settings). New tests must be pytest-native (function + `assert` + fixtures); do not add new `unittest.TestCase`. When modifying an existing `TestCase` file, convert the entire file to pytest-native and verify equivalent behavior. The contributor verification scope and maintainer arrangements are defined in `docs/testing.md`. Documentation-only changes use applicable text and structure checks. GitHub Actions reuse remains subject to the exact tested merge tree and base contract in that document.
 
 ### Commands and Development Workflow
 * **Primary Reference:** `docs/rules/03-commands.md`
@@ -132,11 +142,11 @@ Architecture, persistence, security, external protocols, cross-module lifecycle,
 * **Minimal Change Principle:** Prefer the smallest correct change. Do not perform unrelated refactors, mass renames, or formatting-only cleanup.
 * **Output Language:** Summaries, validation results, and risk notes default to Chinese unless the user requests otherwise.
 
-### Mandatory Pre-Commit Gate
+### Contributor Preparation Defaults
 
-These checks are part of implementation, not optional follow-up work. Before creating a commit that contains host code, tests, dependencies, architecture fixtures, or CI changes, inspect the final diff and reproduce every applicable local gate. If the user requests commit or push, do not commit first and defer validation to GitHub Actions. `.github/workflows/test.yml` and `.github/workflows/pylint.yml` are the source of truth; re-read them when they change instead of relying on this command list alone.
+For contributors, inspect the final diff and complete applicable local checks before committing host code, tests, dependencies, architecture fixtures, or CI changes. A request to commit or push alone does not waive that preparation. Confirmed maintainers may use the documented execution arrangements above, including a local anchor followed by remaining validation. `.github/workflows/test.yml` and `.github/workflows/pylint.yml` remain the CI source of truth; re-read them when they change.
 
-Run the architecture policy tests before snapshot checks, in the same order as CI:
+Select checks by affected contracts: architecture policy and snapshots for ownership/import/contract changes, relevant ratchets for governed Python changes, and startup performance for startup changes. Run focused behavior tests and changed-file pylint for affected Python files. The following is a command reference, not a requirement to execute every command for every task. When both apply, run architecture policy tests before snapshot checks, in the same order as CI. Shared test environments map these commands as described in `docs/development-setup.md`.
 
 ```bash
 uv run --locked --no-sync pytest \
@@ -168,13 +178,24 @@ Apply the following acceptance rules:
 * **Reviewed baseline updates only:** Update a fixture only when the task intentionally changes the governed contract or the tool reports a genuine lower debt watermark. First prove the change complies with architecture policy, inspect the semantic diff, update coupled documentation/tests, run the non-writing check again, and include the fixture diff in the same commit. Complexity, concurrency, async-blocking, and host snapshot writers can overwrite regressions mechanically, so their ability to write is not approval to do so.
 * **Diagnose snapshot failures:** When `baseline.py --check-host` fails unexpectedly, rerun it with `--diagnostics` and inspect the affected JSON under `tests/fixtures/architecture/`. Do not infer that a changed snapshot is acceptable from test success alone.
 * **Test the behavior:** Run focused pytest coverage for every changed behavior. Run `uv run --locked --no-sync python tests/run.py` before commit for dependency/lock changes, shared test infrastructure, database or startup paths, cross-module lifecycle, compatibility layers, or broad behavior changes. Do not weaken, skip, or delete tests to satisfy a gate without proving equivalent coverage.
-* **Check changed Python files:** Run pylint on every Python file in the final diff using the same comparison scope as `.github/workflows/pylint.yml`; deleted files are excluded. Obtain the list with `git diff --name-only --diff-filter=ACMRT HEAD -- '*.py'`, then pass the non-empty result to `uv run --locked --no-sync pylint <paths...>`. For broad Python changes, also run `uv run --locked --no-sync pylint app/`.
+* **Check changed Python files:** For PR preparation, take the deduplicated union of `git diff --name-only --diff-filter=ACMRT <pr-base>...HEAD -- '*.py'`, `git diff --cached --name-only --diff-filter=ACMRT -- '*.py'`, and `git diff --name-only --diff-filter=ACMRT -- '*.py'`, plus intended new files from `git ls-files --others --exclude-standard -- '*.py'`. Resolve `<pr-base>` to the actual target base ref (normally `upstream/v3`). Keep staged and unstaged comparisons separate: they can cancel against HEAD while the index still contains a broken change. Exclude unrelated local files from the planned commit.
+
+  Before commit validation, confirm the index contains exactly the authorized changes: ordinary `git commit` writes the index, not the working tree. Stage only the selected paths/hunks and record `git write-tree` before exporting or linting. Use the working-tree shortcut only when all tracked files match the index (`git diff --quiet` succeeds) and no extra configuration or import inputs can alter lint behavior. Then run `uv run --locked --no-sync pylint <paths...>` on the non-empty selection. Code, project configuration, and project-local lint dependencies must come from the same planned tree. Filter candidates by existence in the planned index tree, so staged deletions/renames are excluded but unstaged deletions do not hide content that would still be committed.
+
+  Otherwise, including partial staging, validate a temporary checkout of the index instead of linting the working-tree version or staging unrelated hunks. This selects the inputs for the existing lint check, not an additional gate. From the repository root, export the index into a fresh temporary directory:
+
+  ```bash
+  INDEX_CHECKOUT="$(mktemp -d)"
+  git checkout-index --all --prefix="${INDEX_CHECKOUT}/"
+  ```
+
+  Run pylint from that directory on the selected Python paths present there, using the original absolute test-environment interpreter (`<test-env>/bin/python -m pylint <paths...>`), with project configuration and project-local lint dependencies resolved from the export, not the original working tree or extra local inputs. The export copies indexed files only; it does not stage anything or change the working tree. Confirm `git write-tree` still matches the recorded tree immediately before committing. Commit that verified index without `-a`, path arguments, or another staging step that changes the tree; any index change invalidates the affected evidence. CI PRs compare base to HEAD; CI pushes use the workflow's before/current SHA range. For broad Python changes, also check `app/` in the same validated tree.
 * **Verify dependency changes:** If `pyproject.toml` or `uv.lock` changed, run `uv lock --check`, `uv sync --locked --offline --inexact --no-dev --check`, the full `uv run --locked --no-sync python tests/run.py`, and the locked `pip-audit` commands in `docs/rules/03-commands.md`. Do not commit an out-of-date or locally generated alternative lock file.
 * **Protect coverage:** Changes in `app/application/` or `app/domain/` must preserve the CI line-coverage floor. Add focused tests for new branches. Local macOS coverage is diagnostic only; never write or commit the canonical coverage baseline from it.
 * **Verify the final tree:** Re-run affected gates after all fixes and generated fixture updates, then inspect `git diff --check`, `git status --short`, and the complete diff. Report the exact commands and outcomes; never claim a gate was run if it was skipped or failed.
-* **Close the remote loop:** After an authorized push or PR creation, inspect GitHub checks for the exact pushed commit. Do not describe delivery as complete while a required check is pending or failing. Diagnose failures from logs, fix the root cause locally, rerun the relevant pre-commit gates, and push a new commit; do not weaken the workflow or ratchet to obtain green CI.
+* **Close the remote loop:** After an authorized push or PR creation, inspect GitHub checks for the exact pushed commit and the actual required checks/Ruleset. Diagnose failures from logs and fix unresolved substantive issues caused, worsened, or newly exposed by this change. Handle unrelated failures under the documented maintainer decision in `docs/rules/12-collaboration-and-distribution.md`; ordinary optional or pending automation does not automatically block delivery. Do not weaken workflows or ratchets, bypass platform protection, or claim unfinished required verification passed.
 
-Documentation-only changes may use applicable text, link, structure, and diff checks instead of the full local Python suite, but must state that scope explicitly. If an applicable gate cannot run because of a confirmed platform or infrastructure limitation, stop before commit unless the user explicitly accepts the exception, and report the unverified gate and expected CI coverage.
+Documentation-only changes, including documentation contract tests, use applicable text, link, structure, focused test, and diff checks instead of the product suite; state that scope explicitly. Contributors report a blocked applicable check and obtain a maintainer decision before proceeding beyond the affected boundary. A documented maintainer arrangement may already cover that limitation; reuse it within scope and report what remains unverified.
 
 ### Conflict Resolution
 
