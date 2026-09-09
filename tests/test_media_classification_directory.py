@@ -408,6 +408,33 @@ def test_download_path_uses_safe_multilevel_automatic_category(
     assert target == Path("/downloads/电视剧/动漫/日番")
 
 
+def test_artist_collection_download_uses_dedicated_source_category(
+    directory_resolver: ClassificationCategoryResolver,
+) -> None:
+    """大合集作为一个种子只追加一层源目录分类，不伪装为单张 Album。"""
+    directory = TransferDirectoryConf(
+        download_path="/downloads/Musics",
+        media_type="音乐",
+        download_category_folder=True,
+    )
+    media = MusicInfo(
+        media_source="musicbrainz",
+        media_id="artist-1",
+        music_type="artist",
+        title="许嵩 艺术家合集",
+        artists=["许嵩"],
+        library_category="Artist Collection",
+    )
+
+    target = DownloadSubtitleOwner._append_download_classification(
+        root_path=Path("/downloads/Musics"),
+        dir_info=directory,
+        media_info=media,
+    )
+
+    assert target == Path("/downloads/Musics/Artist Collection")
+
+
 def test_fixed_download_category_does_not_append_duplicate_folder(
     directory_resolver: ClassificationCategoryResolver,
 ) -> None:

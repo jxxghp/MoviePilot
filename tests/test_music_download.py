@@ -7,7 +7,7 @@ import pytest
 from jinja2 import Template
 
 import app.chain.download.submission as download_submission
-from app.api.endpoints.download import add, download
+from app.api.endpoints.download import add, download, download_artist_collection
 from app.application.audio import AudioMetadataHelper
 from app.application.messaging.message import TemplateHelper
 from app.chain.download import DownloadChain
@@ -183,6 +183,36 @@ def test_download_endpoint_builds_music_context():
     assert context.meta_info.org_string == "周杰伦 - 叶惠美 FLAC"
     assert context.meta_info.title == "叶惠美"
     assert context.meta_info.media_id is None
+
+
+def test_artist_collection_download_keeps_artist_identity_and_source_category():
+    """艺术家大合集不伪装成单张专辑，但为下载目录保存独立分类快照。"""
+    chain = Mock()
+    chain.download_single.return_value = "hash-collection"
+
+    with patch("app.api.endpoints.download.DownloadChain", return_value=chain):
+        response = download_artist_collection(
+            artist_name="许嵩",
+            artist_id="artist-1",
+            media_source="musicbrainz",
+            torrent_in=TorrentInfo(
+                title="许嵩[2006-2022]录音室专辑合集",
+                enclosure="https://example.com/collection.torrent",
+                category="音乐",
+            ),
+            downloader="qb",
+            save_path=None,
+            current_user=SimpleNamespace(name="admin"),
+        )
+
+    assert response.success is True
+    context = chain.download_single.call_args.kwargs["context"]
+    assert context.media_info.music_type == "artist"
+    assert context.media_info.media_id == "artist-1"
+    assert context.media_info.artists == ["许嵩"]
+    assert context.media_info.library_category == "Artist Collection"
+    assert context.media_info.category == "Artist Collection"
+    assert context.torrent_info.site_downloader == "qb"
 
 
 @pytest.mark.parametrize("music_type", ["recording", "album"])
