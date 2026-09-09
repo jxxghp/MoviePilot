@@ -5,6 +5,8 @@ from typing import Mapping, Optional
 from uuid import uuid4
 
 from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -36,6 +38,10 @@ class SubscriptionSearchOper(DbOper):
         """创建批次，并以活动键合并同一订阅的重叠搜索入口。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅搜索入队需要调用方提供同步 Session")
+        dialect = self._db.get_bind().dialect.name
+        if dialect not in {"postgresql", "sqlite"}:
+            raise RuntimeError(f"订阅搜索入队不支持数据库方言：{dialect}")
+        insert = pg_insert if dialect == "postgresql" else sqlite_insert
         now = utc_now_text()
         batch = SubscriptionSearchBatch(
             batch_id=uuid4().hex,
@@ -54,17 +60,12 @@ class SubscriptionSearchOper(DbOper):
         for position, subscription_id in enumerate(dict.fromkeys(subscription_ids)):
             active_key = f"subscription:{subscription_id}"
             available_at = (
-                available_at_by_subscription.get(subscription_id, now)
-                if available_at_by_subscription
-                else now
+                available_at_by_subscription.get(subscription_id, now) if available_at_by_subscription else now
             )
-            initial_phase = (
-                "scheduled"
-                if source == "new" and available_at > now
-                else "queued"
-            )
-            task = SubscriptionSearchTask(
-                task_id=uuid4().hex,
+            initial_phase = "scheduled" if source == "new" and available_at > now else "queued"
+            task_id = uuid4().hex
+            statement = insert(SubscriptionSearchTask).values(
+                task_id=task_id,
                 batch_id=batch.batch_id,
                 subscription_id=subscription_id,
                 active_key=active_key,
@@ -77,72 +78,64 @@ class SubscriptionSearchOper(DbOper):
                 created_at=now,
                 updated_at=now,
             )
-            try:
-                with self._db.begin_nested():
-                    self._db.add(task)
-                    self._db.flush()
-                created += 1
-            except IntegrityError:
-                coalesced += 1
-                promote_queued_task = and_(
-                    SubscriptionSearchTask.priority < priority,
-                    SubscriptionSearchTask.state == "queued",
-                )
-                refresh_queued_task = and_(
-                    refresh_pending,
-                    SubscriptionSearchTask.state == "queued",
-                    SubscriptionSearchTask.pending_site_ids.is_not(None),
-                )
-                execute_dml(
-                    self._db,
-                    update(SubscriptionSearchTask)
-                    .where(SubscriptionSearchTask.active_key == active_key)
-                    .values(
-                        source=case(
-                            (SubscriptionSearchTask.priority < priority, source),
-                            else_=SubscriptionSearchTask.source,
-                        ),
-                        priority=case(
-                            (SubscriptionSearchTask.priority < priority, priority),
-                            else_=SubscriptionSearchTask.priority,
-                        ),
-                        phase=case(
-                            (or_(promote_queued_task, refresh_queued_task), "queued"),
-                            else_=SubscriptionSearchTask.phase,
-                        ),
-                        last_error=case(
-                            (or_(promote_queued_task, refresh_queued_task), None),
-                            else_=SubscriptionSearchTask.last_error,
-                        ),
-                        # 用户重搜和已到期的新周期恢复完整范围；普通合并仍保留补查游标。
-                        pending_site_ids=case(
-                            (or_(
-                                and_(SubscriptionSearchTask.state == "queued", source in {"manual", "targeted"}),
-                                refresh_queued_task,
-                            ), None),
-                            else_=SubscriptionSearchTask.pending_site_ids,
-                        ),
-                        available_at=case(
-                            (
-                                or_(
-                                    SubscriptionSearchTask.available_at.is_(None),
-                                    SubscriptionSearchTask.available_at > available_at,
-                                ),
-                                available_at,
-                            ),
-                            else_=SubscriptionSearchTask.available_at,
-                        ),
-                        updated_at=now,
+            promote_queued_task = and_(
+                SubscriptionSearchTask.priority < priority,
+                SubscriptionSearchTask.state == "queued",
+            )
+            refresh_queued_task = and_(
+                refresh_pending,
+                SubscriptionSearchTask.state == "queued",
+                SubscriptionSearchTask.pending_site_ids.is_not(None),
+            )
+            # 唯一键仲裁与合并在同一条语句内完成，避免旧任务结束时丢失入队请求。
+            # 只处理 active_key 冲突，其余约束错误继续交给调用方事务处理。
+            statement = statement.on_conflict_do_update(
+                index_elements=[SubscriptionSearchTask.active_key],
+                set_=dict(
+                    source=case(
+                        (SubscriptionSearchTask.priority < priority, source),
+                        else_=SubscriptionSearchTask.source,
                     ),
-                    execution_options={"synchronize_session": False},
-                )
-                active_task = self._db.execute(
-                    select(SubscriptionSearchTask).where(
-                        SubscriptionSearchTask.active_key == active_key
-                    )
-                ).scalars().first()
-                if active_task is not None:
-                    active_batch_ids.append(active_task.batch_id)
+                    priority=case(
+                        (SubscriptionSearchTask.priority < priority, priority),
+                        else_=SubscriptionSearchTask.priority,
+                    ),
+                    phase=case(
+                        (or_(promote_queued_task, refresh_queued_task), "queued"),
+                        else_=SubscriptionSearchTask.phase,
+                    ),
+                    last_error=case(
+                        (or_(promote_queued_task, refresh_queued_task), None),
+                        else_=SubscriptionSearchTask.last_error,
+                    ),
+                    # 用户重搜和已到期的新周期恢复完整范围；普通合并仍保留补查游标。
+                    pending_site_ids=case(
+                        (or_(
+                            and_(SubscriptionSearchTask.state == "queued", source in {"manual", "targeted"}),
+                            refresh_queued_task,
+                        ), None),
+                        else_=SubscriptionSearchTask.pending_site_ids,
+                    ),
+                    available_at=case(
+                        (
+                            or_(
+                                SubscriptionSearchTask.available_at.is_(None),
+                                SubscriptionSearchTask.available_at > available_at,
+                            ),
+                            available_at,
+                        ),
+                        else_=SubscriptionSearchTask.available_at,
+                    ),
+                    updated_at=now,
+                ),
+            ).returning(SubscriptionSearchTask.task_id, SubscriptionSearchTask.batch_id)
+            stored_task_id, stored_batch_id = self._db.execute(statement).one()
+            # 合并保留原任务及批次身份，无需依赖数据库专有的系统列判断插入结果。
+            if stored_task_id == task_id:
+                created += 1
+            else:
+                coalesced += 1
+                active_batch_ids.append(stored_batch_id)
         batch.total_count = created
         if created == 0:
             batch.state = "completed"
