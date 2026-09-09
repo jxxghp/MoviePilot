@@ -12,8 +12,8 @@ from app.adapters.system import rust
 from app.application.audio import AudioMetadataHelper
 from app.chain.scraping import ScrapingChain
 from app.domain.context import MusicInfo
-from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta import runtime
+from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.domain.music import match_music_resource
 from app.modules.musicbrainz import MusicBrainzModule
