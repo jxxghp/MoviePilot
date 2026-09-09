@@ -185,6 +185,19 @@ uvx --from pip-audit pip-audit \
 Docker 镜像发布前还会使用 Trivy 扫描 OS 与语言包；根目录 `.trivyignore.yaml` 只允许记录按路径或 PURL
 限定、写明原因并设置到期时间的临时例外，修复或重新评估后应移除。
 
+`CVE-2026-84445` 临时例外的核查记录（2026-09-09，2026-10-09 到期）：
+
+- [上游公告](https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj) 将触发条件限定为
+  `xds.NewGRPCServer()` 安装的 xDS 路由拦截器；普通 gRPC 依赖的存在不代表包含该路径。
+- 当前固定的 `rclone/rclone:beta@sha256:d6f5448594ecefefcf09cfeaf85cb7a21a866328032576ce2c1813e7b59c66dc`
+  对应 `v1.76.0-beta.10267.220fe7619`。从该摘要提取两个架构的 `/usr/local/bin/rclone`，
+  使用 `go version -m` 确认内嵌 gRPC 为 `v1.84.0-dev.0.20260723093437-b6eac429d7b6`。
+- 使用 Go 标准库 `debug/elf` 和 `debug/gosym` 解析二进制 `.gopclntab`：amd64 共 91,641 个函数，
+  arm64 共 91,150 个函数；各有 1,643 个 gRPC 函数，均无 `google.golang.org/grpc/xds`
+  或 `google.golang.org/grpc/internal/xds` 函数，未链接受影响的服务端拦截器。
+- 核查时官方稳定版 `v1.75.1` 和主分支仍引用同一 gRPC 版本。例外只匹配镜像内 `usr/bin/rclone`
+  和上述精确依赖 PURL；更新 rclone 摘要时必须重新核查两个架构，包含修复后应移除例外。
+
 ### 6. 提交代码前的检查
 
 在提交代码之前，请确保完成以下步骤：

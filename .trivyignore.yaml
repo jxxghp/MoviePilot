@@ -1,4 +1,11 @@
 vulnerabilities:
+  - id: CVE-2026-84445
+    paths:
+      - usr/bin/rclone
+    purls:
+      - pkg:golang/google.golang.org/grpc@v1.84.0-dev.0.20260723093437-b6eac429d7b6
+    expired_at: 2026-10-09
+    statement: The pinned rclone image d6f5448594ecefefcf09cfeaf85cb7a21a866328032576ce2c1813e7b59c66dc has no google.golang.org/grpc/xds functions in either its amd64 or arm64 Go function table. GHSA-2v4p-qf9q-27wj requires xds.NewGRPCServer, so the affected interceptor is not linked. Reassess this exception when upgrading rclone or before expiry; see docs/development-setup.md.
   - id: GHSA-6v7p-g79w-8964
     paths:
       - Python
