@@ -57,11 +57,14 @@ def replay(scenario_id: str, payload: Any) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     """显式区分回放与真实调用，并以非零退出码表达验收未通过。"""
-    parser = argparse.ArgumentParser(description="MoviePilot Agent 隔离任务评测；--live 才会调用真实模型")
+    parser = argparse.ArgumentParser(description="MoviePilot Agent 隔离任务评测；--live/--native 才会调用真实模型")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--list", action="store_true", help="列出公开场景，不输出初态或答案")
     mode.add_argument("--replay", type=Path, help="包含 calls 与 final 的 JSON 轨迹")
     mode.add_argument("--live", action="store_true", help="显式调用真实模型，业务只进入隔离假世界")
+    mode.add_argument("--native", action="store_true", help="用原生 Codex CLI 操作同一假世界并调用真实模型")
+    mode.add_argument("--native-probe", action="store_true", help="核对原生 Codex 配置和工具目录，不调用真实模型")
+    parser.add_argument("--codex-executable", default="codex", help="原生模式使用的 Codex CLI 可执行文件")
     parser.add_argument("--scenario", choices=[item.scenario_id for item in list_scenarios()])
     parser.add_argument("--output", type=Path, help="可选 JSON 报告路径")
     parser.add_argument("--codex-config", type=Path, default=Path.home() / ".codex" / "config.toml")
@@ -77,8 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.scenario is None:
         parser.error("评测需要 --scenario")
     try:
-        if args.live:
-            from scripts.evaluation.live import run_live
+        if args.live or args.native or args.native_probe:
             from scripts.evaluation.models import load_codex_model_settings
 
             settings = load_codex_model_settings(
@@ -86,7 +88,14 @@ def main(argv: list[str] | None = None) -> int:
                 max_model_calls=args.max_model_calls, max_output_tokens=args.max_output_tokens,
                 timeout_seconds=args.timeout_seconds,
             )
-            result = run_live(args.scenario, settings)
+            if args.live:
+                from scripts.evaluation.live import run_live
+
+                result = run_live(args.scenario, settings)
+            else:
+                from scripts.evaluation.codex import run_codex
+
+                result = run_codex(args.scenario, settings, executable=args.codex_executable, probe_only=args.native_probe)
         else:
             if args.replay.stat().st_size > MAX_REPLAY_BYTES:
                 raise ValueError("回放文件超过 256 KiB")
@@ -98,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.output is not None:
         args.output.write_text(rendered + "\n", encoding="utf-8")
     print(rendered)
-    return 0 if result["passed"] else 1
+    return 0 if (result.get("probe_ready") if args.native_probe else result["passed"]) else 1
 
 
 if __name__ == "__main__":

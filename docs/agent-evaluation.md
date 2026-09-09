@@ -4,7 +4,7 @@
 
 ## 当前范围
 
-`scripts/evaluation/` 提供两种显式模式。`--replay` 只回放离线轨迹，不联网，报告标记 `evidence_kind=scripted_replay`、`intelligence_evaluated=false`。`--live` 在独立进程内用真实模型驱动完整生产 Agent，业务接口只进入内存假世界。两者都没有实现 Codex 原生对照，不能把通过率称为 Codex 对比结果。
+`scripts/evaluation/` 显式区分离线回放、MoviePilot 真实运行和原生 Codex 受控运行。`--replay` 不联网，标记 `evidence_kind=scripted_replay`、`intelligence_evaluated=false`；`--live` 用真实模型驱动完整生产 Agent；`--native` 调用原生 Codex CLI。两种真实运行共用内存假业务世界与独立验收器。单条报告仍标记 `codex_comparison=false`，只有固定条件下的配对重复结果才能形成比较。
 
 首批场景：
 
@@ -39,7 +39,7 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
   --output report.json
 ```
 
-只有显式 `--live` 才会产生模型调用费用。默认读取 `~/.codex/config.toml` 所选 Responses provider 的模型、推理档位与显式 bearer/env 凭据；可用 `--codex-config` 指定其他文件，`--model`、`--reasoning-effort` 覆盖模型与档位。不会借用其他服务的登录凭据，也不会自动降低被供应商拒绝的参数。报告同时保留请求模型与供应商返回的模型标识；本地 Codex 配置不能证明运行中的 MoviePilot 使用相同配置。
+只有显式 `--live` 或 `--native` 才会调用真实模型并产生费用。默认读取 `~/.codex/config.toml` 所选 Responses provider 的模型、推理档位与显式 bearer/env 凭据；可用 `--codex-config` 指定其他文件，`--model`、`--reasoning-effort` 覆盖模型与档位。不会借用其他服务的登录凭据，也不会自动降低被供应商拒绝的参数。报告同时保留请求模型与供应商返回的模型标识；本地 Codex 配置不能证明运行中的 MoviePilot 使用相同配置。
 
 调用配置经私有标准输入传给 worker，凭据不进入命令行、提示词或报告。worker 只继承必要的平台环境，先创建临时 `CONFIG_DIR`，再导入后端；每轮拥有独立回执库、记忆、会话和工具实例。生产 `process/_create_agent`、Skills、计划、权限、持久回执、工具输出预算、压缩和子代理仍按真实路径执行。主工具目录限定为假业务 API 和生产内部工具，API transport 拒绝任何外部目标及场景外 operation；插件、外部 MCP、通知和任意 shell/文件/浏览器工具不开放。此受控目录是当前评测边界，不代表默认部署工具全集。
 
@@ -51,7 +51,30 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 
 单测不调用真实模型或外部网络；测试只验证运行器、隔离、预算与判定合同。真实报告含合成任务轨迹，也可能很长，应保存于评测工作目录；不要把包含私有配置的临时诊断日志提交到仓库。
 
-## Codex 比较的后续接入要求
+## 原生 Codex 受控运行
+
+先使用无真实模型请求的目录探针，再运行真实场景：
+
+```bash
+uv run --locked --no-sync python -m scripts.evaluation --native-probe \
+  --scenario dedup_existing --model gpt-6-astra --reasoning-effort max \
+  --output probe.json
+uv run --locked --no-sync python -m scripts.evaluation --native \
+  --scenario dedup_existing --model gpt-6-astra --reasoning-effort max \
+  --max-model-calls 12 --timeout-seconds 180 --output codex-report.json
+```
+
+适配器目前只核对 `codex-cli 0.153.4`，可用 `--codex-executable` 指定文件。其他版本或二进制目录中没有指定模型时明确拒绝，不换模型或套用其他模型的元数据。`--native-probe` 的 `probe_ready` 只代表配置和目录检查，不是任务通过；原生进程预期收到本地探针错误并退出，模型调用数仍为零。
+
+每次创建空白临时工作目录；场景源码、初态、账本、oracle、模型凭据留在控制器。原生客户端使用局部随机令牌连接回环模型代理和 MCP 假世界，不继承业务配置、真实模型令牌或其他服务环境。客户端忽略用户配置和规则文件，关闭宿主技能、插件、浏览器、文件查看及 shell 等能力，采用只读沙箱、never 审批与有界退出；仅对当前回环 evaluation 服务的三个假工具显式设置 `approval_mode=approve`，避免原生客户端拒绝已授权的假业务动作。不修改用户 HOME、CODEX_HOME 或现有配置。全局 AGENTS 仍可能由原生客户端加载，因此代理在发送给模型前仅移除规范的独立 AGENTS 用户块，保留原生基础说明和任务文本，并记录被移除块的长度与哈希。
+
+原生循环、计划和协作工具仍由 Codex 执行。当前模型可固定使用 Code Mode，单独关闭 feature 无法改变它；适配器通过 `codex debug models --bundled` 读取当前二进制自带目录，只投影指定模型的 `tool_mode=direct`，保持其余字段、`base_instructions` 和 `model_messages`，记录前后指纹。随后代理限制实际广告目录为计划/协作与 evaluation MCP 工具，兼顾请求中的动态目录，并在每个完整响应事件交给客户端前再次拒绝目录以外的调用。这是明确投影过工具模式与目录的原生 Codex 对照，不代表默认部署的完整产品工具环境。
+
+MCP 服务只公开 `moviepilot_api`、完整的 `moviepilot-api` Skill 和有界结果续读；不提前给出场景支持 operation 清单。所有原生客户端与子代理 MCP 会话共享同一个世界及 32 次业务调用预算。服务使用已锁定的 Starlette/uvicorn 实现本评测所需 Streamable HTTP 子集；不作为通用生产 MCP 服务或对外部署入口。
+
+模型代理固定供应商目标，禁止不同模型或不同推理档位静默替换，主调用和子代理共同消耗硬调用预算，HTTP 与 SSE 自动重试为零。报告记录原生 JSONL 事件、退出码、完成事件、独立业务账本、实际目录投影、模型目录/输入指纹、逐请求用量及失败。超时和输出超限保留已有事件并终止进程组；技术失败即使已有正确 JSON 也不会标记整轮通过。`task_passed` 仅为独立 oracle 的业务判断，`passed` 还要求原生运行完整退出。
+
+## 配对比较的验收要求
 
 - MoviePilot 侧应保留完整生产 Agent 装配，只替换业务 transport 与隔离配置；只组装部分中间件的循环不能冒充产品实测。
 - Codex 侧必须调用原生 CLI 或 App Server。自建模型循环只能叫受控运行时对照。
