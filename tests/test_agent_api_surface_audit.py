@@ -41,6 +41,18 @@ def test_agent_api_surface_audit_matches_live_openapi_and_registry() -> None:
     }
 
 
+def test_cleanup_confirmation_stays_in_authenticated_management_workflow() -> None:
+    """人工确认清理只关闭历史提示，不应作为 Agent 已验证外部清理的业务工具。"""
+    classify = _load_generator()["_classify"]
+    disposition, owner, _, operations = classify(
+        method="POST",
+        path="/api/v1/history/transfer/{history_id}/cleanup-resolved",
+        tags=["history"],
+        gateway_routes={},
+    )
+    assert (disposition, owner, operations) == ("ui_presentation", "host-ui", [])
+
+
 def test_every_gateway_operation_has_one_exact_english_skill_and_mcp_contract() -> None:
     """Every approved operation must be discoverable with matching exact English contracts."""
     skill = API_SKILL.read_text(encoding="utf-8")

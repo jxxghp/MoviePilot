@@ -137,7 +137,7 @@ def test_running_watcher_waits_for_file_stability_before_dispatch(tmp_path):
     assert callback.events[0][3] == 4
 
 
-def test_running_watcher_reports_long_unstable_file_and_recovery(tmp_path):
+def test_running_watcher_reports_long_unstable_file_and_recovery(tmp_path, monkeypatch):
     """文件长时间写入应告警一次，并在稳定后发送恢复状态再继续整理。"""
     movie_file = tmp_path / "long-writing.mkv"
     movie_file.write_bytes(b"part")
@@ -147,7 +147,9 @@ def test_running_watcher_reports_long_unstable_file_and_recovery(tmp_path):
 
     watcher._handle_changes({(Change.added, movie_file.as_posix())})
     pending = watcher._pending_stability[movie_file.as_posix()]
-    pending["first_seen"] = 0
+    # 固定单调时钟，避免新启动的 CI 机器尚未运行到告警阈值。
+    monkeypatch.setattr("app.monitor.watcher.time.monotonic", lambda: 1000.0)
+    pending["first_seen"] = 1000.0 - watcher.FILE_STABILITY_WARNING_SECONDS
     pending["due"] = 0
     watcher._process_pending_stability()
     assert callback.stability_events == [("unstable", movie_file.as_posix())]

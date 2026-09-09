@@ -1194,9 +1194,9 @@ class MessageHelper(metaclass=Singleton):
     消息队列管理器，负责系统和插件实时消息的 SSE 推送
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化系统消息队列和通知去重缓存。"""
-        self.sys_queue = queue.Queue()
+        self.sys_queue: queue.Queue[str] = queue.Queue()
         self._recent_notification_keys = TTLCache(region="message:notification", maxsize=500, ttl=60)
 
     def close(self) -> None:

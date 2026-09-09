@@ -64,3 +64,43 @@ def restore_manual_transfer_history_batch(
         download_hash = _common_history_value(histories, "download_hash")
     logger.info("手动整理历史批次还原 %s 个源文件", len(src_fileitems))
     return src_fileitems, force, downloader, download_hash, None
+
+
+def restore_manual_transfer_history_metadata(
+    transer_item: ManualTransferItem, history: ManualTransferHistory,
+) -> None:
+    """使用单条历史还原媒体身份及合并集范围，保留未提供字段的用户输入。"""
+    transer_item.type_name = (
+        history.type if history.type else transer_item.type_name
+    )
+    transer_item.media_source = (
+        history.media_source or transer_item.media_source
+    )
+    transer_item.media_id = (
+        history.media_id or transer_item.media_id
+    )
+    transer_item.music_type = (
+        getattr(history, "music_type", None) or transer_item.music_type
+    )
+    transer_item.season = (
+        int(str(history.seasons).replace("S", ""))
+        if history.seasons
+        else transer_item.season
+    )
+    transer_item.episode_group = (
+        history.episode_group or transer_item.episode_group
+    )
+    if history.episodes:
+        if "-" in str(history.episodes):
+            # E01-E03多集合并
+            episode_start, episode_end = str(history.episodes).split("-")
+            episode_list: list[int] = []
+            for i in range(
+                int(episode_start.replace("E", "")),
+                int(episode_end.replace("E", "")) + 1,
+            ):
+                episode_list.append(i)
+            transer_item.episode_detail = ",".join(str(e) for e in episode_list)
+        else:
+            # E01单集
+            transer_item.episode_detail = str(history.episodes).replace("E", "")

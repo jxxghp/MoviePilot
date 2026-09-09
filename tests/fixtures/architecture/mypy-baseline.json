@@ -559,7 +559,7 @@
     "arg-type": 1,
     "attr-defined": 4,
     "misc": 34,
-    "no-untyped-call": 7,
+    "no-untyped-call": 6,
     "no-untyped-def": 27,
     "type-arg": 9
   },
@@ -577,7 +577,6 @@
   },
   "app/api/endpoints/transfer.py": {
     "arg-type": 9,
-    "assignment": 1,
     "attr-defined": 2,
     "misc": 8,
     "operator": 3,
@@ -691,12 +690,12 @@
     "assignment": 9,
     "dict-item": 1,
     "misc": 1,
-    "no-any-return": 5,
+    "no-any-return": 4,
     "no-untyped-call": 3,
-    "no-untyped-def": 13,
+    "no-untyped-def": 12,
     "type-arg": 18,
     "union-attr": 2,
-    "var-annotated": 2
+    "var-annotated": 1
   },
   "app/application/messaging/plugin.py": {
     "arg-type": 5,
@@ -1024,7 +1023,6 @@
   },
   "app/chain/transfer/format.py": {
     "arg-type": 1,
-    "attr-defined": 1,
     "type-arg": 1
   },
   "app/chain/transfer/history.py": {
@@ -1072,8 +1070,7 @@
     "no-untyped-def": 6
   },
   "app/chain/transfer/settlement.py": {
-    "arg-type": 6,
-    "assignment": 1,
+    "arg-type": 5,
     "no-untyped-call": 1,
     "no-untyped-def": 3,
     "union-attr": 7
@@ -1111,7 +1108,7 @@
     "arg-type": 2,
     "assignment": 5,
     "misc": 4,
-    "no-untyped-call": 4,
+    "no-untyped-call": 3,
     "no-untyped-def": 4,
     "type-arg": 7,
     "valid-type": 1,
@@ -1549,7 +1546,7 @@
     "attr-defined": 1,
     "empty-body": 1,
     "no-any-return": 2,
-    "no-untyped-call": 2,
+    "no-untyped-call": 1,
     "no-untyped-def": 5,
     "type-arg": 3,
     "var-annotated": 3
@@ -2440,7 +2437,7 @@
     "arg-type": 8,
     "assignment": 1,
     "attr-defined": 5,
-    "no-untyped-call": 12,
+    "no-untyped-call": 8,
     "no-untyped-def": 2,
     "type-arg": 4,
     "union-attr": 1,
@@ -2460,8 +2457,8 @@
     "attr-defined": 1
   },
   "app/monitor/watcher.py": {
-    "no-untyped-call": 6,
-    "no-untyped-def": 11,
+    "no-untyped-call": 1,
+    "no-untyped-def": 8,
     "type-arg": 1
   },
   "app/runtime/cache.py": {
@@ -2793,7 +2790,7 @@
     "attr-defined": 2,
     "misc": 1,
     "no-any-return": 2,
-    "no-untyped-call": 11,
+    "no-untyped-call": 9,
     "no-untyped-def": 6,
     "return-value": 2
   },

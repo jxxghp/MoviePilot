@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from typing import Any, List, Optional, cast
 
-from sqlalchemy import JSON, Boolean, Index, Integer, String, delete, func, or_, select, update
+from sqlalchemy import JSON, Boolean, Index, Integer, String, delete, false, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -91,7 +91,7 @@ class TransferHistory(Base):
     errmsg: Mapped[Optional[str]] = mapped_column(String)
     # 连续失败次数和自动暂停状态，跨进程保留自动整理的终态
     retry_count: Mapped[Optional[int]] = mapped_column(Integer)
-    auto_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    auto_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     # 失败阶段、恢复动作和下载器清理状态，供历史页面给出可执行建议
     failure_stage: Mapped[Optional[str]] = mapped_column(String)
     recovery_action: Mapped[Optional[str]] = mapped_column(String)
@@ -120,6 +120,7 @@ class TransferHistory(Base):
     @classmethod
     def list_by_title(cls, db: Session, title: str, page: int = 1, count: int = 30,
                       status: Optional[bool] = None, wildcard: bool = False):
+        """按标题或路径分页查询整理历史。"""
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -146,6 +147,7 @@ class TransferHistory(Base):
     @classmethod
     async def async_list_by_title(cls, db: AsyncSession, title: str, page: int = 1, count: int = 30,
                                   status: Optional[bool] = None, wildcard: bool = False):
+        """异步按标题或路径分页查询整理历史。"""
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -172,6 +174,7 @@ class TransferHistory(Base):
 
     @classmethod
     def list_by_page(cls, db: Session, page: int = 1, count: int = 30, status: Optional[bool] = None):
+        """按时间倒序分页读取整理历史。"""
         statement = select(cls)
         if status is not None:
             statement = statement.where(cls.status == status)
@@ -186,6 +189,7 @@ class TransferHistory(Base):
     @classmethod
     async def async_list_by_page(cls, db: AsyncSession, page: int = 1, count: int = 30,
                                  status: Optional[bool] = None):
+        """异步按时间倒序分页读取整理历史。"""
         if status is not None:
             query = select(cls).filter(
                 cls.status == status
@@ -449,6 +453,7 @@ class TransferHistory(Base):
 
     @classmethod
     def list_by_hash(cls, db: Session, download_hash: str):
+        """查询同一下载任务的全部整理历史。"""
         return list(db.execute(
             select(cls).where(cls.download_hash == download_hash)
         ).scalars().all())
@@ -550,6 +555,7 @@ class TransferHistory(Base):
 
     @classmethod
     def count(cls, db: Session, status: Optional[bool] = None):
+        """统计指定状态的整理历史数量。"""
         statement = select(func.count(cls.id))
         if status is not None:
             statement = statement.where(cls.status == status)
@@ -557,6 +563,7 @@ class TransferHistory(Base):
 
     @classmethod
     async def async_count(cls, db: AsyncSession, status: Optional[bool] = None):
+        """异步统计指定状态的整理历史数量。"""
         if status is not None:
             result = await db.execute(
                 select(func.count(cls.id)).filter(cls.status == status)
@@ -569,6 +576,7 @@ class TransferHistory(Base):
 
     @classmethod
     def count_by_title(cls, db: Session, title: str, status: Optional[bool] = None, wildcard: bool = False):
+        """统计与标题或路径匹配的整理历史数量。"""
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -588,6 +596,7 @@ class TransferHistory(Base):
 
     @classmethod
     async def async_count_by_title(cls, db: AsyncSession, title: str, status: Optional[bool] = None, wildcard: bool = False):
+        """异步统计与标题或路径匹配的整理历史数量。"""
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -667,32 +676,9 @@ class TransferHistory(Base):
             cls,
             db: Session,
             historyid: int,
-            cleanup_status: str,
-            cleanup_error: Optional[str] = None,
+            values: dict[str, Optional[str]],
     ) -> None:
-        """记录媒体已入库后下载器任务的独立清理结果。"""
-        values = {
-            "cleanup_status": cleanup_status,
-            "cleanup_error": cleanup_error,
-        }
-        if cleanup_status == "failed":
-            # 清理失败发生在媒体入库成功之后，单独覆盖阶段字段，避免历史页把
-            # 空 errmsg 解释成普通文件转移失败。
-            from app.application.transfer.feedback import classify_transfer_failure
-
-            feedback = classify_transfer_failure("下载器清理失败")
-            values.update(
-                failure_stage=feedback.stage.value,
-                recovery_action=feedback.action,
-            )
-        elif cleanup_status == "resolved":
-            # 用户已在下载器中人工完成清理时，同时关闭专属于清理步骤的失败提示；
-            # 媒体整理成功状态及其余历史字段保持不变。
-            values.update(
-                failure_stage=None,
-                recovery_action=None,
-                cleanup_error=None,
-            )
+        """暂存调用方已经投影完成的清理状态字段。"""
         db.execute(
             update(cls)
             .where(cls.id == historyid)

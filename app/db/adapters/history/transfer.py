@@ -18,6 +18,7 @@ from app.application.history import (
     failed_retry_count,
     max_failed_retries,
 )
+from app.application.transfer.feedback import cleanup_update_fields
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.schemas.media import normalize_media_source
@@ -461,8 +462,7 @@ class TransactionalTransferHistoryRepository:
         self._write(
             lambda repository: repository.stage_update_cleanup_status(
                 history_id,
-                status,
-                error,
+                cleanup_update_fields(status, error),
             )
         )
 
@@ -503,6 +503,5 @@ class SessionTransferHistoryRepository:
         """在请求 Session 内暂存下载器清理状态更新。"""
         TransferHistoryOper(self._session).stage_update_cleanup_status(
             history_id,
-            cleanup_status,
-            cleanup_error,
+            cleanup_update_fields(cleanup_status, cleanup_error),
         )

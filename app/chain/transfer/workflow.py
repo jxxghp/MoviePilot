@@ -18,6 +18,7 @@ from app.application.history import (
     evaluate_history_gate,
     is_skip_action,
 )
+from app.application.transfer.history import history_file_fingerprint
 from app.application.transfer.workflow import (
     TransferAdmission,
     TransferTask,
@@ -46,7 +47,7 @@ from app.schemas.workflow import FileItem
 from .request import (
     _should_discard_batch_music_identity,
     _TransferCandidatePlanner,
-    preview_media_title,
+    build_transfer_preview_item,
 )
 
 
@@ -152,6 +153,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             return None
 
         def _apply_predicate(file_item: FileItem, is_bluray_dir: bool) -> List[Tuple[FileItem, bool]]:
+            """仅保留满足调用方筛选条件的普通文件或蓝光目录。"""
             if predicate is None or predicate(file_item, is_bluray_dir):
                 return [(file_item, is_bluray_dir)]
             return []
@@ -746,20 +748,14 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                             transferd = None
 
                     if transferd:
-                        history_description = describe_history_gate(
-                            transferd,
-                            file_size=file_item.size,
-                            file_modify_time=file_item.modify_time,
-                            fileid=file_item.fileid,
-                        )
+                        fingerprint = history_file_fingerprint(file_item)
+                        history_description = describe_history_gate(transferd, **fingerprint)
                         if not manual:
                             # 自动路径（目录监控、下载器轮询）与监控分发共用同一套判定，
                             # 否则监控层刚放行的失败重试与升级请求会在这里被全额收回
                             gate_action = evaluate_history_gate(
                                 transferd,
-                                file_size=file_item.size,
-                                file_modify_time=file_item.modify_time,
-                                fileid=file_item.fileid,
+                                **fingerprint,
                                 retry_count=getattr(transferd, "retry_count", None),
                             )
                             if not is_skip_action(gate_action):
@@ -948,44 +944,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         preview_items: List[dict[str, Any]] = []
 
         def _preview_callback(task: TransferTask, transferinfo: TransferInfo) -> Tuple[bool, str]:
-            from app.application.transfer.feedback import classify_transfer_failure
-
-            item_meta = task.meta
-            item_media = task.mediainfo
-            feedback = classify_transfer_failure(
-                transferinfo.message,
-                overwrite_skipped=bool(transferinfo.overwrite_skipped),
-            )
-            preview_items.append(
-                {
-                    "source": task.fileitem.path,
-                    "target": transferinfo.target_item.path if transferinfo.target_item else None,
-                    "target_dir": transferinfo.target_diritem.path if transferinfo.target_diritem else None,
-                    "success": transferinfo.success,
-                    "message": transferinfo.message,
-                    "failure_stage": (
-                        transferinfo.failure_stage or feedback.stage.value
-                        if not transferinfo.success
-                        else None
-                    ),
-                    "recovery_action": (
-                        transferinfo.recovery_action or feedback.action
-                        if not transferinfo.success
-                        else None
-                    ),
-                    "overwrite_skipped": bool(transferinfo.overwrite_skipped),
-                    "type": item_media.type.value if item_media and item_media.type else None,
-                    "title": preview_media_title(item_media),
-                    "season": item_meta.begin_season if item_meta else None,
-                    "episode": item_meta.begin_episode if item_meta else None,
-                    "episode_end": item_meta.end_episode if item_meta else None,
-                    "part": item_meta.part if item_meta else None,
-                    "org_string": item_meta.org_string if item_meta else None,
-                    "apply_words": item_meta.apply_words if item_meta else [],
-                    "resource_team": item_meta.resource_team if item_meta else None,
-                    "customization": item_meta.customization if item_meta else None,
-                }
-            )
+            """收集预览结果，保持任务执行顺序。"""
+            preview_items.append(build_transfer_preview_item(task, transferinfo))
             return transferinfo.success, transferinfo.message
 
         if transfer_tasks:

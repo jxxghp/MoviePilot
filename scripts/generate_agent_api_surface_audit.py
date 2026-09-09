@@ -129,7 +129,7 @@ def _classify(
     tags: list[str],
     gateway_routes: dict[tuple[str, str], list[str]],
 ) -> tuple[str, str, str, list[str]]:
-    """Classify one OpenAPI operation into one reviewed Agent ownership boundary."""
+    """把 OpenAPI 操作归入经过审查的 Agent 或直接管理端契约。"""
     operations = gateway_routes.get((method, path), [])
     if operations:
         return (
@@ -166,6 +166,13 @@ def _classify(
             "ui_presentation",
             "host-ui",
             "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+            [],
+        )
+    if method == "POST" and path == "/api/v1/history/transfer/{history_id}/cleanup-resolved":
+        return (
+            "ui_presentation",
+            "host-ui",
+            "Manual confirmation of downloader cleanup is owned by the authenticated history management workflow; it is not an Agent action that verifies external cleanup.",
             [],
         )
     if path == "/api/v1/history/transfer/{history_id}/discard-corrupt":

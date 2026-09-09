@@ -8,12 +8,14 @@ from app.application.formatting import FormatParser
 from app.application.history import (
     DownloadHistoryQueryPort,
 )
+from app.application.transfer.workflow import TransferTask
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfoPath
 from app.schemas.exception import OperationInterrupted
+from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaSource,
@@ -465,3 +467,45 @@ class _TransferCandidatePlanner:
             self._append_item(planned_items, seen_file_keys, item, is_bluray_dir)
 
         return planned_items, inherited_map
+
+
+def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) -> dict[str, Any]:
+    """按实际整理结果投影预览项，失败阶段与恢复动作保留原始裁决。"""
+    from app.application.transfer.feedback import classify_transfer_failure
+
+    item_meta = task.meta
+    item_media = task.mediainfo
+    feedback = classify_transfer_failure(
+        transferinfo.message,
+        overwrite_skipped=bool(transferinfo.overwrite_skipped),
+    )
+    return (
+        {
+            "source": task.fileitem.path,
+            "target": transferinfo.target_item.path if transferinfo.target_item else None,
+            "target_dir": transferinfo.target_diritem.path if transferinfo.target_diritem else None,
+            "success": transferinfo.success,
+            "message": transferinfo.message,
+            "failure_stage": (
+                transferinfo.failure_stage or feedback.stage.value
+                if not transferinfo.success
+                else None
+            ),
+            "recovery_action": (
+                transferinfo.recovery_action or feedback.action
+                if not transferinfo.success
+                else None
+            ),
+            "overwrite_skipped": bool(transferinfo.overwrite_skipped),
+            "type": item_media.type.value if item_media and item_media.type else None,
+            "title": preview_media_title(item_media),
+            "season": item_meta.begin_season if item_meta else None,
+            "episode": item_meta.begin_episode if item_meta else None,
+            "episode_end": item_meta.end_episode if item_meta else None,
+            "part": item_meta.part if item_meta else None,
+            "org_string": item_meta.org_string if item_meta else None,
+            "apply_words": item_meta.apply_words if item_meta else [],
+            "resource_team": item_meta.resource_team if item_meta else None,
+            "customization": item_meta.customization if item_meta else None,
+        }
+    )

@@ -568,8 +568,7 @@ class TransferHistoryOper(DbOper):
     def stage_update_cleanup_status(
             self,
             historyid: int,
-            cleanup_status: str,
-            cleanup_error: Optional[str] = None,
+            values: dict[str, Optional[str]],
     ) -> None:
         """在调用方事务内暂存媒体入库后的下载器清理结果。"""
         if not isinstance(self._db, Session):
@@ -577,8 +576,7 @@ class TransferHistoryOper(DbOper):
         TransferHistory.update_cleanup_status(
             self._db,
             historyid,
-            cleanup_status,
-            cleanup_error,
+            values,
         )
 
     def list_by_date(self, date: str) -> List[TransferHistory]:

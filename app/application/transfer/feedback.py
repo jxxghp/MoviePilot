@@ -1,5 +1,6 @@
 """整理失败的用户反馈、阶段识别和恢复动作投影。"""
 
+from collections import Counter
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Optional
@@ -166,3 +167,122 @@ def format_transfer_failure_message(
     if auto_paused:
         lines.append("当前状态：自动整理已暂停，请修复原因后点击“重新整理”，或删除失败记录后重新扫描")
     return "\n".join(lines)
+
+
+@dataclass(frozen=True, slots=True)
+class TransferFailureNotification:
+    """整理失败聚合器保存的单条通知快照。"""
+
+    media_title: str
+    season_episode: str
+    reason: str
+    history_id: Optional[int]
+    image: Optional[str]
+    username: Optional[str]
+    manual_identity: bool = False
+    task_id: Optional[str] = None
+    source_path: Optional[str] = None
+    target_path: Optional[str] = None
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    retry_count: Optional[int] = None
+    max_retries: Optional[int] = None
+    auto_paused: bool = False
+    cleanup_status: Optional[str] = None
+    cleanup_error: Optional[str] = None
+
+
+
+def render_transfer_failure_notification(
+    notifications: list[TransferFailureNotification],
+) -> tuple[str, str]:
+    """把非空失败分组投影为标题和正文，按钮及消息派发仍由整理链处理。"""
+    first = notifications[0]
+    history_ids = [item.history_id for item in notifications if item.history_id]
+    if len(notifications) == 1:
+        history_hint = (
+            (
+                "如果按钮不可用，可回复：\n"
+                f"```\n/redo {history_ids[0]}\n"
+                f"/redo {history_ids[0]} [media_source]|[media_id]|[类型]\n```\n"
+                "自动重试或手动识别整理。"
+                if first.manual_identity
+                else f"如果按钮不可用，可回复：\n```\n/redo {history_ids[0]}\n```"
+            )
+            if history_ids
+            else ""
+        )
+        context_lines = [
+            f"失败阶段：{transfer_failure_stage_label(first.failure_stage)}",
+            f"源文件：{first.source_path}" if first.source_path else None,
+            f"目标路径：{first.target_path}" if first.target_path else None,
+            f"原因：{first.reason}",
+            f"下一步：{first.recovery_action}" if first.recovery_action else None,
+            (
+                f"重试状态：已尝试 {first.retry_count}/{first.max_retries} 次"
+                if first.retry_count is not None and first.max_retries is not None
+                else None
+            ),
+            (
+                "当前状态：自动整理已暂停，请修复原因后点击“重新整理”，"
+                "或删除失败记录后重新扫描"
+                if first.auto_paused
+                else None
+            ),
+            history_hint,
+        ]
+        text = "\n".join(line for line in context_lines if line).strip()
+        title = (
+            f"{first.media_title} 未识别到媒体信息，无法入库！"
+            if first.manual_identity
+            else f"{first.media_title} {first.season_episode} 入库失败！"
+        )
+    else:
+        reason_counts = Counter(item.reason for item in notifications)
+        reason_lines = [
+            f"- {reason} × {count}"
+            for reason, count in reason_counts.most_common()
+        ]
+        history_text = "、".join(f"#{history_id}" for history_id in history_ids)
+        text_parts = [
+            f"失败文件：{len(notifications)} 个",
+            "原因统计：",
+            *reason_lines,
+        ]
+        source_paths = [item.source_path for item in notifications if item.source_path]
+        if source_paths:
+            text_parts.append("源文件：" + "、".join(source_paths[:3]))
+        if any(item.auto_paused for item in notifications):
+            text_parts.append("部分文件已达到自动重试上限，自动整理已暂停，请在整理历史中处理。")
+        if history_text:
+            text_parts.extend([f"整理记录：{history_text}", "可在整理历史中批量处理。"])
+        text = "\n".join(text_parts)
+        title = f"{first.media_title} 入库失败（{len(notifications)} 个文件）"
+    return title, text
+
+
+def cleanup_update_fields(
+    cleanup_status: str, cleanup_error: Optional[str] = None,
+) -> dict[str, Optional[str]]:
+    """投影清理状态的业务字段，数据库层只暂存最终标量更新。"""
+    values = {
+        "cleanup_status": cleanup_status,
+        "cleanup_error": cleanup_error,
+    }
+    if cleanup_status == "failed":
+        # 清理失败发生在媒体入库成功之后，单独覆盖阶段字段，避免历史页把
+        # 空 errmsg 解释成普通文件转移失败。
+        feedback = classify_transfer_failure("下载器清理失败")
+        values.update(
+            failure_stage=feedback.stage.value,
+            recovery_action=feedback.action,
+        )
+    elif cleanup_status == "resolved":
+        # 用户已在下载器中人工完成清理时，同时关闭专属于清理步骤的失败提示；
+        # 媒体整理成功状态及其余历史字段保持不变。
+        values.update(
+            failure_stage=None,
+            recovery_action=None,
+            cleanup_error=None,
+        )
+    return values

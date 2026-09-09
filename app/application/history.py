@@ -28,7 +28,6 @@ from app.application.historymutation import (
 from app.application.transfer import history as history_projection
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
 from app.foundation.text import cut as jieba_cut
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
@@ -39,9 +38,8 @@ from app.schemas.history import (
     TransferHistory,
     TransferHistoryPage,
 )
-from app.schemas.media import resolve_media_identity
 from app.schemas.transfer import TransferInfo
-from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
+from app.schemas.types import MediaSource
 
 # 失败重试次数的合法区间。下界为 1：一次瞬时故障（网络抖动、TMDB 瞬断、移动失败）
 # 不该让文件永久漏整理，所以不允许关闭重试；上界为 10：永远识别不出的文件重试再多
@@ -669,7 +667,7 @@ class ManualTransferHistory:
     downloader: Optional[str]
     download_hash: Optional[str]
     type: Optional[str]
-    media_source: Optional[str]
+    media_source: Optional[MediaSource]
     media_id: Optional[str]
     music_type: Optional[str]
     seasons: Optional[str]
@@ -1268,15 +1266,7 @@ def next_failed_retry_count(
     return max(cached_count, persisted_count) + 1
 
 
-# --------------------------------------------------------------------------- #
-# 整理历史的写入路径
-#
-# 这两个函数把 FileItem / MetaBase / MediaInfo / TransferInfo 四个领域对象翻译成
-# 一行整理历史，是整理历史表的唯一写入口。它们此前由表级适配器承载，但
-# 拼标题、拆季集、取海报、判音乐字段都是整理链的业务规则而非数据访问——Oper 只该
-# 收敛查询，领域对象不该出现在它的入参里。搬到本模块与查重闸（读侧）作伴：同一张
-# 表的读写规则放在一起，字段含义只有一处需要维护。
-# --------------------------------------------------------------------------- #
+# 整理历史写入口保留仓储事务契约；领域对象的字段映射由 transfer.history 统一维护。
 
 def add_transfer_success(
     fileitem: FileItem,
@@ -1301,38 +1291,16 @@ def add_transfer_success(
     :return: 落库后的整理记录
     """
     repository = transfer_history_oper or get_transfer_history_repository()
-    media_source, media_id = resolve_media_identity(media=mediainfo)
-    return repository.replace(TransferHistoryWrite(
-        src=history_projection.history_source_path(fileitem),
-        src_storage=fileitem.storage,
-        src_fileitem=fileitem.model_dump(),
-        dest=transferinfo.target_item.path if transferinfo.target_item else None,
-        dest_storage=transferinfo.target_item.storage if transferinfo.target_item else None,
-        dest_fileitem=transferinfo.target_item.model_dump() if transferinfo.target_item else None,
+    fields = history_projection.success_fields(
+        fileitem=fileitem,
         mode=mode,
-        type=mediainfo.type.value,
-        **history_projection.classification_fields(mediainfo),
-        title=history_projection.history_title(meta, mediainfo),
-        year=history_projection.history_year(mediainfo.year),
-        media_source=media_source,
-        media_id=media_id,
-        music_type=getattr(mediainfo, "music_type", None),
-        total_tracks=getattr(mediainfo, "total_tracks", None),
-        audio_format=getattr(meta, "audio_format", None),
-        audio_lossless=getattr(meta, "audio_lossless", None),
-        bit_depth=getattr(meta, "bit_depth", None),
-        sample_rate=getattr(meta, "sample_rate", None),
-        bitrate=getattr(meta, "bitrate", None),
-        seasons=meta.season,
-        episodes=meta.episode,
-        image=mediainfo.get_poster_image(),
+        meta=meta,
+        mediainfo=mediainfo,
+        transferinfo=transferinfo,
         downloader=downloader,
         download_hash=download_hash,
-        status=True,
-        retry_count=0,
-        auto_paused=False,
-        files=transferinfo.file_list,
-    ))
+    )
+    return repository.replace(TransferHistoryWrite(**fields))
 
 
 def add_transfer_fail(
@@ -1365,82 +1333,15 @@ def add_transfer_fail(
     :return: 落库后的整理记录
     """
     repository = transfer_history_oper or get_transfer_history_repository()
-    from app.application.transfer.feedback import classify_transfer_failure
-
-    raw_error = transferinfo.message if transferinfo else "未识别到媒体信息"
-    feedback = classify_transfer_failure(
-        raw_error,
-        overwrite_skipped=bool(transferinfo and transferinfo.overwrite_skipped),
+    fields = history_projection.failure_fields(
+        fileitem=fileitem,
+        mode=mode,
+        meta=meta,
+        mediainfo=mediainfo,
+        transferinfo=transferinfo,
+        downloader=downloader,
+        download_hash=download_hash,
+        retry_count=retry_count,
+        auto_paused=auto_paused,
     )
-    # 源/目标路径已经是历史的一等字段，errmsg 继续保持旧接口的单条原因文本，
-    # 阶段和恢复动作由独立字段承载，避免破坏已有客户端和导出脚本的解析。
-    public_error = raw_error or "未知错误"
-    if mediainfo and transferinfo:
-        media_source, media_id = resolve_media_identity(media=mediainfo)
-        history = repository.replace(TransferHistoryWrite(
-            src=history_projection.history_source_path(fileitem),
-            src_storage=fileitem.storage,
-            src_fileitem=fileitem.model_dump(),
-            dest=transferinfo.target_item.path if transferinfo.target_item else None,
-            dest_storage=transferinfo.target_item.storage if transferinfo.target_item else None,
-            dest_fileitem=transferinfo.target_item.model_dump() if transferinfo.target_item else None,
-            mode=mode,
-            type=mediainfo.type.value,
-            **history_projection.classification_fields(mediainfo),
-            title=history_projection.history_title(meta, mediainfo),
-            year=history_projection.history_year(mediainfo.year or meta.year),
-            media_source=media_source,
-            media_id=media_id,
-            music_type=getattr(mediainfo, "music_type", None),
-            total_tracks=getattr(mediainfo, "total_tracks", None),
-            audio_format=getattr(meta, "audio_format", None),
-            audio_lossless=getattr(meta, "audio_lossless", None),
-            bit_depth=getattr(meta, "bit_depth", None),
-            sample_rate=getattr(meta, "sample_rate", None),
-            bitrate=getattr(meta, "bitrate", None),
-            seasons=meta.season,
-            episodes=meta.episode,
-            image=mediainfo.get_poster_image(),
-            downloader=downloader,
-            download_hash=download_hash,
-            episode_group=mediainfo.episode_group,
-            status=False,
-            errmsg=public_error,
-            failure_stage=transferinfo.failure_stage or feedback.stage.value,
-            recovery_action=transferinfo.recovery_action or feedback.action,
-            retry_count=retry_count,
-            auto_paused=auto_paused,
-            cleanup_status=transferinfo.cleanup_status,
-            cleanup_error=transferinfo.cleanup_error,
-            files=transferinfo.file_list,
-        ))
-    else:
-        media_source, media_id = resolve_media_identity(media=meta)
-        history = repository.replace(TransferHistoryWrite(
-            type=meta.type.value if meta.type else None,
-            title=history_projection.history_title(meta),
-            year=history_projection.history_year(meta.year),
-            media_source=media_source,
-            media_id=media_id,
-            music_type=MUSIC_ENTITY_RECORDING if isinstance(meta, MetaMusic) else None,
-            audio_format=getattr(meta, "audio_format", None),
-            audio_lossless=getattr(meta, "audio_lossless", None),
-            bit_depth=getattr(meta, "bit_depth", None),
-            sample_rate=getattr(meta, "sample_rate", None),
-            bitrate=getattr(meta, "bitrate", None),
-            src=history_projection.history_source_path(fileitem),
-            src_storage=fileitem.storage,
-            src_fileitem=fileitem.model_dump(),
-            mode=mode,
-            seasons=meta.season,
-            episodes=meta.episode,
-            downloader=downloader,
-            download_hash=download_hash,
-            status=False,
-            errmsg=public_error,
-            failure_stage=feedback.stage.value,
-            recovery_action=feedback.action,
-            retry_count=retry_count,
-            auto_paused=auto_paused,
-        ))
-    return history
+    return repository.replace(TransferHistoryWrite(**fields))

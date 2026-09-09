@@ -7,7 +7,10 @@ from fastapi import Depends, HTTPException, Query, status
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.dependencies.auth import get_current_active_manage_user
 from app.api.dependencies.history import get_transfer_execution_repository, get_transfer_history_lookup_service
-from app.api.endpoints.transferhistory import restore_manual_transfer_history_batch
+from app.api.endpoints.transferhistory import (
+    restore_manual_transfer_history_batch,
+    restore_manual_transfer_history_metadata,
+)
 from app.api.response import (
     CompatibleCountParam,
     CompatiblePageParam,
@@ -709,40 +712,7 @@ def _execute_manual_transfer(
 
         # 从历史数据获取信息
         if transer_item.from_history:
-            transer_item.type_name = (
-                history.type if history.type else transer_item.type_name
-            )
-            transer_item.media_source = (
-                history.media_source or transer_item.media_source
-            )
-            transer_item.media_id = (
-                history.media_id or transer_item.media_id
-            )
-            transer_item.music_type = (
-                getattr(history, "music_type", None) or transer_item.music_type
-            )
-            transer_item.season = (
-                int(str(history.seasons).replace("S", ""))
-                if history.seasons
-                else transer_item.season
-            )
-            transer_item.episode_group = (
-                history.episode_group or transer_item.episode_group
-            )
-            if history.episodes:
-                if "-" in str(history.episodes):
-                    # E01-E03多集合并
-                    episode_start, episode_end = str(history.episodes).split("-")
-                    episode_list: list[int] = []
-                    for i in range(
-                        int(episode_start.replace("E", "")),
-                        int(episode_end.replace("E", "")) + 1,
-                    ):
-                        episode_list.append(i)
-                    transer_item.episode_detail = ",".join(str(e) for e in episode_list)
-                else:
-                    # E01单集
-                    transer_item.episode_detail = str(history.episodes).replace("E", "")
+            restore_manual_transfer_history_metadata(transer_item, history)
 
     elif transer_item.fileitems:
         src_fileitems = [fileitem for fileitem in transer_item.fileitems if fileitem]

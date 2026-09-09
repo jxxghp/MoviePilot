@@ -6,7 +6,7 @@
     "provider-skill": 12,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
-    "ui_presentation": 21
+    "ui_presentation": 22
   },
   "dynamic_gateway_routes": [
     {
@@ -21,7 +21,7 @@
   "gateway_http_route_count": 203,
   "gateway_operation_count": 205,
   "matched_gateway_http_route_count": 202,
-  "openapi_operation_count": 394,
+  "openapi_operation_count": 395,
   "operations": [
     {
       "disposition": "consolidated",
@@ -833,6 +833,18 @@
       "path": "/api/v1/history/transfer/{history_id}/ai-redo",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "智能助手重新整理",
+      "tags": [
+        "history"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/history/transfer/{history_id}/cleanup-resolved",
+      "reason": "Manual confirmation of downloader cleanup is owned by the authenticated history management workflow; it is not an Agent action that verifies external cleanup.",
+      "summary": "确认下载器清理已完成",
       "tags": [
         "history"
       ]

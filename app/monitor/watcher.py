@@ -3,7 +3,7 @@ import time
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict
 
 from watchfiles import Change, DefaultFilter, watch
 
@@ -19,6 +19,19 @@ class DirectoryChangeEvent:
     change_type: Change
     src_path: str
     is_directory: bool
+
+
+class _PendingStability(TypedDict):
+    """记录同一文件版本的稳定采样、检查期限和告警状态。"""
+
+    change_type: Change
+    path: Path
+    file_size: int
+    mtime_ns: int
+    stable_checks: int
+    due: float
+    first_seen: float
+    warning_sent: bool
 
 
 class LocalDirectoryWatcher:
@@ -79,7 +92,7 @@ class LocalDirectoryWatcher:
         # 待延迟重扫的新增目录
         self._pending_rescans: list[dict] = []
         # 仍在写入中的文件事件；键为规范化路径，值保存上次采样和连续稳定次数
-        self._pending_stability: dict[str, dict] = {}
+        self._pending_stability: dict[str, _PendingStability] = {}
 
     @property
     def watch_path(self) -> Path:
@@ -181,7 +194,7 @@ class LocalDirectoryWatcher:
         """
         return self._last_activity_wall
 
-    def _mark_activity(self):
+    def _mark_activity(self) -> None:
         """
         记录一次监控循环活动时间，作为静默失效检测的心跳。
         """
@@ -258,7 +271,7 @@ class LocalDirectoryWatcher:
         self._dispatch_changes(self._expand_added_directories(changes))
 
     def _dispatch_changes(self, changes: set[tuple[Change, str]],
-                          defer_unstable: Optional[bool] = None):
+                          defer_unstable: Optional[bool] = None) -> None:
         """
         将变更集合逐个派发给回调。
         :param changes: 已展开的变更集合
@@ -304,7 +317,7 @@ class LocalDirectoryWatcher:
                 logger.error(f"处理本地目录监控事件失败: {path_str} - {err}")
 
     def _queue_stability_event(self, change_type: Change, event_path: Path,
-                               file_size: int):
+                               file_size: int) -> None:
         """
         登记一个待确认稳定的文件事件。
         :param change_type: watchfiles 事件类型
@@ -343,7 +356,7 @@ class LocalDirectoryWatcher:
             "warning_sent": False,
         }
 
-    def _process_pending_stability(self):
+    def _process_pending_stability(self) -> None:
         """
         处理到期的文件稳定性检查，连续稳定后才派发整理事件。
         """
@@ -591,7 +604,7 @@ class LocalDirectoryWatcher:
                 item["due"] = now + self.DIRECTORY_RESCAN_DELAYS[next_round]
                 self._pending_rescans.append(item)
 
-    def _notify_unreadable(self, event_path: Path):
+    def _notify_unreadable(self, event_path: Path) -> None:
         """
         通知回调登记读取失败的事件，等待重试。
         :param event_path: 事件文件路径

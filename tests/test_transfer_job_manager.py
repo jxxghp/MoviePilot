@@ -1,4 +1,3 @@
-import unittest
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,7 +18,7 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
     TransferTask,
 )
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metavideo import MetaVideo
@@ -49,6 +48,7 @@ class FakeMeta(MetaBase):
     season_episode = None
 
     def __init__(self, episode: int, season: int = 1):
+        """初始化固定季集解析结果。"""
         super().__init__(title=f"Test Show S{season:02d}E{episode:02d}")
         self.name = "Test Show"
         self.title = f"Test Show S{season:02d}E{episode:02d}"
@@ -66,13 +66,16 @@ class FakeMeta(MetaBase):
 
     @property
     def season(self):
+        """返回用于作业分组的季标识。"""
         return f"S{self.begin_season:02d}"
 
     @property
     def episode(self):
+        """返回用于整理命名的集标识。"""
         return f"E{self.begin_episode:02d}"
 
     def to_dict(self):
+        """按历史事件契约导出测试元数据。"""
         return {
             "title": self.title,
             "name": self.name,
@@ -131,6 +134,7 @@ class FakeMedia(MediaInfo):
 
 
 def make_media_info() -> MediaInfo:
+    """构造固定影视身份，避免测试访问外部媒体服务。"""
     media = MediaInfo()
     media.type = MediaType.TV
     media.title = "Test Show"
@@ -145,6 +149,7 @@ def make_media_info() -> MediaInfo:
 
 
 def make_task(episode: int, season: int = 1) -> TransferTask:
+    """构造单集整理任务及其源文件。"""
     name = f"Test.Show.S{season:02d}E{episode:02d}.mkv"
     return TransferTask(
         fileitem=FileItem(
@@ -306,6 +311,7 @@ def bind_terminal_checkpoint(
 
 
 def make_fileitem(path: str, size: int = 1024) -> FileItem:
+    """构造带路径和大小的本地测试文件项。"""
     file_path = path
     name = file_path.rsplit("/", 1)[-1]
     suffix = name.rsplit(".", 1)[-1] if "." in name else ""
@@ -374,6 +380,7 @@ def execute_transfer_plan(
 
 
 def migrate_to_media_job(jobview: JobManager, task: TransferTask):
+    """把元数据任务迁入媒体作业，验证作业归属。"""
     task.mediainfo = FakeMedia()
     jobview.migrate_task(task)
     jobview.running_task(task)
@@ -381,7 +388,8 @@ def migrate_to_media_job(jobview: JobManager, task: TransferTask):
     jobview.try_remove_job(task)
 
 
-class TransferJobManagerTest(unittest.TestCase):
+class TestTransferJobManager:
+    """整理作业、重试预算与终态回调的原生 pytest 回归。"""
     def test_same_storage_success_uses_target_path_when_metadata_is_delayed(self):
         """
         网盘操作已成功但目标元数据暂不可见时，整理结果应按成功路径落库。
@@ -425,12 +433,12 @@ class TransferJobManagerTest(unittest.TestCase):
             transfer_type="move",
         )
 
-        self.assertEqual("", errmsg)
-        self.assertIsNotNone(new_item)
-        self.assertEqual(target_path.as_posix(), new_item.path)
-        self.assertEqual("alist", new_item.storage)
-        self.assertEqual("file", new_item.type)
-        self.assertEqual(1024, new_item.size)
+        assert ("") == (errmsg)
+        assert (new_item) is not None
+        assert (target_path.as_posix()) == (new_item.path)
+        assert ("alist") == (new_item.storage)
+        assert ("file") == (new_item.type)
+        assert (1024) == (new_item.size)
 
     def test_transfer_plan_uses_target_folder_returned_by_storage(self):
         """
@@ -502,9 +510,9 @@ class TransferJobManagerTest(unittest.TestCase):
                 need_notify=True,
             )
 
-        self.assertTrue(transferinfo.success)
-        self.assertEqual(target_item, transferinfo.target_item)
-        self.assertEqual(target_folder, transferinfo.target_diritem)
+        assert (transferinfo.success)
+        assert (target_item) == (transferinfo.target_item)
+        assert (target_folder) == (transferinfo.target_diritem)
 
     def test_single_file_transfer_intercept_event_carries_file_meta(self):
         """
@@ -577,11 +585,11 @@ class TransferJobManagerTest(unittest.TestCase):
                 need_notify=True,
             )
 
-        self.assertTrue(transferinfo.success)
+        assert (transferinfo.success)
         event_data = send_event.call_args.args[1]
-        self.assertIs(in_meta, event_data.meta)
-        self.assertEqual(2, event_data.meta.begin_season)
-        self.assertEqual(3, event_data.meta.begin_episode)
+        assert (in_meta) is (event_data.meta)
+        assert (2) == (event_data.meta.begin_season)
+        assert (3) == (event_data.meta.begin_episode)
 
     def test_success_callback_uses_transfer_result_target_diritem(self):
         """
@@ -595,7 +603,7 @@ class TransferJobManagerTest(unittest.TestCase):
         task.mediainfo = FakeMedia()
         task.background = False
         task.manual = True
-        self.assertTrue(chain._TransferChain__put_to_jobview(task))
+        assert (chain._TransferChain__put_to_jobview(task))
 
         target_diritem = FileItem(
             storage="alist",
@@ -629,19 +637,20 @@ class TransferJobManagerTest(unittest.TestCase):
         ):
             state, errmsg = chain._TransferChain__default_callback(task, transferinfo)
 
-        self.assertTrue(state)
-        self.assertEqual("", errmsg)
+        assert (state)
+        assert ("") == (errmsg)
         metadata_calls = [
             call
             for call in chain.eventmanager.send_event.call_args_list
             if call.args[0] == EventType.MetadataScrape
         ]
-        self.assertEqual(1, len(metadata_calls))
+        assert (1) == (len(metadata_calls))
         event_data = metadata_calls[0].args[1]
-        self.assertEqual(target_diritem, event_data["fileitem"])
-        self.assertEqual([target_item.path], event_data["file_list"])
+        assert (target_diritem) == (event_data["fileitem"])
+        assert ([target_item.path]) == (event_data["file_list"])
 
     def test_manual_episode_offset_applies_once(self):
+        """手动集偏移只能在任务生成时应用一次。"""
         chain = make_transfer_chain()
         source_fileitem = make_fileitem("/downloads/Test.Show.2026.S01E14.mkv")
         planned_episodes = []
@@ -654,6 +663,7 @@ class TransferJobManagerTest(unittest.TestCase):
         chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
+            """捕获整理任务与参数并返回预设结果，隔离真实文件操作。"""
             planned_episodes.append(task.meta.begin_episode)
             return True, ""
 
@@ -680,45 +690,48 @@ class TransferJobManagerTest(unittest.TestCase):
                 background=False,
             )
 
-        self.assertTrue(state, errmsg)
+        assert (state)
         # 手动集数偏移只能应用一次，避免 E14 + (-1) 被二次处理成 E12。
-        self.assertEqual([13], planned_episodes)
+        assert ([13]) == (planned_episodes)
 
     def test_completed_media_job_is_removed_after_last_meta_task_fails(self):
+        """最后一个元数据任务失败后应移除已完成媒体作业。"""
         jobview = JobManager()
         tasks = [make_task(episode) for episode in range(1, 4)]
         for task in tasks:
-            self.assertTrue(jobview.add_task(task))
+            assert (jobview.add_task(task))
 
         migrate_to_media_job(jobview, tasks[0])
         migrate_to_media_job(jobview, tasks[1])
 
         # 还有一个 meta 任务未处理时，media 组虽然已完成也不能提前清理。
-        self.assertEqual(2, len(jobview.list_jobs()))
+        assert (2) == (len(jobview.list_jobs()))
 
         # 最后一个仍在 meta 组中的任务未识别，__handle_transfer 会直接 remove_task 后 return。
         jobview.remove_task(tasks[2].fileitem)
         jobview.try_remove_job(tasks[2])
 
-        self.assertEqual([], jobview.list_jobs())
+        assert ([]) == (jobview.list_jobs())
 
     def test_completed_media_job_is_removed_after_all_meta_tasks_migrate(self):
+        """元数据任务全部迁移后应移除已完成媒体作业。"""
         jobview = JobManager()
         tasks = [make_task(episode) for episode in range(1, 3)]
         for task in tasks:
-            self.assertTrue(jobview.add_task(task))
+            assert (jobview.add_task(task))
 
         migrate_to_media_job(jobview, tasks[0])
-        self.assertEqual(2, len(jobview.list_jobs()))
+        assert (2) == (len(jobview.list_jobs()))
 
         migrate_to_media_job(jobview, tasks[1])
-        self.assertEqual([], jobview.list_jobs())
+        assert ([]) == (jobview.list_jobs())
 
     def test_exception_marks_unfinished_meta_task_failed_and_cleans_jobs(self):
+        """异常应标记未完成元数据任务失败并清理作业。"""
         jobview = JobManager()
         tasks = [make_task(episode) for episode in range(1, 3)]
         for task in tasks:
-            self.assertTrue(jobview.add_task(task))
+            assert (jobview.add_task(task))
 
         migrate_to_media_job(jobview, tasks[0])
         jobview.running_task(tasks[1])
@@ -726,12 +739,13 @@ class TransferJobManagerTest(unittest.TestCase):
         jobview.fail_unfinished_task(tasks[1])
         jobview.try_remove_job(tasks[1])
 
-        self.assertEqual([], jobview.list_jobs())
+        assert ([]) == (jobview.list_jobs())
 
     def test_exception_marks_unfinished_media_task_failed_and_cleans_jobs(self):
+        """异常应标记未完成媒体任务失败并清理作业。"""
         jobview = JobManager()
         task = make_task(1)
-        self.assertTrue(jobview.add_task(task))
+        assert (jobview.add_task(task))
 
         task.mediainfo = FakeMedia()
         jobview.migrate_task(task)
@@ -740,25 +754,26 @@ class TransferJobManagerTest(unittest.TestCase):
         jobview.fail_unfinished_task(task)
         jobview.try_remove_job(task)
 
-        self.assertEqual([], jobview.list_jobs())
+        assert ([]) == (jobview.list_jobs())
 
     def test_pre_recognized_jobs_with_same_meta_do_not_block_each_other(self):
+        """相同元数据的预识别作业应保持独立生命周期。"""
         jobview = JobManager()
         task1 = make_task(1)
         task2 = make_task(2)
         task1.mediainfo = FakeMedia(100)
         task2.mediainfo = FakeMedia(200)
 
-        self.assertTrue(jobview.add_task(task1))
-        self.assertTrue(jobview.add_task(task2))
+        assert (jobview.add_task(task1))
+        assert (jobview.add_task(task2))
 
         jobview.running_task(task1)
         jobview.finish_task(task1)
         jobview.try_remove_job(task1)
 
         jobs = jobview.list_jobs()
-        self.assertEqual(1, len(jobs))
-        self.assertEqual(task2.fileitem, jobs[0].tasks[0].fileitem)
+        assert (1) == (len(jobs))
+        assert (task2.fileitem) == (jobs[0].tasks[0].fileitem)
 
     def test_same_source_file_is_deduped_across_media_jobs(self):
         """
@@ -770,57 +785,62 @@ class TransferJobManagerTest(unittest.TestCase):
         task1.mediainfo = FakeMedia(100)
         task2.mediainfo = FakeMedia(200)
 
-        self.assertTrue(jobview.add_task(task1))
-        self.assertFalse(jobview.add_task(task2))
+        assert (jobview.add_task(task1))
+        assert not (jobview.add_task(task2))
 
         jobs = jobview.list_jobs()
-        self.assertEqual(1, len(jobs))
-        self.assertEqual(task1.fileitem, jobs[0].tasks[0].fileitem)
+        assert (1) == (len(jobs))
+        assert (task1.fileitem) == (jobs[0].tasks[0].fileitem)
 
     def test_pre_recognized_migrations_with_same_meta_do_not_link_jobs(self):
+        """相同元数据的预识别任务迁移不得错误关联作业。"""
         jobview = JobManager()
         task1 = make_task(1)
         task2 = make_task(2)
         task1.mediainfo = FakeMedia(100)
         task2.mediainfo = FakeMedia(200)
 
-        self.assertTrue(jobview.add_task(task1))
-        self.assertTrue(jobview.add_task(task2))
+        assert (jobview.add_task(task1))
+        assert (jobview.add_task(task2))
 
-        self.assertTrue(jobview.migrate_task(task1))
-        self.assertTrue(jobview.migrate_task(task2))
+        assert (jobview.migrate_task(task1))
+        assert (jobview.migrate_task(task2))
         jobview.running_task(task1)
         jobview.finish_task(task1)
         jobview.try_remove_job(task1)
 
         jobs = jobview.list_jobs()
-        self.assertEqual(1, len(jobs))
-        self.assertEqual(task2.fileitem, jobs[0].tasks[0].fileitem)
+        assert (1) == (len(jobs))
+        assert (task2.fileitem) == (jobs[0].tasks[0].fileitem)
 
     def test_exception_failure_does_not_mark_downloader_without_history(self):
+        """没有成功历史的异常任务不得回写下载器已整理标记。"""
         chain = make_transfer_chain()
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
+            """记录下载器已整理标记，避免调用真实下载器。"""
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
         task = make_task(1)
         task.downloader = "qbittorrent"
         task.download_hash = "abc123"
-        self.assertTrue(chain.jobview.add_task(task))
+        assert (chain.jobview.add_task(task))
         chain.jobview.running_task(task)
 
         chain._TransferChain__fail_transfer_task(task)
 
-        self.assertEqual([], completed)
-        self.assertEqual([], chain.jobview.list_jobs())
+        assert ([]) == (completed)
+        assert ([]) == (chain.jobview.list_jobs())
 
     def test_successful_history_skip_marks_downloader_hash_completed(self):
+        """成功历史跳过后应正确回写下载器状态。"""
         chain = make_transfer_chain()
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
+            """记录下载器已整理标记，避免调用真实下载器。"""
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
@@ -855,9 +875,9 @@ class TransferJobManagerTest(unittest.TestCase):
                 background=False,
             )
 
-        self.assertTrue(state)
-        self.assertEqual("Test.Show.S01E01.mkv 已整理过", errmsg)
-        self.assertEqual([("abc123", "qbittorrent")], completed)
+        assert (state)
+        assert ("Test.Show.S01E01.mkv 已整理过") == (errmsg)
+        assert ([("abc123", "qbittorrent")]) == (completed)
 
     def test_failed_history_is_retried_within_retry_budget(self):
         """
@@ -868,6 +888,7 @@ class TransferJobManagerTest(unittest.TestCase):
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
+            """记录下载器已整理标记，避免调用真实下载器。"""
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
@@ -922,10 +943,10 @@ class TransferJobManagerTest(unittest.TestCase):
                     background=False,
                 )
 
-            self.assertTrue(state)
-            self.assertEqual("", errmsg)
-            self.assertEqual([fileitem.path], planned)
-            self.assertEqual([], completed)
+            assert (state)
+            assert ("") == (errmsg)
+            assert ([fileitem.path]) == (planned)
+            assert ([]) == (completed)
         finally:
             _reset_failed_retries(fileitem.path, fileitem.storage)
 
@@ -939,6 +960,7 @@ class TransferJobManagerTest(unittest.TestCase):
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
+            """记录下载器已整理标记，避免调用真实下载器。"""
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
@@ -997,10 +1019,10 @@ class TransferJobManagerTest(unittest.TestCase):
                         background=False,
                     )
 
-            self.assertFalse(state)
-            self.assertEqual("Test.Show.S01E01.mkv 已整理过", errmsg)
-            self.assertEqual([], planned)
-            self.assertEqual([("abc123", "qbittorrent")], completed)
+            assert not (state)
+            assert ("Test.Show.S01E01.mkv 已整理过") == (errmsg)
+            assert ([]) == (planned)
+            assert ([("abc123", "qbittorrent")]) == (completed)
         finally:
             _reset_failed_retries(fileitem.path, fileitem.storage)
 
@@ -1025,7 +1047,7 @@ class TransferJobManagerTest(unittest.TestCase):
         storage = task.fileitem.storage
         _reset_failed_retries(src_path, storage)
         try:
-            self.assertEqual(0, failed_retry_count(src_path, storage))
+            assert (0) == (failed_retry_count(src_path, storage))
 
             failed_transferinfo = TransferInfo(
                 success=False,
@@ -1035,7 +1057,7 @@ class TransferJobManagerTest(unittest.TestCase):
                 need_notify=False,
             )
             bind_terminal_checkpoint(task, failed_transferinfo)
-            failed_history_oper = SimpleNamespace()
+            failed_history_oper = SimpleNamespace(get_by_src=lambda *_args: None)
             chain.transfer_history_repository = failed_history_oper
             with patch(
                 "app.chain.transfer.settlement.add_transfer_fail",
@@ -1047,10 +1069,10 @@ class TransferJobManagerTest(unittest.TestCase):
             ):
                 state, _ = chain._TransferChain__default_callback(task, failed_transferinfo)
 
-            self.assertFalse(state)
-            self.assertEqual(1, failed_retry_count(src_path, storage))
+            assert not (state)
+            assert (1) == (failed_retry_count(src_path, storage))
 
-            self.assertTrue(chain._TransferChain__put_to_jobview(task))
+            assert (chain._TransferChain__put_to_jobview(task))
             success_transferinfo = TransferInfo(
                 success=True,
                 fileitem=task.fileitem,
@@ -1082,8 +1104,8 @@ class TransferJobManagerTest(unittest.TestCase):
             ):
                 state, _ = chain._TransferChain__default_callback(task, success_transferinfo)
 
-            self.assertTrue(state)
-            self.assertEqual(0, failed_retry_count(src_path, storage))
+            assert (state)
+            assert (0) == (failed_retry_count(src_path, storage))
         finally:
             _reset_failed_retries(src_path, storage)
 
@@ -1094,6 +1116,7 @@ class TransferJobManagerTest(unittest.TestCase):
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
+            """记录下载器已整理标记，避免调用真实下载器。"""
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
@@ -1101,7 +1124,7 @@ class TransferJobManagerTest(unittest.TestCase):
         task = make_task(1)
         task.downloader = "qbittorrent"
         task.download_hash = "abc123"
-        self.assertTrue(chain.jobview.add_task(task))
+        assert (chain.jobview.add_task(task))
 
         transfer_history_oper = SimpleNamespace()
         chain.transfer_history_repository = transfer_history_oper
@@ -1119,12 +1142,12 @@ class TransferJobManagerTest(unittest.TestCase):
             media_chain_cls.return_value.recognize_by_meta.return_value = None
             state, errmsg = chain._TransferChain__handle_transfer(task)
 
-        self.assertFalse(state)
-        self.assertEqual("未识别到媒体信息", errmsg)
-        self.assertEqual([], completed)
-        self.assertIsNotNone(task.plan_checkpoint)
-        self.assertIsNotNone(task.execution_checkpoint)
-        self.assertEqual(1, len(chain.jobview.list_jobs()))
+        assert not (state)
+        assert ("未识别到媒体信息") == (errmsg)
+        assert ([]) == (completed)
+        assert (task.plan_checkpoint) is not None
+        assert (task.execution_checkpoint) is not None
+        assert (1) == (len(chain.jobview.list_jobs()))
         chain.durable_event_writer.transfer_result.assert_not_called()
 
     def test_unrecognized_task_does_not_read_history_before_writer(self):
@@ -1135,6 +1158,7 @@ class TransferJobManagerTest(unittest.TestCase):
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
+            """记录下载器已整理标记，避免调用真实下载器。"""
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
@@ -1142,7 +1166,7 @@ class TransferJobManagerTest(unittest.TestCase):
         task = make_task(1)
         task.downloader = "qbittorrent"
         task.download_hash = "abc123"
-        self.assertTrue(chain.jobview.add_task(task))
+        assert (chain.jobview.add_task(task))
         chain.transfer_history_repository = SimpleNamespace()
 
         with patch(
@@ -1158,11 +1182,11 @@ class TransferJobManagerTest(unittest.TestCase):
             media_chain_cls.return_value.recognize_by_meta.return_value = None
             state, errmsg = chain._TransferChain__handle_transfer(task)
 
-        self.assertFalse(state)
-        self.assertEqual("未识别到媒体信息", errmsg)
-        self.assertEqual([], completed)
-        self.assertEqual([], notifications)
-        self.assertEqual(1, len(chain.jobview.list_jobs()))
+        assert not (state)
+        assert ("未识别到媒体信息") == (errmsg)
+        assert ([]) == (completed)
+        assert ([]) == (notifications)
+        assert (1) == (len(chain.jobview.list_jobs()))
         chain.durable_event_writer.transfer_result.assert_not_called()
 
     def test_unrecognized_task_does_not_publish_redo_before_writer(self):
@@ -1175,7 +1199,7 @@ class TransferJobManagerTest(unittest.TestCase):
         task = make_task(1)
         task.downloader = "qbittorrent"
         task.download_hash = "abc123"
-        self.assertTrue(chain.jobview.add_task(task))
+        assert (chain.jobview.add_task(task))
         chain.transfer_history_repository = SimpleNamespace()
 
         with patch(
@@ -1191,10 +1215,11 @@ class TransferJobManagerTest(unittest.TestCase):
             media_chain_cls.return_value.recognize_by_meta.return_value = None
             chain._TransferChain__handle_transfer(task)
 
-        self.assertEqual([], notifications)
+        assert ([]) == (notifications)
         chain.durable_event_writer.transfer_result.assert_not_called()
 
     def test_do_transfer_syncs_same_stem_extra_files_by_default(self):
+        """默认整理应同步同名字幕等附属文件。"""
         chain = make_transfer_chain()
         planned = []
         main_fileitem = make_fileitem(
@@ -1212,6 +1237,7 @@ class TransferJobManagerTest(unittest.TestCase):
         chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
+            """捕获整理任务与参数并返回预设结果，隔离真实文件操作。"""
             planned.append(task.fileitem.path)
             return True, ""
 
@@ -1252,22 +1278,21 @@ class TransferJobManagerTest(unittest.TestCase):
                 background=False,
             )
 
-        self.assertTrue(state)
-        self.assertEqual("", errmsg)
-        self.assertEqual(
-            [
+        assert (state)
+        assert ("") == (errmsg)
+        assert ([
                 main_fileitem.path,
                 subtitle_fileitem.path,
-            ],
-            planned,
-        )
+            ]) == (planned)
 
     def test_manual_transfer_enables_sync_extra_files(self):
+        """手动整理默认启用附属文件同步。"""
         chain = make_transfer_chain()
         captured = {}
         fileitem = make_fileitem("/downloads/Test Show (2026)/Test.Show.S01E01.2026.mkv")
 
         def fake_do_transfer(**kwargs):
+            """记录手动整理选项并返回预设结果。"""
             captured.update(kwargs)
             return True, ""
 
@@ -1279,17 +1304,19 @@ class TransferJobManagerTest(unittest.TestCase):
             preview=True,
         )
 
-        self.assertTrue(state)
-        self.assertEqual("", errmsg)
-        self.assertTrue(captured["manual"])
-        self.assertTrue(captured["sync_extra_files"])
+        assert (state)
+        assert ("") == (errmsg)
+        assert (captured["manual"])
+        assert (captured["sync_extra_files"])
 
     def test_manual_transfer_respects_sync_extra_files_argument(self):
+        """手动整理应遵守显式附属文件同步选项。"""
         chain = make_transfer_chain()
         captured = {}
         fileitem = make_fileitem("/downloads/Test Show (2026)/Test.Show.S01E01.2026.mkv")
 
         def fake_do_transfer(**kwargs):
+            """记录手动整理选项并返回预设结果。"""
             captured.update(kwargs)
             return True, ""
 
@@ -1302,11 +1329,12 @@ class TransferJobManagerTest(unittest.TestCase):
             sync_extra_files=False,
         )
 
-        self.assertTrue(state)
-        self.assertEqual("", errmsg)
-        self.assertFalse(captured["sync_extra_files"])
+        assert (state)
+        assert ("") == (errmsg)
+        assert not (captured["sync_extra_files"])
 
     def test_do_transfer_skips_manual_single_file_when_epformat_misses(self):
+        """手动单文件不匹配集格式时应跳过实际整理。"""
         chain = make_transfer_chain()
         planned = []
         subtitle_fileitem = make_fileitem(
@@ -1318,6 +1346,7 @@ class TransferJobManagerTest(unittest.TestCase):
         chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
+            """捕获整理任务与参数并返回预设结果，隔离真实文件操作。"""
             planned.append((task.fileitem.path, task.meta.begin_episode))
             return True, ""
 
@@ -1354,18 +1383,16 @@ class TransferJobManagerTest(unittest.TestCase):
                 epformat=EpisodeFormat(format="Show - {ep}.mkv"),
             )
 
-        self.assertTrue(state)
-        self.assertEqual(
-            {
+        assert (state)
+        assert ({
                 "summary": {"total": 0, "success": 0, "failed": 0},
                 "items": [],
                 "message": "",
-            },
-            errmsg,
-        )
-        self.assertEqual([], planned)
+            }) == (errmsg)
+        assert ([]) == (planned)
 
     def test_do_transfer_syncs_extra_files_when_epformat_only_matches_main_video(self):
+        """集格式仅匹配主视频时仍需同步其附属文件。"""
         chain = make_transfer_chain()
         planned = []
         main_fileitem = make_fileitem(
@@ -1389,6 +1416,7 @@ class TransferJobManagerTest(unittest.TestCase):
         chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
+            """捕获整理任务与参数并返回预设结果，隔离真实文件操作。"""
             planned.append((task.fileitem.path, task.meta.begin_episode))
             return True, ""
 
@@ -1430,16 +1458,14 @@ class TransferJobManagerTest(unittest.TestCase):
                 epformat=EpisodeFormat(format="Show - {ep}.mkv"),
             )
 
-        self.assertTrue(state)
-        self.assertEqual("", errmsg)
-        self.assertEqual(
-            [
+        assert (state)
+        assert ("") == (errmsg)
+        assert ([
                 (main_fileitem.path, 1),
-            ],
-            planned,
-        )
+            ]) == (planned)
 
     def test_do_transfer_syncs_matching_extra_files_for_each_main_video(self):
+        """批量整理时附属文件应逐个匹配各自主视频。"""
         chain = make_transfer_chain()
         planned = []
         main_ep1_fileitem = make_fileitem(
@@ -1480,6 +1506,7 @@ class TransferJobManagerTest(unittest.TestCase):
         chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
+            """捕获整理任务与参数并返回预设结果，隔离真实文件操作。"""
             planned.append((task.fileitem.path, task.meta.begin_episode))
             return True, ""
 
@@ -1495,6 +1522,7 @@ class TransferJobManagerTest(unittest.TestCase):
         list_files_calls = []
 
         def fake_list_files(fileitem, recursion=False):
+            """返回预设目录内容，隔离真实存储扫描。"""
             list_files_calls.append((fileitem.path, recursion))
             return [
                 main_ep1_fileitem,
@@ -1526,22 +1554,20 @@ class TransferJobManagerTest(unittest.TestCase):
                 sync_extra_files=True,
             )
 
-        self.assertTrue(state)
-        self.assertEqual("", errmsg)
-        self.assertEqual(
-            [
+        assert (state)
+        assert ("") == (errmsg)
+        assert ([
                 (main_ep1_fileitem.path, 1),
                 (ep1_subtitle_fileitem.path, 1),
                 (ep1_audio_fileitem.path, 1),
                 (main_ep2_fileitem.path, 2),
                 (ep2_subtitle_fileitem.path, 2),
                 (other_title_fileitem.path, 1),
-            ],
-            planned,
-        )
-        self.assertEqual([], list_files_calls)
+            ]) == (planned)
+        assert ([]) == (list_files_calls)
 
     def test_scrape_event_is_aggregated_by_transfer_batch_across_seasons(self):
+        """同批次跨季整理应聚合为一次刮削事件。"""
         chain = make_transfer_chain()
         chain.eventmanager = MagicMock()
         chain.transfer_completed = lambda *args, **kwargs: None
@@ -1560,7 +1586,7 @@ class TransferJobManagerTest(unittest.TestCase):
             task.transfer_batch_id = batch_id
             task.background = False
             task.manual = True
-            self.assertTrue(chain._TransferChain__put_to_jobview(task))
+            assert (chain._TransferChain__put_to_jobview(task))
             chain._register_scrape_batch_task(task)
 
         chain._close_scrape_batch(batch_id)
@@ -1622,19 +1648,17 @@ class TransferJobManagerTest(unittest.TestCase):
             for call in chain.eventmanager.send_event.call_args_list
             if call.args[0] == EventType.MetadataScrape
         ]
-        self.assertEqual(1, len(metadata_calls))
+        assert (1) == (len(metadata_calls))
         event_data = metadata_calls[0].args[1]
-        self.assertEqual(target_diritem, event_data["fileitem"])
-        self.assertEqual(
-            [
+        assert (target_diritem) == (event_data["fileitem"])
+        assert ([
                 "/library/Test Show (2026)/Season 1/Test.Show.S01E01.mkv",
                 "/library/Test Show (2026)/Season 2/Test.Show.S02E01.mkv",
-            ],
-            event_data["file_list"],
-        )
-        self.assertEqual({}, chain._scrape_batches)
+            ]) == (event_data["file_list"])
+        assert ({}) == (chain._scrape_batches)
 
     def test_scrape_event_keeps_immediate_behavior_without_transfer_batch(self):
+        """无批次任务保持立即发送刮削事件的既有行为。"""
         chain = make_transfer_chain()
         chain.eventmanager = MagicMock()
         chain.transfer_completed = lambda *args, **kwargs: None
@@ -1643,7 +1667,7 @@ class TransferJobManagerTest(unittest.TestCase):
         task.mediainfo = FakeMedia()
         task.background = False
         task.manual = True
-        self.assertTrue(chain._TransferChain__put_to_jobview(task))
+        assert (chain._TransferChain__put_to_jobview(task))
 
         target_diritem = FileItem(
             storage="local",
@@ -1686,10 +1710,7 @@ class TransferJobManagerTest(unittest.TestCase):
             for call in chain.eventmanager.send_event.call_args_list
             if call.args[0] == EventType.MetadataScrape
         ]
-        self.assertEqual(1, len(metadata_calls))
+        assert (1) == (len(metadata_calls))
         event_data = metadata_calls[0].args[1]
-        self.assertEqual(target_diritem, event_data["fileitem"])
-        self.assertEqual(
-            ["/library/Test Show (2026)/Season 1/Test.Show.S01E01.mkv"],
-            event_data["file_list"],
-        )
+        assert (target_diritem) == (event_data["fileitem"])
+        assert (["/library/Test Show (2026)/Season 1/Test.Show.S01E01.mkv"]) == (event_data["file_list"])

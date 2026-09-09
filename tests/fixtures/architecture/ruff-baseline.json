@@ -444,9 +444,6 @@
   "app/monitor/__init__.py": {
     "I001": 1
   },
-  "app/monitor/monitor.py": {
-    "I001": 1
-  },
   "app/monitor/poller.py": {
     "I001": 1
   },

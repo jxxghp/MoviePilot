@@ -345,6 +345,7 @@ def _start_ai_redo_task(
     )
 
     async def runner():
+        """执行已登记的后台整理重试并更新进度，保证异常也能收口。"""
         try:
             await progress.start()
             await progress.update(
@@ -403,6 +404,7 @@ def _start_batch_ai_redo_task(
     )
 
     async def runner():
+        """执行已登记的后台整理重试并更新进度，保证异常也能收口。"""
         try:
             await progress.start()
             await progress.update(
@@ -580,7 +582,8 @@ def delete_transfer_history(
     )
 
 
-@router.post(
+# FastAPI 装饰器在当前 mypy 配置下无类型；数据仍由显式响应模型和命令契约约束。
+@router.post(  # type: ignore[misc]
     "/transfer/{history_id}/cleanup-resolved",
     summary="确认下载器清理已完成",
     response_model=_SchemaResponse[None],

@@ -39,6 +39,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from app.application.history import DownloadHistorySnapshot
 from app.application.transfer import checkpoint as checkpoint_codec
 from app.application.transfer.execution import TransferExecutionCheckpoint
+from app.application.transfer.feedback import TransferFailureNotification
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metabase import MetaBase
@@ -1017,29 +1018,6 @@ class TransferQueueService:
         """先处理失活任务，再返回当前整理作业视图。"""
         self._expire_tasks()
         return self._list_tasks()
-
-
-@dataclass(frozen=True, slots=True)
-class TransferFailureNotification:
-    """整理失败聚合器保存的单条通知快照。"""
-
-    media_title: str
-    season_episode: str
-    reason: str
-    history_id: Optional[int]
-    image: Optional[str]
-    username: Optional[str]
-    manual_identity: bool = False
-    task_id: Optional[str] = None
-    source_path: Optional[str] = None
-    target_path: Optional[str] = None
-    failure_stage: Optional[str] = None
-    recovery_action: Optional[str] = None
-    retry_count: Optional[int] = None
-    max_retries: Optional[int] = None
-    auto_paused: bool = False
-    cleanup_status: Optional[str] = None
-    cleanup_error: Optional[str] = None
 
 
 def build_transfer_failure_group_key(task: TransferTask) -> str:

@@ -7,19 +7,23 @@ from app.application.configuration import (
     get_configured_system_config,
 )
 from app.application.formatting import EpisodeFormatRuleHelper
+from app.application.history import max_failed_retries
+from app.application.transfer.feedback import TransferFailureNotification, classify_transfer_failure
+from app.application.transfer.workflow import TransferTask
 from app.chain._contracts import TransferMixinHost
 from app.chain.storage import StorageChain
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
+from app.schemas.file import FileItem
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import EpisodeFormatRule as _SchemaEpisodeFormatRule
+from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
     MediaType,
     SystemConfigKey,
 )
-from app.schemas.workflow import FileItem
 
 
 class EpisodeFormatMixin(_TransferOwnerBase):
@@ -226,3 +230,39 @@ class EpisodeFormatMixin(_TransferOwnerBase):
                 continue
             sample_files.append(item)
         return sample_files
+
+
+def build_failure_notification(
+    task: TransferTask, transferinfo: TransferInfo, history_id: Optional[int],
+    *, manual_identity: bool = False, retry_count: Optional[int] = None,
+    auto_paused: bool = False,
+) -> TransferFailureNotification:
+    """从整理工作项构造失败通知快照，不触发聚合或消息发送。"""
+    from app.runtime.errors import public_error_message
+    feedback = classify_transfer_failure(transferinfo.message)
+    return TransferFailureNotification(
+        media_title=(
+            task.mediainfo.title_year
+            if task.mediainfo else task.fileitem.name if task.fileitem else None
+        ) or "未知媒体",
+        season_episode=getattr(task.meta, "season_episode", "") or "",
+        reason=public_error_message(transferinfo.message, context="transfer") or "整理失败",
+        history_id=history_id,
+        image=(
+            task.mediainfo.get_message_image()
+            if task.mediainfo and hasattr(task.mediainfo, "get_message_image")
+            else None
+        ),
+        username=task.username,
+        manual_identity=manual_identity,
+        task_id=task.admission_task_id,
+        source_path=task.fileitem.path if task.fileitem else None,
+        target_path=transferinfo.target_item.path if transferinfo.target_item else None,
+        failure_stage=transferinfo.failure_stage or feedback.stage.value,
+        recovery_action=transferinfo.recovery_action or feedback.action,
+        retry_count=retry_count,
+        max_retries=max_failed_retries(),
+        auto_paused=auto_paused,
+        cleanup_status=transferinfo.cleanup_status,
+        cleanup_error=transferinfo.cleanup_error,
+    )
