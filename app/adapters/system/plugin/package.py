@@ -1232,10 +1232,10 @@ class PluginPackageManager:
                     elif res.status_code != 200:
                         return False, f"下载文件 {item.get('path')} 失败：{res.status_code}"
 
-                    # 创建插件文件夹并写入文件
+                    # GitHub 文件列表同时承载 Python 源码和 wheel 等二进制制品，统一按原始字节写入
                     file_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(res.text)
+                    with open(file_path, "wb") as f:
+                        f.write(res.content)
                     logger.debug(f"文件 {item.get('path')} 下载成功，保存路径：{file_path}")
                 else:
                     # 如果是子目录，则将子目录内容加入栈中继续处理
@@ -1674,11 +1674,11 @@ class PluginPackageManager:
                     elif res.status_code != 200:
                         return False, f"下载文件 {item.get('path')} 失败：{res.status_code}"
 
-                    # 创建插件文件夹并写入文件
+                    # GitHub 文件列表同时承载 Python 源码和 wheel 等二进制制品，统一按原始字节写入
                     file_path = AsyncPath(resolved_path)
                     await file_path.parent.mkdir(parents=True, exist_ok=True)
-                    async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
-                        await f.write(res.text)
+                    async with aiofiles.open(file_path, "wb") as f:
+                        await f.write(res.content)
                     logger.debug(f"文件 {item.get('path')} 下载成功，保存路径：{file_path}")
                 else:
                     # 如果是子目录，则将子目录内容加入栈中继续处理
