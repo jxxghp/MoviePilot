@@ -141,11 +141,18 @@ class MusicLibraryStatusRequest(BaseModel):  # type: ignore[misc]
     @classmethod
     def _validate_album_identities(cls, items: list[MusicInfo]) -> list[MusicInfo]:
         """只接受带稳定来源身份的专辑，避免按模糊标题误报已入库。"""
+        supported_sources = {
+            MediaSource.MusicBrainz,
+            MediaSource.TheAudioDB,
+            MediaSource.DoubanMusic,
+        }
         if any(
-            item.music_type != "album" or not item.media_source or not item.media_id
+            item.music_type != "album"
+            or item.media_source not in supported_sources
+            or not item.media_id
             for item in items
         ):
-            raise ValueError("仅支持带媒体来源和媒体 ID 的专辑")
+            raise ValueError("仅支持带稳定音乐来源和媒体 ID 的专辑")
         return items
 
 

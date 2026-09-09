@@ -131,8 +131,6 @@ def test_media_search_forwards_explicit_music_source():
 
 def test_recognize_music_returns_detail():
     """音乐识别接口应按来源和 ID 经统一识别入口返回详情。"""
-    from app.chain.media import MediaChain
-
     chain = Mock()
     chain.async_recognize_media = AsyncMock(
         return_value=MusicInfo(
@@ -165,8 +163,6 @@ def test_recognize_music_returns_detail():
 
 def test_recognize_music_returns_404_for_unknown_item():
     """音乐详情不存在时接口应返回 404。"""
-    from app.chain.media import MediaChain
-
     chain = Mock()
     chain.async_recognize_media = AsyncMock(return_value=None)
 
@@ -533,6 +529,21 @@ def test_music_library_status_rejects_recordings():
                     "media_id": "recording-1",
                     "music_type": "recording",
                     "title": "Track",
+                }
+            ]
+        )
+
+
+def test_music_library_status_rejects_non_music_sources():
+    """批量状态接口不得接受影视等非音乐媒体身份。"""
+    with pytest.raises(ValueError, match="稳定音乐来源"):
+        MusicLibraryStatusRequest(
+            items=[
+                {
+                    "media_source": "tmdb",
+                    "media_id": "12345",
+                    "music_type": "album",
+                    "title": "Not a Music Album",
                 }
             ]
         )

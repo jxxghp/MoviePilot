@@ -354,7 +354,7 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 | GET | `/api/v1/media/search` | 当 `type=music` 或指定音乐 `media_source` 时按歌曲、专辑或歌手关键词搜索音乐元数据，参数：`title`、`type`、`count`、可重复的 `media_source` 枚举，以及可选的 `music_type` 实体过滤 |
 | POST | `/api/v1/music/recognize` | 按 `media_source` + `media_id` 识别音乐详情，请求体：`MusicRecognizeRequest` |
 | GET | `/api/v1/music/explore` | 按来源浏览音乐；`media_source=musicbrainz` 支持 `mode=chart|fresh` 榜单与新发行，`media_source=doubanmusic` 固定按官方标签分类浏览，使用 `tags` 和 `douban_sort=U|S|R|O` 筛选。其它参数：`entity=recording|album`、`range_name`、`sort_by`、`sort`、`days`、`past`、`future`、`min_listen_count`、`with_cover`、`page`、`count` |
-| POST | `/api/v1/music/library/status` | 按稳定的音乐来源和专辑 ID 批量查询媒体库是否已存在；请求体为 `items` 专辑列表，返回对应的 `exists` 状态，供艺人作品资源矩阵默认排除已入库项目 |
+| POST | `/api/v1/music/library/status` | 按 MusicBrainz、TheAudioDB 或豆瓣音乐的稳定专辑 ID 批量查询媒体库是否已存在；请求体为 `items` 专辑列表，返回对应的 `exists` 状态，供艺人作品资源矩阵默认排除已入库项目 |
 | GET | `/api/v1/music/album/{album_id}` | 按来源专辑 ID 查询专辑详情、完整曲目和发行版本，参数：`media_source` |
 | GET | `/api/v1/music/album/{album_id}/related` | 按来源查询关联专辑，参数：`media_source`、`count` |
 | GET | `/api/v1/music/artist/{artist_id}` | 查询艺术家详情；艺术家为只读浏览实体，参数：`media_source` |
