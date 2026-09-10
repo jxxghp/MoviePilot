@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated, Any, List, Optional, Union
+from typing import Annotated, Any, List, Optional, Union, cast
 from uuid import UUID
 
 from fastapi import Depends, Query
@@ -101,21 +101,23 @@ MediaSourceQuery = Annotated[
 ]
 
 
-def _get_search_result_source(obj: Union[_SchemaMediaInfo, _SchemaMediaPerson, dict]) -> Any:
+def _get_search_result_source(
+    obj: Union[_SchemaMediaInfo, _SchemaMediaPerson, dict[str, Any]],
+) -> Any:
     """读取影视、人物或音乐搜索结果中的媒体来源标识。"""
     if isinstance(obj, dict):
         return obj.get("media_source") or obj.get("source")
     return getattr(obj, "media_source", None) or getattr(obj, "source", None)
 
 
-def _serialize_search_result(obj: Any) -> dict:
+def _serialize_search_result(obj: Any) -> dict[str, Any]:
     """将域对象或 Pydantic 人物对象转换为统一搜索响应字典。"""
     if isinstance(obj, dict):
         return obj
     if hasattr(obj, "to_dict"):
-        return obj.to_dict()
+        return cast(dict[str, Any], obj.to_dict())
     if hasattr(obj, "model_dump"):
-        return obj.model_dump()
+        return cast(dict[str, Any], obj.model_dump())
     return {}
 
 

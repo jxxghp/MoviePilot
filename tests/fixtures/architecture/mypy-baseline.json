@@ -454,8 +454,7 @@
     "attr-defined": 3,
     "misc": 13,
     "no-untyped-call": 5,
-    "no-untyped-def": 2,
-    "type-arg": 1
+    "no-untyped-def": 1
   },
   "app/api/endpoints/mediaserver.py": {
     "arg-type": 4,

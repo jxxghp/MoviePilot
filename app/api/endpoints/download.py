@@ -255,7 +255,7 @@ def download(
     return _SchemaResponse(success=True, data={"download_id": did})
 
 
-@router.post(
+@router.post(  # type: ignore[misc]
     "/artist-collection",
     summary="添加艺术家合集下载",
     response_model=_SchemaResponse[_SchemaDownloadAddedData],
@@ -293,13 +293,14 @@ def download_artist_collection(
         library_category=MUSIC_ARTIST_COLLECTION_CATEGORY,
     )
     metainfo = MetaInfo(
-        title=torrent_in.title,
+        title=torrent_in.title or "",
         subtitle=torrent_in.description,
         mtype=MediaType.MUSIC,
     )
     torrentinfo = TorrentInfo()
     torrentinfo.from_dict(torrent_in.model_dump())
-    torrentinfo.site_downloader = downloader
+    if downloader is not None:
+        torrentinfo.site_downloader = downloader
     context = Context(meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo)
     did = DownloadChain().download_single(
         context=context,
