@@ -15,7 +15,7 @@ from app.domain.context import (
     MusicInfo,
     MusicRelease,
 )
-from app.domain.media import is_media_source_selected
+from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import (
@@ -412,6 +412,30 @@ class MusicBrainzModule(_ModuleBase):
             limit=normalized_limit,
         )
 
+    def search_persons(
+            self,
+            name: str,
+            media_source: Optional[MediaSourceSelection] = None,
+    ) -> Optional[list[MusicArtistInfo]]:
+        """按名称搜索 MusicBrainz 艺术家，供演员/艺术家统一搜索使用。"""
+        if not is_media_source_enabled(media_source, self._source):
+            return None
+        if not name:
+            return []
+        return self._search_artist_infos(MetaMusic(title=name), limit=20)
+
+    async def async_search_persons(
+            self,
+            name: str,
+            media_source: Optional[MediaSourceSelection] = None,
+    ) -> Optional[list[MusicArtistInfo]]:
+        """异步按名称搜索 MusicBrainz 艺术家，保持人物搜索链的异步契约。"""
+        if not is_media_source_enabled(media_source, self._source):
+            return None
+        if not name:
+            return []
+        return await self._async_search_artist_infos(MetaMusic(title=name), limit=20)
+
     @staticmethod
     def _rank_search_candidates(meta: MetaMusic, candidates: list[MusicInfo]) -> list[MusicInfo]:
         """按完整作品名及输入署名排序浏览候选，不把逐字 OR 命中视为精确身份。"""
@@ -703,8 +727,8 @@ class MusicBrainzModule(_ModuleBase):
                 queries.append(query)
         return queries
 
-    def _search_artists(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
-        """按用户输入中的艺术家部分搜索 Artist 浏览候选。"""
+    def _search_artist_infos(self, meta: MetaMusic, limit: int) -> list[MusicArtistInfo]:
+        """按用户输入中的艺术家部分搜索标准 Artist 信息。"""
         artist_name = meta.artists[0] if meta.artists else meta.title
         phrase = self._query_phrase(artist_name)
         if not phrase:
@@ -714,10 +738,30 @@ class MusicBrainzModule(_ModuleBase):
             params={"query": f"artist:{phrase}", "limit": max(1, min(limit, 100)), "fmt": "json"},
         )
         return [
-            artist.to_music_info()
+            artist
             for item in (payload or {}).get("artists") or []
             if (artist := self._artist_to_info(item, include_raw=True))
         ]
+
+    async def _async_search_artist_infos(self, meta: MetaMusic, limit: int) -> list[MusicArtistInfo]:
+        """异步按用户输入中的艺术家部分搜索标准 Artist 信息。"""
+        artist_name = meta.artists[0] if meta.artists else meta.title
+        phrase = self._query_phrase(artist_name)
+        if not phrase:
+            return []
+        payload = await self._async_request_json(
+            "/artist",
+            params={"query": f"artist:{phrase}", "limit": max(1, min(limit, 100)), "fmt": "json"},
+        )
+        return [
+            artist
+            for item in (payload or {}).get("artists") or []
+            if (artist := self._artist_to_info(item, include_raw=True))
+        ]
+
+    def _search_artists(self, meta: MetaMusic, limit: int) -> list[MusicInfo]:
+        """按用户输入中的艺术家部分搜索音乐卡片候选。"""
+        return [artist.to_music_info() for artist in self._search_artist_infos(meta, limit)]
 
     @staticmethod
     def _interleave_results(*groups: list[MusicInfo], limit: int) -> list[MusicInfo]:

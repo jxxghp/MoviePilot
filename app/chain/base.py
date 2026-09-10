@@ -14,7 +14,7 @@ from app.application.configuration import (
 )
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
 from app.chain._recognition import RecognitionMixin
-from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo, TorrentInfo
+from app.domain.context import Context, MediaInfo, MusicArtistInfo, MusicInfo, SubtitleInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.context import MediaPerson
@@ -534,23 +534,23 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
 
     def search_persons(
         self, name: str, media_source: Optional[MediaSourceSelection] = None
-    ) -> Optional[List[MediaPerson]]:
+    ) -> Optional[List[Union[MediaPerson, MusicArtistInfo]]]:
         """
-        搜索人物信息
-        :param name:  人物名称
+        搜索影视人物和音乐艺术家
+        :param name:  人物或艺术家名称
         :param media_source: 请求级搜索数据源
-        :return: 人物信息列表
+        :return: 影视人物或音乐艺术家信息列表
         """
         return self.run_module("search_persons", name=name, media_source=media_source)
 
     async def async_search_persons(
         self, name: str, media_source: Optional[MediaSourceSelection] = None
-    ) -> Optional[List[MediaPerson]]:
+    ) -> Optional[List[Union[MediaPerson, MusicArtistInfo]]]:
         """
-        搜索人物信息（异步版本）
-        :param name:  人物名称
+        搜索影视人物和音乐艺术家（异步版本）
+        :param name:  人物或艺术家名称
         :param media_source: 请求级搜索数据源
-        :return: 人物信息列表
+        :return: 影视人物或音乐艺术家信息列表
         """
         return await self.async_run_module("async_search_persons", name=name, media_source=media_source)
 

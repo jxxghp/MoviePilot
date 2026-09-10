@@ -9,6 +9,7 @@ from app.api.endpoints import media as media_endpoint
 from app.api.endpoints import mediaserver as mediaserver_endpoint
 from app.api.response import ResponseAPIRouter
 from app.domain.context import MediaInfo as CoreMediaInfo
+from app.domain.context import MusicArtistInfo as CoreMusicArtistInfo
 from app.domain.context import MusicInfo as CoreMusicInfo
 from app.schemas.types import MediaSource, MediaType
 
@@ -59,6 +60,68 @@ async def test_media_search_response_preserves_core_collection_fields() -> None:
     assert "douban_info" in result
     assert "bangumi_info" in result
     assert "anilist_info" in result
+
+
+@pytest.mark.asyncio
+async def test_media_search_response_preserves_music_artist_result_shape() -> None:
+    """统一搜索响应应把 MusicBrainz 艺术家解析为艺术家模型而非普通音乐条目。"""
+    artist = CoreMusicArtistInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="artist-1",
+        name="示例艺术家",
+        artist_type="Person",
+    )
+    router = ResponseAPIRouter()
+
+    @router.get("/media/search", response_model=schemas.MediaSearchResults)
+    def search_media() -> list[dict]:
+        """返回代表性的 MusicBrainz 艺术家搜索结果。"""
+        return [artist.to_dict()]
+
+    app = FastAPI()
+    app.include_router(router)
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/media/search")
+
+    assert response.status_code == 200
+    result = response.json()["data"][0]
+    assert result["music_type"] == "artist"
+    assert result["media_source"] == MediaSource.MusicBrainz.value
+    assert result["artist_type"] == "Person"
+
+
+@pytest.mark.asyncio
+async def test_media_search_response_keeps_legacy_music_artist_shape() -> None:
+    """显式音乐艺术家选择的旧 MusicInfo 结果仍应保持音乐条目兼容字段。"""
+    music = CoreMusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="artist-1",
+        music_type="artist",
+        title="兼容艺术家",
+    )
+    router = ResponseAPIRouter()
+
+    @router.get("/media/search", response_model=schemas.MediaSearchResults)
+    def search_media() -> list[dict]:
+        """返回显式音乐实体选择的旧艺术家结果。"""
+        return [music.to_dict()]
+
+    app = FastAPI()
+    app.include_router(router)
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/media/search")
+
+    assert response.status_code == 200
+    result = response.json()["data"][0]
+    assert result["music_type"] == "artist"
+    assert result["title"] == "兼容艺术家"
+    assert "name" not in result
 
 
 @pytest.mark.asyncio

@@ -520,7 +520,7 @@ _METHOD_CONTRACTS = {
     "search_persons": ModuleMethodContract(
         family="media-discovery",
         input_contract="PersonSearchRequest",
-        result_contract="list[MediaPerson]",
+        result_contract="list[MediaPerson | MusicArtistInfo]",
         result_shape=ModuleResultShape.LIST,
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
         required_parameters=("name", "media_source"),

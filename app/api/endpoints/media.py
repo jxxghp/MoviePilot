@@ -34,7 +34,7 @@ from app.schemas.event import MediaSourceInfo as _SchemaMediaSourceInfo
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType, MusicEntityType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType, MusicEntityType
 from app.schemas.workflow import Context as _SchemaContext
 from app.schemas.workflow import FileItem as _SchemaFileItem
 from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
@@ -276,7 +276,7 @@ async def recognize_file2(
 
 @router.get(
     "/search",
-    summary="搜索媒体/人物信息",
+    summary="搜索媒体/人物/艺术家信息",
     response_model=_SchemaMediaSearchResults,
 )
 async def search(
@@ -289,14 +289,14 @@ async def search(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    模糊搜索媒体、合集、人物或音乐信息列表。
+    模糊搜索媒体、合集、影视人物、音乐艺术家或音乐信息列表。
 
     :param title: 搜索关键词
     :param type: 搜索类型，支持 media、music、collection、person
     :param page: 页码
     :param count: 每页数量
     :param media_source: 请求级搜索数据源枚举；可重复传入，逗号格式仅用于兼容旧客户端
-    :param music_type: 可选音乐实体类型，用于限制 MusicBrainz 只搜索单曲、发行组或艺术家
+    :param music_type: 可选音乐实体类型；未指定时音乐搜索仅返回单曲和专辑，显式指定时用于实体选择
     :param _: Token校验
     :return: 搜索结果列表
     """
@@ -306,8 +306,18 @@ async def search(
         获取对象属性
         """
         if isinstance(obj, dict):
-            return obj.get("media_source")
-        return obj.media_source
+            return obj.get("media_source") or obj.get("source")
+        return getattr(obj, "media_source", None) or getattr(obj, "source", None)
+
+    def __serialize_search_result(obj: Any) -> dict:
+        """将域对象或 Pydantic 人物对象转换为统一搜索响应字典。"""
+        if isinstance(obj, dict):
+            return obj
+        if hasattr(obj, "to_dict"):
+            return obj.to_dict()
+        if hasattr(obj, "model_dump"):
+            return obj.model_dump()
+        return {}
 
     # 直接函数调用也可能绕过 FastAPI/Pydantic，仅在该测试与内部兼容边界补一次规范化。
     selected_sources = (
@@ -320,26 +330,27 @@ async def search(
 
     media_chain = MediaChain()
     is_music = type == "music" or any(is_music_media_source(source) for source in selected_sources)
-    if is_music and music_type:
+    if type == "person":
+        persons = await media_chain.async_search_persons(name=title, media_source=source_selection)
+        result = [__serialize_search_result(person) for person in persons or []]
+    elif is_music:
+        music_types = (music_type,) if music_type else (MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM)
         filtered_music_results = await media_chain.async_search_music(
             query=title,
             limit=count,
             media_source=source_selection,
-            music_types=(music_type,),
+            music_types=music_types,
         )
         result = [media.to_dict() for media in filtered_music_results] if filtered_music_results else []
-    elif type == "media" or is_music:
-        _media_meta, medias = await media_chain.async_search(
-            title=title, media_source=source_selection,
-            **({"mtype": MediaType.MUSIC, "limit": count} if is_music else {}),
-        )
+    elif type == "media":
+        _media_meta, medias = await media_chain.async_search(title=title, media_source=source_selection)
         result = [media.to_dict() for media in medias] if medias else []
     elif type == "collection":
         collections = await media_chain.async_search_collections(name=title, media_source=source_selection)
         result = [collection.to_dict() for collection in collections] if collections else []
     else:  # person
         persons = await media_chain.async_search_persons(name=title, media_source=source_selection)
-        result = [person.model_dump() for person in persons] if persons else []
+        result = [__serialize_search_result(person) for person in persons or []]
 
     if not result:
         return []

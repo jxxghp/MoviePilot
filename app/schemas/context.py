@@ -5,6 +5,7 @@ from pydantic import BaseModel, Discriminator, Field, RootModel, Tag, model_vali
 from app.schemas.category import ClassificationFactValue, ClassificationResult
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
+from app.schemas.music import MusicArtistInfo as _MusicArtistInfo
 from app.schemas.music import MusicInfo, MusicMeta
 from app.schemas.types import MediaSource
 
@@ -553,6 +554,22 @@ def _media_result_kind(value: Any) -> str:
     return "media"
 
 
+def _media_search_result_kind(value: Any) -> str:
+    """按搜索结果的稳定字段区分音乐艺术家、音乐、影视人物与媒体。"""
+    if isinstance(value, BaseModel):
+        value = value.model_dump()
+    if isinstance(value, dict):
+        # 旧音乐搜索仍可能以 MusicInfo(title) 表示艺术家；canonical MusicArtistInfo
+        # 带有 name 字段，只有这种结果进入人物/艺术家响应分支。
+        if value.get("music_type") == "artist" and "name" in value:
+            return "music_artist"
+        if value.get("type") == "音乐" or "music_type" in value:
+            return "music"
+        if "source" in value and "media_source" not in value:
+            return "person"
+    return "media"
+
+
 MediaDetailResult = Annotated[
     Union[
         Annotated[MusicInfo, Tag("music")],
@@ -564,13 +581,14 @@ MediaDetailResult = Annotated[
 
 MediaSearchResult = Annotated[
     Union[
+        Annotated[_MusicArtistInfo, Tag("music_artist")],
         Annotated[MusicInfo, Tag("music")],
         Annotated[MediaPerson, Tag("person")],
         Annotated[MediaInfo, Tag("media")],
     ],
-    Discriminator(_media_result_kind),
+    Discriminator(_media_search_result_kind),
 ]
 
 
 class MediaSearchResults(RootModel[List[MediaSearchResult]]):
-    """媒体、音乐、合集与人物的统一搜索结果列表。"""
+    """媒体、音乐、合集、影视人物与音乐艺术家的统一搜索结果列表。"""

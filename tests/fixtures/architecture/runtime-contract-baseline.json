@@ -4671,7 +4671,7 @@
         "media_source",
         "name"
       ],
-      "result_contract": "list[MediaPerson]",
+      "result_contract": "list[MediaPerson | MusicArtistInfo]",
       "result_shape": "list",
       "supports_async": true,
       "supports_sync": true,
@@ -7123,7 +7123,7 @@
         "media_source",
         "name"
       ],
-      "result_contract": "list[MediaPerson]",
+      "result_contract": "list[MediaPerson | MusicArtistInfo]",
       "result_shape": "list",
       "supports_async": true,
       "supports_sync": true,

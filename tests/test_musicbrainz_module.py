@@ -3,10 +3,11 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.domain.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicInfo
+from app.domain.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicArtistInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
 from app.runtime.config import settings
+from app.schemas.types import MediaSource
 
 
 def test_recording_search_uses_phrase_before_character_fallback(monkeypatch):
@@ -286,6 +287,36 @@ def test_search_music_normalizes_candidates(monkeypatch):
 
     assert len(results) == 1
     assert results[0].title == "晴天"
+
+
+def test_search_persons_returns_musicbrainz_artist_infos_in_async_and_sync_modes(monkeypatch):
+    """人物搜索新增 MusicBrainz 来源时应保留标准艺术家字段，并支持两种 IO 模式。"""
+    module = MusicBrainzModule()
+    payload = {
+        "artists": [
+            {
+                "id": "artist-1",
+                "name": "周杰伦",
+                "sort-name": "Zhou, Jay",
+                "type": "Person",
+                "life-span": {"begin": "1979-01-18"},
+            }
+        ]
+    }
+    monkeypatch.setattr(module, "_request_json", lambda *_args, **_kwargs: payload)
+    monkeypatch.setattr(module, "_async_request_json", AsyncMock(return_value=payload))
+
+    sync_results = module.search_persons("周杰伦", media_source=MediaSource.MusicBrainz)
+    async_results = asyncio.run(
+        module.async_search_persons("周杰伦", media_source=MediaSource.MusicBrainz)
+    )
+    skipped = module.search_persons("周杰伦", media_source=MediaSource.TMDB)
+
+    assert isinstance(sync_results[0], MusicArtistInfo)
+    assert sync_results[0].music_type == "artist"
+    assert sync_results[0].media_id == "artist-1"
+    assert async_results[0].name == "周杰伦"
+    assert skipped is None
 
 
 def test_search_music_interleaves_recordings_albums_and_artists(monkeypatch):

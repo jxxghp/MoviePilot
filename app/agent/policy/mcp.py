@@ -31,7 +31,7 @@ OPERATION_DESCRIPTIONS = {
     "media.detail": "Read canonical media details from one selected metadata source.",
     "media.episode_schedule": "Read TMDB episode release information for one season.",
     "media.person.credits": "Read one person's credits from the selected metadata source.",
-    "media.person.search": "Search people across selected metadata sources.",
+    "media.person.search": "Search people and music artists across selected metadata sources.",
     "media.recognize": "Recognize media identity from a title, subtitle, or custom rule context.",
     "media.scrape": "Generate or refresh metadata for one storage item.",
     "media.search": "Search canonical media across selected metadata sources.",

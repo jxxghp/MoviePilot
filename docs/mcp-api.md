@@ -277,7 +277,7 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/media/search` | 按标题搜索媒体、合集、人物或音乐，参数：`title`、`type`、`page`、`count`，可重复传入可选 `media_source`；音乐搜索可用 `music_type` 限定单曲、专辑或艺术家实体；内置模块只处理自身支持的来源，插件模块可以处理其注册的扩展来源，旧客户端的逗号格式仅在输入边界兼容 |
+| GET | `/api/v1/media/search` | 按标题搜索媒体、合集、影视人物或音乐；人物结果可同时包含 MusicBrainz 艺术家，参数：`title`、`type`、`page`、`count`，可重复传入可选 `media_source`；未指定 `music_type` 时音乐搜索只返回单曲和专辑，显式 `music_type` 仍可用于专用实体选择；内置模块只处理自身支持的来源，插件模块可以处理其注册的扩展来源，旧客户端的逗号格式仅在输入边界兼容 |
 | GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `media_source`；当 `title` 为含目录的媒体文件路径时，会合并父目录中的名称、年份等信息 |
 | GET | `/api/v1/media/recognize_file` | 识别文件路径，参数：`path`，可选 `media_source` |
 | GET | `/api/v1/media/{media_id}` | 按原生 ID 查询影视或音乐详情；必填参数：`media_source`、`type_name`，其中 `media_source` 与路径中的 `media_id` 组成统一媒体身份，`type_name` 支持电影、电视剧和音乐 |
@@ -365,7 +365,7 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/media/search` | 当 `type=music` 或指定音乐 `media_source` 时按歌曲、专辑或歌手关键词搜索音乐元数据，参数：`title`、`type`、`count`、可重复的 `media_source` 枚举，以及可选的 `music_type` 实体过滤 |
+| GET | `/api/v1/media/search` | 当 `type=music` 或指定音乐 `media_source` 时按歌曲或专辑关键词搜索音乐元数据；艺术家统一由 `type=person` 搜索，支持 TMDB 与 MusicBrainz 来源。参数：`title`、`type`、`count`、可重复的 `media_source` 枚举，以及可选的 `music_type` 实体过滤 |
 | POST | `/api/v1/music/recognize` | 按 `media_source` + `media_id` 识别音乐详情，请求体：`MusicRecognizeRequest` |
 | GET | `/api/v1/music/explore` | 按来源浏览音乐；`media_source=musicbrainz` 支持 `mode=chart|fresh` 榜单与新发行，`media_source=doubanmusic` 固定按官方标签分类浏览，使用 `tags` 和 `douban_sort=U|S|R|O` 筛选。其它参数：`entity=recording|album`、`range_name`、`sort_by`、`sort`、`days`、`past`、`future`、`min_listen_count`、`with_cover`、`page`、`count` |
 | POST | `/api/v1/music/library/status` | 按 MusicBrainz、TheAudioDB 或豆瓣音乐的稳定专辑 ID 批量查询媒体库是否已存在；请求体为 `items` 专辑列表，返回对应的 `exists` 状态，供艺人作品资源矩阵默认排除已入库项目 |
