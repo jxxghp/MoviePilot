@@ -1245,7 +1245,7 @@
       "owner": "moviepilot-api",
       "path": "/api/v1/media/search",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
-      "summary": "搜索媒体/人物信息",
+      "summary": "搜索媒体/人物/艺术家信息",
       "tags": [
         "media"
       ]

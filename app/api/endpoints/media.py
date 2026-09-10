@@ -101,6 +101,24 @@ MediaSourceQuery = Annotated[
 ]
 
 
+def _get_search_result_source(obj: Union[_SchemaMediaInfo, _SchemaMediaPerson, dict]) -> Any:
+    """读取影视、人物或音乐搜索结果中的媒体来源标识。"""
+    if isinstance(obj, dict):
+        return obj.get("media_source") or obj.get("source")
+    return getattr(obj, "media_source", None) or getattr(obj, "source", None)
+
+
+def _serialize_search_result(obj: Any) -> dict:
+    """将域对象或 Pydantic 人物对象转换为统一搜索响应字典。"""
+    if isinstance(obj, dict):
+        return obj
+    if hasattr(obj, "to_dict"):
+        return obj.to_dict()
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    return {}
+
+
 def _is_valid_source_media_id(
     media_source: Optional[MediaSource],
     media_id: str,
@@ -301,24 +319,6 @@ async def search(
     :return: 搜索结果列表
     """
 
-    def __get_source(obj: Union[_SchemaMediaInfo, _SchemaMediaPerson, dict]):
-        """
-        获取对象属性
-        """
-        if isinstance(obj, dict):
-            return obj.get("media_source") or obj.get("source")
-        return getattr(obj, "media_source", None) or getattr(obj, "source", None)
-
-    def __serialize_search_result(obj: Any) -> dict:
-        """将域对象或 Pydantic 人物对象转换为统一搜索响应字典。"""
-        if isinstance(obj, dict):
-            return obj
-        if hasattr(obj, "to_dict"):
-            return obj.to_dict()
-        if hasattr(obj, "model_dump"):
-            return obj.model_dump()
-        return {}
-
     # 直接函数调用也可能绕过 FastAPI/Pydantic，仅在该测试与内部兼容边界补一次规范化。
     selected_sources = (
         media_source
@@ -332,7 +332,7 @@ async def search(
     is_music = type == "music" or any(is_music_media_source(source) for source in selected_sources)
     if type == "person":
         persons = await media_chain.async_search_persons(name=title, media_source=source_selection)
-        result = [__serialize_search_result(person) for person in persons or []]
+        result = [_serialize_search_result(person) for person in persons or []]
     elif is_music:
         music_types = (music_type,) if music_type else (MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM)
         filtered_music_results = await media_chain.async_search_music(
@@ -350,7 +350,7 @@ async def search(
         result = [collection.to_dict() for collection in collections] if collections else []
     else:  # person
         persons = await media_chain.async_search_persons(name=title, media_source=source_selection)
-        result = [__serialize_search_result(person) for person in persons or []]
+        result = [_serialize_search_result(person) for person in persons or []]
 
     if not result:
         return []
@@ -360,7 +360,7 @@ async def search(
     setting_order = search_source.split(",") if search_source else []
     sort_order = {source: index for index, source in enumerate(setting_order)}
 
-    sorted_result = sorted(result, key=lambda x: sort_order.get(__get_source(x), 4))
+    sorted_result = sorted(result, key=lambda x: sort_order.get(_get_search_result_source(x), 4))
     return sorted_result[(page - 1) * count : page * count]
 
 

@@ -131,7 +131,7 @@
 | `GET` | `/api/v1/media/recognize_file` | media | `gateway` | media.recognize_file | 识别媒体信息（文件） |
 | `GET` | `/api/v1/media/recognize_file2` | media | `alternate-auth-duplicate` | moviepilot-api | 识别文件媒体信息（API_TOKEN） |
 | `POST` | `/api/v1/media/scrape/{storage}` | media | `gateway` | media.scrape | 刮削媒体信息 |
-| `GET` | `/api/v1/media/search` | media | `gateway` | media.person.search, media.search | 搜索媒体/人物信息 |
+| `GET` | `/api/v1/media/search` | media | `gateway` | media.person.search, media.search | 搜索媒体/人物/艺术家信息 |
 | `GET` | `/api/v1/media/seasons` | media | `gateway` | media.seasons | 查询媒体季信息 |
 | `GET` | `/api/v1/media/source` | media | `gateway` | media.sources | 获取媒体数据源 |
 | `GET` | `/api/v1/media/{media_id}` | media | `gateway` | media.detail | 查询媒体详情 |
