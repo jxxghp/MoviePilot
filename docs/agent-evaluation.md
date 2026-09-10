@@ -43,7 +43,9 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 
 本轮使用 Agnes AI Hub 的 `agnes-2.5-pro`，推理档位为供应商支持的最高档 `xhigh`，通过 Responses provider 配置和环境变量传递凭据。`max` 请求被供应商以 400 拒绝（支持档位为 `low`、`medium`、`xhigh`），因此不能把失败的 `max` 请求算作模型能力证据。
 
-在同一提交的隔离评测中，`dedup_existing` 通过（8 次模型调用，约 50 秒）；`unknown_download` 和 `honest_unknown` 均有真实模型响应，但最终报告未通过独立 JSON 验收（各达到 12 次调用上限）。这组结果说明当前实现已经能进行真实供应商评测，也明确暴露了复杂场景的收敛问题，不能据此宣称已达到 Codex 整体水平。
+此前 `66d288ffc` 提交的隔离评测中，`dedup_existing` 通过（8 次模型调用，约 50 秒）；`unknown_download` 和 `honest_unknown` 均有真实模型响应，但最终报告未通过独立 JSON 验收（各达到 12 次调用上限）。这组结果说明当时实现已经能进行真实供应商评测，也明确暴露了复杂场景的收敛问题，不能据此宣称已达到 Codex 整体水平。
+
+最终提交 `abd3cea92` 在同一 `agnes-2.5-pro + xhigh` 配置下重跑 `dedup_existing` 两次：第一次完成 6 次模型请求后收到 403，第二次首个请求即收到 403；两次均未通过，分别为 `usage_complete=false`、`agent_execution_success=false`。这组结果是供应商访问状态的失败证据，不能与此前通过样本混合为当前代码的通过结论。
 
 原生探针在修正动态 `tool_search` 目录兼容性后可以启动，但原生 Codex 自带模型目录没有 Agnes 模型，无法在同一模型上形成有效的 MoviePilot/Codex 配对运行；探针没有调用真实模型。后续比较必须先取得双方都能调用的同一模型和推理档位，或把结果明确标为不同基线。
 
