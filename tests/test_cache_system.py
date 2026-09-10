@@ -886,6 +886,8 @@ def test_redis_helpers_watch_pool_settings():
     assert "CACHE_REDIS_POOL_TIMEOUT" in RedisHelper.CONFIG_WATCH
     assert "CACHE_REDIS_MAX_CONNECTIONS" in AsyncRedisHelper.CONFIG_WATCH
     assert "CACHE_REDIS_POOL_TIMEOUT" in AsyncRedisHelper.CONFIG_WATCH
+    assert "BIG_MEMORY_MODE" in RedisHelper.CONFIG_WATCH
+    assert "BIG_MEMORY_MODE" in AsyncRedisHelper.CONFIG_WATCH
 
 def test_async_file_backend_missing_region_has_no_items(tmp_path):
     """

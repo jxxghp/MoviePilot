@@ -41,6 +41,9 @@ def _build_chain(*, transfer_threads: int = 0) -> TransferChain:
     chain.runtime_config = SimpleNamespace(
         transfer_threads=transfer_threads,
         transfer_task_timeout=0,
+        video_extensions=(".mkv",),
+        subtitle_extensions=(".srt",),
+        audio_extensions=(".flac",),
     )
     chain._queue = queue.Queue()
     chain._transfer_interval = 0.1

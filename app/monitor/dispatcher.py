@@ -2,7 +2,7 @@ import re
 import traceback
 from pathlib import Path
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from app.adapters.system.fsproxy import fsproxy
 from app.application.directory import DirectoryHelper
@@ -44,17 +44,36 @@ class TransferDispatcher:
         :param cache: 去重缓存，默认使用 10 秒 TTL 缓存
         :param retry_abandoned_callback: 自动重试最终放弃时的用户告警回调
         """
-        self.all_exts = all_exts if all_exts is not None else (
-            get_runtime_setting('RMT_MEDIAEXT')
-            + get_runtime_setting('RMT_SUBEXT')
-            + get_runtime_setting('RMT_AUDIOEXT')
-        )
+        # 测试和调用方显式传入的扩展名保持固定；生产实例按使用时读取当前配置。
+        self._all_exts_override = all_exts
         self._cache = cache if cache is not None else TTLCache(region="monitor", maxsize=1024, ttl=10)
         self._lock = Lock()
         # 历史查询失败待重试的文件
         self._pending_retries: Dict[str, Dict[str, Any]] = {}
         self._pending_guard = Lock()
         self._retry_abandoned_callback = retry_abandoned_callback
+
+    @property
+    def all_exts(self) -> List[str]:
+        """
+        获取当前监控扩展名。
+
+        监控分发器是长生命周期对象，不能在构造时固定用户后来修改的整理后缀；
+        显式注入的扩展名仍作为测试和兼容调用方的固定覆盖值。
+        """
+        if self._all_exts_override is not None:
+            return self._all_exts_override
+        media_extensions = cast(List[str], get_runtime_setting('RMT_MEDIAEXT'))
+        subtitle_extensions = cast(List[str], get_runtime_setting('RMT_SUBEXT'))
+        audio_extensions = cast(List[str], get_runtime_setting('RMT_AUDIOEXT'))
+        return media_extensions + subtitle_extensions + audio_extensions
+
+    @all_exts.setter
+    def all_exts(self, value: Optional[List[str]]) -> None:
+        """
+        设置显式监控扩展名覆盖值。
+        """
+        self._all_exts_override = value
 
     @staticmethod
     def _is_bluray_sub(_path: Path) -> bool:

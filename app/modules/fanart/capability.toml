@@ -12,7 +12,7 @@ priority = 0
 
 [activation]
 policy = "when_configured"
-watch = ["FANART_API_KEY"]
+watch = ["FANART_API_KEY", "PROXY_HOST"]
 
 [activation.selector]
 kind = "setting_truthy"

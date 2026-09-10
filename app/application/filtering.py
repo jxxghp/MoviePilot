@@ -389,18 +389,14 @@ def normalize_rule_group(
 async def save_system_config(
     key: SystemConfigKey,
     value: Any,
-    publish_config_changed: RuleConfigPublisher,
 ) -> Optional[bool]:
-    """通过统一入口保存配置并补发 ConfigChanged 事件。"""
+    """通过统一异步配置入口保存配置并等待运行时重载。"""
     normalized_value = value
     if isinstance(normalized_value, list):
         normalized_value = [item for item in normalized_value if item is not None and item != ""]
         normalized_value = normalized_value or None
 
-    success = await get_configured_system_config().async_set(key, normalized_value)
-    if success:
-        await publish_config_changed(key, normalized_value)
-    return success
+    return await get_configured_system_config().async_set(key, normalized_value)
 
 
 def replace_rule_id_in_rule_string(rule_string: str, old_rule_id: str, new_rule_id: str) -> str:
@@ -499,7 +495,6 @@ class FilterRuleService:
         await save_system_config(
             SystemConfigKey.CustomFilterRules,
             [rule.model_dump(exclude_none=True) for rule in rules],
-            self._publish_config_changed,
         )
         return {
             "message": f"已新增自定义过滤规则 {new_rule.id}",
@@ -607,7 +602,6 @@ class FilterRuleService:
             await save_system_config(
                 SystemConfigKey.CustomFilterRules,
                 rule_definitions,
-                self._publish_config_changed,
             )
         if updated.id is None:
             raise ValueError("更新后的自定义过滤规则缺少 id")
@@ -630,7 +624,6 @@ class FilterRuleService:
         await save_system_config(
             SystemConfigKey.CustomFilterRules,
             [rule.model_dump(exclude_none=True) for rule in remaining],
-            self._publish_config_changed,
         )
         return {
             "message": f"已删除自定义过滤规则 {rule_id}",

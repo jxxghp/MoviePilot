@@ -12,7 +12,7 @@ priority = 0
 
 [activation]
 policy = "when_configured"
-watch = ["Notifications"]
+watch = ["Notifications", "PROXY_HOST"]
 
 [activation.selector]
 kind = "system_config_item"

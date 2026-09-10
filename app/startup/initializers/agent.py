@@ -232,7 +232,7 @@ class AgentInitializer:
         except Exception as error:
             self._manager = None
             self._initialized = False
-            logger.debug(f"配置变更协调AI智能体失败: {error}")
+            logger.warning(f"配置变更协调AI智能体失败，当前保持未启用状态: {error}")
 
     async def cleanup(self) -> bool:
         """清理 initializer 引用；未收敛的显式注入对象继续由本实例持有。"""

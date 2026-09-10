@@ -190,12 +190,12 @@ class _ConfigurationEventAdapter(ConfigurationEventPort):
     """把已提交设置变更发布到宿主事件总线。"""
 
     async def publish(self, key: Any, value: Any = None) -> None:
-        """同步失效派生缓存后发布兼容 ConfigChanged 事件。"""
+        """同步失效派生缓存并等待全部配置重载处理器完成。"""
         payload = ConfigChangeEventData(key=key, value=value, change_type="update")
         if payload.key.intersection(_RUST_METAINFO_OPTION_SETTING_KEYS):
-            # 广播事件异步消费，必须在写入入口返回前失效缓存，避免下一次识别读取旧配置。
+            # 必须在写入入口返回前失效缓存，避免下一次识别读取旧配置。
             clear_rust_parse_options_cache()
-        await eventmanager.async_send_event(
+        await eventmanager.async_send_event_strict(
             etype=EventType.ConfigChanged,
             data=payload,
         )

@@ -71,16 +71,7 @@ class TransferQueueOwner(_TransferOwnerBase):
     ) -> None:
         """初始化文件整理处理链。"""
         super().__init__(runtime_context=runtime_context)
-        # 主要媒体文件后缀
-        self._media_exts = self.runtime_config.video_extensions
-        # 字幕文件后缀
-        self._subtitle_exts = self.runtime_config.subtitle_extensions
-        # 音频文件后缀
-        self._audio_exts = self.runtime_config.audio_extensions
-        # 可处理的文件后缀（视频文件、字幕、音频文件和音乐歌词）
-        self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts + (
-            ".lrc", ".txt", ".yaml",
-        )
+        self._refresh_file_extensions()
         # 待整理任务队列
         self._queue = queue.Queue()
         # 文件整理线程
@@ -128,6 +119,15 @@ class TransferQueueOwner(_TransferOwnerBase):
         self._total_num = 0
         # 启动整理任务
         self._TransferChain__init()
+
+    def _refresh_file_extensions(self) -> None:
+        """按最新运行配置更新整理允许的媒体、字幕和音频后缀。"""
+        self._media_exts = self.runtime_config.video_extensions
+        self._subtitle_exts = self.runtime_config.subtitle_extensions
+        self._audio_exts = self.runtime_config.audio_extensions
+        self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts + (
+            ".lrc", ".txt", ".yaml",
+        )
 
     def _TransferChain__init(self) -> bool:
         """启动一代文件整理线程，并返回是否成功取得 worker 所有权。"""
@@ -332,6 +332,7 @@ class TransferQueueOwner(_TransferOwnerBase):
             if self._closing:
                 logger.info("文件整理链正在关闭，忽略 worker 配置热更新")
                 return
+            self._refresh_file_extensions()
             if not self._TransferChain__stop(
                     timeout_seconds=self._WORKER_RESTART_TIMEOUT_SECONDS
             ):

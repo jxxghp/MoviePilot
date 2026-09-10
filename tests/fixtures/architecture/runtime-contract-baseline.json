@@ -1763,7 +1763,7 @@
           "c53927bd5752ec004ac403f6dc07fca7b253f0db152fc773643972d7c3bf5d34"
         ],
         "producer_fingerprints": [
-          "36d3234c5f3cd7317c34d6ee71bc065946ea0e981dd2377589f73e54ebaf8703"
+          "10cb1814f97ef9511346d9b79e13255d603f1d7f63fdc3126138d07d74eb8881"
         ]
       },
       "EventType.DownloadAdded": {
@@ -2955,9 +2955,9 @@
         "events": [
           "EventType.ConfigChanged"
         ],
-        "fingerprint": "36d3234c5f3cd7317c34d6ee71bc065946ea0e981dd2377589f73e54ebaf8703",
+        "fingerprint": "10cb1814f97ef9511346d9b79e13255d603f1d7f63fdc3126138d07d74eb8881",
         "invalid": false,
-        "method": "async_send_event",
+        "method": "async_send_event_strict",
         "qualname": "_ConfigurationEventAdapter.publish",
         "receiver_kind": "canonical_singleton"
       },

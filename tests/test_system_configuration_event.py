@@ -14,12 +14,12 @@ from app.startup.composition import system as system_composition
 async def test_recognition_config_clears_rust_options_before_event_queue(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """识别配置写入返回前必须清缓存，再把异步广播事件加入队列。"""
+    """识别配置写入返回前必须清缓存，再等待配置重载事件完成。"""
     order: list[str] = []
     clear_cache = Mock(side_effect=lambda: order.append("clear"))
     send_event = AsyncMock(side_effect=lambda **_kwargs: order.append("event"))
     monkeypatch.setattr(system_composition, "clear_rust_parse_options_cache", clear_cache)
-    monkeypatch.setattr(system_composition.eventmanager, "async_send_event", send_event)
+    monkeypatch.setattr(system_composition.eventmanager, "async_send_event_strict", send_event)
 
     await system_composition._ConfigurationEventAdapter().publish(
         SystemConfigKey.CustomIdentifiers,
@@ -41,7 +41,7 @@ async def test_unrelated_config_does_not_clear_rust_options(
     clear_cache = Mock()
     send_event = AsyncMock()
     monkeypatch.setattr(system_composition, "clear_rust_parse_options_cache", clear_cache)
-    monkeypatch.setattr(system_composition.eventmanager, "async_send_event", send_event)
+    monkeypatch.setattr(system_composition.eventmanager, "async_send_event_strict", send_event)
 
     await system_composition._ConfigurationEventAdapter().publish("PORT", 3001)
 
@@ -73,7 +73,7 @@ async def test_recognition_config_rebuilds_cached_rust_options(
     )
     monkeypatch.setattr(
         system_composition.eventmanager,
-        "async_send_event",
+        "async_send_event_strict",
         AsyncMock(),
     )
     metainfo_module.clear_rust_parse_options_cache()

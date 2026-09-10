@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import FrozenInstanceError
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -172,6 +172,27 @@ def test_system_config_service_normalizes_sync_and_async_writes() -> None:
         (("demo", {"key": "demo", "value": 2}), {}),
     ]
     assert normalizer.call_count == 2
+
+
+def test_system_config_service_async_write_waits_for_runtime_reload() -> None:
+    """直接异步写入系统配置时也必须等待统一运行时重载端口。"""
+    reader = MagicMock()
+    writer = MagicMock()
+    writer.set.return_value = True
+    publisher = AsyncMock()
+    service = SystemConfigService(
+        reader=reader,
+        writer=writer,
+        async_executor=_InlineDatabaseExecutor(),
+        change_publisher=publisher,
+    )
+
+    assert asyncio.run(service.async_set(SystemConfigKey.Notifications, [{"name": "demo"}])) is True
+
+    publisher.assert_awaited_once_with(
+        SystemConfigKey.Notifications,
+        [{"name": "demo"}],
+    )
 
 
 def test_user_configuration_service_supports_sync_and_async_writes() -> None:

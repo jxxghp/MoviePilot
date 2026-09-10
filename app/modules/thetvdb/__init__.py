@@ -36,7 +36,9 @@ class TheTvDbModule(_ModuleBase):
     __auth_lock = Lock()
 
     def init_module(self) -> None:
-        pass
+        """重置 TVDB 会话，使下一次请求按最新密钥、PIN 和代理建立连接。"""
+        with self.__auth_lock:
+            self.tvdb = None
 
     def _initialize_tvdb_session(self, is_retry: bool = False) -> None:
         """
@@ -132,7 +134,8 @@ class TheTvDbModule(_ModuleBase):
         """
         return 4
 
-    def stop(self):
+    def stop(self) -> None:
+        """停止当前 TVDB 会话并释放其运行时引用。"""
         with self.__auth_lock:
             self.tvdb = None
 
@@ -147,6 +150,7 @@ class TheTvDbModule(_ModuleBase):
             return False, str(e)
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """TVDB 随宿主启动，无需额外的模块开关。"""
         pass
 
     def tvdb_info(self, tvdbid: int) -> Optional[dict]:

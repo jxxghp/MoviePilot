@@ -84,6 +84,7 @@ class ChainRuntimeContext:
     configuration: ChainRuntimeConfig = field(
         default_factory=lambda: ChainRuntimeConfig(media_extensions=())
     )
+    configuration_provider: Optional[Callable[[], ChainRuntimeConfig]] = None
     stop_state: StopState = field(default_factory=lambda: runtime_stop_state)
     system_service: Optional[SystemService] = None
 

@@ -7,8 +7,8 @@ from queue import PriorityQueue
 
 import pytest
 
-from app.runtime.config import global_vars
 from app.runtime import events as events_module
+from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
 from app.schemas.types import ChainEventType, EventType
 
@@ -51,6 +51,14 @@ class _DaemonThreadExecutor:
 
         threading.Thread(target=run, daemon=True).start()
         return handle
+
+
+class _UnboundHandler:
+    """未创建的宿主 owner，用于验证配置重载的惰性绑定语义。"""
+
+    async def handle(self, _event):
+        """不应在 owner 尚未激活时执行。"""
+        raise AssertionError("未激活 owner 不应收到严格配置事件")
 
 
 @pytest.fixture
@@ -192,6 +200,44 @@ def test_strict_broadcast_waits_and_propagates_handler_failure(
 
     assert calls == ["config.changed:v1"]
     assert isolated_eventmanager._EventManager__event_queue.empty()
+
+
+@pytest.mark.anyio
+async def test_async_strict_broadcast_waits_for_async_handler(isolated_eventmanager):
+    """异步严格广播必须在调用方返回前等待异步 handler 完成。"""
+    isolated_eventmanager._EventManager__lifecycle_state = "running"
+    calls = []
+
+    async def handler(_event):
+        """模拟需要让出事件循环的配置重载。"""
+        calls.append("start")
+        await asyncio.sleep(0)
+        calls.append("done")
+
+    isolated_eventmanager.add_event_listener(EventType.ConfigChanged, handler)
+
+    await isolated_eventmanager.async_send_event_strict(
+        EventType.ConfigChanged,
+        {"key": "AI_AGENT_ENABLE"},
+    )
+
+    assert calls == ["start", "done"]
+    assert isolated_eventmanager._EventManager__event_queue.empty()
+
+
+@pytest.mark.anyio
+async def test_async_strict_broadcast_skips_unbound_optional_owner(isolated_eventmanager):
+    """严格配置广播应跳过尚未创建的可选 owner，而不是阻断配置保存。"""
+    isolated_eventmanager._EventManager__lifecycle_state = "running"
+    isolated_eventmanager.add_event_listener(
+        EventType.ConfigChanged,
+        _UnboundHandler.handle,
+    )
+
+    await isolated_eventmanager.async_send_event_strict(
+        EventType.ConfigChanged,
+        {"key": "CACHE_BACKEND_URL"},
+    )
 
 
 def test_sync_chain_dispatch_uses_subscription_snapshot(isolated_eventmanager):

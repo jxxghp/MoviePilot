@@ -213,7 +213,7 @@ async def test_save_system_config_and_settings_service(monkeypatch):
     monkeypatch.setattr(filtering, "get_configured_system_config", lambda: filter_config)
     monkeypatch.setattr(settings_module, "plugin_system_config_mutation", lambda _key: nullcontext())
     service = settings_module.SystemSettingsService(runtime, system, publish)
-    await filtering.save_system_config(SystemConfigKey.CustomFilterRules, [None, ""], publish)
+    await filtering.save_system_config(SystemConfigKey.CustomFilterRules, [None, ""])
     assert filter_config.async_set.await_count == 1
     secret = service.query(setting_key=SystemConfigKey.Downloaders.value, include_values=True)
     assert secret["settings"][0]["value"][0]["token"] == "***"

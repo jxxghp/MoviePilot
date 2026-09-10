@@ -180,6 +180,51 @@ class EventDispatcher:
             else:
                 self.invoke_sync_strict(handler, isolated)
 
+    async def dispatch_broadcast_async_strict(self, event: Any) -> None:
+        """异步串行等待广播处理器完成，供实时配置重载入口使用。"""
+        handlers = self._registry.broadcast_snapshot(event.event_type)
+        target_plugin_id = None
+        if event.event_type == EventType.MessageAction and isinstance(
+            event.event_data,
+            dict,
+        ):
+            target_plugin_id = event.event_data.get("__mp_target_plugin_id")
+        for handler_id, handler in handlers:
+            if not self._registry.is_handler_enabled(handler):
+                continue
+            if target_plugin_id and not self.should_dispatch_to_target_plugin(
+                handler,
+                handler_id,
+                str(target_plugin_id),
+            ):
+                continue
+            if isinstance(event.event_data, dict):
+                event_data = event.event_data.copy()
+                event_data.pop("__mp_target_plugin_id", None)
+            else:
+                event_data = event.event_data
+            isolated = self._event_factory(
+                event_type=event.event_type,
+                event_data=event_data,
+                priority=event.priority,
+                correlation_id=event.correlation_id,
+            )
+            if inspect.iscoroutinefunction(handler):
+                await self.invoke_async_strict(
+                    handler,
+                    isolated,
+                    skip_unresolved=True,
+                    run_sync_in_threadpool=True,
+                )
+            else:
+                # 复用统一严格调用路径，保持 owner 的线程池声明和错误策略一致。
+                await self.invoke_async_strict(
+                    handler,
+                    isolated,
+                    skip_unresolved=True,
+                    run_sync_in_threadpool=True,
+                )
+
     def safe_invoke_sync(self, handler: Callable, event: Any) -> None:
         """仅在处理器启用时执行同步调用。"""
         if self._registry.is_handler_enabled(handler):
@@ -217,10 +262,14 @@ class EventDispatcher:
         self,
         handler: Callable[..., object],
         event: Any,
+        *,
+        skip_unresolved: bool = False,
     ) -> None:
-        """解析并执行同步处理器，记录错误后向 durable 调用方传播。"""
+        """解析并执行同步处理器，按需跳过未激活 owner，实际错误向调用方传播。"""
         resolved = self._binding_resolver.resolve(handler)
         if not resolved:
+            if skip_unresolved:
+                return
             raise RuntimeError("事件处理器实例不可用")
         method, binding, class_name, method_name = resolved
         with correlation_scope(event.correlation_id):
@@ -273,10 +322,15 @@ class EventDispatcher:
         self,
         handler: Callable[..., object],
         event: Any,
+        *,
+        skip_unresolved: bool = False,
+        run_sync_in_threadpool: bool = False,
     ) -> None:
-        """解析并等待处理器完成，记录错误后向 durable 调用方传播。"""
+        """解析并等待处理器完成，按需跳过未激活 owner 或移交同步处理器线程池。"""
         resolved = self._binding_resolver.resolve(handler)
         if not resolved:
+            if skip_unresolved:
+                return
             raise RuntimeError("事件处理器实例不可用")
         method, binding, class_name, method_name = resolved
         with correlation_scope(event.correlation_id):
@@ -288,7 +342,7 @@ class EventDispatcher:
                 ):
                     if inspect.iscoroutinefunction(method):
                         await method(event)
-                    elif binding.run_sync_in_threadpool or not class_name:
+                    elif run_sync_in_threadpool or binding.run_sync_in_threadpool or not class_name:
                         await run_in_threadpool(method, event)
                     else:
                         method(event)

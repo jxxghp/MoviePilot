@@ -139,7 +139,8 @@ async def test_update_environment_rejects_validation_and_partial_failure() -> No
     assert failed.success is False
     assert failed.message == "invalid host"
     assert failed.data["success_updates"] == {"PORT": (True, "ok")}
-    dependencies.events.publish.assert_not_awaited()
+    published_keys = dependencies.events.publish.await_args.args[0]
+    assert list(published_keys) == ["PORT"]
 
 
 @pytest.mark.anyio

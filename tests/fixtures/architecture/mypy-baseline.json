@@ -848,7 +848,7 @@
   "app/chain/base.py": {
     "assignment": 12,
     "attr-defined": 1,
-    "no-any-return": 47,
+    "no-any-return": 46,
     "no-untyped-def": 7,
     "type-arg": 30
   },
@@ -1505,7 +1505,7 @@
     "misc": 2,
     "no-any-return": 1,
     "no-untyped-def": 2,
-    "type-arg": 10,
+    "type-arg": 9,
     "var-annotated": 1
   },
   "app/modules/feishu/__init__.py": {
@@ -2239,7 +2239,7 @@
     "empty-body": 1,
     "no-any-return": 2,
     "no-untyped-call": 1,
-    "no-untyped-def": 4,
+    "no-untyped-def": 3,
     "type-arg": 2
   },
   "app/modules/thetvdb/client.py": {

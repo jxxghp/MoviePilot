@@ -45,7 +45,11 @@ class StorageBase(metaclass=ABCMeta):
     """
     schema = None
     transtype = {}
-    snapshot_check_folder_modtime = True
+
+    @property
+    def snapshot_check_folder_modtime(self) -> bool:
+        """返回存储快照目录时间检查的默认开关。"""
+        return True
 
     def __init__(self):
         self.storagehelper = StorageHelper()

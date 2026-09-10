@@ -1074,8 +1074,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8490,
-  "edge_sha256": "14a35db36cee8f0f6266a112086efb547f7f3cf5abb67e0f632612654ed3a05c",
+  "edge_count": 8493,
+  "edge_sha256": "cf90c1e6dbf33bbb0f9c6fee9bc62f7cf5be26f70658da0cab394627913ee69d",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8789,6 +8789,9 @@
     "app.startup.composition.configuration -> app.runtime.settings",
     "app.startup.composition.configuration -> app.schemas",
     "app.startup.composition.configuration -> app.schemas.types",
+    "app.startup.composition.configuration -> app.startup",
+    "app.startup.composition.configuration -> app.startup.composition",
+    "app.startup.composition.configuration -> app.startup.composition.system",
     "app.startup.composition.context -> app.application",
     "app.startup.composition.context -> app.application.agent",
     "app.startup.composition.context -> app.application.classification",

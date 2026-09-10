@@ -38,11 +38,13 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         "move": "移动",
     }
 
-    # 快照检查目录修改时间
-    snapshot_check_folder_modtime = get_runtime_setting('OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME')
-
     def __init__(self):
         super().__init__()
+
+    @property
+    def snapshot_check_folder_modtime(self) -> bool:
+        """读取当前 OpenList 目录时间检查开关，支持配置保存后立即生效。"""
+        return bool(get_runtime_setting('OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME'))
 
     def init_storage(self):
         """

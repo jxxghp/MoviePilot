@@ -562,6 +562,20 @@ class EventManager(metaclass=Singleton):
         )
         return event
 
+    async def async_send_event_strict(
+        self,
+        etype: EventType,
+        data: Optional[Union[dict[str, object], ChainEventData]] = None,
+        priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
+    ) -> Event:
+        """异步发送广播事件并等待全部处理器完成，保证配置写入返回时已完成重载。"""
+        event = Event(etype, data, priority)
+        with self.__lifecycle_lock:
+            if self.__lifecycle_state != "running":
+                raise RuntimeError(f"事件处理处于 {self.__lifecycle_state} 状态")
+        await self.__dispatcher.dispatch_broadcast_async_strict(event)
+        return event
+
     @staticmethod
     def __wait_strict_async_handler(coroutine: Any) -> Any:
         """在主事件循环等待异步处理器，禁止循环线程同步等待自身。"""

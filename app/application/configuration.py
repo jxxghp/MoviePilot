@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -14,6 +14,9 @@ from app.schemas.types import MediaType, SystemConfigKey
 
 SystemConfigValueNormalizer = Callable[[Any, Any], Any]
 """系统配置值在进入持久化端口前使用的规范化函数。"""
+
+SystemConfigChangePublisher = Callable[[Any, Any], Awaitable[None]]
+"""系统配置提交成功后的运行时变更发布函数。"""
 
 T = TypeVar("T")
 
@@ -350,8 +353,9 @@ class SystemConfigService:
         writer: SystemConfigWriter | None = None,
         async_executor: AsyncDatabaseExecutor | None = None,
         value_normalizer: SystemConfigValueNormalizer | None = None,
+        change_publisher: SystemConfigChangePublisher | None = None,
     ) -> None:
-        """注入读写端口、异步事务执行能力及可选值规范化边界。"""
+        """注入读写端口、异步事务执行能力、规范化边界和变更发布端口。"""
         resolved_reader = reader or repository
         resolved_writer = writer or repository
         if resolved_reader is None or resolved_writer is None:
@@ -360,6 +364,24 @@ class SystemConfigService:
         self._writer = resolved_writer
         self._async_executor = async_executor
         self._value_normalizer = value_normalizer
+        self._change_publisher = change_publisher
+
+    def configure_change_publisher(
+        self,
+        publisher: SystemConfigChangePublisher | None,
+    ) -> None:
+        """登记或清除异步配置变更发布器，供组合根绑定宿主事件总线。"""
+        self._change_publisher = publisher
+
+    async def _publish_async_change(
+        self,
+        key: Any,
+        value: Any,
+        changed: bool | None,
+    ) -> None:
+        """仅在异步写入确实改变持久化值后发布运行时变更。"""
+        if changed is True and self._change_publisher is not None:
+            await self._change_publisher(key, value)
 
     def get(self, key: Any = None) -> Any:
         """读取配置。"""
@@ -392,8 +414,10 @@ class SystemConfigService:
         return self._writer.increment(key, step)
 
     async def async_set(self, key: Any, value: Any) -> bool | None:
-        """异步写入配置，并等待数据库提交或回滚完成。"""
-        return (await self.async_set_with_normalized_value(key, value)).changed
+        """异步写入配置，并在返回前等待已登记的运行时重载完成。"""
+        result = await self.async_set_with_normalized_value(key, value)
+        await self._publish_async_change(key, result.normalized_value, result.changed)
+        return result.changed
 
     async def async_set_with_normalized_value(
         self,

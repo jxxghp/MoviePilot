@@ -61,6 +61,9 @@ class TransferChain(
 
     CONFIG_WATCH = {
         "TRANSFER_THREADS",
+        "RMT_MEDIAEXT",
+        "RMT_SUBEXT",
+        "RMT_AUDIOEXT",
     }
 
     _WORKER_RESTART_TIMEOUT_SECONDS = 30.0

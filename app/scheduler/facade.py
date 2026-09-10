@@ -48,6 +48,7 @@ class Scheduler(
 
     CONFIG_WATCH = {
         "DEV",
+        "TZ",
         "COOKIECLOUD_INTERVAL",
         "MEDIASERVER_SYNC_INTERVAL",
         SystemConfigKey.MediaServers.value,
