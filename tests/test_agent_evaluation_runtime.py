@@ -127,9 +127,9 @@ async def test_complete_production_agent_scenarios(scenario_id, invocation_store
     result = evaluate(world, json.loads(capture["final_text"]))
     assert result.passed, result.violations
     assert capture["tool_catalog_scope"] == "controlled_moviepilot_api_and_production_internal_tools"
-    assert {"moviepilot_api", "read_skill", "update_plan", "get_tool_execution", "task", "subagent_task", "search_tools"} <= set(capture["tool_names"])
+    assert {"moviepilot_api", "read_file", "read_skill", "update_plan", "get_tool_execution", "task", "subagent_task", "search_tools"} <= set(capture["tool_names"])
     assert not {"execute_command", "write_file", "edit_file", "browser", "send_message"} & set(capture["tool_names"])
-    assert capture["child_tool_names"] == ["moviepilot_api"]
+    assert capture["child_tool_names"] == ["moviepilot_api", "read_file"]
     assert capture["task_plan"]["objective"] == "完成用户任务并核验"
     assert any("InvocationMiddleware" in node for node in capture["graph_nodes"])
     assert any("SkillsMiddleware" in node for node in capture["graph_nodes"])

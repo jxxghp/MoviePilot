@@ -423,6 +423,7 @@ async def test_api_forbidden_query_keys_do_not_execute_or_claim(invocation_runti
     ])
     result = await _invoke(graph)
     assert _tool_messages(result)[0].status == "error"
+    assert "输入合同校验" in _tool_messages(result)[0].content
     assert records() == []
     run.assert_not_awaited()
 

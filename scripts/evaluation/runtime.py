@@ -262,6 +262,7 @@ async def _run_isolated(
     from app.agent.contracts import ReplyMode
     from app.agent.memory import MemoryManager
     from app.agent.tools.impl.api import MoviePilotApiTool
+    from app.agent.tools.impl.read_file import ReadFileTool
     from app.db.adapters.invocation import TransactionalInvocationRepository
     from app.db.models.agentinvocation import AgentInvocation
     from app.schemas.types import NotificationChannel
@@ -295,6 +296,17 @@ async def _run_isolated(
             tool.set_agent_context({"is_admin": True, "should_dispatch_reply": False, "require_secret_confirmation": True}
                                    if child else agent._tool_context)
             (agent.evaluation_child_tools if child else agent.evaluation_tools).append(tool)
+            # Skill 主体只返回相对 supporting_files；评测必须提供与生产一致的
+            # read_file 能力，才能验证模型是否按需加载 api/*.md 合同。工具使用
+            # 非管理员上下文，只能读取当前临时 CONFIG_DIR/agent 隔离目录。
+            skill_file_tool = ReadFileTool(session_id=agent.session_id, user_id="1")
+            skill_file_tool.set_message_attr(agent.channel, agent.source, agent.username)
+            skill_file_tool.set_agent_context({
+                "is_admin": False,
+                "should_dispatch_reply": False,
+                "require_secret_confirmation": True,
+            })
+            (agent.evaluation_child_tools if child else agent.evaluation_tools).append(skill_file_tool)
         try:
             result = await agent.process(world.scenario.model_input())
             bundle = agent.evaluation_bundle
