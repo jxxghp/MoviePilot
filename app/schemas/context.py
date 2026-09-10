@@ -1,13 +1,13 @@
 from typing import Annotated, Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Discriminator, Field, RootModel, Tag, model_validator
+from pydantic import BaseModel, Discriminator, Field, PrivateAttr, RootModel, Tag, model_validator
 
 from app.schemas.category import ClassificationFactValue, ClassificationResult
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.music import MusicArtistInfo as _MusicArtistInfo
 from app.schemas.music import MusicInfo, MusicMeta
-from app.schemas.types import MediaSource
+from app.schemas.types import MediaSource, MediaType
 
 
 class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
@@ -74,6 +74,71 @@ class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
     media_source: Optional[MediaSource] = None
     # 显式媒体数据源原生ID
     media_id: Optional[str] = None
+
+    _season_list: Optional[List[int]] = PrivateAttr(default=None)
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _handle_season_list(cls, data: Any, handler: Any) -> "MetaInfo":
+        season_list = None
+        if isinstance(data, dict) and "season_list" in data:
+            data = data.copy()
+            season_list = data.pop("season_list")
+        instance = handler(data)
+        if season_list is not None and isinstance(instance, MetaInfo):
+            instance._season_list = list(season_list)
+        return instance
+
+    @property
+    def season_list(self) -> List[int]:
+        """返回识别的季数字列表。"""
+        if self._season_list is not None:
+            return self._season_list
+        if self.begin_season is None:
+            if self.type in (MediaType.TV, MediaType.TV.value):
+                return [1]
+            return []
+        if self.end_season is not None:
+            return list(range(self.begin_season, self.end_season + 1))
+        return [self.begin_season]
+
+    @season_list.setter
+    def season_list(self, value: Optional[List[int]]) -> None:
+        self._season_list = list(value) if value is not None else None
+
+    @property
+    def season(self) -> str:
+        """返回开始季、结束季字符串，确定是剧集没有季的返回S01。"""
+        if self.begin_season is not None:
+            return "S%s" % str(self.begin_season).rjust(2, "0") \
+                if self.end_season is None \
+                else "S%s-S%s" % \
+                     (str(self.begin_season).rjust(2, "0"),
+                      str(self.end_season).rjust(2, "0"))
+        if self.type in (MediaType.TV, MediaType.TV.value):
+            return "S01"
+        return ""
+
+    @property
+    def season_seq(self) -> str:
+        """返回 begin_season 的数字，电视剧没有季的返回1。"""
+        if self.begin_season is not None:
+            return str(self.begin_season)
+        if self.type in (MediaType.TV, MediaType.TV.value):
+            return "1"
+        return ""
+
+    @property
+    def episode(self) -> str:
+        """返回开始集、结束集字符串。"""
+        if self.begin_episode is not None:
+            return "E%s" % str(self.begin_episode).rjust(2, "0") \
+                if self.end_episode is None \
+                else "E%s-E%s" % \
+                     (
+                         str(self.begin_episode).rjust(2, "0"),
+                         str(self.end_episode).rjust(2, "0"))
+        return ""
 
 
 class MediaImageSet(BaseModel):

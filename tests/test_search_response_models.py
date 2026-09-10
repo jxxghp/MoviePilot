@@ -46,3 +46,45 @@ def test_last_search_context_keeps_subtitle_result_shape() -> None:
     assert result["title"] == "Example subtitle"
     assert result["site_name"] == "Subtitle Site"
     assert result["enclosure"] == "https://example.test/subtitle.srt"
+
+
+def test_schema_metainfo_season_and_episode_properties() -> None:
+    """Schema MetaInfo 应具备与领域 MetaBase 一致的季、集属性和序列化兼容性。"""
+    from app.schemas.types import MediaType
+
+    # 单季剧集（未显式指定季）
+    tv_no_season = MetaInfo(type="电视剧", begin_episode=1, end_episode=2)
+    assert tv_no_season.season_list == [1]
+    assert tv_no_season.season == "S01"
+    assert tv_no_season.season_seq == "1"
+    assert tv_no_season.episode == "E01-E02"
+
+    # 指定单季剧集
+    tv_single_season = MetaInfo(type=MediaType.TV, begin_season=2, begin_episode=5)
+    assert tv_single_season.season_list == [2]
+    assert tv_single_season.season == "S02"
+    assert tv_single_season.season_seq == "2"
+    assert tv_single_season.episode == "E05"
+
+    # 多季剧集
+    tv_multi_season = MetaInfo(type="电视剧", begin_season=1, end_season=3)
+    assert tv_multi_season.season_list == [1, 2, 3]
+    assert tv_multi_season.season == "S01-S03"
+
+    # 电影
+    movie = MetaInfo(type="电影")
+    assert movie.season_list == []
+    assert movie.season == ""
+    assert movie.season_seq == ""
+    assert movie.episode == ""
+
+    # 显式覆盖与字典解析
+    custom = MetaInfo(season_list=[0])
+    assert custom.season_list == [0]
+
+    from_dict = MetaInfo.model_validate({"season_list": [2, 4], "type": "电视剧"})
+    assert from_dict.season_list == [2, 4]
+
+    # setter 覆写
+    tv_no_season.season_list = [5]
+    assert tv_no_season.season_list == [5]

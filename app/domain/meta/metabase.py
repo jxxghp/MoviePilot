@@ -770,4 +770,5 @@ class MetaBase(object):
         dicts["edition"] = self.edition
         dicts["name"] = self.name
         dicts["episode_list"] = self.episode_list
+        dicts["season_list"] = self.season_list
         return dicts

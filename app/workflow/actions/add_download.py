@@ -86,11 +86,16 @@ class AddDownloadAction(BaseAction):
                             logger.warning(f"{t.meta_info.title} 有多季，跳过")
                             continue
                         else:
-                            exists_episodes = exists_seasons.get(t.meta_info.begin_season)
-                            if exists_episodes:
+                            season_num = (
+                                t.meta_info.begin_season
+                                if t.meta_info.begin_season is not None
+                                else (t.meta_info.season_list[0] if t.meta_info.season_list else 1)
+                            )
+                            exists_episodes = exists_seasons.get(season_num)
+                            if exists_episodes and t.meta_info.episode_list:
                                 if set(t.meta_info.episode_list).issubset(exists_episodes):
                                     logger.warning(
-                                        f"{t.meta_info.title} 第 {t.meta_info.begin_season} 季第 {t.meta_info.episode_list} 集已存在，跳过")
+                                        f"{t.meta_info.title} 第 {season_num} 季第 {t.meta_info.episode_list} 集已存在，跳过")
                                     continue
 
             _started = True
