@@ -14,6 +14,13 @@ AUDIT_MARKDOWN = PROJECT_ROOT / "docs/architecture/agent-api-surface-audit.md"
 API_SKILL = PROJECT_ROOT / "skills/moviepilot-api/SKILL.md"
 
 
+def _read_api_skill_contract() -> str:
+    """Read the API Skill entrypoint together with all categorized contracts."""
+    skill_root = API_SKILL.parent
+    paths = [API_SKILL, *sorted((skill_root / "api").glob("*.md"))]
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+
 def _load_generator() -> dict:
     """Load the audit generator without invoking its file-writing entrypoint."""
     return runpy.run_path(str(PROJECT_ROOT / "scripts/generate_agent_api_surface_audit.py"))
@@ -53,9 +60,26 @@ def test_cleanup_confirmation_stays_in_authenticated_management_workflow() -> No
     assert (disposition, owner, operations) == ("ui_presentation", "host-ui", [])
 
 
+def test_moviepilot_api_skill_routes_contracts_to_category_files() -> None:
+    """The API Skill entrypoint stays concise and every operation has a namespace file."""
+    entrypoint = API_SKILL.read_text(encoding="utf-8")
+    category_files = {
+        path.stem: path.read_text(encoding="utf-8")
+        for path in sorted((API_SKILL.parent / "api").glob("*.md"))
+    }
+
+    assert len(entrypoint.splitlines()) < 300
+    assert "### `" not in entrypoint
+    assert len(category_files) == 22
+    assert all(
+        f"### `{operation_id}`" in category_files[operation_id.split(".", 1)[0]]
+        for operation_id in API_OPERATION_ROUTES
+    )
+
+
 def test_every_gateway_operation_has_one_exact_english_skill_and_mcp_contract() -> None:
     """Every approved operation must be discoverable with matching exact English contracts."""
-    skill = API_SKILL.read_text(encoding="utf-8")
+    skill = _read_api_skill_contract()
     schema = MoviePilotApiTool(session_id="audit", user_id="1").get_mcp_input_schema()
     branches = {
         branch["properties"]["operation_id"]["const"]: branch

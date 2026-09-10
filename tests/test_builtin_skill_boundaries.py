@@ -95,6 +95,13 @@ def _read_skill(skill_name: str) -> str:
     return (SKILLS_ROOT / skill_name / "SKILL.md").read_text(encoding="utf-8")
 
 
+def _read_moviepilot_api_skill() -> str:
+    """读取 MoviePilot API Skill 主文档及其按需加载的分类文档。"""
+    skill_root = SKILLS_ROOT / "moviepilot-api"
+    paths = [skill_root / "SKILL.md", *sorted((skill_root / "api").glob("*.md"))]
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+
 def _frontmatter_value(content: str, key: str) -> str:
     """从 SKILL.md frontmatter 中读取单行字段值。"""
     for line in content.splitlines():
@@ -110,7 +117,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "command-dispatch": "2",
         "database-operation": "7",
         "feedback-issue": "9",
-        "moviepilot-api": "27",
+        "moviepilot-api": "28",
         "moviepilot-update": "5",
         "organize-files": "5",
         "transfer-failed-retry": "5",
@@ -235,7 +242,7 @@ def test_api_and_database_skills_declare_final_boundaries() -> None:
 
 def test_api_skill_uses_runtime_system_setting_discovery() -> None:
     """系统设置 Skill 应指导动态发现定义，而不是复制不断变化的键清单。"""
-    api_content = _read_skill("moviepilot-api")
+    api_content = _read_moviepilot_api_skill()
 
     assert "## System Settings Contract" in api_content
     assert "Do not enumerate setting keys in this Skill" in api_content
@@ -256,7 +263,11 @@ def test_refactored_agent_skills_use_english_guidance() -> None:
         "database-operation",
         "moviepilot-update",
     ):
-        content = _read_skill(skill_name)
+        content = (
+            _read_moviepilot_api_skill()
+            if skill_name == "moviepilot-api"
+            else _read_skill(skill_name)
+        )
         assert not re.search(r"[\u3400-\u9fff]", content), skill_name
         assert "按接口模型语义传值" not in content
 

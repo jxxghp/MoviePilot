@@ -588,8 +588,8 @@ Web Agent 直接调用 `moviepilot_api` 时，宿主会自动加载 `moviepilot-
 的 operation 白名单后再执行；这只是授权兜底，不会放宽固定 operation、身份、权限
 或确认策略。
 
-当前业务 operation 分组如下；完整参数合同以 `skills/moviepilot-api/SKILL.md` 和
-各 REST 请求模型为准：
+当前业务 operation 分组如下；主流程与分类索引见 `skills/moviepilot-api/SKILL.md`，
+完整参数合同见其 `skills/moviepilot-api/api/*.md` 分类文档和各 REST 请求模型：
 
 | 领域 | Operation ID |
 | :--- | :--- |

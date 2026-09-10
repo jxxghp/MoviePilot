@@ -467,6 +467,105 @@ def _render_api_docs() -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _split_api_docs(rendered: str) -> tuple[dict[str, str], str, str]:
+    """Split generated API contracts into namespace, model, and settings documents."""
+    category_sections: dict[str, list[str]] = {}
+    model_lines: list[str] = []
+    settings_lines: list[str] = []
+    section = ""
+    operation_id: str | None = None
+    operation_lines: list[str] = []
+
+    def flush_operation() -> None:
+        """Store the current operation under its first namespace segment."""
+        nonlocal operation_id, operation_lines
+        if operation_id is not None:
+            category = operation_id.split(".", 1)[0]
+            category_sections.setdefault(category, []).append(
+                "\n".join(operation_lines).rstrip()
+            )
+        operation_id = None
+        operation_lines = []
+
+    for line in rendered.splitlines():
+        if line == "## Operation Catalog":
+            section = "operations"
+            continue
+        if line == "### Referenced Body Models":
+            flush_operation()
+            section = "models"
+            continue
+        if line == "## System Settings Contract":
+            flush_operation()
+            section = "settings"
+            settings_lines = [line]
+            continue
+        if line == "## Operation Order And Failure Handling":
+            section = "failure"
+            continue
+
+        if section == "operations":
+            if line.startswith("### `") and line.endswith("`"):
+                flush_operation()
+                operation_id = line.removeprefix("### `").removesuffix("`")
+                operation_lines = [line]
+            elif operation_id is not None:
+                operation_lines.append(line)
+        elif section == "models":
+            if line.startswith("#### "):
+                line = "## " + line.removeprefix("#### ")
+            model_lines.append(line)
+        elif section == "settings":
+            settings_lines.append(line)
+
+    flush_operation()
+    return (
+        {category: "\n\n".join(sections) for category, sections in category_sections.items()},
+        "\n".join(model_lines).strip(),
+        "\n".join(settings_lines).strip(),
+    )
+
+
+def _sync_api_category_docs(
+    category_sections: Mapping[str, str],
+    settings_section: str,
+    models_section: str,
+) -> None:
+    """Write generated API operations to category files and shared model files."""
+    api_dir = PROJECT_ROOT / "skills/moviepilot-api/api"
+    for category, operations in category_sections.items():
+        category_path = api_dir / f"{category}.md"
+        if not category_path.is_file():
+            raise FileNotFoundError(
+                f"Missing API category document for namespace {category!r}: {category_path}"
+            )
+        category_text = category_path.read_text(encoding="utf-8")
+        operation_section = f"## Operations\n\n{operations}"
+        next_heading = "## System Settings Contract" if category == "config" else None
+        category_text = _replace_section(
+            category_text,
+            "## Operations",
+            operation_section,
+            next_heading,
+        )
+        if category == "config":
+            category_text = _replace_section(
+                category_text,
+                "## System Settings Contract",
+                settings_section,
+            )
+        category_path.write_text(category_text.rstrip() + "\n", encoding="utf-8")
+
+    models_path = api_dir / "models.md"
+    models_path.write_text(
+        "# Shared API Models\n\n"
+        "These body-model descriptions are shared by more than one API category. "
+        "Load this file only when the selected operation references one of these models.\n\n"
+        f"{models_section.rstrip()}\n",
+        encoding="utf-8",
+    )
+
+
 def _render_service_docs(script_path: Path, title: str) -> str:
     """Render one downloader or media-server action contract."""
     namespace = runpy.run_path(str(script_path))
@@ -664,10 +763,9 @@ def main() -> int:
     api_path = PROJECT_ROOT / "skills/moviepilot-api/SKILL.md"
     api_text = api_path.read_text(encoding="utf-8")
     api_text = _sync_api_frontmatter(api_text)
-    api_path.write_text(
-        _replace_section(api_text, "## Operation Catalog", _render_api_docs()),
-        encoding="utf-8",
-    )
+    api_path.write_text(api_text, encoding="utf-8")
+    category_sections, models_section, settings_section = _split_api_docs(_render_api_docs())
+    _sync_api_category_docs(category_sections, settings_section, models_section)
 
     downloader_path = PROJECT_ROOT / "skills/downloader-operation/SKILL.md"
     downloader_text = downloader_path.read_text(encoding="utf-8")
