@@ -24,6 +24,7 @@ class ModelSettings:
     max_output_tokens: int = 8192
     timeout_seconds: int = 180
     context_window: int = 128000
+    wire_api: str = "responses"
 
     def __post_init__(self) -> None:
         """配置文件和 worker 输入共享校验，不能绕过限额或夹带 URL 凭据。"""
@@ -39,6 +40,8 @@ class ModelSettings:
             raise ValueError("所选 provider 没有可用的显式评测凭据")
         if self.reasoning_effort not in {"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}:
             raise ValueError("推理预算名称无效")
+        if self.wire_api not in {"responses", "chat_completions"}:
+            raise ValueError("模型 provider 协议无效")
         for value, minimum, maximum in (
             (self.max_model_calls, 1, 64), (self.max_output_tokens, 256, 32768),
             (self.timeout_seconds, 30, 900), (self.context_window, 4096, 2000000),
@@ -50,6 +53,7 @@ class ModelSettings:
         """公开模型与评测预算，省略凭据、完整连接路径和用户配置文件。"""
         return {
             "requested_model": self.model, "provider_host": urlsplit(self.base_url).hostname,
+            "wire_api": self.wire_api,
             "reasoning_effort": self.reasoning_effort, "max_model_calls": self.max_model_calls,
             "max_output_tokens": self.max_output_tokens, "timeout_seconds": self.timeout_seconds,
             "harness_context_window": self.context_window,
@@ -63,8 +67,9 @@ def load_codex_model_settings(
     """只使用选中 provider 显式配置的 bearer/env 凭据，不挪用其他服务的登录令牌。"""
     config = tomllib.loads(path.read_text(encoding="utf-8"))
     provider = config.get("model_providers", {}).get(config.get("model_provider"), {})
-    if provider.get("wire_api") != "responses":
-        raise ValueError("当前真实评测入口要求明确配置的 Responses provider")
+    wire_api = provider.get("wire_api")
+    if wire_api not in {"responses", "chat_completions"}:
+        raise ValueError("当前真实评测入口要求明确配置的 Responses 或 Chat Completions provider")
     endpoint = provider.get("base_url")
     selected_model = model or config.get("model")
     if not isinstance(selected_model, str):
@@ -73,7 +78,8 @@ def load_codex_model_settings(
     if not key and isinstance(provider.get("env_key"), str):
         key = os.environ.get(provider["env_key"])
     effort = reasoning_effort or config.get("model_reasoning_effort", "high")
-    return ModelSettings(selected_model, endpoint, key, effort, max_model_calls, max_output_tokens, timeout_seconds)
+    return ModelSettings(selected_model, endpoint, key, effort, max_model_calls, max_output_tokens,
+                         timeout_seconds, wire_api=wire_api)
 
 
 class ModelCallLimitError(RuntimeError):

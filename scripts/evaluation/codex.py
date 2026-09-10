@@ -259,6 +259,8 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
 
 def run_codex(scenario_id: str, settings: ModelSettings, *, executable: str = "codex", probe_only: bool = False) -> dict[str, Any]:
     """仅运行已核对的原生版本，探针不会向真实供应商发送请求。"""
+    if settings.wire_api != "responses":
+        raise RuntimeError("原生 Codex 对照目前要求 Responses provider；当前配置是 Chat Completions")
     binary = shutil.which(executable)
     if binary is None:
         raise RuntimeError("未找到原生 Codex CLI")

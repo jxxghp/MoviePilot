@@ -29,6 +29,18 @@ def test_model_settings_do_not_expose_explicit_credential(tmp_path):
     assert "private-test-key" not in repr(settings)
     assert "private-test-key" not in json.dumps(settings.public_metadata())
     assert settings.model == "test-model"
+    assert settings.wire_api == "responses"
+
+
+def test_chat_completions_provider_is_supported(tmp_path):
+    """Google 等 OpenAI 兼容 provider 可以明确选择 Chat Completions 协议。"""
+    path = _config(tmp_path).read_text(encoding="utf-8").replace('wire_api = "responses"',
+                                                                     'wire_api = "chat_completions"')
+    config = tmp_path / "chat-completions.toml"
+    config.write_text(path, encoding="utf-8")
+    settings = load_codex_model_settings(config)
+    assert settings.wire_api == "chat_completions"
+    assert settings.public_metadata()["wire_api"] == "chat_completions"
 
 
 def test_only_named_provider_environment_key_is_used(tmp_path, monkeypatch):
@@ -109,7 +121,8 @@ def test_empty_or_partial_usage_does_not_break_response_handling():
     ("base_url", "https://model.invalid/v1?api_key=private-test-key"),
     ("base_url", "https://model.invalid/v1#private-test-key"),
     ("api_key", ""), ("api_key", "  "), ("api_key", "private\ntest"), ("api_key", False),
-    ("reasoning_effort", "unbounded"), ("max_model_calls", 0), ("max_model_calls", 65),
+    ("reasoning_effort", "unbounded"), ("wire_api", "unknown"), ("max_model_calls", 0),
+    ("max_model_calls", 65),
     ("max_model_calls", True), ("max_model_calls", 2.5),
     ("max_output_tokens", 255), ("max_output_tokens", 32769), ("max_output_tokens", True),
     ("timeout_seconds", 29), ("timeout_seconds", 901), ("timeout_seconds", False),

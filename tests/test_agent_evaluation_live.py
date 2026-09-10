@@ -214,6 +214,24 @@ async def test_successful_model_reply_still_requires_independent_business_eviden
 
 
 @pytest.mark.asyncio
+async def test_chat_completions_provider_uses_google_compatible_request_options(worker_boundary, model_settings):
+    """Chat Completions provider 不得误走 Responses 参数，推理档位仍要显式传递。"""
+    model_settings = ModelSettings(**{**asdict(model_settings), "wire_api": "chat_completions"})
+
+    async def run(_world, model, **_kwargs):
+        """完成一次离线回调，保留模型构造参数供断言。"""
+        _record_model_reply(model, successful=True)
+        return {"execution_success": False, "final_text": "执行失败"}
+
+    worker_boundary.runner = run
+    await live._run_worker("unknown_download", model_settings)
+    parameters = worker_boundary.model.parameters
+    assert parameters["use_responses_api"] is False
+    assert parameters["reasoning_effort"] == model_settings.reasoning_effort
+    assert "reasoning" not in parameters
+
+
+@pytest.mark.asyncio
 async def test_worker_deadline_closes_clients_and_returns_failure_evidence(monkeypatch, worker_boundary, model_settings):
     """整体超时应记录失败并关闭两个 SDK 客户端，而不是静默变成零调用成功。"""
     observed_timeout = []

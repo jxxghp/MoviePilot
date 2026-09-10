@@ -97,12 +97,17 @@ async def _run_worker(scenario_id: str, settings: ModelSettings) -> dict[str, An
         from scripts.evaluation.world import EvaluationWorld
 
         tracker = ModelUsageTracker(settings.max_model_calls)
-        model = ChatOpenAI(
-            model=settings.model, api_key=settings.api_key, base_url=settings.base_url,
-            use_responses_api=True, reasoning={"effort": settings.reasoning_effort},
-            max_tokens=settings.max_output_tokens, max_retries=0, timeout=min(120, settings.timeout_seconds),
-            profile={"max_input_tokens": settings.context_window}, callbacks=[tracker],
-        )
+        model_options: dict[str, Any] = {
+            "model": settings.model, "api_key": settings.api_key, "base_url": settings.base_url,
+            "max_tokens": settings.max_output_tokens, "max_retries": 0,
+            "timeout": min(120, settings.timeout_seconds),
+            "profile": {"max_input_tokens": settings.context_window}, "callbacks": [tracker],
+        }
+        if settings.wire_api == "responses":
+            model_options.update(use_responses_api=True, reasoning={"effort": settings.reasoning_effort})
+        else:
+            model_options.update(use_responses_api=False, reasoning_effort=settings.reasoning_effort)
+        model = ChatOpenAI(**model_options)
         world = EvaluationWorld(scenario_id)
         started = time.monotonic()
         capture: dict[str, Any] = {}
