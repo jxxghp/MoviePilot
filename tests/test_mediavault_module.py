@@ -5,7 +5,7 @@ from typing import Optional
 
 import pytest
 
-from app.modules.mediavault.api import Result
+from app.modules.mediavault.api import Api, Result
 from app.modules.mediavault.mediavault import MediaVault
 from app.schemas.mediaserver import RefreshMediaItem
 from app.schemas.types import MediaSource, MediaType
@@ -28,7 +28,8 @@ class _FakeApi:
         self.closed = True
 
     def image_url(self, item_id: str, image_type: str, host: Optional[str] = None) -> str:
-        return f"{host or self._host}/api/v1/media-library/items/{item_id}/image/{image_type}?api_key=k"
+        # 复用真实实现，避免假 Api 自行拼装掩盖「URL 不得携带凭据」这一约束
+        return Api(host=host or self._host, apikey="k").image_url(item_id, image_type)
 
     def request(self, api, method=None, params=None, data=None, base_path=None, suppress_log=False):
         self.calls.append({"api": api, "method": method, "params": params or {}, "data": data,
@@ -144,7 +145,7 @@ def test_get_librarys_maps_type_and_builds_image_url():
     ]
     assert libraries[0].path == ["/mnt/movies"]
     assert libraries[1].path == "/mnt/tv"
-    assert libraries[0].image.endswith("/items/lib-1/image/primary?api_key=k")
+    assert libraries[0].image.endswith("/items/lib-1/image/primary")
     assert libraries[0].server_type == "mediavault"
 
 
@@ -441,3 +442,149 @@ def test_disconnect_closes_session():
     client.disconnect()
     assert client._api.closed is True
     assert client.is_authenticated() is False
+
+
+# ── PR-Agent 审查修复的回归 ──────────────────────────────────────────
+
+
+def test_get_movies_pages_past_the_first_page():
+    """关键字命中超过单页上限时，仍要能找到排在后面的目标电影。"""
+    rows = [_item_row(i, title=f"其它{i}") for i in range(MediaVault.PAGE_LIMIT)]
+    rows.append(_item_row(999, title="沙丘", year=2021, tmdb_id=438631))
+    client = _client({"/items": _paged_items(rows)})
+
+    matched = client.get_movies(title="沙丘", year="2021")
+
+    assert [m.item_id for m in matched] == ["id-999"]
+    assert [call["params"]["page"] for call in client._api.calls] == [1, 2]
+
+
+def test_find_series_pages_past_the_first_page():
+    """按标题定位剧集时同样要翻页，否则整部剧会被误判成未入库。"""
+    rows = [_item_row(i, kind="Series", title=f"其它{i}") for i in range(MediaVault.PAGE_LIMIT)]
+    rows.append(_item_row(999, kind="Series", title="剧A", year=2020))
+    routes = {
+        "/items": _paged_items(rows),
+        "/items/id-999/episodes": Result(True, {"seasons": {"1": [1, 2]}}),
+    }
+
+    item_id, seasons = _client(routes).get_tv_episodes(title="剧A", year="2020")
+
+    assert item_id == "id-999"
+    assert seasons == {1: [1, 2]}
+
+
+def test_latest_marks_series_as_tv_not_movie():
+    """最新入库里的剧集条目类型必须是电视剧。"""
+    rows = [_item_row(1, kind="Series", title="剧A"), _item_row(2, kind="Movie", title="片B")]
+    client = _client({"/items": _paged_items(rows)})
+
+    latest = client.get_latest(num=2)
+
+    assert [(item.title, item.type) for item in latest] == [
+        ("剧A", MediaType.TV.value),
+        ("片B", MediaType.MOVIE.value),
+    ]
+    # 剧集不是分集，不应拼出「季:集」副标题
+    assert latest[0].subtitle == "2020"
+
+
+def test_refresh_queues_every_matched_library_even_if_one_fails():
+    """同批命中多个媒体库时，前面的扫描失败不能让后面的媒体库被跳过。"""
+    routes = {
+        "/libraries": Result(True, {"items": [
+            {"id": "lib-1", "root_paths": ["/mnt/a"]},
+            {"id": "lib-2", "root_paths": ["/mnt/b"]},
+        ]}),
+        "/libraries/lib-1/scan-task": Result(False, None, "busy", 409),
+        "/libraries/lib-2/scan-task": Result(True, {}),
+    }
+    client = _client(routes)
+
+    ok = client.refresh_library_by_items([
+        RefreshMediaItem(title="A", target_path=Path("/mnt/a/A (2020)")),
+        RefreshMediaItem(title="B", target_path=Path("/mnt/b/B (2021)")),
+    ])
+
+    assert ok is False
+    scanned = [call["api"] for call in client._api.calls if call["api"].endswith("scan-task")]
+    assert scanned == ["/libraries/lib-1/scan-task", "/libraries/lib-2/scan-task"]
+
+
+def test_image_url_never_carries_credentials():
+    """图片地址会交给浏览器直接加载，绝不能带上管理 API Key。"""
+    url = Api(host="http://mv.local", apikey="super-secret-admin-key").image_url("id-1", "primary")
+
+    assert url == "http://mv.local/api/v1/media-library/items/id-1/image/primary"
+    assert "super-secret-admin-key" not in url
+    assert "api_key" not in url
+
+
+def test_play_item_and_backdrop_images_carry_no_credentials():
+    """展示类接口产出的图片地址同样不得携带凭据。"""
+    rows = [_item_row(1, has_backdrop=True), _item_row(2, kind="Episode", series_id="s-1")]
+    client = _client({"/items": _paged_items(rows)})
+
+    urls = [item.image for item in client.get_latest(num=2)]
+    urls += client.get_latest_backdrops(num=1)
+    urls += [lib.image for lib in (client.get_librarys() or [])]
+
+    assert urls
+    assert all("api_key" not in url for url in urls)
+
+
+def _failing_second_page(total_rows: list):
+    """第一页正常、后续页请求失败，模拟翻页中途断连。"""
+    calls = {"n": 0}
+
+    def handler(params, _data):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            return None
+        size = int(params.get("page_size", 40))
+        return Result(True, {"items": total_rows[:size], "total": len(total_rows)})
+
+    return handler
+
+
+def test_get_movies_reports_unreachable_when_a_later_page_fails():
+    """翻页中途断连必须返回 None，不能把残缺结果当成「不在库中」。"""
+    # total 必须超过一页，否则第一页就判定取完，构造不出「中途失败」
+    rows = [_item_row(i, title=f"沙丘{i}") for i in range(MediaVault.PAGE_LIMIT + 1)]
+    client = _client({"/items": _failing_second_page(rows)})
+
+    assert client.get_movies(title="沙丘") is None
+
+
+def test_find_series_reports_unreachable_when_a_later_page_fails():
+    """同上：剧集定位不能把断连误判成整部剧未入库。"""
+    rows = [_item_row(i, kind="Series", title=f"剧{i}") for i in range(MediaVault.PAGE_LIMIT + 1)]
+    client = _client({"/items": _failing_second_page(rows)})
+
+    assert client.get_tv_episodes(title="剧A") == (None, None)
+
+
+def test_search_stops_at_reported_total_without_an_extra_request():
+    """末页恰好满额时用 total 判定取完，不再多发一次可能失败的请求。"""
+    rows = [_item_row(i, title="沙丘", year=2021) for i in range(MediaVault.PAGE_LIMIT)]
+    client = _client({"/items": _paged_items(rows)})
+
+    matched = client.get_movies(title="沙丘")
+
+    assert len(matched) == MediaVault.PAGE_LIMIT
+    assert [call["params"]["page"] for call in client._api.calls] == [1]
+
+
+def test_find_series_returns_first_page_hit_even_if_a_later_page_fails():
+    """第一页已命中就该直接返回，不因后续页失败被误报成服务不可达。"""
+    rows = [_item_row(0, kind="Series", title="剧A", year=2020)]
+    rows += [_item_row(i, kind="Series", title=f"其它{i}") for i in range(1, MediaVault.PAGE_LIMIT + 1)]
+    routes = {
+        "/items": _failing_second_page(rows),
+        "/items/id-0/episodes": Result(True, {"seasons": {"1": [1]}}),
+    }
+
+    item_id, seasons = _client(routes).get_tv_episodes(title="剧A", year="2020")
+
+    assert item_id == "id-0"
+    assert seasons == {1: [1]}

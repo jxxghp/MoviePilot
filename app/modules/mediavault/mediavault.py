@@ -14,6 +14,14 @@ from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.types import MediaSource, MediaType
 
 
+class _SearchInterrupted(Exception):
+    """关键字翻页中途请求失败。
+
+    与「查完了」区分开：调用方据此返回 None（服务不可达），而不是空结果
+    （确定不在库中）——后者会让上层误判成需要重新下载。
+    """
+
+
 class MediaVault:
     """MediaVault 自建媒体库客户端。
 
@@ -222,6 +230,43 @@ class MediaVault:
             return None
         return result.data
 
+    def __search_rows(self, keyword: str, kinds: str) -> Optional[Generator[Dict[str, Any], Any, None]]:
+        """按关键字翻页产出条目原始记录。
+
+        MediaVault 的关键字查询是模糊匹配，命中数可能超过单页上限；只读第一页会让
+        存在性判断把排在后面的目标误判成「未入库」，因此这里翻页直到取完。
+        连接失败返回 None，与「查得到但没有」区分开。
+        """
+        first = self.__query_items(keyword=keyword, kinds=kinds, page=1, page_size=self.PAGE_LIMIT)
+        if first is None:
+            return None
+
+        def rows() -> Generator[Dict[str, Any], Any, None]:
+            result: Dict[str, Any] = first
+            page = 1
+            seen = 0
+            while True:
+                batch = result.get("items") or []
+                seen += len(batch)
+                yield from batch
+                total = result.get("total")
+                # 有可靠总数时以它为准：末页恰好满额也不再多发一次请求，
+                # 那次多余请求一旦失败会把完整结果误报成服务不可达
+                if isinstance(total, int):
+                    if seen >= total:
+                        return
+                elif len(batch) < self.PAGE_LIMIT:
+                    return
+                page += 1
+                following = self.__query_items(
+                    keyword=keyword, kinds=kinds, page=page, page_size=self.PAGE_LIMIT
+                )
+                if following is None:
+                    raise _SearchInterrupted
+                result = following
+
+        return rows()
+
     # ── 条目 ────────────────────────────────────────────────────
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
@@ -243,11 +288,15 @@ class MediaVault:
         """按标题和年份检查电影是否存在。"""
         if not title or not self.is_configured():
             return None
-        result = self.__query_items(keyword=title, kinds="Movie", page_size=self.PAGE_LIMIT)
-        if result is None:
+        rows = self.__search_rows(keyword=title, kinds="Movie")
+        if rows is None:
             return None
         movies = []
-        for row in result.get("items") or []:
+        try:
+            search_rows = list(rows)
+        except _SearchInterrupted:
+            return None
+        for row in search_rows:
             item = self.__format_item_info(row)
             if not item or item.title != title:
                 continue
@@ -310,18 +359,23 @@ class MediaVault:
         media_id: Optional[str],
     ) -> Optional[str]:
         """按标题定位剧集条目 ID；连接失败返回 None，未找到返回空串。"""
-        result = self.__query_items(keyword=title, kinds="Series", page_size=self.PAGE_LIMIT)
-        if result is None:
+        rows = self.__search_rows(keyword=title, kinds="Series")
+        if rows is None:
             return None
-        for row in result.get("items") or []:
-            item = self.__format_item_info(row)
-            if not item or item.title != title:
-                continue
-            if year and str(item.year) != str(year):
-                continue
-            if not MediaServerIdentityHelper.is_compatible(item, media_source, media_id):
-                continue
-            return str(item.item_id)
+        try:
+            # 逐行检查、命中即返回：预取全部页会让第一页已命中的目标
+            # 因后续页请求失败被误报成服务不可达
+            for row in rows:
+                item = self.__format_item_info(row)
+                if not item or item.title != title:
+                    continue
+                if year and str(item.year) != str(year):
+                    continue
+                if not MediaServerIdentityHelper.is_compatible(item, media_source, media_id):
+                    continue
+                return str(item.item_id)
+        except _SearchInterrupted:
+            return None
         return ""
 
     def get_season_episode_ids(self, item_id: str, season: int) -> Dict[int, str]:
@@ -475,6 +529,8 @@ class MediaVault:
             if not row_id:
                 continue
             is_episode = row.get("kind") == "Episode"
+            # Series 与 Episode 都是电视剧；只有分集才拼「季:集 - 分集名」副标题
+            is_tv = is_episode or row.get("kind") == "Series"
             title: Optional[str] = row.get("title")
             subtitle: Optional[str] = None
             if is_episode:
@@ -494,7 +550,7 @@ class MediaVault:
                     item_id=row_id,
                     title=title,
                     subtitle=subtitle,
-                    type=MediaType.TV.value if is_episode else MediaType.MOVIE.value,
+                    type=MediaType.TV.value if is_tv else MediaType.MOVIE.value,
                     image=self._api.image_url(str(image_id or row_id), "primary"),
                     link=self.get_play_url(row_id),
                     percent=percent,
@@ -562,7 +618,10 @@ class MediaVault:
                 logger.info(f"MediaVault 中未找到 {item.title} 对应的媒体库，将扫描全部媒体库")
         if unmatched:
             return self.refresh_root_library()
-        return all(self.__queue_scan(library_id) for library_id in matched)
+        # 先全部发出排队请求再汇总：交给 all() 的生成器会在首个失败处短路，
+        # 导致同批命中的其余媒体库收不到扫描任务
+        results = [self.__queue_scan(library_id) for library_id in sorted(matched)]
+        return all(results)
 
     @staticmethod
     def __match_library_by_path(

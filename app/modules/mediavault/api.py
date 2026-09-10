@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
-from urllib.parse import urlencode
 
 from app.adapters.network.http import RequestUtils
 from app.foundation.url import UrlUtils
@@ -45,12 +44,15 @@ class Api:
         self._request_utils.close()
 
     def image_url(self, item_id: str, image_type: str, host: Optional[str] = None) -> str:
-        """拼装带鉴权的图片直链；item_id 传媒体库 ID 时得到媒体库封面。"""
+        """拼装图片直链；item_id 传媒体库 ID 时得到媒体库封面。
+
+        MediaVault 的图片是免鉴权资源，这里**不能**带上 API Key：该地址会随接口
+        响应交给浏览器加载，带 Key 等于把管理凭据下发到客户端。
+        """
         if not self.configured or not item_id:
             return ""
         base = (UrlUtils.standardize_base_url(host).rstrip("/") if host else self._host)
-        query = urlencode({"api_key": self._apikey})
-        return f"{base}{self.LIBRARY_PATH}/items/{item_id}/image/{image_type}?{query}"
+        return f"{base}{self.LIBRARY_PATH}/items/{item_id}/image/{image_type}"
 
     def request(
         self,
