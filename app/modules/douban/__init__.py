@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, Union, cast
+from typing import Any, Iterable, List, Optional, Tuple, Union, cast
 
 import cn2an
 
@@ -35,6 +35,7 @@ from app.schemas.types import (
     MediaSourceSelection,
     MediaType,
     ModuleType,
+    MusicEntityType,
 )
 
 
@@ -154,8 +155,10 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             meta: MetaMusic,
             limit: int = 20,
             media_source: Optional[MediaSourceSelection] = None,
+            music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> Optional[List[MusicInfo]]:
-        """按请求来源搜索豆瓣音乐专辑，并转换为统一音乐候选。"""
+        """按请求来源搜索豆瓣音乐专辑，并兼容统一音乐搜索的实体过滤参数。"""
+        del music_types
         if not is_media_source_selected(media_source, self._music_source):
             return None
         keyword = meta.album or meta.title

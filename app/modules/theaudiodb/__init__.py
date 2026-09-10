@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Iterable, Optional, Tuple, Union
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.context import (
@@ -23,6 +23,7 @@ from app.schemas.types import (
     MediaSourceSelection,
     MediaType,
     ModuleType,
+    MusicEntityType,
 )
 
 
@@ -117,8 +118,10 @@ class TheAudioDbModule(_ModuleBase):
             meta: MetaMusic,
             limit: int = 20,
             media_source: Optional[MediaSourceSelection] = None,
+            music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> Optional[list[MusicInfo]]:
-        """按请求来源搜索 TheAudioDB 单曲、专辑和艺术家。"""
+        """按请求来源搜索 TheAudioDB 单曲、专辑和艺术家，并兼容实体过滤参数。"""
+        del music_types
         if not is_media_source_selected(media_source, self._source):
             return None
         normalized_limit = max(1, min(limit, 100))
