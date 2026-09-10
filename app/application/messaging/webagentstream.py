@@ -162,6 +162,132 @@ def _build_web_agent_output_callback(
     return output_callback
 
 
+def _build_web_agent_files(command: Any) -> list[dict[str, Any]]:
+    """把 WebAgent 命令中的普通文件和音频引用整理成 Agent 输入。"""
+    audio_refs = {str(audio_ref) for audio_ref in command.audio_refs}
+    files = [file for file in command.files if str(file.get("ref") or "") not in audio_refs]
+    files.extend({"ref": audio_ref, "mime_type": "audio/*"} for audio_ref in command.audio_refs)
+    return files
+
+
+def _build_web_agent_event_generator(
+    *,
+    command: Any,
+    current_user: Any,
+    session_id: str,
+    prompt: str,
+    display_messages: list[dict[str, Any]],
+    assistant_display_message: dict[str, Any],
+    has_audio_input: bool,
+    is_secret_confirmation_control: bool,
+    protected_transport_supported: bool,
+    service: Any,
+    persistence: Any,
+    is_disconnected: Callable[[], Awaitable[bool]],
+    dependencies: WebAgentStreamDependencies,
+    event_publisher: Any,
+    output_callback: Callable[[str], None],
+    message_callback: Callable[[Message], Awaitable[None]],
+    protected_output_callback: Callable[[str], bool],
+    steering_status_callback: Callable[[SteeringMessage, str], None],
+) -> AsyncIterator[dict[str, Any]]:
+    """构造后台 Agent 任务并按断线与终态语义消费展示事件。"""
+    files = _build_web_agent_files(command)
+
+    async def run_agent() -> None:
+        """后台执行 Agent，并在完成后持久化展示快照。"""
+        try:
+            runtime_manager = agent_application.get_running_agent_manager()
+            if runtime_manager is None:
+                raise RuntimeError("智能助手服务尚未就绪，请稍后重试。")
+            await runtime_manager.process_message(
+                session_id=session_id,
+                user_id=str(current_user.id),
+                message=prompt,
+                images=command.images,
+                files=files or None,
+                has_audio_input=has_audio_input,
+                channel=NotificationChannel.WebAgent.value,
+                source=dependencies.source,
+                username=current_user.name,
+                reply_mode=ReplyMode.CAPTURE_ONLY,
+                allow_message_tools=True,
+                output_callback=output_callback,
+                protected_output_callback=(protected_output_callback if protected_transport_supported else None),
+                message_callback=message_callback,
+                steering_status_callback=steering_status_callback,
+                agent_factory=agent_application.get_web_agent_type(),
+                wait_for_completion=True,
+            )
+        except asyncio.CancelledError:
+            # 显式停止会话沿用正常终止语义；服务关闭由 manager 的稳定异常分支处理。
+            pass
+        except Exception as err:
+            logger.error(f"Web智能助手执行失败: {str(err)}")
+            error_event = {
+                "type": "error",
+                "message": "智能助手执行失败，请稍后重试",
+            }
+            dependencies.apply_display_event(error_event, assistant_display_message)
+            event_publisher.publish(error_event)
+        finally:
+            done_event = {"type": "done"}
+            dependencies.apply_display_event(done_event, assistant_display_message)
+            # 终态先进入事件队列，避免展示快照落库延迟前端结束动画。
+            event_publisher.publish(done_event)
+            if not is_secret_confirmation_control:
+                try:
+                    await dependencies.save_display_snapshot(
+                        session_id=session_id,
+                        current_user=current_user,
+                        messages=display_messages,
+                        client_session_id=command.session_id or session_id,
+                        service=service,
+                        persistence=persistence,
+                    )
+                except Exception as err:
+                    logger.error(f"保存WebAgent展示历史失败：{err}")
+
+    async def event_generator() -> AsyncIterator[dict[str, Any]]:
+        """执行后台 Agent 并在客户端断线时保留运行任务。"""
+        task = dependencies.create_background_task(run_agent())
+        disconnected = False
+        terminal_sent = False
+        try:
+            yield {"type": "start", "session_id": session_id}
+            while not runtime_stop_state.is_system_stopped:
+                if await is_disconnected():
+                    disconnected = True
+                    break
+                try:
+                    event = await asyncio.wait_for(
+                        event_publisher.get(),
+                        timeout=dependencies.heartbeat_seconds,
+                    )
+                except asyncio.TimeoutError:
+                    yield {"type": "heartbeat"}
+                    continue
+                if event.get("type") == "done":
+                    terminal_sent = True
+                yield event
+                if event.get("type") == "done":
+                    break
+        except asyncio.CancelledError:
+            disconnected = True
+            return
+        finally:
+            if not task.done() and not disconnected and not terminal_sent:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            await event_publisher.aclose()
+            # 客户端断线后保留 Agent 继续执行；发布器关闭后拒绝受保护结果。
+
+    return event_generator()
+
+
 def build_agent_web_agent_stream(
     *,
     command: Any,
@@ -220,102 +346,26 @@ def build_agent_web_agent_stream(
         build_input_attachments=dependencies.build_input_attachments,
     )
 
-    async def event_generator() -> AsyncIterator[dict[str, Any]]:
-        """执行 Agent 并按断线与终态语义消费事件。"""
-        audio_ref_set = set(command.audio_refs)
-        files = [file for file in command.files if str(file.get("ref") or "") not in audio_ref_set]
-        files.extend({"ref": audio_ref, "mime_type": "audio/*"} for audio_ref in command.audio_refs)
-
-        async def run_agent() -> None:
-            """后台执行 Agent，并在完成后持久化展示快照。"""
-            try:
-                runtime_manager = agent_application.get_running_agent_manager()
-                if runtime_manager is None:
-                    raise RuntimeError("智能助手服务尚未就绪，请稍后重试。")
-                await runtime_manager.process_message(
-                    session_id=session_id,
-                    user_id=str(current_user.id),
-                    message=prompt,
-                    images=command.images,
-                    files=files or None,
-                    has_audio_input=has_audio_input,
-                    channel=NotificationChannel.WebAgent.value,
-                    source=dependencies.source,
-                    username=current_user.name,
-                    reply_mode=ReplyMode.CAPTURE_ONLY,
-                    allow_message_tools=True,
-                    output_callback=output_callback,
-                    protected_output_callback=(protected_output_callback if protected_transport_supported else None),
-                    message_callback=message_callback,
-                    steering_status_callback=steering_status_callback,
-                    agent_factory=agent_application.get_web_agent_type(),
-                    wait_for_completion=True,
-                )
-            except asyncio.CancelledError:
-                # 显式停止会话沿用正常终止语义；服务关闭由 manager 的稳定异常分支处理。
-                pass
-            except Exception as err:
-                logger.error(f"Web智能助手执行失败: {str(err)}")
-                error_event = {
-                    "type": "error",
-                    "message": "智能助手执行失败，请稍后重试",
-                }
-                dependencies.apply_display_event(error_event, assistant_display_message)
-                event_publisher.publish(error_event)
-            finally:
-                done_event = {"type": "done"}
-                dependencies.apply_display_event(done_event, assistant_display_message)
-                # 终态先进入事件队列，避免展示快照落库延迟前端结束动画。
-                event_publisher.publish(done_event)
-                if not is_secret_confirmation_control:
-                    try:
-                        await dependencies.save_display_snapshot(
-                            session_id=session_id,
-                            current_user=current_user,
-                            messages=display_messages,
-                            client_session_id=command.session_id or session_id,
-                            service=service,
-                            persistence=persistence,
-                        )
-                    except Exception as err:
-                        logger.error(f"保存WebAgent展示历史失败：{err}")
-
-        task = dependencies.create_background_task(run_agent())
-        disconnected = False
-        terminal_sent = False
-        try:
-            yield {"type": "start", "session_id": session_id}
-            while not runtime_stop_state.is_system_stopped:
-                if await is_disconnected():
-                    disconnected = True
-                    break
-                try:
-                    event = await asyncio.wait_for(
-                        event_publisher.get(),
-                        timeout=dependencies.heartbeat_seconds,
-                    )
-                except asyncio.TimeoutError:
-                    yield {"type": "heartbeat"}
-                    continue
-                if event.get("type") == "done":
-                    terminal_sent = True
-                yield event
-                if event.get("type") == "done":
-                    break
-        except asyncio.CancelledError:
-            disconnected = True
-            return
-        finally:
-            if not task.done() and not disconnected and not terminal_sent:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-            await event_publisher.aclose()
-            # 客户端断线后保留 Agent 继续执行；发布器关闭后拒绝受保护结果。
-
-    return event_generator()
+    return _build_web_agent_event_generator(
+        command=command,
+        current_user=current_user,
+        session_id=session_id,
+        prompt=prompt,
+        display_messages=display_messages,
+        assistant_display_message=assistant_display_message,
+        has_audio_input=has_audio_input,
+        is_secret_confirmation_control=is_secret_confirmation_control,
+        protected_transport_supported=protected_transport_supported,
+        service=service,
+        persistence=persistence,
+        is_disconnected=is_disconnected,
+        dependencies=dependencies,
+        event_publisher=event_publisher,
+        output_callback=output_callback,
+        message_callback=message_callback,
+        protected_output_callback=protected_output_callback,
+        steering_status_callback=steering_status_callback,
+    )
 
 
 __all__ = [
