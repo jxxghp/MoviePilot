@@ -1,13 +1,13 @@
 from typing import Annotated, Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Discriminator, Field, PrivateAttr, RootModel, Tag, model_validator
+from pydantic import BaseModel, Discriminator, Field, PrivateAttr as _PrivateAttr, RootModel, Tag, model_validator
 
 from app.schemas.category import ClassificationFactValue, ClassificationResult
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.music import MusicArtistInfo as _MusicArtistInfo
 from app.schemas.music import MusicInfo, MusicMeta
-from app.schemas.types import MediaSource, MediaType
+from app.schemas.types import MediaSource, MediaType as _MediaType
 
 
 class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
@@ -75,7 +75,7 @@ class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
     # 显式媒体数据源原生ID
     media_id: Optional[str] = None
 
-    _season_list: Optional[List[int]] = PrivateAttr(default=None)
+    _season_list: Optional[List[int]] = _PrivateAttr(default=None)
 
     @model_validator(mode="wrap")
     @classmethod
@@ -95,7 +95,7 @@ class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
         if self._season_list is not None:
             return self._season_list
         if self.begin_season is None:
-            if self.type in (MediaType.TV, MediaType.TV.value):
+            if self.type in (_MediaType.TV, _MediaType.TV.value):
                 return [1]
             return []
         if self.end_season is not None:
@@ -115,7 +115,7 @@ class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
                 else "S%s-S%s" % \
                      (str(self.begin_season).rjust(2, "0"),
                       str(self.end_season).rjust(2, "0"))
-        if self.type in (MediaType.TV, MediaType.TV.value):
+        if self.type in (_MediaType.TV, _MediaType.TV.value):
             return "S01"
         return ""
 
@@ -124,7 +124,7 @@ class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
         """返回 begin_season 的数字，电视剧没有季的返回1。"""
         if self.begin_season is not None:
             return str(self.begin_season)
-        if self.type in (MediaType.TV, MediaType.TV.value):
+        if self.type in (_MediaType.TV, _MediaType.TV.value):
             return "1"
         return ""
 
