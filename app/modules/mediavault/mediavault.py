@@ -8,6 +8,14 @@ from app.schemas import MediaType
 from app.utils.url import UrlUtils
 
 
+class _SearchInterrupted(Exception):
+    """关键字翻页中途请求失败。
+
+    与「查完了」区分开：调用方据此返回 None（服务不可达），而不是空结果
+    （确定不在库中）——后者会让上层误判成需要重新下载。
+    """
+
+
 class MediaVault:
     """MediaVault 自建媒体库客户端。
 
@@ -228,17 +236,20 @@ class MediaVault:
             return None
 
         def rows() -> Generator[Dict[str, Any], Any, None]:
-            result: Optional[Dict[str, Any]] = first
+            result: Dict[str, Any] = first
             page = 1
-            while result is not None:
+            while True:
                 batch = result.get("items") or []
                 yield from batch
                 if len(batch) < self.PAGE_LIMIT:
                     return
                 page += 1
-                result = self.__query_items(
+                following = self.__query_items(
                     keyword=keyword, kinds=kinds, page=page, page_size=self.PAGE_LIMIT
                 )
+                if following is None:
+                    raise _SearchInterrupted
+                result = following
 
         return rows()
 
@@ -266,7 +277,11 @@ class MediaVault:
         if rows is None:
             return None
         movies = []
-        for row in rows:
+        try:
+            search_rows = list(rows)
+        except _SearchInterrupted:
+            return None
+        for row in search_rows:
             item = self.__format_item_info(row)
             if not item or item.title != title:
                 continue
@@ -328,7 +343,11 @@ class MediaVault:
         rows = self.__search_rows(keyword=title, kinds="Series")
         if rows is None:
             return None
-        for row in rows:
+        try:
+            search_rows = list(rows)
+        except _SearchInterrupted:
+            return None
+        for row in search_rows:
             item = self.__format_item_info(row)
             if not item or item.title != title:
                 continue

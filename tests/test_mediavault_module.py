@@ -532,3 +532,33 @@ def test_play_item_and_backdrop_images_carry_no_credentials():
 
     assert urls
     assert all("api_key" not in url for url in urls)
+
+
+def _failing_second_page(total_rows: list):
+    """第一页正常、后续页请求失败，模拟翻页中途断连。"""
+    calls = {"n": 0}
+
+    def handler(params, _data):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            return None
+        size = int(params.get("page_size", 40))
+        return Result(True, {"items": total_rows[:size], "total": len(total_rows)})
+
+    return handler
+
+
+def test_get_movies_reports_unreachable_when_a_later_page_fails():
+    """翻页中途断连必须返回 None，不能把残缺结果当成「不在库中」。"""
+    rows = [_item_row(i, title=f"沙丘{i}") for i in range(MediaVault.PAGE_LIMIT)]
+    client = _client({"/items": _failing_second_page(rows)})
+
+    assert client.get_movies(title="沙丘") is None
+
+
+def test_find_series_reports_unreachable_when_a_later_page_fails():
+    """同上：剧集定位不能把断连误判成整部剧未入库。"""
+    rows = [_item_row(i, kind="Series", title=f"剧{i}") for i in range(MediaVault.PAGE_LIMIT)]
+    client = _client({"/items": _failing_second_page(rows)})
+
+    assert client.get_tv_episodes(title="剧A") == (None, None)
