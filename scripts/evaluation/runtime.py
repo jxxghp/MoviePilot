@@ -25,6 +25,7 @@ _RUN_LOCK = Lock()
 _OPERATIONS = (
     "subscription.list", "subscription.find", "subscription.get", "subscription.add", "subscription.delete",
     "download.tasks.active", "download.history.list", "download.clients", "download.paths", "download.add", "site.list",
+    "library.exists",
 )
 
 

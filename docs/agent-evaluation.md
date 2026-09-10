@@ -39,29 +39,31 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
   --output report.json
 ```
 
-### 2026-09-11 供应商实测
+### 2026-09-11 Google Gemini 供应商实测
 
-本轮使用 Agnes AI Hub 的 `agnes-2.5-pro`，推理档位为供应商支持的最高档 `xhigh`，通过 Responses provider 配置和环境变量传递凭据。`max` 请求被供应商以 400 拒绝（支持档位为 `low`、`medium`、`xhigh`），因此不能把失败的 `max` 请求算作模型能力证据。
+本轮使用 Google Gemini `gemini-2.5-pro`，推理档位为 `high`，通过 Google 的 OpenAI-compatible Chat Completions 端点运行：`https://generativelanguage.googleapis.com/v1beta/openai`。报告只记录供应商主机、模型、协议和用量，不记录凭据。它是独立基线，不能和此前 Agnes 或原生 Codex 的结果合并。
 
-此前 `66d288ffc` 提交的隔离评测中，`dedup_existing` 通过（8 次模型调用，约 50 秒）；`unknown_download` 和 `honest_unknown` 均有真实模型响应，但最终报告未通过独立 JSON 验收（各达到 12 次调用上限）。这组结果说明当时实现已经能进行真实供应商评测，也明确暴露了复杂场景的收敛问题，不能据此宣称已达到 Codex 整体水平。
+`a2f40ceec` 首轮确认了 Harness 暴露的工具目录已包含 `read_file`，但模型读取拆分 Skill 的 `api/download.md` 时被错误的临时路径权限拒绝。`7195a29c3` 将非管理员读取根绑定到本次临时 Agent 目录后，模型已经成功读取 `api/download.md` 和 `api/site.md`；这证明 `read_skill -> supporting_files -> read_file` 链路在真实模型运行中可用。
 
-最终提交 `abd3cea92` 在同一 `agnes-2.5-pro + xhigh` 配置下重跑 `dedup_existing` 两次：第一次完成 6 次模型请求后收到 403，第二次首个请求即收到 403；两次均未通过，分别为 `usage_complete=false`、`agent_execution_success=false`。这组结果是供应商访问状态的失败证据，不能与此前通过样本混合为当前代码的通过结论。
+`8c0746172` 将 `download.add` 的最小 `torrent_in` 合同直接补入下载分类文档并把 Skill 升到 v30。当前三场景证据如下（报告保存在本机 `/tmp`，未提交仓库）：
 
-后续提交 `72aabe12f` 只抽取 WebAgent 事件生成私有 helper 以满足复杂度门禁，仍按代码轮次重新运行 `dedup_existing` 一次；首个模型请求即收到 403，报告为 `intelligence_evaluated=false`、`usage_complete=false`、`agent_execution_success=false`。因此当前供应商访问状态仍未提供可用的最新通过样本。
+| 场景 | 结果 | 证据与失败边界 |
+| --- | --- | --- |
+| `dedup_existing` | 未通过 | `/tmp/moviepilot-agent-round-8c0746172-gemini-dedup.json`；真实读取到订阅和下载，未重复写入，但报告仍带有未请求的站点 ID，部分重复运行还会先发错误查询。 |
+| `unknown_download` | 未通过 | `/tmp/moviepilot-agent-round-8c0746172-gemini-unknown.json`；模型持续探索错误或无关读取，达到 12 次模型调用上限并返回技术失败/无最终 JSON，尚未稳定收敛到写入后核验。 |
+| `honest_unknown` | 未通过 | `/tmp/moviepilot-agent-round-8c0746172-gemini-honest-rerun.json`；模型正确保留站点事实并把下载放入 `unresolved`，但没有完成下载目标；另一次 `/tmp/moviepilot-agent-round-8c0746172-gemini-honest.json` 首次请求收到供应商 `MALFORMED_FUNCTION_CALL`。 |
 
-提交 `00150bb87` 收敛主 Agent 的子代理目录后再次运行同一场景；仍为首个请求 403，`model_calls=1`、`completed_model_calls=0`，没有产生可用的工具轨迹或通过结论。专用子代理定义仍保留在运行时配置中，但默认生产目录只向主 Agent 暴露 `general-purpose`，待供应商恢复后再补 held-out 收益评测。
-
-原生探针在修正动态 `tool_search` 目录兼容性后可以启动，但原生 Codex 自带模型目录没有 Agnes 模型，无法在同一模型上形成有效的 MoviePilot/Codex 配对运行；探针没有调用真实模型。后续比较必须先取得双方都能调用的同一模型和推理档位，或把结果明确标为不同基线。
+因此当前真实 Gemini 结果证明了工具合同读取和未知结果诚实边界已经能被实测，但不能宣称达到 Codex 的整体智能水平。原生 Codex 仍未取得同一模型、同一推理档位的可用配对运行；`codex_comparison=false` 继续是有效结论。
 
 只有显式 `--live` 或 `--native` 才会调用真实模型并产生费用。默认读取 `~/.codex/config.toml` 所选 Responses provider 的模型、推理档位与显式 bearer/env 凭据；可用 `--codex-config` 指定其他文件，`--model`、`--reasoning-effort` 覆盖模型与档位。不会借用其他服务的登录凭据，也不会自动降低被供应商拒绝的参数。报告同时保留请求模型与供应商返回的模型标识；本地 Codex 配置不能证明运行中的 MoviePilot 使用相同配置。
 
-调用配置经私有标准输入传给 worker，凭据不进入命令行、提示词或报告。worker 只继承必要的平台环境，先创建临时 `CONFIG_DIR`，再导入后端；每轮拥有独立回执库、记忆、会话和工具实例。生产 `process/_create_agent`、Skills、计划、权限、持久回执、工具输出预算、压缩和子代理仍按真实路径执行。主工具目录限定为假业务 API 和生产内部工具，API transport 拒绝任何外部目标及场景外 operation；插件、外部 MCP、通知和任意 shell/文件/浏览器工具不开放。此受控目录是当前评测边界，不代表默认部署工具全集。
+调用配置经私有标准输入传给 worker，凭据不进入命令行、提示词或报告。worker 只继承必要的平台环境，先创建临时 `CONFIG_DIR`，再导入后端；每轮拥有独立回执库、记忆、会话和工具实例。生产 `process/_create_agent`、Skills、计划、权限、持久回执、工具输出预算、压缩和子代理仍按真实路径执行。评测主目录包含 `moviepilot_api`、生产 `read_skill`、受临时 Agent 根约束的 `read_file`、计划、子代理和回执查询；API transport 拒绝任何外部目标及场景外 operation。插件、外部 MCP、通知、任意 shell 和浏览器工具仍不开放，此受控目录不代表默认部署工具全集。
 
 共享回调在请求前执行硬调用上限，覆盖主模型、选择、摘要和子代理；SDK 自动重试关闭。单请求超时最多 120 秒，全轮和独立进程另有期限。每次请求的输出 token 及运行器上下文上限被记录；上下文上限是测试参数，不表示模型真实最大窗口。当前固定为 128000 tokens。
 
 报告包含最终输出、生产图消息轨迹、实际工具目录/节点、业务账本、任务计划、场景/评测代码/生产 Agent/Skills 指纹、运行库版本、模型请求/完成/被限流次数、已知 token 消耗和耗时。失败请求的用量未知时，`usage_complete=false`，token 仅为已知下界，不能据此声称零消耗。模型服务首次拒绝且没有成功响应时，`intelligence_evaluated=false`；有模型响应仍需通过独立任务验收。`agent_execution_success` 仅表示生产图技术执行结果，不等于任务完成。
 
-`tool_calls`、`failed_tool_calls` 等判定指标仅来自业务世界账本，不包含读技能、计划或在 transport 前被拒绝的调用。`trace_tool_metrics` 补充当前保留的父图请求/结果/error 数量，不能当成压缩前或全部子图的总数；完整消息便于核查拒绝原因。生产提示可能建议查询媒体库等当前假世界未开放的能力，此类拒绝属于受控环境限制，不能据此认定模型调用了无效的生产 API。
+`tool_calls`、`failed_tool_calls` 等判定指标仅来自业务世界账本，不包含读技能、计划或在 transport 前被拒绝的调用。`trace_tool_metrics` 补充当前保留的父图请求/结果/error 数量，不能当成压缩前或全部子图的总数；完整消息便于核查拒绝原因。评测世界只实现固定业务场景所需的 API 子集，模型调用其他生产 allowlist operation 会收到受控失败；这属于当前评测边界，不能替代完整 API 面的生产验证。
 
 单测不调用真实模型或外部网络；测试只验证运行器、隔离、预算与判定合同。真实报告含合成任务轨迹，也可能很长，应保存于评测工作目录；不要把包含私有配置的临时诊断日志提交到仓库。
 

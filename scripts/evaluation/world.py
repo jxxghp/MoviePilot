@@ -23,6 +23,7 @@ _QUERY_FIELDS = {
     "download.paths": _PAGINATION,
     "download.add": frozenset(),
     "site.list": _PAGINATION | {"name", "status"},
+    "library.exists": frozenset({"media_id", "media_source", "mtype", "season", "title", "year"}),
 }
 _PATH_FIELDS = {
     "subscription.find": "media_id",
@@ -213,7 +214,7 @@ class EvaluationWorld:
             value = query.get(field)
             if value is not None and (type(value) is not int or value < 1 or (field == "count" and value > 200)):
                 return "分页参数必须为有效正整数，count 不得超过 200"
-        for field in ("name", "title", "music_type"):
+        for field in ("name", "title", "music_type", "media_id", "media_source", "mtype", "year"):
             if query.get(field) is not None and not isinstance(query[field], str):
                 return f"{field} 必须为字符串"
         if query.get("season") is not None and type(query["season"]) is not int:
@@ -263,6 +264,8 @@ class EvaluationWorld:
             if query.get("name"):
                 rows = [row for row in rows if query["name"].casefold() in row["name"].casefold()]
             return self._collection(rows, query, "site", event)
+        if operation_id == "library.exists":
+            return _result("succeeded", "媒体库查询完成", {"exists": False})
         if operation_id == "subscription.list":
             return self._collection(self._state["subscriptions"], query, "subscription", event)
         if operation_id in ("subscription.find", "subscription.get"):
