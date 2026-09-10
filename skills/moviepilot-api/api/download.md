@@ -11,6 +11,21 @@ Purpose: Submit one torrent to MoviePilot's normal download workflow.
 - `query`: none
 - `body`: `allow_unrecognized` (boolean; default `False`): Allow a download when MoviePilot cannot resolve a canonical media identity.; `downloader` (string|null): Configured downloader instance name.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string(recording,album)|null): Music identity level: recording, album, or artist where supported.; `save_path` (string|null): Configured downloader-side save path for the download or subscription.; `torrent_in*` (TorrentInfo): Complete torrent candidate returned by search.results or search.torrents.
 
+For `download.add`, `torrent_in` is an object whose minimum usable fields are:
+
+```json
+{
+  "title": "The release title",
+  "enclosure": "magnet:?xt=urn:btih:..."
+}
+```
+
+`enclosure` is the direct string magnet or torrent URL; do not wrap it in another
+`url` object. Keep `media_source` and `media_id` as sibling fields beside
+`torrent_in`. Do not use a top-level `url`, `media_info`, or nested `media_info`
+object. Load `api/models.md` when the full optional `TorrentInfo` fields are
+needed.
+
 ### `download.clients`
 `GET /api/v1/download/clients`; policy effect: `safe_read`.
 Purpose: List enabled downloader instance names and provider types without credentials.
