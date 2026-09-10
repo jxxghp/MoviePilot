@@ -53,6 +53,7 @@ def project_transfer_history(record: object) -> TransferHistorySnapshot:
         )
     except (TypeError, ValueError):
         parsed_persisted_retry_count = None
+    status = bool(getattr(record, "status", False))
     retry_count = (
         parsed_persisted_retry_count
         if parsed_persisted_retry_count is not None
@@ -64,7 +65,7 @@ def project_transfer_history(record: object) -> TransferHistorySnapshot:
                 file_modify_time=source_modify_time,
                 fileid=source_fileid,
             )
-            if not bool(getattr(record, "status", False))
+            if not status
             else 0
         )
     )
@@ -82,12 +83,16 @@ def project_transfer_history(record: object) -> TransferHistorySnapshot:
         cleanup_feedback = classify_transfer_failure("下载器清理失败")
         failure_stage = failure_stage or cleanup_feedback.stage.value
         recovery_action = recovery_action or cleanup_feedback.action
-    elif not failure_stage or not recovery_action:
+    elif not status and (not failure_stage or not recovery_action):
         from app.application.transfer.feedback import classify_transfer_failure
 
         feedback = classify_transfer_failure(getattr(record, "errmsg", None))
         failure_stage = failure_stage or feedback.stage.value
         recovery_action = recovery_action or feedback.action
+    elif status:
+        # 成功记录的失败字段不能被历史投影中的默认反馈重新带出，避免误导前端。
+        failure_stage = None
+        recovery_action = None
     return TransferHistorySnapshot(
         id=history_id,
         transfer_task_id=getattr(record, "transfer_task_id", None),
@@ -129,7 +134,7 @@ def project_transfer_history(record: object) -> TransferHistorySnapshot:
         image=getattr(record, "image", None),
         downloader=getattr(record, "downloader", None),
         download_hash=getattr(record, "download_hash", None),
-        status=bool(getattr(record, "status", False)),
+        status=status,
         errmsg=getattr(record, "errmsg", None),
         failure_stage=failure_stage,
         recovery_action=recovery_action,

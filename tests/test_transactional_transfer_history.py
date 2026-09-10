@@ -118,6 +118,16 @@ def test_transactional_repository_projects_detached_snapshots(db) -> None:
     }
 
 
+def test_transactional_repository_does_not_project_failure_feedback_for_success(db) -> None:
+    """成功整理历史不得被投影成带失败阶段和恢复动作的记录。"""
+    repository = _repository()
+    created = repository.replace(_history_write())
+
+    assert created.status is True
+    assert created.failure_stage is None
+    assert created.recovery_action is None
+
+
 def test_transactional_repository_rolls_back_replace_on_commit_failure(
     db,
     monkeypatch,
