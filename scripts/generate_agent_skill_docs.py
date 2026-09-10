@@ -513,7 +513,7 @@ def _split_api_docs(rendered: str) -> tuple[dict[str, str], str, str]:
                 operation_lines.append(line)
         elif section == "models":
             if line.startswith("#### "):
-                line = "## " + line.removeprefix("#### ")
+                line = "### " + line.removeprefix("#### ")
             model_lines.append(line)
         elif section == "settings":
             settings_lines.append(line)
@@ -531,8 +531,14 @@ def _sync_api_category_docs(
     settings_section: str,
     models_section: str,
 ) -> None:
-    """Write generated API operations to category files and shared model files."""
+    """Write standalone API category contracts with their shared body models."""
     api_dir = PROJECT_ROOT / "skills/moviepilot-api/api"
+    model_section = (
+        "## Body Models\n\n"
+        "This category document is self-contained: the shared models below are included "
+        "so the Agent does not need a second Skill document before calling the API.\n\n"
+        f"{models_section.rstrip()}"
+    )
     for category, operations in category_sections.items():
         category_path = api_dir / f"{category}.md"
         if not category_path.is_file():
@@ -554,16 +560,11 @@ def _sync_api_category_docs(
                 "## System Settings Contract",
                 settings_section,
             )
+        if "## Body Models" in category_text:
+            category_text = _replace_section(category_text, "## Body Models", model_section)
+        else:
+            category_text = category_text.rstrip() + "\n\n" + model_section
         category_path.write_text(category_text.rstrip() + "\n", encoding="utf-8")
-
-    models_path = api_dir / "models.md"
-    models_path.write_text(
-        "# Shared API Models\n\n"
-        "These body-model descriptions are shared by more than one API category. "
-        "Load this file only when the selected operation references one of these models.\n\n"
-        f"{models_section.rstrip()}\n",
-        encoding="utf-8",
-    )
 
 
 def _render_service_docs(script_path: Path, title: str) -> str:

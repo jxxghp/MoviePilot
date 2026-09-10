@@ -93,7 +93,7 @@ class EvaluationMcpServer:
     """为一个独立世界提供受认证的本地 Streamable HTTP 必需子集。"""
 
     def __init__(self, world: EvaluationWorld, *, root_dir: Optional[Path] = None, max_world_calls: int = 32) -> None:
-        """固定世界与可信源码目录；模型不能通过请求选择场景、文件或真实后端。"""
+        """固定世界与可信源码目录；模型只能读取预先列出的 Skill 文档。"""
         if type(max_world_calls) is not int or not 1 <= max_world_calls <= 32:
             raise ValueError("max_world_calls 必须为 1 到 32 的整数")
         self._world = world
@@ -111,7 +111,8 @@ class EvaluationMcpServer:
         self._closed = False
         self._sessions: dict[str, _Session] = {}
         self._results: OrderedDict[str, _StoredResult] = OrderedDict()
-        self._skill = self._load_skill(Path(root_dir) if root_dir is not None else Path(__file__).resolve().parents[2])
+        self._skill_root = Path(root_dir) if root_dir is not None else Path(__file__).resolve().parents[2]
+        self._skill = self._load_skill(self._skill_root)
 
     @property
     def endpoint(self) -> str:
@@ -328,8 +329,11 @@ class EvaluationMcpServer:
                 "For collection counts, use the smallest documented page and read collection.total_count instead of querying the database after item truncation. "
                 "Arbitrary URLs, commands, and authentication endpoints are forbidden."
             ), "inputSchema": deepcopy(API_INPUT_SCHEMA)},
-            {"name": "read_skill", "description": "Read the named MoviePilot Skill including its full body and supporting file paths. Available skill: moviepilot-api.", "inputSchema": {
-                "type": "object", "required": ["name"], "additionalProperties": False, "properties": {"name": {"type": "string"}},
+            {"name": "read_skill", "description": "Read the named MoviePilot Skill or one of its listed supporting documents. Available skill: moviepilot-api.", "inputSchema": {
+                "type": "object", "required": ["name"], "additionalProperties": False, "properties": {
+                    "name": {"type": "string"},
+                    "file": {"type": "string", "description": "Relative supporting Skill document path listed by a prior read_skill call."},
+                },
             }},
             {"name": "read_tool_result", "description": "Read an archived tool result using result_id and next_offset. Offsets count Unicode characters. Results expire after 15 minutes or eviction; never guess result IDs.", "inputSchema": {
                 "type": "object", "required": ["result_id"], "additionalProperties": False, "properties": {
@@ -417,10 +421,40 @@ class EvaluationMcpServer:
         return best
 
     def _read_skill(self, arguments: dict[str, Any]) -> Any:
-        """返回完整真实技能的首屏或可续读归档，不提供精简场景专用说明。"""
-        if set(arguments) != {"name"} or arguments.get("name") != "moviepilot-api":
+        """返回真实 Skill 主体或一个分类文档的首屏及可续读归档。"""
+        requested_file = arguments.get("file")
+        if (
+            set(arguments) - {"name", "file"}
+            or arguments.get("name") != "moviepilot-api"
+            or (requested_file is not None and type(requested_file) is not str)
+        ):
             return self._failure("skill_not_found", "Unknown Skill")
-        text = json.dumps(self._skill, ensure_ascii=False, indent=2)
+
+        if requested_file is None:
+            skill_payload = self._skill
+        elif requested_file not in self._skill["supporting_files"]:
+            return self._failure("skill_file_not_found", "Unknown Skill supporting file")
+        else:
+            skill_payload = dict(self._skill)
+            content_path = self._skill_root / "skills/moviepilot-api" / requested_file
+            if content_path.is_symlink() or not content_path.is_file():
+                return self._failure("skill_file_not_found", "Unknown Skill supporting file")
+
+            skill_payload["loaded_file"] = requested_file
+            with content_path.open("rb") as handle:
+                data = handle.read(MAX_SKILL_BYTES + 1)
+            truncated = len(data) > MAX_SKILL_BYTES
+            skill_payload["content"] = data[:MAX_SKILL_BYTES].decode(
+                "utf-8", errors="ignore" if truncated else "replace"
+            )
+            skill_payload["truncated"] = truncated
+            skill_payload["truncation_message"] = (
+                "The requested supporting skill file exceeds 512 KiB; content contains only the first 512 KiB."
+                if truncated
+                else None
+            )
+
+        text = json.dumps(skill_payload, ensure_ascii=False, indent=2)
         if len(text) <= FIRST_PAGE_CHARS:
             return text
         if len(text.encode("utf-8")) > MAX_RESULT_BYTES:
