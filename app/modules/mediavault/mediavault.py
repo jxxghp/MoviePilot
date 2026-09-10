@@ -222,6 +222,32 @@ class MediaVault:
             return None
         return result.data
 
+    def __search_rows(self, keyword: str, kinds: str) -> Optional[Generator[Dict[str, Any], Any, None]]:
+        """按关键字翻页产出条目原始记录。
+
+        MediaVault 的关键字查询是模糊匹配，命中数可能超过单页上限；只读第一页会让
+        存在性判断把排在后面的目标误判成「未入库」，因此这里翻页直到取完。
+        连接失败返回 None，与「查得到但没有」区分开。
+        """
+        first = self.__query_items(keyword=keyword, kinds=kinds, page=1, page_size=self.PAGE_LIMIT)
+        if first is None:
+            return None
+
+        def rows() -> Generator[Dict[str, Any], Any, None]:
+            result: Optional[Dict[str, Any]] = first
+            page = 1
+            while result is not None:
+                batch = result.get("items") or []
+                yield from batch
+                if len(batch) < self.PAGE_LIMIT:
+                    return
+                page += 1
+                result = self.__query_items(
+                    keyword=keyword, kinds=kinds, page=page, page_size=self.PAGE_LIMIT
+                )
+
+        return rows()
+
     # ── 条目 ────────────────────────────────────────────────────
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
@@ -243,11 +269,11 @@ class MediaVault:
         """按标题和年份检查电影是否存在。"""
         if not title or not self.is_configured():
             return None
-        result = self.__query_items(keyword=title, kinds="Movie", page_size=self.PAGE_LIMIT)
-        if result is None:
+        rows = self.__search_rows(keyword=title, kinds="Movie")
+        if rows is None:
             return None
         movies = []
-        for row in result.get("items") or []:
+        for row in rows:
             item = self.__format_item_info(row)
             if not item or item.title != title:
                 continue
@@ -310,10 +336,10 @@ class MediaVault:
         media_id: Optional[str],
     ) -> Optional[str]:
         """按标题定位剧集条目 ID；连接失败返回 None，未找到返回空串。"""
-        result = self.__query_items(keyword=title, kinds="Series", page_size=self.PAGE_LIMIT)
-        if result is None:
+        rows = self.__search_rows(keyword=title, kinds="Series")
+        if rows is None:
             return None
-        for row in result.get("items") or []:
+        for row in rows:
             item = self.__format_item_info(row)
             if not item or item.title != title:
                 continue
@@ -475,6 +501,8 @@ class MediaVault:
             if not row_id:
                 continue
             is_episode = row.get("kind") == "Episode"
+            # Series 与 Episode 都是电视剧；只有分集才拼「季:集 - 分集名」副标题
+            is_tv = is_episode or row.get("kind") == "Series"
             title: Optional[str] = row.get("title")
             subtitle: Optional[str] = None
             if is_episode:
@@ -494,7 +522,7 @@ class MediaVault:
                     item_id=row_id,
                     title=title,
                     subtitle=subtitle,
-                    type=MediaType.TV.value if is_episode else MediaType.MOVIE.value,
+                    type=MediaType.TV.value if is_tv else MediaType.MOVIE.value,
                     image=self._api.image_url(str(image_id or row_id), "primary"),
                     link=self.get_play_url(row_id),
                     percent=percent,
@@ -562,7 +590,10 @@ class MediaVault:
                 logger.info(f"MediaVault 中未找到 {item.title} 对应的媒体库，将扫描全部媒体库")
         if unmatched:
             return self.refresh_root_library()
-        return all(self.__queue_scan(library_id) for library_id in matched)
+        # 先全部发出排队请求再汇总：交给 all() 的生成器会在首个失败处短路，
+        # 导致同批命中的其余媒体库收不到扫描任务
+        results = [self.__queue_scan(library_id) for library_id in sorted(matched)]
+        return all(results)
 
     @staticmethod
     def __match_library_by_path(
