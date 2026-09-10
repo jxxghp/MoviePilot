@@ -2824,7 +2824,7 @@
     "var-annotated": 1
   },
   "app/workflow/actions/add_download.py": {
-    "arg-type": 2,
+    "arg-type": 1,
     "attr-defined": 1,
     "type-arg": 1,
     "union-attr": 9,
