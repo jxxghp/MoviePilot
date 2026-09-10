@@ -83,11 +83,15 @@ class MoviePilotApiTool(MoviePilotTool):
     ]
     description: str = (
         "Call allowlisted MoviePilot business APIs, including versioned automatic media classification. "
-        "Use the domain Skill to select operation_id, "
+        "Read the matching domain Skill before the first call, then select operation_id, "
         "parameters, and failure handling. For collection counts, use the smallest documented "
         "page and read collection.total_count instead of querying the database after item "
         "truncation. External MCP tools/list exposes one complete oneOf branch per operation. "
-        "Arbitrary URLs, commands, and authentication endpoints are forbidden."
+        "Common contracts: subscription.find uses path_params.media_id and query.media_source; "
+        "subscription.list accepts only query.page and query.count; site.list accepts only "
+        "query.page, query.count, query.name, and query.status; download.add puts torrent_in "
+        "with title/enclosure beside media_source/media_id in body. Arbitrary URLs, commands, "
+        "and authentication endpoints are forbidden."
     )
     require_admin: bool = False
     args_schema: Type[BaseModel] = MoviePilotApiInput

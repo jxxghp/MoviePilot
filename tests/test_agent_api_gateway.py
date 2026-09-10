@@ -148,6 +148,16 @@ def test_api_tool_message_displays_secret_safe_major_parameters() -> None:
     assert "sk-secret-value" not in secret_message
 
 
+def test_api_tool_description_keeps_split_skill_contracts_visible_at_call_time() -> None:
+    """即使模型尚未读取 Skill，网关描述也要提示最容易误用的字段位置。"""
+    description = MoviePilotApiTool(session_id="session", user_id="api_user").description
+
+    assert "subscription.find uses path_params.media_id" in description
+    assert "subscription.list accepts only query.page and query.count" in description
+    assert "site.list accepts only query.page, query.count, query.name, and query.status" in description
+    assert "download.add puts torrent_in" in description
+
+
 def test_music_operations_expose_bidirectional_artist_album_navigation() -> None:
     """音乐 Skill 必须完整暴露作品到作者、作者到作品及关联浏览合同。"""
     schema = MoviePilotApiTool(session_id="session", user_id="api_user").get_mcp_input_schema()
