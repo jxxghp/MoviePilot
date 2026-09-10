@@ -228,9 +228,9 @@ class MediaVault:
             return None
 
         def rows() -> Generator[Dict[str, Any], Any, None]:
-            result = first
+            result: Optional[Dict[str, Any]] = first
             page = 1
-            while True:
+            while result is not None:
                 batch = result.get("items") or []
                 yield from batch
                 if len(batch) < self.PAGE_LIMIT:
@@ -239,8 +239,6 @@ class MediaVault:
                 result = self.__query_items(
                     keyword=keyword, kinds=kinds, page=page, page_size=self.PAGE_LIMIT
                 )
-                if result is None:
-                    return
 
         return rows()
 
