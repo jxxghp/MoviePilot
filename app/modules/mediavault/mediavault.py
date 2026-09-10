@@ -244,10 +244,18 @@ class MediaVault:
         def rows() -> Generator[Dict[str, Any], Any, None]:
             result: Dict[str, Any] = first
             page = 1
+            seen = 0
             while True:
                 batch = result.get("items") or []
+                seen += len(batch)
                 yield from batch
-                if len(batch) < self.PAGE_LIMIT:
+                total = result.get("total")
+                # 有可靠总数时以它为准：末页恰好满额也不再多发一次请求，
+                # 那次多余请求一旦失败会把完整结果误报成服务不可达
+                if isinstance(total, int):
+                    if seen >= total:
+                        return
+                elif len(batch) < self.PAGE_LIMIT:
                     return
                 page += 1
                 following = self.__query_items(
@@ -355,18 +363,19 @@ class MediaVault:
         if rows is None:
             return None
         try:
-            search_rows = list(rows)
+            # 逐行检查、命中即返回：预取全部页会让第一页已命中的目标
+            # 因后续页请求失败被误报成服务不可达
+            for row in rows:
+                item = self.__format_item_info(row)
+                if not item or item.title != title:
+                    continue
+                if year and str(item.year) != str(year):
+                    continue
+                if not MediaServerIdentityHelper.is_compatible(item, media_source, media_id):
+                    continue
+                return str(item.item_id)
         except _SearchInterrupted:
             return None
-        for row in search_rows:
-            item = self.__format_item_info(row)
-            if not item or item.title != title:
-                continue
-            if year and str(item.year) != str(year):
-                continue
-            if not MediaServerIdentityHelper.is_compatible(item, media_source, media_id):
-                continue
-            return str(item.item_id)
         return ""
 
     def get_season_episode_ids(self, item_id: str, season: int) -> Dict[int, str]:
