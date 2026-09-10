@@ -56,25 +56,25 @@ MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。
 
 `app/agent/policy/resources/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。
 
-当前完整 FastAPI OpenAPI 包含 397 个 HTTP 操作，其中 211 个稳定业务操作进入
-`moviepilot_api`，使用 209 个固定路由模板：208 条 OpenAPI 路由直接匹配，另有 1 条只允许
+当前完整 FastAPI OpenAPI 包含 397 个 HTTP 操作，其中 218 个稳定业务操作进入
+`moviepilot_api`，使用 216 个固定路由模板：215 条 OpenAPI 路由直接匹配，另有 1 条只允许
 `tmdb`、`douban`、`bangumi`、`anilist` 四个来源的受限人物作品动态路由。每个 operation
 均同时具备固定 method/path、角色权限、副作用等级、确认与恢复策略、结果敏感性、英文用途说明，
 以及可直接提交的 path/query/body JSON Schema；Skill front matter、正文 operation 章节、运行时
-注册表和 MCP `tools/list` 的 211 个 `oneOf` 分支必须完全一致。
+注册表和 MCP `tools/list` 的 218 个 `oneOf` 分支必须完全一致。
 
 数量不相等是明确的安全与语义边界，而不是漏生成。当前 397 条路由均被审计并锁定为以下一种
 归属，审计生成器不再提供“未归类”兜底：
 
 | 归属 | 数量 | Agent 使用方式 |
 | :--- | ---: | :--- |
-| `gateway` | 208 | 通过 `moviepilot_api` 的稳定 operation 和精确参数合同调用 |
-| `consolidated` | 74 | 通过同领域聚合 operation 调用，不复制数据源或前端专用路由 |
-| `provider-skill` | 13 | 通过下载器或媒体服务器 Skill 调用第三方 provider API |
+| `gateway` | 215 | 通过 `moviepilot_api` 的稳定 operation 和精确参数合同调用 |
+| `consolidated` | 71 | 通过同领域聚合 operation 调用，不复制数据源或前端专用路由 |
+| `provider-skill` | 12 | 通过下载器或媒体服务器 Skill 调用第三方 provider API |
 | `alternate-auth-duplicate` | 11 | 使用对应 bearer-authenticated gateway operation，不暴露 API_TOKEN 兼容副本 |
 | `transport_or_identity` | 66 | 由登录、令牌、MCP、会话、回调、健康检查等宿主传输/身份边界拥有 |
 | `stream_or_binary` | 10 | 由直接客户端处理流式日志、消息、文件、图片等非结构化响应 |
-| `ui_presentation` | 15 | 由前端或插件渲染面拥有，不作为业务 Agent operation |
+| `ui_presentation` | 12 | 由前端或插件渲染面拥有，不作为业务 Agent operation |
 
 逐路由归属见 `docs/refactor/agent-api-surface-audit.md`，并由
 `tests/test_agent_api_surface_audit.py` 对当前 OpenAPI、固定注册表、MCP schema、英文 Skill
@@ -454,12 +454,12 @@ AMLL 使用无需鉴权的原生搜索与获取接口，先尝试 ISRC，再核�
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
-| GET | `/api/v1/tmdb/cache` | 查询 TheMovieDb 识别缓存统计、共享识别累计成功命中次数及开关状态 |
-| DELETE | `/api/v1/tmdb/cache/{cache_key}` | 按缓存键删除单条 TheMovieDb 识别缓存，缓存键需要进行 URL 编码 |
-| DELETE | `/api/v1/tmdb/cache` | 清空全部 TheMovieDb 识别缓存 |
-| GET | `/api/v1/music/cache` | 查询 MusicBrainz 音乐识别缓存统计及条目列表 |
-| DELETE | `/api/v1/music/cache/{cache_key}` | 按缓存键删除单条音乐识别缓存，缓存键需要进行 URL 编码 |
-| DELETE | `/api/v1/music/cache` | 清空全部音乐识别缓存 |
+| GET | `/api/v1/tmdb/cache` | `media.cache.get`：查询 TheMovieDb 识别缓存统计、共享识别累计成功命中次数及开关状态 |
+| DELETE | `/api/v1/tmdb/cache/{cache_key}` | `media.cache.delete`：按缓存键删除单条 TheMovieDb 识别缓存，缓存键需要进行 URL 编码 |
+| DELETE | `/api/v1/tmdb/cache` | `media.cache.clear`：清空全部 TheMovieDb 识别缓存 |
+| GET | `/api/v1/music/cache` | `music.cache.get`：查询 MusicBrainz 音乐识别缓存统计及条目列表 |
+| DELETE | `/api/v1/music/cache/{cache_key}` | `music.cache.delete`：按缓存键删除单条音乐识别缓存，缓存键需要进行 URL 编码 |
+| DELETE | `/api/v1/music/cache` | `music.cache.clear`：清空全部音乐识别缓存 |
 
 TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`、`data`，以及共享识别统计字段
 `shared_recognized` 和开关字段 `shared_recognize_enabled`。共享命中次数仅在共享结果驱动的二次媒体识别成功后累计。
@@ -469,6 +469,18 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 单曲、专辑或未限定实体范围隔离，版本及 ISRC 不同的文本识别请求也不会共用结果；
 旧版未包含这些证据的派生缓存在升级后重新建立，不影响下载历史或订阅数据。
 名称确认规则更新时同样重建旧派生缓存，避免艺术家前后缀误截断的旧结果继续命中。
+
+### 订阅搜索执行批次
+
+订阅搜索会持久化为可恢复的执行批次，Agent 可以使用以下 `moviepilot_api` operation 查询或停止当前用户可见的批次：
+
+| Operation | 方法 | 路径 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `subscription.execution.list` | GET | `/api/v1/subscribe/execution/batches` | 查询最近的订阅搜索批次，`limit` 默认 10 |
+| `subscription.execution.get` | GET | `/api/v1/subscribe/execution/batches/{batch_id}` | 查询一个批次的状态、进度、恢复信息和最终结果 |
+| `subscription.execution.cancel` | PUT | `/api/v1/subscribe/execution/batches/{batch_id}/cancel` | 在下载副作用边界前请求取消一个批次 |
+
+取消是幂等的状态请求，不会撤销已经提交到下载器的任务；批次详情中的状态和任务结果才是最终事实。
 
 ### 单条订阅搜索周期
 
@@ -600,8 +612,9 @@ Web Agent 直接调用 `moviepilot_api` 时，宿主会自动加载 `moviepilot-
 | :--- | :--- |
 | 媒体/搜索 | `media.search`、`media.person.search`、`media.person.credits`、`media.recognize`、`media.scrape`、`media.episode_schedule`、`media.detail`、`search.torrents`、`search.results`、`recommendation.list` |
 | 媒体自动分类 | `media.classification.fields`、`media.classification.policy.get`、`media.classification.policy.validate`、`media.classification.policy.preview`、`media.classification.policy.impact`、`media.classification.policy.history`、`media.classification.policy.update`、`media.classification.policy.rollback` |
-| 订阅 | `subscription.add`、`subscription.update`、`subscription.search`、`subscription.list`、`subscription.shares`、`subscription.popular`、`subscription.history`、`subscription.delete` |
-| 下载/历史 | `download.add`、`download.history.delete`、`transfer.history.delete` |
+| 订阅 | `subscription.add`、`subscription.update`、`subscription.search`、`subscription.list`、`subscription.shares`、`subscription.popular`、`subscription.history`、`subscription.delete`、`subscription.execution.list`、`subscription.execution.get`、`subscription.execution.cancel` |
+| 下载/历史 | `download.add`、`download.artist_collection`、`download.history.delete`、`transfer.history.delete` |
+| 媒体缓存 | `media.cache.get`、`media.cache.delete`、`media.cache.clear`、`music.cache.get`、`music.cache.delete`、`music.cache.clear` |
 | 媒体库/存储/转移 | `library.exists`、`storage.settings`、`storage.list`、`transfer.history`、`transfer.file` |
 | 站点 | `site.list`、`site.update`、`site.userdata`、`site.test`、`site.cookie.update` |
 | 调度/工作流 | `scheduler.list`、`scheduler.run`、`workflow.list`、`workflow.run` |

@@ -1,12 +1,12 @@
 {
   "disposition_counts": {
     "alternate-auth-duplicate": 11,
-    "consolidated": 74,
-    "gateway": 208,
-    "provider-skill": 13,
+    "consolidated": 71,
+    "gateway": 215,
+    "provider-skill": 12,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
-    "ui_presentation": 15
+    "ui_presentation": 12
   },
   "dynamic_gateway_routes": [
     {
@@ -18,9 +18,9 @@
       "reason": "The executor validates and expands this bounded source placeholder to one of tmdb, douban, bangumi, or anilist before calling the corresponding concrete OpenAPI route."
     }
   ],
-  "gateway_http_route_count": 209,
-  "gateway_operation_count": 211,
-  "matched_gateway_http_route_count": 208,
+  "gateway_http_route_count": 216,
+  "gateway_operation_count": 218,
+  "matched_gateway_http_route_count": 215,
   "openapi_operation_count": 397,
   "operations": [
     {
@@ -640,12 +640,14 @@
       ]
     },
     {
-      "disposition": "provider-skill",
+      "disposition": "gateway",
       "method": "POST",
-      "operation_ids": [],
-      "owner": "downloader-operation",
+      "operation_ids": [
+        "download.artist_collection"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/download/artist-collection",
-      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "添加艺术家合集下载",
       "tags": [
         "download"
@@ -3616,36 +3618,42 @@
       ]
     },
     {
-      "disposition": "ui_presentation",
+      "disposition": "gateway",
       "method": "GET",
-      "operation_ids": [],
-      "owner": "host-ui",
+      "operation_ids": [
+        "subscription.execution.list"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/subscribe/execution/batches",
-      "reason": "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "查看订阅搜索进度",
       "tags": [
         "subscribe"
       ]
     },
     {
-      "disposition": "ui_presentation",
+      "disposition": "gateway",
       "method": "GET",
-      "operation_ids": [],
-      "owner": "host-ui",
+      "operation_ids": [
+        "subscription.execution.get"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/subscribe/execution/batches/{batch_id}",
-      "reason": "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "查看一次订阅搜索",
       "tags": [
         "subscribe"
       ]
     },
     {
-      "disposition": "ui_presentation",
+      "disposition": "gateway",
       "method": "PUT",
-      "operation_ids": [],
-      "owner": "host-ui",
+      "operation_ids": [
+        "subscription.execution.cancel"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/subscribe/execution/batches/{batch_id}/cancel",
-      "reason": "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "停止一次订阅搜索",
       "tags": [
         "subscribe"
@@ -4502,36 +4510,42 @@
       ]
     },
     {
-      "disposition": "consolidated",
+      "disposition": "gateway",
       "method": "DELETE",
-      "operation_ids": [],
+      "operation_ids": [
+        "media.cache.clear"
+      ],
       "owner": "moviepilot-api",
       "path": "/api/v1/tmdb/cache",
-      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "清空 TheMovieDb 识别缓存",
       "tags": [
         "tmdb"
       ]
     },
     {
-      "disposition": "consolidated",
+      "disposition": "gateway",
       "method": "GET",
-      "operation_ids": [],
+      "operation_ids": [
+        "media.cache.get"
+      ],
       "owner": "moviepilot-api",
       "path": "/api/v1/tmdb/cache",
-      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "查询 TheMovieDb 识别缓存",
       "tags": [
         "tmdb"
       ]
     },
     {
-      "disposition": "consolidated",
+      "disposition": "gateway",
       "method": "DELETE",
-      "operation_ids": [],
+      "operation_ids": [
+        "media.cache.delete"
+      ],
       "owner": "moviepilot-api",
       "path": "/api/v1/tmdb/cache/{cache_key}",
-      "reason": "Source-specific or presentation-oriented route is represented by a stable aggregate search, detail, person, recommendation, or music operation instead of duplicating every frontend route.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "删除指定 TheMovieDb 识别缓存",
       "tags": [
         "tmdb"

@@ -6,9 +6,9 @@
 ## Result
 
 - OpenAPI HTTP operations: **397**
-- Stable `moviepilot_api` operations: **211**
-- Exact HTTP routes used by the gateway: **209**
-- OpenAPI routes matched directly by the gateway: **208**
+- Stable `moviepilot_api` operations: **218**
+- Exact HTTP routes used by the gateway: **216**
+- OpenAPI routes matched directly by the gateway: **215**
 - Bounded dynamic gateway routes: **1**
 - Every gateway operation has a generated English oneOf input contract in MCP `tools/list` and `skills/moviepilot-api/SKILL.md`.
 - Every non-gateway OpenAPI operation is listed below with an explicit ownership boundary; it is not silently callable through arbitrary URL/method input.
@@ -18,12 +18,12 @@
 | disposition | count | meaning |
 | :--- | ---: | :--- |
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
-| `consolidated` | 74 | Source/UI route represented by a stable aggregate Agent operation. |
-| `gateway` | 208 | Approved structured MoviePilot Agent operation. |
-| `provider-skill` | 13 | Low-level downloader or media-server capability owned by a provider Skill. |
+| `consolidated` | 71 | Source/UI route represented by a stable aggregate Agent operation. |
+| `gateway` | 215 | Approved structured MoviePilot Agent operation. |
+| `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 15 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 12 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -84,7 +84,7 @@
 | `GET` | `/api/v1/download/` | download | `gateway` | download.tasks.active | 正在下载 |
 | `POST` | `/api/v1/download/` | download | `consolidated` | download.add | 添加下载（含媒体信息） |
 | `POST` | `/api/v1/download/add` | download | `gateway` | download.add | 添加下载（不含媒体信息） |
-| `POST` | `/api/v1/download/artist-collection` | download | `provider-skill` | downloader-operation | 添加艺术家合集下载 |
+| `POST` | `/api/v1/download/artist-collection` | download | `gateway` | download.artist_collection | 添加艺术家合集下载 |
 | `GET` | `/api/v1/download/clients` | download | `gateway` | download.clients | 查询可用下载器 |
 | `GET` | `/api/v1/download/paths` | download | `gateway` | download.paths | 查询可用下载路径 |
 | `GET` | `/api/v1/download/start/{hashString}` | download | `provider-skill` | downloader-operation | 开始任务 |
@@ -310,9 +310,9 @@
 | `POST` | `/api/v1/subscribe/` | subscribe | `gateway` | subscription.add | 新增订阅 |
 | `PUT` | `/api/v1/subscribe/` | subscribe | `gateway` | subscription.update | 更新订阅 |
 | `POST` | `/api/v1/subscribe/check` | subscribe | `gateway` | subscription.metadata.refresh | 刷新订阅 TMDB 信息 |
-| `GET` | `/api/v1/subscribe/execution/batches` | subscribe | `ui_presentation` | host-ui | 查看订阅搜索进度 |
-| `GET` | `/api/v1/subscribe/execution/batches/{batch_id}` | subscribe | `ui_presentation` | host-ui | 查看一次订阅搜索 |
-| `PUT` | `/api/v1/subscribe/execution/batches/{batch_id}/cancel` | subscribe | `ui_presentation` | host-ui | 停止一次订阅搜索 |
+| `GET` | `/api/v1/subscribe/execution/batches` | subscribe | `gateway` | subscription.execution.list | 查看订阅搜索进度 |
+| `GET` | `/api/v1/subscribe/execution/batches/{batch_id}` | subscribe | `gateway` | subscription.execution.get | 查看一次订阅搜索 |
+| `PUT` | `/api/v1/subscribe/execution/batches/{batch_id}/cancel` | subscribe | `gateway` | subscription.execution.cancel | 停止一次订阅搜索 |
 | `GET` | `/api/v1/subscribe/files/{subscribe_id}` | subscribe | `gateway` | subscription.files | 订阅相关文件信息 |
 | `DELETE` | `/api/v1/subscribe/follow` | subscribe | `gateway` | subscription.follow.delete | 取消Follow订阅分享人 |
 | `GET` | `/api/v1/subscribe/follow` | subscribe | `gateway` | subscription.follow.list | 查询已Follow的订阅分享人 |
@@ -375,9 +375,9 @@
 | `POST` | `/api/v1/system/upgrade` | system | `gateway` | system.upgrade.dev | Dev 更新并重启系统 |
 | `GET` | `/api/v1/system/usage/statistic` | system | `gateway` | system.usage.statistics | 查询安装版本统计报表 |
 | `GET` | `/api/v1/system/versions` | system | `gateway` | system.versions | 查询Github所有Release版本 |
-| `DELETE` | `/api/v1/tmdb/cache` | tmdb | `consolidated` | moviepilot-api | 清空 TheMovieDb 识别缓存 |
-| `GET` | `/api/v1/tmdb/cache` | tmdb | `consolidated` | moviepilot-api | 查询 TheMovieDb 识别缓存 |
-| `DELETE` | `/api/v1/tmdb/cache/{cache_key}` | tmdb | `consolidated` | moviepilot-api | 删除指定 TheMovieDb 识别缓存 |
+| `DELETE` | `/api/v1/tmdb/cache` | tmdb | `gateway` | media.cache.clear | 清空 TheMovieDb 识别缓存 |
+| `GET` | `/api/v1/tmdb/cache` | tmdb | `gateway` | media.cache.get | 查询 TheMovieDb 识别缓存 |
+| `DELETE` | `/api/v1/tmdb/cache/{cache_key}` | tmdb | `gateway` | media.cache.delete | 删除指定 TheMovieDb 识别缓存 |
 | `GET` | `/api/v1/tmdb/collection/{collection_id}` | tmdb | `consolidated` | moviepilot-api | 系列合集详情 |
 | `GET` | `/api/v1/tmdb/credits/{tmdbid}/{type_name}` | tmdb | `consolidated` | moviepilot-api | 演员阵容 |
 | `GET` | `/api/v1/tmdb/person/credits/{person_id}` | tmdb | `consolidated` | moviepilot-api | 人物参演作品 |

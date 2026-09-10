@@ -30,12 +30,12 @@ from app.agent.tools.manager import MoviePilotToolsManager
 
 def test_api_operation_registry_matches_migration_batches() -> None:
     """API 操作注册表必须覆盖各迁移批次且每项具有固定路由。"""
-    assert len(API_FIRST_BATCH_OPERATION_SPECS) == 52
+    assert len(API_FIRST_BATCH_OPERATION_SPECS) == 53
     assert len(API_PARITY_OPERATION_SPECS) == 15
     assert len(API_MUSIC_OPERATION_SPECS) == 10
     assert len(API_SYSTEM_OPERATION_SPECS) == 7
-    assert len(API_EXTENDED_OPERATION_SPECS) == 127
-    assert len(API_OPERATION_SPECS) == 211
+    assert len(API_EXTENDED_OPERATION_SPECS) == 133
+    assert len(API_OPERATION_SPECS) == 218
     assert {spec.operation_id for spec in API_OPERATION_SPECS} == set(API_OPERATION_ROUTES)
     assert {
         "download.list",

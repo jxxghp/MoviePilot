@@ -83,7 +83,7 @@ Purpose: Clear the complete administrator-only MusicBrainz recognition cache.
 ### `music.cache.delete`
 `DELETE /api/v1/music/cache/{cache_key}`; policy effect: `destructive_write`.
 Purpose: Delete one administrator-only MusicBrainz recognition-cache entry by exact key.
-- `path_params`: `cache_key*` (string): Exact recognition-cache key returned by music.cache.get.
+- `path_params`: `cache_key*` (string): Exact recognition-cache key returned by the corresponding recognition-cache get operation.
 - `query`: none
 - `body`: none
 

@@ -60,6 +60,29 @@ def test_cleanup_confirmation_stays_in_authenticated_management_workflow() -> No
     assert (disposition, owner, operations) == ("ui_presentation", "host-ui", [])
 
 
+def test_recent_business_routes_are_exposed_as_stable_gateway_operations() -> None:
+    """近期高层业务端点必须保持在 moviepilot_api，而不是落入边界归属。"""
+    audit = json.loads(AUDIT_JSON.read_text(encoding="utf-8"))
+    routes = {(item["method"], item["path"]): item for item in audit["operations"]}
+    expected = {
+        ("POST", "/api/v1/download/artist-collection"): "download.artist_collection",
+        ("GET", "/api/v1/tmdb/cache"): "media.cache.get",
+        ("DELETE", "/api/v1/tmdb/cache/{cache_key}"): "media.cache.delete",
+        ("DELETE", "/api/v1/tmdb/cache"): "media.cache.clear",
+        ("GET", "/api/v1/subscribe/execution/batches"): "subscription.execution.list",
+        ("GET", "/api/v1/subscribe/execution/batches/{batch_id}"): "subscription.execution.get",
+        (
+            "PUT",
+            "/api/v1/subscribe/execution/batches/{batch_id}/cancel",
+        ): "subscription.execution.cancel",
+    }
+
+    for route, operation_id in expected.items():
+        item = routes[route]
+        assert item["disposition"] == "gateway"
+        assert item["operation_ids"] == [operation_id]
+
+
 def test_moviepilot_api_skill_routes_contracts_to_category_files() -> None:
     """The API Skill entrypoint stays concise and every operation has a namespace file."""
     entrypoint = API_SKILL.read_text(encoding="utf-8")
