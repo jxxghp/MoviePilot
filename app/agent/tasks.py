@@ -110,6 +110,7 @@ class AgentTaskOwner(AgentLifecycleOwner):
                 reply_mode=ReplyMode.DISPATCH,
                 allow_message_tools=True,
                 wait_for_completion=True,
+                scheduled_run_id=run.run_id,
             )
             result_text = str(result or "").strip()
             success = not result_text.startswith(

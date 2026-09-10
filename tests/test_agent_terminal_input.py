@@ -17,8 +17,12 @@ import pytest_asyncio
 
 from app.agent.shell import AgentShell
 from app.agent.terminal import manager as terminal
-from app.agent.terminal.manager import TerminalOutputError, _TerminalSessionManager
+from app.agent.terminal.manager import _TerminalSessionManager
+from app.agent.terminal.output import TerminalOutputError
+from app.agent.terminal.ownership import current_terminal_scope
 from app.agent.terminal.session import _TerminalSession
+
+pytestmark = pytest.mark.usefixtures("terminal_scope")
 
 
 def _command(code: str) -> str:
@@ -88,7 +92,7 @@ async def test_pipe_last_input_and_half_close_deliver_all_bytes(manager: _Termin
 async def test_pty_half_close_rejects_before_input_and_keeps_output_readable(manager: _TerminalSessionManager) -> None:
     """不支持的组合不能先写入 BAD，也不能通过关闭 master 破坏输出。"""
     payload = await _ready(manager, "import sys,tty\ntty.setraw(0)\nprint('READY',flush=True)\ndata=sys.stdin.buffer.read(1)\nprint('GOT:'+str(data[0]),flush=True)", use_pty=True)
-    session = manager.get_session(payload["session_id"])
+    session = manager._sessions[payload["session_id"]]
     descriptor = session.master_fd
     with pytest.raises(ValueError, match="PTY 不支持"):
         await manager.write(session_id=session.session_id, input_text="BAD", close_stdin=True, **_cursor(payload))
@@ -118,7 +122,7 @@ async def test_large_raw_pty_input_retries_short_writes_without_losing_tail(
                 f"os.read({control_read},1)\nos.close({control_read})\ndata=sys.stdin.buffer.read({len(data)})\n"
                 "print('RESULT:'+str(len(data))+':'+hashlib.sha256(data).hexdigest(),flush=True)")
         payload = await _ready(manager, code, use_pty=True)
-        descriptor = manager.get_session(payload["session_id"]).master_fd
+        descriptor = manager._sessions[payload["session_id"]].master_fd
 
         def observe_write(fd: int, content: Any) -> int:
             """只观察该测试 PTY 的真实写入计数与回压，不替换内核返回值。"""
@@ -161,7 +165,7 @@ async def test_interrupt_calls_handler_once_and_program_remains_interactive(mana
     assert result["signal"] == "SIGINT" and result["signal_sent"] is True
     output, after = await _read_to(manager, result, "INTERRUPTED")
     assert output.count("INTERRUPTED") == 1
-    session = manager.get_session(payload["session_id"])
+    session = manager._sessions[payload["session_id"]]
     assert session.status == "running" and session.kill_requested is False
     reply = await manager.write(session_id=session.session_id, input_text="quit\n", **_cursor(after))
     output, final = await _read_to(manager, reply)
@@ -173,7 +177,7 @@ async def test_interrupt_calls_handler_once_and_program_remains_interactive(mana
 async def test_invalid_signal_has_no_os_or_kill_intent_effect(value: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """未知信号、处理器常量和无效编号必须在任何状态变化之前拒绝。"""
     current = _TerminalSessionManager()
-    session = _TerminalSession(session_id="signal-validation", command="memory-only", cwd=".", pid=0, use_pty=False)
+    session = _TerminalSession(owner=current_terminal_scope(), session_id="signal-validation", command="memory-only", cwd=".", pid=0, use_pty=False)
     current._sessions[session.session_id] = session
     send = Mock()
     monkeypatch.setattr(current, "_send_signal", send)
@@ -189,7 +193,7 @@ async def test_concurrent_pipe_write_then_close_serializes_final_segment(
 ) -> None:
     """真实管道首段尚未 drain 时，close 请求必须等待输入锁并完整交付末段。"""
     payload = await _ready(manager, "import sys\nprint('READY',flush=True)\nprint('DATA:'+sys.stdin.read(),flush=True)")
-    session = manager.get_session(payload["session_id"])
+    session = manager._sessions[payload["session_id"]]
     writer = session.process.stdin
     original_drain = writer.drain
     entered, release = asyncio.Event(), asyncio.Event()
@@ -237,7 +241,7 @@ async def test_concurrent_input_after_close_is_rejected_before_writer_receives_i
         await release.wait()
 
     writer = SimpleNamespace(write=values.append, drain=AsyncMock(), close=Mock(), wait_closed=wait_closed)
-    session = _TerminalSession(session_id="close-race", command="memory-only", cwd=".", pid=0, use_pty=False,
+    session = _TerminalSession(owner=current_terminal_scope(), session_id="close-race", command="memory-only", cwd=".", pid=0, use_pty=False,
                                process=SimpleNamespace(stdin=writer))
     current._sessions[session.session_id] = session
     close = asyncio.create_task(current.write(session_id=session.session_id, input_text="tail", close_stdin=True))
@@ -259,7 +263,7 @@ async def test_concurrent_input_after_close_is_rejected_before_writer_receives_i
 async def test_input_control_preserves_cursor_validation_and_action_output_error(manager: _TerminalSessionManager) -> None:
     """非法游标先于 stdin 动作，已发生 half-close 后的小页错误保留会话和输入事实。"""
     payload = await _ready(manager, "import sys\nprint('READY',flush=True)\nprint('DATA:'+sys.stdin.read(),flush=True)")
-    session = manager.get_session(payload["session_id"])
+    session = manager._sessions[payload["session_id"]]
     with pytest.raises(TerminalOutputError):
         await manager.write(session_id=session.session_id, input_text="wrong", close_stdin=True, since_seq=999)
     assert session.stdin_closed is False
@@ -274,7 +278,7 @@ async def test_windows_interrupt_uses_actual_break_event_without_terminate(monke
     """Windows 控制事件与终止 API 分开，仅报告实际调用的 CTRL_BREAK_EVENT。"""
     current = _TerminalSessionManager()
     process = SimpleNamespace(send_signal=Mock(), terminate=Mock(), kill=Mock())
-    session = _TerminalSession(session_id="windows-interrupt", command="memory-only", cwd=".", pid=0, use_pty=False, process=process)
+    session = _TerminalSession(owner=current_terminal_scope(), session_id="windows-interrupt", command="memory-only", cwd=".", pid=0, use_pty=False, process=process)
     current._sessions[session.session_id] = session
     with monkeypatch.context() as scoped:
         scoped.setattr(terminal.os, "name", "nt")
@@ -291,7 +295,7 @@ async def test_windows_missing_control_event_and_unmapped_kill_never_terminate(m
     """缺少控制事件或请求未映射的信号时明确失败，不能静默执行 terminate。"""
     current = _TerminalSessionManager()
     process = SimpleNamespace(send_signal=Mock(), terminate=Mock(), kill=Mock())
-    session = _TerminalSession(session_id="windows-unavailable", command="memory-only", cwd=".", pid=0, use_pty=False, process=process)
+    session = _TerminalSession(owner=current_terminal_scope(), session_id="windows-unavailable", command="memory-only", cwd=".", pid=0, use_pty=False, process=process)
     current._sessions[session.session_id] = session
     with monkeypatch.context() as scoped:
         scoped.setattr(terminal.os, "name", "nt")
@@ -338,4 +342,4 @@ async def test_pipe_shell_policy_metadata_matches_explicit_non_login_execution(m
     payload = await _ready(manager, "import sys\nprint('READY',flush=True)\nsys.stdin.read()")
     if os.name == "posix":
         assert payload["shell"] == "/bin/sh" and payload["login"] is False
-    assert manager.get_session(payload["session_id"]).shell_policy is not None
+    assert manager._sessions[payload["session_id"]].shell_policy is not None

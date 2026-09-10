@@ -17,13 +17,12 @@ from pydantic import BaseModel, Field
 
 from app.agent.shell import build_agent_subprocess_env, resolve_agent_cwd, resolve_agent_shell
 from app.agent.terminal.manager import (
-    TERMINAL_DEFAULT_READ_BYTES,
-    TERMINAL_MAX_READ_BYTES,
     TERMINAL_WAIT_DEFAULT_MS,
     TERMINAL_YIELD_DEFAULT_MS,
-    TerminalOutputError,
     get_terminal_session_manager,
 )
+from app.agent.terminal.output import TERMINAL_DEFAULT_READ_BYTES, TERMINAL_MAX_READ_BYTES, TerminalOutputError
+from app.agent.terminal.ownership import TerminalAccessError, TerminalScope, require_terminal_scope
 from app.agent.tools.base import DEFAULT_TOOL_RESULT_MAX_CHARS, MoviePilotTool
 from app.agent.tools.impl._command_safety import validate_command_safety
 from app.agent.tools.tags import ToolTag
@@ -479,9 +478,12 @@ class ExecuteCommandTool(MoviePilotTool):
         cwd: Optional[str] = None,
         shell: Optional[str] = None,
         login: bool = False,
+        scope_cancelled: bool = False,
     ) -> str:
         """分开返回机器可判定的执行状态与有界输出，不能靠完成提示推断成功。"""
-        if exit_code is None:
+        if scope_cancelled:
+            result = "命令因任务作用域关闭而取消，未确认业务动作是否完成"
+        elif exit_code is None:
             result = "无法确认命令进程已结束，请先核对实际状态"
         elif timed_out:
             result = f"命令执行超时 (限制: {timeout}秒，已终止进程)"
@@ -503,11 +505,15 @@ class ExecuteCommandTool(MoviePilotTool):
             result += "\n\n...(仅展示前后各 16KB 内容)"
         if not output.combined_preview:
             result += "\n\n(无输出内容)"
-        succeeded = exit_code == 0 and not timed_out
-        outcome = "unknown" if exit_code is None else ("succeeded" if succeeded else "failed")
+        succeeded = exit_code == 0 and not timed_out and not scope_cancelled
+        outcome = "failed" if scope_cancelled else (
+            "unknown" if exit_code is None else ("succeeded" if succeeded else "failed")
+        )
         return ExecuteCommandTool._dump({
             "action": "run", "success": succeeded, "execution_outcome": outcome,
-            "status": "unknown" if exit_code is None else ("timed_out" if timed_out else "exited"),
+            "status": "cancelled" if scope_cancelled else (
+                "unknown" if exit_code is None else ("timed_out" if timed_out else "exited")
+            ),
             "exit_code": exit_code, "timed_out": timed_out, "timeout": timeout,
             "cwd": cwd, "shell": shell, "login": login, "stdin_closed": True,
             "output_truncated": output.preview_truncated, "output_file": output.temp_file_path,
@@ -527,12 +533,69 @@ class ExecuteCommandTool(MoviePilotTool):
     ) -> str:
         """一次性执行命令并返回结构化终态；退出路径都必须释放读取任务和归档句柄。"""
         self._validate_command(command, confirmed=confirm_dangerous)
+        scope = require_terminal_scope()
+        scope.begin_run()
+        try:
+            return await self._run_once_with_scope(
+                scope=scope, command=command, timeout=timeout, cwd=cwd, env=env,
+                shell=shell, login=login, confirm_dangerous=confirm_dangerous,
+            )
+        finally:
+            scope.finish_run()
+
+    @staticmethod
+    async def _acquire_command_slot(scope: TerminalScope) -> None:
+        """并发槽等待期间响应作用域封口，禁止取消后迟到启动一次性进程。"""
+        acquire_task = asyncio.create_task(_command_semaphore.acquire())
+        closed_task = asyncio.create_task(scope.changed.wait())
+        acquired = False
+        released = False
+        try:
+            done, _ = await asyncio.wait(
+                {acquire_task, closed_task}, return_when=asyncio.FIRST_COMPLETED,
+            )
+            if closed_task in done and acquire_task not in done:
+                acquire_task.cancel()
+                await asyncio.gather(acquire_task, return_exceptions=True)
+                raise TerminalAccessError()
+            await acquire_task
+            acquired = True
+            if scope.closed:
+                _command_semaphore.release()
+                released = True
+                acquired = False
+                raise TerminalAccessError()
+        finally:
+            if not acquire_task.done():
+                acquire_task.cancel()
+            await asyncio.gather(acquire_task, return_exceptions=True)
+            if acquire_task.done() and not acquire_task.cancelled() and not acquired and not released:
+                _command_semaphore.release()
+            if not closed_task.done():
+                closed_task.cancel()
+            await asyncio.gather(closed_task, return_exceptions=True)
+
+    async def _run_once_with_scope(
+        self,
+        *,
+        scope: TerminalScope,
+        command: str,
+        timeout: Optional[int],
+        cwd: Optional[str] = None,
+        env: Optional[dict[str, Any]] = None,
+        shell: Optional[str] = None,
+        login: Optional[bool] = None,
+        confirm_dangerous: bool = False,
+    ) -> str:
+        """在已登记作用域下运行一次命令，并对封口和进程收尾保持可观察。"""
         normalized_timeout, timeout_note = self._normalize_timeout(timeout)
         normalized_cwd = resolve_agent_cwd(cwd, root_path=get_runtime_setting("ROOT_PATH"))
         normalized_env = build_agent_subprocess_env(env)
         shell_policy = resolve_agent_shell(executable=shell, login=login, environment=normalized_env, cwd=normalized_cwd)
 
-        async with _command_semaphore:
+        await self._acquire_command_slot(scope)
+        try:
+            require_terminal_scope()
             process = await asyncio.create_subprocess_exec(
                 *shell_policy.build_argv(command), cwd=normalized_cwd, env=normalized_env,
                 **self._subprocess_kwargs(),
@@ -545,31 +608,41 @@ class ExecuteCommandTool(MoviePilotTool):
             ]
 
             timed_out = False
+            scope_cancelled = False
+            scope_task = asyncio.create_task(scope.changed.wait())
             try:
-                await asyncio.wait_for(
-                    asyncio.shield(wait_task), timeout=normalized_timeout
+                done, _ = await asyncio.wait(
+                    {wait_task, scope_task}, timeout=normalized_timeout,
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
-            except asyncio.TimeoutError:
-                timed_out = True
-                await self._cleanup_process(process, wait_task)
+                scope_cancelled = scope_task in done
+                if wait_task not in done:
+                    timed_out = not scope_cancelled
+                    await self._cleanup_process(process, wait_task)
             except asyncio.CancelledError:
                 await self._cleanup_process(process, wait_task)
                 raise
 
             finally:
+                if not scope_task.done():
+                    scope_task.cancel()
+                await asyncio.gather(scope_task, return_exceptions=True)
                 try:
                     await self._finish_reader_tasks(reader_tasks)
                 finally:
                     output.close()
 
-        return self._format_run_result(
-            exit_code=process.returncode,
-            output=output,
-            timeout=normalized_timeout,
-            timed_out=timed_out,
-            timeout_note=timeout_note,
-            cwd=normalized_cwd, shell=shell_policy.executable, login=shell_policy.login,
-        )
+            return self._format_run_result(
+                exit_code=process.returncode,
+                output=output,
+                timeout=normalized_timeout,
+                timed_out=timed_out,
+                scope_cancelled=scope_cancelled,
+                timeout_note=timeout_note,
+                cwd=normalized_cwd, shell=shell_policy.executable, login=shell_policy.login,
+            )
+        finally:
+            _command_semaphore.release()
 
     async def run(
         self,
@@ -601,6 +674,7 @@ class ExecuteCommandTool(MoviePilotTool):
         )
 
         try:
+            require_terminal_scope()
             terminal_session_manager = get_terminal_session_manager()
             output_budget = DEFAULT_TOOL_RESULT_MAX_CHARS
             if self.result_max_chars and self.result_max_chars > 0:
@@ -692,6 +766,11 @@ class ExecuteCommandTool(MoviePilotTool):
                 )
 
             raise ValueError(f"不支持的 action: {action}")
+        except TerminalAccessError as err:
+            return self._dump({
+                "error": str(err), "status": "error", "action": normalized_action,
+                "success": False, "execution_outcome": "failed", "code": "terminal_access_denied",
+            })
         except TerminalOutputError as err:
             return self._dump({
                 "error": str(err), "status": "error", "action": normalized_action,

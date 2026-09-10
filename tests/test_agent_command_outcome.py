@@ -29,6 +29,8 @@ from app.agent.tools.impl.execute_command import ExecuteCommandTool, _CommandOut
 from app.agent.tools.manager import MoviePilotToolsManager
 from app.agent.tools.result import EXECUTION_OUTCOME_KEY, inspect_tool_result
 
+pytestmark = pytest.mark.usefixtures("terminal_scope")
+
 
 def _command(code: str) -> str:
     """固定使用当前虚拟环境解释器，并对每个 shell 参数独立转义。"""

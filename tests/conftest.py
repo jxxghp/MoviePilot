@@ -706,3 +706,13 @@ def pytest_sessionfinish(session, exitstatus):
             raise RuntimeError("log writer did not converge")
     except Exception as err:
         _report_session_cleanup_error(session, "logger manager", err)
+
+
+@pytest.fixture
+def terminal_scope():
+    """仅由终端合同测试显式选用的宿主身份，结束时还原上下文。"""
+    from app.agent.terminal.ownership import TerminalScope, bind_terminal_scope
+
+    scope = TerminalScope(user_id="terminal-test-owner", task_id="terminal-test", kind="test")
+    with bind_terminal_scope(scope):
+        yield scope

@@ -342,7 +342,6 @@
     "union-attr": 1
   },
   "app/agent/tools/manager.py": {
-    "assignment": 1,
     "attr-defined": 2,
     "type-arg": 1
   },

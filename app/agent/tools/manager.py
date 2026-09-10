@@ -6,6 +6,12 @@ import threading
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from app.agent.terminal.ownership import (
+    TerminalScope,
+    bind_terminal_scope,
+    close_terminal_scope,
+    current_terminal_scope,
+)
 from app.runtime.log import logger
 
 if TYPE_CHECKING:
@@ -21,6 +27,7 @@ class ToolDefinition:
     """
 
     def __init__(self, name: str, description: str, input_schema: Dict[str, Any]):
+        """保存严格工具目录对外展示的名称、说明和参数合同。"""
         self.name = name
         self.description = description
         self.input_schema = input_schema
@@ -34,7 +41,7 @@ class MoviePilotToolsManager:
     def __init__(
         self,
         user_id: str = "api_user",
-        session_id: str = uuid.uuid4(),
+        session_id: Optional[str] = None,
         is_admin: bool = True,
         policy_orchestrator: Optional[AgentToolPolicyOrchestrator] = None,
         data: Optional[AgentDataContext] = None,
@@ -47,7 +54,8 @@ class MoviePilotToolsManager:
             session_id: 会话ID
         """
         self.user_id = user_id
-        self.session_id = session_id
+        self.session_id = session_id if session_id is not None else uuid.uuid4().hex
+        self._terminal_scope = TerminalScope(user_id=user_id, task_id=self.session_id, kind="operator")
         self.is_admin = is_admin
         self.policy_orchestrator = policy_orchestrator
         self._data = data
@@ -423,7 +431,9 @@ class MoviePilotToolsManager:
 
             # 调用工具的run方法。HTTP/MCP 工具调用不会经过 BaseTool._arun，
             # 因此这里也必须复用同一套返回值格式化和兜底截断逻辑。
-            result = await tool_instance.run_with_timeout(**normalized_arguments)
+            # 嵌套宿主调用保留任务身份；独立内部入口使用该管理器的专属作用域。
+            with bind_terminal_scope(current_terminal_scope() or self._terminal_scope):
+                result = await tool_instance.run_with_timeout(**normalized_arguments)
             str_result = format_tool_result_for_agent(
                 result,
                 tool_name=tool_name,
@@ -462,6 +472,10 @@ class MoviePilotToolsManager:
                 result,
             )
         return str_result
+
+    async def close(self) -> bool:
+        """封闭本内部调用方的终端作用域，真实进程未收敛时允许调用方重试。"""
+        return await close_terminal_scope(self._terminal_scope)
 
     @staticmethod
     def _convert_to_json_schema(args_schema: Any) -> Dict[str, Any]:

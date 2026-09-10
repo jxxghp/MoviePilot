@@ -9,15 +9,19 @@ from typing import Any, Optional
 import pytest
 
 from app.agent.terminal import session as terminal_state
-from app.agent.terminal.manager import TerminalOutputError, _TerminalSessionManager
+from app.agent.terminal.manager import _TerminalSessionManager
+from app.agent.terminal.output import TerminalOutputError
+from app.agent.terminal.ownership import current_terminal_scope
 from app.agent.terminal.session import _TerminalSession
 from app.agent.tools.result import inspect_tool_result
+
+pytestmark = pytest.mark.usefixtures("terminal_scope")
 
 
 def _world(*, use_pty: bool = True) -> tuple[_TerminalSessionManager, _TerminalSession]:
     """仅登记内存记录，不创建 OS 进程，也不调用终止这些虚构 PID 的动作。"""
     manager = _TerminalSessionManager()
-    session = _TerminalSession(session_id="term-cursor-test", command="memory-only", cwd=".", pid=0, use_pty=use_pty)
+    session = _TerminalSession(owner=current_terminal_scope(), session_id="term-cursor-test", command="memory-only", cwd=".", pid=0, use_pty=use_pty)
     manager._sessions[session.session_id] = session
     return manager, session
 

@@ -19,6 +19,8 @@ from app.agent.terminal.manager import _TerminalSessionManager
 from app.agent.tools.impl import execute_command as command_module
 from app.agent.tools.impl.execute_command import ExecuteCommandTool, _CommandOutput
 
+pytestmark = pytest.mark.usefixtures("terminal_scope")
+
 
 def _python(code: str) -> str:
     """使用当前解释器和逐参数转义，真实程序仅接触临时目录及标准流。"""
@@ -219,7 +221,7 @@ async def test_lazy_shutdown_closes_the_materialized_terminal_package_owner(comm
         action="start", command=_python("print('READY', flush=True); input()"), use_pty=False,
         env={"SHELL": "/bin/sh"}, since_offset=0,
     ))
-    session = manager.get_session(payload["session_id"])
+    session = manager._sessions[payload["session_id"]]
     assert session.process is not None and session.process.returncode is None
     await close_materialized_terminal_sessions()
     assert manager._closed is True and manager._sessions == {}

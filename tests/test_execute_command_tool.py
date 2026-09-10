@@ -18,7 +18,7 @@ from app.agent.terminal.manager import _TerminalSessionManager
 from app.agent.tools.impl import execute_command as command_module
 from app.agent.tools.impl.execute_command import MAX_OUTPUT_PREVIEW_BYTES, ExecuteCommandTool
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("terminal_scope")]
 
 
 def _python_command(code: str) -> str:

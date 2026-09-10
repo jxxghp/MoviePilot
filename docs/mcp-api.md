@@ -552,6 +552,11 @@ PTY 会在写入之前拒绝 half-close，空 `write` 不代表 EOF，控制字�
 新增 `interrupt` 只发送一次平台支持的中断并返回 `signal/signal_sent`，不会升级强杀；
 `kill` 保留终止语义但提前拒绝无效信号。上述能力仍为内置管理员 Agent 工具，不扩大外部 MCP 目录。
 
+后台句柄按宿主用户和真实任务作用域隔离；相同对话的不同定时 `run_id` 也不会共享终端。
+正常对话可跨轮继续，清空/更换用户或定时运行收尾只回收自身进程。子任务仅在父任务明确提供
+`terminal_sessions` 时获得指定 `read/wait` 授权，不能凭句柄或任务文字访问其他终端。
+缺失、封闭或无权限均返回 `terminal_access_denied`，不会回显其他任务状态；宿主重启不恢复旧句柄。
+
 后台命令的 `start` 新增 `yield_time_ms`（默认 250、上限 10000，0 不等待）。
 `read/wait/write/interrupt/kill` 接受 `since_seq` 和 `since_offset`：一起传回上次响应的
 `output_until_seq/output_until_offset`，后者表示下一分片内的 UTF-8 字节位置；

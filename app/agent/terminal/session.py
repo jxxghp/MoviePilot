@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from app.agent.shell import AgentShell
+from app.agent.terminal.ownership import TerminalScope
 
 TERMINAL_RETENTION_SECONDS = 30 * 60
 TERMINAL_MAX_RETAINED_BYTES = 1024 * 1024
@@ -36,8 +37,10 @@ class _TerminalSession:
     pid: int
     use_pty: bool
     shell_policy: Optional[AgentShell] = None
+    owner: Optional[TerminalScope] = None
     stdin_closed: bool = False
     input_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    termination_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     status: str = "running"

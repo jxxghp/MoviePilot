@@ -1029,6 +1029,7 @@ async def test_agent_manager_executes_task_with_broadcast_delivery(
     assert kwargs["reply_mode"] == ReplyMode.DISPATCH
     assert kwargs["allow_message_tools"] is True
     assert kwargs["wait_for_completion"] is True
+    assert kwargs["scheduled_run_id"] == AgentTaskOper().get(task.id).last_run_id
     assert "搜索示例电影是否已有资源" in kwargs["message"]
     post_message.assert_not_awaited()
 
@@ -1215,8 +1216,8 @@ async def test_cached_agent_clears_channel_for_background_task() -> None:
 
 
 @pytest.mark.anyio
-async def test_cached_agent_overwrites_channel_admin_with_explicit_false() -> None:
-    """复用会话 Agent 时，明确非管理员结论必须覆盖上一轮管理员身份。"""
+async def test_cached_agent_overwrites_channel_admin_with_explicit_false(monkeypatch) -> None:
+    """同会话换用户必须清理旧实例，以新实例装配明确的非管理员身份。"""
     manager = AgentManager()
     agent = MoviePilotAgent(
         session_id="channel-admin-cached-session",
@@ -1238,12 +1239,17 @@ async def test_cached_agent_overwrites_channel_admin_with_explicit_false() -> No
         is_channel_admin=False,
     )
 
+    monkeypatch.setattr(MoviePilotAgent, "_process", AsyncMock(return_value="完成"))
     result = await manager._process_message_internal(task)
 
+    replacement = manager.active_agents[agent.session_id]
     assert result == "完成"
-    assert agent.user_id == "user-2"
-    assert agent.username == "admin"
-    assert agent.is_channel_admin is False
+    assert replacement is not agent
+    assert agent.user_id == "user-1"
+    assert agent._terminal_scope.closed is True
+    assert replacement.user_id == "user-2"
+    assert replacement.username == "admin"
+    assert replacement.is_channel_admin is False
 
 
 @pytest.mark.anyio

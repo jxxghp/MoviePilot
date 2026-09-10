@@ -95,7 +95,8 @@ to make the directory tree look symmetrical.
 | `app/agent/tools/result.py` | Pure interpretation of explicit tool outcomes and portable tool-image history; image observation copies never replace original user attachments |
 | `app/agent/api/arguments.py` | Canonical API request fingerprints from the generated operation schema and the executor's GET projection; no endpoint imports or live discovery |
 | `app/agent/shell.py` | Shared command interpreter, login mode, launch directory and subprocess text-encoding policy for run, pipe and PTY; preserves Windows default priority and UTF-8 behavior |
-| `app/agent/terminal/` | `session.py` owns terminal state, input serialization, retained output and UTF-8 stream decoding; `manager.py` owns process launch, read/write/EOF, signals, paging and bounded shutdown. Package root contains no implementation exports |
+| `app/agent/terminal/` | `ownership.py` owns host task identity, invocation context and lazy scope closure; `session.py` owns process state, input serialization and UTF-8 capture; `output.py` owns pure paging and bounded projections; `manager.py` owns launch, access grants and process lifecycle. Package root contains no implementation exports |
+| `app/agent/middleware/terminal.py` | Explicit child terminal grants and per-invocation scope binding; cached child graphs never receive mutable task identities, and sharing never bypasses tool role permissions |
 | `app/agent/policy/api.py` | Fixed `moviepilot_api` operation registry, HTTP route templates and per-operation authorization/effect policy; no arbitrary URL or method input |
 | `app/agent/policy/mcp.py` | Generated external MCP input-contract builder for the fixed API registry; owns exact English oneOf parameter projection, not runtime authorization |
 | `app/agent/tools/impl/service.py` | Admin-only external MCP wrappers for downloader, media-server and database Skill scripts; synchronous scripts run only through the Agent blocking executor |
@@ -1091,7 +1092,7 @@ driven workflow registration.
 | `app/agent/tasks.py` | Background prompt, scheduled task and heartbeat execution owner |
 | `app/agent/orchestrator.py` | Per-session `MoviePilotAgent` execution and LLM/tool/middleware orchestration only |
 | `app/agent/shell.py` | Agent command interpreter/login/directory and subprocess UTF-8 policy shared by run, pipe and PTY |
-| `app/agent/terminal/` | Terminal session state and process/input/output lifecycle; lazy shutdown resolves the materialized manager module without importing it |
+| `app/agent/terminal/` | Terminal ownership, explicit sharing and independent task cleanup; pure output paging stays outside the process manager, while lazy scope and global shutdown resolve only an already materialized manager |
 | `app/agent/loader.py` | Agent-specific capability discovery and canonical entrypoint/service materialization; reuses the generic Capability Runtime while keeping Agent ownership under `app/agent/` |
 | `app/agent/__init__.py` | Implementation-free package root; exact historical Agent symbols are supplied by the Compat overlay only, while host callers import `orchestrator.py` or the relevant owner directly |
 | `app/agent/llm/__init__.py` | Implementation-free package root; only the verified historical `LLMHelper` symbol is supplied by exact Compat routing |

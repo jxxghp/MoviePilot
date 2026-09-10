@@ -164,7 +164,8 @@
     "owners": {
       "_TerminalSessionManager._start_pipe_session": 3,
       "_TerminalSessionManager._start_pty_session": 2,
-      "_TerminalSessionManager.start": 1
+      "_TerminalSessionManager._wait_for_change": 1,
+      "_TerminalSessionManager.start": 2
     },
     "target": "asyncio.create_task"
   },
@@ -182,7 +183,8 @@
   },
   "app/agent/tools/impl/execute_command.py:asyncio.create_task": {
     "owners": {
-      "ExecuteCommandTool._run_once": 3
+      "ExecuteCommandTool._acquire_command_slot": 2,
+      "ExecuteCommandTool._run_once_with_scope": 4
     },
     "target": "asyncio.create_task"
   },

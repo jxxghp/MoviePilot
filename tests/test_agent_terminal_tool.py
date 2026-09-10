@@ -12,10 +12,13 @@ from app.agent.middleware.output import ToolOutputMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.policy.contracts import AuthSource, PrincipalType, ToolOrigin, ToolPolicyContext
 from app.agent.terminal.manager import _TerminalSessionManager
+from app.agent.terminal.ownership import current_terminal_scope
 from app.agent.terminal.session import _TerminalSession
 from app.agent.tools.base import DEFAULT_TOOL_RESULT_MAX_CHARS
 from app.agent.tools.impl import execute_command as command_module
 from app.agent.tools.impl.execute_command import ExecuteCommandInput, ExecuteCommandTool
+
+pytestmark = pytest.mark.usefixtures("terminal_scope")
 
 
 class _PageModel(FakeMessagesListChatModel):
@@ -31,7 +34,7 @@ class _PageModel(FakeMessagesListChatModel):
 async def test_terminal_page_or_error_reaches_model_without_outer_truncation(monkeypatch, partial):
     """大转义正文保留真实消费游标，小页错误也必须保持失败状态及恢复参数。"""
     manager = _TerminalSessionManager()
-    session = _TerminalSession(session_id="term-page-test", command="completed command", cwd=".", pid=123456789, use_pty=False)
+    session = _TerminalSession(owner=current_terminal_scope(), session_id="term-page-test", command="completed command", cwd=".", pid=123456789, use_pty=False)
     text = "\\\n\"\t" * 20000
     session.append_output("stdout", text.encode("utf-8"))
     session.mark_finished(0)

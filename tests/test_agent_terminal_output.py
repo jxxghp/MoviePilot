@@ -12,8 +12,11 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 
+from app.agent.terminal import manager as terminal_module
 from app.agent.terminal.manager import _TerminalSessionManager
 from app.agent.terminal.session import _TerminalSession
+
+pytestmark = pytest.mark.usefixtures("terminal_scope")
 
 _DEADLINE = 5
 _INTERACTIVE = """import sys
@@ -61,7 +64,7 @@ async def _start_ready(manager: _TerminalSessionManager, code: str = _INTERACTIV
         env={"PYTHONIOENCODING": "utf-8"},
     ), timeout=_DEADLINE)
     assert "READY" in payload["output"]
-    session = manager.get_session(payload["session_id"])
+    session = manager._sessions[payload["session_id"]]
     assert session.process is not None and session.process.returncode is None
     return payload, session
 
@@ -197,7 +200,7 @@ async def test_new_output_wakes_wait_without_process_exit(monkeypatch, terminal_
 async def test_output_between_empty_snapshot_and_await_is_not_lost(monkeypatch, terminal_manager):
     """同步插入恰好发生在空快照之后的输出，等待必须消费已经触发的旧通知事件。"""
     initial, session = await _start_ready(terminal_manager)
-    original_read = terminal_manager._read_payload
+    original_read = terminal_module.read_payload
     inserted = False
 
     def read(current: _TerminalSession, **kwargs: Any) -> dict[str, Any]:
@@ -209,7 +212,7 @@ async def test_output_between_empty_snapshot_and_await_is_not_lost(monkeypatch, 
             current.append_output("stdout", b"BETWEEN-CHECK-AND-WAIT\n")
         return payload
 
-    monkeypatch.setattr(terminal_manager, "_read_payload", read)
+    monkeypatch.setattr(terminal_module, "read_payload", read)
     payload = await asyncio.wait_for(terminal_manager.wait(
         session_id=session.session_id, timeout_ms=10000, **_cursor(initial),
     ), timeout=_DEADLINE)
@@ -306,7 +309,7 @@ async def test_start_small_legacy_page_preserves_session_handle(terminal_manager
     payload = await asyncio.wait_for(terminal_manager.start(
         command=_command(_INTERACTIVE), use_pty=False, yield_time_ms=10000, max_bytes=1,
     ), timeout=_DEADLINE)
-    session = terminal_manager.get_session(payload["session_id"])
+    session = terminal_manager._sessions[payload["session_id"]]
     assert session.process.returncode is None and payload["status"] == "running"
     assert payload["output"] == "" and _position(payload) == (0, 0)
     assert payload["output_error"]["code"]
@@ -392,7 +395,7 @@ async def test_long_command_truncates_only_display_and_preserves_real_session(te
     payload = await asyncio.wait_for(terminal_manager.start(
         command=command, use_pty=False, yield_time_ms=10000, since_offset=0, max_output_chars=4096,
     ), timeout=_DEADLINE)
-    session = terminal_manager.get_session(payload["session_id"])
+    session = terminal_manager._sessions[payload["session_id"]]
     assert session.command == command
     assert payload["command_truncated"] is True and payload["command_total_chars"] == len(command)
     assert len(json.dumps(payload["command"], ensure_ascii=False)) <= 1024

@@ -339,7 +339,7 @@ def test_control_tool_starts_tasks_concurrently_and_waits():
         both_started = asyncio.Event()
         allow_finish = asyncio.Event()
 
-        async def _fake_run_task(self, *, description, subagent_type, task_id=None):
+        async def _fake_run_task(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
             running_descriptions.append(description)
             if len(running_descriptions) == 2:
                 both_started.set()
@@ -407,7 +407,7 @@ def test_control_tool_pipeline_passes_previous_results_to_next_step():
         )
         calls = []
 
-        async def _fake_run_task(self, *, description, subagent_type, task_id=None):
+        async def _fake_run_task(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
             calls.append(
                 {
                     "description": description,
@@ -480,7 +480,7 @@ def test_control_tool_pipeline_stops_after_failed_step():
         calls = []
         secret_marker = "subagent-runtime-secret-9042"
 
-        async def _fake_run_task(self, *, description, subagent_type, task_id=None):
+        async def _fake_run_task(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
             calls.append(subagent_type)
             if subagent_type == "download-diagnostician":
                 raise RuntimeError(
@@ -543,7 +543,7 @@ def test_control_tool_pipeline_timeout_is_bounded_when_task_ignores_cancel():
         release = asyncio.Event()
         cancelled = asyncio.Event()
 
-        async def _ignore_cancel(self, *, description, subagent_type, task_id=None):
+        async def _ignore_cancel(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
             try:
                 await asyncio.Future()
             except asyncio.CancelledError:
@@ -591,7 +591,7 @@ def test_after_agent_cancels_unfinished_tasks():
         )
         task_started = asyncio.Event()
 
-        async def _fake_run_task(self, *, description, subagent_type, task_id=None):
+        async def _fake_run_task(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
             task_started.set()
             await asyncio.Event().wait()
 

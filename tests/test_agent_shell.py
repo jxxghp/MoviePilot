@@ -27,6 +27,8 @@ from app.agent.tools.impl.execute_command import ExecuteCommandTool
 from app.agent.tools.impl.service import _run_service_script
 from app.schemas.agent import AgentMcpServerConfig
 
+pytestmark = pytest.mark.usefixtures("terminal_scope")
+
 
 def _finder(paths: dict[str, str]):
     """构造只返回测试声明命令路径的 which 替身。"""
