@@ -120,7 +120,12 @@ async def test_skill_pagination_reconstructs_unmodified_repository_skill() -> No
             assert skill["skill"]["allowed_tools"] == ["moviepilot_api"]
             assert len(skill["skill"]["allowed_api_operations"]) > 100
             assert "library.exists" in skill["skill"]["allowed_api_operations"]
-            assert skill["supporting_files"] == []
+            skill_root = PROJECT_ROOT / "skills" / "moviepilot-api"
+            expected_supporting_files = sorted(
+                path.relative_to(skill_root).as_posix()
+                for path in (skill_root / "api").glob("*.md")
+            )
+            assert skill["supporting_files"] == expected_supporting_files
             assert server.stats["world_calls"] == 0
 
 
