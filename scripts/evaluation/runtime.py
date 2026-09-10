@@ -331,6 +331,8 @@ async def _run_isolated(
             result = await agent.process(world.scenario.model_input())
             bundle = agent.evaluation_bundle
             state = bundle.agent.get_state({"configurable": {"thread_id": agent.session_id}}).values if bundle else {}
+            tool_catalog = bundle.tool_catalog.audit_payload() if bundle and bundle.tool_catalog else None
+            child_tool_catalog = bundle.subagent_catalog.audit_payload() if bundle and bundle.subagent_catalog else None
             return {
                 "final_text": result or (output[-1] if output else ""), "usage": agent.get_session_status(),
                 "execution_success": agent.execution_success, "raw_messages": messages_to_dict(state.get("messages", [])),
@@ -338,6 +340,8 @@ async def _run_isolated(
                 "tool_catalog_scope": "controlled_moviepilot_api_and_production_internal_tools",
                 "tool_names": sorted(tool.name for tool in bundle.tool_catalog.tools) if bundle else [],
                 "child_tool_names": sorted(tool.name for tool in agent.evaluation_child_tools),
+                "tool_catalog": tool_catalog,
+                "child_tool_catalog": child_tool_catalog,
                 "graph_nodes": sorted(bundle.agent.get_graph().nodes) if bundle else [],
             }
         finally:

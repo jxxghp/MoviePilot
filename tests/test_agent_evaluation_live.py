@@ -210,6 +210,8 @@ async def test_successful_model_reply_still_requires_independent_business_eviden
     assert report["reported_models"] == ["provider-reported-model"]
     assert report["tokens"]["total_tokens"] == 40
     assert report["usage_complete"] is True
+    assert report["tool_catalog"] is None
+    assert report["child_tool_catalog"] is None
     assert worker_boundary.model.parameters["max_retries"] == 0
     assert worker_boundary.model.parameters["max_tokens"] == model_settings.max_output_tokens
 

@@ -154,6 +154,31 @@ class ToolCatalogSnapshot:
             ),
         )
 
+    def audit_payload(self) -> dict[str, Any]:
+        """返回不含工具对象的目录快照，供评测比较实现、schema 和版本差异。"""
+        signature_sha256 = hashlib.sha256(_stable_json(self.signature).encode("utf-8")).hexdigest()
+        entries = [
+            {
+                "name": entry.name,
+                "source": entry.source,
+                "identity": entry.identity,
+                "description_digest": entry.description_digest,
+                "schema_digest": entry.schema_digest,
+                "revision": {
+                    "implementation": entry.revision.implementation,
+                    "factory": entry.revision.factory,
+                    "plugin": entry.revision.plugin,
+                },
+            }
+            for entry in self.entries
+        ]
+        return {
+            "signature_sha256": signature_sha256,
+            "plugin_revision": self.plugin_revision,
+            "factory_revision": self.factory_revision,
+            "entries": entries,
+        }
+
     def resolve_unique(self, name: str) -> Optional[ToolCatalogEntry]:
         """严格解析当前唯一实现；重名时拒绝继承 first/last-wins。"""
         entries = self._by_name.get(name, ())

@@ -46,6 +46,33 @@ def test_catalog_preserves_order_and_resolves_exact_instance() -> None:
     assert catalog.signature[0:2] == ("factory-v1", 7)
 
 
+def test_catalog_audit_payload_excludes_tool_objects_but_keeps_contract_identity() -> None:
+    """评测快照只暴露可比较的实现和合同摘要，不把运行对象或凭据序列化。"""
+    tool = _tool("audit-me", "plugin:demo")
+    catalog = ToolCatalogSnapshot.from_tools(
+        [tool], plugin_revision=4, factory_revision="factory-v2"
+    )
+
+    payload = catalog.audit_payload()
+
+    assert payload["plugin_revision"] == 4
+    assert payload["factory_revision"] == "factory-v2"
+    assert payload["signature_sha256"]
+    assert payload["entries"] == [{
+        "name": "audit-me",
+        "source": "plugin:demo",
+        "identity": catalog.entries[0].identity,
+        "description_digest": catalog.entries[0].description_digest,
+        "schema_digest": catalog.entries[0].schema_digest,
+        "revision": {
+            "implementation": catalog.entries[0].revision.implementation,
+            "factory": "factory-v2",
+            "plugin": "4",
+        },
+    }]
+    assert "tool" not in repr(payload)
+
+
 def test_catalog_records_all_duplicate_names_and_strict_lookup_fails() -> None:
     """内置与插件同名时必须保留双方身份并拒绝隐式选胜者。"""
     builtin = _tool("query_system_settings")

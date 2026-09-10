@@ -130,6 +130,12 @@ async def test_complete_production_agent_scenarios(scenario_id, invocation_store
     assert {"moviepilot_api", "read_file", "read_skill", "update_plan", "get_tool_execution", "task", "subagent_task", "search_tools"} <= set(capture["tool_names"])
     assert not {"execute_command", "write_file", "edit_file", "browser", "send_message"} & set(capture["tool_names"])
     assert capture["child_tool_names"] == ["moviepilot_api", "read_file"]
+    assert capture["tool_catalog"]["signature_sha256"]
+    assert {entry["name"] for entry in capture["tool_catalog"]["entries"]} == set(capture["tool_names"])
+    assert {entry["name"] for entry in capture["child_tool_catalog"]["entries"]} == set(capture["child_tool_names"])
+    api_entry = next(entry for entry in capture["tool_catalog"]["entries"] if entry["name"] == "moviepilot_api")
+    assert api_entry["revision"]["implementation"].endswith("MoviePilotApiTool")
+    assert api_entry["schema_digest"]
     assert capture["task_plan"]["objective"] == "完成用户任务并核验"
     assert any("InvocationMiddleware" in node for node in capture["graph_nodes"])
     assert any("SkillsMiddleware" in node for node in capture["graph_nodes"])

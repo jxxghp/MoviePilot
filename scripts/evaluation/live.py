@@ -150,6 +150,7 @@ async def _run_worker(scenario_id: str, settings: ModelSettings) -> dict[str, An
             "final_text": final_text, "final_report": final_report,
             "tool_catalog_scope": capture.get("tool_catalog_scope"),
             "tool_names": capture.get("tool_names"), "graph_nodes": capture.get("graph_nodes"),
+            "tool_catalog": capture.get("tool_catalog"), "child_tool_catalog": capture.get("child_tool_catalog"),
             "agent_execution_success": capture.get("execution_success"),
             "agent_trace": capture.get("raw_messages", []), "task_plan": capture.get("task_plan"),
             "trace_tool_metrics": _trace_metrics(capture.get("raw_messages", [])),
