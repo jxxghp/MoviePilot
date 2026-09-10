@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 28
+version: 29
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -169,6 +169,19 @@ Call the gateway with this shape:
   "body": {}
 }
 ```
+
+### Common read and download contracts
+
+Select the operation for the task first, then send only fields declared by that operation. Common verification contracts are:
+
+| operation_id | `path_params` | `query` |
+| --- | --- | --- |
+| `subscription.find` | `media_id` | `media_source`; optional `season`, `music_type` |
+| `subscription.list` | none | optional `page`, `count` |
+| `download.tasks.active` | none | optional `page`, `count`, `name` |
+| `site.list` | none | optional `page`, `count`, `name`, `status=all\|active\|inactive` |
+
+The `download.add` body must contain `torrent_in` (at least `title` and `enclosure`) plus sibling `media_source` and `media_id`; do not put a magnet URI in `url`, or move media identity and filters into `query`. When a write returns `unknown`, never retry it; verify the actual state with a supported read operation first.
 
 - Put route placeholders such as `subscribe_id`, `hashString`, `plugin_id`,
   `workflow_id`, `media_id`, `storage`, `rule_id`, and `name` in `path_params`.
