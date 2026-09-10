@@ -77,7 +77,7 @@ def test_skills_middleware_exposes_read_skill_tool(tmp_path):
 
 @pytest.mark.anyio
 async def test_read_skill_loads_body_and_supporting_files_by_id_and_name(tmp_path):
-    """read_skill 应按 id 或 name 返回完整主体及稳定的辅助文件清单。"""
+    """read_skill 应按 id 或 name 返回主体，并在同一权限边界内读取辅助文档。"""
     _write_skill(tmp_path, "moviepilot-api", name="MoviePilot API")
     skill_dir = tmp_path / "moviepilot-api"
     (skill_dir / "references").mkdir()
@@ -101,6 +101,23 @@ async def test_read_skill_loads_body_and_supporting_files_by_id_and_name(tmp_pat
     assert by_id["truncated"] is False
     assert by_name["success"] is True
     assert by_name["skill"]["name"] == "MoviePilot API"
+
+    supporting = json.loads(
+        await skill_tool.ainvoke(
+            {"name": "moviepilot-api", "file": "references/usage.md"}
+        )
+    )
+    assert supporting["success"] is True
+    assert supporting["content"] == "usage"
+    assert supporting["loaded_file"] == "references/usage.md"
+    assert supporting["skill"]["id"] == "moviepilot-api"
+
+    invalid = json.loads(
+        await skill_tool.ainvoke(
+            {"name": "moviepilot-api", "file": "../SKILL.md"}
+        )
+    )
+    assert invalid["success"] is False
 
 
 @pytest.mark.anyio
@@ -142,7 +159,18 @@ async def test_bundled_moviepilot_api_skill_loads_complete_contract() -> None:
     assert "## API Category Index" in payload["content"]
     assert "### `workflow.update`" not in payload["content"]
     assert "api/workflow.md" in payload["supporting_files"]
-    assert "api/models.md" in payload["supporting_files"]
+    assert "api/models.md" not in payload["supporting_files"]
+
+    category = json.loads(
+        await middleware.tools[0].ainvoke(
+            {"name": "moviepilot-api", "file": "api/workflow.md"}
+        )
+    )
+    assert category["success"] is True
+    assert category["loaded_file"] == "api/workflow.md"
+    assert "### `workflow.update`" in category["content"]
+    assert "## Body Models" in category["content"]
+    assert "### `WorkflowExecutionConfig`" in category["content"]
 
 
 @pytest.mark.anyio
@@ -273,6 +301,8 @@ def test_modify_request_instructs_model_to_use_read_skill_without_paths(tmp_path
 
     assert "`read_skill` tool" in system_content
     assert "never `read_file`" in system_content
+    assert "supporting Skill document" in system_content
+    assert "relative `file` path" in system_content
     assert "up to 512 KiB" in system_content
     assert "moviepilot-api" in system_content
     assert "Read `" not in system_content

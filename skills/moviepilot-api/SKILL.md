@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 30
+version: 31
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -82,11 +82,11 @@ use a more specific skill or explain that the structured operation is unavailabl
 ## Overall Workflow
 
 1. Select the exact `operation_id` from the category index below.
-2. Open the matching `api/<category>.md` file and read that operation's exact
-   method, route, policy effect, and `path_params`/`query`/`body` contract.
-3. Load `api/models.md` only when the operation references one of its shared
-   body models. For category-specific procedures, follow the guidance in the
-   matching category file.
+2. Call `read_skill` again with `name="moviepilot-api"` and
+   `file="api/<category>.md"` to load the complete standalone category
+   contract. Do not use `read_file` for Skill documents.
+3. The selected category file already includes the shared body Models needed to
+   construct its calls; do not load a second Models document.
 4. Build one gateway call with only declared fields. Preserve source-native
    identifiers and use the documented pagination fields.
 5. Obtain confirmation for confirmation-protected or side-effecting operations,
@@ -99,17 +99,17 @@ use a more specific skill or explain that the structured operation is unavailabl
 ## API Category Index
 
 Each category file contains the complete operation contracts for its namespace.
-The counts are a maintenance aid for the 211 currently exposed operations.
+The counts are a maintenance aid for the 218 currently exposed operations.
 
 | Category | Detail file | Operation namespace | Count | Use for |
 | --- | --- | --- | ---: | --- |
 | Configuration | [api/config.md](api/config.md) | `config.*` | 6 | identifiers, public/user settings, system setting discovery and updates |
 | Dashboard | [api/dashboard.md](api/dashboard.md) | `dashboard.*` | 9 | media, storage, process, system, downloader, CPU, memory, network, and transfer summaries |
 | Database | [api/database.md](api/database.md) | `database.backups.*` | 4 | administrator backup lifecycle |
-| Download | [api/download.md](api/download.md) | `download.*` | 6 | download submission, clients, paths, active tasks, and history |
+| Download | [api/download.md](api/download.md) | `download.*` | 7 | download submission, clients, paths, active tasks, and history |
 | Filter | [api/filter.md](api/filter.md) | `filter.*` | 10 | built-in/custom rules, groups, and testing |
 | Library | [api/library.md](api/library.md) | `library.*` | 2 | existence and latest-media checks |
-| Media | [api/media.md](api/media.md) | `media.*` | 20 | media search/detail, recognition, scraping, schedules, sources, people, seasons, and classification |
+| Media | [api/media.md](api/media.md) | `media.*` | 23 | media search/detail, recognition, scraping, schedules, sources, people, seasons, and classification |
 | Music | [api/music.md](api/music.md) | `music.*` | 10 | recognition, exploration, albums, artists, and cache administration |
 | Plugin | [api/plugin.md](api/plugin.md) | `plugin.*` | 30 | plugin market, install/runtime, configuration, source, folders, ratings, releases, and statistics |
 | Recommendation | [api/recommendation.md](api/recommendation.md) | `recommendation.*` | 1 | recommendation listings |
@@ -118,17 +118,17 @@ The counts are a maintenance aid for the 211 currently exposed operations.
 | Site | [api/site.md](api/site.md) | `site.*` | 22 | site discovery, authentication, cookies, user data, resources, RSS, priorities, and statistics |
 | Slash | [api/slash.md](api/slash.md) | `slash.*` | 2 | slash-command discovery and execution |
 | Storage | [api/storage.md](api/storage.md) | `storage.*` | 6 | storage settings, browsing, directories, rename, and delete |
-| Subscription | [api/subscription.md](api/subscription.md) | `subscription.*` | 26 | subscription CRUD, search/refresh, history, files, sharing, following, and status |
+| Subscription | [api/subscription.md](api/subscription.md) | `subscription.*` | 29 | subscription CRUD, search/refresh, history, files, sharing, following, and status |
 | Subtitle | [api/subtitle.md](api/subtitle.md) | `subtitle.search.*` | 2 | subtitle title and media search |
 | System | [api/system.md](api/system.md) | `system.*` | 12 | versions, update, restart, modules, network, and usage |
 | Torrent cache | [api/torrent.md](api/torrent.md) | `torrent.cache.*` | 5 | torrent-cache inspection, refresh, re-identification, and deletion |
 | Transfer | [api/transfer.md](api/transfer.md) | `transfer.*` | 15 | transfer queue/history, file, naming, manual review, retry, and target path |
 | Workflow | [api/workflow.md](api/workflow.md) | `workflow.*` | 16 | workflow definitions, actions, execution, sharing, and lifecycle |
 
-Shared request/response body models are documented in
-[api/models.md](api/models.md). If an operation is added or moved, update its
-category file, this index, the frontmatter allowlist, and the matching gateway
-contract together.
+Each category file is a standalone contract: it contains the operation details
+and the shared request/response body Models needed by that category. If an
+operation is added or moved, update its category file, this index, the
+frontmatter allowlist, and the matching gateway contract together.
 
 ## API Surface Scope
 

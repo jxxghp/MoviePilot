@@ -33,6 +33,10 @@ SKILL_CONTENT_TRUNCATION_MESSAGE = (
     "SKILL.md exceeds 512 KiB; content contains only the first 512 KiB. "
     "Do not use read_file to bypass this limit."
 )
+SUPPORTING_FILE_TRUNCATION_MESSAGE = (
+    "The requested supporting skill file exceeds 512 KiB; content contains only the first 512 KiB. "
+    "Do not use read_file to bypass this limit."
+)
 
 
 class SkillsState(AgentState):
@@ -55,6 +59,13 @@ class SkillToolInput(BaseModel):
     name: str = Field(
         ...,
         description="Skill name or id from the available skills list.",
+    )
+    file: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional supporting file path relative to the Skill directory. "
+            "Use this field with read_skill instead of read_file for a listed Skill document."
+        ),
     )
 
 
@@ -142,7 +153,7 @@ You have access to a skills library for specialized MoviePilot workflows.
 
 {skills_list}
 
-When the user's request matches a skill description, call the `read_skill` tool with that skill name before taking task actions. Always use `read_skill`, never `read_file`, to load SKILL.md. The tool returns up to 512 KiB of SKILL.md plus the relative paths of all supporting files; if the body is truncated, do not use `read_file` to bypass the limit. Load only the listed supporting files that are actually needed. Do not create or rewrite skills unless the user explicitly asks for skill authoring.
+When the user's request matches a skill description, call the `read_skill` tool with that skill name before taking task actions. Always use `read_skill`, never `read_file`, to load SKILL.md or a listed supporting Skill document. The first call returns up to 512 KiB of SKILL.md plus the relative paths of supporting files; load a needed supporting file by calling `read_skill` again with the same name and its relative `file` path. If a Skill document is truncated, do not use `read_file` to bypass the limit. Do not create or rewrite skills unless the user explicitly asks for skill authoring.
 </skills_system>
 """
 
@@ -151,9 +162,10 @@ MOVIEPILOT_API_SKILL_NAME = "moviepilot-api"
 SKILL_TOOL_DESCRIPTION = """Reads a MoviePilot skill by name or id.
 
 Available skills:
+Use the optional `file` argument to load a listed supporting Skill document through this tool.
 {skills_catalog}
 
-Call this tool when the user's task matches one of the available skills. It returns up to 512 KiB of SKILL.md content, metadata, and every supporting file path relative to the skill directory. If the content is truncated, do not use read_file to bypass the limit. Always use this tool instead of read_file for SKILL.md. Use read_file only for a listed supporting file when its content is needed. Do not use this for simple tasks that do not need a skill.
+Call this tool when the user's task matches one of the available skills. Without `file`, it returns up to 512 KiB of SKILL.md content, metadata, and every supporting file path relative to the Skill directory. Set `file` to one listed relative path to load that supporting Skill document in the same authorized tool. If the content is truncated, do not use read_file to bypass this limit. Always use this tool instead of read_file for SKILL.md or listed supporting Skill documents. Do not use this for simple tasks that do not need a skill.
 """
 
 
@@ -330,6 +342,18 @@ class _SkillToolProvider:
         decode_errors = "ignore" if truncated else "replace"
         return bounded_content.decode("utf-8", errors=decode_errors), truncated
 
+    @classmethod
+    async def _read_supporting_file(cls, skill_path: str, relative_path: str) -> tuple[str, bool]:
+        """读取 Skill 目录中已列出的辅助文档，避免绕过 Skill 权限边界。"""
+        supporting_files = await cls._list_supporting_files(skill_path)
+        if relative_path not in supporting_files:
+            raise ValueError(f"Skill supporting file is not listed: {relative_path}")
+
+        candidate = AsyncPath(str(Path(skill_path).parent / relative_path))
+        if await candidate.is_symlink() or not await candidate.is_file():
+            raise ValueError(f"Skill supporting file is unavailable: {relative_path}")
+        return await cls._read_skill_content(str(candidate))
+
     @staticmethod
     async def _list_supporting_files(skill_path: str) -> list[str]:
         """列出技能目录内除 SKILL.md 外的全部普通文件相对路径。"""
@@ -345,8 +369,8 @@ class _SkillToolProvider:
                 supporting_files.append(relative_path)
         return sorted(supporting_files, key=str.casefold)
 
-    async def load_skill(self, name: str) -> str:
-        """加载指定 Skill 的受限主体和辅助文件列表并返回 JSON 字符串。"""
+    async def load_skill(self, name: str, file: Optional[str] = None) -> str:
+        """加载指定 Skill 主体或一个已列出的辅助文档并返回 JSON 字符串。"""
         logger.info(f"加载 Skill: name={sanitize_for_host(name)}")
         try:
             skill = await self._find_skill(name)
@@ -359,8 +383,13 @@ class _SkillToolProvider:
                     ensure_ascii=False,
                 )
 
-            content, truncated = await self._read_skill_content(skill["path"])
             supporting_files = await self._list_supporting_files(skill["path"])
+            if file is None:
+                content, truncated = await self._read_skill_content(skill["path"])
+                truncation_message = SKILL_CONTENT_TRUNCATION_MESSAGE if truncated else None
+            else:
+                content, truncated = await self._read_supporting_file(skill["path"], file)
+                truncation_message = SUPPORTING_FILE_TRUNCATION_MESSAGE if truncated else None
             declared_operations = skill.get("allowed_api_operations", [])
             if declared_operations:
                 self._api_scope_declared = True
@@ -377,10 +406,11 @@ class _SkillToolProvider:
                         "allowed_api_operations": declared_operations,
                     },
                     "content": content,
+                    "loaded_file": file,
                     "content_limit_bytes": MAX_SKILL_CONTENT_BYTES,
                     "supporting_files": supporting_files,
                     "truncated": truncated,
-                    "truncation_message": SKILL_CONTENT_TRUNCATION_MESSAGE if truncated else None,
+                    "truncation_message": truncation_message,
                 },
                 ensure_ascii=False,
                 indent=2,

@@ -93,11 +93,13 @@ def test_moviepilot_api_skill_routes_contracts_to_category_files() -> None:
 
     assert len(entrypoint.splitlines()) < 300
     assert "### `" not in entrypoint
-    assert len(category_files) == 22
+    assert len(category_files) == 21
+    assert "models" not in category_files
     assert all(
         f"### `{operation_id}`" in category_files[operation_id.split(".", 1)[0]]
         for operation_id in API_OPERATION_ROUTES
     )
+    assert all("## Body Models" in content for content in category_files.values())
 
 
 def test_every_gateway_operation_has_one_exact_english_skill_and_mcp_contract() -> None:

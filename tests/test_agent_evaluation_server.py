@@ -130,6 +130,29 @@ async def test_skill_pagination_reconstructs_unmodified_repository_skill() -> No
 
 
 @pytest.mark.asyncio
+async def test_skill_supporting_document_uses_read_skill_without_file_tool() -> None:
+    """评测服务应通过 read_skill 加载已列出的分类合同，而不是开放任意文件读取。"""
+    async with EvaluationMcpServer(EvaluationWorld("dedup_existing")) as server:
+        async with _client(server) as client:
+            result, payload = await _tool(
+                client,
+                "read_skill",
+                {"name": "moviepilot-api", "file": "api/config.md"},
+            )
+            assert result["isError"] is False
+            assert payload["tool_result_truncated"] is True
+            assert "# Configuration APIs" in payload["content_preview"]
+
+            invalid_result, invalid = await _tool(
+                client,
+                "read_skill",
+                {"name": "moviepilot-api", "file": "../SKILL.md"},
+            )
+            assert invalid_result["isError"] is True
+            assert invalid["error"] == "skill_file_not_found"
+
+
+@pytest.mark.asyncio
 async def test_world_call_limit_is_global_across_sessions_and_parallel_requests() -> None:
     """并行连接也共享硬调用上限，超限不会继续读取或改变独立世界。"""
     world = EvaluationWorld("dedup_existing")

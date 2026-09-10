@@ -117,7 +117,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "command-dispatch": "2",
         "database-operation": "7",
         "feedback-issue": "9",
-        "moviepilot-api": "30",
+        "moviepilot-api": "31",
         "moviepilot-update": "5",
         "organize-files": "5",
         "transfer-failed-retry": "5",
@@ -147,6 +147,8 @@ def test_core_prompt_requires_read_skill_for_skill_documents() -> None:
     core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
 
     assert "Always use `read_skill`, never `read_file`, to load a skill's SKILL.md" in core_prompt
+    assert "listed supporting Skill document" in core_prompt
+    assert "file=<relative path>" in core_prompt
     assert "returns up to 512 KiB of the skill body" in core_prompt
     assert "do not use `read_file` to bypass the limit" in core_prompt
 
@@ -206,6 +208,7 @@ def test_api_and_database_skills_declare_final_boundaries() -> None:
     assert "Never provide a URL, method, authentication header, API key" in api_content
     assert "retired tool name" in api_content
     assert "moviepilot tool" in api_content
+    assert "second Models document" in api_content
 
     update_content = _read_skill("moviepilot-update")
     assert "allowed-tools: moviepilot_api" in update_content
