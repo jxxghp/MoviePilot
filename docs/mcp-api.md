@@ -76,7 +76,7 @@ MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。
 | `stream_or_binary` | 10 | 由直接客户端处理流式日志、消息、文件、图片等非结构化响应 |
 | `ui_presentation` | 15 | 由前端或插件渲染面拥有，不作为业务 Agent operation |
 
-逐路由归属见 `docs/architecture/agent-api-surface-audit.md`，并由
+逐路由归属见 `docs/refactor/agent-api-surface-audit.md`，并由
 `tests/test_agent_api_surface_audit.py` 对当前 OpenAPI、固定注册表、MCP schema、英文 Skill
 合同及全部非网关归属做漂移检查。任何新增端点必须先明确归属；对 Agent 开放时还必须补齐
 operation ID、权限、副作用、确认、恢复、结果敏感性及精确参数说明。

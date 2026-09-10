@@ -9,8 +9,8 @@ from app.agent.policy.api import API_OPERATION_ROUTES
 from app.agent.tools.impl.api import MoviePilotApiTool
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-AUDIT_JSON = PROJECT_ROOT / "docs/architecture/agent-api-surface-audit.json"
-AUDIT_MARKDOWN = PROJECT_ROOT / "docs/architecture/agent-api-surface-audit.md"
+AUDIT_JSON = PROJECT_ROOT / "docs/refactor/agent-api-surface-audit.json"
+AUDIT_MARKDOWN = PROJECT_ROOT / "docs/refactor/agent-api-surface-audit.md"
 API_SKILL = PROJECT_ROOT / "skills/moviepilot-api/SKILL.md"
 
 

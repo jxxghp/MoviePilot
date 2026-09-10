@@ -150,7 +150,7 @@ must be one of the following before the Agent may use its capability:
   and English parameter contract is added.
 
 The maintained route-by-route inventory is
-`docs/architecture/agent-api-surface-audit.md`. Its generated drift test fails
+`docs/refactor/agent-api-surface-audit.md`. Its generated drift test fails
 when OpenAPI changes without an explicit ownership decision.
 
 The management recovery route `POST /api/v1/history/transfer/{history_id}/discard-corrupt`
