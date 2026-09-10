@@ -1012,7 +1012,7 @@ def test_sync_plugin_market_from_wiki_merges_and_deduplicates_repos():
             return_value=request_utils,
         ),
         patch(
-            "app.startup.composition.system.eventmanager.async_send_event",
+            "app.startup.composition.system.eventmanager.async_send_event_strict",
             new=AsyncMock(),
         ) as send_event,
     ):
