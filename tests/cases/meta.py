@@ -1246,7 +1246,7 @@ meta_cases = [{
         "part": "",
         "season": "",
         "episode": "",
-        "restype": "UHD",
+        "restype": "UHD BluRay",
         "pix": "2160p",
         "video_codec": "HEVC",
         "audio_codec": "DTS-HD MA 5.1"
