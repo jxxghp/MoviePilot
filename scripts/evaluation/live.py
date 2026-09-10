@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -62,10 +63,13 @@ def run_live(scenario_id: str, settings: ModelSettings) -> dict[str, Any]:
 
 
 def _parse_final(text: str) -> Any:
-    """接受普通 JSON 或单个 Markdown JSON 围栏，其他话术不作为结构化完成证据。"""
+    """接受普通 JSON 或唯一 JSON 围栏，允许模型在围栏外补充说明。"""
     value = text.strip()
-    if value.startswith(("```\n", "```json\n")) and value.endswith("```") and value.count("```") == 2:
-        value = value.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    fenced = re.findall(r"```(?P<language>[A-Za-z0-9_-]*)\s*\n(?P<body>.*?)```", value, re.DOTALL)
+    if fenced:
+        if len(fenced) != 1 or fenced[0][0].lower() not in {"", "json"}:
+            return None
+        value = fenced[0][1].strip()
     try:
         return json.loads(value)
     except (ValueError, TypeError):

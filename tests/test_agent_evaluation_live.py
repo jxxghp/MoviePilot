@@ -94,6 +94,7 @@ def test_worker_nonzero_exit_does_not_publish_private_logs(monkeypatch, model_se
     ('{"status":"completed"}', {"status": "completed"}),
     ('```json\n{"status":"completed"}\n```', {"status": "completed"}),
     ('```\n{"status":"blocked"}\n```', {"status": "blocked"}),
+    ('已完成。\n```json\n{"status":"completed"}\n```\n后续说明', {"status": "completed"}),
     ('```xml\n{"status":"completed"}\n```', None),
     ('已完成。\n{"status":"completed"}', None),
     ('```json\n{}\n```\n```json\n{}\n```', None),

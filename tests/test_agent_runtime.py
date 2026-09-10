@@ -48,9 +48,9 @@ class TestAgentRuntimeConfig(unittest.TestCase):
         self.assertTrue((self.agent_root / "runtime" / "CURRENT_PERSONA.md").exists())
         self.assertTrue((self.agent_root / "runtime" / "personas" / "default" / "PERSONA.md").exists())
         self.assertTrue((self.agent_root / "runtime" / "subagents" / "general-purpose" / "SUBAGENT.md").exists())
-        self.assertIn(
-            "media-researcher",
+        self.assertEqual(
             [subagent.subagent_id for subagent in runtime_config.available_subagents],
+            ["general-purpose"],
         )
 
     def test_legacy_root_markdown_is_migrated_to_memory_directory(self):
@@ -112,7 +112,7 @@ class TestAgentRuntimeConfig(unittest.TestCase):
         self.assertIn("`persona` with `action=list`", sections)
         self.assertNotIn("Available personas:", sections)
         self.assertNotIn("Available subagents:", sections)
-        self.assertNotIn("`media-researcher`", sections)
+        self.assertNotIn("Available subagents:", sections)
 
     def test_set_active_persona_supports_id_and_alias(self):
         manager = self._manager()

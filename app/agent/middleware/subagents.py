@@ -93,7 +93,7 @@ SUBAGENT_TASK_DESCRIPTION = (
 
 SUBAGENT_CONTROL_DESCRIPTION = (
     "Start and manage multiple MoviePilot subagent tasks asynchronously. "
-    "Use action=start with tasks=[{description, subagent_type}] to launch a batch "
+    "Use action=start with tasks=[{description}] to launch a batch "
     "and get task IDs immediately. Use action=status to inspect tasks, action=wait "
     "to wait for all or any task result, action=cancel to stop running tasks, and "
     "action=run to launch a bounded batch and wait in one call. Use action=pipeline "
@@ -158,13 +158,6 @@ class _TaskToolInput(BaseModel):
     """子代理任务工具输入。"""
 
     description: str = Field(..., description="Complete task description for the subagent")
-    subagent_type: str = Field(
-        default="general-purpose",
-        description=(
-            "Optional subagent type override. Omit this field to let the host use "
-            "the general-purpose read-only subagent."
-        ),
-    )
     terminal_sessions: list[SubAgentTerminalGrant] = Field(
         default_factory=list,
         description="Explicit parent terminal sessions shared with this child for read-only inspection.",
@@ -175,13 +168,6 @@ class _SubAgentTaskSpec(BaseModel):
     """异步子代理任务定义。"""
 
     description: str = Field(..., description="Complete task description for the subagent")
-    subagent_type: str = Field(
-        default="general-purpose",
-        description=(
-            "Optional subagent type override. Omit this field to let the host use "
-            "the general-purpose read-only subagent."
-        ),
-    )
     terminal_sessions: list[SubAgentTerminalGrant] = Field(
         default_factory=list,
         description="Explicit parent terminal grants for this task only; siblings inherit no grants.",
@@ -198,13 +184,6 @@ class _SubAgentControlInput(BaseModel):
     description: Optional[str] = Field(
         default=None,
         description="Single task description for action=start or action=run.",
-    )
-    subagent_type: Optional[str] = Field(
-        default="general-purpose",
-        description=(
-            "Optional single-task type override; omit it for the general-purpose "
-            "read-only subagent."
-        ),
     )
     terminal_sessions: list[SubAgentTerminalGrant] = Field(
         default_factory=list,
@@ -306,13 +285,13 @@ def _default_subagent_profiles(
     runtime_signature: Optional[tuple[tuple[str, int, int], ...]] = None,
 ) -> tuple[_SubAgentProfile, ...]:
     """返回生产主 Agent 默认可见的通用子代理目录。"""
-    profiles = _builtin_subagent_profiles(runtime_signature)
-    general_profiles = tuple(
-        profile for profile in profiles if profile.name == "general-purpose"
+    profiles = tuple(
+        profile
+        for profile in _builtin_subagent_profiles(runtime_signature)
+        if profile.name == "general-purpose"
     )
-    if general_profiles:
-        return general_profiles
-    logger.warning("运行时未定义 general-purpose，暂保留全部子代理作为兼容回退")
+    if not profiles:
+        raise RuntimeError("运行时未定义 general-purpose 子代理")
     return profiles
 
 
@@ -328,25 +307,7 @@ def _cached_builtin_subagent_profiles(
     )
     if profiles:
         return profiles
-    logger.warning("未加载到任何子代理定义，使用通用兜底子代理。")
-    return (
-        _SubAgentProfile(
-            name="general-purpose",
-            description="General read-only investigation subagent for cross-domain MoviePilot analysis and execution recommendations.",
-            prompt=(
-                f"{SUBAGENT_BASE_PROMPT}\n"
-                "You specialize in synthesizing media, site, subscription, download, and system status signals."
-            ),
-            include_tags=frozenset(tag.value for tag in ToolTag),
-            exclude_tags=frozenset(
-                {
-                    ToolTag.Write.value,
-                    ToolTag.Message.value,
-                    ToolTag.UserInteraction.value,
-                }
-            ),
-        ),
-    )
+    raise RuntimeError("运行时未加载任何子代理定义")
 
 
 builtin_subagent_names.cache_clear = _cached_builtin_subagent_names.cache_clear
@@ -451,7 +412,7 @@ def _record_subagent_tool_call(
     if not isinstance(safe_args, dict):
         safe_args = {}
     if tool_name == SUBAGENT_TASK_TOOL_NAME:
-        tool_message = f"调用子代理：{safe_args.get('subagent_type') or 'general-purpose'}"
+        tool_message = "调用子代理：general-purpose"
     else:
         tool_message = f"管理子代理任务：action={safe_args.get('action') or 'start'}"
     stream_handler.report_tool_call(
@@ -484,14 +445,12 @@ class _SubAgentAgentProvider:
         self._agents = {}
         self._default_agent_name = "general-purpose"
 
-    def _resolve_profile(self, agent_name: Optional[str]) -> _SubAgentProfile:
-        """解析子代理类型，未知类型回退到默认子代理。"""
-        return self._profiles.get(agent_name or "") or self._profiles[
-            self._default_agent_name
-        ]
+    def _resolve_profile(self, _agent_name: Optional[str] = None) -> _SubAgentProfile:
+        """解析唯一的通用子代理。"""
+        return self._profiles[self._default_agent_name]
 
-    def get_agent(self, agent_name: Optional[str]) -> tuple[str, Any]:
-        """懒加载指定名称的子代理图。"""
+    def get_agent(self, agent_name: Optional[str] = None) -> tuple[str, Any]:
+        """懒加载唯一通用子代理图。"""
         profile = self._resolve_profile(agent_name)
         cached_agent = self._agents.get(profile.name)
         if cached_agent:
@@ -530,12 +489,13 @@ class _SubAgentAgentProvider:
         self,
         *,
         description: str,
-        subagent_type: Optional[str],
+        subagent_type: Optional[str] = None,
         task_id: Optional[str] = None,
         terminal_sessions: Optional[list[SubAgentTerminalGrant]] = None,
     ) -> str:
-        """调用指定子代理并只返回供主代理读取的结果。"""
-        agent_name, agent = self.get_agent(subagent_type)
+        """调用通用子代理并只返回供主代理读取的结果。"""
+        del subagent_type
+        agent_name, agent = self.get_agent()
         thread_suffix = task_id or uuid.uuid4().hex
         log_task_id = task_id or "-"
         logger.info(
@@ -620,13 +580,11 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
     async def _run_task(
         self,
         description: str,
-        subagent_type: str,
         terminal_sessions: Optional[list[SubAgentTerminalGrant]] = None,
     ) -> str:
-        """调用指定子代理并只返回供主代理读取的结果。"""
+        """调用通用子代理并只返回供主代理读取的结果。"""
         return await self._provider.run_task(
             description=description,
-            subagent_type=subagent_type,
             terminal_sessions=terminal_sessions,
         )
 
@@ -656,12 +614,9 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
             return await handler(request)
 
         tool_args = _extract_tool_call_args(request)
-        logged_args = sanitize_for_host(tool_args)
-        if not isinstance(logged_args, dict):
-            logged_args = {}
         logger.info(
             f"开始执行子代理工具: tool_name={tool_name}, "
-            f"subagent_type={logged_args.get('subagent_type') or '-'}"
+            "subagent_type=general-purpose"
         )
         _record_subagent_tool_call(
             stream_handler=self.stream_handler,
@@ -816,7 +771,6 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         self,
         *,
         description: Optional[str],
-        subagent_type: Optional[str],
         tasks: Optional[list[_SubAgentTaskSpec]],
         terminal_sessions: Optional[list[SubAgentTerminalGrant]] = None,
     ) -> tuple[list[_SubAgentTaskSpec], Optional[str]]:
@@ -833,7 +787,6 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             specs.append(
                 _SubAgentTaskSpec(
                     description=description,
-                    subagent_type=subagent_type or "general-purpose",
                     terminal_sessions=terminal_sessions or [],
                 )
             )
@@ -908,7 +861,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             record = _SubAgentRuntimeTask(
                 task_id=task_id,
                 description=spec.description.strip(),
-                subagent_type=spec.subagent_type or "general-purpose",
+                subagent_type="general-purpose",
                 task=None,
                 created_at=datetime.now(),
                 terminal_sessions=spec.terminal_sessions,
@@ -1128,7 +1081,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         return _SubAgentRuntimeTask(
             task_id=task_id,
             description=spec.description.strip(),
-            subagent_type=spec.subagent_type or "general-purpose",
+            subagent_type="general-purpose",
             task=None,
             created_at=datetime.now(),
             terminal_sessions=spec.terminal_sessions,
@@ -1212,7 +1165,6 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         self,
         action: str = "start",
         description: Optional[str] = None,
-        subagent_type: Optional[str] = "general-purpose",
         tasks: Optional[list[_SubAgentTaskSpec]] = None,
         task_ids: Optional[list[str]] = None,
         task_id: Optional[str] = None,
@@ -1228,7 +1180,6 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
                 return self._json_response({"success": False, "error": error})
             specs, error = self._normalize_specs(
                 description=description,
-                subagent_type=subagent_type,
                 tasks=tasks,
                 terminal_sessions=terminal_sessions,
             )
@@ -1332,7 +1283,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         logger.info(
             f"开始执行子代理工具: tool_name={tool_name}, "
             f"action={logged_args.get('action') or '-'}, "
-            f"subagent_type={logged_args.get('subagent_type') or '-'}"
+            "subagent_type=general-purpose"
         )
         _record_subagent_tool_call(
             stream_handler=self.stream_handler,

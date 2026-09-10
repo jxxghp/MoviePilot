@@ -367,20 +367,19 @@ class StreamingHandler:
 
     @staticmethod
     def _extract_subagent_targets(tool_kwargs: dict[str, Any]) -> list[str]:
-        """提取子代理工具请求中的目标子代理类型。"""
+        """按实际委派条目数量生成通用子代理统计目标。"""
         tasks = tool_kwargs.get("tasks")
         if not isinstance(tasks, list):
-            subagent_type = tool_kwargs.get("subagent_type")
-            return [str(subagent_type)] if subagent_type else []
+            return ["general-purpose"] if tool_kwargs.get("description") else []
 
         targets = []
         for task in tasks:
             if isinstance(task, dict):
-                subagent_type = task.get("subagent_type")
+                description = task.get("description")
             else:
-                subagent_type = getattr(task, "subagent_type", None)
-            if subagent_type:
-                targets.append(str(subagent_type))
+                description = getattr(task, "description", None)
+            if description:
+                targets.append("general-purpose")
         return targets
 
     def flush_pending_tool_summary(self) -> str:
@@ -410,7 +409,7 @@ class StreamingHandler:
         if tool_name == "subagent_task":
             return "subagent", StreamingHandler._extract_subagent_targets(tool_kwargs)
         if tool_name == "task":
-            return "subagent", tool_kwargs.get("subagent_type")
+            return "subagent", "general-purpose" if tool_kwargs.get("description") else None
         if tool_name == "read_file":
             return "file_read", tool_kwargs.get("file_path")
         if tool_name in {"write_file", "edit_file"}:

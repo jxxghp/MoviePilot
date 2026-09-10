@@ -330,12 +330,12 @@ class TestAgentToolStreaming:
             handler.record_tool_call(
                 tool_name="task",
                 tool_message="Subagent invoked",
-                tool_kwargs={"subagent_type": "media-researcher"},
+                tool_kwargs={"description": "检查媒体库"},
             )
             handler.record_tool_call(
                 tool_name="task",
                 tool_message="Subagent invoked",
-                tool_kwargs={"subagent_type": "resource-searcher"},
+                tool_kwargs={"description": "检查资源"},
             )
             return await handler.take()
 
@@ -384,8 +384,8 @@ class TestAgentToolStreaming:
                 tool_kwargs={
                     "action": "start",
                     "tasks": [
-                        {"subagent_type": "media-researcher"},
-                        {"subagent_type": "download-diagnostician"},
+                        {"description": "检查媒体库"},
+                        {"description": "检查下载器"},
                     ],
                 },
             )
@@ -398,7 +398,7 @@ class TestAgentToolStreaming:
     def test_subagent_stream_metadata_is_suppressed(self):
         """校验子代理流式元数据会被识别并抑制。"""
         assert is_subagent_stream_metadata({"metadata": {"ls_agent_type": "subagent"}})
-        assert is_subagent_stream_metadata({"lc_agent_name": "media-researcher"})
+        assert is_subagent_stream_metadata({"lc_agent_name": "general-purpose"})
         assert not is_subagent_stream_metadata({"lc_agent_name": "main"})
 
     def test_openai_streaming_handler_flushes_pending_summary_to_queue(self):

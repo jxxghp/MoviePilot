@@ -193,19 +193,22 @@ class EvaluationWorld:
     def _validate(operation_id: str, request: dict[str, Any]) -> Optional[str]:
         """在业务执行前拒绝虚构操作、错误参数位置和无效分页，避免错误查询被当作核验。"""
         if not isinstance(operation_id, str) or operation_id not in _QUERY_FIELDS:
-            return "不支持的 operation_id"
+            supported = ", ".join(sorted(_QUERY_FIELDS))
+            return f"不支持的 operation_id；可用操作: {supported}"
         path_params, query, body = request["path_params"], request["query"], request["body"]
         if not isinstance(path_params, dict) or not isinstance(query, dict):
             return "path_params 和 query 必须为对象"
         expected_path = _PATH_FIELDS.get(operation_id)
         if set(path_params) != ({expected_path} if expected_path else set()):
-            return "path_params 与操作定义不符"
+            required = expected_path or "无"
+            return f"{operation_id} 的 path_params 必须包含: {required}"
         if expected_path == "subscribe_id" and (type(path_params[expected_path]) is not int or path_params[expected_path] < 1):
             return "subscribe_id 必须为正整数"
         if expected_path == "media_id" and not isinstance(path_params[expected_path], str):
             return "media_id 必须为字符串"
         if set(query) - _QUERY_FIELDS[operation_id]:
-            return "query 包含未定义字段"
+            fields = ", ".join(sorted(_QUERY_FIELDS[operation_id])) or "无"
+            return f"{operation_id} 的 query 只接受字段: {fields}"
         for field in _PAGINATION:
             value = query.get(field)
             if value is not None and (type(value) is not int or value < 1 or (field == "count" and value > 200)):
@@ -225,7 +228,8 @@ class EvaluationWorld:
             return "写操作必须提供对象 body"
         allowed = _DOWNLOAD_FIELDS if operation_id == "download.add" else _SUBSCRIPTION_FIELDS
         if set(body) - allowed:
-            return "body 包含未定义字段"
+            fields = ", ".join(sorted(allowed))
+            return f"{operation_id} 的 body 只接受字段: {fields}"
         return None
 
     def _dispatch(
