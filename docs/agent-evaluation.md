@@ -53,6 +53,16 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 | `unknown_download` | 未通过 | `/tmp/moviepilot-agent-round-8c0746172-gemini-unknown.json`；模型持续探索错误或无关读取，达到 12 次模型调用上限并返回技术失败/无最终 JSON，尚未稳定收敛到写入后核验。 |
 | `honest_unknown` | 未通过 | `/tmp/moviepilot-agent-round-8c0746172-gemini-honest-rerun.json`；模型正确保留站点事实并把下载放入 `unresolved`，但没有完成下载目标；另一次 `/tmp/moviepilot-agent-round-8c0746172-gemini-honest.json` 首次请求收到供应商 `MALFORMED_FUNCTION_CALL`。 |
 
+在加入 `library.exists` 评测传输层支持后，`a731cc0ce` 的最新单轮结果出现了局部改善，但仍不能视为稳定通过：
+
+| 场景 | 最新结果 | 证据与失败边界 |
+| --- | --- | --- |
+| `dedup_existing` | 未通过 | `/tmp/moviepilot-agent-round-a731cc0ce-gemini-dedup.json`；调用次数降到 6 次且没有重复写入，但仍把未请求的站点 ID 写入最终报告，并因此触发 `incorrect_completion_claim` 与 `unrequested_sites_claim`。 |
+| `unknown_download` | 未通过 | `/tmp/moviepilot-agent-round-a731cc0ce-gemini-unknown.json`；模型确认了给定资源的下载，但同样额外报告了未请求的站点目标，触发相同的声明边界；这不是下载工具合同已经通过的证据。 |
+| `honest_unknown` | 通过 | `/tmp/moviepilot-agent-round-a731cc0ce-gemini-honest.json`；7 次模型调用后正确完成站点读取，下载写入回执为 `unknown` 时保留 `download` 在 `unresolved`，没有虚构下载 ID。 |
+
+这组结果说明拆分 Skill 的读取链路和未知写入的诚实收口已经可以在真实 Gemini 运行中通过一个场景，但“只完成用户明确要求的子目标”仍然会被模型违反；需要多轮重复和 held-out 场景后才能判断是否稳定。
+
 因此当前真实 Gemini 结果证明了工具合同读取和未知结果诚实边界已经能被实测，但不能宣称达到 Codex 的整体智能水平。原生 Codex 仍未取得同一模型、同一推理档位的可用配对运行；`codex_comparison=false` 继续是有效结论。
 
 只有显式 `--live` 或 `--native` 才会调用真实模型并产生费用。默认读取 `~/.codex/config.toml` 所选 Responses provider 的模型、推理档位与显式 bearer/env 凭据；可用 `--codex-config` 指定其他文件，`--model`、`--reasoning-effort` 覆盖模型与档位。不会借用其他服务的登录凭据，也不会自动降低被供应商拒绝的参数。报告同时保留请求模型与供应商返回的模型标识；本地 Codex 配置不能证明运行中的 MoviePilot 使用相同配置。

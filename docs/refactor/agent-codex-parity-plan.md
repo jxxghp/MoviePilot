@@ -63,4 +63,5 @@ uv run --locked --no-sync python -m scripts.evaluation \
 - `a2f40ceec`：评测目录首次加入生产 `read_file`，发现临时 Agent 根与通用 `CONFIG_PATH/agent` 的权限根不一致。
 - `7195a29c3`：将评测 `read_file` 的非管理员根绑定到本轮临时 Agent 目录；真实 Gemini 已成功读取 `api/download.md` 和 `api/site.md`。
 - `8c0746172`：在 `api/download.md` 直接补充 `download.add` 的最小 `torrent_in` 结构并升到 Skill v30。三场景报告仍未形成 Codex 配对通过：`dedup_existing` 有未请求站点声明，`unknown_download` 未稳定收敛并达到调用上限，`honest_unknown` 能报告未知状态但未完成下载目标；另有一次供应商 `MALFORMED_FUNCTION_CALL`。
+- `a731cc0ce`：为评测世界加入生产 allowlist 中的 `library.exists` 只读操作，并以同一 Gemini 配置重跑三场景。`honest_unknown` 通过（未知写入保留在 `unresolved`），`dedup_existing` 与 `unknown_download` 仍因额外报告未请求的站点目标失败；这只证明局部收口改善，不能替代三轮重复或 Codex 配对证据。
 - 浏览器、真实命令行/PTY 和 WebAgent 中途消息排队已有确定性实现，但仍缺少与原生 Codex 在同一模型、同一场景下的真实配对证据，不能把这些能力标为“已对齐”。
