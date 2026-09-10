@@ -600,6 +600,16 @@ class SessionSubscriptionRepository:
         """同步按可选状态读取订阅快照。"""
         return [_project_subscription(record) for record in self._sync_repository().list(state)]
 
+    def list_by_media_identity(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        music_type: Optional[str] = None,
+    ) -> builtins.list[SubscriptionSnapshot]:
+        """同步按规范媒体身份读取订阅快照。"""
+        records = self._sync_repository().list_by_media_identity(media_source, media_id, music_type)
+        return [_project_subscription(record) for record in records]
+
     async def async_get(self, subscribe_id: int) -> Optional[SubscriptionSnapshot]:
         """异步按主键读取订阅快照。"""
         record = await self._async_repository().async_get(subscribe_id)

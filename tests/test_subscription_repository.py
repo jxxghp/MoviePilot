@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.context import get_sync_subscription_repository
+from app.application.servarr import ServarrSubscriptionService
 from app.application.subscription.complete import CompleteSubscriptionCommand
 from app.application.subscription.contract import (
     SubscriptionIdentity,
@@ -82,6 +83,36 @@ def test_sync_api_repository_dependency_binds_sync_session(db) -> None:
     repository = get_sync_subscription_repository(db.session, runtime)
 
     assert repository.get(-1) is None
+
+
+def test_servarr_sync_lookup_reads_session_repository(db) -> None:
+    """Servarr 同步 lookup 应从请求级订阅仓储读取媒体身份投影。"""
+    row = db.add(
+        Subscribe(
+            name="同步 lookup 订阅",
+            type=MediaType.MOVIE.value,
+            media_source=MediaSource.TMDB.value,
+            media_id="550",
+        )
+    )
+    db.add(
+        Subscribe(
+            name="其他媒体",
+            type=MediaType.MOVIE.value,
+            media_source=MediaSource.TMDB.value,
+            media_id="551",
+        )
+    )
+
+    repository = SessionSubscriptionRepository(db.session)
+    service = ServarrSubscriptionService(
+        async_repository=repository,
+        sync_repository=repository,
+    )
+
+    result = service.list_by_media_identity_sync(MediaSource.TMDB, "550")
+
+    assert [(item.id, item.name, item.media_id) for item in result] == [(row.id, "同步 lookup 订阅", "550")]
 
 
 def test_session_repository_leaves_commit_and_rollback_to_caller(db) -> None:
