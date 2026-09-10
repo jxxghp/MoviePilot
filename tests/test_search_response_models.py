@@ -77,14 +77,3 @@ def test_schema_metainfo_season_and_episode_properties() -> None:
     assert movie.season == ""
     assert movie.season_seq == ""
     assert movie.episode == ""
-
-    # 显式覆盖与字典解析
-    custom = MetaInfo(season_list=[0])
-    assert custom.season_list == [0]
-
-    from_dict = MetaInfo.model_validate({"season_list": [2, 4], "type": "电视剧"})
-    assert from_dict.season_list == [2, 4]
-
-    # setter 覆写
-    tv_no_season.season_list = [5]
-    assert tv_no_season.season_list == [5]

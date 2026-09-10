@@ -253,15 +253,21 @@ def test_workflow_manager_list_actions_exposes_contract():
 
 def test_add_download_only_lack_handles_schema_metainfo(monkeypatch):
     """添加下载动作开启仅下载缺失资源时应支持 Schema MetaInfo 的 season_list 属性并正确过滤已存在剧集。"""
+    import app.workflow.actions.add_download as add_download_module
     from app.schemas.context import (
         Context as SchemaContext,
+    )
+    from app.schemas.context import (
         MediaInfo as SchemaMediaInfo,
+    )
+    from app.schemas.context import (
         MetaInfo as SchemaMetaInfo,
+    )
+    from app.schemas.context import (
         TorrentInfo as SchemaTorrentInfo,
     )
     from app.schemas.types import MediaType
     from app.workflow.actions.add_download import AddDownloadAction
-    import app.workflow.actions.add_download as add_download_module
 
     downloaded = []
 
