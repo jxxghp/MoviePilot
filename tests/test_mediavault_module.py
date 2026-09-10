@@ -5,7 +5,7 @@ from typing import Optional
 
 import pytest
 
-from app.modules.mediavault.api import Result
+from app.modules.mediavault.api import Api, Result
 from app.modules.mediavault.mediavault import MediaVault
 from app.schemas.mediaserver import RefreshMediaItem
 from app.schemas.types import MediaType
@@ -28,7 +28,8 @@ class _FakeApi:
         self.closed = True
 
     def image_url(self, item_id: str, image_type: str, host: Optional[str] = None) -> str:
-        return f"{host or self._host}/api/v1/media-library/items/{item_id}/image/{image_type}?api_key=k"
+        # 复用真实实现，避免假 Api 自行拼装掩盖「URL 不得携带凭据」这一约束
+        return Api(host=host or self._host, apikey="k").image_url(item_id, image_type)
 
     def request(self, api, method=None, params=None, data=None, base_path=None, suppress_log=False):
         self.calls.append({"api": api, "method": method, "params": params or {}, "data": data,
@@ -144,7 +145,7 @@ def test_get_librarys_maps_type_and_builds_image_url():
     ]
     assert libraries[0].path == ["/mnt/movies"]
     assert libraries[1].path == "/mnt/tv"
-    assert libraries[0].image.endswith("/items/lib-1/image/primary?api_key=k")
+    assert libraries[0].image.endswith("/items/lib-1/image/primary")
     assert libraries[0].server_type == "mediavault"
 
 
@@ -509,3 +510,25 @@ def test_refresh_queues_every_matched_library_even_if_one_fails():
     assert ok is False
     scanned = [call["api"] for call in client._api.calls if call["api"].endswith("scan-task")]
     assert scanned == ["/libraries/lib-1/scan-task", "/libraries/lib-2/scan-task"]
+
+
+def test_image_url_never_carries_credentials():
+    """图片地址会交给浏览器直接加载，绝不能带上管理 API Key。"""
+    url = Api(host="http://mv.local", apikey="super-secret-admin-key").image_url("id-1", "primary")
+
+    assert url == "http://mv.local/api/v1/media-library/items/id-1/image/primary"
+    assert "super-secret-admin-key" not in url
+    assert "api_key" not in url
+
+
+def test_play_item_and_backdrop_images_carry_no_credentials():
+    """展示类接口产出的图片地址同样不得携带凭据。"""
+    rows = [_item_row(1, has_backdrop=True), _item_row(2, kind="Episode", series_id="s-1")]
+    client = _client({"/items": _paged_items(rows)})
+
+    urls = [item.image for item in client.get_latest(num=2)]
+    urls += client.get_latest_backdrops(num=1)
+    urls += [lib.image for lib in (client.get_librarys() or [])]
+
+    assert urls
+    assert all("api_key" not in url for url in urls)
