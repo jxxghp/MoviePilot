@@ -449,6 +449,63 @@
       "title": "Body_add_api_v1_download_add_post",
       "type": "object"
     },
+    "Body_download_artist_collection_api_v1_download_artist_collection_post": {
+      "description": "Artist-wide music collection download submission request.",
+      "properties": {
+        "artist_id": {
+          "description": "Source-native artist ID returned by music search or an album detail response.",
+          "minLength": 1,
+          "title": "Artist Id",
+          "type": "string"
+        },
+        "artist_name": {
+          "description": "Artist name preserved as the identity label for an artist-wide music collection.",
+          "minLength": 1,
+          "title": "Artist Name",
+          "type": "string"
+        },
+        "downloader": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Configured downloader instance name.",
+          "title": "Downloader"
+        },
+        "media_source": {
+          "$ref": "#/$defs/MediaSource",
+          "description": "Metadata source identifier. Preserve the exact value returned with media_id."
+        },
+        "save_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Configured downloader-side save path for the download or subscription.",
+          "title": "Save Path"
+        },
+        "torrent_in": {
+          "$ref": "#/$defs/TorrentInfo",
+          "description": "Complete torrent candidate returned by search.results or search.torrents."
+        }
+      },
+      "required": [
+        "artist_name",
+        "artist_id",
+        "media_source",
+        "torrent_in"
+      ],
+      "title": "Body_download_artist_collection_api_v1_download_artist_collection_post",
+      "type": "object"
+    },
     "Body_recommend_search_results_api_v1_search_recommend_post": {
       "description": "Torrent search results and recommendation controls supplied to the configured model.",
       "properties": {
@@ -7022,6 +7079,27 @@
     },
     {
       "additionalProperties": false,
+      "description": "Submit one artist-wide music torrent to MoviePilot's collection download workflow. Method: POST. Path: /api/v1/download/artist-collection. Effect: external_side_effect.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/Body_download_artist_collection_api_v1_download_artist_collection_post",
+          "description": "Request value for download.artist_collection. Submit one artist-wide music torrent to MoviePilot's collection download workflow. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "download.artist_collection",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "download.artist_collection",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "List enabled downloader instance names and provider types without credentials. Method: GET. Path: /api/v1/download/clients. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
@@ -7777,6 +7855,70 @@
         "result_count_field": "collection.result_count",
         "total_count_field": null
       }
+    },
+    {
+      "additionalProperties": false,
+      "description": "Clear the complete administrator-only TMDB recognition cache. Method: DELETE. Path: /api/v1/tmdb/cache. Effect: destructive_write.",
+      "properties": {
+        "operation_id": {
+          "const": "media.cache.clear",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "media.cache.clear",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Delete one administrator-only TMDB recognition-cache entry by exact key. Method: DELETE. Path: /api/v1/tmdb/cache/{cache_key}. Effect: destructive_write.",
+      "properties": {
+        "operation_id": {
+          "const": "media.cache.delete",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for media.cache.delete. Delete one administrator-only TMDB recognition-cache entry by exact key. Use only the named fields below.",
+          "properties": {
+            "cache_key": {
+              "description": "Exact recognition-cache key returned by the corresponding recognition-cache get operation.",
+              "title": "Cache Key",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cache_key"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "media.cache.delete",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Inspect the administrator-only TMDB recognition cache and summary counts. Method: GET. Path: /api/v1/tmdb/cache. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "media.cache.get",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "media.cache.get",
+      "type": "object"
     },
     {
       "additionalProperties": false,
@@ -9149,7 +9291,7 @@
           "description": "Resource identity placeholders for music.cache.delete. Delete one administrator-only MusicBrainz recognition-cache entry by exact key. Use only the named fields below.",
           "properties": {
             "cache_key": {
-              "description": "Exact recognition-cache key returned by music.cache.get.",
+              "description": "Exact recognition-cache key returned by the corresponding recognition-cache get operation.",
               "title": "Cache Key",
               "type": "string"
             }
@@ -12430,6 +12572,105 @@
     },
     {
       "additionalProperties": false,
+      "description": "Request cancellation of one durable subscription-search batch before its download side-effect boundary. Method: PUT. Path: /api/v1/subscribe/execution/batches/{batch_id}/cancel. Effect: external_side_effect.",
+      "properties": {
+        "operation_id": {
+          "const": "subscription.execution.cancel",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for subscription.execution.cancel. Request cancellation of one durable subscription-search batch before its download side-effect boundary. Use only the named fields below.",
+          "properties": {
+            "batch_id": {
+              "description": "Stable subscription search batch identifier.",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "batch_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "subscription.execution.cancel",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Read one durable subscription-search batch visible to the current user. Method: GET. Path: /api/v1/subscribe/execution/batches/{batch_id}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "subscription.execution.get",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for subscription.execution.get. Read one durable subscription-search batch visible to the current user. Use only the named fields below.",
+          "properties": {
+            "batch_id": {
+              "description": "Stable subscription search batch identifier.",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "batch_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "subscription.execution.get",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "List recent durable subscription-search batches visible to the current user. Method: GET. Path: /api/v1/subscribe/execution/batches. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "properties": {
+        "operation_id": {
+          "const": "subscription.execution.list",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for subscription.execution.list. List recent durable subscription-search batches visible to the current user. Use only the named fields below.",
+          "properties": {
+            "limit": {
+              "default": 10,
+              "description": "Maximum number of recent subscription-search batches to return.",
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "subscription.execution.list",
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "endpoint-defined",
+        "result_count_field": "collection.result_count",
+        "total_count_field": null
+      }
+    },
+    {
+      "additionalProperties": false,
       "description": "Read local library and transfer-file coverage for one accessible subscription. Method: GET. Path: /api/v1/subscribe/files/{subscribe_id}. Effect: safe_read.",
       "properties": {
         "operation_id": {
@@ -15458,6 +15699,7 @@
         "database.backups.list",
         "database.backups.verify",
         "download.add",
+        "download.artist_collection",
         "download.clients",
         "download.history.delete",
         "download.history.list",
@@ -15475,6 +15717,9 @@
         "filter.test",
         "library.exists",
         "library.latest",
+        "media.cache.clear",
+        "media.cache.delete",
+        "media.cache.get",
         "media.classification.fields",
         "media.classification.policy.get",
         "media.classification.policy.history",
@@ -15576,6 +15821,9 @@
         "subscription.add",
         "subscription.delete",
         "subscription.delete_by_media",
+        "subscription.execution.cancel",
+        "subscription.execution.get",
+        "subscription.execution.list",
         "subscription.files",
         "subscription.find",
         "subscription.follow.add",

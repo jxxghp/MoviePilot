@@ -30,6 +30,27 @@ other clients.
 
 ## Operations
 
+### `media.cache.clear`
+`DELETE /api/v1/tmdb/cache`; policy effect: `destructive_write`.
+Purpose: Clear the complete administrator-only TMDB recognition cache.
+- `path_params`: none
+- `query`: none
+- `body`: none
+
+### `media.cache.delete`
+`DELETE /api/v1/tmdb/cache/{cache_key}`; policy effect: `destructive_write`.
+Purpose: Delete one administrator-only TMDB recognition-cache entry by exact key.
+- `path_params`: `cache_key*` (string): Exact recognition-cache key returned by the corresponding recognition-cache get operation.
+- `query`: none
+- `body`: none
+
+### `media.cache.get`
+`GET /api/v1/tmdb/cache`; policy effect: `safe_read`.
+Purpose: Inspect the administrator-only TMDB recognition cache and summary counts.
+- `path_params`: none
+- `query`: none
+- `body`: none
+
 ### `media.classification.fields`
 `GET /api/v1/media/classification/fields`; policy effect: `safe_read`.
 Purpose: Read the media-classification field catalog and source capabilities.

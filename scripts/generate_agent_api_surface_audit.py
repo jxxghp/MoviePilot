@@ -18,8 +18,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.agent.policy.api import API_OPERATION_ROUTES  # noqa: E402
 from app.api.apiv1 import api_router  # noqa: E402
 
-JSON_OUTPUT = PROJECT_ROOT / "docs/architecture/agent-api-surface-audit.json"
-MARKDOWN_OUTPUT = PROJECT_ROOT / "docs/architecture/agent-api-surface-audit.md"
+JSON_OUTPUT = PROJECT_ROOT / "docs/refactor/agent-api-surface-audit.json"
+MARKDOWN_OUTPUT = PROJECT_ROOT / "docs/refactor/agent-api-surface-audit.md"
 HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE"})
 
 TRANSPORT_TAGS = frozenset(

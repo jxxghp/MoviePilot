@@ -26,6 +26,13 @@ For `download.add`, `torrent_in` is an object whose minimum usable fields are:
 object. Load `api/models.md` when the full optional `TorrentInfo` fields are
 needed.
 
+### `download.artist_collection`
+`POST /api/v1/download/artist-collection`; policy effect: `external_side_effect`.
+Purpose: Submit one artist-wide music torrent to MoviePilot's collection download workflow.
+- `path_params`: none
+- `query`: none
+- `body`: `artist_id*` (string; minimum length `1`): Source-native artist ID returned by music search or an album detail response.; `artist_name*` (string; minimum length `1`): Artist name preserved as the identity label for an artist-wide music collection.; `downloader` (string|null): Configured downloader instance name.; `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `save_path` (string|null): Configured downloader-side save path for the download or subscription.; `torrent_in*` (TorrentInfo): Complete torrent candidate returned by search.results or search.torrents.
+
 ### `download.clients`
 `GET /api/v1/download/clients`; policy effect: `safe_read`.
 Purpose: List enabled downloader instance names and provider types without credentials.

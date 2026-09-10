@@ -13,23 +13,24 @@ allowed-api-operations: >-
   media.search media.person.search media.person.credits media.recognize media.scrape
   media.episode_schedule media.detail subscription.add subscription.update subscription.search
   subscription.list subscription.shares subscription.popular subscription.history
-  subscription.delete download.add download.tasks.active download.clients download.paths
-  download.history.list download.history.delete transfer.history.delete site.update site.list
-  site.userdata site.test site.cookie.update recommendation.list library.exists library.latest
-  storage.settings storage.list transfer.history transfer.file scheduler.list scheduler.run
-  workflow.list workflow.run plugin.installed plugin.market plugin.capabilities plugin.config.get
-  plugin.config.update plugin.source.options plugin.source.install plugin.source.change
-  plugin.reload plugin.install plugin.uninstall slash.list config.identifiers.get
-  config.identifiers.update search.torrents search.results filter.builtin filter.custom
-  filter.groups filter.custom.add filter.custom.update filter.custom.delete filter.group.add
-  filter.group.update filter.group.delete plugin.data config.system.get config.system.update
-  slash.run music.recognize music.explore music.album.get music.album.related music.artist.get
-  music.artist.albums music.artist.related music.cache.get music.cache.delete music.cache.clear
-  system.versions system.update.status system.update.check system.update.download system.restart
-  system.update.install system.upgrade.dev dashboard.media.statistics dashboard.storage
-  dashboard.processes dashboard.system dashboard.downloader scheduler.progress
-  dashboard.transfer.statistics dashboard.cpu dashboard.memory dashboard.network media.sources
-  media.recognize_file media.classification.fields media.classification.policy.get
+  subscription.delete download.add download.artist_collection download.tasks.active
+  download.clients download.paths download.history.list download.history.delete
+  transfer.history.delete site.update site.list site.userdata site.test site.cookie.update
+  recommendation.list library.exists library.latest storage.settings storage.list transfer.history
+  transfer.file scheduler.list scheduler.run workflow.list workflow.run plugin.installed
+  plugin.market plugin.capabilities plugin.config.get plugin.config.update plugin.source.options
+  plugin.source.install plugin.source.change plugin.reload plugin.install plugin.uninstall
+  slash.list config.identifiers.get config.identifiers.update search.torrents search.results
+  filter.builtin filter.custom filter.groups filter.custom.add filter.custom.update
+  filter.custom.delete filter.group.add filter.group.update filter.group.delete plugin.data
+  config.system.get config.system.update slash.run music.recognize music.explore music.album.get
+  music.album.related music.artist.get music.artist.albums music.artist.related music.cache.get
+  music.cache.delete music.cache.clear system.versions system.update.status system.update.check
+  system.update.download system.restart system.update.install system.upgrade.dev
+  dashboard.media.statistics dashboard.storage dashboard.processes dashboard.system
+  dashboard.downloader scheduler.progress dashboard.transfer.statistics dashboard.cpu
+  dashboard.memory dashboard.network media.sources media.recognize_file media.cache.get
+  media.cache.delete media.cache.clear media.classification.fields media.classification.policy.get
   media.classification.policy.validate media.classification.policy.preview
   media.classification.policy.impact media.classification.policy.history
   media.classification.policy.update media.classification.policy.rollback media.episode_groups
@@ -40,10 +41,11 @@ allowed-api-operations: >-
   site.statistic site.mapping site.supporting subscription.get subscription.find
   subscription.delete_by_media subscription.status.update subscription.reset
   subscription.search_all subscription.refresh subscription.metadata.refresh
-  subscription.history.delete subscription.user.list subscription.files subscription.share
-  subscription.share.delete subscription.fork subscription.follow.list subscription.follow.add
-  subscription.follow.delete subscription.share.statistics storage.manage storage.mkdir
-  storage.rename storage.delete transfer.queue transfer.queue.delete transfer.name
+  subscription.history.delete subscription.user.list subscription.files
+  subscription.execution.list subscription.execution.get subscription.execution.cancel
+  subscription.share subscription.share.delete subscription.fork subscription.follow.list
+  subscription.follow.add subscription.follow.delete subscription.share.statistics storage.manage
+  storage.mkdir storage.rename storage.delete transfer.queue transfer.queue.delete transfer.name
   transfer.target_path transfer.manual_history transfer.episode_format.recommend
   transfer.manual_reviews transfer.manual_review transfer.manual_review.resolve
   transfer.history.redo transfer.history.redo_batch transfer.history.clear workflow.create
@@ -150,7 +152,7 @@ must be one of the following before the Agent may use its capability:
   and English parameter contract is added.
 
 The maintained route-by-route inventory is
-`docs/architecture/agent-api-surface-audit.md`. Its generated drift test fails
+`docs/refactor/agent-api-surface-audit.md`. Its generated drift test fails
 when OpenAPI changes without an explicit ownership decision.
 
 The management recovery route `POST /api/v1/history/transfer/{history_id}/discard-corrupt`

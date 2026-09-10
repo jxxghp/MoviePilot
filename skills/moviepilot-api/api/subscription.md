@@ -25,6 +25,28 @@ Purpose: Delete accessible subscriptions matching one canonical media identity.
 - `query`: `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.
 - `body`: none
 
+### `subscription.execution.cancel`
+`PUT /api/v1/subscribe/execution/batches/{batch_id}/cancel`; policy effect: `external_side_effect`.
+Purpose: Request cancellation of one durable subscription-search batch before its download side-effect boundary.
+- `path_params`: `batch_id*` (string): Stable subscription search batch identifier.
+- `query`: none
+- `body`: none
+
+### `subscription.execution.get`
+`GET /api/v1/subscribe/execution/batches/{batch_id}`; policy effect: `safe_read`.
+Purpose: Read one durable subscription-search batch visible to the current user.
+- `path_params`: `batch_id*` (string): Stable subscription search batch identifier.
+- `query`: none
+- `body`: none
+
+### `subscription.execution.list`
+`GET /api/v1/subscribe/execution/batches`; policy effect: `safe_read`.
+Purpose: List recent durable subscription-search batches visible to the current user.
+- `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
+- `path_params`: none
+- `query`: `limit` (integer; default `10`): Maximum number of recent subscription-search batches to return.
+- `body`: none
+
 ### `subscription.files`
 `GET /api/v1/subscribe/files/{subscribe_id}`; policy effect: `safe_read`.
 Purpose: Read local library and transfer-file coverage for one accessible subscription.

@@ -89,7 +89,7 @@ MoviePilot 当前以媒体类型和洗版方式组合出常用订阅模式。普
 
 站点等待不代表搜索失败。其它站点仍在执行时保持搜索状态；本轮结束并保存续跑时间后才进入等待。
 订阅搜索的同站唯一在途预算、站点访问间隔和错误冷却始终生效。机制审查及后续优化边界见
-[订阅搜索机制审查](architecture/subscription-search-review.md)。
+[订阅搜索机制审查](refactor/subscription-search-review.md)。
 
 ### 事实写入
 
