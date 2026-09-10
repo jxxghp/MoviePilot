@@ -14,7 +14,7 @@ class ExistMediaInfo(BaseModel):
     type: Optional[MediaType] = None
     # 季
     seasons: Optional[Dict[int, list]] = Field(default_factory=dict)
-    # 媒体服务器类型：plex、jellyfin、emby、zspace、trimemedia、ugreen
+    # 媒体服务器类型：plex、jellyfin、emby、zspace、trimemedia、ugreen、mediavault
     server_type: Optional[str] = None
     # 媒体服务器名称
     server: Optional[str] = None
