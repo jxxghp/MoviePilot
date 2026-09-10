@@ -52,7 +52,7 @@ def test_moviepilot_info_lists_command_names_without_paths(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "app.agent.prompt.shutil.which",
-        lambda command: command_paths.get(command),
+        lambda command, **_kwargs: command_paths.get(command),
     )
 
     manager = PromptManager()

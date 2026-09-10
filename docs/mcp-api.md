@@ -524,11 +524,18 @@ MCP、HTTP 工具管理接口、本地 CLI 和内置 Agent 都从同一严格目
 `success`、`execution_outcome`、`status`、`exit_code`、`timed_out`、`timeout`、
 `output_truncated`、`output_file`、`output` 和 `message`。正常退出码 0 才是成功，
 非零退出及已停止的超时执行为失败，无法确认进程结束时为 unknown。输出预览与状态分开，
-不再通过中文完成提示判断成功。后台 `start/read/wait/write/kill` 保持会话状态与游标协议；
+不再通过中文完成提示判断成功。后台 `start/read/wait/write/interrupt/kill` 保持会话状态与游标协议；
 `env` 同时适用于 `start` 和 `run`，此工具仍不通过 MCP 暴露。
 
+`run`、pipe 和 PTY 共享 `cwd/shell/login`：默认及相对 `cwd` 使用 MoviePilot 根目录，
+POSIX 默认非登录；Windows 未指定时保留已有解释器/UTF-8 策略。回包包含实际 `shell/login`。
+`write(close_stdin=true)` 仅在 pipe 模式支持末段输入后 EOF，回包包含 `stdin_closed`；输出可继续读取。
+PTY 会在写入之前拒绝 half-close，空 `write` 不代表 EOF，控制字节在 pipe 中也不等于信号。
+新增 `interrupt` 只发送一次平台支持的中断并返回 `signal/signal_sent`，不会升级强杀；
+`kill` 保留终止语义但提前拒绝无效信号。上述能力仍为内置管理员 Agent 工具，不扩大外部 MCP 目录。
+
 后台命令的 `start` 新增 `yield_time_ms`（默认 250、上限 10000，0 不等待）。
-`read/wait/write/kill` 接受 `since_seq` 和 `since_offset`：一起传回上次响应的
+`read/wait/write/interrupt/kill` 接受 `since_seq` 和 `since_offset`：一起传回上次响应的
 `output_until_seq/output_until_offset`，后者表示下一分片内的 UTF-8 字节位置；
 首次显式传 offset=0 开启部分分片读取。不传 offset 的旧调用只返回完整分片，
 页预算过小时返回 `read_limit_too_small` 和 `minimum_read_bytes`。

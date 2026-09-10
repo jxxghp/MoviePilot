@@ -254,11 +254,6 @@
     "no-untyped-def": 1,
     "type-arg": 3
   },
-  "app/agent/tools/impl/_terminal_session.py": {
-    "assignment": 2,
-    "attr-defined": 1,
-    "type-arg": 2
-  },
   "app/agent/tools/impl/apply_patch.py": {
     "arg-type": 5,
     "misc": 1,

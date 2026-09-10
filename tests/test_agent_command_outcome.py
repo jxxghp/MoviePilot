@@ -224,12 +224,15 @@ async def test_windows_shell_branch_receives_run_environment(monkeypatch: pytest
     class Shell:
         """提供与 Windows shell 策略相同的参数构造边界。"""
 
+        executable = sys.executable
+        login = False
+
         @staticmethod
         def build_argv(_command_text: str) -> list[str]:
             """真实子进程已在隔离环境启动，此处只检验启动参数。"""
             return [sys.executable, "-c", "pass"]
 
-    monkeypatch.setattr(command_module, "resolve_agent_shell", lambda: Shell())
+    monkeypatch.setattr(command_module, "resolve_agent_shell", lambda **_kwargs: Shell())
     monkeypatch.setattr(command_module.asyncio, "create_subprocess_exec", create_process)
     result = await _tool().run(action="run", command="unused", env={"MOVIEPILOT_COMMAND_TEST_VALUE": "shell-env-marker"}, timeout=5)
     assert create_process.call_args.kwargs["env"]["MOVIEPILOT_COMMAND_TEST_VALUE"] == "shell-env-marker"

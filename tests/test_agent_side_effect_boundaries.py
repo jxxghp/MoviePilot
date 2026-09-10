@@ -21,12 +21,10 @@ from app.agent.policy.contracts import (
     ToolPolicyContext,
 )
 from app.agent.policy.orchestrator import DEFAULT_TOOL_POLICY_ORCHESTRATOR
+from app.agent.terminal.manager import _TerminalSessionManager
+from app.agent.terminal.session import _TerminalSession
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.catalog import ToolCatalogSnapshot
-from app.agent.tools.impl._terminal_session import (
-    _TerminalSession,
-    _TerminalSessionManager,
-)
 
 
 class _SlowWriteTool(MoviePilotTool):
@@ -129,7 +127,8 @@ async def test_terminal_manager_close_waits_for_starting_session() -> None:
         use_pty=False,
     )
 
-    async def _start_session(*_args) -> _TerminalSession:
+    async def _start_session(*_args, **_kwargs) -> _TerminalSession:
+        """启动握手保留会话，允许传入已解析解释器而不改变关闭竞态。"""
         start_entered.set()
         await allow_start.wait()
         return session
@@ -181,17 +180,20 @@ async def test_terminal_manager_cancellation_terminates_unregistered_session() -
     )
 
     async def _hold_registration_lock() -> None:
+        """精确阻塞会话登记，供取消路径验证尚未交付的进程归属。"""
         await session_created.wait()
         async with manager._lock:
             registration_locked.set()
             await release_registration.wait()
 
-    async def _start_session(*_args) -> _TerminalSession:
+    async def _start_session(*_args, **_kwargs) -> _TerminalSession:
+        """返回已创建但尚未登记的会话，解释器注入不影响该时序。"""
         session_created.set()
         await registration_locked.wait()
         return session
 
     async def _terminate_session(_session: _TerminalSession) -> None:
+        """标记取消收尾已开始，避免用固定等待猜测执行顺序。"""
         termination_started.set()
 
     lock_holder = asyncio.create_task(_hold_registration_lock())

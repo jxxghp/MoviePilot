@@ -116,7 +116,7 @@ async def test_mcp_compatibility_read_tag_cannot_authorize_child_operation():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("name,action,allowed", [
     ("execute_command", action, action in {"read", "wait"})
-    for action in ("start", "run", "read", "wait", "write", "kill")
+    for action in ("start", "run", "read", "wait", "write", "interrupt", "kill")
 ] + [
     ("browse_webpage", action, action in {"snapshot", "get_content", "screenshot", "wait", "list_tabs"})
     for action in ("goto", "snapshot", "get_content", "screenshot", "click", "click_ref", "fill", "fill_ref",
@@ -148,6 +148,19 @@ async def test_browser_read_cannot_change_shared_session_identity(extra):
         invocation_id="browser", enforce_decision=False,
     )
     assert permitted is False
+    handler.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_readonly_child_cannot_close_terminal_input():
+    """读取标签不能授权向已知会话写入最终输入或触发 EOF。"""
+    handler = AsyncMock()
+    permitted, result = await AgentPolicyMiddleware(context=_context()).execute_tool_call(
+        tool=SimpleNamespace(name="execute_command", tags=["read"]),
+        arguments={"action": "write", "session_id": "known-session", "input_text": "last", "close_stdin": True},
+        handler=handler, invocation_id="terminal-eof", enforce_decision=False,
+    )
+    assert permitted is False and result.status == "error"
     handler.assert_not_awaited()
 
 

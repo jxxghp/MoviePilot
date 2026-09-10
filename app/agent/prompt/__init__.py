@@ -266,9 +266,14 @@ class PromptManager:
             f"- 运行环境: {SystemUtils.platform} {'docker' if SystemUtils.is_docker() else ''}",
             "- 详细运行状态和数据库通过 `query_doctor_report` 或 `execute_command` 查询；配置值先加载对应 Skill，再通过 `moviepilot_api` 的配置 operation 查询。",
         ]
-        shell = resolve_agent_shell()
-        if shell:
-            info_lines.append(shell.prompt_guidance())
+        try:
+            shell = resolve_agent_shell(cwd=str(get_runtime_setting("ROOT_PATH")))
+        except (OSError, ValueError):
+            # 命令解释器配置错误不应阻断其余业务工具和对话。
+            info_lines.append("- 默认命令解释器不可用；需要执行命令时，在 `execute_command` 中显式选择可用的 `shell`。")
+        else:
+            if shell:
+                info_lines.append(shell.prompt_guidance())
         path_lines = self._get_runtime_path_lines()
         if path_lines:
             info_lines.extend(

@@ -8,8 +8,9 @@ from typing import Any, Optional
 
 import pytest
 
-from app.agent.tools.impl import _terminal_session as terminal
-from app.agent.tools.impl._terminal_session import TerminalOutputError, _TerminalSession, _TerminalSessionManager
+from app.agent.terminal import session as terminal_state
+from app.agent.terminal.manager import TerminalOutputError, _TerminalSessionManager
+from app.agent.terminal.session import _TerminalSession
 from app.agent.tools.result import inspect_tool_result
 
 
@@ -196,7 +197,7 @@ async def test_exact_end_offset_is_normalized_to_next_chunk() -> None:
 async def test_retention_gap_resets_partial_offset_and_reports_loss(monkeypatch: pytest.MonkeyPatch) -> None:
     """部分读取的分片被淘汰后，重新从当前保留窗口起点读并明确历史缺口。"""
     manager, session = _world()
-    monkeypatch.setattr(terminal, "TERMINAL_MAX_RETAINED_BYTES", 8)
+    monkeypatch.setattr(terminal_state, "TERMINAL_MAX_RETAINED_BYTES", 8)
     session.append_output("pty", b"first")
     first = await manager.read(session_id=session.session_id, since_seq=0, since_offset=0, max_bytes=2)
     session.append_output("pty", b"second")
@@ -231,7 +232,7 @@ async def test_action_output_error_preserves_handle_and_unconsumed_cursor(tmp_pa
     session.mark_finished(0)
     session.finish_output()
 
-    async def start_session(*_args: Any) -> _TerminalSession:
+    async def start_session(*_args: Any, **_kwargs: Any) -> _TerminalSession:
         """返回独立内存会话，避免此纯分页测试创建外部进程。"""
         return session
 
@@ -384,7 +385,7 @@ async def test_capture_loss_at_complete_tail_returns_completed() -> None:
 async def test_new_retention_gap_wakes_once_then_updated_cursor_can_wait(monkeypatch: pytest.MonkeyPatch) -> None:
     """请求位置刚被保留窗口淘汰时立即报告缺口，新消费游标不会再次触发同一缺口。"""
     manager, session = _world()
-    monkeypatch.setattr(terminal, "TERMINAL_MAX_RETAINED_BYTES", 1)
+    monkeypatch.setattr(terminal_state, "TERMINAL_MAX_RETAINED_BYTES", 1)
     session.append_output("pty", b"discarded")
 
     async def forbidden_wait() -> bool:

@@ -28,11 +28,17 @@ MoviePilot Agent 通过模型、Skills、工具和会话状态共同完成任务
 
 超长结果在当前会话图中临时保存，预览带 `result_id` 和 `next_offset`。Agent 使用 `read_tool_result` 按 Unicode 字符位置续读，无需重新执行原工具。每条完整结果最多 1 MiB，每个图最多 8 条、合计 4 MiB，15 分钟后过期；容量超限、图重建和进程退出也会使编号失效。无法保存的结果明确要求缩小查询范围。不同图线程不能互读，管理员结果在降权后不能续读。结果原文只短期驻留内存，不归档到磁盘或日志。
 
-`execute_command(action="run")` 返回结构化 JSON：`exit_code`、`timed_out`、`execution_outcome` 和 `status` 表示实际执行结果，`output` 保存输出预览，`output_file` 指向超长输出的临时归档。仅正常退出且退出码为 0 时成功；非零退出或已停止的超时命令为失败，无法确认进程结束时为未知，不能凭“有输出”判断成功。超时和取消不会撤销命令已经产生的外部副作用。取消继续向外传播，同时回收输出读取任务、关闭归档文件；`run` 与 `start` 都支持 `env`，并保留指定工作目录。
+`execute_command(action="run")` 返回结构化 JSON：`exit_code`、`timed_out`、`execution_outcome` 和 `status` 表示实际执行结果，`output` 保存输出预览，`output_file` 指向超长输出的临时归档。仅正常退出且退出码为 0 时成功；非零退出或已停止的超时命令为失败，无法确认进程结束时为未知，不能凭“有输出”判断成功。超时和取消不会撤销命令已经产生的外部副作用。取消继续向外传播，同时回收输出读取任务、关闭归档文件；`run` 与 `start` 都支持 `env`，并采用同一工作目录与解释器策略。
 
-后台命令 `start` 默认最多等待 250ms 的首次输出，可用 `yield_time_ms=0` 立即返回。后续 `read/wait/write/kill` 用返回的 `output_until_seq` 和 `output_until_offset` 一起续读：前者是完整交付的最后一个分片，后者是下一分片中已交付的 UTF-8 字节位置。首次传 `since_offset=0` 开启分片内分页；不传 offset 时保持完整分片模式，小页装不下一个分片会明确提示调整限额。`last_seq` 只表示已经产生的输出，不能用于跳过未读内容。
+`run`、后台 pipe 和 PTY 共用 `cwd`、`shell`、`login` 解析。省略 `cwd` 使用 MoviePilot 根目录，相对路径也相对该目录，并支持 `~`；错误目录在进程启动前拒绝。POSIX 默认使用配置的 `SHELL`（未配置时 `/bin/sh`）且不启动登录模式，显式 `shell` 可选择已安装解释器，`login=true/false` 控制其支持的登录行为。登录启动文件可能改变目录或环境；PTY 本身不再隐式开启登录模式。Windows 未显式指定时保留 Git Bash → PowerShell 7 → cmd 的选择顺序与 UTF-8 策略；不支持的解释器/登录组合明确失败。回包的 `shell`、`login` 说明实际策略，默认解释器不可用不会阻断其它 Agent 业务能力。
 
-`wait` 在有未读输出时立即返回，等待中产生新输出或读取结束也会唤醒；`timeout_ms=0` 只查询，不终止命令。进程退出后仍可能有尾部输出，获取完整日志应继续到游标读完且 `output_complete=true`；退出码缺失时仍为 `unknown`。缓冲保留窗口之外的缺口由 `output_lost=true` 明确标记。若 `start/write/kill` 已执行动作但返回 `output_error`，会保留会话 ID 和未消费游标；只需调整 `max_bytes` 后用 `read` 获取输出，不应重新执行动作。首次 `start` 尚未交付会话 ID 时被取消会回收该进程，取消已有会话的 `wait` 则保留进程。
+管道会话可用 `write(input_text="末段输入", close_stdin=true)` 在交付末段后关闭输入，或用空输入显式关闭；输出仍通过 `read/wait` 读取，`stdin_closed` 表示输入已关闭。普通空 `write` 不发送 EOF；输入关闭后不能再追加数据，重复空关闭可确认已有状态。`run` 的 stdin 始终为 EOF。PTY 的输入和输出共用端点，因此拒绝 `close_stdin=true`，也不会先写入附带输入或关闭输出；PTY 控制字节的行为取决于终端模式，pipe 中 `\u0003`、`\u0004` 只是普通字节。
+
+`interrupt` 仅发送一次 POSIX `SIGINT` 或支持的 Windows `CTRL_BREAK_EVENT`，不等待升级强杀，也不把会话标记为主动终止；实际命令可以处理信号后继续运行，也可能自行退出。回包含实际 `signal` 和 `signal_sent`。不具备该控制能力时明确失败；`kill` 仍负责终止并在需要时强杀，但未知名称、无效编号和没有真实映射的信号会在任何状态修改前拒绝。两种输入控制均不增加只读子代理权限。
+
+后台命令 `start` 默认最多等待 250ms 的首次输出，可用 `yield_time_ms=0` 立即返回。后续 `read/wait/write/interrupt/kill` 用返回的 `output_until_seq` 和 `output_until_offset` 一起续读：前者是完整交付的最后一个分片，后者是下一分片中已交付的 UTF-8 字节位置。首次传 `since_offset=0` 开启分片内分页；不传 offset 时保持完整分片模式，小页装不下一个分片会明确提示调整限额。`last_seq` 只表示已经产生的输出，不能用于跳过未读内容。
+
+`wait` 在有未读输出时立即返回，等待中产生新输出或读取结束也会唤醒；`timeout_ms=0` 只查询，不终止命令。进程退出后仍可能有尾部输出，获取完整日志应继续到游标读完且 `output_complete=true`；退出码缺失时仍为 `unknown`。缓冲保留窗口之外的缺口由 `output_lost=true` 明确标记。若 `start/write/interrupt/kill` 已执行动作但返回 `output_error`，会保留会话 ID 和未消费游标；只需调整 `max_bytes` 后用 `read` 获取输出，不应重新执行动作。首次 `start` 尚未交付会话 ID 时被取消会回收该进程，取消已有会话的 `wait` 则保留进程。
 
 终端分页还受最终 JSON 字符预算约束：必要时减少本页正文并重新计算游标，避免 JSON 转义后又被通用工具预览截断。过长的命令、目录和错误回显会带显式截断标记；会话内部保留完整命令。
 

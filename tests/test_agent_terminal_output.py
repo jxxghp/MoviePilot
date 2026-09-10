@@ -12,7 +12,8 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 
-from app.agent.tools.impl._terminal_session import _TerminalSession, _TerminalSessionManager
+from app.agent.terminal.manager import _TerminalSessionManager
+from app.agent.terminal.session import _TerminalSession
 
 _DEADLINE = 5
 _INTERACTIVE = """import sys
@@ -154,9 +155,9 @@ async def test_zero_yield_and_zero_wait_never_await_output_event(monkeypatch, te
     original_start = terminal_manager._start_pipe_session
     event_wait = AsyncMock(side_effect=AssertionError("零窗口不得等待输出事件"))
 
-    async def start(*args: Any) -> _TerminalSession:
+    async def start(*args: Any, **kwargs: Any) -> _TerminalSession:
         """真实启动静默交互进程，在首次返回前装入不应被调用的等待探针。"""
-        session = await original_start(*args)
+        session = await original_start(*args, **kwargs)
         monkeypatch.setattr(session.changed_event, "wait", event_wait)
         return session
 
@@ -267,9 +268,9 @@ async def test_cancelled_initial_yield_reclaims_undelivered_session(monkeypatch,
     entered = asyncio.Event()
     captured = []
 
-    async def start(*args: Any) -> _TerminalSession:
+    async def start(*args: Any, **kwargs: Any) -> _TerminalSession:
         """保留真实启动，在静默会话首次 await 输出时发出取消握手。"""
-        session = await original_start(*args)
+        session = await original_start(*args, **kwargs)
         captured.append(session)
         original_wait = session.changed_event.wait
 

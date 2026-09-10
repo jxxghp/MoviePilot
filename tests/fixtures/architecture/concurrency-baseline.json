@@ -160,13 +160,7 @@
     },
     "target": "asyncio.create_task"
   },
-  "app/agent/tools/base.py:concurrent.futures.ThreadPoolExecutor": {
-    "owners": {
-      "_submit_blocking_call": 1
-    },
-    "target": "concurrent.futures.ThreadPoolExecutor"
-  },
-  "app/agent/tools/impl/_terminal_session.py:asyncio.create_task": {
+  "app/agent/terminal/manager.py:asyncio.create_task": {
     "owners": {
       "_TerminalSessionManager._start_pipe_session": 3,
       "_TerminalSessionManager._start_pty_session": 2,
@@ -174,12 +168,17 @@
     },
     "target": "asyncio.create_task"
   },
-  "app/agent/tools/impl/_terminal_session.py:asyncio.to_thread": {
+  "app/agent/terminal/manager.py:asyncio.to_thread": {
     "owners": {
-      "_TerminalSessionManager._wait_pty_process": 1,
-      "_TerminalSessionManager.write": 1
+      "_TerminalSessionManager._wait_pty_process": 1
     },
     "target": "asyncio.to_thread"
+  },
+  "app/agent/tools/base.py:concurrent.futures.ThreadPoolExecutor": {
+    "owners": {
+      "_submit_blocking_call": 1
+    },
+    "target": "concurrent.futures.ThreadPoolExecutor"
   },
   "app/agent/tools/impl/execute_command.py:asyncio.create_task": {
     "owners": {

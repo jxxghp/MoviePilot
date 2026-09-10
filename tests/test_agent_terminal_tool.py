@@ -11,9 +11,10 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from app.agent.middleware.output import ToolOutputMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.policy.contracts import AuthSource, PrincipalType, ToolOrigin, ToolPolicyContext
+from app.agent.terminal.manager import _TerminalSessionManager
+from app.agent.terminal.session import _TerminalSession
 from app.agent.tools.base import DEFAULT_TOOL_RESULT_MAX_CHARS
 from app.agent.tools.impl import execute_command as command_module
-from app.agent.tools.impl._terminal_session import _TerminalSession, _TerminalSessionManager
 from app.agent.tools.impl.execute_command import ExecuteCommandInput, ExecuteCommandTool
 
 

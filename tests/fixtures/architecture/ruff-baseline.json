@@ -17,9 +17,6 @@
   "app/agent/llm/tools.py": {
     "I001": 1
   },
-  "app/agent/loader.py": {
-    "I001": 1
-  },
   "app/agent/middleware/memory.py": {
     "I001": 1
   },

@@ -23,7 +23,6 @@ from app.agent.capabilities.adapter import (
 from app.runtime.capabilities.model import CapabilityMaterializationState
 from app.runtime.capabilities.runtime import CapabilityRuntime
 
-
 _runtime_lock = threading.RLock()
 _agent_runtime: CapabilityRuntime | None = None
 
@@ -135,7 +134,7 @@ def is_tool_factory_materialized() -> bool:
 
 async def close_materialized_terminal_sessions() -> None:
     """关闭已物化的终端会话管理器，不触发新的 Agent 工具导入。"""
-    module = sys.modules.get("app.agent.tools.impl._terminal_session")
+    module = sys.modules.get("app.agent.terminal.manager")
     manager = getattr(module, "terminal_session_manager", None) if module else None
     close = getattr(manager, "close", None)
     if callable(close):
