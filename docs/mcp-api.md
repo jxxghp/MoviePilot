@@ -56,25 +56,25 @@ MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。
 
 `app/agent/policy/resources/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。
 
-当前完整 FastAPI OpenAPI 包含 394 个 HTTP 操作，其中 205 个稳定业务操作进入
-`moviepilot_api`，使用 203 个固定路由模板：202 条 OpenAPI 路由直接匹配，另有 1 条只允许
+当前完整 FastAPI OpenAPI 包含 397 个 HTTP 操作，其中 211 个稳定业务操作进入
+`moviepilot_api`，使用 209 个固定路由模板：208 条 OpenAPI 路由直接匹配，另有 1 条只允许
 `tmdb`、`douban`、`bangumi`、`anilist` 四个来源的受限人物作品动态路由。每个 operation
 均同时具备固定 method/path、角色权限、副作用等级、确认与恢复策略、结果敏感性、英文用途说明，
 以及可直接提交的 path/query/body JSON Schema；Skill front matter、正文 operation 章节、运行时
-注册表和 MCP `tools/list` 的 205 个 `oneOf` 分支必须完全一致。
+注册表和 MCP `tools/list` 的 211 个 `oneOf` 分支必须完全一致。
 
-数量不相等是明确的安全与语义边界，而不是漏生成。当前 394 条路由均被审计并锁定为以下一种
+数量不相等是明确的安全与语义边界，而不是漏生成。当前 397 条路由均被审计并锁定为以下一种
 归属，审计生成器不再提供“未归类”兜底：
 
 | 归属 | 数量 | Agent 使用方式 |
 | :--- | ---: | :--- |
-| `gateway` | 202 | 通过 `moviepilot_api` 的稳定 operation 和精确参数合同调用 |
-| `consolidated` | 72 | 通过同领域聚合 operation 调用，不复制数据源或前端专用路由 |
-| `provider-skill` | 12 | 通过下载器或媒体服务器 Skill 调用第三方 provider API |
+| `gateway` | 208 | 通过 `moviepilot_api` 的稳定 operation 和精确参数合同调用 |
+| `consolidated` | 74 | 通过同领域聚合 operation 调用，不复制数据源或前端专用路由 |
+| `provider-skill` | 13 | 通过下载器或媒体服务器 Skill 调用第三方 provider API |
 | `alternate-auth-duplicate` | 11 | 使用对应 bearer-authenticated gateway operation，不暴露 API_TOKEN 兼容副本 |
 | `transport_or_identity` | 66 | 由登录、令牌、MCP、会话、回调、健康检查等宿主传输/身份边界拥有 |
 | `stream_or_binary` | 10 | 由直接客户端处理流式日志、消息、文件、图片等非结构化响应 |
-| `ui_presentation` | 21 | 由前端或插件渲染面拥有，不作为业务 Agent operation |
+| `ui_presentation` | 15 | 由前端或插件渲染面拥有，不作为业务 Agent operation |
 
 逐路由归属见 `docs/architecture/agent-api-surface-audit.md`，并由
 `tests/test_agent_api_surface_audit.py` 对当前 OpenAPI、固定注册表、MCP schema、英文 Skill
@@ -288,6 +288,24 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | GET | `/api/v1/transfer/tasks/manual-reviews` | 管理员分页查询 durable 人工复核任务；`state` 仅允许 `manual_review`（默认）或已经人工判定、等待调度恢复的 `retry_wait`，支持 `page` 与 `page_size`。响应只公开任务、源文件、状态、步骤意图/证据/错误和复核修订号，不返回 lease 或 attempt 身份 |
 | GET | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员查询单个 durable 人工复核任务详情；仅可读取 `manual_review` 或已经人工判定的 `retry_wait` 任务，其余状态按不存在处理 |
 | POST | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员判定处于 `manual_review` 的 durable 整理步骤；请求包含 `operation_id`、`decision=not_applied|applied`、`reason`，`applied` 还必须提供 `result_payload`。`failed` 不属于公开决策，失败终态只能由持租约的 durable 结算写入；响应仅返回任务、操作、决策、后续状态和复核修订号 |
+
+#### 媒体自动分类
+
+媒体自动分类使用完整、可版本化的策略作为唯一写入合同。先读取当前策略的
+`revision`，再用字段目录中的稳定字段 ID 和操作符构造规则；发布和回滚均使用
+`expected_revision` 做并发校验，成功后产生新的 revision。旧 `/media/category` 与
+`/media/category/config` 只读投影仅为兼容客户端保留，不属于 Agent 的 operation。
+
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| GET | `/api/v1/media/classification/fields` | 登录用户读取标准字段、操作符、通用选项、来源候选与策略限制 |
+| GET | `/api/v1/media/classification/policy` | 登录用户读取当前活动策略和 revision |
+| POST | `/api/v1/media/classification/validate` | 超级管理员校验完整草稿，不保存 |
+| POST | `/api/v1/media/classification/preview` | 登录用户对媒体搜索结果或标准化事实执行单次只读预览，可选草稿策略 |
+| POST | `/api/v1/media/classification/impact` | 超级管理员比较活动策略与草稿对近期历史或显式样本的有界影响 |
+| GET | `/api/v1/media/classification/history` | 超级管理员读取可回滚的有限历史版本 |
+| PUT | `/api/v1/media/classification/policy` | 超级管理员在 `expected_revision` 匹配时校验并发布完整策略，需要写操作确认 |
+| POST | `/api/v1/media/classification/rollback/{revision}` | 超级管理员将指定历史策略作为新版本发布，需要当前 `expected_revision` 和写操作确认 |
 
 `transfer/manual` 在 `preview=true` 时保留预览的 `summary/items/message`，不返回执行状态。
 请求可传入 `skip_success=true`，在预览与执行中跳过同存储、同源路径已成功整理的文件，
@@ -576,6 +594,7 @@ Web Agent 直接调用 `moviepilot_api` 时，宿主会自动加载 `moviepilot-
 | 领域 | Operation ID |
 | :--- | :--- |
 | 媒体/搜索 | `media.search`、`media.person.search`、`media.person.credits`、`media.recognize`、`media.scrape`、`media.episode_schedule`、`media.detail`、`search.torrents`、`search.results`、`recommendation.list` |
+| 媒体自动分类 | `media.classification.fields`、`media.classification.policy.get`、`media.classification.policy.validate`、`media.classification.policy.preview`、`media.classification.policy.impact`、`media.classification.policy.history`、`media.classification.policy.update`、`media.classification.policy.rollback` |
 | 订阅 | `subscription.add`、`subscription.update`、`subscription.search`、`subscription.list`、`subscription.shares`、`subscription.popular`、`subscription.history`、`subscription.delete` |
 | 下载/历史 | `download.add`、`download.history.delete`、`transfer.history.delete` |
 | 媒体库/存储/转移 | `library.exists`、`storage.settings`、`storage.list`、`transfer.history`、`transfer.file` |
@@ -771,7 +790,7 @@ description、aliases、instructions，或通过 `append_instructions` 追加规
 
 ### 分类条件字段字典
 
-`GET /api/v1/classification/fields` 的 `fields` 与 `retired_fields` 使用同一字段目录 schema：
+`GET /api/v1/media/classification/fields` 的 `fields` 与 `retired_fields` 使用同一字段目录 schema：
 `options` 提供来源无关的 `{value, label}`，`source_options` 按数据源 ID 提供开放候选。国家与语言显示中文名称，规则保存标准代码；风格保存与分类事实归一化共用的稳定键。来源风格和音乐枚举保留原始大小写。
 
 客户端合并通用选项和所选来源的候选；未限制来源时展示全部候选并标注来源。`allow_custom_values` 为真时允许输入其他值，切换来源不得清空已有条件。`source_options` 缺失等价于空目录；候选是录入辅助，不改变来源支持等级或规则校验范围。公司、平台和用户标签等开放字段应使用媒体预览中的原值。

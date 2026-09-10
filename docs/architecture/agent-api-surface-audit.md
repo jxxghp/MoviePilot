@@ -6,9 +6,9 @@
 ## Result
 
 - OpenAPI HTTP operations: **397**
-- Stable `moviepilot_api` operations: **205**
-- Exact HTTP routes used by the gateway: **203**
-- OpenAPI routes matched directly by the gateway: **202**
+- Stable `moviepilot_api` operations: **211**
+- Exact HTTP routes used by the gateway: **209**
+- OpenAPI routes matched directly by the gateway: **208**
 - Bounded dynamic gateway routes: **1**
 - Every gateway operation has a generated English oneOf input contract in MCP `tools/list` and `skills/moviepilot-api/SKILL.md`.
 - Every non-gateway OpenAPI operation is listed below with an explicit ownership boundary; it is not silently callable through arbitrary URL/method input.
@@ -18,12 +18,12 @@
 | disposition | count | meaning |
 | :--- | ---: | :--- |
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
-| `consolidated` | 72 | Source/UI route represented by a stable aggregate Agent operation. |
-| `gateway` | 202 | Approved structured MoviePilot Agent operation. |
+| `consolidated` | 74 | Source/UI route represented by a stable aggregate Agent operation. |
+| `gateway` | 208 | Approved structured MoviePilot Agent operation. |
 | `provider-skill` | 13 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 23 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 15 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -115,16 +115,16 @@
 | `POST` | `/api/v1/mcp/tools/call` | mcp | `transport_or_identity` | host-runtime | 调用工具 |
 | `GET` | `/api/v1/mcp/tools/{tool_name}` | mcp | `transport_or_identity` | host-runtime | 获取工具详情 |
 | `GET` | `/api/v1/mcp/tools/{tool_name}/schema` | mcp | `transport_or_identity` | host-runtime | 获取工具参数Schema |
-| `GET` | `/api/v1/media/category` | media | `gateway` | media.categories | 查询自动分类配置 |
-| `GET` | `/api/v1/media/category/config` | media | `gateway` | media.category.config.get | 获取分类策略配置 |
-| `GET` | `/api/v1/media/classification/fields` | media | `ui_presentation` | host-ui | 读取媒体分类字段能力目录 |
-| `GET` | `/api/v1/media/classification/history` | media | `ui_presentation` | host-ui | 读取媒体分类策略历史 |
-| `POST` | `/api/v1/media/classification/impact` | media | `ui_presentation` | host-ui | 分析分类策略对近期样本的估算影响 |
-| `GET` | `/api/v1/media/classification/policy` | media | `ui_presentation` | host-ui | 读取当前媒体分类策略 |
-| `PUT` | `/api/v1/media/classification/policy` | media | `ui_presentation` | host-ui | 校验并发布媒体分类策略 |
-| `POST` | `/api/v1/media/classification/preview` | media | `ui_presentation` | host-ui | 预览媒体分类策略命中过程 |
-| `POST` | `/api/v1/media/classification/rollback/{revision}` | media | `ui_presentation` | host-ui | 把历史媒体分类策略发布为新版本 |
-| `POST` | `/api/v1/media/classification/validate` | media | `ui_presentation` | host-ui | 校验媒体分类策略草稿 |
+| `GET` | `/api/v1/media/category` | media | `consolidated` | media.classification.policy.get | 查询自动分类配置 |
+| `GET` | `/api/v1/media/category/config` | media | `consolidated` | media.classification.policy.get | 获取分类策略配置 |
+| `GET` | `/api/v1/media/classification/fields` | media | `gateway` | media.classification.fields | 读取媒体分类字段能力目录 |
+| `GET` | `/api/v1/media/classification/history` | media | `gateway` | media.classification.policy.history | 读取媒体分类策略历史 |
+| `POST` | `/api/v1/media/classification/impact` | media | `gateway` | media.classification.policy.impact | 分析分类策略对近期样本的估算影响 |
+| `GET` | `/api/v1/media/classification/policy` | media | `gateway` | media.classification.policy.get | 读取当前媒体分类策略 |
+| `PUT` | `/api/v1/media/classification/policy` | media | `gateway` | media.classification.policy.update | 校验并发布媒体分类策略 |
+| `POST` | `/api/v1/media/classification/preview` | media | `gateway` | media.classification.policy.preview | 预览媒体分类策略命中过程 |
+| `POST` | `/api/v1/media/classification/rollback/{revision}` | media | `gateway` | media.classification.policy.rollback | 把历史媒体分类策略发布为新版本 |
+| `POST` | `/api/v1/media/classification/validate` | media | `gateway` | media.classification.policy.validate | 校验媒体分类策略草稿 |
 | `GET` | `/api/v1/media/group/seasons/{episode_group}` | media | `gateway` | media.episode_group.seasons | 查询剧集组季信息 |
 | `GET` | `/api/v1/media/groups/{tmdbid}` | media | `gateway` | media.episode_groups | 查询媒体剧集组 |
 | `GET` | `/api/v1/media/recognize` | media | `gateway` | media.recognize | 识别媒体信息（种子） |

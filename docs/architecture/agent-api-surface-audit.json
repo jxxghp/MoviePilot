@@ -1,12 +1,12 @@
 {
   "disposition_counts": {
     "alternate-auth-duplicate": 11,
-    "consolidated": 72,
-    "gateway": 202,
+    "consolidated": 74,
+    "gateway": 208,
     "provider-skill": 13,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
-    "ui_presentation": 23
+    "ui_presentation": 15
   },
   "dynamic_gateway_routes": [
     {
@@ -18,9 +18,9 @@
       "reason": "The executor validates and expands this bounded source placeholder to one of tmdb, douban, bangumi, or anilist before calling the corresponding concrete OpenAPI route."
     }
   ],
-  "gateway_http_route_count": 203,
-  "gateway_operation_count": 205,
-  "matched_gateway_http_route_count": 202,
+  "gateway_http_route_count": 209,
+  "gateway_operation_count": 211,
+  "matched_gateway_http_route_count": 208,
   "openapi_operation_count": 397,
   "operations": [
     {
@@ -1030,124 +1030,140 @@
       ]
     },
     {
-      "disposition": "gateway",
+      "disposition": "consolidated",
       "method": "GET",
       "operation_ids": [
-        "media.categories"
+        "media.classification.policy.get"
       ],
       "owner": "moviepilot-api",
       "path": "/api/v1/media/category",
-      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation media.classification.policy.get.",
       "summary": "查询自动分类配置",
       "tags": [
         "media"
       ]
     },
     {
-      "disposition": "gateway",
+      "disposition": "consolidated",
       "method": "GET",
       "operation_ids": [
-        "media.category.config.get"
+        "media.classification.policy.get"
       ],
       "owner": "moviepilot-api",
       "path": "/api/v1/media/category/config",
-      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation media.classification.policy.get.",
       "summary": "获取分类策略配置",
       "tags": [
         "media"
       ]
     },
     {
-      "disposition": "ui_presentation",
+      "disposition": "gateway",
       "method": "GET",
-      "operation_ids": [],
-      "owner": "host-ui",
+      "operation_ids": [
+        "media.classification.fields"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/media/classification/fields",
-      "reason": "Classification policy authoring, validation, preview, impact analysis, and publication are owned by the authenticated frontend editor until a stable Agent governance contract is approved.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "读取媒体分类字段能力目录",
       "tags": [
         "media"
       ]
     },
     {
-      "disposition": "ui_presentation",
+      "disposition": "gateway",
       "method": "GET",
-      "operation_ids": [],
-      "owner": "host-ui",
+      "operation_ids": [
+        "media.classification.policy.history"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/media/classification/history",
-      "reason": "Classification policy authoring, validation, preview, impact analysis, and publication are owned by the authenticated frontend editor until a stable Agent governance contract is approved.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "读取媒体分类策略历史",
       "tags": [
         "media"
       ]
     },
     {
-      "disposition": "ui_presentation",
+      "disposition": "gateway",
       "method": "POST",
-      "operation_ids": [],
-      "owner": "host-ui",
+      "operation_ids": [
+        "media.classification.policy.impact"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/media/classification/impact",
-      "reason": "Classification policy authoring, validation, preview, impact analysis, and publication are owned by the authenticated frontend editor until a stable Agent governance contract is approved.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "分析分类策略对近期样本的估算影响",
       "tags": [
         "media"
       ]
     },
     {
-      "disposition": "ui_presentation",
+      "disposition": "gateway",
       "method": "GET",
-      "operation_ids": [],
-      "owner": "host-ui",
+      "operation_ids": [
+        "media.classification.policy.get"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/media/classification/policy",
-      "reason": "Classification policy authoring, validation, preview, impact analysis, and publication are owned by the authenticated frontend editor until a stable Agent governance contract is approved.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "读取当前媒体分类策略",
       "tags": [
         "media"
       ]
     },
     {
-      "disposition": "ui_presentation",
+      "disposition": "gateway",
       "method": "PUT",
-      "operation_ids": [],
-      "owner": "host-ui",
+      "operation_ids": [
+        "media.classification.policy.update"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/media/classification/policy",
-      "reason": "Classification policy authoring, validation, preview, impact analysis, and publication are owned by the authenticated frontend editor until a stable Agent governance contract is approved.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "校验并发布媒体分类策略",
       "tags": [
         "media"
       ]
     },
     {
-      "disposition": "ui_presentation",
+      "disposition": "gateway",
       "method": "POST",
-      "operation_ids": [],
-      "owner": "host-ui",
+      "operation_ids": [
+        "media.classification.policy.preview"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/media/classification/preview",
-      "reason": "Classification policy authoring, validation, preview, impact analysis, and publication are owned by the authenticated frontend editor until a stable Agent governance contract is approved.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "预览媒体分类策略命中过程",
       "tags": [
         "media"
       ]
     },
     {
-      "disposition": "ui_presentation",
+      "disposition": "gateway",
       "method": "POST",
-      "operation_ids": [],
-      "owner": "host-ui",
+      "operation_ids": [
+        "media.classification.policy.rollback"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/media/classification/rollback/{revision}",
-      "reason": "Classification policy authoring, validation, preview, impact analysis, and publication are owned by the authenticated frontend editor until a stable Agent governance contract is approved.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "把历史媒体分类策略发布为新版本",
       "tags": [
         "media"
       ]
     },
     {
-      "disposition": "ui_presentation",
+      "disposition": "gateway",
       "method": "POST",
-      "operation_ids": [],
-      "owner": "host-ui",
+      "operation_ids": [
+        "media.classification.policy.validate"
+      ],
+      "owner": "moviepilot-api",
       "path": "/api/v1/media/classification/validate",
-      "reason": "Classification policy authoring, validation, preview, impact analysis, and publication are owned by the authenticated frontend editor until a stable Agent governance contract is approved.",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "校验媒体分类策略草稿",
       "tags": [
         "media"

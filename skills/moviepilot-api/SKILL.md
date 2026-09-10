@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 26
+version: 27
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -29,7 +29,10 @@ allowed-api-operations: >-
   system.update.install system.upgrade.dev dashboard.media.statistics dashboard.storage
   dashboard.processes dashboard.system dashboard.downloader scheduler.progress
   dashboard.transfer.statistics dashboard.cpu dashboard.memory dashboard.network media.sources
-  media.recognize_file media.category.config.get media.categories media.episode_groups
+  media.recognize_file media.classification.fields media.classification.policy.get
+  media.classification.policy.validate media.classification.policy.preview
+  media.classification.policy.impact media.classification.policy.history
+  media.classification.policy.update media.classification.policy.rollback media.episode_groups
   media.episode_group.seasons media.seasons search.title search.recommend subtitle.search.title
   subtitle.search.media site.add site.delete site.auth.options site.authenticate
   site.cookiecloud.sync site.reset site.priorities.update site.userdata.refresh
@@ -186,6 +189,32 @@ Call the gateway with this shape:
   rules. Album lookup uses the album credit without replacing the track's
   performer. Conflicting explicit recording dates are version mismatches;
   missing dates alone do not reject a candidate.
+
+## Automatic Media Classification
+
+Use the versioned `media.classification.*` operations for the current automatic
+media-classification policy. The legacy category operations are not Agent
+operations; their REST read-only projections remain compatibility endpoints for
+other clients.
+
+1. Call `media.classification.fields` when you need the stable field IDs,
+   operators, common `options`, source-specific `source_options`, or server limits.
+   Save option `value`, not its display label or source annotation.
+2. Call `media.classification.policy.get` before editing and preserve its active
+   `revision`. A policy update replaces the complete policy, so retain categories,
+   rules, fallbacks, and aliases that should remain unchanged.
+3. Use `media.classification.policy.validate` for draft-only structural and
+   semantic validation. Use `media.classification.policy.preview` with either a
+   selected media result or normalized facts to inspect one classification result.
+   For bounded recent-history or explicit-fact comparisons, use
+   `media.classification.policy.impact`.
+4. Publish with `media.classification.policy.update`, sending the complete policy
+   and the revision read in step 2 as `expected_revision`. This is an administrator
+   confirmation-protected write; a successful response creates the next revision.
+5. Use `media.classification.policy.history` to inspect administrator-only
+   historical revisions. `media.classification.policy.rollback` publishes one
+   selected historical policy as a new revision and also requires the current
+   `expected_revision`; it does not rewind the revision counter.
 
 ## Operation Catalog
 
@@ -463,19 +492,61 @@ Purpose: List recently added items from one configured media-server instance for
 - `query`: `count` (integer|null; default `20`): Maximum number of records to return on the requested page.; `server*` (string): Exact configured media-server instance name returned by the media-server instance list.
 - `body`: none
 
-### `media.categories`
-`GET /api/v1/media/category`; policy effect: `safe_read`.
-Purpose: Read the resolved automatic media-category mapping.
+### `media.classification.fields`
+`GET /api/v1/media/classification/fields`; policy effect: `safe_read`.
+Purpose: Read the media-classification field catalog and source capabilities.
 - `path_params`: none
 - `query`: none
 - `body`: none
 
-### `media.category.config.get`
-`GET /api/v1/media/category/config`; policy effect: `safe_read`.
-Purpose: Read the complete automatic media-category strategy configuration.
+### `media.classification.policy.get`
+`GET /api/v1/media/classification/policy`; policy effect: `safe_read`.
+Purpose: Read the active automatic media-classification policy.
 - `path_params`: none
 - `query`: none
 - `body`: none
+
+### `media.classification.policy.history`
+`GET /api/v1/media/classification/history`; policy effect: `safe_read`.
+Purpose: Read the bounded history of published media-classification policies.
+- `path_params`: none
+- `query`: none
+- `body`: none
+
+### `media.classification.policy.impact`
+`POST /api/v1/media/classification/impact`; policy effect: `safe_read`.
+Purpose: Estimate how an unpublished media-classification policy changes bounded recent samples.
+- `path_params`: none
+- `query`: none
+- `body`: `example_limit` (integer; default `20`; minimum `0.0`; maximum `50.0`): Maximum number of representative impact examples to return.; `expected_revision*` (integer; minimum `1.0`): Current revision from a preceding read, used to reject concurrent state changes.; `policy*` (ClassificationPolicy-Input): Complete or draft automatic media-classification policy.; `sample_limit` (integer; default `100`; minimum `1.0`; maximum `200.0`): Maximum number of recent records or samples to inspect for impact analysis.; `samples` (array<ClassificationFacts>): Explicit normalized fact samples used for classification impact analysis.
+
+### `media.classification.policy.preview`
+`POST /api/v1/media/classification/preview`; policy effect: `safe_read`.
+Purpose: Preview automatic media classification for selected media or normalized facts.
+- `path_params`: none
+- `query`: none
+- `body`: `input*` (ClassificationFactsPreviewInput|ClassificationMediaPreviewInput): Media or normalized-facts input used for a classification preview.; `policy` (ClassificationPolicy-Input|null): Complete or draft automatic media-classification policy.
+
+### `media.classification.policy.rollback`
+`POST /api/v1/media/classification/rollback/{revision}`; policy effect: `reversible_write`.
+Purpose: Publish a selected historical media-classification policy as a new revision.
+- `path_params`: `revision*` (integer): Published classification policy revision or expected revision number.
+- `query`: none
+- `body`: `expected_revision*` (integer; minimum `1.0`): Current revision from a preceding read, used to reject concurrent state changes.
+
+### `media.classification.policy.update`
+`PUT /api/v1/media/classification/policy`; policy effect: `reversible_write`.
+Purpose: Validate and publish a complete automatic media-classification policy.
+- `path_params`: none
+- `query`: none
+- `body`: `expected_revision*` (integer; minimum `0.0`): Current revision from a preceding read, used to reject concurrent state changes.; `policy*` (ClassificationPolicy-Input): Complete or draft automatic media-classification policy.
+
+### `media.classification.policy.validate`
+`POST /api/v1/media/classification/validate`; policy effect: `safe_read`.
+Purpose: Validate an unpublished automatic media-classification policy without saving it.
+- `path_params`: none
+- `query`: none
+- `body`: `policy*` (ClassificationPolicy-Input): Complete or draft automatic media-classification policy.
 
 ### `media.detail`
 `GET /api/v1/media/{media_id}`; policy effect: `safe_read`.
@@ -518,10 +589,10 @@ Purpose: Read one person's credits from the selected metadata source.
 
 ### `media.person.search`
 `GET /api/v1/media/search`; policy effect: `safe_read`.
-Purpose: Search people across selected metadata sources.
+Purpose: Search people and music artists across selected metadata sources.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
-- `query`: `count` (integer; default `8`): Maximum number of records to return on the requested page.; `media_source` (array<MediaSource>; default `[]`): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer; default `1`): One-based result page number.; `title*` (string): Media, torrent, subscription, or history title used by the operation.; `type*` (string=person): Literal person, selecting person search instead of media search.
+- `query`: `count` (integer; default `8`): Maximum number of records to return on the requested page.; `media_source` (array<MediaSource>; default `[]`): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string(recording,album,artist)|null): Music identity level: recording, album, or artist where supported.; `page` (integer; default `1`): One-based result page number.; `title*` (string): Media, torrent, subscription, or history title used by the operation.; `type*` (string=person): Literal person, selecting person search instead of media search.
 - `body`: none
 
 ### `media.recognize`
@@ -550,7 +621,7 @@ Purpose: Generate or refresh metadata for one storage item.
 Purpose: Search canonical media across selected metadata sources.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
-- `query`: `count` (integer; default `8`): Maximum number of records to return on the requested page.; `media_source` (array<MediaSource>; default `[]`): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer; default `1`): One-based result page number.; `title*` (string): Media, torrent, subscription, or history title used by the operation.; `type` (string|null; default `media`): MoviePilot media or storage item type required by the selected operation.
+- `query`: `count` (integer; default `8`): Maximum number of records to return on the requested page.; `media_source` (array<MediaSource>; default `[]`): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string(recording,album,artist)|null): Music identity level: recording, album, or artist where supported.; `page` (integer; default `1`): One-based result page number.; `title*` (string): Media, torrent, subscription, or history title used by the operation.; `type` (string|null; default `media`): MoviePilot media or storage item type required by the selected operation.
 - `body`: none
 
 ### `media.seasons`
@@ -564,7 +635,6 @@ Purpose: List seasons for one exact media identity or a title-and-year fallback.
 ### `media.sources`
 `GET /api/v1/media/source`; policy effect: `safe_read`.
 Purpose: List metadata sources currently registered for MoviePilot media operations.
-Only sources implemented by host modules are built in. Other sources appear after an enabled plugin registers them; use the exact returned identifier without converting plugin source aliases.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
@@ -590,7 +660,7 @@ Purpose: Browse albums related to one source-native album identity.
 Purpose: Browse one artist's albums, singles, EPs, or another exact release-group type.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: `artist_id*` (string): Source-native artist ID returned by music search or an album detail response.
-- `query`: `album_type` (string|null): MusicBrainz release-group type filter: album, single, ep, broadcast, other, compilation, soundtrack, live, or remix.; `count` (integer; default `30`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer; default `1`; minimum `1`): One-based result page number.
+- `query`: `album_type` (string|null): Music album or release-group type used by classification rules.; `count` (integer; default `30`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer; default `1`; minimum `1`): One-based result page number.
 - `body`: none
 
 ### `music.artist.get`
@@ -826,7 +896,7 @@ Purpose: Read plugin runtime convergence, loading, and failure state.
 Purpose: Switch an installed plugin to one explicitly selected online source revision.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
-- `body`: `expected_revision*` (integer; minimum `1.0`): Exact current plugin source-identity revision returned by plugin.source.options.; `release_version` (string|null): Exact plugin release version to install when one is required.; `repo_url*` (string; minimum length `1`): Approved plugin repository URL used to resolve the installation source.
+- `body`: `expected_revision*` (integer; minimum `1.0`): Current revision from a preceding read, used to reject concurrent state changes.; `release_version` (string|null): Exact plugin release version to install when one is required.; `repo_url*` (string; minimum length `1`): Approved plugin repository URL used to resolve the installation source.
 
 ### `plugin.source.install`
 `POST /api/v1/plugin/source/{plugin_id}/install`; policy effect: `external_side_effect`.
@@ -1113,7 +1183,7 @@ Purpose: List files or directories from one configured storage location.
 Purpose: Run one provider-defined management action against an exact configured storage target.
 - `path_params`: none
 - `query`: none
-- `body`: `action*` (string): Exact provider or workflow action identifier required by the selected operation.; `params` (object): Provider-defined JSON parameters for the selected authentication or storage action.; `target*` (string): Exact target identifier selected by the operation.
+- `body`: `action*` (string): Exact provider or workflow action identifier required by the selected operation.; `params` (object): Provider-defined JSON parameters for the selected authentication or storage action.; `target*` (string): Classification rule output containing a category ID and optional labels.
 
 ### `storage.mkdir`
 `POST /api/v1/storage/mkdir`; policy effect: `reversible_write`.
@@ -1259,10 +1329,6 @@ Purpose: Reset one accessible subscription so it can be processed again.
 - `path_params`: `subid*` (integer): Persistent subscription ID whose status or processing state will change.
 - `query`: none
 - `body`: none
-
-Subscription search uses a durable queue. Automatic batches share a single 0–60 second startup jitter; site rate limits and cooldowns still apply.
-Deferred attempts resume only pending sites, including after restart. Treat `waiting_site_budget` as recoverable waiting and use `next_run_at` for the next attempt;
-its `error` text is a waiting reason and is cleared when execution resumes. Do not interpret the configured search interval as a completion deadline.
 
 ### `subscription.search`
 `POST /api/v1/subscribe/search/{subscribe_id}`; policy effect: `external_side_effect`.
@@ -1477,10 +1543,9 @@ Purpose: Recommend an episode-number extraction template from supplied file samp
 ### `transfer.file`
 `POST /api/v1/transfer/manual`; policy effect: `external_side_effect`.
 Purpose: Run MoviePilot's manual file-transfer and organization workflow.
-Failed durable history, including a `logid` request, retries the frozen plan through the scheduler unless an explicit media identity or `reorganize=true` requests replanning. Explicit replanning must first validate and discard the settled failed task; a pending manual review must be resolved before retrying.
 - `path_params`: none
 - `query`: `background` (boolean|null; default `False`): Run the transfer asynchronously and return before completion.
-- `body`: `episode_detail` (string|null): Episode mapping details used by manual transfer.; `episode_format` (string|null): Episode-number formatting rule used by manual transfer.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `episode_offset` (string|null): Integer offset added to detected episode numbers.; `episode_part` (string|null): Episode part number used when one episode is split across files.; `fileitem` (FileItem-Input): One complete source storage item returned by storage.list.; `fileitems` (array<FileItem-Input>|null): Additional source storage items included in the same manual transfer.; `from_history` (boolean|null; default `False`): Treat the transfer input as originating from an existing history record.; `library_category_folder` (boolean|null): Create or use a category-level folder in the target library.; `library_type_folder` (boolean|null): Create or use a media-type folder in the target library.; `logid` (integer|null): One download-history or transfer-log identifier used by manual transfer.; `logids` (array<integer>|null): Multiple download-history or transfer-log identifiers included in manual transfer.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `min_filesize` (integer|null; default `0`): Minimum source file size accepted by manual transfer, in bytes.; `music_type` (string(recording,album)|null): Music identity level: recording, album, or artist where supported.; `preview` (boolean|null; default `False`): Validate and preview manual-transfer output without committing file changes.; `reorganize` (boolean|null; default `False`): Allow manual transfer to organize an item that was already processed.; `scrape` (boolean|null; default `False`): Generate metadata and images after manual transfer.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `target_path` (string|null): Destination path used by manual transfer.; `target_storage` (string|null): Configured storage name receiving the manual transfer.; `transfer_type` (string|null): Manual-transfer mode, such as move, copy, link, or softlink.; `type_name` (string|null): Explicit media type name used when source IDs alone are ambiguous.
+- `body`: `episode_detail` (string|null): Episode mapping details used by manual transfer.; `episode_format` (string|null): Episode-number formatting rule used by manual transfer.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `episode_offset` (string|null): Integer offset added to detected episode numbers.; `episode_part` (string|null): Episode part number used when one episode is split across files.; `fileitem` (FileItem-Input): One complete source storage item returned by storage.list.; `fileitems` (array<FileItem-Input>|null): Additional source storage items included in the same manual transfer.; `from_history` (boolean|null; default `False`): Treat the transfer input as originating from an existing history record.; `library_category_folder` (boolean|null): Create or use a category-level folder in the target library.; `library_type_folder` (boolean|null): Create or use a media-type folder in the target library.; `logid` (integer|null): One download-history or transfer-log identifier used by manual transfer.; `logids` (array<integer>|null): Multiple download-history or transfer-log identifiers included in manual transfer.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `min_filesize` (integer|null; default `0`): Minimum source file size accepted by manual transfer, in bytes.; `music_release_regions` (array<string>|null): Optional ISO 3166-1 release-region priority for music organization.; `music_release_scripts` (array<string>|null): Optional ISO 15924 script priority for music organization.; `music_type` (string(recording,album)|null): Music identity level: recording, album, or artist where supported.; `preview` (boolean|null; default `False`): Validate and preview manual-transfer output without committing file changes.; `reorganize` (boolean|null; default `False`): Allow manual transfer to organize an item that was already processed.; `scrape` (boolean|null; default `False`): Generate metadata and images after manual transfer.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `skip_success` (boolean; default `False`): Skip files already recorded as successfully organized.; `target_path` (string|null): Destination path used by manual transfer.; `target_storage` (string|null): Configured storage name receiving the manual transfer.; `transfer_type` (string|null): Manual-transfer mode, such as move, copy, link, or softlink.; `type_name` (string|null): Explicit media type name used when source IDs alone are ambiguous.
 
 ### `transfer.history`
 `GET /api/v1/history/transfer`; policy effect: `safe_read`.
@@ -1502,7 +1567,7 @@ Purpose: Delete legacy transfer-history records while leaving files and durable 
 Purpose: Delete one transfer-history record and optionally remove files.
 - `path_params`: none
 - `query`: `deletedest` (boolean|null; default `False`): Also delete the organized destination files when deleting transfer history.; `deletesrc` (boolean|null; default `False`): Also delete the recorded source files when deleting transfer history.
-- `body`: `audio_format` (string|null): Requested or recorded audio container or codec, such as FLAC or MP3.; `audio_lossless` (boolean|null): Whether the recorded audio result is lossless.; `bit_depth` (integer|null): Recorded audio bit depth in bits.; `bitrate` (integer|null): Recorded audio bitrate in bits per second.; `category` (string|null): MoviePilot media category or filter-group category, depending on the operation.; `classification_policy_revision` (integer|null): Policy revision that produced the persisted classification snapshot.; `classification_rule_id` (string|null): Stable rule ID that selected the persisted classification category.; `classification_source` (string|null): Selection source recorded with the persisted classification snapshot.; `date` (string|null): Record creation or completion timestamp used by the history item.; `dest` (string|null): Organized destination path recorded in transfer history.; `dest_fileitem` (JsonData-Input|null): Serialized destination storage item recorded by the transfer.; `dest_storage` (string|null): Configured storage name containing the organized destination.; `download_hash` (string|null): Provider-native torrent hash associated with the record.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `episodes` (string|null): Episode-number expression recorded in history, such as E01-E03.; `errmsg` (string|null): Error message recorded for a failed transfer.; `files` (JsonData-Input|null): Serialized list of files recorded by the history item.; `id*` (integer): Persistent database identifier of the supplied record.; `image` (string|null): Image URL stored with the history record.; `media_category_id` (string|null): Stable classification category ID; preserve it separately from the current category path snapshot.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `mode` (string|null): Operation mode; music.explore accepts chart or fresh, while transfer history records move, copy, link, or softlink.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `sample_rate` (integer|null): Recorded audio sample rate in hertz.; `seasons` (string|null): Season-number expression recorded in history.; `src` (string|null): Source path recorded in transfer history.; `src_fileitem` (JsonData-Input|null): Serialized source storage item recorded by the transfer.; `src_storage` (string|null): Configured storage name containing the transfer source.; `status` (boolean; default `True`): Transfer success status used to filter history or describe a record.; `title` (string|null): Media, torrent, subscription, or history title used by the operation.; `total_tracks` (integer|null): Expected or recorded track count for a music item.; `transfer_task_id` (string|null): Stable durable transfer-task ID associated with the history record.; `type` (string|null): MoviePilot media or storage item type required by the selected operation.; `year` (string|null): Release or premiere year used to disambiguate the media title.
+- `body`: `audio_format` (string|null): Requested or recorded audio container or codec, such as FLAC or MP3.; `audio_lossless` (boolean|null): Whether the recorded audio result is lossless.; `auto_paused` (boolean; default `False`): Whether a failed transfer automatically paused the related subscription.; `bit_depth` (integer|null): Recorded audio bit depth in bits.; `bitrate` (integer|null): Recorded audio bitrate in bits per second.; `category` (string|null): MoviePilot media category or filter-group category, depending on the operation.; `classification_policy_revision` (integer|null): Policy revision that produced the persisted classification snapshot.; `classification_rule_id` (string|null): Stable rule ID that selected the persisted classification category.; `classification_source` (string|null): Selection source recorded with the persisted classification snapshot.; `cleanup_error` (string|null): Error recorded while cleaning up a transfer source or destination.; `cleanup_status` (string|null): Current status of transfer-file cleanup after an operation.; `date` (string|null): Record creation or completion timestamp used by the history item.; `dest` (string|null): Organized destination path recorded in transfer history.; `dest_fileitem` (JsonData-Input|null): Serialized destination storage item recorded by the transfer.; `dest_storage` (string|null): Configured storage name containing the organized destination.; `download_hash` (string|null): Provider-native torrent hash associated with the record.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `episodes` (string|null): Episode-number expression recorded in history, such as E01-E03.; `errmsg` (string|null): Error message recorded for a failed transfer.; `failure_stage` (string|null): Transfer or workflow stage at which the operation failed.; `files` (JsonData-Input|null): Serialized list of files recorded by the history item.; `id*` (integer): Persistent database identifier of the supplied record.; `image` (string|null): Image URL stored with the history record.; `media_category_id` (string|null): Stable classification category ID; preserve it separately from the current category path snapshot.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `mode` (string|null): Operation mode; music.explore accepts chart or fresh, while transfer history records move, copy, link, or softlink.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `recovery_action` (string|null): Recovery action reported for a failed or partially completed transfer.; `retry_count` (integer|null): Number of retry attempts already used by the operation.; `retry_exhausted` (boolean; default `False`): Whether the operation has used all configured retry attempts.; `sample_rate` (integer|null): Recorded audio sample rate in hertz.; `seasons` (string|null): Season-number expression recorded in history.; `src` (string|null): Source path recorded in transfer history.; `src_fileitem` (JsonData-Input|null): Serialized source storage item recorded by the transfer.; `src_storage` (string|null): Configured storage name containing the transfer source.; `status` (boolean; default `True`): Transfer success status used to filter history or describe a record.; `title` (string|null): Media, torrent, subscription, or history title used by the operation.; `total_tracks` (integer|null): Expected or recorded track count for a music item.; `transfer_task_id` (string|null): Stable durable transfer-task ID associated with the history record.; `type` (string|null): MoviePilot media or storage item type required by the selected operation.; `year` (string|null): Release or premiere year used to disambiguate the media title.
 
 ### `transfer.history.redo`
 `POST /api/v1/history/transfer/{history_id}/ai-redo`; policy effect: `external_side_effect`.
@@ -1523,7 +1588,7 @@ Purpose: Start AI-assisted reorganization for an explicit list of transfer-histo
 Purpose: Check whether supplied storage items already have successful transfer history.
 - `path_params`: none
 - `query`: none
-- `body`: `episode_detail` (string|null): Episode mapping details used by manual transfer.; `episode_format` (string|null): Episode-number formatting rule used by manual transfer.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `episode_offset` (string|null): Integer offset added to detected episode numbers.; `episode_part` (string|null): Episode part number used when one episode is split across files.; `fileitem` (FileItem-Input): One complete source storage item returned by storage.list.; `fileitems` (array<FileItem-Input>|null): Additional source storage items included in the same manual transfer.; `from_history` (boolean|null; default `False`): Treat the transfer input as originating from an existing history record.; `library_category_folder` (boolean|null): Create or use a category-level folder in the target library.; `library_type_folder` (boolean|null): Create or use a media-type folder in the target library.; `logid` (integer|null): One download-history or transfer-log identifier used by manual transfer.; `logids` (array<integer>|null): Multiple download-history or transfer-log identifiers included in manual transfer.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `min_filesize` (integer|null; default `0`): Minimum source file size accepted by manual transfer, in bytes.; `music_type` (string(recording,album)|null): Music identity level: recording, album, or artist where supported.; `preview` (boolean|null; default `False`): Validate and preview manual-transfer output without committing file changes.; `reorganize` (boolean|null; default `False`): Allow manual transfer to organize an item that was already processed.; `scrape` (boolean|null; default `False`): Generate metadata and images after manual transfer.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `target_path` (string|null): Destination path used by manual transfer.; `target_storage` (string|null): Configured storage name receiving the manual transfer.; `transfer_type` (string|null): Manual-transfer mode, such as move, copy, link, or softlink.; `type_name` (string|null): Explicit media type name used when source IDs alone are ambiguous.
+- `body`: `episode_detail` (string|null): Episode mapping details used by manual transfer.; `episode_format` (string|null): Episode-number formatting rule used by manual transfer.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `episode_offset` (string|null): Integer offset added to detected episode numbers.; `episode_part` (string|null): Episode part number used when one episode is split across files.; `fileitem` (FileItem-Input): One complete source storage item returned by storage.list.; `fileitems` (array<FileItem-Input>|null): Additional source storage items included in the same manual transfer.; `from_history` (boolean|null; default `False`): Treat the transfer input as originating from an existing history record.; `library_category_folder` (boolean|null): Create or use a category-level folder in the target library.; `library_type_folder` (boolean|null): Create or use a media-type folder in the target library.; `logid` (integer|null): One download-history or transfer-log identifier used by manual transfer.; `logids` (array<integer>|null): Multiple download-history or transfer-log identifiers included in manual transfer.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `min_filesize` (integer|null; default `0`): Minimum source file size accepted by manual transfer, in bytes.; `music_release_regions` (array<string>|null): Optional ISO 3166-1 release-region priority for music organization.; `music_release_scripts` (array<string>|null): Optional ISO 15924 script priority for music organization.; `music_type` (string(recording,album)|null): Music identity level: recording, album, or artist where supported.; `preview` (boolean|null; default `False`): Validate and preview manual-transfer output without committing file changes.; `reorganize` (boolean|null; default `False`): Allow manual transfer to organize an item that was already processed.; `scrape` (boolean|null; default `False`): Generate metadata and images after manual transfer.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `skip_success` (boolean; default `False`): Skip files already recorded as successfully organized.; `target_path` (string|null): Destination path used by manual transfer.; `target_storage` (string|null): Configured storage name receiving the manual transfer.; `transfer_type` (string|null): Manual-transfer mode, such as move, copy, link, or softlink.; `type_name` (string|null): Explicit media type name used when source IDs alone are ambiguous.
 
 ### `transfer.manual_review`
 `GET /api/v1/transfer/tasks/{task_id}/manual-review`; policy effect: `safe_read`.
@@ -1574,7 +1639,7 @@ Purpose: Remove one exact storage item from the file-transfer queue and stop its
 Purpose: Resolve the configured transfer destination for supplied source storage items.
 - `path_params`: none
 - `query`: none
-- `body`: `episode_detail` (string|null): Episode mapping details used by manual transfer.; `episode_format` (string|null): Episode-number formatting rule used by manual transfer.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `episode_offset` (string|null): Integer offset added to detected episode numbers.; `episode_part` (string|null): Episode part number used when one episode is split across files.; `fileitem` (FileItem-Input): One complete source storage item returned by storage.list.; `fileitems` (array<FileItem-Input>|null): Additional source storage items included in the same manual transfer.; `from_history` (boolean|null; default `False`): Treat the transfer input as originating from an existing history record.; `library_category_folder` (boolean|null): Create or use a category-level folder in the target library.; `library_type_folder` (boolean|null): Create or use a media-type folder in the target library.; `logid` (integer|null): One download-history or transfer-log identifier used by manual transfer.; `logids` (array<integer>|null): Multiple download-history or transfer-log identifiers included in manual transfer.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `min_filesize` (integer|null; default `0`): Minimum source file size accepted by manual transfer, in bytes.; `music_type` (string(recording,album)|null): Music identity level: recording, album, or artist where supported.; `preview` (boolean|null; default `False`): Validate and preview manual-transfer output without committing file changes.; `reorganize` (boolean|null; default `False`): Allow manual transfer to organize an item that was already processed.; `scrape` (boolean|null; default `False`): Generate metadata and images after manual transfer.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `target_path` (string|null): Destination path used by manual transfer.; `target_storage` (string|null): Configured storage name receiving the manual transfer.; `transfer_type` (string|null): Manual-transfer mode, such as move, copy, link, or softlink.; `type_name` (string|null): Explicit media type name used when source IDs alone are ambiguous.
+- `body`: `episode_detail` (string|null): Episode mapping details used by manual transfer.; `episode_format` (string|null): Episode-number formatting rule used by manual transfer.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `episode_offset` (string|null): Integer offset added to detected episode numbers.; `episode_part` (string|null): Episode part number used when one episode is split across files.; `fileitem` (FileItem-Input): One complete source storage item returned by storage.list.; `fileitems` (array<FileItem-Input>|null): Additional source storage items included in the same manual transfer.; `from_history` (boolean|null; default `False`): Treat the transfer input as originating from an existing history record.; `library_category_folder` (boolean|null): Create or use a category-level folder in the target library.; `library_type_folder` (boolean|null): Create or use a media-type folder in the target library.; `logid` (integer|null): One download-history or transfer-log identifier used by manual transfer.; `logids` (array<integer>|null): Multiple download-history or transfer-log identifiers included in manual transfer.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `min_filesize` (integer|null; default `0`): Minimum source file size accepted by manual transfer, in bytes.; `music_release_regions` (array<string>|null): Optional ISO 3166-1 release-region priority for music organization.; `music_release_scripts` (array<string>|null): Optional ISO 15924 script priority for music organization.; `music_type` (string(recording,album)|null): Music identity level: recording, album, or artist where supported.; `preview` (boolean|null; default `False`): Validate and preview manual-transfer output without committing file changes.; `reorganize` (boolean|null; default `False`): Allow manual transfer to organize an item that was already processed.; `scrape` (boolean|null; default `False`): Generate metadata and images after manual transfer.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `skip_success` (boolean; default `False`): Skip files already recorded as successfully organized.; `target_path` (string|null): Destination path used by manual transfer.; `target_storage` (string|null): Configured storage name receiving the manual transfer.; `transfer_type` (string|null): Manual-transfer mode, such as move, copy, link, or softlink.; `type_name` (string|null): Explicit media type name used when source IDs alone are ambiguous.
 
 ### `workflow.actions`
 `GET /api/v1/workflow/actions`; policy effect: `safe_read`.
@@ -1695,6 +1760,67 @@ Purpose: Replace one configured workflow definition.
 
 ### Referenced Body Models
 
+#### `ClassificationFacts`
+Normalized media facts evaluated by the automatic classification policy.
+- `extensions` (object): Additional normalized classification facts supplied by extensions.
+- `field_sources` (object): Source provenance for normalized classification facts.
+- `identity*` (ClassificationIdentityFacts): Stable source-native media identity used by classification facts.
+- `media*` (ClassificationMediaFacts): Media metadata input used for a classification preview.
+- `music` (ClassificationMusicFacts|null): Music-specific normalized facts used by classification rules.
+
+#### `ClassificationFactsPreviewInput`
+Normalized facts supplied directly for a classification preview.
+- `facts*` (ClassificationFacts): Normalized media facts to evaluate during a classification preview.
+- `kind` (string=facts; default `facts`): Classification rule or preview-input kind selected by the request.
+
+#### `ClassificationIdentityFacts`
+Stable source-native identity used by classification evaluation.
+- `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.
+- `media_source*` (string): Metadata source identifier. Preserve the exact value returned with media_id.
+
+#### `ClassificationMediaFacts`
+Normalized movie, TV, or shared media facts used by classification rules.
+- `adult` (boolean|null): Whether the media is marked as adult content.
+- `companies` (array<string>|null): Production companies or studios associated with the media.
+- `content_rating` (string|null): Content rating assigned to the media.
+- `countries` (array<string>|null): Normalized country or region codes used by classification rules.
+- `genre_keys` (array<string>|null): Normalized MoviePilot genre keys used by classification rules.
+- `genre_names` (array<string>|null): Source-provided genre names used as classification facts.
+- `language` (string|null): Normalized media language code used by classification rules.
+- `networks` (array<string>|null): Television networks or streaming platforms associated with the media.
+- `runtime` (integer|null): Persisted workflow runtime metadata used for safe resume.
+- `title` (string|null): Media, torrent, subscription, or history title used by the operation.
+- `type*` (string): MoviePilot media or storage item type required by the selected operation.
+- `year` (integer|null): Release or premiere year used to disambiguate the media title.
+
+#### `ClassificationMediaPreviewInput`
+A selected media search result supplied for classification preview.
+- `kind` (string=media; default `media`): Classification rule or preview-input kind selected by the request.
+- `media*` (object): Media metadata input used for a classification preview.
+
+#### `ClassificationMusicFacts`
+Music-specific facts used by automatic classification rules.
+- `album_type` (string|null): Music album or release-group type used by classification rules.
+- `artist_country` (string|null): Country or region associated with the music artist.
+- `artists` (array<string>|null): Music artist names associated with the classified entity.
+- `entity_type` (string|null): Music entity type used by classification rules.
+- `genres` (array<string>|null): Normalized music genre values used by classification rules.
+- `release_status` (string|null): Music release status used by classification rules.
+- `secondary_types` (array<string>|null): Secondary music release-group types used by classification rules.
+- `tags` (array<string>|null): Comma-separated Douban Music category tags; use only with a Douban Music exploration source.
+
+#### `ClassificationPolicy-Input`
+Complete versioned automatic media-classification policy.
+- `categories` (array<ClassificationCategory>): Complete ordered media-category definitions in the classification policy.
+- `enrichment_mode` (string(primary_only,enrich_missing); default `primary_only`): Metadata enrichment mode used to populate classification facts.
+- `fallbacks` (object): Fallback category or label actions used when no classification rule matches.
+- `field_aliases` (object): Optional aliases mapping source-specific fields to normalized classification fields.
+- `mode` (string=first_match; default `first_match`): Operation mode; music.explore accepts chart or fresh, while transfer history records move, copy, link, or softlink.
+- `revision` (integer; default `0`; minimum `0.0`): Published classification policy revision or expected revision number.
+- `rules` (array<ClassificationRule-Input>): Ordered classification rules evaluated from highest priority to lowest.
+- `schema_version` (integer=2; default `2`): Classification policy schema version expected by the server.
+- `updated_at` (string|null): Timestamp when the persisted object or execution state was last updated.
+
 #### `FileItem-Input`
 One file or directory returned by a configured storage provider.
 - `basename` (string|null): Base filename without its parent path.
@@ -1736,7 +1862,7 @@ Subscription refresh execution status and progress summary.
 - `source` (string|null): Exact metadata or recommendation source selected by the operation.
 - `state*` (string): Current site, subscription, marketplace, or transfer state filter.
 - `task_id` (string|null): Stable durable transfer task ID returned by transfer.manual_reviews.
-- `updated_at*` (string): Timestamp when the subscription execution status was last updated.
+- `updated_at*` (string): Timestamp when the persisted object or execution state was last updated.
 
 #### `TorrentInfo`
 One torrent candidate returned by MoviePilot search.
@@ -1749,7 +1875,7 @@ One torrent candidate returned by MoviePilot search.
 - `freedate_diff` (string|null): Seconds remaining until the torrent freeleech period ends.
 - `grabs` (integer|null; default `0`): Number of completed downloads reported for the torrent.
 - `hit_and_run` (boolean|null; default `False`): Whether the torrent is subject to hit-and-run requirements.
-- `labels` (array<string>|null): Torrent labels supplied by the site result.
+- `labels` (array<string>|null): Labels attached to the media, classification result, or torrent result.
 - `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.
 - `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.
 - `page_url` (string|null): Public details page for the torrent result.
@@ -1828,5 +1954,3 @@ After every update, call `config.system.get` again with the exact setting_key an
 3. Downloads, transfers, configuration/rule/plugin writes, scheduler/workflow runs, and deletions have side effects; obtain confirmation and inspect the result.
 4. `success=false`, HTTP errors, validation errors, and empty results are real outcomes. Never report them as success.
 5. Use `database-operation`, `downloader-operation`, or `mediaserver-operation` for their native capabilities. Never bypass the gateway with an arbitrary URL.
-
-Classification field catalogs expose source-independent `options` and source-specific open suggestions in `source_options`. Save the option `value`, never its display label or source annotation. Changing source scope must preserve existing conditions; keep values outside the catalog when `allow_custom_values` permits them.

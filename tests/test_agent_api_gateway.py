@@ -10,6 +10,7 @@ from app.agent.policy import (
     ActionEffect,
     ConfirmationMode,
     PrincipalRole,
+    RecoveryMode,
 )
 from app.agent.policy.api import (
     API_EXTENDED_OPERATION_SPECS,
@@ -28,13 +29,13 @@ from app.agent.tools.manager import MoviePilotToolsManager
 
 
 def test_api_operation_registry_matches_migration_batches() -> None:
-    """API 操作注册表必须覆盖两批 operation 且每项具有固定路由。"""
+    """API 操作注册表必须覆盖各迁移批次且每项具有固定路由。"""
     assert len(API_FIRST_BATCH_OPERATION_SPECS) == 52
     assert len(API_PARITY_OPERATION_SPECS) == 15
     assert len(API_MUSIC_OPERATION_SPECS) == 10
     assert len(API_SYSTEM_OPERATION_SPECS) == 7
-    assert len(API_EXTENDED_OPERATION_SPECS) == 121
-    assert len(API_OPERATION_SPECS) == 205
+    assert len(API_EXTENDED_OPERATION_SPECS) == 127
+    assert len(API_OPERATION_SPECS) == 211
     assert {spec.operation_id for spec in API_OPERATION_SPECS} == set(API_OPERATION_ROUTES)
     assert {
         "download.list",
@@ -71,6 +72,54 @@ def test_api_operation_registry_matches_migration_batches() -> None:
         "system.module.list",
         "plugin.clone",
     }.issubset(API_OPERATION_ROUTES)
+
+
+def test_classification_operations_expose_versioned_policy_contract() -> None:
+    """媒体自动分类必须只暴露新版查询、校验、预览和版本化写入合同。"""
+    expected_routes = {
+        "media.classification.fields": ("GET", "/api/v1/media/classification/fields"),
+        "media.classification.policy.get": ("GET", "/api/v1/media/classification/policy"),
+        "media.classification.policy.validate": ("POST", "/api/v1/media/classification/validate"),
+        "media.classification.policy.preview": ("POST", "/api/v1/media/classification/preview"),
+        "media.classification.policy.impact": ("POST", "/api/v1/media/classification/impact"),
+        "media.classification.policy.history": ("GET", "/api/v1/media/classification/history"),
+        "media.classification.policy.update": ("PUT", "/api/v1/media/classification/policy"),
+        "media.classification.policy.rollback": (
+            "POST",
+            "/api/v1/media/classification/rollback/{revision}",
+        ),
+    }
+    assert {
+        operation_id: (route.method, route.path)
+        for operation_id, route in API_OPERATION_ROUTES.items()
+        if operation_id.startswith("media.classification.")
+    } == expected_routes
+    assert {"media.categories", "media.category.config.get"}.isdisjoint(API_OPERATION_ROUTES)
+
+    specs = {spec.operation_id: spec for spec in API_OPERATION_SPECS}
+    assert specs["media.classification.policy.update"].effect is ActionEffect.REVERSIBLE_WRITE
+    assert specs["media.classification.policy.rollback"].effect is ActionEffect.REVERSIBLE_WRITE
+    assert specs["media.classification.policy.update"].required_role is PrincipalRole.SYSTEM_ADMIN
+    assert specs["media.classification.policy.rollback"].required_role is PrincipalRole.SYSTEM_ADMIN
+    assert specs["media.classification.policy.update"].confirmation is ConfirmationMode.REQUIRED
+    assert specs["media.classification.policy.rollback"].confirmation is ConfirmationMode.REQUIRED
+    assert specs["media.classification.policy.update"].recovery is RecoveryMode.TRANSACTION
+    assert specs["media.classification.policy.rollback"].recovery is RecoveryMode.TRANSACTION
+
+    schema = MoviePilotApiTool(session_id="session", user_id="api_user").get_mcp_input_schema()
+    branches = {
+        item["properties"]["operation_id"]["const"]: item
+        for item in schema["oneOf"]
+    }
+    assert branches["media.classification.policy.update"]["properties"]["body"]["$ref"].endswith(
+        "/ClassificationPolicyPublishRequest"
+    )
+    assert branches["media.classification.policy.preview"]["properties"]["body"]["$ref"].endswith(
+        "/ClassificationPreviewRequest"
+    )
+    assert branches["media.classification.policy.rollback"]["properties"]["path_params"]["required"] == [
+        "revision"
+    ]
 
 
 def test_api_tool_message_displays_secret_safe_major_parameters() -> None:

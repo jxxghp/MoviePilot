@@ -282,7 +282,7 @@
               "type": "null"
             }
           ],
-          "description": "Exact target identifier selected by the operation.",
+          "description": "Classification rule output containing a category ID and optional labels.",
           "title": "Target"
         }
       },
@@ -481,6 +481,1023 @@
         }
       },
       "title": "Body_recommend_search_results_api_v1_search_recommend_post",
+      "type": "object"
+    },
+    "ClassificationCategory": {
+      "additionalProperties": false,
+      "description": "Stable media-category definition with its library path and default labels.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "Whether this category or classification rule participates in evaluation.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Persistent database identifier of the supplied record.",
+          "title": "Id",
+          "type": "string"
+        },
+        "labels": {
+          "description": "Labels attached to the media, classification result, or torrent result.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Labels",
+          "type": "array"
+        },
+        "media_type": {
+          "description": "MoviePilot media type used to filter recommendations or rule groups.",
+          "enum": [
+            "电影",
+            "电视剧",
+            "音乐"
+          ],
+          "title": "Media Type",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable name of the site, storage item, subscription, or rule group.",
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "description": "Storage or history path represented by this record.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Path",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "media_type",
+        "name"
+      ],
+      "title": "ClassificationCategory",
+      "type": "object"
+    },
+    "ClassificationCondition": {
+      "additionalProperties": false,
+      "description": "One leaf condition in an automatic media-classification rule.",
+      "properties": {
+        "field": {
+          "description": "Normalized classification fact field referenced by a condition.",
+          "title": "Field",
+          "type": "string"
+        },
+        "operator": {
+          "description": "Comparison operator used to evaluate one classification condition.",
+          "enum": [
+            "equals",
+            "not_equals",
+            "in",
+            "not_in",
+            "contains",
+            "starts_with",
+            "ends_with",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "between",
+            "contains_any",
+            "contains_all",
+            "contains_none",
+            "is_true",
+            "is_false",
+            "exists",
+            "not_exists"
+          ],
+          "title": "Operator",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Complete replacement value, object fragment, or one list item for the selected update mode.",
+          "title": "Value"
+        }
+      },
+      "required": [
+        "field",
+        "operator"
+      ],
+      "title": "ClassificationCondition",
+      "type": "object"
+    },
+    "ClassificationConditionGroup-Input": {
+      "additionalProperties": false,
+      "description": "A recursive all, any, or not condition group.",
+      "properties": {
+        "all": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ClassificationCondition"
+                  },
+                  {
+                    "$ref": "#/$defs/ClassificationConditionGroup-Input"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Child conditions that must all match.",
+          "title": "All"
+        },
+        "any": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ClassificationCondition"
+                  },
+                  {
+                    "$ref": "#/$defs/ClassificationConditionGroup-Input"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Child conditions where at least one condition must match.",
+          "title": "Any"
+        },
+        "not": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClassificationCondition"
+            },
+            {
+              "$ref": "#/$defs/ClassificationConditionGroup-Input"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Child condition group that must not match.",
+          "title": "Not"
+        }
+      },
+      "title": "ClassificationConditionGroup",
+      "type": "object"
+    },
+    "ClassificationFactSource": {
+      "additionalProperties": false,
+      "description": "Provider identity for a classification fact filled by another source.",
+      "properties": {
+        "media_source": {
+          "description": "Metadata source identifier. Preserve the exact value returned with media_id.",
+          "title": "Media Source",
+          "type": "string"
+        },
+        "provider_id": {
+          "description": "Provider-native identifier that supplied a classification fact.",
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "provider_name": {
+          "description": "Human-readable provider name that supplied a classification fact.",
+          "title": "Provider Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "media_source",
+        "provider_id",
+        "provider_name"
+      ],
+      "title": "ClassificationFactSource",
+      "type": "object"
+    },
+    "ClassificationFacts": {
+      "additionalProperties": false,
+      "description": "Normalized media facts evaluated by the automatic classification policy.",
+      "properties": {
+        "extensions": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object"
+          },
+          "description": "Additional normalized classification facts supplied by extensions.",
+          "title": "Extensions",
+          "type": "object"
+        },
+        "field_sources": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ClassificationFactSource"
+          },
+          "description": "Source provenance for normalized classification facts.",
+          "title": "Field Sources",
+          "type": "object"
+        },
+        "identity": {
+          "$ref": "#/$defs/ClassificationIdentityFacts",
+          "description": "Stable source-native media identity used by classification facts."
+        },
+        "media": {
+          "$ref": "#/$defs/ClassificationMediaFacts",
+          "description": "Media metadata input used for a classification preview."
+        },
+        "music": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClassificationMusicFacts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Music-specific normalized facts used by classification rules."
+        }
+      },
+      "required": [
+        "identity",
+        "media"
+      ],
+      "title": "ClassificationFacts",
+      "type": "object"
+    },
+    "ClassificationFactsPreviewInput": {
+      "additionalProperties": false,
+      "description": "Normalized facts supplied directly for a classification preview.",
+      "properties": {
+        "facts": {
+          "$ref": "#/$defs/ClassificationFacts",
+          "description": "Normalized media facts to evaluate during a classification preview."
+        },
+        "kind": {
+          "const": "facts",
+          "default": "facts",
+          "description": "Classification rule or preview-input kind selected by the request.",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "facts"
+      ],
+      "title": "ClassificationFactsPreviewInput",
+      "type": "object"
+    },
+    "ClassificationIdentityFacts": {
+      "additionalProperties": false,
+      "description": "Stable source-native identity used by classification evaluation.",
+      "properties": {
+        "media_id": {
+          "description": "Source-native media ID. Always pair it with the exact media_source returned by search.",
+          "title": "Media Id",
+          "type": "string"
+        },
+        "media_source": {
+          "description": "Metadata source identifier. Preserve the exact value returned with media_id.",
+          "title": "Media Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "media_source",
+        "media_id"
+      ],
+      "title": "ClassificationIdentityFacts",
+      "type": "object"
+    },
+    "ClassificationImpactRequest": {
+      "additionalProperties": false,
+      "description": "Request to compare an unpublished classification policy against the active policy.",
+      "properties": {
+        "example_limit": {
+          "default": 20,
+          "description": "Maximum number of representative impact examples to return.",
+          "maximum": 50.0,
+          "minimum": 0.0,
+          "title": "Example Limit",
+          "type": "integer"
+        },
+        "expected_revision": {
+          "description": "Current revision from a preceding read, used to reject concurrent state changes.",
+          "minimum": 1.0,
+          "title": "Expected Revision",
+          "type": "integer"
+        },
+        "policy": {
+          "$ref": "#/$defs/ClassificationPolicy-Input",
+          "description": "Complete or draft automatic media-classification policy."
+        },
+        "sample_limit": {
+          "default": 100,
+          "description": "Maximum number of recent records or samples to inspect for impact analysis.",
+          "maximum": 200.0,
+          "minimum": 1.0,
+          "title": "Sample Limit",
+          "type": "integer"
+        },
+        "samples": {
+          "description": "Explicit normalized fact samples used for classification impact analysis.",
+          "items": {
+            "$ref": "#/$defs/ClassificationFacts"
+          },
+          "maxItems": 200,
+          "title": "Samples",
+          "type": "array"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "policy"
+      ],
+      "title": "ClassificationImpactRequest",
+      "type": "object"
+    },
+    "ClassificationMediaFacts": {
+      "additionalProperties": false,
+      "description": "Normalized movie, TV, or shared media facts used by classification rules.",
+      "properties": {
+        "adult": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the media is marked as adult content.",
+          "title": "Adult"
+        },
+        "companies": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Production companies or studios associated with the media.",
+          "title": "Companies"
+        },
+        "content_rating": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Content rating assigned to the media.",
+          "title": "Content Rating"
+        },
+        "countries": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Normalized country or region codes used by classification rules.",
+          "title": "Countries"
+        },
+        "genre_keys": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Normalized MoviePilot genre keys used by classification rules.",
+          "title": "Genre Keys"
+        },
+        "genre_names": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source-provided genre names used as classification facts.",
+          "title": "Genre Names"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Normalized media language code used by classification rules.",
+          "title": "Language"
+        },
+        "networks": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Television networks or streaming platforms associated with the media.",
+          "title": "Networks"
+        },
+        "runtime": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Persisted workflow runtime metadata used for safe resume.",
+          "title": "Runtime"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Media, torrent, subscription, or history title used by the operation.",
+          "title": "Title"
+        },
+        "type": {
+          "description": "MoviePilot media or storage item type required by the selected operation.",
+          "enum": [
+            "电影",
+            "电视剧",
+            "音乐"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Release or premiere year used to disambiguate the media title.",
+          "title": "Year"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "ClassificationMediaFacts",
+      "type": "object"
+    },
+    "ClassificationMediaPreviewInput": {
+      "additionalProperties": false,
+      "description": "A selected media search result supplied for classification preview.",
+      "properties": {
+        "kind": {
+          "const": "media",
+          "default": "media",
+          "description": "Classification rule or preview-input kind selected by the request.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "media": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonData-Input"
+          },
+          "description": "Media metadata input used for a classification preview.",
+          "title": "Media",
+          "type": "object"
+        }
+      },
+      "required": [
+        "media"
+      ],
+      "title": "ClassificationMediaPreviewInput",
+      "type": "object"
+    },
+    "ClassificationMusicFacts": {
+      "additionalProperties": false,
+      "description": "Music-specific facts used by automatic classification rules.",
+      "properties": {
+        "album_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Music album or release-group type used by classification rules.",
+          "title": "Album Type"
+        },
+        "artist_country": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Country or region associated with the music artist.",
+          "title": "Artist Country"
+        },
+        "artists": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Music artist names associated with the classified entity.",
+          "title": "Artists"
+        },
+        "entity_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Music entity type used by classification rules.",
+          "title": "Entity Type"
+        },
+        "genres": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Normalized music genre values used by classification rules.",
+          "title": "Genres"
+        },
+        "release_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Music release status used by classification rules.",
+          "title": "Release Status"
+        },
+        "secondary_types": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Secondary music release-group types used by classification rules.",
+          "title": "Secondary Types"
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Comma-separated Douban Music category tags; use only with a Douban Music exploration source.",
+          "title": "Tags"
+        }
+      },
+      "title": "ClassificationMusicFacts",
+      "type": "object"
+    },
+    "ClassificationPolicy-Input": {
+      "additionalProperties": false,
+      "description": "Complete versioned automatic media-classification policy.",
+      "properties": {
+        "categories": {
+          "description": "Complete ordered media-category definitions in the classification policy.",
+          "items": {
+            "$ref": "#/$defs/ClassificationCategory"
+          },
+          "title": "Categories",
+          "type": "array"
+        },
+        "enrichment_mode": {
+          "default": "primary_only",
+          "description": "Metadata enrichment mode used to populate classification facts.",
+          "enum": [
+            "primary_only",
+            "enrich_missing"
+          ],
+          "title": "Enrichment Mode",
+          "type": "string"
+        },
+        "fallbacks": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Fallback category or label actions used when no classification rule matches.",
+          "propertyNames": {
+            "enum": [
+              "电影",
+              "电视剧",
+              "音乐"
+            ]
+          },
+          "title": "Fallbacks",
+          "type": "object"
+        },
+        "field_aliases": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "description": "Optional aliases mapping source-specific fields to normalized classification fields.",
+          "title": "Field Aliases",
+          "type": "object"
+        },
+        "mode": {
+          "const": "first_match",
+          "default": "first_match",
+          "description": "Operation mode; music.explore accepts chart or fresh, while transfer history records move, copy, link, or softlink.",
+          "title": "Mode",
+          "type": "string"
+        },
+        "revision": {
+          "default": 0,
+          "description": "Published classification policy revision or expected revision number.",
+          "minimum": 0.0,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "rules": {
+          "description": "Ordered classification rules evaluated from highest priority to lowest.",
+          "items": {
+            "$ref": "#/$defs/ClassificationRule-Input"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 2,
+          "default": 2,
+          "description": "Classification policy schema version expected by the server.",
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Timestamp when the persisted object or execution state was last updated.",
+          "title": "Updated At"
+        }
+      },
+      "title": "ClassificationPolicy",
+      "type": "object"
+    },
+    "ClassificationPolicyPublishRequest": {
+      "additionalProperties": false,
+      "description": "Request to validate and publish a complete classification policy with CAS revision.",
+      "properties": {
+        "expected_revision": {
+          "description": "Current revision from a preceding read, used to reject concurrent state changes.",
+          "minimum": 0.0,
+          "title": "Expected Revision",
+          "type": "integer"
+        },
+        "policy": {
+          "$ref": "#/$defs/ClassificationPolicy-Input",
+          "description": "Complete or draft automatic media-classification policy."
+        }
+      },
+      "required": [
+        "expected_revision",
+        "policy"
+      ],
+      "title": "ClassificationPolicyPublishRequest",
+      "type": "object"
+    },
+    "ClassificationPolicyRollbackRequest": {
+      "additionalProperties": false,
+      "description": "Request to publish a historical classification policy as a new revision.",
+      "properties": {
+        "expected_revision": {
+          "description": "Current revision from a preceding read, used to reject concurrent state changes.",
+          "minimum": 1.0,
+          "title": "Expected Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected_revision"
+      ],
+      "title": "ClassificationPolicyRollbackRequest",
+      "type": "object"
+    },
+    "ClassificationPolicyValidateRequest": {
+      "additionalProperties": false,
+      "description": "Request to validate a complete classification policy without saving it.",
+      "properties": {
+        "policy": {
+          "$ref": "#/$defs/ClassificationPolicy-Input",
+          "description": "Complete or draft automatic media-classification policy."
+        }
+      },
+      "required": [
+        "policy"
+      ],
+      "title": "ClassificationPolicyValidateRequest",
+      "type": "object"
+    },
+    "ClassificationPreviewRequest": {
+      "additionalProperties": false,
+      "description": "Request to preview a classification policy against media or normalized facts.",
+      "properties": {
+        "input": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClassificationFactsPreviewInput"
+            },
+            {
+              "$ref": "#/$defs/ClassificationMediaPreviewInput"
+            }
+          ],
+          "description": "Media or normalized-facts input used for a classification preview.",
+          "title": "Input"
+        },
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClassificationPolicy-Input"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Complete or draft automatic media-classification policy."
+        }
+      },
+      "required": [
+        "input"
+      ],
+      "title": "ClassificationPreviewRequest",
+      "type": "object"
+    },
+    "ClassificationRule-Input": {
+      "additionalProperties": false,
+      "description": "One ordered automatic media-classification rule.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "Whether this category or classification rule participates in evaluation.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Persistent database identifier of the supplied record.",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Classification rule or preview-input kind selected by the request.",
+          "enum": [
+            "category",
+            "label"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "media_types": {
+          "description": "Media types to which a classification rule applies.",
+          "items": {
+            "enum": [
+              "电影",
+              "电视剧",
+              "音乐"
+            ],
+            "type": "string"
+          },
+          "title": "Media Types",
+          "type": "array"
+        },
+        "name": {
+          "description": "Human-readable name of the site, storage item, subscription, or rule group.",
+          "title": "Name",
+          "type": "string"
+        },
+        "priority": {
+          "default": 0,
+          "description": "Classification rule ordering priority persisted by the server.",
+          "title": "Priority",
+          "type": "integer"
+        },
+        "sources": {
+          "description": "Metadata source IDs to which a classification rule applies; empty means all sources.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "target": {
+          "$ref": "#/$defs/ClassificationTarget",
+          "description": "Classification rule output containing a category ID and optional labels."
+        },
+        "when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClassificationCondition"
+            },
+            {
+              "$ref": "#/$defs/ClassificationConditionGroup-Input"
+            }
+          ],
+          "description": "Condition group evaluated before a classification rule target is applied.",
+          "title": "When"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "when"
+      ],
+      "title": "ClassificationRule",
+      "type": "object"
+    },
+    "ClassificationTarget": {
+      "additionalProperties": false,
+      "description": "Rule output containing an optional category ID and additional labels.",
+      "properties": {
+        "category_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Stable media-category ID targeted by a classification rule or selection.",
+          "title": "Category Id"
+        },
+        "labels": {
+          "description": "Labels attached to the media, classification result, or torrent result.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Labels",
+          "type": "array"
+        }
+      },
+      "title": "ClassificationTarget",
       "type": "object"
     },
     "CustomFilterRuleCreateRequest": {
@@ -1382,7 +2399,7 @@
           "type": "object"
         },
         "target": {
-          "description": "Exact target identifier selected by the operation.",
+          "description": "Classification rule output containing a category ID and optional labels.",
           "title": "Target",
           "type": "string"
         }
@@ -1576,6 +2593,38 @@
           "description": "Minimum source file size accepted by manual transfer, in bytes.",
           "title": "Min Filesize"
         },
+        "music_release_regions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 3,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional ISO 3166-1 release-region priority for music organization.",
+          "title": "Music Release Regions"
+        },
+        "music_release_scripts": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 3,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional ISO 15924 script priority for music organization.",
+          "title": "Music Release Scripts"
+        },
         "music_type": {
           "anyOf": [
             {
@@ -1642,6 +2691,12 @@
           ],
           "description": "Season number used by the media, search, subscription, or transfer operation.",
           "title": "Season"
+        },
+        "skip_success": {
+          "default": false,
+          "description": "Skip files already recorded as successfully organized.",
+          "title": "Skip Success",
+          "type": "boolean"
         },
         "target_path": {
           "anyOf": [
@@ -2076,7 +3131,7 @@
       "description": "Explicit online-source change request guarded by the current identity revision.",
       "properties": {
         "expected_revision": {
-          "description": "Exact current plugin source-identity revision returned by plugin.source.options.",
+          "description": "Current revision from a preceding read, used to reject concurrent state changes.",
           "minimum": 1.0,
           "title": "Expected Revision",
           "type": "integer"
@@ -3741,7 +4796,7 @@
           "title": "Task Id"
         },
         "updated_at": {
-          "description": "Timestamp when the subscription execution status was last updated.",
+          "description": "Timestamp when the persisted object or execution state was last updated.",
           "title": "Updated At",
           "type": "string"
         }
@@ -3814,7 +4869,7 @@
       "properties": {
         "target": {
           "default": "application",
-          "description": "Exact target identifier selected by the operation.",
+          "description": "Classification rule output containing a category ID and optional labels.",
           "enum": [
             "application",
             "resources"
@@ -3951,7 +5006,7 @@
               "type": "null"
             }
           ],
-          "description": "Torrent labels supplied by the site result.",
+          "description": "Labels attached to the media, classification result, or torrent result.",
           "title": "Labels"
         },
         "media_id": {
@@ -4206,6 +5261,12 @@
           "description": "Whether the recorded audio result is lossless.",
           "title": "Audio Lossless"
         },
+        "auto_paused": {
+          "default": false,
+          "description": "Whether a failed transfer automatically paused the related subscription.",
+          "title": "Auto Paused",
+          "type": "boolean"
+        },
         "bit_depth": {
           "anyOf": [
             {
@@ -4277,6 +5338,30 @@
           ],
           "description": "Selection source recorded with the persisted classification snapshot.",
           "title": "Classification Source"
+        },
+        "cleanup_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Error recorded while cleaning up a transfer source or destination.",
+          "title": "Cleanup Error"
+        },
+        "cleanup_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Current status of transfer-file cleanup after an operation.",
+          "title": "Cleanup Status"
         },
         "date": {
           "anyOf": [
@@ -4373,6 +5458,18 @@
           "description": "Error message recorded for a failed transfer.",
           "title": "Errmsg"
         },
+        "failure_stage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Transfer or workflow stage at which the operation failed.",
+          "title": "Failure Stage"
+        },
         "files": {
           "anyOf": [
             {
@@ -4459,6 +5556,36 @@
           ],
           "description": "Music identity level: recording, album, or artist where supported.",
           "title": "Music Type"
+        },
+        "recovery_action": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Recovery action reported for a failed or partially completed transfer.",
+          "title": "Recovery Action"
+        },
+        "retry_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Number of retry attempts already used by the operation.",
+          "title": "Retry Count"
+        },
+        "retry_exhausted": {
+          "default": false,
+          "description": "Whether the operation has used all configured retry attempts.",
+          "title": "Retry Exhausted",
+          "type": "boolean"
         },
         "sample_rate": {
           "anyOf": [
@@ -6653,10 +7780,10 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the resolved automatic media-category mapping. Method: GET. Path: /api/v1/media/category. Effect: safe_read.",
+      "description": "Read the media-classification field catalog and source capabilities. Method: GET. Path: /api/v1/media/classification/fields. Effect: safe_read.",
       "properties": {
         "operation_id": {
-          "const": "media.categories",
+          "const": "media.classification.fields",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
         }
@@ -6664,15 +7791,15 @@
       "required": [
         "operation_id"
       ],
-      "title": "media.categories",
+      "title": "media.classification.fields",
       "type": "object"
     },
     {
       "additionalProperties": false,
-      "description": "Read the complete automatic media-category strategy configuration. Method: GET. Path: /api/v1/media/category/config. Effect: safe_read.",
+      "description": "Read the active automatic media-classification policy. Method: GET. Path: /api/v1/media/classification/policy. Effect: safe_read.",
       "properties": {
         "operation_id": {
-          "const": "media.category.config.get",
+          "const": "media.classification.policy.get",
           "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
           "type": "string"
         }
@@ -6680,7 +7807,144 @@
       "required": [
         "operation_id"
       ],
-      "title": "media.category.config.get",
+      "title": "media.classification.policy.get",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Read the bounded history of published media-classification policies. Method: GET. Path: /api/v1/media/classification/history. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "media.classification.policy.history",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "media.classification.policy.history",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Estimate how an unpublished media-classification policy changes bounded recent samples. Method: POST. Path: /api/v1/media/classification/impact. Effect: safe_read.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/ClassificationImpactRequest",
+          "description": "Request value for media.classification.policy.impact. Estimate how an unpublished media-classification policy changes bounded recent samples. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "media.classification.policy.impact",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "media.classification.policy.impact",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Preview automatic media classification for selected media or normalized facts. Method: POST. Path: /api/v1/media/classification/preview. Effect: safe_read.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/ClassificationPreviewRequest",
+          "description": "Request value for media.classification.policy.preview. Preview automatic media classification for selected media or normalized facts. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "media.classification.policy.preview",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "media.classification.policy.preview",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Publish a selected historical media-classification policy as a new revision. Method: POST. Path: /api/v1/media/classification/rollback/{revision}. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/ClassificationPolicyRollbackRequest",
+          "description": "Request value for media.classification.policy.rollback. Publish a selected historical media-classification policy as a new revision. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "media.classification.policy.rollback",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for media.classification.policy.rollback. Publish a selected historical media-classification policy as a new revision. Use only the named fields below.",
+          "properties": {
+            "revision": {
+              "description": "Published classification policy revision or expected revision number.",
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "revision"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "media.classification.policy.rollback",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Validate and publish a complete automatic media-classification policy. Method: PUT. Path: /api/v1/media/classification/policy. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/ClassificationPolicyPublishRequest",
+          "description": "Request value for media.classification.policy.update. Validate and publish a complete automatic media-classification policy. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "media.classification.policy.update",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "media.classification.policy.update",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Validate an unpublished automatic media-classification policy without saving it. Method: POST. Path: /api/v1/media/classification/validate. Effect: safe_read.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/ClassificationPolicyValidateRequest",
+          "description": "Request value for media.classification.policy.validate. Validate an unpublished automatic media-classification policy without saving it. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "media.classification.policy.validate",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "body"
+      ],
+      "title": "media.classification.policy.validate",
       "type": "object"
     },
     {
@@ -7040,7 +8304,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Search people across selected metadata sources. Method: GET. Path: /api/v1/media/search. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Search people and music artists across selected metadata sources. Method: GET. Path: /api/v1/media/search. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "media.person.search",
@@ -7049,7 +8313,7 @@
         },
         "query": {
           "additionalProperties": false,
-          "description": "Filters and control values for media.person.search. Search people across selected metadata sources. Use only the named fields below.",
+          "description": "Filters and control values for media.person.search. Search people and music artists across selected metadata sources. Use only the named fields below.",
           "properties": {
             "count": {
               "default": 8,
@@ -7065,6 +8329,23 @@
               },
               "title": "Media Source",
               "type": "array"
+            },
+            "music_type": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "recording",
+                    "album",
+                    "artist"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Music identity level: recording, album, or artist where supported.",
+              "title": "Music Type"
             },
             "page": {
               "default": 1,
@@ -7341,6 +8622,23 @@
               },
               "title": "Media Source",
               "type": "array"
+            },
+            "music_type": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "recording",
+                    "album",
+                    "artist"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Music identity level: recording, album, or artist where supported.",
+              "title": "Music Type"
             },
             "page": {
               "default": 1,
@@ -7682,7 +8980,7 @@
                   "type": "null"
                 }
               ],
-              "description": "MusicBrainz release-group type filter: album, single, ep, broadcast, other, compilation, soundtrack, live, or remix.",
+              "description": "Music album or release-group type used by classification rules.",
               "title": "Album Type"
             },
             "count": {
@@ -14177,8 +15475,14 @@
         "filter.test",
         "library.exists",
         "library.latest",
-        "media.categories",
-        "media.category.config.get",
+        "media.classification.fields",
+        "media.classification.policy.get",
+        "media.classification.policy.history",
+        "media.classification.policy.impact",
+        "media.classification.policy.preview",
+        "media.classification.policy.rollback",
+        "media.classification.policy.update",
+        "media.classification.policy.validate",
         "media.detail",
         "media.episode_group.seasons",
         "media.episode_groups",

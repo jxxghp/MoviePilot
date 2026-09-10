@@ -192,6 +192,11 @@ def _schema_type(schema: Mapping[str, Any], definitions: Mapping[str, Any]) -> s
         return f"{schema.get('type', 'value')}={schema['const']}"
     enum = schema.get("enum")
     if isinstance(enum, list):
+        if any(
+            any("\u3400" <= character <= "\u9fff" for character in str(value))
+            for value in enum
+        ):
+            return str(schema.get("type", "value"))
         return f"{schema.get('type', 'value')}({','.join(map(str, enum))})"
     schema_type = schema.get("type")
     if schema_type == "array":
