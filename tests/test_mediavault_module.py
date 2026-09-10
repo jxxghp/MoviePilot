@@ -442,3 +442,70 @@ def test_disconnect_closes_session():
     client.disconnect()
     assert client._api.closed is True
     assert client.is_authenticated() is False
+
+
+# ── PR-Agent 审查修复的回归 ──────────────────────────────────────────
+
+
+def test_get_movies_pages_past_the_first_page():
+    """关键字命中超过单页上限时，仍要能找到排在后面的目标电影。"""
+    rows = [_item_row(i, title=f"其它{i}") for i in range(MediaVault.PAGE_LIMIT)]
+    rows.append(_item_row(999, title="沙丘", year=2021, tmdb_id=438631))
+    client = _client({"/items": _paged_items(rows)})
+
+    matched = client.get_movies(title="沙丘", year="2021")
+
+    assert [m.item_id for m in matched] == ["id-999"]
+    assert [call["params"]["page"] for call in client._api.calls] == [1, 2]
+
+
+def test_find_series_pages_past_the_first_page():
+    """按标题定位剧集时同样要翻页，否则整部剧会被误判成未入库。"""
+    rows = [_item_row(i, kind="Series", title=f"其它{i}") for i in range(MediaVault.PAGE_LIMIT)]
+    rows.append(_item_row(999, kind="Series", title="剧A", year=2020))
+    routes = {
+        "/items": _paged_items(rows),
+        "/items/id-999/episodes": Result(True, {"seasons": {"1": [1, 2]}}),
+    }
+
+    item_id, seasons = _client(routes).get_tv_episodes(title="剧A", year="2020")
+
+    assert item_id == "id-999"
+    assert seasons == {1: [1, 2]}
+
+
+def test_latest_marks_series_as_tv_not_movie():
+    """最新入库里的剧集条目类型必须是电视剧。"""
+    rows = [_item_row(1, kind="Series", title="剧A"), _item_row(2, kind="Movie", title="片B")]
+    client = _client({"/items": _paged_items(rows)})
+
+    latest = client.get_latest(num=2)
+
+    assert [(item.title, item.type) for item in latest] == [
+        ("剧A", MediaType.TV.value),
+        ("片B", MediaType.MOVIE.value),
+    ]
+    # 剧集不是分集，不应拼出「季:集」副标题
+    assert latest[0].subtitle == "2020"
+
+
+def test_refresh_queues_every_matched_library_even_if_one_fails():
+    """同批命中多个媒体库时，前面的扫描失败不能让后面的媒体库被跳过。"""
+    routes = {
+        "/libraries": Result(True, {"items": [
+            {"id": "lib-1", "root_paths": ["/mnt/a"]},
+            {"id": "lib-2", "root_paths": ["/mnt/b"]},
+        ]}),
+        "/libraries/lib-1/scan-task": Result(False, None, "busy", 409),
+        "/libraries/lib-2/scan-task": Result(True, {}),
+    }
+    client = _client(routes)
+
+    ok = client.refresh_library_by_items([
+        RefreshMediaItem(title="A", target_path=Path("/mnt/a/A (2020)")),
+        RefreshMediaItem(title="B", target_path=Path("/mnt/b/B (2021)")),
+    ])
+
+    assert ok is False
+    scanned = [call["api"] for call in client._api.calls if call["api"].endswith("scan-task")]
+    assert scanned == ["/libraries/lib-1/scan-task", "/libraries/lib-2/scan-task"]
