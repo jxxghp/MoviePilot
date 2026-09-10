@@ -43,10 +43,9 @@ from app.application.messaging.chat import (
 from app.application.messaging.router import has_pending_interaction
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
-from app.runtime.stop import runtime_stop_state
 from app.runtime.tasks import get_task_registry
 from app.schemas.message import Message
-from app.schemas.types import NotificationChannel, ReplyMode
+from app.schemas.types import NotificationChannel
 
 __all__ = ["dispatch_command"]
 # Agent 选择按钮回调前缀（新旧两种格式都必须继续兼容）
@@ -1927,157 +1926,6 @@ def _build_traditional_web_agent_stream(
     return event_generator()
 
 
-def _build_agent_web_agent_stream(
-    *,
-    command: WebAgentStreamCommand,
-    current_user: AgentChatPrincipal,
-    session_id: str,
-    prompt: str,
-    display_prompt: str,
-    has_audio_input: bool,
-    is_secret_confirmation_control: bool,
-    protected_transport_supported: bool,
-    service: AgentChatService,
-    persistence: AgentChatPersistenceService,
-    is_disconnected: Callable[[], Awaitable[bool]],
-) -> AsyncIterator[dict[str, Any]]:
-    """构造标准 Agent 执行链路的 WebAgent 事件流。"""
-    bind_web_agent_user_session(str(current_user.id), session_id)
-    event_publisher = WebAgentEventPublisher()
-    user_attachments = build_web_agent_input_attachments(
-        images=command.images,
-        files=command.files,
-        audio_refs=command.audio_refs,
-    )
-    display_messages = []
-    if command.echo_user and not is_secret_confirmation_control:
-        user_display_message = build_web_agent_display_message(
-            role="user",
-            content=display_prompt or prompt,
-            attachments=user_attachments,
-        )
-        if command.choice_selection:
-            user_display_message["choice_selection"] = command.choice_selection
-        display_messages.append(user_display_message)
-    assistant_display_message = build_web_agent_display_message(
-        role="assistant",
-        status="streaming",
-    )
-    display_messages.append(assistant_display_message)
-
-    def output_callback(delta: str) -> None:
-        """接收 Agent 文本增量并投影为展示事件。"""
-        for item in split_web_agent_output(delta):
-            apply_web_agent_display_event(item, assistant_display_message)
-            event_publisher.publish(item)
-
-    async def message_callback(message: Message) -> None:
-        """接收 Agent 工具主动发送的 Web 通知。"""
-        for item in await build_web_agent_message_events_async(message):
-            apply_web_agent_display_event(item, assistant_display_message)
-            event_publisher.publish(item)
-
-    def protected_output_callback(content: str) -> bool:
-        """发布不进入普通展示快照的敏感交互结果。"""
-        return event_publisher.publish({"type": "interaction-protected", "content": content})
-
-    async def event_generator() -> AsyncIterator[dict[str, Any]]:
-        """执行 Agent 并按断线与终态语义消费事件。"""
-        audio_ref_set = set(command.audio_refs)
-        files = [file for file in command.files if str(file.get("ref") or "") not in audio_ref_set]
-        files.extend({"ref": audio_ref, "mime_type": "audio/*"} for audio_ref in command.audio_refs)
-
-        async def run_agent() -> None:
-            """后台执行 Agent，并在完成后持久化展示快照。"""
-            try:
-                runtime_manager = agent_application.get_running_agent_manager()
-                if runtime_manager is None:
-                    raise RuntimeError("智能助手服务尚未就绪，请稍后重试。")
-                await runtime_manager.process_message(
-                    session_id=session_id,
-                    user_id=str(current_user.id),
-                    message=prompt,
-                    images=command.images,
-                    files=files or None,
-                    has_audio_input=has_audio_input,
-                    channel=NotificationChannel.WebAgent.value,
-                    source=WEB_AGENT_SOURCE,
-                    username=current_user.name,
-                    reply_mode=ReplyMode.CAPTURE_ONLY,
-                    allow_message_tools=True,
-                    output_callback=output_callback,
-                    protected_output_callback=(protected_output_callback if protected_transport_supported else None),
-                    message_callback=message_callback,
-                    agent_factory=agent_application.get_web_agent_type(),
-                    wait_for_completion=True,
-                )
-            except asyncio.CancelledError:
-                # 显式停止会话沿用正常终止语义；服务关闭由 manager 的稳定异常分支处理。
-                pass
-            except Exception as err:
-                logger.error(f"Web智能助手执行失败: {str(err)}")
-                error_event = {
-                    "type": "error",
-                    "message": "智能助手执行失败，请稍后重试",
-                }
-                apply_web_agent_display_event(error_event, assistant_display_message)
-                event_publisher.publish(error_event)
-            finally:
-                done_event = {"type": "done"}
-                apply_web_agent_display_event(done_event, assistant_display_message)
-                # 终态先进入事件队列，避免展示快照落库延迟前端结束动画。
-                event_publisher.publish(done_event)
-                if not is_secret_confirmation_control:
-                    try:
-                        await save_web_agent_display_snapshot(
-                            session_id=session_id,
-                            current_user=current_user,
-                            messages=display_messages,
-                            client_session_id=command.session_id or session_id,
-                            service=service,
-                            persistence=persistence,
-                        )
-                    except Exception as err:
-                        logger.error(f"保存WebAgent展示历史失败：{err}")
-
-        task = create_web_agent_background_task(run_agent())
-        disconnected = False
-        terminal_sent = False
-        try:
-            yield {"type": "start", "session_id": session_id}
-            while not runtime_stop_state.is_system_stopped:
-                if await is_disconnected():
-                    disconnected = True
-                    break
-                try:
-                    event = await asyncio.wait_for(
-                        event_publisher.get(),
-                        timeout=WEB_AGENT_STREAM_HEARTBEAT_SECONDS,
-                    )
-                except asyncio.TimeoutError:
-                    yield {"type": "heartbeat"}
-                    continue
-                if event.get("type") == "done":
-                    terminal_sent = True
-                yield event
-                if event.get("type") == "done":
-                    break
-        except asyncio.CancelledError:
-            disconnected = True
-            return
-        finally:
-            if not task.done() and not disconnected and not terminal_sent:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-            await event_publisher.aclose()
-            # 客户端断线后保留 Agent 继续执行；发布器关闭后拒绝受保护结果。
-
-    return event_generator()
-
-
 async def build_web_agent_stream(
     command: WebAgentStreamCommand,
     *,
@@ -2159,6 +2007,12 @@ async def build_web_agent_stream(
                 }
             )
         )
+    from app.application.messaging.webagentstream import (
+        WebAgentStreamDependencies,
+        _build_steering_ack_stream,
+        build_agent_web_agent_stream,
+        submit_web_agent_steering,
+    )
 
     transcript = await transcribe_web_agent_audio_input(command.audio_refs)
     prompt = merge_web_agent_prompt_with_transcript(prompt, transcript)
@@ -2176,9 +2030,37 @@ async def build_web_agent_stream(
                 }
             )
         )
+    # 活动 Agent 运行内的补充输入走同一张图；无活动运行时才创建新一轮。
+    steering_message = await submit_web_agent_steering(
+        manager=manager,
+        session_id=session_id,
+        user_id=str(current_user.id),
+        prompt=prompt,
+        images=command.images,
+        files=command.files,
+        audio_refs=command.audio_refs,
+    )
+    if steering_message is not None:
+        return WebAgentStreamResult(
+            events=_build_steering_ack_stream(session_id=session_id, message=steering_message),
+            control="steering",
+        )
 
+    stream_dependencies = WebAgentStreamDependencies(
+        event_publisher_factory=WebAgentEventPublisher,
+        bind_user_session=bind_web_agent_user_session,
+        apply_display_event=apply_web_agent_display_event,
+        build_display_message=build_web_agent_display_message,
+        build_input_attachments=build_web_agent_input_attachments,
+        build_message_events_async=build_web_agent_message_events_async,
+        save_display_snapshot=save_web_agent_display_snapshot,
+        split_output=split_web_agent_output,
+        create_background_task=create_web_agent_background_task,
+        source=WEB_AGENT_SOURCE,
+        heartbeat_seconds=WEB_AGENT_STREAM_HEARTBEAT_SECONDS,
+    )
     return WebAgentStreamResult(
-        events=_build_agent_web_agent_stream(
+        events=build_agent_web_agent_stream(
             command=command,
             current_user=current_user,
             session_id=session_id,
@@ -2190,6 +2072,7 @@ async def build_web_agent_stream(
             service=service,
             persistence=persistence,
             is_disconnected=is_disconnected,
+            dependencies=stream_dependencies,
         ),
         control=("secret-confirmation" if is_secret_confirmation_control else None),
     )

@@ -97,9 +97,16 @@ def require_terminal_scope() -> TerminalScope:
 
 
 async def close_terminal_scope(scope: TerminalScope) -> bool:
-    """只收敛已装配的终端管理器，无终端任务封口时不物化进程能力。"""
+    """收敛作用域拥有的终端和浏览器资源，无资源时不物化管理器。"""
     scope.seal()
     module = sys.modules.get("app.agent.terminal.manager")
     manager = getattr(module, "terminal_session_manager", None)
     manager_closed = True if manager is None else bool(await manager.close_owner(scope))
-    return manager_closed and await scope.wait_runs()
+    browser_module = sys.modules.get("app.adapters.network.browser")
+    browser_helper = getattr(browser_module, "BrowserSessionHelper", None)
+    browser_closed = (
+        True
+        if browser_helper is None
+        else bool(await asyncio.to_thread(browser_helper.close_owner, scope))
+    )
+    return manager_closed and browser_closed and await scope.wait_runs()

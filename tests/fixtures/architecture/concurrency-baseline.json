@@ -175,6 +175,12 @@
     },
     "target": "asyncio.to_thread"
   },
+  "app/agent/terminal/ownership.py:asyncio.to_thread": {
+    "owners": {
+      "close_terminal_scope": 1
+    },
+    "target": "asyncio.to_thread"
+  },
   "app/agent/tools/base.py:concurrent.futures.ThreadPoolExecutor": {
     "owners": {
       "_submit_blocking_call": 1

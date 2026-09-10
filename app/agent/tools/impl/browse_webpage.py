@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.adapters.network.browser import BrowserSessionHelper
 from app.agent.policy.contracts import ExecutionOutcome
+from app.agent.terminal.ownership import current_terminal_scope
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.result import inspect_tool_result
 from app.agent.tools.tags import ToolTag
@@ -346,8 +347,9 @@ class BrowseWebpageTool(MoviePilotTool):
         """在同步上下文中执行 CloakBrowser 浏览器操作"""
 
         try:
+            owner = current_terminal_scope()
             if browser_action == BrowserAction.CLOSE_SESSION:
-                closed = BrowserSessionHelper.close_session(session_key)
+                closed = BrowserSessionHelper.close_session(session_key, owner=owner)
                 message = "浏览器会话已关闭" if closed else "浏览器会话不存在"
                 return self._json_response(
                     {
@@ -387,6 +389,7 @@ class BrowseWebpageTool(MoviePilotTool):
                 user_agent=user_agent,
                 cookies=cookies,
                 timeout=timeout,
+                owner=owner,
             )
 
         except Exception as e:

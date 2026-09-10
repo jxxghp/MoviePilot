@@ -79,7 +79,9 @@ def project_tools(tools: Any, prefix: str = "") -> tuple[list[dict[str, Any]], l
         elif tool["type"] == "tool_search":
             description = tool.get("description")
             sources = re.findall(r"(?m)^- ([^:\n]+):", description) if isinstance(description, str) else []
-            if prefix or tool.get("execution") != "client" or sources != ["evaluation"]:
+            allowed_sources = {"Multi-agent tools", "evaluation"}
+            if (prefix or tool.get("execution") != "client" or not sources
+                    or "evaluation" not in sources or any(source not in allowed_sources for source in sources)):
                 raise ValueError("原生工具搜索不是固定评测目录")
             projected.append(copy.deepcopy(tool))
             retained.append(qualified)

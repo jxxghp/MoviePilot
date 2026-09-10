@@ -173,6 +173,7 @@ class _BrowserSessionState:
     active_index: int = 0
     user_agent: Optional[str] = None
     cookies: Optional[str] = None
+    owner: Optional[Any] = field(default=None, repr=False)
     created_at: float = field(default_factory=time.monotonic)
     last_used_at: float = field(default_factory=time.monotonic)
     lock: threading.RLock = field(default_factory=threading.RLock)
@@ -198,6 +199,7 @@ class BrowserSessionHelper:
 
     _sessions: dict[str, _BrowserSessionState] = {}
     _session_executors: dict[str, ThreadPoolExecutor] = {}
+    _session_executor_owners: dict[str, Any] = {}
     _session_thread_ids: dict[str, int] = {}
     _sessions_lock = threading.RLock()
 
@@ -264,26 +266,28 @@ class BrowserSessionHelper:
         关闭所有 Agent 浏览器会话。
         """
         with cls._sessions_lock:
-            session_keys = list(
-                set(cls._sessions.keys()) | set(cls._session_executors.keys())
-            )
+            session_keys = set(cls._sessions) | set(cls._session_executors)
         for session_key in session_keys:
-            cls.close_session(session_key)
+            with cls._sessions_lock:
+                session = cls._sessions.get(session_key)
+                owner = session.owner if session else cls._session_executor_owners.get(session_key)
+            cls.close_session(session_key, owner=owner)
 
     @classmethod
-    def close_session(cls, session_key: str) -> bool:
+    def close_session(cls, session_key: str, owner: Optional[Any] = None) -> bool:
         """
         关闭指定 Agent 浏览器会话。
 
         :param session_key: 会话标识
+        :param owner: 可选宿主作用域；提供时只允许关闭该作用域拥有的会话
         :return: 找到并关闭会话时返回 True
         """
         if cls._is_current_session_thread(session_key):
-            closed = cls._close_session_in_thread(session_key)
+            closed = cls._close_session_in_thread(session_key, owner=owner)
             cls._shutdown_session_executor(session_key, wait=False)
             return closed
 
-        executor = cls._get_existing_session_executor(session_key)
+        executor = cls._get_existing_session_executor(session_key, owner=owner)
         if executor:
             context = copy_context()
             # 会话线程保持空底层上下文，每次操作只使用当前调用快照。
@@ -294,15 +298,38 @@ class BrowserSessionHelper:
                 session_key,
                 cls._close_session_in_thread,
                 session_key,
+                owner=owner,
             )
             try:
                 return future.result()
             finally:
                 cls._shutdown_session_executor(session_key)
 
-        closed = cls._close_session_in_thread(session_key)
+        closed = cls._close_session_in_thread(session_key, owner=owner)
         cls._shutdown_session_executor(session_key)
         return closed
+
+    @classmethod
+    def close_owner(cls, owner: Any) -> bool:
+        """关闭宿主作用域创建的全部浏览器会话和其专属执行线程。"""
+        with cls._sessions_lock:
+            session_keys = {
+                key for key, session in cls._sessions.items() if session.owner is owner
+            }
+            session_keys.update(
+                key for key, session_owner in cls._session_executor_owners.items()
+                if session_owner is owner
+            )
+        for session_key in session_keys:
+            cls.close_session(session_key, owner=owner)
+        with cls._sessions_lock:
+            return not any(
+                session.owner is owner
+                for session in cls._sessions.values()
+            ) and not any(
+                session_owner is owner
+                for session_owner in cls._session_executor_owners.values()
+            )
 
     def with_session(
         self,
@@ -311,6 +338,7 @@ class BrowserSessionHelper:
         user_agent: Optional[str] = None,
         cookies: Optional[str] = None,
         timeout: Optional[int] = 30,
+        owner: Optional[Any] = None,
     ) -> Any:
         """
         获取或创建浏览器会话，并在持有会话锁时执行回调。
@@ -320,6 +348,7 @@ class BrowserSessionHelper:
         :param user_agent: 新建会话时使用的 User-Agent
         :param cookies: 本次操作要注入的 Cookie 请求头
         :param timeout: 默认操作超时时间，单位秒
+        :param owner: 可选宿主作用域；提供时会隔离并校验会话归属
         :return: 回调函数返回值
         """
         self._prune_sessions()
@@ -331,6 +360,7 @@ class BrowserSessionHelper:
             user_agent=user_agent,
             cookies=cookies,
             timeout=timeout,
+            owner=owner,
         )
 
     def _with_session_in_thread(
@@ -340,6 +370,7 @@ class BrowserSessionHelper:
         user_agent: Optional[str] = None,
         cookies: Optional[str] = None,
         timeout: Optional[int] = 30,
+        owner: Optional[Any] = None,
     ) -> Any:
         """
         在会话专属线程内获取浏览器会话并执行回调。
@@ -355,6 +386,7 @@ class BrowserSessionHelper:
             session_key=session_key,
             user_agent=user_agent,
             cookies=cookies,
+            owner=owner,
         )
         with session.lock:
             session.last_used_at = time.monotonic()
@@ -371,6 +403,7 @@ class BrowserSessionHelper:
         session_key: str,
         callback: Callable[..., Any],
         *args: Any,
+        owner: Optional[Any] = None,
         **kwargs: Any,
     ) -> Any:
         """
@@ -383,10 +416,10 @@ class BrowserSessionHelper:
         :return: 回调返回值
         """
         if cls._is_current_session_thread(session_key):
-            return callback(*args, **kwargs)
+            return callback(*args, owner=owner, **kwargs)
 
         for _ in range(2):
-            executor = cls._get_session_executor(session_key)
+            executor = cls._get_session_executor(session_key, owner=owner)
             try:
                 context = copy_context()
                 # 会话线程保持空底层上下文，每次操作只使用当前调用快照。
@@ -397,6 +430,7 @@ class BrowserSessionHelper:
                     session_key,
                     callback,
                     *args,
+                    owner=owner,
                     **kwargs,
                 )
             except RuntimeError:
@@ -447,7 +481,7 @@ class BrowserSessionHelper:
         return thread_id == threading.get_ident()
 
     @classmethod
-    def _get_session_executor(cls, session_key: str) -> ThreadPoolExecutor:
+    def _get_session_executor(cls, session_key: str, owner: Optional[Any] = None) -> ThreadPoolExecutor:
         """
         获取或创建指定会话的单线程执行器。
 
@@ -457,17 +491,21 @@ class BrowserSessionHelper:
         with cls._sessions_lock:
             executor = cls._session_executors.get(session_key)
             if executor:
+                existing_owner = cls._session_executor_owners.get(session_key)
+                if existing_owner is not owner:
+                    raise PermissionError("浏览器会话不属于当前任务")
                 return executor
             executor = ThreadPoolExecutor(
                 max_workers=1,
                 thread_name_prefix=cls.SESSION_WORKER_NAME_PREFIX,
             )
             cls._session_executors[session_key] = executor
+            cls._session_executor_owners[session_key] = owner
             return executor
 
     @classmethod
     def _get_existing_session_executor(
-        cls, session_key: str
+        cls, session_key: str, owner: Optional[Any] = None
     ) -> Optional[ThreadPoolExecutor]:
         """
         获取指定会话已存在的执行器。
@@ -476,7 +514,10 @@ class BrowserSessionHelper:
         :return: 已存在的执行器，不存在时返回 None
         """
         with cls._sessions_lock:
-            return cls._session_executors.get(session_key)
+            executor = cls._session_executors.get(session_key)
+            if executor and cls._session_executor_owners.get(session_key) is not owner:
+                raise PermissionError("浏览器会话不属于当前任务")
+            return executor
 
     @classmethod
     def _discard_session_executor(
@@ -493,6 +534,7 @@ class BrowserSessionHelper:
         with cls._sessions_lock:
             if cls._session_executors.get(session_key) is executor:
                 cls._session_executors.pop(session_key, None)
+                cls._session_executor_owners.pop(session_key, None)
 
     @classmethod
     def _shutdown_session_executor(
@@ -508,19 +550,24 @@ class BrowserSessionHelper:
         """
         with cls._sessions_lock:
             executor = cls._session_executors.pop(session_key, None)
+            cls._session_executor_owners.pop(session_key, None)
             cls._session_thread_ids.pop(session_key, None)
         if executor:
             executor.shutdown(wait=wait, cancel_futures=True)
 
     @classmethod
-    def _close_session_in_thread(cls, session_key: str) -> bool:
+    def _close_session_in_thread(cls, session_key: str, owner: Optional[Any] = None) -> bool:
         """
         在会话固定线程内关闭并移除浏览器会话。
 
         :param session_key: 会话标识
+        :param owner: 可选宿主作用域；提供时校验会话归属
         :return: 找到并关闭会话时返回 True
         """
         with cls._sessions_lock:
+            session = cls._sessions.get(session_key)
+            if session and session.owner is not owner:
+                raise PermissionError("浏览器会话不属于当前任务")
             session = cls._sessions.pop(session_key, None)
         if not session:
             return False
@@ -731,10 +778,14 @@ class BrowserSessionHelper:
         session_key: str,
         user_agent: Optional[str] = None,
         cookies: Optional[str] = None,
+        owner: Optional[Any] = None,
     ) -> _BrowserSessionState:
         """复用匹配会话，或为新的会话键创建上下文。"""
+        self._validate_owner(owner)
         with self._sessions_lock:
             session = self._sessions.get(session_key)
+            if session and session.owner is not owner:
+                raise PermissionError("浏览器会话不属于当前任务")
             if session and user_agent and session.user_agent != user_agent:
                 self._sessions.pop(session_key, None)
                 self._close_session_state(session)
@@ -756,15 +807,25 @@ class BrowserSessionHelper:
             pages=[page],
             user_agent=user_agent,
             cookies=cookies,
+            owner=owner,
         )
         with self._sessions_lock:
             existing_session = self._sessions.get(session_key)
             if existing_session:
+                if existing_session.owner is not owner:
+                    self._close_session_state(session)
+                    raise PermissionError("浏览器会话不属于当前任务")
                 self._close_session_state(session)
                 return existing_session
             self._sessions[session_key] = session
         self._enforce_session_limit(protect_session_key=session_key)
         return session
+
+    @staticmethod
+    def _validate_owner(owner: Optional[Any]) -> None:
+        """拒绝已封口作用域创建或复用浏览器会话。"""
+        if owner is not None and bool(getattr(owner, "closed", False)):
+            raise PermissionError("浏览器会话所属任务已停止")
 
     @classmethod
     def _prune_sessions(cls) -> None:
@@ -777,7 +838,10 @@ class BrowserSessionHelper:
                 if now - session.last_used_at > cls.SESSION_TTL_SECONDS
             ]
         for session_key in expired_keys:
-            cls.close_session(session_key)
+            with cls._sessions_lock:
+                session = cls._sessions.get(session_key)
+                owner = session.owner if session else None
+            cls.close_session(session_key, owner=owner)
 
     @classmethod
     def _enforce_session_limit(cls, protect_session_key: Optional[str] = None) -> None:
@@ -801,7 +865,8 @@ class BrowserSessionHelper:
                     candidate_keys,
                     key=lambda key: cls._sessions[key].last_used_at,
                 )
-            if not cls.close_session(oldest_key):
+                oldest_owner = cls._sessions[oldest_key].owner
+            if not cls.close_session(oldest_key, owner=oldest_owner):
                 return
 
     @staticmethod

@@ -41,6 +41,7 @@ from app.agent.middleware.plan import PLAN_SNAPSHOT_KEY, PlanMiddleware, attach_
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.selection import ToolSelectorMiddleware
 from app.agent.middleware.skills import SkillsMiddleware
+from app.agent.middleware.steering import SteeringMiddleware
 from app.agent.middleware.subagents import (
     create_subagent_middlewares,
     is_subagent_stream_metadata,
@@ -63,6 +64,11 @@ from app.agent.policy.registry import requests_system_setting_secrets
 from app.agent.policy.sanitizer import sanitize_for_host
 from app.agent.prompt import prompt_manager
 from app.agent.runtime import agent_runtime_manager
+from app.agent.steering import (
+    SteeringInbox,
+    bind_steering_inbox,
+    reset_steering_inbox,
+)
 from app.agent.terminal.ownership import (
     TerminalAccessError,
     TerminalScope,
@@ -388,6 +394,7 @@ class MoviePilotAgent:
         self._terminal_scope = TerminalScope(
             user_id=user_id or "", task_id=session_id, kind="conversation"
         )
+        self._steering_inbox = SteeringInbox(session_id, str(user_id or ""))
         self._scheduled_terminal_scopes: set[TerminalScope] = set()
         self.channel = channel
         self.source = source
@@ -416,6 +423,17 @@ class MoviePilotAgent:
 
         # 流式token管理
         self.stream_handler = StreamingHandler()
+
+    @property
+    def steering_inbox(self) -> SteeringInbox:
+        """返回当前会话运行中消息的唯一 inbox。"""
+        return self._steering_inbox
+
+    def configure_steering_inbox(self, inbox: SteeringInbox) -> None:
+        """把会话 owner 装配的 inbox 绑定到持久 Agent 实例。"""
+        if inbox.session_id != self.session_id or inbox.user_id != str(self.user_id or ""):
+            raise ValueError("steering inbox 与 Agent 会话身份不匹配")
+        self._steering_inbox = inbox
 
     @classmethod
     def build_display_message(
@@ -1921,6 +1939,8 @@ class MoviePilotAgent:
                     catalog=tool_catalog,
                     tools=tools,
                 ),
+                # 运行中补充消息只在模型回合边界进入同一张图，不启动并行 Agent。
+                *([SteeringMiddleware()] if self._steering_inbox.running else []),
                 output_middleware,
                 *invocation_middlewares,
                 # Skills
@@ -2018,10 +2038,14 @@ class MoviePilotAgent:
             raise TerminalAccessError()
         if scope is not self._terminal_scope:
             self._scheduled_terminal_scopes.add(scope)
-        with bind_terminal_scope(scope):
-            return await self._process(
-                message, images=images, files=files, has_audio_input=has_audio_input
-            )
+        steering_token = bind_steering_inbox(self._steering_inbox)
+        try:
+            with bind_terminal_scope(scope):
+                return await self._process(
+                    message, images=images, files=files, has_audio_input=has_audio_input
+                )
+        finally:
+            reset_steering_inbox(steering_token)
 
     async def release_terminal_scope(self, scope: TerminalScope) -> bool:
         """收口宿主临时任务的终端；未真实收敛的作用域留给 Agent 清理重试。"""
@@ -2505,6 +2529,7 @@ class MoviePilotAgent:
         清理智能体资源；子代理或终端未真实收敛时保留 owner 并返回 False。
         """
         self.begin_shutdown()
+        await self._steering_inbox.close()
         children_closed = await self._invalidate_cached_agent()
         terminals_closed = await close_terminal_scope(self._terminal_scope)
         for scope in tuple(self._scheduled_terminal_scopes):

@@ -39,6 +39,14 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
   --output report.json
 ```
 
+### 2026-09-11 供应商实测
+
+本轮使用 Agnes AI Hub 的 `agnes-2.5-pro`，推理档位为供应商支持的最高档 `xhigh`，通过 Responses provider 配置和环境变量传递凭据。`max` 请求被供应商以 400 拒绝（支持档位为 `low`、`medium`、`xhigh`），因此不能把失败的 `max` 请求算作模型能力证据。
+
+在同一提交的隔离评测中，`dedup_existing` 通过（8 次模型调用，约 50 秒）；`unknown_download` 和 `honest_unknown` 均有真实模型响应，但最终报告未通过独立 JSON 验收（各达到 12 次调用上限）。这组结果说明当前实现已经能进行真实供应商评测，也明确暴露了复杂场景的收敛问题，不能据此宣称已达到 Codex 整体水平。
+
+原生探针在修正动态 `tool_search` 目录兼容性后可以启动，但原生 Codex 自带模型目录没有 Agnes 模型，无法在同一模型上形成有效的 MoviePilot/Codex 配对运行；探针没有调用真实模型。后续比较必须先取得双方都能调用的同一模型和推理档位，或把结果明确标为不同基线。
+
 只有显式 `--live` 或 `--native` 才会调用真实模型并产生费用。默认读取 `~/.codex/config.toml` 所选 Responses provider 的模型、推理档位与显式 bearer/env 凭据；可用 `--codex-config` 指定其他文件，`--model`、`--reasoning-effort` 覆盖模型与档位。不会借用其他服务的登录凭据，也不会自动降低被供应商拒绝的参数。报告同时保留请求模型与供应商返回的模型标识；本地 Codex 配置不能证明运行中的 MoviePilot 使用相同配置。
 
 调用配置经私有标准输入传给 worker，凭据不进入命令行、提示词或报告。worker 只继承必要的平台环境，先创建临时 `CONFIG_DIR`，再导入后端；每轮拥有独立回执库、记忆、会话和工具实例。生产 `process/_create_agent`、Skills、计划、权限、持久回执、工具输出预算、压缩和子代理仍按真实路径执行。主工具目录限定为假业务 API 和生产内部工具，API transport 拒绝任何外部目标及场景外 operation；插件、外部 MCP、通知和任意 shell/文件/浏览器工具不开放。此受控目录是当前评测边界，不代表默认部署工具全集。

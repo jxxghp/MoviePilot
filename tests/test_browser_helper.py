@@ -17,6 +17,7 @@ from app.adapters.network.browser import (
     launch_browser_context,
     launch_browser_context_async,
 )
+from app.agent.terminal.ownership import TerminalScope, close_terminal_scope
 from app.agent.tools.impl.browse_webpage import BrowserAction, BrowseWebpageTool
 from app.runtime.correlation import correlation_scope, get_correlation_id
 
@@ -415,6 +416,54 @@ def test_browser_session_helper_closes_session_on_worker_thread():
     assert closed is True
     assert page.close_thread_id == session_thread_id
     assert context.close_thread_id == session_thread_id
+
+
+def test_browser_session_helper_isolates_owner_and_closes_owner_sessions():
+    """相同模型 session_key 在不同宿主作用域下不能串用，owner 收口会关闭上下文。"""
+    first_page = _FakePage("first")
+    second_page = _FakePage("second")
+    contexts = [_FakeContext([first_page]), _FakeContext([second_page])]
+    helper = BrowserSessionHelper()
+    first_owner = TerminalScope("alice", "task-one", "conversation")
+    second_owner = TerminalScope("alice", "task-two", "conversation")
+
+    with patch.object(BrowserSessionHelper, "_launch_context", side_effect=contexts):
+        assert helper.with_session("shared", lambda session: session.owner, owner=first_owner) is first_owner
+        with pytest.raises(PermissionError):
+            helper.with_session("shared", lambda _session: None, owner=second_owner)
+        assert BrowserSessionHelper.close_owner(first_owner)
+
+    assert first_page.closed and first_page.page_id == "first"
+    assert contexts[0].closed
+    with patch.object(BrowserSessionHelper, "_launch_context", return_value=contexts[1]):
+        assert helper.with_session("shared", lambda session: session.owner, owner=second_owner) is second_owner
+    assert BrowserSessionHelper.close_owner(second_owner)
+    assert second_page.closed and contexts[1].closed
+
+
+def test_browser_session_helper_rejects_closed_owner_before_context_creation():
+    """作用域封口后不得重新创建或复用浏览器上下文。"""
+    owner = TerminalScope("alice", "closed-browser-task", "conversation")
+    owner.seal()
+    with patch.object(BrowserSessionHelper, "_launch_context") as launch_context:
+        with pytest.raises(PermissionError, match="所属任务已停止"):
+            BrowserSessionHelper().with_session(
+                "closed", lambda _session: None, owner=owner
+            )
+    launch_context.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_close_terminal_scope_closes_browser_owner_without_blocking_event_loop():
+    """通用作用域收口应回收其浏览器上下文，且通过线程避免阻塞事件循环。"""
+    page = _FakePage("owned")
+    context = _FakeContext([page])
+    helper = BrowserSessionHelper()
+    owner = TerminalScope("alice", "browser-task", "conversation")
+    with patch.object(BrowserSessionHelper, "_launch_context", return_value=context):
+        helper.with_session("owned", lambda session: session.active_page, owner=owner)
+        assert await close_terminal_scope(owner)
+    assert page.closed and context.closed
 
 
 def test_browse_webpage_returns_snapshot_with_refs_after_goto():

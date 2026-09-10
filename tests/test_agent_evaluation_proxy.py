@@ -426,6 +426,27 @@ async def test_native_additional_tools_are_projected_in_place_and_audited() -> N
     assert record["tool_catalogs"][0]["location"] == "input[0].tools"
 
 
+@pytest.mark.asyncio
+async def test_native_tool_search_accepts_the_bundled_multi_agent_source() -> None:
+    """当前原生 CLI 会同时声明协作工具与评测源，已知两者都应保留并继续隔离。"""
+    outbound = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """接收投影后的目录，不访问真实模型服务。"""
+        outbound.append(json.loads(request.content))
+        return httpx.Response(200, json=_completed())
+
+    payload = _native_payload()
+    payload["input"][0]["tools"][-1] = _search_tool(
+        "Tools from the following sources:\n- Multi-agent tools: Bundled collaboration tools\n- evaluation: Controlled world"
+    )
+    proxy = EvaluationModelProxy(SETTINGS, transport=httpx.MockTransport(handler))
+    async with _client(proxy) as client:
+        assert (await client.post("/v1/responses", json=payload)).status_code == 200
+    assert "tool_search" in proxy.snapshot()["model_requests"][0]["retained_tools"]
+    assert outbound[0]["input"][0]["tools"][-1]["execution"] == "client"
+
+
 @pytest.mark.parametrize("catalog", [
     [{"type": "namespace", "name": "unknown", "tools": [{"type": "function", "name": "update_plan"}]}],
     [_search_tool('Tools from sources:\n- evaluation: fake\n- private: external')],

@@ -615,7 +615,11 @@ class ExecuteCommandTool(MoviePilotTool):
                     {wait_task, scope_task}, timeout=normalized_timeout,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
-                scope_cancelled = scope_task in done
+                # The scope can be sealed in the same event-loop turn after
+                # ``wait_task`` wins. Recheck the authoritative owner state so
+                # a run that crossed the cancellation boundary never reports
+                # an unqualified success.
+                scope_cancelled = scope_task in done or scope.closed
                 if wait_task not in done:
                     timed_out = not scope_cancelled
                     await self._cleanup_process(process, wait_task)

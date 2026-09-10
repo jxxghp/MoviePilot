@@ -12,6 +12,7 @@ from app.agent.contracts import ReplyMode
 
 # pylint: disable=no-name-in-module  # 旧公开入口由 runtime compat 惰性注入，Pylint 无法静态解析。
 from app.agent.orchestrator import agent_manager
+from app.agent.steering import SteeringMessage
 from app.agent.web import _get_web_agent_type
 from app.api.endpoints import agent as agent_endpoint
 from app.api.endpoints.agent import web_agent_stream
@@ -79,6 +80,7 @@ from app.application.messaging.agent import (
 )
 from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
 from app.application.messaging.skill import skill_interaction_manager
+from app.application.messaging.webagentstream import _build_steering_ack_stream
 from app.chain.message import MessageChain
 from app.db.oper.agentchat import AgentChatOper
 from app.runtime.events import Event
@@ -136,6 +138,24 @@ def test_web_agent_non_transport_helpers_are_application_owned():
 
     assert all(hasattr(agent_application, name) for name in ownership)
     assert all(not hasattr(agent_endpoint, name) for name in ownership)
+
+
+@pytest.mark.asyncio
+async def test_steering_ack_stream_reports_a_queued_message_without_an_assistant_bubble():
+    """运行中补充消息只返回短确认流，主 Agent 的展示气泡由原流继续持有。"""
+    message = SteeringMessage.create(session_id="session", user_id="user", text="补充要求")
+    events = [event async for event in _build_steering_ack_stream(session_id="session", message=message)]
+
+    assert events == [
+        {"type": "start", "session_id": "session"},
+        {
+            "type": "steering",
+            "status": "queued",
+            "message_id": message.message_id,
+            "content": "补充要求",
+        },
+        {"type": "done"},
+    ]
 
 
 def test_split_web_agent_output_extracts_verbose_tool_message():

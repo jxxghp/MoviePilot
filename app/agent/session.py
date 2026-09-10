@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, cast
 from app.agent.contracts import ReplyMode
 from app.agent.memory import MemoryManager, memory_manager
 from app.agent.orchestrator import MoviePilotAgent, _SessionUsageSnapshot
+from app.agent.steering import SteeringInbox, SteeringMessage, SteeringStatusCallback
 from app.agent.terminal.ownership import TerminalScope, close_terminal_scope
 from app.application.agent import AgentDataContext
 from app.chain.agent import AgentChain
@@ -114,6 +115,8 @@ class _MessageTask:
     completion_future: Optional[asyncio.Future[str]] = None
     enqueued_at: Optional[float] = None
     scheduled_run_id: Optional[str] = None
+    steering_status_callback: Optional[SteeringStatusCallback] = None
+    steering_inbox: Optional[SteeringInbox] = field(default=None, init=False, repr=False)
     terminal_scope: Optional[TerminalScope] = field(default=None, init=False)
     agent: Optional[MoviePilotAgent] = field(default=None, init=False, repr=False)
     terminal_released: bool = field(default=False, init=False)
@@ -178,6 +181,8 @@ class AgentSessionOwner:
         self._session_shutdown_pending: Dict[str, asyncio.Task[None]] = {}
         self._session_cleanup_pending: set[str] = set()
         self._session_deferred_cleanup_tasks: Dict[str, asyncio.Task[None]] = {}
+        self._session_active_tasks: Dict[str, _MessageTask] = {}
+        self._session_steering_inboxes: Dict[str, SteeringInbox] = {}
         self._session_cancel_requested: set[str] = set()
         self._close_finalizer_task: Optional[asyncio.Task[None]] = None
         self._closed = False
@@ -221,6 +226,9 @@ class AgentSessionOwner:
                 session_id in self._session_workers
                 and not self._session_workers[session_id].done()
         )
+        inbox = self._session_steering_inboxes.get(session_id)
+        status["steering_pending"] = inbox.pending_count if inbox else 0
+        status["steering_active"] = bool(inbox and inbox.running)
         return status
 
     def matches_secret_confirmation(
@@ -293,6 +301,7 @@ class AgentSessionOwner:
             output_callback: Optional[Callable[[str], None]] = None,
             protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None,
             message_callback: Optional[Callable[[Any], Awaitable[None] | None]] = None,
+            steering_status_callback: Optional[SteeringStatusCallback] = None,
             agent_factory: Optional[Callable[..., MoviePilotAgent]] = None,
             agent_setup: Optional[Callable[[MoviePilotAgent], None]] = None,
             wait_for_completion: bool = False,
@@ -323,6 +332,7 @@ class AgentSessionOwner:
             output_callback=output_callback,
             protected_output_callback=protected_output_callback,
             message_callback=message_callback,
+            steering_status_callback=steering_status_callback,
             agent_factory=agent_factory,
             agent_setup=agent_setup,
             completion_future=completion_future,
@@ -399,6 +409,28 @@ class AgentSessionOwner:
                 raise
         return ""
 
+    async def submit_steering_message(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        message: str,
+        images: Optional[List[str]] = None,
+        files: Optional[List[dict[str, Any]]] = None,
+    ) -> Optional[SteeringMessage]:
+        """把运行中补充消息提交到当前 Agent；没有活动运行时返回 None 让入口走普通轮次。"""
+        async with self._lifecycle_lock:
+            task = self._session_active_tasks.get(session_id)
+            inbox = self._session_steering_inboxes.get(session_id)
+            if task is None or task.user_id != str(user_id) or inbox is None:
+                return None
+        return await inbox.enqueue(
+            user_id=str(user_id),
+            text=message,
+            images=images,
+            files=files,
+        )
+
     @staticmethod
     async def _close_scheduled_task_scope(task: _MessageTask) -> bool:
         """取消等待与 worker 收尾共用任务归属，失败时保留已装配 Agent 的重试记录。"""
@@ -457,6 +489,7 @@ class AgentSessionOwner:
                             3,
                         )
                     await self._start_task_processing_status(task)
+                    self._session_active_tasks[session_id] = task
                     record_metric(
                         "agent.active_tasks",
                         1,
@@ -497,6 +530,8 @@ class AgentSessionOwner:
                     try:
                         await self._close_scheduled_task_scope(task)
                     finally:
+                        if self._session_active_tasks.get(session_id) is task:
+                            self._session_active_tasks.pop(session_id, None)
                         await self._finish_task_processing_status(task)
                         queue.task_done()
                 if session_id in self._session_cancel_requested:
@@ -576,6 +611,7 @@ class AgentSessionOwner:
                     f"Agent 会话 {session_id} 仍有子代理或终端在停止"
                 )
             self.active_agents.pop(session_id, None)
+            self._session_steering_inboxes.pop(session_id, None)
 
         if session_id not in self.active_agents:
             logger.info(
@@ -638,6 +674,16 @@ class AgentSessionOwner:
                 agent.set_message_callback(task.message_callback)
 
         task.agent = agent
+        inbox = self._session_steering_inboxes.get(session_id)
+        if inbox is None:
+            inbox = SteeringInbox(session_id, str(task.user_id))
+            self._session_steering_inboxes[session_id] = inbox
+        task.steering_inbox = inbox
+        configure_inbox = getattr(agent, "configure_steering_inbox", None)
+        if callable(configure_inbox):
+            configure_inbox(inbox)
+        else:
+            setattr(agent, "steering_inbox", inbox)
         if task.agent_setup is not None:
             task.agent_setup(agent)
 
@@ -649,7 +695,51 @@ class AgentSessionOwner:
             process_kwargs["has_audio_input"] = True
         if task.terminal_scope is not None:
             process_kwargs["terminal_scope"] = task.terminal_scope
-        return await agent.process(task.message, **process_kwargs)
+        await inbox.begin_run(task.steering_status_callback)
+        try:
+            result = await agent.process(task.message, **process_kwargs)
+            # 模型最终回合返回后仍可能有一条已入 inbox 的消息；在同一 worker
+            # 内继续处理，避免 WebAgent 已经 ACK 的补充消息变成无展示的后台轮次。
+            while True:
+                pending = await inbox.consume()
+                if not pending:
+                    break
+                for message in pending:
+                    result = await agent.process(
+                        message.text,
+                        images=list(message.images) or None,
+                        files=list(message.files) or None,
+                        has_audio_input=any(
+                            str(file.get("mime_type") or "").startswith("audio/")
+                            for file in message.files
+                        ),
+                        terminal_scope=task.terminal_scope,
+                    )
+            # consume 与 finish_run 之间仍有一个极窄的入队窗口；已接受的消息
+            # 也在当前 worker 内执行，且先发布 applied 以完成前端展示收口。
+            pending = await inbox.finish_run()
+            if pending:
+                callback = task.steering_status_callback
+                for message in pending:
+                    if callback is not None:
+                        try:
+                            callback(message, "applied")
+                        except Exception:
+                            pass
+                    result = await agent.process(
+                        message.text,
+                        images=list(message.images) or None,
+                        files=list(message.files) or None,
+                        has_audio_input=any(
+                            str(file.get("mime_type") or "").startswith("audio/")
+                            for file in message.files
+                        ),
+                        terminal_scope=task.terminal_scope,
+                    )
+            return result
+        except BaseException:
+            await inbox.finish_run()
+            raise
 
     async def stop_current_task(self, session_id: str) -> bool:
         """
@@ -772,6 +862,7 @@ class AgentSessionOwner:
                 )
                 return
             del self.active_agents[session_id]
+            self._session_steering_inboxes.pop(session_id, None)
             self._memory.clear_memory(session_id, user_id)
             logger.info(f"会话 {session_id} 的记忆已清空")
 
@@ -841,6 +932,7 @@ class AgentSessionOwner:
                     )
                     return
                 self.active_agents.pop(session_id, None)
+                self._session_steering_inboxes.pop(session_id, None)
                 self._memory.clear_memory(session_id, user_id)
                 logger.info(f"会话 {session_id} 的记忆已清空")
 
