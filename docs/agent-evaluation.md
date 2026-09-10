@@ -47,6 +47,8 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 
 最终提交 `abd3cea92` 在同一 `agnes-2.5-pro + xhigh` 配置下重跑 `dedup_existing` 两次：第一次完成 6 次模型请求后收到 403，第二次首个请求即收到 403；两次均未通过，分别为 `usage_complete=false`、`agent_execution_success=false`。这组结果是供应商访问状态的失败证据，不能与此前通过样本混合为当前代码的通过结论。
 
+后续提交 `72aabe12f` 只抽取 WebAgent 事件生成私有 helper 以满足复杂度门禁，仍按代码轮次重新运行 `dedup_existing` 一次；首个模型请求即收到 403，报告为 `intelligence_evaluated=false`、`usage_complete=false`、`agent_execution_success=false`。因此当前供应商访问状态仍未提供可用的最新通过样本。
+
 原生探针在修正动态 `tool_search` 目录兼容性后可以启动，但原生 Codex 自带模型目录没有 Agnes 模型，无法在同一模型上形成有效的 MoviePilot/Codex 配对运行；探针没有调用真实模型。后续比较必须先取得双方都能调用的同一模型和推理档位，或把结果明确标为不同基线。
 
 只有显式 `--live` 或 `--native` 才会调用真实模型并产生费用。默认读取 `~/.codex/config.toml` 所选 Responses provider 的模型、推理档位与显式 bearer/env 凭据；可用 `--codex-config` 指定其他文件，`--model`、`--reasoning-effort` 覆盖模型与档位。不会借用其他服务的登录凭据，也不会自动降低被供应商拒绝的参数。报告同时保留请求模型与供应商返回的模型标识；本地 Codex 配置不能证明运行中的 MoviePilot 使用相同配置。
