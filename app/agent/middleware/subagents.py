@@ -160,7 +160,10 @@ class _TaskToolInput(BaseModel):
     description: str = Field(..., description="Complete task description for the subagent")
     subagent_type: str = Field(
         default="general-purpose",
-        description="Subagent type to invoke, such as general-purpose or media-researcher",
+        description=(
+            "Optional subagent type override. Omit this field to let the host use "
+            "the general-purpose read-only subagent."
+        ),
     )
     terminal_sessions: list[SubAgentTerminalGrant] = Field(
         default_factory=list,
@@ -174,7 +177,10 @@ class _SubAgentTaskSpec(BaseModel):
     description: str = Field(..., description="Complete task description for the subagent")
     subagent_type: str = Field(
         default="general-purpose",
-        description="Subagent type to invoke, such as general-purpose or media-researcher",
+        description=(
+            "Optional subagent type override. Omit this field to let the host use "
+            "the general-purpose read-only subagent."
+        ),
     )
     terminal_sessions: list[SubAgentTerminalGrant] = Field(
         default_factory=list,
@@ -195,7 +201,10 @@ class _SubAgentControlInput(BaseModel):
     )
     subagent_type: Optional[str] = Field(
         default="general-purpose",
-        description="Single task subagent type for action=start or action=run.",
+        description=(
+            "Optional single-task type override; omit it for the general-purpose "
+            "read-only subagent."
+        ),
     )
     terminal_sessions: list[SubAgentTerminalGrant] = Field(
         default_factory=list,
@@ -291,6 +300,20 @@ def _builtin_subagent_profiles(
     """从运行时配置目录加载 MoviePilot 子代理定义。"""
     runtime_signature = runtime_signature or agent_runtime_manager.current_signature()
     return _cached_builtin_subagent_profiles(runtime_signature)
+
+
+def _default_subagent_profiles(
+    runtime_signature: Optional[tuple[tuple[str, int, int], ...]] = None,
+) -> tuple[_SubAgentProfile, ...]:
+    """返回生产主 Agent 默认可见的通用子代理目录。"""
+    profiles = _builtin_subagent_profiles(runtime_signature)
+    general_profiles = tuple(
+        profile for profile in profiles if profile.name == "general-purpose"
+    )
+    if general_profiles:
+        return general_profiles
+    logger.warning("运行时未定义 general-purpose，暂保留全部子代理作为兼容回退")
+    return profiles
 
 
 @lru_cache(maxsize=8)
@@ -1339,7 +1362,7 @@ def create_subagent_middlewares(
 ) -> tuple[list[AgentMiddleware], list[BaseTool]]:
     """创建子代理中间件列表和任务工具列表。"""
     runtime_signature = agent_runtime_manager.current_signature()
-    profiles = _builtin_subagent_profiles(runtime_signature)
+    profiles = _default_subagent_profiles(runtime_signature)
     subagent_middleware = MoviePilotSubAgentMiddleware(
         model=model,
         profiles=profiles,

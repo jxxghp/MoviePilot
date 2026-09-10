@@ -41,9 +41,10 @@ def test_create_subagent_middlewares_registers_task_tool():
         SUBAGENT_TASK_TOOL_NAME,
         SUBAGENT_CONTROL_TOOL_NAME,
     ]
-    assert "media-researcher" in task_tools[0].description
-    assert "moviepilot-explorer" in task_tools[0].description
-    assert "system-diagnostician" in task_tools[0].description
+    assert "general-purpose" in task_tools[0].description
+    assert "media-researcher" not in task_tools[0].description
+    assert "moviepilot-explorer" not in task_tools[0].description
+    assert "system-diagnostician" not in task_tools[0].description
     assert "action=start" in task_tools[1].description
     assert "action=wait" in task_tools[1].description
     assert "action=pipeline" in task_tools[1].description
