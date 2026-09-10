@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from pydantic import model_validator as _model_validator
 
 from app.schemas.types import MediaSource as _MediaSource
-from app.schemas.types import MusicTargetEntityType as _MusicTargetEntityType
+from app.schemas.types import MusicEntityType as _MusicEntityType
 
 
 class DownloadTask(BaseModel):
@@ -90,7 +90,8 @@ class DownloadSourceClassificationRequest(BaseModel):  # type: ignore[misc]
     type_name: Optional[Literal["电影", "电视剧", "音乐"]] = None
     media_source: Optional[_MediaSource] = None
     media_id: Optional[str] = None
-    music_type: Optional[_MusicTargetEntityType] = None
+    # 已有任务资源归类额外支持 artist，用于单种子艺术家大合集。
+    music_type: Optional[_MusicEntityType] = None
     episode_group: Optional[str] = None
     media_category: Optional[str] = None
     smart_rename: bool = True

@@ -10,7 +10,12 @@ from app.domain.classification.validation import validate_classification_categor
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.schemas.types import MediaSource, MediaType, SystemConfigKey
+from app.schemas.types import (
+    MUSIC_ARTIST_COLLECTION_CATEGORY,
+    MediaSource,
+    MediaType,
+    SystemConfigKey,
+)
 
 _INVALID_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
@@ -57,6 +62,8 @@ def _local_path(value: Any, *, label: str, validate: bool = False) -> PurePath:
 
 def _normalize_music_category(media: Any) -> tuple[str, list[str]]:
     """优先使用已生效分类路径，缺失时兼容退回音乐主类型。"""
+    if str(getattr(media, "music_type", None) or "").casefold() == "artist":
+        return MUSIC_ARTIST_COLLECTION_CATEGORY, []
     classified_path = DirectoryHelper().resolve_media_category(media).path
     if classified_path:
         path = validate_classification_category_path(classified_path)
@@ -184,14 +191,20 @@ def _requested_category(value: Any, media_type: Any) -> str:
 
 def _root_name(media: Any) -> str:
     """生成跨电影、电视剧和音乐通用的规范任务根目录名。"""
+    is_artist_collection = False
     if getattr(media, "type", None) == MediaType.MUSIC:
-        title = getattr(media, "album", None) or getattr(media, "title", None)
-        artist = getattr(media, "album_artist", None) or getattr(media, "artist", None)
-        base = " - ".join(str(part).strip() for part in (artist, title) if str(part or "").strip())
+        if str(getattr(media, "music_type", None) or "").casefold() == "artist":
+            is_artist_collection = True
+            artist = getattr(media, "name", None) or getattr(media, "title", None)
+            base = f"{str(artist or '').strip()} - 艺术家合集"
+        else:
+            title = getattr(media, "album", None) or getattr(media, "title", None)
+            artist = getattr(media, "album_artist", None) or getattr(media, "artist", None)
+            base = " - ".join(str(part).strip() for part in (artist, title) if str(part or "").strip())
     else:
         base = str(getattr(media, "title", None) or "").strip()
     year = str(getattr(media, "year", None) or "").strip()
-    if year and f"({year})" not in base:
+    if year and not is_artist_collection and f"({year})" not in base:
         base = f"{base} ({year})"
     return _safe_relative_name(base, label="规范目录名")
 

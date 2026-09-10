@@ -41,6 +41,7 @@ types_module = ModuleType("app.schemas.types")
 types_module.MediaSource = MediaSource
 types_module.MediaType = MediaType
 types_module.SystemConfigKey = SystemConfigKey
+types_module.MUSIC_ARTIST_COLLECTION_CATEGORY = "Artist Collection"
 
 with patch.dict(
     sys.modules,
@@ -170,6 +171,23 @@ class SourceOrganizationTests(unittest.TestCase):
         result = self.preview()
         self.assertEqual(result["category"], "Album")
         self.assertEqual(result["target_save_path"], "/volume1/UT/Musics/Album")
+
+    def test_artist_collection_uses_one_dedicated_source_category(self):
+        self.request.music_type = "artist"
+        self.history.music_type = "artist"
+        self.media.music_type = "artist"
+        self.media.name = "许嵩"
+        self.media.classification_path = ("未分类",)
+        self.torrent.title = "许嵩[2006-2022]录音室专辑合集"
+
+        result = self.preview()
+
+        self.assertEqual(result["category"], "Artist Collection")
+        self.assertEqual(
+            result["target_save_path"],
+            "/volume1/UT/Musics/Artist Collection",
+        )
+        self.assertEqual(result["proposed_root_name"], "许嵩 - 艺术家合集")
 
     def test_preview_is_read_only_and_includes_qb_root_rename(self):
         result = self.preview()

@@ -43,6 +43,8 @@ from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.transfer import DownloaderTorrent as _SchemaDownloaderTorrent
 from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
 from app.schemas.types import (
+    MUSIC_ARTIST_COLLECTION_CATEGORY,
+    MUSIC_ENTITY_ARTIST,
     MUSIC_ENTITY_RECORDING,
     MediaSource,
     MediaType,
@@ -250,6 +252,63 @@ def download(
     )
     if not did:
         return _SchemaResponse(success=False, message="任务添加失败")
+    return _SchemaResponse(success=True, data={"download_id": did})
+
+
+@router.post(
+    "/artist-collection",
+    summary="添加艺术家合集下载",
+    response_model=_SchemaResponse[_SchemaDownloadAddedData],
+)
+def download_artist_collection(
+    artist_name: Annotated[str, Body(min_length=1)],
+    artist_id: Annotated[str, Body(min_length=1)],
+    media_source: Annotated[MediaSource, Body()],
+    torrent_in: _SchemaTorrentInfo,
+    downloader: Annotated[str | None, Body()] = None,
+    save_path: Annotated[str | None, Body()] = None,
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+) -> Any:
+    """Add one artist-wide torrent without pretending that it is one album.
+
+    The artist identity remains available for history and subsequent collection
+    organization.  ``library_category`` is an intentional download-directory
+    classification snapshot: when resource category folders are enabled the
+    task starts under ``Artist Collection`` and therefore never needs an
+    out-of-band filesystem move that could break seeding.
+    """
+    name = artist_name.strip()
+    identity = artist_id.strip()
+    if not is_music_media_source(media_source):
+        return _SchemaResponse(success=False, message="艺术家合集只能使用音乐元数据源")
+
+    mediainfo = MusicInfo(
+        media_source=media_source,
+        media_id=identity,
+        music_type=MUSIC_ENTITY_ARTIST,
+        title=f"{name} 艺术家合集",
+        artists=[name],
+        album_artist=name,
+        album_type=MUSIC_ARTIST_COLLECTION_CATEGORY,
+        library_category=MUSIC_ARTIST_COLLECTION_CATEGORY,
+    )
+    metainfo = MetaInfo(
+        title=torrent_in.title,
+        subtitle=torrent_in.description,
+        mtype=MediaType.MUSIC,
+    )
+    torrentinfo = TorrentInfo()
+    torrentinfo.from_dict(torrent_in.model_dump())
+    torrentinfo.site_downloader = downloader
+    context = Context(meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo)
+    did = DownloadChain().download_single(
+        context=context,
+        username=current_user.name,
+        save_path=save_path,
+        source="Manual",
+    )
+    if not did:
+        return _SchemaResponse(success=False, message="艺术家合集任务添加失败")
     return _SchemaResponse(success=True, data={"download_id": did})
 
 

@@ -5,11 +5,12 @@ from typing import Literal, Optional, Tuple, Union
 from pydantic import GetJsonSchemaHandler
 from pydantic_core import CoreSchema
 
-
 # 音乐实体命名空间由公共类型模块统一持有，避免模型、接口和工具层重复定义。
 MUSIC_ENTITY_RECORDING = "recording"
 MUSIC_ENTITY_ALBUM = "album"
 MUSIC_ENTITY_ARTIST = "artist"
+# 艺术家大合集是下载资源包装分类，不是 MusicBrainz Release Group 类型。
+MUSIC_ARTIST_COLLECTION_CATEGORY = "Artist Collection"
 MusicEntityType = Literal["recording", "album", "artist"]
 MusicTargetEntityType = Literal["recording", "album"]
 MUSIC_ENTITY_TYPES = frozenset({
