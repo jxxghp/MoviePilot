@@ -3,7 +3,7 @@
     "alternate-auth-duplicate": 11,
     "consolidated": 72,
     "gateway": 202,
-    "provider-skill": 12,
+    "provider-skill": 13,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
     "ui_presentation": 23
@@ -21,7 +21,7 @@
   "gateway_http_route_count": 203,
   "gateway_operation_count": 205,
   "matched_gateway_http_route_count": 202,
-  "openapi_operation_count": 396,
+  "openapi_operation_count": 397,
   "operations": [
     {
       "disposition": "consolidated",
@@ -635,6 +635,18 @@
       "path": "/api/v1/download/add",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "添加下载（不含媒体信息）",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "downloader-operation",
+      "path": "/api/v1/download/artist-collection",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "添加艺术家合集下载",
       "tags": [
         "download"
       ]
