@@ -102,7 +102,7 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 
 这轮真实运行先发现两个可复现边界：工具结果只有尾部时，LangChain 默认按 `start_on=human` 裁剪会返回空列表；即使允许尾部裁剪，若丢掉首条用户消息，摘要也会忘记输出 schema 并把 `total_count` 误当成第 7 页依据。`ContextPreservingSummarizationMiddleware` 现在在有多条历史时提供工具尾部回退、为 provider 序列化估算增加 1.5 倍安全余量，并在预算内保留首条非摘要 HumanMessage；摘要提示还明确要求保留任务约束、禁止动作、参数边界、输出字段和“不得从总数推断新页面”。单条不可裁剪输入仍返回“新建或清空会话”的明确错误，不会无限重试。
 
-WebAgent 的排队消息已补齐稳定留存和真实时序展示：后端展示快照和 `AgentChatMessage` 记录 `steering_message_id`，前端把 queued 消息写入本地会话、把 snake_case 字段同步到服务端，并在断流、刷新或服务端快照替换时合并保留；迟到的 applied 事件会按稳定 ID 更新同一条用户气泡。应用点会收口前一段助手、把用户消息插入其后并创建 continuation 助手，后续文本和工具事件按真实事件流进入 continuation。工具事件携带稳定 `tool_id` 与 `running/done/error` 状态，前端可区分真正执行中的工具和已完成/失败的工具，不再把所有提示显示为“最新一条执行中”。本轮后端相关测试 162 项、前端 `AgentAssistantPanel.spec.ts` 41 项和 `vue-tsc --noEmit` 通过。
+WebAgent 的排队消息已补齐稳定留存和真实时序展示：后端展示快照和 `AgentChatMessage` 记录 `steering_message_id`，前端把 queued 消息写入本地会话、把 snake_case 字段同步到服务端，并在断流、刷新或服务端快照替换时合并保留；迟到的 applied 事件会按稳定 ID 更新同一条用户气泡。应用点会收口前一段助手、把用户消息插入其后并创建 continuation 助手，后续文本和工具事件按真实事件流进入 continuation。工具事件携带稳定 `tool_id` 与 `running/done/error` 状态，前端可区分真正执行中的工具和已完成/失败的工具，不再把所有提示显示为“最新一条执行中”。追加验证发现 continuation 助手插入后若把原始对象直接存入 steering 映射，后续工具状态会写入但不会触发 Vue 重渲染；前端提交 `44e19778b70fd17bc0a7ddf63021866ef45bdaa5` 改为从响应式消息数组取回 continuation，并增加“工具 1 完成 → 插入用户消息 → 工具 2 running”的时序回归。本轮后端相关测试 162 项、前端 `AgentAssistantPanel.spec.ts` 42 项、`vue-tsc --noEmit`、格式和 ESLint 通过，远端 `Frontend Tests` run [34596734349](https://github.com/jxxghp/MoviePilot-Frontend/actions/runs/34596734349) 成功。
 
 因此当前真实 Gemini 结果证明了工具合同读取和未知结果诚实边界已经能被实测，但不能宣称达到 Codex 的整体智能水平。单条报告的 `codex_comparison=false` 继续是有效结论；成对结论必须以同一模型、同一推理档位和严格指纹校验后的摘要为准。
 
