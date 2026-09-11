@@ -679,6 +679,18 @@ def _record_native_command_events(world: EvaluationWorld, events: list[dict[str,
     seen: set[str] = set()
     streamed_output: dict[str, str] = {}
     streamed_input: set[str] = set()
+    child_thread_ids: set[str] = set()
+    for event in events:
+        if event.get("type") not in {"item.started", "item.completed"}:
+            continue
+        item = event.get("item")
+        if not isinstance(item, dict) or item.get("type") != "collab_tool_call" or item.get("tool") != "spawn_agent":
+            continue
+        child_thread_ids.update(
+            receiver_thread_id
+            for receiver_thread_id in item.get("receiver_thread_ids", [])
+            if isinstance(receiver_thread_id, str)
+        )
     for event in events:
         event_type = event.get("type")
         if event_type == "item.command_execution.output_delta":
@@ -717,12 +729,15 @@ def _record_native_command_events(world: EvaluationWorld, events: list[dict[str,
         # 终端输入必须有 app-server 的 terminalInteraction 事件作为证据。
         # 聚合输出可能只是命令自身打印了相同字符串，不能据此冒充 stdin 写入。
         terminal_input_observed = world.scenario.kind == "terminal" and identity in streamed_input
+        thread_id = event.get("thread_id")
+        scope_kind = "subagent" if thread_id in child_thread_ids else "conversation"
         world.record_command(command.strip(), {
             "action": "start" if world.scenario.kind == "terminal" else "run",
             "success": outcome == "succeeded", "execution_outcome": outcome,
             "status": "exited" if exit_code is not None else "unknown", "exit_code": exit_code,
             "timed_out": False, "output": output, "terminal_input_observed": terminal_input_observed,
-        }, action="start" if world.scenario.kind == "terminal" else "run")
+        }, action="start" if world.scenario.kind == "terminal" else "run",
+            scope_kind=scope_kind, scope_task_id=thread_id if isinstance(thread_id, str) else None)
 
 
 def _probe_ready(usage: dict[str, Any], server_stats: dict[str, Any]) -> bool:

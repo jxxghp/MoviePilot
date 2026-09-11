@@ -674,3 +674,20 @@ def test_native_terminal_output_cannot_fake_stdin_evidence() -> None:
     event = world.ledger[0]
     assert event["request"]["action"] == "start"
     assert event["observations"][0]["record"]["terminal_input_observed"] is False
+
+
+def test_native_command_events_infer_subagent_scope_from_spawn_thread() -> None:
+    """子代理线程中的原生命令回执应进入独立 scope，不能冒充父任务操作。"""
+    world = EvaluationWorld("subagent_terminal_share")
+    command = world.scenario.command
+    events = [
+        {"type": "item.started", "thread_id": "parent", "item": {
+            "type": "collab_tool_call", "tool": "spawn_agent", "receiver_thread_ids": ["child"],
+        }},
+        {"type": "item.completed", "thread_id": "child", "item": {
+            "id": "child-command", "type": "command_execution", "command": command,
+            "aggregated_output": "SHARED_READY\n", "exit_code": 0,
+        }},
+    ]
+    codex._record_native_command_events(world, events)
+    assert world.ledger[0]["scope"] == {"kind": "subagent", "task_id": "child"}
