@@ -119,6 +119,8 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 
 `terminal_session` 的早期配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-appserver-pair-final-d22fa746f.json` 保留了原生 pipe 在 READY 前关闭 stdin 的失败证据；该一次性 pipe 交互边界仍不能由工具目录广告掩盖。生产持续会话实现和本地回归保持通过。随后在同一生产、Skill、场景和 Harness SHA 下使用 `gpt-5.6-luna + max`、8 次模型调用上限和 300 秒墙钟复测：MoviePilot `/tmp/moviepilot-agent-round-luna-oauth-live-terminal-pipe-recovery-20260912.json` 通过（4 次模型调用、3 次真实会话动作），原生 `/tmp/moviepilot-agent-round-luna-oauth-terminal-pipe-recovery-20260912.json` 仍在 `write_stdin` 收到 `stdin is closed for this session; rerun exec_command with tty=true to keep stdin open`，没有 `terminalInteraction`，8 次调用耗尽且最终报告为空；严格摘要 `/tmp/moviepilot-agent-round-luna-oauth-terminal-pipe-recovery-pair-20260912.json` 为 `pair_valid=true`、`both_passed=false`。这排除了预算过小导致未恢复的解释，原生 pipe 仍保持 blocked。
 
+评测适配器现在只把 app-server 的 `item.command_execution.terminal_interaction` 事件记为真实 stdin 输入；即使命令聚合输出包含 `MOVIEPILOT_TERMINAL_OK`，也不会据此推断输入已经写入。这样可以拒绝命令自行打印相同字符串造成的假阳性，并保留原生终态未核验的失败样本。
+
 对应的 `terminal_pty_session` 配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-pty-appserver-pair-timeout180-sleep1-ready1-20260911.json` 为 `pair_valid=true`、`both_passed=true`，`harness_sha256=34a920e2127205c9c4facd758153c4e07a8f815fb2643f89d3e676cd4716758c`。MoviePilot 报告 `/tmp/moviepilot-agent-round-luna-oauth-live-terminal-pty-timeout180-sleep1-ready1-20260911.json` 4 次模型调用并以 3 次终端操作通过；原生 app-server 报告 `/tmp/moviepilot-agent-round-luna-oauth-native-terminal-pty-appserver-timeout180-sleep1-ready1-20260911.json` 3 次模型调用，结构化事件和独立账本均确认 PTY 输入、`READY`/回复输出和退出码 0。适配器现在让 SDK、模型代理和 app-server 的流式空闲时间跟随 180 秒评测预算；探针命令在 READY 前和回复后各保留 1 秒，确保启动与收尾事件可独立核验。
 
 ### 长上下文与 WebAgent 排队消息实测

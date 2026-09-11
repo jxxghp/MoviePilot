@@ -555,8 +555,8 @@ def test_command_scenario_enables_only_native_shell_controls() -> None:
     assert retained == ["functions.exec_command", "functions.write_stdin"] and removed == []
 
 
-def test_native_terminal_event_preserves_aggregated_stdin_evidence() -> None:
-    """原生 command_execution 事件的聚合输出可证明 stdin 标记，但账本动作仍保持 start。"""
+def test_native_terminal_output_cannot_fake_stdin_evidence() -> None:
+    """原生 command_execution 聚合输出即使包含输入标记，也不能伪造 stdin 证据。"""
     world = EvaluationWorld("terminal_session")
     codex._record_native_command_events(world, [{"type": "item.completed", "item": {
         "id": "cmd-1", "type": "command_execution", "command": "/bin/zsh -lc " + shlex.quote(world.scenario.command),
@@ -564,4 +564,4 @@ def test_native_terminal_event_preserves_aggregated_stdin_evidence() -> None:
     }}])
     event = world.ledger[0]
     assert event["request"]["action"] == "start"
-    assert event["observations"][0]["record"]["terminal_input_observed"] is True
+    assert event["observations"][0]["record"]["terminal_input_observed"] is False

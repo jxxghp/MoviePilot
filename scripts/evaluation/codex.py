@@ -636,9 +636,9 @@ def _record_native_command_events(world: EvaluationWorld, events: list[dict[str,
         if type(exit_code) is not int:
             exit_code = None
         outcome = "succeeded" if exit_code == 0 else ("unknown" if exit_code is None else "failed")
-        terminal_input_observed = world.scenario.kind == "terminal" and (
-            identity in streamed_input or "MOVIEPILOT_TERMINAL_OK" in output.replace("\r", "")
-        )
+        # 终端输入必须有 app-server 的 terminalInteraction 事件作为证据。
+        # 聚合输出可能只是命令自身打印了相同字符串，不能据此冒充 stdin 写入。
+        terminal_input_observed = world.scenario.kind == "terminal" and identity in streamed_input
         world.record_command(command.strip(), {
             "action": "start" if world.scenario.kind == "terminal" else "run",
             "success": outcome == "succeeded", "execution_outcome": outcome,

@@ -274,21 +274,21 @@ def test_terminal_scenario_requires_session_write_and_exit_evidence():
     assert evaluate(world, report).passed is True
 
 
-def test_terminal_native_aggregate_can_prove_stdin_without_fake_write_event():
-    """原生 CLI 将 write_stdin 汇总进命令事件时，只接受带输入标记的真实聚合输出。"""
+def test_terminal_native_aggregate_without_interaction_cannot_prove_stdin():
+    """原生 CLI 只有聚合输出时不能把输入标记当作真实 stdin 事件。"""
     world = EvaluationWorld("terminal_session")
     command = "/bin/zsh -lc " + shlex.quote(world.scenario.command)
     world.record_command(command, {
         "execution_outcome": "succeeded", "status": "exited", "exit_code": 0,
         "output": "READY\r\nMOVIEPILOT_TERMINAL_OK\r\nREPLY=MOVIEPILOT_TERMINAL_OK\r\n",
-        "terminal_input_observed": True,
+        "terminal_input_observed": False,
     }, action="start")
     report = {
         "status": "completed", "terminal_output": "READY\nREPLY=MOVIEPILOT_TERMINAL_OK\n", "terminal_exit_code": 0,
         "completed": ["terminal"], "unresolved": [],
         "subscription_ids": [], "download_ids": [], "enabled_site_ids": [],
     }
-    assert evaluate(world, report).passed is True
+    assert "terminal_input_not_verified" in evaluate(world, report).violations
 
 
 def test_terminal_pty_echo_is_part_of_the_verified_output():
