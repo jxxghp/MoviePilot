@@ -73,6 +73,7 @@ def test_input_requires_exactly_one_image_source() -> None:
     with pytest.raises(ValidationError):
         ViewImageInput(url="https://images.example.invalid/a.png", file_path="/tmp/a.png")
     assert ViewImageInput(url="https://images.example.invalid/a.png").detail == "auto"
+    assert ViewImageInput(image_data=base64.b64encode(_image_bytes()).decode("ascii")).detail == "auto"
 
 
 @pytest.mark.asyncio
@@ -113,6 +114,23 @@ async def test_data_url_is_validated_and_projected_without_network() -> None:
 
 
 @pytest.mark.asyncio
+async def test_image_content_accepts_raw_bytes_and_plain_base64() -> None:
+    """图片内容输入支持工具间传递的原始字节和纯 Base64 文本。"""
+    image = _image_bytes("PNG")
+    tool = _tool()
+
+    raw_result = await tool.run(image_data=image)
+    encoded_result = await tool.run(image_data=base64.b64encode(image).decode("ascii"))
+
+    raw_payload = json.loads(raw_result)
+    encoded_payload = json.loads(encoded_result)
+    assert raw_payload["source_type"] == "content"
+    assert encoded_payload["source_type"] == "content"
+    assert base64.b64decode(raw_payload["image_base64"]) == image
+    assert base64.b64decode(encoded_payload["image_base64"]) == image
+
+
+@pytest.mark.asyncio
 async def test_remote_image_uses_ssrf_validation_and_streaming_download(monkeypatch: pytest.MonkeyPatch) -> None:
     """远程图片必须先通过公网校验，再使用有大小上限的异步流下载。"""
     image = _image_bytes("JPEG")
@@ -144,6 +162,7 @@ async def test_remote_image_uses_ssrf_validation_and_streaming_download(monkeypa
 @pytest.mark.asyncio
 async def test_remote_private_or_rejected_url_never_reaches_http(monkeypatch: pytest.MonkeyPatch) -> None:
     """未通过 URL 安全校验时必须在网络边界前失败。"""
+
     async def unsafe_url(*_args: Any, **_kwargs: Any) -> bool:
         """拒绝模拟的内部目标。"""
         return False
@@ -165,6 +184,7 @@ async def test_remote_private_or_rejected_url_never_reaches_http(monkeypatch: py
 @pytest.mark.asyncio
 async def test_remote_content_length_limit_is_enforced_before_body_read(monkeypatch: pytest.MonkeyPatch) -> None:
     """远程响应声明超限时应立即失败，不把大响应交给图片解码器。"""
+
     async def safe_url(*_args: Any, **_kwargs: Any) -> bool:
         """放行测试 URL。"""
         return True
@@ -185,9 +205,6 @@ async def test_remote_content_length_limit_is_enforced_before_body_read(monkeypa
 
 def test_image_tool_is_registered_for_agent_but_keeps_raw_data_out_of_generic_formatter() -> None:
     """工具工厂应注册图片能力，成功图片由专用 formatter 保持图块而非文本截断。"""
-    tool_names = {
-        tool_class.model_fields["name"].default
-        for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES
-    }
+    tool_names = {tool_class.model_fields["name"].default for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES}
     assert "view_image" in tool_names
     assert IMAGE_MAX_BYTES == 768 * 1024

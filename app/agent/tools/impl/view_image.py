@@ -45,7 +45,7 @@ class ViewImageError(ValueError):
         self.message = message
 
 
-class ViewImageInput(BaseModel):
+class ViewImageInput(BaseModel):  # type: ignore[misc]
     """图片查看工具的输入参数模型。"""
 
     url: Optional[str] = Field(
@@ -58,8 +58,13 @@ class ViewImageInput(BaseModel):
     file_path: Optional[str] = Field(
         None,
         description=(
-            "Local image path. Non-administrator users may only read files under "
-            "the Agent configuration directory."
+            "Local image path. Non-administrator users may only read files under the Agent configuration directory."
+        ),
+    )
+    image_data: Optional[Union[str, bytes]] = Field(
+        None,
+        description=(
+            "Base64 image content, a data:image/...;base64,... URL, or raw image bytes. Use exactly one image source."
         ),
     )
     detail: Literal["auto", "low", "high"] = Field(
@@ -69,11 +74,12 @@ class ViewImageInput(BaseModel):
 
     @model_validator(mode="after")  # type: ignore[misc]
     def require_one_source(self) -> "ViewImageInput":
-        """确保图片来源恰好是 URL 或本地路径中的一个。"""
+        """确保图片来源恰好是 URL、本地路径或图片内容中的一个。"""
         has_url = bool(self.url and self.url.strip())
         has_file_path = bool(self.file_path and self.file_path.strip())
-        if has_url == has_file_path:
-            raise ValueError("url and file_path are mutually exclusive; provide exactly one")
+        has_image_data = bool(self.image_data)
+        if sum((has_url, has_file_path, has_image_data)) != 1:
+            raise ValueError("provide exactly one of url, file_path, or image_data")
         return self
 
 
@@ -88,8 +94,8 @@ class ViewImageTool(MoviePilotTool):
     ]
     description: str = (
         "View an image so a multimodal model can inspect its actual pixels. "
-        "Provide exactly one of url or file_path. Supports public HTTP(S) image URLs, "
-        "data:image/...;base64,... URLs, and local image paths. Local access follows "
+        "Provide exactly one of url, file_path, or image_data. Supports public HTTP(S) "
+        "image URLs, data:image/...;base64,... URLs, Base64/raw image content, and local image paths. Local access follows "
         "the Agent file permission boundary; private-network URLs are blocked. "
         "Use this when visual inspection is needed, and do not claim to have seen "
         "the image unless the tool returns an image observation."
@@ -100,6 +106,7 @@ class ViewImageTool(MoviePilotTool):
         """根据图片来源生成不泄露查询参数的工具提示。"""
         file_path = str(kwargs.get("file_path") or "").strip()
         url = str(kwargs.get("url") or "").strip()
+        image_data = kwargs.get("image_data")
         if file_path:
             return f"查看本地图片: {Path(file_path).name or '未知文件'}"
         if url.lower().startswith("data:image/"):
@@ -111,6 +118,9 @@ class ViewImageTool(MoviePilotTool):
             except ValueError:
                 label = "远程图片 URL"
             return f"查看远程图片: {label[:256]}"
+        if image_data:
+            size = len(image_data) if hasattr(image_data, "__len__") else 0
+            return f"查看图片内容: {size} chars/bytes"
         return "查看图片"
 
     def format_agent_result(self, result: Any, **tool_arguments: Any) -> Union[str, list[dict[str, Any]]]:
@@ -171,6 +181,7 @@ class ViewImageTool(MoviePilotTool):
         self,
         url: Optional[str] = None,
         file_path: Optional[str] = None,
+        image_data: Optional[Union[str, bytes]] = None,
         detail: Literal["auto", "low", "high"] = "auto",
         **kwargs: Any,
     ) -> str:
@@ -178,15 +189,17 @@ class ViewImageTool(MoviePilotTool):
         del kwargs
         clean_url = str(url or "").strip()
         clean_file_path = str(file_path or "").strip()
+        clean_image_data = image_data
         has_url = bool(clean_url)
         has_file_path = bool(clean_file_path)
-        if has_url == has_file_path:
+        has_image_data = bool(clean_image_data)
+        if sum((has_url, has_file_path, has_image_data)) != 1:
             return self._failure(
                 "invalid_source",
-                "请在 url 和 file_path 中恰好提供一个图片来源。",
+                "请在 url、file_path 和 image_data 中恰好提供一个图片来源。",
             )
 
-        source_type = "url" if has_url else "file"
+        source_type = "url" if has_url else "file" if has_file_path else "content"
         try:
             if has_file_path:
                 resolved_path, access_error = await self._check_local_file_access(
@@ -202,6 +215,11 @@ class ViewImageTool(MoviePilotTool):
             elif clean_url.lower().startswith("data:image/"):
                 image_bytes = self._decode_data_url(clean_url)
                 source_label = "data image"
+            elif has_image_data:
+                if clean_image_data is None:
+                    raise ViewImageError("invalid_image", "图片内容不能为空。")
+                image_bytes = self._decode_image_content(clean_image_data)
+                source_label = "image content"
             else:
                 await self._validate_remote_url(clean_url)
                 image_bytes = await self._fetch_remote_image(clean_url)
@@ -224,7 +242,7 @@ class ViewImageTool(MoviePilotTool):
             )
         except ViewImageError as error:
             return self._failure(error.code, error.message, source_type)
-        except (FileNotFoundError, IsADirectoryError, PermissionError):
+        except FileNotFoundError, IsADirectoryError, PermissionError:
             return self._failure("local_file_unavailable", "本地图片不存在、不是文件或没有读取权限。", source_type)
         except Exception as error:  # noqa: BLE001 - 图片读取边界必须稳定返回失败合同
             logger.warning("Agent 查看图片失败: %s", type(error).__name__)
@@ -326,6 +344,28 @@ class ViewImageTool(MoviePilotTool):
             raise ViewImageError("invalid_url", "图片 data URL 的 base64 编码无效。") from error
         if not image_bytes:
             raise ViewImageError("invalid_image", "图片 data URL 为空。")
+        return image_bytes
+
+    @staticmethod
+    def _decode_image_content(content: Union[str, bytes]) -> bytes:
+        """解码纯 Base64、data URL 或原始图片字节，并限制输入大小。"""
+        if isinstance(content, bytes):
+            image_bytes = content
+        elif isinstance(content, str):
+            value = content.strip()
+            if value.lower().startswith("data:"):
+                image_bytes = ViewImageTool._decode_data_url(value)
+            else:
+                if len(value) > IMAGE_MAX_BASE64_CHARS:
+                    raise ViewImageError("image_too_large", "图片编码超过大小上限。")
+                try:
+                    image_bytes = base64.b64decode("".join(value.split()), validate=True)
+                except (ValueError, binascii.Error) as error:
+                    raise ViewImageError("invalid_image", "图片 Base64 内容无效。") from error
+        else:
+            raise ViewImageError("invalid_image", "图片内容必须是 Base64 文本或原始字节。")
+        if not image_bytes or len(image_bytes) > IMAGE_MAX_BYTES:
+            raise ViewImageError("image_too_large", "图片为空或超过大小上限。")
         return image_bytes
 
     @staticmethod

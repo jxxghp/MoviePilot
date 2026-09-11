@@ -552,7 +552,7 @@ MCP、HTTP 工具管理接口、本地 CLI 和内置 Agent 都从同一严格目
 内置 Agent 在专用格式化路径把成功截图转换为图像输入，外部 HTTP/MCP 客户端仍按
 原 JSON 合同消费；本次不宣称外部 MCP 已提供原生 image content block。
 
-`view_image` 只供内置 Agent 使用：它会在 Agent 专用格式化路径把 URL 或本地图片转换为
+`view_image` 只供内置 Agent 使用：它会在 Agent 专用格式化路径把 URL、本地图片或图片内容转换为
 原生图像输入，HTTP/MCP 直调不提供该工具，避免把只能由视觉中间件消费的图像块误当作普通 JSON。
 
 内置命令工具 `execute_command(action="run")` 的返回值为 JSON 字符串，包含

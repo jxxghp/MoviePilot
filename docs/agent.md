@@ -54,7 +54,7 @@ WebAgent 在 Agent 正在运行时仍可提交文本和附件。宿主为每个�
 
 ## 工具图片与模型视觉
 
-`browse_webpage(action="screenshot")` 和 `view_image(url=...|file_path=...)` 在 Agent 中返回真实图像块和有限来源说明。图像在通用文本截断之前处理，最终请求按完整工具回复批次附加带工具来源的临时图像观察，兼容 Chat、Responses、Anthropic 与 Gemini 的图片输入；原始用户消息、工具调用 ID 和授权不变。`view_image` 的远程 URL 只允许通过公网安全校验的 HTTP(S) 地址，本地路径继续遵守 Agent 文件访问边界。
+`browse_webpage(action="screenshot")` 和 `view_image(url=...|file_path=...|image_data=...)` 在 Agent 中返回真实图像块和有限来源说明。图像在通用文本截断之前处理，最终请求按完整工具回复批次附加带工具来源的临时图像观察，兼容 Chat、Responses、Anthropic 与 Gemini 的图片输入；原始用户消息、工具调用 ID 和授权不变。`view_image` 的远程 URL 只允许通过公网安全校验的 HTTP(S) 地址，本地路径继续遵守 Agent 文件访问边界，`image_data` 支持纯 Base64、data URL 和原始字节。
 
 每次模型请求都检查实际模型资料和 `LLM_SUPPORT_IMAGE_INPUT` 开关。已知纯文本模型会得到明确的“未接收工具图片”说明。服务明确拒绝图片时，只对该次模型调用做一次文字回退，随后本轮沿用文字观察，不重复执行图片工具或其他工具；认证、限流等错误保持原来的错误语义。临时观察不会写入会话历史。
 
