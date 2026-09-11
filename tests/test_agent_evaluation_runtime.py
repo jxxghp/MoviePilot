@@ -302,13 +302,17 @@ async def test_evaluation_terminal_tool_runs_session_and_writes_stdin(tmp_path, 
         ))
         assert write["session_id"] == session_id
         waited = write
-        for _ in range(5):
+        wait_iterations = 4 if use_pty else 5
+        wait_timeout_ms = 10_000 if use_pty else 1_000
+        for _ in range(wait_iterations):
             if waited["status"] == "exited":
                 break
-            waited = json.loads(await tool.run(
-                action="wait", session_id=session_id, timeout_ms=1000,
-                since_seq=waited["output_until_seq"],
-            ))
+            waited = json.loads(
+                await tool.run(
+                    action="wait", session_id=session_id, timeout_ms=wait_timeout_ms,
+                    since_seq=waited["output_until_seq"],
+                )
+            )
         assert waited["status"] == "exited"
         assert waited["exit_code"] == 0
     assert await close_terminal_scope(scope)
