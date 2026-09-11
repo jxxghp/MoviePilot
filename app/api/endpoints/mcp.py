@@ -36,6 +36,7 @@ MCP_HIDDEN_TOOLS = {
     "write_file",
     "read_file",
     "read_skill",
+    "view_image",
 }
 MCP_JSONRPC_ERROR_RESPONSES = {
     400: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 请求错误"},

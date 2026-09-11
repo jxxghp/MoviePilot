@@ -12,7 +12,7 @@ from app.agent.policy.contracts import ExecutionOutcome
 
 EXECUTION_OUTCOME_KEY = "moviepilot_execution_outcome"
 TOOL_OBSERVATION_MARKER = "moviepilot_tool_observation"
-_TOOL_IMAGE_HISTORY_NOTE = "历史图像未保留；如需视觉细节，请重新调用工具获取截图。"
+_TOOL_IMAGE_HISTORY_NOTE = "历史图像未保留；如需视觉细节，请重新调用图片工具获取当前图像。"
 _ERROR_ENVELOPE_KEYS = frozenset({
     "error", "message", "detail", "code", "status", "state", "success", "tool_name", "action",
     "execution_outcome", EXECUTION_OUTCOME_KEY,

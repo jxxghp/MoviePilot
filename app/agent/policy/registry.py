@@ -44,6 +44,7 @@ BUILTIN_LEGACY_SHADOW_INVENTORY = frozenset(
         "send_local_file",
         "send_message",
         "send_voice_message",
+        "view_image",
         "persona",
         "write_file",
         "moviepilot_api",

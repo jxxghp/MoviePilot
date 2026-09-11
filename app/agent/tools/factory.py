@@ -22,6 +22,7 @@ from app.agent.tools.impl.service import (
     DownloaderOperationTool,
     MediaServerOperationTool,
 )
+from app.agent.tools.impl.view_image import ViewImageTool
 from app.agent.tools.impl.write_file import WriteFileTool
 from app.application.agent import AgentDataContext
 from app.application.plugin.runtime import get_plugin_manager
@@ -62,6 +63,7 @@ class MoviePilotToolFactory:
         WriteFileTool,
         ReadFileTool,
         BrowseWebpageTool,
+        ViewImageTool,
         QueryDoctorReportTool,
     )
     # 下载器与媒体服务器原生操作通过 Skill 按需提供给内置 Agent；只有外部

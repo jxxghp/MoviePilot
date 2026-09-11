@@ -203,7 +203,7 @@ class MemoryManager:
             self, session_id: str, user_id: str, messages: List[BaseMessage]
     ) -> None:
         """
-        当前会话在缓存保留原图，持久化副本只保存工具截图的失效说明。
+        当前会话在缓存保留原图，持久化副本只保存工具图片的失效说明。
         """
         self._update_agent_messages(
             session_id=session_id,
@@ -222,7 +222,7 @@ class MemoryManager:
     async def async_save_agent_messages(
         self, session_id: str, user_id: str, messages: List[BaseMessage]
     ) -> None:
-        """缓存保留原图，去除工具截图的副本经有界数据库 worker 持久化。"""
+        """缓存保留原图，去除工具图片的副本经有界数据库 worker 持久化。"""
         self._update_agent_messages(
             session_id=session_id,
             user_id=user_id,

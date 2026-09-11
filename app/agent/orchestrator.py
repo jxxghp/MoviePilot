@@ -1361,7 +1361,7 @@ class MoviePilotAgent:
 
     @staticmethod
     def _is_unsupported_image_input_error(error: Exception) -> bool:
-        """用户附件与工具截图共享同一明确的模型图片拒绝判定。"""
+        """用户附件与工具图片共享同一明确的模型图片拒绝判定。"""
         return LLMHelper.is_unsupported_image_input_error(error)
 
     @staticmethod

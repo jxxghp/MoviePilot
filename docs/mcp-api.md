@@ -543,14 +543,17 @@ MCP、HTTP 工具管理接口、本地 CLI 和内置 Agent 都从同一严格目
 | `browse_webpage`、`recognize_captcha` | 浏览和验证码等非 MoviePilot 业务 API 能力 |
 | `query_doctor_report` | 只读系统诊断 |
 
-`read_skill`、`read_file`、`write_file`、`edit_file`、`apply_patch`、`execute_command` 和
-`search_web` 不通过 MCP 暴露。隐藏列表只负责收敛接口暴露面，不替代各工具自身的
+`read_skill`、`read_file`、`write_file`、`edit_file`、`apply_patch`、`execute_command`、
+`search_web` 和 `view_image` 不通过 MCP 暴露。隐藏列表只负责收敛接口暴露面，不替代各工具自身的
 权限、路径和网络边界。
 
 `browse_webpage(action="screenshot")` 的外部直调仍返回 JSON 字符串，保留
 `url/title/screenshot_base64/format/note` 并用 `success/execution_outcome` 明确状态。
 内置 Agent 在专用格式化路径把成功截图转换为图像输入，外部 HTTP/MCP 客户端仍按
 原 JSON 合同消费；本次不宣称外部 MCP 已提供原生 image content block。
+
+`view_image` 只供内置 Agent 使用：它会在 Agent 专用格式化路径把 URL 或本地图片转换为
+原生图像输入，HTTP/MCP 直调不提供该工具，避免把只能由视觉中间件消费的图像块误当作普通 JSON。
 
 内置命令工具 `execute_command(action="run")` 的返回值为 JSON 字符串，包含
 `success`、`execution_outcome`、`status`、`exit_code`、`timed_out`、`timeout`、

@@ -21,7 +21,7 @@ from app.agent.middleware.usage import UsageMiddleware
 from app.agent.tools.result import TOOL_OBSERVATION_MARKER, is_image_content_block
 
 VISION_REJECTED_MODEL = "tool_vision_rejected_model"
-VISION_UNAVAILABLE = "当前模型未接收这张工具截图，不能据此声称已看见页面；请使用文字快照继续核查。"
+VISION_UNAVAILABLE = "当前模型未接收这张工具图片，不能据此声称已看见图像；请使用文字结果继续核查。"
 MAX_INLINE_IMAGE_CHARS = 1024 * 1024
 
 
@@ -96,7 +96,7 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
         if not observations:
             return
         if pending:
-            raise ValueError("工具回复尚未完整，不能发送截图观察")
+            raise ValueError("工具回复尚未完整，不能发送图片观察")
         output.append(HumanMessage(
             content=list(observations),
             additional_kwargs={TOOL_OBSERVATION_MARKER: True},
@@ -124,7 +124,7 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
                     image_blocks = [block for block in message.content if is_image_content_block(block)]
                     if image_blocks:
                         if enabled and not matched:
-                            raise ValueError("截图缺少配对的工具调用，不能生成观察消息")
+                            raise ValueError("图片缺少配对的工具调用，不能生成观察消息")
                         message.content = [block for block in message.content if not is_image_content_block(block)]
                         images = [image for block in image_blocks if (image := self._image_for_model(block)) is not None]
                         if enabled and images:
@@ -143,7 +143,7 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
         window = budget.get("context_window_tokens")
         tokens = budget.get("estimated_input_tokens")
         if isinstance(window, int) and isinstance(tokens, int) and tokens > window:
-            raise ValueError("工具图像观察超过模型上下文窗口，请减少单次截图或使用更大上下文模型")
+            raise ValueError("工具图像观察超过模型上下文窗口，请减少单次图片或使用更大上下文模型")
         return projected
 
     def _fallback_result(self, request: ModelRequest, result: ModelResponse) -> ExtendedModelResponse:
