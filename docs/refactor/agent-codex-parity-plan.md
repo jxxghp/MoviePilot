@@ -20,7 +20,7 @@ Google 的 OpenAI-compatible 层会丢失 Gemini 3 工具回复中的 `thought_s
 | --- | --- | --- |
 | C1.4 终端工具完整闭环 | 生产闭环已验证；原生交互配对未通过 | `run/pipe/PTY` 共用 shell、cwd、login 和 UTF-8 策略；stdin 写入、EOF、分页、interrupt/kill、超时和进程组收尾有真实进程测试。`terminal_session` 生产侧已通过，原生侧模型未实际使用 `write_stdin`，保留失败证据 |
 | C1.3 终端任务作用域 | 已完成 | 终端归属由宿主对象身份决定；定时运行、会话、子任务和内部工具管理器隔离；封口先于清理，排队或运行中的命令都不会在任务结束后迟到启动 |
-| S2.3 运行中消息排队与 WebAgent 输入 | 已完成本轮实现并修复丢消息 | 运行中仍可提交新消息；消息按会话原子入队，在下一次模型调用边界注入真实 `HumanMessage`；SSE 报告 queued/applied，稳定 `steering_message_id` 贯穿展示快照、前端本地状态和恢复合并；停止后不再派发后续工具 |
+| S2.3 运行中消息排队与 WebAgent 输入 | 已完成本轮实现并修复丢消息、时序错位 | 运行中仍可提交新消息；消息按会话原子入队，在下一次模型调用边界注入真实 `HumanMessage`；SSE 报告 queued/applied，稳定 `steering_message_id` 贯穿展示快照、前端本地状态和恢复合并；应用点收口当前助手并创建 continuation 助手，用户气泡落在真实事件边界；工具按 `tool_id` 报告 running/done/error；停止后不再派发后续工具 |
 | C1.5 长上下文压缩与任务约束保留 | 同条件配对已通过 | 真实压缩前后预算约 69.5K → 26.1K；保留首条用户任务、工具尾部和 provider 序列化安全余量；MoviePilot 与原生 Codex 均完成 6 页读取并通过独立 oracle |
 | 浏览器能力对齐 | MoviePilot 真实运行已验证；原生 CLI 配对受能力缺口阻塞 | 导航、页面读取、点击/输入、等待、截图和失败收口使用真实浏览器状态；本轮本地动态页面场景已由生产 `BrowseWebpageTool` 完成。`codex exec 0.153.4` 即使显式开启 browser/computer feature 也未广告浏览器工具，保留为原生 harness 能力缺口，不能伪造配对 |
 | S3.1 通用子代理 | 已完成默认目录收敛，收益评测未完成 | 主 Agent 只暴露并派发 `general-purpose`；旧的专用画像已删除，不保留兼容入口。仍需用 held-out 任务验证通用派发的收益、授权、工具角色、终端分享和副作用边界 |
@@ -54,7 +54,7 @@ uv run --locked --no-sync python -m scripts.evaluation \
 - **浏览器**：工具目录必须明确导航、读取、交互、等待和截图的动作与权限；浏览器会话、页面状态和失败重试由宿主持有，不能由模型字符串冒领。新增 `browser_navigation` 场景使用回环动态页面验证生产工具；原生 CLI 探针没有广告浏览器工具，原生配对保持 blocked，等待可用的 Codex browser harness。
 - **子代理**：主 Agent 自动选择通用子代理；专用画像只有在 held-out 任务上证明提高成功率、减少调用或降低副作用风险时才保留。子代理不能自行发送消息、执行高影响写操作或继承兄弟任务句柄。
 - **API Skill 与合同读取**：`skills/moviepilot-api/SKILL.md` 只负责路由索引和工作流；`api/*.md` 各自包含完整操作合同及该类别需要的 Body Models，不再依赖单独的 `api/models.md`。真实 Agent 先用 `read_skill` 得到 supporting-file 清单，再用同一个工具的 `file=api/<category>.md` 参数按需读取类别文档；评测目录必须提供同一条链路，不能只返回文件名而不给模型读取能力。operation 输入错误还要返回该 operation 的允许字段、必填字段和类型约束，帮助模型纠正后重试。
-- **长任务与新消息**：入站消息在任务运行时仍可接受并进入有界队列；应用到下一模型边界时必须保留 tool-call/tool-result 配对和取消语义，不能只把文本拼到系统提示词。
+- **长任务与新消息**：入站消息在任务运行时仍可接受并进入有界队列；应用到下一模型边界时必须保留 tool-call/tool-result 配对和取消语义，不能只把文本拼到系统提示词。WebAgent 将工具开始/完成/失败作为带稳定 `tool_id` 的结构化事件；前端按事件序列维护每个工具状态，并在 steering applied 的真实位置切分助手消息，避免“最新工具覆盖全部状态”或把用户消息挪到顶部。
 - **观察证据**：最终答案只能引用宿主记录的工具结果和业务 oracle；“模型说完成”不能替代数据库、下载器、浏览器或进程状态核验。
 
 ## 通过标准与未完成边界
@@ -77,6 +77,6 @@ uv run --locked --no-sync python -m scripts.evaluation \
 - 命令行与浏览器能力阶段：`command_execution` 在同一 `gpt-5.6-luna + max` 和独立 Codex OAuth 下已形成真实配对 `/tmp/moviepilot-agent-round-luna-oauth-command-pair-final.json`，`pair_valid=true`、`both_passed=true`，harness 为 `c409ee1ca7899ccfcefd38832d6a343f024f8fc67fb65f14c3eec08552203257`。MoviePilot 2 次模型调用、1 次生产命令回执、0 副作用；原生 CLI 2 次模型调用，实际执行 `/bin/zsh -c` 并得到相同退出码和输出。生产 stdout 的 `[标准输出]` 展示包装已在独立判定器中与命令内容分离。
 - 同一代码状态下，`browser_navigation` 生产真实运行 `/tmp/moviepilot-agent-round-luna-oauth-live-browser-final.json` 通过：6 次模型调用、4 次浏览器回执，真实页面点击后观察到 `BROWSER_OK`。`codex exec 0.153.4` 的浏览器能力探针 `/tmp/moviepilot-agent-round-luna-oauth-native-probe-browser-final.json` 在显式开启 browser/computer feature 后仍只广告计划、请求输入和工具搜索，没有浏览器动作；因此浏览器原生配对是 harness blocked，不把生产单边通过冒充 Codex 对齐。
 - `terminal_session` 在同一 `gpt-5.6-luna + max`、OAuth 和 Harness 下的配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-pair-final.json` 为 `pair_valid=true`、`both_passed=false`。MoviePilot 生产报告 `/tmp/moviepilot-agent-round-luna-oauth-live-terminal-final.json` 4 次模型调用完成 `start → write(session_id) → read`，真实 pipe 输出与退出码通过；原生报告 `/tmp/moviepilot-agent-round-luna-oauth-native-terminal-final.json` 只执行一次被 shell 引号污染的命令，得到 `REPLY=`，没有 stdin 写入或后续读取证据。该失败证明当前原生终端交互仍未对齐，不能把工具清单广告视为能力通过。
-- WebAgent 中途输入补充了真实 HTTP 流时序回归 `test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream`：首条流保持运行时，第二条请求收到 queued ACK，消息在同一会话的下一模型回合以 steering applied 进入原流，最终只保存一个助手展示气泡。该回归验证了宿主排队和展示边界；真实模型长任务配对仍待补跑。
-- 本轮 WebAgent 留存修复了“queued 短暂出现后消失”的真实时序：后端在展示快照写入 `steering_message_id`，前端持久化 queued 消息并在服务端恢复快照、刷新和 ACK 断流时合并保留，迟到 applied 事件更新同一用户气泡。后端 60 项 WebAgent/steering 测试和前端 39 项组件测试通过，前端类型、Lint、格式检查通过。
+- WebAgent 中途输入补充了真实 HTTP 流时序回归 `test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream`：首条流保持运行时，第二条请求收到 queued ACK，消息在同一会话的下一模型回合以 steering applied 进入原流；应用点会收口前一段助手、插入用户消息并创建 continuation 助手，后续文本和工具事件进入 continuation。该回归验证了宿主排队和展示边界；真实模型长任务配对仍待补跑。
+- 本轮 WebAgent 留存与工具状态修复了两类真实时序：后端展示快照和 `AgentChatMessage` 记录 `steering_message_id`，前端持久化 queued 消息并在服务端恢复快照、刷新和 ACK 断流时合并保留，迟到 applied 事件更新同一条用户气泡；工具事件携带稳定 `tool_id` 与 `running/done/error` 状态，前端不再用最后一条提示覆盖之前的完成态。后端相关测试 162 项和前端 `AgentAssistantPanel.spec.ts` 41 项通过，`vue-tsc --noEmit` 通过。
 - 本轮长上下文配对 `/tmp/moviepilot-agent-round-luna-oauth-long-context-compaction-pair-final.json` 使用同一 `gpt-5.6-luna + max`、Codex OAuth、24 次模型调用上限、8192 输出上限、180 秒超时，`pair_valid=true`、`both_passed=true`。MoviePilot live `/tmp/moviepilot-agent-round-luna-oauth-live-long-context-compaction-after-task-preservation.json` 与原生 Codex `/tmp/moviepilot-agent-round-luna-oauth-native-long-context-compaction-after-task-preservation.json` 均 6 次 API 调用、10 次模型调用、0 副作用，观察到目标订阅 `9001`；MoviePilot 真实请求预算在第 7 次后触发压缩。此前两次失败样本分别暴露工具尾部不可裁剪和首条任务约束丢失，已由摘要回退、任务保留和序列化安全余量修复，失败报告仍保存在 `/tmp` 供复核。

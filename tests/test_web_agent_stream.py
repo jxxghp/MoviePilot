@@ -328,6 +328,63 @@ def test_apply_web_agent_display_event_updates_snapshot():
     assert message["attachments"] == [{"kind": "file", "url": "message/agent/file/a"}]
 
 
+def test_apply_web_agent_display_event_tracks_parallel_tool_lifecycle_by_id():
+    """并行工具必须按稳定调用 ID 独立收口，不能由后一条开始事件覆盖前一条状态。"""
+    message = {
+        "id": "assistant-1",
+        "role": "assistant",
+        "content": "",
+        "createdAt": 1,
+        "status": "streaming",
+        "tools": [],
+        "segments": [],
+        "attachments": [],
+        "choices": [],
+    }
+
+    _apply_web_agent_display_event(
+        {
+            "type": "tool",
+            "tool_id": "tool-a",
+            "tool_name": "search",
+            "message": "搜索媒体",
+            "status": "running",
+        },
+        message,
+    )
+    _apply_web_agent_display_event(
+        {
+            "type": "tool",
+            "tool_id": "tool-b",
+            "tool_name": "download",
+            "message": "检查下载器",
+            "status": "running",
+        },
+        message,
+    )
+    _apply_web_agent_display_event(
+        {"type": "tool", "tool_id": "tool-a", "status": "done"},
+        message,
+    )
+
+    assert [(tool["id"], tool["status"]) for tool in message["tools"]] == [
+        ("tool-a", "done"),
+        ("tool-b", "running"),
+    ]
+    assert message["segments"] == [
+        {"type": "tool", "toolIndex": 0},
+        {"type": "tool", "toolIndex": 1},
+    ]
+
+    _apply_web_agent_display_event(
+        {"type": "tool", "tool_id": "tool-b", "status": "error"},
+        message,
+    )
+    _apply_web_agent_display_event({"type": "done"}, message)
+
+    assert [tool["status"] for tool in message["tools"]] == ["done", "error"]
+
+
 def test_agent_chat_display_schema_preserves_ordered_segments():
     """前端回传会话快照时应保留文字和工具的有序片段。"""
     payload = schemas.AgentChatDisplaySaveRequest(
@@ -1237,7 +1294,7 @@ def test_web_agent_stream_binds_session_to_agent_manager():
 
 
 def test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream():
-    """第一条 WebAgent 流运行时的第二条请求应 ACK 后注入同一助手回合。"""
+    """第一条 WebAgent 流运行时的第二条请求应在真实应用点切分助手回合。"""
     first_payload = schemas.AgentWebChatRequest(
         text="开始长任务",
         session_id="mid-run-steering",
@@ -1285,7 +1342,25 @@ def test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream():
                 """首轮保持运行，后续回合输出补充消息已生效。"""
                 self.processed.append(message)
                 if message == "开始长任务":
+                    if callable(self.tool_event_callback):
+                        self.tool_event_callback(
+                            {
+                                "type": "tool",
+                                "status": "running",
+                                "tool_id": "tool-steering-boundary",
+                                "tool_name": "search",
+                                "message": "检查任务状态",
+                            }
+                        )
                     self.output_callback("首轮处理中")
+                    if callable(self.tool_event_callback):
+                        self.tool_event_callback(
+                            {
+                                "type": "tool",
+                                "status": "done",
+                                "tool_id": "tool-steering-boundary",
+                            }
+                        )
                     started.set()
                     await release.wait()
                 else:
@@ -1372,8 +1447,20 @@ def test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream():
     assert len(instances) == 1
     assert instances[0].processed == ["开始长任务", "补充：只保留最终结果"]
     messages = save_snapshot.await_args.kwargs["messages"]
-    assert [message["role"] for message in messages] == ["user", "user", "assistant"]
-    assert messages[1]["steering_message_id"]
+    assert [message["role"] for message in messages] == ["user", "assistant", "user", "assistant"]
+    assert messages[2]["steering_message_id"]
+    assert messages[1]["status"] == "done"
+    assert messages[3]["status"] == "done"
+    assert messages[1]["content"] == "首轮处理中"
+    assert messages[3]["content"] == "补充已应用"
+    assert messages[1]["tools"] == [
+        {
+            "id": "tool-steering-boundary",
+            "tool_name": "search",
+            "message": "检查任务状态",
+            "status": "done",
+        }
+    ]
 
 
 def test_web_agent_stream_emits_secret_result_only_as_protected_event():

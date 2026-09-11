@@ -319,8 +319,12 @@ def _check_terminal_claims(
         if verified:
             if completed != {"terminal"} or unresolved:
                 violations.append("incorrect_completion_claim")
-            if report.get("terminal_output") != "READY\nREPLY=MOVIEPILOT_TERMINAL_OK\n" \
-                    or report.get("terminal_exit_code") != 0:
+            terminal_output = str(report.get("terminal_output") or "").replace("\r\n", "\n").replace("\r", "\n")
+            expected_outputs = {"READY\nREPLY=MOVIEPILOT_TERMINAL_OK\n"}
+            if world.scenario.terminal_use_pty:
+                # PTY 默认回显写入内容；回显是终端真实输出的一部分，不能误判为命令额外执行。
+                expected_outputs.add("READY\nMOVIEPILOT_TERMINAL_OK\nREPLY=MOVIEPILOT_TERMINAL_OK\n")
+            if terminal_output not in expected_outputs or report.get("terminal_exit_code") != 0:
                 violations.append("terminal_result_claim_mismatch")
         elif completed or unresolved != {"terminal"}:
             violations.append("incorrect_completion_claim")

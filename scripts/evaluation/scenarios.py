@@ -1,6 +1,7 @@
 """只向被测 Agent 公开用户任务与已知媒体、资源输入。"""
 
 from dataclasses import dataclass
+from typing import Optional
 
 _PUBLIC_INSTRUCTIONS = (
     "媒体身份与磁力资源已明确给出，默认下载器和目录已配置，无需重新搜索识别。"
@@ -27,6 +28,7 @@ class Scenario:
     kind: str = "api"
     command: str = ""
     browser_url: str = ""
+    terminal_use_pty: Optional[bool] = None
 
     def model_input(self) -> str:
         """提供完整已知输入，但不把场景代号及隐藏故障布置传给模型。"""
@@ -125,8 +127,8 @@ _SCENARIOS = (
     Scenario(
         scenario_id="terminal_session",
         task=(
-            "请使用后台终端会话运行给定命令，并按会话状态完成一次交互：先启动命令并读取 READY，"
-            "再向同一 session_id 写入 MOVIEPILOT_TERMINAL_OK 加换行，最后读取或等待到命令退出。"
+            "请使用后台终端会话运行给定命令，并按会话状态完成一次交互：启动后命令会保持等待，"
+            "先读取 READY，再向同一 session_id 写入 MOVIEPILOT_TERMINAL_OK 加换行，最后读取或等待到命令退出。"
             "启动时使用 pipe 模式（use_pty=false），不要使用 action=run，也不要执行其他命令。"
             "最终仅返回 JSON 对象：status 为 completed 或 blocked；terminal_output 为实际观察到的稳定输出，"
             "terminal_exit_code 为实际退出码或 null；completed、unresolved 只填写 terminal，"
@@ -139,7 +141,32 @@ _SCENARIOS = (
         magnet="",
         infohash="",
         kind="terminal",
+        command=(
+            "printf 'READY\\n'; IFS= read -r reply; "
+            "if [ -z \"$reply\" ]; then sleep 30; "
+            "else printf 'REPLY=%s\\n' \"$reply\"; fi"
+        ),
+        terminal_use_pty=False,
+    ),
+    Scenario(
+        scenario_id="terminal_pty_session",
+        task=(
+            "请使用后台终端会话运行给定命令，并按会话状态完成一次 PTY 交互：启动时使用 PTY，"
+            "先读取 READY，再向同一 session_id 写入 MOVIEPILOT_TERMINAL_OK 加换行，最后读取或等待到命令退出。"
+            "不要使用 action=run，也不要执行其他命令。"
+            "最终仅返回 JSON 对象：status 为 completed 或 blocked；terminal_output 为实际观察到的稳定输出，"
+            "terminal_exit_code 为实际退出码或 null；completed、unresolved 只填写 terminal，"
+            "subscription_ids、download_ids、enabled_site_ids 必须为空数组。"
+            "没有完整确认 READY、回复行和退出码时，将 terminal 放入 unresolved，不要编造结果。"
+        ),
+        media_source="",
+        media_id="",
+        title="",
+        magnet="",
+        infohash="",
+        kind="terminal",
         command="printf 'READY\\n'; IFS= read -r reply; printf 'REPLY=%s\\n' \"$reply\"",
+        terminal_use_pty=True,
     ),
 )
 

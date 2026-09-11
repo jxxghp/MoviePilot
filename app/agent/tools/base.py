@@ -68,6 +68,18 @@ else:
             """按详细模式逐条展示工具调用，或登记为延迟汇总。"""
             ...
 
+        def tool_call_started(
+            self,
+            tool_name: str,
+            tool_message: Optional[str] = None,
+        ) -> str:
+            """登记真实工具开始执行并返回展示调用 ID。"""
+            ...
+
+        def tool_call_finished(self, tool_id: str, status: str = "done") -> None:
+            """登记真实工具执行结束。"""
+            ...
+
         async def take(self) -> str:
             """取出并清空当前缓冲内容。"""
             ...
@@ -463,9 +475,13 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
 
         # 获取工具执行提示消息
         tool_message = self.get_tool_message(**kwargs)
+        tool_call_id = ""
 
         # 发送工具执行过程消息（流式传输且非最后终结工具时）
         if self._stream_handler and self._stream_handler.is_streaming and not self.return_direct:
+            start_tool_call = getattr(self._stream_handler, "tool_call_started", None)
+            if callable(start_tool_call):
+                tool_call_id = str(start_tool_call(self.name, tool_message) or "")
             if get_runtime_setting('AI_AGENT_VERBOSE'):
                 if self._stream_handler.is_auto_flushing:
                     # 渠道支持编辑：工具消息追加到 buffer，由定时刷新推送
@@ -528,11 +544,23 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
                 f"结果摘要: {summarize_result(formatted_result)}"
             )
             
+            if tool_call_id:
+                finish_tool_call = getattr(self._stream_handler, "tool_call_finished", None)
+                if callable(finish_tool_call):
+                    finish_tool_call(tool_call_id, "done")
         except ToolExecutionTimeoutError as e:
+            if tool_call_id:
+                finish_tool_call = getattr(self._stream_handler, "tool_call_finished", None)
+                if callable(finish_tool_call):
+                    finish_tool_call(tool_call_id, "error")
             error_message = summarize_error(e)
             logger.warning(error_message)
             raise
         except Exception as e:
+            if tool_call_id:
+                finish_tool_call = getattr(self._stream_handler, "tool_call_finished", None)
+                if callable(finish_tool_call):
+                    finish_tool_call(tool_call_id, "error")
             error_message = f"工具执行异常（{stable_type_name(e)}），请检查参数或查询当前状态后继续处理。"
             logger.error(f"Tool {self.name} execution failed: {summarize_error(e)}")
             raise ToolExecutionError(error_message) from e

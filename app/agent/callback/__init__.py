@@ -149,6 +149,19 @@ class StreamingHandler:
         )
         return ""
 
+    def tool_call_started(
+        self,
+        tool_name: str,
+        tool_message: Optional[str] = None,
+    ) -> str:
+        """为支持结构化生命周期的宿主预留工具调用 ID。"""
+        del tool_name, tool_message
+        return ""
+
+    def tool_call_finished(self, tool_id: str, status: str = "done") -> None:
+        """收口真实工具执行；普通通知渠道无需额外输出生命周期事件。"""
+        del tool_id, status
+
     async def take(self) -> str:
         """
         获取当前已积累的消息内容，获取后清空缓冲区。

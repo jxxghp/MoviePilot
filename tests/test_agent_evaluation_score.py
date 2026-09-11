@@ -228,6 +228,31 @@ def test_terminal_native_aggregate_can_prove_stdin_without_fake_write_event():
     assert evaluate(world, report).passed is True
 
 
+def test_terminal_pty_echo_is_part_of_the_verified_output():
+    """PTY 回显写入内容时，验收器保留该真实输出并继续核验回复与退出码。"""
+    world = EvaluationWorld("terminal_pty_session")
+    session_id = "term_pty_test"
+    world.record_command(world.scenario.command, {
+        "execution_outcome": "pending", "status": "running", "session_id": session_id,
+        "output": "READY\r\n",
+    }, action="start")
+    world.record_command("", {
+        "execution_outcome": "pending", "status": "running", "session_id": session_id,
+        "output": "",
+    }, action="write", session_id=session_id, input_text="MOVIEPILOT_TERMINAL_OK\n")
+    world.record_command("", {
+        "execution_outcome": "succeeded", "status": "exited", "session_id": session_id,
+        "exit_code": 0, "output": "MOVIEPILOT_TERMINAL_OK\r\nREPLY=MOVIEPILOT_TERMINAL_OK\r\n",
+    }, action="wait", session_id=session_id)
+    report = {
+        "status": "completed",
+        "terminal_output": "READY\r\nMOVIEPILOT_TERMINAL_OK\r\nREPLY=MOVIEPILOT_TERMINAL_OK\r\n",
+        "terminal_exit_code": 0, "completed": ["terminal"], "unresolved": [],
+        "subscription_ids": [], "download_ids": [], "enabled_site_ids": [],
+    }
+    assert evaluate(world, report).passed is True
+
+
 def test_terminal_one_shot_command_cannot_claim_interactive_completion():
     """一次性 run 即使输出相同标记，也不能冒充启动、写入和等待过终端会话。"""
     world = EvaluationWorld("terminal_session")

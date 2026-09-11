@@ -905,8 +905,36 @@ def apply_web_agent_display_event(event: dict[str, Any], assistant_message: dict
     if event_type == "delta":
         append_web_agent_text_segment(assistant_message, event.get("content") or "")
     elif event_type == "tool":
+        tool_id = str(event.get("tool_id") or event.get("tool_call_id") or "")
+        tool_status = str(event.get("status") or "running")
+        if tool_id and tool_status in {"running", "done", "error"}:
+            matching_tool = next(
+                (tool for tool in assistant_message["tools"] if str(tool.get("id") or "") == tool_id),
+                None,
+            )
+            if tool_status == "running":
+                if matching_tool is None:
+                    tool_index = len(assistant_message["tools"])
+                    assistant_message["tools"].append(
+                        {
+                            "id": tool_id,
+                            "tool_name": str(event.get("tool_name") or ""),
+                            "message": str(event.get("message") or "").strip(),
+                            "status": "running",
+                        }
+                    )
+                    assistant_message.setdefault("segments", []).append(
+                        {"type": "tool", "toolIndex": tool_index}
+                    )
+                return
+            if matching_tool is not None:
+                matching_tool["status"] = tool_status
+            return
+
+        # 兼容尚未升级的事件生产者：没有调用 ID 时只能把前一批提示视为已结束。
         for tool in assistant_message["tools"]:
-            tool["status"] = "done"
+            if tool.get("status") == "running":
+                tool["status"] = "done"
         tool_index = len(assistant_message["tools"])
         assistant_message["tools"].append(
             {
@@ -942,12 +970,14 @@ def apply_web_agent_display_event(event: dict[str, Any], assistant_message: dict
                 event.get("message") or "智能助手响应失败",
             )
         for tool in assistant_message["tools"]:
-            tool["status"] = "done"
+            if tool.get("status") == "running":
+                tool["status"] = "done"
     elif event_type == "done":
         if assistant_message.get("status") != "error":
             assistant_message["status"] = "done"
         for tool in assistant_message["tools"]:
-            tool["status"] = "done"
+            if tool.get("status") == "running":
+                tool["status"] = "done"
 
 
 async def save_web_agent_display_snapshot(

@@ -92,16 +92,19 @@ def _publish_web_agent_protected_output(
 def _build_web_agent_steering_callback(
     *,
     display_messages: list[dict[str, Any]],
+    assistant_message_ref: dict[str, dict[str, Any]],
     event_publisher: Any,
     build_display_message: Callable[..., dict[str, Any]],
     build_input_attachments: Callable[..., list[dict[str, Any]]],
 ) -> Callable[[SteeringMessage, str], None]:
-    """构造运行中补充消息的应用回调，并同步展示快照与 SSE。"""
+    """构造运行中补充消息的应用回调，并同步展示快照与 SSE 时间线。"""
 
     def steering_status_callback(message: SteeringMessage, status: str) -> None:
-        """把补充消息应用状态投影到当前助手流，保持单一助手气泡。"""
+        """把补充消息应用状态投影到当前助手流的真实边界。"""
         if status != "applied":
             return
+        assistant_message = assistant_message_ref["message"]
+        assistant_message["status"] = "done"
         display_message = build_display_message(
             role="user",
             content=message.text,
@@ -112,8 +115,13 @@ def _build_web_agent_steering_callback(
             ),
         )
         display_message["steering_message_id"] = message.message_id
-        # 当前助手气泡必须继续保持最后一项，补充的用户消息插入其前面。
-        display_messages.insert(max(0, len(display_messages) - 1), display_message)
+        # 应用点是消息流中的真实边界：先收口前一段助手输出，再插入用户消息，
+        # 最后创建承接后续工具和文本的新助手气泡。
+        assistant_index = display_messages.index(assistant_message)
+        display_messages.insert(assistant_index + 1, display_message)
+        continuation = build_display_message(role="assistant", status="streaming")
+        display_messages.insert(assistant_index + 2, continuation)
+        assistant_message_ref["message"] = continuation
         event_publisher.publish(
             {
                 "type": "steering",
@@ -121,6 +129,8 @@ def _build_web_agent_steering_callback(
                 "message_id": message.message_id,
                 "content": message.text,
                 "display_message": display_message,
+                "assistant_message_id": assistant_message.get("id"),
+                "continuation_message_id": continuation.get("id"),
             }
         )
 
@@ -129,7 +139,7 @@ def _build_web_agent_steering_callback(
 
 def _build_web_agent_message_callback(
     *,
-    assistant_display_message: dict[str, Any],
+    assistant_message_ref: dict[str, dict[str, Any]],
     event_publisher: Any,
     build_message_events_async: Callable[[Message], Awaitable[list[dict[str, Any]]]],
     apply_display_event: Callable[[dict[str, Any], dict[str, Any]], None],
@@ -139,7 +149,7 @@ def _build_web_agent_message_callback(
     async def message_callback(message: Message) -> None:
         """接收 Agent 工具主动发送的 Web 通知。"""
         for item in await build_message_events_async(message):
-            apply_display_event(item, assistant_display_message)
+            apply_display_event(item, assistant_message_ref["message"])
             event_publisher.publish(item)
 
     return message_callback
@@ -147,7 +157,7 @@ def _build_web_agent_message_callback(
 
 def _build_web_agent_output_callback(
     *,
-    assistant_display_message: dict[str, Any],
+    assistant_message_ref: dict[str, dict[str, Any]],
     event_publisher: Any,
     split_output: Callable[[str], list[dict[str, Any]]],
     apply_display_event: Callable[[dict[str, Any], dict[str, Any]], None],
@@ -157,10 +167,26 @@ def _build_web_agent_output_callback(
     def output_callback(delta: str) -> None:
         """接收 Agent 文本增量并投影为展示事件。"""
         for item in split_output(delta):
-            apply_display_event(item, assistant_display_message)
+            apply_display_event(item, assistant_message_ref["message"])
             event_publisher.publish(item)
 
     return output_callback
+
+
+def _build_web_agent_tool_event_callback(
+    *,
+    assistant_message_ref: dict[str, dict[str, Any]],
+    event_publisher: Any,
+    apply_display_event: Callable[[dict[str, Any], dict[str, Any]], None],
+) -> Callable[[dict[str, Any]], None]:
+    """构造结构化工具生命周期回调，确保快照与 SSE 使用同一事件顺序。"""
+
+    def tool_event_callback(event: dict[str, Any]) -> None:
+        """投影工具开始、完成和失败事件。"""
+        apply_display_event(event, assistant_message_ref["message"])
+        event_publisher.publish(event)
+
+    return tool_event_callback
 
 
 def _build_web_agent_files(command: Any) -> list[dict[str, Any]]:
@@ -178,7 +204,7 @@ def _build_web_agent_event_generator(
     session_id: str,
     prompt: str,
     display_messages: list[dict[str, Any]],
-    assistant_display_message: dict[str, Any],
+    assistant_message_ref: dict[str, dict[str, Any]],
     has_audio_input: bool,
     is_secret_confirmation_control: bool,
     protected_transport_supported: bool,
@@ -188,6 +214,7 @@ def _build_web_agent_event_generator(
     dependencies: WebAgentStreamDependencies,
     event_publisher: Any,
     output_callback: Callable[[str], None],
+    tool_event_callback: Callable[[dict[str, Any]], None],
     message_callback: Callable[[Message], Awaitable[None]],
     protected_output_callback: Callable[[str], bool],
     steering_status_callback: Callable[[SteeringMessage, str], None],
@@ -214,6 +241,7 @@ def _build_web_agent_event_generator(
                 reply_mode=ReplyMode.CAPTURE_ONLY,
                 allow_message_tools=True,
                 output_callback=output_callback,
+                tool_event_callback=tool_event_callback,
                 protected_output_callback=(protected_output_callback if protected_transport_supported else None),
                 message_callback=message_callback,
                 steering_status_callback=steering_status_callback,
@@ -229,11 +257,11 @@ def _build_web_agent_event_generator(
                 "type": "error",
                 "message": "智能助手执行失败，请稍后重试",
             }
-            dependencies.apply_display_event(error_event, assistant_display_message)
+            dependencies.apply_display_event(error_event, assistant_message_ref["message"])
             event_publisher.publish(error_event)
         finally:
             done_event = {"type": "done"}
-            dependencies.apply_display_event(done_event, assistant_display_message)
+            dependencies.apply_display_event(done_event, assistant_message_ref["message"])
             # 终态先进入事件队列，避免展示快照落库延迟前端结束动画。
             event_publisher.publish(done_event)
             if not is_secret_confirmation_control:
@@ -327,21 +355,28 @@ def build_agent_web_agent_stream(
         status="streaming",
     )
     display_messages.append(assistant_display_message)
+    assistant_message_ref = {"message": assistant_display_message}
     output_callback = _build_web_agent_output_callback(
-        assistant_display_message=assistant_display_message,
+        assistant_message_ref=assistant_message_ref,
         event_publisher=event_publisher,
         split_output=dependencies.split_output,
         apply_display_event=dependencies.apply_display_event,
     )
     message_callback = _build_web_agent_message_callback(
-        assistant_display_message=assistant_display_message,
+        assistant_message_ref=assistant_message_ref,
         event_publisher=event_publisher,
         build_message_events_async=dependencies.build_message_events_async,
+        apply_display_event=dependencies.apply_display_event,
+    )
+    tool_event_callback = _build_web_agent_tool_event_callback(
+        assistant_message_ref=assistant_message_ref,
+        event_publisher=event_publisher,
         apply_display_event=dependencies.apply_display_event,
     )
     protected_output_callback = partial(_publish_web_agent_protected_output, event_publisher)
     steering_status_callback = _build_web_agent_steering_callback(
         display_messages=display_messages,
+        assistant_message_ref=assistant_message_ref,
         event_publisher=event_publisher,
         build_display_message=dependencies.build_display_message,
         build_input_attachments=dependencies.build_input_attachments,
@@ -353,7 +388,7 @@ def build_agent_web_agent_stream(
         session_id=session_id,
         prompt=prompt,
         display_messages=display_messages,
-        assistant_display_message=assistant_display_message,
+        assistant_message_ref=assistant_message_ref,
         has_audio_input=has_audio_input,
         is_secret_confirmation_control=is_secret_confirmation_control,
         protected_transport_supported=protected_transport_supported,
@@ -363,6 +398,7 @@ def build_agent_web_agent_stream(
         dependencies=dependencies,
         event_publisher=event_publisher,
         output_callback=output_callback,
+        tool_event_callback=tool_event_callback,
         message_callback=message_callback,
         protected_output_callback=protected_output_callback,
         steering_status_callback=steering_status_callback,

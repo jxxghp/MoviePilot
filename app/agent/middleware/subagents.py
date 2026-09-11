@@ -404,10 +404,10 @@ def _record_subagent_tool_call(
     stream_handler: Any,
     tool_name: str,
     tool_args: dict[str, Any],
-) -> None:
+) -> str:
     """按当前详细模式展示或汇总子代理工具调用。"""
     if not stream_handler or not getattr(stream_handler, "is_streaming", False):
-        return
+        return ""
     safe_args = sanitize_for_host(tool_args)
     if not isinstance(safe_args, dict):
         safe_args = {}
@@ -415,11 +415,11 @@ def _record_subagent_tool_call(
         tool_message = "调用子代理：general-purpose"
     else:
         tool_message = f"管理子代理任务：action={safe_args.get('action') or 'start'}"
-    stream_handler.report_tool_call(
+    return str(stream_handler.report_tool_call(
         tool_name=tool_name,
         tool_message=tool_message,
         tool_kwargs=tool_args,
-    )
+    ) or "")
 
 
 class _SubAgentAgentProvider:
@@ -618,7 +618,7 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
             f"开始执行子代理工具: tool_name={tool_name}, "
             "subagent_type=general-purpose"
         )
-        _record_subagent_tool_call(
+        tool_call_id = _record_subagent_tool_call(
             stream_handler=self.stream_handler,
             tool_name=SUBAGENT_TASK_TOOL_NAME,
             tool_args=tool_args,
@@ -626,11 +626,19 @@ class MoviePilotSubAgentMiddleware(AgentMiddleware):
         try:
             result = await handler(request)
         except Exception as err:
+            if tool_call_id:
+                finish_tool_call = getattr(self.stream_handler, "tool_call_finished", None)
+                if callable(finish_tool_call):
+                    finish_tool_call(tool_call_id, "error")
             logger.error(
                 f"子代理工具执行失败: tool_name={tool_name}, "
                 f"error={summarize_error(err)}"
             )
             raise
+        if tool_call_id:
+            finish_tool_call = getattr(self.stream_handler, "tool_call_finished", None)
+            if callable(finish_tool_call):
+                finish_tool_call(tool_call_id, "done")
         logger.info(f"子代理工具执行完成: tool_name={tool_name}")
         return result
 
@@ -1285,7 +1293,7 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             f"action={logged_args.get('action') or '-'}, "
             "subagent_type=general-purpose"
         )
-        _record_subagent_tool_call(
+        tool_call_id = _record_subagent_tool_call(
             stream_handler=self.stream_handler,
             tool_name=SUBAGENT_CONTROL_TOOL_NAME,
             tool_args=tool_args,
@@ -1293,11 +1301,19 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         try:
             result = await handler(request)
         except Exception as err:
+            if tool_call_id:
+                finish_tool_call = getattr(self.stream_handler, "tool_call_finished", None)
+                if callable(finish_tool_call):
+                    finish_tool_call(tool_call_id, "error")
             logger.error(
                 f"子代理工具执行失败: tool_name={tool_name}, "
                 f"error={summarize_error(err)}"
             )
             raise
+        if tool_call_id:
+            finish_tool_call = getattr(self.stream_handler, "tool_call_finished", None)
+            if callable(finish_tool_call):
+                finish_tool_call(tool_call_id, "done")
         logger.info(f"子代理工具执行完成: tool_name={tool_name}")
         return result
 

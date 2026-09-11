@@ -538,6 +538,47 @@ class TestAgentToolStreaming:
         assert emitted == expected
         assert buffered == expected
 
+    def test_web_streaming_handler_emits_structured_tool_lifecycle(self):
+        """Web 流式处理器应发布稳定调用 ID 的开始与完成事件，避免重复文本提示。"""
+
+        async def _run():
+            emitted = []
+            tool_events = []
+            handler = _get_web_agent_streaming_handler_type()(
+                emitted.append,
+                tool_events.append,
+            )
+            await handler.start_streaming(
+                channel=NotificationChannel.WebAgent.value,
+                source="web-agent",
+                user_id="1",
+                username="admin",
+            )
+            tool_id = handler.tool_call_started("search", "查询媒体")
+            handler.emit_tool_message("查询媒体")
+            handler.record_tool_call(
+                tool_name="search",
+                tool_message="查询媒体",
+                tool_kwargs={"query": "MoviePilot"},
+            )
+            handler.tool_call_finished(tool_id, "done")
+            return tool_id, emitted, tool_events
+
+        tool_id, emitted, tool_events = asyncio.run(_run())
+
+        assert tool_id.startswith("tool-")
+        assert emitted == []
+        assert tool_events == [
+            {
+                "type": "tool",
+                "status": "running",
+                "tool_id": tool_id,
+                "tool_name": "search",
+                "message": "查询媒体",
+            },
+            {"type": "tool", "status": "done", "tool_id": tool_id},
+        ]
+
     def test_rich_message_keeps_body_text_unquoted_for_telegram(self):
         """校验 Telegram 富文本只转换工具摘要行，正文保持原样。"""
         handler = StreamingHandler()

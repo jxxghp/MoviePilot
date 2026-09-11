@@ -108,6 +108,7 @@ class _MessageTask:
     reply_mode: ReplyMode = ReplyMode.DISPATCH
     allow_message_tools: bool = True
     output_callback: Optional[Callable[[str], None]] = None
+    tool_event_callback: Optional[Callable[[dict[str, Any]], None]] = None
     protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None
     message_callback: Optional[Callable[[Any], Awaitable[None] | None]] = None
     agent_factory: Optional[Callable[..., MoviePilotAgent]] = None
@@ -299,6 +300,7 @@ class AgentSessionOwner:
             reply_mode: ReplyMode = ReplyMode.DISPATCH,
             allow_message_tools: bool = True,
             output_callback: Optional[Callable[[str], None]] = None,
+            tool_event_callback: Optional[Callable[[dict[str, Any]], None]] = None,
             protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None,
             message_callback: Optional[Callable[[Any], Awaitable[None] | None]] = None,
             steering_status_callback: Optional[SteeringStatusCallback] = None,
@@ -330,6 +332,7 @@ class AgentSessionOwner:
             reply_mode=reply_mode,
             allow_message_tools=allow_message_tools,
             output_callback=output_callback,
+            tool_event_callback=tool_event_callback,
             protected_output_callback=protected_output_callback,
             message_callback=message_callback,
             steering_status_callback=steering_status_callback,
@@ -649,6 +652,8 @@ class AgentSessionOwner:
                     "output_callback": task.output_callback,
                     "protected_output_callback": task.protected_output_callback,
                 }
+                if task.tool_event_callback is not None:
+                    agent_kwargs["tool_event_callback"] = task.tool_event_callback
                 if task.message_callback is not None:
                     agent_kwargs["message_callback"] = task.message_callback
                 agent = task.agent_factory(**agent_kwargs)
@@ -669,6 +674,8 @@ class AgentSessionOwner:
                 agent.set_output_callback(task.output_callback)
             else:
                 agent.output_callback = task.output_callback
+            if hasattr(agent, "set_tool_event_callback"):
+                agent.set_tool_event_callback(task.tool_event_callback)
             agent.set_protected_output_callback(task.protected_output_callback)
             if task.message_callback is not None and hasattr(agent, "set_message_callback"):
                 agent.set_message_callback(task.message_callback)

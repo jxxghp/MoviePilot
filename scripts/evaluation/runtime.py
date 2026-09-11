@@ -212,8 +212,15 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
                 result = self._failure("cwd 必须省略或使用当前评测工作目录", command_text, action=action)
                 self._evaluation_world.record_command(command_text, self._payload(result), action=action)
                 return result
-            if kwargs.get("use_pty", True) is not False:
-                result = self._failure("终端场景必须使用 use_pty=false 的 pipe 模式", command_text, action=action)
+            expected_use_pty = self._evaluation_world.scenario.terminal_use_pty
+            if expected_use_pty is None:
+                expected_use_pty = False
+            if kwargs.get("use_pty", True) is not expected_use_pty:
+                mode = "PTY" if expected_use_pty else "pipe"
+                result = self._failure(
+                    f"终端场景必须使用 use_pty={str(expected_use_pty).lower()} 的 {mode} 模式",
+                    command_text, action=action,
+                )
                 self._evaluation_world.record_command(command_text, self._payload(result), action=action)
                 return result
             if session_id:
@@ -223,7 +230,8 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
             terminal_kwargs = dict(kwargs)
             terminal_kwargs.update({
                 "action": "start", "command": command_text, "session_id": None, "input_text": None,
-                "close_stdin": False, "cwd": str(self._evaluation_allowed_root), "env": None, "use_pty": False,
+                "close_stdin": False, "cwd": str(self._evaluation_allowed_root), "env": None,
+                "use_pty": expected_use_pty,
             })
             result = await super().run(**terminal_kwargs)
             payload = self._payload(result)

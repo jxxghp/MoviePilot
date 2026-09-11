@@ -241,14 +241,15 @@ async def test_evaluation_command_tool_rejects_wrong_input_with_correction(tmp_p
 
 
 @pytest.mark.asyncio
-async def test_evaluation_terminal_tool_runs_pipe_session_and_writes_stdin(tmp_path):
+@pytest.mark.parametrize(("scenario_id", "use_pty"), [("terminal_session", False), ("terminal_pty_session", True)])
+async def test_evaluation_terminal_tool_runs_session_and_writes_stdin(tmp_path, scenario_id: str, use_pty: bool):
     """评测终端复用生产会话管理器，必须通过真实 session_id 写入并等待退出。"""
-    world = EvaluationWorld("terminal_session")
+    world = EvaluationWorld(scenario_id)
     tool = _EvaluationExecuteCommandTool(world=world, allowed_root=tmp_path, session_id="terminal-test", user_id="1")
     scope = TerminalScope(user_id="1", task_id="terminal-test", kind="conversation")
     with bind_terminal_scope(scope):
         start = json.loads(await tool.run(
-            action="start", command=world.scenario.command, use_pty=False, yield_time_ms=1000,
+            action="start", command=world.scenario.command, use_pty=use_pty, yield_time_ms=1000,
         ))
         assert start["execution_outcome"] == "pending"
         session_id = start["session_id"]

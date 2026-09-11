@@ -722,9 +722,10 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
             f"开始执行活动日志查询工具: keyword={logged_args.get('keyword') or '-'}, "
             f"date={logged_args.get('date') or '-'}"
         )
+        tool_call_id = ""
         if self.stream_handler and getattr(self.stream_handler, "is_streaming", False):
             display_args = json.dumps(logged_args, ensure_ascii=False, default=str)
-            self.stream_handler.report_tool_call(
+            tool_call_id = self.stream_handler.report_tool_call(
                 tool_name=QUERY_ACTIVITY_LOG_TOOL_NAME,
                 tool_message=f"查询活动日志，主要参数：{display_args}",
                 tool_kwargs=tool_args,
@@ -732,10 +733,18 @@ class ActivityLogMiddleware(AgentMiddleware[ActivityLogState, ContextT, Response
         try:
             result = await handler(request)
         except Exception as err:
+            if tool_call_id:
+                finish_tool_call = getattr(self.stream_handler, "tool_call_finished", None)
+                if callable(finish_tool_call):
+                    finish_tool_call(tool_call_id, "error")
             logger.error(
                 f"活动日志查询工具执行失败: error={summarize_error(err)}"
             )
             raise
+        if tool_call_id:
+            finish_tool_call = getattr(self.stream_handler, "tool_call_finished", None)
+            if callable(finish_tool_call):
+                finish_tool_call(tool_call_id, "done")
         logger.info("活动日志查询工具执行完成")
         return result
 

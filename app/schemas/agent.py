@@ -127,6 +127,7 @@ class AgentChatToolCall(BaseModel):
     """
 
     id: str = Field(..., description="展示 ID")
+    tool_name: Optional[str] = Field(None, description="工具名称")
     message: str = Field(..., description="工具提示")
     status: str = Field(default="done", description="工具状态")
 

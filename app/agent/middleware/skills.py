@@ -615,8 +615,9 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         if not isinstance(logged_args, dict):
             logged_args = {}
         logger.info(f"开始执行 Skill 工具: name={logged_args.get('name') or '-'}")
+        tool_call_id = ""
         if self.stream_handler and getattr(self.stream_handler, "is_streaming", False):
-            self.stream_handler.report_tool_call(
+            tool_call_id = self.stream_handler.report_tool_call(
                 tool_name=SKILL_TOOL_NAME,
                 tool_message=f"读取技能说明：{logged_args.get('name') or '-'}",
                 tool_kwargs=tool_args,
@@ -624,8 +625,16 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         try:
             result = await handler(request)
         except Exception as err:
+            if tool_call_id:
+                finish_tool_call = getattr(self.stream_handler, "tool_call_finished", None)
+                if callable(finish_tool_call):
+                    finish_tool_call(tool_call_id, "error")
             logger.error(f"Skill 工具执行失败: error={summarize_error(err)}")
             raise
+        if tool_call_id:
+            finish_tool_call = getattr(self.stream_handler, "tool_call_finished", None)
+            if callable(finish_tool_call):
+                finish_tool_call(tool_call_id, "done")
         logger.info("Skill 工具执行完成")
         return result
 
