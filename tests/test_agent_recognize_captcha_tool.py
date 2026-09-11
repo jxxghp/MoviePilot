@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import json
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from app.adapters.external.ocr import OcrHelper
 from app.agent.tools.catalog import ToolCatalogSnapshot
@@ -110,6 +110,36 @@ def test_ocr_helper_normalizes_data_url_base64_padding():
     assert result == "z9k2"
     request_utils.return_value.get_res.assert_not_called()
     assert request_utils.return_value.post_res.call_args.kwargs["data"] == b"abcd"
+
+
+def test_ocr_helper_downloads_http_image_and_posts_raw_bytes():
+    """HTTP 图片地址应由 Agent 端下载后以原始字节提交给 OCR。"""
+    image_url = "https://example.com/captcha.png"
+
+    with patch("app.adapters.external.ocr.RequestUtils") as request_utils:
+        request_utils.return_value.get_res.return_value = _FakeResponse(
+            content=b"captcha-image"
+        )
+        request_utils.return_value.post_res.return_value = _FakeResponse(
+            payload={"result": "z9k2"}
+        )
+
+        result = OcrHelper().get_captcha_text(
+            image_url=image_url,
+            cookie="sid=abc",
+            ua="MoviePilotTest/1.0",
+        )
+
+    assert result == "z9k2"
+    assert request_utils.call_args_list == [
+        call(ua="MoviePilotTest/1.0", cookies="sid=abc"),
+        call(content_type="application/octet-stream"),
+    ]
+    request_utils.return_value.get_res.assert_called_once_with(image_url)
+    request_utils.return_value.post_res.assert_called_once_with(
+        url="https://movie-pilot.org/captcha/image",
+        data=b"captcha-image",
+    )
 
 
 def test_ocr_helper_accepts_raw_image_data_without_base64_encoding():
