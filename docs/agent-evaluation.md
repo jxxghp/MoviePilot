@@ -100,6 +100,16 @@ MoviePilot 的真实 Agent 已在 `app/agent/llm/helper.py` 的 `runtime == "goo
 
 严格配对摘要为 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair.json`，`pair_valid=true`、`both_passed=false`，模型/推理/预算、场景和四项 SHA 指纹均一致。MoviePilot 比 Codex 少 3 次模型调用、少 61341 个已知 token、少 51.091 秒，但这只是本轮具体轨迹的成本差，不抵消生产 Agent 的终态验收失败。该结果首次形成可复核的真实配对证据，也明确了下一目标是提高生产图的精确最终报告可靠性，而不是把失败改判为通过。
 
+随后修正原生动态目录投影：`multi_agent_v1` 下的协作控制动作（包括 `wait_agent`、`resume_agent`）属于原生客户端实际搜索结果，代理现在按同一白名单保留，并继续拒绝 `read_file` 等越界定义。修正后的三次同 Harness 配对均使用 `gpt-5.6-luna + max`、16 次模型调用上限、8192 输出上限、180 秒超时和 `harness_sha256=71be4c436acc5dc2d5a0cd6996c3ca10688a9c4ba98fd11594e536f7aa440c22`：
+
+| 场景 | MoviePilot | 原生 Codex | 配对结论 |
+| --- | --- | --- | --- |
+| `dedup_existing` | 通过；6 次模型调用、2 次业务读取、0 重复/副作用 | 通过；10 次模型调用、3 次业务读取、0 重复/副作用 | `pair_valid=true`、`both_passed=true`；摘要 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair-13.json` |
+| `unknown_download` | 通过；6 次模型调用、6 次业务调用、1 个预期写入副作用 | 通过；14 次模型调用、7 次业务调用、1 个预期写入副作用 | `pair_valid=true`、`both_passed=true`；摘要 `/tmp/moviepilot-agent-round-luna-oauth-unknown-pair-14.json` |
+| `honest_unknown` | 通过；9 次模型调用、2 次受控失败读取、1 个预期写入副作用，保留下载未核验 | 未通过；16 次模型调用达到上限，未产出最终 JSON，1 个预期写入副作用且无重复 | `pair_valid=true`、`both_passed=false`；摘要 `/tmp/moviepilot-agent-round-luna-oauth-honest-pair-16.json` |
+
+这组三场景说明当前生产 Agent 在两个写入/复用路径和一个未知回执安全路径上已形成同条件通过样本，但原生 Codex 在持续不可用场景仍会因继续读取 Skill 和消耗调用预算而没有终态报告。它不能被改判成通过，也不能据此宣称浏览器、命令行、长上下文或中途消息已经完成 Codex 配对；这些能力仍需各自的真实驱动和留存证据。
+
 已有报告可用以下命令重新生成摘要；命令只读报告，不会再次调用模型：
 
 ```bash

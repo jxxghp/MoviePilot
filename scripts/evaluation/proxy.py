@@ -33,6 +33,7 @@ NATIVE_CONTROL_TOOLS = frozenset({
 NATIVE_COLLABORATION_TOOLS = frozenset({
     "spawn_agent", "followup_task", "interrupt_agent", "list_agents", "send_message", "wait_agent",
 })
+NATIVE_MULTI_AGENT_TOOLS = NATIVE_CONTROL_TOOLS | NATIVE_COLLABORATION_TOOLS
 KNOWN_NAMESPACES = frozenset({"functions", "clock", "collaboration", "mcp__evaluation", "multi_agent_v1"})
 FIXTURE_TOOLS = frozenset({"moviepilot_api", "read_skill", "read_tool_result"})
 
@@ -44,7 +45,7 @@ def allowed_tool(name: str) -> bool:
             or normalized in {f"collaboration__{tool}" for tool in NATIVE_COLLABORATION_TOOLS}
             or normalized in {f"mcp__evaluation__{tool}" for tool in FIXTURE_TOOLS}
             or (normalized.startswith("multi_agent_v1__")
-                and normalized.removeprefix("multi_agent_v1__") in NATIVE_CONTROL_TOOLS))
+                and normalized.removeprefix("multi_agent_v1__") in NATIVE_MULTI_AGENT_TOOLS))
 
 
 def project_tools(tools: Any, prefix: str = "") -> tuple[list[dict[str, Any]], list[str], list[str]]:

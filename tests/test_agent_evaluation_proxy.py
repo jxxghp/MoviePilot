@@ -551,6 +551,32 @@ async def test_native_client_discovery_call_and_namespace_output_are_allowed(lim
     ]
 
 
+@pytest.mark.asyncio
+async def test_native_discovery_accepts_multi_agent_collaboration_namespace() -> None:
+    """原生协作命名空间的合法动作可通过目录投影并保留审计记录。"""
+    outbound = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """接收投影后的协作目录，不访问真实模型服务。"""
+        outbound.append(json.loads(request.content))
+        return httpx.Response(200, json=_completed())
+
+    tools = [{
+        "type": "namespace", "name": "multi_agent_v1",
+        "tools": [{"type": "function", "name": name, "parameters": {}}
+                  for name in ("wait_agent", "send_input")],
+    }]
+    payload = _native_payload()
+    payload["input"].append(_search_output(tools=tools))
+    proxy = EvaluationModelProxy(SETTINGS, transport=httpx.MockTransport(handler))
+    async with _client(proxy) as client:
+        response = await client.post("/v1/responses", json=payload)
+    assert response.status_code == 200 and outbound
+    assert proxy.snapshot()["model_requests"][0]["tool_catalogs"][-1]["retained_tools"] == [
+        "multi_agent_v1.wait_agent", "multi_agent_v1.send_input",
+    ]
+
+
 @pytest.mark.parametrize("updates", [
     {"execution": "server"}, {"call_id": None}, {"call_id": ""}, {"arguments": {"query": "  "}},
     {"arguments": {"query": "x", "sources": ["external"]}}, {"arguments": {"query": "x", "limit": 0}},
