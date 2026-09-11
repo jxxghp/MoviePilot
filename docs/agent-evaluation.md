@@ -86,7 +86,9 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 | MoviePilot 生产 Agent | 通过 | `/tmp/moviepilot-agent-round-luna-oauth-subagent-live-32-20260911.json`；13 次模型调用、2 次业务读取、真实派发两个独立子任务、0 失败/重复/副作用。 |
 | 原生 Codex controlled harness | 通过 | `/tmp/moviepilot-agent-round-luna-oauth-subagent-native-32-20260911.json`；23 次模型调用、2 次业务读取、两个子任务均返回可核验证据、0 重复/副作用。 |
 
-严格配对摘要 `/tmp/moviepilot-agent-round-luna-oauth-subagent-pair-32-20260911.json` 为 `pair_valid=true`、`both_passed=true`。MoviePilot 比原生 Codex 少 10 次模型调用、少 243194 个已知 token、少约 62.412 秒；这是该 held-out 轨迹的成本差，不能外推成整体智能优势。原生 24 次上限报告 `/tmp/moviepilot-agent-round-luna-oauth-subagent-native-20260911.json` 在最终 JSON 前耗尽预算，保留为失败样本；还记录一次关闭协作任务的参数警告，未造成业务副作用。S3.1 仍需多轮重复、终端分享和取消场景，才能判断通用子代理相对专用画像的稳定收益。
+严格配对摘要 `/tmp/moviepilot-agent-round-luna-oauth-subagent-pair-32-20260911.json` 为 `pair_valid=true`、`both_passed=true`。MoviePilot 比原生 Codex 少 10 次模型调用、少 243194 个已知 token、少约 62.412 秒；这是该 held-out 轨迹的成本差，不能外推成整体智能优势。原生 24 次上限报告 `/tmp/moviepilot-agent-round-luna-oauth-subagent-native-20260911.json` 在最终 JSON 前耗尽预算，保留为失败样本；还记录一次关闭协作任务的参数警告，未造成业务副作用。
+
+按相同提交内容和 Harness 追加第二轮 32 次预算复测：MoviePilot `/tmp/moviepilot-agent-round-luna-oauth-subagent-live-32-repeat2-20260911.json` 通过，11 次模型调用、63425 个已知 token、2 次业务读取；原生 Codex `/tmp/moviepilot-agent-round-luna-oauth-subagent-native-32-repeat2-20260911.json` 通过，28 次模型调用、534320 个已知 token、2 次业务读取。两侧均 0 失败/重复/副作用，原生进程正常退出且第二轮无 stderr 警告；配对摘要 `/tmp/moviepilot-agent-round-luna-oauth-subagent-pair-32-repeat2-20260911.json` 为 `pair_valid=true`、`both_passed=true`。两轮均通过说明该 held-out 子代理合同已有重复证据，但 S3.1 仍需终端分享和取消场景，不能据此宣称整体智能与 Codex 等价。
 
 本轮将后续真实测评模型切换为 Google Gemini `gemini-3.1-pro-preview`，推理档位保持 `high`。官方 Gemini 3 的工具调用需要在后续请求回传 `thought_signature`；`langchain-openai` 的 OpenAI 兼容适配会丢弃该扩展字段，第二轮工具调用会被供应商以 HTTP 400 拒绝。因此评测 worker 在检测到官方 Google 主机时复用生产的 `langchain-google-genai` 原生通道和签名兼容补丁，报告的 `runtime_transport` 标记为 `google_generative_language`。这只改变模型连接适配，不放宽 MoviePilot 工具目录、隔离世界或独立验收器。切换后的完整场景报告以实际模型调用结果和对应提交内容为准，不能把此前 2.5 Pro 的结果冒充 3.1 Pro 证据。
 
