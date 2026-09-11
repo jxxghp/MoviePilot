@@ -62,10 +62,8 @@ def _require_cookie_ports() -> Tuple[CookieBrowserPort, CaptchaHttpPort, Captcha
     return _cookie_browser_port, _captcha_http_port, _captcha_ocr_port
 
 
-class CookieHelper:
-    """处理站点登录表单、验证码和 Cookie 获取流程。"""
-
-    _MAX_CAPTCHA_ATTEMPTS = 3
+class CookieLoginFormMixin:
+    """提供跨站点登录表单、验证码和页面错误识别的共享能力。"""
 
     # 站点登录界面元素XPATH
     _SITE_LOGIN_XPATH = {
@@ -385,6 +383,11 @@ class CookieHelper:
             except Exception:
                 pass
         return False
+
+class CookieHelper(CookieLoginFormMixin):
+    """处理站点登录表单、验证码和 Cookie 获取流程。"""
+
+    _MAX_CAPTCHA_ATTEMPTS = 3
 
     @staticmethod
     def get_page_content(page: Any, retries: int = 3, interval: float = 1.0) -> Optional[str]:
