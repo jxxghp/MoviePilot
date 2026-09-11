@@ -2,8 +2,15 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from app.application.configuration import get_chain_runtime_config_snapshot
+from app.chain.artwork import MusicArtworkChain
 from app.chain.scraping import ScrapingChain, ScrapingConfig, _MusicScrapeFileResult
-from app.domain.context import MUSIC_ENTITY_ALBUM, MusicAlbumInfo, MusicInfo, MusicLyrics
+from app.domain.context import (
+    MUSIC_ENTITY_ALBUM,
+    MusicAlbumInfo,
+    MusicArtistInfo,
+    MusicInfo,
+    MusicLyrics,
+)
 from app.runtime.events import Event
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.file import FileItem
@@ -13,6 +20,11 @@ from app.schemas.types import EventType, ScrapingPolicy
 def _media_chain() -> ScrapingChain:
     """构造不注册全局单例的音乐刮削链测试实例。"""
     return object.__new__(ScrapingChain)
+
+
+def _artwork_chain() -> MusicArtworkChain:
+    """构造不注册全局运行时的艺人图片链测试实例。"""
+    return object.__new__(MusicArtworkChain)
 
 
 def _album_info() -> MusicInfo:
@@ -84,7 +96,16 @@ def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:
     with patch(
         "app.chain.scraping.MediaChain.get_music_album",
         return_value=None,
-    ) as get_music_album:
+    ) as get_music_album, patch(
+        "app.chain.scraping.MusicArtworkChain",
+    ) as artwork_chain:
+        artwork_chain.return_value.scrape_artist_images.return_value = {
+            "saved": 0,
+            "existing": 0,
+            "missing": 0,
+            "failed": 0,
+        }
+        artwork_chain.append_summary.side_effect = lambda message, _counts: message
         success, message = chain.scrape_music_metadata(
             FileItem(
                 storage="local",
@@ -101,6 +122,12 @@ def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:
     get_music_album.assert_called_once_with(
         media_source=album.media_source,
         media_id=album.media_id,
+    )
+    artwork_chain.return_value.scrape_artist_images.assert_called_once_with(
+        files=audio_files,
+        media=[album, album],
+        overwrite=True,
+        image_loader=chain._download_music_cover,
     )
     assert chain._scrape_music_file.call_count == 2
     assert all(
@@ -135,6 +162,88 @@ def test_music_cover_download_uses_bounded_external_response_cache() -> None:
     )
     response.close.assert_called_once()
     ScrapingChain._request_music_cover.cache_clear()
+
+
+def test_music_scrape_writes_one_artist_image_per_album_directory() -> None:
+    """同一专辑的多首音轨应只查询一次艺人并只写入一张 artist.*。"""
+    chain = _artwork_chain()
+    chain.storagechain = Mock()
+    chain.storagechain.get_file_item.return_value = None
+    chain._artist_detail = Mock(return_value=MusicArtistInfo(
+        media_source="musicbrainz",
+        media_id="artist-1",
+        name="周杰伦",
+        image_url="https://example.com/artist.jpg",
+    ))
+    image_loader = Mock(return_value=(b"artist", "image/jpeg"))
+    chain._write_artist_sidecar = Mock(return_value=True)
+    files = [
+        FileItem(storage="local", path="/music/周杰伦/叶惠美/01.flac", type="file"),
+        FileItem(storage="local", path="/music/周杰伦/叶惠美/02.flac", type="file"),
+    ]
+    info = MusicInfo(
+        media_source="musicbrainz",
+        media_id="album-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        artists=["周杰伦"],
+        artist_ids=["artist-1"],
+    )
+
+    counts = chain.scrape_artist_images(
+        files=files,
+        media=[info, info],
+        overwrite=False,
+        image_loader=image_loader,
+    )
+
+    assert counts == {"saved": 1, "existing": 0, "missing": 0, "failed": 0}
+    chain._artist_detail.assert_called_once_with(info.media_source, "artist-1")
+    image_loader.assert_called_once_with("https://example.com/artist.jpg")
+    chain._write_artist_sidecar.assert_called_once()
+
+
+def test_music_scrape_skips_artist_image_for_multi_artist_compilation() -> None:
+    """同一目录的主艺人不一致时不得用第一首歌的艺人图片覆盖合辑。"""
+    chain = _artwork_chain()
+    chain.storagechain = Mock()
+    chain._artist_detail = Mock()
+    files = [
+        FileItem(storage="local", path="/music/合辑/01.flac", type="file"),
+        FileItem(storage="local", path="/music/合辑/02.flac", type="file"),
+    ]
+    media = [
+        MusicInfo(media_source="musicbrainz", artists=["甲"], artist_ids=["artist-1"]),
+        MusicInfo(media_source="musicbrainz", artists=["乙"], artist_ids=["artist-2"]),
+    ]
+
+    counts = chain.scrape_artist_images(
+        files,
+        media,
+        overwrite=False,
+        image_loader=Mock(),
+    )
+
+    assert counts == {"saved": 0, "existing": 0, "missing": 0, "failed": 0}
+    chain._artist_detail.assert_not_called()
+
+
+def test_write_music_artist_sidecar_uses_image_mime_extension(tmp_path) -> None:
+    """本地艺人图片应使用真实 MIME 扩展名原子写入音轨目录。"""
+    chain = _artwork_chain()
+    chain.storagechain = Mock()
+    audio_path = tmp_path / "01.flac"
+    audio_path.write_bytes(b"audio")
+
+    success = chain._write_artist_sidecar(
+        fileitem=FileItem(storage="local", path=audio_path.as_posix(), type="file"),
+        content=b"artist-image",
+        mime="image/png",
+        overwrite=False,
+    )
+
+    artist_path = tmp_path / "artist.png"
+    assert success is True
+    assert artist_path.read_bytes() == b"artist-image"
 
 
 def test_recording_identity_rejects_multi_track_directory_scrape() -> None:

@@ -74,6 +74,18 @@ def music_text_key(value: Optional[str]) -> str:
     return str(zhconv_convert("".join(char for char in text if char.isalnum() and not combining(char)), "zh-hans"))
 
 
+def music_scrape_identity(info: MusicInfo) -> tuple:
+    """构造音乐刮削身份键，用于识别同一单曲被错误套用到多个文件。"""
+    return (
+        info.media_source,
+        info.media_id,
+        info.music_type,
+        info.title,
+        info.disc_number,
+        info.track_number,
+    )
+
+
 def music_titles(music: MusicInfo, *, album: bool = False) -> list[str]:
     """返回同一作品的可信名称，单曲绝不消费兼容 names 中的专辑名。"""
     if album or music.music_type == MUSIC_ENTITY_ALBUM:

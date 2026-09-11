@@ -15,6 +15,7 @@ from app.application.configuration import (
     get_chain_runtime_config_snapshot,
     get_configured_system_config,
 )
+from app.chain.artwork import MusicArtworkChain
 from app.chain.base import ChainBase
 from app.chain.lyrics import LyricsChain
 from app.chain.media import MediaChain
@@ -28,6 +29,7 @@ from app.domain.context import (
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
+from app.domain.music import music_scrape_identity
 from app.foundation.singleton import Singleton
 from app.runtime.cache import cached
 from app.runtime.events import Event, eventmanager
@@ -1123,7 +1125,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             for item in files
         ]
         distinct_recordings = {
-            self._music_scrape_identity(info)
+            music_scrape_identity(info)
             for info in file_media
             if info and info.music_type != MUSIC_ENTITY_ALBUM
         }
@@ -1205,6 +1207,15 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if result.lyrics_status == "failed":
                 failures.append(f"{audio_item.name or audio_item.path} 歌词保存失败")
 
+        artist_image_counts = (
+            MusicArtworkChain().scrape_artist_images(
+                files=files,
+                media=file_media,
+                overwrite=overwrite or poster_option.is_overwrite,
+                image_loader=self._download_music_cover,
+            ) if with_cover else {}
+        )
+
         message = f"已刮削 {len(files)} 个音频文件"
         if not lyrics_option.is_skip:
             message += (
@@ -1218,21 +1229,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 message += f"、失败 {lyrics_counts['failed']} 首"
             if lyrics_counts["budget_exceeded"]:
                 message += f"、预算耗尽 {lyrics_counts['budget_exceeded']} 首"
+        message = MusicArtworkChain.append_summary(message, artist_image_counts)
         if failures:
             return False, f"{message}；{'；'.join(failures[:3])}"
         return True, message
-
-    @staticmethod
-    def _music_scrape_identity(info: MusicInfo) -> tuple:
-        """构造音乐刮削身份键，用于识别同一单曲被错误套用到多个文件。"""
-        return (
-            info.media_source,
-            info.media_id,
-            info.music_type,
-            info.title,
-            info.disc_number,
-            info.track_number,
-        )
 
     @staticmethod
     @cached(

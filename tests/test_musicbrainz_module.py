@@ -722,6 +722,57 @@ def test_music_artist_maps_profile_links_and_image(monkeypatch):
     assert set(artist.external_links) == {"official homepage", "wikidata"}
 
 
+def test_music_artist_uses_wikidata_image_when_direct_relation_is_missing(monkeypatch):
+    """MusicBrainz 没有直接 image 关系时应用 Wikidata P18 补全艺人图片。"""
+    module = MusicBrainzModule()
+    monkeypatch.setattr(
+        MusicBrainzModule,
+        "_request_json",
+        staticmethod(lambda path, params=None: {
+            "id": "artist-1",
+            "name": "Queen",
+            "relations": [{
+                "type": "wikidata",
+                "target-type": "url",
+                "url": {"resource": "https://www.wikidata.org/wiki/Q15862"},
+            }],
+        }),
+    )
+    wikidata_image = Mock(return_value="https://commons.example/Queen.jpg")
+    monkeypatch.setattr(MusicBrainzModule, "_wikidata_artist_image", wikidata_image)
+
+    artist = module.music_artist("musicbrainz", "artist-1")
+
+    assert artist is not None
+    assert artist.image_url == "https://commons.example/Queen.jpg"
+    wikidata_image.assert_called_once_with("https://www.wikidata.org/wiki/Q15862")
+
+
+def test_wikidata_artist_image_payload_uses_p18_commons_file() -> None:
+    """Wikidata P18 文件名应转换为可下载的 Commons 缩放直链。"""
+    image_url = MusicBrainzModule._wikidata_image_from_payload(
+        {
+            "entities": {
+                "Q15862": {
+                    "claims": {
+                        "P18": [{
+                            "mainsnak": {
+                                "datavalue": {"value": "Queen – 1984.jpg"},
+                            },
+                        }],
+                    },
+                },
+            },
+        },
+        "Q15862",
+    )
+
+    assert image_url == (
+        "https://commons.wikimedia.org/wiki/Special:FilePath/"
+        "Queen%20%E2%80%93%201984.jpg?width=500"
+    )
+
+
 def test_music_artist_albums_sorts_page_by_release_date(monkeypatch):
     """艺术家专辑列表应按发行日期倒序，并带上专辑类型筛选参数。"""
     module = MusicBrainzModule()
