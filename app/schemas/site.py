@@ -152,7 +152,7 @@ class SiteCookieUpdate(BaseModel):
     code: Optional[str] = Field(None, description="二步验证码或密钥")
 
 
-class SiteCookieSet(BaseModel):
+class SiteCookieSet(BaseModel):  # type: ignore[misc]
     """直接保存浏览器登录后取得的站点 Cookie 与 User-Agent。"""
 
     cookie: str = Field(..., description="Site authentication Cookie header obtained from a trusted browser session.")

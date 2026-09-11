@@ -3,7 +3,7 @@
 from collections.abc import Awaitable, Callable
 from importlib import import_module
 from math import ceil
-from typing import Any
+from typing import Any, cast
 
 from langchain.agents.middleware.summarization import (
     DEFAULT_SUMMARY_PROMPT,
@@ -158,6 +158,16 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
             return [first_human, *tail]
         except Exception:
             return trimmed_messages
+
+    @staticmethod
+    def _partition_messages(
+        messages: list[AnyMessage], cutoff_index: int
+    ) -> tuple[list[AnyMessage], list[AnyMessage]]:
+        """显式标注摘要分区的返回类型，避免外部中间件类型缺失扩散。"""
+        return cast(
+            tuple[list[AnyMessage], list[AnyMessage]],
+            SummarizationMiddleware._partition_messages(messages, cutoff_index),
+        )
 
     def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
         """同步摘要失败时保持原图状态。"""

@@ -306,8 +306,7 @@
   },
   "app/agent/tools/impl/recognize_captcha.py": {
     "misc": 1,
-    "no-untyped-def": 2,
-    "override": 1
+    "no-untyped-def": 2
   },
   "app/agent/tools/impl/search_web.py": {
     "assignment": 1,
@@ -742,11 +741,10 @@
     "no-untyped-def": 1
   },
   "app/application/security/cookie.py": {
-    "arg-type": 3,
+    "arg-type": 2,
     "assignment": 2,
     "no-any-return": 1,
-    "type-arg": 3,
-    "union-attr": 11
+    "type-arg": 3
   },
   "app/application/security/otp.py": {
     "no-any-return": 3

@@ -421,7 +421,7 @@ def update_cookie_by_body(
     )
 
 
-@router.post(
+@router.post(  # type: ignore[misc]
     "/cookie/{site_id}/set",
     summary="直接保存站点Cookie&UA",
     response_model=_SchemaResponse[None],

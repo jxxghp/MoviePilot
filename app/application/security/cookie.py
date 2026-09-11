@@ -204,7 +204,7 @@ class CookieLoginFormMixin:
             if not password_xpath:
                 password_xpath = f'{form_xpath}//input[@type="password"][1]'
             if not username_xpath:
-                scoped_candidates = (
+                scoped_candidates: tuple[str, ...] = (
                     f'{form_xpath}//input[@name="username"][1]',
                     f'{form_xpath}//input[@name="user"][1]',
                     f'{form_xpath}//input[@name="user_email"][1]',

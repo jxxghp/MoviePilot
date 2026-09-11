@@ -45,7 +45,7 @@ class RecognizeCaptchaInput(BaseModel):
         description="Allow captcha image URLs on localhost, loopback, private, or link-local addresses.",
     )
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[misc]
     def require_image_source(self) -> "RecognizeCaptchaInput":
         """确保验证码工具至少收到图片地址或原始图片字节。"""
         if not self.image_url and not self.image_data:
