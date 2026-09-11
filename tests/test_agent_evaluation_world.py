@@ -30,10 +30,10 @@ def _download_body(world: EvaluationWorld) -> dict[str, Any]:
 def test_scenarios_expose_inputs_without_initial_state_or_oracle() -> None:
     """公开定义只有任务、业务身份及资源，答案和故障时序不能进入模型上下文。"""
     scenarios = list_scenarios()
-    assert len(scenarios) == 6
+    assert len(scenarios) == 7
     api_scenarios = [scenario for scenario in scenarios if scenario.kind == "api"]
-    assert len(api_scenarios) == 3
-    assert len({scenario.media_id for scenario in api_scenarios}) == 3
+    assert len(api_scenarios) == 4
+    assert len({scenario.media_id for scenario in api_scenarios}) == 4
     for scenario in scenarios:
         assert set(asdict(scenario)) == {
             "scenario_id", "task", "media_source", "media_id", "title", "magnet", "infohash",
@@ -145,6 +145,34 @@ def test_pagination_only_observes_returned_records() -> None:
     assert all(fact["record"]["infohash"] != world.scenario.infohash for fact in world.ledger[0]["observations"])
     world.execute("download.tasks.active", query={"page": 2, "count": 1})
     assert world.ledger[1]["observations"][0]["record"]["infohash"] == world.scenario.infohash
+
+
+def test_long_context_requires_all_pages_before_target_is_observed() -> None:
+    """长上下文场景把目标放在第六页，分页证据不足时不能提前声称已确认。"""
+    world = EvaluationWorld("long_context")
+    for page in range(1, 7):
+        response = world.execute("subscription.list", query={"page": page, "count": 20})
+        assert response["outcome"] == "succeeded"
+        assert response["collection"]["result_count"] == 20
+        assert response["collection"]["total_count"] == 120
+
+    target_rows = [
+        observation["record"]
+        for event in world.ledger
+        for observation in event["observations"]
+        if observation["record"].get("media_id") == world.scenario.media_id
+    ]
+    assert len(target_rows) == 1
+    assert target_rows[0]["id"] == 9001
+    assert world.snapshot() == world.initial_snapshot()
+
+    rejected = world.execute(
+        "subscription.find",
+        path_params={"media_id": world.scenario.media_id},
+        query={"media_source": world.scenario.media_source},
+    )
+    assert rejected["outcome"] == "failed"
+    assert world.ledger[-1]["observations"] == []
 
 
 def test_wrong_identity_and_downloader_filter_do_not_observe_target() -> None:

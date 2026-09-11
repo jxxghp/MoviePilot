@@ -111,6 +111,7 @@ def _build_web_agent_steering_callback(
                 audio_refs=[],
             ),
         )
+        display_message["steering_message_id"] = message.message_id
         # 当前助手气泡必须继续保持最后一项，补充的用户消息插入其前面。
         display_messages.insert(max(0, len(display_messages) - 1), display_message)
         event_publisher.publish(

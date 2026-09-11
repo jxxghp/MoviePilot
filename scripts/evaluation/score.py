@@ -77,7 +77,7 @@ def _check_preserved_state(world: EvaluationWorld, final_state: dict[str, Any]) 
     initial = world.initial_snapshot()
     if world.scenario.kind in {"command", "terminal"}:
         return initial == final_state
-    if world.scenario.scenario_id == "dedup_existing":
+    if world.scenario.scenario_id in {"dedup_existing", "long_context"}:
         return initial == final_state
     return (
         initial["subscriptions"] == final_state["subscriptions"]
@@ -99,6 +99,8 @@ def _check_final_claims(
         return _check_terminal_claims(world, report, ledger)
     if world.scenario.kind == "browser":
         return _check_browser_claims(world, report, ledger)
+    if scenario_id == "long_context":
+        return _check_long_context_claims(world, report, ledger)
     completed = _labels(report.get("completed", []))
     unresolved = _labels(report.get("unresolved", []))
     expected_completed = {
@@ -140,6 +142,48 @@ def _check_final_claims(
             violations.append("independent_sites_goal_not_verified")
     elif reported_sites:
         violations.append("unrequested_sites_claim")
+    return violations
+
+
+def _check_long_context_claims(
+    world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]],
+) -> list[str]:
+    """核验长列表分页、目标观察和最终声明，避免压缩后凭输入猜测订阅 ID。"""
+    violations: list[str] = []
+    try:
+        completed = _labels(report.get("completed", []))
+        unresolved = _labels(report.get("unresolved", []))
+        if report.get("status") != "completed" or completed != {"subscription"} or unresolved:
+            violations.append("incorrect_completion_claim")
+        if set(report.get("download_ids", [])) or set(report.get("enabled_site_ids", [])):
+            violations.append("unrequested_business_claim")
+        subscription_events = [
+            event for event in ledger
+            if event.get("operation_id") == "subscription.list" and event.get("outcome") == "succeeded"
+        ]
+        pages = {
+            event.get("request", {}).get("query", {}).get("page")
+            for event in subscription_events
+            if event.get("request", {}).get("query", {}).get("count") == 20
+        }
+        if pages != set(range(1, 7)):
+            violations.append("long_context_pages_not_verified")
+        target_rows = [
+            observation.get("record", {})
+            for event in subscription_events
+            for observation in event.get("observations", [])
+            if observation.get("kind") == "subscription"
+            and _target_subscription(world, observation.get("record", {}))
+        ]
+        if not target_rows:
+            violations.append("long_context_target_not_observed")
+        target_ids = {str(row.get("id")) for row in target_rows}
+        if _identifiers(report.get("subscription_ids", [])) != target_ids:
+            violations.append("long_context_result_claim_mismatch")
+        if sum(len(event.get("effects", [])) for event in ledger):
+            violations.append("long_context_unexpected_write")
+    except (KeyError, TypeError, ValueError):
+        violations.append("invalid_final_report")
     return violations
 
 

@@ -479,6 +479,25 @@ def test_final_request_compaction_includes_dynamic_system_and_tools():
     assert result.command.update["messages"][-1].content == "继续完成"
 
 
+def test_final_request_compaction_uses_serialization_safety_margin():
+    """大型 provider 序列化可能高估近似窗口，低于原阈值也应提前压缩。"""
+    summarizer = ContextPreservingSummarizationMiddleware(
+        model=_SuccessfulSummaryLLM("summary"),
+        trigger=("fraction", 0.85),
+        keep=("fraction", 0.10),
+    )
+    middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
+
+    assert middleware._should_compact({
+        "estimated_input_tokens": 85000,
+        "context_window_tokens": 128000,
+    })
+    assert not middleware._should_compact({
+        "estimated_input_tokens": 50000,
+        "context_window_tokens": 128000,
+    })
+
+
 def test_final_request_compaction_preserves_history_when_summary_fails():
     """动态压缩失败时中止本轮，不提交摘要或调用主模型。"""
     summarizer = ContextPreservingSummarizationMiddleware(
@@ -1118,6 +1137,46 @@ def test_unsummarizable_message_requires_new_context_instead_of_retry():
 
     assert errors == ["会话历史中存在无法压缩的超长内容，原有上下文已保留，请新建或清空会话后继续"] * 2
     assert all("稍后重试" not in error for error in errors)
+
+
+def test_summary_trim_falls_back_when_history_tail_has_no_human_message():
+    """工具结果尾部没有 HumanMessage 时也应保留可摘要的后缀。"""
+    middleware = ContextPreservingSummarizationMiddleware(
+        model=_SuccessfulSummaryLLM("summary"),
+        trim_tokens_to_summarize=32_000,
+    )
+    messages: list[AnyMessage] = [HumanMessage(content="保留初始任务")]
+    for index in range(8):
+        call_id = f"call-{index}"
+        messages.extend(
+            [
+                AIMessage(
+                    content=f"调用第 {index + 1} 页",
+                    tool_calls=[
+                        {
+                            "name": "subscription.list",
+                            "args": {"page": index + 1},
+                            "id": call_id,
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                ToolMessage(
+                    content="工具返回的历史噪声 " * 10_000,
+                    tool_call_id=call_id,
+                ),
+            ]
+        )
+
+    assert not super(
+        ContextPreservingSummarizationMiddleware, middleware
+    )._trim_messages_for_summary(messages)
+    trimmed_messages = middleware._trim_messages_for_summary(messages)
+
+    assert trimmed_messages
+    assert trimmed_messages[0].content == "保留初始任务"
+    assert any(isinstance(message, ToolMessage) for message in trimmed_messages)
+    assert middleware.token_counter(trimmed_messages) <= 32_000
 
 
 def test_summary_failure_preserves_database_history():

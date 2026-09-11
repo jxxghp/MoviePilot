@@ -197,6 +197,7 @@ class AgentChatMessage(BaseModel):
     attachments: list[AgentChatAttachment] = Field(default_factory=list, description="附件列表")
     choices: list[AgentChatChoiceCard] = Field(default_factory=list, description="选择卡片列表")
     choice_selection: Optional[AgentChatChoiceSelection] = Field(None, description="用户选择项快照")
+    steering_message_id: Optional[str] = Field(None, description="运行中补充消息的稳定标识")
 
 
 class AgentChatSession(BaseModel):

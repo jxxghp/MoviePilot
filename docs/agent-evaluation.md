@@ -16,6 +16,7 @@
 | `command_execution` | 在临时目录运行一次性只读命令 | 只执行精确命令，核验真实 stdout 与退出码 |
 | `browser_navigation` | 打开回环动态页并按快照 ref 点击 | 由真实浏览器状态核验导航、点击和动态正文 |
 | `terminal_session` | 启动 pipe 后台会话，写入 stdin，再等待退出 | 核验 session_id、动作顺序、输入、增量输出和退出码 |
+| `long_context` | 在长订阅列表中按固定分页读取并定位第 6 页目标 | 核验上下文压缩、首条任务约束保留、page1–6 证据和无副作用终态 |
 
 这些代号只供控制器和人使用。模型输入必须通过 `Scenario.model_input()` 生成，不能传入场景 ID、业务初态、故障布置、账本或验收器。下载查询在第三种场景的首次提交前仍然可用，避免错误惩罚合理的重复检查策略。
 
@@ -91,6 +92,14 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 `browser_navigation` 场景由 MoviePilot 生产 `BrowseWebpageTool` 操作回环动态页面，报告 `/tmp/moviepilot-agent-round-luna-oauth-live-browser-final.json` 通过，4 次浏览器回执在点击后观察到 `BROWSER_OK`。`codex exec 0.153.4` 在探针 `/tmp/moviepilot-agent-round-luna-oauth-native-probe-browser-final.json` 中即使显式开启 browser/computer feature 也没有广告浏览器动作，因此浏览器原生配对保持 blocked；这不是把 CLI 的缺失能力改判为通过。
 
 `terminal_session` 场景在同一 `gpt-5.6-luna + max`、Codex OAuth 和 Harness 下形成了生产通过、原生失败的真实配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-pair-final.json`（`pair_valid=true`、`both_passed=false`）。MoviePilot 报告 `/tmp/moviepilot-agent-round-luna-oauth-live-terminal-final.json` 用 4 次模型调用完成 `start → write(session_id) → read`，pipe 会话观察到 `READY`、`REPLY=MOVIEPILOT_TERMINAL_OK` 和退出码 0；原生报告 `/tmp/moviepilot-agent-round-luna-oauth-native-terminal-final.json` 虽保留了 `functions.exec_command`/`functions.write_stdin`，模型实际只执行了一次被 shell 引号污染的命令，得到 `REPLY=`，没有产生 stdin 写入或后续读取证据。该失败保留为命令行 Harness 的真实差异，不能把工具广告当成交互能力通过。
+
+### 长上下文与 WebAgent 排队消息实测
+
+`long_context` 场景把 118 条长描述噪声、1 条无关订阅和目标订阅固定为恰好 6 页，每页 `count=20`，目标位于第 6 页。MoviePilot 真实 Agent 与原生 Codex 在同一 `gpt-5.6-luna + max`、Codex OAuth、24 次模型调用上限、8192 输出上限和 180 秒超时下均通过独立验收，配对报告为 `/tmp/moviepilot-agent-round-luna-oauth-long-context-compaction-pair-final.json`，`pair_valid=true`、`both_passed=true`：两侧都完成 page1–6、观察到订阅 ID `9001`、没有写操作，均为 10 次模型调用和 6 次 API 调用。MoviePilot 用时约 75.807 秒、419605 个已知 token；原生 Codex 用时约 85.969 秒、396513 个已知 token。MoviePilot 的请求预算在第 7 次请求后由约 69.5K 降至约 26.1K，证明本轮真实触发了最终请求压缩；首条用户任务、分页边界和 JSON 输出要求在压缩后仍被保留。
+
+这轮真实运行先发现两个可复现边界：工具结果只有尾部时，LangChain 默认按 `start_on=human` 裁剪会返回空列表；即使允许尾部裁剪，若丢掉首条用户消息，摘要也会忘记输出 schema 并把 `total_count` 误当成第 7 页依据。`ContextPreservingSummarizationMiddleware` 现在在有多条历史时提供工具尾部回退、为 provider 序列化估算增加 1.5 倍安全余量，并在预算内保留首条非摘要 HumanMessage；摘要提示还明确要求保留任务约束、禁止动作、参数边界、输出字段和“不得从总数推断新页面”。单条不可裁剪输入仍返回“新建或清空会话”的明确错误，不会无限重试。
+
+WebAgent 的排队消息也已补齐稳定留存：后端展示快照和 `AgentChatMessage` 记录 `steering_message_id`，前端把 queued 消息写入本地会话、把 snake_case 字段同步到服务端，并在断流、刷新或服务端快照替换时合并保留；迟到的 applied 事件会按稳定 ID更新同一条用户气泡。后端 `tests/test_web_agent_stream.py` 与 steering 回归共 60 项通过，前端 `AgentAssistantPanel.spec.ts` 39 项、`vue-tsc --noEmit`、ESLint 和格式检查均通过。这样“先显示已排队、随后气泡消失但 Agent 最后仍响应”的时序会在聊天面板和刷新恢复后继续可见。
 
 因此当前真实 Gemini 结果证明了工具合同读取和未知结果诚实边界已经能被实测，但不能宣称达到 Codex 的整体智能水平。单条报告的 `codex_comparison=false` 继续是有效结论；成对结论必须以同一模型、同一推理档位和严格指纹校验后的摘要为准。
 

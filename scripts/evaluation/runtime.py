@@ -451,6 +451,7 @@ def _agent_type() -> type:
             self.display_messages: list[dict[str, Any]] = []
             self.execution_success = False
             self.evaluation_bundle: Any = None
+            self.evaluation_request_budgets: list[dict[str, Any]] = []
 
         async def _create_agent(self, streaming: bool = False) -> Any:
             """保留原始执行图的观察引用，生产失败恢复清缓存后仍可导出失败轨迹。"""
@@ -476,6 +477,17 @@ def _agent_type() -> type:
         def _get_recursion_limit(self) -> int:
             """将显式评测迭代预算交给真实 LangGraph 执行器。"""
             return self.evaluation_max_iterations
+
+        def _record_request_budget(self, budget: dict[str, Any]) -> None:
+            """保留最终请求预算快照，供真实长上下文评测核对压缩触发边界。"""
+            super()._record_request_budget(budget)
+            self.evaluation_request_budgets.append({
+                key: budget.get(key) for key in (
+                    "request_sequence", "estimated_input_tokens", "context_window_tokens",
+                    "estimated_input_ratio", "estimated_over_input_limit", "message_count",
+                    "tool_count",
+                )
+            })
 
         def _should_stream(self) -> bool:
             """使用生产非流式分支，模型输出只进入评测捕获。"""
@@ -637,6 +649,7 @@ async def _run_isolated(
             child_tool_catalog = bundle.subagent_catalog.audit_payload() if bundle and bundle.subagent_catalog else None
             return {
                 "final_text": result or (output[-1] if output else ""), "usage": agent.get_session_status(),
+                "request_budgets": agent.evaluation_request_budgets,
                 "execution_success": agent.execution_success, "raw_messages": messages_to_dict(state.get("messages", [])),
                 "display_messages": agent.display_messages, "task_plan": state.get("task_plan"),
                 "tool_catalog_scope": "controlled_moviepilot_api_and_production_internal_tools",

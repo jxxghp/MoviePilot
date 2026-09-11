@@ -344,6 +344,7 @@ def test_agent_chat_display_schema_preserves_ordered_segments():
                     {"type": "tool", "toolIndex": 0},
                     {"type": "text", "content": "检查完成"},
                 ],
+                "steering_message_id": "steering-1",
             }
         ]
     )
@@ -353,6 +354,7 @@ def test_agent_chat_display_schema_preserves_ordered_segments():
         {"type": "tool", "content": "", "toolIndex": 0},
         {"type": "text", "content": "检查完成", "toolIndex": None},
     ]
+    assert payload.messages[0].steering_message_id == "steering-1"
 
 
 def test_build_web_agent_input_attachments_marks_kinds():
@@ -1371,6 +1373,7 @@ def test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream():
     assert instances[0].processed == ["开始长任务", "补充：只保留最终结果"]
     messages = save_snapshot.await_args.kwargs["messages"]
     assert [message["role"] for message in messages] == ["user", "user", "assistant"]
+    assert messages[1]["steering_message_id"]
 
 
 def test_web_agent_stream_emits_secret_result_only_as_protected_event():

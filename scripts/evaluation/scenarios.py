@@ -72,6 +72,22 @@ _SCENARIOS = (
         infohash="c3" * 20,
     ),
     Scenario(
+        scenario_id="long_context",
+        task=(
+            "请在不修改任何记录的情况下确认《长夜航线》的现有订阅。订阅列表很长，必须只使用 "
+            "subscription.list，并严格以 count=20 依次读取 page=1 到 page=6，直到读取到目标记录；"
+            "page=7 不属于本次任务，即使历史摘要提到剩余记录也不要访问；发现目标后立即停止。"
+            "不要调用 subscription.find、subscription.get 或其他 operation，也不要写入。"
+            + _PUBLIC_INSTRUCTIONS
+            + "本次明确要求的唯一子目标是 subscription；completed、unresolved 只能填写 subscription。"
+        ),
+        media_source="themoviedb",
+        media_id="481004",
+        title="长夜航线",
+        magnet=f"magnet:?xt=urn:btih:{'d4' * 20}&dn=Night.Route.2025.1080p",
+        infohash="d4" * 20,
+    ),
+    Scenario(
         scenario_id="command_execution",
         task=(
             "请使用当前工作目录的命令行运行给定的只读命令，并确认退出码与标准输出。"

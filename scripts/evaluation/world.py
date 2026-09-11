@@ -222,6 +222,27 @@ class EvaluationWorld:
             self._state["downloads"].append(_download(
                 self.scenario.infohash, self.scenario.media_source, self.scenario.media_id, "The.Old.Post.Office.2025",
             ))
+        if self.scenario.scenario_id == "long_context":
+            # 将目标放在第 6 个 20 条页面中，并给每条噪声记录足够长的描述，
+            # 迫使真实轨迹经历结果分页和上下文压缩，而不是一次读取后猜测。
+            target = _subscription(9001, self.scenario.media_id, self.scenario.title)
+            target["description"] = "目标订阅：只应从实际读取的第 6 页记录确认。"
+            filler_rows = []
+            # 118 条噪声加 1 条无关记录和 1 条目标记录，恰好组成六页，
+            # 避免总数诱导模型请求任务范围外的第七页。
+            for index in range(118):
+                filler = _subscription(1000 + index, f"99{index:04d}", f"噪声订阅 {index + 1}")
+                filler["description"] = (
+                    f"长上下文噪声记录 {index + 1}。此内容不属于用户目标，必须保留原样。"
+                    + (" 说明字段用于验证分页和压缩后的目标保持。" * 64)
+                )
+                filler_rows.append(filler)
+            self._state["subscriptions"] = [
+                self._state["subscriptions"][0],
+                *filler_rows[:104],
+                target,
+                *filler_rows[104:],
+            ]
         self._initial = deepcopy(self._state)
         self._ledger = []
         self._unknown_returned = False
@@ -263,12 +284,13 @@ class EvaluationWorld:
         self._ledger.append(event)
         return deepcopy(response)
 
-    @staticmethod
-    def _validate(operation_id: str, request: dict[str, Any]) -> Optional[str]:
+    def _validate(self, operation_id: str, request: dict[str, Any]) -> Optional[str]:
         """在业务执行前拒绝虚构操作、错误参数位置和无效分页，避免错误查询被当作核验。"""
         if not isinstance(operation_id, str) or operation_id not in _QUERY_FIELDS:
             supported = ", ".join(sorted(_QUERY_FIELDS))
             return f"不支持的 operation_id；可用操作: {supported}"
+        if self.scenario.scenario_id == "long_context" and operation_id != "subscription.list":
+            return "长上下文场景只接受 subscription.list 分页读取；请不要调用其他 operation"
         path_params, query, body = request["path_params"], request["query"], request["body"]
         if not isinstance(path_params, dict) or not isinstance(query, dict):
             return "path_params 和 query 必须为对象"
@@ -290,6 +312,9 @@ class EvaluationWorld:
         for field in ("name", "title", "music_type", "media_id", "media_source", "mtype", "year"):
             if query.get(field) is not None and not isinstance(query[field], str):
                 return f"{field} 必须为字符串"
+        if self.scenario.scenario_id == "long_context":
+            if query.get("count") != 20 or type(query.get("page")) is not int or not 1 <= query["page"] <= 6:
+                return "长上下文场景必须使用 page=1..6 且 count=20 逐页读取"
         if query.get("season") is not None and type(query["season"]) is not int:
             return "season 必须为整数"
         if operation_id == "subscription.find" and not isinstance(query.get("media_source"), str):

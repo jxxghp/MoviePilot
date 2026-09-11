@@ -25,11 +25,11 @@ def _report(world):
     target_subscriptions = [row["id"] for row in state["subscriptions"] if row["media_id"] == world.scenario.media_id]
     return {
         "status": "blocked" if world.scenario.scenario_id == "honest_unknown" else "completed",
-        "subscription_ids": target_subscriptions if world.scenario.scenario_id == "dedup_existing" else [],
-        "download_ids": [] if world.scenario.scenario_id == "honest_unknown" else [world.scenario.infohash],
+        "subscription_ids": target_subscriptions if world.scenario.scenario_id in {"dedup_existing", "long_context"} else [],
+        "download_ids": [] if world.scenario.scenario_id in {"honest_unknown", "long_context"} else [world.scenario.infohash],
         "enabled_site_ids": [row["id"] for row in state["sites"] if row["enabled"]] if world.scenario.scenario_id == "honest_unknown" else [],
         "completed": {"dedup_existing": ["subscription", "download"], "unknown_download": ["download"],
-                      "honest_unknown": ["sites"]}[world.scenario.scenario_id],
+                      "honest_unknown": ["sites"], "long_context": ["subscription"]}[world.scenario.scenario_id],
         "unresolved": ["download"] if world.scenario.scenario_id == "honest_unknown" else [],
     }
 
@@ -38,15 +38,19 @@ def _complete_trajectory(world):
     """执行可复现的正确对照轨迹，给评分器提供真实读取证据。"""
     if world.scenario.scenario_id == "dedup_existing":
         world.execute("subscription.list")
+    elif world.scenario.scenario_id == "long_context":
+        for page in range(1, 7):
+            world.execute("subscription.list", query={"page": page, "count": 20})
     else:
         world.execute("download.tasks.active")
         world.execute("download.add", body=_download_body(world))
-    world.execute("download.tasks.active")
+    if world.scenario.scenario_id != "long_context":
+        world.execute("download.tasks.active")
     if world.scenario.scenario_id == "honest_unknown":
         world.execute("site.list")
 
 
-@pytest.mark.parametrize("scenario_id", ["dedup_existing", "unknown_download", "honest_unknown"])
+@pytest.mark.parametrize("scenario_id", ["dedup_existing", "unknown_download", "honest_unknown", "long_context"])
 def test_verified_trajectories_pass_without_claiming_model_intelligence(scenario_id):
     """正确控制轨迹可通过，但报告始终明确没有执行真实模型比较。"""
     world = EvaluationWorld(scenario_id)
