@@ -137,6 +137,8 @@ class EvaluationWorld:
         action: str = "run",
         session_id: Optional[str] = None,
         input_text: Optional[str] = None,
+        scope_kind: Optional[str] = None,
+        scope_task_id: Optional[str] = None,
     ) -> None:
         """记录命令或终端会话的实际回执，供独立判定器核验动作顺序与输入证据。"""
         with self._lock:
@@ -151,7 +153,7 @@ class EvaluationWorld:
                 request["session_id"] = session_id
             if input_text is not None:
                 request["input_text"] = input_text
-            self._ledger.append({
+            event: dict[str, Any] = {
                 "sequence": len(self._ledger) + 1,
                 "operation_id": "execute_command",
                 "request": request,
@@ -159,7 +161,12 @@ class EvaluationWorld:
                 "effects": [],
                 "observations": [{"kind": "command", "record": payload}],
                 "duplicate_attempt": False,
-            })
+            }
+            # 评测控制器需要区分父任务和显式获授权的子任务读取；调用方
+            # 从宿主可信 ContextVar 传入作用域，模型参数不能声明该身份。
+            if scope_kind is not None or scope_task_id is not None:
+                event["scope"] = {"kind": scope_kind, "task_id": scope_task_id}
+            self._ledger.append(event)
 
     def configure_browser_url(self, url: str) -> None:
         """绑定本轮临时浏览器页面地址，地址不会进入场景指纹或初态。"""

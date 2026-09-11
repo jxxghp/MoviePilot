@@ -226,6 +226,28 @@ _SCENARIOS = (
         command="sleep 1; printf 'READY\\n'; IFS= read -r reply; printf 'REPLY=%s\\n' \"$reply\"; sleep 30",
         terminal_use_pty=True,
     ),
+    Scenario(
+        scenario_id="subagent_terminal_share",
+        task=(
+            "请启动后台终端会话运行给定命令，启动时使用 pipe 模式（use_pty=false），并记下 action=start 返回的 session_id。"
+            "随后必须把对这个同一 session_id 的只读读取任务交给通用子代理；使用 task 或 subagent_task 时，"
+            "在该任务条目中明确传入 terminal_sessions=[{session_id, actions:[read]}]。"
+            "子代理只能使用 action=read 读取父终端，不能启动命令、写入输入、发送信号或终止会话。"
+            "确认子代理从真实回执读到 SHARED_READY 后，主 Agent 再用同一个 session_id 读取到 SHARED_DONE 并确认退出码 0。"
+            "不要执行其他命令。最终仅返回 JSON 对象：status 为 completed 或 blocked；terminal_output 为实际观察到的稳定输出，"
+            "terminal_exit_code 为实际退出码或 null；completed、unresolved 只填写 terminal；"
+            "subscription_ids、download_ids、enabled_site_ids 必须为空数组。"
+            "没有同时确认子代理读取证据、SHARED_DONE 和退出码时，将 terminal 放入 unresolved，不要编造结果。"
+        ),
+        media_source="",
+        media_id="",
+        title="",
+        magnet="",
+        infohash="",
+        kind="terminal",
+        command="printf 'SHARED_READY\\n'; sleep 1; printf 'SHARED_DONE\\n'",
+        terminal_use_pty=False,
+    ),
 )
 
 

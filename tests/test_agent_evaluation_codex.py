@@ -544,9 +544,13 @@ def test_command_scenario_enables_only_native_shell_controls() -> None:
     api_config = codex._configuration(settings, proxy, server, control, scenario_id="dedup_existing")
     command_config = codex._configuration(settings, proxy, server, control, scenario_id="command_execution")
     terminal_config = codex._configuration(settings, proxy, server, control, scenario_id="terminal_session")
+    shared_terminal_config = codex._configuration(
+        settings, proxy, server, control, scenario_id="subagent_terminal_share",
+    )
     assert all(api_config[f"features.{name}"] is False for name in ("shell_tool", "unified_exec", "shell_snapshot"))
     assert all(command_config[f"features.{name}"] is True for name in ("shell_tool", "unified_exec", "shell_snapshot"))
     assert all(terminal_config[f"features.{name}"] is True for name in ("shell_tool", "unified_exec", "shell_snapshot"))
+    assert all(shared_terminal_config[f"features.{name}"] is True for name in ("shell_tool", "unified_exec", "shell_snapshot"))
     tools = [{"type": "namespace", "name": "functions", "tools": [
         {"type": "function", "name": "exec_command", "parameters": {}},
         {"type": "function", "name": "write_stdin", "parameters": {}},

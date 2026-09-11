@@ -30,7 +30,7 @@ def _download_body(world: EvaluationWorld) -> dict[str, Any]:
 def test_scenarios_expose_inputs_without_initial_state_or_oracle() -> None:
     """公开定义只有任务、业务身份及资源，答案和故障时序不能进入模型上下文。"""
     scenarios = list_scenarios()
-    assert len(scenarios) == 11
+    assert len(scenarios) == 12
     api_scenarios = [scenario for scenario in scenarios if scenario.kind == "api"]
     assert len(api_scenarios) == 7
     assert len({scenario.media_id for scenario in api_scenarios}) == 6

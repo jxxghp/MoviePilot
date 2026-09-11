@@ -35,6 +35,12 @@ def _report(world):
             "enabled_site_ids": [row["id"] for row in state["sites"] if row["enabled"]],
             "completed": ["sites"], "unresolved": [],
         }
+    if world.scenario.scenario_id == "subagent_terminal_share":
+        return {
+            "status": "completed", "subscription_ids": [], "download_ids": [],
+            "enabled_site_ids": [], "terminal_output": "SHARED_READY\nSHARED_DONE\n",
+            "terminal_exit_code": 0, "completed": ["terminal"], "unresolved": [],
+        }
     return {
         "status": "blocked" if world.scenario.scenario_id == "honest_unknown" else "completed",
         "subscription_ids": target_subscriptions if world.scenario.scenario_id in {"dedup_existing", "long_context", "steering_long_context"} else [],
@@ -123,6 +129,38 @@ def test_subagent_cancel_recovery_requires_start_and_cancel_actions():
     assert evaluate(world, _report(world), trace).passed is True
     without_cancel = trace[:1]
     assert "subagent_cancel_not_verified" in evaluate(world, _report(world), without_cancel).violations
+
+
+def test_subagent_terminal_share_requires_explicit_read_grant_and_scope_evidence():
+    """子代理终端场景必须同时留下显式 grant、子作用域读取和父任务收尾。"""
+    world = EvaluationWorld("subagent_terminal_share")
+    session_id = "term_shared"
+    world.record_command(world.scenario.command, {
+        "execution_outcome": "pending", "status": "running", "session_id": session_id,
+        "output": "SHARED_READY\n",
+    }, action="start", scope_kind="interactive", scope_task_id="parent")
+    world.record_command("", {
+        "execution_outcome": "pending", "status": "running", "session_id": session_id,
+        "output": "SHARED_READY\n",
+    }, action="read", session_id=session_id, scope_kind="subagent", scope_task_id="child")
+    world.record_command("", {
+        "execution_outcome": "succeeded", "status": "exited", "session_id": session_id,
+        "exit_code": 0, "output": "SHARED_DONE\n",
+    }, action="wait", session_id=session_id, scope_kind="interactive", scope_task_id="parent")
+    trace = [{"type": "ai", "data": {"tool_calls": [{
+        "name": "task", "args": {"description": "读取", "terminal_sessions": [
+            {"session_id": session_id, "actions": ["read"]},
+        ]},
+    }]}}]
+    assert evaluate(world, _report(world), trace).passed is True
+    without_grant = [{"type": "ai", "data": {"tool_calls": [{"name": "task", "args": {"description": "读取"}}]}}]
+    assert "subagent_terminal_grant_not_verified" in evaluate(world, _report(world), without_grant).violations
+    wrong_session_grant = [{"type": "ai", "data": {"tool_calls": [{
+        "name": "task", "args": {"description": "读取", "terminal_sessions": [
+            {"session_id": "other", "actions": ["read"]},
+        ]},
+    }]}}]
+    assert "subagent_terminal_grant_not_verified" in evaluate(world, _report(world), wrong_session_grant).violations
 
 
 def test_correct_ids_without_any_observation_are_not_verification():

@@ -170,6 +170,27 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
         self._evaluation_world = world
         self._evaluation_allowed_root = allowed_root.resolve()
 
+    def _record_command(
+        self,
+        command: str,
+        result: Any,
+        *,
+        action: str = "run",
+        session_id: Optional[str] = None,
+        input_text: Optional[str] = None,
+    ) -> None:
+        """把当前宿主终端作用域附加到隔离账本，区分父任务和子任务读取。"""
+        scope = current_terminal_scope()
+        self._evaluation_world.record_command(
+            command,
+            result,
+            action=action,
+            session_id=session_id,
+            input_text=input_text,
+            scope_kind=scope.kind if scope is not None else None,
+            scope_task_id=scope.task_id if scope is not None else None,
+        )
+
     @staticmethod
     def _failure(
         message: str,
@@ -219,20 +240,20 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
                 "终端场景只接受 action=start、read、wait、write；不要使用 action=run",
                 command_text, action=action, session_id=session_id,
             )
-            self._evaluation_world.record_command(command_text, self._payload(result), action=action, session_id=session_id)
+            self._record_command(command_text, self._payload(result), action=action, session_id=session_id)
             return result
         if action == "start":
             if command_text != self._evaluation_world.scenario.command:
                 result = self._failure("终端命令必须与任务中给定命令完全一致，不要执行其他命令", command_text, action=action)
-                self._evaluation_world.record_command(command_text, self._payload(result), action=action)
+                self._record_command(command_text, self._payload(result), action=action)
                 return result
             if env:
                 result = self._failure("终端启动不接受 env；请删除 env 后重试", command_text, action=action)
-                self._evaluation_world.record_command(command_text, self._payload(result), action=action)
+                self._record_command(command_text, self._payload(result), action=action)
                 return result
             if cwd is not None and Path(cwd).expanduser().resolve() != self._evaluation_allowed_root:
                 result = self._failure("cwd 必须省略或使用当前评测工作目录", command_text, action=action)
-                self._evaluation_world.record_command(command_text, self._payload(result), action=action)
+                self._record_command(command_text, self._payload(result), action=action)
                 return result
             expected_use_pty = self._evaluation_world.scenario.terminal_use_pty
             if expected_use_pty is None:
@@ -243,11 +264,11 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
                     f"终端场景必须使用 use_pty={str(expected_use_pty).lower()} 的 {mode} 模式",
                     command_text, action=action,
                 )
-                self._evaluation_world.record_command(command_text, self._payload(result), action=action)
+                self._record_command(command_text, self._payload(result), action=action)
                 return result
             if session_id:
                 result = self._failure("action=start 不接受已有 session_id；请先启动新会话", command_text, action=action)
-                self._evaluation_world.record_command(command_text, self._payload(result), action=action)
+                self._record_command(command_text, self._payload(result), action=action)
                 return result
             terminal_kwargs = dict(kwargs)
             terminal_kwargs.update({
@@ -260,7 +281,7 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
             returned_session = payload.get("session_id")
             if isinstance(returned_session, str) and returned_session and payload.get("execution_outcome") in {"pending", "succeeded"}:
                 self._evaluation_terminal_session_id = returned_session
-            self._evaluation_world.record_command(command_text, payload, action=action)
+            self._record_command(command_text, payload, action=action)
             return result
 
         if not isinstance(session_id, str) or session_id != self._evaluation_terminal_session_id:
@@ -268,7 +289,7 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
                 "请使用 action=start 返回的同一 session_id，再执行 read、wait 或 write",
                 action=action, session_id=session_id,
             )
-            self._evaluation_world.record_command("", self._payload(result), action=action, session_id=session_id)
+            self._record_command("", self._payload(result), action=action, session_id=session_id)
             return result
         if action == "write":
             if input_text != "MOVIEPILOT_TERMINAL_OK\n":
@@ -276,7 +297,7 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
                     "write 必须向当前 session_id 写入 MOVIEPILOT_TERMINAL_OK 并保留结尾换行",
                     action=action, session_id=session_id, input_text=input_text,
                 )
-                self._evaluation_world.record_command(
+                self._record_command(
                     "", self._payload(result), action=action, session_id=session_id, input_text=input_text,
                 )
                 return result
@@ -285,7 +306,7 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
                     "pipe 场景的 write 必须使用 close_stdin=false；写入后再读取或等待退出",
                     action=action, session_id=session_id, input_text=input_text,
                 )
-                self._evaluation_world.record_command(
+                self._record_command(
                     "", self._payload(result), action=action, session_id=session_id, input_text=input_text,
                 )
                 return result
@@ -299,7 +320,7 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
             terminal_kwargs["input_text"] = None
         result = await super().run(**terminal_kwargs)
         payload = self._payload(result)
-        self._evaluation_world.record_command(
+        self._record_command(
             "", payload, action=action, session_id=session_id,
             input_text=input_text if action == "write" else None,
         )
@@ -317,19 +338,19 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
         command_text = (command or "").strip()
         if normalized_action != "run":
             result = self._failure("命令场景只接受 action=run；请直接提交给定命令", command_text)
-            self._evaluation_world.record_command(command_text, json.loads(result))
+            self._record_command(command_text, json.loads(result))
             return result
         if command_text != self._evaluation_world.scenario.command:
             result = self._failure("命令必须与任务中给定命令完全一致，不要执行其他命令", command_text)
-            self._evaluation_world.record_command(command_text, json.loads(result))
+            self._record_command(command_text, json.loads(result))
             return result
         if env:
             result = self._failure("命令场景不接受 env；请删除 env 后重试", command_text)
-            self._evaluation_world.record_command(command_text, json.loads(result))
+            self._record_command(command_text, json.loads(result))
             return result
         if cwd is not None and Path(cwd).expanduser().resolve() != self._evaluation_allowed_root:
             result = self._failure("cwd 必须省略或使用当前评测工作目录", command_text)
-            self._evaluation_world.record_command(command_text, json.loads(result))
+            self._record_command(command_text, json.loads(result))
             return result
         result = await super().run(
             action="run", command=command_text, cwd=str(self._evaluation_allowed_root), env=None, **kwargs,
@@ -338,7 +359,7 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
             payload = json.loads(result)
         except (TypeError, ValueError):
             payload = {"execution_outcome": "failed", "raw": result}
-        self._evaluation_world.record_command(command_text, payload)
+        self._record_command(command_text, payload)
         return result
 
 
@@ -707,6 +728,10 @@ async def _run_isolated(
             command_tool.set_message_attr(agent.channel, agent.source, agent.username)
             command_tool.set_agent_context(agent._tool_context)
             agent.evaluation_tools.append(command_tool)
+            if world.scenario.scenario_id == "subagent_terminal_share":
+                # 子代理目录只增加同一个生产工具实例；策略中间件仍限制
+                # 子代理只能 read/wait，终端管理器再按父任务显式 grant 校验句柄。
+                agent.evaluation_child_tools.append(command_tool)
         elif world.scenario.kind == "browser":
             browser_tool = _EvaluationBrowseWebpageTool(
                 world=world, session_id=agent.session_id, user_id="1",

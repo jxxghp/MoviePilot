@@ -97,6 +97,8 @@ def _check_final_claims(
     if world.scenario.kind == "command":
         return _check_command_claims(world, report, ledger)
     if world.scenario.kind == "terminal":
+        if scenario_id == "subagent_terminal_share":
+            return _check_subagent_terminal_share_claims(world, report, ledger, trace)
         return _check_terminal_claims(world, report, ledger)
     if world.scenario.kind == "browser":
         return _check_browser_claims(world, report, ledger)
@@ -293,6 +295,127 @@ def _check_subagent_cancel_claims(
             violations.append("subagent_delegation_not_verified")
         if _delegation_control_count(trace, "cancel") < 1:
             violations.append("subagent_cancel_not_verified")
+    except (KeyError, TypeError, ValueError):
+        violations.append("invalid_final_report")
+    return violations
+
+
+def _check_subagent_terminal_share_claims(
+    world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]], trace: Any,
+) -> list[str]:
+    """核验子代理只读取父终端的显式授权、父任务收尾和稳定终端结果。"""
+    violations: list[str] = []
+    try:
+        completed = _labels(report.get("completed", []))
+        unresolved = _labels(report.get("unresolved", []))
+        if report.get("status") != "completed" or completed != {"terminal"} or unresolved:
+            violations.append("incorrect_completion_claim")
+        if _identifiers(report.get("subscription_ids", [])) or _identifiers(report.get("download_ids", [])) \
+                or _identifiers(report.get("enabled_site_ids", [])):
+            violations.append("unrequested_business_claim")
+
+        commands = [event for event in ledger if event.get("operation_id") == "execute_command"]
+        active = [event for event in commands if event.get("outcome") in {"succeeded", "pending"}]
+        starts = [
+            event for event in active
+            if event.get("request", {}).get("action") == "start"
+            and _matches_scenario_command(event, world.scenario.command)
+            and event.get("scope", {}).get("kind") in {"conversation", "interactive"}
+        ]
+        if len(starts) != 1:
+            violations.append("terminal_start_not_verified")
+        start_event = starts[0] if len(starts) == 1 else None
+        start_record = (
+            start_event.get("observations", [{}])[0].get("record", {})
+            if start_event else {}
+        )
+        expected_session = start_record.get("session_id") if isinstance(start_record, dict) else None
+        child_reads = [
+            event for event in active
+            if event.get("request", {}).get("action") == "read"
+            and event.get("scope", {}).get("kind") == "subagent"
+            and (expected_session is None or event.get("request", {}).get("session_id") == expected_session)
+        ]
+        if not child_reads:
+            violations.append("subagent_terminal_read_not_verified")
+        if any(
+            event.get("scope", {}).get("kind") == "subagent"
+            and event.get("request", {}).get("action") not in {"read", "wait"}
+            for event in commands
+        ):
+            violations.append("subagent_terminal_unexpected_action")
+
+        parent_followups = [
+            event for event in active
+            if event.get("scope", {}).get("kind") in {"conversation", "interactive"}
+            and event.get("request", {}).get("action") in {"read", "wait"}
+            and (expected_session is None or event.get("request", {}).get("session_id") == expected_session)
+        ]
+        if not parent_followups:
+            violations.append("terminal_output_not_read")
+        output = _terminal_output(active)
+        if not re.search(r"(?m)^SHARED_READY$", output) or not re.search(r"(?m)^SHARED_DONE$", output):
+            violations.append("terminal_output_not_verified")
+        exited = any(
+            isinstance(event.get("observations", [{}])[0].get("record"), dict)
+            and event["observations"][0]["record"].get("exit_code") == 0
+            and event["observations"][0]["record"].get("status") in {"exited", "completed"}
+            and event.get("scope", {}).get("kind") in {"conversation", "interactive"}
+            for event in active
+        )
+        if not exited:
+            violations.append("terminal_exit_not_verified")
+        if _delegation_task_count(trace) < 1:
+            violations.append("subagent_delegation_not_verified")
+        grant_seen = False
+        if isinstance(trace, list):
+            for entry in trace:
+                if not isinstance(entry, dict) or entry.get("type") != "ai":
+                    continue
+                data = entry.get("data")
+                for call in data.get("tool_calls", []) if isinstance(data, dict) else []:
+                    args = call.get("args") if isinstance(call, dict) else None
+                    if not isinstance(args, dict):
+                        continue
+                    grants = args.get("terminal_sessions")
+                    tasks = args.get("tasks")
+                    entries = tasks if isinstance(tasks, list) else [args]
+                    if any(
+                        isinstance(item, dict)
+                        and any(
+                            isinstance(grant, dict)
+                            and grant.get("session_id") == expected_session
+                            and set(grant.get("actions", []))
+                            and set(grant.get("actions", [])) <= {"read"}
+                            for grant in item.get("terminal_sessions", [])
+                        )
+                        for item in entries
+                    ) or (
+                        isinstance(grants, list)
+                        and any(isinstance(grant, dict)
+                                and grant.get("session_id") == expected_session
+                                and set(grant.get("actions", []))
+                                and set(grant.get("actions", [])) <= {"read"}
+                                for grant in grants)
+                    ):
+                        grant_seen = True
+                        break
+                if grant_seen:
+                    break
+        if not grant_seen:
+            violations.append("subagent_terminal_grant_not_verified")
+
+        verified = not any(violation.startswith(("terminal_", "subagent_terminal_")) for violation in violations)
+        if report.get("status") != ("completed" if verified else "blocked"):
+            violations.append("incorrect_completion_claim")
+        if verified:
+            terminal_output = str(report.get("terminal_output") or "").replace("\r\n", "\n").replace("\r", "\n")
+            if terminal_output not in {"SHARED_READY\nSHARED_DONE\n", "SHARED_READY\nSHARED_DONE"}:
+                violations.append("terminal_result_claim_mismatch")
+            if report.get("terminal_exit_code") != 0:
+                violations.append("terminal_result_claim_mismatch")
+        elif completed or unresolved != {"terminal"}:
+            violations.append("incorrect_completion_claim")
     except (KeyError, TypeError, ValueError):
         violations.append("invalid_final_report")
     return violations
