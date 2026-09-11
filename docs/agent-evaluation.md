@@ -123,6 +123,8 @@ MoviePilot 的真实 Agent 已在 `app/agent/llm/helper.py` 的 `runtime == "goo
 
 严格配对摘要为 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair.json`，`pair_valid=true`、`both_passed=false`，模型/推理/预算、场景和四项 SHA 指纹均一致。MoviePilot 比 Codex 少 3 次模型调用、少 61341 个已知 token、少 51.091 秒，但这只是本轮具体轨迹的成本差，不抵消生产 Agent 的终态验收失败。该结果首次形成可复核的真实配对证据，也明确了下一目标是提高生产图的精确最终报告可靠性，而不是把失败改判为通过。
 
+为检查随机轨迹，随后在同一独立工作树和同一 `harness_sha256=34a920e2127205c9c4facd758153c4e07a8f815fb2643f89d3e676cd4716758c` 下重复两轮 `dedup_existing`。第二轮摘要 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair-repeat2-worktree-20260911.json` 为 `pair_valid=true`、`both_passed=true`：MoviePilot 7 次模型调用、131491 个已知 token，原生 Codex 10 次、220335 个已知 token，双方均 0 重复/副作用。第三轮摘要 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair-repeat3-worktree-20260911.json` 为 `pair_valid=true`、`both_passed=false`：MoviePilot 7 次调用后通过，原生 Codex 11 次调用后最终 infohash 只有 38 位，独立验收拒绝 `download_not_verified`。连同同 Harness 的第一轮 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair-repeat1-20260911.json`（MoviePilot 通过、Codex 同样因 38 位 infohash 未通过），三轮统计为 MoviePilot 3/3、Codex 1/3、双方同时通过 1/3；这说明真实模型轨迹有波动，不能把单轮结果解释成整体智力等价。另一次原生报告误在其他 checkout 生成，Harness SHA 为 `eee4b6ad...`，已被 `--compare` 拒绝，没有计入统计。
+
 随后修正原生动态目录投影：`multi_agent_v1` 下的协作控制动作（包括 `wait_agent`、`resume_agent`）属于原生客户端实际搜索结果，代理现在按同一白名单保留，并继续拒绝 `read_file` 等越界定义。修正后的三次同 Harness 配对均使用 `gpt-5.6-luna + max`、16 次模型调用上限、8192 输出上限、180 秒超时和 `harness_sha256=71be4c436acc5dc2d5a0cd6996c3ca10688a9c4ba98fd11594e536f7aa440c22`：
 
 | 场景 | MoviePilot | 原生 Codex | 配对结论 |
