@@ -397,9 +397,15 @@ class _ProviderDiscovery:
             connect_timeout=10,
             trust_env=False,
         )
+        # google-genai 的 aiohttp 请求已经显式传入 timeout，不能再从
+        # async_client_args 透传同名参数，否则会触发重复关键字异常。
+        async_client_args = {
+            key: value for key, value in client_args.items() if key != "timeout"
+        }
         http_options = HttpOptions(
+            timeout=15_000,
             client_args=client_args,
-            async_client_args=client_args,
+            async_client_args=async_client_args,
         )
 
         client = genai.Client(api_key=api_key, http_options=http_options)
