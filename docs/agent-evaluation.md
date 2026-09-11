@@ -16,6 +16,7 @@
 | `command_execution` | 在临时目录运行一次性只读命令 | 只执行精确命令，核验真实 stdout 与退出码 |
 | `browser_navigation` | 打开回环动态页并按快照 ref 点击 | 由真实浏览器状态核验导航、点击和动态正文 |
 | `terminal_session` | 启动 pipe 后台会话，写入 stdin，再等待退出 | 核验 session_id、动作顺序、输入、增量输出和退出码 |
+| `terminal_pty_session` | 启动 PTY 后台会话，写入 stdin，再等待退出 | 核验 PTY 输入事件、增量输出和真实退出码 |
 | `long_context` | 在长订阅列表中按固定分页读取并定位第 6 页目标 | 核验上下文压缩、首条任务约束保留、page1–6 证据和无副作用终态 |
 
 这些代号只供控制器和人使用。模型输入必须通过 `Scenario.model_input()` 生成，不能传入场景 ID、业务初态、故障布置、账本或验收器。下载查询在第三种场景的首次提交前仍然可用，避免错误惩罚合理的重复检查策略。
@@ -91,7 +92,9 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 
 `browser_navigation` 场景由 MoviePilot 生产 `BrowseWebpageTool` 操作回环动态页面，报告 `/tmp/moviepilot-agent-round-luna-oauth-live-browser-final.json` 通过，4 次浏览器回执在点击后观察到 `BROWSER_OK`。`codex exec 0.153.4` 在探针 `/tmp/moviepilot-agent-round-luna-oauth-native-probe-browser-final.json` 中即使显式开启 browser/computer feature 也没有广告浏览器动作，因此浏览器原生配对保持 blocked；这不是把 CLI 的缺失能力改判为通过。
 
-`terminal_session` 场景在同一 `gpt-5.6-luna + max`、Codex OAuth 和 Harness 下形成了生产通过、原生失败的真实配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-pair-final.json`（`pair_valid=true`、`both_passed=false`）。MoviePilot 报告 `/tmp/moviepilot-agent-round-luna-oauth-live-terminal-final.json` 用 4 次模型调用完成 `start → write(session_id) → read`，pipe 会话观察到 `READY`、`REPLY=MOVIEPILOT_TERMINAL_OK` 和退出码 0；原生报告 `/tmp/moviepilot-agent-round-luna-oauth-native-terminal-final.json` 虽保留了 `functions.exec_command`/`functions.write_stdin`，模型实际只执行了一次被 shell 引号污染的命令，得到 `REPLY=`，没有产生 stdin 写入或后续读取证据。该失败保留为命令行 Harness 的真实差异，不能把工具广告当成交互能力通过。
+`terminal_session` 场景在同一 `gpt-5.6-luna + max`、Codex OAuth 和新 Harness 下形成了生产通过、原生失败的真实配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-appserver-pair-final-2149dce.json`（`pair_valid=true`、`both_passed=false`）。MoviePilot 报告 `/tmp/moviepilot-agent-round-luna-oauth-live-terminal-appserver-final-2149dce.json` 用 4 次模型调用完成 `start → write(session_id) → read`，pipe 会话观察到 `READY`、`REPLY=MOVIEPILOT_TERMINAL_OK` 和退出码 0；原生 app-server 报告 `/tmp/moviepilot-agent-round-luna-oauth-native-terminal-appserver-final-2149dce.json` 仍记录 stdin 在 READY 前关闭，评分器保留 `terminal_input_not_verified`、`terminal_output_not_read` 和 `terminal_output_not_verified`。该失败保留为命令行 Harness 的真实差异，不能把工具广告当成交互能力通过。
+
+对应的 `terminal_pty_session` 原生报告 `/tmp/moviepilot-agent-round-luna-oauth-native-terminal-pty-appserver-final-2149dce.json` 已记录 `terminalInteraction` 输入事件和输出增量，但模型最终报告 `terminal_exit_code=null`，独立验收仍为 `terminal_output_not_verified`。终端评测适配层现在只对 pipe/PTY 场景使用 Codex app-server，以便保存持续 stdin、输出增量和终端交互事件；这提高了失败可审计性，尚未形成终端配对通过。该轮 `harness_sha256` 为 `8fbebf16eedd5c16e6bedb47259dd2cbfd827aee688384c1012307b5263a5ab2`。
 
 ### 长上下文与 WebAgent 排队消息实测
 
@@ -164,7 +167,7 @@ uv run --locked --no-sync python -m scripts.evaluation --native \
 
 适配器目前只核对 `codex-cli 0.153.4`，可用 `--codex-executable` 指定文件。其他版本或二进制目录中没有指定模型时明确拒绝，不换模型或套用其他模型的元数据。`--native-probe` 的 `probe_ready` 只代表配置和目录检查，不是任务通过；原生进程预期收到本地探针错误并退出，模型调用数仍为零。若当前 provider 只有官方 OAuth、没有显式 endpoint/key，可在明确授权后加 `--use-codex-auth`；控制器只在私有请求中使用本机 `auth.json` 的访问令牌和账户标识，默认模式不会借用登录态。
 
-每次创建空白临时工作目录；场景源码、初态、账本、oracle、模型凭据留在控制器。原生客户端使用局部随机令牌连接回环模型代理和 MCP 假世界，不继承业务配置、真实模型令牌或其他服务环境。客户端忽略用户配置和规则文件，采用只读沙箱、never 审批与有界退出；API 场景关闭宿主浏览器和 shell，命令场景只按条件开启并保留 `functions.exec_command`/`functions.write_stdin`。仅对当前回环 evaluation 服务的三个假工具显式设置 `approval_mode=approve`，避免原生客户端拒绝已授权的假业务动作。不修改用户 HOME、CODEX_HOME 或现有配置。全局 AGENTS 仍可能由原生客户端加载，因此代理在发送给模型前仅移除规范的独立 AGENTS 用户块，保留原生基础说明和任务文本，并记录被移除块的长度与哈希。
+每次创建空白临时工作目录；场景源码、初态、账本、oracle、模型凭据留在控制器。原生客户端使用局部随机令牌连接回环模型代理和 MCP 假世界，不继承业务配置、真实模型令牌或其他服务环境。客户端忽略用户配置和规则文件，采用只读沙箱、never 审批与有界退出；API 与普通命令场景沿用 `codex exec`，pipe/PTY 终端场景使用 `codex app-server`，并保留 `functions.exec_command`/`functions.write_stdin` 的目录投影。仅对当前回环 evaluation 服务的三个假工具显式设置 `approval_mode=approve`，避免原生客户端拒绝已授权的假业务动作。不修改用户 HOME、CODEX_HOME 或现有配置。全局 AGENTS 仍可能由原生客户端加载，因此代理在发送给模型前仅移除规范的独立 AGENTS 用户块，保留原生基础说明和任务文本，并记录被移除块的长度与哈希。
 
 原生循环、计划和协作工具仍由 Codex 执行。当前模型可固定使用 Code Mode，单独关闭 feature 无法改变它；适配器通过 `codex debug models --bundled` 读取当前二进制自带目录，只投影指定模型的 `tool_mode=direct`，保持其余字段、`base_instructions` 和 `model_messages`，记录前后指纹。随后代理限制实际广告目录为计划/协作与 evaluation MCP 工具，兼顾请求中的动态目录，并在每个完整响应事件交给客户端前再次拒绝目录以外的调用。这是明确投影过工具模式与目录的原生 Codex 对照，不代表默认部署的完整产品工具环境。
 
