@@ -18,6 +18,7 @@
 | `terminal_session` | 启动 pipe 后台会话，写入 stdin，再等待退出 | 核验 session_id、动作顺序、输入、增量输出和退出码 |
 | `terminal_pty_session` | 启动 PTY 后台会话，写入 stdin，再等待退出 | 核验 PTY 输入事件、增量输出和真实退出码 |
 | `long_context` | 在长订阅列表中按固定分页读取并定位第 6 页目标 | 核验上下文压缩、首条任务约束保留、page1–6 证据和无副作用终态 |
+| `steering_multi_message` | 在第 1、3 次业务读取后分别追加两条补充要求 | 核验每条消息按 queued → applied 顺序进入真实模型边界，并保持分页、停止条件和 JSON 输出约束 |
 | `subagent_parallel_status` | 两个相互独立的只读检查必须由通用子代理并行完成 | 核验子代理授权、真实委派轨迹、订阅与启用站点证据和零副作用 |
 | `subagent_cancel_recovery` | 派发一个会保持只读请求在途的通用子代理，主 Agent 取消后继续读取启用站点 | 核验真实启动/取消动作、取消收口、主任务恢复和零副作用 |
 
@@ -150,6 +151,8 @@ WebAgent 的排队消息已补齐稳定留存和真实时序展示：后端展�
 本轮又把展示边界从本地顺序推进到稳定的服务端身份：WebAgent `start` 事件携带 `assistant_message_id`，`applied` 事件携带前段与 continuation 的 assistant ID；前端按这些 ID 收口助手段和定位追加气泡，因此用户消息保持在真实工具调用之间，即使 ACK、断流恢复或多个追加消息交错也不会回到顶部。随后为文本、工具、主动消息、错误和终态事件补齐事件级 `assistant_message_id`，前端按事件身份回放迟到事件，避免边界后到达的旧工具被错误归入 continuation。工具状态按各自稳定 `tool_id` 的 `running/done/error` 事件维护，工具图标不再把已完成项误显示为执行中。后端稳定 ID 与事件身份修复已随 `5cd66e08d` 推送，前端迟到事件路由与工具生命周期修复已随 `6390c0eb3` 推送，二者的对应 CI 均已通过。
 
 为验证追加消息不是单元测试假象，新增 `steering_long_context` 固定场景：首个 `subscription.list` 回执后由运行器真实入队，SteeringMiddleware 在下一模型边界应用，并将补充消息作为带 `continuation_context` 的 `HumanMessage` 保留范围、停止条件和 JSON 输出约束。使用同一 `gpt-5.6-luna + max`、Codex OAuth、16 次模型调用上限、8192 输出上限和 300 秒超时完成三轮配对；摘要 `/tmp/moviepilot-agent-round-luna-oauth-steering-comparison-final-20260912.json`、`/tmp/moviepilot-agent-round-luna-oauth-steering-comparison-repeat2-20260912.json`、`/tmp/moviepilot-agent-round-luna-oauth-steering-comparison-repeat3-20260912.json` 均 `pair_valid=true`、`both_passed=true`。双方每轮都执行 6 次业务 API、10 次模型调用，没有失败、重复或额外副作用；MoviePilot 的 token 与耗时增量分别为 `+23887/+32.739s`、`+23100/+10.551s`、`+22985/+5.428s`。这证明当前固定中途追加场景具备真实应用边界和终态收口，但不外推到刷新、取消或多条追加消息的所有组合。
+
+随后加入 held-out 的 `steering_multi_message`，在第 1、3 次 `subscription.list` 回执后各入队一条补充消息，并要求验收器逐条匹配 queued 与 applied 的稳定 ID 及模型边界。相同 `gpt-5.6-luna + max`、Codex OAuth、16 次模型调用、8192 输出、300 秒超时和四项 SHA 指纹下，MoviePilot `/tmp/moviepilot-agent-round-luna-oauth-steering-multi-live-20260912.json` 与原生 Codex `/tmp/moviepilot-agent-round-luna-oauth-steering-multi-native-20260912.json` 均通过：双方都是 10 次模型调用、6 次业务 API、0 失败/重复/副作用，最终观察到订阅 `9001`。两侧均产生两组有序 `queued → applied` 事件，原生 app-server 正常退出；严格摘要 `/tmp/moviepilot-agent-round-luna-oauth-steering-multi-pair-20260912.json` 为 `pair_valid=true`、`both_passed=true`。MoviePilot 使用 420970 个已知 token、88.059 秒，原生 Codex 使用 396923 个 token、51.327 秒；这验证了多条追加消息的真实边界顺序，不能外推到刷新或取消组合。
 
 因此当前真实 Gemini 结果证明了工具合同读取和未知结果诚实边界已经能被实测，但不能宣称达到 Codex 的整体智能水平。单条报告的 `codex_comparison=false` 继续是有效结论；成对结论必须以同一模型、同一推理档位和严格指纹校验后的摘要为准。
 

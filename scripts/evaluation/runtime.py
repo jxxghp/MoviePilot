@@ -650,27 +650,31 @@ async def _run_isolated(
         session_id = uuid4().hex
         steering_inbox = SteeringInbox(session_id, "1")
         steering_events: list[dict[str, Any]] = []
-        steering_queued = False
+        steering_schedule = world.scenario.steering_schedule()
+        steering_operation_count = 0
+        steering_sent: set[int] = set()
 
         async def after_operation(operation_id: str, response: dict[str, Any]) -> None:
-            """在首个长上下文分页回执后注入一条真实运行中补充消息。"""
-            nonlocal steering_queued
-            if world.scenario.scenario_id != "steering_long_context" or steering_queued:
+            """在计划的真实业务回执边界注入运行中补充消息。"""
+            nonlocal steering_operation_count
+            if not steering_schedule:
                 return
             if operation_id != "subscription.list" or response.get("outcome") != "succeeded":
                 return
-            message = await steering_inbox.enqueue(
-                user_id="1",
-                text=world.scenario.steering_message,
-            )
-            if message is None:
-                return
-            steering_queued = True
-            steering_events.append({
-                "status": "queued",
-                "message_id": message.message_id,
-                "after_operation": operation_id,
-            })
+            steering_operation_count += 1
+            for trigger_count, text in steering_schedule:
+                if trigger_count != steering_operation_count or trigger_count in steering_sent:
+                    continue
+                message = await steering_inbox.enqueue(user_id="1", text=text)
+                if message is None:
+                    continue
+                steering_sent.add(trigger_count)
+                steering_events.append({
+                    "status": "queued",
+                    "message_id": message.message_id,
+                    "after_operation": operation_id,
+                    "operation_count": steering_operation_count,
+                })
 
         def steering_status_callback(message: Any, status: str) -> None:
             """记录 inbox 在模型边界真正消费补充消息的状态。"""

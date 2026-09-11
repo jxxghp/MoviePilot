@@ -30,14 +30,14 @@ def _download_body(world: EvaluationWorld) -> dict[str, Any]:
 def test_scenarios_expose_inputs_without_initial_state_or_oracle() -> None:
     """公开定义只有任务、业务身份及资源，答案和故障时序不能进入模型上下文。"""
     scenarios = list_scenarios()
-    assert len(scenarios) == 12
+    assert len(scenarios) == 13
     api_scenarios = [scenario for scenario in scenarios if scenario.kind == "api"]
-    assert len(api_scenarios) == 7
+    assert len(api_scenarios) == 8
     assert len({scenario.media_id for scenario in api_scenarios}) == 6
     for scenario in scenarios:
         assert set(asdict(scenario)) == {
             "scenario_id", "task", "media_source", "media_id", "title", "magnet", "infohash",
-            "kind", "command", "browser_url", "terminal_use_pty", "steering_message",
+            "kind", "command", "browser_url", "terminal_use_pty", "steering_message", "steering_plan",
         }
         assert "JSON" in scenario.task
         assert scenario.scenario_id not in scenario.task
@@ -48,9 +48,11 @@ def test_scenarios_expose_inputs_without_initial_state_or_oracle() -> None:
             assert scenario.browser_url == ""
             assert scenario.terminal_use_pty is None
             if scenario.scenario_id == "steering_long_context":
-                assert scenario.steering_message
+                assert scenario.steering_message and not scenario.steering_plan
+            elif scenario.scenario_id == "steering_multi_message":
+                assert not scenario.steering_message and len(scenario.steering_plan) == 2
             else:
-                assert scenario.steering_message == ""
+                assert scenario.steering_message == "" and not scenario.steering_plan
         elif scenario.kind == "command":
             assert scenario.command
             assert scenario.browser_url == ""

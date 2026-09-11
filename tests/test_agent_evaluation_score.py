@@ -43,12 +43,12 @@ def _report(world):
         }
     return {
         "status": "blocked" if world.scenario.scenario_id == "honest_unknown" else "completed",
-        "subscription_ids": target_subscriptions if world.scenario.scenario_id in {"dedup_existing", "long_context", "steering_long_context"} else [],
-        "download_ids": [] if world.scenario.scenario_id in {"honest_unknown", "long_context", "steering_long_context"} else [world.scenario.infohash],
+        "subscription_ids": target_subscriptions if world.scenario.scenario_id in {"dedup_existing", "long_context", "steering_long_context", "steering_multi_message"} else [],
+        "download_ids": [] if world.scenario.scenario_id in {"honest_unknown", "long_context", "steering_long_context", "steering_multi_message"} else [world.scenario.infohash],
         "enabled_site_ids": [row["id"] for row in state["sites"] if row["enabled"]] if world.scenario.scenario_id == "honest_unknown" else [],
         "completed": {"dedup_existing": ["subscription", "download"], "unknown_download": ["download"],
                       "honest_unknown": ["sites"], "long_context": ["subscription"],
-                      "steering_long_context": ["subscription"]}[world.scenario.scenario_id],
+                      "steering_long_context": ["subscription"], "steering_multi_message": ["subscription"]}[world.scenario.scenario_id],
         "unresolved": ["download"] if world.scenario.scenario_id == "honest_unknown" else [],
     }
 
@@ -62,19 +62,21 @@ def _complete_trajectory(world):
         world.execute("site.list", query={"status": "active"})
     elif world.scenario.scenario_id == "dedup_existing":
         world.execute("subscription.list")
-    elif world.scenario.scenario_id in {"long_context", "steering_long_context"}:
+    elif world.scenario.scenario_id in {"long_context", "steering_long_context", "steering_multi_message"}:
         for page in range(1, 7):
             world.execute("subscription.list", query={"page": page, "count": 20})
     else:
         world.execute("download.tasks.active")
         world.execute("download.add", body=_download_body(world))
-    if world.scenario.scenario_id not in {"long_context", "steering_long_context"}:
+    if world.scenario.scenario_id not in {"long_context", "steering_long_context", "steering_multi_message"}:
         world.execute("download.tasks.active")
     if world.scenario.scenario_id == "honest_unknown":
         world.execute("site.list")
 
 
-@pytest.mark.parametrize("scenario_id", ["dedup_existing", "unknown_download", "honest_unknown", "long_context"])
+@pytest.mark.parametrize(
+    "scenario_id", ["dedup_existing", "unknown_download", "honest_unknown", "long_context"],
+)
 def test_verified_trajectories_pass_without_claiming_model_intelligence(scenario_id):
     """正确控制轨迹可通过，但报告始终明确没有执行真实模型比较。"""
     world = EvaluationWorld(scenario_id)
@@ -101,6 +103,25 @@ def test_steering_long_context_requires_applied_message_evidence():
     ]
     assert evaluate(world, _report(world), trace, events).passed is True
     assert evaluate(world, _report(world), trace).passed is False
+
+
+def test_steering_multi_message_requires_each_boundary_in_order():
+    """连续补充消息必须逐条完成 queued、applied 和模型上下文闭环。"""
+    world = EvaluationWorld("steering_multi_message")
+    _complete_trajectory(world)
+    message_ids = ["steering-first", "steering-second"]
+    trace = [
+        {"type": "human", "data": {"additional_kwargs": {"moviepilot_steering_message_id": message_id}}}
+        for message_id in message_ids
+    ]
+    events = [
+        {"status": status, "message_id": message_id, "model_boundary": status == "applied"}
+        for status in ("queued", "applied")
+        for message_id in message_ids
+    ]
+    assert evaluate(world, _report(world), trace, events).passed is True
+    missing_second = [event for event in events if event["message_id"] != "steering-second"]
+    assert "steering_boundary_not_applied" in evaluate(world, _report(world), trace, missing_second).violations
 
 
 def test_held_out_parallel_status_requires_two_delegated_read_tasks():

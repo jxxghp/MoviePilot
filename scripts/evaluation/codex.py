@@ -29,8 +29,13 @@ NATIVE_TERMINAL_SCENARIOS = frozenset(
     {"terminal_session", "terminal_pty_session", "subagent_terminal_share"}
 )
 NATIVE_BROWSER_SCENARIOS = frozenset({"browser_navigation"})
-NATIVE_STEERING_SCENARIOS = frozenset({"steering_long_context"})
+NATIVE_STEERING_SCENARIOS = frozenset({"steering_long_context", "steering_multi_message"})
 NATIVE_STEERING_MESSAGE_ID = "moviepilot-evaluation-steering"
+
+
+def _native_steering_message_id(index: int, count: int) -> str:
+    """为原生多条 steering 事件生成稳定且可审计的消息标识。"""
+    return NATIVE_STEERING_MESSAGE_ID if count == 1 else f"{NATIVE_STEERING_MESSAGE_ID}-{index + 1}"
 
 
 def _browser_runtime_configuration(executable: str, instruction_dir: Path) -> dict[str, Any] | None:
@@ -394,8 +399,9 @@ def _normalize_app_server_notification(method: str, params: Any) -> dict[str, An
 async def _execute_app_server(
     command: list[str], prompt: str, environment: dict[str, str], work_dir: Path, timeout: int,
     *, model: str, reasoning_effort: str, steering_message: str = "",
+    steering_plan: tuple[tuple[int, str], ...] = (),
 ) -> dict[str, Any]:
-    """通过 Codex app-server 的 JSON-RPC 驱动可写 stdin 的原生终端会话。"""
+    """通过 Codex app-server 的 JSON-RPC 驱动终端和多条中途补充消息。"""
     process = await asyncio.create_subprocess_exec(
         *command, cwd=work_dir, env=environment, stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=os.name == "posix",
@@ -412,7 +418,13 @@ async def _execute_app_server(
     active_turn_id: str | None = None
     turn_completed = False
     failure: str | None = None
-    steering_sent = False
+    schedule = steering_plan
+    if not schedule and steering_message:
+        schedule = ((1, steering_message),)
+    steering_index = 0
+    business_tool_count = 0
+    steering_requests: dict[int, tuple[int, str]] = {}
+    steering_request_pending = False
 
     async def send_request(method: str, params: dict[str, Any]) -> int:
         """发送带序号的 JSON-RPC 请求，并记录响应所属方法。"""
@@ -441,11 +453,43 @@ async def _execute_app_server(
         )
         await process.stdin.drain()
 
+    async def send_next_steering_if_ready() -> None:
+        """在达到计划回执边界后逐条发送 steering，并保留请求身份。"""
+        nonlocal failure, steering_index, steering_request_pending
+        if steering_request_pending or steering_index >= len(schedule):
+            return
+        trigger_count, text = schedule[steering_index]
+        if business_tool_count < trigger_count:
+            return
+        if not thread_id or not active_turn_id:
+            events.append({
+                "type": "evaluation.steering.boundary_missing",
+                "thread_id_present": bool(thread_id),
+                "turn_id_present": bool(active_turn_id),
+            })
+            failure = "app_server_steering_turn_id_missing"
+            return
+        message_id = _native_steering_message_id(steering_index, len(schedule))
+        events.append({"type": "evaluation.steering.queued", "status": "queued", "message_id": message_id})
+        request_id = await send_request(
+            "turn/steer",
+            {
+                "threadId": thread_id,
+                "expectedTurnId": active_turn_id,
+                "input": [{"type": "text", "text": text}],
+                "clientUserMessageId": message_id,
+            },
+        )
+        steering_requests[request_id] = (steering_index, message_id)
+        steering_index += 1
+        steering_request_pending = True
+
     async def handle_response(payload: dict[str, Any]) -> None:
         """按 initialize、thread/start、turn/start 的顺序推进原生轮次。"""
-        nonlocal thread_id, failure, steering_sent
+        nonlocal thread_id, failure, steering_request_pending
         request_id = payload.get("id")
         method = pending.pop(request_id, None) if type(request_id) is int else None
+        steering_request = steering_requests.pop(request_id, None) if type(request_id) is int else None
         if method is None:
             await send_server_error(request_id)
             failure = failure or "unexpected_server_request"
@@ -453,8 +497,9 @@ async def _execute_app_server(
         if "error" in payload:
             failure = failure or f"app_server_{method.replace('/', '_')}_error"
             if method == "turn/steer":
+                steering_request_pending = False
                 events.append({"type": "evaluation.steering.failed", "status": "failed",
-                               "message_id": NATIVE_STEERING_MESSAGE_ID})
+                               "message_id": steering_request[1] if steering_request else NATIVE_STEERING_MESSAGE_ID})
             return
         if method == "initialize":
             await send_notification("initialized")
@@ -479,9 +524,10 @@ async def _execute_app_server(
                 },
             )
         elif method == "turn/steer":
-            steering_sent = True
+            steering_request_pending = False
             events.append({"type": "evaluation.steering.applied", "status": "applied",
-                           "message_id": NATIVE_STEERING_MESSAGE_ID})
+                           "message_id": steering_request[1] if steering_request else NATIVE_STEERING_MESSAGE_ID})
+            await send_next_steering_if_ready()
 
     try:
         async with asyncio.timeout(timeout):
@@ -518,41 +564,20 @@ async def _execute_app_server(
                 event = _normalize_app_server_notification(method, payload.get("params"))
                 if event is not None:
                     events.append(event)
+                    item = event.get("item")
                     if (
-                        steering_message
-                        and not steering_sent
-                        and event.get("type") == "item.completed"
-                        and isinstance(event.get("item"), dict)
-                        and event["item"].get("type") == "mcpToolCall"
-                        and str(event["item"].get("tool") or "").rsplit(".", 1)[-1] == "moviepilot_api"
+                        event.get("type") == "item.completed"
+                        and isinstance(item, dict)
+                        and item.get("type") == "mcpToolCall"
+                        and str(item.get("tool") or "").rsplit(".", 1)[-1] == "moviepilot_api"
                     ):
-                        if not thread_id or not active_turn_id:
-                            events.append({
-                                "type": "evaluation.steering.boundary_missing",
-                                "thread_id_present": bool(thread_id),
-                                "turn_id_present": bool(active_turn_id),
-                            })
-                            failure = failure or "app_server_steering_turn_id_missing"
-                        else:
-                            events.append({"type": "evaluation.steering.queued", "status": "queued",
-                                           "message_id": NATIVE_STEERING_MESSAGE_ID})
-                            await send_request(
-                                "turn/steer",
-                                {
-                                    "threadId": thread_id,
-                                    "expectedTurnId": active_turn_id,
-                                    "input": [{"type": "text", "text": steering_message}],
-                                    "clientUserMessageId": NATIVE_STEERING_MESSAGE_ID,
-                                },
-                            )
-                            # 防止一个模型回合包含多个业务工具时重复注入；只有成功响应
-                            # 才会追加 applied，错误会保留失败事件并让报告判定不通过。
-                            steering_sent = True
+                        business_tool_count += 1
+                        await send_next_steering_if_ready()
                 if method == "turn/started":
                     active_turn_id = event.get("turn_id") if isinstance(event.get("turn_id"), str) else None
                 if method == "turn/completed":
                     turn_completed = True
-                    if steering_message and any(value == "turn/steer" for value in pending.values()):
+                    if schedule and any(value == "turn/steer" for value in pending.values()):
                         continue
                     break
                 if "id" in payload:
@@ -730,7 +755,7 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
                         _execute_app_server(
                             command, world.model_input(), environment, work_dir, settings.timeout_seconds,
                             model=settings.model, reasoning_effort=settings.reasoning_effort,
-                            steering_message=(world.scenario.steering_message if scenario_id in NATIVE_STEERING_SCENARIOS else ""),
+                            steering_plan=(world.scenario.steering_schedule() if scenario_id in NATIVE_STEERING_SCENARIOS else ()),
                         )
                         if use_app_server
                         else _execute(command, world.model_input(), environment, work_dir, settings.timeout_seconds)

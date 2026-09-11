@@ -190,6 +190,76 @@ for line in sys.stdin:
 
 
 @pytest.mark.asyncio
+async def test_execute_app_server_preserves_multiple_steering_boundaries(tmp_path: Path) -> None:
+    """原生 app-server 的多条 steering 应按业务回执次数逐条排队和应用。"""
+    command = _program(tmp_path, """
+import json
+import sys
+
+def emit(value):
+    print(json.dumps(value), flush=True)
+
+steer_count = 0
+for line in sys.stdin:
+    request = json.loads(line)
+    method = request.get('method')
+    if method == 'initialize':
+        emit({'jsonrpc': '2.0', 'id': request['id'], 'result': {}})
+    elif method == 'thread/start':
+        emit({'jsonrpc': '2.0', 'id': request['id'], 'result': {'thread': {'id': 'thread-1'}}})
+    elif method == 'turn/start':
+        emit({'jsonrpc': '2.0', 'id': request['id'], 'result': {}})
+        emit({'jsonrpc': '2.0', 'method': 'turn/started',
+              'params': {'threadId': 'thread-1', 'turn': {'id': 'turn-1'}}})
+        emit({'jsonrpc': '2.0', 'method': 'item/completed', 'params': {'item': {
+            'type': 'mcpToolCall', 'id': 'call-1', 'server': 'evaluation',
+            'tool': 'moviepilot_api', 'status': 'completed', 'arguments': {}, 'result': {},
+        }}})
+    elif method == 'turn/steer':
+        steer_count += 1
+        emit({'jsonrpc': '2.0', 'id': request['id'], 'result': {}})
+        emit({'jsonrpc': '2.0', 'method': 'item/completed', 'params': {'item': {
+            'type': 'userMessage', 'id': 'steering-%d' % steer_count,
+            'text': request['params']['input'][0]['text'],
+        }}})
+        if steer_count == 1:
+            for call_id in ('call-2', 'call-3'):
+                emit({'jsonrpc': '2.0', 'method': 'item/completed', 'params': {'item': {
+                    'type': 'mcpToolCall', 'id': call_id, 'server': 'evaluation',
+                    'tool': 'moviepilot_api', 'status': 'completed', 'arguments': {}, 'result': {},
+                }}})
+        else:
+            emit({'jsonrpc': '2.0', 'method': 'turn/completed',
+                  'params': {'threadId': 'thread-1', 'turn': {'id': 'turn-1'}}})
+""")
+    result = await codex._execute_app_server(
+        command,
+        "公开任务",
+        codex._worker_environment(),
+        tmp_path,
+        5,
+        model="gpt-test",
+        reasoning_effort="high",
+        steering_plan=((1, "第一条"), (3, "第二条")),
+    )
+
+    assert result["returncode"] == 0
+    assert result["error_type"] is None
+    events, _final_text, completed = codex._events(result["stdout"])
+    assert completed is True
+    assert [event["message_id"] for event in events if event.get("type") == "evaluation.steering.queued"] == [
+        "moviepilot-evaluation-steering-1", "moviepilot-evaluation-steering-2",
+    ]
+    assert [event["message_id"] for event in events if event.get("type") == "evaluation.steering.applied"] == [
+        "moviepilot-evaluation-steering-1", "moviepilot-evaluation-steering-2",
+    ]
+    assert [
+        event["item"]["text"] for event in events
+        if event.get("type") == "item.completed" and event.get("item", {}).get("type") == "user_message"
+    ] == ["第一条", "第二条"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.skipif(os.name != "posix", reason="继承进程组回收是 POSIX 合同")
 @pytest.mark.parametrize(("cancel", "parent_exits"), [(False, False), (False, True), (True, False)])
 async def test_execute_timeout_or_cancellation_closes_descendant_pipes(

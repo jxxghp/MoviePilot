@@ -49,7 +49,7 @@ _SUBSCRIPTION_FIELDS = frozenset({
     "resolution", "save_path", "search_imdbid", "search_interval", "season", "sites", "start_episode", "state",
     "total_episode", "total_tracks", "type", "username", "vote", "year",
 })
-_LONG_CONTEXT_SCENARIOS = frozenset({"long_context", "steering_long_context"})
+_LONG_CONTEXT_SCENARIOS = frozenset({"long_context", "steering_long_context", "steering_multi_message"})
 
 
 def _infohash(enclosure: str) -> Optional[str]:

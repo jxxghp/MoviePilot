@@ -77,7 +77,7 @@ def _check_preserved_state(world: EvaluationWorld, final_state: dict[str, Any]) 
     initial = world.initial_snapshot()
     if world.scenario.kind in {"command", "terminal"}:
         return initial == final_state
-    if world.scenario.scenario_id in {"dedup_existing", "long_context", "steering_long_context"}:
+    if world.scenario.scenario_id in {"dedup_existing", "long_context", "steering_long_context", "steering_multi_message"}:
         return initial == final_state
     return (
         initial["subscriptions"] == final_state["subscriptions"]
@@ -106,10 +106,12 @@ def _check_final_claims(
         return _check_subagent_parallel_claims(world, report, ledger, trace)
     if scenario_id == "subagent_cancel_recovery":
         return _check_subagent_cancel_claims(world, report, ledger, trace)
-    if scenario_id in {"long_context", "steering_long_context"}:
+    if scenario_id in {"long_context", "steering_long_context", "steering_multi_message"}:
         violations = _check_long_context_claims(world, report, ledger)
-        if scenario_id == "steering_long_context":
-            violations.extend(_check_steering_evidence(trace, steering_events))
+        if world.scenario.steering_schedule():
+            violations.extend(
+                _check_steering_evidence(trace, steering_events, expected_count=len(world.scenario.steering_schedule()))
+            )
         return violations
     completed = _labels(report.get("completed", []))
     unresolved = _labels(report.get("unresolved", []))
@@ -463,51 +465,64 @@ def _check_long_context_claims(
     return violations
 
 
-def _check_steering_evidence(trace: Any, steering_events: Any) -> list[str]:
-    """核对补充消息确实在运行中被接受、应用并进入模型上下文。"""
+def _check_steering_evidence(trace: Any, steering_events: Any, *, expected_count: int = 1) -> list[str]:
+    """核对每条补充消息确实在运行中被接受、应用并进入模型上下文。"""
     violations: list[str] = []
     if not isinstance(steering_events, list):
         return ["steering_evidence_missing"]
+    if expected_count < 1:
+        return []
     queued = [event for event in steering_events if isinstance(event, dict) and event.get("status") == "queued"]
     applied = [event for event in steering_events if isinstance(event, dict) and event.get("status") == "applied"]
-    if len(queued) != 1 or len(applied) != 1:
+    if len(queued) != expected_count or len(applied) != expected_count:
         violations.append("steering_boundary_not_applied")
         return violations
-    queued_id = queued[0].get("message_id")
-    applied_id = applied[0].get("message_id")
-    if not isinstance(queued_id, str) or queued_id != applied_id:
+    queued_ids = [event.get("message_id") for event in queued]
+    applied_ids = [event.get("message_id") for event in applied]
+    if (
+        any(not isinstance(message_id, str) or not message_id for message_id in queued_ids)
+        or queued_ids != applied_ids
+        or len(set(applied_ids)) != expected_count
+    ):
         violations.append("steering_message_identity_mismatch")
 
-    observed_in_context = False
-    applied_trace_index: int | None = None
+    observed_ids: set[str] = set()
     if isinstance(trace, list):
+        applied_trace_indexes = {
+            event.get("message_id"): index
+            for index, event in enumerate(trace)
+            if isinstance(event, dict) and event.get("type") == "evaluation.steering.applied"
+            and isinstance(event.get("message_id"), str)
+        }
         for index, entry in enumerate(trace):
             if not isinstance(entry, dict):
                 continue
-            if entry.get("type") == "evaluation.steering.applied":
-                applied_trace_index = index
+            if entry.get("type") == "human":
+                data = entry.get("data")
+                additional_kwargs = data.get("additional_kwargs") if isinstance(data, dict) else None
+                message_id = additional_kwargs.get("moviepilot_steering_message_id") if isinstance(additional_kwargs, dict) else None
+                if isinstance(message_id, str):
+                    observed_ids.add(message_id)
                 continue
-            if entry.get("type") == "item.completed":
-                item = entry.get("item")
-                if (isinstance(item, dict) and item.get("type") == "user_message"
-                        and (applied_trace_index is None or index > applied_trace_index)):
-                    observed_in_context = True
+            if entry.get("type") != "item.completed":
+                continue
+            item = entry.get("item")
+            if not isinstance(item, dict) or item.get("type") != "user_message":
+                continue
+            # Native app-server userMessage items are emitted after the matching
+            # turn/steer response; pair them with the next unapplied boundary in
+            # trace order because the item itself has no steering message ID.
+            for message_id, applied_index in applied_trace_indexes.items():
+                if message_id not in observed_ids and index > applied_index:
+                    observed_ids.add(message_id)
                     break
-            if entry.get("type") != "human":
-                continue
-            data = entry.get("data")
-            additional_kwargs = data.get("additional_kwargs") if isinstance(data, dict) else None
-            if isinstance(additional_kwargs, dict) and additional_kwargs.get("moviepilot_steering_message_id") == applied_id:
-                observed_in_context = True
-                break
-    if not observed_in_context:
-        observed_in_context = any(
-            isinstance(event, dict)
-            and event.get("status") == "applied"
-            and event.get("model_boundary") is True
-            for event in steering_events
-        )
-    if not observed_in_context:
+    model_boundary_ids = {
+        event.get("message_id")
+        for event in applied
+        if event.get("model_boundary") is True and isinstance(event.get("message_id"), str)
+    }
+    observed_ids.update(model_boundary_ids)
+    if not set(applied_ids) <= observed_ids:
         violations.append("steering_message_not_in_model_context")
     return violations
 

@@ -147,7 +147,7 @@ def _responses(world: EvaluationWorld) -> list[AIMessage]:
         ]}, "plan"),
         _call("read_skill", {"name": "moviepilot-api"}, "skill"),
     ]
-    if scenario.scenario_id in {"long_context", "steering_long_context"}:
+    if scenario.scenario_id in {"long_context", "steering_long_context", "steering_multi_message"}:
         responses.extend(
             _call(
                 "moviepilot_api",
@@ -216,6 +216,43 @@ async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_s
         and message["data"].get("additional_kwargs", {}).get("moviepilot_steering_message_id")
         for message in capture["raw_messages"]
     )
+
+
+@pytest.mark.asyncio
+async def test_multiple_steering_messages_preserve_each_model_boundary(invocation_store):
+    """连续补充消息应在各自业务回执后进入生产图，并保留提交顺序。"""
+    world = EvaluationWorld("steering_multi_message")
+    model = _ScriptModel(responses=_responses(world))
+    repository, _factory = invocation_store
+    capture = await run_moviepilot(
+        world,
+        model,
+        model_name="scripted-multi-steering-test",
+        context_window=128000,
+        max_iterations=64,
+        invocation_repository=repository,
+    )
+    assert capture["execution_success"] is True, capture["final_text"]
+    grade = evaluate(
+        world,
+        json.loads(capture["final_text"]),
+        capture["raw_messages"],
+        capture["steering_events"],
+    )
+    assert grade.passed, grade.violations
+    assert [event["status"] for event in capture["steering_events"]] == [
+        "queued", "applied", "queued", "applied",
+    ]
+    applied_ids = [
+        event["message_id"] for event in capture["steering_events"] if event["status"] == "applied"
+    ]
+    context_ids = [
+        message["data"].get("additional_kwargs", {}).get("moviepilot_steering_message_id")
+        for message in capture["raw_messages"]
+        if message["type"] == "human"
+        and message["data"].get("additional_kwargs", {}).get("moviepilot_steering_message_id")
+    ]
+    assert context_ids == applied_ids
 
 
 @pytest.fixture
