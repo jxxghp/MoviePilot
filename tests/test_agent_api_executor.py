@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agent.api.executor import ApiExecutionContext, MoviePilotApiExecutor
 from app.agent.tools.base import format_tool_result_for_agent
+from app.agent.tools.manager import MoviePilotToolsManager
 from app.schemas.types import NotificationChannel
 
 
@@ -79,6 +80,27 @@ def test_executor_keeps_non_collection_payload_unchanged_without_headers() -> No
 
     assert result == {"success": True, "message": "", "data": [{"id": 1}]}
     close.assert_awaited_once()
+
+
+def test_manager_default_session_id_is_http_header_compatible() -> None:
+    """HTTP API 工具管理器生成的默认会话标识必须是可发送的字符串。"""
+    manager = MoviePilotToolsManager(user_id="1")
+    executor = MoviePilotApiExecutor(
+        context=ApiExecutionContext(
+            user_id="1",
+            username="admin",
+            is_admin=True,
+            session_id=manager.session_id,
+        )
+    )
+
+    with patch("app.agent.api.executor.create_access_token", return_value="token"):
+        headers = executor._build_headers()
+
+    session_header = headers["X-MoviePilot-Agent-Session"]
+    assert isinstance(manager.session_id, str)
+    assert isinstance(session_header, str)
+    assert session_header == manager.session_id
 
 
 def test_executor_keeps_collection_total_visible_in_truncated_tool_preview() -> None:
