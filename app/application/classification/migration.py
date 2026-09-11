@@ -209,7 +209,7 @@ def migrate_legacy_category_config(
 def legacy_extension_fields_from_policy(
     policy: ClassificationPolicy,
 ) -> tuple[ClassificationFieldDefinition, ...]:
-    """按策略条件顺序重建可直接注册的 TMDB 旧比较扩展字段声明。"""
+    """按策略条件和别名重建可直接注册的 TMDB 旧比较扩展字段声明。"""
     context = _MigrationContext()
     for rule in policy.rules:
         for field_id in _condition_field_ids(rule.when):
@@ -220,6 +220,15 @@ def legacy_extension_fields_from_policy(
                 continue
             for media_type in rule.media_types:
                 context.register_extension_field(field_name, media_type)
+    # 别名与规则分开保存；删除最后一条规则后仍需恢复字段，避免重启后校验失败。
+    for field_id in policy.field_aliases:
+        if field_id in context.field_media_types or not field_id.startswith(_EXTENSION_PREFIX):
+            continue
+        field_name = field_id.removeprefix(_EXTENSION_PREFIX)
+        if not _SAFE_FIELD_SEGMENT.fullmatch(field_name):
+            continue
+        for media_type in _MEDIA_TYPES.values():
+            context.register_extension_field(field_name, media_type)
     return context.build_field_definitions()
 
 

@@ -208,6 +208,24 @@ def test_default_style_config_preserves_order_and_uses_safe_standard_fields() ->
     assert origin_country.replacement_field == "media.countries"
 
 
+def test_deleted_legacy_rules_keep_alias_only_fields_registered() -> None:
+    """删除最后一条旧规则后，仍需登记孤立别名字段以通过策略校验。"""
+    migrated = migrate_legacy_category_config(
+        {
+            "movie": {"中文电影": {"original_language": "zh"}},
+            "tv": {},
+        }
+    )
+    policy = migrated.policy.model_copy(deep=True, update={"rules": []})
+
+    fields = legacy_extension_fields_from_policy(policy)
+
+    assert [field.id for field in fields] == [
+        "extensions.themoviedb.original_language"
+    ]
+    assert ClassificationPolicyValidator.validate(policy, fields).valid
+
+
 def test_first_empty_rule_becomes_global_fallback_and_later_entries_are_disabled() -> None:
     """首个全空项应成为媒体类型全局兜底，后续分类和规则保留但永远禁用。"""
     result = migrate_legacy_category_config(
