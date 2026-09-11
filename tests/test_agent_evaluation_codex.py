@@ -71,8 +71,16 @@ async def test_execute_sends_exact_prompt_and_preserves_nonzero_exit_output(tmp_
 
 
 @pytest.mark.asyncio
-async def test_execute_app_server_preserves_streamed_terminal_evidence(tmp_path: Path) -> None:
+async def test_execute_app_server_preserves_streamed_terminal_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """app-server 的终端增量和同一进程输入事件应归一化为可评分的原生轨迹。"""
+    async def hold_stderr_reader(stream: asyncio.StreamReader, result: bytearray) -> None:
+        """让测试覆盖正常收尾时主动取消 stderr 读取任务的路径。"""
+        del stream, result
+        await asyncio.Future()
+
+    monkeypatch.setattr(codex, "_read_output", hold_stderr_reader)
     command = _program(tmp_path, """
 import json
 import sys

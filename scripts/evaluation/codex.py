@@ -364,7 +364,7 @@ async def _execute_app_server(
         if not stderr_reader.done():
             stderr_reader.cancel()
         reader_result = (await asyncio.gather(stderr_reader, return_exceptions=True))[0]
-        if isinstance(reader_result, BaseException):
+        if isinstance(reader_result, BaseException) and not isinstance(reader_result, asyncio.CancelledError):
             failure = failure or type(reader_result).__name__
     return {
         "returncode": process.returncode,
