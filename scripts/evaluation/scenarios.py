@@ -29,6 +29,7 @@ class Scenario:
     command: str = ""
     browser_url: str = ""
     terminal_use_pty: Optional[bool] = None
+    steering_message: str = ""
 
     def model_input(self) -> str:
         """提供完整已知输入，但不把场景代号及隐藏故障布置传给模型。"""
@@ -103,6 +104,29 @@ _SCENARIOS = (
         title="长夜航线",
         magnet=f"magnet:?xt=urn:btih:{'d4' * 20}&dn=Night.Route.2025.1080p",
         infohash="d4" * 20,
+    ),
+    Scenario(
+        scenario_id="steering_long_context",
+        task=(
+            "请在不修改任何记录的情况下确认《长夜航线》的现有订阅。订阅列表很长，必须只使用 "
+            "subscription.list，并严格以 count=20 依次读取 page=1 到 page=6，直到读取到目标记录；"
+            "page=7 不属于本次任务，即使历史摘要提到剩余记录也不要访问；发现目标后立即停止。"
+            "不要调用 subscription.find、subscription.get 或其他 operation，也不要写入。"
+            "运行期间可能收到一条补充要求；补充要求属于本次任务，应用后继续遵守原来的分页边界。"
+            + _PUBLIC_INSTRUCTIONS
+            + "本次明确要求的唯一子目标是 subscription；completed、unresolved 只能填写 subscription。"
+        ),
+        media_source="themoviedb",
+        media_id="481004",
+        title="长夜航线",
+        magnet=f"magnet:?xt=urn:btih:{'d4' * 20}&dn=Night.Route.2025.1080p",
+        infohash="d4" * 20,
+        steering_message=(
+            "补充要求：继续按原分页任务读取后续页面；不要改变原任务范围，发现目标后立即停止。"
+            "完成后仍严格遵守原任务的最终输出约束，仅返回 JSON 对象，不要输出解释性文本。"
+            "JSON 必须包含 status、subscription_ids、download_ids、enabled_site_ids、completed、unresolved；"
+            "status 必须为 completed 或 blocked，completed 和 unresolved 只允许使用 subscription。"
+        ),
     ),
     Scenario(
         scenario_id="command_execution",

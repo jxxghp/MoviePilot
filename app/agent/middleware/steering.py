@@ -12,6 +12,11 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.agent.steering import SteeringMessage, current_steering_inbox
 
 STEERING_MESSAGE_ID_KEY = "moviepilot_steering_message_id"
+STEERING_CONTEXT_KEY = "continuation_context"
+STEERING_CONTEXT_INSTRUCTION = (
+    "这是当前运行任务的补充要求。继续原任务并保留此前的范围、停止条件、确认标准、输出格式和安全约束；"
+    "只有用户明确修改时才改变它们。"
+)
 
 
 def _to_human_message(message: SteeringMessage) -> HumanMessage:
@@ -19,6 +24,7 @@ def _to_human_message(message: SteeringMessage) -> HumanMessage:
     payload = {
         "message": message.text,
         "input": {"mode": "text", "steering": True},
+        STEERING_CONTEXT_KEY: STEERING_CONTEXT_INSTRUCTION,
         "images": [{"index": index + 1, "type": "image"} for index, _ in enumerate(message.images)],
         "files": list(message.files),
     }

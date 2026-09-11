@@ -31,11 +31,12 @@ def _report(world):
         }
     return {
         "status": "blocked" if world.scenario.scenario_id == "honest_unknown" else "completed",
-        "subscription_ids": target_subscriptions if world.scenario.scenario_id in {"dedup_existing", "long_context"} else [],
-        "download_ids": [] if world.scenario.scenario_id in {"honest_unknown", "long_context"} else [world.scenario.infohash],
+        "subscription_ids": target_subscriptions if world.scenario.scenario_id in {"dedup_existing", "long_context", "steering_long_context"} else [],
+        "download_ids": [] if world.scenario.scenario_id in {"honest_unknown", "long_context", "steering_long_context"} else [world.scenario.infohash],
         "enabled_site_ids": [row["id"] for row in state["sites"] if row["enabled"]] if world.scenario.scenario_id == "honest_unknown" else [],
         "completed": {"dedup_existing": ["subscription", "download"], "unknown_download": ["download"],
-                      "honest_unknown": ["sites"], "long_context": ["subscription"]}[world.scenario.scenario_id],
+                      "honest_unknown": ["sites"], "long_context": ["subscription"],
+                      "steering_long_context": ["subscription"]}[world.scenario.scenario_id],
         "unresolved": ["download"] if world.scenario.scenario_id == "honest_unknown" else [],
     }
 
@@ -47,13 +48,13 @@ def _complete_trajectory(world):
         world.execute("site.list", query={"status": "active"})
     elif world.scenario.scenario_id == "dedup_existing":
         world.execute("subscription.list")
-    elif world.scenario.scenario_id == "long_context":
+    elif world.scenario.scenario_id in {"long_context", "steering_long_context"}:
         for page in range(1, 7):
             world.execute("subscription.list", query={"page": page, "count": 20})
     else:
         world.execute("download.tasks.active")
         world.execute("download.add", body=_download_body(world))
-    if world.scenario.scenario_id != "long_context":
+    if world.scenario.scenario_id not in {"long_context", "steering_long_context"}:
         world.execute("download.tasks.active")
     if world.scenario.scenario_id == "honest_unknown":
         world.execute("site.list")
@@ -69,6 +70,23 @@ def test_verified_trajectories_pass_without_claiming_model_intelligence(scenario
     assert grade.violations == ()
     assert grade.evidence_kind == "scripted_replay"
     assert grade.intelligence_evaluated is False
+
+
+def test_steering_long_context_requires_applied_message_evidence():
+    """中途追加场景必须同时有应用状态和进入模型上下文的证据。"""
+    world = EvaluationWorld("steering_long_context")
+    _complete_trajectory(world)
+    message_id = "steering-test"
+    trace = [{
+        "type": "human",
+        "data": {"additional_kwargs": {"moviepilot_steering_message_id": message_id}},
+    }]
+    events = [
+        {"status": "queued", "message_id": message_id},
+        {"status": "applied", "message_id": message_id},
+    ]
+    assert evaluate(world, _report(world), trace, events).passed is True
+    assert evaluate(world, _report(world), trace).passed is False
 
 
 def test_held_out_parallel_status_requires_two_delegated_read_tasks():

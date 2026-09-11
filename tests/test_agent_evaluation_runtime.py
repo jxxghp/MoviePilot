@@ -56,6 +56,20 @@ def _responses(world: EvaluationWorld) -> list[AIMessage]:
         ]}, "plan"),
         _call("read_skill", {"name": "moviepilot-api"}, "skill"),
     ]
+    if scenario.scenario_id in {"long_context", "steering_long_context"}:
+        responses.extend(
+            _call(
+                "moviepilot_api",
+                {"operation_id": "subscription.list", "query": {"page": page, "count": 20}},
+                f"page-{page}",
+            )
+            for page in range(1, 7)
+        )
+        responses.append(AIMessage(content=json.dumps({
+            "status": "completed", "subscription_ids": [9001], "download_ids": [],
+            "enabled_site_ids": [], "completed": ["subscription"], "unresolved": [],
+        }, ensure_ascii=False)))
+        return responses
     report = {
         "status": "completed", "subscription_ids": [], "download_ids": [scenario.infohash],
         "enabled_site_ids": [], "completed": ["download"], "unresolved": [],
@@ -81,6 +95,36 @@ def _responses(world: EvaluationWorld) -> list[AIMessage]:
         report.update(status="blocked", download_ids=[], enabled_site_ids=[11, 13], completed=["sites"], unresolved=["download"])
     responses.append(AIMessage(content=json.dumps(report, ensure_ascii=False)))
     return responses
+
+
+@pytest.mark.asyncio
+async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_store):
+    """生产图应在首个分页回执后注入补充 HumanMessage，并继续完成原任务。"""
+    world = EvaluationWorld("steering_long_context")
+    model = _ScriptModel(responses=_responses(world))
+    repository, _factory = invocation_store
+    capture = await run_moviepilot(
+        world,
+        model,
+        model_name="scripted-steering-test",
+        context_window=128000,
+        max_iterations=48,
+        invocation_repository=repository,
+    )
+    assert capture["execution_success"] is True, capture["final_text"]
+    grade = evaluate(
+        world,
+        json.loads(capture["final_text"]),
+        capture["raw_messages"],
+        capture["steering_events"],
+    )
+    assert grade.passed, grade.violations
+    assert [event["status"] for event in capture["steering_events"]] == ["queued", "applied"]
+    assert any(
+        message["type"] == "human"
+        and message["data"].get("additional_kwargs", {}).get("moviepilot_steering_message_id")
+        for message in capture["raw_messages"]
+    )
 
 
 @pytest.fixture

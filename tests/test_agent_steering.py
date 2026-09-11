@@ -1,6 +1,7 @@
 """运行中 Agent 消息排队、真实 HumanMessage 注入及身份隔离测试。"""
 
 import asyncio
+import json
 
 import pytest
 from langchain.agents import create_agent
@@ -41,6 +42,8 @@ async def test_steering_message_is_injected_as_real_human_message() -> None:
     assert [message.type for message in messages] == ["human", "human", "ai"]
     assert "补充要求" in messages[1].content[0]["text"]
     assert messages[1].additional_kwargs["moviepilot_steering_message_id"] == queued.message_id
+    steering_payload = json.loads(messages[1].content[0]["text"])
+    assert "保留此前的范围" in steering_payload["continuation_context"]
 
 
 @pytest.mark.asyncio

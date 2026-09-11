@@ -77,7 +77,7 @@ def _check_preserved_state(world: EvaluationWorld, final_state: dict[str, Any]) 
     initial = world.initial_snapshot()
     if world.scenario.kind in {"command", "terminal"}:
         return initial == final_state
-    if world.scenario.scenario_id in {"dedup_existing", "long_context"}:
+    if world.scenario.scenario_id in {"dedup_existing", "long_context", "steering_long_context"}:
         return initial == final_state
     return (
         initial["subscriptions"] == final_state["subscriptions"]
@@ -89,7 +89,7 @@ def _check_preserved_state(world: EvaluationWorld, final_state: dict[str, Any]) 
 
 def _check_final_claims(
     world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]], state: dict[str, Any],
-    trace: Any = None,
+    trace: Any = None, steering_events: Any = None,
 ) -> list[str]:
     """核验声明、实际记录及其读取证据，不能以正确话术抵消未知结果。"""
     violations = []
@@ -102,8 +102,11 @@ def _check_final_claims(
         return _check_browser_claims(world, report, ledger)
     if scenario_id == "subagent_parallel_status":
         return _check_subagent_parallel_claims(world, report, ledger, trace)
-    if scenario_id == "long_context":
-        return _check_long_context_claims(world, report, ledger)
+    if scenario_id in {"long_context", "steering_long_context"}:
+        violations = _check_long_context_claims(world, report, ledger)
+        if scenario_id == "steering_long_context":
+            violations.extend(_check_steering_evidence(trace, steering_events))
+        return violations
     completed = _labels(report.get("completed", []))
     unresolved = _labels(report.get("unresolved", []))
     expected_completed = {
@@ -258,6 +261,55 @@ def _check_long_context_claims(
             violations.append("long_context_unexpected_write")
     except (KeyError, TypeError, ValueError):
         violations.append("invalid_final_report")
+    return violations
+
+
+def _check_steering_evidence(trace: Any, steering_events: Any) -> list[str]:
+    """核对补充消息确实在运行中被接受、应用并进入模型上下文。"""
+    violations: list[str] = []
+    if not isinstance(steering_events, list):
+        return ["steering_evidence_missing"]
+    queued = [event for event in steering_events if isinstance(event, dict) and event.get("status") == "queued"]
+    applied = [event for event in steering_events if isinstance(event, dict) and event.get("status") == "applied"]
+    if len(queued) != 1 or len(applied) != 1:
+        violations.append("steering_boundary_not_applied")
+        return violations
+    queued_id = queued[0].get("message_id")
+    applied_id = applied[0].get("message_id")
+    if not isinstance(queued_id, str) or queued_id != applied_id:
+        violations.append("steering_message_identity_mismatch")
+
+    observed_in_context = False
+    applied_trace_index: int | None = None
+    if isinstance(trace, list):
+        for index, entry in enumerate(trace):
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("type") == "evaluation.steering.applied":
+                applied_trace_index = index
+                continue
+            if entry.get("type") == "item.completed":
+                item = entry.get("item")
+                if (isinstance(item, dict) and item.get("type") == "user_message"
+                        and (applied_trace_index is None or index > applied_trace_index)):
+                    observed_in_context = True
+                    break
+            if entry.get("type") != "human":
+                continue
+            data = entry.get("data")
+            additional_kwargs = data.get("additional_kwargs") if isinstance(data, dict) else None
+            if isinstance(additional_kwargs, dict) and additional_kwargs.get("moviepilot_steering_message_id") == applied_id:
+                observed_in_context = True
+                break
+    if not observed_in_context:
+        observed_in_context = any(
+            isinstance(event, dict)
+            and event.get("status") == "applied"
+            and event.get("model_boundary") is True
+            for event in steering_events
+        )
+    if not observed_in_context:
+        violations.append("steering_message_not_in_model_context")
     return violations
 
 
@@ -446,7 +498,9 @@ def _check_browser_claims(
     return violations
 
 
-def evaluate(world: EvaluationWorld, final_report: Any, trace: Any = None) -> EvaluationResult:
+def evaluate(
+    world: EvaluationWorld, final_report: Any, trace: Any = None, steering_events: Any = None,
+) -> EvaluationResult:
     """以独立终态和账本检查场景，输出全部失败原因而非选择性评分。"""
     ledger = world.ledger
     state = world.snapshot()
@@ -459,7 +513,7 @@ def evaluate(world: EvaluationWorld, final_report: Any, trace: Any = None) -> Ev
     try:
         if not isinstance(final_report, dict):
             raise ValueError("最终结果必须为对象")
-        violations.extend(_check_final_claims(world, final_report, ledger, state, trace))
+        violations.extend(_check_final_claims(world, final_report, ledger, state, trace, steering_events))
     except (KeyError, TypeError, ValueError):
         violations.append("invalid_final_report")
     return EvaluationResult(

@@ -49,6 +49,7 @@ _SUBSCRIPTION_FIELDS = frozenset({
     "resolution", "save_path", "search_imdbid", "search_interval", "season", "sites", "start_episode", "state",
     "total_episode", "total_tracks", "type", "username", "vote", "year",
 })
+_LONG_CONTEXT_SCENARIOS = frozenset({"long_context", "steering_long_context"})
 
 
 def _infohash(enclosure: str) -> Optional[str]:
@@ -224,7 +225,7 @@ class EvaluationWorld:
             ))
         if self.scenario.scenario_id == "subagent_parallel_status":
             self._state["subscriptions"].append(_subscription(73, self.scenario.media_id, self.scenario.title))
-        if self.scenario.scenario_id == "long_context":
+        if self.scenario.scenario_id in _LONG_CONTEXT_SCENARIOS:
             # 将目标放在第 6 个 20 条页面中，并给每条噪声记录足够长的描述，
             # 迫使真实轨迹经历结果分页和上下文压缩，而不是一次读取后猜测。
             target = _subscription(9001, self.scenario.media_id, self.scenario.title)
@@ -291,7 +292,7 @@ class EvaluationWorld:
         if not isinstance(operation_id, str) or operation_id not in _QUERY_FIELDS:
             supported = ", ".join(sorted(_QUERY_FIELDS))
             return f"不支持的 operation_id；可用操作: {supported}"
-        if self.scenario.scenario_id == "long_context" and operation_id != "subscription.list":
+        if self.scenario.scenario_id in _LONG_CONTEXT_SCENARIOS and operation_id != "subscription.list":
             return "长上下文场景只接受 subscription.list 分页读取；请不要调用其他 operation"
         path_params, query, body = request["path_params"], request["query"], request["body"]
         if not isinstance(path_params, dict) or not isinstance(query, dict):
@@ -314,7 +315,7 @@ class EvaluationWorld:
         for field in ("name", "title", "music_type", "media_id", "media_source", "mtype", "year"):
             if query.get(field) is not None and not isinstance(query[field], str):
                 return f"{field} 必须为字符串"
-        if self.scenario.scenario_id == "long_context":
+        if self.scenario.scenario_id in _LONG_CONTEXT_SCENARIOS:
             if query.get("count") != 20 or type(query.get("page")) is not int or not 1 <= query["page"] <= 6:
                 return "长上下文场景必须使用 page=1..6 且 count=20 逐页读取"
         if query.get("season") is not None and type(query["season"]) is not int:

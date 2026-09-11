@@ -10,7 +10,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Lock, Thread
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Iterator, Optional
 from unittest.mock import patch
 from urllib.parse import unquote, urlsplit
 from uuid import uuid4
@@ -69,11 +69,18 @@ class _Response:
 class _Transport:
     """按生产固定路由反向匹配 operation，无法向任意主机发送请求。"""
 
-    def __init__(self, world: EvaluationWorld, **_kwargs: Any) -> None:
+    def __init__(
+        self,
+        world: EvaluationWorld,
+        *,
+        after_operation: Optional[Callable[[str, dict[str, Any]], Awaitable[None]]] = None,
+        **_kwargs: Any,
+    ) -> None:
         """绑定当前世界；执行器传来的认证头不记录、不使用。"""
         from app.agent.policy.api import resolve_api_route
 
         self._world = world
+        self._after_operation = after_operation
         self._routes = []
         for operation in _OPERATIONS:
             route = resolve_api_route(operation)
@@ -101,7 +108,10 @@ class _Transport:
                     path_params["subscribe_id"] = int(path_params["subscribe_id"])
                 except ValueError:
                     pass
-            return _Response(self._world.execute(operation, path_params=path_params, query=params, body=json))
+            response = self._world.execute(operation, path_params=path_params, query=params, body=json)
+            if self._after_operation is not None:
+                await self._after_operation(operation, response)
+            return _Response(response)
         return _Response({"success": False, "execution_outcome": "failed", "message": "该 API 不属于受控评测目录"})
 
 
@@ -534,7 +544,12 @@ def _agent_type() -> type:
 
 
 @contextmanager
-def _runtime_scope(directory: Path, world: EvaluationWorld) -> Iterator[Any]:
+def _runtime_scope(
+    directory: Path,
+    world: EvaluationWorld,
+    *,
+    after_operation: Optional[Callable[[str, dict[str, Any]], Awaitable[None]]] = None,
+) -> Iterator[Any]:
     """在独立 worker 中临时替换明确的外部边界，退出时恢复全部全局引用。"""
     from app.agent.api.executor import MoviePilotApiExecutor
     from app.agent.runtime import AgentRuntimeManager
@@ -549,7 +564,7 @@ def _runtime_scope(directory: Path, world: EvaluationWorld) -> Iterator[Any]:
         stack.enter_context(patch("app.agent.orchestrator.agent_mcp_manager", _McpDirectory()))
         stack.enter_context(patch.object(MoviePilotApiExecutor, "_resolve_base_url", return_value="http://evaluation.invalid"))
         stack.enter_context(patch.object(MoviePilotApiExecutor, "_build_headers", return_value={"Accept": "application/json"}))
-        yield lambda **kwargs: _Transport(world, **kwargs)
+        yield lambda **kwargs: _Transport(world, after_operation=after_operation, **kwargs)
 
 
 async def run_moviepilot(
@@ -584,6 +599,7 @@ async def _run_isolated(
     from app.agent.api.executor import ApiExecutionContext, MoviePilotApiExecutor
     from app.agent.contracts import ReplyMode
     from app.agent.memory import MemoryManager
+    from app.agent.steering import SteeringInbox
     from app.agent.tools.impl.api import MoviePilotApiTool
     from app.db.adapters.invocation import TransactionalInvocationRepository
     from app.db.models.agentinvocation import AgentInvocation
@@ -598,7 +614,43 @@ async def _run_isolated(
             stack.callback(engine.dispose)
             AgentInvocation.__table__.create(engine)
             invocation_repository = TransactionalInvocationRepository(sessionmaker(bind=engine))
-        factory = stack.enter_context(_runtime_scope(directory, world))
+        session_id = uuid4().hex
+        steering_inbox = SteeringInbox(session_id, "1")
+        steering_events: list[dict[str, Any]] = []
+        steering_queued = False
+
+        async def after_operation(operation_id: str, response: dict[str, Any]) -> None:
+            """在首个长上下文分页回执后注入一条真实运行中补充消息。"""
+            nonlocal steering_queued
+            if world.scenario.scenario_id != "steering_long_context" or steering_queued:
+                return
+            if operation_id != "subscription.list" or response.get("outcome") != "succeeded":
+                return
+            message = await steering_inbox.enqueue(
+                user_id="1",
+                text=world.scenario.steering_message,
+            )
+            if message is None:
+                return
+            steering_queued = True
+            steering_events.append({
+                "status": "queued",
+                "message_id": message.message_id,
+                "after_operation": operation_id,
+            })
+
+        def steering_status_callback(message: Any, status: str) -> None:
+            """记录 inbox 在模型边界真正消费补充消息的状态。"""
+            steering_events.append({
+                "status": status,
+                "message_id": message.message_id,
+                # SteeringMiddleware consumes the message immediately before the
+                # model handler; this marks a real model-boundary injection even
+                # when later context compaction removes the HumanMessage snapshot.
+                "model_boundary": status == "applied",
+            })
+
+        factory = stack.enter_context(_runtime_scope(directory, world, after_operation=after_operation))
         if world.scenario.kind == "browser":
             world.configure_browser_url(stack.enter_context(_browser_fixture()))
         memory_port = _MemoryPort()
@@ -606,12 +658,13 @@ async def _run_isolated(
         command_root = directory / "command-workspace"
         command_root.mkdir()
         agent = _agent_type()(
-            session_id=uuid4().hex, user_id="1", username="evaluation", channel=NotificationChannel.WebAgent.value,
+            session_id=session_id, user_id="1", username="evaluation", channel=NotificationChannel.WebAgent.value,
             source="evaluation", is_channel_admin=True, replay_mode=ReplyMode.CAPTURE_ONLY, allow_message_tools=False,
             output_callback=output.append, data=SimpleNamespace(invocations=invocation_repository),
             memory=MemoryManager(chat=memory_port, persistence=memory_port), model=model, model_name=model_name,
             context_window=context_window, max_iterations=max_iterations,
         )
+        agent.configure_steering_inbox(steering_inbox)
         for child in (False, True):
             executor = MoviePilotApiExecutor(
                 context=ApiExecutionContext(user_id="1", username="evaluation", is_admin=True, session_id=agent.session_id),
@@ -649,8 +702,23 @@ async def _run_isolated(
             browser_tool.set_message_attr(agent.channel, agent.source, agent.username)
             browser_tool.set_agent_context(agent._tool_context)
             agent.evaluation_tools.append(browser_tool)
+        await steering_inbox.begin_run(steering_status_callback)
         try:
             result = await agent.process(world.model_input())
+            # 模型可能在收到首个工具回执后直接结束；仍把已确认的补充消息
+            # 交给同一 Agent 图，不能让“已排队”变成无展示的孤立输入。
+            while True:
+                pending = await steering_inbox.consume()
+                if not pending:
+                    break
+                for message in pending:
+                    result = await agent.process(message.text, images=list(message.images) or None,
+                                                 files=list(message.files) or None)
+            pending = await steering_inbox.finish_run()
+            for message in pending:
+                steering_status_callback(message, "applied")
+                result = await agent.process(message.text, images=list(message.images) or None,
+                                             files=list(message.files) or None)
             bundle = agent.evaluation_bundle
             state = bundle.agent.get_state({"configurable": {"thread_id": agent.session_id}}).values if bundle else {}
             tool_catalog = bundle.tool_catalog.audit_payload() if bundle and bundle.tool_catalog else None
@@ -666,7 +734,10 @@ async def _run_isolated(
                 "tool_catalog": tool_catalog,
                 "child_tool_catalog": child_tool_catalog,
                 "graph_nodes": sorted(bundle.agent.get_graph().nodes) if bundle else [],
+                "steering_events": steering_events,
             }
         finally:
+            if steering_inbox.running:
+                await steering_inbox.finish_run()
             if not await agent.cleanup():
                 raise RuntimeError("评测 Agent 子任务尚未完成清理")

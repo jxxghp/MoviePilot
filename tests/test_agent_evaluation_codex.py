@@ -136,6 +136,60 @@ for line in sys.stdin:
 
 
 @pytest.mark.asyncio
+async def test_execute_app_server_steers_after_business_tool_boundary(tmp_path: Path) -> None:
+    """中途追加必须在业务工具完成后携带当前轮次 ID 注入，并保留排队到应用的顺序。"""
+    command = _program(tmp_path, """
+import json
+import sys
+
+def emit(value):
+    print(json.dumps(value), flush=True)
+
+for line in sys.stdin:
+    request = json.loads(line)
+    method = request.get('method')
+    if method == 'initialize':
+        emit({'jsonrpc': '2.0', 'id': request['id'], 'result': {}})
+    elif method == 'thread/start':
+        emit({'jsonrpc': '2.0', 'id': request['id'], 'result': {'thread': {'id': 'thread-1'}}})
+    elif method == 'turn/start':
+        emit({'jsonrpc': '2.0', 'id': request['id'], 'result': {}})
+        emit({'jsonrpc': '2.0', 'method': 'turn/started',
+              'params': {'threadId': 'thread-1', 'turn': {'id': 'turn-1'}}})
+        emit({'jsonrpc': '2.0', 'method': 'item/completed', 'params': {'item': {
+            'type': 'mcpToolCall', 'id': 'call-1', 'server': 'evaluation',
+            'tool': 'moviepilot_api', 'status': 'completed', 'arguments': {}, 'result': {},
+        }}})
+    elif method == 'turn/steer':
+        emit({'jsonrpc': '2.0', 'id': request['id'], 'result': {}})
+        emit({'jsonrpc': '2.0', 'method': 'item/completed', 'params': {'item': {
+            'type': 'userMessage', 'id': 'steering-1', 'text': request['params']['input'][0]['text'],
+        }}})
+        emit({'jsonrpc': '2.0', 'method': 'turn/completed',
+              'params': {'threadId': 'thread-1', 'turn': {'id': 'turn-1'}}})
+""")
+    result = await codex._execute_app_server(
+        command, "公开任务", codex._worker_environment(), tmp_path, 5,
+        model="gpt-test", reasoning_effort="high", steering_message="补充要求",
+    )
+
+    assert result["returncode"] == 0
+    assert result["error_type"] is None
+    events, _final_text, completed = codex._events(result["stdout"])
+    assert completed is True
+    queued_index = next(i for i, event in enumerate(events)
+                         if event["type"] == "evaluation.steering.queued")
+    applied_index = next(i for i, event in enumerate(events)
+                         if event["type"] == "evaluation.steering.applied")
+    user_index = next(i for i, event in enumerate(events)
+                      if event.get("type") == "item.completed"
+                      and event.get("item", {}).get("type") == "user_message")
+    assert queued_index < applied_index < user_index
+    assert events[queued_index]["message_id"] == codex.NATIVE_STEERING_MESSAGE_ID
+    assert events[applied_index]["message_id"] == codex.NATIVE_STEERING_MESSAGE_ID
+
+
+@pytest.mark.asyncio
 @pytest.mark.skipif(os.name != "posix", reason="继承进程组回收是 POSIX 合同")
 @pytest.mark.parametrize(("cancel", "parent_exits"), [(False, False), (False, True), (True, False)])
 async def test_execute_timeout_or_cancellation_closes_descendant_pipes(

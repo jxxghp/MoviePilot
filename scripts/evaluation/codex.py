@@ -27,6 +27,8 @@ SUPPORTED_CLI_VERSION = "codex-cli 0.153.4"
 MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
 NATIVE_TERMINAL_SCENARIOS = frozenset({"terminal_session", "terminal_pty_session"})
 NATIVE_BROWSER_SCENARIOS = frozenset({"browser_navigation"})
+NATIVE_STEERING_SCENARIOS = frozenset({"steering_long_context"})
+NATIVE_STEERING_MESSAGE_ID = "moviepilot-evaluation-steering"
 
 
 def _browser_runtime_configuration(executable: str, instruction_dir: Path) -> dict[str, Any] | None:
@@ -283,6 +285,7 @@ async def _execute(command: list[str], prompt: str, environment: dict[str, str],
     process = await asyncio.create_subprocess_exec(
         *command, cwd=work_dir, env=environment, stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=os.name == "posix",
+        limit=MAX_PROCESS_OUTPUT_BYTES,
     )
     readers: list[asyncio.Task[None]] = []
     stdout, stderr = bytearray(), bytearray()
@@ -325,6 +328,13 @@ def _normalize_app_server_item(item: Any) -> dict[str, Any]:
     result: dict[str, Any] = {"type": normalized_type, "id": item.get("id")}
     if normalized_type == "agent_message":
         result.update(text=item.get("text", ""), phase=item.get("phase"))
+    elif normalized_type == "mcpToolCall":
+        result.update(
+            server=item.get("server"), tool=item.get("tool"), status=item.get("status"),
+            arguments=item.get("arguments"), result=item.get("result"),
+        )
+    elif normalized_type == "user_message":
+        result.update(text=item.get("text", ""), content=item.get("content"))
     elif normalized_type == "command_execution":
         result.update(
             command=item.get("command", ""), cwd=item.get("cwd"), process_id=item.get("processId"),
@@ -338,9 +348,11 @@ def _normalize_app_server_notification(method: str, params: Any) -> dict[str, An
     """保留终端、消息和轮次终态，把其他 app-server 通知降为可审计摘要。"""
     payload = params if isinstance(params, dict) else {}
     if method == "turn/started":
-        return {"type": "turn.started"}
+        turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
+        return {"type": "turn.started", "turn_id": turn.get("id")}
     if method == "turn/completed":
-        return {"type": "turn.completed"}
+        turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
+        return {"type": "turn.completed", "turn_id": turn.get("id")}
     if method == "item/started":
         return {"type": "item.started", "item": _normalize_app_server_item(payload.get("item"))}
     if method == "item/completed":
@@ -369,12 +381,13 @@ def _normalize_app_server_notification(method: str, params: Any) -> dict[str, An
 
 async def _execute_app_server(
     command: list[str], prompt: str, environment: dict[str, str], work_dir: Path, timeout: int,
-    *, model: str, reasoning_effort: str,
+    *, model: str, reasoning_effort: str, steering_message: str = "",
 ) -> dict[str, Any]:
     """通过 Codex app-server 的 JSON-RPC 驱动可写 stdin 的原生终端会话。"""
     process = await asyncio.create_subprocess_exec(
         *command, cwd=work_dir, env=environment, stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=os.name == "posix",
+        limit=MAX_PROCESS_OUTPUT_BYTES,
     )
     assert process.stdin is not None and process.stdout is not None and process.stderr is not None
     stderr = bytearray()
@@ -384,8 +397,10 @@ async def _execute_app_server(
     pending: dict[int, str] = {}
     next_request_id = 1
     thread_id: str | None = None
+    active_turn_id: str | None = None
     turn_completed = False
     failure: str | None = None
+    steering_sent = False
 
     async def send_request(method: str, params: dict[str, Any]) -> int:
         """发送带序号的 JSON-RPC 请求，并记录响应所属方法。"""
@@ -416,7 +431,7 @@ async def _execute_app_server(
 
     async def handle_response(payload: dict[str, Any]) -> None:
         """按 initialize、thread/start、turn/start 的顺序推进原生轮次。"""
-        nonlocal thread_id, failure
+        nonlocal thread_id, failure, steering_sent
         request_id = payload.get("id")
         method = pending.pop(request_id, None) if type(request_id) is int else None
         if method is None:
@@ -425,6 +440,9 @@ async def _execute_app_server(
             return
         if "error" in payload:
             failure = failure or f"app_server_{method.replace('/', '_')}_error"
+            if method == "turn/steer":
+                events.append({"type": "evaluation.steering.failed", "status": "failed",
+                               "message_id": NATIVE_STEERING_MESSAGE_ID})
             return
         if method == "initialize":
             await send_notification("initialized")
@@ -448,6 +466,10 @@ async def _execute_app_server(
                     "effort": reasoning_effort,
                 },
             )
+        elif method == "turn/steer":
+            steering_sent = True
+            events.append({"type": "evaluation.steering.applied", "status": "applied",
+                           "message_id": NATIVE_STEERING_MESSAGE_ID})
 
     try:
         async with asyncio.timeout(timeout):
@@ -474,6 +496,8 @@ async def _execute_app_server(
                     continue
                 if "id" in payload and "method" not in payload:
                     await handle_response(payload)
+                    if turn_completed and pending == {}:
+                        break
                     continue
                 method = payload.get("method")
                 if not isinstance(method, str):
@@ -482,8 +506,42 @@ async def _execute_app_server(
                 event = _normalize_app_server_notification(method, payload.get("params"))
                 if event is not None:
                     events.append(event)
+                    if (
+                        steering_message
+                        and not steering_sent
+                        and event.get("type") == "item.completed"
+                        and isinstance(event.get("item"), dict)
+                        and event["item"].get("type") == "mcpToolCall"
+                        and str(event["item"].get("tool") or "").rsplit(".", 1)[-1] == "moviepilot_api"
+                    ):
+                        if not thread_id or not active_turn_id:
+                            events.append({
+                                "type": "evaluation.steering.boundary_missing",
+                                "thread_id_present": bool(thread_id),
+                                "turn_id_present": bool(active_turn_id),
+                            })
+                            failure = failure or "app_server_steering_turn_id_missing"
+                        else:
+                            events.append({"type": "evaluation.steering.queued", "status": "queued",
+                                           "message_id": NATIVE_STEERING_MESSAGE_ID})
+                            await send_request(
+                                "turn/steer",
+                                {
+                                    "threadId": thread_id,
+                                    "expectedTurnId": active_turn_id,
+                                    "input": [{"type": "text", "text": steering_message}],
+                                    "clientUserMessageId": NATIVE_STEERING_MESSAGE_ID,
+                                },
+                            )
+                            # 防止一个模型回合包含多个业务工具时重复注入；只有成功响应
+                            # 才会追加 applied，错误会保留失败事件并让报告判定不通过。
+                            steering_sent = True
+                if method == "turn/started":
+                    active_turn_id = event.get("turn_id") if isinstance(event.get("turn_id"), str) else None
                 if method == "turn/completed":
                     turn_completed = True
+                    if steering_message and any(value == "turn/steer" for value in pending.values()):
+                        continue
                     break
                 if "id" in payload:
                     await send_server_error(payload["id"])
@@ -635,7 +693,7 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
                 config = _configuration(
                     settings, proxy, server, control_dir, scenario_id=scenario_id, browser_runtime=browser_runtime,
                 )
-                use_app_server = scenario_id in NATIVE_TERMINAL_SCENARIOS
+                use_app_server = scenario_id in (NATIVE_TERMINAL_SCENARIOS | NATIVE_STEERING_SCENARIOS)
                 command = (
                     [executable, "app-server", "--listen", "stdio://", "--strict-config"]
                     if use_app_server
@@ -657,6 +715,7 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
                         _execute_app_server(
                             command, world.model_input(), environment, work_dir, settings.timeout_seconds,
                             model=settings.model, reasoning_effort=settings.reasoning_effort,
+                            steering_message=(world.scenario.steering_message if scenario_id in NATIVE_STEERING_SCENARIOS else ""),
                         )
                         if use_app_server
                         else _execute(command, world.model_input(), environment, work_dir, settings.timeout_seconds)
@@ -688,7 +747,13 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
         failure = failure or "source_changed_during_run"
     stderr = result.get("stderr", "")
     report = {
-        **evaluate(world, final_report, events).to_dict(), **provenance, **usage, "source_unchanged": source_unchanged,
+        **evaluate(
+            world,
+            final_report,
+            events,
+            [event for event in events if str(event.get("type", "")).startswith("evaluation.steering.")],
+        ).to_dict(),
+        **provenance, **usage, "source_unchanged": source_unchanged,
         "evidence_kind": "codex_native_probe" if probe_only else "codex_native_controlled",
         "intelligence_evaluated": usage["completed_model_calls"] > 0, "codex_comparison": False,
         "model": settings.public_metadata(), "elapsed_seconds": round(time.monotonic() - started, 3),
@@ -705,7 +770,7 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
             else "native_control_tools_and_shared_fixture_mcp"
         ),
         "browser_runtime_enabled": bool(scenario_id in NATIVE_BROWSER_SCENARIOS and browser_runtime is not None),
-        "native_transport": "app_server" if scenario_id in NATIVE_TERMINAL_SCENARIOS else "exec",
+        "native_transport": "app_server" if use_app_server else "exec",
     }
     report["task_passed"] = report["passed"]
     report["passed"] = bool(report["passed"] and completed and result.get("returncode") == 0 and not failure)
