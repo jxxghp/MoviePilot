@@ -328,7 +328,7 @@ class SystemModuleListData(BaseModel):
     modules: list[SystemModuleInfo] = Field(default_factory=list)
 
 
-class SystemModuleSettingInfo(BaseModel):
+class SystemModuleSettingInfo(BaseModel):  # type: ignore[misc]
     """可由用户统一开关的内置模块设置摘要。"""
 
     id: str
@@ -340,13 +340,13 @@ class SystemModuleSettingInfo(BaseModel):
     enabled: bool
 
 
-class SystemModuleSettingListData(BaseModel):
+class SystemModuleSettingListData(BaseModel):  # type: ignore[misc]
     """可由用户统一开关的内置模块设置列表。"""
 
     modules: list[SystemModuleSettingInfo] = Field(default_factory=list)
 
 
-class SystemModuleCatalogInfo(BaseModel):
+class SystemModuleCatalogInfo(BaseModel):  # type: ignore[misc]
     """前端服务选择器可消费的宿主模块目录项。"""
 
     id: str
@@ -362,7 +362,7 @@ class SystemModuleCatalogInfo(BaseModel):
     active: bool = False
 
 
-class SystemModuleCatalogListData(BaseModel):
+class SystemModuleCatalogListData(BaseModel):  # type: ignore[misc]
     """宿主模块及其服务类型目录。"""
 
     modules: list[SystemModuleCatalogInfo] = Field(default_factory=list)

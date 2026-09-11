@@ -45,8 +45,10 @@ def _module_description(module_id: str, name: str, module_type: str) -> str:
     "/modulelist",
     summary="查询已启用的模块ID列表",
     response_model=_SchemaResponse[_SchemaSystemModuleListData],
-)
-def modulelist(_: _SchemaTokenPayload = Depends(verify_token)):
+)  # type: ignore[misc]
+def modulelist(
+    _: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[_SchemaSystemModuleListData]:
     """查询当前配置下应参与健康检查的模块 ID 列表。"""
     modules = []
     for spec in get_module_manager().list_enabled_specs():
@@ -70,8 +72,10 @@ def modulelist(_: _SchemaTokenPayload = Depends(verify_token)):
     "/module-catalog",
     summary="查询宿主模块目录",
     response_model=_SchemaResponse[_SchemaSystemModuleCatalogListData],
-)
-def module_catalog(_: _SchemaTokenPayload = Depends(verify_token)):
+)  # type: ignore[misc]
+def module_catalog(
+    _: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[_SchemaSystemModuleCatalogListData]:
     """返回模块及其服务类型目录，供前端选择器统一构造选项。"""
     manager = get_module_manager()
     specs = manager.list_specs()
@@ -112,10 +116,10 @@ def module_catalog(_: _SchemaTokenPayload = Depends(verify_token)):
     "/module-settings",
     summary="查询可手动开关的内置模块",
     response_model=_SchemaResponse[_SchemaSystemModuleSettingListData],
-)
+)  # type: ignore[misc]
 async def module_settings(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
-):
+) -> _SchemaResponse[_SchemaSystemModuleSettingListData]:
     """查询没有其它激活配置、可由用户统一控制的内置模块。"""
     configured = get_runtime_settings().get("MODULE_ENABLE", {})
     if not isinstance(configured, dict):
@@ -146,8 +150,15 @@ async def module_settings(
     return _SchemaResponse(success=True, data={"modules": modules})
 
 
-@router.get("/moduletest/{moduleid}", summary="模块可用性测试", response_model=_SchemaResponse[None])
-def moduletest(moduleid: str, _: _SchemaTokenPayload = Depends(verify_token)):
+@router.get(  # type: ignore[misc]
+    "/moduletest/{moduleid}",
+    summary="模块可用性测试",
+    response_model=_SchemaResponse[None],
+)
+def moduletest(
+    moduleid: str,
+    _: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaResponse[None]:
     """运行指定模块的内置可用性测试。"""
     state, errmsg = get_module_manager().test(moduleid)
     return _SchemaResponse(success=state, message=errmsg)

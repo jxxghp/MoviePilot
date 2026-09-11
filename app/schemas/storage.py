@@ -33,7 +33,7 @@ class StorageOption(BaseModel):  # type: ignore[misc]
     type: str = Field(description="存储类型标识")
 
 
-class StorageCatalogOption(BaseModel):
+class StorageCatalogOption(BaseModel):  # type: ignore[misc]
     """前端新增存储和路径选择器可消费的存储类型目录项。"""
 
     type: str = Field(description="存储类型标识")

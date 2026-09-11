@@ -135,7 +135,7 @@ def storage_options(
     "/catalog",
     summary="查询存储类型目录",
     response_model=List[_SchemaStorageCatalogOption],
-)
+)  # type: ignore[misc]
 def storage_catalog(
     _: ApiPrincipal = Depends(get_current_active_user),
     page: CompatiblePageParam = None,
