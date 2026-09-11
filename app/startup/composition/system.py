@@ -132,7 +132,7 @@ class _FileLogAdapter(SystemLogPort):
                     pending = ""
                 if current_size > previous_size:
                     pending += await file.read()
-                    previous_size = (await asyncio.to_thread(path.stat)).st_size
+                    previous_size = current_size
                     fragments = pending.splitlines(keepends=True)
                     if fragments and not fragments[-1].endswith(("\n", "\r")):
                         pending = fragments.pop()
