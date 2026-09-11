@@ -22,6 +22,7 @@ from scripts.evaluation.world import EvaluationWorld
 
 SUPPORTED_CLI_VERSION = "codex-cli 0.153.4"
 MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
+NATIVE_TERMINAL_SCENARIOS = frozenset({"terminal_session", "terminal_pty_session"})
 
 
 def _catalog(payload: Any, model: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -170,6 +171,208 @@ async def _execute(command: list[str], prompt: str, environment: dict[str, str],
             "stderr": stderr.decode("utf-8", errors="replace"), "error_type": failure}
 
 
+def _normalize_app_server_item(item: Any) -> dict[str, Any]:
+    """把 app-server 的 camelCase item 转成评测器共用的安全事件字段。"""
+    if not isinstance(item, dict):
+        return {"type": "unknown"}
+    item_type = item.get("type")
+    normalized_type = {
+        "agentMessage": "agent_message",
+        "commandExecution": "command_execution",
+        "fileChange": "file_change",
+        "userMessage": "user_message",
+    }.get(item_type, item_type if isinstance(item_type, str) else "unknown")
+    result: dict[str, Any] = {"type": normalized_type, "id": item.get("id")}
+    if normalized_type == "agent_message":
+        result.update(text=item.get("text", ""), phase=item.get("phase"))
+    elif normalized_type == "command_execution":
+        result.update(
+            command=item.get("command", ""), cwd=item.get("cwd"), process_id=item.get("processId"),
+            status=item.get("status"), aggregated_output=item.get("aggregatedOutput"),
+            exit_code=item.get("exitCode"), command_actions=item.get("commandActions"),
+        )
+    return result
+
+
+def _normalize_app_server_notification(method: str, params: Any) -> dict[str, Any] | None:
+    """保留终端、消息和轮次终态，把其他 app-server 通知降为可审计摘要。"""
+    payload = params if isinstance(params, dict) else {}
+    if method == "turn/started":
+        return {"type": "turn.started"}
+    if method == "turn/completed":
+        return {"type": "turn.completed"}
+    if method == "item/started":
+        return {"type": "item.started", "item": _normalize_app_server_item(payload.get("item"))}
+    if method == "item/completed":
+        return {"type": "item.completed", "item": _normalize_app_server_item(payload.get("item"))}
+    if method == "item/agentMessage/delta":
+        return {
+            "type": "item.agent_message.delta", "item_id": payload.get("itemId"),
+            "delta": payload.get("delta", ""),
+        }
+    if method == "item/commandExecution/outputDelta":
+        return {
+            "type": "item.command_execution.output_delta", "item_id": payload.get("itemId"),
+            "delta": payload.get("delta", ""),
+        }
+    if method == "item/commandExecution/terminalInteraction":
+        return {
+            "type": "item.command_execution.terminal_interaction", "item_id": payload.get("itemId"),
+            "process_id": payload.get("processId"), "stdin": payload.get("stdin", ""),
+        }
+    if method == "error":
+        return {"type": "error", "error": payload}
+    if method == "warning":
+        return {"type": "warning", "warning": payload}
+    return {"type": "native.notification", "method": method} if method else None
+
+
+async def _execute_app_server(
+    command: list[str], prompt: str, environment: dict[str, str], work_dir: Path, timeout: int,
+    *, model: str, reasoning_effort: str,
+) -> dict[str, Any]:
+    """通过 Codex app-server 的 JSON-RPC 驱动可写 stdin 的原生终端会话。"""
+    process = await asyncio.create_subprocess_exec(
+        *command, cwd=work_dir, env=environment, stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=os.name == "posix",
+    )
+    assert process.stdin is not None and process.stdout is not None and process.stderr is not None
+    stderr = bytearray()
+    stderr_reader = asyncio.create_task(_read_output(process.stderr, stderr))
+    events: list[dict[str, Any]] = []
+    stdout_bytes = 0
+    pending: dict[int, str] = {}
+    next_request_id = 1
+    thread_id: str | None = None
+    turn_completed = False
+    failure: str | None = None
+
+    async def send_request(method: str, params: dict[str, Any]) -> int:
+        """发送带序号的 JSON-RPC 请求，并记录响应所属方法。"""
+        nonlocal next_request_id
+        request_id = next_request_id
+        next_request_id += 1
+        pending[request_id] = method
+        process.stdin.write(
+            (json.dumps({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}) + "\n").encode()
+        )
+        await process.stdin.drain()
+        return request_id
+
+    async def send_notification(method: str) -> None:
+        """发送不等待响应的 JSON-RPC 通知。"""
+        process.stdin.write((json.dumps({"jsonrpc": "2.0", "method": method}) + "\n").encode())
+        await process.stdin.drain()
+
+    async def send_server_error(request_id: Any) -> None:
+        """拒绝意外的原生服务端请求，避免评测控制器代替用户授权。"""
+        process.stdin.write(
+            (json.dumps({
+                "jsonrpc": "2.0", "id": request_id,
+                "error": {"code": -32000, "message": "评测适配器不接受原生交互授权请求"},
+            }) + "\n").encode()
+        )
+        await process.stdin.drain()
+
+    async def handle_response(payload: dict[str, Any]) -> None:
+        """按 initialize、thread/start、turn/start 的顺序推进原生轮次。"""
+        nonlocal thread_id, failure
+        request_id = payload.get("id")
+        method = pending.pop(request_id, None) if type(request_id) is int else None
+        if method is None:
+            await send_server_error(request_id)
+            failure = failure or "unexpected_server_request"
+            return
+        if "error" in payload:
+            failure = failure or f"app_server_{method.replace('/', '_')}_error"
+            return
+        if method == "initialize":
+            await send_notification("initialized")
+            await send_request(
+                "thread/start",
+                {"cwd": str(work_dir), "model": model, "sandbox": "read-only", "approvalPolicy": "never", "ephemeral": True},
+            )
+        elif method == "thread/start":
+            result = payload.get("result")
+            thread = result.get("thread") if isinstance(result, dict) else None
+            thread_id = thread.get("id") if isinstance(thread, dict) else None
+            if not isinstance(thread_id, str) or not thread_id:
+                failure = failure or "app_server_thread_id_missing"
+                return
+            await send_request(
+                "turn/start",
+                {
+                    "threadId": thread_id,
+                    "input": [{"type": "text", "text": prompt}],
+                    "model": model,
+                    "effort": reasoning_effort,
+                },
+            )
+
+    try:
+        async with asyncio.timeout(timeout):
+            await send_request(
+                "initialize",
+                {"clientInfo": {"name": "moviepilot-evaluation", "version": "1"},
+                 "capabilities": {"experimentalApi": True}},
+            )
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                stdout_bytes += len(line)
+                if stdout_bytes + len(stderr) > MAX_PROCESS_OUTPUT_BYTES:
+                    raise RuntimeError("原生 app-server 输出超过 8 MiB")
+                try:
+                    payload = json.loads(line)
+                except (TypeError, ValueError):
+                    events.append({"type": "evaluation.invalid_event", "sha256": hashlib.sha256(line).hexdigest()})
+                    failure = failure or "invalid_native_events"
+                    continue
+                if not isinstance(payload, dict):
+                    failure = failure or "invalid_native_events"
+                    continue
+                if "id" in payload and "method" not in payload:
+                    await handle_response(payload)
+                    continue
+                method = payload.get("method")
+                if not isinstance(method, str):
+                    failure = failure or "invalid_native_events"
+                    continue
+                event = _normalize_app_server_notification(method, payload.get("params"))
+                if event is not None:
+                    events.append(event)
+                if method == "turn/completed":
+                    turn_completed = True
+                    break
+                if "id" in payload:
+                    await send_server_error(payload["id"])
+                    failure = failure or "unexpected_server_request"
+    except (RuntimeError, TimeoutError, OSError) as error:
+        failure = failure or type(error).__name__
+    finally:
+        if process.returncode is None:
+            if turn_completed and failure is None:
+                process.stdin.close()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=10)
+                except TimeoutError:
+                    failure = failure or "app_server_shutdown_timeout"
+                    await _stop_process(process)
+            else:
+                await _stop_process(process)
+        if not stderr_reader.done():
+            stderr_reader.cancel()
+        reader_result = (await asyncio.gather(stderr_reader, return_exceptions=True))[0]
+        if isinstance(reader_result, BaseException):
+            failure = failure or type(reader_result).__name__
+    return {
+        "returncode": process.returncode,
+        "stdout": "\n".join(json.dumps(event, ensure_ascii=False) for event in events) + ("\n" if events else ""),
+        "stderr": stderr.decode("utf-8", errors="replace"), "error_type": failure,
+    }
+
+
 def _events(text: str) -> tuple[list[dict[str, Any]], str, bool]:
     """保留 JSONL 原生事件；只有完成事件之后的有效最终报告才由 oracle 判断。"""
     events, final_text, completed, malformed = [], "", False, False
@@ -198,8 +401,23 @@ def _events(text: str) -> tuple[list[dict[str, Any]], str, bool]:
 def _record_native_command_events(world: EvaluationWorld, events: list[dict[str, Any]]) -> None:
     """把 CLI 的已完成命令事件映射为同一场景账本，避免只看模型文字。"""
     seen: set[str] = set()
+    streamed_output: dict[str, str] = {}
+    streamed_input: set[str] = set()
     for event in events:
-        if event.get("type") != "item.completed":
+        event_type = event.get("type")
+        if event_type == "item.command_execution.output_delta":
+            item_id = event.get("item_id")
+            delta = event.get("delta")
+            if isinstance(item_id, str) and isinstance(delta, str):
+                streamed_output[item_id] = streamed_output.get(item_id, "") + delta
+            continue
+        if event_type == "item.command_execution.terminal_interaction":
+            item_id = event.get("item_id")
+            stdin = event.get("stdin")
+            if isinstance(item_id, str) and isinstance(stdin, str) and "MOVIEPILOT_TERMINAL_OK" in stdin:
+                streamed_input.add(item_id)
+            continue
+        if event_type != "item.completed":
             continue
         item = event.get("item")
         if not isinstance(item, dict) or item.get("type") not in {"command_execution", "command_execution_output"}:
@@ -214,11 +432,15 @@ def _record_native_command_events(world: EvaluationWorld, events: list[dict[str,
         output = item.get("aggregated_output", item.get("output", ""))
         if not isinstance(output, str):
             output = str(output or "")
+        if not output:
+            output = streamed_output.get(identity, "")
         exit_code = item.get("exit_code", item.get("exitCode"))
         if type(exit_code) is not int:
             exit_code = None
         outcome = "succeeded" if exit_code == 0 else ("unknown" if exit_code is None else "failed")
-        terminal_input_observed = world.scenario.kind == "terminal" and "MOVIEPILOT_TERMINAL_OK" in output.replace("\r", "")
+        terminal_input_observed = world.scenario.kind == "terminal" and (
+            identity in streamed_input or "MOVIEPILOT_TERMINAL_OK" in output.replace("\r", "")
+        )
         world.record_command(command.strip(), {
             "action": "start" if world.scenario.kind == "terminal" else "run",
             "success": outcome == "succeeded", "execution_outcome": outcome,
@@ -264,16 +486,32 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
             settings, probe_only=probe_only, extra_native_tools=extra_native_tools,
         ) as proxy:
             config = _configuration(settings, proxy, server, control_dir, scenario_id=scenario_id)
-            command = [executable, "exec", "--ignore-user-config", "--ignore-rules", "--strict-config", "--ephemeral",
-                       "--skip-git-repo-check", "--sandbox", "read-only", "--json", "--color", "never", "-C", str(work_dir)]
+            use_app_server = scenario_id in NATIVE_TERMINAL_SCENARIOS
+            command = (
+                [executable, "app-server", "--listen", "stdio://", "--strict-config"]
+                if use_app_server
+                else [executable, "exec", "--ignore-user-config", "--ignore-rules", "--strict-config", "--ephemeral",
+                      "--skip-git-repo-check", "--sandbox", "read-only", "--json", "--color", "never", "-C", str(work_dir)]
+            )
             for key, value in config.items():
                 command.extend(["-c", f"{key}={_toml(value)}"])
-            command.append("-")
             environment = _worker_environment()
             environment.update(MOVIEPILOT_EVAL_MODEL_TOKEN=proxy.bearer_token,
                                MOVIEPILOT_EVAL_MCP_TOKEN=server.bearer_token)
+            if use_app_server:
+                # app-server 必须使用临时状态根，避免读取或写入调用方的桌面会话和插件配置。
+                environment["CODEX_HOME"] = str(control_dir)
+            else:
+                command.append("-")
             try:
-                result = await _execute(command, world.model_input(), environment, work_dir, settings.timeout_seconds)
+                result = await (
+                    _execute_app_server(
+                        command, world.model_input(), environment, work_dir, settings.timeout_seconds,
+                        model=settings.model, reasoning_effort=settings.reasoning_effort,
+                    )
+                    if use_app_server
+                    else _execute(command, world.model_input(), environment, work_dir, settings.timeout_seconds)
+                )
                 failure = result.get("error_type")
             except (RuntimeError, TimeoutError, OSError) as error:
                 failure = type(error).__name__
@@ -307,6 +545,7 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
         "final_text": final_text, "final_report": final_report, "ledger": world.ledger,
         "fixture_server": server_stats, "exposed_skill_sha256": skill_sha256,
         "tool_catalog_scope": "native_control_tools_and_shared_fixture_mcp",
+        "native_transport": "app_server" if scenario_id in NATIVE_TERMINAL_SCENARIOS else "exec",
     }
     report["task_passed"] = report["passed"]
     report["passed"] = bool(report["passed"] and completed and result.get("returncode") == 0 and not failure)

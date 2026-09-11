@@ -71,6 +71,62 @@ async def test_execute_sends_exact_prompt_and_preserves_nonzero_exit_output(tmp_
 
 
 @pytest.mark.asyncio
+async def test_execute_app_server_preserves_streamed_terminal_evidence(tmp_path: Path) -> None:
+    """app-server 的终端增量和同一进程输入事件应归一化为可评分的原生轨迹。"""
+    command = _program(tmp_path, """
+import json
+import sys
+
+def emit(value):
+    print(json.dumps(value), flush=True)
+
+for line in sys.stdin:
+    request = json.loads(line)
+    method = request.get('method')
+    if method == 'initialize':
+        emit({'jsonrpc': '2.0', 'id': request['id'], 'result': {}})
+    elif method == 'thread/start':
+        emit({'jsonrpc': '2.0', 'id': request['id'], 'result': {'thread': {'id': 'thread-1'}}})
+    elif method == 'turn/start':
+        emit({'jsonrpc': '2.0', 'id': request['id'], 'result': {}})
+        emit({'jsonrpc': '2.0', 'method': 'turn/started', 'params': {'threadId': 'thread-1', 'turn': {'id': 'turn-1'}}})
+        item = {
+            'type': 'commandExecution', 'id': 'command-1', 'command': 'printf READY',
+            'processId': 'process-1', 'status': 'inProgress',
+        }
+        emit({'jsonrpc': '2.0', 'method': 'item/started', 'params': {'item': item}})
+        emit({'jsonrpc': '2.0', 'method': 'item/commandExecution/outputDelta',
+              'params': {'itemId': 'command-1', 'processId': 'process-1', 'delta': 'READY\\n'}})
+        emit({'jsonrpc': '2.0', 'method': 'item/commandExecution/terminalInteraction',
+              'params': {'itemId': 'command-1', 'processId': 'process-1', 'stdin': 'MOVIEPILOT_TERMINAL_OK\\n'}})
+        item.update(status='completed', aggregatedOutput=None, exitCode=0)
+        emit({'jsonrpc': '2.0', 'method': 'item/completed', 'params': {'item': item}})
+        final = {'status': 'completed', 'terminal_output': 'READY\\nMOVIEPILOT_TERMINAL_OK',
+                 'terminal_exit_code': 0, 'completed': ['terminal'], 'unresolved': [],
+                 'subscription_ids': [], 'download_ids': [], 'enabled_site_ids': []}
+        emit({'jsonrpc': '2.0', 'method': 'item/completed', 'params': {
+            'item': {'type': 'agentMessage', 'id': 'message-1', 'phase': 'final_answer',
+                     'text': json.dumps(final)}}})
+        emit({'jsonrpc': '2.0', 'method': 'turn/completed', 'params': {'threadId': 'thread-1'}})
+""")
+    result = await codex._execute_app_server(
+        command, "公开终端任务", codex._worker_environment(), tmp_path, 5,
+        model="gpt-test", reasoning_effort="high",
+    )
+
+    assert result["returncode"] == 0
+    assert result["error_type"] is None
+    events, final_text, completed = codex._events(result["stdout"])
+    assert completed is True
+    assert json.loads(final_text)["terminal_exit_code"] == 0
+    assert any(event["type"] == "item.command_execution.terminal_interaction" for event in events)
+
+    world = EvaluationWorld("terminal_session")
+    codex._record_native_command_events(world, events)
+    assert world.ledger[0]["observations"][0]["record"]["terminal_input_observed"] is True
+
+
+@pytest.mark.asyncio
 @pytest.mark.skipif(os.name != "posix", reason="继承进程组回收是 POSIX 合同")
 @pytest.mark.parametrize(("cancel", "parent_exits"), [(False, False), (False, True), (True, False)])
 async def test_execute_timeout_or_cancellation_closes_descendant_pipes(
