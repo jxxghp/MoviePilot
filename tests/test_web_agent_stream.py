@@ -81,7 +81,10 @@ from app.application.messaging.agent import (
 )
 from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
 from app.application.messaging.skill import skill_interaction_manager
-from app.application.messaging.webagentstream import _build_steering_ack_stream
+from app.application.messaging.webagentstream import (
+    _build_steering_ack_stream,
+    _build_web_agent_steering_callback,
+)
 from app.chain.message import MessageChain
 from app.db.oper.agentchat import AgentChatOper
 from app.runtime.events import Event
@@ -157,6 +160,41 @@ async def test_steering_ack_stream_reports_a_queued_message_without_an_assistant
         },
         {"type": "done"},
     ]
+
+
+def test_web_agent_steering_uses_current_assistant_identity_when_segments_are_equal():
+    """展示内容相同的助手段也必须把 steering 插入到当前对象之后。"""
+    assistant_before = {
+        "id": "assistant-same",
+        "role": "assistant",
+        "content": "",
+        "status": "streaming",
+    }
+    assistant_current = dict(assistant_before)
+    display_messages = [assistant_before, assistant_current]
+    published = []
+
+    def build_display_message(*, role, status="done", **_kwargs):
+        """构造最小展示消息，保持测试只验证时间线定位。"""
+        return {"id": f"{role}-{len(published)}", "role": role, "status": status, "content": ""}
+
+    callback = _build_web_agent_steering_callback(
+        display_messages=display_messages,
+        assistant_message_ref={"message": assistant_current},
+        event_publisher=type("Publisher", (), {"publish": published.append})(),
+        build_display_message=build_display_message,
+        build_input_attachments=lambda **_kwargs: [],
+    )
+    message = SteeringMessage.create(session_id="session", user_id="user", text="插入当前段之后")
+
+    callback(message, "applied")
+
+    assert display_messages[0] is assistant_before
+    assert display_messages[1] is assistant_current
+    assert display_messages[1]["status"] == "done"
+    assert display_messages[2]["role"] == "user"
+    assert display_messages[3]["role"] == "assistant"
+    assert published and published[0]["assistant_message_id"] == "assistant-same"
 
 
 def test_split_web_agent_output_extracts_verbose_tool_message():

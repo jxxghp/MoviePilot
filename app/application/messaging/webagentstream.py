@@ -117,7 +117,14 @@ def _build_web_agent_steering_callback(
         display_message["steering_message_id"] = message.message_id
         # 应用点是消息流中的真实边界：先收口前一段助手输出，再插入用户消息，
         # 最后创建承接后续工具和文本的新助手气泡。
-        assistant_index = display_messages.index(assistant_message)
+        # 用对象身份定位当前助手段；字典内容可能暂时相同，不能用值相等误选历史段。
+        assistant_index = next(
+            (index for index, item in enumerate(display_messages) if item is assistant_message),
+            -1,
+        )
+        if assistant_index < 0:
+            logger.warning("WebAgent steering 应用时未找到当前助手展示段: %s", message.message_id)
+            return
         display_messages.insert(assistant_index + 1, display_message)
         continuation = build_display_message(role="assistant", status="streaming")
         display_messages.insert(assistant_index + 2, continuation)
