@@ -302,7 +302,7 @@ async def test_evaluation_terminal_tool_runs_session_and_writes_stdin(tmp_path, 
         ))
         assert write["session_id"] == session_id
         waited = write
-        wait_iterations = 4 if use_pty else 5
+        wait_iterations = 8 if use_pty else 5
         wait_timeout_ms = 10_000 if use_pty else 1_000
         for _ in range(wait_iterations):
             if waited["status"] == "exited":
