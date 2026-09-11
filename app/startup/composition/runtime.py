@@ -17,6 +17,10 @@ from app.application.history import (
     configure_transfer_history_repository,
     reset_transfer_history_repository,
 )
+from app.application.music.acquisition import (
+    ArtistAcquisitionRepository,
+    configure_artist_acquisition_repository,
+)
 from app.application.site.contract import SiteRepository
 from app.application.site.health import (
     SiteHealthService,
@@ -71,6 +75,7 @@ class RuntimeDependencies:
     message_helper: MessageHelper
     message_queue: MessageQueueManager
     subscription_search: SubscriptionSearchRepository | None = None
+    artist_acquisition: ArtistAcquisitionRepository | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +109,9 @@ def compose_runtime_dependencies() -> RuntimeDependencies:
     from app.application.messaging.message import MessageHelper, MessageQueueManager
     from app.db.adapters.history.download import TransactionalDownloadHistoryRepository
     from app.db.adapters.history.transfer import TransactionalTransferHistoryRepository
+    from app.db.adapters.musicartistacquisition import (
+        TransactionalMusicArtistAcquisitionRepository,
+    )
     from app.db.adapters.site import TransactionalSiteRepository
     from app.db.adapters.subscription import (
         TransactionalSubscriptionHistoryRepository,
@@ -146,6 +154,7 @@ def compose_runtime_dependencies() -> RuntimeDependencies:
             SessionFactory,
             async_session_scope,
         ),
+        artist_acquisition=TransactionalMusicArtistAcquisitionRepository(SessionFactory),
     )
 
 
@@ -298,6 +307,9 @@ def publish_runtime(composition: RuntimeComposition) -> None:
     configure_transfer_history_repository(lambda: composition.dependencies.transfer_history)
     configure_site_query_service(composition.site_query)
     configure_site_health_service(composition.site_health)
+    configure_artist_acquisition_repository(
+        composition.dependencies.artist_acquisition
+    )
 
 
 def reset_runtime() -> None:
@@ -305,4 +317,5 @@ def reset_runtime() -> None:
     reset_site_health_service()
     reset_site_query_service()
     reset_transfer_history_repository()
+    configure_artist_acquisition_repository(None)
     reset_api_data_runtime()

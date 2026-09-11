@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 
 from sqlalchemy import delete as sqlalchemy_delete
 from sqlalchemy import func, select
@@ -134,6 +134,41 @@ class DownloadHistoryOper(DbOper):
         return self._execute_sync_query(
             lambda session: DownloadHistory.get_by_hash(session, download_hash)
         )
+
+    def get_by_task(self, download_hash: str, downloader: str) -> Optional[DownloadHistory]:
+        """按下载器隔离相同 Hash 的下载记录。"""
+        return cast(Optional[DownloadHistory], self._execute_sync_query(lambda session: session.execute(
+            select(DownloadHistory).where(
+                DownloadHistory.download_hash == download_hash,
+                DownloadHistory.downloader == downloader,
+            ).order_by(DownloadHistory.id.desc())
+        ).scalars().first()))
+
+    def stage_source_operation(
+        self, *, history_id: int, downloader: str, download_hash: str,
+        revision: int, note: dict[str, Any], path: Optional[str], files: list[dict[str, Any]],
+    ) -> bool:
+        """在调用方事务内 CAS 更新检查点，并精确替换该任务的文件路径。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("资源规范化需要同步事务")
+        values: dict[str, Any] = {"note": note}
+        if path is not None:
+            values["path"] = path
+        result = self._db.execute(sqlalchemy_update(DownloadHistory).where(
+            DownloadHistory.id == history_id,
+            DownloadHistory.downloader == downloader,
+            DownloadHistory.download_hash == download_hash,
+            func.coalesce(DownloadHistory.note["source_organization"]["revision"].as_integer(), 0) == revision,
+        ).values(**values).execution_options(synchronize_session=False))
+        if result.rowcount != 1:
+            return False
+        for item in files:
+            self._db.execute(sqlalchemy_update(DownloadFiles).where(
+                DownloadFiles.downloader == downloader,
+                DownloadFiles.download_hash == download_hash,
+                DownloadFiles.fullpath == item["old_fullpath"],
+            ).values(fullpath=item["fullpath"], savepath=item["savepath"], filepath=item["filepath"]))
+        return True
 
     def get_by_hashes(self, download_hashes: List[str]) -> Dict[str, DownloadHistory]:
         """

@@ -17,6 +17,7 @@ from app.domain.metainfo import MetaInfoPath
 from app.schemas.exception import OperationInterrupted
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
+    MUSIC_ENTITY_ARTIST,
     MUSIC_ENTITY_RECORDING,
     MediaSource,
     MediaType,
@@ -65,7 +66,17 @@ def _should_discard_batch_music_identity(
     mediainfo: Optional[MediaInfo | MusicInfo],
     history_music_type: Optional[str],
 ) -> bool:
-    """批次误带单曲身份或未显式指定媒体时重新识别整张专辑。"""
+    """批次误带艺术家/单曲身份或未显式指定媒体时重新识别内部作品。"""
+    if multi_track_music_batch:
+        batch_music_type = getattr(mediainfo, "music_type", None)
+        if (
+                batch_music_type == MUSIC_ENTITY_ARTIST
+                or history_music_type == MUSIC_ENTITY_ARTIST
+        ):
+            # 艺术家身份只描述下载任务最外层的合集资源，不能作为其中每个
+            # 音轨的媒体身份。内部内容必须按各自目录/标签重新识别，才能
+            # 分别归入 Album、EP、Single 等媒体库类别。
+            return True
     if manual and multi_track_music_batch and not (media_source and media_id):
         return True
     return _should_discard_batch_recording_identity(

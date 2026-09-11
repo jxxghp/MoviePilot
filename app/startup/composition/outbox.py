@@ -1,9 +1,11 @@
 """持久化 Outbox handler 与 dispatcher 的宿主组合装配。"""
 
 from collections.abc import Callable
+from pathlib import Path
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.application.chain.events import (
+    DownloadProcessingSnapshot,
     restore_download_added,
     restore_download_processing,
     restore_transfer_result,
@@ -12,6 +14,7 @@ from app.application.outbox import (
     DOWNLOAD_MODULE_TOPIC,
     DOWNLOAD_NOTIFICATION_TOPIC,
     DOWNLOAD_SUBTITLE_TOPIC,
+    SOURCE_ORGANIZATION_TOPIC,
     ClaimedOutboxMessage,
     OutboxDispatcher,
     durable_event_topic,
@@ -34,6 +37,33 @@ def build_outbox_handlers() -> dict[
 ]:
     """构造等待真实执行边界的 at-least-once 通知、事件和统计 handler。"""
     event_manager_factory: Callable[[], EventManager] = EventManager
+
+    def dispatch_source_organization(message: ClaimedOutboxMessage) -> None:
+        """关闭网页后仍能核验已确认操作，沿用 outbox 有限重试和死信诊断。"""
+        from app.application.download.organization import reconcile_source_operation
+        from app.chain.download import DownloadChain
+
+        payload = message.payload
+        if not all(isinstance(payload.get(key), str) and payload[key] for key in ("hash", "downloader", "operation_id")):
+            raise ValueError("资源规范化持久任务身份无效")
+        result = reconcile_source_operation(payload["hash"], payload["downloader"], DownloadChain(), payload["operation_id"])
+        if result["state"] != "complete":
+            raise RuntimeError(result.get("message") or "等待下载器完成路径变更")
+
+    def normalize_download_source(snapshot: DownloadProcessingSnapshot) -> Path:
+        """下载后效果执行前完成规范化；等待 qB 时交由已有 outbox 有限重试。"""
+        if not snapshot.normalize_source:
+            return snapshot.download_dir
+        from app.application.download.organization import normalize_added_source
+        from app.chain.download import DownloadChain
+        from app.chain.media import MediaChain
+
+        if not snapshot.download_hash or not snapshot.downloader:
+            raise ValueError("资源规范化缺少下载器任务身份")
+        result = normalize_added_source(snapshot.download_hash, snapshot.downloader, DownloadChain(), MediaChain())
+        if result["state"] != "complete":
+            raise RuntimeError(result.get("message") or "qB 资源路径尚未完成核验")
+        return Path(result["target_save_path"])
 
     def discard_event_receipt(_event: object) -> None:
         """丢弃普通事件 API 的回执，使 outbox handler 仅表达结算成功。"""
@@ -88,10 +118,11 @@ def build_outbox_handlers() -> dict[
         from app.chain.download import DownloadChain
 
         snapshot = restore_download_processing(message.payload)
+        actual_download_dir = normalize_download_source(snapshot)
         with correlation_scope(message.event_key):
             DownloadChain().download_added(
                 context=snapshot.context,
-                download_dir=snapshot.download_dir,
+                download_dir=actual_download_dir,
                 torrent_content=snapshot.torrent_content,
             )
 
@@ -100,10 +131,11 @@ def build_outbox_handlers() -> dict[
         from app.chain.download import DownloadChain
 
         snapshot = restore_download_processing(message.payload)
+        actual_download_dir = normalize_download_source(snapshot)
         with correlation_scope(message.event_key):
             DownloadChain().download_site_subtitles(
                 context=snapshot.context,
-                download_dir=snapshot.download_dir,
+                download_dir=actual_download_dir,
                 torrent_content=snapshot.torrent_content,
                 download_hash=snapshot.download_hash,
                 downloader=snapshot.downloader,
@@ -148,6 +180,7 @@ def build_outbox_handlers() -> dict[
         DOWNLOAD_NOTIFICATION_TOPIC: dispatch_download_notification,
         DOWNLOAD_MODULE_TOPIC: dispatch_download_module,
         DOWNLOAD_SUBTITLE_TOPIC: dispatch_download_subtitle,
+        SOURCE_ORGANIZATION_TOPIC: dispatch_source_organization,
         durable_event_topic(EventType.TransferComplete): lambda message: discard_event_receipt(
             event_manager_factory().send_event_strict(
                 EventType.TransferComplete,

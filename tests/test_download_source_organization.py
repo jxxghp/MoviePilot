@@ -1,308 +1,416 @@
-"""Isolated safety tests for the deployment-only source organization service."""
+"""资源规范化三个入口共享的路径计划、qB 核验及事务同步回归测试。"""
 
-import importlib.util
-import sys
-import unittest
-from enum import Enum
-from pathlib import Path
-from types import ModuleType
+import copy
+from pathlib import PurePosixPath
 from types import SimpleNamespace as NS
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
+
+import pytest
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+
+from app.application.download import organization
+from app.application.history import DownloadFileWrite, DownloadHistoryWrite
+from app.db.adapters.history.download import TransactionalDownloadHistoryRepository
+from app.db.base import Base
+from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
+from app.db.models.outbox import OutboxMessage
+from app.domain.context import MusicInfo
+from app.schemas.download import DownloadSourceClassificationRequest, DownloadSourcePathRequest
 
 
-class MediaType(str, Enum):
-    MUSIC = "音乐"
-    MOVIE = "电影"
-    TV = "电视剧"
+@pytest.fixture
+def case(monkeypatch):
+    """用内存数据库和 qB 边界模拟完整执行，不替换生产模块或联网。"""
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine, tables=[DownloadHistory.__table__, DownloadFiles.__table__, OutboxMessage.__table__])
+    sessions = sessionmaker(engine)
+    repository = TransactionalDownloadHistoryRepository(sync_session=sessions, async_session=Mock())
+    root = "/music/original"
+    digest = "a" * 40
+    history_id = repository.add(DownloadHistoryWrite(
+        path=root, type="音乐", title="含情莫莫", downloader="qb", download_hash=digest,
+        torrent_name="莫文蔚 - 含情莫莫 2002 FLAC", note={"untouched": "保留"},
+    ), (DownloadFileWrite(
+        downloader="qb", download_hash=digest, fullpath=root + "/01.flac",
+        savepath=root, filepath="01.flac", torrentname="original", state=1,
+    ),))
+    torrent = NS(hash=digest, downloader="qb", title="莫文蔚 - 含情莫莫 2002 FLAC",
+                 save_path="/music", content_path=root, path=root, raw_state="uploading")
+    files = [NS(id=0, name="original/01.flac", size=123)]
+    chain = Mock()
+    chain.download_history_repository = repository
+    chain.list_torrents.side_effect = lambda **kwargs: [torrent]
+    chain.torrent_files.side_effect = lambda **kwargs: copy.deepcopy(files)
+
+    def rename(_method, **kwargs):
+        assert _method == "rename_source_root"
+        assert kwargs["old_name"] == PurePosixPath(torrent.content_path).name
+        old_name, new_name = kwargs["old_name"], kwargs["new_name"]
+        for item in files:
+            item.name = new_name + item.name[len(old_name):]
+        torrent.content_path = str(PurePosixPath(torrent.save_path) / new_name)
+        torrent.path = torrent.content_path
+        return True
+
+    def move(**kwargs):
+        torrent.save_path = kwargs["save_path"]
+        torrent.content_path = str(PurePosixPath(torrent.save_path) / PurePosixPath(files[0].name).parts[0])
+        torrent.path = torrent.content_path
+        return {"save_path": True}
+
+    chain.run_module.side_effect = rename
+    chain.update_torrent.side_effect = move
+    media = MusicInfo(music_type="album", album_type="Album", secondary_types=["Compilation"],
+                      album="含情莫莫", title="含情莫莫", album_artist="莫文蔚",
+                      artists=["莫文蔚"], year="2002", media_source="musicbrainz", media_id="release-id")
+    media_chain = Mock()
+    media_chain.recognize_by_meta.return_value = media
+    media_chain.recognize_media.return_value = media
+    directory = NS(storage="local", download_path="/music", download_category_folder=True)
+    helper = Mock()
+    helper.get_download_dir_by_task_path.return_value = directory
+    helper.get_dir.return_value = directory
+    monkeypatch.setattr(organization, "DirectoryHelper", lambda: helper)
+    monkeypatch.setattr(organization, "_downloader_kind", lambda name: "qbittorrent" if name == "qb" else "transmission")
+    monkeypatch.setattr(organization, "validate_download_save_path", lambda value: value)
+    monkeypatch.setattr(organization.Path, "exists", lambda _: False)
+    request = DownloadSourceClassificationRequest(downloader="qb", type_name="音乐", music_type="album")
+    ctx = NS(chain=chain, media_chain=media_chain, request=request, torrent=torrent, files=files,
+             media=media, repository=repository, sessions=sessions, history_id=history_id, digest=digest,
+             directory=directory)
+    ctx.preview = lambda: organization.organize_existing_source(digest, ctx.request, chain, media_chain)
+
+    def execute():
+        plan = ctx.preview()
+        ctx.request = ctx.request.model_copy(update={
+            "execute": True, "expected_current_path": plan["current_save_path"],
+            "expected_target_path": plan["target_save_path"],
+            "expected_content_path": plan["current_content_path"],
+            "expected_root_name": plan["proposed_root_name"],
+        })
+        return ctx.preview()
+
+    ctx.execute = execute
+    ctx.status = lambda: organization.reconcile_source_operation(digest, "qb", chain)
+    yield ctx
+    engine.dispose()
 
 
-class SystemConfigKey(str, Enum):
-    Downloaders = "Downloaders"
+def test_preview_is_read_only_and_uses_primary_category_artist(case):
+    result = case.preview()
+    assert result["target_content_path"] == "/music/Album/莫文蔚/含情莫莫 (2002)"
+    assert result["secondary_categories"] == ["Compilation"]
+    case.chain.run_module.assert_not_called()
+    assert case.repository.get_by_task(case.digest, "qb").note == {"untouched": "保留"}
 
 
-class MediaSource(str, Enum):
-    MusicBrainz = "musicbrainz"
+def test_confirmed_execution_verifies_qb_and_atomically_updates_mp(case):
+    result = case.execute()
+    assert result["state"] == "complete" and result["executed"]
+    history = case.repository.get_by_task(case.digest, "qb")
+    assert history.path == result["target_content_path"]
+    assert history.note["untouched"] == "保留"
+    files = case.repository.get_files_by_hash(case.digest)
+    assert files[0].fullpath == history.path + "/01.flac"
+    assert files[0].filepath == "01.flac" and files[0].savepath == history.path
+    assert files[0].torrentname == "original" and files[0].state == 1
+    with case.sessions() as session:
+        assert session.scalar(select(OutboxMessage)).payload["operation_id"] == result["operation_id"]
 
 
-directory_module = ModuleType("app.application.directory")
-directory_module.DirectoryHelper = Mock()
-directory_module.validate_download_save_path = lambda value: str(value)
-configuration_module = ModuleType("app.application.configuration")
-configuration_module.get_configured_system_config = lambda: {
-    SystemConfigKey.Downloaders: [{"name": "qb", "type": "qbittorrent"}]
-}
-metabase_module = ModuleType("app.domain.meta.metabase")
-metabase_module.MetaBase = object
-metamusic_module = ModuleType("app.domain.meta.metamusic")
-metamusic_module.MetaMusic = NS(parse_query=lambda _value: NS())
-metainfo_module = ModuleType("app.domain.metainfo")
-metainfo_module.MetaInfo = lambda **_kwargs: NS()
-types_module = ModuleType("app.schemas.types")
-types_module.MediaSource = MediaSource
-types_module.MediaType = MediaType
-types_module.SystemConfigKey = SystemConfigKey
-types_module.MUSIC_ARTIST_COLLECTION_CATEGORY = "Artist Collection"
+def test_same_hash_in_other_downloader_and_unrelated_paths_are_not_updated(case):
+    other = case.repository.add(DownloadHistoryWrite(
+        path="/music/original", type="音乐", title="另一个", downloader="other", download_hash=case.digest,
+    ), (DownloadFileWrite(downloader="other", download_hash=case.digest, fullpath="/music/original/01.flac"),))
+    result = case.execute()
+    assert result["executed"] and other != case.history_id
+    assert case.repository.get_by_task(case.digest, "other").path == "/music/original"
+    files = case.repository.get_files_by_hash(case.digest)
+    assert next(item for item in files if item.downloader == "other").fullpath == "/music/original/01.flac"
 
-with patch.dict(
-    sys.modules,
-    {
-        "app.application.configuration": configuration_module,
-        "app.application.directory": directory_module,
-        "app.domain.meta.metabase": metabase_module,
-        "app.domain.meta.metamusic": metamusic_module,
-        "app.domain.metainfo": metainfo_module,
-        "app.schemas.types": types_module,
-    },
-):
-    spec = importlib.util.spec_from_file_location(
-        "source_organization",
-        Path(__file__).parent.parent / "app/application/download/organization.py",
+
+def test_compare_exchange_rejects_stale_writer(case):
+    snapshot = case.repository.get_by_task(case.digest, "qb")
+    case.execute()
+    assert not case.repository.save_source_operation(snapshot, {"state": "needs_attention", "id": "stale"})
+    assert case.repository.get_by_task(case.digest, "qb").note["source_organization"]["state"] == "complete"
+
+
+def test_api_acceptance_is_not_completion_and_no_duplicate_rename(case):
+    case.chain.run_module.side_effect = None
+    case.chain.run_module.return_value = True
+    result = case.execute()
+    assert result["state"] == "rename_requested" and not result["executed"]
+    assert case.repository.get_by_task(case.digest, "qb").path == "/music/original"
+    case.status()
+    case.chain.run_module.assert_called_once()
+    case.chain.update_torrent.assert_not_called()
+
+
+def test_uncertain_request_never_blindly_retries_or_rolls_back(case):
+    case.chain.update_torrent.side_effect = TimeoutError()
+    result = case.execute()
+    assert result["state"] == "move_requested" and not result["executed"]
+    case.status()
+    case.chain.update_torrent.assert_called_once()
+    case.chain.run_module.assert_called_once()
+
+
+def test_recovery_after_move_completed_while_browser_closed(case):
+    case.chain.update_torrent.side_effect = None
+    case.chain.update_torrent.return_value = {"save_path": True}
+    result = case.execute()
+    assert result["state"] == "move_requested"
+    case.torrent.save_path = result["target_save_path"]
+    case.torrent.content_path = result["target_content_path"]
+    result = case.status()
+    assert result["state"] == "complete"
+    case.status()
+    case.chain.update_torrent.assert_called_once()
+    assert case.repository.get_by_task(case.digest, "qb").path == result["target_content_path"]
+
+
+def test_moving_state_never_marks_complete(case):
+    move = case.chain.update_torrent.side_effect
+    def moving(**kwargs):
+        result = move(**kwargs)
+        case.torrent.raw_state = "moving"
+        return result
+    case.chain.update_torrent.side_effect = moving
+    result = case.execute()
+    assert not result["executed"]
+    case.torrent.raw_state = "uploading"
+    assert case.status()["executed"]
+
+
+def test_changed_internal_file_is_not_silently_accepted(case):
+    case.chain.run_module.side_effect = None
+    case.chain.run_module.return_value = True
+    case.execute()
+    case.files[0].name = "unrelated/changed.flac"
+    assert case.status()["state"] == "needs_attention"
+    case.chain.update_torrent.assert_not_called()
+
+
+def test_execution_requires_unchanged_preview(case):
+    case.request.execute = True
+    with pytest.raises(ValueError, match="重新预览"):
+        case.preview()
+    case.chain.run_module.assert_not_called()
+
+
+def test_keep_mode_changes_only_root(case):
+    case.request.mode = "keep"
+    result = case.execute()
+    assert result["target_content_path"] == "/music/莫文蔚 - 含情莫莫 (2002)"
+    case.chain.update_torrent.assert_not_called()
+
+
+def test_manual_destination_without_recognition(case):
+    case.request = DownloadSourceClassificationRequest(
+        downloader="qb", mode="manual", target_path="/music/Chosen", smart_rename=False,
     )
-    organization = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(organization)
+    result = case.execute()
+    assert result["target_content_path"] == "/music/Chosen/original"
+    case.media_chain.recognize_by_meta.assert_not_called()
 
 
-class SourceOrganizationTests(unittest.TestCase):
-    def setUp(self):
-        self.hash_value = "a" * 40
-        self.request = NS(
-            downloader=None,
-            execute=False,
-            mode="recognize",
-            target_path=None,
-            type_name="音乐",
-            media_source=None,
-            media_id=None,
-            music_type="album",
-            episode_group=None,
-            media_category=None,
-            smart_rename=True,
-            expected_current_path=None,
-            expected_target_path=None,
-            expected_content_path=None,
-            expected_root_name=None,
-        )
-        self.history = NS(
-            downloader="qb",
-            type="音乐",
-            media_source=None,
-            media_id=None,
-            music_type=None,
-            media_category=None,
-            episode_group=None,
-            torrent_name="Karen Mok - Loving Gaze 2002",
-            torrent_description=None,
-            title="含情脉脉",
-        )
-        self.torrent = NS(
-            hash=self.hash_value,
-            downloader="qb",
-            title="Karen Mok - Loving Gaze 2002",
-            save_path="/volume1/UT/Musics",
-            content_path="/volume1/UT/Musics/Karen Mok - Loving Gaze 2002 FLAC",
-            path=None,
-        )
-        self.media = NS(
-            type=MediaType.MUSIC,
-            album_type="Album",
-            secondary_types=["Compilation"],
-            classification_path=("Album", "Compilation"),
-            album="含情脉脉",
-            title="含情脉脉",
-            album_artist="莫文蔚",
-            artist="莫文蔚",
-            year="2002",
-            media_source="musicbrainz",
-            media_id="release-group-id",
-        )
-        self.media_chain = Mock()
-        self.media_chain.recognize_by_meta.return_value = self.media
-        self.qbc = Mock()
-        self.torrent_files = [NS(name="Karen Mok - Loving Gaze 2002 FLAC/01.flac")]
-        module = NS(
-            get_instance=lambda _name: NS(qbc=self.qbc),
-            torrent_files=lambda **_kwargs: self.torrent_files,
-        )
-        self.chain = Mock()
-        self.chain.download_history_repository.get_by_hash.return_value = self.history
-        self.chain.list_torrents.return_value = [self.torrent]
-        self.chain.modulemanager.get_running_module.return_value = module
-        self.chain.update_torrent.return_value = {"save_path": True}
-        directory_module.DirectoryHelper.return_value.get_download_dirs.return_value = [
-            NS(
-                storage="local",
-                download_path="/volume1/UT/Musics",
-                media_type="音乐",
-                media_category="",
-                download_type_folder=False,
-                download_category_folder=True,
-                priority=2,
-            )
-        ]
-        directory_module.DirectoryHelper.return_value.classification_category_paths.return_value = (
-            ("Album",),
-            ("Album", "Compilation"),
-            ("EP",),
-            ("Action",),
-        )
-        directory_module.DirectoryHelper.return_value.resolve_media_category.side_effect = (
-            lambda media: NS(path=getattr(media, "classification_path", ()))
-        )
-
-    def preview(self):
-        return organization.organize_existing_source(
-            self.hash_value,
-            self.request,
-            self.chain,
-            self.media_chain,
-        )
-
-    def test_music_effective_classification_path_drives_source_directory(self):
-        result = self.preview()
-        self.assertEqual(result["category"], "Album/Compilation")
-        self.assertEqual(result["secondary_categories"], ["Compilation"])
-        self.assertEqual(
-            result["target_save_path"],
-            "/volume1/UT/Musics/Album/Compilation",
-        )
-
-    def test_music_category_falls_back_to_primary_type_without_classification(self):
-        self.media.classification_path = ()
-        result = self.preview()
-        self.assertEqual(result["category"], "Album")
-        self.assertEqual(result["target_save_path"], "/volume1/UT/Musics/Album")
-
-    def test_artist_collection_uses_one_dedicated_source_category(self):
-        self.request.music_type = "artist"
-        self.history.music_type = "artist"
-        self.media.music_type = "artist"
-        self.media.name = "许嵩"
-        self.media.classification_path = ("未分类",)
-        self.torrent.title = "许嵩[2006-2022]录音室专辑合集"
-
-        result = self.preview()
-
-        self.assertEqual(result["category"], "Artist Collection")
-        self.assertEqual(
-            result["target_save_path"],
-            "/volume1/UT/Musics/Artist Collection",
-        )
-        self.assertEqual(result["proposed_root_name"], "许嵩 - 艺术家合集")
-
-    def test_preview_is_read_only_and_includes_qb_root_rename(self):
-        result = self.preview()
-        self.assertEqual(result["proposed_root_name"], "莫文蔚 - 含情脉脉 (2002)")
-        self.assertTrue(result["rename_required"])
-        self.chain.update_torrent.assert_not_called()
-        self.qbc.torrents_rename_folder.assert_not_called()
-
-    def test_execution_requires_exact_preview_replay(self):
-        self.request.execute = True
-        with self.assertRaisesRegex(ValueError, "重新预览"):
-            self.preview()
-        self.chain.update_torrent.assert_not_called()
-
-    def test_confirmed_execution_uses_qb_rename_then_set_location(self):
-        plan = self.preview()
-        self.request.execute = True
-        self.request.expected_current_path = plan["current_save_path"]
-        self.request.expected_target_path = plan["target_save_path"]
-        self.request.expected_content_path = plan["current_content_path"]
-        self.request.expected_root_name = plan["proposed_root_name"]
-        result = self.preview()
-        self.assertTrue(result["renamed"])
-        self.assertTrue(result["relocated"])
-        self.qbc.torrents_rename_folder.assert_called_once_with(
-            torrent_hash=self.hash_value,
-            old_path="Karen Mok - Loving Gaze 2002 FLAC",
-            new_path="莫文蔚 - 含情脉脉 (2002)",
-        )
-        self.chain.update_torrent.assert_called_once_with(
-            hash_string=self.hash_value,
-            downloader="qb",
-            save_path="/volume1/UT/Musics/Album/Compilation",
-        )
-
-    def test_manual_directory_without_rename_skips_recognition(self):
-        self.request.mode = "manual"
-        self.request.target_path = "/volume1/UT/Musics/EP"
-        self.request.smart_rename = False
-        result = self.preview()
-        self.assertFalse(result["recognized"])
-        self.assertEqual(result["target_save_path"], "/volume1/UT/Musics/EP")
-        self.media_chain.recognize_by_meta.assert_not_called()
-
-    def test_failed_relocation_rolls_back_root_rename(self):
-        plan = self.preview()
-        self.request.execute = True
-        self.request.expected_current_path = plan["current_save_path"]
-        self.request.expected_target_path = plan["target_save_path"]
-        self.request.expected_content_path = plan["current_content_path"]
-        self.request.expected_root_name = plan["proposed_root_name"]
-        self.chain.update_torrent.return_value = {"save_path": False}
-        with self.assertRaisesRegex(ValueError, "已回滚"):
-            self.preview()
-        self.assertEqual(self.qbc.torrents_rename_folder.call_count, 2)
-        self.qbc.torrents_rename_folder.assert_called_with(
-            torrent_hash=self.hash_value,
-            old_path="莫文蔚 - 含情脉脉 (2002)",
-            new_path="Karen Mok - Loving Gaze 2002 FLAC",
-        )
-
-    def test_smart_rename_rejects_multi_root_tasks(self):
-        self.torrent.content_path = self.torrent.save_path
-        with self.assertRaisesRegex(ValueError, "单文件或散列文件"):
-            self.preview()
-
-    def test_dotted_folder_name_is_not_treated_as_a_file(self):
-        folder = "Eagles.2011 - Hotel California SACD"
-        self.torrent.content_path = f"/volume1/UT/Musics/{folder}"
-        self.torrent_files = [NS(name=f"{folder}/01.dsf"), NS(name=f"{folder}/02.dsf")]
-        result = self.preview()
-        self.assertEqual(result["current_root_name"], folder)
-        self.assertTrue(result["rename_supported"])
-
-    def test_single_file_task_is_not_treated_as_a_folder(self):
-        self.torrent.content_path = "/volume1/UT/Musics/Hotel California.dsf"
-        self.torrent_files = [NS(name="Hotel California.dsf")]
-        with self.assertRaisesRegex(ValueError, "单文件或散列文件"):
-            self.preview()
-
-    def test_changing_source_does_not_reuse_history_media_id(self):
-        self.history.media_source = "other-source"
-        self.history.media_id = "other-id"
-        self.request.media_source = MediaSource.MusicBrainz
-        self.preview()
-        self.media_chain.recognize_media.assert_not_called()
-        self.media_chain.recognize_by_meta.assert_called_once()
-
-    def test_manual_category_must_exist_in_active_policy(self):
-        self.request.type_name = "电影"
-        self.request.media_category = "Unlisted"
-        self.media.type = MediaType.MOVIE
-        self.media.category = "Action"
-        with self.assertRaisesRegex(ValueError, "不存在、已停用"):
-            self.preview()
-
-    def test_active_manual_category_overrides_recognized_music_category(self):
-        self.request.media_category = "EP"
-        result = self.preview()
-        self.assertEqual(result["category"], "EP")
-        self.assertEqual(result["target_save_path"], "/volume1/UT/Musics/EP")
-
-    def test_windows_downloader_paths_are_parsed_by_path_style(self):
-        folder = "Eagles.2011 - Hotel California SACD"
-        self.torrent.save_path = r"D:\Downloads"
-        self.torrent.content_path = rf"D:\Downloads\{folder}"
-        self.torrent_files = [NS(name=f"{folder}/01.dsf"), NS(name=f"{folder}/02.dsf")]
-        directory_module.DirectoryHelper.return_value.get_download_dirs.return_value[0].download_path = (
-            "D:/Downloads"
-        )
-        result = self.preview()
-        self.assertEqual(result["current_save_path"], "D:/Downloads")
-        self.assertEqual(result["target_save_path"], "D:/Downloads/Album/Compilation")
-        self.assertEqual(result["current_root_name"], folder)
+@pytest.mark.parametrize("entity,category", [("album", "Album"), ("album", "Single"), ("album", "EP"), ("artist", "Artist Collection")])
+def test_auto_download_and_history_share_plan(case, entity, category):
+    case.media.music_type = entity
+    case.media.album_type = category
+    history = case.repository.get_by_task(case.digest, "qb")
+    with case.sessions() as session:
+        record = session.get(DownloadHistory, history.id)
+        record.music_type = entity
+        session.commit()
+    case.request.music_type = entity
+    preview = case.preview()
+    result = organization.normalize_added_source(case.digest, "qb", case.chain, case.media_chain)
+    assert result["target_content_path"] == preview["target_content_path"]
+    assert result["target_save_path"] == f"/music/{category}/莫文蔚"
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_disabled_source_category_does_not_move_auto_download(case):
+    case.directory.download_category_folder = False
+    result = organization.normalize_added_source(case.digest, "qb", case.chain, case.media_chain)
+    assert result["target_save_path"] == "/music"
+    case.chain.update_torrent.assert_not_called()
+
+
+def test_file_management_delegates_to_same_plan(case):
+    request = DownloadSourcePathRequest(source_path="/music/original", type_name="音乐", music_type="album")
+    assert organization.organize_source_path(request, case.chain, case.media_chain) == case.preview()
+
+
+@pytest.mark.parametrize("path", ["/music", "/music/original/01.flac", "/music/unrelated"])
+def test_file_management_rejects_parent_child_or_untracked_path(case, path):
+    with pytest.raises(ValueError, match="未唯一对应"):
+        organization.organize_source_path(DownloadSourcePathRequest(source_path=path), case.chain, case.media_chain)
+
+
+@pytest.mark.parametrize("names", [["one/a.flac", "two/b.flac"], ["a.flac", "b.flac"], ["../bad.flac"], ["/bad.flac"], []])
+def test_multi_root_and_unsafe_lists_are_rejected(case, names):
+    case.files[:] = [NS(id=i, name=name, size=100) for i, name in enumerate(names)]
+    with pytest.raises(ValueError, match="单一根目录"):
+        case.preview()
+    case.chain.run_module.assert_not_called()
+
+
+def test_dotted_folder_is_not_guessed_as_single_file(case):
+    case.torrent.content_path = "/music/album.flac"
+    case.files[0].name = "album.flac/01.flac"
+    assert case.preview()["rename_kind"] == "folder"
+
+
+def test_single_file_keeps_extension_and_uses_track_name(case):
+    case.media.music_type = "recording"
+    case.media.title = "我的地盘"
+    case.media.album_type = ""
+    case.request.music_type = "recording"
+    case.torrent.content_path = "/music/song.dsf"
+    case.files[0].name = "song.dsf"
+    result = case.preview()
+    assert result["rename_kind"] == "file"
+    assert result["target_content_path"] == "/music/Single/莫文蔚/我的地盘.dsf"
+
+
+def test_unknown_category_does_not_invent_album(case):
+    case.media.album_type = ""
+    with pytest.raises(ValueError, match="类别"):
+        case.preview()
+    case.request.mode = "keep"
+    assert case.preview()["proposed_root_name"] == "莫文蔚 - 含情莫莫 (2002)"
+
+
+def test_recognition_failure_has_no_side_effect(case):
+    case.media_chain.recognize_by_meta.return_value = None
+    with pytest.raises(ValueError, match="无法识别"):
+        case.preview()
+    case.chain.run_module.assert_not_called()
+
+
+def test_destination_collision_never_overwrites(case, monkeypatch):
+    monkeypatch.setattr(organization.Path, "exists", lambda _: True)
+    with pytest.raises(ValueError, match="目标名称已存在"):
+        case.preview()
+
+
+def test_shared_task_directory_blocks_normalization(case):
+    other = copy.copy(case.torrent)
+    other.hash = "b" * 40
+    case.chain.list_torrents.side_effect = lambda **kwargs: [case.torrent] if kwargs.get("hashs") else [case.torrent, other]
+    with pytest.raises(ValueError, match="重叠"):
+        case.preview()
+
+
+def test_music_defaults_to_mb_and_does_not_reuse_other_provider_id(case):
+    case.preview()
+    assert case.media_chain.recognize_by_meta.call_args.kwargs["media_source"].value == "musicbrainz"
+    assert case.media_chain.recognize_by_meta.call_args.kwargs["music_type"] == "album"
+
+
+def test_schema_validates_manual_path_and_source_identity():
+    with pytest.raises(ValueError):
+        DownloadSourceClassificationRequest(mode="manual")
+    with pytest.raises(ValueError):
+        DownloadSourceClassificationRequest(media_id="id-without-source")
+
+
+def test_windows_paths_remain_absolute():
+    assert organization._local_path("D:/Musics/Album", label="测试").as_posix() == "D:/Musics/Album"
+    with pytest.raises(ValueError):
+        organization._local_path("D:/Musics/../other", label="测试")
+
+
+def test_qb_module_uses_native_api_and_is_not_plugin_overridable(monkeypatch):
+    from app.modules.qbittorrent import QbittorrentModule
+    from app.runtime.extensions.module.contracts import get_module_method_contract
+
+    module = object.__new__(QbittorrentModule)
+    client = Mock()
+    monkeypatch.setattr(module, "get_instance", lambda _name: NS(qbc=client))
+    assert module.rename_source_root(downloader="qb", hash_string="a" * 40, old_name="old", new_name="new", kind="folder")
+    client.torrents_rename_folder.assert_called_once_with(torrent_hash="a" * 40, old_path="old", new_path="new")
+    assert not get_module_method_contract("rename_source_root").public_to_plugins
+    with pytest.raises(ValueError):
+        module.rename_source_root(downloader="qb", hash_string="a" * 40, old_name="old", new_name="../unsafe", kind="file")
+
+
+def test_download_option_is_persisted_in_replay_payload():
+    from pathlib import Path
+
+    from app.application.chain.events import restore_download_processing, snapshot_download_processing
+    from app.domain.context import Context, MediaInfo, TorrentInfo
+    from app.domain.metainfo import MetaInfo
+
+    context = Context(meta_info=MetaInfo("movie"), media_info=MediaInfo(title="movie"), torrent_info=TorrentInfo(title="movie"))
+    payload = snapshot_download_processing(context=context, download_dir=Path("/music"), torrent_content="magnet:test",
+                                          downloader="qb", download_hash="a" * 40, normalize_source=True)
+    assert restore_download_processing(payload).normalize_source is True
+    del payload["normalize_source"]
+    assert restore_download_processing(payload).normalize_source is False
+
+
+def test_qb_move_transient_path_pair_does_not_become_failure(case):
+    case.chain.update_torrent.side_effect = None
+    case.chain.update_torrent.return_value = {"save_path": True}
+    result = case.execute()
+    case.torrent.save_path = result["target_save_path"]
+    case.torrent.raw_state = "moving"
+    assert case.status()["state"] == "move_requested"
+    case.torrent.content_path = result["target_content_path"]
+    case.torrent.raw_state = "uploading"
+    assert case.status()["state"] == "complete"
+
+
+def test_music_display_category_cannot_override_primary_type(case):
+    case.request.media_category = "Album/Compilation"
+    with pytest.raises(ValueError, match="主类别"):
+        case.preview()
+
+
+def test_resource_setting_is_independent_of_library_renaming():
+    from app.schemas.system import TransferDirectoryConf
+
+    config = TransferDirectoryConf(renaming=True)
+    assert config.source_normalization is False
+    config.source_normalization = True
+    config.renaming = False
+    assert config.model_dump()["source_normalization"] is True
+
+
+@pytest.mark.parametrize("configured,override,expected", [
+    (True, None, True), (False, None, False), (True, False, False), (False, True, True),
+])
+def test_download_normalization_inherits_directory_unless_explicit(monkeypatch, configured, override, expected):
+    from pathlib import Path
+
+    import app.chain.download.submission as submission
+
+    owner = Mock()
+    owner._prepare_download_single.return_value = (NS(media=Mock(), download_dir=Path("/music")), None)
+    owner._submit_prepared_download.return_value = ("a" * 40, None)
+    directory = Mock()
+    directory.get_download_dir_by_task_path.return_value = NS(source_normalization=configured)
+    monkeypatch.setattr(submission, "DirectoryHelper", lambda: directory)
+    result = submission.DownloadSubmissionOwner._execute_download_single(
+        owner, context=Mock(), normalize_source=override,
+    )
+    assert result == "a" * 40
+    assert owner._submit_prepared_download.call_args.kwargs["normalize_source"] is expected
+
+
+def test_normalization_without_durable_worker_does_not_add_torrent():
+    from pathlib import Path
+
+    from app.chain.download.submission import DownloadSubmissionOwner
+
+    owner = Mock(durable_event_writer=None)
+    owner._prepare_download_single.return_value = (NS(media=Mock(), download_dir=Path("/music")), None)
+    result, error = DownloadSubmissionOwner._execute_download_single(
+        owner, context=Mock(), normalize_source=True, return_detail=True,
+    )
+    assert result is None and "未添加下载任务" in error
+    owner._submit_prepared_download.assert_not_called()

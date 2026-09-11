@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from copy import deepcopy
-from typing import Optional, TypeVar, Union
+from datetime import datetime, timezone
+from typing import Any, Optional, TypeVar, Union
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -16,6 +17,8 @@ from app.application.history import (
     DownloadHistorySnapshot,
     DownloadHistoryWrite,
 )
+from app.application.outbox import SOURCE_ORGANIZATION_TOPIC, OutboxIntent
+from app.db.adapters.outbox import SqlAlchemyOutboxStager
 from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.schemas.media import normalize_media_source
@@ -147,6 +150,49 @@ class TransactionalDownloadHistoryRepository:
                 for download_hash, record in repository.get_by_hashes(download_hashes).items()
             }
         )
+
+    def get_by_task(self, download_hash: str, downloader: str) -> Optional[DownloadHistorySnapshot]:
+        """读取单个下载器任务的不可变历史快照。"""
+        return self._read(lambda repository: (
+            _project_history(record)
+            if (record := repository.get_by_task(download_hash, downloader)) is not None else None
+        ))
+
+    def save_source_operation(
+        self, history: DownloadHistorySnapshot, operation: dict[str, Any],
+    ) -> bool:
+        """原子保存规范化检查点；并发旧快照不能覆盖新状态或文件记录。"""
+        import json
+
+        if not history.downloader or not history.download_hash:
+            raise ValueError("资源规范化记录缺少下载器及 Hash")
+        note = json.loads(json.dumps(history.note or {}))
+        revision = int(note.get("source_organization", {}).get("revision", 0))
+        note["source_organization"] = {**operation, "revision": revision + 1}
+        complete = operation.get("state") == "complete"
+        mappings = operation.get("file_updates", []) if complete else []
+        session = self._sync_session()
+        unit_of_work = SqlAlchemyUnitOfWork(session)
+        try:
+            updated = DownloadHistoryOper(session).stage_source_operation(
+                history_id=history.id, downloader=history.downloader,
+                download_hash=history.download_hash, revision=revision, note=note,
+                path=operation["plan"]["target_content_path"] if complete else None,
+                files=mappings,
+            )
+            if updated and operation.get("state") == "prepared":
+                SqlAlchemyOutboxStager(session).stage(OutboxIntent(
+                    event_key=f"{SOURCE_ORGANIZATION_TOPIC}:{operation['id']}",
+                    topic=SOURCE_ORGANIZATION_TOPIC,
+                    payload={"hash": history.download_hash, "downloader": history.downloader, "operation_id": operation["id"]},
+                ), datetime.now(timezone.utc))
+            unit_of_work.commit()
+            return updated
+        except Exception:
+            unit_of_work.rollback()
+            raise
+        finally:
+            session.close()
 
     def get_by_path(self, path: str) -> Optional[DownloadHistorySnapshot]:
         """按下载保存路径返回历史快照。"""

@@ -475,7 +475,7 @@
   "app/api/endpoints/music.py": {
     "arg-type": 6,
     "attr-defined": 1,
-    "misc": 10,
+    "misc": 9,
     "type-arg": 3
   },
   "app/api/endpoints/notification.py": {

@@ -407,6 +407,8 @@ class TransferDirectoryConf(BaseModel):
     download_type_folder: Optional[bool] = False
     # 下载类别子目录
     download_category_folder: Optional[bool] = False
+    # 源资源规范化：只通过下载器修改任务根目录，与媒体库 renaming 独立。
+    source_normalization: bool = False
     # 监控方式 downloader/monitor，None为不监控
     monitor_type: Optional[str] = None
     # 监控模式 fast / compatibility

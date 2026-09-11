@@ -172,6 +172,7 @@ def test_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkeypatch)
 
     assert recognized_meta is merged
     assert recognized_info is expected
+    assert recognized_info.album_type == "Single"
     direct.assert_called_once_with(merged, recording_id)
     later_tier.assert_not_called()
 

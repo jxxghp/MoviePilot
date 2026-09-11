@@ -26,6 +26,7 @@ class DownloaderTorrent(BaseModel):
     size: Optional[float] = 0.0
     progress: Optional[float] = 0.0
     state: Optional[str] = 'downloading'
+    raw_state: Optional[str] = Field(default=None, description="下载器原始状态，用于确认移动及校验完成")
     upspeed: Optional[str] = None
     dlspeed: Optional[str] = None
     tags: Optional[str] = None

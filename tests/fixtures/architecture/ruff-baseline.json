@@ -309,10 +309,6 @@
   "app/modules/plex/__init__.py": {
     "I001": 1
   },
-  "app/modules/qbittorrent/__init__.py": {
-    "F541": 2,
-    "I001": 1
-  },
   "app/modules/qbittorrent/qbittorrent.py": {
     "I001": 1
   },
@@ -771,9 +767,6 @@
   },
   "tests/test_music_context.py": {
     "I001": 1
-  },
-  "tests/test_music_endpoint.py": {
-    "F401": 2
   },
   "tests/test_music_filemanager.py": {
     "I001": 1

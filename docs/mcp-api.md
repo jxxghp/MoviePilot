@@ -414,15 +414,26 @@ AMLL 使用无需鉴权的原生搜索与获取接口，先尝试 ISRC，再核�
 | GET | `/api/v1/download/start/{hashString}` | 恢复下载任务，参数：`name` |
 | GET | `/api/v1/download/stop/{hashString}` | 暂停下载任务，参数：`name` |
 | PATCH | `/api/v1/download/{hashString}` | 高级更新下载任务，可修改限速、标签、Tracker、保存目录和下载器分类 |
-| POST | `/api/v1/download/{hashString}/classify-source` | `recognize` 模式重新识别媒体并按当前生效分类计算保存位置，`manual` 模式使用明确目标目录；`execute=false` 只预览，`execute=true` 由下载器移动任务数据；可传当前策略中已启用的 `media_category` 路径覆盖自动分类 |
+| POST | `/api/v1/download/{hashString}/classify-source` | 资源规范化：`keep` 仅改任务根名称，`recognize` 同时按类别/艺人归档，`manual` 使用明确保存目录；默认只预览，确认必须回传预览的原路径、目标路径、内容路径和规范名称；需要管理权限 |
+| POST | `/api/v1/download/source/normalize` | 文件管理使用同一规范化合同，增加 `source_path` 与 `storage=local`；源路径必须唯一对应一个 qB 任务根目录或单文件，不能选择合集内部子目录 |
+| POST | `/api/v1/download/{hashString}/source-status` | 使用 `downloader` 和 `operation_id` 核验并继续已确认的操作，不创建新计划；需要管理权限 |
 | GET | `/api/v1/download/clients` | 查询可用下载器 |
 | GET | `/api/v1/download/paths` | 查询可用于下载接口 `save_path` 参数的下载路径 |
 | DELETE | `/api/v1/download/{hashString}` | 删除下载任务，参数：`name` |
 
-资源目录重新分类只接受仍存在于下载器且具有可恢复媒体类型的下载历史任务；识别模式可复用历史中的媒体来源和同来源媒体 ID，也可在请求中指定来源、媒体 ID 或当前策略中已启用且媒体类型匹配的 `media_category`。
-目标路径必须落在已配置的资源根目录内，并且目录需开启“资源目录按类别分类”或绑定固定分类。
-识别模式会优先使用媒体识别链产生的当前生效分类路径；例如 MusicBrainz 返回 `Album` 主类型和 `Compilation` 副类型并命中默认精选集规则时，目标分类为 `Album/Compilation`。识别结果尚无可用分类路径时，音乐兼容退回主类型目录。
-执行时 MoviePilot 调用下载器的位置更新能力，不直接移动或改写 PT 数据文件。
+资源规范化只接受仍在 qB 中、且按下载器和 Hash 能定位 MP 下载历史的任务。音乐默认使用 MusicBrainz：
+`Album/艺人/专辑 (年份)`、`Single/艺人/单曲.原扩展名`；`Artist Collection/艺人/艺术家合集` 是 MP 的合集扩展，非 MusicBrainz 原生 release-group 类型。
+源资源归档只取音乐主类别，`Compilation` 等副类别仍在预览展示，不叠入源目录；媒体库的分类策略和智能重命名不变。
+缺少类别时停止归档，缺少识别结果时停止规范化，不悄悄写入“未分类”。影视继续使用生效分类策略。
+
+目录设置 `source_normalization` 默认为关闭，控制 MP 新下载的源资源规范化，与 `renaming`（媒体库命名）独立。
+`POST /download/`、`/download/add`、`/download/artist-collection` 支持 `normalize_source`：省略/null 继承资源目录配置，true/false 覆盖本次；显式开启需要管理权限。
+只有同时开启资源目录 `download_category_folder` 才自动归档；手动入口的“同时按类别归档”是本次明确选择。
+
+所有目标必须在已配置本地资源根内。只通过 qB 的根文件夹/单文件改名及保存位置接口变更，保留种子 Hash、内部文件名和音频标签；多根、共享目录、目标冲突均拒绝。
+`executed=true` 仅在实时路径、文件 ID/大小/相对路径及非移动/校验状态核验后返回，同时事务更新 MP 下载历史与精确匹配的下载文件记录。
+检查点保存在历史 `note.source_organization`，使用 revision CAS 防止重复提交；后台 outbox 支持网页关闭后有限重试。`prepared`、`rename_requested`、`move_requested` 都不代表成功；`needs_attention` 要求核对 qB。
+请求结果未知时不盲目重发或回滚。后台重试耗尽可在下载历史打开同一操作继续核验；不能用重新添加种子替代恢复。
 
 #### 历史
 

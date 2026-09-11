@@ -21,6 +21,7 @@ DOWNLOAD_ADDED_TOPIC = "download.added"
 DOWNLOAD_NOTIFICATION_TOPIC = "download.added.notification"
 DOWNLOAD_MODULE_TOPIC = "download.added.module"
 DOWNLOAD_SUBTITLE_TOPIC = "download.added.subtitle"
+SOURCE_ORGANIZATION_TOPIC = "download.source.organization"
 TRANSFER_COMPLETED_TOPIC = "transfer.completed"
 TRANSFER_FAILED_TOPIC = "transfer.failed"
 SUBTITLE_TRANSFER_COMPLETED_TOPIC = "transfer.subtitle.completed"
@@ -46,6 +47,7 @@ REQUIRED_OUTBOX_TOPICS = frozenset(DURABLE_EVENT_TOPICS.values()) | {
     DOWNLOAD_NOTIFICATION_TOPIC,
     DOWNLOAD_MODULE_TOPIC,
     DOWNLOAD_SUBTITLE_TOPIC,
+    SOURCE_ORGANIZATION_TOPIC,
 }
 
 

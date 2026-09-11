@@ -14,6 +14,10 @@ _MODEL_EXPORTS = {
     "DownloadFiles": ("app.db.models.downloadhistory", "DownloadFiles"),
     "DownloadHistory": ("app.db.models.downloadhistory", "DownloadHistory"),
     "MediaServerItem": ("app.db.models.mediaserver", "MediaServerItem"),
+    "MusicArtistAcquisition": (
+        "app.db.models.musicartistacquisition",
+        "MusicArtistAcquisition",
+    ),
     "Message": ("app.db.models.message", "Message"),
     "OutboxMessage": ("app.db.models.outbox", "OutboxMessage"),
     "PassKey": ("app.db.models.passkey", "PassKey"),

@@ -134,7 +134,18 @@ def _finalize_music_path_info(
     info: Optional[MusicInfo],
 ) -> MusicInfo:
     """统一远端命中和本地兜底的音频质量合并。"""
-    return _merge_music_audio_quality(info or MusicInfo.from_meta(meta), meta)
+    result = _merge_music_audio_quality(info or MusicInfo.from_meta(meta), meta)
+    if (
+        _has_remote_music_identity(result)
+        and result.music_type == MUSIC_ENTITY_RECORDING
+        and not result.album_type
+    ):
+        # MusicBrainz 的部分独立 Recording 能精确命中，但关联 Release
+        # Group 没有 primary-type。路径识别必须在分类服务运行前补齐类型，
+        # 才能由统一规则稳定归入 Single，而不是落到“未分类”。本地标签兜底
+        # 没有远程身份，不参与该推断。
+        result.album_type = "Single"
+    return result
 
 
 def _music_tier_plan(

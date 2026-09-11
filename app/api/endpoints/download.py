@@ -14,7 +14,11 @@ from app.api.response import (
 )
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
-from app.application.download.organization import organize_existing_source
+from app.application.download.organization import (
+    organize_existing_source,
+    organize_source_path,
+    reconcile_source_operation,
+)
 from app.application.download.tasks import DownloadTaskMutationService
 from app.application.security.url import SecurityUtils
 from app.application.site.query import (
@@ -32,6 +36,8 @@ from app.schemas.download import DownloadAddedData as _SchemaDownloadAddedData
 from app.schemas.download import DownloadDirectory as _SchemaDownloadDirectory
 from app.schemas.download import DownloadSourceClassificationData as _SchemaDownloadSourceClassificationData
 from app.schemas.download import DownloadSourceClassificationRequest as _SchemaDownloadSourceClassificationRequest
+from app.schemas.download import DownloadSourcePathRequest as _SchemaDownloadSourcePathRequest
+from app.schemas.download import DownloadSourceStatusRequest as _SchemaDownloadSourceStatusRequest
 from app.schemas.download import DownloadTaskUpdateData as _SchemaDownloadTaskUpdateData
 from app.schemas.download import DownloadTaskUpdateRequest as _SchemaDownloadTaskUpdateRequest
 from app.schemas.download import SubtitleDownloadData as _SchemaSubtitleDownloadData
@@ -226,6 +232,7 @@ def download(
     torrent_in: _SchemaTorrentInfo,
     downloader: Annotated[str | None, Body()] = None,
     save_path: Annotated[str | None, Body()] = None,
+    normalize_source: Annotated[bool | None, Body()] = None,
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
     """
@@ -244,11 +251,14 @@ def download(
     torrentinfo.site_downloader = downloader
     # 上下文
     context = Context(meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo)
+    if normalize_source:
+        get_current_active_manage_user(current_user)
     did = DownloadChain().download_single(
         context=context,
         username=current_user.name,
         save_path=save_path,
         source="Manual",
+        normalize_source=normalize_source,
     )
     if not did:
         return _SchemaResponse(success=False, message="任务添加失败")
@@ -267,6 +277,7 @@ def download_artist_collection(
     torrent_in: _SchemaTorrentInfo,
     downloader: Annotated[str | None, Body()] = None,
     save_path: Annotated[str | None, Body()] = None,
+    normalize_source: Annotated[bool | None, Body()] = None,
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
     """Add one artist-wide torrent without pretending that it is one album.
@@ -302,11 +313,14 @@ def download_artist_collection(
     if downloader is not None:
         torrentinfo.site_downloader = downloader
     context = Context(meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo)
+    if normalize_source:
+        get_current_active_manage_user(current_user)
     did = DownloadChain().download_single(
         context=context,
         username=current_user.name,
         save_path=save_path,
         source="Manual",
+        normalize_source=normalize_source,
     )
     if not did:
         return _SchemaResponse(success=False, message="艺术家合集任务添加失败")
@@ -327,6 +341,7 @@ def add(
     downloader: Annotated[str | None, Body()] = None,
     # 保存路径, 支持<storage>:<path>, 如rclone:/MP, smb:/server/share/Movies等
     save_path: Annotated[str | None, Body()] = None,
+    normalize_source: Annotated[bool | None, Body()] = None,
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
     """
@@ -349,12 +364,15 @@ def add(
     # 上下文
     context = Context(meta_info=metainfo, media_info=mediainfo, torrent_info=torrentinfo)
 
+    if normalize_source:
+        get_current_active_manage_user(current_user)
     did = DownloadChain().download_single(
         context=context,
         username=current_user.name,
         downloader=downloader,
         save_path=save_path,
         source="Manual",
+        normalize_source=normalize_source,
     )
     if not did:
         return _SchemaResponse(success=False, message="任务添加失败")
@@ -462,8 +480,48 @@ async def update_task(
 
 
 @router.post(  # type: ignore[misc]
+    "/{hashString}/source-status",
+    summary="核验并恢复已确认的资源规范化操作",
+    response_model=_SchemaResponse[_SchemaDownloadSourceClassificationData],
+)
+async def source_status(
+    hashString: str,
+    payload: _SchemaDownloadSourceStatusRequest,
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
+) -> Any:
+    """只推进既有确认计划，不接受新名称或新目标目录。"""
+    try:
+        result = await anyio.to_thread.run_sync(lambda: reconcile_source_operation(
+            hashString, payload.downloader, DownloadChain(), payload.operation_id,
+        ))
+        return _SchemaResponse(success=True, data=result)
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+
+
+@router.post(  # type: ignore[misc]
+    "/source/normalize",
+    summary="从文件路径规范化下载任务名称",
+    response_model=_SchemaResponse[_SchemaDownloadSourceClassificationData],
+)
+async def normalize_source_path(
+    payload: _SchemaDownloadSourcePathRequest,
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
+) -> _SchemaResponse[Any]:
+    """仅接纳唯一对应下载任务根的本地路径，复用统一的只读预览与 qB 执行。"""
+    chain = DownloadChain()
+    try:
+        data = await anyio.to_thread.run_sync(
+            lambda: organize_source_path(payload, chain, MediaChain())
+        )
+    except ValueError as error:
+        return _SchemaResponse(success=False, message=str(error))
+    return _SchemaResponse(success=True, data=data)
+
+
+@router.post(  # type: ignore[misc]
     "/{hashString}/classify-source",
-    summary="识别并归类已有下载任务",
+    summary="识别并规范化已有任务名称与保存位置",
     response_model=_SchemaResponse[_SchemaDownloadSourceClassificationData],
 )
 async def classify_source(

@@ -28,7 +28,6 @@ from app.chain.storage import StorageChain
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
@@ -705,6 +704,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             batch_mtype == MediaType.MUSIC
             and sum(self._is_audio_file(item) for item, _ in file_items) > 1
         )
+        music_batch_context = self._prepare_music_batch_context(file_items, batch_mtype)
         try:
             for file_item, bluray_dir in file_items:
                 if runtime_stop_state.is_system_stopped:
@@ -797,7 +797,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     bluray_dir=bluray_dir,
                     download_hash=download_hash,
                 )
-
                 discard_music_identity = _should_discard_batch_music_identity(
                     multi_track_music_batch=multi_track_music_batch, manual=manual,
                     media_source=media_source,
@@ -842,18 +841,18 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     _download_hash = download_hash
 
                 # 自动整理预载的媒体信息来自整条下载历史；电影合集内文件年份冲突时逐文件识别。
-                file_meta, task_mediainfo = self._selected_music_task_context(
-                    file_item, file_path, file_meta, selected_music_track_map,
-                    None if discard_music_identity
-                    else mediainfo or history_music_info,
+                file_meta, task_mediainfo = self._resolve_music_batch_file_context(
+                    batch_context=music_batch_context,
+                    file_item=file_item,
+                    file_path=file_path,
+                    file_meta=file_meta,
+                    selected_tracks=selected_music_track_map,
+                    fallback=None if discard_music_identity else mediainfo or history_music_info,
+                    discard_shared_identity=discard_music_identity,
+                    multi_track_batch=multi_track_music_batch,
+                    release_regions=music_release_regions,
+                    release_scripts=music_release_scripts,
                 )
-                if not task_mediainfo and isinstance(file_meta, MetaMusic):
-                    # 无标签音频或误带单曲身份的整包按目录级专辑匹配；命中结果带缓存不会逐文件重复请求
-                    file_meta, task_mediainfo = self._match_music_album_context(
-                        file_item, file_path, file_meta, music_release_regions, music_release_scripts,
-                    )
-                    if not task_mediainfo and discard_music_identity:
-                        task_mediainfo = self._music_info_from_meta(file_meta)
                 if not manual and task_mediainfo and self._is_movie_year_conflict(file_meta, task_mediainfo):
                     task_mediainfo = None
 
