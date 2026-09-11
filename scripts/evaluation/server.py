@@ -33,6 +33,7 @@ MAX_RESULTS = 8
 RESULT_TTL_SECONDS = 900
 FIRST_PAGE_CHARS = 8192
 NEXT_PAGE_CHARS = 16000
+DIRECT_RESULT_MAX_CHARS = 64 * 1024
 
 # 与 Agent 的 MoviePilotApiInput 保持相同字段，不提前暴露场景支持操作或 oracle 判据。
 API_INPUT_SCHEMA: dict[str, Any] = {
@@ -532,7 +533,9 @@ class EvaluationMcpServer:
             )
 
         text = json.dumps(skill_payload, ensure_ascii=False, indent=2)
-        if len(text) <= FIRST_PAGE_CHARS:
+        # 生产 read_skill 先走统一工具结果上限 64 KiB；当前拆分后的主文档
+        # 与分类文档都应一次交付，只有更大的文档才进入 8 KiB 首屏归档。
+        if len(text) <= DIRECT_RESULT_MAX_CHARS:
             return text
         if len(text.encode("utf-8")) > MAX_RESULT_BYTES:
             return self._failure("result_too_large", "Skill result exceeds archive limit")

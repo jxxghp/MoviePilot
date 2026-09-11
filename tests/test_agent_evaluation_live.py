@@ -254,6 +254,27 @@ def test_official_google_provider_uses_native_tool_transport():
         asyncio.run(live._close_model_clients(model))
 
 
+def test_codex_oauth_uses_production_responses_headers():
+    """Codex OAuth 评测必须复用生产端点、Responses 协议和账户级请求头。"""
+    settings = ModelSettings(
+        model="gpt-5.6-luna", base_url="https://chatgpt.com/backend-api/codex",
+        api_key="private-oauth-token", auth_mode="codex_oauth", account_id="private-account",
+    )
+    tracker = live.ModelUsageTracker(settings.max_model_calls)
+    model, transport = live._build_model(settings, tracker)
+    try:
+        assert transport == "chatgpt_codex_oauth"
+        dumped = model.model_dump()
+        assert dumped["openai_api_base"] == settings.base_url
+        assert dumped["use_responses_api"] is True
+        assert dumped["streaming"] is True
+        assert dumped["store"] is False
+        assert dumped["max_tokens"] is None
+        assert dumped["default_headers"] == {"originator": "moviepilot", "ChatGPT-Account-Id": "private-account"}
+    finally:
+        asyncio.run(live._close_model_clients(model))
+
+
 @pytest.mark.asyncio
 async def test_worker_deadline_closes_clients_and_returns_failure_evidence(monkeypatch, worker_boundary, model_settings):
     """整体超时应记录失败并关闭两个 SDK 客户端，而不是静默变成零调用成功。"""

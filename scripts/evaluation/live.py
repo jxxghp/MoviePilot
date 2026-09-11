@@ -21,6 +21,40 @@ def _build_model(settings: ModelSettings, tracker: ModelUsageTracker) -> tuple[A
     """按显式 provider 选择评测模型，并让官方 Gemini 走原生工具协议。"""
     from urllib.parse import urlsplit
 
+    if settings.auth_mode == "codex_oauth":
+        from langchain_openai import ChatOpenAI
+
+        from app.agent.llm.helper import (
+            LLMHelper,
+            _patch_openai_responses_instructions_support,
+        )
+
+        _patch_openai_responses_instructions_support()
+        headers = {"originator": "moviepilot"}
+        if settings.account_id:
+            headers["ChatGPT-Account-Id"] = settings.account_id
+        reasoning_effort = LLMHelper._normalize_openai_reasoning_effort(settings.reasoning_effort)
+        options: dict[str, Any] = {
+            "model": settings.model,
+            "api_key": settings.api_key,
+            "base_url": settings.base_url,
+            "max_retries": 0,
+            "timeout": min(120, settings.timeout_seconds),
+            "profile": {"max_input_tokens": settings.context_window},
+            "callbacks": [tracker],
+            "streaming": True,
+            "stream_usage": True,
+            "default_headers": headers,
+            "use_responses_api": True,
+            "output_version": "responses/v1",
+            "store": False,
+        }
+        if reasoning_effort:
+            options["reasoning_effort"] = reasoning_effort
+        return ChatOpenAI(
+            **options,
+        ), "chatgpt_codex_oauth"
+
     endpoint_host = (urlsplit(settings.base_url).hostname or "").lower()
     if endpoint_host == "generativelanguage.googleapis.com":
         # Gemini 3 的 OpenAI 兼容层会把 thought_signature 放进扩展字段；
@@ -98,14 +132,15 @@ def _worker_environment() -> dict[str, str]:
     return environment
 
 
-def _validate_report(report: Any, credential: str) -> dict[str, Any]:
+def _validate_report(report: Any, credential: str, *additional_credentials: str | None) -> dict[str, Any]:
     """对解码后的键和值检查凭据，JSON 转义不能绕过输出边界。"""
+    credentials = tuple(value for value in (credential, *additional_credentials) if isinstance(value, str) and value)
     if not isinstance(report, dict):
         raise RuntimeError("隔离模型评测报告未通过输出校验")
     pending = [report]
     while pending:
         value = pending.pop()
-        if isinstance(value, str) and credential in value:
+        if isinstance(value, str) and any(secret in value for secret in credentials):
             raise RuntimeError("评测报告意外包含连接凭据，已拒绝输出")
         if isinstance(value, dict):
             pending.extend(value.keys())
@@ -133,7 +168,7 @@ def run_live(scenario_id: str, settings: ModelSettings) -> dict[str, Any]:
         report = json.loads(completed.stdout)
     except (ValueError, TypeError):
         raise RuntimeError("隔离模型评测未返回有效报告") from None
-    return _validate_report(report, settings.api_key)
+    return _validate_report(report, settings.api_key, settings.account_id)
 
 
 def _parse_final(text: str) -> Any:
@@ -223,7 +258,7 @@ def main() -> int:
     settings = ModelSettings(**payload["settings"])
     with redirect_stdout(sys.stderr):
         result = asyncio.run(_run_worker(payload["scenario_id"], settings))
-    serialized = json.dumps(_validate_report(result, settings.api_key), ensure_ascii=False)
+    serialized = json.dumps(_validate_report(result, settings.api_key, settings.account_id), ensure_ascii=False)
     print(serialized)
     return 0
 

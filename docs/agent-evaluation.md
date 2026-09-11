@@ -79,9 +79,33 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 | `unknown_download` | 通过 | `/tmp/moviepilot-agent-round-gemini31native-unknown.json`；12 次模型调用、4 次业务调用、0 次失败/重复、1 次预期下载写入副作用，写入后按场景规则完成核验。 |
 | `honest_unknown` | 通过 | `/tmp/moviepilot-agent-round-gemini31native-honest.json`；12 次模型调用、7 次业务调用、3 次受控失败读取、0 次重复、1 次预期下载写入副作用，未知回执被正确保留为未完成。 |
 
-三份报告的 `reported_models` 都是 `gemini-3.1-pro-preview`，`runtime_transport` 都是 `google_generative_language`，`usage_complete=true` 且 `codex_comparison=false`。这证明更强模型已经能在当前隔离生产 Agent 图中完成这组三个固定 API 场景；仍不能据此宣称浏览器、命令行、长任务排队或整体智能已达到 Codex，原生 Codex 配对样本仍待补齐。
+三份报告的 `reported_models` 都是 `gemini-3.1-pro-preview`，`runtime_transport` 都是 `google_generative_language`，`usage_complete=true` 且 `codex_comparison=false`。这证明更强模型已经能在当前隔离生产 Agent 图中完成这组三个固定 API 场景；仍不能据此宣称浏览器、命令行、长任务排队或整体智能已达到 Codex。后续 OAuth 配对结果见下节。
 
-因此当前真实 Gemini 结果证明了工具合同读取和未知结果诚实边界已经能被实测，但不能宣称达到 Codex 的整体智能水平。原生 Codex 仍未取得同一模型、同一推理档位的可用配对运行；`codex_comparison=false` 继续是有效结论。
+因此当前真实 Gemini 结果证明了工具合同读取和未知结果诚实边界已经能被实测，但不能宣称达到 Codex 的整体智能水平。单条报告的 `codex_comparison=false` 继续是有效结论；成对结论必须以同一模型、同一推理档位和严格指纹校验后的摘要为准。
+
+### `thought_signature` 与真实 MoviePilot Agent
+
+第二轮 Google 拒绝的根因是 Gemini 3 的工具回复带有 `thought_signature`，而 OpenAI-compatible Chat Completions 转换层没有把它带回下一轮请求。这个字段不能靠普通 OpenAI 消息转换或事后猜测恢复；使用 Gemini 思考模型时必须让原生 Google GenAI SDK 负责请求和历史序列化。
+
+MoviePilot 的真实 Agent 已在 `app/agent/llm/helper.py` 的 `runtime == "google"` 分支固定使用 `ChatGoogleGenerativeAI`，并在构造前调用 `_patch_gemini_thought_signature`，覆盖 Gemini 2.5/3 以及并行 function call 的签名缺失兼容。评测也验证了该分支会避开 `/v1beta/openai` 兼容端点。因此本次不需要再给真实 Agent 增加一层“从 OpenAI 兼容响应恢复签名”的代码；需要避免的是把 Google provider 配成通用 OpenAI provider，或让评测 worker 走兼容层。若将来 SDK 升级改变签名字段，仍应先补原生 SDK 的请求级回归，再更新锁定依赖。
+
+### 2026-09-11 Codex OAuth 成对实测
+
+为验证真实生产图与原生 Codex 的差异，使用同一 `gpt-5.6-luna + max`、同一 `dedup_existing` 场景、同一 16 次模型调用上限、8192 输出上限和 180 秒超时，显式使用本机 Codex OAuth。`--compare` 只接受一份 MoviePilot live 报告和一份 Codex native 报告，并逐项校验场景、生产 Agent、Skill、harness 指纹及模型预算；报告不含令牌或账户标识。
+
+| 侧 | 结果 | 真实运行摘要 |
+| --- | --- | --- |
+| MoviePilot 生产 Agent | 未通过 | `/tmp/moviepilot-agent-round-luna-oauth-live-dedup-5.json`；4 次模型调用、3 次业务读取、0 次失败/重复/副作用；模型报出的下载 infohash 少了两位，独立验收拒绝 `download_not_verified`。 |
+| 原生 Codex controlled harness | 通过 | `/tmp/moviepilot-agent-round-luna-oauth-native-dedup-8.json`；7 次模型调用、2 次业务读取、0 次失败/重复/副作用；读取证据和 40 位 infohash 均正确，原生进程正常退出。 |
+
+严格配对摘要为 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair.json`，`pair_valid=true`、`both_passed=false`，模型/推理/预算、场景和四项 SHA 指纹均一致。MoviePilot 比 Codex 少 3 次模型调用、少 61341 个已知 token、少 51.091 秒，但这只是本轮具体轨迹的成本差，不抵消生产 Agent 的终态验收失败。该结果首次形成可复核的真实配对证据，也明确了下一目标是提高生产图的精确最终报告可靠性，而不是把失败改判为通过。
+
+已有报告可用以下命令重新生成摘要；命令只读报告，不会再次调用模型：
+
+```bash
+uv run --locked --no-sync python -m scripts.evaluation \
+  --compare moviepilot-live.json codex-native.json --output pair.json
+```
 
 只有显式 `--live` 或 `--native` 才会调用真实模型并产生费用。默认读取 `~/.codex/config.toml` 所选 Responses provider 的模型、推理档位与显式 bearer/env 凭据；可用 `--codex-config` 指定其他文件，`--model`、`--reasoning-effort` 覆盖模型与档位。不会借用其他服务的登录凭据，也不会自动降低被供应商拒绝的参数。报告同时保留请求模型与供应商返回的模型标识；本地 Codex 配置不能证明运行中的 MoviePilot 使用相同配置。
 
@@ -101,14 +125,14 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 
 ```bash
 uv run --locked --no-sync python -m scripts.evaluation --native-probe \
-  --scenario dedup_existing --model gpt-6-astra --reasoning-effort max \
+  --scenario dedup_existing --model gpt-5.6-luna --reasoning-effort max \
   --output probe.json
 uv run --locked --no-sync python -m scripts.evaluation --native \
-  --scenario dedup_existing --model gpt-6-astra --reasoning-effort max \
-  --max-model-calls 12 --timeout-seconds 180 --output codex-report.json
+  --scenario dedup_existing --model gpt-5.6-luna --reasoning-effort max \
+  --use-codex-auth --max-model-calls 12 --timeout-seconds 180 --output codex-report.json
 ```
 
-适配器目前只核对 `codex-cli 0.153.4`，可用 `--codex-executable` 指定文件。其他版本或二进制目录中没有指定模型时明确拒绝，不换模型或套用其他模型的元数据。`--native-probe` 的 `probe_ready` 只代表配置和目录检查，不是任务通过；原生进程预期收到本地探针错误并退出，模型调用数仍为零。
+适配器目前只核对 `codex-cli 0.153.4`，可用 `--codex-executable` 指定文件。其他版本或二进制目录中没有指定模型时明确拒绝，不换模型或套用其他模型的元数据。`--native-probe` 的 `probe_ready` 只代表配置和目录检查，不是任务通过；原生进程预期收到本地探针错误并退出，模型调用数仍为零。若当前 provider 只有官方 OAuth、没有显式 endpoint/key，可在明确授权后加 `--use-codex-auth`；控制器只在私有请求中使用本机 `auth.json` 的访问令牌和账户标识，默认模式不会借用登录态。
 
 每次创建空白临时工作目录；场景源码、初态、账本、oracle、模型凭据留在控制器。原生客户端使用局部随机令牌连接回环模型代理和 MCP 假世界，不继承业务配置、真实模型令牌或其他服务环境。客户端忽略用户配置和规则文件，关闭宿主技能、插件、浏览器、文件查看及 shell 等能力，采用只读沙箱、never 审批与有界退出；仅对当前回环 evaluation 服务的三个假工具显式设置 `approval_mode=approve`，避免原生客户端拒绝已授权的假业务动作。不修改用户 HOME、CODEX_HOME 或现有配置。全局 AGENTS 仍可能由原生客户端加载，因此代理在发送给模型前仅移除规范的独立 AGENTS 用户块，保留原生基础说明和任务文本，并记录被移除块的长度与哈希。
 

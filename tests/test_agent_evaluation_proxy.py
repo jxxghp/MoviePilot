@@ -160,6 +160,33 @@ async def test_forwarding_uses_only_fixed_provider_and_real_key_inside_transport
 
 
 @pytest.mark.asyncio
+async def test_codex_oauth_forwarding_adds_production_account_headers() -> None:
+    """Codex OAuth 上游请求带生产所需的 originator 和账户标识，不泄露本地代理令牌。"""
+    settings = ModelSettings(
+        "gpt-5.6-luna", "https://chatgpt.com/backend-api/codex", "private-oauth-token",
+        auth_mode="codex_oauth", account_id="private-account", max_model_calls=1,
+    )
+    outbound = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """捕获请求头并返回一份合法 Responses 完成对象。"""
+        outbound.append(request)
+        return httpx.Response(200, json=_completed(model=settings.model))
+
+    proxy = EvaluationModelProxy(settings, transport=httpx.MockTransport(handler))
+    async with _client(proxy) as client:
+        response = await client.post("/v1/responses", json={
+            **_payload(), "model": settings.model,
+        })
+    assert response.status_code == 200 and len(outbound) == 1
+    request = outbound[0]
+    assert request.headers["originator"] == "moviepilot"
+    assert request.headers["ChatGPT-Account-Id"] == "private-account"
+    assert request.headers["Authorization"] == f"Bearer {settings.api_key}"
+    assert "max_output_tokens" not in json.loads(request.content)
+
+
+@pytest.mark.asyncio
 async def test_parallel_requests_share_atomic_hard_limit_and_unknown_failure_cost() -> None:
     """多子代理同时请求也不能超额，已发送失败请求保留为用量未知。"""
     outbound = []
@@ -544,7 +571,7 @@ async def test_native_discovery_rejects_server_execution_and_unknown_arguments(u
     {"execution": "server"}, {"call_id": None}, {"status": "unknown"}, {"tools": None},
     {"tools": [{"type": "function", "name": "mcp__private__read_secret", "parameters": {}}]},
     {"tools": [{"type": "custom", "name": "apply_patch"}]},
-    {"tools": [{"type": "function", "name": "update_plan", "parameters": {}}]},
+    {"tools": [{"type": "function", "name": "read_file", "parameters": {}}]},
 ])
 @pytest.mark.asyncio
 async def test_native_discovery_output_cannot_inject_other_tool_definitions(updates: dict[str, Any]) -> None:

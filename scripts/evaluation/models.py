@@ -1,5 +1,6 @@
 """读取明确配置的模型连接，并为真实评测统计所有模型调用。"""
 
+import json
 import os
 import threading
 import time
@@ -10,6 +11,10 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from langchain_core.callbacks.base import BaseCallbackHandler
+
+_PROBE_BASE_URL = "https://evaluation-probe.invalid/v1"
+_PROBE_API_KEY = "evaluation-probe-only"
+_CODEX_OAUTH_BASE_URL = "https://chatgpt.com/backend-api/codex"
 
 
 @dataclass(frozen=True)
@@ -25,6 +30,8 @@ class ModelSettings:
     timeout_seconds: int = 180
     context_window: int = 128000
     wire_api: str = "responses"
+    auth_mode: str = "explicit"
+    account_id: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """配置文件和 worker 输入共享校验，不能绕过限额或夹带 URL 凭据。"""
@@ -42,6 +49,16 @@ class ModelSettings:
             raise ValueError("推理预算名称无效")
         if self.wire_api not in {"responses", "chat_completions"}:
             raise ValueError("模型 provider 协议无效")
+        if self.auth_mode not in {"explicit", "codex_oauth"}:
+            raise ValueError("模型鉴权模式无效")
+        if self.account_id is not None and (
+                not isinstance(self.account_id, str)
+                or not self.account_id.strip()
+                or any(char in self.account_id for char in "\r\n")
+        ):
+            raise ValueError("模型账户标识无效")
+        if self.auth_mode == "codex_oauth" and self.wire_api != "responses":
+            raise ValueError("Codex OAuth 只支持 Responses provider")
         for value, minimum, maximum in (
             (self.max_model_calls, 1, 64), (self.max_output_tokens, 256, 32768),
             (self.timeout_seconds, 30, 900), (self.context_window, 4096, 2000000),
@@ -54,6 +71,7 @@ class ModelSettings:
         return {
             "requested_model": self.model, "provider_host": urlsplit(self.base_url).hostname,
             "wire_api": self.wire_api,
+            "auth_mode": self.auth_mode,
             "reasoning_effort": self.reasoning_effort, "max_model_calls": self.max_model_calls,
             "max_output_tokens": self.max_output_tokens, "timeout_seconds": self.timeout_seconds,
             "harness_context_window": self.context_window,
@@ -63,8 +81,9 @@ class ModelSettings:
 def load_codex_model_settings(
     path: Path, *, model: str | None = None, reasoning_effort: str | None = None,
     max_model_calls: int = 12, max_output_tokens: int = 8192, timeout_seconds: int = 180,
+    probe_only: bool = False, use_codex_auth: bool = False,
 ) -> ModelSettings:
-    """只使用选中 provider 显式配置的 bearer/env 凭据，不挪用其他服务的登录令牌。"""
+    """读取选中 provider；真实运行只接受显式凭据或用户明确选择的 Codex OAuth。"""
     config = tomllib.loads(path.read_text(encoding="utf-8"))
     provider = config.get("model_providers", {}).get(config.get("model_provider"), {})
     wire_api = provider.get("wire_api")
@@ -78,8 +97,30 @@ def load_codex_model_settings(
     if not key and isinstance(provider.get("env_key"), str):
         key = os.environ.get(provider["env_key"])
     effort = reasoning_effort or config.get("model_reasoning_effort", "high")
+    auth_mode = "explicit"
+    account_id = None
+    if use_codex_auth:
+        if probe_only:
+            raise ValueError("原生探针不能使用 Codex OAuth")
+        if endpoint or key or provider.get("env_key") or not provider.get("requires_openai_auth"):
+            raise ValueError("Codex OAuth 只适用于未自定义 endpoint 的官方 OpenAI provider")
+        auth_path = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "auth.json"
+        try:
+            auth = json.loads(auth_path.read_text(encoding="utf-8"))
+            tokens = auth.get("tokens") if isinstance(auth, dict) else None
+            key = tokens.get("access_token") if isinstance(tokens, dict) else None
+            account_id = tokens.get("account_id") if isinstance(tokens, dict) else None
+        except (OSError, UnicodeError, ValueError, TypeError):
+            raise ValueError("当前 Codex OAuth 凭据不可读") from None
+        if not isinstance(key, str) or not key.strip() or not isinstance(account_id, str) or not account_id.strip():
+            raise ValueError("当前 Codex OAuth 凭据不完整")
+        endpoint = _CODEX_OAUTH_BASE_URL
+        auth_mode = "codex_oauth"
+    if probe_only:
+        endpoint = endpoint or _PROBE_BASE_URL
+        key = key or _PROBE_API_KEY
     return ModelSettings(selected_model, endpoint, key, effort, max_model_calls, max_output_tokens,
-                         timeout_seconds, wire_api=wire_api)
+                         timeout_seconds, wire_api=wire_api, auth_mode=auth_mode, account_id=account_id)
 
 
 class ModelCallLimitError(RuntimeError):

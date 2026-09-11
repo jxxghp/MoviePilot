@@ -33,7 +33,7 @@ NATIVE_CONTROL_TOOLS = frozenset({
 NATIVE_COLLABORATION_TOOLS = frozenset({
     "spawn_agent", "followup_task", "interrupt_agent", "list_agents", "send_message", "wait_agent",
 })
-KNOWN_NAMESPACES = frozenset({"functions", "clock", "collaboration", "mcp__evaluation"})
+KNOWN_NAMESPACES = frozenset({"functions", "clock", "collaboration", "mcp__evaluation", "multi_agent_v1"})
 FIXTURE_TOOLS = frozenset({"moviepilot_api", "read_skill", "read_tool_result"})
 
 
@@ -42,7 +42,9 @@ def allowed_tool(name: str) -> bool:
     normalized = name.removeprefix("functions.").replace(".", "__")
     return (normalized in NATIVE_CONTROL_TOOLS
             or normalized in {f"collaboration__{tool}" for tool in NATIVE_COLLABORATION_TOOLS}
-            or normalized in {f"mcp__evaluation__{tool}" for tool in FIXTURE_TOOLS})
+            or normalized in {f"mcp__evaluation__{tool}" for tool in FIXTURE_TOOLS}
+            or (normalized.startswith("multi_agent_v1__")
+                and normalized.removeprefix("multi_agent_v1__") in NATIVE_CONTROL_TOOLS))
 
 
 def project_tools(tools: Any, prefix: str = "") -> tuple[list[dict[str, Any]], list[str], list[str]]:
@@ -65,10 +67,10 @@ def project_tools(tools: Any, prefix: str = "") -> tuple[list[dict[str, Any]], l
         if tool["type"] == "mcp" or (normalized.startswith("mcp__") and not (
             normalized == "mcp__evaluation" or normalized.startswith("mcp__evaluation__")
         )):
-            raise ValueError("评测目录包含外部 MCP")
+            raise ValueError(f"评测目录包含外部 MCP：{qualified}")
         if tool["type"] == "namespace":
             if qualified not in KNOWN_NAMESPACES:
-                raise ValueError("评测目录包含未知命名空间")
+                raise ValueError(f"评测目录包含未知命名空间：{qualified}")
             if "tools" not in tool:
                 raise ValueError("命名空间没有工具目录")
             children, kept, dropped = project_tools(tool["tools"], qualified)
@@ -232,9 +234,9 @@ def _validate_search_output(payload: dict[str, Any]) -> None:
             or not isinstance(payload.get("call_id"), str) or not payload["call_id"]):
         raise ValueError("原生工具搜索结果边界无效")
     _, retained, removed = project_tools(payload.get("tools"))
-    fixture_names = {f"mcp__evaluation__{tool}" for tool in FIXTURE_TOOLS}
-    if removed or any(name.removeprefix("functions.").replace(".", "__") not in fixture_names for name in retained):
-        raise ValueError("搜索结果包含评测目录以外的定义")
+    if removed or any(not allowed_tool(name) for name in retained):
+        names = ", ".join(removed[:8]) or ", ".join(retained[:8])
+        raise ValueError(f"搜索结果包含评测目录以外的定义：{names}")
 
 
 def _reject_unsafe_calls(payload: Any, *, partial: bool = False) -> None:
@@ -393,7 +395,12 @@ class EvaluationModelProxy:
                                                 "length": len(value) if isinstance(value, (str, list, dict)) else None}
                                           for key, value in payload.items()},
                   "completed": False, "usage": None, "response_model": None, "error_type": None}
-        payload["max_output_tokens"] = min(tokens, self.settings.max_output_tokens)
+        if self.settings.auth_mode == "codex_oauth":
+            # ChatGPT Codex Responses 不接受 max_output_tokens；原生 Codex
+            # 客户端本来也不发送该字段，调用预算由代理计数和超时控制。
+            payload.pop("max_output_tokens", None)
+        else:
+            payload["max_output_tokens"] = min(tokens, self.settings.max_output_tokens)
         return payload, record
 
     async def _respond(self, request: Request) -> Response:
@@ -415,8 +422,12 @@ class EvaluationModelProxy:
             parsed = json.loads(body)
             payload, record = self._validate_payload(parsed)
         except (ValueError, TypeError, RecursionError) as error:
-            self._rejected_requests.append({"error_type": type(error).__name__, "input_blocks": _input_metadata(parsed)})
-            return self._error("Invalid evaluation model request")
+            # 校验异常来自本文件的固定合同文本，可安全反馈给模型以便纠正
+            # 输入；请求正文、密钥和供应商响应仍不会回显。
+            message = str(error) or "请求字段不符合评测合同"
+            self._rejected_requests.append({"error_type": type(error).__name__, "message": message,
+                                             "input_blocks": _input_metadata(parsed)})
+            return self._error(f"Invalid evaluation model request: {message}")
         if self.probe_only:
             self.requests.append(record)
             return self._error("Evaluation probe complete; no model request was forwarded")
@@ -426,9 +437,14 @@ class EvaluationModelProxy:
         record["forwarded"] = True
         self.requests.append(record)
         try:
+            headers = {"Authorization": f"Bearer {self.settings.api_key}", "Content-Type": "application/json"}
+            if self.settings.auth_mode == "codex_oauth":
+                headers["originator"] = "moviepilot"
+                if self.settings.account_id:
+                    headers["ChatGPT-Account-Id"] = self.settings.account_id
             upstream = await self._client.send(self._client.build_request(
                 "POST", f"{self.settings.base_url.rstrip('/')}/responses", json=payload,
-                headers={"Authorization": f"Bearer {self.settings.api_key}", "Content-Type": "application/json"},
+                headers=headers,
             ), stream=True)
         except httpx.HTTPError as error:
             record["error_type"] = type(error).__name__

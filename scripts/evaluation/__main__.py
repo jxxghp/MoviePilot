@@ -64,12 +64,16 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--live", action="store_true", help="显式调用真实模型，业务只进入隔离假世界")
     mode.add_argument("--native", action="store_true", help="用原生 Codex CLI 操作同一假世界并调用真实模型")
     mode.add_argument("--native-probe", action="store_true", help="核对原生 Codex 配置和工具目录，不调用真实模型")
+    mode.add_argument("--compare", nargs=2, type=Path, metavar=("MOVIEPILOT_REPORT", "CODEX_REPORT"),
+                      help="严格比较同场景的 MoviePilot live 与 Codex native 报告")
     parser.add_argument("--codex-executable", default="codex", help="原生模式使用的 Codex CLI 可执行文件")
     parser.add_argument("--scenario", choices=[item.scenario_id for item in list_scenarios()])
     parser.add_argument("--output", type=Path, help="可选 JSON 报告路径")
     parser.add_argument("--codex-config", type=Path, default=Path.home() / ".codex" / "config.toml")
     parser.add_argument("--model", help="真实评测的模型名称，默认沿用显式 Codex provider 配置")
     parser.add_argument("--reasoning-effort", help="真实评测推理预算，默认沿用配置")
+    parser.add_argument("--use-codex-auth", action="store_true",
+                        help="显式使用本机 Codex OAuth 作为 MoviePilot/native 配对评测凭据")
     parser.add_argument("--max-model-calls", type=int, default=12)
     parser.add_argument("--max-output-tokens", type=int, default=8192)
     parser.add_argument("--timeout-seconds", type=int, default=180)
@@ -77,6 +81,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.list:
         print(json.dumps([{"id": item.scenario_id, "task": item.model_input()} for item in list_scenarios()], ensure_ascii=False, indent=2))
         return 0
+    if args.compare:
+        try:
+            from scripts.evaluation.compare import compare_report_files
+
+            result = compare_report_files(*args.compare)
+        except (OSError, UnicodeError, ValueError, TypeError, RuntimeError) as error:
+            parser.error(str(error))
+        rendered = json.dumps(result, ensure_ascii=False, indent=2)
+        if args.output is not None:
+            args.output.write_text(rendered + "\n", encoding="utf-8")
+        print(rendered)
+        return 0 if result["pair_valid"] else 1
     if args.scenario is None:
         parser.error("评测需要 --scenario")
     try:
@@ -86,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
             settings = load_codex_model_settings(
                 args.codex_config, model=args.model, reasoning_effort=args.reasoning_effort,
                 max_model_calls=args.max_model_calls, max_output_tokens=args.max_output_tokens,
-                timeout_seconds=args.timeout_seconds,
+                timeout_seconds=args.timeout_seconds, probe_only=args.native_probe,
+                use_codex_auth=args.use_codex_auth,
             )
             if args.live:
                 from scripts.evaluation.live import run_live
