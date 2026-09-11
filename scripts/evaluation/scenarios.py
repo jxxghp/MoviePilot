@@ -32,6 +32,8 @@ class Scenario:
         """提供完整已知输入，但不把场景代号及隐藏故障布置传给模型。"""
         if self.kind == "command":
             return f"{self.task}\n\n命令：{self.command}"
+        if self.kind == "terminal":
+            return f"{self.task}\n\n命令：{self.command}"
         if self.kind == "browser":
             return f"{self.task}\n\n页面地址：{self.browser_url}"
         return (
@@ -103,6 +105,25 @@ _SCENARIOS = (
         infohash="",
         kind="browser",
         browser_url="__EVALUATION_BROWSER_URL__",
+    ),
+    Scenario(
+        scenario_id="terminal_session",
+        task=(
+            "请使用后台终端会话运行给定命令，并按会话状态完成一次交互：先启动命令并读取 READY，"
+            "再向同一 session_id 写入 MOVIEPILOT_TERMINAL_OK 加换行，最后读取或等待到命令退出。"
+            "启动时使用 pipe 模式（use_pty=false），不要使用 action=run，也不要执行其他命令。"
+            "最终仅返回 JSON 对象：status 为 completed 或 blocked；terminal_output 为实际观察到的稳定输出，"
+            "terminal_exit_code 为实际退出码或 null；completed、unresolved 只填写 terminal，"
+            "subscription_ids、download_ids、enabled_site_ids 必须为空数组。"
+            "没有完整确认 READY、回复行和退出码时，将 terminal 放入 unresolved，不要编造结果。"
+        ),
+        media_source="",
+        media_id="",
+        title="",
+        magnet="",
+        infohash="",
+        kind="terminal",
+        command="printf 'READY\\n'; IFS= read -r reply; printf 'REPLY=%s\\n' \"$reply\"",
     ),
 )
 

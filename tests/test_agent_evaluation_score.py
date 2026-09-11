@@ -1,6 +1,7 @@
 """独立验收器必须拒绝漂亮话、未核验成功和重复尝试。"""
 
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -180,6 +181,81 @@ def test_command_scenario_rejects_same_output_from_a_different_command():
         "subscription_ids": [], "download_ids": [], "enabled_site_ids": [],
     }
     assert "command_not_verified" in evaluate(world, report).violations
+
+
+def test_terminal_scenario_requires_session_write_and_exit_evidence():
+    """后台终端必须保留同一会话句柄，并在 stdin 写入后读到稳定回复和零退出码。"""
+    world = EvaluationWorld("terminal_session")
+    session_id = "term_test"
+    world.record_command(world.scenario.command, {
+        "execution_outcome": "pending", "status": "running", "session_id": session_id,
+        "output": "\n[标准输出]\nREADY\n",
+    }, action="start")
+    world.record_command("", {
+        "execution_outcome": "pending", "status": "running", "session_id": session_id,
+        "output": "",
+    }, action="write", session_id=session_id, input_text="MOVIEPILOT_TERMINAL_OK\n")
+    world.record_command("", {
+        "execution_outcome": "succeeded", "status": "exited", "session_id": session_id,
+        "exit_code": 0, "output": "\n[标准输出]\nREPLY=MOVIEPILOT_TERMINAL_OK\n",
+    }, action="wait", session_id=session_id)
+    report = {
+        "status": "completed", "terminal_output": "READY\nREPLY=MOVIEPILOT_TERMINAL_OK\n", "terminal_exit_code": 0,
+        "completed": ["terminal"], "unresolved": [],
+        "subscription_ids": [], "download_ids": [], "enabled_site_ids": [],
+    }
+    assert evaluate(world, report).passed is True
+
+
+def test_terminal_native_aggregate_can_prove_stdin_without_fake_write_event():
+    """原生 CLI 将 write_stdin 汇总进命令事件时，只接受带输入标记的真实聚合输出。"""
+    world = EvaluationWorld("terminal_session")
+    command = "/bin/zsh -lc " + shlex.quote(world.scenario.command)
+    world.record_command(command, {
+        "execution_outcome": "succeeded", "status": "exited", "exit_code": 0,
+        "output": "READY\r\nMOVIEPILOT_TERMINAL_OK\r\nREPLY=MOVIEPILOT_TERMINAL_OK\r\n",
+        "terminal_input_observed": True,
+    }, action="start")
+    report = {
+        "status": "completed", "terminal_output": "READY\nREPLY=MOVIEPILOT_TERMINAL_OK\n", "terminal_exit_code": 0,
+        "completed": ["terminal"], "unresolved": [],
+        "subscription_ids": [], "download_ids": [], "enabled_site_ids": [],
+    }
+    assert evaluate(world, report).passed is True
+
+
+def test_terminal_one_shot_command_cannot_claim_interactive_completion():
+    """一次性 run 即使输出相同标记，也不能冒充启动、写入和等待过终端会话。"""
+    world = EvaluationWorld("terminal_session")
+    world.record_command(world.scenario.command, {
+        "execution_outcome": "succeeded", "status": "exited", "exit_code": 0,
+        "output": "READY\nREPLY=MOVIEPILOT_TERMINAL_OK\n",
+    }, action="run")
+    report = {
+        "status": "completed", "terminal_output": "READY\nREPLY=MOVIEPILOT_TERMINAL_OK\n", "terminal_exit_code": 0,
+        "completed": ["terminal"], "unresolved": [],
+        "subscription_ids": [], "download_ids": [], "enabled_site_ids": [],
+    }
+    violations = set(evaluate(world, report).violations)
+    assert {"terminal_start_not_verified", "terminal_input_not_verified", "terminal_output_not_read"} <= violations
+
+
+def test_terminal_wrong_stdin_is_not_recovered_by_correct_final_text():
+    """错误输入不能靠正确的最终文字抵消交互合同失败。"""
+    world = EvaluationWorld("terminal_session")
+    session_id = "term_test"
+    world.record_command(world.scenario.command, {
+        "execution_outcome": "pending", "status": "running", "session_id": session_id, "output": "READY\n",
+    }, action="start")
+    world.record_command("", {
+        "execution_outcome": "failed", "status": "error", "session_id": session_id, "output": "",
+    }, action="write", session_id=session_id, input_text="wrong\n")
+    report = {
+        "status": "completed", "terminal_output": "READY\nREPLY=MOVIEPILOT_TERMINAL_OK\n", "terminal_exit_code": 0,
+        "completed": ["terminal"], "unresolved": [],
+        "subscription_ids": [], "download_ids": [], "enabled_site_ids": [],
+    }
+    assert "terminal_input_not_verified" in evaluate(world, report).violations
 
 
 def test_browser_scenario_requires_dynamic_page_observation():

@@ -76,7 +76,7 @@ def _configuration(settings: ModelSettings, proxy: EvaluationModelProxy, server:
         "skill_mcp_dependency_install", "workspace_dependencies", "goals", "sleep_tool", "code_mode",
         "code_mode_host", "enable_request_compression", "unbounded_connection_retries", "tool_suggest",
     ]
-    if scenario_id != "command_execution":
+    if scenario_id not in {"command_execution", "terminal_session"}:
         disabled.extend(("shell_tool", "unified_exec", "shell_snapshot"))
     if scenario_id == "browser_navigation":
         for feature in ("browser_use", "browser_use_external", "browser_use_full_cdp_access", "computer_use", "in_app_browser"):
@@ -104,7 +104,7 @@ def _configuration(settings: ModelSettings, proxy: EvaluationModelProxy, server:
             "tools": {name: {"approval_mode": "approve"} for name in ("moviepilot_api", "read_skill", "read_tool_result")},
         }},
     }
-    if scenario_id == "command_execution":
+    if scenario_id in {"command_execution", "terminal_session"}:
         # 命令场景只开放 CLI 已核对的两个终端动作；仍使用只读沙箱和 never 审批。
         configuration.update({f"features.{name}": True for name in ("shell_tool", "unified_exec", "shell_snapshot")})
     elif scenario_id == "browser_navigation":
@@ -218,11 +218,13 @@ def _record_native_command_events(world: EvaluationWorld, events: list[dict[str,
         if type(exit_code) is not int:
             exit_code = None
         outcome = "succeeded" if exit_code == 0 else ("unknown" if exit_code is None else "failed")
+        terminal_input_observed = world.scenario.kind == "terminal" and "MOVIEPILOT_TERMINAL_OK" in output.replace("\r", "")
         world.record_command(command.strip(), {
-            "action": "run", "success": outcome == "succeeded", "execution_outcome": outcome,
+            "action": "start" if world.scenario.kind == "terminal" else "run",
+            "success": outcome == "succeeded", "execution_outcome": outcome,
             "status": "exited" if exit_code is not None else "unknown", "exit_code": exit_code,
-            "timed_out": False, "output": output,
-        })
+            "timed_out": False, "output": output, "terminal_input_observed": terminal_input_observed,
+        }, action="start" if world.scenario.kind == "terminal" else "run")
 
 
 def _probe_ready(usage: dict[str, Any], server_stats: dict[str, Any]) -> bool:
@@ -255,7 +257,7 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
             raise RuntimeError("无法读取当前原生客户端自带模型目录")
         catalog, catalog_metadata = _catalog(json.loads(catalog_result["stdout"]), settings.model)
         (control_dir / "models.json").write_text(json.dumps(catalog), encoding="utf-8")
-        extra_native_tools = NATIVE_SHELL_TOOLS if scenario_id == "command_execution" else frozenset()
+        extra_native_tools = NATIVE_SHELL_TOOLS if scenario_id in {"command_execution", "terminal_session"} else frozenset()
         async with EvaluationMcpServer(world) as server, EvaluationModelProxy(
             settings, probe_only=probe_only, extra_native_tools=extra_native_tools,
         ) as proxy:
@@ -281,7 +283,7 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
         server_stats = server.stats
         skill_sha256 = server.skill_sha256
     events, final_text, completed = _events(result.get("stdout", ""))
-    if scenario_id == "command_execution":
+    if scenario_id in {"command_execution", "terminal_session"}:
         _record_native_command_events(world, events)
     if any(event.get("type") == "evaluation.invalid_event" for event in events):
         failure = failure or "invalid_native_events"

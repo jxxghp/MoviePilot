@@ -128,17 +128,32 @@ class EvaluationWorld:
         with self._lock:
             return deepcopy(self._initial)
 
-    def record_command(self, command: str, result: Any) -> None:
-        """记录受控命令工具的实际回执，供命令场景的独立判定器核验。"""
+    def record_command(
+        self,
+        command: str,
+        result: Any,
+        *,
+        action: str = "run",
+        session_id: Optional[str] = None,
+        input_text: Optional[str] = None,
+    ) -> None:
+        """记录命令或终端会话的实际回执，供独立判定器核验动作顺序与输入证据。"""
         with self._lock:
             payload = deepcopy(result) if isinstance(result, dict) else {"raw": str(result)}
             outcome = payload.get("execution_outcome") if isinstance(payload, dict) else None
-            if outcome not in {"succeeded", "failed", "unknown"}:
+            if outcome not in {"succeeded", "failed", "unknown", "pending"}:
                 outcome = "failed"
+            request: dict[str, Any] = {"action": action}
+            if command:
+                request["command"] = command
+            if session_id:
+                request["session_id"] = session_id
+            if input_text is not None:
+                request["input_text"] = input_text
             self._ledger.append({
                 "sequence": len(self._ledger) + 1,
                 "operation_id": "execute_command",
-                "request": {"command": command},
+                "request": request,
                 "outcome": outcome,
                 "effects": [],
                 "observations": [{"kind": "command", "record": payload}],

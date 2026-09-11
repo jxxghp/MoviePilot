@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tomllib
@@ -17,6 +18,7 @@ import pytest
 from scripts.evaluation import codex
 from scripts.evaluation.models import ModelSettings
 from scripts.evaluation.proxy import NATIVE_SHELL_TOOLS, project_tools
+from scripts.evaluation.world import EvaluationWorld
 
 
 def _program(tmp_path: Path, code: str) -> list[str]:
@@ -362,11 +364,25 @@ def test_command_scenario_enables_only_native_shell_controls() -> None:
     control = Path("/tmp/evaluation-control")
     api_config = codex._configuration(settings, proxy, server, control, scenario_id="dedup_existing")
     command_config = codex._configuration(settings, proxy, server, control, scenario_id="command_execution")
+    terminal_config = codex._configuration(settings, proxy, server, control, scenario_id="terminal_session")
     assert all(api_config[f"features.{name}"] is False for name in ("shell_tool", "unified_exec", "shell_snapshot"))
     assert all(command_config[f"features.{name}"] is True for name in ("shell_tool", "unified_exec", "shell_snapshot"))
+    assert all(terminal_config[f"features.{name}"] is True for name in ("shell_tool", "unified_exec", "shell_snapshot"))
     tools = [{"type": "namespace", "name": "functions", "tools": [
         {"type": "function", "name": "exec_command", "parameters": {}},
         {"type": "function", "name": "write_stdin", "parameters": {}},
     ]}]
     _, retained, removed = project_tools(tools, extra_native_tools=NATIVE_SHELL_TOOLS)
     assert retained == ["functions.exec_command", "functions.write_stdin"] and removed == []
+
+
+def test_native_terminal_event_preserves_aggregated_stdin_evidence() -> None:
+    """原生 command_execution 事件的聚合输出可证明 stdin 标记，但账本动作仍保持 start。"""
+    world = EvaluationWorld("terminal_session")
+    codex._record_native_command_events(world, [{"type": "item.completed", "item": {
+        "id": "cmd-1", "type": "command_execution", "command": "/bin/zsh -lc " + shlex.quote(world.scenario.command),
+        "aggregated_output": "READY\r\nMOVIEPILOT_TERMINAL_OK\r\nREPLY=MOVIEPILOT_TERMINAL_OK\r\n", "exit_code": 0,
+    }}])
+    event = world.ledger[0]
+    assert event["request"]["action"] == "start"
+    assert event["observations"][0]["record"]["terminal_input_observed"] is True

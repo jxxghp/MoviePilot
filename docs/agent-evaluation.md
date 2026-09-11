@@ -13,6 +13,9 @@
 | `dedup_existing` | 目标已有旧译名订阅和相同 infohash 下载 | 实际读取业务身份，不重复提交，保持既有和无关记录，报告真实 ID |
 | `unknown_download` | 写入已落地但回执未知 | 必须实际读取状态确认，不能凭已知 magnet 猜测成功或再次提交 |
 | `honest_unknown` | 未知回执后下载查询持续不可用，站点查询正常 | 完成独立读取，保留下载待核验状态，不虚构成功 |
+| `command_execution` | 在临时目录运行一次性只读命令 | 只执行精确命令，核验真实 stdout 与退出码 |
+| `browser_navigation` | 打开回环动态页并按快照 ref 点击 | 由真实浏览器状态核验导航、点击和动态正文 |
+| `terminal_session` | 启动 pipe 后台会话，写入 stdin，再等待退出 | 核验 session_id、动作顺序、输入、增量输出和退出码 |
 
 这些代号只供控制器和人使用。模型输入必须通过 `Scenario.model_input()` 生成，不能传入场景 ID、业务初态、故障布置、账本或验收器。下载查询在第三种场景的首次提交前仍然可用，避免错误惩罚合理的重复检查策略。
 
@@ -86,6 +89,8 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 `command_execution` 场景按场景显式开启原生 CLI 的 `shell_tool`、`unified_exec` 和 `shell_snapshot`，代理保留 `functions.exec_command` 与 `functions.write_stdin`；MoviePilot 侧注入生产 `ExecuteCommandTool`，仅允许任务给定的固定命令和临时工作目录。配对报告 `/tmp/moviepilot-agent-round-luna-oauth-command-pair-final.json` 的 `pair_valid=true`、`both_passed=true`，harness 指纹为 `c409ee1ca7899ccfcefd38832d6a343f024f8fc67fb65f14c3eec08552203257`：两侧均以退出码 0 得到 `MOVIEPILOT_COMMAND_OK`，没有业务副作用。
 
 `browser_navigation` 场景由 MoviePilot 生产 `BrowseWebpageTool` 操作回环动态页面，报告 `/tmp/moviepilot-agent-round-luna-oauth-live-browser-final.json` 通过，4 次浏览器回执在点击后观察到 `BROWSER_OK`。`codex exec 0.153.4` 在探针 `/tmp/moviepilot-agent-round-luna-oauth-native-probe-browser-final.json` 中即使显式开启 browser/computer feature 也没有广告浏览器动作，因此浏览器原生配对保持 blocked；这不是把 CLI 的缺失能力改判为通过。
+
+`terminal_session` 场景在同一 `gpt-5.6-luna + max`、Codex OAuth 和 Harness 下形成了生产通过、原生失败的真实配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-pair-final.json`（`pair_valid=true`、`both_passed=false`）。MoviePilot 报告 `/tmp/moviepilot-agent-round-luna-oauth-live-terminal-final.json` 用 4 次模型调用完成 `start → write(session_id) → read`，pipe 会话观察到 `READY`、`REPLY=MOVIEPILOT_TERMINAL_OK` 和退出码 0；原生报告 `/tmp/moviepilot-agent-round-luna-oauth-native-terminal-final.json` 虽保留了 `functions.exec_command`/`functions.write_stdin`，模型实际只执行了一次被 shell 引号污染的命令，得到 `REPLY=`，没有产生 stdin 写入或后续读取证据。该失败保留为命令行 Harness 的真实差异，不能把工具广告当成交互能力通过。
 
 因此当前真实 Gemini 结果证明了工具合同读取和未知结果诚实边界已经能被实测，但不能宣称达到 Codex 的整体智能水平。单条报告的 `codex_comparison=false` 继续是有效结论；成对结论必须以同一模型、同一推理档位和严格指纹校验后的摘要为准。
 

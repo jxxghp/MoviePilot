@@ -241,6 +241,57 @@ async def test_evaluation_command_tool_rejects_wrong_input_with_correction(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_evaluation_terminal_tool_runs_pipe_session_and_writes_stdin(tmp_path):
+    """评测终端复用生产会话管理器，必须通过真实 session_id 写入并等待退出。"""
+    world = EvaluationWorld("terminal_session")
+    tool = _EvaluationExecuteCommandTool(world=world, allowed_root=tmp_path, session_id="terminal-test", user_id="1")
+    scope = TerminalScope(user_id="1", task_id="terminal-test", kind="conversation")
+    with bind_terminal_scope(scope):
+        start = json.loads(await tool.run(
+            action="start", command=world.scenario.command, use_pty=False, yield_time_ms=1000,
+        ))
+        assert start["execution_outcome"] == "pending"
+        session_id = start["session_id"]
+        write = json.loads(await tool.run(
+            action="write", session_id=session_id, input_text="MOVIEPILOT_TERMINAL_OK\n", close_stdin=False,
+        ))
+        assert write["session_id"] == session_id
+        waited = write
+        for _ in range(5):
+            if waited["status"] == "exited":
+                break
+            waited = json.loads(await tool.run(
+                action="wait", session_id=session_id, timeout_ms=1000,
+                since_seq=waited["output_until_seq"],
+            ))
+        assert waited["status"] == "exited"
+        assert waited["exit_code"] == 0
+    assert await close_terminal_scope(scope)
+    report = {
+        "status": "completed", "terminal_output": "READY\nREPLY=MOVIEPILOT_TERMINAL_OK\n", "terminal_exit_code": 0,
+        "completed": ["terminal"], "unresolved": [],
+        "subscription_ids": [], "download_ids": [], "enabled_site_ids": [],
+    }
+    assert evaluate(world, report).passed is True
+
+
+@pytest.mark.asyncio
+async def test_evaluation_terminal_tool_returns_correction_for_wrong_stdin(tmp_path):
+    """交互会话的错误 stdin 被结构化拒绝，并明确告知模型正确输入。"""
+    world = EvaluationWorld("terminal_session")
+    tool = _EvaluationExecuteCommandTool(world=world, allowed_root=tmp_path, session_id="terminal-test", user_id="1")
+    scope = TerminalScope(user_id="1", task_id="terminal-test", kind="conversation")
+    with bind_terminal_scope(scope):
+        start = json.loads(await tool.run(action="start", command=world.scenario.command, use_pty=False))
+        result = json.loads(await tool.run(
+            action="write", session_id=start["session_id"], input_text="wrong\n", close_stdin=False,
+        ))
+        assert result["execution_outcome"] == "failed"
+        assert "MOVIEPILOT_TERMINAL_OK" in result["message"]
+    assert await close_terminal_scope(scope)
+
+
+@pytest.mark.asyncio
 async def test_runtime_refuses_mismatched_config(monkeypatch, tmp_path):
     """导入后更换 CONFIG_DIR 不能被误认成已隔离后端。"""
     monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
