@@ -22,7 +22,7 @@ Google 的 OpenAI-compatible 层会丢失 Gemini 3 工具回复中的 `thought_s
 | C1.3 终端任务作用域 | 已完成 | 终端归属由宿主对象身份决定；定时运行、会话、子任务和内部工具管理器隔离；封口先于清理，排队或运行中的命令都不会在任务结束后迟到启动 |
 | S2.3 运行中消息排队与 WebAgent 输入 | 已完成本轮实现并修复丢消息、时序错位和 continuation 状态不刷新的遗漏 | 运行中仍可提交新消息；消息按会话原子入队，在下一次模型调用边界注入真实 `HumanMessage`；SSE 报告 queued/applied，稳定 `steering_message_id` 贯穿展示快照、前端本地状态和恢复合并；应用点收口当前助手并创建 continuation 助手，用户气泡落在真实事件边界；工具按 `tool_id` 报告 running/done/error；停止后不再派发后续工具 |
 | C1.5 长上下文压缩与任务约束保留 | 同条件配对已通过 | 真实压缩前后预算约 69.5K → 26.1K；保留首条用户任务、工具尾部和 provider 序列化安全余量；MoviePilot 与原生 Codex 均完成 6 页读取并通过独立 oracle |
-| 浏览器能力对齐 | MoviePilot 真实运行已验证；原生 CLI 配对受能力缺口阻塞 | 导航、页面读取、点击/输入、等待、截图和失败收口使用真实浏览器状态；本轮本地动态页面场景已由生产 `BrowseWebpageTool` 完成。`codex exec 0.153.4` 即使显式开启 browser/computer feature 也未广告浏览器工具，保留为原生 harness 能力缺口，不能伪造配对 |
+| 浏览器能力对齐 | MoviePilot 真实运行已验证；原生 CLI 配对受能力缺口阻塞 | 导航、页面读取、点击/输入、等待、截图和失败收口使用真实浏览器状态；本轮本地动态页面场景已由生产 `BrowseWebpageTool` 完成。`codex features list` 虽显示 `browser_use` 为 stable，但真实受控 `codex exec 0.153.4` 请求仍只保留计划、工具搜索和评测 MCP；浏览器场景 12 次模型调用后没有产生浏览器账本事件并耗尽预算，feature flag 不能替代原生 browser plugin/host，保留为 Harness 能力缺口，不能伪造配对 |
 | S3.1 通用子代理 | 三轮 held-out 配对通过，仍需终端分享/取消边界收益数据 | 主 Agent 只暴露并派发 `general-purpose`；旧的专用画像已删除，不保留兼容入口。held-out 场景已在三轮独立运行中验证两个并行只读子任务、授权、工具角色和零副作用；仍需终端分享/取消边界的收益数据 |
 
 ## 每轮硬门禁
