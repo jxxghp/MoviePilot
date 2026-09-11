@@ -1480,6 +1480,7 @@ def test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream():
 
     assert '"status": "queued"' in second_body
     assert '"status": "applied"' in first_body
+    assert '"assistant_message_id":' in first_body
     assert first_body.count('data: {"type": "start"') == 1
     assert first_body.count('data: {"type": "done"') == 1
     assert len(instances) == 1

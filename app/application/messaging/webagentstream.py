@@ -290,7 +290,13 @@ def _build_web_agent_event_generator(
         disconnected = False
         terminal_sent = False
         try:
-            yield {"type": "start", "session_id": session_id}
+            yield {
+                "type": "start",
+                "session_id": session_id,
+                # 让前端把本地占位助手段绑定到服务端展示段，后续 steering
+                # 应用事件即可按稳定 ID 定位真实消息边界。
+                "assistant_message_id": assistant_message_ref["message"].get("id"),
+            }
             while not runtime_stop_state.is_system_stopped:
                 if await is_disconnected():
                     disconnected = True
