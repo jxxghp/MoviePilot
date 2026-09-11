@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8530,
-  "edge_sha256": "d79e9219f7e6ce33d74cd5aab00a917988ed0273ad6e1d0e2e8e8bb46309b8b3",
+  "edge_count": 8535,
+  "edge_sha256": "001d6178d5320f297ec9595a9af7eebfa3168ae8ac4ad68f27ffe930788ded51",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2457,6 +2457,7 @@
     "app.api.endpoints.media -> app.application.classification",
     "app.api.endpoints.media -> app.application.classification.runtime",
     "app.api.endpoints.media -> app.application.configuration",
+    "app.api.endpoints.media -> app.application.module",
     "app.api.endpoints.media -> app.application.plugin",
     "app.api.endpoints.media -> app.application.plugin.runtime",
     "app.api.endpoints.media -> app.chain",
@@ -2787,6 +2788,7 @@
     "app.api.endpoints.storage -> app.foundation",
     "app.api.endpoints.storage -> app.foundation.text",
     "app.api.endpoints.storage -> app.runtime",
+    "app.api.endpoints.storage -> app.runtime.localization",
     "app.api.endpoints.storage -> app.runtime.progress",
     "app.api.endpoints.storage -> app.schemas",
     "app.api.endpoints.storage -> app.schemas.common",
@@ -2906,6 +2908,9 @@
     "app.api.endpoints.system -> app.foundation.environment",
     "app.api.endpoints.system -> app.runtime",
     "app.api.endpoints.system -> app.runtime.execution",
+    "app.api.endpoints.system -> app.runtime.extensions",
+    "app.api.endpoints.system -> app.runtime.extensions.module",
+    "app.api.endpoints.system -> app.runtime.extensions.module.adapter",
     "app.api.endpoints.system -> app.runtime.localization",
     "app.api.endpoints.system -> app.runtime.log",
     "app.api.endpoints.system -> app.runtime.progress",
