@@ -14,6 +14,7 @@ _SCALAR_ADAPTERS = {
     "string": TypeAdapter(str),
 }
 _MISSING = object()
+_CONTRACT_DESCRIPTION_MAX_CHARS = 180
 
 
 def _resolve_schema(schema: dict[str, Any], definitions: dict[str, Any]) -> dict[str, Any]:
@@ -30,6 +31,105 @@ def _resolve_schema(schema: dict[str, Any], definitions: dict[str, Any]) -> dict
             raise ValueError("API 参数合同引用缺失")
         schema = {**target, **{key: value for key, value in schema.items() if key != "$ref"}}
     return schema
+
+
+def _contract_description(value: Any) -> str | None:
+    """为错误回执保留有界字段说明，避免把原始请求值带回模型。"""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = " ".join(value.split())
+    if len(text) <= _CONTRACT_DESCRIPTION_MAX_CHARS:
+        return text
+    return text[: _CONTRACT_DESCRIPTION_MAX_CHARS - 1].rstrip() + "…"
+
+
+def _contract_node(
+    schema: dict[str, Any],
+    definitions: dict[str, Any],
+    *,
+    depth: int = 0,
+) -> dict[str, Any]:
+    """把单个 JSON Schema 节点压缩成可直接纠错的输入提示。"""
+    try:
+        resolved = _resolve_schema(schema, definitions)
+    except ValueError:
+        return {"type": "unknown"}
+
+    result: dict[str, Any] = {}
+    description = _contract_description(resolved.get("description"))
+    if description:
+        result["description"] = description
+    if "const" in resolved:
+        result["const"] = resolved["const"]
+    if isinstance(resolved.get("enum"), list):
+        result["enum"] = deepcopy(resolved["enum"])
+    if "default" in resolved:
+        result["default"] = deepcopy(resolved["default"])
+    if isinstance(resolved.get("type"), str):
+        result["type"] = resolved["type"]
+    for key in ("minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength"):
+        if key in resolved:
+            result[key] = resolved[key]
+
+    alternatives = resolved.get("oneOf", resolved.get("anyOf"))
+    if isinstance(alternatives, list):
+        result["one_of"] = [
+            _contract_node(item, definitions, depth=depth + 1)
+            for item in alternatives
+            if isinstance(item, dict)
+        ]
+
+    properties = resolved.get("properties")
+    if isinstance(properties, dict):
+        required = resolved.get("required")
+        if isinstance(required, list) and required:
+            result["required"] = [item for item in required if isinstance(item, str)]
+        if depth < 4:
+            result["fields"] = {
+                name: _contract_node(value, definitions, depth=depth + 1)
+                for name, value in properties.items()
+                if isinstance(name, str) and isinstance(value, dict)
+            }
+        else:
+            result["fields"] = sorted(name for name in properties if isinstance(name, str))
+        if resolved.get("additionalProperties") is False:
+            result["additional_properties"] = False
+    elif isinstance(resolved.get("items"), dict) and depth < 4:
+        result["items"] = _contract_node(resolved["items"], definitions, depth=depth + 1)
+    return result
+
+
+def api_input_contract(operation_id: str, schema: dict[str, Any]) -> dict[str, Any]:
+    """返回一个 operation 的有界输入合同，供调用失败时指导模型纠正参数。"""
+    branch = next(
+        (
+            item
+            for item in schema.get("oneOf", [])
+            if isinstance(item, dict)
+            and item.get("properties", {}).get("operation_id", {}).get("const") == operation_id
+        ),
+        None,
+    )
+    if not isinstance(branch, dict):
+        return {"operation_id": operation_id, "available": False}
+    properties = branch.get("properties", {})
+    contract: dict[str, Any] = {
+        "operation_id": operation_id,
+        "allowed_arguments": [
+            name for name in properties if isinstance(name, str) and name != "operation_id"
+        ],
+    }
+    required = branch.get("required")
+    if isinstance(required, list):
+        contract["required_arguments"] = [
+            name for name in required if isinstance(name, str) and name != "operation_id"
+        ]
+    definitions = schema.get("$defs", {})
+    for name in ("path_params", "query", "body"):
+        node = properties.get(name)
+        if isinstance(node, dict):
+            contract[name] = _contract_node(node, definitions)
+    return contract
 
 
 def _value_type(value: Any) -> str:

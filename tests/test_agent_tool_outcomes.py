@@ -180,6 +180,19 @@ def _api_tool(request: AsyncMock) -> MoviePilotApiTool:
     return tool
 
 
+def _valid_api_arguments(operation: str) -> dict:
+    """为传输层测试提供每个 operation 的最小合法输入。"""
+    return {
+        "download.add": {"body": {"torrent_in": {
+            "title": "Test Movie", "enclosure": "https://example.invalid/test.torrent",
+        }}},
+        "subscription.update": {"body": {"id": 1}},
+        "system.restart": {},
+        "subscription.list": {},
+        "storage.list": {"body": {"path": "/"}},
+    }[operation]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("operation", "expected"), [
     ("download.add", ExecutionOutcome.UNKNOWN),
@@ -192,7 +205,10 @@ async def test_api_transport_failure_preserves_unknown_mutations(monkeypatch, op
     """API 传输异常对写操作保留未知结果，包含副作用 GET 及只读 POST 的策略区分。"""
     monkeypatch.setattr("app.agent.api.executor.create_access_token", lambda **_kwargs: "test-token")
     request = AsyncMock(side_effect=httpx2.ReadError("private-api-response-body"))
-    result = await _api_tool(request).run(operation_id=operation)
+    result = await _api_tool(request).run(
+        operation_id=operation,
+        **_valid_api_arguments(operation),
+    )
     assert inspect_tool_result(result) is expected
     assert "private-api-response-body" not in result
     request.assert_awaited_once()
@@ -208,7 +224,10 @@ async def test_api_preflight_validation_and_http_rejection_are_definite_failures
     missing_path = await tool.run(operation_id="subscription.delete")
     assert inspect_tool_result(missing_path) is ExecutionOutcome.FAILED
     request.assert_not_awaited()
-    rejected = await tool.run(operation_id="download.add")
+    rejected = await tool.run(
+        operation_id="download.add",
+        **_valid_api_arguments("download.add"),
+    )
     assert inspect_tool_result(rejected) is ExecutionOutcome.FAILED
     assert json.loads(rejected)["status_code"] == 403
     response.aclose.assert_awaited_once()
@@ -225,7 +244,10 @@ async def test_api_unreadable_response_retains_observed_http_status(monkeypatch,
         raise ValueError("private-response-body")
 
     response = SimpleNamespace(status_code=status_code, headers={}, json=unreadable, aclose=AsyncMock())
-    result = await _api_tool(AsyncMock(return_value=response)).run(operation_id="download.add")
+    result = await _api_tool(AsyncMock(return_value=response)).run(
+        operation_id="download.add",
+        **_valid_api_arguments("download.add"),
+    )
     assert inspect_tool_result(result) is expected
     assert "private-response-body" not in result
     response.aclose.assert_awaited_once()
@@ -283,7 +305,9 @@ async def test_api_submission_annotation_preserves_failure_and_synchronous_workf
     payload = {"success": success, "message": "original", "data": None}
     response = SimpleNamespace(status_code=200, headers={}, json=lambda: payload, aclose=AsyncMock())
     result = await _api_tool(AsyncMock(return_value=response)).run(
-        operation_id=operation, path_params={"workflow_id": 1} if operation == "workflow.run" else {},
+        operation_id=operation,
+        path_params={"workflow_id": 1} if operation == "workflow.run" else {},
+        query={"jobid": "test-job"} if operation == "scheduler.run" else None,
     )
     assert inspect_tool_result(result) is expected
     assert json.loads(result) == payload

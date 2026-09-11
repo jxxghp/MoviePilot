@@ -70,6 +70,56 @@ class _Session:
     initialized: bool = False
 
 
+def _operation_input_contract(schema: dict[str, Any], operation_id: str) -> dict[str, Any]:
+    """压缩一个 operation 的参数字段，保持评测服务不依赖 MoviePilot 运行时。"""
+    branch = next(
+        (
+            item for item in schema.get("oneOf", [])
+            if isinstance(item, dict)
+            and item.get("properties", {}).get("operation_id", {}).get("const") == operation_id
+        ),
+        None,
+    )
+    if not isinstance(branch, dict):
+        return {"operation_id": operation_id, "available": False}
+    properties = branch.get("properties", {})
+    contract: dict[str, Any] = {
+        "operation_id": operation_id,
+        "allowed_arguments": [name for name in properties if name != "operation_id"],
+        "required_arguments": [
+            name for name in branch.get("required", []) if name != "operation_id"
+        ],
+    }
+    for name in ("path_params", "query", "body"):
+        node = properties.get(name)
+        if not isinstance(node, dict):
+            continue
+        shape: dict[str, Any] = {}
+        if isinstance(node.get("type"), str):
+            shape["type"] = node["type"]
+        if isinstance(node.get("required"), list) and node["required"]:
+            shape["required"] = list(node["required"])
+        fields = node.get("properties")
+        if isinstance(fields, dict):
+            shape["fields"] = {}
+            for field, declaration in fields.items():
+                if not isinstance(declaration, dict):
+                    continue
+                field_shape: dict[str, Any] = {}
+                for key in ("type", "enum", "const", "default", "$ref"):
+                    if key in declaration:
+                        field_shape[key] = deepcopy(declaration[key])
+                alternatives = declaration.get("anyOf", declaration.get("oneOf"))
+                if isinstance(alternatives, list):
+                    field_shape["one_of"] = [
+                        {key: deepcopy(option[key]) for key in ("type", "enum", "const") if key in option}
+                        for option in alternatives if isinstance(option, dict)
+                    ]
+                shape["fields"][field] = field_shape
+        contract[name] = shape
+    return contract
+
+
 class _LocalServer(uvicorn.Server):  # type: ignore[misc]  # follow_imports=skip 不展开外部 Server 基类。
     """让控制器拥有服务启停，嵌入运行时不替换进程信号处理器。"""
 
@@ -113,6 +163,7 @@ class EvaluationMcpServer:
         self._results: OrderedDict[str, _StoredResult] = OrderedDict()
         self._skill_root = Path(root_dir) if root_dir is not None else Path(__file__).resolve().parents[2]
         self._skill = self._load_skill(self._skill_root)
+        self._api_contract_schema = self._load_api_contract(self._skill_root)
 
     @property
     def endpoint(self) -> str:
@@ -325,9 +376,9 @@ class EvaluationMcpServer:
         """只公开与 MoviePilot 任务输入等价的工具合同，不注入场景答案。"""
         return [
             {"name": "moviepilot_api", "description": (
-                "Call allowlisted MoviePilot business APIs. Use the domain Skill to select operation_id, parameters, and failure handling. "
-                "For collection counts, use the smallest documented page and read collection.total_count instead of querying the database after item truncation. "
-                "Arbitrary URLs, commands, and authentication endpoints are forbidden."
+                "Call allowlisted MoviePilot business APIs through operation-specific input contracts. "
+                "Load the relevant domain Skill before calling and use operation error feedback to correct inputs. "
+                "Arbitrary URLs, commands, authentication endpoints, headers, and tokens are forbidden."
             ), "inputSchema": deepcopy(API_INPUT_SCHEMA)},
             {"name": "read_skill", "description": "Read the named MoviePilot Skill or one of its listed supporting documents. Available skill: moviepilot-api.", "inputSchema": {
                 "type": "object", "required": ["name"], "additionalProperties": False, "properties": {
@@ -364,6 +415,7 @@ class EvaluationMcpServer:
                 else:
                     self._world_calls += 1
                     result = self._world.execute(**arguments)
+                result = self._attach_input_contract(result, arguments)
             elif name == "read_skill":
                 result = self._read_skill(arguments)
             elif name == "read_tool_result":
@@ -396,6 +448,31 @@ class EvaluationMcpServer:
             str(path.relative_to(skill_path.parent)) for path in skill_path.parent.rglob("*") if path.is_file() and path != skill_path
         ), "truncated": truncated,
             "truncation_message": "SKILL.md exceeds 512 KiB; content contains only the first 512 KiB." if truncated else None}
+
+    @staticmethod
+    def _load_api_contract(root: Path) -> dict[str, Any]:
+        """读取与生产网关相同的 operation schema，供评测错误回执提供纠正提示。"""
+        path = root / "app/agent/policy/resources/api_mcp_schema.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or not isinstance(payload.get("oneOf"), list):
+            raise ValueError("moviepilot_api operation schema 无效")
+        return payload
+
+    def _attach_input_contract(self, result: Any, arguments: dict[str, Any]) -> Any:
+        """为 operation 失败回执附加允许字段和必填字段，不回显错误请求值。"""
+        if not isinstance(result, dict) or result.get("success") is not False:
+            return result
+        operation_id = arguments.get("operation_id")
+        if type(operation_id) is not str:
+            return result
+        payload = dict(result)
+        payload["operation_id"] = operation_id
+        payload["message"] = (
+            f"{operation_id} 调用失败，请按 input_contract 只提交允许字段并补齐 required 字段后重试。"
+            f" 原因：{str(result.get('message', ''))[:240]}"
+        )
+        payload["input_contract"] = _operation_input_contract(self._api_contract_schema, operation_id)
+        return payload
 
     def _prune_results(self) -> None:
         """匹配 MoviePilot 的 15 分钟、8 项、4MiB 会话归档约束。"""

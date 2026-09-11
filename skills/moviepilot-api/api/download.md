@@ -23,8 +23,8 @@ For `download.add`, `torrent_in` is an object whose minimum usable fields are:
 `enclosure` is the direct string magnet or torrent URL; do not wrap it in another
 `url` object. Keep `media_source` and `media_id` as sibling fields beside
 `torrent_in`. Do not use a top-level `url`, `media_info`, or nested `media_info`
-object. Load `api/models.md` when the full optional `TorrentInfo` fields are
-needed.
+object. The complete optional `TorrentInfo` fields are included in this
+category document under **Body Models** when they are needed.
 
 ### `download.artist_collection`
 `POST /api/v1/download/artist-collection`; policy effect: `external_side_effect`.

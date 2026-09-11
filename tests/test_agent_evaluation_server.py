@@ -153,6 +153,24 @@ async def test_skill_supporting_document_uses_read_skill_without_file_tool() -> 
 
 
 @pytest.mark.asyncio
+async def test_invalid_operation_input_returns_operation_contract() -> None:
+    """仿真工具报错时应把当前 operation 的正确输入合同交给模型。"""
+    async with EvaluationMcpServer(EvaluationWorld("dedup_existing")) as server:
+        async with _client(server) as client:
+            result, payload = await _tool(
+                client,
+                "moviepilot_api",
+                {"operation_id": "site.list", "query": {"status": "enabled"}},
+            )
+            assert result["isError"] is True
+            assert payload["operation_id"] == "site.list"
+            assert payload["input_contract"]["query"]["fields"]["status"]["enum"] == [
+                "active", "inactive", "all",
+            ]
+            assert "enabled" not in json.dumps(payload, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
 async def test_world_call_limit_is_global_across_sessions_and_parallel_requests() -> None:
     """并行连接也共享硬调用上限，超限不会继续读取或改变独立世界。"""
     world = EvaluationWorld("dedup_existing")
