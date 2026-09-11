@@ -225,6 +225,8 @@ uv run --locked --no-sync python -m scripts.evaluation --native \
 
 原生循环、计划和协作工具仍由 Codex 执行。当前模型可固定使用 Code Mode，单独关闭 feature 无法改变它；适配器通过 `codex debug models --bundled` 读取当前二进制自带目录，只投影指定模型的 `tool_mode=direct`，保持其余字段、`base_instructions` 和 `model_messages`，记录前后指纹。随后代理限制实际广告目录为计划/协作与 evaluation MCP 工具，兼顾请求中的动态目录，并在每个完整响应事件交给客户端前再次拒绝目录以外的调用。这是明确投影过工具模式与目录的原生 Codex 对照，不代表默认部署的完整产品工具环境。
 
+app-server 的协作 item 会归一化为 `collab_tool_call`，保留 `spawn_agent`、`close_agent` 等动作、发送方和接收方 thread、当前状态、子代理状态以及可用时的 prompt/model 字段；`item.started`、`item.completed`、输出增量和终端输入事件同时保留所属 thread/turn。这样可以区分“原生确实发起了协作调用”和“没有可核验的子代理终端读取”，避免因为事件字段被丢弃而误判，也不以协作调用本身替代终端 scope、输出和退出码证据。
+
 MCP 服务只公开 `moviepilot_api`、完整的 `moviepilot-api` Skill 和有界结果续读；不提前给出场景支持 operation 清单。所有原生客户端与子代理 MCP 会话共享同一个世界及 32 次业务调用预算。服务使用已锁定的 Starlette/uvicorn 实现本评测所需 Streamable HTTP 子集；不作为通用生产 MCP 服务或对外部署入口。
 
 模型代理固定供应商目标，禁止不同模型或不同推理档位静默替换，主调用和子代理共同消耗硬调用预算，HTTP 与 SSE 自动重试为零。报告记录原生 JSONL 事件、退出码、完成事件、独立业务账本、实际目录投影、模型目录/输入指纹、逐请求用量及失败。超时和输出超限保留已有事件并终止进程组；技术失败即使已有正确 JSON 也不会标记整轮通过。`task_passed` 仅为独立 oracle 的业务判断，`passed` 还要求原生运行完整退出。

@@ -339,6 +339,7 @@ def _normalize_app_server_item(item: Any) -> dict[str, Any]:
     normalized_type = {
         "agentMessage": "agent_message",
         "commandExecution": "command_execution",
+        "collabAgentToolCall": "collab_tool_call",
         "fileChange": "file_change",
         "userMessage": "user_message",
     }.get(item_type, item_type if isinstance(item_type, str) else "unknown")
@@ -358,6 +359,39 @@ def _normalize_app_server_item(item: Any) -> dict[str, Any]:
             status=item.get("status"), aggregated_output=item.get("aggregatedOutput"),
             exit_code=item.get("exitCode"), command_actions=item.get("commandActions"),
         )
+    elif normalized_type == "collab_tool_call":
+        # 保留协作调用的可审计合同；如果只留 type/id，无法区分真实派发、取消和等待。
+        collab_tools = {
+            "spawnAgent": "spawn_agent",
+            "sendInput": "send_input",
+            "resumeAgent": "resume_agent",
+            "wait": "wait_agent",
+            "closeAgent": "close_agent",
+            "sendMessage": "send_message",
+            "followupTask": "followup_task",
+            "interruptAgent": "interrupt_agent",
+            "listAgents": "list_agents",
+        }
+        raw_states = item.get("agentsStates")
+        agents_states = {}
+        if isinstance(raw_states, dict):
+            for agent_id, state in raw_states.items():
+                if not isinstance(state, dict):
+                    continue
+                agents_states[str(agent_id)] = {
+                    "status": state.get("status"),
+                    "message": state.get("message"),
+                }
+        result.update(
+            tool=collab_tools.get(item.get("tool"), item.get("tool")),
+            status=item.get("status"),
+            prompt=item.get("prompt"),
+            model=item.get("model"),
+            reasoning_effort=item.get("reasoningEffort"),
+            sender_thread_id=item.get("senderThreadId"),
+            receiver_thread_ids=item.get("receiverThreadIds", []),
+            agents_states=agents_states,
+        )
     return result
 
 
@@ -371,22 +405,29 @@ def _normalize_app_server_notification(method: str, params: Any) -> dict[str, An
         turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
         return {"type": "turn.completed", "turn_id": turn.get("id")}
     if method == "item/started":
-        return {"type": "item.started", "item": _normalize_app_server_item(payload.get("item"))}
+        return {
+            "type": "item.started", "thread_id": payload.get("threadId"),
+            "turn_id": payload.get("turnId"), "item": _normalize_app_server_item(payload.get("item")),
+        }
     if method == "item/completed":
-        return {"type": "item.completed", "item": _normalize_app_server_item(payload.get("item"))}
+        return {
+            "type": "item.completed", "thread_id": payload.get("threadId"),
+            "turn_id": payload.get("turnId"), "item": _normalize_app_server_item(payload.get("item")),
+        }
     if method == "item/agentMessage/delta":
         return {
-            "type": "item.agent_message.delta", "item_id": payload.get("itemId"),
-            "delta": payload.get("delta", ""),
+            "type": "item.agent_message.delta", "thread_id": payload.get("threadId"),
+            "turn_id": payload.get("turnId"), "item_id": payload.get("itemId"), "delta": payload.get("delta", ""),
         }
     if method == "item/commandExecution/outputDelta":
         return {
-            "type": "item.command_execution.output_delta", "item_id": payload.get("itemId"),
-            "delta": payload.get("delta", ""),
+            "type": "item.command_execution.output_delta", "thread_id": payload.get("threadId"),
+            "turn_id": payload.get("turnId"), "item_id": payload.get("itemId"), "delta": payload.get("delta", ""),
         }
     if method == "item/commandExecution/terminalInteraction":
         return {
-            "type": "item.command_execution.terminal_interaction", "item_id": payload.get("itemId"),
+            "type": "item.command_execution.terminal_interaction", "thread_id": payload.get("threadId"),
+            "turn_id": payload.get("turnId"), "item_id": payload.get("itemId"),
             "process_id": payload.get("processId"), "stdin": payload.get("stdin", ""),
         }
     if method == "error":

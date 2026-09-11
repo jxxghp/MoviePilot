@@ -19,6 +19,7 @@ import pytest
 from scripts.evaluation import codex
 from scripts.evaluation.models import ModelSettings
 from scripts.evaluation.proxy import NATIVE_SHELL_TOOLS, project_tools
+from scripts.evaluation.score import _delegation_task_count
 from scripts.evaluation.world import EvaluationWorld
 
 
@@ -58,6 +59,40 @@ def test_invalid_jsonl_preserves_valid_events_without_claiming_completion() -> N
     assert events[-1]["type"] == "evaluation.invalid_event"
     assert len(events[-1]["sha256"]) == 64
     assert "private-broken-event" not in json.dumps(events)
+
+
+def test_normalize_app_server_preserves_collaboration_scope_and_action() -> None:
+    """原生协作事件要保留动作、线程和授权提示，便于独立验收子代理行为。"""
+    item = codex._normalize_app_server_item({
+        "type": "collabAgentToolCall", "id": "collab-1", "tool": "spawnAgent",
+        "status": "inProgress", "prompt": '{"terminal_sessions":[{"session_id":"123","actions":["read"]}]}',
+        "model": "gpt-test", "reasoningEffort": "high", "senderThreadId": "parent",
+        "receiverThreadIds": ["child"], "agentsStates": {
+            "child": {"status": "running", "message": "读取父终端"},
+        },
+    })
+    assert item == {
+        "type": "collab_tool_call", "id": "collab-1", "tool": "spawn_agent", "status": "inProgress",
+        "prompt": '{"terminal_sessions":[{"session_id":"123","actions":["read"]}]}',
+        "model": "gpt-test", "reasoning_effort": "high", "sender_thread_id": "parent",
+        "receiver_thread_ids": ["child"], "agents_states": {
+            "child": {"status": "running", "message": "读取父终端"},
+        },
+    }
+    event = codex._normalize_app_server_notification(
+        "item/started", {"threadId": "parent", "turnId": "turn-1", "item": {
+            "type": "collabAgentToolCall", "id": "collab-1", "tool": "spawnAgent",
+            "status": "inProgress", "agentsStates": {}, "receiverThreadIds": [], "senderThreadId": "parent",
+        }},
+    )
+    assert event == {
+        "type": "item.started", "thread_id": "parent", "turn_id": "turn-1", "item": {
+            "type": "collab_tool_call", "id": "collab-1", "tool": "spawn_agent", "status": "inProgress",
+            "prompt": None, "model": None, "reasoning_effort": None, "sender_thread_id": "parent",
+            "receiver_thread_ids": [], "agents_states": {},
+        },
+    }
+    assert _delegation_task_count([event]) == 1
 
 
 @pytest.mark.asyncio

@@ -59,7 +59,7 @@ uv run --locked --no-sync python -m scripts.evaluation \
 
 - **命令行**：普通一次性命令与后台终端分别支持 pipe/PTY、共享 cwd/shell/login/环境和 UTF-8；输入写入、空写入、EOF、分页、短写、interrupt、kill、超时、取消和进程组收尾都有结构化终态。`command_execution` 与终端场景只在原生 CLI 真实广告 `functions.exec_command`/`functions.write_stdin` 时按场景开启，并把 MoviePilot 生产 `ExecuteCommandTool` 绑定到临时目录；终端场景的原生评测使用 app-server，记录命令输出增量和终端输入事件。生产与原生 PTY 已通过同条件真实配对；原生 pipe 仍因 CLI 在一次性命令后关闭 stdin 而没有输入事件，保持 blocked，不把适配器能力误算成原生 Harness 对齐。适配器将单请求、代理和 app-server 流式空闲时间统一跟随评测墙钟预算，避免较长推理被 Harness 的硬编码超时误判。
 - **浏览器**：工具目录必须明确导航、读取、交互、等待和截图的动作与权限；浏览器会话、页面状态和失败重试由宿主持有，不能由模型字符串冒领。`browser_navigation` 场景使用回环动态页面验证生产工具；原生 CLI 适配器只在本机 Browser plugin、`node_repl` 和 Skill 文件均存在时开启对应目录，并把可移植的 `<plugin root>` 展开为受信绝对路径。真实原生运行已选择 Chrome extension，但回环导航被保存的浏览器权限拒绝，模型按安全规则停止，保持 blocked；权限放开后才能继续形成同场景通过配对。
-- **子代理**：主 Agent 自动选择通用子代理；专用画像只有在 held-out 任务上证明提高成功率、减少调用或降低副作用风险时才保留。子代理不能自行发送消息、执行高影响写操作或继承兄弟任务句柄。
+- **子代理**：主 Agent 自动选择通用子代理；专用画像只有在 held-out 任务上证明提高成功率、减少调用或降低副作用风险时才保留。子代理不能自行发送消息、执行高影响写操作或继承兄弟任务句柄。原生 app-server 评测会保留 `collabAgentToolCall` 的动作、父子 thread、状态和授权提示；这些字段只改善证据可见性，不把缺少真实终端读取回执的原生运行改判为通过。
 - **API Skill 与合同读取**：`skills/moviepilot-api/SKILL.md` 只负责路由索引和工作流；`api/*.md` 各自包含完整操作合同及该类别需要的 Body Models，不再依赖单独的 `api/models.md`。真实 Agent 先用 `read_skill` 得到 supporting-file 清单，再用同一个工具的 `file=api/<category>.md` 参数按需读取类别文档；评测目录必须提供同一条链路，不能只返回文件名而不给模型读取能力。operation 输入错误还要返回该 operation 的允许字段、必填字段和类型约束，帮助模型纠正后重试。
 - **长任务与新消息**：入站消息在任务运行时仍可接受并进入有界队列；应用到下一模型边界时必须保留 tool-call/tool-result 配对和取消语义，不能只把文本拼到系统提示词。WebAgent 将工具开始/完成/失败作为带稳定 `tool_id` 的结构化事件；前端按事件序列维护每个工具状态，queued ACK 只建立排队气泡，后续事件继续归属于当前助手段，直到 applied 事件报告真实模型边界后再创建 continuation，避免“最新工具覆盖全部状态”或把用户消息挪到顶部。
 - **观察证据**：最终答案只能引用宿主记录的工具结果和业务 oracle；“模型说完成”不能替代数据库、下载器、浏览器或进程状态核验。
