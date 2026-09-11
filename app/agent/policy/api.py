@@ -344,6 +344,7 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
         confirmation=_CONFIRM,
         recovery=RecoveryMode.RECONCILE,
     ),
+    _write("site.cookie.set", sensitivity=ResultSensitivity.PRIVATE),
     _write(
         "site.reset",
         effect=ActionEffect.DESTRUCTIVE_WRITE,
@@ -703,6 +704,7 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     "site.auth.options": ApiOperationRoute("GET", "/api/v1/site/auth"),
     "site.authenticate": ApiOperationRoute("POST", "/api/v1/site/auth"),
     "site.cookiecloud.sync": ApiOperationRoute("POST", "/api/v1/site/cookiecloud"),
+    "site.cookie.set": ApiOperationRoute("POST", "/api/v1/site/cookie/{site_id}/set"),
     "site.reset": ApiOperationRoute("POST", "/api/v1/site/reset"),
     "site.priorities.update": ApiOperationRoute("POST", "/api/v1/site/priorities"),
     "site.userdata.refresh": ApiOperationRoute("POST", "/api/v1/site/userdata/{site_id}"),

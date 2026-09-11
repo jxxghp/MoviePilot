@@ -3,23 +3,30 @@
 import json
 from typing import Optional, Type
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+from app.adapters.external.ocr import OcrHelper
+from app.adapters.network.browser import BrowserSessionHelper
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.adapters.network.browser import BrowserSessionHelper
-from app.adapters.external.ocr import OcrHelper
 from app.runtime.log import logger
 
 
 class RecognizeCaptchaInput(BaseModel):
     """识别图形验证码工具的输入参数模型。"""
 
-    image_url: str = Field(
-        ...,
+    image_url: Optional[str] = Field(
+        None,
         description=(
             "Captcha image URL obtained from the browser page, usually an img.src value. "
             "Supports http/https URLs and data:image/...;base64,... URLs."
+        ),
+    )
+    image_data: Optional[bytes] = Field(
+        None,
+        description=(
+            "Raw image bytes already obtained by the caller. Prefer this when the browser "
+            "or another tool provides binary image data; it is sent to OCR without a Base64 conversion."
         ),
     )
     cookie: Optional[str] = Field(
@@ -38,6 +45,13 @@ class RecognizeCaptchaInput(BaseModel):
         description="Allow captcha image URLs on localhost, loopback, private, or link-local addresses.",
     )
 
+    @model_validator(mode="after")
+    def require_image_source(self) -> "RecognizeCaptchaInput":
+        """确保验证码工具至少收到图片地址或原始图片字节。"""
+        if not self.image_url and not self.image_data:
+            raise ValueError("image_url or image_data is required")
+        return self
+
 
 class RecognizeCaptchaTool(MoviePilotTool):
     """
@@ -53,6 +67,7 @@ class RecognizeCaptchaTool(MoviePilotTool):
     description: str = (
         "Recognize a graphic captcha image and return the captcha text. "
         "Use this after browser automation extracts a captcha img.src from the page. "
+        "It also accepts raw image_data bytes and sends them directly to OCR without Base64 conversion. "
         "Pass cookie and user_agent when the image URL requires the current browser session. "
         "Supports http/https image URLs and data:image/...;base64,... URLs. "
         "For safety, localhost and private network URLs are blocked by default unless "
@@ -63,6 +78,9 @@ class RecognizeCaptchaTool(MoviePilotTool):
     def get_tool_message(self, **kwargs) -> Optional[str]:
         """根据验证码图片参数生成友好的提示消息。"""
         image_url = str(kwargs.get("image_url") or "")
+        image_data = kwargs.get("image_data")
+        if image_data:
+            return f"识别图形验证码: raw image ({len(image_data)} bytes)"
         if image_url.lower().startswith("data:image/"):
             return "识别图形验证码: data image"
         return f"识别图形验证码: {image_url}"
@@ -84,21 +102,29 @@ class RecognizeCaptchaTool(MoviePilotTool):
 
     @staticmethod
     def _recognize_captcha_sync(
-        image_url: str,
+        image_url: Optional[str] = None,
         cookie: Optional[str] = None,
         user_agent: Optional[str] = None,
         allow_private_network: bool = False,
+        image_data: Optional[bytes] = None,
     ) -> str:
         """
         在线程池中下载并识别验证码图片。
 
         :param image_url: 验证码图片地址
+        :param image_data: 已取得的原始验证码图片字节
         :param cookie: 下载图片时使用的 Cookie
         :param user_agent: 下载图片时使用的 User-Agent
         :param allow_private_network: 是否允许访问本机或私网地址
         :return: 验证码文本，失败时返回空字符串
         """
         clean_url = (image_url or "").strip()
+        if image_data:
+            return OcrHelper().get_captcha_text(
+                image_data=image_data,
+                cookie=cookie,
+                ua=user_agent,
+            )
         if not clean_url:
             return ""
         if not clean_url.lower().startswith("data:image/"):
@@ -106,24 +132,22 @@ class RecognizeCaptchaTool(MoviePilotTool):
                 clean_url,
                 allow_private_network=allow_private_network,
             )
-        return OcrHelper().get_captcha_text(
-            image_url=clean_url,
-            cookie=cookie,
-            ua=user_agent,
-        )
+        return OcrHelper().get_captcha_text(image_url=clean_url, cookie=cookie, ua=user_agent)
 
     async def run(
         self,
-        image_url: str,
+        image_url: Optional[str] = None,
         cookie: Optional[str] = None,
         user_agent: Optional[str] = None,
         allow_private_network: bool = False,
+        image_data: Optional[bytes] = None,
         **kwargs,
     ) -> str:
         """
         识别指定图片地址中的图形验证码文本。
 
         :param image_url: 验证码图片地址
+        :param image_data: 已取得的原始验证码图片字节
         :param cookie: 下载图片时使用的 Cookie
         :param user_agent: 下载图片时使用的 User-Agent
         :param allow_private_network: 是否允许访问本机或私网地址
@@ -131,7 +155,8 @@ class RecognizeCaptchaTool(MoviePilotTool):
         """
         logger.info(
             f"执行工具: {self.name}, "
-            f"参数: image_url={self._format_image_url_for_log(image_url)}"
+            f"参数: image_url={self._format_image_url_for_log(image_url or '')}, "
+            f"image_data={'%s bytes' % len(image_data) if image_data else 'none'}"
         )
 
         try:
@@ -142,6 +167,7 @@ class RecognizeCaptchaTool(MoviePilotTool):
                 cookie,
                 user_agent,
                 allow_private_network,
+                image_data,
             )
             if captcha_text:
                 return json.dumps(

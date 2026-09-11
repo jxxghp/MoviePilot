@@ -144,8 +144,13 @@ class _FakePage:
 class _FakeContext:
     """模拟 CloakBrowser 上下文。"""
 
-    def __init__(self, pages: Optional[list[_FakePage]] = None) -> None:
+    def __init__(
+        self,
+        pages: Optional[list[_FakePage]] = None,
+        cookies: Optional[list[dict]] = None,
+    ) -> None:
         self.pages = pages or [_FakePage()]
+        self.cookie_values = cookies or []
         self.closed = False
         self.close_thread_id = None
 
@@ -156,8 +161,8 @@ class _FakeContext:
         return _FakePage("extra")
 
     def cookies(self) -> list[dict]:
-        """返回空 Cookie 列表。"""
-        return []
+        """返回预设 Cookie 列表。"""
+        return list(self.cookie_values)
 
     def close(self) -> None:
         """记录上下文关闭状态。"""
@@ -520,3 +525,43 @@ def test_browse_webpage_click_ref_uses_snapshot_selector():
     payload = json.loads(result)
     assert payload["success"] is True
     assert page.clicks == ['[data-moviepilot-agent-ref="e1"]']
+
+
+def test_browse_webpage_get_cookies_returns_current_domain_cookie_and_ua():
+    """管理员 Cookie 动作应只返回当前页面域名的会话字段。"""
+    page = _FakePage()
+    page.url = "https://tracker.example/path"
+    context = _FakeContext(
+        [page],
+        cookies=[
+            {"name": "sid", "value": "browser", "domain": "tracker.example"},
+            {"name": "other", "value": "hidden", "domain": "other.example"},
+        ],
+    )
+    session = type(
+        "Session",
+        (),
+        {"context": context, "active_page": page, "cookies": "seed=1", "user_agent": "UA"},
+    )()
+
+    payload = json.loads(BrowseWebpageTool._action_get_cookies(session, page))
+
+    assert payload["success"] is True
+    assert payload["cookie"] == "seed=1; sid=browser"
+    assert {item["name"] for item in payload["cookies"]} == {"seed", "sid"}
+    assert payload["user_agent"] == "UA"
+
+
+@pytest.mark.asyncio
+async def test_browse_webpage_get_cookies_is_admin_only(monkeypatch: pytest.MonkeyPatch):
+    """普通调用方不得通过浏览器动作读取认证 Cookie。"""
+    tool = BrowseWebpageTool(session_id="session-1", user_id="10001")
+    monkeypatch.setattr(
+        BrowseWebpageTool,
+        "is_admin_user",
+        AsyncMock(return_value=False),
+    )
+
+    result = await tool.run(action="get_cookies")
+
+    assert "仅允许管理员" in result

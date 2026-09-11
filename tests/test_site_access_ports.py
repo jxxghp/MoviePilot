@@ -1,6 +1,5 @@
 """站点访问 Application Port 的装配与兼容回归。"""
 
-import base64
 from types import SimpleNamespace
 
 import pytest
@@ -137,7 +136,7 @@ def test_cookie_invalid_parameters_keep_legacy_result_without_ports() -> None:
 
 def test_cookie_captcha_uses_http_and_ocr_fake_ports() -> None:
     """验证码下载与识别只通过各自窄端口传递图片内容。"""
-    received: list[str] = []
+    received: list[bytes] = []
 
     class HttpPort:
         """返回固定验证码图片。"""
@@ -148,12 +147,12 @@ def test_cookie_captcha_uses_http_and_ocr_fake_ports() -> None:
             return b"captcha-image"
 
     class OcrPort:
-        """记录 OCR 收到的 Base64 内容。"""
+        """记录 OCR 收到的原始图片字节。"""
 
         @staticmethod
-        def recognize(image_b64: str) -> str:
+        def recognize(image_data: bytes) -> str:
             """记录输入并返回识别结果。"""
-            received.append(image_b64)
+            received.append(image_data)
             return "A1B2"
 
     configure_cookie_ports(
@@ -165,7 +164,7 @@ def test_cookie_captcha_uses_http_and_ocr_fake_ports() -> None:
     )
 
     assert result == "A1B2"
-    assert received == [base64.b64encode(b"captcha-image").decode()]
+    assert received == [b"captcha-image"]
 
 
 def test_reset_ports_make_real_access_fail_explicitly(monkeypatch) -> None:

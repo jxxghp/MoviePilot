@@ -5,10 +5,10 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **400**
-- Stable `moviepilot_api` operations: **220**
-- Exact HTTP routes used by the gateway: **218**
-- OpenAPI routes matched directly by the gateway: **217**
+- OpenAPI HTTP operations: **401**
+- Stable `moviepilot_api` operations: **221**
+- Exact HTTP routes used by the gateway: **219**
+- OpenAPI routes matched directly by the gateway: **218**
 - Bounded dynamic gateway routes: **1**
 - Every gateway operation has a generated English oneOf input contract in MCP `tools/list` and `skills/moviepilot-api/SKILL.md`.
 - Every non-gateway OpenAPI operation is listed below with an explicit ownership boundary; it is not silently callable through arbitrary URL/method input.
@@ -19,7 +19,7 @@
 | :--- | ---: | :--- |
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
 | `consolidated` | 71 | Source/UI route represented by a stable aggregate Agent operation. |
-| `gateway` | 217 | Approved structured MoviePilot Agent operation. |
+| `gateway` | 218 | Approved structured MoviePilot Agent operation. |
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
@@ -278,6 +278,7 @@
 | `GET` | `/api/v1/site/category/{site_id}` | site | `gateway` | site.category | 站点分类 |
 | `GET` | `/api/v1/site/cookie/{site_id}` | site | `consolidated` | site.cookie.update | 更新站点Cookie&UA |
 | `POST` | `/api/v1/site/cookie/{site_id}` | site | `gateway` | site.cookie.update | 更新站点Cookie&UA |
+| `POST` | `/api/v1/site/cookie/{site_id}/set` | site | `gateway` | site.cookie.set | 直接保存站点Cookie&UA |
 | `POST` | `/api/v1/site/cookiecloud` | site | `gateway` | site.cookiecloud.sync | CookieCloud同步 |
 | `GET` | `/api/v1/site/domain/{site_url}` | site | `consolidated` | site.list | 站点详情 |
 | `GET` | `/api/v1/site/icon/{site_id}` | site | `stream_or_binary` | host-transport | 站点图标 |

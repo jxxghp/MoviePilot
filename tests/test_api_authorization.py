@@ -160,6 +160,7 @@ def test_manage_page_endpoints_accept_manage_permission():
         site_endpoint.site_resource,
         site_endpoint.read_site,
         site_endpoint.delete_site,
+        site_endpoint.set_cookie_by_body,
     ]
 
     for endpoint in sync_endpoints:

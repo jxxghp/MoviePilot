@@ -1,5 +1,6 @@
+import asyncio
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from app import schemas
 from app.api.endpoints import site as site_endpoint
@@ -57,4 +58,30 @@ def test_update_cookie_legacy_get_keeps_query_params():
         username="user",
         password="password",
         two_step_code=None,
+    )
+
+
+def test_set_cookie_by_body_persists_only_browser_cookie_fields():
+    """浏览器取得 Cookie 后的精细 API 不应要求或覆盖完整站点配置。"""
+    command = Mock()
+    command.set_cookie = AsyncMock(
+        return_value=SimpleNamespace(success=True, message="saved")
+    )
+    request = schemas.SiteCookieSet(cookie="sid=browser", ua="Browser UA")
+
+    response = asyncio.run(
+        site_endpoint.set_cookie_by_body(
+            site_id=7,
+            site_cookie_set=request,
+            command=command,
+            _=Mock(),
+        )
+    )
+
+    assert response.success is True
+    assert response.message == "saved"
+    command.set_cookie.assert_awaited_once_with(
+        site_id=7,
+        cookie="sid=browser",
+        ua="Browser UA",
     )

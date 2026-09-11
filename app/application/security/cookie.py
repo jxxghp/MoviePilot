@@ -1,4 +1,3 @@
-import base64
 import time
 from typing import Any, Callable, Optional, Protocol, Tuple
 from urllib.parse import urljoin, urlparse
@@ -7,7 +6,6 @@ from lxml import etree
 
 from app.application.security.twofactor import TwoFactorAuth
 from app.domain.site import SiteUtils
-from app.foundation import url as url_tools
 from app.runtime.log import logger
 
 CookieResult = Tuple[Optional[str], Optional[str], str]
@@ -31,8 +29,8 @@ class CaptchaHttpPort(Protocol):
 class CaptchaOcrPort(Protocol):
     """声明验证码图片识别能力。"""
 
-    def recognize(self, image_b64: str) -> str:
-        """识别 Base64 编码的验证码图片。"""
+    def recognize(self, image_data: bytes) -> str:
+        """识别原始验证码图片字节，避免在应用层重复 Base64 编码。"""
 
 
 _cookie_browser_port: Optional[CookieBrowserPort] = None
@@ -67,25 +65,66 @@ def _require_cookie_ports() -> Tuple[CookieBrowserPort, CaptchaHttpPort, Captcha
 class CookieHelper:
     """处理站点登录表单、验证码和 Cookie 获取流程。"""
 
+    _MAX_CAPTCHA_ATTEMPTS = 3
+
     # 站点登录界面元素XPATH
     _SITE_LOGIN_XPATH = {
         "username": [
             '//input[@name="username"]',
+            '//input[@name="user"]',
+            '//input[@name="user_email"]',
+            '//input[@name="txt_user"]',
+            '//input[@name="txt_email"]',
+            '//input[@name="email"]',
             '//input[@id="form_item_username"]',
             '//input[@id="username"]',
+            '//input[@id="user"]',
+            '//input[@id="email"]',
             '//input[contains(@placeholder,"用户名")]',
+            '//input[contains(@placeholder,"邮箱")]',
+            (
+                '//input[not(translate(@type,"ABCDEFGHIJKLMNOPQRSTUVWXYZ",'
+                '"abcdefghijklmnopqrstuvwxyz")="hidden") and '
+                '(contains(translate(@name,"ABCDEFGHIJKLMNOPQRSTUVWXYZ",'
+                '"abcdefghijklmnopqrstuvwxyz"),"user") or '
+                'contains(translate(@name,"ABCDEFGHIJKLMNOPQRSTUVWXYZ",'
+                '"abcdefghijklmnopqrstuvwxyz"),"email") or '
+                'contains(translate(@id,"ABCDEFGHIJKLMNOPQRSTUVWXYZ",'
+                '"abcdefghijklmnopqrstuvwxyz"),"user") or '
+                'contains(translate(@id,"ABCDEFGHIJKLMNOPQRSTUVWXYZ",'
+                '"abcdefghijklmnopqrstuvwxyz"),"email"))]'
+            ),
         ],
         "password": [
             '//input[@name="password"]',
             '//input[@id="form_item_password"]',
             '//input[@id="password"]',
             '//input[@type="password"]',
+            '//form[.//input[@type="password"]][1]//input[@type="password"][1]',
         ],
         "captcha": [
             '//input[@name="imagestring"]',
             '//input[@name="captcha"]',
+            '//input[@name="captcha_code"]',
+            '//input[@name="verifycode"]',
+            '//input[@name="verification_code"]',
+            '//input[@name="security_code"]',
+            '//input[@name="imagecode"]',
             '//input[@id="form_item_captcha"]',
             '//input[@placeholder="驗證碼"]',
+            '//input[contains(@placeholder,"验证码")]',
+            (
+                '//input[not(translate(@type,"ABCDEFGHIJKLMNOPQRSTUVWXYZ",'
+                '"abcdefghijklmnopqrstuvwxyz")="hidden") and '
+                '(contains(translate(@name,"ABCDEFGHIJKLMNOPQRSTUVWXYZ",'
+                '"abcdefghijklmnopqrstuvwxyz"),"captcha") or '
+                'contains(translate(@name,"ABCDEFGHIJKLMNOPQRSTUVWXYZ",'
+                '"abcdefghijklmnopqrstuvwxyz"),"verify") or '
+                'contains(translate(@id,"ABCDEFGHIJKLMNOPQRSTUVWXYZ",'
+                '"abcdefghijklmnopqrstuvwxyz"),"captcha") or '
+                'contains(translate(@id,"ABCDEFGHIJKLMNOPQRSTUVWXYZ",'
+                '"abcdefghijklmnopqrstuvwxyz"),"verify"))]'
+            ),
         ],
         "captcha_img": [
             '//img[@alt="captcha"]/@src',
@@ -93,6 +132,14 @@ class CookieHelper:
             '//img[@alt="SECURITY CODE"]/@src',
             '//img[@id="LAY-user-get-vercode"]/@src',
             '//img[contains(@src,"/api/getCaptcha")]/@src',
+            (
+                '//img[contains(translate(concat(@alt," ",@title," ",@class," ",@src),'
+                '"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"captcha")]/@src'
+            ),
+            (
+                '//img[contains(translate(concat(@alt," ",@title," ",@class," ",@src),'
+                '"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"verify")]/@src'
+            ),
         ],
         "submit": [
             '//input[@type="submit"]',
@@ -101,9 +148,16 @@ class CookieHelper:
             '//button[@lay-filter="formLogin"]',
             '//input[@type="button"][@value="登录"]',
             '//input[@id="submit-btn"]',
+            '//button[contains(translate(normalize-space(.),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"login")]',
+            '//button[contains(normalize-space(.),"登录") or contains(normalize-space(.),"登入") or contains(normalize-space(.),"提交")]',
+            '//input[contains(translate(@value,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"login")]',
         ],
         "error": [
             "//table[@class='main']//td[@class='text']/text()",
+            '//*[@role="alert"]//text()',
+            '//*[contains(translate(@class,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"error")]//text()',
+            '//*[contains(translate(@class,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"alert")]//text()',
+            '//*[contains(translate(@class,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"message")]//text()',
         ],
         "remember": [
             '//input[@type="checkbox"][contains(@name,"remember") or contains(@id,"remember")]',
@@ -115,6 +169,222 @@ class CookieHelper:
             '//input[@name="otp"]',
         ]
     }
+
+    @classmethod
+    def _first_xpath(cls, html: etree._Element, key: str) -> Optional[str]:
+        """返回页面上第一个命中的字段 XPath。"""
+        for xpath in cls._SITE_LOGIN_XPATH.get(key, []):
+            if html.xpath(xpath):
+                return xpath
+        return None
+
+    @classmethod
+    def _find_login_fields(
+        cls,
+        html: etree._Element,
+    ) -> tuple[Optional[str], Optional[str]]:
+        """按常见命名、表单结构和输入类型推断用户名与密码字段。"""
+        username_xpath = cls._first_xpath(html, "username")
+        password_xpath = cls._first_xpath(html, "password")
+        form_xpath = "//form[.//input[translate(@type,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\",\"abcdefghijklmnopqrstuvwxyz\")=\"password\"]][1]"
+        form_nodes = html.xpath(form_xpath)
+        if form_nodes:
+            login_form = form_nodes[0]
+
+            def belongs_to_login_form(xpath: Optional[str]) -> bool:
+                """判断全局候选是否属于含密码字段的登录表单。"""
+                if not xpath:
+                    return False
+                nodes = html.xpath(xpath)
+                return bool(nodes) and nodes[0] in login_form.iter()
+
+            if not belongs_to_login_form(username_xpath):
+                username_xpath = None
+            if not belongs_to_login_form(password_xpath):
+                password_xpath = None
+
+            if not password_xpath:
+                password_xpath = f'{form_xpath}//input[@type="password"][1]'
+            if not username_xpath:
+                scoped_candidates = (
+                    f'{form_xpath}//input[@name="username"][1]',
+                    f'{form_xpath}//input[@name="user"][1]',
+                    f'{form_xpath}//input[@name="user_email"][1]',
+                    f'{form_xpath}//input[@name="txt_user"][1]',
+                    f'{form_xpath}//input[@name="txt_email"][1]',
+                    f'{form_xpath}//input[@name="email"][1]',
+                    f'{form_xpath}//input[@id="username"][1]',
+                    f'{form_xpath}//input[@id="user"][1]',
+                    f'{form_xpath}//input[@id="email"][1]',
+                    f'{form_xpath}//input[@type="email"][1]',
+                    f'{form_xpath}//input[@type="text"][1]',
+                    f'{form_xpath}//input[not(@type) and not(@name="password")][1]',
+                )
+                username_xpath = next(
+                    (candidate for candidate in scoped_candidates if html.xpath(candidate)),
+                    None,
+                )
+
+        if password_xpath and username_xpath:
+            return username_xpath, password_xpath
+
+        if not password_xpath and html.xpath(f"{form_xpath}//input[@type='password']"):
+            password_xpath = f"{form_xpath}//input[@type='password'][1]"
+        if not username_xpath:
+            scoped_candidates = (
+                f"{form_xpath}//input[@type='email'][1]",
+                f"{form_xpath}//input[@type='text'][1]",
+                f"{form_xpath}//input[not(@type) and not(@name='password')][1]",
+            )
+            username_xpath = next(
+                (candidate for candidate in scoped_candidates if html.xpath(candidate)),
+                None,
+            )
+        if not password_xpath and html.xpath("//input[@type='password'][1]"):
+            password_xpath = "//input[@type='password'][1]"
+        if not username_xpath:
+            fallback_candidates = (
+                "//input[@type='email'][1]",
+                "//input[@type='text'][1]",
+            )
+            username_xpath = next(
+                (candidate for candidate in fallback_candidates if html.xpath(candidate)),
+                None,
+            )
+        return username_xpath, password_xpath
+
+    @classmethod
+    def _find_captcha_source(
+        cls,
+        html: etree._Element,
+    ) -> tuple[Optional[str], Optional[str]]:
+        """查找验证码输入字段及图片地址，兼容常见命名和站点自定义 class。"""
+        captcha_xpath = cls._first_xpath(html, "captcha")
+        if not captcha_xpath:
+            return None, None
+        for image_xpath in cls._SITE_LOGIN_XPATH.get("captcha_img", []):
+            values = html.xpath(image_xpath)
+            if values and isinstance(values[0], str):
+                return captcha_xpath, values[0]
+        return captcha_xpath, None
+
+    @classmethod
+    def _page_issue(cls, html_text: str, page_url: str) -> Optional[str]:
+        """把站点不可用和人机挑战归类为 Agent 可采取行动的提示。"""
+        text = " ".join((html_text or "").split())
+        lowered = text.lower()
+        url_lowered = (page_url or "").lower()
+        if any(
+            marker in lowered or marker in url_lowered
+            for marker in (
+                "cf-chl-",
+                "cloudflare",
+                "cf-turnstile",
+                "turnstile",
+                "challenge-platform",
+                "captcha verification token is missing",
+            )
+        ):
+            return "站点需要完成 Cloudflare/人机验证，无法自动登录，请手动登录后提供 Cookie"
+        if any(
+            marker in lowered or marker in url_lowered
+            for marker in (
+                "404 not found",
+                "502 bad gateway",
+                "503 service unavailable",
+                "site not found",
+                "没有找到站点",
+                "站点不存在",
+                "域名未绑定",
+                "无法连接到站点",
+            )
+        ):
+            return "站点不可用或域名未绑定源站，请先确认站点地址和网络状态"
+        return None
+
+    @classmethod
+    def _error_message(cls, html_text: str) -> str:
+        """提取登录页可见错误，并去除重复或过长的 HTML 文本。"""
+        html = etree.HTML(html_text or "")
+        if html is None:
+            return ""
+        messages: list[str] = []
+        for xpath in cls._SITE_LOGIN_XPATH.get("error", []):
+            for value in html.xpath(xpath):
+                text = " ".join(str(value).split())
+                if text and text not in messages:
+                    messages.append(text)
+        return "；".join(messages)[:500]
+
+    @staticmethod
+    def _page_user_agent(page: Any) -> str:
+        """读取当前页面 User-Agent，浏览器实现不支持时返回空字符串。"""
+        try:
+            return str(page.evaluate("() => window.navigator.userAgent") or "")
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _click_with_fallback(page: Any, selector: str, timeout: int = 5000) -> None:
+        """依次尝试普通、强制、元素和 XPath JavaScript 点击。"""
+        first_error: Optional[Exception] = None
+        try:
+            page.click(selector)
+            return
+        except Exception as error:
+            first_error = error
+        try:
+            page.click(selector, timeout=timeout, force=True)
+            return
+        except Exception:
+            pass
+        try:
+            element = page.query_selector(selector)
+            if element is not None and hasattr(element, "click"):
+                element.click(timeout=timeout, force=True)
+                return
+        except Exception:
+            pass
+        try:
+            clicked = page.evaluate(
+                """
+                (xpath) => {
+                    const node = document.evaluate(
+                        xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+                    ).singleNodeValue;
+                    if (!node) return false;
+                    node.click();
+                    return true;
+                }
+                """,
+                selector,
+            )
+            if clicked is True or clicked is None:
+                return
+        except Exception:
+            pass
+        raise first_error or RuntimeError("无法点击页面元素")
+
+    @classmethod
+    def _refresh_captcha(cls, page: Any, html: etree._Element) -> bool:
+        """点击验证码图片或调用页面 reload，尽量获取下一张验证码。"""
+        for image_xpath in cls._SITE_LOGIN_XPATH.get("captcha_img", []):
+            if not html.xpath(image_xpath):
+                continue
+            selector = image_xpath[:-5] if image_xpath.endswith("/@src") else image_xpath
+            try:
+                cls._click_with_fallback(page, selector, timeout=3000)
+                return True
+            except Exception:
+                continue
+        reload_page = getattr(page, "reload", None)
+        if callable(reload_page):
+            try:
+                reload_page(wait_until="domcontentloaded", timeout=10000)
+                return True
+            except Exception:
+                pass
+        return False
 
     @staticmethod
     def get_page_content(page: Any, retries: int = 3, interval: float = 1.0) -> Optional[str]:
@@ -148,15 +418,18 @@ class CookieHelper:
 
     @staticmethod
     def parse_cookies(cookies: list) -> str:
-        """
-        将浏览器返回的cookies转化为字符串
-        """
+        """将浏览器 Cookie 列表转成请求头字符串，并忽略不完整条目。"""
         if not cookies:
             return ""
-        cookie_str = ""
+        values: list[str] = []
         for cookie in cookies:
-            cookie_str += f"{cookie['name']}={cookie['value']}; "
-        return cookie_str
+            if not isinstance(cookie, dict):
+                continue
+            name = cookie.get("name")
+            value = cookie.get("value")
+            if name is not None and value is not None:
+                values.append(f"{name}={value}")
+        return "; ".join(values) + ("; " if values else "")
 
     @staticmethod
     def _find_login_page_url(html: etree._Element, current_url: str) -> Optional[str]:
@@ -212,219 +485,166 @@ class CookieHelper:
         """
 
         def __page_handler(page: Any) -> CookieResult:
-            """
-            页面处理
-            :return: Cookie和UA
-            """
-            # 登录页面代码
+            """在受控浏览器页面内完成登录并返回当前会话凭据。"""
             html_text = self.get_page_content(page)
             if not html_text:
                 return None, None, "获取源码失败"
-            # 查找用户名输入框
             html = etree.HTML(html_text)
             if html is None:
                 return None, None, "解析网页源码失败"
-            try:
-                username_xpath = None
-                for xpath in self._SITE_LOGIN_XPATH.get("username"):
-                    if html.xpath(xpath):
-                        username_xpath = xpath
-                        break
-                if not username_xpath:
-                    login_url = self._find_login_page_url(html, page.url or url)
-                    if login_url:
-                        try:
-                            page.goto(
-                                login_url,
-                                wait_until="domcontentloaded",
-                                timeout=(timeout or 60) * 1000,
-                            )
-                        except Exception as e:
-                            return None, None, f"打开登录页面失败：{str(e)}"
-                        html_text = self.get_page_content(page)
-                        html = etree.HTML(html_text) if html_text else None
-                        if html is None:
-                            return None, None, "解析网页源码失败"
-                        for xpath in self._SITE_LOGIN_XPATH["username"]:
-                            if html.xpath(xpath):
-                                username_xpath = xpath
-                                break
-                if not username_xpath:
-                    # 登录页可能为JS动态渲染（如SPA），等待用户名输入框出现后重试
+            issue = self._page_issue(html_text, getattr(page, "url", "") or url)
+            if issue:
+                return None, None, issue
+
+            username_xpath, password_xpath = self._find_login_fields(html)
+            if not username_xpath or not password_xpath:
+                login_url = self._find_login_page_url(html, getattr(page, "url", "") or url)
+                if login_url:
                     try:
-                        username_union_xpath = " | ".join(self._SITE_LOGIN_XPATH.get("username"))
-                        page.wait_for_selector(f"xpath={username_union_xpath}", timeout=5000)
-                    except Exception:
-                        pass
+                        page.goto(
+                            login_url,
+                            wait_until="domcontentloaded",
+                            timeout=(timeout or 60) * 1000,
+                        )
+                    except Exception as error:
+                        return None, None, f"打开登录页面失败：{str(error)}"
                     html_text = self.get_page_content(page)
                     html = etree.HTML(html_text) if html_text else None
-                    if html is None:
-                        return None, None, "解析网页源码失败"
-                    for xpath in self._SITE_LOGIN_XPATH.get("username"):
-                        if html.xpath(xpath):
-                            username_xpath = xpath
-                            break
-                if not username_xpath:
-                    return None, None, "未找到用户名输入框"
-                # 查找密码输入框
-                password_xpath = None
-                for xpath in self._SITE_LOGIN_XPATH.get("password"):
-                    if html.xpath(xpath):
-                        password_xpath = xpath
-                        break
-                if not password_xpath:
-                    return None, None, "未找到密码输入框"
-                # 处理二步验证码
-                otp_code = TwoFactorAuth(two_step_code).get_code()
-                # 查找二步验证码输入框
-                twostep_xpath = None
-                if otp_code:
-                    for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
-                        if html.xpath(xpath):
-                            twostep_xpath = xpath
-                            break
-                # 查找验证码输入框
-                captcha_xpath = None
-                for xpath in self._SITE_LOGIN_XPATH.get("captcha"):
-                    if html.xpath(xpath):
-                        captcha_xpath = xpath
-                        break
-                # 查找验证码图片
-                captcha_img_url = None
-                if captcha_xpath:
-                    for xpath in self._SITE_LOGIN_XPATH.get("captcha_img"):
-                        if html.xpath(xpath):
-                            captcha_img_url = html.xpath(xpath)[0]
-                            break
-                    if not captcha_img_url:
-                        return None, None, "未找到验证码图片"
-                # 查找登录按钮
-                submit_xpath = None
-                for xpath in self._SITE_LOGIN_XPATH.get("submit"):
-                    if html.xpath(xpath):
-                        submit_xpath = xpath
-                        break
-                if not submit_xpath:
-                    return None, None, "未找到登录按钮"
-
-                # 点击登录按钮
+                if html is None:
+                    return None, None, "解析网页源码失败"
+                issue = self._page_issue(html_text or "", getattr(page, "url", "") or url)
+                if issue:
+                    return None, None, issue
+                username_xpath, password_xpath = self._find_login_fields(html)
+            if not username_xpath or not password_xpath:
                 try:
-                    # 等待登录按钮准备好
-                    page.wait_for_selector(submit_xpath)
-                    # 输入用户名
-                    page.fill(username_xpath, username)
-                    # 输入密码
-                    page.fill(password_xpath, password)
-                    # 勾选“记住我/保持登录”等选项，获取长期会话（部分站点默认发放短期会话）
-                    for xpath in self._SITE_LOGIN_XPATH.get("remember"):
-                        remember_element = page.query_selector(xpath)
-                        if not remember_element:
-                            continue
-                        try:
-                            checked = remember_element.get_attribute("aria-checked")
-                            if checked is None:
-                                checked = "true" if remember_element.is_checked() else "false"
-                            if checked != "true":
-                                remember_element.click(timeout=3000)
-                            break
-                        except Exception as e:
-                            # 当前候选不可操作（如隐藏元素）时继续尝试后续候选
-                            logger.warning(f"勾选记住登录选项失败：{str(e)}，尝试下一候选")
-                            continue
-                    # 输入二步验证码
-                    if twostep_xpath:
-                        page.fill(twostep_xpath, otp_code)
-                    # 识别验证码
-                    if captcha_xpath and captcha_img_url:
-                        captcha_element = page.query_selector(captcha_xpath)
-                        if captcha_element.is_visible():
-                            # 验证码图片地址
-                            code_url = self.__get_captcha_url(url, captcha_img_url)
-                            # 获取当前的cookie和ua
-                            cookie = self.parse_cookies(page.context.cookies())
-                            ua = page.evaluate("() => window.navigator.userAgent")
-                            # 自动OCR识别验证码
-                            captcha = self.__get_captcha_text(cookie=cookie, ua=ua, code_url=code_url)
-                            if captcha:
-                                logger.info("验证码地址为：%s，识别结果：%s" % (code_url, captcha))
-                            else:
-                                return None, None, "验证码识别失败"
-                            # 输入验证码
-                            captcha_element.fill(captcha)
-                        else:
-                            # 不可见元素不处理
-                            pass
-                    # 点击登录按钮
-                    page.click(submit_xpath)
-                    page.wait_for_load_state("networkidle", timeout=30 * 1000)
-                except Exception as e:
-                    logger.error(f"仿真登录失败：{str(e)}")
-                    return None, None, f"仿真登录失败：{str(e)}"
-
-                # 对于某二次验证码为单页面的站点，输入二次验证码
-                if "verify" in page.url:
-                    if not otp_code:
-                        return None, None, "需要二次验证码"
-                    html_text = self.get_page_content(page)
-                    if not html_text:
-                        return None, None, "获取网页源码失败"
-                    html = etree.HTML(html_text)
-                    if html is None:
-                        return None, None, "解析网页源码失败"
-                    for xpath in self._SITE_LOGIN_XPATH.get("twostep"):
-                        if html.xpath(xpath):
-                            try:
-                                # 刷新一下 2fa code
-                                otp_code = TwoFactorAuth(two_step_code).get_code()
-                                page.fill(xpath, otp_code)
-                                # 登录按钮 xpath 理论上相同，不再重复查找
-                                page.click(submit_xpath)
-                                page.wait_for_load_state("networkidle", timeout=30 * 1000)
-                            except Exception as e:
-                                logger.error(f"二次验证码输入失败：{str(e)}")
-                                return None, None, f"二次验证码输入失败：{str(e)}"
-                            break
-
-                # 登录后的源码（部分站点登录成功后由前端脚本延迟跳转，等待并重试判定）
-                html_text = None
-                for i in range(3):
-                    if i:
-                        time.sleep(2)
-                    latest_text = self.get_page_content(page)
-                    if not latest_text:
-                        continue
-                    if SiteUtils.is_logged_in(latest_text):
-                        return self.parse_cookies(page.context.cookies()), \
-                            page.evaluate("() => window.navigator.userAgent"), ""
-                    # 保留首个快照用于失败时解析错误信息，避免提示被后续跳转或自动消失覆盖
-                    if html_text is None:
-                        html_text = latest_text
-                    # 页面已出现明确的登录错误信息时，以该快照为准并提前结束重试
-                    latest_html = etree.HTML(latest_text)
-                    if latest_html is not None and \
-                            any(latest_html.xpath(x) for x in self._SITE_LOGIN_XPATH.get("error")):
-                        html_text = latest_text
-                        break
-                if not html_text:
-                    return None, None, "获取网页源码失败"
-                else:
-                    # 从登录后的页面读取错误信息
-                    html = etree.HTML(html_text)
-                    if html is None:
-                        return None, None, "登录失败"
-                    error_xpath = None
-                    for xpath in self._SITE_LOGIN_XPATH.get("error"):
-                        if html.xpath(xpath):
-                            error_xpath = xpath
-                            break
-                    if not error_xpath:
-                        return None, None, "登录失败"
-                    else:
-                        error_msg = html.xpath(error_xpath)[0]
-                        return None, None, error_msg
-            finally:
+                    page.wait_for_selector("xpath=//input[@type='password']", timeout=5000)
+                except Exception:
+                    pass
+                latest_text = self.get_page_content(page)
+                html = etree.HTML(latest_text) if latest_text else None
                 if html is not None:
-                    del html
+                    html_text = latest_text or html_text
+                    username_xpath, password_xpath = self._find_login_fields(html)
+            if not username_xpath:
+                return None, None, "未找到用户名输入框，登录表单字段无法识别"
+            if not password_xpath:
+                return None, None, "未找到密码输入框，登录表单字段无法识别"
+
+            otp_code = TwoFactorAuth(two_step_code).get_code()
+            twostep_xpath = self._first_xpath(html, "twostep") if otp_code else None
+            captcha_xpath, captcha_img_url = self._find_captcha_source(html)
+            if captcha_xpath and not captcha_img_url:
+                return None, None, "检测到验证码输入框，但未找到验证码图片"
+            submit_xpath = self._first_xpath(html, "submit")
+            if not submit_xpath:
+                return None, None, "未找到登录按钮，请在登录页提供可提交的按钮"
+
+            try:
+                page.wait_for_selector(submit_xpath)
+                page.fill(username_xpath, username)
+                page.fill(password_xpath, password)
+                for xpath in self._SITE_LOGIN_XPATH.get("remember", []):
+                    remember_element = page.query_selector(xpath)
+                    if not remember_element:
+                        continue
+                    try:
+                        checked = remember_element.get_attribute("aria-checked")
+                        if checked is None:
+                            checked = "true" if remember_element.is_checked() else "false"
+                        if checked != "true":
+                            remember_element.click(timeout=3000)
+                        break
+                    except Exception as error:
+                        logger.warning(f"勾选记住登录选项失败：{str(error)}，尝试下一候选")
+                if twostep_xpath:
+                    page.fill(twostep_xpath, otp_code)
+
+                if captcha_xpath and captcha_img_url:
+                    captcha_element = page.query_selector(captcha_xpath)
+                    if captcha_element is None or captcha_element.is_visible():
+                        captcha = ""
+                        for attempt in range(self._MAX_CAPTCHA_ATTEMPTS):
+                            current_text = self.get_page_content(page)
+                            current_html = etree.HTML(current_text) if current_text else html
+                            if current_html is None:
+                                current_html = html
+                            if current_html is None:
+                                continue
+                            current_xpath, current_image = self._find_captcha_source(current_html)
+                            captcha_xpath = current_xpath or captcha_xpath
+                            captcha_img_url = current_image or captcha_img_url
+                            code_url = self.__get_captcha_url(
+                                getattr(page, "url", "") or url,
+                                captcha_img_url,
+                            )
+                            cookie = self.parse_cookies(page.context.cookies())
+                            ua = self._page_user_agent(page)
+                            captcha = self.__get_captcha_text(
+                                cookie=cookie,
+                                ua=ua,
+                                code_url=code_url,
+                            )
+                            if captcha:
+                                logger.info("验证码已完成识别，第 %s/%s 次尝试", attempt + 1, self._MAX_CAPTCHA_ATTEMPTS)
+                                break
+                            if attempt < self._MAX_CAPTCHA_ATTEMPTS - 1:
+                                self._refresh_captcha(page, current_html)
+                                time.sleep(0.5)
+                        if not captcha:
+                            return None, None, f"验证码识别失败，已尝试 {self._MAX_CAPTCHA_ATTEMPTS} 次，请手动刷新验证码后重试"
+                        page.fill(captcha_xpath, captcha)
+
+                self._click_with_fallback(page, submit_xpath)
+                page.wait_for_load_state("networkidle", timeout=30 * 1000)
+            except Exception as error:
+                logger.error(f"仿真登录失败：{str(error)}")
+                return None, None, f"仿真登录失败：{str(error)}"
+
+            current_url = (getattr(page, "url", "") or "").lower()
+            if "verify" in current_url:
+                if not otp_code:
+                    return None, None, "站点要求二次验证码，请提供二步验证码或密钥"
+                html_text = self.get_page_content(page)
+                html = etree.HTML(html_text) if html_text else None
+                verify_xpath = self._first_xpath(html, "twostep") if html is not None else None
+                if verify_xpath:
+                    try:
+                        page.fill(verify_xpath, TwoFactorAuth(two_step_code).get_code())
+                        self._click_with_fallback(page, submit_xpath)
+                        page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                    except Exception as error:
+                        logger.error(f"二次验证码输入失败：{str(error)}")
+                        return None, None, f"二次验证码输入失败：{str(error)}"
+
+            first_failure_html: Optional[str] = None
+            for index in range(3):
+                if index:
+                    time.sleep(2)
+                latest_text = self.get_page_content(page)
+                if not latest_text:
+                    continue
+                if SiteUtils.is_logged_in(latest_text):
+                    return self.parse_cookies(page.context.cookies()), self._page_user_agent(page), ""
+                if first_failure_html is None:
+                    first_failure_html = latest_text
+                failure_issue = self._page_issue(
+                    latest_text,
+                    getattr(page, "url", "") or url,
+                )
+                if failure_issue or self._error_message(latest_text):
+                    first_failure_html = latest_text
+                    break
+            if not first_failure_html:
+                return None, None, "获取登录结果源码失败"
+            failure_issue = self._page_issue(
+                first_failure_html,
+                getattr(page, "url", "") or url,
+            )
+            if failure_issue:
+                return None, None, failure_issue
+            error_message = self._error_message(first_failure_html)
+            return None, None, f"登录失败：{error_message}" if error_message else "登录失败：页面未提供具体原因"
 
         if not url or not username or not password:
             return None, None, "参数错误"
@@ -446,15 +666,11 @@ class CookieHelper:
         content = http_port.fetch(url=code_url, cookie=cookie, ua=ua)
         if not content:
             return ""
-        return ocr_port.recognize(base64.b64encode(content).decode())
+        return ocr_port.recognize(content)
 
     @staticmethod
     def __get_captcha_url(siteurl: str, imageurl: str) -> str:
-        """
-        获取验证码图片的URL
-        """
+        """按页面地址解析验证码图片地址，兼容绝对、根相对和路径相对 URL。"""
         if not siteurl or not imageurl:
             return ""
-        if imageurl.startswith("/"):
-            imageurl = imageurl[1:]
-        return "%s/%s" % (url_tools.base_url(siteurl), imageurl)
+        return urljoin(siteurl, imageurl)

@@ -661,6 +661,52 @@ class BrowserSessionHelper:
         session.active_index = min(session.active_index, len(session.pages) - 1)
         return BrowserSessionHelper.list_tabs(session)
 
+    @staticmethod
+    def get_cookies(
+        session: _BrowserSessionState,
+        page: Optional[BrowserPage] = None,
+    ) -> dict[str, Any]:
+        """读取活动页面所属域名的 Cookie、User-Agent 和页面地址。"""
+        active_page = page or session.active_page
+        current_url = getattr(active_page, "url", "") or ""
+        current_host = (urlparse(current_url).hostname or "").lower().rstrip(".")
+        values: dict[str, str] = {}
+        if session.cookies:
+            injected = cookie_parse(session.cookies)
+            if isinstance(injected, dict):
+                values.update({str(key): str(value) for key, value in injected.items()})
+
+        for cookie in session.context.cookies() or []:
+            if not isinstance(cookie, dict):
+                continue
+            name = cookie.get("name")
+            value = cookie.get("value")
+            if name is None or value is None:
+                continue
+            domain = str(cookie.get("domain") or "").lower().lstrip(".").rstrip(".")
+            if current_host and domain and current_host != domain and not current_host.endswith(f".{domain}"):
+                continue
+            values[str(name)] = str(value)
+
+        user_agent = session.user_agent
+        if not user_agent:
+            try:
+                user_agent = str(
+                    active_page.evaluate("() => window.navigator.userAgent") or ""
+                )
+            except Exception:
+                user_agent = ""
+        cookie_header = "; ".join(f"{name}={value}" for name, value in values.items())
+        return {
+            "url": current_url,
+            "user_agent": user_agent or "",
+            "cookie": cookie_header,
+            "cookies": [
+                {"name": name, "value": value}
+                for name, value in values.items()
+            ],
+        }
+
     def goto(
         self,
         page: BrowserPage,

@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -84,6 +85,44 @@ async def test_update_site_returns_legacy_not_found_without_writes():
     assert result.message == "站点不存在"
     dependencies["unit_of_work"].commit.assert_not_awaited()
     dependencies["publish_updated"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_set_cookie_updates_only_cookie_fields_after_commit():
+    """浏览器 Cookie 精细写入不得覆盖其他站点配置，并须先提交再发事件。"""
+    site = SimpleNamespace(
+        domain="demo.example",
+        name="Demo",
+        url="https://demo.example/",
+    )
+    calls = []
+    repository = Mock()
+    repository.get_by_id = AsyncMock(return_value=site)
+    repository.stage_update = AsyncMock()
+    command, dependencies = _command(
+        repository=repository,
+        unit_of_work=Mock(
+            commit=AsyncMock(side_effect=lambda: calls.append("commit")),
+            rollback=AsyncMock(),
+        ),
+        publish_updated=AsyncMock(side_effect=lambda _payload: calls.append("event")),
+    )
+
+    result = await command.set_cookie(7, "sid=browser", "Browser UA")
+
+    assert result.success is True
+    assert calls == ["commit", "event"]
+    mutation = repository.stage_update.await_args.args[1]
+    assert isinstance(mutation, SiteMutation)
+    assert mutation.values == {"cookie": "sid=browser", "ua": "Browser UA"}
+    dependencies["publish_updated"].assert_awaited_once_with(
+        {
+            "site_id": 7,
+            "domain": "demo.example",
+            "name": "Demo",
+            "site_url": "https://demo.example/",
+        }
+    )
 
 
 @pytest.mark.asyncio

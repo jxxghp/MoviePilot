@@ -43,6 +43,7 @@ from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.site import SiteAuth as _SchemaSiteAuth
 from app.schemas.site import SiteCategory as _SchemaSiteCategory
+from app.schemas.site import SiteCookieSet as _SchemaSiteCookieSet
 from app.schemas.site import SiteCookieUpdate as _SchemaSiteCookieUpdate
 from app.schemas.site import SiteIconData as _SchemaSiteIconData
 from app.schemas.site import SiteMappingData as _SchemaSiteMappingData
@@ -418,6 +419,26 @@ def update_cookie_by_body(
         code=site_cookie_update.code,
         query=query,
     )
+
+
+@router.post(
+    "/cookie/{site_id}/set",
+    summary="直接保存站点Cookie&UA",
+    response_model=_SchemaResponse[None],
+)
+async def set_cookie_by_body(
+    site_id: int,
+    site_cookie_set: _SchemaSiteCookieSet,
+    command: SiteMutationCommand = Depends(get_site_mutation_command),
+    _: ApiPrincipal = Depends(get_current_active_manage_user_async),
+) -> Any:
+    """保存受信任浏览器会话取得的 Cookie，不改写站点其他配置。"""
+    result = await command.set_cookie(
+        site_id=site_id,
+        cookie=site_cookie_set.cookie,
+        ua=site_cookie_set.ua,
+    )
+    return _SchemaResponse(success=result.success, message=result.message)
 
 
 @router.get(

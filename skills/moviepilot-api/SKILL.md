@@ -36,7 +36,7 @@ allowed-api-operations: >-
   media.classification.policy.update media.classification.policy.rollback media.episode_groups
   media.episode_group.seasons media.seasons search.title search.recommend subtitle.search.title
   subtitle.search.media site.add site.delete site.auth.options site.authenticate
-  site.cookiecloud.sync site.reset site.priorities.update site.userdata.refresh
+  site.cookiecloud.sync site.cookie.set site.reset site.priorities.update site.userdata.refresh
   site.userdata.latest site.category site.resource site.searchable site.rss site.statistics
   site.statistic site.mapping site.supporting subscription.get subscription.find
   subscription.delete_by_media subscription.status.update subscription.reset

@@ -131,9 +131,9 @@ class _CaptchaHttpAdapter:
 class _CaptchaOcrAdapter:
     """用 OcrHelper 实现验证码识别窄端口。"""
 
-    def recognize(self, image_b64: str) -> str:
-        """识别 Base64 验证码图片。"""
-        text: str = OcrHelper().get_captcha_text(image_b64=image_b64)
+    def recognize(self, image_data: bytes) -> str:
+        """把原始验证码图片字节交给 OCR 服务识别。"""
+        text: str = OcrHelper().get_captcha_text(image_data=image_data)
         return text
 
 
@@ -258,4 +258,3 @@ def reset_site_access_composition() -> None:
     reset_torrent_port()
     reset_cookie_ports()
     reset_rss_ports()
-

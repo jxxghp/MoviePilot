@@ -38,6 +38,7 @@ class BrowserAction(str, Enum):
     SNAPSHOT = "snapshot"
     GET_CONTENT = "get_content"
     SCREENSHOT = "screenshot"
+    GET_COOKIES = "get_cookies"
     CLICK = "click"
     CLICK_REF = "click_ref"
     FILL = "fill"
@@ -64,6 +65,7 @@ class BrowseWebpageInput(BaseModel):
             "- 'snapshot': Get current page snapshot with interactive element refs\n"
             "- 'get_content': Get current page content (text or HTML)\n"
             "- 'screenshot': Take a screenshot of the current page, returns base64 image\n"
+            "- 'get_cookies': Get the current page domain's cookies and User-Agent (admin only)\n"
             "- 'click': Click on an element specified by selector\n"
             "- 'click_ref': Click an element by ref from the latest snapshot\n"
             "- 'fill': Fill text into an input element specified by selector\n"
@@ -139,6 +141,7 @@ class BrowseWebpageTool(MoviePilotTool):
     description: str = (
         "Control a real browser (Playwright) to interact with web pages. "
         "Supports navigating to URLs, reading page content, taking screenshots, "
+        "reading the current authenticated page cookies for administrator-only site-cookie workflows, "
         "clicking elements, filling forms, selecting dropdown options, executing JavaScript, waiting for elements, "
         "and managing tabs. "
         "Use this tool when you need to interact with dynamic web pages, "
@@ -212,6 +215,7 @@ class BrowseWebpageTool(MoviePilotTool):
             "snapshot": "读取页面快照",
             "get_content": "获取页面内容",
             "screenshot": "截取页面截图",
+            "get_cookies": "读取当前页面 Cookie（仅管理员）",
             "click": f"点击元素: {selector}",
             "click_ref": f"点击元素引用: {kwargs.get('ref', '')}",
             "fill": f"填写表单: {selector}",
@@ -295,6 +299,11 @@ class BrowseWebpageTool(MoviePilotTool):
                 and not await self.is_admin_user()
             ):
                 return "错误: 'evaluate' 操作仅允许管理员使用"
+            if (
+                browser_action == BrowserAction.GET_COOKIES
+                and not await self.is_admin_user()
+            ):
+                return "错误: 'get_cookies' 操作仅允许管理员使用"
             if (
                 browser_action in (BrowserAction.FOCUS_TAB, BrowserAction.CLOSE_TAB)
                 and tab_index is None
@@ -438,6 +447,9 @@ class BrowseWebpageTool(MoviePilotTool):
 
         elif browser_action == BrowserAction.SCREENSHOT:
             return self._action_screenshot(page)
+
+        elif browser_action == BrowserAction.GET_COOKIES:
+            return self._action_get_cookies(session, page)
 
         elif browser_action == BrowserAction.CLICK:
             return self._action_click(page, selector, timeout)
@@ -607,6 +619,20 @@ class BrowseWebpageTool(MoviePilotTool):
             "format": "jpeg",
             "note": "截图已以 base64 编码返回",
         }
+        return BrowseWebpageTool._json_response(result)
+
+    @staticmethod
+    def _action_get_cookies(session: Any, page: Any) -> str:
+        """读取当前页面域 Cookie，返回给管理员用于精细 Cookie 写入。"""
+        result = BrowserSessionHelper.get_cookies(session, page)
+        result.update(
+            {
+                "success": True,
+                "execution_outcome": "succeeded",
+                "title": page.title(),
+                "note": "Cookie 仅返回给管理员调用方，请勿在日志或消息中转发。",
+            }
+        )
         return BrowseWebpageTool._json_response(result)
 
     @staticmethod

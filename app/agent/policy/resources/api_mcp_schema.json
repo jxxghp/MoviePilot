@@ -3558,6 +3558,33 @@
       "title": "SiteAuth",
       "type": "object"
     },
+    "SiteCookieSet": {
+      "description": "Browser-obtained site authentication cookie and optional User-Agent to persist without changing other site settings.",
+      "properties": {
+        "cookie": {
+          "description": "Site authentication Cookie header obtained from a trusted browser session.",
+          "title": "Cookie",
+          "type": "string"
+        },
+        "ua": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "User-Agent associated with the authenticated browser session.",
+          "title": "Ua"
+        }
+      },
+      "required": [
+        "cookie"
+      ],
+      "title": "SiteCookieSet",
+      "type": "object"
+    },
     "SiteCookieUpdate": {
       "description": "Site login request used to refresh the stored cookie and User-Agent.",
       "properties": {
@@ -11304,6 +11331,43 @@
     },
     {
       "additionalProperties": false,
+      "description": "Persist a browser-obtained authentication cookie and optional User-Agent for one site without replacing other settings. Method: POST. Path: /api/v1/site/cookie/{site_id}/set. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/SiteCookieSet",
+          "description": "Request value for site.cookie.set. Persist a browser-obtained authentication cookie and optional User-Agent for one site without replacing other settings. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "site.cookie.set",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for site.cookie.set. Persist a browser-obtained authentication cookie and optional User-Agent for one site without replacing other settings. Use only the named fields below.",
+          "properties": {
+            "site_id": {
+              "description": "Persistent site ID returned by site.list.",
+              "title": "Site Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "site_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "site.cookie.set",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "Log in to one site and refresh its stored authentication cookie. Method: POST. Path: /api/v1/site/cookie/{site_id}. Effect: reversible_write.",
       "properties": {
         "body": {
@@ -15824,6 +15888,7 @@
         "site.auth.options",
         "site.authenticate",
         "site.category",
+        "site.cookie.set",
         "site.cookie.update",
         "site.cookiecloud.sync",
         "site.delete",

@@ -33,6 +33,13 @@ Purpose: List torrent categories supported by one configured site.
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
 
+### `site.cookie.set`
+`POST /api/v1/site/cookie/{site_id}/set`; policy effect: `reversible_write`.
+Purpose: Persist a browser-obtained authentication cookie and optional User-Agent for one site without replacing other settings.
+- `path_params`: `site_id*` (integer): Persistent site ID returned by site.list.
+- `query`: none
+- `body`: `cookie*` (string): Site authentication Cookie header obtained from a trusted browser session.; `ua` (string|null): User-Agent associated with the authenticated browser session.
+
 ### `site.cookie.update`
 `POST /api/v1/site/cookie/{site_id}`; policy effect: `reversible_write`.
 Purpose: Log in to one site and refresh its stored authentication cookie.

@@ -425,6 +425,7 @@ SCHEMA_EXPORTS = {
     'SiteAuth': ('app.schemas.site', 'SiteAuth'),
     'SiteCategory': ('app.schemas.site', 'SiteCategory'),
     'SiteCookieUpdate': ('app.schemas.site', 'SiteCookieUpdate'),
+    'SiteCookieSet': ('app.schemas.site', 'SiteCookieSet'),
     'SiteEventData': ('app.schemas.event', 'SiteEventData'),
     'SiteIconData': ('app.schemas.site', 'SiteIconData'),
     'SiteMappingData': ('app.schemas.site', 'SiteMappingData'),

@@ -2,7 +2,7 @@
   "disposition_counts": {
     "alternate-auth-duplicate": 11,
     "consolidated": 71,
-    "gateway": 217,
+    "gateway": 218,
     "provider-skill": 12,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
@@ -18,10 +18,10 @@
       "reason": "The executor validates and expands this bounded source placeholder to one of tmdb, douban, bangumi, or anilist before calling the corresponding concrete OpenAPI route."
     }
   ],
-  "gateway_http_route_count": 218,
-  "gateway_operation_count": 220,
-  "matched_gateway_http_route_count": 217,
-  "openapi_operation_count": 400,
+  "gateway_http_route_count": 219,
+  "gateway_operation_count": 221,
+  "matched_gateway_http_route_count": 218,
+  "openapi_operation_count": 401,
   "operations": [
     {
       "disposition": "consolidated",
@@ -3173,6 +3173,20 @@
       "path": "/api/v1/site/cookie/{site_id}",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "更新站点Cookie&UA",
+      "tags": [
+        "site"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "site.cookie.set"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/site/cookie/{site_id}/set",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "直接保存站点Cookie&UA",
       "tags": [
         "site"
       ]
