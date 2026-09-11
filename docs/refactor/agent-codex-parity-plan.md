@@ -10,7 +10,7 @@
 
 让 MoviePilot Agent 在 MoviePilot 的真实业务边界内具备可复核的 Codex 级 Harness 能力：模型能看到准确的工具合同，工具能完成完整的命令行、浏览器、终端输入输出、子代理和长任务协作闭环，宿主能隔离任务身份、收口进程并在新消息到达时继续推进。高影响业务动作仍由宿主的授权和确认策略控制。
 
-真实模型评测必须使用显式配置的供应商模型和推理档位。本轮 Google Gemini 基线为 `gemini-2.5-pro + high`，使用 Google OpenAI-compatible Chat Completions 端点。它不能与 Agnes、原生 Codex 或其他供应商的结果直接合并；当前原生 Codex 尚未取得同一模型与档位的可用配对样本。
+真实模型评测必须使用显式配置的供应商模型和推理档位。历史 Google Gemini 基线为 `gemini-2.5-pro + high`；后续测评切换为更强的 `gemini-3.1-pro-preview + high`。官方 Google 主机由评测 worker 使用生产同源的 `langchain-google-genai` 原生工具通道，以保留 Gemini 3 的 `thought_signature`；报告会把实际 `runtime_transport` 记为 `google_generative_language`。不同模型、供应商或协议的结果不能直接合并；当前原生 Codex 尚未取得同一模型与档位的可用配对样本。
 
 ## 交付顺序
 
@@ -37,7 +37,7 @@
 UV_PROJECT_ENVIRONMENT=/Users/jxxghp/MPProjects/MoviePilot/.venv \
 uv run --locked --no-sync python -m scripts.evaluation \
   --live --scenario unknown_download \
-  --model gemini-2.5-pro --reasoning-effort high \
+  --model gemini-3.1-pro-preview --reasoning-effort high \
   --output evidence/agent-round/<commit-sha>/moviepilot-unknown_download.json
 ```
 
@@ -66,4 +66,5 @@ uv run --locked --no-sync python -m scripts.evaluation \
 - `a731cc0ce`：为评测世界加入生产 allowlist 中的 `library.exists` 只读操作，并以同一 Gemini 配置重跑三场景。`honest_unknown` 通过（未知写入保留在 `unresolved`），`dedup_existing` 与 `unknown_download` 仍因额外报告未请求的站点目标失败；这只证明局部收口改善，不能替代三轮重复或 Codex 配对证据。
 - `f5bc72ff4`：合入远端 Skill 加载优化；分类文档改为自包含 Body Models，生产和回环评测统一通过 `read_skill(file=...)` 读取列出的辅助文件，不再开放 `read_file` 绕过 Skill 边界。
 - `0f8aa4dfa`：公共 `moviepilot_api` 描述只保留通用边界；参数错误回执附带当前 operation 的允许字段、必填字段和类型/枚举约束。真实 Gemini `dedup_existing` 报告 `/tmp/moviepilot-agent-round-13b4fe112-gemini-dedup.json` 证明错误回执能促成 `subscription.find` 字段位置修正且没有副作用，但模型仍错误声明未请求的站点和已完成下载，继续保持未通过。
+- 本轮：真实测评切换到 `gemini-3.1-pro-preview + high`，官方 Google 主机改用生产同源的 `langchain-google-genai` 原生工具通道并保留 `thought_signature`。`dedup_existing`、`unknown_download`、`honest_unknown` 三个固定场景均通过（报告分别为 `/tmp/moviepilot-agent-round-gemini31native-dedup.json`、`/tmp/moviepilot-agent-round-gemini31native-unknown.json`、`/tmp/moviepilot-agent-round-gemini31native-honest.json`）；这只是 API 假世界的模型行为证据，仍未形成与原生 Codex 的配对比较。
 - 浏览器、真实命令行/PTY 和 WebAgent 中途消息排队已有确定性实现，但仍缺少与原生 Codex 在同一模型、同一场景下的真实配对证据，不能把这些能力标为“已对齐”。

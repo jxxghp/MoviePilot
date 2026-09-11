@@ -234,6 +234,26 @@ async def test_chat_completions_provider_uses_google_compatible_request_options(
     assert "reasoning" not in parameters
 
 
+def test_official_google_provider_uses_native_tool_transport():
+    """官方 Gemini 主机必须走原生 SDK，避免 OpenAI 兼容层丢失 thought_signature。"""
+    settings = ModelSettings(
+        model="gemini-3.1-pro-preview",
+        base_url="https://generativelanguage.googleapis.com/v1beta",
+        api_key="private-test-key",
+        wire_api="chat_completions",
+    )
+    tracker = live.ModelUsageTracker(settings.max_model_calls)
+    model, transport = live._build_model(settings, tracker)
+    try:
+        assert transport == "google_generative_language"
+        assert model.model == settings.model
+        assert model.max_output_tokens == settings.max_output_tokens
+        assert model.max_retries == 0
+        assert model.thinking_level == "high"
+    finally:
+        asyncio.run(live._close_model_clients(model))
+
+
 @pytest.mark.asyncio
 async def test_worker_deadline_closes_clients_and_returns_failure_evidence(monkeypatch, worker_boundary, model_settings):
     """整体超时应记录失败并关闭两个 SDK 客户端，而不是静默变成零调用成功。"""

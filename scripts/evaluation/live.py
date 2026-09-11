@@ -1,6 +1,7 @@
 """真实模型评测的独立进程边界，业务调用仍只进入内存假世界。"""
 
 import asyncio
+import inspect
 import json
 import os
 import re
@@ -14,6 +15,79 @@ from importlib.metadata import version
 from typing import Any
 
 from scripts.evaluation.models import ModelSettings, ModelUsageTracker
+
+
+def _build_model(settings: ModelSettings, tracker: ModelUsageTracker) -> tuple[Any, str]:
+    """按显式 provider 选择评测模型，并让官方 Gemini 走原生工具协议。"""
+    from urllib.parse import urlsplit
+
+    endpoint_host = (urlsplit(settings.base_url).hostname or "").lower()
+    if endpoint_host == "generativelanguage.googleapis.com":
+        # Gemini 3 的 OpenAI 兼容层会把 thought_signature 放进扩展字段；
+        # 当前 langchain-openai 会丢弃该字段，第二轮工具调用因此收到 400。
+        # 生产 LLMHelper 已经固定使用 langchain-google-genai 并修复了同一
+        # 签名合同，评测复用这条原生路径，避免把 provider 缺陷误判为模型能力。
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        from app.agent.llm.helper import (
+            LLMHelper,
+            _build_google_client_args,
+            _patch_gemini_thought_signature,
+        )
+
+        _patch_gemini_thought_signature()
+        thinking_kwargs = LLMHelper._build_google_thinking_kwargs(
+            settings.model,
+            settings.reasoning_effort,
+        )
+        return ChatGoogleGenerativeAI(
+            model=settings.model,
+            api_key=settings.api_key,
+            max_tokens=settings.max_output_tokens,
+            retries=0,
+            request_timeout=min(120, settings.timeout_seconds),
+            client_args=_build_google_client_args(None),
+            callbacks=[tracker],
+            **thinking_kwargs,
+        ), "google_generative_language"
+
+    from langchain_openai import ChatOpenAI
+
+    model_options: dict[str, Any] = {
+        "model": settings.model,
+        "api_key": settings.api_key,
+        "base_url": settings.base_url,
+        "max_tokens": settings.max_output_tokens,
+        "max_retries": 0,
+        "timeout": min(120, settings.timeout_seconds),
+        "profile": {"max_input_tokens": settings.context_window},
+        "callbacks": [tracker],
+    }
+    if settings.wire_api == "responses":
+        model_options.update(use_responses_api=True, reasoning={"effort": settings.reasoning_effort})
+    else:
+        model_options.update(use_responses_api=False, reasoning_effort=settings.reasoning_effort)
+    return ChatOpenAI(**model_options), settings.wire_api
+
+
+async def _close_model_clients(model: Any) -> list[str]:
+    """关闭不同 LangChain provider 暴露的客户端，保留清理失败类型。"""
+    cleanup_errors: list[str] = []
+    for attribute in ("root_async_client", "root_client"):
+        try:
+            client = getattr(model, attribute, None)
+        except Exception:
+            continue
+        close = getattr(client, "close", None)
+        if not callable(close):
+            continue
+        try:
+            result = close()
+            if inspect.isawaitable(result):
+                await result
+        except Exception as error:
+            cleanup_errors.append(type(error).__name__)
+    return cleanup_errors
 
 
 def _worker_environment() -> dict[str, str]:
@@ -93,7 +167,6 @@ async def _run_worker(scenario_id: str, settings: ModelSettings) -> dict[str, An
         from app.testing.bootstrap import prepare_backend
 
         prepare_backend()
-        from langchain_openai import ChatOpenAI
 
         from scripts.evaluation.__main__ import _provenance
         from scripts.evaluation.runtime import run_moviepilot
@@ -101,17 +174,7 @@ async def _run_worker(scenario_id: str, settings: ModelSettings) -> dict[str, An
         from scripts.evaluation.world import EvaluationWorld
 
         tracker = ModelUsageTracker(settings.max_model_calls)
-        model_options: dict[str, Any] = {
-            "model": settings.model, "api_key": settings.api_key, "base_url": settings.base_url,
-            "max_tokens": settings.max_output_tokens, "max_retries": 0,
-            "timeout": min(120, settings.timeout_seconds),
-            "profile": {"max_input_tokens": settings.context_window}, "callbacks": [tracker],
-        }
-        if settings.wire_api == "responses":
-            model_options.update(use_responses_api=True, reasoning={"effort": settings.reasoning_effort})
-        else:
-            model_options.update(use_responses_api=False, reasoning_effort=settings.reasoning_effort)
-        model = ChatOpenAI(**model_options)
+        model, model_transport = _build_model(settings, tracker)
         world = EvaluationWorld(scenario_id)
         started = time.monotonic()
         capture: dict[str, Any] = {}
@@ -126,14 +189,7 @@ async def _run_worker(scenario_id: str, settings: ModelSettings) -> dict[str, An
         except Exception as error:
             failure = type(error).__name__
         finally:
-            try:
-                await model.root_async_client.close()
-            except Exception as error:
-                cleanup_errors.append(type(error).__name__)
-            try:
-                model.root_client.close()
-            except Exception as error:
-                cleanup_errors.append(type(error).__name__)
+            cleanup_errors.extend(await _close_model_clients(model))
         final_text = str(capture.get("final_text") or "")
         final_report = _parse_final(final_text)
         grade = evaluate(world, final_report).to_dict()
@@ -142,7 +198,8 @@ async def _run_worker(scenario_id: str, settings: ModelSettings) -> dict[str, An
         return {
             **grade, **_provenance(world), **usage, "evidence_kind": "moviepilot_live_model",
             "intelligence_evaluated": usage["completed_model_calls"] > 0, "codex_comparison": False,
-            "model": settings.public_metadata(), "elapsed_seconds": round(time.monotonic() - started, 3),
+            "model": {**settings.public_metadata(), "runtime_transport": model_transport},
+            "elapsed_seconds": round(time.monotonic() - started, 3),
             "runtime_versions": {"python": sys.version.split()[0], **{
                 name: version(name) for name in ("langchain", "langgraph", "langchain-openai", "openai")
             }},

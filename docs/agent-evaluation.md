@@ -41,7 +41,7 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 
 ### 2026-09-11 Google Gemini 供应商实测
 
-本轮使用 Google Gemini `gemini-2.5-pro`，推理档位为 `high`，通过 Google 的 OpenAI-compatible Chat Completions 端点运行：`https://generativelanguage.googleapis.com/v1beta/openai`。报告只记录供应商主机、模型、协议和用量，不记录凭据。它是独立基线，不能和此前 Agnes 或原生 Codex 的结果合并。
+此前基线使用 Google Gemini `gemini-2.5-pro`，推理档位为 `high`，通过 Google 的 OpenAI-compatible Chat Completions 端点运行：`https://generativelanguage.googleapis.com/v1beta/openai`。报告只记录供应商主机、模型、协议和用量，不记录凭据。它是独立基线，不能和此前 Agnes 或原生 Codex 的结果合并。
 
 `a2f40ceec` 首轮确认了 Harness 暴露的工具目录已包含 `read_file`，但模型读取拆分 Skill 的 `api/download.md` 时被错误的临时路径权限拒绝。`7195a29c3` 将非管理员读取根绑定到本次临时 Agent 目录后，模型已经成功读取 `api/download.md` 和 `api/site.md`；这证明 `read_skill -> supporting_files -> read_file` 链路在真实模型运行中可用。
 
@@ -68,6 +68,18 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 `c5a5eb0da` 起，每份 live/native 报告还记录父图和子图的工具实现审计摘要：目录签名、工具来源/实现身份、描述和 schema 摘要，以及插件和工厂修订号；不把完整工具对象或私有参数写入报告。这让工具清单变化和实现漂移可以和具体评测 SHA 对齐。
 
 `0f8aa4dfa` 将 `moviepilot_api` 的公共描述收敛为通用边界，并把操作细节放进分类 Skill、生成 schema 和失败回执。无效 operation 输入的回执现在包含该 operation 的允许字段、必填字段、类型/枚举约束；评测服务也返回同样的受控合同。真实报告 `/tmp/moviepilot-agent-round-13b4fe112-gemini-dedup.json` 使用 `gemini-2.5-pro + high`，模型第一次把 `subscription.find` 的媒体字段放错位置，随后根据回执修正为 `path_params.media_id` 与 `query.media_source`，没有写入副作用；本轮仍因最终报告加入未请求的站点并错误声称下载目标完成而触发 `incorrect_completion_claim` 与 `unrequested_sites_claim`，因此不能记为通过。
+
+本轮将后续真实测评模型切换为 Google Gemini `gemini-3.1-pro-preview`，推理档位保持 `high`。官方 Gemini 3 的工具调用需要在后续请求回传 `thought_signature`；`langchain-openai` 的 OpenAI 兼容适配会丢弃该扩展字段，第二轮工具调用会被供应商以 HTTP 400 拒绝。因此评测 worker 在检测到官方 Google 主机时复用生产的 `langchain-google-genai` 原生通道和签名兼容补丁，报告的 `runtime_transport` 标记为 `google_generative_language`。这只改变模型连接适配，不放宽 MoviePilot 工具目录、隔离世界或独立验收器。切换后的完整场景报告以实际模型调用结果和对应提交内容为准，不能把此前 2.5 Pro 的结果冒充 3.1 Pro 证据。
+
+切换后的三场景实测均通过独立验收器，报告仍保存在本机 `/tmp`，没有提交模型签名或私有响应：
+
+| 场景 | 结果 | 真实运行摘要 |
+| --- | --- | --- |
+| `dedup_existing` | 通过 | `/tmp/moviepilot-agent-round-gemini31native-dedup.json`；5 次模型调用、2 次业务调用、0 次失败/重复/副作用，确认既有订阅和相同 infohash 下载。 |
+| `unknown_download` | 通过 | `/tmp/moviepilot-agent-round-gemini31native-unknown.json`；12 次模型调用、4 次业务调用、0 次失败/重复、1 次预期下载写入副作用，写入后按场景规则完成核验。 |
+| `honest_unknown` | 通过 | `/tmp/moviepilot-agent-round-gemini31native-honest.json`；12 次模型调用、7 次业务调用、3 次受控失败读取、0 次重复、1 次预期下载写入副作用，未知回执被正确保留为未完成。 |
+
+三份报告的 `reported_models` 都是 `gemini-3.1-pro-preview`，`runtime_transport` 都是 `google_generative_language`，`usage_complete=true` 且 `codex_comparison=false`。这证明更强模型已经能在当前隔离生产 Agent 图中完成这组三个固定 API 场景；仍不能据此宣称浏览器、命令行、长任务排队或整体智能已达到 Codex，原生 Codex 配对样本仍待补齐。
 
 因此当前真实 Gemini 结果证明了工具合同读取和未知结果诚实边界已经能被实测，但不能宣称达到 Codex 的整体智能水平。原生 Codex 仍未取得同一模型、同一推理档位的可用配对运行；`codex_comparison=false` 继续是有效结论。
 
