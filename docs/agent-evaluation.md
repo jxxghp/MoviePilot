@@ -45,6 +45,8 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 
 `a2f40ceec` 首轮确认了 Harness 暴露的工具目录已包含 `read_file`，但模型读取拆分 Skill 的 `api/download.md` 时被错误的临时路径权限拒绝。`7195a29c3` 将非管理员读取根绑定到本次临时 Agent 目录后，模型已经成功读取 `api/download.md` 和 `api/site.md`；这证明 `read_skill -> supporting_files -> read_file` 链路在真实模型运行中可用。
 
+这段记录的是旧的辅助文件读取链路。远端提交 `f5bc72ff4` 后，当前生产和评测路径都由 `read_skill` 首次返回清单，再用同一个工具的 `file="api/<category>.md"` 参数读取分类文档；分类文件自带所需 Body Models，不再依赖 `api/models.md`。回环 MCP 测试会检查路径白名单、截断和跨会话结果续读。
+
 `8c0746172` 将 `download.add` 的最小 `torrent_in` 合同直接补入下载分类文档并把 Skill 升到 v30。当前三场景证据如下（报告保存在本机 `/tmp`，未提交仓库）：
 
 | 场景 | 结果 | 证据与失败边界 |
@@ -62,6 +64,10 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 | `honest_unknown` | 通过 | `/tmp/moviepilot-agent-round-a731cc0ce-gemini-honest.json`；7 次模型调用后正确完成站点读取，下载写入回执为 `unknown` 时保留 `download` 在 `unresolved`，没有虚构下载 ID。 |
 
 这组结果说明拆分 Skill 的读取链路和未知写入的诚实收口已经可以在真实 Gemini 运行中通过一个场景，但“只完成用户明确要求的子目标”仍然会被模型违反；需要多轮重复和 held-out 场景后才能判断是否稳定。
+
+`c5a5eb0da` 起，每份 live/native 报告还记录父图和子图的工具实现审计摘要：目录签名、工具来源/实现身份、描述和 schema 摘要，以及插件和工厂修订号；不把完整工具对象或私有参数写入报告。这让工具清单变化和实现漂移可以和具体评测 SHA 对齐。
+
+`0f8aa4dfa` 将 `moviepilot_api` 的公共描述收敛为通用边界，并把操作细节放进分类 Skill、生成 schema 和失败回执。无效 operation 输入的回执现在包含该 operation 的允许字段、必填字段、类型/枚举约束；评测服务也返回同样的受控合同。真实报告 `/tmp/moviepilot-agent-round-13b4fe112-gemini-dedup.json` 使用 `gemini-2.5-pro + high`，模型第一次把 `subscription.find` 的媒体字段放错位置，随后根据回执修正为 `path_params.media_id` 与 `query.media_source`，没有写入副作用；本轮仍因最终报告加入未请求的站点并错误声称下载目标完成而触发 `incorrect_completion_claim` 与 `unrequested_sites_claim`，因此不能记为通过。
 
 因此当前真实 Gemini 结果证明了工具合同读取和未知结果诚实边界已经能被实测，但不能宣称达到 Codex 的整体智能水平。原生 Codex 仍未取得同一模型、同一推理档位的可用配对运行；`codex_comparison=false` 继续是有效结论。
 
