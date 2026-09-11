@@ -137,6 +137,8 @@ MoviePilot 的真实 Agent 已在 `app/agent/llm/helper.py` 的 `runtime == "goo
 
 这组三场景说明当前生产 Agent 在两个写入/复用路径和一个未知回执安全路径上已形成同条件通过样本，但原生 Codex 在持续不可用场景仍会因继续读取 Skill 和消耗调用预算而没有终态报告。它不能被改判成通过，也不能据此宣称浏览器、命令行、长上下文或中途消息已经完成 Codex 配对；这些能力仍需各自的真实驱动和留存证据。
 
+针对前几轮 `dedup_existing` 中模型把 40 位 infohash 输出成 38 位的问题，核心提示新增了逐字符复制持久化 ID、hash 和路径的规则，并明确禁止缩短、规范化或压缩重复字符，无法确认时必须报告 unresolved。新增边界测试后，`tests/test_builtin_skill_boundaries.py` 的 11 项聚焦测试通过。使用同一未提交工作树、同一 `gpt-5.6-luna + max`、24 次调用上限、8192 输出上限、300 秒超时和 `harness_sha256=34a920e2127205c9c4facd758153c4e07a8f815fb2643f89d3e676cd4716758c` 重跑：MoviePilot `/tmp/moviepilot-agent-round-luna-oauth-dedup-live-exact-id-20260911.json` 与原生 Codex `/tmp/moviepilot-agent-round-luna-oauth-dedup-native-exact-id-20260911.json` 均通过，摘要 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair-exact-id-20260911.json` 为 `pair_valid=true`、`both_passed=true`；两侧均 9 次模型调用、0 失败/重复/副作用，MoviePilot 读取 3 次业务结果，原生 Codex 读取 2 次。该结果只证明本轮精确报告规则生效，不能替代后续多轮和 held-out 场景验收。
+
 已有报告可用以下命令重新生成摘要；命令只读报告，不会再次调用模型：
 
 ```bash

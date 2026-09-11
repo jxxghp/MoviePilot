@@ -153,6 +153,15 @@ def test_core_prompt_requires_read_skill_for_skill_documents() -> None:
     assert "do not use `read_file` to bypass the limit" in core_prompt
 
 
+def test_core_prompt_preserves_exact_identifiers_from_tool_results() -> None:
+    """核心提示必须阻止模型截断或模式化压缩持久化标识。"""
+    core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
+
+    assert "Copy persistent IDs, hashes, paths, and other exact identifiers character-for-character" in core_prompt
+    assert "Never shorten, normalize, or abbreviate repeated characters" in core_prompt
+    assert "if the exact value is unavailable, report it as unresolved" in core_prompt
+
+
 def test_api_collection_counts_must_use_gateway_metadata_before_database() -> None:
     """核心提示与 API Skill 必须阻止列表截断后错误回退数据库统计。"""
     core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
