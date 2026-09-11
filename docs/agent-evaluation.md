@@ -92,9 +92,9 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 
 `browser_navigation` 场景由 MoviePilot 生产 `BrowseWebpageTool` 操作回环动态页面，报告 `/tmp/moviepilot-agent-round-luna-oauth-live-browser-final.json` 通过，4 次浏览器回执在点击后观察到 `BROWSER_OK`。`codex exec 0.153.4` 在探针 `/tmp/moviepilot-agent-round-luna-oauth-native-probe-browser-final.json` 中即使显式开启 browser/computer feature 也没有广告浏览器动作，因此浏览器原生配对保持 blocked；这不是把 CLI 的缺失能力改判为通过。
 
-`terminal_session` 场景在同一 `gpt-5.6-luna + max`、Codex OAuth 和修复后 Harness 下形成了生产通过、原生失败的真实配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-appserver-pair-final-d22fa746f.json`（`pair_valid=true`、`both_passed=false`）。MoviePilot 报告 `/tmp/moviepilot-agent-round-luna-oauth-live-terminal-appserver-final-d22fa746f.json` 用 4 次模型调用完成 `start → write(session_id) → read`，pipe 会话观察到 `READY`、`REPLY=MOVIEPILOT_TERMINAL_OK` 和退出码 0；原生 app-server 报告 `/tmp/moviepilot-agent-round-luna-oauth-native-terminal-appserver-final-d22fa746f.json` 仍记录 stdin 在 READY 前关闭，评分器保留 `terminal_input_not_verified`、`terminal_output_not_read` 和 `terminal_output_not_verified`。该失败保留为命令行 Harness 的真实差异，不能把工具广告当成交互能力通过。
+`terminal_session` 的早期配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-appserver-pair-final-d22fa746f.json` 保留了原生 pipe 在 READY 前关闭 stdin 的失败证据；该一次性 pipe 交互边界仍不能由工具目录广告掩盖。生产持续会话实现和本地回归保持通过。
 
-对应的 `terminal_pty_session` 原生报告 `/tmp/moviepilot-agent-round-luna-oauth-native-terminal-pty-appserver-final-d22fa746f.json` 已记录命令完成、`terminalInteraction` 输入事件和输出增量，但本次模型流在最终 JSON 前因 SSE idle timeout 断开，独立验收为 `invalid_final_report`。终端评测适配层现在只对 pipe/PTY 场景使用 Codex app-server，以便保存持续 stdin、输出增量和终端交互事件；这提高了失败可审计性，尚未形成终端配对通过。该轮 `harness_sha256` 为 `aac8905480b95343c17875ed240f9f6b8ca9ea65bc97647f2696a1deb0a64497`。
+对应的 `terminal_pty_session` 配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-pty-appserver-pair-timeout180-sleep1-ready1-20260911.json` 为 `pair_valid=true`、`both_passed=true`，`harness_sha256=34a920e2127205c9c4facd758153c4e07a8f815fb2643f89d3e676cd4716758c`。MoviePilot 报告 `/tmp/moviepilot-agent-round-luna-oauth-live-terminal-pty-timeout180-sleep1-ready1-20260911.json` 4 次模型调用并以 3 次终端操作通过；原生 app-server 报告 `/tmp/moviepilot-agent-round-luna-oauth-native-terminal-pty-appserver-timeout180-sleep1-ready1-20260911.json` 3 次模型调用，结构化事件和独立账本均确认 PTY 输入、`READY`/回复输出和退出码 0。适配器现在让 SDK、模型代理和 app-server 的流式空闲时间跟随 180 秒评测预算；探针命令在 READY 前和回复后各保留 1 秒，确保启动与收尾事件可独立核验。
 
 ### 长上下文与 WebAgent 排队消息实测
 
@@ -144,7 +144,7 @@ uv run --locked --no-sync python -m scripts.evaluation \
 
 调用配置经私有标准输入传给 worker，凭据不进入命令行、提示词或报告。worker 只继承必要的平台环境，先创建临时 `CONFIG_DIR`，再导入后端；每轮拥有独立回执库、记忆、会话和工具实例。生产 `process/_create_agent`、Skills、计划、权限、持久回执、工具输出预算、压缩和子代理仍按真实路径执行。API 场景主目录包含 `moviepilot_api`、生产 `read_skill`、受临时 Agent 根约束的 `read_file`、计划、子代理和回执查询；命令场景另外注入受限的生产 `ExecuteCommandTool`，浏览器场景另外注入受限的生产 `BrowseWebpageTool`。API transport 拒绝任何外部目标及场景外 operation；这些受控目录不代表默认部署工具全集。
 
-共享回调在请求前执行硬调用上限，覆盖主模型、选择、摘要和子代理；SDK 自动重试关闭。单请求超时最多 120 秒，全轮和独立进程另有期限。每次请求的输出 token 及运行器上下文上限被记录；上下文上限是测试参数，不表示模型真实最大窗口。当前固定为 128000 tokens。
+共享回调在请求前执行硬调用上限，覆盖主模型、选择、摘要和子代理；SDK 自动重试关闭。单请求和流式空闲超时跟随本轮 `timeout_seconds`（允许范围 30–900 秒），全轮和独立进程另有期限。每次请求的输出 token 及运行器上下文上限被记录；上下文上限是测试参数，不表示模型真实最大窗口。当前固定为 128000 tokens。
 
 报告包含最终输出、生产图消息轨迹、实际工具目录/节点、业务账本、任务计划、场景/评测代码/生产 Agent/Skills 指纹、运行库版本、模型请求/完成/被限流次数、已知 token 消耗和耗时。失败请求的用量未知时，`usage_complete=false`，token 仅为已知下界，不能据此声称零消耗。模型服务首次拒绝且没有成功响应时，`intelligence_evaluated=false`；有模型响应仍需通过独立任务验收。`agent_execution_success` 仅表示生产图技术执行结果，不等于任务完成。
 

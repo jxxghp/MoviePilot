@@ -249,6 +249,7 @@ def test_official_google_provider_uses_native_tool_transport():
         assert model.model == settings.model
         assert model.max_output_tokens == settings.max_output_tokens
         assert model.max_retries == 0
+        assert model.timeout == settings.timeout_seconds
         assert model.thinking_level == "high"
     finally:
         asyncio.run(live._close_model_clients(model))
@@ -269,6 +270,7 @@ def test_codex_oauth_uses_production_responses_headers():
         assert dumped["use_responses_api"] is True
         assert dumped["streaming"] is True
         assert dumped["store"] is False
+        assert dumped["request_timeout"] == settings.timeout_seconds
         assert dumped["max_tokens"] is None
         assert dumped["default_headers"] == {"originator": "moviepilot", "ChatGPT-Account-Id": "private-account"}
     finally:

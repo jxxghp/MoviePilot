@@ -96,7 +96,7 @@ def _configuration(settings: ModelSettings, proxy: EvaluationModelProxy, server:
             "name": "Controlled evaluation proxy", "base_url": proxy.endpoint,
             "env_key": "MOVIEPILOT_EVAL_MODEL_TOKEN", "wire_api": "responses", "requires_openai_auth": False,
             "request_max_retries": 0, "stream_max_retries": 0,
-            "stream_idle_timeout_ms": min(settings.timeout_seconds, 120) * 1000,
+            "stream_idle_timeout_ms": settings.timeout_seconds * 1000,
         },
         "mcp_servers": {"evaluation": {
             "url": server.endpoint, "bearer_token_env_var": "MOVIEPILOT_EVAL_MCP_TOKEN",

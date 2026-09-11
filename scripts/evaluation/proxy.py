@@ -317,7 +317,7 @@ class EvaluationModelProxy:
         self.requests: list[dict[str, Any]] = []
         self.blocked_calls = 0
         self._rejected_requests: list[dict[str, Any]] = []
-        self._client = httpx.AsyncClient(transport=transport, trust_env=False, timeout=min(120, settings.timeout_seconds))
+        self._client = httpx.AsyncClient(transport=transport, trust_env=False, timeout=settings.timeout_seconds)
         self._socket: Optional[socket.socket] = None
         self._server: Optional[uvicorn.Server] = None
         self._task: Optional[asyncio.Task[Any]] = None

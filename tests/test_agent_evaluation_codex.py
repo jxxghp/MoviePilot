@@ -252,6 +252,26 @@ def test_catalog_projection_changes_only_selected_tool_mode_and_is_independent()
     assert original == before
 
 
+def test_native_app_server_stream_timeout_follows_evaluation_budget() -> None:
+    """原生 app-server 的流式空闲上限必须与真实评测墙钟预算一致。"""
+    settings = ModelSettings(
+        "gpt-test",
+        "https://provider.invalid/v1",
+        "private-provider-test-key",
+        timeout_seconds=180,
+    )
+    proxy = SimpleNamespace(endpoint="http://127.0.0.1:1/v1")
+    server = SimpleNamespace(endpoint="http://127.0.0.1:2/mcp")
+    configuration = codex._configuration(
+        settings,
+        proxy,
+        server,
+        Path("/tmp/moviepilot-evaluation-test"),
+        scenario_id="terminal_pty_session",
+    )
+    assert configuration["model_providers.evaluation"]["stream_idle_timeout_ms"] == 180_000
+
+
 @pytest.mark.parametrize("catalog", [{}, {"models": []}, {"models": [{"slug": "gpt-test"}, {"slug": "gpt-test"}]}])
 def test_missing_or_ambiguous_selected_model_never_falls_back(catalog: dict[str, Any]) -> None:
     """模型元数据缺失或重复时必须中止，不能换另一模型制造成功对照。"""

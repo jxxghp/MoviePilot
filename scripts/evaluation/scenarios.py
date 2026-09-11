@@ -165,7 +165,8 @@ _SCENARIOS = (
         magnet="",
         infohash="",
         kind="terminal",
-        command="printf 'READY\\n'; IFS= read -r reply; printf 'REPLY=%s\\n' \"$reply\"",
+        # 回复后短暂保持进程存活，让 PTY 写入与退出事件在同一会话内完成交接。
+        command="sleep 1; printf 'READY\\n'; IFS= read -r reply; printf 'REPLY=%s\\n' \"$reply\"; sleep 1",
         terminal_use_pty=True,
     ),
 )
