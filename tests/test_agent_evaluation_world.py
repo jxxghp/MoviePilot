@@ -30,13 +30,30 @@ def _download_body(world: EvaluationWorld) -> dict[str, Any]:
 def test_scenarios_expose_inputs_without_initial_state_or_oracle() -> None:
     """公开定义只有任务、业务身份及资源，答案和故障时序不能进入模型上下文。"""
     scenarios = list_scenarios()
-    assert len(scenarios) == 3
-    assert len({scenario.media_id for scenario in scenarios}) == 3
+    assert len(scenarios) == 5
+    api_scenarios = [scenario for scenario in scenarios if scenario.kind == "api"]
+    assert len(api_scenarios) == 3
+    assert len({scenario.media_id for scenario in api_scenarios}) == 3
     for scenario in scenarios:
-        assert set(asdict(scenario)) == {"scenario_id", "task", "media_source", "media_id", "title", "magnet", "infohash"}
-        assert scenario.infohash in scenario.magnet
+        assert set(asdict(scenario)) == {
+            "scenario_id", "task", "media_source", "media_id", "title", "magnet", "infohash",
+            "kind", "command", "browser_url",
+        }
         assert "JSON" in scenario.task
-        assert "默认下载器和目录已配置" in scenario.task
+        assert scenario.scenario_id not in scenario.task
+        if scenario.kind == "api":
+            assert scenario.infohash in scenario.magnet
+            assert "默认下载器和目录已配置" in scenario.task
+            assert scenario.command == ""
+            assert scenario.browser_url == ""
+        elif scenario.kind == "command":
+            assert scenario.command
+            assert scenario.browser_url == ""
+            assert not scenario.media_id and not scenario.infohash
+        else:
+            assert scenario.kind == "browser"
+            assert scenario.browser_url == "__EVALUATION_BROWSER_URL__"
+            assert not scenario.media_id and not scenario.infohash
         assert "旧译名" not in scenario.task
         with pytest.raises(FrozenInstanceError):
             scenario.title = "污染输入"

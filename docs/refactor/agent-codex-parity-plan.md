@@ -21,7 +21,7 @@ Google 的 OpenAI-compatible 层会丢失 Gemini 3 工具回复中的 `thought_s
 | C1.4 终端工具完整闭环 | 已完成基线 | `run/pipe/PTY` 共用 shell、cwd、login 和 UTF-8 策略；stdin 写入、EOF、分页、interrupt/kill、超时和进程组收尾有真实进程测试 |
 | C1.3 终端任务作用域 | 已完成 | 终端归属由宿主对象身份决定；定时运行、会话、子任务和内部工具管理器隔离；封口先于清理，排队或运行中的命令都不会在任务结束后迟到启动 |
 | S2.3 运行中消息排队与 WebAgent 输入 | 已完成本轮实现 | 运行中仍可提交新消息；消息按会话原子入队，在下一次模型调用边界注入真实 `HumanMessage`；SSE 报告 queued/applied，停止后不再派发后续工具；剩余边界由真实长任务回归继续覆盖 |
-| 浏览器能力对齐 | 动作与作用域已实现，真实配对验证未完成 | 导航、页面读取、点击/输入、等待、截图和失败收口使用真实浏览器状态；工具清单、权限、超时、重试和会话生命周期与命令行能力同样可观测；仍需可用供应商和原生 harness 做同场景验证 |
+| 浏览器能力对齐 | MoviePilot 真实运行已验证；原生 CLI 配对受能力缺口阻塞 | 导航、页面读取、点击/输入、等待、截图和失败收口使用真实浏览器状态；本轮本地动态页面场景已由生产 `BrowseWebpageTool` 完成。`codex exec 0.153.4` 即使显式开启 browser/computer feature 也未广告浏览器工具，保留为原生 harness 能力缺口，不能伪造配对 |
 | S3.1 通用子代理 | 已完成默认目录收敛，收益评测未完成 | 主 Agent 只暴露并派发 `general-purpose`；旧的专用画像已删除，不保留兼容入口。仍需用 held-out 任务验证通用派发的收益、授权、工具角色、终端分享和副作用边界 |
 
 ## 每轮硬门禁
@@ -49,8 +49,8 @@ uv run --locked --no-sync python -m scripts.evaluation \
 
 ## 工具与 Harness 对齐清单
 
-- **命令行**：普通一次性命令与后台终端分别支持 pipe/PTY、共享 cwd/shell/login/环境和 UTF-8；输入写入、空写入、EOF、分页、短写、interrupt、kill、超时、取消和进程组收尾都有结构化终态。
-- **浏览器**：工具目录必须明确导航、读取、交互、等待和截图的动作与权限；浏览器会话、页面状态和失败重试由宿主持有，不能由模型字符串冒领。
+- **命令行**：普通一次性命令与后台终端分别支持 pipe/PTY、共享 cwd/shell/login/环境和 UTF-8；输入写入、空写入、EOF、分页、短写、interrupt、kill、超时、取消和进程组收尾都有结构化终态。新增 `command_execution` 场景只在原生 CLI 真实广告 `functions.exec_command`/`functions.write_stdin` 时按场景开启，并把 MoviePilot 生产 `ExecuteCommandTool` 绑定到临时目录；PTY 长会话仍需同条件原生配对。
+- **浏览器**：工具目录必须明确导航、读取、交互、等待和截图的动作与权限；浏览器会话、页面状态和失败重试由宿主持有，不能由模型字符串冒领。新增 `browser_navigation` 场景使用回环动态页面验证生产工具；原生 CLI 探针没有广告浏览器工具，原生配对保持 blocked，等待可用的 Codex browser harness。
 - **子代理**：主 Agent 自动选择通用子代理；专用画像只有在 held-out 任务上证明提高成功率、减少调用或降低副作用风险时才保留。子代理不能自行发送消息、执行高影响写操作或继承兄弟任务句柄。
 - **API Skill 与合同读取**：`skills/moviepilot-api/SKILL.md` 只负责路由索引和工作流；`api/*.md` 各自包含完整操作合同及该类别需要的 Body Models，不再依赖单独的 `api/models.md`。真实 Agent 先用 `read_skill` 得到 supporting-file 清单，再用同一个工具的 `file=api/<category>.md` 参数按需读取类别文档；评测目录必须提供同一条链路，不能只返回文件名而不给模型读取能力。operation 输入错误还要返回该 operation 的允许字段、必填字段和类型约束，帮助模型纠正后重试。
 - **长任务与新消息**：入站消息在任务运行时仍可接受并进入有界队列；应用到下一模型边界时必须保留 tool-call/tool-result 配对和取消语义，不能只把文本拼到系统提示词。
@@ -73,4 +73,5 @@ uv run --locked --no-sync python -m scripts.evaluation \
 - 本轮：真实测评切换到 `gemini-3.1-pro-preview + high`，官方 Google 主机改用生产同源的 `langchain-google-genai` 原生工具通道并保留 `thought_signature`。`dedup_existing`、`unknown_download`、`honest_unknown` 三个固定场景均通过（报告分别为 `/tmp/moviepilot-agent-round-gemini31native-dedup.json`、`/tmp/moviepilot-agent-round-gemini31native-unknown.json`、`/tmp/moviepilot-agent-round-gemini31native-honest.json`）；这只是 API 假世界的模型行为证据，仍未形成与原生 Codex 的配对比较。
 - 本轮第二阶段：用同一 `gpt-5.6-luna + max`、同一场景和预算显式启用 Codex OAuth，首次生成有效成对摘要 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair.json`。MoviePilot live `/tmp/moviepilot-agent-round-luna-oauth-live-dedup-5.json` 因最终 infohash 少两位而未通过；原生 Codex `/tmp/moviepilot-agent-round-luna-oauth-native-dedup-8.json` 通过。摘要 `pair_valid=true`、`both_passed=false`，证明真实生产图与 Codex 仍有可观测的终态可靠性差距；下一轮先针对精确最终报告和未知结果收口做多次重复，再扩展浏览器、终端和中途消息场景。
 - 本轮第三阶段：修正原生动态工具搜索对 `multi_agent_v1` 协作命名空间的投影，正向保留 `wait_agent`、`resume_agent` 等原生控制动作，负向继续拒绝 `read_file`。在同一 Harness（`71be4c436acc5dc2d5a0cd6996c3ca10688a9c4ba98fd11594e536f7aa440c22`）下，`dedup_existing` 配对 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair-13.json` 与 `unknown_download` 配对 `/tmp/moviepilot-agent-round-luna-oauth-unknown-pair-14.json` 均 `pair_valid=true`、`both_passed=true`；MoviePilot 分别使用 6/6 次模型调用，原生 Codex 使用 10/14 次。`honest_unknown` 配对 `/tmp/moviepilot-agent-round-luna-oauth-honest-pair-16.json` 仍为 `both_passed=false`：MoviePilot 在 9 次调用后如实保留下载未核验，原生 Codex 达到 16 次上限后没有最终 JSON，产生 `invalid_final_report`。这保留了真实失败边界，不能等同整体 Codex 智能已完成。
-- 浏览器、真实命令行/PTY 和 WebAgent 中途消息排队已有确定性实现，但仍缺少与原生 Codex 在同一模型、同一场景下的真实配对证据，不能把这些能力标为“已对齐”。
+- 命令行与浏览器能力阶段：`command_execution` 在同一 `gpt-5.6-luna + max` 和独立 Codex OAuth 下已形成真实配对 `/tmp/moviepilot-agent-round-luna-oauth-command-pair-final.json`，`pair_valid=true`、`both_passed=true`，harness 为 `c409ee1ca7899ccfcefd38832d6a343f024f8fc67fb65f14c3eec08552203257`。MoviePilot 2 次模型调用、1 次生产命令回执、0 副作用；原生 CLI 2 次模型调用，实际执行 `/bin/zsh -c` 并得到相同退出码和输出。生产 stdout 的 `[标准输出]` 展示包装已在独立判定器中与命令内容分离。
+- 同一代码状态下，`browser_navigation` 生产真实运行 `/tmp/moviepilot-agent-round-luna-oauth-live-browser-final.json` 通过：6 次模型调用、4 次浏览器回执，真实页面点击后观察到 `BROWSER_OK`。`codex exec 0.153.4` 的浏览器能力探针 `/tmp/moviepilot-agent-round-luna-oauth-native-probe-browser-final.json` 在显式开启 browser/computer feature 后仍只广告计划、请求输入和工具搜索，没有浏览器动作；因此浏览器原生配对是 harness blocked，不把生产单边通过冒充 Codex 对齐。PTY 长会话、WebAgent 中途消息排队和通用子代理收益仍需真实配对。

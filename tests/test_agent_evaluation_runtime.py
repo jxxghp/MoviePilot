@@ -17,9 +17,10 @@ from app.agent.api.executor import MoviePilotApiExecutor
 from app.agent.middleware import config as config_middleware
 from app.agent.middleware import subagents
 from app.agent.middleware.summarization import FinalRequestCompactionMiddleware
+from app.agent.terminal.ownership import TerminalScope, bind_terminal_scope, close_terminal_scope
 from app.db.adapters.invocation import TransactionalInvocationRepository
 from app.db.models.agentinvocation import AgentInvocation
-from scripts.evaluation.runtime import _Transport, run_moviepilot
+from scripts.evaluation.runtime import _EvaluationExecuteCommandTool, _Transport, run_moviepilot
 from scripts.evaluation.score import evaluate
 from scripts.evaluation.world import EvaluationWorld
 
@@ -222,6 +223,21 @@ async def test_transport_rejects_external_and_unlisted_routes():
     )
     assert response.json()["execution_outcome"] == "failed"
     assert world.ledger == []
+
+
+@pytest.mark.asyncio
+async def test_evaluation_command_tool_rejects_wrong_input_with_correction(tmp_path):
+    """评测命令工具拒绝越界输入，并把可修正的合同返回给模型。"""
+    world = EvaluationWorld("command_execution")
+    tool = _EvaluationExecuteCommandTool(world=world, allowed_root=tmp_path, session_id="command-test", user_id="1")
+    scope = TerminalScope(user_id="1", task_id="command-test", kind="conversation")
+    with bind_terminal_scope(scope):
+        result = json.loads(await tool.run(action="run", command="echo outside"))
+    assert result["execution_outcome"] == "failed"
+    assert result["error"] == "evaluation_command_rejected"
+    assert "完全一致" in result["message"]
+    assert world.ledger[0]["operation_id"] == "execute_command"
+    assert await close_terminal_scope(scope)
 
 
 @pytest.mark.asyncio

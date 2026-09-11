@@ -148,6 +148,52 @@ def test_model_input_contains_known_resource_but_hides_scenario_kind():
     assert world.scenario.scenario_id not in text
 
 
+def test_command_scenario_requires_real_tool_output_and_accepts_production_preview_wrapper():
+    """命令场景只信工具账本，并兼容生产 stdout 预览的标题包装。"""
+    world = EvaluationWorld("command_execution")
+    world.record_command(world.scenario.command, {
+        "execution_outcome": "succeeded", "exit_code": 0,
+        "output": "[标准输出]\nMOVIEPILOT_COMMAND_OK",
+    })
+    report = {
+        "status": "completed", "command_output": "MOVIEPILOT_COMMAND_OK\n", "command_exit_code": 0,
+        "completed": ["command"], "unresolved": [],
+        "subscription_ids": [], "download_ids": [], "enabled_site_ids": [],
+    }
+    grade = evaluate(world, report)
+    assert grade.passed is True
+    world.record_command(world.scenario.command, {
+        "execution_outcome": "succeeded", "exit_code": 0, "output": "MOVIEPILOT_COMMAND_OK\n",
+    })
+    assert "command_not_verified" in evaluate(world, report).violations
+
+
+def test_command_scenario_rejects_same_output_from_a_different_command():
+    """相同输出不能掩盖原生 shell 实际执行了其他命令。"""
+    world = EvaluationWorld("command_execution")
+    world.record_command("printf 'MOVIEPILOT_COMMAND_OK\\n'; echo unexpected", {
+        "execution_outcome": "succeeded", "exit_code": 0, "output": "MOVIEPILOT_COMMAND_OK\n",
+    })
+    report = {
+        "status": "completed", "command_output": "MOVIEPILOT_COMMAND_OK\n", "command_exit_code": 0,
+        "completed": ["command"], "unresolved": [],
+        "subscription_ids": [], "download_ids": [], "enabled_site_ids": [],
+    }
+    assert "command_not_verified" in evaluate(world, report).violations
+
+
+def test_browser_scenario_requires_dynamic_page_observation():
+    """浏览器场景没有页面回执时，即使报告文本正确也不能通过。"""
+    world = EvaluationWorld("browser_navigation")
+    report = {
+        "status": "completed", "browser_text": "BROWSER_OK", "completed": ["browser"], "unresolved": [],
+        "subscription_ids": [], "download_ids": [], "enabled_site_ids": [],
+    }
+    assert "browser_not_verified" in evaluate(world, report).violations
+    world.record_browser("get_content", {"success": True, "execution_outcome": "succeeded", "content": "BROWSER_OK"})
+    assert evaluate(world, report).passed is True
+
+
 def test_cli_reports_failure_without_executing_any_model(tmp_path):
     """独立命令行真实退出码与报告表达失败，且显式标注只是离线轨迹验收。"""
     trace = tmp_path / "trace.json"

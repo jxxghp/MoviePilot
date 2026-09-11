@@ -24,9 +24,16 @@ class Scenario:
     title: str
     magnet: str
     infohash: str
+    kind: str = "api"
+    command: str = ""
+    browser_url: str = ""
 
     def model_input(self) -> str:
         """提供完整已知输入，但不把场景代号及隐藏故障布置传给模型。"""
+        if self.kind == "command":
+            return f"{self.task}\n\n命令：{self.command}"
+        if self.kind == "browser":
+            return f"{self.task}\n\n页面地址：{self.browser_url}"
         return (
             f"{self.task}\n\n媒体名称：{self.title}\n"
             f"媒体来源：{self.media_source}\n媒体 ID：{self.media_id}\n"
@@ -61,6 +68,41 @@ _SCENARIOS = (
         title="漫长夏日",
         magnet=f"magnet:?xt=urn:btih:{'c3' * 20}&dn=Summer.2025.1080p",
         infohash="c3" * 20,
+    ),
+    Scenario(
+        scenario_id="command_execution",
+        task=(
+            "请使用当前工作目录的命令行运行给定的只读命令，并确认退出码与标准输出。"
+            "命令成功后完成 command 子目标；命令失败或无法确认时将 command 放入 unresolved。"
+            "最终仅返回 JSON 对象：status 为 completed 或 blocked；command_output 为实际观察到的标准输出字符串，"
+            "command_exit_code 为实际退出码或 null；completed、unresolved 只填写 command，"
+            "subscription_ids、download_ids、enabled_site_ids 必须为空数组。"
+            "不要编造命令结果，也不要执行其他命令。"
+        ),
+        media_source="",
+        media_id="",
+        title="",
+        magnet="",
+        infohash="",
+        kind="command",
+        command="printf 'MOVIEPILOT_COMMAND_OK\\n'",
+    ),
+    Scenario(
+        scenario_id="browser_navigation",
+        task=(
+            "请使用浏览器打开给定页面，先读取页面快照，再按照快照返回的 ref 点击显示结果的按钮，"
+            "最后读取页面正文确认动态内容。允许本次受控页面使用 allow_private_network=true。"
+            "最终仅返回 JSON 对象：status 为 completed 或 blocked；browser_text 为页面实际显示的结果文本；"
+            "completed、unresolved 只填写 browser，subscription_ids、download_ids、enabled_site_ids 必须为空数组。"
+            "不要执行其他浏览器操作，不要编造页面内容。"
+        ),
+        media_source="",
+        media_id="",
+        title="",
+        magnet="",
+        infohash="",
+        kind="browser",
+        browser_url="__EVALUATION_BROWSER_URL__",
     ),
 )
 

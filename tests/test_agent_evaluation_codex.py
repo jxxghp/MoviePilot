@@ -16,6 +16,7 @@ import pytest
 
 from scripts.evaluation import codex
 from scripts.evaluation.models import ModelSettings
+from scripts.evaluation.proxy import NATIVE_SHELL_TOOLS, project_tools
 
 
 def _program(tmp_path: Path, code: str) -> list[str]:
@@ -351,3 +352,21 @@ def test_toml_arguments_preserve_literals_without_shell_interpretation() -> None
     """带引号、换行和 shell 字符的模型配置仍是单个正确 TOML 值。"""
     value = {"name": "引号\"与换行\n以及$(command)", "enabled": False, "budget": 12}
     assert tomllib.loads("value=" + codex._toml(value))["value"] == value
+
+
+def test_command_scenario_enables_only_native_shell_controls() -> None:
+    """命令场景显式开启原生终端开关，普通 API 场景继续关闭。"""
+    settings = ModelSettings("gpt-test", "https://provider.invalid/v1", "provider-key")
+    proxy = SimpleNamespace(endpoint="http://model.invalid/v1")
+    server = SimpleNamespace(endpoint="http://mcp.invalid/mcp", bearer_token="token")
+    control = Path("/tmp/evaluation-control")
+    api_config = codex._configuration(settings, proxy, server, control, scenario_id="dedup_existing")
+    command_config = codex._configuration(settings, proxy, server, control, scenario_id="command_execution")
+    assert all(api_config[f"features.{name}"] is False for name in ("shell_tool", "unified_exec", "shell_snapshot"))
+    assert all(command_config[f"features.{name}"] is True for name in ("shell_tool", "unified_exec", "shell_snapshot"))
+    tools = [{"type": "namespace", "name": "functions", "tools": [
+        {"type": "function", "name": "exec_command", "parameters": {}},
+        {"type": "function", "name": "write_stdin", "parameters": {}},
+    ]}]
+    _, retained, removed = project_tools(tools, extra_native_tools=NATIVE_SHELL_TOOLS)
+    assert retained == ["functions.exec_command", "functions.write_stdin"] and removed == []

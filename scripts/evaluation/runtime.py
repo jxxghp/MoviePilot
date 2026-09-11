@@ -1,12 +1,14 @@
 """用完整生产 Agent 驱动隔离业务世界；工具目录受控，不代表真实部署配置。"""
 
+import json
 import os
 import re
 import sys
 from contextlib import ExitStack, contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from threading import Lock
+from threading import Lock, Thread
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Iterator, Optional
 from unittest.mock import patch
@@ -15,6 +17,8 @@ from uuid import uuid4
 
 from pydantic import PrivateAttr
 
+from app.agent.tools.impl.browse_webpage import BrowseWebpageTool
+from app.agent.tools.impl.execute_command import ExecuteCommandTool
 from app.agent.tools.impl.read_file import ReadFileTool
 from scripts.evaluation.world import EvaluationWorld
 
@@ -129,6 +133,162 @@ class _EvaluationReadFileTool(ReadFileTool):
     def _get_non_admin_local_file_roots(self) -> list[Path]:
         """返回评测临时 Agent 根，避免回退到宿主 CONFIG_PATH/agent。"""
         return [self._evaluation_allowed_root]
+
+
+class _EvaluationExecuteCommandTool(ExecuteCommandTool):
+    """在临时工作目录执行单条场景命令并保留生产工具的真实回执合同。"""
+
+    _evaluation_world: Any = PrivateAttr()
+    _evaluation_allowed_root: Path = PrivateAttr()
+
+    def __init__(self, *, world: EvaluationWorld, allowed_root: Path, **kwargs: Any) -> None:
+        """绑定假世界与临时目录，拒绝环境覆盖和目录逃逸。"""
+        super().__init__(**kwargs)
+        self._evaluation_world = world
+        self._evaluation_allowed_root = allowed_root.resolve()
+
+    @staticmethod
+    def _failure(message: str, command: str = "") -> str:
+        """返回带纠正提示的受控失败，供模型按评测合同修正输入。"""
+        return ExecuteCommandTool._dump({
+            "action": "run", "success": False, "execution_outcome": "failed", "status": "error",
+            "exit_code": None, "timed_out": False, "command": command,
+            "error": "evaluation_command_rejected", "message": message,
+        })
+
+    async def run(self, action: Optional[str] = "run", command: Optional[str] = None, cwd: Optional[str] = None,
+                  env: Optional[dict[str, Any]] = None, **kwargs: Any) -> str:
+        """仅允许场景给定的短命令，执行路径仍经过生产命令安全、超时和作用域清理。"""
+        normalized_action = (action or "run").strip().lower()
+        command_text = (command or "").strip()
+        if normalized_action != "run":
+            result = self._failure("命令场景只接受 action=run；请直接提交给定命令", command_text)
+            self._evaluation_world.record_command(command_text, json.loads(result))
+            return result
+        if command_text != self._evaluation_world.scenario.command:
+            result = self._failure("命令必须与任务中给定命令完全一致，不要执行其他命令", command_text)
+            self._evaluation_world.record_command(command_text, json.loads(result))
+            return result
+        if env:
+            result = self._failure("命令场景不接受 env；请删除 env 后重试", command_text)
+            self._evaluation_world.record_command(command_text, json.loads(result))
+            return result
+        if cwd is not None and Path(cwd).expanduser().resolve() != self._evaluation_allowed_root:
+            result = self._failure("cwd 必须省略或使用当前评测工作目录", command_text)
+            self._evaluation_world.record_command(command_text, json.loads(result))
+            return result
+        result = await super().run(
+            action="run", command=command_text, cwd=str(self._evaluation_allowed_root), env=None, **kwargs,
+        )
+        try:
+            payload = json.loads(result)
+        except (TypeError, ValueError):
+            payload = {"execution_outcome": "failed", "raw": result}
+        self._evaluation_world.record_command(command_text, payload)
+        return result
+
+
+class _EvaluationBrowseWebpageTool(BrowseWebpageTool):
+    """在本地固定页面上复用生产 Playwright 工具，拒绝外部 URL 和任意脚本。"""
+
+    _evaluation_world: Any = PrivateAttr()
+
+    def __init__(self, *, world: EvaluationWorld, **kwargs: Any) -> None:
+        """绑定本轮世界；浏览器会话归属仍由生产 TerminalScope 管理。"""
+        super().__init__(**kwargs)
+        self._evaluation_world = world
+
+    @staticmethod
+    def _failure(action: str, message: str) -> str:
+        """返回告诉模型正确动作或输入的结构化失败。"""
+        return json.dumps({
+            "action": action, "success": False, "execution_outcome": "failed",
+            "error": "evaluation_browser_rejected", "message": message,
+        }, ensure_ascii=False)
+
+    async def run(self, action: str, url: Optional[str] = None, selector: Optional[str] = None,
+                  ref: Optional[str] = None, value: Optional[str] = None, script: Optional[str] = None,
+                  content_type: Optional[str] = "text", timeout: Optional[int] = 30,
+                  cookies: Optional[str] = None, user_agent: Optional[str] = None,
+                  session_key: Optional[str] = None, tab_index: Optional[int] = None,
+                  allow_private_network: bool = False, **kwargs: Any) -> Any:
+        """仅允许页面读取与按快照 ref 点击，执行仍走生产浏览器实现。"""
+        allowed_actions = {"goto", "snapshot", "click_ref", "get_content", "close_session"}
+        normalized_action = str(action or "").strip().lower()
+        browser_url = self._evaluation_world.browser_url
+        if normalized_action not in allowed_actions:
+            result = self._failure(normalized_action, "评测浏览器只接受 goto、snapshot、click_ref、get_content、close_session")
+            self._evaluation_world.record_browser(normalized_action, json.loads(result))
+            return result
+        if normalized_action == "goto" and (url != browser_url or not allow_private_network):
+            result = self._failure(normalized_action, "goto 必须使用任务给定的本地页面，并设置 allow_private_network=true")
+            self._evaluation_world.record_browser(normalized_action, json.loads(result))
+            return result
+        if normalized_action == "click_ref" and not ref:
+            result = self._failure(normalized_action, "click_ref 必须使用 snapshot 返回的 ref")
+            self._evaluation_world.record_browser(normalized_action, json.loads(result))
+            return result
+        if normalized_action == "get_content" and content_type not in (None, "text"):
+            result = self._failure(normalized_action, "get_content 只接受 content_type=text")
+            self._evaluation_world.record_browser(normalized_action, json.loads(result))
+            return result
+        if session_key is not None and session_key != self._session_id:
+            result = self._failure(normalized_action, "session_key 必须省略或使用当前 Agent 会话")
+            self._evaluation_world.record_browser(normalized_action, json.loads(result))
+            return result
+        result = await super().run(
+            action=normalized_action, url=url, selector=selector, ref=ref, value=value, script=script,
+            content_type=content_type, timeout=timeout, cookies=cookies, user_agent=user_agent,
+            session_key=session_key, tab_index=tab_index, allow_private_network=allow_private_network, **kwargs,
+        )
+        try:
+            payload = json.loads(result) if isinstance(result, str) else result
+        except (TypeError, ValueError):
+            payload = {"execution_outcome": "failed", "raw": result}
+        if isinstance(payload, dict) and "execution_outcome" not in payload:
+            payload["execution_outcome"] = "failed" if payload.get("success") is False else "succeeded"
+        self._evaluation_world.record_browser(normalized_action, payload)
+        return result
+
+
+@contextmanager
+def _browser_fixture() -> Iterator[str]:
+    """启动只绑定回环地址的动态测试页，并在评测结束后等待线程退出。"""
+    class _Handler(BaseHTTPRequestHandler):
+        """返回固定页面，不记录请求正文或客户端环境。"""
+
+        def do_GET(self) -> None:  # noqa: N802 - 标准库处理器方法名
+            """仅提供固定路径和最小 HTML，其他请求返回 404。"""
+            if self.path != "/fixture":
+                self.send_error(404)
+                return
+            body = (
+                "<!doctype html><html><head><meta charset='utf-8'><title>MoviePilot Browser Fixture</title></head>"
+                "<body><main><h1>MoviePilot Browser Fixture</h1>"
+                "<button id='reveal' type='button'>显示结果</button><p id='result'>PENDING</p>"
+                "<script>document.getElementById('reveal').addEventListener('click', () => "
+                "document.getElementById('result').textContent = 'BROWSER_OK');</script>"
+                "</main></body></html>"
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, _format: str, *_args: Any) -> None:
+            """禁止标准库把本地测试请求写入 stderr。"""
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = Thread(target=server.serve_forever, name="moviepilot-evaluation-browser", daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/fixture"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 class _McpDirectory:
@@ -295,8 +455,12 @@ async def _run_isolated(
             AgentInvocation.__table__.create(engine)
             invocation_repository = TransactionalInvocationRepository(sessionmaker(bind=engine))
         factory = stack.enter_context(_runtime_scope(directory, world))
+        if world.scenario.kind == "browser":
+            world.configure_browser_url(stack.enter_context(_browser_fixture()))
         memory_port = _MemoryPort()
         output: list[str] = []
+        command_root = directory / "command-workspace"
+        command_root.mkdir()
         agent = _agent_type()(
             session_id=uuid4().hex, user_id="1", username="evaluation", channel=NotificationChannel.WebAgent.value,
             source="evaluation", is_channel_admin=True, replay_mode=ReplyMode.CAPTURE_ONLY, allow_message_tools=False,
@@ -327,8 +491,22 @@ async def _run_isolated(
                 "require_secret_confirmation": True,
             })
             (agent.evaluation_child_tools if child else agent.evaluation_tools).append(skill_file_tool)
+        if world.scenario.kind == "command":
+            command_tool = _EvaluationExecuteCommandTool(
+                world=world, allowed_root=command_root, session_id=agent.session_id, user_id="1",
+            )
+            command_tool.set_message_attr(agent.channel, agent.source, agent.username)
+            command_tool.set_agent_context(agent._tool_context)
+            agent.evaluation_tools.append(command_tool)
+        elif world.scenario.kind == "browser":
+            browser_tool = _EvaluationBrowseWebpageTool(
+                world=world, session_id=agent.session_id, user_id="1",
+            )
+            browser_tool.set_message_attr(agent.channel, agent.source, agent.username)
+            browser_tool.set_agent_context(agent._tool_context)
+            agent.evaluation_tools.append(browser_tool)
         try:
-            result = await agent.process(world.scenario.model_input())
+            result = await agent.process(world.model_input())
             bundle = agent.evaluation_bundle
             state = bundle.agent.get_state({"configurable": {"thread_id": agent.session_id}}).values if bundle else {}
             tool_catalog = bundle.tool_catalog.audit_payload() if bundle and bundle.tool_catalog else None
