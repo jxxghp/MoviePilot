@@ -630,7 +630,7 @@
   },
   "app/application/formatting.py": {
     "arg-type": 4,
-    "assignment": 9,
+    "assignment": 4,
     "attr-defined": 1,
     "no-untyped-def": 7,
     "operator": 3,

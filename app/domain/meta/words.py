@@ -51,7 +51,7 @@ def _compile_custom_word_regex(pattern: str):
     return re.compile(pattern)
 
 
-def _calculate_episode_offset(offset: str, episode: int) -> int:
+def calculate_episode_offset(offset: str, episode: int) -> int:
     """
     按白名单算术语法计算集数偏移，避免执行任意表达式。
     """
@@ -192,7 +192,7 @@ class WordsMatcher(metaclass=Singleton):
             offset_order_flag = False
             for episode_num_str in episode_nums_str:
                 episode_num_int = int(cn2an.cn2an(episode_num_str, "smart"))
-                episode_num_offset_int = _calculate_episode_offset(offset, episode_num_int)
+                episode_num_offset_int = calculate_episode_offset(offset, episode_num_int)
                 # 向前偏移
                 if episode_num_int > episode_num_offset_int:
                     offset_order_flag = True

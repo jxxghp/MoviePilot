@@ -3,11 +3,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Iterable, List, Match, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Match, Optional, Tuple, Union, cast
 
 import anitopy
 
 from app.application.configuration import get_chain_runtime_config_snapshot
+from app.domain.meta.words import calculate_episode_offset
 from app.domain.metainfo import MetaInfoPath
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
@@ -178,31 +179,28 @@ class FormatParser(object):
                 if isinstance(self._start_ep, str):
                     # `details` 格式为 `X-X`
                     s, e = self._start_ep.split("-")
-                    start_ep = self.__offset.replace("EP", s)
-                    end_ep = self.__offset.replace("EP", e)
                     if int(s) == int(e):
-                        return int(eval(start_ep)), None, self.part
-                    return int(eval(start_ep)), int(eval(end_ep)), self.part
+                        return calculate_episode_offset(self.__offset, int(s)), None, self.part
+                    return calculate_episode_offset(self.__offset, int(s)), calculate_episode_offset(self.__offset, int(e)), self.part
                 else:
                     # `details` 格式为 `X`
-                    start_ep = self.__offset.replace("EP", str(self._start_ep))
-                    return int(eval(start_ep)), None, self.part
+                    return calculate_episode_offset(self.__offset, self._start_ep), None, self.part
             elif not self._format:
                 # `details` 格式为 `X,X`
-                start_ep = self.__offset.replace("EP", str(self._start_ep))
-                end_ep = self.__offset.replace("EP", str(self._end_ep))
-                return int(eval(start_ep)), int(eval(end_ep)), self.part
+                start_ep: Optional[int] = calculate_episode_offset(self.__offset, cast(int, self._start_ep))
+                end_ep: Optional[int] = calculate_episode_offset(self.__offset, cast(int, self._end_ep))
+                return start_ep, end_ep, self.part
         if not self._format:
             # 未填入`集数定位` 且没有`指定集数` 仅处理`集数偏移`
-            start_ep = eval(self.__offset.replace("EP", str(file_meta.begin_episode))) if file_meta.begin_episode else None
-            end_ep = eval(self.__offset.replace("EP", str(file_meta.end_episode))) if file_meta.end_episode else None
-            return int(start_ep) if start_ep else None, int(end_ep) if end_ep else None, self.part
+            start_ep = calculate_episode_offset(self.__offset, file_meta.begin_episode) if file_meta.begin_episode else None
+            end_ep = calculate_episode_offset(self.__offset, file_meta.end_episode) if file_meta.end_episode else None
+            return start_ep if start_ep else None, end_ep if end_ep else None, self.part
         else:
             # 有`集数定位`
-            s, e = self.__handle_single(file_name)
-            start_ep = self.__offset.replace("EP", str(s)) if s else None
-            end_ep = self.__offset.replace("EP", str(e)) if e else None
-            return int(eval(start_ep)) if start_ep else None, int(eval(end_ep)) if end_ep else None, self.part
+            matched_start, matched_end = self.__handle_single(file_name)
+            start_ep = calculate_episode_offset(self.__offset, matched_start) if matched_start else None
+            end_ep = calculate_episode_offset(self.__offset, matched_end) if matched_end else None
+            return start_ep if start_ep else None, end_ep if end_ep else None, self.part
 
     def __handle_single(self, file: str) -> Tuple[Optional[int], Optional[int]]:
         """
