@@ -51,9 +51,9 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
     )
     # LangChain 默认按 4000 token 裁剪待摘要消息，单条超长工具结果或用户输入
     # （超长无换行文本、非文本多模态块）会被整体丢弃，直接触发"无法压缩"报错。
-    # 调大该上限可容纳更大单条消息，减少误报；16k 相对常见模型窗口仍然安全，
-    # 摘要模型与主模型同窗口，过大会抬高摘要成本并挤占主模型预算。
-    _DEFAULT_TRIM_TOKENS_TO_SUMMARIZE = 16000
+    # 调大该上限可容纳 64KB 工具结果（约 16.4K 近似 token），减少误报；32K
+    # 相对常见模型窗口仍留有摘要提示词和响应空间。
+    _DEFAULT_TRIM_TOKENS_TO_SUMMARIZE = 32000
 
     def __init__(
         self,
