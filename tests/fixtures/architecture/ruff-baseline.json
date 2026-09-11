@@ -643,8 +643,7 @@
     "I001": 1
   },
   "tests/test_episode_format_helper.py": {
-    "F841": 1,
-    "I001": 1
+    "F841": 1
   },
   "tests/test_extensible_media_source_migration.py": {
     "I001": 1
