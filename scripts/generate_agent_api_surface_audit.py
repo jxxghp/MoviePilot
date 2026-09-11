@@ -102,6 +102,7 @@ UI_PRESENTATION_PATHS = frozenset(
         "/api/v1/plugin/sidebar_nav",
         "/api/v1/rule/custom/reorder",
         "/api/v1/rule/groups/reorder",
+        "/api/v1/storage/catalog",
         "/api/v1/storage/options",
     }
 )

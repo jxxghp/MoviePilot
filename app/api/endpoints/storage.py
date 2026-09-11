@@ -26,15 +26,27 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer.facade import TransferChain
 from app.foundation import text as text_tools
+from app.runtime.localization import LocaleHelper
 from app.runtime.progress import ProgressHelper
 from app.schemas.common import ManageRequest as _SchemaManageRequest
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.storage import StorageCatalogOption as _SchemaStorageCatalogOption
 from app.schemas.storage import StorageOption as _SchemaStorageOption
 from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
-from app.schemas.types import ProgressKey
+from app.schemas.types import ProgressKey, StorageSchema
 from app.schemas.workflow import FileItem as _SchemaFileItem
 
 router = ResponseAPIRouter()
+
+_STORAGE_CATALOG_META = {
+    StorageSchema.Local.value: ("本地", "mdi-folder-multiple-outline", False),
+    StorageSchema.Alipan.value: ("阿里云盘", "mdi-cloud-outline", True),
+    StorageSchema.U115.value: ("115网盘", "mdi-cloud-outline", True),
+    StorageSchema.Rclone.value: ("RClone", "mdi-server-network-outline", True),
+    StorageSchema.Alist.value: ("OpenList", "mdi-server-network-outline", True),
+    StorageSchema.AlistGo.value: ("AList", "mdi-server-network-outline", True),
+    StorageSchema.SMB.value: ("SMB网络共享", "mdi-folder-network-outline", True),
+}
 
 
 @router.get(
@@ -116,6 +128,32 @@ def storage_options(
         _SchemaStorageOption(name=storage.name or storage.type or "", type=storage.type or "")
         for storage in StorageHelper.get_storagies()
         if storage.type
+    ]
+
+
+@router.get(
+    "/catalog",
+    summary="查询存储类型目录",
+    response_model=List[_SchemaStorageCatalogOption],
+)
+def storage_catalog(
+    _: ApiPrincipal = Depends(get_current_active_user),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
+) -> List[_SchemaStorageCatalogOption]:
+    """返回所有可新增存储类型及其展示元数据，不包含连接配置和凭据。"""
+    return [
+        _SchemaStorageCatalogOption(
+            type=storage_type,
+            name=default_name,
+            name_i18n=LocaleHelper.translate(
+                f"storage.{storage_type}",
+                default=default_name,
+            ),
+            icon=icon,
+            remote=remote,
+        )
+        for storage_type, (default_name, icon, remote) in _STORAGE_CATALOG_META.items()
     ]
 
 

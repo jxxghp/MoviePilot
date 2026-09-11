@@ -56,25 +56,25 @@ MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。
 
 `app/agent/policy/resources/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。
 
-当前完整 FastAPI OpenAPI 包含 397 个 HTTP 操作，其中 218 个稳定业务操作进入
-`moviepilot_api`，使用 216 个固定路由模板：215 条 OpenAPI 路由直接匹配，另有 1 条只允许
+当前完整 FastAPI OpenAPI 包含 400 个 HTTP 操作，其中 220 个稳定业务操作进入
+`moviepilot_api`，使用 218 个固定路由模板：217 条 OpenAPI 路由直接匹配，另有 1 条只允许
 `tmdb`、`douban`、`bangumi`、`anilist` 四个来源的受限人物作品动态路由。每个 operation
 均同时具备固定 method/path、角色权限、副作用等级、确认与恢复策略、结果敏感性、英文用途说明，
 以及可直接提交的 path/query/body JSON Schema；Skill front matter、正文 operation 章节、运行时
-注册表和 MCP `tools/list` 的 218 个 `oneOf` 分支必须完全一致。
+注册表和 MCP `tools/list` 的 220 个 `oneOf` 分支必须完全一致。
 
-数量不相等是明确的安全与语义边界，而不是漏生成。当前 397 条路由均被审计并锁定为以下一种
+数量不相等是明确的安全与语义边界，而不是漏生成。当前 400 条路由均被审计并锁定为以下一种
 归属，审计生成器不再提供“未归类”兜底：
 
 | 归属 | 数量 | Agent 使用方式 |
 | :--- | ---: | :--- |
-| `gateway` | 215 | 通过 `moviepilot_api` 的稳定 operation 和精确参数合同调用 |
+| `gateway` | 217 | 通过 `moviepilot_api` 的稳定 operation 和精确参数合同调用 |
 | `consolidated` | 71 | 通过同领域聚合 operation 调用，不复制数据源或前端专用路由 |
 | `provider-skill` | 12 | 通过下载器或媒体服务器 Skill 调用第三方 provider API |
 | `alternate-auth-duplicate` | 11 | 使用对应 bearer-authenticated gateway operation，不暴露 API_TOKEN 兼容副本 |
 | `transport_or_identity` | 66 | 由登录、令牌、MCP、会话、回调、健康检查等宿主传输/身份边界拥有 |
 | `stream_or_binary` | 10 | 由直接客户端处理流式日志、消息、文件、图片等非结构化响应 |
-| `ui_presentation` | 12 | 由前端或插件渲染面拥有，不作为业务 Agent operation |
+| `ui_presentation` | 13 | 由前端或插件渲染面拥有，不作为业务 Agent operation |
 
 逐路由归属见 `docs/refactor/agent-api-surface-audit.md`，并由
 `tests/test_agent_api_surface_audit.py` 对当前 OpenAPI、固定注册表、MCP schema、英文 Skill
@@ -442,7 +442,9 @@ AMLL 使用无需鉴权的原生搜索与获取接口，先尝试 ISRC，再核�
 | GET | `/api/v1/dashboard/schedule2/{job_id}/progress` | 使用 API_TOKEN 查询指定后台定时服务的实时进度详情 |
 | GET | `/api/v1/system/setting/public/{key}` | 登录用户读取白名单内非敏感系统设置，仅支持目录、存储、站点范围、默认订阅规则、Follow 订阅者和插件市场地址等前端必需配置 |
 | POST | `/api/v1/system/setting/PLUGIN_MARKET/sync-wiki` | 管理员从 MoviePilot Wiki 的插件文档同步公开插件仓库清单，和本地 `PLUGIN_MARKET` 合并去重后写入配置 |
-| GET | `/api/v1/system/modulelist` | 查询已加载模块，保留 `name` 原始中文字段，并提供 `name_i18n` 和 `name_key` 给多语言前端展示 |
+| GET | `/api/v1/system/module-catalog` | 查询宿主模块及其服务类型目录，供前端选择器构造选项 |
+| GET | `/api/v1/system/modulelist` | 查询已启用模块，保留 `name` 原始中文字段，并提供 `name_i18n` 和 `name_key` 给多语言前端展示 |
+| GET | `/api/v1/system/module-settings` | 管理员查询没有其它激活配置、可由用户统一开关的内置模块 |
 | GET | `/api/v1/system/moduletest/{moduleid}` | 测试指定模块可用性，标准响应的 `message` 会按请求语言直接返回翻译文本 |
 | GET | `/api/v1/message/agent/mcp/servers` | 管理员查询 Agent 外部 MCP 服务器配置 |
 | POST | `/api/v1/message/agent/mcp/servers` | 管理员保存 Agent 外部 MCP 服务器配置 |

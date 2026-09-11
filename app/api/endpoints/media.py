@@ -15,6 +15,7 @@ from app.api.response import (
 )
 from app.application.classification.runtime import ClassificationRuntime
 from app.application.configuration import get_api_runtime_config_snapshot
+from app.application.module import get_module_manager
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
 from app.chain.tmdb import TmdbChain
@@ -66,12 +67,45 @@ _BUILTIN_MEDIA_SOURCES = (
     ),
 )
 
+_BUILTIN_MEDIA_SOURCE_MODULES = {
+    MediaSource.TMDB: "TheMovieDbModule",
+    MediaSource.Douban: "DoubanModule",
+    MediaSource.Bangumi: "BangumiModule",
+    MediaSource.AniList: "AniListModule",
+    MediaSource.IMDb: "ImdbModule",
+    MediaSource.TVDB: "TheTvDbModule",
+    MediaSource.MusicBrainz: "MusicBrainzModule",
+    MediaSource.TheAudioDB: "TheAudioDbModule",
+    MediaSource.DoubanMusic: "DoubanModule",
+}
+
+
+def _enabled_builtin_media_sources() -> set[MediaSource]:
+    """按宿主模块启用状态返回可供前端选择的内置媒体来源。"""
+    try:
+        enabled_module_ids = {
+            spec.id for spec in get_module_manager().list_enabled_specs()
+        }
+    except RuntimeError:
+        # 兼容应用组合根尚未装配时的直接调用，正式请求始终走已装配的运行目录。
+        return set(_BUILTIN_MEDIA_SOURCE_MODULES)
+    return {
+        media_source
+        for media_source, module_id in _BUILTIN_MEDIA_SOURCE_MODULES.items()
+        if module_id in enabled_module_ids
+    }
+
 
 def _registered_media_sources() -> list[_SchemaMediaSourceInfo]:
     """合并内置与启用插件声明的媒体来源，并按来源标识去重。"""
     from app.application.plugin.runtime import get_plugin_manager
 
-    result = list(_BUILTIN_MEDIA_SOURCES)
+    enabled_builtin_sources = _enabled_builtin_media_sources()
+    result = [
+        source
+        for source in _BUILTIN_MEDIA_SOURCES
+        if source.media_source in enabled_builtin_sources
+    ]
     seen = {source.media_source for source in result}
     for raw_source in get_plugin_manager().get_media_sources():
         try:

@@ -5,10 +5,10 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **397**
-- Stable `moviepilot_api` operations: **218**
-- Exact HTTP routes used by the gateway: **216**
-- OpenAPI routes matched directly by the gateway: **215**
+- OpenAPI HTTP operations: **400**
+- Stable `moviepilot_api` operations: **220**
+- Exact HTTP routes used by the gateway: **218**
+- OpenAPI routes matched directly by the gateway: **217**
 - Bounded dynamic gateway routes: **1**
 - Every gateway operation has a generated English oneOf input contract in MCP `tools/list` and `skills/moviepilot-api/SKILL.md`.
 - Every non-gateway OpenAPI operation is listed below with an explicit ownership boundary; it is not silently callable through arbitrary URL/method input.
@@ -19,11 +19,11 @@
 | :--- | ---: | :--- |
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
 | `consolidated` | 71 | Source/UI route represented by a stable aggregate Agent operation. |
-| `gateway` | 215 | Approved structured MoviePilot Agent operation. |
+| `gateway` | 217 | Approved structured MoviePilot Agent operation. |
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 12 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 13 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -297,6 +297,7 @@
 | `DELETE` | `/api/v1/site/{site_id}` | site | `gateway` | site.delete | 删除站点 |
 | `GET` | `/api/v1/site/{site_id}` | site | `consolidated` | site.list | 站点详情 |
 | `POST` | `/api/v1/storage/agent/list` | storage | `gateway` | storage.list | 查询 Agent 可用目录和文件 |
+| `GET` | `/api/v1/storage/catalog` | storage | `ui_presentation` | host-ui | 查询存储类型目录 |
 | `POST` | `/api/v1/storage/delete` | storage | `gateway` | storage.delete | 删除文件或目录 |
 | `GET` | `/api/v1/storage/directories` | storage | `gateway` | storage.settings | 查询目录配置 |
 | `POST` | `/api/v1/storage/download` | storage | `stream_or_binary` | host-transport | 下载文件 |
@@ -352,7 +353,9 @@
 | `GET` | `/api/v1/system/logging` | system | `stream_or_binary` | host-transport | 实时日志 |
 | `GET` | `/api/v1/system/logging/download/{name}` | system | `stream_or_binary` | host-transport | 下载日志 |
 | `GET` | `/api/v1/system/message` | system | `stream_or_binary` | host-transport | 实时消息 |
-| `GET` | `/api/v1/system/modulelist` | system | `gateway` | system.module.list | 查询已加载的模块ID列表 |
+| `GET` | `/api/v1/system/module-catalog` | system | `gateway` | system.module.catalog | 查询宿主模块目录 |
+| `GET` | `/api/v1/system/module-settings` | system | `gateway` | system.module.settings | 查询可手动开关的内置模块 |
+| `GET` | `/api/v1/system/modulelist` | system | `gateway` | system.module.list | 查询已启用的模块ID列表 |
 | `GET` | `/api/v1/system/moduletest/{moduleid}` | system | `gateway` | system.module.test | 模块可用性测试 |
 | `GET` | `/api/v1/system/nettest` | system | `gateway` | system.network.test | 测试网络连通性 |
 | `GET` | `/api/v1/system/nettest/targets` | system | `gateway` | system.network.targets | 获取网络测试目标 |

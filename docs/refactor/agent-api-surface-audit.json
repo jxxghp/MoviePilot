@@ -2,11 +2,11 @@
   "disposition_counts": {
     "alternate-auth-duplicate": 11,
     "consolidated": 71,
-    "gateway": 215,
+    "gateway": 217,
     "provider-skill": 12,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
-    "ui_presentation": 12
+    "ui_presentation": 13
   },
   "dynamic_gateway_routes": [
     {
@@ -18,10 +18,10 @@
       "reason": "The executor validates and expands this bounded source placeholder to one of tmdb, douban, bangumi, or anilist before calling the corresponding concrete OpenAPI route."
     }
   ],
-  "gateway_http_route_count": 216,
-  "gateway_operation_count": 218,
-  "matched_gateway_http_route_count": 215,
-  "openapi_operation_count": 397,
+  "gateway_http_route_count": 218,
+  "gateway_operation_count": 220,
+  "matched_gateway_http_route_count": 217,
+  "openapi_operation_count": 400,
   "operations": [
     {
       "disposition": "consolidated",
@@ -3442,6 +3442,18 @@
       ]
     },
     {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/storage/catalog",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "查询存储类型目录",
+      "tags": [
+        "storage"
+      ]
+    },
+    {
       "disposition": "gateway",
       "method": "POST",
       "operation_ids": [
@@ -4197,12 +4209,40 @@
       "disposition": "gateway",
       "method": "GET",
       "operation_ids": [
+        "system.module.catalog"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/module-catalog",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询宿主模块目录",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "system.module.settings"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/module-settings",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询可手动开关的内置模块",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
         "system.module.list"
       ],
       "owner": "moviepilot-api",
       "path": "/api/v1/system/modulelist",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
-      "summary": "查询已加载的模块ID列表",
+      "summary": "查询已启用的模块ID列表",
       "tags": [
         "system"
       ]

@@ -532,6 +532,8 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     _spec("system.network.targets"),
     _spec("system.network.test", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, recovery=_IDEMPOTENT),
     _spec("system.module.list"),
+    _spec("system.module.catalog"),
+    _admin_read("system.module.settings"),
     _spec("system.module.test", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, recovery=_IDEMPOTENT),
     _spec(
         "plugin.market.sync_wiki",
@@ -781,6 +783,8 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     "system.network.targets": ApiOperationRoute("GET", "/api/v1/system/nettest/targets"),
     "system.network.test": ApiOperationRoute("GET", "/api/v1/system/nettest"),
     "system.module.list": ApiOperationRoute("GET", "/api/v1/system/modulelist"),
+    "system.module.catalog": ApiOperationRoute("GET", "/api/v1/system/module-catalog"),
+    "system.module.settings": ApiOperationRoute("GET", "/api/v1/system/module-settings"),
     "system.module.test": ApiOperationRoute("GET", "/api/v1/system/moduletest/{moduleid}"),
     "plugin.market.sync_wiki": ApiOperationRoute("POST", "/api/v1/system/setting/PLUGIN_MARKET/sync-wiki"),
     "plugin.runtime.status": ApiOperationRoute("GET", "/api/v1/plugin/runtime"),

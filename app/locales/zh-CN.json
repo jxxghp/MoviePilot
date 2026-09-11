@@ -2,104 +2,169 @@
   "system": {
     "modules": {
       "BangumiModule": {
-        "name": "Bangumi"
+        "name": "Bangumi",
+        "description": "媒体识别、搜索和探索页使用的 Bangumi 动画数据源。"
+      },
+      "AmllModule": {
+        "name": "AMLL TTML",
+        "description": "将 AMLL TTML 服务作为音乐歌词来源。"
+      },
+      "AniListModule": {
+        "name": "AniList",
+        "description": "媒体识别、搜索和探索页使用的 AniList 动画数据源。"
       },
       "DiscordModule": {
-        "name": "Discord"
+        "name": "Discord",
+        "description": "将系统事件和任务结果发送到 Discord。"
       },
       "DoubanModule": {
-        "name": "豆瓣"
+        "name": "豆瓣",
+        "description": "电影、电视剧和音乐识别、搜索及探索榜单使用的豆瓣数据源。"
       },
       "EmbyModule": {
-        "name": "Emby"
+        "name": "Emby",
+        "description": "媒体服务器适配器：同步 Emby 媒体库并执行刷新、播放等操作。"
       },
       "FanartModule": {
-        "name": "Fanart"
+        "name": "Fanart",
+        "description": "媒体刮削时补充 Fanart.tv 海报、背景和艺术图。"
       },
       "FeishuModule": {
-        "name": "飞书"
+        "name": "飞书",
+        "description": "将系统事件和任务结果发送到飞书机器人。"
       },
       "FileManagerModule": {
-        "name": "文件整理"
+        "name": "文件整理",
+        "description": "媒体整理流程实际执行文件读写、复制、移动、重命名和删除。"
       },
       "FilterModule": {
-        "name": "过滤器"
+        "name": "过滤器",
+        "description": "在搜索、下载和整理流程中执行过滤规则、识别词和发布组匹配。"
       },
       "ImdbModule": {
-        "name": "IMDb"
+        "name": "IMDb",
+        "description": "电影和电视剧识别、搜索使用的 IMDb 数据源。"
       },
       "IndexerModule": {
-        "name": "站点索引"
+        "name": "站点索引",
+        "description": "负责站点索引和资源搜索，向下载流程输出站点资源。"
+      },
+      "ListenBrainzModule": {
+        "name": "ListenBrainz",
+        "description": "为音乐推荐页提供 ListenBrainz 榜单和推荐数据。"
       },
       "JellyfinModule": {
-        "name": "Jellyfin"
+        "name": "Jellyfin",
+        "description": "媒体服务器适配器：同步 Jellyfin 媒体库并执行刷新、播放等操作。"
       },
       "MediaVaultModule": {
-        "name": "MediaVault"
+        "name": "MediaVault",
+        "description": "媒体服务器适配器：连接 MediaVault 并同步媒体库信息。"
+      },
+      "LrclibModule": {
+        "name": "LRCLIB",
+        "description": "为音乐刮削提供 LRCLIB 歌词查询。"
+      },
+      "MusicBrainzModule": {
+        "name": "MusicBrainz",
+        "description": "音乐核心识别数据源：负责音乐搜索、录音、专辑和艺人识别及元数据。"
       },
       "PlexModule": {
-        "name": "Plex"
+        "name": "Plex",
+        "description": "媒体服务器适配器：同步 Plex 媒体库并执行刷新、播放等操作。"
       },
       "PostgreSQLModule": {
-        "name": "PostgreSQL"
+        "name": "PostgreSQL",
+        "description": "保存系统配置、媒体、订阅和任务等应用持久化数据。"
       },
       "QbittorrentModule": {
-        "name": "Qbittorrent"
+        "name": "Qbittorrent",
+        "description": "下载器适配器：连接 qBittorrent 并创建、暂停和管理下载任务。"
       },
       "QQBotModule": {
-        "name": "QQ"
+        "name": "QQ",
+        "description": "将系统事件和任务结果发送到 QQ 机器人。"
       },
       "RedisModule": {
-        "name": "Redis缓存"
+        "name": "Redis缓存",
+        "description": "保存缓存、队列和跨进程运行状态，支撑任务调度与实时进度。"
       },
       "RtorrentModule": {
-        "name": "Rtorrent"
+        "name": "Rtorrent",
+        "description": "下载器适配器：连接 rTorrent 并创建、暂停和管理下载任务。"
       },
       "SlackModule": {
-        "name": "Slack"
+        "name": "Slack",
+        "description": "将系统事件和任务结果发送到 Slack。"
       },
       "SubtitleModule": {
-        "name": "站点字幕"
+        "name": "站点字幕",
+        "description": "从站点搜索和下载字幕，并参与媒体整理流程。"
       },
       "SynologyChatModule": {
-        "name": "Synology Chat"
+        "name": "Synology Chat",
+        "description": "将系统事件和任务结果发送到 Synology Chat。"
       },
       "TelegramModule": {
-        "name": "Telegram"
+        "name": "Telegram",
+        "description": "将系统事件和任务结果发送到 Telegram 机器人。"
       },
       "TheMovieDbModule": {
-        "name": "TheMovieDb"
+        "name": "TheMovieDb",
+        "description": "影视核心识别数据源：负责电影、电视剧搜索识别，以及探索、推荐、人物和合集数据。"
       },
       "TheTvDbModule": {
-        "name": "TheTvDb"
+        "name": "TheTvDb",
+        "description": "电视剧识别和辅助信息使用的 TheTvDb 数据源。"
+      },
+      "TheAudioDbModule": {
+        "name": "TheAudioDB",
+        "description": "音乐识别和搜索使用的 TheAudioDB 辅助数据源。"
       },
       "TransmissionModule": {
-        "name": "Transmission"
+        "name": "Transmission",
+        "description": "下载器适配器：连接 Transmission 并创建、暂停和管理下载任务。"
       },
       "TrimeMediaModule": {
-        "name": "飞牛影视"
+        "name": "飞牛影视",
+        "description": "媒体服务器适配器：连接飞牛影视并同步媒体库信息。"
       },
       "UgreenModule": {
-        "name": "绿联影视"
+        "name": "绿联影视",
+        "description": "媒体服务器适配器：连接绿联影视并同步媒体库信息。"
       },
       "VoceChatModule": {
-        "name": "VoceChat"
+        "name": "VoceChat",
+        "description": "将系统事件和任务结果发送到 VoceChat。"
       },
       "WebPushModule": {
-        "name": "WebPush"
+        "name": "WebPush",
+        "description": "通过浏览器 Web Push 向用户推送系统消息。"
       },
       "WechatModule": {
-        "name": "企业微信"
+        "name": "企业微信",
+        "description": "将系统事件和任务结果发送到企业微信机器人。"
       },
       "WechatClawBotModule": {
-        "name": "微信 ClawBot"
+        "name": "微信 ClawBot",
+        "description": "将系统事件和任务结果发送到微信 ClawBot。"
       },
       "ZSpaceModule": {
-        "name": "极影视"
+        "name": "极影视",
+        "description": "媒体服务器适配器：连接极影视并同步媒体库信息。"
       }
     },
     "module_test": {
       "unsupported": "模块不支持测试"
+    },
+    "storage": {
+      "local": "本地",
+      "alipan": "阿里云盘",
+      "u115": "115网盘",
+      "rclone": "RClone",
+      "alist": "OpenList",
+      "alistgo": "AList",
+      "smb": "SMB网络共享"
     }
   },
   "messages": {

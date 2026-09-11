@@ -1,5 +1,6 @@
-from unittest.mock import patch
+import asyncio
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.api.endpoints import system as system_endpoint
 from app.runtime.localization import LocaleHelper
@@ -8,8 +9,14 @@ from app.runtime.localization import LocaleHelper
 class _FakeModuleManager:
     """提供 system 模块接口测试所需的最小模块管理器。"""
 
-    def list_specs(self) -> tuple:
-        """返回 manifest 元数据视图。"""
+    def list_enabled_specs(self) -> tuple:
+        """返回当前配置下的 manifest 元数据视图。"""
+        return (
+            SimpleNamespace(id="DoubanModule", metadata={"name": "豆瓣"}),
+        )
+
+    def list_switchable_specs(self) -> tuple:
+        """返回后端声明的可手动开关模块。"""
         return (
             SimpleNamespace(id="DoubanModule", metadata={"name": "豆瓣"}),
         )
@@ -47,3 +54,39 @@ def test_system_moduletest_localizes_message():
     assert response.success is False
     assert response.message == "Module does not support testing"
     assert not hasattr(response, "message_i18n")
+
+
+def test_system_module_settings_uses_backend_catalog_and_persisted_switch():
+    """模块设置接口应返回后端目录，并按持久化开关计算状态。"""
+    token = LocaleHelper.set_current_locale("en-US")
+
+    class _FakeRuntimeSettings:
+        """提供模块设置接口所需的最小运行配置读取器。"""
+
+        @staticmethod
+        def get(key: str, default=None):
+            """返回测试用的模块开关映射。"""
+            if key == "MODULE_ENABLE":
+                return {"DoubanModule": False}
+            return default
+
+    with (
+        patch.object(system_endpoint, "get_module_manager", return_value=_FakeModuleManager()),
+        patch.object(system_endpoint, "get_runtime_settings", return_value=_FakeRuntimeSettings()),
+    ):
+        try:
+            response = asyncio.run(system_endpoint.module_settings(_="admin"))
+        finally:
+            LocaleHelper.reset_current_locale(token)
+
+    assert response.data["modules"] == [
+        {
+            "id": "DoubanModule",
+            "name": "豆瓣",
+            "name_i18n": "Douban",
+            "name_key": "system.modules.DoubanModule.name",
+            "description_i18n": "Douban data source for movie, TV, and music identification, search, and discovery lists.",
+            "description_key": "system.modules.DoubanModule.description",
+            "enabled": False,
+        }
+    ]

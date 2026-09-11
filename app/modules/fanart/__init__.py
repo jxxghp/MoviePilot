@@ -325,7 +325,8 @@ class FanartModule(_ModuleBase):
         return False, "fanart网络连接失败"
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        return "FANART_API_KEY", True
+        """由 Fanart 总开关控制模块是否参与宿主运行时。"""
+        return "FANART_ENABLE", True
 
     @staticmethod
     def get_name() -> str:

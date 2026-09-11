@@ -314,7 +314,7 @@ class NetTestTarget(BaseModel):
 
 
 class SystemModuleInfo(BaseModel):
-    """已加载系统模块摘要。"""
+    """当前配置下已启用系统模块摘要。"""
 
     id: str
     name: str
@@ -323,9 +323,49 @@ class SystemModuleInfo(BaseModel):
 
 
 class SystemModuleListData(BaseModel):
-    """已加载系统模块列表。"""
+    """当前配置下已启用系统模块列表。"""
 
     modules: list[SystemModuleInfo] = Field(default_factory=list)
+
+
+class SystemModuleSettingInfo(BaseModel):
+    """可由用户统一开关的内置模块设置摘要。"""
+
+    id: str
+    name: str
+    name_i18n: str
+    name_key: str
+    description_i18n: str
+    description_key: str
+    enabled: bool
+
+
+class SystemModuleSettingListData(BaseModel):
+    """可由用户统一开关的内置模块设置列表。"""
+
+    modules: list[SystemModuleSettingInfo] = Field(default_factory=list)
+
+
+class SystemModuleCatalogInfo(BaseModel):
+    """前端服务选择器可消费的宿主模块目录项。"""
+
+    id: str
+    name: str
+    name_i18n: str
+    name_key: str
+    description_i18n: str
+    description_key: str
+    type: str
+    subtype: str
+    option_value: Optional[str] = None
+    enabled: bool = True
+    active: bool = False
+
+
+class SystemModuleCatalogListData(BaseModel):
+    """宿主模块及其服务类型目录。"""
+
+    modules: list[SystemModuleCatalogInfo] = Field(default_factory=list)
 
 
 class DatabaseBackupArtifactData(BaseModel):  # type: ignore[misc]

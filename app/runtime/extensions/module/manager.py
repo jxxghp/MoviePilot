@@ -7,28 +7,31 @@ from typing import Any, Generator, List, Optional, Tuple, Union
 from app.foundation.reflection import ObjectUtils
 from app.foundation.singleton import Singleton
 from app.runtime.capabilities.model import (
+    ActivationPolicy,
     CapabilityLifecycleState,
     CapabilityObservation,
     CapabilitySpec,
 )
 from app.runtime.capabilities.runtime import CapabilityRuntime
-from app.runtime.settings import get_runtime_setting
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
 from app.runtime.extensions.module.adapter import (
     HOST_MODULE_KIND,
+    MODULE_ENABLE_SETTING,
+    NON_SWITCHABLE_HOST_MODULE_IDS,
     HostModuleAdapter,
     build_host_module_registry,
     capture_host_module_config,
     should_run_host_module,
 )
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.types import (
     DownloaderType,
     EventType,
     MediaRecognizeType,
     MediaServerType,
-    NotificationChannel,
     ModuleType,
+    NotificationChannel,
     OtherModulesType,
     StorageSchema,
 )
@@ -170,7 +173,14 @@ class ModuleManager(metaclass=Singleton):
             selected = tuple(
                 spec
                 for spec in self._specs
-                if changed_keys is None or changed_keys.intersection(spec.watch)
+                if (
+                    changed_keys is None
+                    or changed_keys.intersection(spec.watch)
+                    or (
+                        spec.activation is ActivationPolicy.BOOTSTRAP
+                        and MODULE_ENABLE_SETTING in changed_keys
+                    )
+                )
             )
             snapshot = capture_host_module_config(selected)
             for spec in selected:
@@ -339,6 +349,28 @@ class ModuleManager(metaclass=Singleton):
     def list_specs(self) -> tuple[CapabilitySpec, ...]:
         """返回全部轻量模块声明，包含物化或启动失败的能力。"""
         return self._specs
+
+    def list_switchable_specs(self) -> tuple[CapabilitySpec, ...]:
+        """返回可由用户统一开关的内置媒体模块声明，排除核心模块及已有独立开关的模块。"""
+        return tuple(
+            spec
+            for spec in self._specs
+            if spec.activation is ActivationPolicy.BOOTSTRAP and spec.id not in NON_SWITCHABLE_HOST_MODULE_IDS
+        )
+
+    def list_enabled_specs(self) -> tuple[CapabilitySpec, ...]:
+        """
+        返回当前配置下应对外展示的模块声明
+
+        该视图按 selector 重新计算“应启用”状态，因此既不会展示未配置的服务模块，
+        也不会因为模块启动失败而把应启用的模块从健康检查中隐藏。
+        """
+        snapshot = capture_host_module_config(self._specs)
+        return tuple(
+            spec
+            for spec in self._specs
+            if should_run_host_module(spec, snapshot)
+        )
 
     def get_specs(self) -> tuple[CapabilitySpec, ...]:
         """兼容内部调用命名，返回与 `list_specs` 相同的声明快照。"""

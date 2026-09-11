@@ -2,104 +2,169 @@
   "system": {
     "modules": {
       "BangumiModule": {
-        "name": "Bangumi"
+        "name": "Bangumi",
+        "description": "Bangumi anime data source for media identification, search, and discovery."
+      },
+      "AmllModule": {
+        "name": "AMLL TTML",
+        "description": "Uses AMLL TTML as a lyrics source for music scraping."
+      },
+      "AniListModule": {
+        "name": "AniList",
+        "description": "AniList anime data source for media identification, search, and discovery."
       },
       "DiscordModule": {
-        "name": "Discord"
+        "name": "Discord",
+        "description": "Sends system events and task results to Discord."
       },
       "DoubanModule": {
-        "name": "Douban"
+        "name": "Douban",
+        "description": "Douban data source for movie, TV, and music identification, search, and discovery lists."
       },
       "EmbyModule": {
-        "name": "Emby"
+        "name": "Emby",
+        "description": "Media-server adapter that synchronizes Emby libraries and runs refresh or playback actions."
       },
       "FanartModule": {
-        "name": "Fanart"
+        "name": "Fanart",
+        "description": "Adds Fanart.tv posters, backdrops, and artwork during media scraping."
       },
       "FeishuModule": {
-        "name": "Feishu"
+        "name": "Feishu",
+        "description": "Sends system events and task results to Feishu bots."
       },
       "FileManagerModule": {
-        "name": "File Organization"
+        "name": "File Organization",
+        "description": "Executes the file reads, copies, moves, renames, and deletions used by media organization."
       },
       "FilterModule": {
-        "name": "Filter"
+        "name": "Filter",
+        "description": "Applies filter rules, recognition terms, and release-group matching during search, download, and organization."
       },
       "ImdbModule": {
-        "name": "IMDb"
+        "name": "IMDb",
+        "description": "IMDb data source for movie and TV identification and search."
       },
       "IndexerModule": {
-        "name": "Site Indexer"
+        "name": "Site Indexer",
+        "description": "Indexes sites and searches resources, supplying parsed results to download workflows."
+      },
+      "ListenBrainzModule": {
+        "name": "ListenBrainz",
+        "description": "Supplies ListenBrainz charts and recommendation data for the music discovery page."
       },
       "JellyfinModule": {
-        "name": "Jellyfin"
+        "name": "Jellyfin",
+        "description": "Media-server adapter that synchronizes Jellyfin libraries and runs refresh or playback actions."
       },
       "MediaVaultModule": {
-        "name": "MediaVault"
+        "name": "MediaVault",
+        "description": "Media-server adapter that connects to MediaVault and synchronizes its library."
+      },
+      "LrclibModule": {
+        "name": "LRCLIB",
+        "description": "Looks up LRCLIB lyrics during music scraping."
+      },
+      "MusicBrainzModule": {
+        "name": "MusicBrainz",
+        "description": "Core music identification data source for music search, recordings, releases, artists, and metadata."
       },
       "PlexModule": {
-        "name": "Plex"
+        "name": "Plex",
+        "description": "Media-server adapter that synchronizes Plex libraries and runs refresh or playback actions."
       },
       "PostgreSQLModule": {
-        "name": "PostgreSQL"
+        "name": "PostgreSQL",
+        "description": "Persists system settings, media, subscriptions, tasks, and other application data."
       },
       "QbittorrentModule": {
-        "name": "qBittorrent"
+        "name": "qBittorrent",
+        "description": "Downloader adapter that connects to qBittorrent and creates, pauses, and manages tasks."
       },
       "QQBotModule": {
-        "name": "QQ"
+        "name": "QQ",
+        "description": "Sends system events and task results to QQ bots."
       },
       "RedisModule": {
-        "name": "Redis Cache"
+        "name": "Redis Cache",
+        "description": "Stores cache, queues, and cross-process runtime state for scheduling and live progress."
       },
       "RtorrentModule": {
-        "name": "rTorrent"
+        "name": "rTorrent",
+        "description": "Downloader adapter that connects to rTorrent and creates, pauses, and manages tasks."
       },
       "SlackModule": {
-        "name": "Slack"
+        "name": "Slack",
+        "description": "Sends system events and task results to Slack."
       },
       "SubtitleModule": {
-        "name": "Site Subtitle"
+        "name": "Site Subtitle",
+        "description": "Searches sites for subtitles, downloads them, and feeds them into media organization."
       },
       "SynologyChatModule": {
-        "name": "Synology Chat"
+        "name": "Synology Chat",
+        "description": "Sends system events and task results to Synology Chat."
       },
       "TelegramModule": {
-        "name": "Telegram"
+        "name": "Telegram",
+        "description": "Sends system events and task results to Telegram bots."
       },
       "TheMovieDbModule": {
-        "name": "TheMovieDb"
+        "name": "TheMovieDb",
+        "description": "Core movie and TV data source for identification, search, discovery, recommendations, people, and collections."
       },
       "TheTvDbModule": {
-        "name": "TheTvDb"
+        "name": "TheTvDb",
+        "description": "TheTvDb data source for TV identification and auxiliary metadata."
+      },
+      "TheAudioDbModule": {
+        "name": "TheAudioDB",
+        "description": "TheAudioDB auxiliary data source for music identification and artist search."
       },
       "TransmissionModule": {
-        "name": "Transmission"
+        "name": "Transmission",
+        "description": "Downloader adapter that connects to Transmission and creates, pauses, and manages tasks."
       },
       "TrimeMediaModule": {
-        "name": "Trime Media"
+        "name": "Trime Media",
+        "description": "Media-server adapter that connects to Trime Media and synchronizes its library."
       },
       "UgreenModule": {
-        "name": "UGREEN"
+        "name": "UGREEN",
+        "description": "Media-server adapter that connects to UGREEN Media and synchronizes its library."
       },
       "VoceChatModule": {
-        "name": "VoceChat"
+        "name": "VoceChat",
+        "description": "Sends system events and task results to VoceChat."
       },
       "WebPushModule": {
-        "name": "WebPush"
+        "name": "WebPush",
+        "description": "Pushes system messages to users through browser Web Push."
       },
       "WechatModule": {
-        "name": "WeCom"
+        "name": "WeCom",
+        "description": "Sends system events and task results to WeCom bots."
       },
       "WechatClawBotModule": {
-        "name": "WeChat ClawBot"
+        "name": "WeChat ClawBot",
+        "description": "Sends system events and task results to WeChat ClawBot."
       },
       "ZSpaceModule": {
-        "name": "Zspace"
+        "name": "Zspace",
+        "description": "Media-server adapter that connects to Zspace and synchronizes its library."
       }
     },
     "module_test": {
       "unsupported": "Module does not support testing"
+    },
+    "storage": {
+      "local": "Local",
+      "alipan": "Aliyun Drive",
+      "u115": "115 Cloud",
+      "rclone": "RClone",
+      "alist": "OpenList",
+      "alistgo": "AList",
+      "smb": "SMB Network Share"
     }
   },
   "messages": {

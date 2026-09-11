@@ -366,6 +366,8 @@ class ConfigModel(BaseModel):
     DOH_RESOLVERS: str = "1.0.0.1,1.1.1.1,9.9.9.9,149.112.112.112"
 
     # ==================== 媒体元数据配置 ====================
+    # 无独立配置项的内置模块开关；未列出的模块默认开启。
+    MODULE_ENABLE: Dict[str, bool] = Field(default_factory=dict)
     # 媒体搜索来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic，多个用,分隔
     SEARCH_SOURCE: str = "themoviedb"
     # 媒体识别来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic

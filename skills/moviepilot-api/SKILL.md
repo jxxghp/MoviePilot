@@ -54,11 +54,12 @@ allowed-api-operations: >-
   workflow.share workflow.share.delete workflow.fork torrent.cache.get torrent.cache.delete
   torrent.cache.clear torrent.cache.refresh torrent.cache.reidentify database.backups.list
   database.backups.create database.backups.verify database.backups.delete filter.test
-  system.network.targets system.network.test system.module.list system.module.test
-  plugin.market.sync_wiki plugin.runtime.status plugin.history plugin.releases plugin.ratings
-  plugin.rating plugin.rating.submit plugin.statistics plugin.reset plugin.clone config.user.get
-  config.public.get system.usage.statistics plugin.folders.get plugin.folders.update
-  plugin.folder.create plugin.folder.update plugin.folder.delete plugin.folder.plugins.update
+  system.network.targets system.network.test system.module.list system.module.catalog
+  system.module.settings system.module.test plugin.market.sync_wiki plugin.runtime.status
+  plugin.history plugin.releases plugin.ratings plugin.rating plugin.rating.submit
+  plugin.statistics plugin.reset plugin.clone config.user.get config.public.get
+  system.usage.statistics plugin.folders.get plugin.folders.update plugin.folder.create
+  plugin.folder.update plugin.folder.delete plugin.folder.plugins.update
   plugin.folder.plugin.assign plugin.folder.plugin.remove
 ---
 
@@ -99,7 +100,7 @@ use a more specific skill or explain that the structured operation is unavailabl
 ## API Category Index
 
 Each category file contains the complete operation contracts for its namespace.
-The counts are a maintenance aid for the 218 currently exposed operations.
+The counts are a maintenance aid for the 220 currently exposed operations.
 
 | Category | Detail file | Operation namespace | Count | Use for |
 | --- | --- | --- | ---: | --- |

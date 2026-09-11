@@ -4,16 +4,30 @@ Version, update, restart, module, network, and usage operations.
 
 ## Operations
 
+### `system.module.catalog`
+`GET /api/v1/system/module-catalog`; policy effect: `safe_read`.
+Purpose: List MoviePilot host modules and service-type options for UI selectors.
+- `path_params`: none
+- `query`: none
+- `body`: none
+
 ### `system.module.list`
 `GET /api/v1/system/modulelist`; policy effect: `safe_read`.
-Purpose: List loaded MoviePilot module IDs and localized names.
+Purpose: List enabled MoviePilot module IDs and localized names.
+- `path_params`: none
+- `query`: none
+- `body`: none
+
+### `system.module.settings`
+`GET /api/v1/system/module-settings`; policy effect: `safe_read`.
+Purpose: List built-in MoviePilot modules that can be enabled or disabled by an administrator.
 - `path_params`: none
 - `query`: none
 - `body`: none
 
 ### `system.module.test`
 `GET /api/v1/system/moduletest/{moduleid}`; policy effect: `external_side_effect`.
-Purpose: Run the built-in availability test for one loaded MoviePilot module.
+Purpose: Run the built-in availability test for one enabled MoviePilot module.
 - `path_params`: `moduleid*` (string): Exact loaded module ID returned by system.module.list.
 - `query`: none
 - `body`: none

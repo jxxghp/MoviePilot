@@ -13919,7 +13919,23 @@
     },
     {
       "additionalProperties": false,
-      "description": "List loaded MoviePilot module IDs and localized names. Method: GET. Path: /api/v1/system/modulelist. Effect: safe_read.",
+      "description": "List MoviePilot host modules and service-type options for UI selectors. Method: GET. Path: /api/v1/system/module-catalog. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "system.module.catalog",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "system.module.catalog",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "List enabled MoviePilot module IDs and localized names. Method: GET. Path: /api/v1/system/modulelist. Effect: safe_read.",
       "properties": {
         "operation_id": {
           "const": "system.module.list",
@@ -13935,7 +13951,23 @@
     },
     {
       "additionalProperties": false,
-      "description": "Run the built-in availability test for one loaded MoviePilot module. Method: GET. Path: /api/v1/system/moduletest/{moduleid}. Effect: external_side_effect.",
+      "description": "List built-in MoviePilot modules that can be enabled or disabled by an administrator. Method: GET. Path: /api/v1/system/module-settings. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "system.module.settings",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "system.module.settings",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Run the built-in availability test for one enabled MoviePilot module. Method: GET. Path: /api/v1/system/moduletest/{moduleid}. Effect: external_side_effect.",
       "properties": {
         "operation_id": {
           "const": "system.module.test",
@@ -13944,7 +13976,7 @@
         },
         "path_params": {
           "additionalProperties": false,
-          "description": "Resource identity placeholders for system.module.test. Run the built-in availability test for one loaded MoviePilot module. Use only the named fields below.",
+          "description": "Resource identity placeholders for system.module.test. Run the built-in availability test for one enabled MoviePilot module. Use only the named fields below.",
           "properties": {
             "moduleid": {
               "description": "Exact loaded module ID returned by system.module.list.",
@@ -15849,7 +15881,9 @@
         "subscription.user.list",
         "subtitle.search.media",
         "subtitle.search.title",
+        "system.module.catalog",
         "system.module.list",
+        "system.module.settings",
         "system.module.test",
         "system.network.targets",
         "system.network.test",
