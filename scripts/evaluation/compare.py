@@ -67,14 +67,70 @@ def _side(report: dict[str, Any], role: str) -> dict[str, Any]:
     }
 
 
-def _delta(moviepilot: dict[str, Any], codex: dict[str, Any]) -> dict[str, Any]:
+def _delta(moviepilot: dict[str, Any], codex: dict[str, Any], *, usage_comparable: bool = True) -> dict[str, Any]:
     """计算两个方向的数值差；任一侧未知时保留 unknown。"""
     result: dict[str, Any] = {}
     for key in ("model_calls", "completed_model_calls", "failed_tool_calls", "tool_calls",
                 "duplicate_attempts", "side_effects", "elapsed_seconds", "total_tokens"):
+        if key == "total_tokens" and not usage_comparable:
+            result[key] = None
+            continue
         left, right = _metric(moviepilot, key), _metric(codex, key)
         result[key] = None if not isinstance(left, (int, float)) or not isinstance(right, (int, float)) else left - right
     return result
+
+
+def _has_cancel_action(report: dict[str, Any]) -> bool:
+    """确认取消场景确实发出了子代理取消动作，而不是凭场景名放宽用量门禁。"""
+    trace = report.get("agent_trace") if report.get("evidence_kind") == "moviepilot_live_model" else report.get("native_events")
+    if not isinstance(trace, list):
+        return False
+    for entry in trace:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type") == "ai":
+            data = entry.get("data")
+            calls = data.get("tool_calls", []) if isinstance(data, dict) else []
+            if any(
+                isinstance(call, dict)
+                and str(call.get("name", "")).rsplit(".", 1)[-1] == "subagent_task"
+                and isinstance(call.get("args"), dict)
+                and str(call["args"].get("action", "")).strip().lower() == "cancel"
+                for call in calls
+            ):
+                return True
+        if entry.get("type") not in {"item.started", "item.completed"}:
+            continue
+        item = entry.get("item")
+        if isinstance(item, dict) and str(item.get("tool", "")).rsplit(".", 1)[-1] in {
+            "close_agent", "interrupt_agent", "cancel",
+        }:
+            return True
+    return False
+
+
+def _intentional_cancel_usage(report: dict[str, Any]) -> bool:
+    """确认取消场景的执行质量，并约束未完整用量只能来自一个取消请求。"""
+    if report.get("scenario_id") != "subagent_cancel_recovery":
+        return False
+    calls = report.get("model_calls")
+    completed = report.get("completed_model_calls")
+    execution_completed = (
+        report.get("agent_execution_success") is True
+        if report.get("evidence_kind") == "moviepilot_live_model"
+        else report.get("native_turn_completed") is True and report.get("native_exit_code") == 0
+    )
+    return (
+        (
+            report.get("usage_complete") is True
+            or (type(calls) is int and type(completed) is int and calls - completed == 1)
+        )
+        and report.get("intelligence_evaluated") is True
+        and execution_completed
+        and report.get("runner_error_type") is None
+        and report.get("failed_tool_calls") == 0
+        and _has_cancel_action(report)
+    )
 
 
 def compare_reports(moviepilot: dict[str, Any], codex: dict[str, Any]) -> dict[str, Any]:
@@ -96,8 +152,16 @@ def compare_reports(moviepilot: dict[str, Any], codex: dict[str, Any]) -> dict[s
     moviepilot_conditions, codex_conditions = _conditions(moviepilot), _conditions(codex)
     if moviepilot_conditions != codex_conditions:
         raise ValueError("成对报告的模型、推理档位或预算不一致")
-    if not all(report.get("intelligence_evaluated") and report.get("usage_complete") for report in (moviepilot, codex)):
-        raise ValueError("成对比较需要两侧都完成真实模型调用并取得完整用量")
+    complete_usage = all(report.get("usage_complete") for report in (moviepilot, codex))
+    intentional_cancel_usage = (
+        moviepilot["scenario_id"] == "subagent_cancel_recovery"
+        and not complete_usage
+        and all(_intentional_cancel_usage(report) for report in (moviepilot, codex))
+    )
+    if not all(report.get("intelligence_evaluated") for report in (moviepilot, codex)):
+        raise ValueError("成对比较需要两侧都完成真实模型调用")
+    if not complete_usage and not intentional_cancel_usage:
+        raise ValueError("成对比较需要两侧都取得完整用量；主动取消场景只能按受限行为配对")
 
     moviepilot_side, codex_side = _side(moviepilot, "moviepilot"), _side(codex, "codex")
     return {
@@ -110,10 +174,15 @@ def compare_reports(moviepilot: dict[str, Any], codex: dict[str, Any]) -> dict[s
         "production_agent_sha256": moviepilot["production_agent_sha256"],
         "skills_sha256": moviepilot["skills_sha256"],
         "harness_sha256": moviepilot["harness_sha256"],
+        "usage_comparable": complete_usage,
+        "usage_note": (
+            None if complete_usage else
+            "主动取消使至少一侧的一个模型请求未取得完整供应商用量；保留行为配对，token 与成本差不作比较"
+        ),
         "model": moviepilot_conditions,
         "moviepilot": moviepilot_side,
         "codex": codex_side,
-        "delta_moviepilot_minus_codex": _delta(moviepilot, codex),
+        "delta_moviepilot_minus_codex": _delta(moviepilot, codex, usage_comparable=complete_usage),
     }
 
 

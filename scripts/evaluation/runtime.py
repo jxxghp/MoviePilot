@@ -1,5 +1,6 @@
 """用完整生产 Agent 驱动隔离业务世界；工具目录受控，不代表真实部署配置。"""
 
+import asyncio
 import json
 import os
 import re
@@ -17,6 +18,7 @@ from uuid import uuid4
 
 from pydantic import PrivateAttr
 
+from app.agent.terminal.ownership import current_terminal_scope
 from app.agent.tools.impl.browse_webpage import BrowseWebpageTool
 from app.agent.tools.impl.execute_command import ExecuteCommandTool
 from app.agent.tools.impl.read_file import ReadFileTool
@@ -108,6 +110,16 @@ class _Transport:
                     path_params["subscribe_id"] = int(path_params["subscribe_id"])
                 except ValueError:
                     pass
+            # 取消场景只让子代理的只读请求保持在途，确保 action=cancel
+            # 真正打断一个运行中的调用，而不是仅取消已经完成的空任务。
+            scope = current_terminal_scope()
+            if (
+                self._world.scenario.scenario_id == "subagent_cancel_recovery"
+                and operation == "subscription.list"
+                and scope is not None
+                and scope.kind == "subagent"
+            ):
+                await asyncio.sleep(30)
             response = self._world.execute(operation, path_params=path_params, query=params, body=json)
             if self._after_operation is not None:
                 await self._after_operation(operation, response)

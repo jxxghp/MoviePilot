@@ -29,6 +29,12 @@ def _report(world):
             "enabled_site_ids": [row["id"] for row in state["sites"] if row["enabled"]],
             "completed": ["subscription", "sites"], "unresolved": [],
         }
+    if world.scenario.scenario_id == "subagent_cancel_recovery":
+        return {
+            "status": "completed", "subscription_ids": [], "download_ids": [],
+            "enabled_site_ids": [row["id"] for row in state["sites"] if row["enabled"]],
+            "completed": ["sites"], "unresolved": [],
+        }
     return {
         "status": "blocked" if world.scenario.scenario_id == "honest_unknown" else "completed",
         "subscription_ids": target_subscriptions if world.scenario.scenario_id in {"dedup_existing", "long_context", "steering_long_context"} else [],
@@ -45,6 +51,8 @@ def _complete_trajectory(world):
     """执行可复现的正确对照轨迹，给评分器提供真实读取证据。"""
     if world.scenario.scenario_id == "subagent_parallel_status":
         world.execute("subscription.find", path_params={"media_id": world.scenario.media_id}, query={"media_source": world.scenario.media_source})
+        world.execute("site.list", query={"status": "active"})
+    elif world.scenario.scenario_id == "subagent_cancel_recovery":
         world.execute("site.list", query={"status": "active"})
     elif world.scenario.scenario_id == "dedup_existing":
         world.execute("subscription.list")
@@ -98,6 +106,23 @@ def test_held_out_parallel_status_requires_two_delegated_read_tasks():
     ]}}]
     assert evaluate(world, _report(world), trace).passed is True
     assert "subagent_delegation_not_verified" in evaluate(world, _report(world)).violations
+
+
+def test_subagent_cancel_recovery_requires_start_and_cancel_actions():
+    """子代理取消场景必须同时记录启动、取消和主任务的独立只读证据。"""
+    world = EvaluationWorld("subagent_cancel_recovery")
+    _complete_trajectory(world)
+    trace = [
+        {"type": "ai", "data": {"tool_calls": [
+            {"name": "subagent_task", "args": {"action": "start", "description": "保持等待"}},
+        ]}},
+        {"type": "ai", "data": {"tool_calls": [
+            {"name": "subagent_task", "args": {"action": "cancel", "task_id": "subagent-test"}},
+        ]}},
+    ]
+    assert evaluate(world, _report(world), trace).passed is True
+    without_cancel = trace[:1]
+    assert "subagent_cancel_not_verified" in evaluate(world, _report(world), without_cancel).violations
 
 
 def test_correct_ids_without_any_observation_are_not_verification():

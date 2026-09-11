@@ -19,6 +19,7 @@
 | `terminal_pty_session` | 启动 PTY 后台会话，写入 stdin，再等待退出 | 核验 PTY 输入事件、增量输出和真实退出码 |
 | `long_context` | 在长订阅列表中按固定分页读取并定位第 6 页目标 | 核验上下文压缩、首条任务约束保留、page1–6 证据和无副作用终态 |
 | `subagent_parallel_status` | 两个相互独立的只读检查必须由通用子代理并行完成 | 核验子代理授权、真实委派轨迹、订阅与启用站点证据和零副作用 |
+| `subagent_cancel_recovery` | 派发一个会保持只读请求在途的通用子代理，主 Agent 取消后继续读取启用站点 | 核验真实启动/取消动作、取消收口、主任务恢复和零副作用 |
 
 这些代号只供控制器和人使用。模型输入必须通过 `Scenario.model_input()` 生成，不能传入场景 ID、业务初态、故障布置、账本或验收器。下载查询在第三种场景的首次提交前仍然可用，避免错误惩罚合理的重复检查策略。
 
@@ -91,6 +92,12 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 按相同提交内容和 Harness 追加第二轮 32 次预算复测：MoviePilot `/tmp/moviepilot-agent-round-luna-oauth-subagent-live-32-repeat2-20260911.json` 通过，11 次模型调用、63425 个已知 token、2 次业务读取；原生 Codex `/tmp/moviepilot-agent-round-luna-oauth-subagent-native-32-repeat2-20260911.json` 通过，28 次模型调用、534320 个已知 token、2 次业务读取。两侧均 0 失败/重复/副作用，原生进程正常退出且第二轮无 stderr 警告；配对摘要 `/tmp/moviepilot-agent-round-luna-oauth-subagent-pair-32-repeat2-20260911.json` 为 `pair_valid=true`、`both_passed=true`。
 
 第三轮在相同提交内容、模型、推理档位、预算和 Harness 下继续通过：MoviePilot `/tmp/moviepilot-agent-round-luna-oauth-subagent-live-32-repeat3-20260911.json` 使用 11 次模型调用、54388 个已知 token、2 次业务读取；原生 Codex `/tmp/moviepilot-agent-round-luna-oauth-subagent-native-32-repeat3-20260911.json` 使用 24 次模型调用、473296 个已知 token、2 次业务读取。两侧均 0 失败/重复/副作用，原生进程正常退出且无 stderr 警告；配对摘要 `/tmp/moviepilot-agent-round-luna-oauth-subagent-pair-32-repeat3-20260911.json` 为 `pair_valid=true`、`both_passed=true`。三轮均通过说明该 held-out 子代理合同已有重复证据，但 S3.1 仍需终端分享和取消场景，不能据此宣称整体智能与 Codex 等价。
+
+### 2026-09-12 子代理取消恢复实测
+
+新增 `subagent_cancel_recovery` held-out 场景，让子代理真正发起一个保持在途的只读 `subscription.list`，主 Agent 取得 `task_id` 后立即取消，再由主 Agent 读取启用站点。MoviePilot 侧通过 `/tmp/moviepilot-agent-round-luna-oauth-subagent-cancel-live-final-20260912.json`，原生 Codex 侧通过 `/tmp/moviepilot-agent-round-luna-oauth-subagent-cancel-native-final-20260912.json`；两侧均 `passed=true`，原生报告的独立 `task_passed=true` 且 MoviePilot 的独立评分同样通过，0 业务失败、0 重复、0 副作用，并确认启用站点 `[11, 13]`。原生事件确认 `spawn_agent` 返回运行中任务，`close_agent` 后状态收口为 `shutdown`；MoviePilot 事件确认 `subagent_task` 的 `start`/`cancel` 以及取消后的 `site.list`。
+
+配对摘要 `/tmp/moviepilot-agent-round-luna-oauth-subagent-cancel-pair-final-20260912.json` 为 `pair_valid=true`、`both_passed=true`，模型条件为 `gpt-5.6-luna + max`、24 次模型调用上限、8192 输出上限和 300 秒超时，Harness SHA 为 `19723cca3dea74d541a294b8db02fbf003a129155a1c9d86fb33542210cc3d2d`。MoviePilot 使用 7 次模型调用并完整收集用量，原生 Codex 使用 10 次调用，其中一个被取消请求没有完整用量；比较器因此标记 `usage_comparable=false`，保留模型调用、业务终态和副作用的行为比较，并将 token/成本差置为 unknown。其他场景仍要求两侧 `usage_complete=true`，防止部分失败被误算为成本优势。该轮证明取消后恢复的生命周期合同，不代表已经完成终端共享收益或整体 Codex 智能等价。
 
 本轮将后续真实测评模型切换为 Google Gemini `gemini-3.1-pro-preview`，推理档位保持 `high`。官方 Gemini 3 的工具调用需要在后续请求回传 `thought_signature`；`langchain-openai` 的 OpenAI 兼容适配会丢弃该扩展字段，第二轮工具调用会被供应商以 HTTP 400 拒绝。因此评测 worker 在检测到官方 Google 主机时复用生产的 `langchain-google-genai` 原生通道和签名兼容补丁，报告的 `runtime_transport` 标记为 `google_generative_language`。这只改变模型连接适配，不放宽 MoviePilot 工具目录、隔离世界或独立验收器。切换后的完整场景报告以实际模型调用结果和对应提交内容为准，不能把此前 2.5 Pro 的结果冒充 3.1 Pro 证据。
 
@@ -174,7 +181,7 @@ uv run --locked --no-sync python -m scripts.evaluation \
 
 共享回调在请求前执行硬调用上限，覆盖主模型、选择、摘要和子代理；SDK 自动重试关闭。单请求和流式空闲超时跟随本轮 `timeout_seconds`（允许范围 30–900 秒），全轮和独立进程另有期限。每次请求的输出 token 及运行器上下文上限被记录；上下文上限是测试参数，不表示模型真实最大窗口。当前固定为 128000 tokens。
 
-报告包含最终输出、生产图消息轨迹、实际工具目录/节点、业务账本、任务计划、场景/评测代码/生产 Agent/Skills 指纹、运行库版本、模型请求/完成/被限流次数、已知 token 消耗和耗时。失败请求的用量未知时，`usage_complete=false`，token 仅为已知下界，不能据此声称零消耗。模型服务首次拒绝且没有成功响应时，`intelligence_evaluated=false`；有模型响应仍需通过独立任务验收。`agent_execution_success` 仅表示生产图技术执行结果，不等于任务完成。
+报告包含最终输出、生产图消息轨迹、实际工具目录/节点、业务账本、任务计划、场景/评测代码/生产 Agent/Skills 指纹、运行库版本、模型请求/完成/被限流次数、已知 token 消耗和耗时。失败请求的用量未知时，`usage_complete=false`，token 仅为已知下界，不能据此声称零消耗。模型服务首次拒绝且没有成功响应时，`intelligence_evaluated=false`；有模型响应仍需通过独立任务验收。`agent_execution_success` 仅表示生产图技术执行结果，不等于任务完成。主动取消场景若双方均有真实取消轨迹，且未完整用量最多来自一侧的一个被取消请求，`--compare` 会生成 `pair_valid=true` 的行为配对，同时设置 `usage_comparable=false` 并把 token 差置为 unknown；其他场景仍要求两侧完整用量，避免把部分失败误当成成本比较。
 
 `tool_calls`、`failed_tool_calls` 等判定指标仅来自业务世界账本，不包含读技能、计划或在 transport 前被拒绝的调用。`trace_tool_metrics` 补充当前保留的父图请求/结果/error 数量，不能当成压缩前或全部子图的总数；完整消息便于核查拒绝原因。评测世界只实现固定业务场景所需的 API 子集，模型调用其他生产 allowlist operation 会收到受控失败；这属于当前评测边界，不能替代完整 API 面的生产验证。
 

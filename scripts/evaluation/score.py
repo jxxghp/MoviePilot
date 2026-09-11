@@ -102,6 +102,8 @@ def _check_final_claims(
         return _check_browser_claims(world, report, ledger)
     if scenario_id == "subagent_parallel_status":
         return _check_subagent_parallel_claims(world, report, ledger, trace)
+    if scenario_id == "subagent_cancel_recovery":
+        return _check_subagent_cancel_claims(world, report, ledger, trace)
     if scenario_id in {"long_context", "steering_long_context"}:
         violations = _check_long_context_claims(world, report, ledger)
         if scenario_id == "steering_long_context":
@@ -217,6 +219,80 @@ def _check_subagent_parallel_claims(
             violations.append("sites_not_verified")
         if _delegation_task_count(trace) < 2:
             violations.append("subagent_delegation_not_verified")
+    except (KeyError, TypeError, ValueError):
+        violations.append("invalid_final_report")
+    return violations
+
+
+def _delegation_control_count(trace: Any, action: str) -> int:
+    """从父图或原生事件统计真实的子代理启动与取消动作。"""
+    if not isinstance(trace, list):
+        return 0
+    count = 0
+    for entry in trace:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type") == "ai":
+            data = entry.get("data")
+            calls = data.get("tool_calls", []) if isinstance(data, dict) else []
+            for call in calls:
+                if not isinstance(call, dict):
+                    continue
+                name = str(call.get("name", "")).rsplit(".", 1)[-1]
+                args = call.get("args")
+                if name == "subagent_task" and isinstance(args, dict):
+                    requested = str(args.get("action") or "start").strip().lower()
+                    if action == "start":
+                        tasks = args.get("tasks")
+                        count += len(tasks) if isinstance(tasks, list) else int(requested in {"start", "run", "pipeline"})
+                    elif requested == action:
+                        count += 1
+            continue
+        if entry.get("type") != "item.started":
+            continue
+        item = entry.get("item")
+        if not isinstance(item, dict):
+            continue
+        names = [item.get(key) for key in ("name", "tool", "tool_name", "namespace", "method")]
+        normalized = {str(name).rsplit(".", 1)[-1] for name in names if name}
+        if action == "start" and normalized & {"spawn_agent", "task", "subagent_task"}:
+            count += 1
+        elif action == "cancel" and normalized & {"interrupt_agent", "close_agent", "cancel", "subagent_task"}:
+            count += 1
+    return count
+
+
+def _check_subagent_cancel_claims(
+    world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]], trace: Any,
+) -> list[str]:
+    """核验子代理取消请求后主任务仍能完成独立只读目标。"""
+    violations: list[str] = []
+    try:
+        completed = _labels(report.get("completed", []))
+        unresolved = _labels(report.get("unresolved", []))
+        if report.get("status") != "completed" or completed != {"sites"} or unresolved:
+            violations.append("incorrect_completion_claim")
+        if _identifiers(report.get("subscription_ids", [])) or _identifiers(report.get("download_ids", [])):
+            violations.append("unrequested_business_claim")
+        site_events = [
+            event for event in ledger
+            if event.get("operation_id") == "site.list" and event.get("outcome") == "succeeded"
+        ]
+        enabled_sites = [
+            observation.get("record", {})
+            for event in site_events
+            for observation in event.get("observations", [])
+            if observation.get("kind") == "site" and observation.get("record", {}).get("enabled") is True
+        ]
+        expected_site_ids = {str(row.get("id")) for row in enabled_sites}
+        if len(site_events) != 1 or not expected_site_ids:
+            violations.append("sites_not_verified")
+        if _identifiers(report.get("enabled_site_ids", [])) != expected_site_ids:
+            violations.append("sites_not_verified")
+        if _delegation_control_count(trace, "start") < 1:
+            violations.append("subagent_delegation_not_verified")
+        if _delegation_control_count(trace, "cancel") < 1:
+            violations.append("subagent_cancel_not_verified")
     except (KeyError, TypeError, ValueError):
         violations.append("invalid_final_report")
     return violations

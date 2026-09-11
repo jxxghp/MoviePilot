@@ -72,6 +72,23 @@ _SCENARIOS = (
         infohash="e5" * 20,
     ),
     Scenario(
+        scenario_id="subagent_cancel_recovery",
+        task=(
+            "请先启动一个只读通用子代理任务，任务描述必须是‘执行一次 subscription.list 只读巡检；请求会保持等待，"
+            "等待主 Agent 取消，不执行任何写操作’，"
+            "使用 subagent_task 的 action=start 并记下返回的 task_id。随后立即使用 action=cancel 只取消这个 task_id，"
+            "确认取消请求已经收口；取消子代理后，主 Agent 再读取一次当前启用站点并据此完成任务。"
+            "主 Agent 不要直接调用 subscription API，子代理不得写入、删除或改变任何记录。"
+            + _PUBLIC_INSTRUCTIONS
+            + "本次明确要求的唯一子目标是 sites；completed、unresolved 只能填写 sites。"
+        ),
+        media_source="themoviedb",
+        media_id="481006",
+        title="取消恢复巡检",
+        magnet=f"magnet:?xt=urn:btih:{'f6' * 20}&dn=Cancel.Recovery.2025.1080p",
+        infohash="f6" * 20,
+    ),
+    Scenario(
         scenario_id="unknown_download",
         task="请下载《山海之间》的给定资源，确认实际下载状态后告诉我结果；已有相同资源时复用，保留其他任务。" + _PUBLIC_INSTRUCTIONS,
         media_source="themoviedb",

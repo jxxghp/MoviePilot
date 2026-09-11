@@ -39,6 +39,27 @@ def _report(evidence_kind: str, *, passed: bool = True) -> dict:
     }
 
 
+def _cancel_report(evidence_kind: str) -> dict:
+    """构造主动取消场景的最小真实报告，模拟一个被取消的模型请求。"""
+    report = _report(evidence_kind)
+    report.update(
+        scenario_id="subagent_cancel_recovery", model_calls=4, completed_model_calls=3,
+        usage_complete=False, agent_execution_success=evidence_kind == "moviepilot_live_model",
+        native_turn_completed=evidence_kind == "codex_native_controlled", native_exit_code=0,
+    )
+    if evidence_kind == "moviepilot_live_model":
+        report["agent_trace"] = [{
+            "type": "ai", "data": {"tool_calls": [{
+                "name": "subagent_task", "args": {"action": "cancel"},
+            }]},
+        }]
+    else:
+        report["native_events"] = [{
+            "type": "item.started", "item": {"type": "collab_tool_call", "tool": "close_agent"},
+        }]
+    return report
+
+
 def test_same_conditions_produce_a_directional_pair_summary() -> None:
     """一侧失败也应保留有效的成对事实，不能把比较结果伪装成两侧都通过。"""
     moviepilot = _report("moviepilot_live_model", passed=False)
@@ -73,6 +94,35 @@ def test_incomplete_usage_is_rejected() -> None:
     """缺少供应商用量时保留单侧报告，但不能宣称完成成对比较。"""
     moviepilot, codex = _report("moviepilot_live_model"), _report("codex_native_controlled")
     moviepilot["usage_complete"] = False
+    with pytest.raises(ValueError, match="完整用量"):
+        compare_reports(moviepilot, codex)
+
+
+def test_cancel_pair_allows_intentional_incomplete_usage_without_cost_delta() -> None:
+    """主动取消造成的未完整用量只允许行为配对，不能产生误导性的 token 差。"""
+    moviepilot = _cancel_report("moviepilot_live_model")
+    codex = _cancel_report("codex_native_controlled")
+    result = compare_reports(moviepilot, codex)
+    assert result["pair_valid"] is True and result["usage_comparable"] is False
+    assert result["delta_moviepilot_minus_codex"]["total_tokens"] is None
+
+
+def test_cancel_pair_allows_one_side_to_finish_before_cancel() -> None:
+    """取消时序可能让一侧在子代理模型请求前收口，仍应保留行为配对。"""
+    moviepilot = _cancel_report("moviepilot_live_model")
+    moviepilot["usage_complete"] = True
+    moviepilot["completed_model_calls"] = moviepilot["model_calls"]
+    codex = _cancel_report("codex_native_controlled")
+    result = compare_reports(moviepilot, codex)
+    assert result["pair_valid"] is True and result["usage_comparable"] is False
+    assert result["delta_moviepilot_minus_codex"]["total_tokens"] is None
+
+
+def test_cancel_pair_without_cancel_evidence_is_rejected() -> None:
+    """场景名不能单独绕过完整用量门禁。"""
+    moviepilot = _cancel_report("moviepilot_live_model")
+    codex = _cancel_report("codex_native_controlled")
+    codex["native_events"] = []
     with pytest.raises(ValueError, match="完整用量"):
         compare_reports(moviepilot, codex)
 
