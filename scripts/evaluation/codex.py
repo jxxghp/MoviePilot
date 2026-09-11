@@ -10,12 +10,15 @@ import signal
 import subprocess
 import tempfile
 import time
+from contextlib import contextmanager, nullcontext
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from typing import Any
 
 from scripts.evaluation.live import _parse_final, _validate_report, _worker_environment
 from scripts.evaluation.models import ModelSettings
-from scripts.evaluation.proxy import NATIVE_SHELL_TOOLS, EvaluationModelProxy
+from scripts.evaluation.proxy import NATIVE_BROWSER_TOOLS, NATIVE_SHELL_TOOLS, EvaluationModelProxy
 from scripts.evaluation.score import evaluate
 from scripts.evaluation.server import EvaluationMcpServer
 from scripts.evaluation.world import EvaluationWorld
@@ -23,6 +26,129 @@ from scripts.evaluation.world import EvaluationWorld
 SUPPORTED_CLI_VERSION = "codex-cli 0.153.4"
 MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
 NATIVE_TERMINAL_SCENARIOS = frozenset({"terminal_session", "terminal_pty_session"})
+NATIVE_BROWSER_SCENARIOS = frozenset({"browser_navigation"})
+
+
+def _browser_runtime_configuration(executable: str, instruction_dir: Path) -> dict[str, Any] | None:
+    """发现本机已安装的浏览器插件运行时，缺少任一受信文件就保持原生边界关闭。"""
+    codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    plugin_root = Path(os.environ.get(
+        "MOVIEPILOT_EVAL_BROWSER_PLUGIN_ROOT",
+        str(codex_home / ".tmp" / "bundled-marketplaces" / "openai-bundled" / "plugins" / "browser"),
+    ))
+    node_repl = Path(os.environ.get(
+        "MOVIEPILOT_EVAL_NODE_REPL",
+        "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl",
+    ))
+    node_path = Path(os.environ.get("MOVIEPILOT_EVAL_NODE_PATH", str(node_repl.parent / "node")))
+    node_modules = Path(os.environ.get(
+        "MOVIEPILOT_EVAL_NODE_MODULES",
+        str(node_repl.parent.parent / "lib" / "node_modules"),
+    ))
+    browser_service = os.environ.get("MOVIEPILOT_EVAL_BROWSER_SERVICE")
+    service_candidates = ([Path(browser_service)] if browser_service else []) + sorted(
+        (codex_home / "plugins" / "cache" / "openai-bundled" / "browser").glob(
+            "*/scripts/browser-service.mjs"
+        ),
+        reverse=True,
+    )
+    browser_service_path = next((path for path in service_candidates if path.is_file()), None)
+    browser_client = plugin_root / "scripts" / "browser-client.mjs"
+    if (not node_repl.is_file() or not node_path.is_file() or not node_modules.is_dir()
+            or not browser_client.is_file() or browser_service_path is None):
+        return None
+    marketplace = plugin_root.parent.parent
+    client_hashes = {
+        hashlib.sha256(browser_client.read_bytes()).hexdigest(),
+    }
+    chrome_client = codex_home / "plugins" / "cache" / "openai-bundled" / "chrome" / "latest" / "scripts" / "browser-client.mjs"
+    if chrome_client.is_file():
+        client_hashes.add(hashlib.sha256(chrome_client.read_bytes()).hexdigest())
+    trusted_paths = ":".join(str(path) for path in (codex_home, node_modules, plugin_root))
+    node_environment = {
+        "NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS": "1000",
+        "NODE_REPL_NODE_MODULE_DIRS": str(node_modules),
+        "NODE_REPL_NODE_PATH": str(node_path),
+        "NODE_REPL_TRUSTED_CODE_PATHS": trusted_paths,
+        "NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S": ",".join(sorted(client_hashes)),
+        "NODE_REPL_TRUSTED_SERVICES": json.dumps(
+            {"browser": str(browser_service_path), "sky": "@oai/sky/service"}, ensure_ascii=False
+        ),
+        "CODEX_HOME": str(codex_home),
+        "BROWSER_USE_AVAILABLE_BACKENDS": "chrome,iab",
+        "BROWSER_USE_TINYSKY_ENABLED": "1",
+        "BROWSER_USE_CODEX_APP_BUILD_FLAVOR": "prod",
+        "BROWSER_USE_CODEX_APP_VERSION": browser_service_path.parent.parent.name,
+        "BROWSER_USE_BROWSER_CLIENT_BUILD": browser_service_path.parent.parent.name,
+        "CODEX_CLI_PATH": executable,
+    }
+    # The installed skill intentionally uses the portable ``<plugin root>`` token.
+    # A standalone CLI run has no desktop plugin context to expand it, so create
+    # a private copy with the same instructions and the verified absolute root.
+    skill = plugin_root / "skills" / "control-in-app-browser" / "SKILL.md"
+    expanded_skill = instruction_dir / "browser-control-skill.md"
+    expanded_skill.write_text(skill.read_text(encoding="utf-8").replace("<plugin root>", str(plugin_root)), encoding="utf-8")
+    return {
+        "node_repl": {
+            "command": str(node_repl), "args": [], "enabled": True, "required": False,
+            "startup_timeout_sec": 120, "tool_timeout_sec": 120,
+            "default_tools_approval_mode": "approve", "env": node_environment,
+        },
+        "marketplace": {"source_type": "local", "source": str(marketplace)},
+        "plugins": {"browser@openai-bundled": {"enabled": True}, "chrome@openai-bundled": {"enabled": True}},
+        "skill": str(expanded_skill),
+    }
+
+
+@contextmanager
+def _native_browser_fixture() -> Any:
+    """启动只绑定回环地址的动态测试页，并记录真实浏览器的点击回调。"""
+    state = {"clicked": False}
+
+    class _Handler(BaseHTTPRequestHandler):
+        """提供最小页面和点击回调，不记录请求正文或客户端环境。"""
+
+        def do_GET(self) -> None:  # noqa: N802 - 标准库处理器方法名
+            """返回测试页面或确认按钮回调，其他路径返回 404。"""
+            if self.path == "/fixture":
+                body = (
+                    "<!doctype html><html><head><meta charset='utf-8'><title>MoviePilot Browser Fixture</title></head>"
+                    "<body><main><h1>MoviePilot Browser Fixture</h1>"
+                    "<button id='reveal' type='button'>显示结果</button><p id='result'>PENDING</p>"
+                    "<script>document.getElementById('reveal').addEventListener('click', async () => {"
+                    "await fetch('/clicked', {cache:'no-store'});"
+                    "document.getElementById('result').textContent = 'BROWSER_OK';});</script>"
+                    "</main></body></html>"
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if self.path == "/clicked":
+                state["clicked"] = True
+                body = b"ok"
+                self.send_response(204)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                return
+            self.send_error(404)
+
+        def log_message(self, _format: str, *_args: Any) -> None:
+            """禁止标准库把本地测试请求写入 stderr。"""
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = Thread(target=server.serve_forever, name="moviepilot-native-browser", daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/fixture", state
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def _catalog(payload: Any, model: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -68,7 +194,8 @@ def _redact(value: Any, tokens: tuple[str, ...]) -> Any:
 
 
 def _configuration(settings: ModelSettings, proxy: EvaluationModelProxy, server: EvaluationMcpServer,
-                   control_dir: Path, *, scenario_id: str = "") -> dict[str, Any]:
+                   control_dir: Path, *, scenario_id: str = "",
+                   browser_runtime: dict[str, Any] | None = None) -> dict[str, Any]:
     """显式隔离原生客户端的外部能力，仍保留其默认提示词、计划及子代理循环。"""
     disabled = [
         "apps", "browser_use", "browser_use_external", "browser_use_full_cdp_access", "computer_use",
@@ -109,10 +236,23 @@ def _configuration(settings: ModelSettings, proxy: EvaluationModelProxy, server:
         # 命令场景只开放 CLI 已核对的两个终端动作；仍使用只读沙箱和 never 审批。
         configuration.update({f"features.{name}": True for name in ("shell_tool", "unified_exec", "shell_snapshot")})
     elif scenario_id == "browser_navigation":
-        # 让探针核对 CLI 自身是否广告浏览器能力；当前版本未广告时必须留在差异证据中。
+        # 浏览器插件只能在本机受信运行时完整存在时开启，缺失时保留 blocked 证据。
         configuration.update({f"features.{name}": True for name in (
             "browser_use", "browser_use_external", "browser_use_full_cdp_access", "computer_use", "in_app_browser",
         )})
+        if browser_runtime is not None:
+            configuration.update({
+                "features.plugins": True,
+                "skills.bundled.enabled": True,
+                "skills.include_instructions": False,
+                "mcp_servers": {**configuration["mcp_servers"], "node_repl": browser_runtime["node_repl"]},
+                "marketplaces.openai-bundled": browser_runtime["marketplace"],
+                "plugins.browser@openai-bundled": browser_runtime["plugins"]["browser@openai-bundled"],
+                "plugins.chrome@openai-bundled": browser_runtime["plugins"]["chrome@openai-bundled"],
+                # Standalone exec does not inherit the desktop's selected-plugin context;
+                # feed the installed Browser skill through the native instructions hook.
+                "model_instructions_file": browser_runtime["skill"],
+            })
     return configuration
 
 
@@ -463,65 +603,80 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
     from scripts.evaluation.__main__ import _provenance
 
     world = EvaluationWorld(scenario_id)
-    if world.scenario.kind == "browser" and not world.browser_url:
-        # CLI 当前没有浏览器工具；探针仍需有一个不真实连接的公开地址可渲染输入。
-        world.configure_browser_url("http://127.0.0.1:1/fixture")
-    provenance = _provenance(world)
-    started = time.monotonic()
-    result: dict[str, Any] = {}
-    failure = None
-    with tempfile.TemporaryDirectory(prefix="moviepilot-native-evaluation-") as directory:
-        control_dir = Path(directory)
-        work_dir = control_dir / "workspace"
-        work_dir.mkdir()
-        catalog_result = await _execute([executable, "debug", "models", "--bundled"], "", _worker_environment(), work_dir, 10)
-        if catalog_result.get("error_type") or catalog_result.get("returncode") != 0:
-            raise RuntimeError("无法读取当前原生客户端自带模型目录")
-        catalog, catalog_metadata = _catalog(json.loads(catalog_result["stdout"]), settings.model)
-        (control_dir / "models.json").write_text(json.dumps(catalog), encoding="utf-8")
-        extra_native_tools = NATIVE_SHELL_TOOLS if scenario_id in {
-            "command_execution", "terminal_session", "terminal_pty_session",
-        } else frozenset()
-        async with EvaluationMcpServer(world) as server, EvaluationModelProxy(
-            settings, probe_only=probe_only, extra_native_tools=extra_native_tools,
-        ) as proxy:
-            config = _configuration(settings, proxy, server, control_dir, scenario_id=scenario_id)
-            use_app_server = scenario_id in NATIVE_TERMINAL_SCENARIOS
-            command = (
-                [executable, "app-server", "--listen", "stdio://", "--strict-config"]
-                if use_app_server
-                else [executable, "exec", "--ignore-user-config", "--ignore-rules", "--strict-config", "--ephemeral",
-                      "--skip-git-repo-check", "--sandbox", "read-only", "--json", "--color", "never", "-C", str(work_dir)]
+    fixture_context = _native_browser_fixture() if world.scenario.kind == "browser" else nullcontext(None)
+    with fixture_context as fixture:
+        if fixture is not None:
+            world.configure_browser_url(fixture[0])
+        provenance = _provenance(world)
+        started = time.monotonic()
+        result: dict[str, Any] = {}
+        failure = None
+        with tempfile.TemporaryDirectory(prefix="moviepilot-native-evaluation-") as directory:
+            control_dir = Path(directory)
+            work_dir = control_dir / "workspace"
+            work_dir.mkdir()
+            catalog_result = await _execute([executable, "debug", "models", "--bundled"], "", _worker_environment(), work_dir, 10)
+            if catalog_result.get("error_type") or catalog_result.get("returncode") != 0:
+                raise RuntimeError("无法读取当前原生客户端自带模型目录")
+            catalog, catalog_metadata = _catalog(json.loads(catalog_result["stdout"]), settings.model)
+            (control_dir / "models.json").write_text(json.dumps(catalog), encoding="utf-8")
+            browser_runtime = (
+                _browser_runtime_configuration(executable, control_dir)
+                if scenario_id in NATIVE_BROWSER_SCENARIOS else None
             )
-            for key, value in config.items():
-                command.extend(["-c", f"{key}={_toml(value)}"])
-            environment = _worker_environment()
-            environment.update(MOVIEPILOT_EVAL_MODEL_TOKEN=proxy.bearer_token,
-                               MOVIEPILOT_EVAL_MCP_TOKEN=server.bearer_token)
-            if use_app_server:
-                # app-server 必须使用临时状态根，避免读取或写入调用方的桌面会话和插件配置。
-                environment["CODEX_HOME"] = str(control_dir)
-            else:
-                command.append("-")
-            try:
-                result = await (
-                    _execute_app_server(
-                        command, world.model_input(), environment, work_dir, settings.timeout_seconds,
-                        model=settings.model, reasoning_effort=settings.reasoning_effort,
-                    )
-                    if use_app_server
-                    else _execute(command, world.model_input(), environment, work_dir, settings.timeout_seconds)
+            extra_native_tools = NATIVE_SHELL_TOOLS if scenario_id in {
+                "command_execution", "terminal_session", "terminal_pty_session",
+            } else frozenset()
+            if browser_runtime is not None:
+                extra_native_tools |= NATIVE_BROWSER_TOOLS
+            async with EvaluationMcpServer(world) as server, EvaluationModelProxy(
+                settings, probe_only=probe_only, extra_native_tools=extra_native_tools,
+            ) as proxy:
+                config = _configuration(
+                    settings, proxy, server, control_dir, scenario_id=scenario_id, browser_runtime=browser_runtime,
                 )
-                failure = result.get("error_type")
-            except (RuntimeError, TimeoutError, OSError) as error:
-                failure = type(error).__name__
-            local_tokens = tuple(
-                value for value in (proxy.bearer_token, server.bearer_token, settings.account_id)
-                if isinstance(value, str) and value
-            )
-        usage = proxy.snapshot()
-        server_stats = server.stats
-        skill_sha256 = server.skill_sha256
+                use_app_server = scenario_id in NATIVE_TERMINAL_SCENARIOS
+                command = (
+                    [executable, "app-server", "--listen", "stdio://", "--strict-config"]
+                    if use_app_server
+                    else [executable, "exec", "--ignore-user-config", "--ignore-rules", "--strict-config", "--ephemeral",
+                          "--skip-git-repo-check", "--sandbox", "read-only", "--json", "--color", "never", "-C", str(work_dir)]
+                )
+                for key, value in config.items():
+                    command.extend(["-c", f"{key}={_toml(value)}"])
+                environment = _worker_environment()
+                environment.update(MOVIEPILOT_EVAL_MODEL_TOKEN=proxy.bearer_token,
+                                   MOVIEPILOT_EVAL_MCP_TOKEN=server.bearer_token)
+                if use_app_server:
+                    # app-server 必须使用临时状态根，避免读取或写入调用方的桌面会话和插件配置。
+                    environment["CODEX_HOME"] = str(control_dir)
+                else:
+                    command.append("-")
+                try:
+                    result = await (
+                        _execute_app_server(
+                            command, world.model_input(), environment, work_dir, settings.timeout_seconds,
+                            model=settings.model, reasoning_effort=settings.reasoning_effort,
+                        )
+                        if use_app_server
+                        else _execute(command, world.model_input(), environment, work_dir, settings.timeout_seconds)
+                    )
+                    failure = result.get("error_type")
+                except (RuntimeError, TimeoutError, OSError) as error:
+                    failure = type(error).__name__
+                local_tokens = tuple(
+                    value for value in (proxy.bearer_token, server.bearer_token, settings.account_id)
+                    if isinstance(value, str) and value
+                )
+            usage = proxy.snapshot()
+            server_stats = server.stats
+            skill_sha256 = server.skill_sha256
+        if fixture is not None and fixture[1].get("clicked"):
+            # The native browser plugin bypasses the evaluation MCP server; the
+            # loopback callback is the independent proof that the button click ran.
+            world.record_browser("native_browser", {
+                "success": True, "execution_outcome": "succeeded", "rendered": "BROWSER_OK",
+            })
     events, final_text, completed = _events(result.get("stdout", ""))
     if scenario_id in {"command_execution", "terminal_session", "terminal_pty_session"}:
         _record_native_command_events(world, events)
@@ -544,7 +699,12 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
         "native_stderr_sha256": hashlib.sha256(stderr.encode()).hexdigest(),
         "final_text": final_text, "final_report": final_report, "ledger": world.ledger,
         "fixture_server": server_stats, "exposed_skill_sha256": skill_sha256,
-        "tool_catalog_scope": "native_control_tools_and_shared_fixture_mcp",
+        "tool_catalog_scope": (
+            "native_control_tools_shared_fixture_mcp_and_browser_plugin"
+            if scenario_id in NATIVE_BROWSER_SCENARIOS and browser_runtime is not None
+            else "native_control_tools_and_shared_fixture_mcp"
+        ),
+        "browser_runtime_enabled": bool(scenario_id in NATIVE_BROWSER_SCENARIOS and browser_runtime is not None),
         "native_transport": "app_server" if scenario_id in NATIVE_TERMINAL_SCENARIOS else "exec",
     }
     report["task_passed"] = report["passed"]

@@ -2,7 +2,7 @@
 
 > 归档位置：`docs/refactor/`。
 
-更新时间：2026-09-11
+更新时间：2026-09-12
 
 这份文档是 Agent 能力对齐的交付路线和每轮验收合同。它记录当前证据与未完成目标，不把一次成功的模型调用当成“已经和 Codex 一样聪明”。最终判断必须同时看模型行为、工具执行、任务生命周期、业务终态和失败后的收敛结果。
 
@@ -22,7 +22,7 @@ Google 的 OpenAI-compatible 层会丢失 Gemini 3 工具回复中的 `thought_s
 | C1.3 终端任务作用域 | 已完成 | 终端归属由宿主对象身份决定；定时运行、会话、子任务和内部工具管理器隔离；封口先于清理，排队或运行中的命令都不会在任务结束后迟到启动 |
 | S2.3 运行中消息排队与 WebAgent 输入 | 已完成本轮实现并修复丢消息、时序错位和 continuation 状态不刷新的遗漏 | 运行中仍可提交新消息；消息按会话原子入队，在下一次模型调用边界注入真实 `HumanMessage`；SSE 报告 queued/applied，稳定 `steering_message_id` 贯穿展示快照、前端本地状态和恢复合并；应用点收口当前助手并创建 continuation 助手，用户气泡落在真实事件边界；工具按 `tool_id` 报告 running/done/error；停止后不再派发后续工具 |
 | C1.5 长上下文压缩与任务约束保留 | 同条件配对已通过 | 真实压缩前后预算约 69.5K → 26.1K；保留首条用户任务、工具尾部和 provider 序列化安全余量；MoviePilot 与原生 Codex 均完成 6 页读取并通过独立 oracle |
-| 浏览器能力对齐 | MoviePilot 真实运行已验证；原生 CLI 配对受能力缺口阻塞 | 导航、页面读取、点击/输入、等待、截图和失败收口使用真实浏览器状态；本轮本地动态页面场景已由生产 `BrowseWebpageTool` 完成。`codex features list` 虽显示 `browser_use` 为 stable，但真实受控 `codex exec 0.153.4` 请求仍只保留计划、工具搜索和评测 MCP；浏览器场景 12 次模型调用后没有产生浏览器账本事件并耗尽预算，feature flag 不能替代原生 browser plugin/host，保留为 Harness 能力缺口，不能伪造配对 |
+| 浏览器能力对齐 | MoviePilot 真实运行已验证；原生 CLI 已接入真实 Browser plugin，但回环导航被浏览器保存的用户权限阻断 | 导航、页面读取、点击/输入、等待、截图和失败收口使用真实浏览器状态；本轮本地动态页面场景已由生产 `BrowseWebpageTool` 完成。原生 `codex exec 0.153.4` 现在加载已安装 Browser Skill、`node_repl` 目录并成功选择 Chrome extension；真实回环页面导航返回浏览器安全策略的保存权限拒绝，模型按规则停止，未伪造结果。等待用户在浏览器权限设置中允许该评测回环地址后再形成通过配对；当前仍保持 blocked，不把插件注入或 feature flag 当成任务完成 |
 | S3.1 通用子代理 | 三轮 held-out 配对通过，仍需终端分享/取消边界收益数据 | 主 Agent 只暴露并派发 `general-purpose`；旧的专用画像已删除，不保留兼容入口。held-out 场景已在三轮独立运行中验证两个并行只读子任务、授权、工具角色和零副作用；仍需终端分享/取消边界的收益数据 |
 
 ## 每轮硬门禁
@@ -51,7 +51,7 @@ uv run --locked --no-sync python -m scripts.evaluation \
 ## 工具与 Harness 对齐清单
 
 - **命令行**：普通一次性命令与后台终端分别支持 pipe/PTY、共享 cwd/shell/login/环境和 UTF-8；输入写入、空写入、EOF、分页、短写、interrupt、kill、超时、取消和进程组收尾都有结构化终态。`command_execution` 与终端场景只在原生 CLI 真实广告 `functions.exec_command`/`functions.write_stdin` 时按场景开启，并把 MoviePilot 生产 `ExecuteCommandTool` 绑定到临时目录；终端场景的原生评测使用 app-server，记录命令输出增量和终端输入事件。生产与原生 PTY 已通过同条件真实配对；原生 pipe 仍因 CLI 在一次性命令后关闭 stdin 而没有输入事件，保持 blocked，不把适配器能力误算成原生 Harness 对齐。适配器将单请求、代理和 app-server 流式空闲时间统一跟随评测墙钟预算，避免较长推理被 Harness 的硬编码超时误判。
-- **浏览器**：工具目录必须明确导航、读取、交互、等待和截图的动作与权限；浏览器会话、页面状态和失败重试由宿主持有，不能由模型字符串冒领。新增 `browser_navigation` 场景使用回环动态页面验证生产工具；原生 CLI 探针没有广告浏览器工具，原生配对保持 blocked，等待可用的 Codex browser harness。
+- **浏览器**：工具目录必须明确导航、读取、交互、等待和截图的动作与权限；浏览器会话、页面状态和失败重试由宿主持有，不能由模型字符串冒领。`browser_navigation` 场景使用回环动态页面验证生产工具；原生 CLI 适配器只在本机 Browser plugin、`node_repl` 和 Skill 文件均存在时开启对应目录，并把可移植的 `<plugin root>` 展开为受信绝对路径。真实原生运行已选择 Chrome extension，但回环导航被保存的浏览器权限拒绝，模型按安全规则停止，保持 blocked；权限放开后才能继续形成同场景通过配对。
 - **子代理**：主 Agent 自动选择通用子代理；专用画像只有在 held-out 任务上证明提高成功率、减少调用或降低副作用风险时才保留。子代理不能自行发送消息、执行高影响写操作或继承兄弟任务句柄。
 - **API Skill 与合同读取**：`skills/moviepilot-api/SKILL.md` 只负责路由索引和工作流；`api/*.md` 各自包含完整操作合同及该类别需要的 Body Models，不再依赖单独的 `api/models.md`。真实 Agent 先用 `read_skill` 得到 supporting-file 清单，再用同一个工具的 `file=api/<category>.md` 参数按需读取类别文档；评测目录必须提供同一条链路，不能只返回文件名而不给模型读取能力。operation 输入错误还要返回该 operation 的允许字段、必填字段和类型约束，帮助模型纠正后重试。
 - **长任务与新消息**：入站消息在任务运行时仍可接受并进入有界队列；应用到下一模型边界时必须保留 tool-call/tool-result 配对和取消语义，不能只把文本拼到系统提示词。WebAgent 将工具开始/完成/失败作为带稳定 `tool_id` 的结构化事件；前端按事件序列维护每个工具状态，queued ACK 只建立排队气泡，后续事件继续归属于当前助手段，直到 applied 事件报告真实模型边界后再创建 continuation，避免“最新工具覆盖全部状态”或把用户消息挪到顶部。
@@ -75,6 +75,7 @@ uv run --locked --no-sync python -m scripts.evaluation \
 - 本轮第二阶段：用同一 `gpt-5.6-luna + max`、同一场景和预算显式启用 Codex OAuth，首次生成有效成对摘要 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair.json`。MoviePilot live `/tmp/moviepilot-agent-round-luna-oauth-live-dedup-5.json` 因最终 infohash 少两位而未通过；原生 Codex `/tmp/moviepilot-agent-round-luna-oauth-native-dedup-8.json` 通过。摘要 `pair_valid=true`、`both_passed=false`，证明真实生产图与 Codex 仍有可观测的终态可靠性差距；下一轮先针对精确最终报告和未知结果收口做多次重复，再扩展浏览器、终端和中途消息场景。
 - 本轮第三阶段：修正原生动态工具搜索对 `multi_agent_v1` 协作命名空间的投影，正向保留 `wait_agent`、`resume_agent` 等原生控制动作，负向继续拒绝 `read_file`。在同一 Harness（`71be4c436acc5dc2d5a0cd6996c3ca10688a9c4ba98fd11594e536f7aa440c22`）下，`dedup_existing` 配对 `/tmp/moviepilot-agent-round-luna-oauth-dedup-pair-13.json` 与 `unknown_download` 配对 `/tmp/moviepilot-agent-round-luna-oauth-unknown-pair-14.json` 均 `pair_valid=true`、`both_passed=true`；MoviePilot 分别使用 6/6 次模型调用，原生 Codex 使用 10/14 次。`honest_unknown` 配对 `/tmp/moviepilot-agent-round-luna-oauth-honest-pair-16.json` 仍为 `both_passed=false`：MoviePilot 在 9 次调用后如实保留下载未核验，原生 Codex 达到 16 次上限后没有最终 JSON，产生 `invalid_final_report`。这保留了真实失败边界，不能等同整体 Codex 智能已完成。
 - 命令行与浏览器能力阶段：`command_execution` 在同一 `gpt-5.6-luna + max` 和独立 Codex OAuth 下已形成真实配对 `/tmp/moviepilot-agent-round-luna-oauth-command-pair-final.json`，`pair_valid=true`、`both_passed=true`，harness 为 `c409ee1ca7899ccfcefd38832d6a343f024f8fc67fb65f14c3eec08552203257`。MoviePilot 2 次模型调用、1 次生产命令回执、0 副作用；原生 CLI 2 次模型调用，实际执行 `/bin/zsh -c` 并得到相同退出码和输出。生产 stdout 的 `[标准输出]` 展示包装已在独立判定器中与命令内容分离。
+- 原生浏览器 Harness 补充验证：适配器接入本机已安装的 Browser plugin、`node_repl` 和完整 Browser Skill，并把 `<plugin root>` 展开到临时受信文件；动态回环 fixture 会通过 `/clicked` 回调记录真实按钮点击。`/tmp/moviepilot-agent-round-luna-oauth-native-browser-expanded-20260912.json` 中模型 6 次调用后成功选择 Chrome extension，但 `goto` 和带 `allow_private_network=true` 的重试均被浏览器保存权限拒绝，模型正确返回 `blocked`，没有产生伪造账本事件。原生浏览器能力已经可被 Harness 发现，任务配对仍因外部保存权限保持 blocked。
 - 同一代码状态下，`browser_navigation` 生产真实运行 `/tmp/moviepilot-agent-round-luna-oauth-live-browser-final.json` 通过：6 次模型调用、4 次浏览器回执，真实页面点击后观察到 `BROWSER_OK`。`codex exec 0.153.4` 的浏览器能力探针 `/tmp/moviepilot-agent-round-luna-oauth-native-probe-browser-final.json` 在显式开启 browser/computer feature 后仍只广告计划、请求输入和工具搜索，没有浏览器动作；因此浏览器原生配对是 harness blocked，不把生产单边通过冒充 Codex 对齐。
 - `terminal_session` 的早期配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-appserver-pair-final-d22fa746f.json` 保留了原生 pipe 在 READY 前关闭 stdin 的失败证据。随后评测适配器改用与整轮预算一致的流式超时，仍不掩盖该一次性 pipe 交互边界；生产路径的持续会话测试保持通过。
 - 同条件的 `terminal_pty_session` 配对 `/tmp/moviepilot-agent-round-luna-oauth-terminal-pty-appserver-pair-timeout180-sleep1-ready1-20260911.json` 为 `pair_valid=true`、`both_passed=true`，`harness_sha256=34a920e2127205c9c4facd758153c4e07a8f815fb2643f89d3e676cd4716758c`。MoviePilot `/tmp/moviepilot-agent-round-luna-oauth-live-terminal-pty-timeout180-sleep1-ready1-20260911.json` 4 次模型调用、3 次真实终端操作；原生 app-server `/tmp/moviepilot-agent-round-luna-oauth-native-terminal-pty-appserver-timeout180-sleep1-ready1-20260911.json` 3 次模型调用，均由独立账本确认 PTY 输入、`READY`/回复输出和退出码 0。PTY 探针命令在输出 READY 前保留 1 秒启动窗口、回复后保留 1 秒收尾窗口，模拟真实服务启动和终端交接，避免丢失进程早期输出。

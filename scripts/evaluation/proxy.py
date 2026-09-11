@@ -35,8 +35,23 @@ NATIVE_COLLABORATION_TOOLS = frozenset({
 })
 NATIVE_MULTI_AGENT_TOOLS = NATIVE_CONTROL_TOOLS | NATIVE_COLLABORATION_TOOLS
 NATIVE_SHELL_TOOLS = frozenset({"exec_command", "write_stdin"})
-KNOWN_NAMESPACES = frozenset({"functions", "clock", "collaboration", "mcp__evaluation", "multi_agent_v1"})
+NATIVE_BROWSER_TOOLS = frozenset({
+    "mcp__node_repl__js", "mcp__node_repl__js_reset", "mcp__node_repl__js_add_node_module_dir",
+    "mcp__node_repl__turn_ended",
+})
+KNOWN_NAMESPACES = frozenset({
+    "functions", "clock", "collaboration", "mcp__evaluation", "mcp__node_repl", "multi_agent_v1",
+})
 FIXTURE_TOOLS = frozenset({"moviepilot_api", "read_skill", "read_tool_result"})
+
+
+def _allowed_mcp_tool(normalized: str, extra_native_tools: frozenset[str]) -> bool:
+    """只放行评测夹具或当前浏览器场景明确授予的原生 MCP 工具。"""
+    if normalized == "mcp__evaluation" or normalized.startswith("mcp__evaluation__"):
+        return normalized == "mcp__evaluation" or normalized.removeprefix("mcp__evaluation__") in FIXTURE_TOOLS
+    if normalized == "mcp__node_repl":
+        return bool(NATIVE_BROWSER_TOOLS & extra_native_tools)
+    return normalized in extra_native_tools
 
 
 def allowed_tool(name: str, extra_native_tools: frozenset[str] = frozenset()) -> bool:
@@ -45,7 +60,7 @@ def allowed_tool(name: str, extra_native_tools: frozenset[str] = frozenset()) ->
     return (normalized in NATIVE_CONTROL_TOOLS
             or normalized in extra_native_tools
             or normalized in {f"collaboration__{tool}" for tool in NATIVE_COLLABORATION_TOOLS}
-            or normalized in {f"mcp__evaluation__{tool}" for tool in FIXTURE_TOOLS}
+            or _allowed_mcp_tool(normalized, extra_native_tools)
             or (normalized.startswith("multi_agent_v1__")
                 and normalized.removeprefix("multi_agent_v1__") in NATIVE_MULTI_AGENT_TOOLS))
 
@@ -69,8 +84,8 @@ def project_tools(
             raise ValueError("工具名称无效")
         qualified = f"{prefix}.{name}" if prefix else name
         normalized = qualified.removeprefix("functions.").replace(".", "__")
-        if tool["type"] == "mcp" or (normalized.startswith("mcp__") and not (
-            normalized == "mcp__evaluation" or normalized.startswith("mcp__evaluation__")
+        if tool["type"] == "mcp" or (normalized.startswith("mcp__") and not _allowed_mcp_tool(
+            normalized, extra_native_tools
         )):
             raise ValueError(f"评测目录包含外部 MCP：{qualified}")
         if tool["type"] == "namespace":
@@ -87,6 +102,8 @@ def project_tools(
             description = tool.get("description")
             sources = re.findall(r"(?m)^- ([^:\n]+):", description) if isinstance(description, str) else []
             allowed_sources = {"Multi-agent tools", "evaluation"}
+            if NATIVE_BROWSER_TOOLS & extra_native_tools:
+                allowed_sources.add("node_repl")
             if (prefix or tool.get("execution") != "client" or not sources
                     or "evaluation" not in sources or any(source not in allowed_sources for source in sources)):
                 raise ValueError("原生工具搜索不是固定评测目录")

@@ -7,6 +7,7 @@ import shlex
 import subprocess
 import sys
 import tomllib
+import urllib.request
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -270,6 +271,46 @@ def test_native_app_server_stream_timeout_follows_evaluation_budget() -> None:
         scenario_id="terminal_pty_session",
     )
     assert configuration["model_providers.evaluation"]["stream_idle_timeout_ms"] == 180_000
+
+
+def test_browser_runtime_expands_portable_skill_root_in_private_instruction_copy(tmp_path: Path,
+                                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """独立 CLI 没有桌面插件上下文时，浏览器 Skill 的根路径仍必须可执行且不改写安装文件。"""
+    codex_home = tmp_path / "codex-home"
+    plugin_root = codex_home / ".tmp" / "bundled-marketplaces" / "openai-bundled" / "plugins" / "browser"
+    node_repl = tmp_path / "node" / "node_repl"
+    node_repl.parent.mkdir(parents=True)
+    node_repl.write_text("", encoding="utf-8")
+    (node_repl.parent / "node").write_text("", encoding="utf-8")
+    (node_repl.parent.parent / "lib" / "node_modules").mkdir(parents=True)
+    (plugin_root / "scripts").mkdir(parents=True)
+    (plugin_root / "scripts" / "browser-client.mjs").write_text("client", encoding="utf-8")
+    skill = plugin_root / "skills" / "control-in-app-browser" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("import('<plugin root>/scripts/browser-client.mjs')", encoding="utf-8")
+    service = codex_home / "plugins" / "cache" / "openai-bundled" / "browser" / "26.903.71938" / "scripts" / "browser-service.mjs"
+    service.parent.mkdir(parents=True)
+    service.write_text("service", encoding="utf-8")
+    instruction_dir = tmp_path / "control"
+    instruction_dir.mkdir()
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("MOVIEPILOT_EVAL_NODE_REPL", str(node_repl))
+    runtime = codex._browser_runtime_configuration("/bin/codex", instruction_dir)
+    assert runtime is not None
+    expanded = Path(runtime["skill"])
+    assert expanded != skill and expanded.is_file()
+    assert str(plugin_root) in expanded.read_text(encoding="utf-8")
+    assert "<plugin root>" not in expanded.read_text(encoding="utf-8")
+    assert runtime["node_repl"]["env"]["NODE_REPL_TRUSTED_SERVICES"]
+
+
+def test_native_browser_fixture_records_only_loopback_click_callback() -> None:
+    """原生浏览器插件绕过评测 MCP 时，回环页面回调仍能作为独立点击证据。"""
+    with codex._native_browser_fixture() as (url, state):
+        page = urllib.request.urlopen(url, timeout=2).read().decode("utf-8")
+        assert "BROWSER_OK" in page and state["clicked"] is False
+        urllib.request.urlopen(url.replace("/fixture", "/clicked"), timeout=2).read()
+        assert state["clicked"] is True
 
 
 @pytest.mark.parametrize("catalog", [{}, {"models": []}, {"models": [{"slug": "gpt-test"}, {"slug": "gpt-test"}]}])
