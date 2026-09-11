@@ -462,12 +462,6 @@
   "app/runtime/execution.py": {
     "I001": 1
   },
-  "app/runtime/extensions/module/adapter.py": {
-    "I001": 1
-  },
-  "app/runtime/extensions/module/manager.py": {
-    "I001": 1
-  },
   "app/runtime/extensions/plugin/loader.py": {
     "I001": 1
   },
@@ -883,9 +877,6 @@
     "I001": 1
   },
   "tests/test_system_database_backup_api.py": {
-    "I001": 1
-  },
-  "tests/test_system_i18n.py": {
     "I001": 1
   },
   "tests/test_system_notification_dispatch.py": {
