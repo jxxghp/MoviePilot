@@ -82,6 +82,25 @@ async def test_default_child_graph_denies_write_then_executes_valid_read():
 
 
 @pytest.mark.asyncio
+async def test_child_invalid_read_returns_operation_contract_for_retry():
+    """只读操作参数错位时，回执必须带合同帮助子代理修正。"""
+    gateway = MoviePilotApiTool(session_id="readonly", user_id="owner")
+    allowed, result = await AgentPolicyMiddleware(context=_context()).execute_tool_call(
+        tool=gateway,
+        arguments={"operation_id": "subscription.find", "query": {"media_source": "themoviedb"}},
+        handler=AsyncMock(),
+        invocation_id="invalid-read",
+        enforce_decision=False,
+    )
+    assert allowed is False
+    payload = json.loads(result.content)
+    assert payload["error"] == "subagent_read_only"
+    assert payload["operation_id"] == "subscription.find"
+    assert "path_params" in payload["input_contract"]["allowed_arguments"]
+    assert "input_contract" in payload["message"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("show_secrets", [True, "true", "1", 1])
 async def test_child_secret_read_uses_canonical_query_semantics(show_secrets):
     """不能利用布尔字符串或数字的 HTTP 转换请求原始敏感设置。"""

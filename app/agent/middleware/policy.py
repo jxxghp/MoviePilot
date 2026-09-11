@@ -153,6 +153,40 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
             additional_kwargs={EXECUTION_OUTCOME_KEY: outcome.value},
         )
 
+    @staticmethod
+    def _subagent_read_only_error(tool: Any, arguments: dict[str, Any], invocation_id: str | None) -> ToolMessage:
+        """为子代理的只读拒绝返回可纠正的 operation 合同，而不是只给笼统权限错误。"""
+        payload: dict[str, Any] = {
+            "success": False,
+            "error": "subagent_read_only",
+            "message": "子代理只允许已声明的安全只读操作；请由主代理核验并执行写入。",
+        }
+        if isinstance(tool, MoviePilotApiTool):
+            operation_id = str(arguments.get("operation_id") or "")
+            operation = resolve_api_operation(operation_id)
+            if operation is not None and operation.effect is ActionEffect.SAFE_READ:
+                try:
+                    tool.canonical_arguments(arguments)
+                except (TypeError, ValueError) as error:
+                    payload["message"] = (
+                        f"{operation_id} 是安全只读操作，但输入未通过当前合同（{str(error)}）。"
+                        "请按 input_contract 只提交允许字段并补齐 required 字段后重试。"
+                    )
+                    payload["operation_id"] = operation_id
+                    payload["input_contract"] = tool.get_operation_input_contract(operation_id)
+            else:
+                payload["message"] = (
+                    f"{operation_id or '当前 operation'} 不是子代理可执行的安全只读操作。"
+                    "请改用明确的只读 operation；写入、删除、刷新和敏感读取必须由主代理处理。"
+                )
+        return ToolMessage(
+            content=json.dumps(payload, ensure_ascii=False),
+            tool_call_id=str(invocation_id or ""),
+            name=str(getattr(tool, "name", None) or "unknown"),
+            status="error",
+            additional_kwargs={EXECUTION_OUTCOME_KEY: ExecutionOutcome.FAILED.value},
+        )
+
     async def execute_tool_call(
         self,
         *,
@@ -164,16 +198,7 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
     ) -> tuple[bool, Any]:
         """执行一次本地工具调用，并复用 ToolNode 的策略生命周期。"""
         if self.context.origin is ToolOrigin.SUBAGENT and not self._subagent_read_allowed(tool, arguments):
-            return False, ToolMessage(
-                content=json.dumps({
-                    "success": False, "error": "subagent_read_only",
-                    "message": "子代理只允许已声明的只读操作；请由主代理核验并执行已获授权的写入。",
-                }, ensure_ascii=False),
-                tool_call_id=str(invocation_id or ""),
-                name=str(getattr(tool, "name", None) or "unknown"),
-                status="error",
-                additional_kwargs={EXECUTION_OUTCOME_KEY: ExecutionOutcome.FAILED.value},
-            )
+            return False, self._subagent_read_only_error(tool, arguments, invocation_id)
         observation = call_policy_hook(
             "start",
             self.orchestrator.start,

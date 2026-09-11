@@ -533,7 +533,7 @@ async def _run_codex(scenario_id: str, settings: ModelSettings, executable: str,
         failure = failure or "source_changed_during_run"
     stderr = result.get("stderr", "")
     report = {
-        **evaluate(world, final_report).to_dict(), **provenance, **usage, "source_unchanged": source_unchanged,
+        **evaluate(world, final_report, events).to_dict(), **provenance, **usage, "source_unchanged": source_unchanged,
         "evidence_kind": "codex_native_probe" if probe_only else "codex_native_controlled",
         "intelligence_evaluated": usage["completed_model_calls"] > 0, "codex_comparison": False,
         "model": settings.public_metadata(), "elapsed_seconds": round(time.monotonic() - started, 3),

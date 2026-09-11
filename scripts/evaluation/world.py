@@ -222,6 +222,8 @@ class EvaluationWorld:
             self._state["downloads"].append(_download(
                 self.scenario.infohash, self.scenario.media_source, self.scenario.media_id, "The.Old.Post.Office.2025",
             ))
+        if self.scenario.scenario_id == "subagent_parallel_status":
+            self._state["subscriptions"].append(_subscription(73, self.scenario.media_id, self.scenario.title))
         if self.scenario.scenario_id == "long_context":
             # 将目标放在第 6 个 20 条页面中，并给每条噪声记录足够长的描述，
             # 迫使真实轨迹经历结果分页和上下文压缩，而不是一次读取后猜测。

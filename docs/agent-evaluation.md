@@ -18,6 +18,7 @@
 | `terminal_session` | 启动 pipe 后台会话，写入 stdin，再等待退出 | 核验 session_id、动作顺序、输入、增量输出和退出码 |
 | `terminal_pty_session` | 启动 PTY 后台会话，写入 stdin，再等待退出 | 核验 PTY 输入事件、增量输出和真实退出码 |
 | `long_context` | 在长订阅列表中按固定分页读取并定位第 6 页目标 | 核验上下文压缩、首条任务约束保留、page1–6 证据和无副作用终态 |
+| `subagent_parallel_status` | 两个相互独立的只读检查必须由通用子代理并行完成 | 核验子代理授权、真实委派轨迹、订阅与启用站点证据和零副作用 |
 
 这些代号只供控制器和人使用。模型输入必须通过 `Scenario.model_input()` 生成，不能传入场景 ID、业务初态、故障布置、账本或验收器。下载查询在第三种场景的首次提交前仍然可用，避免错误惩罚合理的重复检查策略。
 
@@ -73,6 +74,19 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
 `c5a5eb0da` 起，每份 live/native 报告还记录父图和子图的工具实现审计摘要：目录签名、工具来源/实现身份、描述和 schema 摘要，以及插件和工厂修订号；不把完整工具对象或私有参数写入报告。这让工具清单变化和实现漂移可以和具体评测 SHA 对齐。
 
 `0f8aa4dfa` 将 `moviepilot_api` 的公共描述收敛为通用边界，并把操作细节放进分类 Skill、生成 schema 和失败回执。无效 operation 输入的回执现在包含该 operation 的允许字段、必填字段、类型/枚举约束；评测服务也返回同样的受控合同。真实报告 `/tmp/moviepilot-agent-round-13b4fe112-gemini-dedup.json` 使用 `gemini-2.5-pro + high`，模型第一次把 `subscription.find` 的媒体字段放错位置，随后根据回执修正为 `path_params.media_id` 与 `query.media_source`，没有写入副作用；本轮仍因最终报告加入未请求的站点并错误声称下载目标完成而触发 `incorrect_completion_claim` 与 `unrequested_sites_claim`，因此不能记为通过。
+
+### 2026-09-11 通用子代理 held-out 成对实测
+
+新增 `subagent_parallel_status` 场景，要求主 Agent 将订阅核对与启用站点核对分别委派给两个 `general-purpose` 子代理，主 Agent 等待结果后综合，子代理不能直接写入。首轮真实运行暴露了一个实际权限与纠错缺口：订阅子任务的 `subscription.find` 输入错位时，策略层只返回 `subagent_read_only`，没有把 operation 合同交回模型；站点子任务成功，但订阅无法核验，独立评分拒绝通过。
+
+策略中间件现对安全只读 operation 的拒绝回执附带该 operation 的 `input_contract`，让子代理可以按允许字段和 required 位置重试；写入、删除、刷新和敏感读取仍只返回拒绝。相关权限与评测测试通过。相同未提交工作树、`gpt-5.6-luna + max`、32 次模型调用上限、8192 输出上限、300 秒超时和 `harness_sha256=471c2910242d322455c2b7a825876aef10965a51bf7472ea2a7f93f25adaf04d` 下：
+
+| 侧 | 结果 | 真实运行摘要 |
+| --- | --- | --- |
+| MoviePilot 生产 Agent | 通过 | `/tmp/moviepilot-agent-round-luna-oauth-subagent-live-32-20260911.json`；13 次模型调用、2 次业务读取、真实派发两个独立子任务、0 失败/重复/副作用。 |
+| 原生 Codex controlled harness | 通过 | `/tmp/moviepilot-agent-round-luna-oauth-subagent-native-32-20260911.json`；23 次模型调用、2 次业务读取、两个子任务均返回可核验证据、0 重复/副作用。 |
+
+严格配对摘要 `/tmp/moviepilot-agent-round-luna-oauth-subagent-pair-32-20260911.json` 为 `pair_valid=true`、`both_passed=true`。MoviePilot 比原生 Codex 少 10 次模型调用、少 243194 个已知 token、少约 62.412 秒；这是该 held-out 轨迹的成本差，不能外推成整体智能优势。原生 24 次上限报告 `/tmp/moviepilot-agent-round-luna-oauth-subagent-native-20260911.json` 在最终 JSON 前耗尽预算，保留为失败样本；还记录一次关闭协作任务的参数警告，未造成业务副作用。S3.1 仍需多轮重复、终端分享和取消场景，才能判断通用子代理相对专用画像的稳定收益。
 
 本轮将后续真实测评模型切换为 Google Gemini `gemini-3.1-pro-preview`，推理档位保持 `high`。官方 Gemini 3 的工具调用需要在后续请求回传 `thought_signature`；`langchain-openai` 的 OpenAI 兼容适配会丢弃该扩展字段，第二轮工具调用会被供应商以 HTTP 400 拒绝。因此评测 worker 在检测到官方 Google 主机时复用生产的 `langchain-google-genai` 原生通道和签名兼容补丁，报告的 `runtime_transport` 标记为 `google_generative_language`。这只改变模型连接适配，不放宽 MoviePilot 工具目录、隔离世界或独立验收器。切换后的完整场景报告以实际模型调用结果和对应提交内容为准，不能把此前 2.5 Pro 的结果冒充 3.1 Pro 证据。
 

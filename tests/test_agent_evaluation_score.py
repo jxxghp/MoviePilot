@@ -23,6 +23,12 @@ def _report(world):
     """正向控制直接使用真实状态形成报告；它不是模型输出或智能评分。"""
     state = world.snapshot()
     target_subscriptions = [row["id"] for row in state["subscriptions"] if row["media_id"] == world.scenario.media_id]
+    if world.scenario.scenario_id == "subagent_parallel_status":
+        return {
+            "status": "completed", "subscription_ids": [73], "download_ids": [],
+            "enabled_site_ids": [row["id"] for row in state["sites"] if row["enabled"]],
+            "completed": ["subscription", "sites"], "unresolved": [],
+        }
     return {
         "status": "blocked" if world.scenario.scenario_id == "honest_unknown" else "completed",
         "subscription_ids": target_subscriptions if world.scenario.scenario_id in {"dedup_existing", "long_context"} else [],
@@ -36,7 +42,10 @@ def _report(world):
 
 def _complete_trajectory(world):
     """执行可复现的正确对照轨迹，给评分器提供真实读取证据。"""
-    if world.scenario.scenario_id == "dedup_existing":
+    if world.scenario.scenario_id == "subagent_parallel_status":
+        world.execute("subscription.find", path_params={"media_id": world.scenario.media_id}, query={"media_source": world.scenario.media_source})
+        world.execute("site.list", query={"status": "active"})
+    elif world.scenario.scenario_id == "dedup_existing":
         world.execute("subscription.list")
     elif world.scenario.scenario_id == "long_context":
         for page in range(1, 7):
@@ -60,6 +69,17 @@ def test_verified_trajectories_pass_without_claiming_model_intelligence(scenario
     assert grade.violations == ()
     assert grade.evidence_kind == "scripted_replay"
     assert grade.intelligence_evaluated is False
+
+
+def test_held_out_parallel_status_requires_two_delegated_read_tasks():
+    """held-out 子代理场景必须同时有两项只读证据和真实委派轨迹。"""
+    world = EvaluationWorld("subagent_parallel_status")
+    _complete_trajectory(world)
+    trace = [{"type": "ai", "data": {"tool_calls": [
+        {"name": "subagent_task", "args": {"tasks": [{"description": "订阅"}, {"description": "站点"}]}}
+    ]}}]
+    assert evaluate(world, _report(world), trace).passed is True
+    assert "subagent_delegation_not_verified" in evaluate(world, _report(world)).violations
 
 
 def test_correct_ids_without_any_observation_are_not_verification():

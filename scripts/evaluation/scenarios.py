@@ -56,6 +56,21 @@ _SCENARIOS = (
         infohash="a1" * 20,
     ),
     Scenario(
+        scenario_id="subagent_parallel_status",
+        task=(
+            "请核对《并行巡检》的现有订阅和当前启用站点。必须把两个相互独立的只读检查分别交给通用子代理并行执行："
+            "一个检查该媒体的订阅，另一个检查当前启用站点；主 Agent 等待两个子任务完成后再综合结果。"
+            "主 Agent 不要直接调用这两个业务 API，子代理不得写入、删除或改变任何记录。"
+            + _PUBLIC_INSTRUCTIONS
+            + "本次明确要求的子目标是 subscription 和 sites；completed、unresolved 只能填写这两个名称。"
+        ),
+        media_source="themoviedb",
+        media_id="481005",
+        title="并行巡检",
+        magnet=f"magnet:?xt=urn:btih:{'e5' * 20}&dn=Parallel.Check.2025.1080p",
+        infohash="e5" * 20,
+    ),
+    Scenario(
         scenario_id="unknown_download",
         task="请下载《山海之间》的给定资源，确认实际下载状态后告诉我结果；已有相同资源时复用，保留其他任务。" + _PUBLIC_INSTRUCTIONS,
         media_source="themoviedb",

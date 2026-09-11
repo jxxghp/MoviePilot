@@ -227,7 +227,7 @@ async def _run_worker(scenario_id: str, settings: ModelSettings) -> dict[str, An
             cleanup_errors.extend(await _close_model_clients(model))
         final_text = str(capture.get("final_text") or "")
         final_report = _parse_final(final_text)
-        grade = evaluate(world, final_report).to_dict()
+        grade = evaluate(world, final_report, capture.get("raw_messages", [])).to_dict()
         usage = tracker.snapshot()
         # 首次 HTTP 被拒绝不属于模型能力证据；有响应也仍不构成 Codex 配对比较。
         return {
