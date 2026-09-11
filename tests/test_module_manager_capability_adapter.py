@@ -934,7 +934,7 @@ manager = ModuleManager()
 assert len(manager.list_specs()) == 41
 assert manager.get_specs() == manager.list_specs()
 
-from app.api.endpoints.system import modulelist
+from app.api.endpoints.module import modulelist
 response = modulelist(None)
 assert len(response.data["modules"]) == 17
 

@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.api.endpoints import system as system_endpoint
+from app.api.endpoints import module as system_endpoint
 from app.runtime.localization import LocaleHelper
 
 
