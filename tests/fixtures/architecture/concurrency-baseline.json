@@ -64,7 +64,9 @@
   },
   "app/adapters/system/plugin/package.py:app.runtime.execution.run_in_threadpool_to_completion": {
     "owners": {
+      "PluginPackageManager.__async_cleanup_failed_install": 1,
       "PluginPackageManager.__async_install_dependencies_if_required": 1,
+      "PluginPackageManager.__install_flow_async": 2,
       "PluginPackageManager.async_activate_persistent_backup": 1,
       "PluginPackageManager.async_checkpoint": 1,
       "PluginPackageManager.async_cleanup": 1,
@@ -669,7 +671,7 @@
   },
   "app/startup/lifecycle/__init__.py:app.runtime.execution.run_in_threadpool_to_completion": {
     "owners": {
-      "offload_shutdown_callback.invoke": 1,
+      "offload_blocking_callback.invoke": 1,
       "prepare_plugin_restore": 1
     },
     "target": "app.runtime.execution.run_in_threadpool_to_completion"

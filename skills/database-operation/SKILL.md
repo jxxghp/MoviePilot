@@ -123,10 +123,10 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Columns: `id`, `session_id`, `client_session_id`, `user_id`, `username`, `channel`, `source`, `original_chat_id`, `title`, `preview`, `agent_messages`, `display_messages`, `message_count`, `created_at`, `updated_at`
 
 ### `agentinvocation`
-- Purpose: Durable Agent write invocation identity and last observed outcome, including confirmed asynchronous submission.
-- Useful queries: Inspect an exact principal and session's running, unknown, pending, succeeded, or failed receipts; compare timestamps when diagnosing an interrupted write.
-- Write boundary: Owned by the host's atomic claim and reconciliation path. Never change IDs, fingerprints, claim tokens, or statuses to bypass duplicate protection. Running and unknown records are recovery state; ordinary retention does not delete them. Pending means submission was confirmed, not that the external task finished.
-- Columns: `id`, `principal_id`, `session_id`, `invocation_id`, `tool_name`, `arguments_digest`, `claim_token`, `status`, `summary`, `created_at`, `updated_at`. Raw arguments and tool output are not stored here.
+- Purpose: Stores the stable identity, argument digest, claim token, and status of each Agent write-tool invocation.
+- Useful queries: Auditing whether one write call already ran, or correlating a retry with its original invocation_id.
+- Write boundary: Idempotency evidence owned by the Agent tool runtime; never edit status, digests, or claim tokens.
+- Columns: `id`, `principal_id`, `session_id`, `invocation_id`, `tool_name`, `arguments_digest`, `claim_token`, `status`, `summary`, `created_at`, `updated_at`
 
 ### `agenttask`
 - Purpose: Stores one-shot or recurring Agent task definitions, triggers, and the latest execution summary.
@@ -206,6 +206,12 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Write boundary: Owned by the plugin installation state machine; never advance phase or overwrite evidence manually.
 - Columns: `id`, `transaction_id`, `plugin_id`, `phase`, `membership_before`, `membership_target`, `identity_before_revision`, `identity_target_revision`, `package_existed`, `persistent_backup_existed`, `created_at`, `updated_at`, `schema_version`
 
+### `plugininstance`
+- Purpose: Stores one row per shared-source plugin runtime instance, covering both clones and the host plugin itself (instance_id equals source_plugin_id), together with everything configured on that instance: display overrides, pinned version, default-call-target flag, log-level override and its expiry, and the plugin's own configuration payload. is_enabled is the sole test for whether a configuration should be instantiated and started; clearing it uninstalls the instance while every setting stays on the row awaiting re-enable, so only deleting the row discards anything.
+- Useful queries: Diagnosing clone naming, version binding, what a plugin or clone is configured with, which instance currently overrides the global log level, which instance an unspecified-instance call would resolve to, or which instances are registered but not enabled.
+- Write boundary: Owned by the plugin instance, configuration, log-level, and default-call-target APIs; never edit rows directly.
+- Columns: `id`, `instance_id`, `source_plugin_id`, `plugin_name`, `plugin_desc`, `plugin_icon`, `pinned_version`, `is_default_target`, `is_enabled`, `log_level`, `log_expires_at`, `config_data`, `created_at`, `updated_at`
+
 ### `site`
 - Purpose: Stores private-tracker URLs, RSS, credentials, rate limits, proxy state, and downloader binding.
 - Useful queries: Inspecting enablement, domain, rate limits, or downloader binding with minimal credential exposure.
@@ -252,7 +258,7 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Purpose: Stores one durable subscription search task per batch and subscription with leases and execution phases.
 - Useful queries: Diagnosing queued, running, failed, cancelled, or recovered work and its current site.
 - Write boundary: Advanced only by the search queue lease state machine; never rewrite leases or terminal states manually.
-- Columns: `id`, `task_id`, `batch_id`, `subscription_id`, `active_key`, `source`, `priority`, `position`, `state`, `phase`, `current_site_id`, `attempt_count`, `cancel_requested`, `lease_owner`, `lease_token`, `lease_expires_at`, `available_at`, `created_at`, `updated_at`, `started_at`, `finished_at`, `last_error`
+- Columns: `id`, `task_id`, `batch_id`, `subscription_id`, `active_key`, `source`, `priority`, `position`, `state`, `phase`, `current_site_id`, `pending_site_ids`, `attempt_count`, `cancel_requested`, `lease_owner`, `lease_token`, `lease_expires_at`, `available_at`, `created_at`, `updated_at`, `started_at`, `finished_at`, `last_error`
 
 ### `subscriptionsitebudget`
 - Purpose: Stores per-site subscription search concurrency, cooldown, health, and fairness state.
@@ -276,7 +282,7 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Purpose: Stores transfer source, destination, mode, media identity, download linkage, and outcome.
 - Useful queries: Reviewing success/failure history, destination paths, media classification, and download linkage.
 - Write boundary: Written by transfer settlement; delete or retry through transfer-history business APIs.
-- Columns: `id`, `transfer_task_id`, `transfer_settlement_revision`, `src`, `src_storage`, `src_fileitem`, `dest`, `dest_storage`, `dest_fileitem`, `mode`, `type`, `media_category_id`, `category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `title`, `year`, `media_source`, `media_id`, `music_type`, `total_tracks`, `audio_format`, `audio_lossless`, `bit_depth`, `sample_rate`, `bitrate`, `seasons`, `episodes`, `image`, `downloader`, `download_hash`, `status`, `errmsg`, `date`, `files`, `episode_group`
+- Columns: `id`, `transfer_task_id`, `transfer_settlement_revision`, `src`, `src_storage`, `src_fileitem`, `dest`, `dest_storage`, `dest_fileitem`, `mode`, `type`, `media_category_id`, `category`, `classification_rule_id`, `classification_policy_revision`, `classification_source`, `title`, `year`, `media_source`, `media_id`, `music_type`, `total_tracks`, `audio_format`, `audio_lossless`, `bit_depth`, `sample_rate`, `bitrate`, `seasons`, `episodes`, `image`, `downloader`, `download_hash`, `status`, `errmsg`, `retry_count`, `auto_paused`, `failure_stage`, `recovery_action`, `cleanup_status`, `cleanup_error`, `date`, `files`, `episode_group`
 
 ### `transferpending`
 - Purpose: Durably stores pending transfer input, plans, checkpoints, leases, retries, and manual review state.

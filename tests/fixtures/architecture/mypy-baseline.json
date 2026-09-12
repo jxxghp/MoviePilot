@@ -495,7 +495,7 @@
   "app/api/endpoints/plugin.py": {
     "assignment": 1,
     "import-untyped": 1,
-    "misc": 29,
+    "misc": 28,
     "no-any-return": 5,
     "no-untyped-call": 1,
     "no-untyped-def": 2,
@@ -1194,6 +1194,9 @@
   "app/db/oper/plugindata.py": {
     "no-untyped-def": 2
   },
+  "app/db/oper/plugininstance.py": {
+    "redundant-cast": 1
+  },
   "app/db/oper/site.py": {
     "arg-type": 1,
     "no-any-return": 4,
@@ -1221,6 +1224,9 @@
     "no-untyped-call": 3,
     "no-untyped-def": 1,
     "union-attr": 3
+  },
+  "app/db/plugin/migration.py": {
+    "no-untyped-def": 1
   },
   "app/db/session.py": {
     "no-untyped-call": 1,
@@ -2533,10 +2539,10 @@
     "type-arg": 2
   },
   "app/runtime/extensions/plugin/manager.py": {
-    "assignment": 8,
+    "assignment": 4,
     "attr-defined": 1,
     "no-untyped-call": 1,
-    "no-untyped-def": 12,
+    "no-untyped-def": 11,
     "type-arg": 10
   },
   "app/runtime/extensions/plugin/metadata.py": {
@@ -2624,7 +2630,8 @@
     "misc": 13
   },
   "app/schemas/context.py": {
-    "misc": 18
+    "misc": 19,
+    "no-any-return": 1
   },
   "app/schemas/dashboard.py": {
     "misc": 10

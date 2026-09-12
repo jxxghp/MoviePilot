@@ -279,6 +279,14 @@ it must be an absolute, existing directory — `ensure` raises
 `FileNotFoundError` before creating anything rather than leaving behind a
 database with neither tables nor a version stamp.
 
+Switching an instance's source version reuses that instance's database. Before
+running `upgrade head`, the migration owner verifies that the selected migration
+tree recognizes every current database revision; an unknown revision rejects
+the migration with an explicit compatibility error. This check preserves the
+post-`init_plugin()` declaration contract. It does not undo initialization side
+effects, restore configuration, or downgrade data. Retained source versions
+must never be advertised as database snapshots or unconditional rollback points.
+
 Models must inherit `app.sdk.database.plugin_declarative_base()`, which mints
 a fresh `MetaData` per call so a plugin's tables never collide with
 `app.db.base.Base.metadata` or with another plugin's same-named tables. At
