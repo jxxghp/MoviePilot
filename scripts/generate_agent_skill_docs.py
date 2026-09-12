@@ -26,6 +26,11 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "Tracing Agent history or context restoration by user, session, or update time.",
         "Owned by the Agent conversation service; do not rewrite message JSON, counters, or ownership.",
     ),
+    "agentinvocation": (
+        "Stores the stable identity, argument digest, claim token, and status of each Agent write-tool invocation.",
+        "Auditing whether one write call already ran, or correlating a retry with its original invocation_id.",
+        "Idempotency evidence owned by the Agent tool runtime; never edit status, digests, or claim tokens.",
+    ),
     "agenttask": (
         "Stores one-shot or recurring Agent task definitions, triggers, and the latest execution summary.",
         "Inspecting task ownership, enablement, cron/run_at settings, and the latest result.",
@@ -85,6 +90,18 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "Stores plugin installation phase, membership target, identity revisions, and backup state.",
         "Diagnosing interrupted installations, rollback conditions, and package or backup presence.",
         "Owned by the plugin installation state machine; never advance phase or overwrite evidence manually.",
+    ),
+    "plugininstance": (
+        "Stores one row per shared-source plugin runtime instance, covering both clones and the host plugin "
+        "itself (instance_id equals source_plugin_id), together with everything configured on that instance: "
+        "display overrides, pinned version, default-call-target flag, log-level override and its expiry, and "
+        "the plugin's own configuration payload. is_enabled is the sole test for whether a configuration "
+        "should be instantiated and started; clearing it uninstalls the instance while every setting stays "
+        "on the row awaiting re-enable, so only deleting the row discards anything.",
+        "Diagnosing clone naming, version binding, what a plugin or clone is configured with, which instance "
+        "currently overrides the global log level, which instance an unspecified-instance call would resolve "
+        "to, or which instances are registered but not enabled.",
+        "Owned by the plugin instance, configuration, log-level, and default-call-target APIs; never edit rows directly.",
     ),
     "site": (
         "Stores private-tracker URLs, RSS, credentials, rate limits, proxy state, and downloader binding.",

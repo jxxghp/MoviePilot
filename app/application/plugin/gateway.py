@@ -70,8 +70,10 @@ class PluginInstallGateway:
         candidate_compatibility: CandidateCompatibility,
         executor: PluginInstallExecutor,
         clock: Callable[[], datetime],
+        source_plugin_id: Callable[[str], str] = lambda plugin_id: plugin_id,
     ) -> None:
         """保存候选事实、身份读取、兼容校验、事务执行和时间端口。"""
+        self.__source_plugin_id = source_plugin_id
         self.__inventory = inventory
         self.__identity = identity
         self.__candidate_compatibility = candidate_compatibility
@@ -143,7 +145,13 @@ class PluginInstallGateway:
         package_version: str | None = None,
         force: bool = False,
     ) -> PluginSourceInspection:
-        """读取与真实安装相同的库存和身份，返回脱敏来源选择快照。"""
+        """读取与真实安装相同的库存和身份，返回脱敏来源选择快照。
+
+        先把分身归一到源插件：分身只是共享源码的运行实例，安装包只登记在源插件
+        名下，拿分身自身 ID（源插件 ID 加后缀）来查库存必然落空，界面上表现为
+        「没有找到插件 X 的可用安装包」。
+        """
+        plugin_id = self.__source_plugin_id(plugin_id)
         inventory = await self.__inventory(force)
         identity = await self.__identity(plugin_id)
         generations = _generation_order(package_version)

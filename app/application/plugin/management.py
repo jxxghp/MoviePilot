@@ -44,11 +44,18 @@ def refresh_plugin_registrations(plugin_id: str) -> None:
 
 
 def reload_plugin_runtime(plugin_id: str) -> PluginRuntimeStatus:
-    """重载插件实例并重新注册其命令、定时任务和 API。"""
+    """重载插件实例并重新注册其命令、定时任务和 API。
+
+    连同引用同一份源码的分身一起重载：只重载本体会让分身继续持有旧模块与旧类
+    对象，手工改完源码点重载后新旧代码在同一进程内并存。重载树可能包含多个实例，
+    注册投影因此逐个刷新，避免手工重载后分身仍持有旧的 API、调度与命令注册。
+    """
     plugin_manager = get_plugin_manager()
     with plugin_manager.mutation(f"重载插件 {plugin_id}"):
-        runtime_status = plugin_manager.reload_plugin(plugin_id)
-        refresh_plugin_registrations(plugin_id)
+        runtime_status = plugin_manager.reload_plugin_tree(plugin_id)
+        reload_targets = list(plugin_manager.get_plugin_reload_targets(plugin_id))
+        for reload_target in reload_targets or [plugin_id]:
+            refresh_plugin_registrations(reload_target)
         return runtime_status
 
 
@@ -331,17 +338,13 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
         was_clone = bool(getattr(plugin_class, "is_clone", False))
         clone_files_removed = False
 
-        # 删除数据必须发生在插件停止之后：插件的停机钩子只要取一次自有库句柄，就会把刚
-        # 删除的数据重新建出来。停止同时注销插件类，故其后的删除一律按 force 执行
         plugin_manager.stop(plugin_id)
 
+        # 分身与本体一致：卸载只移除实例身份，配置与业务数据保留，供同后缀重建时
+        # 恢复。两条卸载路径必须同语义，否则从 Agent 卸载仍会丢掉用户的配置。
         if virtual_instance:
-            plugin_manager.delete_plugin_config(plugin_id, force=True)
-            plugin_manager.delete_plugin_data(plugin_id, force=True)
             plugin_manager.delete_plugin_instance(plugin_id)
         elif was_clone:
-            plugin_manager.delete_plugin_config(plugin_id, force=True)
-            plugin_manager.delete_plugin_data(plugin_id, force=True)
             try:
                 clone_files_removed = await to_thread.run_sync(
                     plugin_manager.remove_plugin_package,

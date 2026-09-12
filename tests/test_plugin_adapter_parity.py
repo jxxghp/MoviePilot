@@ -127,7 +127,7 @@ async def test_plugin_package_sync_async_preflight_failures_are_identical(
             {"version": "1.2.3", "release": True},
             None,
             [],
-            ["release", "remove", "filelist"],
+            ["release", "filelist"],
         ),
         (
             {"version": "1.2.3", "release": True},
@@ -139,6 +139,7 @@ async def test_plugin_package_sync_async_preflight_failures_are_identical(
 )
 async def test_plugin_package_sync_async_execute_same_selected_strategy(
     monkeypatch,
+    tmp_path: Path,
     metadata: dict,
     release_version: str | None,
     release_items: list[dict],
@@ -191,17 +192,11 @@ async def test_plugin_package_sync_async_execute_same_selected_strategy(
         async_calls.append("filelist")
         return True, "installed"
 
-    def remove(*_args) -> None:
-        sync_calls.append("remove")
-
-    async def async_remove(*_args) -> None:
-        async_calls.append("remove")
-
     def install_flow(_pid, _force, prepare, _repo_url, _before):
-        return prepare()
+        return prepare(tmp_path / "staging")
 
     async def async_install_flow(_pid, _force, prepare, _repo_url, _before):
-        return await prepare()
+        return await prepare(tmp_path / "staging")
 
     monkeypatch.setattr(manager, "async_get_plugin_package_version", selected_version)
     monkeypatch.setattr(manager, "async_get_plugin_release_versions", releases)
@@ -210,8 +205,6 @@ async def test_plugin_package_sync_async_execute_same_selected_strategy(
     monkeypatch.setattr(manager, "_PluginPackageManager__async_install_from_release", async_install_release)
     monkeypatch.setattr(manager, "_PluginPackageManager__prepare_content_via_filelist_sync", prepare_filelist)
     monkeypatch.setattr(manager, "_PluginPackageManager__prepare_content_via_filelist_async", async_prepare_filelist)
-    monkeypatch.setattr(manager, "_PluginPackageManager__remove_old_plugin", remove)
-    monkeypatch.setattr(manager, "_PluginPackageManager__async_remove_old_plugin", async_remove)
     monkeypatch.setattr(manager, "_PluginPackageManager__install_flow_sync", install_flow)
     monkeypatch.setattr(manager, "_PluginPackageManager__install_flow_async", async_install_flow)
 

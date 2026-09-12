@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+import sqlalchemy as sa
+
 from app.adapters.external.market import (
     LOCAL_REPO_PREFIX,
     configure_installed_plugins_provider,
@@ -77,7 +79,9 @@ from app.application.plugin.transaction import (
 )
 from app.application.scheduling import update_plugin_job
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.db.models.plugininstance import PluginInstance as PluginInstanceRecord
 from app.db.oper.plugindata import PluginDataOper
+from app.db.oper.plugininstance import PluginInstanceOper
 from app.db.plugin.registry import (
     destroy_database,
     ensure_database,
@@ -91,6 +95,7 @@ from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
 )
+from app.runtime.compat.readiness import plugin_multi_version_blockers
 from app.runtime.compat.resources import scan_plugin_resource_imports
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.database import (
@@ -115,8 +120,12 @@ from app.runtime.extensions.plugin.runtime import (
     build_plugin_runtime,
 )
 from app.runtime.extensions.plugin.storage import (
+    LogLevelOverride,
+    PluginInstanceDirectory,
     PluginStorage,
+    configure_plugin_instance_directory,
     configure_plugin_storage,
+    get_plugin_instance_directory,
     get_plugin_storage,
 )
 from app.runtime.extensions.plugin.system import (
@@ -124,12 +133,12 @@ from app.runtime.extensions.plugin.system import (
     configure_plugin_system,
     get_plugin_system,
 )
-from app.runtime.log import logger
+from app.runtime.log import logger, set_plugin_instance_log_level
 from app.runtime.loop import main_loop_registry
 from app.runtime.resources import acquire_managed_resource
 from app.runtime.settings import get_runtime_setting
 from app.schemas.exception import PluginMutationRejectedError
-from app.schemas.plugin import PluginRuntimeStatus
+from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 from app.startup.composition.plugin import (
     compose_plugin_market,
@@ -155,12 +164,152 @@ def _delete_plugin_data(plugin_id: str) -> None:
         session.close()
 
 
+def _plugin_has_data(plugin_id: str) -> bool:
+    """判断插件是否留有业务数据，供同后缀重建分身时判定有无可恢复的残留。
+
+    :param plugin_id: 插件或分身实例ID
+    :return: 该 ID 名下是否存在业务数据行
+    """
+    session = SessionFactory()
+    try:
+        return bool(PluginDataOper(session).get_data_all(plugin_id))
+    finally:
+        session.close()
+
+
+def _read_plugin_log_level(instance_id: str) -> LogLevelOverride:
+    """从实例行读取日志等级覆盖与失效时间。"""
+    session = SessionFactory()
+    try:
+        record = PluginInstanceRecord.get_by_instance_id(session, instance_id)
+        if record is None or not record.log_level:
+            return (None, None)
+        expires_at = (
+            datetime.fromisoformat(record.log_expires_at) if record.log_expires_at else None
+        )
+        return (record.log_level, expires_at)
+    finally:
+        session.close()
+
+
+def _write_plugin_log_level(
+    instance_id: str,
+    level: str | None,
+    expires_at: datetime | None,
+) -> None:
+    """把日志等级覆盖写进该实例行；没有实例行时按需建出。"""
+    PluginInstanceOper().set_log_level(
+        instance_id=instance_id,
+        log_level=level,
+        log_expires_at=expires_at.isoformat() if expires_at else None,
+    )
+
+
 def _build_plugin_database() -> PluginDatabase:
     """把插件自有数据库端口装配到 db 层的建库、释放与销毁实现。"""
     return PluginDatabase(
         ensure=ensure_database,
         release=release_database,
         destroy=destroy_database,
+    )
+
+
+def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance:
+    """把插件实例表的 ORM 行投影为运行时端口使用的 Pydantic 描述。
+
+    只投影描述符各列：业务参数走 plugin.<实例ID> 配置读取口，日志等级走日志控制面，
+    运行时端口拿到的应当是一份实例身份与版本绑定的视图。
+    """
+    return PluginInstance(
+        instance_id=record.instance_id,
+        source_plugin_id=record.source_plugin_id,
+        plugin_name=record.plugin_name,
+        plugin_desc=record.plugin_desc,
+        plugin_icon=record.plugin_icon,
+        pinned_version=record.pinned_version,
+        is_default_target=record.is_default_target,
+        is_enabled=record.is_enabled,
+    )
+
+
+def _save_plugin_instance_record(instance: PluginInstance) -> None:
+    """把运行时实例描述写入插件实例表，以实例 ID 为稳定键做新增或更新。
+
+    启用位随描述一起写：它是运行时描述的一部分，读取口 ``_plugin_instance_from_record``
+    会把它投影出来，因而读改写一轮下来原值原样回去，不存在被顺手抹掉的风险。反倒是
+    漏写它会让新建的实例一律落成停用——装载判据正是这一列，实例会建出来却永不加载。
+
+    业务参数与日志等级不在此列：它们由插件自身和日志等级控制面各自写入，不进运行时
+    描述，因而这里也不碰。
+    """
+    PluginInstanceOper().save(
+        instance_id=instance.instance_id,
+        source_plugin_id=instance.source_plugin_id,
+        plugin_name=instance.plugin_name,
+        plugin_desc=instance.plugin_desc,
+        plugin_icon=instance.plugin_icon,
+        pinned_version=instance.pinned_version,
+        is_default_target=instance.is_default_target,
+        is_enabled=instance.is_enabled,
+    )
+
+
+def _prime_plugin_instance_log_levels() -> None:
+    """进程启动时把数据库中已设置的实例日志等级覆盖预热进运行期缓存。
+
+    过期覆盖也照常预热：过期判定统一在读取时惰性执行（见 `app.runtime.log`），
+    这里不重复实现一份过期过滤逻辑。单条记录预热失败不得阻断其余记录。
+    """
+    session = SessionFactory()
+    try:
+        records = session.execute(
+            sa.select(PluginInstanceRecord).where(
+                PluginInstanceRecord.log_level.is_not(None)
+            )
+        ).scalars().all()
+        for record in records:
+            try:
+                expires_at = (
+                    datetime.fromisoformat(record.log_expires_at)
+                    if record.log_expires_at
+                    else None
+                )
+                set_plugin_instance_log_level(record.instance_id, record.log_level, expires_at)
+            except ValueError as error:
+                logger.warning(
+                    f"预热插件实例 {record.instance_id} 的日志等级覆盖失败：{error}"
+                )
+    finally:
+        session.close()
+
+
+def _build_plugin_instance_directory() -> PluginInstanceDirectory:
+    """把插件实例表端口装配到 db 层实现。"""
+    oper = PluginInstanceOper()
+
+    def _get(instance_id: str) -> PluginInstance | None:
+        """按实例 ID 查询实例并投影为运行时描述。"""
+        record = oper.get(instance_id)
+        return _plugin_instance_from_record(record) if record is not None else None
+
+    return PluginInstanceDirectory(
+        get=_get,
+        list_all=lambda: [
+            _plugin_instance_from_record(record) for record in oper.list_all()
+        ],
+        list_by_source=lambda source_plugin_id: [
+            _plugin_instance_from_record(record)
+            for record in oper.list_by_source(source_plugin_id)
+        ],
+        list_enabled=lambda: [
+            _plugin_instance_from_record(record) for record in oper.list_enabled()
+        ],
+        save=_save_plugin_instance_record,
+        delete=oper.delete,
+        set_enabled=lambda instance_id, is_enabled: oper.set_enabled(
+            instance_id=instance_id,
+            is_enabled=is_enabled,
+        ),
     )
 
 
@@ -180,6 +329,7 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
         PluginRuntimeEnvironment(
             plugins_root=Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins",
             storage=lambda: get_plugin_storage(),
+            instance_directory=lambda: get_plugin_instance_directory(),
             system=lambda: get_plugin_system(),
             database=lambda: get_plugin_database(),
             catalog_factory=lambda mapper: _build_plugin_catalog(mapper),
@@ -189,6 +339,17 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
             remote_entry=host.get_plugin_remote_entry,
             development=lambda: bool(get_runtime_setting('DEV')),
             logger=logger,
+            multi_version_blockers=plugin_multi_version_blockers,
+            refresh_registrations=_register_plugin_runtime,
+            pending_installation=lambda plugin_id: (
+                get_plugin_persistence().has_pending_installation(plugin_id)
+            ),
+            set_default_target=lambda source_plugin_id, instance_id: (
+                PluginInstanceOper().set_default_target(source_plugin_id, instance_id)
+            ),
+            clear_default_target=lambda source_plugin_id: (
+                PluginInstanceOper().clear_default_target(source_plugin_id)
+            ),
         ),
         tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
     )
@@ -239,6 +400,8 @@ def configure_plugin_services() -> None:
 
     configure_plugin_release_service(
         PluginReleaseService(
+            # 分身的安装包与 Release 都登记在源插件名下，查询前必须先归一
+            source_plugin_id=plugin_manager.get_plugin_source_id,
             installed_plugins=plugin_manager.get_installed_plugins,
             local_repo_plugins=plugin_manager.get_local_repo_plugins,
             market_plugins=plugin_manager.async_get_plugins_from_market,
@@ -303,6 +466,7 @@ def configure_plugin_services() -> None:
         installed_plugins_reader=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
+        loadable_marker=plugin_manager.mark_plugin_loadable,
         plugin_ids_provider=plugin_manager.get_plugin_ids,
         packages=package_manager,
         install_reporter=lambda plugin_id, repo_url: (
@@ -321,6 +485,8 @@ def configure_plugin_services() -> None:
         transaction_id_factory=lambda: uuid.uuid4().hex,
     )
     gateway = PluginInstallGateway(
+        # 分身的安装包只登记在源插件名下，查来源候选前必须先归一
+        source_plugin_id=plugin_manager.get_plugin_source_id,
         inventory=load_inventory,
         identity=persistence.get_identity,
         candidate_compatibility=lambda candidate: (
@@ -422,8 +588,13 @@ def configure_plugin_services() -> None:
         async_write=_async_write_plugin_config,
         delete=lambda key: get_configured_system_config().delete(key),
         delete_data=_delete_plugin_data,
+        has_data=_plugin_has_data,
+        read_log_level=_read_plugin_log_level,
+        write_log_level=_write_plugin_log_level,
     ))
     configure_plugin_database(_build_plugin_database())
+    configure_plugin_instance_directory(_build_plugin_instance_directory())
+    _prime_plugin_instance_log_levels()
 
 
 def _register_plugin_runtime(plugin_id: str) -> None:

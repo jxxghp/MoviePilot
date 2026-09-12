@@ -108,6 +108,13 @@ class AuthProviderRemote(BaseModel):
     id: str
     url: str
     name: str
+    # 该远程入口所属运行实例实际加载的插件版本；缺少版本声明时为空
+    version: Optional[str] = Field(default=None, description="插件版本号")
+    # 按版本区分的联邦远程标识；无版本信息时与 id 相同
+    remote_key: Optional[str] = Field(
+        default=None, description="按版本区分的联邦远程标识"
+    )
+    source_plugin_id: Optional[str] = None
 
 
 class AuthProviderInfo(BaseModel):

@@ -96,8 +96,8 @@ def _build_lifecycle(**overrides: Any) -> PluginLifecycle:
     defaults: dict[str, Any] = dict(
         classes={},
         running={},
-        load_plugins=lambda _plugin_id, _installed, _check: [],
-        installed_plugins=lambda: [],
+        load_plugins=lambda _plugin_id, _installed, _check, _version=None: [],
+        loadable_plugins=lambda: [],
         plugin_config=lambda _plugin_id: {},
         auth_checker=lambda _plugin: True,
         clear_modules=lambda _plugin_id: None,
@@ -141,7 +141,7 @@ def test_start_ensures_the_database_after_init_plugin():
     plugin_cls = _make_plugin_class("DemoPlugin", calls=calls)
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
 
@@ -157,7 +157,7 @@ def test_start_passes_the_declared_models_and_migration_directory():
     plugin_cls = _make_plugin_class("DemoPlugin", models=(ModelA,), migrations="m")
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
 
@@ -173,7 +173,7 @@ def test_start_reports_empty_declarations_for_plugins_without_a_database():
     plugin_cls = _make_plugin_class("DemoPlugin", declare_hooks=False)
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
 
@@ -193,7 +193,7 @@ def test_plugin_failing_to_ensure_is_not_registered_as_running():
 
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: PluginDatabase(ensure=_raise_ensure),
     )
 
@@ -209,7 +209,7 @@ def test_stop_releases_the_database_and_never_destroys_it():
     plugin_cls = _make_plugin_class("DemoPlugin")
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
     lifecycle.start("DemoPlugin")
@@ -227,7 +227,7 @@ def test_stop_without_plugin_id_releases_every_running_plugin():
     plugin_b = _make_plugin_class("PluginB")
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_a, plugin_b],
-        installed_plugins=lambda: ["PluginA", "PluginB"],
+        loadable_plugins=lambda: ["PluginA", "PluginB"],
         database=lambda: _recording_database(calls),
     )
     lifecycle.start()
@@ -244,7 +244,7 @@ def test_reload_releases_then_ensures_again():
     plugin_cls = _make_plugin_class("DemoPlugin")
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
     lifecycle.start("DemoPlugin")
@@ -267,7 +267,7 @@ def test_release_failure_does_not_block_unloading():
 
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: PluginDatabase(release=_raise_release),
     )
     lifecycle.start("DemoPlugin")
@@ -405,7 +405,7 @@ def test_start_releases_the_database_of_a_plugin_that_failed_to_load():
 
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: PluginDatabase(
             ensure=_raise_ensure,
             release=lambda plugin_id: calls.append(("release", plugin_id)),
@@ -429,7 +429,7 @@ def test_stop_all_releases_plugins_that_never_reached_the_running_registry():
 
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: PluginDatabase(
             ensure=_raise_ensure,
             release=lambda plugin_id: calls.append(("release", plugin_id)),
@@ -451,7 +451,7 @@ def test_stopping_an_already_stopped_plugin_stays_idempotent():
     plugin_cls = _make_plugin_class("DemoPlugin")
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
     lifecycle.start("DemoPlugin")
@@ -476,19 +476,23 @@ def _uninstall_manager() -> MagicMock:
 
 
 def _assert_stop_precedes_deletion(plugin_manager: MagicMock) -> None:
-    """断言插件先停止再删除数据，且删除按 force 执行。"""
+    """断言卸载先停止插件，再摘除实例身份，且不碰配置与业务数据。
+
+    停止必须在前：插件的停机钩子只要取一次自有库句柄就会把刚清掉的内容重建出来。
+    配置与业务数据则与本体一致予以保留，留待同后缀重建时恢复。
+    """
     method_names = [name for name, _args, _kwargs in plugin_manager.mock_calls]
-    assert method_names.index("stop") < method_names.index("delete_plugin_config")
-    assert method_names.index("stop") < method_names.index("delete_plugin_data")
+    identity_removals = [
+        name
+        for name in ("delete_plugin_instance", "remove_plugin_package")
+        if name in method_names
+    ]
+    assert identity_removals, method_names
+    for removal in identity_removals:
+        assert method_names.index("stop") < method_names.index(removal)
     plugin_manager.stop.assert_called_once_with("DemoPluginwork")
-    plugin_manager.delete_plugin_config.assert_called_once_with(
-        "DemoPluginwork",
-        force=True,
-    )
-    plugin_manager.delete_plugin_data.assert_called_once_with(
-        "DemoPluginwork",
-        force=True,
-    )
+    plugin_manager.delete_plugin_config.assert_not_called()
+    plugin_manager.delete_plugin_data.assert_not_called()
 
 
 def test_http_uninstall_stops_the_plugin_before_deleting_its_data(monkeypatch):
@@ -555,3 +559,34 @@ def test_uninstall_virtual_instance_also_stops_before_deleting(monkeypatch):
         ["DemoPlugin"],
     )
     _assert_stop_precedes_deletion(plugin_manager)
+
+
+def test_runtime_uninstall_of_a_virtual_instance_keeps_its_config_and_data(monkeypatch):
+    """运行态卸载虚拟分身与 HTTP 路径同语义：先停止、只摘身份、保留配置与数据。
+
+    两条路径分头实现，任一条继续删配置都会让「删掉后还能恢复」在那条入口上失效，
+    而用户完全看不出差别。
+    """
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_instance.return_value = PluginInstance(
+        instance_id="DemoPluginwork",
+        source_plugin_id="DemoPlugin",
+    )
+    plugin_manager.get_plugin_source_instances.return_value = []
+    plugin_manager.plugins = {}
+    config = MagicMock()
+    config.get.return_value = ["DemoPlugin"]
+    config.async_set = AsyncMock()
+    monkeypatch.setattr(plugin_management, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_management, "get_configured_system_config", lambda: config)
+    monkeypatch.setattr(plugin_routes, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(scheduling_module, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_folders, "remove_plugin_from_folders", MagicMock())
+
+    asyncio.run(plugin_management.uninstall_plugin_runtime("DemoPluginwork"))
+
+    method_names = [name for name, _args, _kwargs in plugin_manager.mock_calls]
+    assert method_names.index("stop") < method_names.index("delete_plugin_instance")
+    plugin_manager.delete_plugin_instance.assert_called_once_with("DemoPluginwork")
+    plugin_manager.delete_plugin_config.assert_not_called()
+    plugin_manager.delete_plugin_data.assert_not_called()

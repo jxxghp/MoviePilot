@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.foundation.singleton import Singleton
+from app.schemas.plugin import PluginInstance
 from app.sdk.plugins import PluginManager
 
 
@@ -69,3 +70,27 @@ async def test_async_run_plugin_method_keeps_async_plugin_method_on_loop(
         "DemoPlugin", "async_method", 1
     ) == 2
     worker.assert_not_awaited()
+
+
+def test_plugin_lookup_accepts_lowercase_remote_entry_ids_without_losing_clone_source(
+    plugin_manager: PluginManager,
+) -> None:
+    """远程入口的小写实例 ID 仍解析到原分身记录和实际运行版本。"""
+    clone = PluginInstance(
+        instance_id="DemoPluginWork",
+        source_plugin_id="DemoPlugin",
+        pinned_version="1.0.0",
+    )
+    plugin_manager._plugin_instance_store = SimpleNamespace(
+        get=lambda _plugin_id: None,
+        all=lambda: {clone.instance_id: clone},
+        get_host=lambda _plugin_id: None,
+    )
+    plugin_manager._plugin_registry = SimpleNamespace(
+        instance=lambda _plugin_id: None,
+        running={clone.instance_id: SimpleNamespace(plugin_version="1.0.0")},
+    )
+
+    assert plugin_manager.get_plugin_source_id("demopluginwork") == "DemoPlugin"
+    assert plugin_manager.get_plugin_version_binding("demopluginwork") is clone
+    assert plugin_manager.get_plugin_running_version("demopluginwork") == "1.0.0"

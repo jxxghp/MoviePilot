@@ -1,3 +1,4 @@
+from datetime import datetime as _datetime
 from enum import Enum as _Enum
 from typing import Annotated as _Annotated
 from typing import Dict, List, Literal, Optional, Union
@@ -5,6 +6,7 @@ from typing import Dict, List, Literal, Optional, Union
 from pydantic import AfterValidator as _AfterValidator
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
 from pydantic import PrivateAttr as _PrivateAttr
+from pydantic import computed_field as _computed_field
 
 from app.schemas.common import JsonData
 
@@ -59,7 +61,179 @@ class PluginInstance(BaseModel):
     plugin_name: Optional[str] = Field(default=None, description="实例展示名称")
     plugin_desc: Optional[str] = Field(default=None, description="实例展示描述")
     plugin_icon: Optional[str] = Field(default=None, description="实例展示图标")
-    mode: Literal["virtual"] = Field(default="virtual", description="实例实现模式")
+    pinned_version: Optional[str] = Field(
+        default=None,
+        description="锚定的插件版本；为空表示跟随插件当前版本",
+    )
+    is_default_target: bool = Field(
+        default=False,
+        description="该实例是否为所属源插件的默认调用目标",
+    )
+    is_enabled: bool = Field(
+        default=True,
+        description="这份配置是否应当被实例化并启动；置假即卸载，配置与展示信息留存待再次启用",
+    )
+
+    @property
+    def is_host(self) -> bool:
+        """该实例是否为源插件本体自身，而非共享其源码的分身。"""
+        return self.instance_id == self.source_plugin_id
+
+    @_computed_field(  # type: ignore[prop-decorator, misc]
+        description="实例实现模式：virtual 为共享源码的分身，host 为源插件本体自身",
+    )
+    @property
+    def mode(self) -> Literal["virtual", "host"]:
+        """由一对身份 ID 派生实例角色，而非另存一份可能失步的副本。"""
+        return "host" if self.is_host else "virtual"
+
+
+class PluginInstalledVersionInfo(BaseModel):  # type: ignore[misc]
+    """插件某个已装版本的落盘信息。"""
+
+    version: str = Field(description="版本号")
+    directory: str = Field(description="版本源码目录名")
+    installed_at: Optional[str] = Field(default=None, description="安装时间，ISO 格式")
+    source: Optional[str] = Field(default=None, description="版本来源，如 market、local、migrated")
+    is_current: bool = Field(description="是否为版本元信息登记的当前版本")
+
+
+class PluginCloneOutcome(BaseModel):  # type: ignore[misc]
+    """一次分身创建的结果。
+
+    实例 ID 必须回传：后缀改由服务端自动分配之后，调用方再也算不出它，而后续要拿
+    它去打开配置、刷新列表或跳转。
+    """
+
+    instance_id: str = Field(description="新建或恢复出来的分身实例 ID")
+
+
+class PluginRestorableInstance(BaseModel):  # type: ignore[misc]
+    """一个已卸载、其设置仍留存可被恢复的分身实例。
+
+    在册的分身不在此列：它们的配置正在被使用，拿来「恢复」没有意义，摆进选择器
+    只会让用户误以为能把一个活着的实例再创建一遍。
+    """
+
+    instance_id: str = Field(description="分身实例 ID")
+    suffix: str = Field(description="该实例相对源插件 ID 的后缀")
+    plugin_name: Optional[str] = Field(default=None, description="卸载前登记的展示名称")
+    pinned_version: Optional[str] = Field(default=None, description="卸载前锚定的版本；为空表示跟随当前版本")
+    has_config: bool = Field(default=False, description="是否留有业务参数")
+    has_data: bool = Field(default=False, description="是否留有业务数据")
+
+
+class PluginInstanceVersionBinding(BaseModel):  # type: ignore[misc]
+    """单个实例的版本绑定与运行状态。"""
+
+    instance_id: str = Field(description="实例 ID")
+    plugin_name: Optional[str] = Field(
+        default=None,
+        description="该实例的展示名称，取运行态注册名，取不到时回落到实例登记的名称",
+    )
+    pinned_version: Optional[str] = Field(
+        default=None,
+        description="锚定的插件版本；为空表示跟随插件当前版本",
+    )
+    running: bool = Field(description="该实例当前是否运行中")
+    running_version: Optional[str] = Field(
+        default=None,
+        description="该实例当前实际加载的插件版本；停止时为空",
+    )
+    is_host: bool = Field(default=False, description="是否为源插件本体自身，而非共享源码的分身")
+    is_default_target: bool = Field(
+        default=False, description="该实例是否为本插件的默认调用目标"
+    )
+    is_enabled: bool = Field(
+        default=True,
+        description="该实例是否应当被实例化并启动；与 running 不同，后者说的是此刻在不在跑",
+    )
+
+
+class PluginVersionOverview(BaseModel):  # type: ignore[misc]
+    """插件已装版本总览与各实例的版本绑定。"""
+
+    plugin_id: str = Field(description="插件 ID")
+    current_version: Optional[str] = Field(default=None, description="版本元信息登记的当前版本")
+    installed_versions: List[PluginInstalledVersionInfo] = Field(
+        default_factory=list, description="已装版本列表，按版本号升序排列"
+    )
+    instances: List[PluginInstanceVersionBinding] = Field(
+        default_factory=list, description="引用该插件源码的各实例版本绑定"
+    )
+
+
+class PluginInstanceEnabledRequest(BaseModel):  # type: ignore[misc]
+    """启用或停用一个实例的请求参数。"""
+
+    enabled: bool = Field(description="目标启用状态；置假即停用，配置与锚定版本原样留存")
+
+
+class PluginInstancePurgeRequest(BaseModel):  # type: ignore[misc]
+    """彻底清理一个实例时选定的删除范围。
+
+    各项默认为假：清理不可逆，漏选一项只是少删了东西，多选一项则可能毁掉用户
+    特意保留的数据，因而由调用方逐项明确给出，服务端不替它补默认值。
+    """
+
+    config: bool = Field(default=False, description="是否删除该实例的业务参数")
+    plugin_data: bool = Field(default=False, description="是否删除该实例在插件数据表中的行")
+    own_database: bool = Field(default=False, description="是否销毁该实例的自有数据库")
+    data_directory: bool = Field(
+        default=False,
+        description="是否删除该实例在插件数据目录下的整个目录；选中时自有数据库必然一并销毁",
+    )
+
+
+class PluginInstancePurgeOutcome(BaseModel):  # type: ignore[misc]
+    """彻底清理的执行结果。"""
+
+    purged: List[str] = Field(default_factory=list, description="实际清掉的范围标识")
+    instance_removed: bool = Field(
+        default=False,
+        description="实例行是否随之删除；分身会删，本体保留——它还承载着该插件应当装载",
+    )
+
+
+class PluginInstanceVersionUpdateRequest(BaseModel):  # type: ignore[misc]
+    """设置实例版本绑定的请求参数。"""
+
+    pinned_version: Optional[str] = Field(
+        default=None,
+        description="锚定的插件版本，必须是已安装版本；为空表示改为跟随当前版本",
+    )
+
+
+class PluginVersionRecycleOutcome(BaseModel):  # type: ignore[misc]
+    """插件已装版本目录回收结果。"""
+
+    removed: List[str] = Field(default_factory=list, description="本次已删除的版本号列表")
+    kept: Dict[str, str] = Field(default_factory=dict, description="版本号到保留理由的映射")
+
+
+class PluginInstanceLogLevel(BaseModel):  # type: ignore[misc]
+    """单个实例的日志等级设置与生效结果。"""
+
+    instance_id: str = Field(description="实例 ID")
+    configured_level: Optional[str] = Field(default=None, description="该实例设置的日志等级覆盖，None 表示未设置或已过期")
+    expires_at: Optional[_datetime] = Field(default=None, description="日志等级覆盖的失效时间，None 表示不过期")
+    effective_level: str = Field(description="按过期回落判定后实际生效的日志等级")
+
+
+class PluginInstanceLogLevelOverview(BaseModel):  # type: ignore[misc]
+    """插件全部实例（含本体）的日志等级设置总览。"""
+
+    plugin_id: str = Field(description="插件 ID")
+    instances: List[PluginInstanceLogLevel] = Field(
+        default_factory=list, description="该插件全部实例的日志等级设置，首项固定是本体自身"
+    )
+
+
+class PluginInstanceLogLevelUpdateRequest(BaseModel):  # type: ignore[misc]
+    """设置实例日志等级覆盖的请求参数。"""
+
+    level: str = Field(description="目标日志等级，如 DEBUG、INFO、WARNING、ERROR、CRITICAL")
+    expires_at: Optional[_datetime] = Field(default=None, description="覆盖失效时间，None 表示不过期")
 
 
 class Plugin(BaseModel):
@@ -130,6 +304,12 @@ class Plugin(BaseModel):
     is_instance: Optional[bool] = False
     # 实例实现模式；存量物理分身为空
     instance_mode: Optional[str] = None
+    # 该实例钉住的插件版本；跟随插件当前版本时为空
+    pinned_version: Optional[str] = None
+    # 该实例是否为所属插件的默认调用目标
+    is_default_target: bool = False
+    # 该实例当前生效的日志等级覆盖；未设置覆盖或覆盖已过期回落全局等级时为空
+    log_level_effective: Optional[str] = None
 
     @property
     def package_version(self) -> Optional[str]:
@@ -231,18 +411,26 @@ class PluginInstallOutcome(BaseModel):
 class PluginCloneRequest(BaseModel):
     """创建虚拟插件分身的请求参数。"""
 
-    suffix: str = Field(
-        min_length=1,
+    suffix: Optional[str] = Field(
+        default=None,
         max_length=20,
         pattern=r"^[A-Za-z0-9]+$",
-        description="追加到当前插件 ID 后的 ASCII 字母或数字后缀",
+        description="追加到当前插件 ID 后的 ASCII 字母或数字后缀；留空时由服务端自动分配",
     )
     name: str = Field(default="", description="分身展示名称")
     description: str = Field(default="", description="分身展示描述")
     icon: Optional[str] = Field(default=None, description="分身展示图标")
     version: Optional[str] = Field(
         default=None,
-        description="兼容旧客户端保留，虚拟分身始终跟随源插件版本",
+        description="兼容旧客户端保留，分身版本由版本策略字段决定",
+    )
+    pinned_version: Optional[str] = Field(
+        default=None,
+        description="分身锚定的版本号，必须是已安装版本；为空表示跟随源插件当前版本",
+    )
+    restore_previous: bool = Field(
+        default=True,
+        description="同后缀的上一个分身留有配置或数据时是否沿用，为假时清空后新建",
     )
 
 
@@ -436,6 +624,12 @@ class PluginRemoteInfo(BaseModel):
     id: str
     url: str
     name: str
+    # 该远程入口所属运行实例实际加载的插件版本；缺少版本声明时为空
+    version: Optional[str] = Field(default=None, description="插件版本号")
+    # 按版本区分的联邦远程标识；无版本信息时与 id 相同
+    remote_key: Optional[str] = Field(
+        default=None, description="按版本区分的联邦远程标识"
+    )
     source_plugin_id: Optional[str] = None
 
 

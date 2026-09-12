@@ -115,6 +115,7 @@ EXPLICIT_TRANSPORT_PATHS = frozenset(
 )
 SUBSCRIPTION_EXECUTION_UI_PREFIX = "/api/v1/subscribe/execution/"
 MUSIC_LIBRARY_STATUS_UI_PATH = "/api/v1/music/library/status"
+PLUGIN_RESTORABLE_UI_PATH = "/api/v1/plugin/clone/{plugin_id}/restorable"
 
 
 def _gateway_routes() -> dict[tuple[str, str], list[str]]:
@@ -197,6 +198,13 @@ def _classify(
             "ui_presentation",
             "host-ui",
             "Batch music-library presence is a bounded projection for the authenticated artist resource matrix; it is not a standalone Agent business action.",
+            [],
+        )
+    if method == "GET" and path == PLUGIN_RESTORABLE_UI_PATH:
+        return (
+            "ui_presentation",
+            "host-ui",
+            "Lists uninstalled clones whose settings are still kept so the creation form can offer restore-by-id; the Agent creates clones through plugin.clone and passes its own restore choice.",
             [],
         )
     if path in EXPLICIT_TRANSPORT_PATHS:

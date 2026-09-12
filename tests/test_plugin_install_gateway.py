@@ -514,3 +514,28 @@ async def test_gateway_forwards_explicit_source_change_revision() -> None:
     assert admission.expected_revision == 4
     assert admission.binding_basis is PluginBindingBasis.EXPLICIT_SOURCE_CHANGE
     assert admission.trusted_source_key == candidate.source_key
+
+
+@pytest.mark.asyncio
+async def test_inspect_source_resolves_a_clone_to_its_source_plugin() -> None:
+    """查来源候选时分身要归一到源插件。
+
+    分身只是共享源码的运行实例，安装包只登记在源插件名下；拿分身自身 ID
+    （源插件 ID 加后缀）去查库存必然落空，界面上表现为「没有找到插件 X 的
+    可用安装包」。
+    """
+    gateway = PluginInstallGateway(
+        source_plugin_id=lambda plugin_id: (
+            "DemoPlugin" if plugin_id == "DemoPlugintest" else plugin_id
+        ),
+        inventory=AsyncMock(return_value=_inventory()),
+        identity=AsyncMock(return_value=None),
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=AsyncMock(),
+        clock=lambda: NOW,
+    )
+
+    inspection = await gateway.inspect_source(plugin_id="DemoPlugintest")
+
+    assert inspection.plugin_id == "DemoPlugin"
+    assert inspection.online_candidates, "归一化后应当能查到源插件的候选安装包"

@@ -34,6 +34,7 @@ class PluginReleaseService:
     def __init__(
         self,
         *,
+        source_plugin_id: Callable[[str], str],
         installed_plugins: Callable[[], Sequence[Plugin]],
         local_repo_plugins: Callable[[], Sequence[Plugin]],
         market_plugins: MarketPluginLoader,
@@ -46,6 +47,7 @@ class PluginReleaseService:
         refresh_releases: ReleaseRefresher,
     ) -> None:
         """保存运行态、来源身份和市场读取窄端口。"""
+        self._source_plugin_id = source_plugin_id
         self._installed_plugins = installed_plugins
         self._local_repo_plugins = local_repo_plugins
         self._market_plugins = market_plugins
@@ -58,7 +60,13 @@ class PluginReleaseService:
         self._refresh_releases = refresh_releases
 
     async def history(self, plugin_id: str, *, force: bool = True) -> Plugin | None:
-        """按可信绑定仓库读取单个已安装插件的更新说明。"""
+        """按可信绑定仓库读取单个已安装插件的更新说明。
+
+        先把分身归一到源插件：分身只是共享源码的运行实例，安装包、身份与 Release
+        都登记在源插件名下，拿分身自身 ID（源插件 ID 加后缀）去查已安装清单、本地
+        插件仓与市场元数据会一路落空，最终报「没有找到该插件的可用安装包」。
+        """
+        plugin_id = self._source_plugin_id(plugin_id)
         installed_plugin = next(
             (plugin for plugin in self._installed_plugins() if plugin.id == plugin_id),
             None,
@@ -107,13 +115,21 @@ class PluginReleaseService:
         *,
         force: bool = False,
     ) -> PluginReleaseSnapshot:
-        """读取 Release 快照，并标记是否需要后台强制刷新已有缓存。"""
+        """读取 Release 快照，并标记是否需要后台强制刷新已有缓存。
+
+        两个 ID 的用途不同，不能一并归一：可选版本来自市场，只登记在源插件名下，
+        必须用归一后的源插件 ID 查；而「当前版本」是这个实例实际在跑的版本，必须
+        用调用方传入的原始 ID 查——分身可以钉在与本体不同的版本上，一并归一会把
+        本体的版本标成分身的当前版本。
+        """
+        instance_id = plugin_id
+        plugin_id = self._source_plugin_id(plugin_id)
         if not repo_url:
             return PluginReleaseSnapshot(False, None, None, ())
 
         market_plugin = await self._market_plugin(plugin_id, repo_url, force)
         latest_version = market_plugin.plugin_version if market_plugin else None
-        current_version = self._local_version(plugin_id)
+        current_version = self._local_version(instance_id) or self._local_version(plugin_id)
         if not getattr(market_plugin, "release", False):
             return PluginReleaseSnapshot(
                 False,

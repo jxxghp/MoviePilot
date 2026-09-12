@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Optional, ParamSpec, TypeVar, cast
 
 from app.runtime.extensions.plugin.database import PluginDatabase
+from app.runtime.log import bind_plugin_instance
 from app.runtime.observability import record_metric
 from app.schemas.plugin import PluginRuntimeStatus
 
@@ -61,8 +62,11 @@ class PluginLifecycle:
         *,
         classes: dict[str, Any],
         running: dict[str, Any],
-        load_plugins: Callable[[Optional[str], list[str], Callable[[Any], bool]], list[Any]],
-        installed_plugins: Callable[[], list[str]],
+        load_plugins: Callable[
+            [Optional[str], list[str], Callable[[Any], bool], Optional[str]],
+            list[Any],
+        ],
+        loadable_plugins: Callable[[], list[str]],
         plugin_config: Callable[[str], dict],
         auth_checker: Callable[[Any], bool],
         clear_modules: Callable[[Optional[str]], Any],
@@ -80,7 +84,7 @@ class PluginLifecycle:
         self._classes = classes
         self._running = running
         self._load_plugins = load_plugins
-        self._installed_plugins = installed_plugins
+        self._loadable_plugins = loadable_plugins
         self._plugin_config = plugin_config
         self._auth_checker = auth_checker
         self._clear_modules = clear_modules
@@ -104,9 +108,31 @@ class PluginLifecycle:
     def start(
         self,
         plugin_id: Optional[str] = None,
+        *,
+        version: Optional[str] = None,
     ) -> dict[str, PluginRuntimeStatus]:
-        """加载并初始化插件，返回每个目标的明确运行结果。"""
-        installed_plugins = self._installed_plugins()
+        """加载并初始化插件，返回每个目标的明确运行结果。
+
+        与 stop／quiesce 共用同一把可重入锁。加载要构造实例、注册事件与定时任务，
+        与并发的停止或另一次加载交叠时，先构造出来的那个实例只会被后一个挤出运行
+        表，它已注册的定时任务、线程与事件订阅却留在原处，从此没有任何人能再停掉
+        它。版本切换正是「停止再启动」，并发切换同一实例必然踩中这一点。
+
+        :param plugin_id: 插件ID，为空加载所有插件
+        :param version: 虚拟实例本次显式指定加载的源码版本；仅在按单个实例 ID
+            调用时生效，用于版本切换失败后以某个具体版本重试
+        """
+        with self._lifecycle_lock:
+            return self._start_locked(plugin_id, version=version)
+
+    def _start_locked(
+        self,
+        plugin_id: Optional[str] = None,
+        *,
+        version: Optional[str] = None,
+    ) -> dict[str, PluginRuntimeStatus]:
+        """在已持有生命周期锁的前提下执行加载。"""
+        loadable_plugins = self._loadable_plugins()
         results: dict[str, PluginRuntimeStatus] = {}
         if plugin_id:
             self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
@@ -115,7 +141,7 @@ class PluginLifecycle:
             """判断模块是否具备宿主插件最小生命周期钩子。"""
             return hasattr(module, "init_plugin") and hasattr(module, "plugin_name")
 
-        plugins = self._load_plugins(plugin_id, installed_plugins, check_module)
+        plugins = self._load_plugins(plugin_id, loadable_plugins, check_module, version)
         plugins.sort(key=lambda item: getattr(item, "plugin_order", 0))
         for plugin in plugins:
             current_id = plugin.__name__
@@ -132,8 +158,9 @@ class PluginLifecycle:
                     continue
                 self._remove_classification(current_id)
                 self._classes[current_id] = plugin
-                instance = plugin()
-                instance.init_plugin(self._plugin_config(current_id))
+                with bind_plugin_instance(current_id):
+                    instance = plugin()
+                    instance.init_plugin(self._plugin_config(current_id))
                 self._ensure_database(current_id, instance)
                 enabled = bool(instance.get_state())
                 if enabled:
@@ -208,7 +235,8 @@ class PluginLifecycle:
             return
         self._remove_classification(plugin_id)
         try:
-            plugin.init_plugin(config)
+            with bind_plugin_instance(plugin_id):
+                plugin.init_plugin(config)
             enabled = bool(plugin.get_state())
             if enabled:
                 self._refresh_classification_safely(plugin_id, plugin)

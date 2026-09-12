@@ -3,7 +3,8 @@
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any, Optional, cast
 
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.system import PluginSystemServices
@@ -27,6 +28,13 @@ class PluginDependencyClassification:
     missing_source: tuple[str, ...]
 
 
+PluginInstanceDirectoryProvider = Callable[
+    [str, Optional[PluginInstance]],
+    Optional[Path],
+]
+PluginHostInstanceProvider = Callable[[str], Optional[PluginInstance]]
+
+
 class PluginDependencyService:
     """执行缺失插件依赖的发现和安装，不参与插件生命周期。"""
 
@@ -37,12 +45,21 @@ class PluginDependencyService:
         instances: Optional[Callable[[], dict[str, PluginInstance]]] = None,
         registry: Optional[PluginRegistry] = None,
         log: Any,
+        instance_directory: Optional[PluginInstanceDirectoryProvider] = None,
+        host_instance: Optional[PluginHostInstanceProvider] = None,
     ) -> None:
-        """保存插件系统、虚拟实例和运行状态端口。"""
+        """保存插件系统、虚拟实例和运行状态端口。
+
+        ``instance_directory`` 是启动层按实际版本绑定解析的源码目录端口。提供
+        后，启动分类会逐个检查本体和分身的目录，避免把同一源码插件的多版本依赖
+        合并成一个 source 结论再复制给所有实例。
+        """
         self._system = system
         self._instances = instances or (lambda: {})
         self._registry = registry
         self._logger = log
+        self._instance_directory = instance_directory
+        self._host_instance = host_instance or (lambda _plugin_id: None)
 
     def _begin_missing_install(self, missing: list[str]) -> Optional[float]:
         """统一无缺失短路、安装清单日志和耗时起点。"""
@@ -96,12 +113,23 @@ class PluginDependencyService:
 
     def classify_plugins(self) -> PluginDependencyClassification:
         """分类物理插件，并把源码结论映射到全部虚拟实例。"""
-        ready, missing_dependencies, missing_source = (
-            self._system().dependency.classify_plugins()
-        )
+        installer = self._system().dependency
+        ready, missing_dependencies, missing_source = installer.classify_plugins()
         ready = list(ready)
         missing_dependencies = list(missing_dependencies)
         missing_source = list(missing_source)
+
+        if self._instance_directory is not None and hasattr(
+            installer, "classify_plugin_directory"
+        ):
+            return self._classify_bound_instances(
+                installer,
+                self._instance_directory,
+                ready,
+                missing_dependencies,
+                missing_source,
+            )
+
         source_ready = set(ready)
         source_pending = set(missing_dependencies)
         for instance in self._instances().values():
@@ -115,6 +143,89 @@ class PluginDependencyService:
             ready=tuple(ready),
             missing_dependencies=tuple(missing_dependencies),
             missing_source=tuple(missing_source),
+        )
+
+    def _classify_bound_instances(
+        self,
+        installer: Any,
+        instance_directory: PluginInstanceDirectoryProvider,
+        ready: list[str],
+        missing_dependencies: list[str],
+        missing_source: list[str],
+    ) -> PluginDependencyClassification:
+        """按实例绑定的真实源码目录分别生成启动状态。"""
+        instances = list(self._instances().values())
+        source_ids = list(dict.fromkeys((*ready, *missing_dependencies, *missing_source)))
+        source_ids.extend(
+            instance.source_plugin_id
+            for instance in instances
+            if instance.source_plugin_id not in source_ids
+        )
+        ready_sources = {plugin_id.casefold() for plugin_id in ready}
+        pending_sources = {
+            plugin_id.casefold() for plugin_id in missing_dependencies
+        }
+        missing_sources = {plugin_id.casefold() for plugin_id in missing_source}
+        result_ready: list[str] = []
+        result_pending: list[str] = []
+        result_missing: list[str] = []
+
+        def classify(
+            source_plugin_id: str,
+            instance: Optional[PluginInstance],
+        ) -> tuple[bool, bool]:
+            """读取单个绑定目录的源码与依赖状态。"""
+            try:
+                directory = instance_directory(source_plugin_id, instance)
+            except Exception as error:  # noqa: BLE001 - 状态分类必须失败关闭
+                self._logger.error(
+                    f"解析插件 {source_plugin_id} 的实例版本目录失败：{error}"
+                )
+                return False, False
+            if directory is None:
+                return False, False
+            try:
+                return cast(
+                    tuple[bool, bool],
+                    installer.classify_plugin_directory(directory),
+                )
+            except Exception as error:  # noqa: BLE001 - 状态分类必须失败关闭
+                self._logger.error(
+                    f"检查插件 {source_plugin_id} 的实例依赖失败：{error}"
+                )
+                return True, False
+
+        for source_plugin_id in source_ids:
+            source_key = source_plugin_id.casefold()
+            host = self._host_instance(source_plugin_id)
+            if source_key in missing_sources:
+                host_exists, host_ready = False, False
+            elif source_key in ready_sources or source_key in pending_sources:
+                host_exists, host_ready = classify(source_plugin_id, host)
+            else:
+                host_exists, host_ready = classify(source_plugin_id, host)
+            if not host_exists:
+                result_missing.append(source_plugin_id)
+            elif host_ready:
+                result_ready.append(source_plugin_id)
+            else:
+                result_pending.append(source_plugin_id)
+
+            for instance in instances:
+                if instance.source_plugin_id.casefold() != source_key:
+                    continue
+                instance_exists, instance_ready = classify(source_plugin_id, instance)
+                if not instance_exists:
+                    result_missing.append(instance.instance_id)
+                elif instance_ready:
+                    result_ready.append(instance.instance_id)
+                else:
+                    result_pending.append(instance.instance_id)
+
+        return PluginDependencyClassification(
+            ready=tuple(result_ready),
+            missing_dependencies=tuple(result_pending),
+            missing_source=tuple(result_missing),
         )
 
     def apply_classification(

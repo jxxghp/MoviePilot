@@ -38,11 +38,25 @@ from app.application.plugin.transaction import (
     PluginInstallationPhase,
     PluginInstallationRecord,
     PluginInstallationRecordError,
+    PluginPersistenceService,
 )
 from app.db.adapters.plugininstallation import TransactionalPluginInstallationStore
 from app.db.models.pluginidentity import PluginIdentity as PluginIdentityModel
 from app.db.models.plugininstallation import PluginInstallation
 from app.db.models.systemconfig import SystemConfig
+
+
+class _PendingInstallationStore:
+    """提供同步 journal 查询的最小安装 store 测试替身。"""
+
+    def __init__(self, records: list[PluginInstallationRecord]) -> None:
+        self.records = records
+
+    def list(self, *, plugin_id: str | None = None) -> list[PluginInstallationRecord]:
+        """按插件 ID返回未收尾安装记录。"""
+        if plugin_id is None:
+            return list(self.records)
+        return [record for record in self.records if record.plugin_id == plugin_id]
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 
@@ -95,6 +109,21 @@ def _record(**overrides) -> PluginInstallationRecord:
     }
     values.update(overrides)
     return PluginInstallationRecord(**values)
+
+
+def test_persistence_sync_pending_installation_query_is_plugin_scoped() -> None:
+    """同步回收查询只命中目标插件的 journal，不阻塞事件循环。"""
+    store = _PendingInstallationStore(
+        [_record(), _record(plugin_id="OtherPlugin", transaction_id="txn-other")]
+    )
+    service = PluginPersistenceService(
+        executor=object(),
+        identities=object(),
+        installations=store,
+    )
+
+    assert service.has_pending_installation("DemoPlugin") is True
+    assert service.has_pending_installation("MissingPlugin") is False
 
 
 def test_record_keeps_plugin_level_recovery_contract() -> None:

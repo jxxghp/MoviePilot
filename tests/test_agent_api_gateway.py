@@ -34,8 +34,8 @@ def test_api_operation_registry_matches_migration_batches() -> None:
     assert len(API_PARITY_OPERATION_SPECS) == 15
     assert len(API_MUSIC_OPERATION_SPECS) == 10
     assert len(API_SYSTEM_OPERATION_SPECS) == 7
-    assert len(API_EXTENDED_OPERATION_SPECS) == 136
-    assert len(API_OPERATION_SPECS) == 221
+    assert len(API_EXTENDED_OPERATION_SPECS) == 138
+    assert len(API_OPERATION_SPECS) == 223
     assert {spec.operation_id for spec in API_OPERATION_SPECS} == set(API_OPERATION_ROUTES)
     assert {
         "download.list",

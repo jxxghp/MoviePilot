@@ -1,4 +1,5 @@
 import errno
+import os
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
@@ -6,8 +7,13 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.adapters.system.plugin import package as plugin_package_module
 from app.adapters.system.plugin.package import PluginPackageManager
 from app.runtime.dependencies.native import LoadedNativeDependencySnapshot
+
+_swap_staged_plugin_content = (
+    PluginPackageManager._PluginPackageManager__swap_staged_plugin_content
+)
 
 
 def _manager(monkeypatch, tmp_path: Path) -> PluginPackageManager:
@@ -146,6 +152,7 @@ def test_file_list_download_rejects_paths_outside_plugin_root(
         [{"path": remote_path, "download_url": "https://example.invalid/file"}],
         "owner/repo",
         package_version,
+        plugin_root / "demoplugin",
     )
 
     assert result == (False, "插件文件路径无效")
@@ -177,6 +184,7 @@ async def test_async_file_list_download_rejects_path_outside_plugin_root(
         ],
         "owner/repo",
         "v2",
+        tmp_path / "plugins" / "demoplugin",
     )
 
     assert result == (False, "插件文件路径无效")
@@ -204,12 +212,13 @@ async def test_file_list_download_rejects_traversal_directory_names(
         async_query,
     )
     item = {"name": "..", "download_url": None}
+    dest_root = tmp_path / "plugins" / "demoplugin"
 
     assert manager._PluginPackageManager__download_files(
-        "DemoPlugin", [item], "owner/repo"
+        "DemoPlugin", [item], "owner/repo", None, dest_root
     ) == (False, "插件目录路径无效")
     assert await manager._PluginPackageManager__async_download_files(
-        "DemoPlugin", [item], "owner/repo"
+        "DemoPlugin", [item], "owner/repo", None, dest_root
     ) == (False, "插件目录路径无效")
     sync_query.assert_not_called()
     async_query.assert_not_awaited()
@@ -239,12 +248,13 @@ async def test_file_list_download_preserves_binary_payload_in_injected_plugin_ro
         "path": "plugins.v2/demoplugin/nested/file.py",
         "download_url": "https://example.invalid/file",
     }
+    dest_root = plugin_root / "demoplugin"
 
     assert manager._PluginPackageManager__download_files(
-        "DemoPlugin", [item], "owner/repo", "v2"
+        "DemoPlugin", [item], "owner/repo", "v2", dest_root
     ) == (True, "")
     assert await manager._PluginPackageManager__async_download_files(
-        "DemoPlugin", [item], "owner/repo", "v2"
+        "DemoPlugin", [item], "owner/repo", "v2", dest_root
     ) == (True, "")
     assert (plugin_root / "demoplugin" / "nested" / "file.py").read_bytes() == payload
 
@@ -449,45 +459,141 @@ def test_local_sync_failure_restores_previous_runtime_copy(monkeypatch, tmp_path
     assert source_file.read_text(encoding="utf-8") == "stable"
 
 
-def test_clone_rewrites_python_and_federation_assets(monkeypatch, tmp_path):
-    """插件分身文件处理应由包适配器完成并隔离配置命名空间。"""
-    manager = _manager(monkeypatch, tmp_path)
-    plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
-    dist_dir = plugin_dir / "dist"
-    dist_dir.mkdir(parents=True)
-    (plugin_dir / "__init__.py").write_text(
-        "class DemoPlugin:\n"
-        "    plugin_name = 'Demo'\n"
-        "    plugin_desc = 'Description'\n"
-        "    plugin_config_prefix = 'demo_'\n"
-        "    plugin_version = '1.0.0'\n"
-        "    plugin_icon = 'old.png'\n"
-        "    def init_plugin(self, config=None):\n"
-        "        pass\n",
-        encoding="utf-8",
+def _fake_rename_failing_staging_source(staging_dir: Path):
+    """构造只让暂存目录改名失败（模拟 EXDEV）、其余改名走真实实现的 os.rename 替身。"""
+    real_rename = os.rename
+
+    def fake_rename(src, dst):
+        if str(src) == str(staging_dir):
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        return real_rename(src, dst)
+
+    return fake_rename
+
+
+def _fake_copytree_leaves_partial_content_then_fails(marker_name: str, message: str):
+    """构造先写入半份新内容再抛错的 copytree 替身，模拟复制中途磁盘写满。"""
+
+    def fake_copytree(src, dst, **_kwargs):
+        Path(dst).mkdir(parents=True, exist_ok=True)
+        (Path(dst) / marker_name).write_text("partial", encoding="utf-8")
+        raise OSError(errno.ENOSPC, message)
+
+    return fake_copytree
+
+
+def test_swap_staged_plugin_content_keeps_old_content_intact_when_cross_device_copy_fails(
+    monkeypatch, tmp_path,
+):
+    """跨设备退化为复制时复制中途失败，旧内容必须逐字节完好，不留半份新内容，原始异常向上抛出。"""
+    staging_dir = tmp_path / "staging"
+    final_dir = tmp_path / "plugins" / "demoplugin"
+    staging_dir.mkdir(parents=True)
+    (staging_dir / "new.txt").write_text("new-payload", encoding="utf-8")
+    final_dir.mkdir(parents=True)
+    (final_dir / "old.txt").write_text("old-payload", encoding="utf-8")
+
+    monkeypatch.setattr(
+        plugin_package_module.os,
+        "rename",
+        _fake_rename_failing_staging_source(staging_dir),
     )
-    (dist_dir / "demoplugin.js").write_text(
-        "const name = 'DemoPlugin'; const css = 'css__DemoPlugin__root';",
-        encoding="utf-8",
+    monkeypatch.setattr(
+        plugin_package_module.shutil,
+        "copytree",
+        _fake_copytree_leaves_partial_content_then_fails("partial.txt", "No space left on device"),
     )
 
-    success, message = manager.clone(
-        plugin_id="DemoPlugin",
-        clone_id="DemoPluginBlue",
-        original_class_name="DemoPlugin",
-        suffix="blue",
-        name="Demo Blue",
-        description="Blue clone",
-        version="2.0.0",
-        icon="blue.png",
+    with pytest.raises(OSError) as exc_info:
+        _swap_staged_plugin_content(staging_dir, final_dir)
+
+    assert exc_info.value.errno == errno.ENOSPC
+    assert final_dir.is_dir()
+    assert (final_dir / "old.txt").read_text(encoding="utf-8") == "old-payload"
+    assert not (final_dir / "new.txt").exists()
+    assert not (final_dir / "partial.txt").exists()
+    assert list(final_dir.parent.glob(f".{final_dir.name}.previous-*")) == []
+
+
+def test_swap_staged_plugin_content_leaves_nothing_behind_when_target_never_existed(
+    monkeypatch, tmp_path,
+):
+    """全新版本目录首次落盘时复制中途失败，目标目录必须完全回到不存在状态，不留半成品。"""
+    staging_dir = tmp_path / "staging"
+    final_dir = tmp_path / "plugins" / "demoplugin" / "v3_0_0"
+    staging_dir.mkdir(parents=True)
+    (staging_dir / "new.txt").write_text("new-payload", encoding="utf-8")
+
+    monkeypatch.setattr(
+        plugin_package_module.os,
+        "rename",
+        _fake_rename_failing_staging_source(staging_dir),
+    )
+    monkeypatch.setattr(
+        plugin_package_module.shutil,
+        "copytree",
+        _fake_copytree_leaves_partial_content_then_fails("partial.txt", "No space left on device"),
     )
 
-    clone_dir = tmp_path / "app" / "plugins" / "demopluginblue"
-    clone_source = (clone_dir / "__init__.py").read_text(encoding="utf-8")
-    assert success is True
-    assert message == "文件修改成功"
-    assert "class DemoPluginblue" in clone_source
-    assert 'plugin_name = "Demo Blue"' in clone_source
-    assert 'plugin_config_prefix = "demopluginblue_"' in clone_source
-    assert "is_clone = True" in clone_source
-    assert (clone_dir / "dist" / "demopluginblue.js").is_file()
+    with pytest.raises(OSError):
+        _swap_staged_plugin_content(staging_dir, final_dir)
+
+    assert not final_dir.exists()
+    assert list(final_dir.parent.glob(f".{final_dir.name}.previous-*")) == []
+
+
+def test_swap_staged_plugin_content_atomic_rename_success_path_is_unaffected(tmp_path):
+    """同一文件系统内可原子改名时保持一次改名换入，不会改走复制加删除的退化路径。"""
+    staging_dir = tmp_path / "staging"
+    final_dir = tmp_path / "plugins" / "demoplugin"
+    staging_dir.mkdir(parents=True)
+    (staging_dir / "new.txt").write_text("new-payload", encoding="utf-8")
+    final_dir.mkdir(parents=True)
+    (final_dir / "old.txt").write_text("old-payload", encoding="utf-8")
+
+    _swap_staged_plugin_content(staging_dir, final_dir)
+
+    assert not staging_dir.exists()
+    assert (final_dir / "new.txt").read_text(encoding="utf-8") == "new-payload"
+    assert not (final_dir / "old.txt").exists()
+    assert list(final_dir.parent.glob(f".{final_dir.name}.previous-*")) == []
+
+
+def test_swap_staged_plugin_content_preserves_recovery_material_when_rollback_itself_fails(
+    monkeypatch, tmp_path,
+):
+    """回滚换回旧内容也失败时不吞掉原始异常，且旧内容以恢复材料形式保留而不是被清空。"""
+    staging_dir = tmp_path / "staging"
+    final_dir = tmp_path / "plugins" / "demoplugin"
+    staging_dir.mkdir(parents=True)
+    (staging_dir / "new.txt").write_text("new-payload", encoding="utf-8")
+    final_dir.mkdir(parents=True)
+    (final_dir / "old.txt").write_text("old-payload", encoding="utf-8")
+
+    real_rename = os.rename
+    previous_prefix = str(final_dir.parent / f".{final_dir.name}.previous-")
+
+    def fake_rename(src, dst):
+        src_str = str(src)
+        if src_str == str(staging_dir):
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        if src_str.startswith(previous_prefix):
+            raise OSError(errno.EACCES, "Permission denied")
+        return real_rename(src, dst)
+
+    monkeypatch.setattr(plugin_package_module.os, "rename", fake_rename)
+    monkeypatch.setattr(
+        plugin_package_module.shutil,
+        "copytree",
+        _fake_copytree_leaves_partial_content_then_fails("partial.txt", "No space left on device"),
+    )
+
+    with pytest.raises(OSError) as exc_info:
+        _swap_staged_plugin_content(staging_dir, final_dir)
+
+    assert exc_info.value.errno == errno.ENOSPC
+    assert isinstance(exc_info.value.__cause__, OSError)
+    assert exc_info.value.__cause__.errno == errno.EACCES
+    preserved = list(final_dir.parent.glob(f".{final_dir.name}.previous-*"))
+    assert len(preserved) == 1
+    assert (preserved[0] / "old.txt").read_text(encoding="utf-8") == "old-payload"

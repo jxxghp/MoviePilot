@@ -27,6 +27,57 @@ def _write_pyproject(root: Path, plugin_id: str, content: str) -> Path:
     return plugin_dir
 
 
+def test_versioned_plugin_dependencies_are_scanned_from_each_version_directory(
+    tmp_path,
+    monkeypatch,
+):
+    """版本化源码的 requirements 与 wheels 不应只从插件平铺根目录查找。"""
+    plugin_root = tmp_path / "plugins"
+    root = plugin_root / "alpha"
+    old = root / "v1_0_0"
+    current = root / "v2_0_0"
+    for directory in (old, current):
+        directory.mkdir(parents=True)
+        (directory / "__init__.py").write_text("class Alpha: pass\n", encoding="utf-8")
+        (directory / "wheels").mkdir()
+    (old / "requirements.txt").write_text("old-only>=1\n", encoding="utf-8")
+    (current / "requirements.txt").write_text("current-only>=1\n", encoding="utf-8")
+    installer = PluginDependencyInstaller(
+        Mock(),
+        installed_plugins_provider=lambda: ["Alpha"],
+        plugin_dir=plugin_root,
+    )
+    monkeypatch.setattr(installer, "_installed_packages", lambda: {})
+
+    assert installer.find_missing() == ["old_only>=1", "current_only>=1"]
+    assert installer._wheels_dirs() == [old / "wheels", current / "wheels"]
+
+
+def test_plugin_directory_provider_limits_dependency_scan_to_bound_versions(
+    tmp_path,
+    monkeypatch,
+):
+    """启动层提供实例绑定目录时，未被实际实例使用的版本不进入安装清单。"""
+    plugin_root = tmp_path / "plugins"
+    root = plugin_root / "alpha"
+    old = root / "v1_0_0"
+    current = root / "v2_0_0"
+    for directory in (old, current):
+        directory.mkdir(parents=True)
+        (directory / "__init__.py").write_text("class Alpha: pass\n", encoding="utf-8")
+    (old / "requirements.txt").write_text("old-only>=1\n", encoding="utf-8")
+    (current / "requirements.txt").write_text("current-only>=1\n", encoding="utf-8")
+    installer = PluginDependencyInstaller(
+        Mock(),
+        installed_plugins_provider=lambda: ["Alpha"],
+        plugin_dir=plugin_root,
+        plugin_directories_provider=lambda _plugin_id: [old],
+    )
+    monkeypatch.setattr(installer, "_installed_packages", lambda: {})
+
+    assert installer.find_missing() == ["old_only>=1"]
+
+
 def test_classify_plugins_preserves_ids_and_separates_startup_paths(
     tmp_path,
     monkeypatch,

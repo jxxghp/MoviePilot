@@ -21,6 +21,7 @@ from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.system import reset_plugin_system
 from app.runtime.extensions.plugin import manager as plugin_manager_module
 from app.runtime.extensions.plugin.manager import PluginManager
+from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import PluginRuntimeStatus
 from app.startup.initializers import plugins as plugins_initializer
 
@@ -948,6 +949,144 @@ def test_plugin_monitor_suppression_covers_delayed_write_events(
     monitor._process_changes(changes)
     reload_plugin.assert_called_once_with("DemoPlugin")
     _reset_plugin_manager()
+
+
+@pytest.mark.asyncio
+async def test_plugin_package_write_lock_rejects_sibling_async_task(monkeypatch) -> None:
+    """包写事务的子 task 不能继承深度后绕过真实写锁。"""
+    _reset_plugin_manager()
+    reset_plugin_system()
+    _patch_runtime_settings(
+        monkeypatch,
+        DEV=False,
+        PLUGIN_AUTO_RELOAD=False,
+        ROOT_PATH=MagicMock(),
+    )
+    manager = PluginManager()
+
+    async def contend() -> bool:
+        """尝试在外层包写事务仍存续时取得第二个写窗口。"""
+        try:
+            with manager.suppress_plugin_monitor("OtherPlugin"):
+                return False
+        except PluginMutationRejectedError:
+            return True
+
+    try:
+        with manager.suppress_plugin_monitor("DemoPlugin"):
+            assert await asyncio.create_task(contend()) is True
+    finally:
+        _reset_plugin_manager()
+
+
+def test_plugin_monitor_suppression_rejects_active_version_switch(
+    monkeypatch,
+) -> None:
+    """包写入遇到切版锁时立即拒绝，不能阻塞事件循环等待路由刷新。"""
+    _reset_plugin_manager()
+    reset_plugin_system()
+    _patch_runtime_settings(
+        monkeypatch,
+        DEV=False,
+        PLUGIN_AUTO_RELOAD=False,
+        ROOT_PATH=MagicMock(),
+    )
+    manager = PluginManager()
+    lock_held = threading.Event()
+    release_lock = threading.Event()
+
+    def hold_quiesce_lock() -> None:
+        """模拟版本切换工作线程持有生命周期锁并等待路由刷新。"""
+        manager._plugin_quiesce_lock.acquire()
+        lock_held.set()
+        release_lock.wait(timeout=2)
+        manager._plugin_quiesce_lock.release()
+
+    holder = threading.Thread(target=hold_quiesce_lock)
+    holder.start()
+    assert lock_held.wait(timeout=2)
+    try:
+        with pytest.raises(PluginMutationRejectedError):
+            with manager.suppress_plugin_monitor("DemoPlugin"):
+                pass
+    finally:
+        release_lock.set()
+        holder.join(timeout=2)
+        assert not holder.is_alive()
+        _reset_plugin_manager()
+
+
+def test_plugin_monitor_suppression_rejects_active_package_write(
+    monkeypatch,
+) -> None:
+    """已有包安装事务时，新的安装必须立即拒绝而不能阻塞事件循环。"""
+    _reset_plugin_manager()
+    reset_plugin_system()
+    _patch_runtime_settings(
+        monkeypatch,
+        DEV=False,
+        PLUGIN_AUTO_RELOAD=False,
+        ROOT_PATH=MagicMock(),
+    )
+    manager = PluginManager()
+    lock_held = threading.Event()
+    release_lock = threading.Event()
+
+    def hold_package_lock() -> None:
+        """模拟另一个安装 worker 持有跨 await 的包写入窗口。"""
+        manager._plugin_package_write_lock.acquire()
+        lock_held.set()
+        release_lock.wait(timeout=2)
+        manager._plugin_package_write_lock.release()
+
+    holder = threading.Thread(target=hold_package_lock)
+    holder.start()
+    assert lock_held.wait(timeout=2)
+    try:
+        with pytest.raises(PluginMutationRejectedError):
+            with manager.suppress_plugin_monitor("DemoPlugin"):
+                pass
+    finally:
+        release_lock.set()
+        holder.join(timeout=2)
+        assert not holder.is_alive()
+        _reset_plugin_manager()
+
+
+def test_plugin_version_recycle_rejects_active_package_write(
+    monkeypatch,
+) -> None:
+    """版本回收遇到包安装窗口时立即拒绝，不能和安装事务并行删目录。"""
+    _reset_plugin_manager()
+    reset_plugin_system()
+    _patch_runtime_settings(
+        monkeypatch,
+        DEV=False,
+        PLUGIN_AUTO_RELOAD=False,
+        ROOT_PATH=MagicMock(),
+    )
+    manager = PluginManager()
+    lock_held = threading.Event()
+    release_lock = threading.Event()
+
+    def hold_package_lock() -> None:
+        """模拟安装事务持有包写入窗口。"""
+        manager._plugin_package_write_lock.acquire()
+        lock_held.set()
+        release_lock.wait(timeout=2)
+        manager._plugin_package_write_lock.release()
+
+    holder = threading.Thread(target=hold_package_lock)
+    holder.start()
+    assert lock_held.wait(timeout=2)
+    try:
+        with pytest.raises(PluginMutationRejectedError):
+            manager.recycle_plugin_versions("DemoPlugin")
+    finally:
+        release_lock.set()
+        holder.join(timeout=2)
+        assert not holder.is_alive()
+        _reset_plugin_manager()
 
 
 def test_config_change_reloads_monitor(monkeypatch) -> None:

@@ -393,7 +393,9 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
                 PluginInstallation.transaction_id,
             )
             if plugin_id is not None:
-                statement = statement.where(PluginInstallation.plugin_id == plugin_id)
+                statement = statement.where(
+                    func.lower(PluginInstallation.plugin_id) == plugin_id.lower()
+                )
             return [
                 self.__to_record(row)
                 for row in session.execute(statement).scalars()
