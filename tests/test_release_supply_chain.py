@@ -130,6 +130,7 @@ def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> 
         "apt-get install -y --no-install-recommends libde265-0"
         in dockerfile
     )
+    assert "\n    libevent-2.1-7t64 \\\n" in dockerfile
     assert "\n    openssl \\\n" in dockerfile
     assert "\n    util-linux \\\n" in dockerfile
 

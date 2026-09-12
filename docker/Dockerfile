@@ -93,6 +93,7 @@ RUN apt-get update \
     supervisor \
     postgresql-client-18 \
     libchromaprint-tools \
+    libevent-2.1-7t64 \
     libjemalloc2 \
     && dpkg-reconfigure --frontend noninteractive tzdata \
     && ln -s /usr/lib/*-linux-gnu/libjemalloc.so.2 /usr/local/lib/libjemalloc.so \
