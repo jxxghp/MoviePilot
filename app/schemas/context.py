@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Discriminator, Field, RootModel, Tag, model_validator
+from pydantic import BaseModel, Discriminator, Field, PrivateAttr, RootModel, Tag, model_validator
 
 from app.schemas.category import ClassificationFactValue, ClassificationResult
 from app.schemas.common import JsonData
@@ -76,9 +76,13 @@ class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
     # 显式媒体数据源原生ID
     media_id: Optional[str] = None
 
+    _season_list_override: Optional[List[int]] = PrivateAttr(default=None)
+
     @property
     def season_list(self) -> List[int]:
         """返回识别的季数字列表。"""
+        if self._season_list_override is not None:
+            return self._season_list_override
         if self.begin_season is None:
             if self.type in (_MediaType.TV, _MediaType.TV.value):
                 return [1]
@@ -86,6 +90,11 @@ class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
         if self.end_season is not None:
             return list(range(self.begin_season, self.end_season + 1))
         return [self.begin_season]
+
+    @season_list.setter
+    def season_list(self, value: Optional[List[int]]) -> None:
+        """兼容旧链路对季列表的显式覆盖。"""
+        self._season_list_override = list(value) if value is not None else None
 
     @property
     def season(self) -> str:
