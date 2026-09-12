@@ -546,6 +546,20 @@ def test_postgresql_handle_creates_the_plugin_schema(postgresql_backend):
     assert f'CREATE SCHEMA IF NOT EXISTS "{handle.schema}"' in executed
 
 
+def test_postgresql_handle_rejects_schema_without_write_privilege(postgresql_backend):
+    """已有 schema 但当前账号不可写时，插件建库必须直接失败。"""
+    host_engine, _ = postgresql_backend
+    connection = host_engine.begin.return_value.__enter__.return_value
+    denied = MagicMock()
+    denied.scalar.return_value = False
+    connection.execute.side_effect = [None, denied]
+
+    with pytest.raises(PermissionError, match="无权使用或写入插件 schema"):
+        registry_module.get_database("demo")
+
+    assert "demo" not in registry_module._handles
+
+
 def test_concurrent_get_database_builds_a_single_handle(plugin_data_root, sqlite_backend):
     """八个线程同时取同一插件的句柄时只建出一个句柄，不会并存两份连接池。"""
     thread_count = 8
