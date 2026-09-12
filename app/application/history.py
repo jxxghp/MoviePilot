@@ -25,20 +25,21 @@ from app.application.historymutation import (
 from app.application.historymutation import (
     TransferHistoryMutationRepository as TransferHistoryMutationRepository,
 )
-from app.application.transfer import history as history_projection
-from app.domain.context import MediaInfo, MusicInfo
-from app.domain.meta.metabase import MetaBase
+from app.application.transfer.history_write import (
+    add_transfer_fail as add_transfer_fail,
+)
+from app.application.transfer.history_write import (
+    add_transfer_success as add_transfer_success,
+)
 from app.foundation.text import cut as jieba_cut
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 from app.schemas.common import JsonData
-from app.schemas.file import FileItem
 from app.schemas.history import (
     DownloadHistory,
     TransferHistory,
     TransferHistoryPage,
 )
-from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaSource
 
 # 失败重试次数的合法区间。下界为 1：一次瞬时故障（网络抖动、TMDB 瞬断、移动失败）
@@ -1311,100 +1312,3 @@ def next_failed_retry_count(
         if gate_action != HistoryGateAction.PASS_FAILED_VERSION_CHANGED:
             persisted_count = max(history_retry_count, 0)
     return max(cached_count, persisted_count) + 1
-
-
-# 整理历史写入口保留仓储事务契约；领域对象的字段映射由 transfer.history 统一维护。
-
-def add_transfer_success(
-    fileitem: FileItem,
-    mode: str,
-    meta: MetaBase,
-    mediainfo: Union[MediaInfo, MusicInfo],
-    transferinfo: TransferInfo,
-    downloader: Optional[str] = None,
-    download_hash: Optional[str] = None,
-    transfer_batch_id: Optional[str] = None,
-    transfer_batch_title: Optional[str] = None,
-    transfer_batch_root: Optional[str] = None,
-    transfer_batch_total: Optional[int] = None,
-    transfer_history_oper: Optional[TransferHistoryReplacePort] = None,
-) -> TransferHistorySnapshot:
-    """
-    新增转移成功历史记录。
-    :param fileitem: 源文件项
-    :param mode: 整理方式
-    :param meta: 文件名识别结果
-    :param mediainfo: 媒体识别结果
-    :param transferinfo: 整理结果
-    :param downloader: 下载器
-    :param download_hash: 种子 hash
-    :param transfer_history_oper: 兼容旧关键字的暂存端口，未传时使用组合根仓储
-    :return: 落库后的整理记录
-    """
-    repository = transfer_history_oper or get_transfer_history_repository()
-    fields = history_projection.success_fields(
-        fileitem=fileitem,
-        mode=mode,
-        meta=meta,
-        mediainfo=mediainfo,
-        transferinfo=transferinfo,
-        downloader=downloader,
-        download_hash=download_hash,
-        transfer_batch_id=transfer_batch_id,
-        transfer_batch_title=transfer_batch_title,
-        transfer_batch_root=transfer_batch_root,
-        transfer_batch_total=transfer_batch_total,
-    )
-    return repository.replace(TransferHistoryWrite(**fields))
-
-
-def add_transfer_fail(
-    fileitem: FileItem,
-    mode: str,
-    meta: MetaBase,
-    mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
-    transferinfo: Optional[TransferInfo] = None,
-    downloader: Optional[str] = None,
-    download_hash: Optional[str] = None,
-    retry_count: Optional[int] = None,
-    auto_paused: bool = False,
-    transfer_batch_id: Optional[str] = None,
-    transfer_batch_title: Optional[str] = None,
-    transfer_batch_root: Optional[str] = None,
-    transfer_batch_total: Optional[int] = None,
-    transfer_history_oper: Optional[TransferHistoryReplacePort] = None,
-) -> TransferHistorySnapshot:
-    """
-    新增转移失败历史记录。
-
-    识别结果与整理结果齐备时按完整字段落库；缺任一项则走「未识别到媒体信息」分支，
-    此时只有文件名解析出的元数据可用，不写目标路径。
-    :param fileitem: 源文件项
-    :param mode: 整理方式
-    :param meta: 文件名识别结果
-    :param mediainfo: 媒体识别结果，未识别时为 None
-    :param transferinfo: 整理结果，未进入整理时为 None
-    :param downloader: 下载器
-    :param download_hash: 种子 hash
-    :param retry_count: 当前文件版本累计失败次数
-    :param auto_paused: 是否已达到自动整理暂停阈值
-    :param transfer_history_oper: 兼容旧关键字的暂存端口，未传时使用组合根仓储
-    :return: 落库后的整理记录
-    """
-    repository = transfer_history_oper or get_transfer_history_repository()
-    fields = history_projection.failure_fields(
-        fileitem=fileitem,
-        mode=mode,
-        meta=meta,
-        mediainfo=mediainfo,
-        transferinfo=transferinfo,
-        downloader=downloader,
-        download_hash=download_hash,
-        retry_count=retry_count,
-        auto_paused=auto_paused,
-        transfer_batch_id=transfer_batch_id,
-        transfer_batch_title=transfer_batch_title,
-        transfer_batch_root=transfer_batch_root,
-        transfer_batch_total=transfer_batch_total,
-    )
-    return repository.replace(TransferHistoryWrite(**fields))

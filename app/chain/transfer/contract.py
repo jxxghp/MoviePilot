@@ -1,6 +1,6 @@
 """整理职责 owner 的静态组合宿主合同。"""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Union
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -58,16 +58,20 @@ if TYPE_CHECKING:
         _TransferChain__restore_mediainfo_snapshot: Callable[..., Any]
         _TransferChain__restore_meta_snapshot: Callable[..., Any]
         _TransferChain__restore_planned_task: Callable[..., Any]
+        _run_transfer_batch: Callable[..., tuple[bool, Union[str, dict[str, Any]]]]
         _TransferChain__select_storage_oper: Callable[..., Any]
         _TransferChain__settle_legacy_transfer_result: Callable[..., Any]
         _TransferChain__start_job_execution: Callable[..., Any]
         _TransferChain__transfer_plan_fingerprint: Callable[..., Any]
         _build_transfer_fileitem: Callable[..., Any]
+        _build_transfer_tasks: Callable[..., Any]
+        _bind_batch_admission: Callable[..., Any]
         _can_delete_torrent: Callable[..., Any]
         _close_scrape_batch: Callable[..., Any]
         _delete_manual_transfer_history: Callable[..., Any]
         _download_history_music_type: Callable[..., Any]
         _execute_transfer: Callable[..., Any]
+        _execute_transfer_tasks: Callable[..., Any]
         _finish_scrape_batch_task: Callable[..., Any]
         _get_file_key: Callable[..., Any]
         _get_file_parent_key: Callable[..., Any]

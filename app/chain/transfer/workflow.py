@@ -21,7 +21,6 @@ from app.application.transfer.history import history_file_fingerprint
 from app.application.transfer.workflow import (
     TransferAdmission,
     TransferAdmissionConflictError,
-    TransferPlanningInput,
     TransferTask,
 )
 from app.chain.media import MediaChain
@@ -44,6 +43,7 @@ from app.schemas.types import (
 )
 from app.schemas.workflow import FileItem
 
+from .batch import TransferBatchRun
 from .request import (
     _should_discard_batch_music_identity,
     _TransferCandidatePlanner,
@@ -514,7 +514,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         if identity_error:
             return False, identity_error
 
-        all_success = True
         submission = _TransferSubmissionCollector(report_results, fileitem)
         recovery_options = (
             recovery_admission.planning_input.options
@@ -555,8 +554,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             else None
         )
 
-        # 汇总错误信息
-        err_msgs: List[str] = []
         transfer_exclude_words = get_configured_system_config().get(SystemConfigKey.TransferExcludeWords)
 
         candidate_planner = _TransferCandidatePlanner(
@@ -606,201 +603,32 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         if selected_music_error:
             return False, selected_music_error
 
-        planned_file_count = len(file_items)
-        recovered_batch_total = (
-            recovery_options.get("transfer_batch_total")
-            or request_transfer_batch_total
-        )
-        transfer_batch_total = (
-            recovered_batch_total
-            if isinstance(recovered_batch_total, int) and recovered_batch_total > 0
-            else planned_file_count
-        )
-
-        if preview:
-            logger.info(f"正在预览 {planned_file_count} 个文件的整理路径...")
-        else:
-            logger.info(f"正在计划整理 {planned_file_count} 个文件...")
-
-        submission.expect(file_items)
-        preadmissions: dict[tuple[str, str], TransferAdmission] = {}
-        if background and not preview and recovery_admission is None and planned_file_count > 1:
-            try:
-                preadmissions = self._preadmit_transfer_batch(
-                    file_items=file_items,
-                    selected_music_track_map=selected_music_track_map,
-                    meta=meta,
-                    mediainfo=mediainfo,
-                    media_source=media_source,
-                    media_id=media_id,
-                    batch_mtype=batch_mtype,
-                    target_directory=target_directory,
-                    target_storage=target_storage,
-                    target_path=target_path,
-                    transfer_type=transfer_type,
-                    scrape=scrape,
-                    library_type_folder=library_type_folder,
-                    library_category_folder=library_category_folder,
-                    downloader=downloader,
-                    download_hash=download_hash,
-                    transfer_batch_id=transfer_batch_id,
-                    transfer_batch_title=transfer_batch_title,
-                    transfer_batch_root=transfer_batch_root,
-                    transfer_batch_total=transfer_batch_total,
-                    manual=bool(manual),
-                    cleanup_dest_fileitem=cleanup_dest_fileitem,
-                    music_release_regions=music_release_regions,
-                    music_release_scripts=music_release_scripts,
-                )
-                logger.info(
-                    "整理批次已完整登记：%s，共 %s 个文件",
-                    transfer_batch_id,
-                    len(preadmissions),
-                )
-            except Exception as error:
-                logger.error("完整登记整理批次失败：%s", error, exc_info=True)
-                message = f"整理批次登记失败：{error}"
-                for candidate, _ in file_items:
-                    submission.record(candidate, "failed", message)
-                return submission.result(False, [message], preview=False, preview_items=[])
-        try:
-            (
-                transfer_tasks,
-                all_success,
-                err_msgs,
-                skipped_history_count,
-                skipped_torrents,
-            ) = self._build_transfer_tasks(
-                file_items=file_items,
-                inherited_meta_map=inherited_meta_map,
-                build_file_meta=candidate_planner._build_file_meta,
-                meta=meta,
-                mediainfo=mediainfo,
-                media_source=media_source,
-                media_id=media_id,
-                batch_mtype=batch_mtype,
-                target_directory=target_directory,
-                target_storage=target_storage,
-                target_path=target_path,
-                transfer_type=transfer_type,
-                scrape=scrape,
-                library_type_folder=library_type_folder,
-                library_category_folder=library_category_folder,
-                downloader=downloader,
-                download_hash=download_hash,
-                transfer_batch_id=transfer_batch_id,
-                transfer_batch_title=transfer_batch_title,
-                transfer_batch_root=transfer_batch_root,
-                transfer_batch_total=transfer_batch_total,
-                manual=bool(manual),
-                background=bool(background),
-                preview=bool(preview),
-                reorganize=bool(reorganize),
-                force=bool(force),
-                continue_callback=continue_callback,
-                cleanup_dest_fileitem=cleanup_dest_fileitem,
-                recovery_admission=recovery_admission,
-                preadmissions=preadmissions,
-                music_release_regions=music_release_regions,
-                music_release_scripts=music_release_scripts,
-                selected_music_track_map=selected_music_track_map,
-                submission=submission,
-            )
-        except OperationInterrupted:
-            return submission.result(False, [f"{fileitem.name} 已取消"], preview=False, preview_items=[])
-
-        all_success, err_msgs, preview_items = self._execute_transfer_tasks(
-            transfer_tasks=transfer_tasks,
-            preview=bool(preview),
+        return self._run_transfer_batch(TransferBatchRun(
+            root_fileitem=fileitem, file_items=file_items,
+            inherited_meta_map=inherited_meta_map,
+            build_file_meta=candidate_planner._build_file_meta,
+            meta=meta, mediainfo=mediainfo, media_source=media_source,
+            media_id=media_id, batch_mtype=batch_mtype,
+            target_directory=target_directory, target_storage=target_storage,
+            target_path=target_path, transfer_type=transfer_type, scrape=scrape,
+            library_type_folder=library_type_folder,
+            library_category_folder=library_category_folder,
+            downloader=downloader, download_hash=download_hash,
+            transfer_batch_id=transfer_batch_id,
+            transfer_batch_title=transfer_batch_title,
+            transfer_batch_root=transfer_batch_root,
+            requested_batch_total=request_transfer_batch_total,
+            recovery_options=recovery_options, manual=bool(manual),
+            background=bool(background), preview=bool(preview),
+            reorganize=bool(reorganize), force=bool(force),
             continue_callback=continue_callback,
-            all_success=all_success,
-            err_msgs=err_msgs,
+            cleanup_dest_fileitem=cleanup_dest_fileitem,
+            recovery_admission=recovery_admission,
+            music_release_regions=music_release_regions,
+            music_release_scripts=music_release_scripts,
+            selected_music_track_map=selected_music_track_map,
             submission=submission,
-        )
-
-        # 下载器任务在这一轮可能因为历史记录全部命中而没有进入整理队列，
-        # 这里补打一遍已整理标签，避免同一种子被重复扫描。
-        if skipped_history_count == planned_file_count and skipped_torrents:
-            for skipped_hash, skipped_downloader in skipped_torrents:
-                logger.info(f"补充设置下载任务已整理标签：{skipped_hash}")
-                self._TransferChain__mark_torrent_completed_if_done(skipped_hash, skipped_downloader)
-
-        return submission.result(all_success, err_msgs, preview=bool(preview), preview_items=preview_items)
-
-    def _preadmit_transfer_batch(
-        self,
-        *,
-        file_items: List[Tuple[FileItem, bool]],
-        selected_music_track_map: dict[str, MusicInfo],
-        meta: Optional[MetaBase],
-        mediainfo: Optional[Union[MediaInfo, MusicInfo]],
-        media_source: Optional[MediaSource],
-        media_id: Optional[str],
-        batch_mtype: Optional[MediaType],
-        target_directory: Optional[TransferDirectoryConf],
-        target_storage: Optional[str],
-        target_path: Optional[Path],
-        transfer_type: Optional[str],
-        scrape: Optional[bool],
-        library_type_folder: Optional[bool],
-        library_category_folder: Optional[bool],
-        downloader: Optional[str],
-        download_hash: Optional[str],
-        transfer_batch_id: str,
-        transfer_batch_title: str,
-        transfer_batch_root: str,
-        transfer_batch_total: int,
-        manual: bool,
-        cleanup_dest_fileitem: Optional[FileItem],
-        music_release_regions: Optional[list[str]],
-        music_release_scripts: Optional[list[str]],
-    ) -> dict[tuple[str, str], TransferAdmission]:
-        """先原子登记完整候选集，再允许任何联网识别或内存排队发生。"""
-        admission_items: list[tuple[str, str, TransferPlanningInput]] = []
-        for index, (file_item, _) in enumerate(file_items):
-            file_storage = file_item.storage
-            file_path = file_item.path
-            if not file_storage or not file_path:
-                raise ValueError("整理候选缺少存储或源路径")
-            selected_track = None
-            if file_storage == "local" and self._is_audio_file(file_item):
-                selected_track = selected_music_track_map.get(str(Path(file_path).resolve()))
-            raw_task = TransferTask(
-                fileitem=file_item,
-                meta=meta if len(file_items) == 1 else None,
-                mediainfo=selected_track or (mediainfo if len(file_items) == 1 else None),
-                media_source=media_source,
-                media_id=media_id,
-                mtype=batch_mtype,
-                target_directory=target_directory,
-                target_storage=target_storage,
-                target_path=target_path,
-                transfer_type=transfer_type,
-                scrape=scrape,
-                library_type_folder=library_type_folder,
-                library_category_folder=library_category_folder,
-                downloader=downloader,
-                download_hash=download_hash,
-                transfer_batch_id=transfer_batch_id,
-                transfer_batch_title=transfer_batch_title,
-                transfer_batch_root=transfer_batch_root,
-                transfer_batch_total=transfer_batch_total,
-                music_release_regions=music_release_regions,
-                music_release_scripts=music_release_scripts,
-                manual=manual,
-                background=True,
-                preview=False,
-            )
-            planning_input = self._TransferChain__build_planning_input(
-                raw_task,
-                cleanup_dest_fileitem=cleanup_dest_fileitem if index == 0 else None,
-            )
-            admission_items.append((file_storage, file_path, planning_input))
-        admissions = self._transfer_admissions.admit_batch(
-            items=admission_items,
-            replace_inactive=manual,
-        )
-        return {(item.storage, item.src_path): item for item in admissions}
+        ))
 
     def _enqueue_transfer_candidate(
         self, task: TransferTask, errors: list[str], submission: _TransferSubmissionCollector,
@@ -1051,24 +879,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         cleanup_dest_fileitem=cleanup_intent,
                     )
                 )
-                if (
-                    recovery_admission
-                    and file_item.storage == recovery_admission.storage
-                    and file_item.path == recovery_admission.src_path
-                ):
-                    transfer_task.bind_admission_task_id(recovery_admission.task_id)
-                    self._TransferChain__bind_claimed_admission(
-                        transfer_task,
-                        recovery_admission,
-                    )
-                    if recovery_admission.planning_input:
-                        transfer_task.bind_planning_input(recovery_admission.planning_input)
-                    if recovery_admission.checkpoint:
-                        transfer_task.bind_plan_checkpoint(recovery_admission.checkpoint)
-                preadmission = preadmissions.get((file_item.storage or "", file_item.path or ""))
-                if preadmission is not None:
-                    transfer_task.bind_admission_task_id(preadmission.task_id)
-                    transfer_task.bind_planning_input(preadmission.planning_input)
+                self._bind_batch_admission(
+                    transfer_task, recovery_admission, preadmissions
+                )
                 if background:
                     queued = self._enqueue_transfer_candidate(transfer_task, err_msgs, submission)
                     if queued is None:

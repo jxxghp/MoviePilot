@@ -760,21 +760,17 @@ class TransferTask(OptionalMediaIdentityMixin, _ApplicationModel):
     _planning_context_restored: bool = PrivateAttr(default=False)
     _lease_owner: Optional[str] = PrivateAttr(default=None)
     _lease_token: Optional[str] = PrivateAttr(default=None)
-
     @property
     def admission_task_id(self) -> Optional[str]:
         """返回仅供宿主持久准入和终态结算使用的内部任务标识。"""
         return self._admission_task_id
-
     def bind_admission_task_id(self, task_id: str) -> None:
         """绑定持久准入生成的稳定身份，不改变插件可见序列化字段。"""
         self._admission_task_id = task_id
-
     @property
     def planning_input(self) -> Optional[TransferPlanningInput]:
         """返回宿主恢复规划使用的内部输入快照。"""
         return self._planning_input
-
     @property
     def plan_checkpoint(self) -> Optional[TransferPlanCheckpoint]:
         """返回宿主直接执行已规划任务使用的内部检查点。"""
@@ -847,14 +843,9 @@ class TransferTask(OptionalMediaIdentityMixin, _ApplicationModel):
         dicts["meta"] = _domain_to_dict(self.meta) if self.meta else None
         dicts["mediainfo"] = _domain_to_dict(self.mediainfo) if self.mediainfo else None
         dicts["target_directory"] = self.target_directory.model_dump() if self.target_directory else None
-        # 新批次恢复上下文只属于宿主持久化协议，不扩张插件可见的旧任务字典 ABI。
-        for internal_field in (
-            "transfer_batch_title",
-            "transfer_batch_root",
-            "transfer_batch_total",
-            "music_release_regions",
-            "music_release_scripts",
-        ):
+        for internal_field in ("transfer_batch_title", "transfer_batch_root",
+                               "transfer_batch_total", "music_release_regions",
+                               "music_release_scripts"):
             dicts.pop(internal_field, None)
         return dicts
 
@@ -913,10 +904,8 @@ class TransferAdmissionRepository(Protocol):
         ...
 
     def admit_batch(
-            self,
-            *,
-            items: list[tuple[str, str, TransferPlanningInput]],
-            replace_inactive: bool = False,
+        self, *, items: list[tuple[str, str, TransferPlanningInput]],
+        replace_inactive: bool = False,
     ) -> list[TransferAdmission]:
         """在一个事务中登记完整批次，避免扫描中断后未处理条目永久丢失。"""
         ...

@@ -6,6 +6,7 @@ from app.chain.storage import StorageChain
 from app.foundation.singleton import Singleton
 from app.runtime.reload import ConfigReloadMixin
 
+from .batch import TransferBatchMixin
 from .execution import TransferExecutionOwner
 from .filter import FileFilterMixin
 from .format import EpisodeFormatMixin
@@ -31,6 +32,7 @@ class TransferChain(
         TransferPlanningOwner,
         TransferExecutionOwner,
         TransferSettlementOwner,
+        TransferBatchMixin,
         TransferWorkflowOwner,
         TransferHistoryOwner,
         ChainBase,
