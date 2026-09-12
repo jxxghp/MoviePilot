@@ -458,6 +458,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 cleanup_media_file=self._TransferChain__cleanup_transfer_destination,
                 observe_cleanup_media_file=self._TransferChain__observe_cleanup_destination,
                 step_runner=step_runner,
+                raise_exception=True,
             ),
         )
 

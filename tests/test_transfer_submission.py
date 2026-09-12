@@ -1,6 +1,7 @@
 """验证实际整理提交回执与预览隔离，并由真实执行阶段决定完成状态。"""
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from fastapi import FastAPI
@@ -8,7 +9,10 @@ from fastapi.testclient import TestClient
 
 from app.api.endpoints import transfer
 from app.application.transfer.execution import TransferExecutionState
+from app.application.transfer.workflow import TransferTask
+from app.chain.transfer.execution import _TransferManualReviewRequired
 from app.chain.transfer.facade import TransferChain
+from app.chain.transfer.request import _TransferSubmissionCollector
 from app.schemas.transfer import TransferInfo
 from tests.test_manual_transfer_history import _patch_transfer_planning
 from tests.test_transfer_sync_extra_files import make_fileitem, make_transfer_chain
@@ -175,6 +179,51 @@ def test_sync_submission_waits_for_atomic_settlement(submission_chain, monkeypat
     assert result["items"][0]["state"] == expected
     assert result["items"][0]["target"] == target.path
     assert result["items"][0]["overwrite_skipped"] is overwrite
+
+
+def test_manual_review_is_logged_without_unhandled_transfer_traceback(submission_chain, monkeypatch):
+    """外部结果未知时只记录人工复核指引，提交回执仍保留 manual_review。"""
+    chain, fileitem = submission_chain
+    task = TransferTask(fileitem=fileitem)
+    task.bind_admission_task_id("manual-review-task")
+    submission = _TransferSubmissionCollector(enabled=True, source=fileitem)
+    submission.expect([(fileitem, False)])
+    chain.transfer_execution_repository = SimpleNamespace(
+        get_snapshot=lambda **_kwargs: SimpleNamespace(state=TransferExecutionState.MANUAL_REVIEW),
+    )
+    error = _TransferManualReviewRequired("遗留步骤 operation-1 外部结果为 unknown，禁止自动重放")
+    warnings: list[str] = []
+    errors: list[str] = []
+    monkeypatch.setattr("app.chain.transfer.workflow.logger.warning", warnings.append)
+    monkeypatch.setattr("app.chain.transfer.workflow.logger.error", errors.append)
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__handle_transfer",
+        lambda **_kwargs: (_ for _ in ()).throw(error),
+    )
+    fail_task = Mock()
+    finish_execution = Mock(return_value=True)
+    monkeypatch.setattr(chain, "_TransferChain__fail_transfer_task", fail_task)
+    monkeypatch.setattr(chain, "_TransferChain__finish_job_execution", finish_execution)
+
+    success, messages, _preview_items = chain._execute_transfer_tasks(
+        transfer_tasks=[task],
+        preview=False,
+        continue_callback=None,
+        all_success=True,
+        err_msgs=[],
+        submission=submission,
+    )
+
+    assert success is False
+    assert messages == [f"{fileitem.name} 整理任务已转入人工复核，请打开整理队列查看详情"]
+    assert len(warnings) == 1
+    assert "打开整理队列" in warnings[0]
+    assert errors == []
+    fail_task.assert_called_once_with(task, error)
+    finish_execution.assert_called_once_with(task, terminal=False, terminal_settlement=None)
+    assert submission.items[0]["state"] == "manual_review"
+    assert submission.items[0]["recovery_action"] == "打开整理队列，先完成人工复核，再决定是否重试"
 
 
 @pytest.mark.parametrize("accepted, expected", [(True, "retry_wait"), (False, "failed")])

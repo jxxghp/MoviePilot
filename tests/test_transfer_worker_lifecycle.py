@@ -18,6 +18,7 @@ from app.application.transfer.workflow import (
     TransferTask,
 )
 from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
+from app.chain.transfer.execution import _TransferManualReviewRequired
 from app.foundation.singleton import Singleton
 from app.runtime.config import global_vars
 from app.schemas.file import FileItem
@@ -853,6 +854,74 @@ def test_recovered_worker_reuses_claimed_token_without_second_claim(
         error="整理终态未完成 durable 原子结算",
     )
     chain._transfer_admissions.abandon_unstarted.assert_not_called()
+
+
+def test_worker_manual_review_logs_queue_guidance_without_traceback(monkeypatch) -> None:
+    """后台 worker 遇到人工复核时只告警并释放内存执行状态，保留 durable 任务。"""
+    chain = _build_chain()
+    task = TransferTask(fileitem=FileItem(
+        storage="local",
+        path="/downloads/manual-review.mkv",
+        type="file",
+        name="manual-review.mkv",
+        basename="manual-review",
+        extension="mkv",
+    ))
+    task.bind_admission_task_id("manual-review-task")
+    task.bind_execution_lease(
+        owner_id="worker-owner",
+        lease_token="lease-manual-review-task",
+    )
+    chain._owned_leases = {
+        "manual-review-task": (
+            "lease-manual-review-task",
+            time.monotonic() + 120,
+        ),
+    }
+    chain.jobview = MagicMock()
+    chain.jobview.pending_total.return_value = 1
+    chain._finish_scrape_batch_task = MagicMock()
+    chain._progress = MagicMock()
+    chain._active_tasks = 0
+    chain._processed_num = 0
+    chain._fail_num = 0
+    chain._total_num = 0
+    stop_event = threading.Event()
+    chain._transfer_admissions.release_claim.side_effect = (
+        lambda **_kwargs: stop_event.set() or True
+    )
+    error = _TransferManualReviewRequired(
+        "遗留步骤 operation-1 外部结果为 unknown，禁止自动重放"
+    )
+    chain._TransferChain__handle_transfer = MagicMock(side_effect=error)
+    fail_task = MagicMock()
+    chain._TransferChain__fail_transfer_task = fail_task
+    warnings: list[str] = []
+    errors: list[str] = []
+    monkeypatch.setattr("app.chain.transfer.workflow.logger.warning", warnings.append)
+    monkeypatch.setattr("app.chain.transfer.workflow.logger.error", errors.append)
+    chain._queue.put(TransferQueue(task=task))
+    monkeypatch.setattr(global_vars, "STOP_EVENT", threading.Event())
+
+    worker = threading.Thread(
+        target=chain._TransferChain__start_transfer,
+        args=(stop_event,),
+        daemon=True,
+    )
+    worker.start()
+    worker.join(timeout=1)
+
+    assert worker.is_alive() is False
+    assert len(warnings) == 1
+    assert "打开整理队列" in warnings[0]
+    assert errors == []
+    fail_task.assert_called_once_with(task, error)
+    chain._transfer_admissions.release_claim.assert_called_once_with(
+        task_id="manual-review-task",
+        lease_token="lease-manual-review-task",
+        error=None,
+    )
+    assert chain._queue.unfinished_tasks == 0
 
 
 def test_heartbeat_refreshes_current_token_and_forgets_lost_lease() -> None:

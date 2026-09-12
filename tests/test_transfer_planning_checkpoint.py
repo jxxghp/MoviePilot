@@ -390,6 +390,24 @@ def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
     return chain
 
 
+def test_durable_host_execution_propagates_module_errors_to_transfer_boundary():
+    """持久执行通过 dispatcher 的异常传播开关，避免先被系统错误处理器吞掉。"""
+    chain = _chain()
+    chain.run_module.side_effect = RuntimeError("manual review")
+
+    with pytest.raises(RuntimeError, match="manual review"):
+        chain._TransferChain__execute_host_transfer_plan(
+            _task(),
+            _checkpoint(),
+            source_oper=None,
+            target_oper=None,
+            step_runner=Mock(),
+        )
+
+    call = chain.run_module.call_args
+    assert call.kwargs["raise_exception"] is True
+
+
 def _replay_chain(repository) -> TransferChain:
     """构造绑定固定恢复 owner 且不启动真实 heartbeat 线程的测试链。"""
     chain = object.__new__(TransferChain)

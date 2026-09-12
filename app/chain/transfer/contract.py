@@ -45,6 +45,7 @@ if TYPE_CHECKING:
         _TransferChain__finish_job_execution: Callable[..., Any]
         _TransferChain__forget_owned_lease: Callable[..., Any]
         _TransferChain__get_transfer_target_dir_path: Callable[..., Any]
+        _TransferChain__handle_transfer_execution_error: Callable[..., Any]
         _TransferChain__handle_planned_transfer: Callable[..., Any]
         _TransferChain__handle_transfer: Callable[..., Any]
         _TransferChain__json_snapshot: Callable[..., Any]

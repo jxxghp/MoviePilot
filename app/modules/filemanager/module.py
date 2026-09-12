@@ -567,8 +567,13 @@ class FileManagerModule(_ModuleBase):
             cleanup_media_file: Optional[Callable[[FileItem], bool]] = None,
             observe_cleanup_media_file: Optional[Callable[[FileItem], bool]] = None,
             step_runner: Optional[TransferStepRunner] = None,
+            raise_exception: bool = False,
     ) -> TransferInfo:
-        """解析存储适配器并通过统一删除能力执行已冻结计划。"""
+        """解析存储适配器并通过统一删除能力执行已冻结计划。
+
+        :param raise_exception: 仅供模块调度器控制异常是否传播，模块不改变执行语义
+        """
+        del raise_exception
         source_fileitem = FileItem(**checkpoint.planning_input.source_fileitem)
         cleanup_before_transfer = None
         observe_cleanup_before_transfer = None

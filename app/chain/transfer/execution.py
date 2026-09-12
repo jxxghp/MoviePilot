@@ -1,6 +1,7 @@
 """持久整理步骤执行、探测与检查点推进。"""
 
 import time
+import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Tuple, Union, cast
@@ -22,6 +23,7 @@ from app.application.transfer.execution import (
 )
 from app.application.transfer.workflow import (
     TransferAdmission,
+    TransferAdmissionConflictError,
     TransferLeaseLostError,
     TransferTask,
 )
@@ -289,6 +291,32 @@ class _DurableTransferStepRunner:
 
 class TransferExecutionOwner(_TransferOwnerBase):
     """持有整理准入租约、外部步骤执行与结果检查点。"""
+
+    def _TransferChain__handle_transfer_execution_error(
+            self,
+            task: TransferTask,
+            error: Exception,
+            *,
+            preview: bool,
+    ) -> Tuple[bool, str]:
+        """收口整理执行异常；人工复核只告警并保留 durable 状态。"""
+        if isinstance(error, _TransferManualReviewRequired):
+            logger.warning(
+                f"{task.fileitem.name} 已转入人工复核，未自动重放；"
+                f"请打开整理队列查看详情，确认外部操作状态后再决定是否重试：{error}"
+            )
+            message = "整理任务已转入人工复核，请打开整理队列查看详情"
+        else:
+            logger.error(
+                f"{task.fileitem.name} 整理任务处理出现错误：{error} - {traceback.format_exc()}"
+            )
+            message = (
+                str(error) if isinstance(error, TransferAdmissionConflictError)
+                else "整理任务处理失败，请稍后重试"
+            )
+        if not preview:
+            self._TransferChain__fail_transfer_task(task, error)
+        return False, message
 
     def _TransferChain__register_claimed_admission(
             self,

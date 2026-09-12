@@ -1,7 +1,6 @@
 """整理请求候选构建与任务工作流编排。"""
 
 import re
-import traceback
 import uuid
 from copy import deepcopy
 from pathlib import Path
@@ -1043,17 +1042,13 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                             callback=callback_after_terminal_settlement,
                         )
                         terminal = bool(preview or transfer_task.plan_checkpoint is not None)
-                    except Exception as e:
+                    except Exception as error:
                         if terminal_settlement is not None:
                             terminal = True
-                        logger.error(
-                            f"{transfer_task.fileitem.name} 整理任务处理出现错误：{e} - {traceback.format_exc()}"
-                        )
-                        if not preview:
-                            self._TransferChain__fail_transfer_task(transfer_task, e)
-                        state, err_msg = False, (
-                            str(e) if isinstance(e, TransferAdmissionConflictError)
-                            else "整理任务处理失败，请稍后重试"
+                        state, err_msg = self._TransferChain__handle_transfer_execution_error(
+                            transfer_task,
+                            error,
+                            preview=preview,
                         )
                     finally:
                         durable_settled = self._TransferChain__finish_job_execution(
@@ -1070,7 +1065,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     )
                     if not state:
                         all_success = False
-                        logger.warn(f"{transfer_task.fileitem.name} {err_msg}")
+                        if not err_msg.startswith("整理任务已转入人工复核"):
+                            logger.warn(f"{transfer_task.fileitem.name} {err_msg}")
                         err_msgs.append(f"{transfer_task.fileitem.name} {err_msg}")
                         if preview:
                             # 预览模式不走默认回调，这里需要手动收敛任务状态，避免残留 running
