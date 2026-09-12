@@ -306,7 +306,15 @@ COPY --from=uv /uv /usr/local/bin/uv
 # 浏览器运行依赖
 RUN playwright install-deps chromium \
     && apt-get update \
-    && apt-get install -y --no-install-recommends libde265-0 \
+    && apt-get install -y --no-install-recommends \
+    gzip \
+    libde265-0 \
+    libpcre2-8-0 \
+    libsqlite3-0 \
+    nginx \
+    nginx-common \
+    xserver-common \
+    xvfb \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf \
