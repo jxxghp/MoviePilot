@@ -220,7 +220,12 @@ def test_recognize_music_by_path_tag_mbid_skips_multi_source_matching(monkeypatc
 
 def test_recognize_music_by_path_falls_back_from_tags_to_filename(monkeypatch):
     """标签层未获得远端身份时应继续使用文件名层，且顺序不可反转。"""
-    tag_meta = MetaMusic(title="Tagged Title")
+    tag_meta = MetaMusic(
+        title="Tagged Title",
+        artists=["Taylor Swift"],
+        album="Speak Now",
+        year=2010,
+    )
     filename_meta = MetaMusic(title="Filename Title")
     expected = MusicInfo(
         media_source="musicbrainz",
@@ -243,10 +248,12 @@ def test_recognize_music_by_path_falls_back_from_tags_to_filename(monkeypatch):
     _, recognized_info = chain.recognize_music_by_path("track.flac")
 
     assert recognized_info is expected
-    assert [call.kwargs["meta"] for call in recognize.call_args_list] == [
-        tag_meta,
-        filename_meta,
-    ]
+    calls = [call.kwargs["meta"] for call in recognize.call_args_list]
+    assert calls[0] is tag_meta
+    assert calls[1].title == "Filename Title"
+    assert calls[1].artists == ["Taylor Swift"]
+    assert calls[1].album == "Speak Now"
+    assert calls[1].year == 2010
     assert all(
         call.kwargs["music_type"] == "recording"
         for call in recognize.call_args_list
@@ -333,6 +340,7 @@ def test_recognize_music_by_path_applies_context_artist_to_filename_fallback(mon
         artists=["Taylor Swift"],
         album_artist="Taylor Swift",
         album="Speak Now",
+        year=2010,
     )
     expected = MusicInfo(
         media_source="musicbrainz",
@@ -362,6 +370,7 @@ def test_recognize_music_by_path_applies_context_artist_to_filename_fallback(mon
     filename_call = tier.call_args_list[1]
     assert filename_call.kwargs["meta"].artists == ["Taylor Swift"]
     assert filename_call.kwargs["meta"].album == "Speak Now"
+    assert filename_call.kwargs["meta"].year == 2010
 
 
 def test_recognize_music_by_path_rejects_fingerprint_text_mismatch(monkeypatch):

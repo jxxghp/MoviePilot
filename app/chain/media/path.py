@@ -144,6 +144,10 @@ def _merge_contextual_music_evidence(
         merged.album_artist = contextual_meta.album_artist
     if not merged.album and contextual_meta.album:
         merged.album = contextual_meta.album
+    if not merged.year and contextual_meta.year:
+        merged.year = contextual_meta.year
+    if not merged.version and contextual_meta.version:
+        merged.version = contextual_meta.version
     return merged
 
 
@@ -506,6 +510,10 @@ class MediaPathOwner(_MediaOwnerBase):
             if tag_meta:
                 tag_meta = _merge_contextual_music_evidence(tag_meta, contextual_meta)
             filename_meta = _merge_contextual_music_evidence(filename_meta, contextual_meta)
+        # 文件名层只负责提供曲名；即使调用方没有显式传目录上下文，也必须
+        # 继承 read_evidence 已确认的标签艺人、专辑、年份和版本，避免标签层
+        # 临时请求失败后退化成无约束的全库同名搜索。
+        filename_meta = _merge_contextual_music_evidence(filename_meta, meta)
         plan = _music_path_plan(tag_meta, filename_meta, media_source)
         info: Optional[MusicInfo] = None
         try:
@@ -558,6 +566,7 @@ class MediaPathOwner(_MediaOwnerBase):
             if tag_meta:
                 tag_meta = _merge_contextual_music_evidence(tag_meta, contextual_meta)
             filename_meta = _merge_contextual_music_evidence(filename_meta, contextual_meta)
+        filename_meta = _merge_contextual_music_evidence(filename_meta, meta)
         plan = _music_path_plan(tag_meta, filename_meta, media_source)
         info: Optional[MusicInfo] = None
         try:
