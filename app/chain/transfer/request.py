@@ -77,7 +77,7 @@ def _should_discard_batch_music_identity(
         # 只有一首歌，也必须丢弃父合集身份并按所在目录/音频标签重新识别，
         # 否则每个子作品都会错误继承 Artist Collection 分类和艺术家 ID。
         return True
-    if manual and multi_track_music_batch and not (media_source and media_id):
+    if manual and not (media_source and media_id):
         return True
     return _should_discard_batch_recording_identity(
         multi_track_music_batch=multi_track_music_batch,

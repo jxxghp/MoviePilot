@@ -293,6 +293,14 @@ def test_artist_collection_batch_discards_shared_artist_identity() -> None:
         history_music_type=MUSIC_ENTITY_ARTIST,
     ) is True
     assert _should_discard_batch_music_identity(
+        manual=True,
+        multi_track_music_batch=False,
+        media_source=None,
+        media_id=None,
+        mediainfo=None,
+        history_music_type=None,
+    ) is True
+    assert _should_discard_batch_music_identity(
         manual=False,
         multi_track_music_batch=False,
         media_source=None,
@@ -749,6 +757,67 @@ def test_artist_collection_single_track_directory_has_local_single_fallback(
         (".flac", "Single"),
         (".lrc", "Single"),
     ]
+
+
+def test_manual_single_track_directory_has_local_single_fallback(
+        tmp_path, monkeypatch,
+):
+    """无显式媒体 ID 的手动单曲目录在远端不可用时仍可归入 Single。"""
+    single_dir = tmp_path / "Taylor Swift" / "Today Was a Fairytale"
+    single_dir.mkdir(parents=True)
+    audio_path = single_dir / "Taylor Swift - Today Was a Fairytale.flac"
+    audio_path.write_bytes(b"audio")
+    fileitem = make_fileitem(audio_path.as_posix())
+    local_meta = MetaMusic(
+        title="Today Was a Fairytale",
+        artists=["Taylor Swift"],
+        album="Today Was a Fairytale",
+        year=2010,
+    )
+    chain = _prepare_chain(monkeypatch, [fileitem])
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda _path: deepcopy(local_meta)),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _path, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_by_path",
+        lambda _self, _path, **_kwargs: (
+            deepcopy(local_meta), MusicInfo.from_meta(local_meta),
+        ),
+    )
+    planned = []
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__handle_transfer",
+        lambda task, callback=None: (
+            planned.append(task.mediainfo.library_category) or True,
+            "",
+        ),
+    )
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitem,
+        selected_fileitems=[fileitem],
+        mtype=MediaType.MUSIC,
+        background=False,
+        manual=True,
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == ["Single"]
 
 
 def test_artist_collection_multi_track_directory_has_consensus_album_fallback(

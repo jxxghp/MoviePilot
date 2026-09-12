@@ -327,10 +327,7 @@ def _recognize_music_batch_file(
         if not task_mediainfo.library_category:
             task_mediainfo.set_library_category("Album")
         return file_meta, task_mediainfo
-    if not (
-            multi_track_batch
-            and owner._get_file_key(file_item) in batch_context.single_main_keys
-    ):
+    if owner._get_file_key(file_item) not in batch_context.single_main_keys:
         return file_meta, task_mediainfo
 
     # 远端识别均未命中时，仅单音轨子目录可安全按 Single 兜底；
