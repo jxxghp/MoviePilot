@@ -95,6 +95,7 @@ class _MusicBatchContext:
 
     related_main_keys: dict[Tuple[str, str], Tuple[str, str]] = field(default_factory=dict)
     single_main_keys: set[Tuple[str, str]] = field(default_factory=set)
+    album_main_keys: set[Tuple[str, str]] = field(default_factory=set)
     directory_evidence: dict[Tuple[str, str], MetaMusic] = field(default_factory=dict)
     resolved_contexts: dict[Tuple[str, str], tuple[MetaMusic, MusicInfo]] = field(default_factory=dict)
 
@@ -184,11 +185,18 @@ def _prepare_music_batch_context(
         for items in main_items_by_dir.values()
         if len(items) == 1
     }
-    context.directory_evidence = {
-        parent_key: evidence
-        for parent_key, items in main_items_by_dir.items()
-        if (evidence := _music_directory_evidence(items))
-    }
+    for parent_key, items in main_items_by_dir.items():
+        evidence = _music_directory_evidence(items)
+        if not evidence:
+            continue
+        context.directory_evidence[parent_key] = evidence
+        # 两首及以上音轨，且目录内艺人和专辑标签均达到高一致性时，足以在
+        # 远端临时不可用时证明这是一个专辑目录；不能把整个艺术家合集根目录
+        # 当成一张专辑，也不能仅凭文件夹名称猜测类别。
+        if len(items) > 1 and evidence.artists and evidence.album:
+            context.album_main_keys.update(
+                owner._get_file_key(item) for item in items
+            )
     for current_item, _current_bluray_dir in file_items:
         if not owner._is_music_lyrics_file(current_item):
             continue
@@ -292,6 +300,17 @@ def _recognize_music_batch_file(
         return file_meta, task_mediainfo
 
     task_mediainfo = owner._music_info_from_meta(file_meta)
+    if (
+            multi_track_batch
+            and owner._get_file_key(file_item) in batch_context.album_main_keys
+    ):
+        task_mediainfo.album_type = "Album"
+        finalized = owner._finalize_recognition_result(task_mediainfo)
+        if isinstance(finalized, MusicInfo):
+            task_mediainfo = finalized
+        if not task_mediainfo.library_category:
+            task_mediainfo.set_library_category("Album")
+        return file_meta, task_mediainfo
     if not (
             multi_track_batch
             and owner._get_file_key(file_item) in batch_context.single_main_keys

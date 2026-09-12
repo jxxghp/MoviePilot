@@ -751,6 +751,88 @@ def test_artist_collection_single_track_directory_has_local_single_fallback(
     ]
 
 
+def test_artist_collection_multi_track_directory_has_consensus_album_fallback(
+        tmp_path, monkeypatch,
+):
+    """远端不可用时，同目录多首且艺人/专辑标签高度一致可安全按 Album 归档。"""
+    album_dir = tmp_path / "Taylor Swift" / "Speak Now"
+    album_dir.mkdir(parents=True)
+    audio_paths = [
+        album_dir / "01 - Mine.flac",
+        album_dir / "02 - Sparks Fly.flac",
+    ]
+    for path in audio_paths:
+        path.write_bytes(b"audio")
+    fileitems = [make_fileitem(path.as_posix()) for path in audio_paths]
+    local_metas = {
+        audio_paths[0]: MetaMusic(
+            title="Mine", artists=["Taylor Swift"], album="Speak Now", year=2010,
+        ),
+        audio_paths[1]: MetaMusic(
+            title="Sparks Fly", artists=["Taylor Swift"], album="Speak Now", year=2010,
+        ),
+    }
+    artist = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="artist-taylor-swift",
+        title="Taylor Swift",
+        artists=["Taylor Swift"],
+        music_type=MUSIC_ENTITY_ARTIST,
+        album_type="Artist Collection",
+        library_category="Artist Collection",
+    )
+    chain = _prepare_chain(monkeypatch, fileitems)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.filter.AudioMetadataHelper.read_tags",
+        lambda path: deepcopy(local_metas[path]),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda path: deepcopy(local_metas[Path(path)])),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _path, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_by_path",
+        lambda _self, path, **_kwargs: (
+            deepcopy(local_metas[Path(path)]),
+            MusicInfo.from_meta(local_metas[Path(path)]),
+        ),
+    )
+    planned = []
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__handle_transfer",
+        lambda task, callback=None: (
+            planned.append((task.mediainfo.album_type, task.mediainfo.library_category))
+            or True,
+            "",
+        ),
+    )
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitems[0],
+        selected_fileitems=fileitems,
+        mediainfo=artist,
+        mtype=MediaType.MUSIC,
+        background=False,
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == [("Album", "Album"), ("Album", "Album")]
+
+
 def test_manual_album_identity_forwards_full_selected_album(monkeypatch):
     """手动指定专辑 ID 时不应在进入整理链前丢失曲目表。"""
     chain = make_transfer_chain()
