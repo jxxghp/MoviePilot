@@ -260,6 +260,20 @@ def _resolve_music_batch_file_context(
         )
     if (
             owner._is_audio_file(file_item)
+            and isinstance(task_mediainfo, MusicInfo)
+            and owner._get_file_key(file_item) in batch_context.album_main_keys
+    ):
+        # 曲目可能同时作为 Single 单独发行。整理完整多音轨目录时，目录内
+        # 高一致性的专辑/专辑艺人标签是当前文件归属的更强证据，不能让某一
+        # 首歌的单曲发行身份把同一张专辑拆进 Single 分类。
+        task_mediainfo = deepcopy(task_mediainfo)
+        task_mediainfo.album_type = "Album"
+        finalized = owner._finalize_recognition_result(task_mediainfo, refresh=True)
+        if isinstance(finalized, MusicInfo):
+            task_mediainfo = finalized
+        task_mediainfo.set_library_category("Album")
+    if (
+            owner._is_audio_file(file_item)
             and isinstance(file_meta, MetaMusic)
             and isinstance(task_mediainfo, MusicInfo)
     ):
