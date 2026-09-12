@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager, nullcontext
+from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -394,6 +395,84 @@ def test_plugin_history_merges_remote_metadata():
     assert result.system_version == ">=2.0.0"
     assert result.has_update
     plugin_manager.async_get_plugins_from_market.assert_awaited_once_with(SOURCE_URL, settings.VERSION_FLAG, True)
+
+
+def test_plugin_history_uses_payload_source_when_local_candidate_also_exists():
+    """在线运行载荷不得被同 ID 的本地仓库历史覆盖。"""
+    installed_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_name="Demo Plugin",
+        plugin_version="1.0.0",
+        installed=True,
+        history={},
+    )
+    local_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        repo_url="local://DemoPlugin?path=/plugins&version=v3",
+        history={"v0.9.0": "本地旧版说明"},
+    )
+    market_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        repo_url=SOURCE_URL,
+        history={"v1.1.0": "在线新版说明"},
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.get_installed_plugins.return_value = [installed_plugin]
+    plugin_manager.get_local_repo_plugins.return_value = [local_plugin]
+    plugin_manager.async_get_plugins_from_market = AsyncMock(return_value=[market_plugin])
+    metadata = PluginDeclaredMetadata.from_package(
+        {"name": "Demo Plugin", "v3": True},
+        declaration_version="1.0.0",
+        manifest_matches_payload=True,
+    )
+    identity = _plugin_identity(metadata=metadata)
+    release_service = _release_service(plugin_manager, persistence=_persistence(identity))
+
+    result = asyncio.run(release_service.history("DemoPlugin", force=True))
+
+    assert result is not None
+    assert result.repo_url == SOURCE_URL
+    assert result.history == {"v1.1.0": "在线新版说明"}
+    plugin_manager.async_get_plugins_from_market.assert_awaited_once_with(SOURCE_URL, settings.VERSION_FLAG, True)
+
+
+def test_plugin_history_uses_local_metadata_for_local_payload():
+    """本地运行载荷继续读取同一本地仓库的历史。"""
+    installed_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_name="Demo Plugin",
+        plugin_version="1.0.0",
+        installed=True,
+        history={},
+    )
+    local_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        repo_url="local://DemoPlugin?path=/plugins&version=v3",
+        history={"v1.1.0": "本地新版说明"},
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.get_installed_plugins.return_value = [installed_plugin]
+    plugin_manager.get_local_repo_plugins.return_value = [local_plugin]
+    plugin_manager.async_get_plugins_from_market = AsyncMock()
+    metadata = PluginDeclaredMetadata.from_package(
+        {"name": "Demo Plugin", "v3": True},
+        declaration_version="1.0.0",
+        manifest_matches_payload=True,
+    )
+    identity = _plugin_identity(metadata=metadata)
+    identity = replace(
+        identity,
+        payload_source_type=PluginPayloadSourceType.LOCAL,
+        payload_source_key=None,
+    )
+    release_service = _release_service(plugin_manager, persistence=_persistence(identity))
+
+    result = asyncio.run(release_service.history("DemoPlugin", force=True))
+
+    assert result is not None
+    assert result.repo_url == local_plugin.repo_url
+    assert result.history == {"v1.1.0": "本地新版说明"}
+    plugin_manager.async_get_plugins_from_market.assert_not_awaited()
 
 
 def test_plugin_history_falls_back_to_backward_compatible_package():

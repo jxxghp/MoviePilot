@@ -77,6 +77,37 @@ async def test_gateway_freezes_admission_before_executing_transaction() -> None:
 
 
 @pytest.mark.asyncio
+async def test_force_install_reuses_cached_candidate_inventory() -> None:
+    """强制覆盖载荷时不得连带强刷全部远程插件仓库。"""
+    inventory = AsyncMock(return_value=_inventory())
+    executor = AsyncMock()
+    executor.execute.return_value = type(
+        "Result",
+        (),
+        {"success": True, "message": ""},
+    )()
+    gateway = PluginInstallGateway(
+        inventory=inventory,
+        identity=AsyncMock(return_value=None),
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=executor,
+        clock=lambda: NOW,
+    )
+
+    result = await gateway.install(
+        plugin_id="DemoPlugin",
+        repo_url=REPO_URL,
+        package_version="v3",
+        force=True,
+        explicit_source=True,
+    )
+
+    assert result.success is True
+    inventory.assert_awaited_once_with(False)
+    assert executor.execute.await_args.kwargs["force"] is True
+
+
+@pytest.mark.asyncio
 async def test_local_only_requires_explicit_online_binding() -> None:
     """本地专属身份即使发现唯一在线来源，也只能由管理员显式绑定。"""
     online = PluginMarketCandidate(
