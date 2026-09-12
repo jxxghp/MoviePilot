@@ -58,18 +58,16 @@ class PluginCloneService:
         suffix: Optional[str] = None,
         name: str,
         description: str,
-        version: Optional[str] = None,
         icon: Optional[str] = None,
         pinned_version: Optional[str] = None,
         restore_previous: bool = True,
     ) -> tuple[bool, str]:
-        """创建虚拟分身，复制隔离配置并保持默认禁用语义。
+        """创建虚拟分身：立即在册并加载，插件自身的业务开关保持关闭待用户配置。
 
         :param plugin_id: 源插件ID
         :param suffix: 追加到源插件ID后的分身后缀；留空时自动分配最小可用序号
         :param name: 分身展示名称
         :param description: 分身展示描述
-        :param version: 旧客户端保留字段，不参与版本绑定
         :param icon: 分身展示图标
         :param pinned_version: 分身锚定的版本号；为空表示跟随源插件当前版本
         :param restore_previous: 该实例 ID 名下留有上一轮的业务数据时是否沿用；

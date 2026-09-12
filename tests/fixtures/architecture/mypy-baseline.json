@@ -2539,7 +2539,7 @@
     "type-arg": 2
   },
   "app/runtime/extensions/plugin/manager.py": {
-    "assignment": 4,
+    "assignment": 3,
     "attr-defined": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 11,

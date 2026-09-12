@@ -2,8 +2,6 @@
 
 from typing import Any, Optional
 
-from anyio import to_thread
-
 from app.application.configuration import get_configured_system_config
 from app.application.plugin.gateway import get_plugin_install_service
 from app.application.plugin.runtime import get_plugin_manager
@@ -334,31 +332,19 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
         remove_plugin_api(plugin_id)
         remove_plugin_job(plugin_id)
 
-        plugin_class = plugin_manager.plugins.get(plugin_id)
-        was_clone = bool(getattr(plugin_class, "is_clone", False))
-        clone_files_removed = False
+        was_clone = virtual_instance is not None
 
         plugin_manager.stop(plugin_id)
 
-        # 分身与本体一致：卸载只移除实例身份，配置与业务数据保留，供同后缀重建时
-        # 恢复。两条卸载路径必须同语义，否则从 Agent 卸载仍会丢掉用户的配置。
+        # 分身与本体一致：卸载只移除实例身份，配置与业务数据保留，供按 ID 恢复时
+        # 取回。两条卸载路径必须同语义，否则从 Agent 卸载仍会丢掉用户的配置，或是
+        # 留下带着钉版本与默认目标置位的孤儿本体记录。
         if virtual_instance:
             plugin_manager.delete_plugin_instance(plugin_id)
-        elif was_clone:
-            try:
-                clone_files_removed = await to_thread.run_sync(
-                    plugin_manager.remove_plugin_package,
-                    plugin_id,
-                )
-                if clone_files_removed:
-                    plugin_manager.plugins.pop(plugin_id, None)
-            except Exception:
-                clone_files_removed = False
+        else:
+            plugin_manager.delete_plugin_host_binding(plugin_id)
 
         remove_plugin_from_folders(plugin_id)
         plugin_manager.remove_plugin(plugin_id)
 
-        return {
-            "was_clone": was_clone,
-            "clone_files_removed": clone_files_removed,
-        }
+        return {"was_clone": was_clone}

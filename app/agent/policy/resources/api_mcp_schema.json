@@ -2930,18 +2930,6 @@
           ],
           "description": "File suffix or extension matched by an automatic category rule.",
           "title": "Suffix"
-        },
-        "version": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Plugin release or schema version selected by the operation.",
-          "title": "Version"
         }
       },
       "title": "PluginCloneRequest",

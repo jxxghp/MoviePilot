@@ -420,10 +420,6 @@ class PluginCloneRequest(BaseModel):
     name: str = Field(default="", description="分身展示名称")
     description: str = Field(default="", description="分身展示描述")
     icon: Optional[str] = Field(default=None, description="分身展示图标")
-    version: Optional[str] = Field(
-        default=None,
-        description="兼容旧客户端保留，分身版本由版本策略字段决定",
-    )
     pinned_version: Optional[str] = Field(
         default=None,
         description="分身锚定的版本号，必须是已安装版本；为空表示跟随源插件当前版本",

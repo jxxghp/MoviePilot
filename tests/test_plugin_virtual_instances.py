@@ -317,7 +317,6 @@ def test_clone_service_persists_descriptor_without_copying_source_package():
         suffix="Work",
         name="工作实例",
         description="独立配置",
-        version="9.9.9",
     )
 
     assert success is True

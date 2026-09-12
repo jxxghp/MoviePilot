@@ -1496,7 +1496,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return PluginAccessPolicy.private_key(plugin_id)
 
     def clone_plugin(self, plugin_id: str, suffix: Optional[str], name: str, description: str,
-                     version: str = None, icon: str = None,
+                     icon: str = None,
                      pinned_version: Optional[str] = None,
                      restore_previous: bool = True) -> Tuple[bool, str]:
         """
@@ -1505,7 +1505,6 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param suffix: 分身后缀；留空时由运行时自动分配最小可用序号
         :param name: 分身名称
         :param description: 分身描述
-        :param version: 自定义版本号
         :param icon: 自定义图标URL
         :param pinned_version: 分身锚定的版本号；为空表示跟随源插件当前版本
         :param restore_previous: 同后缀的上一个分身留有配置或数据时是否沿用
@@ -1518,7 +1517,6 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     suffix=suffix,
                     name=name,
                     description=description,
-                    version=version,
                     icon=icon,
                     pinned_version=pinned_version,
                     restore_previous=restore_previous,

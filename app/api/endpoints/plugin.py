@@ -959,7 +959,6 @@ def clone_plugin(
                 suffix=clone_data.suffix,
                 name=clone_data.name,
                 description=clone_data.description,
-                version=clone_data.version,
                 icon=clone_data.icon,
                 pinned_version=clone_data.pinned_version,
                 restore_previous=clone_data.restore_previous,
@@ -1165,21 +1164,14 @@ def _uninstall_one_plugin(plugin_manager: Any, plugin_id: str) -> None:
     remove_plugin_api(plugin_id)
     # 移除插件服务
     remove_plugin_job(plugin_id)
-    # 判断是否为分身
-    plugin_class = plugin_manager.plugins.get(plugin_id)
     # 删除必须晚于停止：停机钩子会重建刚删的自有库；停止同时注销插件类，故删除一律按 force
     plugin_manager.stop(plugin_id)
-    is_clone = bool(virtual_instance) or getattr(plugin_class, "is_clone", False)
     # 分身与本体一致：卸载只移除实例身份，配置与业务数据保留。本体重装后设置能
-    # 自动回来，分身对应的复原动作是用同一后缀重建；要彻底清空另有「重置」入口，
-    # 以及创建分身时的「清空后新建」。
+    # 自动回来，分身的复原动作是在「创建分身」里按 ID 取回；要彻底清空另有「重置」
+    # 入口，以及卸载弹窗里的可选清除范围。
     if virtual_instance:
         plugin_manager.delete_plugin_instance(plugin_id)
-    elif getattr(plugin_class, "is_clone", False):
-        # 分身物理目录只能由包文件 owner 删除。
-        if plugin_manager.remove_plugin_package(plugin_id):
-            plugin_manager.plugins.pop(plugin_id, None)
-    if not is_clone:
+    else:
         # 卸载的是源插件本体：它的版本绑定另有一条记录，删实例的入口只认
         # 分身，不清会留下带着钉版本、日志等级与默认目标置位的孤儿记录，
         # 重装同名插件时被静默继承。

@@ -1450,13 +1450,19 @@ def test_uninstall_virtual_instance_never_removes_source_package(monkeypatch):
     plugin_manager.remove_plugin_package.assert_not_called()
 
 
-def test_uninstall_clone_delegates_physical_removal_to_package_owner(monkeypatch):
-    """HTTP 分身卸载不得自行拼接路径或直接删除目录。"""
+def test_uninstall_clone_removes_instance_row_and_spares_shared_package(monkeypatch):
+    """分身卸载只摘掉实例身份，绝不删除与本体共享的插件包目录。
+
+    分身没有自己的源码，删包等于把本体和它的全部同胞一起删掉；本体绑定同理，
+    删了会让仍在册的本体失去装载依据。
+    """
     plugin_manager = MagicMock()
-    plugin_manager.get_plugin_instance.return_value = None
+    plugin_manager.get_plugin_instance.return_value = MagicMock(
+        instance_id="DemoPluginwork",
+        source_plugin_id="DemoPlugin",
+    )
     plugin_manager.get_plugin_source_instances.return_value = []
-    plugin_manager.plugins = {"DemoPluginwork": MagicMock(is_clone=True)}
-    plugin_manager.remove_plugin_package.return_value = True
+    plugin_manager.plugins = {"DemoPluginwork": MagicMock()}
     config = MagicMock()
     config.get.return_value = ["DemoPluginwork"]
     monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
@@ -1468,8 +1474,9 @@ def test_uninstall_clone_delegates_physical_removal_to_package_owner(monkeypatch
     result = uninstall_plugin("DemoPluginwork", None)
 
     assert result.success is True
-    plugin_manager.remove_plugin_package.assert_called_once_with("DemoPluginwork")
-    assert "DemoPluginwork" not in plugin_manager.plugins
+    plugin_manager.delete_plugin_instance.assert_called_once_with("DemoPluginwork")
+    plugin_manager.remove_plugin_package.assert_not_called()
+    plugin_manager.delete_plugin_host_binding.assert_not_called()
 
 
 def test_sealed_http_uninstall_rejects_before_first_side_effect(monkeypatch):

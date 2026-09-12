@@ -468,10 +468,12 @@ def test_stopping_an_already_stopped_plugin_stays_idempotent():
 def _uninstall_manager() -> MagicMock:
     """构造卸载分身所需的插件管理器替身，按调用顺序记录全部方法调用。"""
     plugin_manager = MagicMock()
-    plugin_manager.get_plugin_instance.return_value = None
+    plugin_manager.get_plugin_instance.return_value = MagicMock(
+        instance_id="DemoPluginwork",
+        source_plugin_id="DemoPlugin",
+    )
     plugin_manager.get_plugin_source_instances.return_value = []
-    plugin_manager.plugins = {"DemoPluginwork": MagicMock(is_clone=True)}
-    plugin_manager.remove_plugin_package.return_value = True
+    plugin_manager.plugins = {"DemoPluginwork": MagicMock()}
     return plugin_manager
 
 
@@ -479,12 +481,12 @@ def _assert_stop_precedes_deletion(plugin_manager: MagicMock) -> None:
     """断言卸载先停止插件，再摘除实例身份，且不碰配置与业务数据。
 
     停止必须在前：插件的停机钩子只要取一次自有库句柄就会把刚清掉的内容重建出来。
-    配置与业务数据则与本体一致予以保留，留待同后缀重建时恢复。
+    配置与业务数据则与本体一致予以保留，留待按 ID 恢复时取回。
     """
     method_names = [name for name, _args, _kwargs in plugin_manager.mock_calls]
     identity_removals = [
         name
-        for name in ("delete_plugin_instance", "remove_plugin_package")
+        for name in ("delete_plugin_instance", "delete_plugin_host_binding")
         if name in method_names
     ]
     assert identity_removals, method_names
@@ -530,8 +532,38 @@ def test_runtime_uninstall_stops_the_plugin_before_deleting_its_data(monkeypatch
 
     result = asyncio.run(plugin_management.uninstall_plugin_runtime("DemoPluginwork"))
 
-    assert result == {"was_clone": True, "clone_files_removed": True}
+    assert result == {"was_clone": True}
     _assert_stop_precedes_deletion(plugin_manager)
+
+
+def test_runtime_host_uninstall_clears_the_host_binding_like_http_does(monkeypatch):
+    """运行态卸载本体同样要清掉本体绑定，两条路径不得就此分歧。
+
+    只有 HTTP 清、运行态不清的话，从 Agent 卸载会留下一条带着钉版本、日志等级与
+    默认目标置位的孤儿记录，重装同名插件时被静默继承。
+    """
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_instance.return_value = None
+    plugin_manager.get_plugin_source_instances.return_value = []
+    plugin_manager.plugins = {"DemoPlugin": MagicMock()}
+    config = MagicMock()
+    config.get.return_value = ["DemoPlugin"]
+    config.async_set = AsyncMock()
+    monkeypatch.setattr(plugin_management, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(
+        plugin_management,
+        "get_configured_system_config",
+        lambda: config,
+    )
+    monkeypatch.setattr(plugin_routes, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(scheduling_module, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_folders, "remove_plugin_from_folders", MagicMock())
+
+    result = asyncio.run(plugin_management.uninstall_plugin_runtime("DemoPlugin"))
+
+    assert result == {"was_clone": False}
+    plugin_manager.delete_plugin_host_binding.assert_called_once_with("DemoPlugin")
+    plugin_manager.delete_plugin_instance.assert_not_called()
 
 
 def test_uninstall_virtual_instance_also_stops_before_deleting(monkeypatch):
