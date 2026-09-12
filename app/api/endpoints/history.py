@@ -519,17 +519,22 @@ async def transfer_history(
     page: Optional[int] = 1,
     count: Optional[int] = 30,
     status: Optional[bool] = None,
+    batch_id: Optional[str] = None,
+    download_hash: Optional[str] = None,
     query: HistoryQueryService = Depends(get_history_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    查询整理记录，title 支持通配符 * 和 ?（如 *.mkv、*2024*）
+    查询整理记录，title 支持通配符 * 和 ?（如 *.mkv、*2024*）；batch_id
+    返回完整整理批次，download_hash 返回同一下载任务产生的全部整理记录。
     """
     result = await query.list_transfer(
         title=title,
         page=page,
         count=count,
         status=status,
+        batch_id=batch_id,
+        download_hash=download_hash,
     )
     return _SchemaResponse(success=True, data=result)
 

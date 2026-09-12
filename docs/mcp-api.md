@@ -21,6 +21,8 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 
 `POST /api/v1/history/transfer/{history_id}/discard-corrupt` 属于需要管理权限的整理恢复 REST 接口，不向 Agent gateway 暴露。成功响应的 `data.history_id` 为保留的整理历史 ID；任务已清理时同样返回该结构，历史不存在时返回业务失败。
 
+`GET /api/v1/history/transfer` 的 `batch_id` 可读取一个完整整理批次，`download_hash` 可读取同一下载任务产生的全部整理记录；二者均用于 UI 将合集子项聚合到同一可恢复批次，且优先于标题和分页筛选。
+
 ## 2. 标准 MCP 协议 (JSON-RPC 2.0)
 
 ### 端点
@@ -312,6 +314,9 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 也识别成功移动后的目标现址。该选项优先于 `reorganize` 和历史入口的强制整理，
 不清理被跳过文件的历史和旧目标；失败记录及未处理文件继续原有流程，默认 `false` 保持现有行为。
 被跳过文件不进入预览列表；全部跳过时返回空列表、零计数和跳过数量提示。
+继续一个持久化整理批次时，客户端同时传入 `transfer_batch_id`、`transfer_batch_title`、
+`transfer_batch_root` 和 `transfer_batch_total`；后端会让剩余文件沿用原批次身份与原候选总数，
+避免恢复操作被拆成新的历史分组。普通手动整理省略这些字段，由服务端创建批次身份。
 实际提交返回独立的 `data.items` 回执，即使批次 `success=false` 也保留其他文件的结果。
 每项包含 `source/target/target_dir/success/message/failure_stage/recovery_action/overwrite_skipped/state`；
 `state=accepted` 仅表示已接收，`retry_wait` 表示原计划已交给后台恢复，均不代表入库。

@@ -28,6 +28,11 @@ class TransferHistory(Base):
     transfer_task_id: Mapped[Optional[str]] = mapped_column(String(64))
     # 失败 pending 当前映射对应的结算版本
     transfer_settlement_revision: Mapped[Optional[int]] = mapped_column(Integer)
+    # 同一次目录整理的稳定批次信息，供历史页折叠展示和断点续整。
+    transfer_batch_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    transfer_batch_title: Mapped[Optional[str]] = mapped_column(String)
+    transfer_batch_root: Mapped[Optional[str]] = mapped_column(String)
+    transfer_batch_total: Mapped[Optional[int]] = mapped_column(Integer)
     # 源路径
     src: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 源存储

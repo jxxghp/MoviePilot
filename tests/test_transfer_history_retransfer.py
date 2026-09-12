@@ -46,6 +46,44 @@ def test_manual_music_transfer_forwards_entity_namespace(monkeypatch):
     assert captured["music_type"] == "album"
 
 
+def test_manual_transfer_forwards_existing_batch_identity(monkeypatch):
+    """继续未完成批次时，API 必须把原批次元数据完整传入整理链。"""
+    captured = {}
+
+    class FakeTransferChain:
+        """记录手动整理 API 向整理链传入的参数。"""
+
+        def manual_transfer(self, **kwargs):
+            captured.update(kwargs)
+            return True, ""
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+    response = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitem=FileItem(
+                storage="local",
+                path="/downloads/林俊杰合集",
+                name="林俊杰合集",
+                type="dir",
+            ),
+            skip_success=True,
+            transfer_batch_id="batch-artist-1",
+            transfer_batch_title="林俊杰合集",
+            transfer_batch_root="/downloads/林俊杰合集",
+            transfer_batch_total=24,
+        ),
+        background=True,
+        history_query=SimpleNamespace(get=lambda _history_id: None),
+        _="token",
+    )
+
+    assert response.success is True
+    assert captured["transfer_batch_id"] == "batch-artist-1"
+    assert captured["transfer_batch_title"] == "林俊杰合集"
+    assert captured["transfer_batch_root"] == "/downloads/林俊杰合集"
+    assert captured["transfer_batch_total"] == 24
+
+
 def test_manual_transfer_failure_returns_path_stage_and_recovery_action(monkeypatch):
     """文件管理器手动整理失败时，应直接返回源路径、失败阶段和恢复动作。"""
 

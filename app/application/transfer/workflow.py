@@ -744,6 +744,11 @@ class TransferTask(OptionalMediaIdentityMixin, _ApplicationModel):
     download_hash: Optional[str] = None
     download_history: Optional[DownloadHistorySnapshot] = None
     transfer_batch_id: Optional[str] = None
+    transfer_batch_title: Optional[str] = None
+    transfer_batch_root: Optional[str] = None
+    transfer_batch_total: Optional[int] = None
+    music_release_regions: Optional[List[str]] = None
+    music_release_scripts: Optional[List[str]] = None
     manual: Optional[bool] = False
     background: Optional[bool] = True
     preview: Optional[bool] = False
@@ -842,6 +847,15 @@ class TransferTask(OptionalMediaIdentityMixin, _ApplicationModel):
         dicts["meta"] = _domain_to_dict(self.meta) if self.meta else None
         dicts["mediainfo"] = _domain_to_dict(self.mediainfo) if self.mediainfo else None
         dicts["target_directory"] = self.target_directory.model_dump() if self.target_directory else None
+        # 新批次恢复上下文只属于宿主持久化协议，不扩张插件可见的旧任务字典 ABI。
+        for internal_field in (
+            "transfer_batch_title",
+            "transfer_batch_root",
+            "transfer_batch_total",
+            "music_release_regions",
+            "music_release_scripts",
+        ):
+            dicts.pop(internal_field, None)
         return dicts
 
 
@@ -896,6 +910,15 @@ class TransferAdmissionRepository(Protocol):
             replace_inactive: bool = False,
     ) -> TransferAdmission:
         """幂等登记源文件；显式重做可原子替换无有效租约且无历史绑定的旧任务。"""
+        ...
+
+    def admit_batch(
+            self,
+            *,
+            items: list[tuple[str, str, TransferPlanningInput]],
+            replace_inactive: bool = False,
+    ) -> list[TransferAdmission]:
+        """在一个事务中登记完整批次，避免扫描中断后未处理条目永久丢失。"""
         ...
 
     def record_enqueue_failure(self, *, task_id: str, error: str) -> None:

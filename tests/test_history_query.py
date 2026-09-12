@@ -120,6 +120,48 @@ async def test_list_transfer_preserves_glob_escaping() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_transfer_expands_one_persisted_batch_without_pagination() -> None:
+    """批次详情必须返回全部子项，不能被当前历史页拆散。"""
+    service, _, transfer_repository = _make_service()
+    transfer_repository.async_list_by_batch_id.return_value = [
+        SimpleNamespace(id=8, transfer_batch_id="batch-1"),
+        SimpleNamespace(id=7, transfer_batch_id="batch-1"),
+    ]
+    transfer_repository.async_count_by_batch_id.return_value = 2
+
+    page = await service.list_transfer(batch_id="batch-1", status=True)
+
+    assert [record.id for record in page.list] == [8, 7]
+    assert page.total == 2
+    transfer_repository.async_list_by_batch_id.assert_awaited_once_with(
+        "batch-1",
+        status=True,
+    )
+    transfer_repository.async_count_by_batch_id.assert_awaited_once_with(
+        "batch-1",
+        status=True,
+    )
+    transfer_repository.async_list_by_page.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_transfer_filters_download_task_history_before_batch_navigation() -> None:
+    """下载历史入口按 Hash 返回整个任务，并继续应用显式状态筛选。"""
+    service, _, transfer_repository = _make_service()
+    transfer_repository.async_list_by_hash.return_value = [
+        SimpleNamespace(id=3, status=True),
+        SimpleNamespace(id=2, status=False),
+    ]
+
+    page = await service.list_transfer(download_hash="download-1", status=False)
+
+    assert page.list == [TransferHistory(id=2, status=False)]
+    assert page.total == 1
+    transfer_repository.async_list_by_hash.assert_awaited_once_with("download-1")
+    transfer_repository.async_list_by_page.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_get_transfers_preserves_order_and_reports_missing_ids() -> None:
     """批量 AI 重做准备应保持去重后的输入顺序并报告缺失记录。"""
     service, _, transfer_repository = _make_service()

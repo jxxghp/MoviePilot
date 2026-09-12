@@ -838,6 +838,10 @@ def _execute_manual_transfer(
                 sync_extra_files=False,
                 cleanup_dest_fileitem=cleanup_dest_fileitem,
                 report_results=not transer_item.preview,
+                transfer_batch_id=transer_item.transfer_batch_id,
+                transfer_batch_title=transer_item.transfer_batch_title,
+                transfer_batch_root=transer_item.transfer_batch_root,
+                transfer_batch_total=transer_item.transfer_batch_total,
             )
             if transer_item.preview:
                 if isinstance(errormsg, dict):
@@ -933,6 +937,10 @@ def _execute_manual_transfer(
         sync_extra_files=selected_music_fileitems is None,
         cleanup_dest_fileitem=cleanup_dest_fileitem,
         selected_fileitems=selected_music_fileitems,
+        transfer_batch_id=transer_item.transfer_batch_id,
+        transfer_batch_title=transer_item.transfer_batch_title,
+        transfer_batch_root=transer_item.transfer_batch_root,
+        transfer_batch_total=transer_item.transfer_batch_total,
         report_results=not transer_item.preview,
     )
     if not transer_item.preview:

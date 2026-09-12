@@ -125,6 +125,62 @@ def _checkpoint(planning_input: TransferPlanningInput) -> TransferPlanCheckpoint
     )
 
 
+def _planning_input_for(path: str, *, batch_id: str) -> TransferPlanningInput:
+    """构造同一目录批次中的一条原始候选输入。"""
+    return TransferPlanningInput(
+        source_fileitem={"storage": "local", "path": path, "type": "file"},
+        options={
+            "transfer_batch_id": batch_id,
+            "transfer_batch_root": "/downloads/Artist Collection",
+            "transfer_batch_total": 2,
+        },
+    )
+
+
+def test_admit_batch_persists_every_candidate_before_claim(repository) -> None:
+    """大合集必须一次提交全部候选，且登记后仍保持未 claim 的 accepted 状态。"""
+    first = _planning_input_for("/downloads/Artist Collection/01.flac", batch_id="batch-1")
+    second = _planning_input_for("/downloads/Artist Collection/02.flac", batch_id="batch-1")
+
+    admissions = repository.admit_batch(
+        items=[
+            ("local", first.source_fileitem["path"], first),
+            ("local", second.source_fileitem["path"], second),
+        ]
+    )
+
+    assert [item.state for item in admissions] == [TRANSFER_ADMISSION_ACCEPTED] * 2
+    assert all(item.lease_token is None for item in admissions)
+    assert {item.planning_input.options["transfer_batch_id"] for item in admissions} == {"batch-1"}
+
+
+def test_admit_batch_rolls_back_every_new_candidate_on_conflict(repository) -> None:
+    """批次中任一既有输入冲突时不得留下其余半批登记。"""
+    conflict_path = "/downloads/Artist Collection/01.flac"
+    repository.admit(
+        storage="local",
+        src_path=conflict_path,
+        planning_input=_planning_input_for(conflict_path, batch_id="old-batch"),
+    )
+    new_path = "/downloads/Artist Collection/02.flac"
+    with pytest.raises(TransferAdmissionConflictError):
+        repository.admit_batch(
+            items=[
+                (
+                    "local",
+                    conflict_path,
+                    _planning_input_for(conflict_path, batch_id="new-batch"),
+                ),
+                ("local", new_path, _planning_input_for(new_path, batch_id="new-batch")),
+            ]
+        )
+
+    with repository._session_factory() as session:  # noqa: SLF001
+        assert session.execute(
+            select(TransferPending).where(TransferPending.src_path == new_path)
+        ).scalar_one_or_none() is None
+
+
 def _provider_checkpoint(
         planning_input: TransferPlanningInput,
 ) -> TransferPlanCheckpoint:

@@ -58,6 +58,10 @@ def success_fields(
     transferinfo: TransferInfo,
     downloader: Optional[str] = None,
     download_hash: Optional[str] = None,
+    transfer_batch_id: Optional[str] = None,
+    transfer_batch_title: Optional[str] = None,
+    transfer_batch_root: Optional[str] = None,
+    transfer_batch_total: Optional[int] = None,
 ) -> dict[str, Any]:
     """
     投影转移成功记录，不执行数据库写入。
@@ -73,6 +77,10 @@ def success_fields(
     media_source, media_id = resolve_media_identity(media=mediainfo)
     return dict(
         src=history_source_path(fileitem),
+        transfer_batch_id=transfer_batch_id,
+        transfer_batch_title=transfer_batch_title,
+        transfer_batch_root=transfer_batch_root,
+        transfer_batch_total=transfer_batch_total,
         src_storage=fileitem.storage,
         src_fileitem=fileitem.model_dump(),
         dest=transferinfo.target_item.path if transferinfo.target_item else None,
@@ -114,6 +122,10 @@ def failure_fields(
     download_hash: Optional[str] = None,
     retry_count: Optional[int] = None,
     auto_paused: bool = False,
+    transfer_batch_id: Optional[str] = None,
+    transfer_batch_title: Optional[str] = None,
+    transfer_batch_root: Optional[str] = None,
+    transfer_batch_total: Optional[int] = None,
 ) -> dict[str, Any]:
     """
     投影转移失败记录，不执行数据库写入。
@@ -145,6 +157,10 @@ def failure_fields(
         media_source, media_id = resolve_media_identity(media=mediainfo)
         history = dict(
             src=history_source_path(fileitem),
+            transfer_batch_id=transfer_batch_id,
+            transfer_batch_title=transfer_batch_title,
+            transfer_batch_root=transfer_batch_root,
+            transfer_batch_total=transfer_batch_total,
             src_storage=fileitem.storage,
             src_fileitem=fileitem.model_dump(),
             dest=transferinfo.target_item.path if transferinfo.target_item else None,
@@ -183,6 +199,10 @@ def failure_fields(
     else:
         media_source, media_id = resolve_media_identity(media=meta)
         history = dict(
+            transfer_batch_id=transfer_batch_id,
+            transfer_batch_title=transfer_batch_title,
+            transfer_batch_root=transfer_batch_root,
+            transfer_batch_total=transfer_batch_total,
             type=meta.type.value if meta.type else None,
             title=history_title(meta),
             year=history_year(meta.year),

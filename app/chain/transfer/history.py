@@ -62,7 +62,12 @@ class TransferHistoryOwner(_TransferOwnerBase):
             skip_success: bool = False,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """批次、回执或成功记录过滤走内部入口，普通请求保持公开签名兼容。"""
-        if selected_fileitems is not None or report_results or skip_success:
+        if (
+            selected_fileitems is not None
+            or report_results
+            or skip_success
+            or transfer_kwargs.get("request_transfer_batch_id")
+        ):
             return cast(
                 Tuple[bool, Union[str, dict[str, Any]]],
                 self._execute_transfer(
@@ -197,6 +202,10 @@ class TransferHistoryOwner(_TransferOwnerBase):
             selected_fileitems: Optional[list[FileItem]] = None,
             report_results: bool = False,
             skip_success: bool = False,
+            transfer_batch_id: Optional[str] = None,
+            transfer_batch_title: Optional[str] = None,
+            transfer_batch_root: Optional[str] = None,
+            transfer_batch_total: Optional[int] = None,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         手动整理，支持复杂条件，带进度显示
@@ -228,6 +237,10 @@ class TransferHistoryOwner(_TransferOwnerBase):
         :param selected_fileitems: 前端显式选中的批量文件
         :param report_results: 返回实际阶段回执，后台接收不表示入库完成
         :param skip_success: 预览和执行均跳过成功记录，优先于强制整理和重整
+        :param transfer_batch_id: 继续整理时沿用的批次标识
+        :param transfer_batch_title: 继续整理时沿用的批次名称
+        :param transfer_batch_root: 继续整理时沿用的源根目录
+        :param transfer_batch_total: 继续整理时沿用的原候选总数
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         explicit_identity = media_source is not None or media_id is not None
@@ -257,6 +270,10 @@ class TransferHistoryOwner(_TransferOwnerBase):
             cleanup_dest_fileitem=cleanup_dest_fileitem,
             music_release_regions=music_release_regions,
             music_release_scripts=music_release_scripts,
+            request_transfer_batch_id=transfer_batch_id,
+            request_transfer_batch_title=transfer_batch_title,
+            request_transfer_batch_root=transfer_batch_root,
+            request_transfer_batch_total=transfer_batch_total,
         )
         if media_source and media_id:
             # 有输入媒体ID时预先识别，音乐与影视统一走 recognize_media 按类型分发

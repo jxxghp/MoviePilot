@@ -148,6 +148,55 @@ class TransferHistoryOper(DbOper):
             lambda session: TransferHistory.async_get(session, historyid)
         )
 
+    async def async_list_by_batch_id(
+        self,
+        batch_id: str,
+        status: Optional[bool] = None,
+    ) -> list[TransferHistory]:
+        """按批次标识返回全部整理历史。"""
+        async def execute(session: AsyncSession) -> list[TransferHistory]:
+            statement = select(TransferHistory).where(
+                TransferHistory.transfer_batch_id == batch_id
+            )
+            if status is not None:
+                statement = statement.where(TransferHistory.status.is_(status))
+            statement = statement.order_by(
+                TransferHistory.date.desc(),
+                TransferHistory.id.desc(),
+            )
+            result = await session.execute(statement)
+            return list(result.scalars().all())
+
+        return await self._execute_async_query(execute)
+
+    async def async_list_by_hash(self, download_hash: str) -> list[TransferHistory]:
+        """按下载任务 Hash 返回全部整理历史。"""
+        async def execute(session: AsyncSession) -> list[TransferHistory]:
+            result = await session.execute(
+                select(TransferHistory)
+                .where(TransferHistory.download_hash == download_hash)
+                .order_by(TransferHistory.date.desc(), TransferHistory.id.desc())
+            )
+            return list(result.scalars().all())
+
+        return await self._execute_async_query(execute)
+
+    async def async_count_by_batch_id(
+        self,
+        batch_id: str,
+        status: Optional[bool] = None,
+    ) -> int:
+        """按批次标识统计整理历史。"""
+        async def execute(session: AsyncSession) -> int:
+            statement = select(func.count(TransferHistory.id)).where(
+                TransferHistory.transfer_batch_id == batch_id
+            )
+            if status is not None:
+                statement = statement.where(TransferHistory.status.is_(status))
+            return int((await session.execute(statement)).scalar() or 0)
+
+        return await self._execute_async_query(execute)
+
     async def async_list_by_title(
         self,
         title: str,
