@@ -400,10 +400,10 @@ def _normalize_app_server_notification(method: str, params: Any) -> dict[str, An
     payload = params if isinstance(params, dict) else {}
     if method == "turn/started":
         turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
-        return {"type": "turn.started", "turn_id": turn.get("id")}
+        return {"type": "turn.started", "thread_id": payload.get("threadId"), "turn_id": turn.get("id")}
     if method == "turn/completed":
         turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
-        return {"type": "turn.completed", "turn_id": turn.get("id")}
+        return {"type": "turn.completed", "thread_id": payload.get("threadId"), "turn_id": turn.get("id")}
     if method == "item/started":
         return {
             "type": "item.started", "thread_id": payload.get("threadId"),
@@ -437,6 +437,38 @@ def _normalize_app_server_notification(method: str, params: Any) -> dict[str, An
     return {"type": "native.notification", "method": method} if method else None
 
 
+def _append_thread_history_events(events: list[dict[str, Any]], thread: Any) -> None:
+    """把 thread/read 返回的子代理历史转换为带 scope 的完成事件。"""
+    if not isinstance(thread, dict):
+        return
+    thread_id = thread.get("id")
+    if not isinstance(thread_id, str) or not thread_id:
+        return
+    turns = thread.get("turns")
+    if not isinstance(turns, list):
+        return
+    for turn in turns:
+        if not isinstance(turn, dict):
+            continue
+        turn_id = turn.get("id")
+        if not isinstance(turn_id, str) or not turn_id:
+            continue
+        items = turn.get("items")
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            normalized = _normalize_app_server_item(item)
+            if normalized.get("type") == "unknown":
+                continue
+            events.append({
+                "type": "item.completed",
+                "thread_id": thread_id,
+                "turn_id": turn_id,
+                "item": normalized,
+                "thread_history": True,
+            })
+
+
 async def _execute_app_server(
     command: list[str], prompt: str, environment: dict[str, str], work_dir: Path, timeout: int,
     *, model: str, reasoning_effort: str, steering_message: str = "",
@@ -466,6 +498,9 @@ async def _execute_app_server(
     business_tool_count = 0
     steering_requests: dict[int, tuple[int, str]] = {}
     steering_request_pending = False
+    child_thread_ids: set[str] = set()
+    child_thread_read_requests: dict[int, str] = {}
+    child_thread_read_requested: set[str] = set()
 
     async def send_request(method: str, params: dict[str, Any]) -> int:
         """发送带序号的 JSON-RPC 请求，并记录响应所属方法。"""
@@ -493,6 +528,15 @@ async def _execute_app_server(
             }) + "\n").encode()
         )
         await process.stdin.drain()
+
+    async def send_child_thread_reads_if_ready() -> None:
+        """在父轮次结束后读取已完成子代理历史，补齐可能遗漏的终端 item。"""
+        if not turn_completed:
+            return
+        for child_id in sorted(child_thread_ids - child_thread_read_requested):
+            request_id = await send_request("thread/read", {"threadId": child_id, "includeTurns": True})
+            child_thread_read_requests[request_id] = child_id
+            child_thread_read_requested.add(child_id)
 
     async def send_next_steering_if_ready() -> None:
         """在达到计划回执边界后逐条发送 steering，并保留请求身份。"""
@@ -531,6 +575,7 @@ async def _execute_app_server(
         request_id = payload.get("id")
         method = pending.pop(request_id, None) if type(request_id) is int else None
         steering_request = steering_requests.pop(request_id, None) if type(request_id) is int else None
+        child_thread_id = child_thread_read_requests.pop(request_id, None) if type(request_id) is int else None
         if method is None:
             await send_server_error(request_id)
             failure = failure or "unexpected_server_request"
@@ -541,6 +586,8 @@ async def _execute_app_server(
                 steering_request_pending = False
                 events.append({"type": "evaluation.steering.failed", "status": "failed",
                                "message_id": steering_request[1] if steering_request else NATIVE_STEERING_MESSAGE_ID})
+            elif method == "thread/read":
+                events.append({"type": "evaluation.child_thread_read.failed", "thread_id": child_thread_id})
             return
         if method == "initialize":
             await send_notification("initialized")
@@ -569,6 +616,10 @@ async def _execute_app_server(
             events.append({"type": "evaluation.steering.applied", "status": "applied",
                            "message_id": steering_request[1] if steering_request else NATIVE_STEERING_MESSAGE_ID})
             await send_next_steering_if_ready()
+        elif method == "thread/read":
+            result = payload.get("result")
+            thread = result.get("thread") if isinstance(result, dict) else None
+            _append_thread_history_events(events, thread)
 
     try:
         async with asyncio.timeout(timeout):
@@ -607,6 +658,15 @@ async def _execute_app_server(
                     events.append(event)
                     item = event.get("item")
                     if (
+                        isinstance(item, dict)
+                        and item.get("type") == "collab_tool_call"
+                        and item.get("tool") == "spawn_agent"
+                    ):
+                        child_thread_ids.update(
+                            child_id for child_id in item.get("receiver_thread_ids", [])
+                            if isinstance(child_id, str) and child_id
+                        )
+                    if (
                         event.get("type") == "item.completed"
                         and isinstance(item, dict)
                         and item.get("type") == "mcpToolCall"
@@ -620,7 +680,10 @@ async def _execute_app_server(
                     turn_completed = True
                     if schedule and any(value == "turn/steer" for value in pending.values()):
                         continue
-                    break
+                    await send_child_thread_reads_if_ready()
+                    if not child_thread_read_requests:
+                        break
+                    continue
                 if "id" in payload:
                     await send_server_error(payload["id"])
                     failure = failure or "unexpected_server_request"

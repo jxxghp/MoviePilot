@@ -95,6 +95,25 @@ def test_normalize_app_server_preserves_collaboration_scope_and_action() -> None
     assert _delegation_task_count([event]) == 1
 
 
+def test_append_thread_history_events_preserves_child_scope() -> None:
+    """thread/read 的历史命令应保留子代理线程和轮次身份。"""
+    events: list[dict[str, Any]] = []
+    codex._append_thread_history_events(events, {
+        "id": "child", "turns": [{"id": "turn-child", "items": [{
+            "type": "commandExecution", "id": "command-child", "command": "printf READY",
+            "status": "completed", "aggregatedOutput": "READY\\n", "exitCode": 0,
+        }]}],
+    })
+    assert events == [{
+        "type": "item.completed", "thread_id": "child", "turn_id": "turn-child",
+        "item": {
+            "type": "command_execution", "id": "command-child", "command": "printf READY",
+            "cwd": None, "process_id": None, "status": "completed", "aggregated_output": "READY\\n",
+            "exit_code": 0, "command_actions": None,
+        }, "thread_history": True,
+    }]
+
+
 @pytest.mark.asyncio
 async def test_execute_sends_exact_prompt_and_preserves_nonzero_exit_output(tmp_path: Path) -> None:
     """真实假程序从 stdin 接收公开输入，非零退出与两路输出不得被丢弃。"""
