@@ -381,6 +381,7 @@ SCHEMA_EXPORTS = {
     'PluginTriggeredEventData': ('app.schemas.event', 'PluginTriggeredEventData'),
     'PluginUpdateCandidate': ('app.schemas.plugin', 'PluginUpdateCandidate'),
     'PluginWorkflowActionGroup': ('app.schemas.workflow', 'PluginWorkflowActionGroup'),
+    'PrivateAttr': ('app.schemas.context', 'PrivateAttr'),
     'ProcessInfo': ('app.schemas.dashboard', 'ProcessInfo'),
     'ProgressKeyData': ('app.schemas.common', 'ProgressKeyData'),
     'RadarrMovie': ('app.schemas.servarr', 'RadarrMovie'),
