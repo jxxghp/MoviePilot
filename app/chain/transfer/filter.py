@@ -637,8 +637,30 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         return merged_meta, merged_info
 
 
-class FileFilterMixin(_MusicFileFilterBase):
+class FileFilterMixin(_TransferOwnerBase):
     """提供整理文件筛选、音乐批次上下文和源目录清理判定。"""
+
+    __mixin_host_protocol__ = TransferMixinHost
+    _prepare_music_batch_context = _prepare_music_batch_context
+    _resolve_music_batch_file_context = _resolve_music_batch_file_context
+    _requires_automatic_category = staticmethod(
+        _MusicFileFilterBase._requires_automatic_category
+    )
+    _is_subtitle_file = _MusicFileFilterBase._is_subtitle_file
+    _is_audio_file = _MusicFileFilterBase._is_audio_file
+    _is_music_lyrics_file = staticmethod(_MusicFileFilterBase._is_music_lyrics_file)
+    _is_media_file = _MusicFileFilterBase._is_media_file
+    _is_primary_media_file = _MusicFileFilterBase._is_primary_media_file
+    _music_info_from_meta = staticmethod(_MusicFileFilterBase._music_info_from_meta)
+    _match_music_album_context = classmethod(
+        _MusicFileFilterBase._match_music_album_context.__func__
+    )
+    _match_music_recording_context = classmethod(
+        _MusicFileFilterBase._match_music_recording_context.__func__
+    )
+    _merge_music_track_context = classmethod(
+        _MusicFileFilterBase._merge_music_track_context.__func__
+    )
 
     def _selected_music_track_map(
             self,

@@ -392,8 +392,15 @@ class _RecognitionPlanningMixin:
         )
 
 
-class RecognitionMixin(_RecognitionPlanningMixin):
+class RecognitionMixin:
     """为媒体 Chain 提供本地识别、共享识别和插件补充识别流程。"""
+
+    __mixin_host_protocol__ = ChainRuntimeMixinHost
+    eventmanager: Any
+    _finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._finalize_recognition_result)
+    _async_finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._async_finalize_recognition_result)
+    _runtime_host = _RecognitionPlanningMixin._runtime_host
+    _build_recognition_plan = staticmethod(_RecognitionPlanningMixin._build_recognition_plan)
 
     def _can_use_media_recognize_share(
             self,
