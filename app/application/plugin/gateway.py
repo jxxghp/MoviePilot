@@ -94,7 +94,9 @@ class PluginInstallGateway:
     ) -> PluginInstallResult:
         """读取冻结库存并执行一次不能绕过来源身份的插件写入。"""
         try:
-            inventory = await self.__inventory(force)
+            # 安装 ``force`` 只控制载荷覆盖；远程市场索引由市场手动刷新和
+            # 定时缓存任务维护，不能让单个插件更新放大全部仓库请求。
+            inventory = await self.__inventory(False)
             async with plugin_lifecycle.hold(plugin_id, startup_token):
                 identity = await self.__identity(plugin_id)
                 admission = admit_plugin_install(

@@ -248,6 +248,7 @@ async def runtime_status(
         _SchemaPluginRuntimeStatus.READY,
     }
     failed = {
+        _SchemaPluginRuntimeStatus.SYNC_FAILED,
         _SchemaPluginRuntimeStatus.BLOCKED_BY_POLICY,
         _SchemaPluginRuntimeStatus.LOAD_FAILED,
     }

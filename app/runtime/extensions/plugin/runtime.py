@@ -280,7 +280,9 @@ def build_plugin_runtime(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
         online_plugins=catalog.online,
-        local_plugins=catalog.local_repository,
+        # 启动恢复必须保留本地仓库扫描失败，不能把异常降级为空候选后
+        # 再从在线市场下载覆盖当前载荷。
+        local_plugins=lambda: catalog.local_repository(raise_errors=True),
         merge_plugins=lambda higher, base, _markets: catalog.merge(higher, base),
         plugin_exists=catalog.exists,
         install=lambda plugin_id, repo_url, force, startup_token: environment.system().install_plugin(
@@ -289,6 +291,7 @@ def build_plugin_runtime(
             force=force,
             startup_token=startup_token,
         ),
+        runtime_status_writer=registry.set_runtime_status,
         log=environment.logger,
     )
     def source_plugin_id(plugin_id: str) -> str:

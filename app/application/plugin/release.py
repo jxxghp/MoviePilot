@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from app.application.plugin.catalog import apply_declared_metadata_fallback
-from app.application.plugin.identity import PluginIdentity
+from app.application.plugin.identity import PluginIdentity, PluginPayloadSourceType
 from app.schemas.plugin import Plugin
 
 MarketPluginLoader = Callable[[str, str | None, bool], Awaitable[list[Plugin] | None]]
@@ -77,16 +77,26 @@ class PluginReleaseService:
             (plugin for plugin in self._local_repo_plugins() if plugin.id == plugin_id),
             None,
         )
-        if local_plugin is not None:
-            return _merge_market_metadata(installed_plugin, local_plugin)
+        if identity is not None and identity.payload_source_type is PluginPayloadSourceType.LOCAL:
+            return (
+                _merge_market_metadata(installed_plugin, local_plugin)
+                if local_plugin is not None
+                else installed_plugin
+            )
 
         repo_url = _trusted_repo_url(identity)
-        if repo_url is None:
-            return installed_plugin
-        market_plugin = await self._market_plugin(plugin_id, repo_url, force)
+        if repo_url is not None:
+            market_plugin = await self._market_plugin(plugin_id, repo_url, force)
+            return (
+                _merge_market_metadata(installed_plugin, market_plugin)
+                if market_plugin is not None
+                else installed_plugin
+            )
+
+        # 尚未建立来源身份的本地插件继续使用本地仓库元数据，兼容首次迁移前的运行态。
         return (
-            _merge_market_metadata(installed_plugin, market_plugin)
-            if market_plugin is not None
+            _merge_market_metadata(installed_plugin, local_plugin)
+            if local_plugin is not None
             else installed_plugin
         )
 

@@ -141,3 +141,5 @@ def test_local_repository_failure_does_not_break_catalog_projection():
     assert warnings == [
         "读取本地插件仓候选失败，已跳过本地目录展示：invalid local package"
     ]
+    with pytest.raises(RuntimeError, match="invalid local package"):
+        facade.local_repository(raise_errors=True)

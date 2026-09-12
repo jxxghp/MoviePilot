@@ -126,10 +126,11 @@ class PluginLocalCandidate:
         return None
 
     def public_dict(self) -> dict[str, Any]:
-        """生成本地候选的公共投影，永不暴露仓库路径或原始 metadata。"""
+        """生成本地候选的公共投影，保留管理员配置的仓库路径。"""
         return {
             "plugin_id": self.plugin_id,
             "source_type": PluginPayloadSourceType.LOCAL.value,
+            "repo_url": self.repo_url,
             "package_generation": self.package_generation,
             "plugin_version": self.plugin_version,
         }

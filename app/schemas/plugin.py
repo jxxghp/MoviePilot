@@ -10,8 +10,9 @@ from app.schemas.common import JsonData
 
 
 class PluginRuntimeStatus(str, _Enum):
-    """插件从源码准备到运行激活的六类状态。"""
+    """插件从来源同步、依赖准备到运行激活的状态。"""
 
+    SYNC_FAILED = "sync_failed"
     SOURCE_MISSING = "source_missing"
     DEPENDENCY_PENDING = "dependency_pending"
     READY = "ready"
@@ -266,14 +267,14 @@ class PluginSourceIdentity(BaseModel):  # type: ignore[misc]
 class PluginSourceCandidate(BaseModel):  # type: ignore[misc]
     """一个可供管理员识别的脱敏插件来源候选。"""
 
-    source_type: Literal["official", "third_party", "local"] = Field(description="来源类型；本地候选不公开路径")
+    source_type: Literal["official", "third_party", "local"] = Field(description="来源类型")
     source_key: Optional[str] = Field(
         default=None,
         description="规范化在线来源键；本地候选为空",
     )
     repo_url: Optional[str] = Field(
         default=None,
-        description="可明确选择的在线仓库地址；本地候选为空",
+        description="可明确选择的在线仓库地址或本地仓库标识",
     )
     package_generation: Literal["v1", "v2", "v3"] = Field(description="当前运行时会采用的插件包代际")
     plugin_version: Optional[str] = Field(
