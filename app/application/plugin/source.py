@@ -14,6 +14,7 @@ from app.application.plugin.identity import (
     normalize_physical_plugin_id,
     validate_online_source_key,
 )
+from app.domain.plugin import build_local_plugin_source
 from app.application.plugin.identity import (
     PluginSourceCandidate as IdentitySourceCandidate,
 )
@@ -126,11 +127,17 @@ class PluginLocalCandidate:
         return None
 
     def public_dict(self) -> dict[str, Any]:
-        """生成本地候选的公共投影，保留管理员配置的仓库路径。"""
+        """生成不包含本地仓库路径的公共候选投影。"""
+        public_repo_url = build_local_plugin_source(
+            self.plugin_id,
+            package_generation=(
+                None if self.package_generation == "v1" else self.package_generation
+            ),
+        )
         return {
             "plugin_id": self.plugin_id,
             "source_type": PluginPayloadSourceType.LOCAL.value,
-            "repo_url": self.repo_url,
+            "repo_url": public_repo_url,
             "package_generation": self.package_generation,
             "plugin_version": self.plugin_version,
         }
