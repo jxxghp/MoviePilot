@@ -143,6 +143,31 @@ def music_title_matches(music: MusicInfo, title: Optional[str], *, preserve_edit
     ))
 
 
+def music_album_matches(music: MusicInfo, album: Optional[str]) -> bool:
+    """核验所属专辑本体，忽略 Deluxe 等发行装帧说明但保留录音版本边界。"""
+    def album_key(value: Optional[str]) -> str:
+        """目录常在发行说明后附加 CD1/Disc 2，不应改变专辑身份。"""
+        base = music_base_title(normalize("NFKC", str(value or "")))
+        base = re.sub(r"[\s._-]*(?:cd|disc|disk)\s*\d+$", "", base, flags=re.I)
+        return music_text_key(base)
+
+    expected = album_key(album)
+    return bool(expected and any(
+        expected == album_key(name)
+        for name in music_titles(music, album=True)
+    ))
+
+
+def music_year_matches(music: MusicInfo, meta: MetaMusic) -> bool:
+    """双方都有发行年份时要求一致；任一侧未知时不凭空制造冲突。"""
+    if not music.year or not meta.year:
+        return True
+    try:
+        return int(music.year) == int(meta.year)
+    except (TypeError, ValueError):
+        return str(music.year).strip() == str(meta.year).strip()
+
+
 def _isrc_key(value: Optional[str]) -> Optional[str]:
     """校验 12 位 ISRC 结构，兼容展示前缀、空白和分隔符，不接受占位值。"""
     code = re.sub(r"[\s-]+", "", str(value or ""))

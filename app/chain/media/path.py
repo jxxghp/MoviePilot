@@ -20,12 +20,14 @@ from app.domain.media import is_music_media_source
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
 from app.domain.music import (
+    music_album_matches,
     music_artist_matches,
     music_base_title,
     music_text_key,
     music_title_matches,
     music_titles,
     music_version_matches,
+    music_year_matches,
 )
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
@@ -206,6 +208,10 @@ def _fingerprint_info_matches_evidence(
     if not music_artist_matches(info, artist_evidence):
         return False
     if not music_version_matches(info, primary):
+        return False
+    if primary.album and info.album and not music_album_matches(info, primary.album):
+        return False
+    if not music_year_matches(info, primary):
         return False
     if music_title_matches(info, primary.title):
         return True

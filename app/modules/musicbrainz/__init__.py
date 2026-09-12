@@ -20,6 +20,7 @@ from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import (
+    music_album_matches,
     music_artist_affix_matches,
     music_artist_matches,
     music_base_title,
@@ -28,6 +29,7 @@ from app.domain.music import (
     music_title_matches,
     music_titles,
     music_version_matches,
+    music_year_matches,
     unique_music_texts,
 )
 from app.foundation.text import convert as zhconv_convert
@@ -1325,8 +1327,16 @@ class MusicBrainzModule(_ModuleBase):
             return None
         if plan.music_type and cached_info.music_type != plan.music_type:
             return None
-        if cached_info.media_id and not music_isrc_matches(cached_info, meta) and not music_version_matches(cached_info, meta):
-            return None
+        if cached_info.media_id:
+            album_matches = not meta.album or not cached_info.album or music_album_matches(cached_info, meta.album)
+            release_matches = album_matches and music_year_matches(cached_info, meta)
+            identity_matches = (
+                (not meta.artists or music_artist_matches(cached_info, meta.artists))
+                and (not meta.title or music_title_matches(cached_info, meta.title))
+                and music_version_matches(cached_info, meta)
+            )
+            if not release_matches or (not music_isrc_matches(cached_info, meta) and not identity_matches):
+                return None
         if cached_info.media_id:
             logger.info(f"{meta.title} 使用音乐识别缓存：{cached_info.title}")
         else:
@@ -1458,7 +1468,9 @@ class MusicBrainzModule(_ModuleBase):
         for candidate in candidates:
             if normalized_source and str(candidate.media_source or "").casefold() != normalized_source:
                 continue
-            if music_isrc_matches(candidate, meta):
+            album_matches = not meta.album or not candidate.album or music_album_matches(candidate, meta.album)
+            release_matches = album_matches and music_year_matches(candidate, meta)
+            if music_isrc_matches(candidate, meta) and release_matches:
                 # 相同 ISRC 是明确录音身份，不能被另一条纯标题命中的得分压过。
                 return candidate
             score = 0
@@ -1486,7 +1498,10 @@ class MusicBrainzModule(_ModuleBase):
                 score += 1
             # 非显式身份必须同时满足作品名、已有署名与版本，不能只靠累计得分确认。
             if (
-                (meta.artists and not artist_match) or not title_match or not music_version_matches(candidate, meta)
+                (meta.artists and not artist_match)
+                or not title_match
+                or not music_version_matches(candidate, meta)
+                or not release_matches
             ):
                 continue
             ranked.append((exact_title, score, candidate))

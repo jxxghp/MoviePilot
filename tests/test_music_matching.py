@@ -13,7 +13,13 @@ from app.domain.context import Context, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.runtime import get_metainfo_accelerator
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.domain.music import match_music_resource, music_isrc_matches, music_version_matches
+from app.domain.music import (
+    match_music_resource,
+    music_album_matches,
+    music_isrc_matches,
+    music_version_matches,
+    music_year_matches,
+)
 from app.schemas.music import MusicMeta
 from app.schemas.types import MediaType
 
@@ -199,6 +205,25 @@ def test_taylors_version_is_distinct_from_original_recording():
 
     assert music_version_matches(rerecorded, original) is False
     assert music_version_matches(rerecorded, same_version) is True
+
+
+def test_music_release_evidence_rejects_wrong_album_and_year():
+    """同名同艺人的录音仍须服从文件标签中的专辑本体和发行年份。"""
+    info = MusicInfo(
+        title="Sparks Fly",
+        artists=["Taylor Swift"],
+        album="Speak Now",
+        year=2025,
+    )
+    meta = MetaMusic(
+        title="Sparks Fly",
+        artists=["Taylor Swift"],
+        album="Speak Now (Target Exclusive Deluxe Edition 2CD).CD1",
+        year=2010,
+    )
+
+    assert music_album_matches(info, meta.album) is True
+    assert music_year_matches(info, meta) is False
 
 
 def test_music_resource_rejects_different_dated_live_recording():

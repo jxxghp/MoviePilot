@@ -1221,6 +1221,28 @@ def test_select_candidate_rejects_wrong_artist_same_title():
     assert MusicBrainzModule._select_candidate(meta, [wrong_artist], media_source="musicbrainz") is None
 
 
+def test_select_candidate_rejects_wrong_release_year_and_album():
+    """曲名和艺人相同也不能把有明确专辑证据的原版投影到其他发行版。"""
+    meta = MetaMusic(
+        title="Sparks Fly",
+        artists=["Taylor Swift"],
+        album="Speak Now",
+        year=2010,
+    )
+    wrong_release = MusicInfo(
+        media_source="musicbrainz",
+        media_id="recording-wrong-release",
+        title="Sparks Fly",
+        artists=["Taylor Swift"],
+        album="Now That's What I Call Music",
+        year=2025,
+    )
+
+    assert MusicBrainzModule._select_candidate(
+        meta, [wrong_release], media_source="musicbrainz"
+    ) is None
+
+
 def test_select_candidate_rejects_artist_only_match():
     """CJK 逐字 OR 检索召回宽，标题未命中的候选不能仅凭艺术家署名被采信。"""
     meta = MetaMusic(title="茹此精彩十三首", artists=["许茹芸"])
