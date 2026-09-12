@@ -123,6 +123,19 @@ def test_read_file_can_return_sha256_metadata(tmp_path):
     assert payload["truncated"] is False
 
 
+def test_read_file_rejects_invalid_line_ranges(tmp_path):
+    """非法行号必须明确失败，不能静默裁剪成另一段内容。"""
+    file_path = tmp_path / "range.py"
+    file_path.write_text("one\ntwo\n", encoding="utf-8")
+    tool = _make_admin_tool(ReadFileTool)
+
+    below_one = asyncio.run(tool.run(str(file_path), start_line=0))
+    reversed_range = asyncio.run(tool.run(str(file_path), start_line=2, end_line=1))
+
+    assert "start_line" in below_one and "有效范围" in below_one
+    assert "end_line 不能小于 start_line" in reversed_range
+
+
 def test_read_file_returns_line_range_hint_when_truncated(tmp_path):
     """超过50KB时应保留前段内容并提示按行号范围继续读取。"""
     file_path = tmp_path / "large.py"

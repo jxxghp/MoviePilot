@@ -1,5 +1,6 @@
 """文件精确编辑工具。"""
 
+import json
 from pathlib import Path
 from typing import Optional, Type
 
@@ -153,10 +154,20 @@ class EditFileTool(MoviePilotTool):
             )
 
         except FileVersionConflictError:
-            return (
-                f"错误：文件 {file_path} 在编辑期间发生变化，拒绝覆盖。"
-                "请重新读取文件并再次编辑。"
-            )
+            current_sha256 = None
+            try:
+                current_sha256 = await self.run_blocking(
+                    "default", calculate_file_sha256, Path(file_path)
+                )
+            except (OSError, ValueError):
+                pass
+            return json.dumps({
+                "success": False,
+                "execution_outcome": "failed",
+                "error": f"文件 {file_path} 在编辑期间发生变化，拒绝覆盖。",
+                "current_sha256": current_sha256,
+                "recovery": "重新读取文件并取得新的 sha256，再基于最新内容编辑；不要覆盖未知版本。",
+            }, ensure_ascii=False)
         except PermissionError:
             return f"错误：没有访问/修改 {file_path} 的权限"
         except UnicodeDecodeError:

@@ -68,6 +68,12 @@ class ReadFileTool(MoviePilotTool):
         logger.info(f"执行工具: {self.name}, 参数: file_path={file_path}, start_line={start_line}, end_line={end_line}")
 
         try:
+            if start_line is not None and start_line < 1:
+                return "错误：start_line 必须是从 1 开始的行号；请提供有效范围后重试。"
+            if end_line is not None and end_line < 1:
+                return "错误：end_line 必须是从 1 开始的行号；请提供有效范围后重试。"
+            if start_line is not None and end_line is not None and end_line < start_line:
+                return "错误：end_line 不能小于 start_line；请调整读取范围后重试。"
             resolved_path, access_error = await self._check_local_file_access(
                 file_path, operation="读取"
             )
