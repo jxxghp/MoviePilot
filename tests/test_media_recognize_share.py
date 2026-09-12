@@ -696,6 +696,54 @@ def test_chain_recognize_media_queries_music_share_after_local_fallback():
     assert recognize_source.call_count == 2
 
 
+def test_chain_recognize_media_rejects_conflicting_music_share_identity():
+    """共享同名曲目若属于另一艺人，应保留本地标签结果且不得计为共享命中。"""
+    chain = MediaChain()
+    _enable_media_recognize_share(chain)
+    meta = MetaMusic(title="晴天", artists=["周杰伦"])
+    fallback = MusicInfo(title="晴天", artists=["周杰伦"])
+    conflicting = MusicInfo(
+        media_source="musicbrainz",
+        media_id="other-recording",
+        title="晴天",
+        artists=["另一位艺人"],
+    )
+
+    with patch.object(
+        chain,
+        "recognize_music_from_source",
+        side_effect=[fallback, conflicting],
+    ), patch(
+        "app.startup.composition.chain.MoviePilotServerHelper.query_recognize_share",
+        return_value={
+            "type": "music",
+            "media_source": "musicbrainz",
+            "media_id": "other-recording",
+            "music_type": "recording",
+        },
+    ), patch(
+        "app.startup.composition.chain.MoviePilotServerHelper.to_recognize_params",
+        return_value={
+            "mtype": MediaType.MUSIC,
+            "media_source": MediaSource.MusicBrainz,
+            "media_id": "other-recording",
+            "music_type": "recording",
+            "season": None,
+        },
+    ), patch.object(
+        chain,
+        "_update_local_recognize_cache",
+    ) as update_cache, patch.object(
+        chain,
+        "_record_media_recognize_share_hit",
+    ) as increment_share_count:
+        result = chain.recognize_media(meta=meta, cache=False)
+
+    assert result is fallback
+    update_cache.assert_not_called()
+    increment_share_count.assert_not_called()
+
+
 def test_chain_async_recognize_media_queries_music_share_after_local_fallback():
     """异步音乐识别也必须在返回本地兜底前尝试共享身份补全。"""
     chain = MediaChain()
