@@ -42,6 +42,10 @@ _FINGERPRINT_TITLE_QUALIFIER = re.compile(
     r"live|acoustic|demo|mono|stereo|recorded|pop)[^\])）】]*[\])）】]",
     re.IGNORECASE,
 )
+_CONTENT_RATING_QUALIFIER = re.compile(
+    r"\s*[\[(（【]\s*(?:explicit|clean)\s*[\])）】]",
+    re.IGNORECASE,
+)
 
 
 def _is_regular_file(path: Path) -> bool:
@@ -254,8 +258,12 @@ def _fingerprint_info_matches_evidence(
 
 def _is_standalone_single_evidence(meta: MetaMusic) -> bool:
     """判断本地标签是否明确把当前录音描述为同名单曲发行。"""
-    title_key = music_text_key(music_base_title(meta.title or ""))
-    album_key = music_text_key(music_base_title(meta.album or ""))
+    title_key = music_text_key(
+        music_base_title(_CONTENT_RATING_QUALIFIER.sub("", meta.title or ""))
+    )
+    album_key = music_text_key(
+        music_base_title(_CONTENT_RATING_QUALIFIER.sub("", meta.album or ""))
+    )
     return bool(title_key and album_key and title_key == album_key)
 
 

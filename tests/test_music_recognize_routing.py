@@ -574,6 +574,55 @@ def test_recognize_music_by_path_reconciles_standalone_single_release(monkeypatc
     later_tier.assert_not_called()
 
 
+def test_recognize_music_by_path_ignores_single_content_rating_qualifier(monkeypatch):
+    """Explicit/Clean 只描述内容分级，不应阻止同名单曲发行证据。"""
+    recording_id = "7b35656c-5589-48d3-9a96-467a637e9bd2"
+    title = "All Too Well (10 Minute Version) (Taylor's Version) (Live Acoustic|Explicit)"
+    album = "All Too Well (10 Minute Version) [Taylor's Version] [Live Acoustic] [Explicit]"
+    tagged = MetaMusic(
+        title=title,
+        artists=["Taylor Swift"],
+        album=album,
+        track_number=1,
+    )
+    candidate = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="All Too Well (10 Minute version) (Taylor’s version) (live acoustic)",
+        artists=["Taylor Swift"],
+        album="Red (Taylor's Version)",
+        album_id="red-release-group",
+        album_type="Album",
+        year=2021,
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(tagged, tagged, MetaMusic(title=title))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_recognize_musicbrainz_recording",
+        Mock(return_value=candidate),
+    )
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized = chain.recognize_music_by_path("All Too Well.mp3")
+
+    assert recognized.media_id == recording_id
+    assert recognized.album == album
+    assert recognized.album_id is None
+    assert recognized.album_type == "Single"
+    assert recognized.track_number == 1
+    later_tier.assert_not_called()
+
+
 def test_async_recognize_music_by_path_reconciles_standalone_single_release(monkeypatch):
     """异步路径必须与同步路径使用相同的单曲发行校正规则。"""
     recording_id = "131b296c-3533-4e55-9800-a6dd83b90737"
