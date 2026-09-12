@@ -330,8 +330,8 @@ class _RecognitionFinalizationOwner:
         )
 
 
-class RecognitionMixin:
-    """为媒体 Chain 提供本地识别、共享识别和插件补充识别流程。"""
+class _RecognitionPlanningMixin:
+    """封装识别计划构建及宿主协议收窄。"""
 
     __mixin_host_protocol__ = ChainRuntimeMixinHost
     eventmanager: Any
@@ -390,6 +390,10 @@ class RecognitionMixin:
             music_type=music_type,
             identity_valid=identity_valid,
         )
+
+
+class RecognitionMixin(_RecognitionPlanningMixin):
+    """为媒体 Chain 提供本地识别、共享识别和插件补充识别流程。"""
 
     def _can_use_media_recognize_share(
             self,

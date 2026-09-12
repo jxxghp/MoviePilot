@@ -800,11 +800,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 discard_music_identity = (
                     self._is_audio_file(file_item)
                     and _should_discard_batch_music_identity(
-                        multi_track_music_batch=multi_track_music_batch,
-                        manual=manual,
-                        media_source=media_source,
-                        media_id=media_id,
-                        mediainfo=mediainfo,
+                        multi_track_music_batch=multi_track_music_batch, manual=manual,
+                        media_source=media_source, media_id=media_id, mediainfo=mediainfo,
                         history_music_type=self._download_history_music_type(download_history),
                     )
                 )

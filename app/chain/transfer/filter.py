@@ -430,8 +430,8 @@ def _recognize_music_batch_file(
     return file_meta, task_mediainfo
 
 
-class FileFilterMixin(_TransferOwnerBase):
-    """提供整理文件筛选、音乐匹配和源目录清理判定。"""
+class _MusicFileFilterBase(_TransferOwnerBase):
+    """提供通用文件识别及 MusicBrainz 专辑、曲目匹配能力。"""
 
     __mixin_host_protocol__ = TransferMixinHost
 
@@ -635,6 +635,10 @@ class FileFilterMixin(_TransferOwnerBase):
         merged_info.listen_count = info.listen_count
         merged_info.raw_data = deepcopy(info.raw_data)
         return merged_meta, merged_info
+
+
+class FileFilterMixin(_MusicFileFilterBase):
+    """提供整理文件筛选、音乐批次上下文和源目录清理判定。"""
 
     def _selected_music_track_map(
             self,
