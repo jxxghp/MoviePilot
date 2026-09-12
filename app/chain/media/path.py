@@ -348,7 +348,7 @@ def _music_info_matches_text_evidence(
     """统一校验各识别层都必须遵守的版本和发行年份证据。"""
     if not _has_remote_music_identity(info) or not meta:
         return False
-    return music_version_matches(info, meta) and music_year_matches(info, meta)
+    return bool(music_version_matches(info, meta) and music_year_matches(info, meta))
 
 
 def _music_tier_plan(
