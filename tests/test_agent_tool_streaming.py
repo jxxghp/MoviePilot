@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import langchain.agents as langchain_agents
+import pytest
 
 if not hasattr(langchain_agents, "create_agent"):
     langchain_agents.create_agent = lambda *args, **kwargs: None
@@ -554,14 +555,15 @@ class TestAgentToolStreaming:
                 user_id="1",
                 username="admin",
             )
-            tool_id = handler.tool_call_started("search", "查询媒体")
-            handler.emit_tool_message("查询媒体")
-            handler.record_tool_call(
-                tool_name="search",
-                tool_message="查询媒体",
-                tool_kwargs={"query": "MoviePilot"},
-            )
-            handler.tool_call_finished(tool_id, "done")
+            with patch("app.agent.callback.get_runtime_setting", return_value=True):
+                tool_id = handler.tool_call_started("search", "查询媒体")
+                handler.emit_tool_message("查询媒体")
+                handler.record_tool_call(
+                    tool_name="search",
+                    tool_message="查询媒体",
+                    tool_kwargs={"query": "MoviePilot"},
+                )
+                handler.tool_call_finished(tool_id, "done")
             return tool_id, emitted, tool_events
 
         tool_id, emitted, tool_events = asyncio.run(_run())
@@ -578,6 +580,133 @@ class TestAgentToolStreaming:
             },
             {"type": "tool", "status": "done", "tool_id": tool_id},
         ]
+
+    def test_web_streaming_handler_updates_tool_summary_when_not_verbose(self):
+        """WebAgent 关闭啰嗦模式时应逐次推送最新的工具计数摘要。"""
+
+        async def _run():
+            emitted = []
+            tool_events = []
+            handler = _get_web_agent_streaming_handler_type()(
+                emitted.append,
+                tool_events.append,
+            )
+            await handler.start_streaming(
+                channel=NotificationChannel.WebAgent.value,
+                source="web-agent",
+                user_id="1",
+                username="admin",
+            )
+            with patch("app.agent.callback.get_runtime_setting", return_value=False):
+                assert handler.tool_call_started("search", "查询媒体") == ""
+                handler.report_tool_call(
+                    tool_name="search_web",
+                    tool_message="搜索网络内容",
+                    tool_kwargs={"query": "MoviePilot"},
+                )
+                handler.report_tool_call(
+                    tool_name="read_file",
+                    tool_message="读取文件",
+                    tool_kwargs={"file_path": "/tmp/app.py"},
+                )
+                handler.emit("查询完成")
+            return emitted, tool_events
+
+        emitted, tool_events = asyncio.run(_run())
+
+        assert tool_events == []
+        assert emitted == [
+            "（执行了 1 次搜索）\n\n",
+            "（读取了 1 个文件）\n\n",
+            "查询完成",
+        ]
+
+    def test_web_streaming_handler_updates_normal_tool_when_not_verbose(self):
+        """普通工具在 WebAgent 非啰嗦模式下也应立即推送计数摘要。"""
+
+        async def _run():
+            emitted = []
+            tool_events = []
+            handler = _get_web_agent_streaming_handler_type()(
+                emitted.append,
+                tool_events.append,
+            )
+            await handler.start_streaming(
+                channel=NotificationChannel.WebAgent.value,
+                source="web-agent",
+                user_id="1",
+                username="admin",
+            )
+            tool = DummyTool(session_id="session-1", user_id="1")
+            tool.set_stream_handler(handler)
+            with patch.object(settings, "AI_AGENT_VERBOSE", False):
+                await tool._arun()
+                handler.emit("查询完成")
+            return emitted, tool_events
+
+        emitted, tool_events = asyncio.run(_run())
+
+        assert tool_events == []
+        assert emitted == ["（调用了 1 次工具）\n\n", "查询完成"]
+
+    @pytest.mark.parametrize(
+        "channel",
+        [
+            NotificationChannel.Telegram,
+            NotificationChannel.Feishu,
+            NotificationChannel.Slack,
+            NotificationChannel.Discord,
+        ],
+    )
+    def test_editable_channels_update_tool_summary_in_place(self, channel):
+        """所有支持消息编辑的通知渠道都应在原消息上更新工具统计。"""
+        handler = StreamingHandler()
+        handler._channel = channel.value
+        handler._source = f"{channel.value}-source"
+        handler._streaming_enabled = True
+        handler.emit("正在处理")
+        handler.record_tool_call(
+            tool_name="search_web",
+            tool_message="搜索网络内容",
+            tool_kwargs={"query": "MoviePilot"},
+        )
+
+        first_text = "正在处理\n\n（执行了 1 次搜索）\n\n"
+        assert handler._buffer == first_text
+        with patch("app.agent.callback.run_in_threadpool", new_callable=AsyncMock) as run_in_threadpool_mock:
+            run_in_threadpool_mock.return_value = MessageResponse(
+                message_id=f"{channel.value}-message",
+                chat_id=f"{channel.value}-chat",
+                channel=channel,
+                source=handler._source,
+                success=True,
+            )
+            asyncio.run(handler._flush())
+
+        handler.record_tool_call(
+            tool_name="read_file",
+            tool_message="读取文件",
+            tool_kwargs={"file_path": "/tmp/app.py"},
+        )
+        updated_text = "正在处理\n\n（执行了 1 次搜索，读取了 1 个文件）\n\n"
+        assert handler._buffer == updated_text
+
+        with patch("app.agent.callback.run_in_threadpool", new_callable=AsyncMock) as run_in_threadpool_mock:
+            run_in_threadpool_mock.return_value = True
+            asyncio.run(handler._flush())
+
+        assert run_in_threadpool_mock.await_count == 1
+        assert run_in_threadpool_mock.await_args.args[0].__name__ == "edit_message"
+        assert run_in_threadpool_mock.await_args.kwargs["text"] == updated_text
+        assert handler._sent_text == updated_text
+
+        handler.emit("第一批完成")
+        handler.record_tool_call(
+            tool_name="search_web",
+            tool_message="搜索下一批内容",
+            tool_kwargs={"query": "next"},
+        )
+        assert handler._buffer == f"{updated_text}第一批完成\n\n（执行了 1 次搜索）\n\n"
 
     def test_rich_message_keeps_body_text_unquoted_for_telegram(self):
         """校验 Telegram 富文本只转换工具摘要行，正文保持原样。"""
