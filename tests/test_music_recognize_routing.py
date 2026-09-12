@@ -333,14 +333,14 @@ def test_recognize_music_by_path_rejects_same_title_fingerprint_without_artist(m
 
 def test_recognize_music_by_path_applies_context_artist_to_filename_fallback(monkeypatch):
     """标签无曲名时，同目录艺人共识仍必须约束文件名搜索。"""
-    merged = MetaMusic(title="Enchanted")
-    empty_tag = MetaMusic()
+    merged = MetaMusic(title="Enchanted", year=2011)
+    empty_tag = MetaMusic(year=2011)
     filename_meta = MetaMusic(title="Enchanted")
     contextual = MetaMusic(
         artists=["Taylor Swift"],
         album_artist="Taylor Swift",
         album="Speak Now",
-        year=2010,
+        year=2023,
     )
     expected = MusicInfo(
         media_source="musicbrainz",
@@ -367,10 +367,11 @@ def test_recognize_music_by_path_applies_context_artist_to_filename_fallback(mon
     )
 
     assert recognized_info is expected
+    assert tier.call_args_list[0].kwargs["meta"].year == 2023
     filename_call = tier.call_args_list[1]
     assert filename_call.kwargs["meta"].artists == ["Taylor Swift"]
     assert filename_call.kwargs["meta"].album == "Speak Now"
-    assert filename_call.kwargs["meta"].year == 2010
+    assert filename_call.kwargs["meta"].year == 2023
 
 
 def test_recognize_music_by_path_rejects_fingerprint_text_mismatch(monkeypatch):

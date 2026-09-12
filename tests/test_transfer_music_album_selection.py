@@ -991,7 +991,7 @@ def test_directory_year_is_reapplied_after_album_recognition(
         tmp_path, monkeypatch,
 ):
     """远端再版年份不能覆盖手动合集目录明确给出的发行年份。"""
-    album_dir = tmp_path / "Taylor Swift" / "2020-evermore"
+    album_dir = tmp_path / "Taylor Swift" / "2020-evermore" / "CD1"
     album_dir.mkdir(parents=True)
     audio_paths = [album_dir / "01.flac", album_dir / "02.flac"]
     for path in audio_paths:

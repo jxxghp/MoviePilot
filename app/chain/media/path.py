@@ -148,7 +148,9 @@ def _merge_contextual_music_evidence(
         merged.album_artist = contextual_meta.album_artist
     if not merged.album and contextual_meta.album:
         merged.album = contextual_meta.album
-    if not merged.year and contextual_meta.year:
+    if contextual_meta.year:
+        # 整理链会先用最近的发行目录年份纠正下载包中的旧标签年份；这里
+        # 必须保留该强上下文，否则重新读取音频标签后又会退回创作年或旧版年。
         merged.year = contextual_meta.year
     if not merged.version and contextual_meta.version:
         merged.version = contextual_meta.version

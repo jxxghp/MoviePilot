@@ -204,13 +204,15 @@ def _apply_music_directory_evidence(
 
 
 def _apply_music_directory_year(meta: MetaMusic, file_path: Path) -> MetaMusic:
-    """用发行目录开头的四位年份纠正合集内不可靠的音频年份标签。"""
-    match = re.match(r"^((?:19|20)\d{2})(?:\D|$)", file_path.parent.name)
-    if not match:
-        return meta
-    merged = deepcopy(meta)
-    merged.year = cast(Any, int(match.group(1)))
-    return merged
+    """用最近发行目录开头的四位年份纠正合集内不可靠的音频年份标签。"""
+    for parent in list(file_path.parents)[:4]:
+        match = re.match(r"^((?:19|20)\d{2})(?:\D|$)", parent.name)
+        if not match:
+            continue
+        merged = deepcopy(meta)
+        merged.year = cast(Any, int(match.group(1)))
+        return merged
+    return meta
 
 
 def _prepare_music_batch_context(
