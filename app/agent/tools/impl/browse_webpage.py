@@ -435,11 +435,12 @@ class BrowseWebpageTool(MoviePilotTool):
             )
 
         elif browser_action == BrowserAction.SNAPSHOT:
+            snapshot = BrowserSessionHelper.build_snapshot(
+                page,
+                max_text_chars=MAX_CONTENT_LENGTH,
+            )
             return self._json_response(
-                BrowserSessionHelper.build_snapshot(
-                    page,
-                    max_text_chars=MAX_CONTENT_LENGTH,
-                )
+                {"success": True, **snapshot}
             )
 
         elif browser_action == BrowserAction.GET_CONTENT:
@@ -565,6 +566,7 @@ class BrowseWebpageTool(MoviePilotTool):
             status=status,
             max_text_chars=MAX_CONTENT_LENGTH,
         )
+        result["success"] = True
         return BrowseWebpageTool._json_response(result)
 
     @staticmethod
@@ -582,6 +584,7 @@ class BrowseWebpageTool(MoviePilotTool):
             content = content[:MAX_CONTENT_LENGTH] + "\n\n...(内容已截断)"
 
         result = {
+            "success": True,
             "url": page_url,
             "title": title,
             "content_type": content_type,
