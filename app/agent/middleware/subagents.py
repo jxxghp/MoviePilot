@@ -733,8 +733,12 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
             "finished_at": _format_datetime(record.finished_at),
         }
         if not record.task.done():
+            payload["execution_outcome"] = "pending"
+            payload["recovery"] = "使用 action=wait 或 action=status 继续观察，不要重复启动同一任务。"
             return payload
         if record.task.cancelled():
+            payload["execution_outcome"] = "failed"
+            payload["recovery"] = "任务已取消；检查其他任务结果，只有在需要时用新的 task_id 重新派发。"
             return payload
 
         error = record.task.exception()

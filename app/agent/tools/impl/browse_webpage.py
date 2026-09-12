@@ -536,8 +536,13 @@ class BrowseWebpageTool(MoviePilotTool):
 
     @staticmethod
     def _json_response(payload: dict[str, Any]) -> str:
-        """返回格式化 JSON 字符串"""
-        return json.dumps(payload, ensure_ascii=False, indent=2)
+        """返回带明确执行状态的格式化 JSON 字符串。"""
+        normalized = dict(payload)
+        if isinstance(normalized.get("success"), bool):
+            normalized.setdefault(
+                "execution_outcome", "succeeded" if normalized["success"] else "failed"
+            )
+        return json.dumps(normalized, ensure_ascii=False, indent=2)
 
     @staticmethod
     def _action_goto(
