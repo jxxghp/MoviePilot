@@ -153,6 +153,7 @@ async def test_unknown_api_result_blocks_same_input_in_new_turn(invocation_runti
     replay = json.loads(_tool_messages(result)[-1].content)
     assert replay["execution_outcome"] == "unknown"
     assert replay["replayed"] is True
+    assert "先调用只读查询" in replay["recovery"]
 
 
 @pytest.mark.asyncio

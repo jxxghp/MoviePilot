@@ -102,9 +102,17 @@ class InvocationMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @staticmethod
     def _message(request: ToolCallRequest, outcome: str, message: str, **extra: Any) -> ToolMessage:
-        """给模型明确结果状态，同时保留 LangChain 二态兼容字段。"""
+        """给模型明确结果状态和恢复动作，同时保留 LangChain 二态兼容字段。"""
+        recovery = extra.pop("recovery", None)
+        if recovery is None and outcome == "failed":
+            recovery = "根据错误信息修正输入或改用正确工具后重试；不要重复提交未确认的写入。"
+        elif recovery is None and outcome == "unknown":
+            recovery = "结果未知时先调用只读查询或 get_tool_execution 核验实际状态，不要直接重试写入。"
+        payload = {"execution_outcome": outcome, "message": message, **extra}
+        if recovery is not None:
+            payload["recovery"] = recovery
         return ToolMessage(
-            content=json.dumps({"execution_outcome": outcome, "message": message, **extra}, ensure_ascii=False),
+            content=json.dumps(payload, ensure_ascii=False),
             tool_call_id=str(request.tool_call.get("id") or ""),
             name=str(request.tool_call.get("name") or "unknown"),
             status="success" if outcome in {"succeeded", "pending"} else "error",
