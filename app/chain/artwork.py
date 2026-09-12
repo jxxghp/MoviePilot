@@ -8,8 +8,8 @@ from app.chain.base import ChainBase
 from app.chain.storage import StorageChain
 from app.domain.context import MusicArtistInfo, MusicInfo
 from app.runtime.log import logger
+from app.schemas.file import FileItem
 from app.schemas.types import MediaSource
-from app.schemas.workflow import FileItem
 
 _ArtistImageLoader = Callable[[Optional[str]], tuple[Optional[bytes], str]]
 
@@ -101,7 +101,7 @@ class MusicArtworkChain(ChainBase):
         ] = {}
         for audio_item, item_media in zip(files, media):
             artist = cls._primary_artist(item_media)
-            if not artist:
+            if not artist or not audio_item.path:
                 continue
             directory_key = (
                 audio_item.storage or "local",
@@ -146,10 +146,12 @@ class MusicArtworkChain(ChainBase):
 
     def _find_artist_sidecar(self, fileitem: FileItem) -> Optional[FileItem]:
         """查找音轨所在目录已有的 artist.* 艺人图片。"""
+        if not fileitem.path:
+            return None
         parent_path = Path(fileitem.path).parent
         for extension in self.ARTIST_IMAGE_EXTENSIONS:
             item = self.storagechain.get_file_item(
-                storage=fileitem.storage,
+                storage=fileitem.storage or "local",
                 path=parent_path / f"artist{extension}",
             )
             if item:
@@ -173,6 +175,8 @@ class MusicArtworkChain(ChainBase):
             overwrite: bool,
     ) -> bool:
         """原子写入本地艺人图片或上传到远端音轨目录。"""
+        if not fileitem.path:
+            return False
         extension = self._image_extension(mime)
         target_path = Path(fileitem.path).parent / f"artist{extension}"
         temp_path: Optional[Path] = None
@@ -222,12 +226,14 @@ class MusicArtworkChain(ChainBase):
             keep_extension: str,
     ) -> None:
         """覆盖艺人图片后删除其它已知扩展名，避免播放器读取旧图。"""
+        if not fileitem.path:
+            return
         parent_path = Path(fileitem.path).parent
         for extension in self.ARTIST_IMAGE_EXTENSIONS:
             if extension == keep_extension:
                 continue
             item = self.storagechain.get_file_item(
-                storage=fileitem.storage,
+                storage=fileitem.storage or "local",
                 path=parent_path / f"artist{extension}",
             )
             if item and not self.storagechain.delete_file(item):

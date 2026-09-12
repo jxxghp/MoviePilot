@@ -2391,7 +2391,7 @@ class MusicBrainzModule(_ModuleBase):
         return None
 
     @classmethod
-    @cached(
+    @cached(  # type: ignore[misc]
         maxsize=get_runtime_setting('CONF').musicbrainz,
         ttl=get_runtime_setting('CONF').meta,
         skip_none=True,

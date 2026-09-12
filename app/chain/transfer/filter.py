@@ -5,7 +5,7 @@ from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Protocol, Tuple, Union
+from typing import Any, Dict, Optional, Protocol, Tuple, Union, cast
 
 from app.application.audio import AudioMetadataHelper
 from app.application.configuration import (
@@ -209,7 +209,7 @@ def _apply_music_directory_year(meta: MetaMusic, file_path: Path) -> MetaMusic:
     if not match:
         return meta
     merged = deepcopy(meta)
-    merged.year = int(match.group(1))
+    merged.year = cast(Any, int(match.group(1)))
     return merged
 
 
@@ -604,7 +604,7 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         if info.album_artist:
             merged_meta.album_artist = info.album_artist
         if info.year:
-            merged_meta.year = info.year
+            merged_meta.year = cast(Any, info.year)
         if info.disc_number:
             merged_meta.disc_number = info.disc_number
         if info.track_number:
@@ -643,23 +643,30 @@ class FileFilterMixin(_TransferOwnerBase):
     __mixin_host_protocol__ = TransferMixinHost
     _prepare_music_batch_context = _prepare_music_batch_context
     _resolve_music_batch_file_context = _resolve_music_batch_file_context
-    _requires_automatic_category = staticmethod(
+    _requires_automatic_category = cast(Any, staticmethod(
         _MusicFileFilterBase._requires_automatic_category
+    ))
+    _is_subtitle_file = cast(Any, _MusicFileFilterBase._is_subtitle_file)
+    _is_audio_file = cast(Any, _MusicFileFilterBase._is_audio_file)
+    _is_music_lyrics_file = cast(
+        Any, staticmethod(_MusicFileFilterBase._is_music_lyrics_file)
     )
-    _is_subtitle_file = _MusicFileFilterBase._is_subtitle_file
-    _is_audio_file = _MusicFileFilterBase._is_audio_file
-    _is_music_lyrics_file = staticmethod(_MusicFileFilterBase._is_music_lyrics_file)
-    _is_media_file = _MusicFileFilterBase._is_media_file
-    _is_primary_media_file = _MusicFileFilterBase._is_primary_media_file
-    _music_info_from_meta = staticmethod(_MusicFileFilterBase._music_info_from_meta)
-    _match_music_album_context = classmethod(
-        _MusicFileFilterBase._match_music_album_context.__func__
+    _is_media_file = cast(Any, _MusicFileFilterBase._is_media_file)
+    _is_primary_media_file = cast(Any, _MusicFileFilterBase._is_primary_media_file)
+    _music_info_from_meta = cast(
+        Any, staticmethod(_MusicFileFilterBase._music_info_from_meta)
     )
-    _match_music_recording_context = classmethod(
-        _MusicFileFilterBase._match_music_recording_context.__func__
+    _match_music_album_context = cast(
+        Any,
+        classmethod(cast(Any, _MusicFileFilterBase._match_music_album_context).__func__),
     )
-    _merge_music_track_context = classmethod(
-        _MusicFileFilterBase._merge_music_track_context.__func__
+    _match_music_recording_context = cast(
+        Any,
+        classmethod(cast(Any, _MusicFileFilterBase._match_music_recording_context).__func__),
+    )
+    _merge_music_track_context = cast(
+        Any,
+        classmethod(cast(Any, _MusicFileFilterBase._merge_music_track_context).__func__),
     )
 
     def _selected_music_track_map(
@@ -707,7 +714,10 @@ class FileFilterMixin(_TransferOwnerBase):
             else None
         )
         if selected and isinstance(file_meta, MetaMusic):
-            return self._merge_music_track_context(file_meta, selected)
+            return cast(
+                tuple[Any, Optional[Union[MediaInfo, MusicInfo]]],
+                self._merge_music_track_context(file_meta, selected),
+            )
         return file_meta, fallback
 
     @staticmethod

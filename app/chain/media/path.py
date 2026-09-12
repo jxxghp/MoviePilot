@@ -383,7 +383,7 @@ class MediaPathOwner(_MediaOwnerBase):
         return _without_music_identity(meta)
 
     @staticmethod
-    def _is_remote_music_info(info: Optional[MusicInfo]) -> bool:
+    def _is_remote_music_info(info: Optional[MusicInfo]) -> TypeGuard[MusicInfo]:
         """判断音乐识别结果是否携带可复用的远程身份。"""
         return _has_remote_music_identity(info)
 

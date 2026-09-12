@@ -75,7 +75,7 @@ def music_text_key(value: Optional[str]) -> str:
     return str(zhconv_convert("".join(char for char in text if char.isalnum() and not combining(char)), "zh-hans"))
 
 
-def music_scrape_identity(info: MusicInfo) -> tuple:
+def music_scrape_identity(info: MusicInfo) -> tuple[object, ...]:
     """构造音乐刮削身份键，用于识别同一单曲被错误套用到多个文件。"""
     return (
         info.media_source,

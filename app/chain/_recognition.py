@@ -399,7 +399,7 @@ class RecognitionMixin:
     eventmanager: Any
     _finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._finalize_recognition_result)
     _async_finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._async_finalize_recognition_result)
-    _runtime_host = _RecognitionPlanningMixin._runtime_host
+    _runtime_host = cast(Any, _RecognitionPlanningMixin._runtime_host)
     _build_recognition_plan = staticmethod(_RecognitionPlanningMixin._build_recognition_plan)
 
     def _can_use_media_recognize_share(
