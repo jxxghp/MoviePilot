@@ -602,7 +602,7 @@ SCHEMA_CONFLICTS = {
     'LocaleHelper': ['app.schemas.dashboard', 'app.schemas.response'],
     'MediaInfo': ['app.schemas.context', 'app.schemas.system', 'app.schemas.transfer', 'app.schemas.workflow'],
     'MediaSource': ['app.schemas.cache', 'app.schemas.context', 'app.schemas.event', 'app.schemas.history', 'app.schemas.mediaserver', 'app.schemas.music', 'app.schemas.subscribe', 'app.schemas.transfer'],
-    'MediaType': ['app.schemas.context', 'app.schemas.event', 'app.schemas.mediaserver', 'app.schemas.subscribe'],
+    'MediaType': ['app.schemas.event', 'app.schemas.mediaserver', 'app.schemas.subscribe'],
     'MetaInfo': ['app.schemas.context', 'app.schemas.system', 'app.schemas.transfer'],
     'MusicInfo': ['app.schemas.context', 'app.schemas.music', 'app.schemas.transfer'],
     'MusicMeta': ['app.schemas.context', 'app.schemas.music', 'app.schemas.transfer'],

@@ -16,7 +16,7 @@ Purpose: Inspect the runtime capabilities exposed by installed plugins.
 Purpose: Create a configurable clone of one installed plugin.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
-- `body`: `description` (string; default ``): Human-readable media, torrent, or subscription description.; `icon` (string|null): Icon name or URL used by a workflow, network target, plugin, or category.; `name` (string; default ``): Human-readable name of the site, storage item, subscription, or rule group.; `suffix*` (string; minimum length `1`): File suffix or extension matched by an automatic category rule.; `version` (string|null): Plugin release or schema version selected by the operation.
+- `body`: `description` (string; default ``): Human-readable media, torrent, or subscription description.; `icon` (string|null): Icon name or URL used by a workflow, network target, plugin, or category.; `name` (string; default ``): Human-readable name of the site, storage item, subscription, or rule group.; `pinned_version` (string|null): Plugin version this instance is pinned to; empty means it follows the plugin's current version.; `restore_previous` (boolean; default `True`): Reuse the configuration and data left by a previously removed clone with the same suffix; false discards them first.; `suffix` (string|null): File suffix or extension matched by an automatic category rule.; `version` (string|null): Plugin release or schema version selected by the operation.
 
 ### `plugin.config.get`
 `GET /api/v1/plugin/form/{plugin_id}`; policy effect: `safe_read`.
@@ -37,6 +37,20 @@ Purpose: Replace one installed plugin's complete configuration and apply it imme
 Purpose: Read a bounded preview of one plugin's persisted data.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: `key` (string|null): Optional exact plugin data key used to narrow the returned preview.; `max_chars` (integer|null): Maximum number of serialized plugin-data characters to return.
+- `body`: none
+
+### `plugin.default_target.clear`
+`DELETE /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target`; policy effect: `reversible_write`.
+Purpose: Clear one plugin instance's default-call-target flag, only if it is the plugin's current default.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.versions.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: none
+
+### `plugin.default_target.set`
+`PUT /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target`; policy effect: `reversible_write`.
+Purpose: Set one plugin instance as the plugin's default call target, automatically clearing any previous default.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.versions.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
 - `body`: none
 
 ### `plugin.folder.create`
@@ -116,6 +130,41 @@ Purpose: List installed plugins and their runtime status.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer|null): Optional upper bound on plugin catalog results, from 1 to 200; omit it for the complete catalog.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=installed): Literal installed, selecting only installed plugin catalog entries.
 - `body`: none
+
+### `plugin.instance.purge`
+`POST /api/v1/plugin/instance/{instance_id}/purge`; policy effect: `external_side_effect`.
+Purpose: Irreversibly delete the selected scopes of one plugin instance's configuration and data; a clone's instance record goes with it, a host's record is kept.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.versions.get.
+- `query`: none
+- `body`: `config` (boolean; default `False`): Whether to delete this instance's business parameters.; `data_directory` (boolean; default `False`): Whether to delete this instance's whole directory under the plugin data path; selecting it always destroys the dedicated database first.; `own_database` (boolean; default `False`): Whether to destroy this instance's dedicated database.; `plugin_data` (boolean; default `False`): Whether to delete the rows this instance wrote to the plugin data table.
+
+### `plugin.instance.set_enabled`
+`POST /api/v1/plugin/instance/{instance_id}/enabled`; policy effect: `reversible_write`.
+Purpose: Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration and pinned version for a later re-enable.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.versions.get.
+- `query`: none
+- `body`: `enabled*` (boolean): Whether this category or classification rule participates in evaluation.
+
+### `plugin.loglevel.clear`
+`DELETE /api/v1/plugin/loglevel/{plugin_id}/{instance_id}`; policy effect: `reversible_write`.
+Purpose: Clear one plugin instance's log-level override so it immediately follows the global log level again.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.versions.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: none
+
+### `plugin.loglevel.get`
+`GET /api/v1/plugin/loglevel/{plugin_id}`; policy effect: `safe_read`.
+Purpose: List one plugin's instances, including its host binding, with each instance's configured and effective log level.
+- `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: none
+
+### `plugin.loglevel.set`
+`PUT /api/v1/plugin/loglevel/{plugin_id}/{instance_id}`; policy effect: `reversible_write`.
+Purpose: Set one plugin instance's log-level override, taking effect immediately without following the global log level.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.versions.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: `expires_at` (string|null): Expiry timestamp for a plugin instance's log-level override; null means it never expires.; `level*` (string): Target log level, one of DEBUG, INFO, WARNING, ERROR, or CRITICAL.
 
 ### `plugin.market`
 `GET /api/v1/plugin/`; policy effect: `safe_read`.
@@ -213,8 +262,29 @@ Purpose: Read public installation statistics for plugins.
 `DELETE /api/v1/plugin/{plugin_id}`; policy effect: `destructive_write`.
 Purpose: Uninstall one plugin and remove it from the installed set.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: `cascade` (boolean; default `False`): Uninstall every clone of the source plugin along with the plugin itself; off by default.
+- `body`: none
+
+### `plugin.versions.get`
+`GET /api/v1/plugin/versions/{plugin_id}`; policy effect: `safe_read`.
+Purpose: List one plugin's installed source versions and each instance's version binding.
+- `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
+
+### `plugin.versions.recycle`
+`POST /api/v1/plugin/versions/{plugin_id}/recycle`; policy effect: `external_side_effect`.
+Purpose: Delete one plugin's installed source versions that are unreferenced and outside the retention window.
+- `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: none
+
+### `plugin.versions.set_instance`
+`PUT /api/v1/plugin/versions/{plugin_id}/{instance_id}`; policy effect: `external_side_effect`.
+Purpose: Set one plugin instance's version binding and restart it to apply the change.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.versions.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: `pinned_version` (string|null): Plugin version this instance is pinned to; empty means it follows the plugin's current version.
 
 ## Body Models
 

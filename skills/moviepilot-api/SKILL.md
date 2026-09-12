@@ -60,7 +60,10 @@ allowed-api-operations: >-
   plugin.statistics plugin.reset plugin.clone config.user.get config.public.get
   system.usage.statistics plugin.folders.get plugin.folders.update plugin.folder.create
   plugin.folder.update plugin.folder.delete plugin.folder.plugins.update
-  plugin.folder.plugin.assign plugin.folder.plugin.remove
+  plugin.folder.plugin.assign plugin.folder.plugin.remove plugin.versions.get
+  plugin.versions.set_instance plugin.versions.recycle plugin.loglevel.get plugin.loglevel.set
+  plugin.loglevel.clear plugin.default_target.set plugin.default_target.clear
+  plugin.instance.set_enabled plugin.instance.purge
 ---
 
 # MoviePilot API

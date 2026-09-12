@@ -2630,8 +2630,7 @@
     "misc": 13
   },
   "app/schemas/context.py": {
-    "misc": 19,
-    "no-any-return": 1
+    "misc": 18
   },
   "app/schemas/dashboard.py": {
     "misc": 10
