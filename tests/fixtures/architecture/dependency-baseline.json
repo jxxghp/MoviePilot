@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8570,
-  "edge_sha256": "da7bfb4bae75a3c8f1e02c2034f38da8401007c4f776478e2719133f66db692d",
+  "edge_count": 8571,
+  "edge_sha256": "f650c3b2a304888f012c39e270f7d99dbe6eb8c0f96340f276872218a15840c8",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3220,11 +3220,12 @@
     "app.application.classification.analysis -> app.application.classification.catalog",
     "app.application.classification.analysis -> app.application.classification.configuration",
     "app.application.classification.analysis -> app.application.classification.contract",
+    "app.application.classification.analysis -> app.application.classification.execution",
     "app.application.classification.analysis -> app.application.history",
     "app.application.classification.analysis -> app.domain",
     "app.application.classification.analysis -> app.domain.classification",
-    "app.application.classification.analysis -> app.domain.classification.evaluator",
     "app.application.classification.analysis -> app.domain.classification.facts",
+    "app.application.classification.analysis -> app.domain.classification.fields",
     "app.application.classification.analysis -> app.domain.classification.validation",
     "app.application.classification.analysis -> app.schemas",
     "app.application.classification.analysis -> app.schemas.category",

@@ -181,6 +181,7 @@
     "分类策略已被其他会话更新，请重新加载或合并后再发布": "The classification policy was updated by another session. Reload or merge before publishing again",
     "分类策略校验失败": "Classification policy validation failed",
     "分类策略转换失败": "Classification policy conversion failed",
+    "不支持的分类策略模板": "Unsupported classification policy template",
     "模块不支持测试": "Module does not support testing",
     "网络请求失败": "Network request failed",
     "TMDB请求失败": "TMDB request failed",
