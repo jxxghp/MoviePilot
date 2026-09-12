@@ -271,6 +271,29 @@ def _resolve_music_batch_file_context(
             release_regions=release_regions,
             release_scripts=release_scripts,
         )
+    directory_evidence = batch_context.directory_evidence.get(
+        owner._get_file_parent_key(file_item)
+    )
+    if (
+            owner._is_audio_file(file_item)
+            and isinstance(file_meta, MetaMusic)
+            and isinstance(task_mediainfo, MusicInfo)
+            and owner._get_file_key(file_item) in batch_context.album_main_keys
+            and directory_evidence
+    ):
+        # 同一物理发行目录只能生成一个专辑目录。逐曲远端识别可能因服务
+        # 波动而混用正式标题、别名或本地兜底；用已验证的目录标签共识统一
+        # 专辑和专辑艺人，但保留每首曲目的远端 ID、曲名、封面等信息。
+        file_meta = deepcopy(file_meta)
+        task_mediainfo = deepcopy(task_mediainfo)
+        if directory_evidence.album:
+            file_meta.album = directory_evidence.album
+            task_mediainfo.album = directory_evidence.album
+        if directory_evidence.album_artist:
+            file_meta.album_artist = directory_evidence.album_artist
+            task_mediainfo.album_artist = directory_evidence.album_artist
+        if file_meta.year:
+            task_mediainfo.year = file_meta.year
     if (
             owner._is_audio_file(file_item)
             and isinstance(task_mediainfo, MusicInfo)

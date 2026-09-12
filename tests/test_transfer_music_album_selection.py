@@ -956,6 +956,7 @@ def test_album_directory_consensus_overrides_title_track_single_release(
         info.media_source = MediaSource.MusicBrainz
         info.media_id = f"recording-{Path(path).stem}"
         if "Speak Now" in Path(path).stem:
+            info.album = "Speak Now: Deluxe Edition"
             info.album_type = "Single"
             info.set_library_category("Single")
         else:
@@ -969,7 +970,11 @@ def test_album_directory_consensus_overrides_title_track_single_release(
         chain,
         "_TransferChain__handle_transfer",
         lambda task, callback=None: (
-            planned.append((task.mediainfo.album_type, task.mediainfo.library_category))
+            planned.append((
+                task.mediainfo.album,
+                task.mediainfo.album_type,
+                task.mediainfo.library_category,
+            ))
             or True,
             "",
         ),
@@ -986,7 +991,10 @@ def test_album_directory_consensus_overrides_title_track_single_release(
 
     assert state is True
     assert message == ""
-    assert planned == [("Album", "Album"), ("Album", "Album")]
+    assert planned == [
+        ("Speak Now", "Album", "Album"),
+        ("Speak Now", "Album", "Album"),
+    ]
 
 
 def test_album_directory_consensus_preserves_explicit_ep_type(
