@@ -450,7 +450,11 @@ class MoviePilotToolsManager:
             error_summary = self._summarize_error(e)
             logger.warning(error_summary)
             return format_tool_result_for_agent(
-                {"error": error_summary, "execution_outcome": receipt.outcome.value if receipt else "unknown"},
+                {
+                    "error": error_summary,
+                    "execution_outcome": receipt.outcome.value if receipt else "unknown",
+                    "recovery": "工具结果未知时先核验实际状态，不要直接重复可能产生副作用的调用。",
+                },
                 tool_name=tool_name,
                 max_chars=getattr(tool_instance, "result_max_chars", None),
             )
@@ -460,7 +464,11 @@ class MoviePilotToolsManager:
             error_summary = self._summarize_error(e)
             logger.error(f"调用工具 {tool_name} 时发生错误: {error_summary}")
             error_msg = json.dumps(
-                {"error": f"调用工具 '{tool_name}' 时发生错误: {error_summary}"},
+                {
+                    "error": f"调用工具 '{tool_name}' 时发生错误: {error_summary}",
+                    "execution_outcome": "failed",
+                    "recovery": "根据错误信息修正输入或改用正确工具后重试；不要重复提交未确认的写入。",
+                },
                 ensure_ascii=False,
             )
             return error_msg
