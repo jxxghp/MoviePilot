@@ -135,7 +135,8 @@
   "app/agent/middleware/subagents.py:asyncio.create_task": {
     "owners": {
       "SubAgentTaskControlMiddleware._run_pipeline": 1,
-      "SubAgentTaskControlMiddleware._start_tasks": 1
+      "SubAgentTaskControlMiddleware._start_tasks": 1,
+      "SubAgentTaskControlMiddleware._update_record": 1
     },
     "target": "asyncio.create_task"
   },
