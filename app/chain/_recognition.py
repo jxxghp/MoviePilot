@@ -21,9 +21,11 @@ from app.domain.context import (
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import (
+    music_album_matches,
     music_artist_matches,
     music_title_matches,
     music_version_matches,
+    music_year_matches,
 )
 from app.runtime.cache import async_fresh, fresh
 from app.runtime.events import Event
@@ -244,7 +246,9 @@ def _shared_music_candidate_matches(
         return False
     if plan.meta.title and not music_title_matches(candidate, plan.meta.title):
         return False
-    return music_version_matches(candidate, plan.meta)
+    if plan.meta.album and candidate.album and not music_album_matches(candidate, plan.meta.album):
+        return False
+    return music_version_matches(candidate, plan.meta) and music_year_matches(candidate, plan.meta)
 
 
 class _RecognitionAction(Enum):
