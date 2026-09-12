@@ -799,6 +799,8 @@ class IndexerModule(_ModuleBase):
                         site_obj = alt_obj
                         logger.info(f"站点 {site.get('name')} 改用 {site_schema.schema.value} 模型解析成功")
                         break
+            if not site_obj.userid and not site.get("public"):
+                site_obj.err_msg = site_obj.err_msg or "未获取到站点用户信息，请检查 Cookie 是否有效"
             return SiteUserData(
                 domain=site_rules.extract_domain(site.get("url")),
                 userid=site_obj.userid,

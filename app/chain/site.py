@@ -212,7 +212,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         :return: 用户数据
         """
         userdata: SiteUserData = self.run_module("refresh_userdata", site=site)
-        if userdata and site:
+        if userdata and userdata.userid and site:
             domain = site_rules.extract_domain(
                 str(site.get("domain") or site.get("url") or "")
             )
@@ -302,7 +302,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     },
                 )
             userdata = self.refresh_userdata(site)
-            if userdata:
+            if userdata and userdata.userid:
                 any_site_updated = True
                 result[site.get("name")] = userdata
             if progress_callback:

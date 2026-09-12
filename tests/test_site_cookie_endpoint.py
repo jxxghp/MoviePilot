@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from app import schemas
 from app.api.endpoints import site as site_endpoint
+from app.schemas.site import SiteUserData
 
 
 def test_update_cookie_by_body_uses_request_body():
@@ -85,3 +86,31 @@ def test_set_cookie_by_body_persists_only_browser_cookie_fields():
         cookie="sid=browser",
         ua="Browser UA",
     )
+
+
+def test_refresh_userdata_reports_parser_failure_instead_of_empty_success():
+    """用户解析未拿到身份时应返回业务失败，不能伪造空数据成功。"""
+    fake_site = SimpleNamespace(id=1, domain="www.musopia.vip")
+    fake_chain = Mock()
+    fake_chain.refresh_userdata.return_value = SiteUserData(
+        domain="www.musopia.vip",
+        err_msg="未检测到已登陆，请检查cookies是否过期",
+    )
+
+    with patch.object(site_endpoint, "SiteChain", return_value=fake_chain), patch.object(
+        site_endpoint,
+        "SitesHelper",
+    ) as sites_helper:
+        sites_helper.return_value.get_indexer.return_value = {
+            "name": "音乐乌托邦",
+            "domain": "www.musopia.vip",
+        }
+        response = site_endpoint.refresh_userdata(
+            site_id=1,
+            query=SimpleNamespace(get_sync=lambda _site_id: fake_site),
+            _=Mock(),
+        )
+
+    assert response.success is False
+    assert response.message == "未检测到已登陆，请检查cookies是否过期"
+    assert response.data is None

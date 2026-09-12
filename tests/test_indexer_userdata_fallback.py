@@ -59,6 +59,7 @@ def test_refresh_userdata_fallback_only_uses_common_schemas(monkeypatch):
     })
 
     assert result.userid is None
+    assert result.err_msg == "未获取到站点用户信息，请检查 Cookie 是否有效"
     assert calls == [
         SiteSchema.NexusPhp.value,
         SiteSchema.Gazelle.value,

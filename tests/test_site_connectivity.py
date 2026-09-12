@@ -1,9 +1,12 @@
 """站点连通性测试链路的数据库回归测试。"""
 
+from unittest.mock import Mock
+
 from app.application.site.contract import SiteSnapshot
 from app.chain.site import SiteChain
 from app.db.models.site import Site
 from app.db.models.sitestatistic import SiteStatistic
+from app.schemas.site import SiteUserData
 
 
 def test_site_connectivity_records_result_without_injected_session(db, monkeypatch):
@@ -59,3 +62,27 @@ def test_resource_login_path_uses_generic_connectivity_test(db, monkeypatch):
 
     assert (status, message) == (True, "连接成功")
     assert observed[0].url == "https://resource-path.test/index.php"
+
+
+def test_failed_userdata_is_not_persisted_as_a_successful_refresh(monkeypatch):
+    """解析器未取得用户身份时不得写入空数据或发送刷新成功事件。"""
+    chain = object.__new__(SiteChain)
+    chain.site_repository = Mock()
+    chain.eventmanager = Mock()
+    failed_data = SiteUserData(
+        domain="www.musopia.vip",
+        err_msg="未检测到已登陆，请检查cookies是否过期",
+    )
+    monkeypatch.setattr(
+        SiteChain,
+        "run_module",
+        lambda _self, _method, **_kwargs: failed_data,
+    )
+
+    result = chain.refresh_userdata(
+        site={"id": 1, "domain": "www.musopia.vip", "name": "音乐乌托邦"}
+    )
+
+    assert result is failed_data
+    chain.site_repository.update_userdata.assert_not_called()
+    chain.eventmanager.send_event.assert_not_called()

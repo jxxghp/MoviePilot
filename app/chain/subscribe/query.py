@@ -65,10 +65,8 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
     def get_subscribed_sites(self, mtype: Optional[str] = None) -> Optional[List[int]]:
         """
         获取指定媒体类型订阅涉及的站点清单（节约资源）
-
-        未指定媒体类型时保持原有全量订阅行为；指定类型却没有可搜索订阅时
-        返回 None，避免调用方把空站点误解为“搜索所有站点”。
-
+        未指定媒体类型时保持原有全量订阅行为；指定类型却没有可搜索订阅时返回 None，
+        避免调用方把空站点误解为“搜索所有站点”。
         :param mtype: 可选媒体类型
         :return: 返回[]代表所有站点命中，返回None代表没有订阅
         """

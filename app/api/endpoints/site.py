@@ -488,7 +488,14 @@ def refresh_userdata(
         return _SchemaResponse(
             success=False, message="站点不支持索引或未通过用户认证！"
         )
-    user_data = SiteChain().refresh_userdata(site=indexer) or {}
+    user_data = SiteChain().refresh_userdata(site=indexer)
+    if not user_data or not user_data.userid:
+        message = (
+            user_data.err_msg
+            if user_data and user_data.err_msg
+            else "未获取到站点用户数据，请检查 Cookie 是否有效！"
+        )
+        return _SchemaResponse(success=False, message=message)
     return _SchemaResponse(success=True, data=user_data)
 
 
