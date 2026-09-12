@@ -42,7 +42,7 @@ class SiteUserData(Base):
     # 下载体积
     leeching_size: Mapped[Optional[float]] = mapped_column(Float, default=0)
     # 做种人数, 种子大小 JSON
-    seeding_info: Mapped[Optional[Any]] = mapped_column(JSON, default=dict)
+    seeding_info: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
     # 未读消息
     message_unread: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 未读消息内容 JSON
