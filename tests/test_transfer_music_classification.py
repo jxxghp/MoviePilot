@@ -171,3 +171,57 @@ def test_album_context_rejects_candidate_conflicting_with_file_tags(
 
     assert returned_meta is local_meta
     assert returned_info is None
+
+
+def test_album_context_preserves_local_release_track_position(
+        tmp_path,
+        monkeypatch,
+) -> None:
+    """Recording 的其它发行版曲序不得覆盖当前文件的本地曲序。"""
+    file_path = tmp_path / "Speak Now (Taylor's Version)" / "20 - Castles Crumbling.flac"
+    local_meta = MetaMusic(
+        title="Castles Crumbling (Taylor's Version)",
+        artists=["Taylor Swift", "Hayley Williams"],
+        album="Speak Now (Taylor's Version)",
+        year=2023,
+        disc_number=2,
+        track_number=20,
+        total_tracks=22,
+    )
+    matched_info = MusicInfo(
+        media_source="musicbrainz",
+        media_id="recording-castles-crumbling",
+        title="Castles Crumbling (Taylor's Version)",
+        artists=["Taylor Swift", "Hayley Williams"],
+        album="Speak Now (Taylor's Version)",
+        album_artist="Taylor Swift",
+        album_type="Album",
+        year=2023,
+        disc_number=1,
+        track_number=6,
+        total_tracks=6,
+    )
+    file_item = FileItem(
+        storage="local",
+        path=str(file_path),
+        type="file",
+        name=file_path.name,
+        basename=file_path.stem,
+        extension="flac",
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _directory: {str(file_path.resolve()): matched_info},
+    )
+
+    merged_meta, merged_info = FileFilterMixin._match_music_album_context(
+        file_item,
+        file_path,
+        local_meta,
+    )
+
+    assert merged_info is not None
+    assert merged_meta.disc_number == merged_info.disc_number == 2
+    assert merged_meta.track_number == merged_info.track_number == 20
+    assert merged_meta.total_tracks == merged_info.total_tracks == 22
