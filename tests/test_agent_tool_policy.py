@@ -664,7 +664,11 @@ def test_direct_non_admin_safe_read_rejects_before_policy_or_schema() -> None:
 
     result = json.loads(asyncio.run(manager.call_tool(tool.name, {"query": "same"})))
 
-    assert result == {"error": "抱歉，您没有执行此工具的权限。只有系统管理员才能执行工具操作。"}
+    assert result == {
+        "error": "抱歉，您没有执行此工具的权限。只有系统管理员才能执行工具操作。",
+        "execution_outcome": "failed",
+        "recovery": "当前身份无权执行该工具；改用允许的只读工具或请求具备权限的用户确认。",
+    }
     assert events == []
     orchestrator.start.assert_not_called()
 

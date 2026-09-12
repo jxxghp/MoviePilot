@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextvars import Context, ContextVar, copy_context
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Protocol, Union, cast
 
 from langchain_core.tools import BaseTool
 from pydantic import PrivateAttr
@@ -130,10 +130,10 @@ def serialize_tool_result_for_agent(result: Any) -> str:
         return str(result)
 
 
-def normalize_tool_failure_for_agent(result: Any, *, tool_name: str) -> Any:
+def normalize_tool_failure_for_agent(result: Any, *, tool_name: str) -> str | list[dict[str, Any]]:
     """将旧工具返回的裸错误文本统一成模型可恢复的结构化失败回执。"""
     if not isinstance(result, str):
-        return result
+        return cast(str | list[dict[str, Any]], result)
     text = result.strip()
     if not text or text.startswith("{") or text.startswith("["):
         return result
