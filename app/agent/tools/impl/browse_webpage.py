@@ -109,7 +109,7 @@ class BrowseWebpageInput(BaseModel):
         description="Content type for 'get_content' action: 'text' for readable text, 'html' for raw HTML",
     )
     timeout: Optional[int] = Field(
-        DEFAULT_TIMEOUT, ge=1, le=MAX_TIMEOUT,
+        DEFAULT_TIMEOUT,
         description="Timeout in seconds for the action (default: 30, range: 1-300)"
     )
     cookies: Optional[str] = Field(
@@ -416,6 +416,13 @@ class BrowseWebpageTool(MoviePilotTool):
         except Exception as e:
             error_summary = summarize_error(e)
             logger.error(f"CloakBrowser 执行失败: {error_summary}", exc_info=True)
+            if str(e) == "关闭浏览器标签页失败":
+                return self._json_response({
+                    "success": False,
+                    "execution_outcome": "unknown",
+                    "error": "关闭浏览器标签页的实际状态未知。",
+                    "recovery": "先使用 list_tabs 或 snapshot 核验当前页面，再决定是否继续操作；不要直接重试关闭动作。",
+                })
             if browser_action == BrowserAction.SCREENSHOT:
                 return self._screenshot_failure("screenshot_failed", "浏览器截图执行失败")
             return self._error_response("browser_operation_failed", f"CloakBrowser 执行失败: {error_summary}", "检查当前会话和页面状态后再重试。")

@@ -550,6 +550,29 @@ def test_close_tab_before_active_page_keeps_active_index() -> None:
     assert first_page.closed is True
 
 
+def test_close_tab_failure_is_reported_as_unknown_state() -> None:
+    """关闭动作异常时实际状态可能已发生，必须要求先核验而非盲目重试。"""
+    page = _FakePage("close-error")
+    page.close = MagicMock(side_effect=RuntimeError("provider failure"))
+    context = _FakeContext([page, _FakePage("remaining")])
+    session = _BrowserSessionState("close-error", context, context.pages, active_index=0)
+    tool = BrowseWebpageTool(session_id="session-1", user_id="10001")
+
+    with patch.object(
+        BrowserSessionHelper,
+        "with_session",
+        side_effect=lambda callback, **_kwargs: callback(session),
+    ):
+        result = tool._execute_browser_action(
+            browser_action=BrowserAction.CLOSE_TAB, url=None, selector=None, ref=None, value=None,
+            script=None, content_type="text", timeout=3, cookies=None, user_agent=None,
+            session_key="close-error", tab_index=0, allow_private_network=False,
+        )
+    payload = json.loads(result)
+    assert payload["execution_outcome"] == "unknown"
+    assert "list_tabs" in payload["recovery"]
+
+
 def test_browse_webpage_get_cookies_returns_current_domain_cookie_and_ua():
     """管理员 Cookie 动作应只返回当前页面域名的会话字段。"""
     page = _FakePage()

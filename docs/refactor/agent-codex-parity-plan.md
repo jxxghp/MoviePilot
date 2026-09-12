@@ -115,4 +115,5 @@ uv run --locked --no-sync python -m scripts.evaluation \
 - 浏览器与子代理状态阶段：浏览器所有成功/失败 JSON 统一带 `execution_outcome`；子代理任务的 running/cancelled 状态带明确的 `pending/failed` 语义和继续观察、取消后重新派发的恢复建议。当前阶段与文件、Shell、浏览器回归共 112 项通过；真实浏览器仍受用户保存权限限制，子代理终端共享仍需原生句柄闭环。
 - 浏览器观察回执阶段：`goto`、`snapshot`、`get_content` 及交互动作统一显式返回 `success`，从而稳定映射为 `execution_outcome=succeeded/failed`；页面内容为空与浏览器执行失败可以区分。当前跨浏览器、文件、Shell、子代理回归共 125 项通过。
 - 浏览器会话可靠性阶段：直接 `run()` 的参数/异常现在返回结构化恢复合同并限制 timeout 为 1–300 秒；点击等待遵守调用 deadline；关闭标签页正确调整 active index，关闭异常不再伪报成功；生成新 snapshot 前清理旧 ref，动态页面不会把过期 ref 静默指向新元素。浏览器、文件、Shell、子代理相关回归共 155 项通过。
+- 浏览器状态不确定性补强：关闭标签页的 provider 异常按 `execution_outcome=unknown` 返回，要求先 `list_tabs/snapshot` 核验，避免把可能已发生的动作当作失败后重复执行；补充了 active index 和关闭异常的真实回归。
 - 浏览器环境复核：启动本机 Chrome 后用同一官方 OAuth 配置重跑 `/tmp/moviepilot-agent-round-luna-oauth-native-browser-chrome-20260912.json`，原生已加载 Browser plugin、node_repl 并选择 Chrome；真实回环导航仍被保存的浏览器权限拒绝。该结果排除了“CLI 未登录或未启动 Chrome”的解释，下一次只有在用户允许对应回环地址后才继续导航、点击和 oracle 配对。
