@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import app.api.endpoints.plugin as plugin_endpoint
+import app.api.endpoints.plugininstance as plugin_instance_endpoint
 import app.application.plugin.folders as plugin_folders
 import app.application.plugin.management as plugin_management
 import app.application.plugin.routes as plugin_routes
@@ -502,13 +502,13 @@ def test_http_uninstall_stops_the_plugin_before_deleting_its_data(monkeypatch):
     plugin_manager = _uninstall_manager()
     config = MagicMock()
     config.get.return_value = ["DemoPluginwork"]
-    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
-    monkeypatch.setattr(plugin_endpoint, "get_configured_system_config", lambda: config)
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_api", MagicMock())
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_job", MagicMock())
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_from_folders", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_instance_endpoint, "get_configured_system_config", lambda: config)
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_from_folders", MagicMock())
 
-    result = plugin_endpoint.uninstall_plugin("DemoPluginwork", None)
+    result = plugin_instance_endpoint.uninstall_plugin("DemoPluginwork", None)
 
     assert result.success is True
     _assert_stop_precedes_deletion(plugin_manager)
@@ -577,13 +577,13 @@ def test_uninstall_virtual_instance_also_stops_before_deleting(monkeypatch):
     plugin_manager.plugins = {}
     config = MagicMock()
     config.get.return_value = ["DemoPlugin"]
-    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
-    monkeypatch.setattr(plugin_endpoint, "get_configured_system_config", lambda: config)
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_api", MagicMock())
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_job", MagicMock())
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_from_folders", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_instance_endpoint, "get_configured_system_config", lambda: config)
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_from_folders", MagicMock())
 
-    result = plugin_endpoint.uninstall_plugin("DemoPluginwork", None)
+    result = plugin_instance_endpoint.uninstall_plugin("DemoPluginwork", None)
 
     assert result.success is True
     config.set.assert_called_once_with(

@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, ContextManager, Protocol, TypeVar
+from typing import Any, ContextManager, Protocol, TypeGuard, TypeVar
 
 from app.application.plugin.admission import PluginInstallAdmission
 from app.application.plugin.identity import PluginIdentity, PluginPayloadSourceType
@@ -155,6 +155,49 @@ class _InstallState:
     commit_unknown: bool = False
 
 
+def _identity_describes_candidate(
+    identity: PluginIdentity | None,
+    candidate: Any,
+) -> TypeGuard[PluginIdentity]:
+    """判断已登记的身份元数据是否正描述这个候选载荷。
+
+    纯比较，不读磁盘：确认两边讲的是同一份载荷之后，调用方才值得再去取一次运行
+    目录的收据做最终核对。来源类型未知、版本或包代次不符、来源键不匹配，以及身份
+    压根没留收据，都不足以证明相同。
+
+    :param identity: 已登记的插件来源身份，未登记时为 None
+    :param candidate: 本次待安装的候选载荷
+    :return: 元数据是否描述同一载荷
+    """
+    if identity is None or identity.payload_source_type is PluginPayloadSourceType.UNKNOWN:
+        return False
+    if (
+        identity.declared_version != candidate.plugin_version
+        or identity.package_generation != candidate.package_generation
+        or identity.payload_source_type is not candidate.payload_source_type
+    ):
+        return False
+    source_matches = (
+        identity.payload_source_key is None
+        if isinstance(candidate, PluginLocalCandidate)
+        else identity.payload_source_key == candidate.source_key
+    )
+    return source_matches and identity.payload_receipt is not None
+
+
+async def _await_side_effect(operation: Awaitable[T]) -> T:
+    """让不可安全中断的副作用进入终态后再传播调用方取消。"""
+    task = asyncio.ensure_future(operation)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError as cancellation:
+        try:
+            await await_task_to_terminal(task)
+        except BaseException as error:
+            raise cancellation from error
+        raise
+
+
 class PluginInstallCommand:
     """以一个 Gateway 后端协调来源、文件、数据库与运行态提交。"""
 
@@ -267,7 +310,7 @@ class PluginInstallCommand:
                     state.transaction_id,
                 )
 
-            await self.__await_side_effect(create_checkpoint())
+            await _await_side_effect(create_checkpoint())
         except Exception as error:
             return PluginInstallResult(
                 success=False,
@@ -297,7 +340,7 @@ class PluginInstallCommand:
                 await self.__persistence.create_installation(record)
                 state.journal_created = True
 
-            await self.__await_side_effect(create_journal())
+            await _await_side_effect(create_journal())
         except asyncio.CancelledError:
             if not state.journal_created:
                 await self.__resolve_journal_created(state)
@@ -337,7 +380,7 @@ class PluginInstallCommand:
 
         state.stage = "package_install"
         try:
-            package_installed, message = await self.__await_side_effect(
+            package_installed, message = await _await_side_effect(
                 self.__packages.async_install(
                     plugin_id=plugin_id,
                     repo_url=candidate.repo_url,
@@ -375,7 +418,7 @@ class PluginInstallCommand:
         registrations_refreshed = False
         try:
             state.stage = "payload_receipt"
-            receipt = await self.__await_side_effect(
+            receipt = await _await_side_effect(
                 self.__packages.async_payload_receipt(plugin_id)
             )
             state.target_identity = admission.build_identity(
@@ -387,7 +430,7 @@ class PluginInstallCommand:
                     or release_version == candidate.plugin_version
                 ),
             )
-            await self.__await_side_effect(
+            await _await_side_effect(
                 self.__persistence.set_installation_target(
                     state.transaction_id,
                     membership_target=True,
@@ -399,27 +442,15 @@ class PluginInstallCommand:
             self.__loadable_marker(plugin_id)
 
             state.stage = "persistent_backup_stage"
-            await self.__await_side_effect(
+            await _await_side_effect(
                 self.__packages.async_stage_persistent_backup(state.checkpoint)
             )
             state.stage = "persistent_backup_activate"
-            await self.__await_side_effect(
+            await _await_side_effect(
                 self.__packages.async_activate_persistent_backup(state.checkpoint)
             )
 
-            state.stage = "runtime_reload"
-            state.runtime_touched = True
-            runtime_reloaded = await self.__reload_active(
-                plugin_id,
-                allow_pending_restart=bool(state.native_dependency_changes),
-            )
-            if runtime_reloaded:
-                state.stage = "registration_refresh"
-                state.registrations_touched = True
-                await self.__await_side_effect(
-                    self.__registration_refresher(plugin_id)
-                )
-                registrations_refreshed = True
+            registrations_refreshed = await self.__reload_and_refresh(plugin_id, state)
         except asyncio.CancelledError:
             raise
         except Exception as error:
@@ -443,7 +474,7 @@ class PluginInstallCommand:
                 )
                 state.committed = True
 
-            await self.__await_side_effect(commit_database())
+            await _await_side_effect(commit_database())
         except asyncio.CancelledError:
             await self.__resolve_commit_outcome(state)
             raise
@@ -512,23 +543,10 @@ class PluginInstallCommand:
         """确认身份元数据与当前运行目录收据都描述同一载荷。"""
         identity = admission.identity_before
         candidate = admission.candidate
-        if identity is None or identity.payload_source_type is PluginPayloadSourceType.UNKNOWN:
-            return False
-        if (
-            identity.declared_version != candidate.plugin_version
-            or identity.package_generation != candidate.package_generation
-            or identity.payload_source_type is not candidate.payload_source_type
-        ):
-            return False
-        source_matches = (
-            identity.payload_source_key is None
-            if isinstance(candidate, PluginLocalCandidate)
-            else identity.payload_source_key == candidate.source_key
-        )
-        if not source_matches or identity.payload_receipt is None:
+        if not _identity_describes_candidate(identity, candidate):
             return False
         try:
-            current_receipt = await self.__await_side_effect(
+            current_receipt = await _await_side_effect(
                 self.__packages.async_payload_receipt(candidate.plugin_id)
             )
         except Exception as error:  # noqa: BLE001 - 无法证明相同就走完整安装
@@ -552,7 +570,7 @@ class PluginInstallCommand:
         try:
             await self.__reload_active(plugin_id)
             failure_stage = "registration_refresh"
-            await self.__await_side_effect(
+            await _await_side_effect(
                 self.__registration_refresher(plugin_id)
             )
         except Exception as error:
@@ -581,6 +599,33 @@ class PluginInstallCommand:
             report_error=report_error,
         )
 
+    async def __reload_and_refresh(
+        self,
+        plugin_id: str,
+        state: _InstallState,
+    ) -> bool:
+        """重载运行态，激活后才刷新宿主注册，逐步标记已触达的补偿范围。
+
+        重载没激活时插件还是旧载荷，此时刷新注册会把旧实现的服务与路由登记成新一
+        轮的，失败回滚也无从判断该撤销到哪一步。
+
+        :param plugin_id: 插件ID
+        :param state: 安装事务状态
+        :return: 是否已刷新宿主注册
+        """
+        state.stage = "runtime_reload"
+        state.runtime_touched = True
+        runtime_reloaded = await self.__reload_active(
+            plugin_id,
+            allow_pending_restart=bool(state.native_dependency_changes),
+        )
+        if not runtime_reloaded:
+            return False
+        state.stage = "registration_refresh"
+        state.registrations_touched = True
+        await _await_side_effect(self.__registration_refresher(plugin_id))
+        return True
+
     async def __reload_active(
         self,
         plugin_id: str,
@@ -588,7 +633,7 @@ class PluginInstallCommand:
         allow_pending_restart: bool = False,
     ) -> bool:
         """重载插件；原生载荷已替换时允许等待新进程完成激活。"""
-        runtime_status = await self.__await_side_effect(
+        runtime_status = await _await_side_effect(
             self.__target_reloader(plugin_id)
         )
         if runtime_status is PluginRuntimeStatus.ACTIVE:
@@ -612,7 +657,7 @@ class PluginInstallCommand:
             return
         state.native_dependencies_checked = True
         try:
-            changes = await self.__await_side_effect(
+            changes = await _await_side_effect(
                 self.__packages.async_native_dependency_changes(state.checkpoint)
             )
         except Exception as error:  # noqa: BLE001 - 诊断失败不能改写安装终态
@@ -636,13 +681,13 @@ class PluginInstallCommand:
     async def __finish_committed(self, state: _InstallState) -> str:
         """幂等清理 COMMITTED 事务；失败时保留 journal 供启动回放。"""
         try:
-            await self.__await_side_effect(
+            await _await_side_effect(
                 self.__packages.async_finalize_persistent_backup(state.checkpoint)
             )
-            await self.__await_side_effect(
+            await _await_side_effect(
                 self.__packages.async_commit(state.checkpoint)
             )
-            await self.__await_side_effect(
+            await _await_side_effect(
                 self.__persistence.delete_installation(
                     state.transaction_id,
                     expected_phase=PluginInstallationPhase.COMMITTED,
@@ -870,19 +915,6 @@ class PluginInstallCommand:
                 plugin_id,
                 "；".join(rollback.errors),
             )
-
-    @staticmethod
-    async def __await_side_effect(operation: Awaitable[T]) -> T:
-        """让不可安全中断的副作用进入终态后再传播调用方取消。"""
-        task = asyncio.ensure_future(operation)
-        try:
-            return await asyncio.shield(task)
-        except asyncio.CancelledError as cancellation:
-            try:
-                await await_task_to_terminal(task)
-            except BaseException as error:
-                raise cancellation from error
-            raise
 
     async def __report(
         self,

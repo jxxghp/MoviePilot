@@ -309,7 +309,7 @@
   },
   "app/application/plugin/install.py:asyncio.ensure_future": {
     "owners": {
-      "PluginInstallCommand.__await_side_effect": 1
+      "_await_side_effect": 1
     },
     "target": "asyncio.ensure_future"
   },
