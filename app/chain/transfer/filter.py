@@ -98,6 +98,7 @@ class _MusicBatchContext:
     single_main_keys: set[Tuple[str, str]] = field(default_factory=set)
     album_main_keys: set[Tuple[str, str]] = field(default_factory=set)
     directory_evidence: dict[Tuple[str, str], MetaMusic] = field(default_factory=dict)
+    album_evidence_by_main_key: dict[Tuple[str, str], MetaMusic] = field(default_factory=dict)
     resolved_contexts: dict[Tuple[str, str], tuple[MetaMusic, MusicInfo]] = field(default_factory=dict)
 
 
@@ -149,6 +150,42 @@ def _music_directory_evidence(items: list[FileItem]) -> Optional[MetaMusic]:
     )
 
 
+def _music_tagged_album_groups(
+        items: list[FileItem],
+) -> list[tuple[list[FileItem], MetaMusic]]:
+    """按精确的专辑艺人和专辑标签划分同目录内的多碟/多发行分组。"""
+    grouped: dict[tuple[str, str], tuple[list[FileItem], str, str]] = {}
+    collective_keys = {
+        music_text_key(value)
+        for value in ("Various Artists", "Various", "VA", "群星", "众艺人", "眾藝人")
+    }
+    for item in items:
+        if getattr(item, "storage", "local") != "local" or not item.path:
+            continue
+        tag_meta = AudioMetadataHelper.read_tags(Path(item.path))
+        if not tag_meta or not tag_meta.album:
+            continue
+        artist = tag_meta.album_artist
+        if not artist and len(tag_meta.artists) == 1:
+            artist = tag_meta.artists[0]
+        artist_key = music_text_key(artist)
+        album_key = music_text_key(tag_meta.album)
+        if not artist or artist_key in collective_keys or not album_key:
+            continue
+        key = (artist_key, album_key)
+        if key not in grouped:
+            grouped[key] = ([], artist.strip(), tag_meta.album.strip())
+        grouped[key][0].append(item)
+    return [
+        (
+            grouped_items,
+            MetaMusic(artists=[artist], album_artist=artist, album=album),
+        )
+        for grouped_items, artist, album in grouped.values()
+        if len(grouped_items) >= 2
+    ]
+
+
 def _apply_music_directory_evidence(
         meta: MetaMusic,
         evidence: Optional[MetaMusic],
@@ -198,16 +235,20 @@ def _prepare_music_batch_context(
     }
     for parent_key, items in main_items_by_dir.items():
         evidence = _music_directory_evidence(items)
-        if not evidence:
-            continue
-        context.directory_evidence[parent_key] = evidence
+        if evidence:
+            context.directory_evidence[parent_key] = evidence
         # 两首及以上音轨，且目录内艺人和专辑标签均达到高一致性时，足以在
         # 远端临时不可用时证明这是一个专辑目录；不能把整个艺术家合集根目录
         # 当成一张专辑，也不能仅凭文件夹名称猜测类别。
-        if len(items) > 1 and evidence.artists and evidence.album:
+        if evidence and len(items) > 1 and evidence.artists and evidence.album:
             context.album_main_keys.update(
                 owner._get_file_key(item) for item in items
             )
+        for grouped_items, grouped_evidence in _music_tagged_album_groups(items):
+            for item in grouped_items:
+                item_key = owner._get_file_key(item)
+                context.album_main_keys.add(item_key)
+                context.album_evidence_by_main_key[item_key] = grouped_evidence
     for current_item, _current_bluray_dir in file_items:
         if not owner._is_music_lyrics_file(current_item):
             continue
@@ -253,9 +294,11 @@ def _resolve_music_batch_file_context(
         fallback,
     )
     if isinstance(file_meta, MetaMusic):
+        file_key = owner._get_file_key(file_item)
         file_meta = _apply_music_directory_evidence(
             file_meta,
-            batch_context.directory_evidence.get(owner._get_file_parent_key(file_item)),
+            batch_context.album_evidence_by_main_key.get(file_key)
+            or batch_context.directory_evidence.get(owner._get_file_parent_key(file_item)),
         )
         if discard_shared_identity:
             file_meta = _apply_music_directory_year(file_meta, file_path)
@@ -271,8 +314,9 @@ def _resolve_music_batch_file_context(
             release_regions=release_regions,
             release_scripts=release_scripts,
         )
-    directory_evidence = batch_context.directory_evidence.get(
-        owner._get_file_parent_key(file_item)
+    directory_evidence = (
+        batch_context.album_evidence_by_main_key.get(owner._get_file_key(file_item))
+        or batch_context.directory_evidence.get(owner._get_file_parent_key(file_item))
     )
     if (
             owner._is_audio_file(file_item)
