@@ -314,6 +314,14 @@ def _resolve_music_batch_file_context(
             release_regions=release_regions,
             release_scripts=release_scripts,
         )
+    if discard_shared_identity and isinstance(file_meta, MetaMusic):
+        # 目录年份是当前下载包/发行目录的本地强证据。目录级或逐曲远端识别
+        # 可能再次用再版年份覆盖前面已经纠正的年份，因此在所有识别层结束后
+        # 重放一次目录年份约束。显式指定 MusicBrainz 身份时不会进入此分支。
+        file_meta = _apply_music_directory_year(file_meta, file_path)
+        if isinstance(task_mediainfo, MusicInfo) and file_meta.year:
+            task_mediainfo = deepcopy(task_mediainfo)
+            task_mediainfo.year = file_meta.year
     directory_evidence = (
         batch_context.album_evidence_by_main_key.get(owner._get_file_key(file_item))
         or batch_context.directory_evidence.get(owner._get_file_parent_key(file_item))
