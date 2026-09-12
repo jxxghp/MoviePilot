@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8569,
-  "edge_sha256": "faed873330ae1481f98f39225c8e65e68d06925a035ef480f6bb022f6d8eab13",
+  "edge_count": 8570,
+  "edge_sha256": "da7bfb4bae75a3c8f1e02c2034f38da8401007c4f776478e2719133f66db692d",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1850,6 +1850,7 @@
     "app.agent.tools.impl.browse_webpage -> app.agent",
     "app.agent.tools.impl.browse_webpage -> app.agent.policy",
     "app.agent.tools.impl.browse_webpage -> app.agent.policy.contracts",
+    "app.agent.tools.impl.browse_webpage -> app.agent.policy.sanitizer",
     "app.agent.tools.impl.browse_webpage -> app.agent.terminal",
     "app.agent.tools.impl.browse_webpage -> app.agent.terminal.ownership",
     "app.agent.tools.impl.browse_webpage -> app.agent.tools",
