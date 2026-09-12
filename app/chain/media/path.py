@@ -46,6 +46,10 @@ _CONTENT_RATING_QUALIFIER = re.compile(
     r"\s*[\[(（【]\s*(?:explicit|clean)\s*[\])）】]",
     re.IGNORECASE,
 )
+_SINGLE_RELEASE_SUFFIX = re.compile(
+    r"\s*[-–—]\s*(?:single|单曲)\s*$",
+    re.IGNORECASE,
+)
 
 
 def _is_regular_file(path: Path) -> bool:
@@ -226,7 +230,10 @@ def _fingerprint_info_matches_evidence(
         and not _is_standalone_single_evidence(primary)
     ):
         return False
-    if not music_year_matches(info, primary):
+    if not _is_standalone_single_evidence(primary) and not music_year_matches(
+        info,
+        primary,
+    ):
         return False
     if music_title_matches(info, primary.title):
         return True
@@ -261,10 +268,20 @@ def _fingerprint_info_matches_evidence(
 def _is_standalone_single_evidence(meta: MetaMusic) -> bool:
     """判断本地标签是否明确把当前录音描述为同名单曲发行。"""
     title_key = music_text_key(
-        music_base_title(_CONTENT_RATING_QUALIFIER.sub("", meta.title or ""))
+        music_base_title(
+            _SINGLE_RELEASE_SUFFIX.sub(
+                "",
+                _CONTENT_RATING_QUALIFIER.sub("", meta.title or ""),
+            )
+        )
     )
     album_key = music_text_key(
-        music_base_title(_CONTENT_RATING_QUALIFIER.sub("", meta.album or ""))
+        music_base_title(
+            _SINGLE_RELEASE_SUFFIX.sub(
+                "",
+                _CONTENT_RATING_QUALIFIER.sub("", meta.album or ""),
+            )
+        )
     )
     return bool(title_key and album_key and title_key == album_key)
 
@@ -286,7 +303,10 @@ def _reconcile_fingerprint_release(
         or not _is_standalone_single_evidence(primary)
         or not primary.album
         or not info.album
-        or music_album_matches(info, primary.album)
+        or (
+            music_album_matches(info, primary.album)
+            and music_year_matches(info, primary)
+        )
     ):
         return info
 

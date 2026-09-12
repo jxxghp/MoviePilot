@@ -583,7 +583,8 @@ def test_recognize_music_by_path_ignores_single_content_rating_qualifier(monkeyp
     tagged = MetaMusic(
         title=title,
         artists=["Taylor Swift"],
-        album=album,
+        album=f"{album} - Single",
+        year=2023,
         track_number=1,
     )
     candidate = MusicInfo(
@@ -594,7 +595,7 @@ def test_recognize_music_by_path_ignores_single_content_rating_qualifier(monkeyp
         album="Red (Taylor's Version)",
         album_id="red-release-group",
         album_type="Album",
-        year=2021,
+        year=2019,
     )
     chain = MediaChain()
     later_tier = Mock()
@@ -617,10 +618,11 @@ def test_recognize_music_by_path_ignores_single_content_rating_qualifier(monkeyp
     _, recognized = chain.recognize_music_by_path("All Too Well.mp3")
 
     assert recognized.media_id == recording_id
-    assert recognized.album == album
+    assert recognized.album == f"{album} - Single"
     assert recognized.album_id is None
     assert recognized.album_type == "Single"
     assert recognized.track_number == 1
+    assert recognized.year == 2023
     later_tier.assert_not_called()
 
 
