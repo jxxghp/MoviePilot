@@ -376,6 +376,9 @@ _MUSIC_DISC_DIR_RE = re.compile(
 )
 # 目录名中的年份：(2004)、[2004]
 _MUSIC_DIR_YEAR_RE = re.compile(r"[(\[]\s*(?P<year>(?:19|20)\d{2})\s*[)\]]")
+_MUSIC_DIR_PREFIX_YEAR_RE = re.compile(
+    r"^(?P<year>(?:19|20)\d{2})\s*[-._\s]+(?!(?:19|20)\d{2}\b)"
+)
 # 目录名中的括号补充说明（格式、音质、厂牌等），如 [FLAC 24bit-96kHz]
 _MUSIC_BRACKET_RE = re.compile(r"\[[^\]]*\]|【[^】]*】|\([^)]*\)")
 _MUSIC_RECORDING_VERSION_RE = re.compile(
@@ -1614,16 +1617,27 @@ class MetaMusic(MetaBase):
         if not text:
             return {}
         year = None
+        prefixed_year = False
         year_match = _MUSIC_DIR_YEAR_RE.search(text)
         if year_match:
             year = int(year_match.group("year"))
             text = _MUSIC_DIR_YEAR_RE.sub(" ", text)
+        else:
+            prefix_year_match = _MUSIC_DIR_PREFIX_YEAR_RE.match(text)
+            if prefix_year_match:
+                year = int(prefix_year_match.group("year"))
+                text = text[prefix_year_match.end():]
+                prefixed_year = True
         # 括号内的格式/音质描述先剥离出专辑名，但仍可用于音质解析
         brackets = " ".join(fragment for fragment in _MUSIC_BRACKET_RE.findall(text))
         album_text = cls._clean_text(_MUSIC_BRACKET_RE.sub(" ", text))
         if not album_text:
             return {}
-        artist, album = cls.split_artist_title(album_text)
+        artist, album = (
+            (None, album_text)
+            if prefixed_year
+            else cls.split_artist_title(album_text)
+        )
         return {
             "artist": artist,
             "album": album,
