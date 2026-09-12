@@ -25,7 +25,14 @@ from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metamusic import MetaMusic
-from app.domain.music import music_text_key
+from app.domain.music import (
+    music_album_matches,
+    music_artist_matches,
+    music_text_key,
+    music_title_matches,
+    music_version_matches,
+    music_year_matches,
+)
 from app.runtime.log import logger
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
@@ -419,6 +426,19 @@ class FileFilterMixin(_TransferOwnerBase):
             return file_meta, None
         info = matched.get(str(file_path.resolve()))
         if not info or not info.media_id:
+            return file_meta, None
+        evidence_matches = (
+            (not file_meta.artists or music_artist_matches(info, file_meta.artists))
+            and (not file_meta.title or music_title_matches(info, file_meta.title))
+            and (not file_meta.album or not info.album or music_album_matches(info, file_meta.album))
+            and music_version_matches(info, file_meta)
+            and music_year_matches(info, file_meta)
+        )
+        if not evidence_matches:
+            logger.warning(
+                f"音乐专辑目录候选与文件标签证据冲突，已忽略：{file_path.name} -> "
+                f"{info.artist} - {info.album or info.title} ({info.year or '-'})"
+            )
             return file_meta, None
         logger.info(f"{file_path.name} 通过专辑目录匹配识别为：{info.artist} - {info.title}")
         return cls._merge_music_track_context(file_meta, info)
