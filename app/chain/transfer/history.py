@@ -270,11 +270,14 @@ class TransferHistoryOwner(_TransferOwnerBase):
             cleanup_dest_fileitem=cleanup_dest_fileitem,
             music_release_regions=music_release_regions,
             music_release_scripts=music_release_scripts,
-            request_transfer_batch_id=transfer_batch_id,
-            request_transfer_batch_title=transfer_batch_title,
-            request_transfer_batch_root=transfer_batch_root,
-            request_transfer_batch_total=transfer_batch_total,
         )
+        if transfer_batch_id:
+            transfer_kwargs.update(
+                request_transfer_batch_id=transfer_batch_id,
+                request_transfer_batch_title=transfer_batch_title,
+                request_transfer_batch_root=transfer_batch_root,
+                request_transfer_batch_total=transfer_batch_total,
+            )
         if media_source and media_id:
             # 有输入媒体ID时预先识别，音乐与影视统一走 recognize_media 按类型分发
             mediainfo = _recognize_manual_media(
