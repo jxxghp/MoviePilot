@@ -163,6 +163,7 @@ def _set_installed_plugins(monkeypatch, plugin_ids: list[str]) -> None:
         read=lambda key: plugin_ids
         if key == SystemConfigKey.UserInstalledPlugins
         else None,
+        write=lambda _key, _value: None,
     )
     monkeypatch.setattr(
         "app.runtime.extensions.plugin.storage._plugin_storage",

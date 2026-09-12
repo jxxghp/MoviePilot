@@ -77,7 +77,9 @@ from app.application.plugin.transaction import (
 )
 from app.application.scheduling import update_plugin_job
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.db.models.plugininstance import PluginInstance as PluginInstanceRecord
 from app.db.oper.plugindata import PluginDataOper
+from app.db.oper.plugininstance import PluginInstanceOper
 from app.db.plugin.registry import (
     destroy_database,
     ensure_database,
@@ -115,8 +117,11 @@ from app.runtime.extensions.plugin.runtime import (
     build_plugin_runtime,
 )
 from app.runtime.extensions.plugin.storage import (
+    PluginInstanceDirectory,
     PluginStorage,
+    configure_plugin_instance_directory,
     configure_plugin_storage,
+    get_plugin_instance_directory,
     get_plugin_storage,
 )
 from app.runtime.extensions.plugin.system import (
@@ -129,7 +134,7 @@ from app.runtime.loop import main_loop_registry
 from app.runtime.resources import acquire_managed_resource
 from app.runtime.settings import get_runtime_setting
 from app.schemas.exception import PluginMutationRejectedError
-from app.schemas.plugin import PluginRuntimeStatus
+from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 from app.startup.composition.plugin import (
     compose_plugin_market,
@@ -153,6 +158,59 @@ def _delete_plugin_data(plugin_id: str) -> None:
         ).execute(plugin_id)
     finally:
         session.close()
+
+
+def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance:
+    """把插件实例表的 ORM 行投影为运行时端口使用的 Pydantic 描述。
+
+    只投影描述符各列：业务参数走 plugin.<实例ID> 配置读取口，运行时端口拿到的应当是
+    一份实例身份与展示信息的视图。
+    """
+    return PluginInstance(
+        instance_id=record.instance_id,
+        source_plugin_id=record.source_plugin_id,
+        plugin_name=record.plugin_name,
+        plugin_desc=record.plugin_desc,
+        plugin_icon=record.plugin_icon,
+    )
+
+
+def _save_plugin_instance_record(instance: PluginInstance) -> None:
+    """把运行时实例描述写入插件实例表，以实例 ID 为稳定键做新增或更新。
+
+    业务参数不在此列：它由插件自身通过 plugin.<实例ID> 配置口写入、不进运行时描述，
+    原样写回会把用户刚存的配置覆盖成空。
+    """
+    PluginInstanceOper().save(
+        instance_id=instance.instance_id,
+        source_plugin_id=instance.source_plugin_id,
+        plugin_name=instance.plugin_name,
+        plugin_desc=instance.plugin_desc,
+        plugin_icon=instance.plugin_icon,
+    )
+
+
+def _build_plugin_instance_directory() -> PluginInstanceDirectory:
+    """把插件实例表端口装配到 db 层实现。"""
+    oper = PluginInstanceOper()
+
+    def _get(instance_id: str) -> PluginInstance | None:
+        """按实例 ID 查询实例并投影为运行时描述。"""
+        record = oper.get(instance_id)
+        return _plugin_instance_from_record(record) if record is not None else None
+
+    return PluginInstanceDirectory(
+        get=_get,
+        list_all=lambda: [
+            _plugin_instance_from_record(record) for record in oper.list_all()
+        ],
+        list_by_source=lambda source_plugin_id: [
+            _plugin_instance_from_record(record)
+            for record in oper.list_by_source(source_plugin_id)
+        ],
+        save=_save_plugin_instance_record,
+        delete=oper.delete,
+    )
 
 
 def _build_plugin_database() -> PluginDatabase:
@@ -180,6 +238,7 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
         PluginRuntimeEnvironment(
             plugins_root=Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins",
             storage=lambda: get_plugin_storage(),
+            instance_directory=lambda: get_plugin_instance_directory(),
             system=lambda: get_plugin_system(),
             database=lambda: get_plugin_database(),
             catalog_factory=lambda mapper: _build_plugin_catalog(mapper),
@@ -424,6 +483,7 @@ def configure_plugin_services() -> None:
         delete_data=_delete_plugin_data,
     ))
     configure_plugin_database(_build_plugin_database())
+    configure_plugin_instance_directory(_build_plugin_instance_directory())
 
 
 def _register_plugin_runtime(plugin_id: str) -> None:

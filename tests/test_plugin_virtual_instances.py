@@ -3,11 +3,38 @@
 import sys
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 from app.runtime.extensions.plugin.clone import PluginCloneService
 from app.runtime.extensions.plugin.loader import PluginLoader
-from app.runtime.extensions.plugin.storage import PluginInstanceStore, PluginStorage
+from app.runtime.extensions.plugin.storage import (
+    PluginInstanceDirectory,
+    PluginInstanceStore,
+    PluginStorage,
+)
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
+
+
+def _make_directory() -> tuple[PluginInstanceDirectory, dict[str, PluginInstance]]:
+    """构造进程内插件实例表，供分身持久化测试使用。
+
+    返回背后的字典，用例据此断言写入落在哪一行上，而不是只看端口回报的结果。
+    """
+    records: dict[str, PluginInstance] = {}
+
+    directory = PluginInstanceDirectory(
+        get=records.get,
+        list_all=lambda: list(records.values()),
+        list_by_source=lambda source_plugin_id: [
+            record
+            for record in records.values()
+            if record.source_plugin_id == source_plugin_id
+        ],
+        save=lambda instance: records.__setitem__(instance.instance_id, instance),
+        delete=lambda instance_id: records.pop(instance_id, None) is not None,
+    )
+    return directory, records
 
 
 def _logger() -> SimpleNamespace:
@@ -27,7 +54,8 @@ def test_instance_store_keeps_virtual_instances_out_of_installed_list():
         read=values.get,
         write=lambda key, value: values.__setitem__(key, value),
     )
-    store = PluginInstanceStore(storage=lambda: storage)
+    directory, _records = _make_directory()
+    store = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
 
     instance = PluginInstance(
         instance_id="DemoPluginWork",
@@ -41,6 +69,87 @@ def test_instance_store_keeps_virtual_instances_out_of_installed_list():
     assert values[SystemConfigKey.UserInstalledPlugins] == ["DemoPlugin"]
     assert store.delete("DemoPluginWork") is True
     assert store.all() == {}
+
+
+def test_host_rows_do_not_leak_into_the_clone_listing():
+    """本体自身那一行与分身共用一张表，但不得出现在分身清单里。
+
+    本体行承载的是插件自己的业务参数，混进分身清单会让「我的插件」里多出一张
+    指向插件自身的分身卡片。
+    """
+    values = {SystemConfigKey.UserInstalledPlugins: ["DemoPlugin"]}
+    storage = PluginStorage(
+        read=values.get,
+        write=lambda key, value: values.__setitem__(key, value),
+    )
+    directory, records = _make_directory()
+    store = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+    clone = PluginInstance(instance_id="DemoPluginWork", source_plugin_id="DemoPlugin")
+    store.save(clone)
+    records["DemoPlugin"] = PluginInstance(
+        instance_id="DemoPlugin",
+        source_plugin_id="DemoPlugin",
+    )
+
+    assert store.all() == {"DemoPluginWork": clone}
+    assert store.for_source("DemoPlugin") == [clone]
+    assert store.get("DemoPlugin") is None
+    assert store.delete("DemoPlugin") is False
+    assert "DemoPlugin" in records
+
+
+def test_saving_a_clone_whose_id_equals_its_source_is_rejected():
+    """两者相等的那一行表示本体自身，按分身写入会把本体承载的配置顶掉。"""
+    values: dict = {}
+    storage = PluginStorage(
+        read=values.get,
+        write=lambda key, value: values.__setitem__(key, value),
+    )
+    directory, records = _make_directory()
+    store = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+
+    with pytest.raises(ValueError):
+        store.save(
+            PluginInstance(instance_id="DemoPlugin", source_plugin_id="DemoPlugin")
+        )
+
+    assert records == {}
+
+
+def test_legacy_instances_are_not_reimported_after_being_deleted():
+    """删光分身后重启不得从旧 systemconfig 键把它们导回来。
+
+    旧键刻意保留作回滚依据、从不清理，若以「表为空」作为兜底导入的判据，
+    用户每删光一次分身、下次启动就会复活一次。
+    """
+    values = {
+        SystemConfigKey.UserInstalledPlugins: ["DemoPlugin"],
+        SystemConfigKey.PluginInstances: {
+            "DemoPluginWork": {
+                "instance_id": "DemoPluginWork",
+                "source_plugin_id": "DemoPlugin",
+            }
+        },
+    }
+    storage = PluginStorage(
+        read=values.get,
+        write=lambda key, value: values.__setitem__(key, value),
+    )
+    directory, _records = _make_directory()
+
+    # 首次访问：旧键内容被导入独立表
+    first = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+    assert set(first.all()) == {"DemoPluginWork"}
+
+    # 用户删光全部分身，表重新变空
+    assert first.delete("DemoPluginWork") is True
+    assert first.all() == {}
+
+    # 进程重启：新建 store 重新走一次兜底导入判定
+    second = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+
+    assert second.all() == {}
+    assert values[SystemConfigKey.PluginInstances] is not None
 
 
 def test_loader_executes_each_instance_in_an_isolated_module_namespace(

@@ -20,6 +20,7 @@ Models are SQLAlchemy declarative classes. Each model maps to one database table
 | `Message` | Message log |
 | `PluginData` | Plugin-persisted data |
 | `PluginIdentity` | Installed physical-plugin source binding and payload provenance |
+| `PluginInstance` | Per-instance plugin descriptor and configuration, one row per instance |
 | `PassKey` | Passkey authentication records |
 | `Workflow` | Workflow definitions |
 
@@ -63,6 +64,7 @@ directly in chain, module, or endpoint code.
 | `MessageOper` | `oper/message.py` |
 | `PluginDataOper` | `oper/plugindata.py` |
 | `PluginIdentityOper` | `oper/pluginidentity.py` |
+| `PluginInstanceOper` | `oper/plugininstance.py` |
 | `SiteOper` | `oper/site.py` |
 | `SubscribeHistoryOper` | `oper/subscribehistory.py` |
 | `SubscribeOper` | `oper/subscribe.py` |
@@ -441,4 +443,4 @@ can be accepted only once without Application knowing the configured backend.
 - `settings.API_TOKEN` and other secret fields must not be included in log output or API responses.
 - The `config list --show-secrets` flag exists specifically to gate secret visibility in the CLI.
 
-*Last Updated: 2026-09-02*
+*Last Updated: 2026-09-12*

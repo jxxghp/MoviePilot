@@ -1,6 +1,6 @@
 ---
 name: database-operation
-version: 7
+version: 8
 description: >-
   Use this skill when you need to inspect, query, maintain, or carefully modify
   the MoviePilot database. This skill uses the bundled scripts/mp-db.py helper,
@@ -205,6 +205,12 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Useful queries: Diagnosing interrupted installations, rollback conditions, and package or backup presence.
 - Write boundary: Owned by the plugin installation state machine; never advance phase or overwrite evidence manually.
 - Columns: `id`, `transaction_id`, `plugin_id`, `phase`, `membership_before`, `membership_target`, `identity_before_revision`, `identity_target_revision`, `package_existed`, `persistent_backup_existed`, `created_at`, `updated_at`, `schema_version`
+
+### `plugininstance`
+- Purpose: Stores one row per shared-source plugin runtime instance, covering both clones and the host plugin itself (instance_id equals source_plugin_id), together with that instance's display overrides and its own configuration payload. A clone exists exactly while its row exists, so deleting the row uninstalls the clone and discards its configuration.
+- Useful queries: Diagnosing clone naming and ownership, or inspecting what a plugin or one of its clones is configured with.
+- Write boundary: Owned by the plugin instance and plugin configuration APIs; never edit rows directly.
+- Columns: `id`, `instance_id`, `source_plugin_id`, `plugin_name`, `plugin_desc`, `plugin_icon`, `config_data`, `created_at`, `updated_at`
 
 ### `site`
 - Purpose: Stores private-tracker URLs, RSS, credentials, rate limits, proxy state, and downloader binding.

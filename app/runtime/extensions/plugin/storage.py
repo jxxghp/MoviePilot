@@ -148,15 +148,126 @@ class PluginConfigStore:
         return True
 
 
+InstanceReader = Callable[[str], "PluginInstance | None"]
+InstanceLister = Callable[[], "list[PluginInstance]"]
+InstanceSourceLister = Callable[[str], "list[PluginInstance]"]
+InstanceWriter = Callable[["PluginInstance"], None]
+InstanceDeleter = Callable[[str], bool]
+
+
+def _empty_instance_get(_instance_id: str) -> PluginInstance | None:
+    """组合根尚未装配时返回空实例描述。"""
+    return None
+
+
+def _empty_instance_list() -> list[PluginInstance]:
+    """组合根尚未装配时返回空实例列表。"""
+    return []
+
+
+def _empty_instance_list_by_source(_source_plugin_id: str) -> list[PluginInstance]:
+    """组合根尚未装配时返回空实例列表。"""
+    return []
+
+
+def _ignore_instance_save(_instance: PluginInstance) -> None:
+    """组合根尚未装配时忽略实例描述写入。"""
+
+
+def _ignore_instance_delete(_instance_id: str) -> bool:
+    """组合根尚未装配时报告实例描述未删除。"""
+    return False
+
+
+class PluginInstanceDirectory:
+    """封装插件实例表的持久化能力。
+
+    分身与源插件本体共用同一张表、同一套读写原语，两者靠 ``instance_id`` 是否等于
+    ``source_plugin_id`` 区分；本类不做角色过滤，角色隔离由调用方
+    （``PluginInstanceStore``）负责，因为只有调用方知道当前服务的是分身清单还是
+    本体自身的那一行。
+    """
+
+    def __init__(
+            self,
+            *,
+            get: InstanceReader = _empty_instance_get,
+            list_all: InstanceLister = _empty_instance_list,
+            list_by_source: InstanceSourceLister = _empty_instance_list_by_source,
+            save: InstanceWriter = _ignore_instance_save,
+            delete: InstanceDeleter = _ignore_instance_delete,
+    ) -> None:
+        """保存由启动组合根提供的实例表读写函数。"""
+        self._get = get
+        self._list_all = list_all
+        self._list_by_source = list_by_source
+        self._save = save
+        self._delete = delete
+
+    def get(self, instance_id: str) -> PluginInstance | None:
+        """按实例 ID 读取单条描述，不区分分身与本体。"""
+        return self._get(instance_id)
+
+    def list_all(self) -> list[PluginInstance]:
+        """列出表中全部描述，不区分分身与本体。"""
+        return self._list_all()
+
+    def list_by_source(self, source_plugin_id: str) -> list[PluginInstance]:
+        """按源插件 ID 列出其全部描述，不区分分身与本体。"""
+        return self._list_by_source(source_plugin_id)
+
+    def save(self, instance: PluginInstance) -> None:
+        """新增或更新一条描述，以 ``instance_id`` 为稳定键。"""
+        self._save(instance)
+
+    def delete(self, instance_id: str) -> bool:
+        """按实例 ID 删除一行，连同其配置，返回删除前是否存在。"""
+        return self._delete(instance_id)
+
+
 class PluginInstanceStore:
-    """管理虚拟插件实例描述，并隔离兼容清单与新实例清单。"""
+    """管理共享源码的分身实例描述，并把源插件本体自身的那一行隔离在视图之外。
 
-    def __init__(self, *, storage: Callable[[], "PluginStorage"]) -> None:
-        """保存延迟解析的持久化端口，便于启动组合根后装配。"""
+    两类记录同存一张表，靠 ``instance_id`` 是否等于 ``source_plugin_id`` 区分：
+    本类只服务分身，本体行（它承载插件自身的业务参数）读不到也改不到。
+    """
+
+    def __init__(
+            self,
+            *,
+            storage: Callable[[], "PluginStorage"],
+            directory: Callable[[], PluginInstanceDirectory],
+    ) -> None:
+        """保存独立表持久化端口，以及旧 systemconfig 单键端口供兜底导入使用。"""
         self._storage = storage
+        self._directory = directory
+        self._bootstrap_checked = False
 
-    def all(self) -> dict[str, PluginInstance]:
-        """读取全部有效实例，忽略损坏项以免阻断存量插件启动。"""
+    def _ensure_bootstrapped(self) -> None:
+        """旧 systemconfig 单键的内容向独立表兜底导入一次，且只导入一次。
+
+        alembic 迁移已经搬过一轮，这里兜的是「库结构升级后又用旧版本写过分身」这类
+        回滚往返。导入完成后落一个持久化标记，判据不能是「表当前为空」：旧键刻意保留
+        作回滚依据、从不清理，用户把分身全部删光后表就会重新变空，下次进程启动会把
+        已删除的分身整批导回来，删一次复活一次。进程内另外维护一个已检查标志，避免
+        每次访问都为此多打一次查询。
+
+        :raise Exception: 导入失败时向上抛出，不吞掉持久化层错误
+        """
+        if self._bootstrap_checked:
+            return
+        self._bootstrap_checked = True
+        storage = self._storage()
+        if storage.read(SystemConfigKey.PluginInstancesImported):
+            return
+        directory = self._directory()
+        if not directory.list_all():
+            for instance in self._legacy_instances().values():
+                directory.save(instance)
+        storage.write(SystemConfigKey.PluginInstancesImported, True)
+
+    def _legacy_instances(self) -> dict[str, PluginInstance]:
+        """解析旧 systemconfig 单键里的实例描述，兼容历史字典与列表两种载荷形态。"""
         raw_instances = self._storage().read(SystemConfigKey.PluginInstances) or {}
         if isinstance(raw_instances, list):
             entries = {
@@ -180,43 +291,65 @@ class PluginInstanceStore:
                 continue
         return instances
 
+    def all(self) -> dict[str, PluginInstance]:
+        """读取全部登记的分身实例，不含源插件本体自身的那一行。"""
+        self._ensure_bootstrapped()
+        return {
+            record.instance_id: record
+            for record in self._directory().list_all()
+            if not record.is_host
+        }
+
     def get(self, instance_id: str) -> PluginInstance | None:
-        """读取指定实例描述。"""
-        return self.all().get(instance_id)
+        """读取指定分身实例描述；本体自身的那一行不会从这里返回。"""
+        self._ensure_bootstrapped()
+        record = self._directory().get(instance_id)
+        return record if record is not None and not record.is_host else None
 
     def save(self, instance: PluginInstance) -> None:
-        """新增或更新实例描述，并以实例 ID 作为稳定持久化键。"""
-        instances = self.all()
-        instances[instance.instance_id] = instance
-        self._write(instances)
+        """新增或更新分身实例描述，并以实例 ID 作为稳定持久化键。
+
+        分身的实例 ID 必须区别于其源插件 ID：两者相等的那一行表示的是本体自身，
+        按分身写入会把本体承载的业务参数顶掉。
+        """
+        self._ensure_bootstrapped()
+        if instance.is_host:
+            raise ValueError(
+                f"分身实例 {instance.instance_id} 的 ID 不能等于其源插件 ID"
+            )
+        self._directory().save(instance)
 
     def delete(self, instance_id: str) -> bool:
-        """删除指定实例描述，返回删除前是否存在。"""
-        instances = self.all()
-        removed = instances.pop(instance_id, None)
-        if removed is None:
+        """删除指定分身实例描述连同其配置，返回删除前是否存在。"""
+        self._ensure_bootstrapped()
+        record = self.get(instance_id)
+        if record is None:
             return False
-        self._write(instances)
-        return True
+        return self._directory().delete(record.instance_id)
 
     def for_source(self, source_plugin_id: str) -> list[PluginInstance]:
-        """按持久化顺序返回引用同一源码插件的全部实例。"""
+        """按持久化顺序返回引用同一源码插件的全部分身，不含本体自身那一行。"""
+        self._ensure_bootstrapped()
         return [
-            instance
-            for instance in self.all().values()
-            if instance.source_plugin_id == source_plugin_id
+            record
+            for record in self._directory().list_by_source(source_plugin_id)
+            if not record.is_host
         ]
-
-    def _write(self, instances: dict[str, PluginInstance]) -> None:
-        """把模型映射序列化为普通字典，避免存储层依赖 Pydantic。"""
-        payload = {
-            instance_id: instance.model_dump(mode="json")
-            for instance_id, instance in instances.items()
-        }
-        self._storage().write(SystemConfigKey.PluginInstances, payload)
 
 
 _plugin_storage = PluginStorage()
+_plugin_instance_directory = PluginInstanceDirectory()
+
+
+def configure_plugin_instance_directory(directory: PluginInstanceDirectory) -> None:
+    """由启动组合根替换插件实例表持久化实现。"""
+    global _plugin_instance_directory
+    _plugin_instance_directory = directory
+
+
+def get_plugin_instance_directory() -> PluginInstanceDirectory:
+    """返回当前插件实例表持久化端口。"""
+    return _plugin_instance_directory
 
 
 def configure_plugin_storage(storage: PluginStorage) -> None:

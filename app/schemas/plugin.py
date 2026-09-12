@@ -5,6 +5,7 @@ from typing import Dict, List, Literal, Optional, Union
 from pydantic import AfterValidator as _AfterValidator
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
 from pydantic import PrivateAttr as _PrivateAttr
+from pydantic import computed_field as _computed_field
 
 from app.schemas.common import JsonData
 
@@ -59,7 +60,19 @@ class PluginInstance(BaseModel):
     plugin_name: Optional[str] = Field(default=None, description="实例展示名称")
     plugin_desc: Optional[str] = Field(default=None, description="实例展示描述")
     plugin_icon: Optional[str] = Field(default=None, description="实例展示图标")
-    mode: Literal["virtual"] = Field(default="virtual", description="实例实现模式")
+
+    @property
+    def is_host(self) -> bool:
+        """该实例是否为源插件本体自身，而非共享其源码的分身。"""
+        return self.instance_id == self.source_plugin_id
+
+    @_computed_field(  # type: ignore[prop-decorator, misc]
+        description="实例实现模式：virtual 为共享源码的分身，host 为源插件本体自身",
+    )
+    @property
+    def mode(self) -> Literal["virtual", "host"]:
+        """由一对身份 ID 派生实例角色，而非另存一份可能失步的副本。"""
+        return "host" if self.is_host else "virtual"
 
 
 class Plugin(BaseModel):
