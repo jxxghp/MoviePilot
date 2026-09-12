@@ -130,6 +130,21 @@ def _without_music_identity(meta: MetaMusic) -> MetaMusic:
     return clean_meta
 
 
+def _merge_contextual_music_evidence(
+    meta: MetaMusic,
+    contextual_meta: MetaMusic,
+) -> MetaMusic:
+    """以同目录高置信共识补齐缺失的艺人和专辑证据。"""
+    merged = MetaMusic.from_dict(meta.to_dict())
+    if not merged.artists and contextual_meta.artists:
+        merged.artists = list(contextual_meta.artists)
+    if not merged.album_artist and contextual_meta.album_artist:
+        merged.album_artist = contextual_meta.album_artist
+    if not merged.album and contextual_meta.album:
+        merged.album = contextual_meta.album
+    return merged
+
+
 def _merge_music_audio_quality(info: MusicInfo, meta: MetaMusic) -> MusicInfo:
     """将本地文件的实际音频参数合并到音乐识别结果。"""
     for key in (
@@ -184,7 +199,11 @@ def _fingerprint_info_matches_evidence(
     artist_evidence = primary.artists or (
         filename_meta.artists if filename_meta else []
     )
-    if artist_evidence and not music_artist_matches(info, artist_evidence):
+    # 只有曲名时，公开 AcoustID 映射中的同名录音无法排除。
+    # 必须由文件标签、文件名或同目录共识提供艺人证据。
+    if not artist_evidence:
+        return False
+    if not music_artist_matches(info, artist_evidence):
         return False
     if not music_version_matches(info, primary):
         return False
@@ -192,10 +211,7 @@ def _fingerprint_info_matches_evidence(
         return True
     # AcoustID is strong audio evidence once the artist agrees.  Allow common
     # radio/edit/remaster suffixes and very small legacy-tag typos, while still
-    # rejecting unrelated recordings.  Without local artist evidence we retain
-    # the exact-title requirement above.
-    if not artist_evidence:
-        return False
+    # rejecting unrelated recordings.
     evidence_key = music_text_key(music_base_title(primary.title))
     version_suffix = re.compile(
         r"(?:radio|single|version|edit|mix|remix|remaster(?:ed)?|live|acoustic|"
@@ -475,9 +491,16 @@ class MediaPathOwner(_MediaOwnerBase):
         self,
         path: Union[str, Path],
         media_source: Optional[MediaSource] = None,
+        contextual_meta: Optional[MetaMusic] = None,
     ) -> Tuple[MetaMusic, MusicInfo]:
         """按指纹、文件标签、文件名三级顺序识别本地音乐。"""
         meta, tag_meta, filename_meta = AudioMetadataHelper.read_evidence(Path(path))
+        if contextual_meta:
+            meta = _merge_contextual_music_evidence(meta, contextual_meta)
+            if tag_meta:
+                tag_meta = _merge_contextual_music_evidence(tag_meta, contextual_meta)
+            else:
+                filename_meta = _merge_contextual_music_evidence(filename_meta, contextual_meta)
         plan = _music_path_plan(tag_meta, filename_meta, media_source)
         info: Optional[MusicInfo] = None
         try:
@@ -518,12 +541,19 @@ class MediaPathOwner(_MediaOwnerBase):
         self,
         path: Union[str, Path],
         media_source: Optional[MediaSource] = None,
+        contextual_meta: Optional[MetaMusic] = None,
     ) -> Tuple[MetaMusic, MusicInfo]:
         """异步按指纹、文件标签、文件名三级顺序识别本地音乐。"""
         meta, tag_meta, filename_meta = await run_in_threadpool(
             AudioMetadataHelper.read_evidence,
             Path(path),
         )
+        if contextual_meta:
+            meta = _merge_contextual_music_evidence(meta, contextual_meta)
+            if tag_meta:
+                tag_meta = _merge_contextual_music_evidence(tag_meta, contextual_meta)
+            else:
+                filename_meta = _merge_contextual_music_evidence(filename_meta, contextual_meta)
         plan = _music_path_plan(tag_meta, filename_meta, media_source)
         info: Optional[MusicInfo] = None
         try:

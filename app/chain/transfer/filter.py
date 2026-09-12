@@ -1,10 +1,12 @@
 """整理文件筛选、音乐上下文与源目录清理判定。"""
 import threading
+from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Tuple, Union
 
+from app.application.audio import AudioMetadataHelper
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
 )
@@ -23,6 +25,7 @@ from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metamusic import MetaMusic
+from app.domain.music import music_text_key
 from app.runtime.log import logger
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
@@ -85,7 +88,73 @@ class _MusicBatchContext:
 
     related_main_keys: dict[Tuple[str, str], Tuple[str, str]] = field(default_factory=dict)
     single_main_keys: set[Tuple[str, str]] = field(default_factory=set)
+    directory_evidence: dict[Tuple[str, str], MetaMusic] = field(default_factory=dict)
     resolved_contexts: dict[Tuple[str, str], tuple[MetaMusic, MusicInfo]] = field(default_factory=dict)
+
+
+def _music_directory_consensus(values: list[str]) -> Optional[str]:
+    """只在同目录至少两个标签高度一致时返回共识值。"""
+    normalized = [
+        (music_text_key(value), value.strip())
+        for value in values
+        if value and music_text_key(value)
+    ]
+    if len(normalized) < 2:
+        return None
+    counts = Counter(key for key, _value in normalized)
+    key, count = counts.most_common(1)[0]
+    if count < 2 or count / len(normalized) < 0.8:
+        return None
+    return next(value for current_key, value in normalized if current_key == key)
+
+
+def _music_directory_evidence(items: list[FileItem]) -> Optional[MetaMusic]:
+    """从同一发行目录的原始音频标签提取可信艺人与专辑共识。"""
+    artist_values: list[str] = []
+    album_values: list[str] = []
+    collective_keys = {
+        music_text_key(value)
+        for value in ("Various Artists", "Various", "VA", "群星", "众艺人", "眾藝人")
+    }
+    for item in items:
+        if getattr(item, "storage", "local") != "local" or not item.path:
+            continue
+        tag_meta = AudioMetadataHelper.read_tags(Path(item.path))
+        if not tag_meta:
+            continue
+        artist = tag_meta.album_artist
+        if not artist and len(tag_meta.artists) == 1:
+            artist = tag_meta.artists[0]
+        if artist and music_text_key(artist) not in collective_keys:
+            artist_values.append(artist)
+        if tag_meta.album:
+            album_values.append(tag_meta.album)
+    artist = _music_directory_consensus(artist_values)
+    album = _music_directory_consensus(album_values)
+    if not artist and not album:
+        return None
+    return MetaMusic(
+        artists=[artist] if artist else None,
+        album_artist=artist,
+        album=album,
+    )
+
+
+def _apply_music_directory_evidence(
+        meta: MetaMusic,
+        evidence: Optional[MetaMusic],
+) -> MetaMusic:
+    """仅补齐缺失的作品身份字段，不覆盖单曲原有标签。"""
+    if not evidence:
+        return meta
+    merged = deepcopy(meta)
+    if not merged.artists and evidence.artists:
+        merged.artists = list(evidence.artists)
+    if not merged.album_artist and evidence.album_artist:
+        merged.album_artist = evidence.album_artist
+    if not merged.album and evidence.album:
+        merged.album = evidence.album
+    return merged
 
 
 def _prepare_music_batch_context(
@@ -107,6 +176,11 @@ def _prepare_music_batch_context(
         owner._get_file_key(items[0])
         for items in main_items_by_dir.values()
         if len(items) == 1
+    }
+    context.directory_evidence = {
+        parent_key: evidence
+        for parent_key, items in main_items_by_dir.items()
+        if (evidence := _music_directory_evidence(items))
     }
     for current_item, _current_bluray_dir in file_items:
         if not owner._is_music_lyrics_file(current_item):
@@ -152,6 +226,11 @@ def _resolve_music_batch_file_context(
         selected_tracks,
         fallback,
     )
+    if isinstance(file_meta, MetaMusic):
+        file_meta = _apply_music_directory_evidence(
+            file_meta,
+            batch_context.directory_evidence.get(owner._get_file_parent_key(file_item)),
+        )
     if not task_mediainfo and isinstance(file_meta, MetaMusic):
         file_meta, task_mediainfo = _recognize_music_batch_file(
             owner,
@@ -355,7 +434,10 @@ class FileFilterMixin(_TransferOwnerBase):
         if getattr(file_item, "storage", "local") != "local":
             return file_meta, None
         try:
-            _recognized_meta, info = MediaChain().recognize_music_by_path(file_path)
+            _recognized_meta, info = MediaChain().recognize_music_by_path(
+                file_path,
+                contextual_meta=file_meta,
+            )
         except Exception as err:
             logger.debug(f"音乐曲目兜底识别失败：{file_path} - {err}")
             return file_meta, None

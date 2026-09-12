@@ -552,7 +552,8 @@ def test_artist_collection_album_miss_falls_back_to_recording_evidence(
         lambda _self, _path, **_kwargs: {},
     )
 
-    def recognize_track(_self, path):
+    def recognize_track(_self, path, media_source=None, contextual_meta=None):
+        del media_source, contextual_meta
         meta = deepcopy(local_metas[path])
         return meta, MusicInfo(
             media_source=MediaSource.MusicBrainz,
@@ -588,6 +589,86 @@ def test_artist_collection_album_miss_falls_back_to_recording_evidence(
     assert state is True
     assert message == ""
     assert planned == ["Single", "Single"]
+
+
+def test_artist_collection_directory_consensus_constrains_untagged_track(
+        tmp_path, monkeypatch,
+) -> None:
+    """同一专辑其他音轨的一致艺人标签应约束缺标签的同名曲。"""
+    album_dir = tmp_path / "Taylor Swift" / "Speak Now (2010)"
+    album_dir.mkdir(parents=True)
+    paths = [
+        album_dir / "01 - Mine.flac",
+        album_dir / "02 - Sparks Fly.flac",
+        album_dir / "05 - Dear John.flac",
+    ]
+    for path in paths:
+        path.write_bytes(b"audio")
+    fileitems = [make_fileitem(path.as_posix()) for path in paths]
+    local_metas = {
+        paths[0]: MetaMusic(title="Mine", artists=["Taylor Swift"], album="Speak Now"),
+        paths[1]: MetaMusic(title="Sparks Fly", artists=["Taylor Swift"], album="Speak Now"),
+        paths[2]: MetaMusic(title="Dear John"),
+    }
+    chain = _prepare_chain(monkeypatch, fileitems)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.filter.AudioMetadataHelper.read_tags",
+        lambda path: deepcopy(local_metas[path]),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda path: deepcopy(local_metas[path])),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _path, **_kwargs: {},
+    )
+    observed = []
+
+    def recognize_track(_self, path, media_source=None, contextual_meta=None):
+        del media_source
+        observed.append((path.name, list(contextual_meta.artists), contextual_meta.album))
+        return deepcopy(contextual_meta), MusicInfo(
+            media_source=MediaSource.MusicBrainz,
+            media_id=f"recording-{path.stem}",
+            title=contextual_meta.title,
+            artists=list(contextual_meta.artists),
+            album=contextual_meta.album,
+            album_type="Album",
+            library_category="Album",
+        )
+
+    monkeypatch.setattr(MediaChain, "recognize_music_by_path", recognize_track)
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__handle_transfer",
+        lambda task, callback=None: (True, ""),
+    )
+    artist = MusicInfo(
+        music_type=MUSIC_ENTITY_ARTIST,
+        title="Taylor Swift",
+        artists=["Taylor Swift"],
+        album_type="Artist Collection",
+    )
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitems[0],
+        selected_fileitems=fileitems,
+        mediainfo=artist,
+        mtype=MediaType.MUSIC,
+        background=False,
+    )
+
+    assert state is True
+    assert message == ""
+    assert observed[-1] == ("05 - Dear John.flac", ["Taylor Swift"], "Speak Now")
 
 
 def test_artist_collection_single_track_directory_has_local_single_fallback(
