@@ -598,8 +598,7 @@ class MediaPathOwner(_MediaOwnerBase):
             meta = _merge_contextual_music_evidence(meta, contextual_meta)
             if tag_meta:
                 tag_meta = _merge_contextual_music_evidence(tag_meta, contextual_meta)
-            else:
-                filename_meta = _merge_contextual_music_evidence(filename_meta, contextual_meta)
+            filename_meta = _merge_contextual_music_evidence(filename_meta, contextual_meta)
         plan = _music_path_plan(tag_meta, filename_meta, media_source)
         info: Optional[MusicInfo] = None
         try:
@@ -658,8 +657,7 @@ class MediaPathOwner(_MediaOwnerBase):
             meta = _merge_contextual_music_evidence(meta, contextual_meta)
             if tag_meta:
                 tag_meta = _merge_contextual_music_evidence(tag_meta, contextual_meta)
-            else:
-                filename_meta = _merge_contextual_music_evidence(filename_meta, contextual_meta)
+            filename_meta = _merge_contextual_music_evidence(filename_meta, contextual_meta)
         plan = _music_path_plan(tag_meta, filename_meta, media_source)
         info: Optional[MusicInfo] = None
         try:
