@@ -65,8 +65,18 @@ def _should_discard_batch_music_identity(
         mediainfo: Optional[MediaInfo | MusicInfo],
         history_music_type: Optional[str],
 ) -> bool:
-    """批次误带单曲身份或未显式指定媒体时重新识别整张专辑。"""
-    if manual and multi_track_music_batch and not (media_source and media_id):
+    """批次误带艺术家/单曲身份或未显式指定媒体时重新识别内部作品。"""
+    batch_music_type = getattr(mediainfo, "music_type", None)
+    if (
+            batch_music_type == MUSIC_ENTITY_ARTIST
+            or history_music_type == MUSIC_ENTITY_ARTIST
+    ):
+        # 艺术家身份只描述下载任务最外层的合集资源，不能作为其中任何
+        # 音轨的媒体身份。下载器监控会逐文件触发整理，此时当前请求即使
+        # 只有一首歌，也必须丢弃父合集身份并按所在目录/音频标签重新识别，
+        # 否则每个子作品都会错误继承 Artist Collection 分类和艺术家 ID。
+        return True
+    if manual and not (media_source and media_id):
         return True
     return _should_discard_batch_recording_identity(
         multi_track_music_batch=multi_track_music_batch,
