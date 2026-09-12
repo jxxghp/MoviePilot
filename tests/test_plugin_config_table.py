@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from app.db import SessionFactory
 from app.db.models.plugininstance import PluginInstance
 from app.db.models.systemconfig import SystemConfig
 from app.db.oper.plugininstance import PluginInstanceOper
 from app.db.oper.systemconfig import SystemConfigOper
+from app.db.session import SessionFactory
 
 PROBE_PLUGIN_ID = "PytestPluginConfigProbe"
 PROBE_KEY = f"plugin.{PROBE_PLUGIN_ID}"

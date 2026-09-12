@@ -198,6 +198,63 @@ def _verify_plugin_static_file_access(
     verify_resource_token(resource_token)
 
 
+def _resolve_plugin_static_base(
+    manager: Any,
+    plugin_id: str,
+    filepath: str,
+) -> tuple[AsyncPath, str]:
+    """解析插件静态文件应当从哪个版本目录读取，以及去掉版本前缀后的相对路径。
+
+    两类 URL 语义不同：带 ``/v{主}_{次}_{修}/`` 前缀的显式版本 URL 固定读那一个版本，
+    这是远程组件按版本缓存的前提；不带前缀的旧 URL 仍按该实例实际运行的版本解析，
+    运行态给不出版本时退回它的版本绑定。
+
+    :param manager: 插件管理器
+    :param plugin_id: 实例 ID，分身会先归一到源插件以定位共享源码目录
+    :param filepath: URL 中的文件路径
+    :return: 版本目录与相对路径
+    :raise HTTPException: 版本前缀格式非法或目标版本目录不存在
+    """
+    source_plugin_id = manager.get_plugin_source_id(plugin_id)
+    plugin_root = get_api_runtime_config_snapshot().root_path / "app" / "plugins" / source_plugin_id.lower()
+    relative_filepath = filepath.lstrip("/")
+    path_parts = relative_filepath.split("/", 1)
+
+    if path_parts[0] != PLUGIN_VERSION_URL_PREFIX:
+        running_version = manager.get_plugin_running_version(plugin_id)
+        if isinstance(running_version, str) and running_version:
+            try:
+                return AsyncPath(resolve_plugin_version_dir(plugin_root, running_version)), relative_filepath
+            except ValueError:
+                pass
+        binding = manager.get_plugin_version_binding(plugin_id)
+        return AsyncPath(resolve_instance_version_dir(plugin_root, binding)), relative_filepath
+
+    if len(path_parts) != 2 or "/" not in path_parts[1]:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid plugin version remote entry path",
+        )
+    version_segment, relative_filepath = path_parts[1].split("/", 1)
+    requested_version = plugin_version_from_dir_name(version_segment)
+    if not requested_version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid plugin version remote entry path",
+        )
+    version_dir = plugin_root / version_segment
+    if version_dir.is_dir():
+        return AsyncPath(version_dir), relative_filepath
+    if read_declared_plugin_version(plugin_root / "__init__.py") == requested_version:
+        # 平铺插件只有在源码声明版本与 URL 一致时才允许回根目录，避免
+        # 任意 v999 URL 读取当前载荷造成缓存污染。
+        return AsyncPath(plugin_root), relative_filepath
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Plugin version directory does not exist: {requested_version}",
+    )
+
+
 @router.get(
     "/", summary="所有插件", response_model=List[_SchemaPlugin], openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True}
 )
@@ -728,60 +785,9 @@ async def plugin_static_file(
         logger.warning(f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    manager = get_plugin_manager()
-    source_plugin_id = manager.get_plugin_source_id(plugin_id)
-    plugin_root = get_api_runtime_config_snapshot().root_path / "app" / "plugins" / source_plugin_id.lower()
-    # 显式版本 URL 在下方固定命名空间；普通 URL 继续按实际运行版本或绑定解析。
-    relative_filepath = filepath.lstrip("/")
-    path_parts = relative_filepath.split("/", 1)
-    requested_version = None
-    if path_parts[0] == PLUGIN_VERSION_URL_PREFIX:
-        if len(path_parts) != 2 or "/" not in path_parts[1]:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invalid plugin version remote entry path",
-            )
-        version_segment, relative_filepath = path_parts[1].split("/", 1)
-        requested_version = plugin_version_from_dir_name(version_segment)
-        if not requested_version:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invalid plugin version remote entry path",
-            )
-        version_dir = plugin_root / version_segment
-        if version_dir.is_dir():
-            plugin_base_dir = AsyncPath(version_dir)
-        elif read_declared_plugin_version(plugin_root / "__init__.py") == requested_version:
-            # 平铺插件只有在源码声明版本与 URL 一致时才允许回根目录，避免
-            # 任意 v999 URL 读取当前载荷造成缓存污染。
-            plugin_base_dir = AsyncPath(plugin_root)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Plugin version directory does not exist: {requested_version}",
-            )
-    else:
-        # 无版本前缀的旧 URL 保持原静态路径语义；运行态缺少版本时沿用绑定解析。
-        running_version = manager.get_plugin_running_version(plugin_id)
-        if isinstance(running_version, str) and running_version:
-            try:
-                plugin_base_dir = AsyncPath(
-                    resolve_plugin_version_dir(plugin_root, running_version)
-                )
-            except ValueError:
-                plugin_base_dir = AsyncPath(
-                    resolve_instance_version_dir(
-                        plugin_root,
-                        manager.get_plugin_version_binding(plugin_id),
-                    )
-                )
-        else:
-            plugin_base_dir = AsyncPath(
-                resolve_instance_version_dir(
-                    plugin_root,
-                    manager.get_plugin_version_binding(plugin_id),
-                )
-            )
+    plugin_base_dir, relative_filepath = _resolve_plugin_static_base(
+        get_plugin_manager(), plugin_id, filepath
+    )
     plugin_file_path = plugin_base_dir / relative_filepath
     try:
         resolved_base = await plugin_base_dir.resolve()
