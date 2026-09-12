@@ -7984,7 +7984,7 @@
     }
   },
   "run_module": {
-    "call_count": 263,
+    "call_count": 264,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
     "method_count": 212,
@@ -9115,6 +9115,11 @@
         }
       ],
       "music_artist": [
+        {
+          "caller": "app.chain.artwork",
+          "count": 1,
+          "mode": "sync"
+        },
         {
           "caller": "app.chain.musicbrainz",
           "count": 1,
