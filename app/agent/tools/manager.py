@@ -401,7 +401,11 @@ class MoviePilotToolsManager:
         tool_instance = self.get_strict_tool(tool_name)
 
         if not tool_instance:
-            error_msg = json.dumps({"error": f"工具 '{tool_name}' 未找到"}, ensure_ascii=False)
+            error_msg = json.dumps({
+                "error": f"工具 '{tool_name}' 未找到",
+                "execution_outcome": "failed",
+                "recovery": "先读取当前工具目录并选择已公开的工具名称，不要重复调用不存在的工具。",
+            }, ensure_ascii=False)
             return error_msg
 
         from app.agent.policy.orchestrator import call_policy_hook
@@ -415,7 +419,11 @@ class MoviePilotToolsManager:
         try:
             permission_error = self._check_tool_permission(tool_instance)
             if permission_error:
-                return json.dumps({"error": permission_error}, ensure_ascii=False)
+                return json.dumps({
+                    "error": permission_error,
+                    "execution_outcome": "failed",
+                    "recovery": "当前身份无权执行该工具；改用允许的只读工具或请求具备权限的用户确认。",
+                }, ensure_ascii=False)
 
             # 规范化参数类型
             normalized_arguments = self._normalize_arguments(tool_instance, arguments)
