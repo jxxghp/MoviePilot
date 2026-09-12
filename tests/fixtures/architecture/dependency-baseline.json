@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8571,
-  "edge_sha256": "f650c3b2a304888f012c39e270f7d99dbe6eb8c0f96340f276872218a15840c8",
+  "edge_count": 8579,
+  "edge_sha256": "896fdba07ea557dad95790a532c4890a6094f6d30d870de3bea440157764d656",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3269,11 +3269,19 @@
     "app.application.classification.legacy -> app.application.classification",
     "app.application.classification.legacy -> app.application.classification.migration",
     "app.application.classification.legacy -> app.application.classification.projection",
+    "app.application.classification.migration -> app.application",
+    "app.application.classification.migration -> app.application.classification",
+    "app.application.classification.migration -> app.application.classification.migration_values",
     "app.application.classification.migration -> app.domain",
     "app.application.classification.migration -> app.domain.classification",
     "app.application.classification.migration -> app.domain.classification.vocabulary",
     "app.application.classification.migration -> app.schemas",
     "app.application.classification.migration -> app.schemas.category",
+    "app.application.classification.migration_values -> app.domain",
+    "app.application.classification.migration_values -> app.domain.classification",
+    "app.application.classification.migration_values -> app.domain.classification.vocabulary",
+    "app.application.classification.migration_values -> app.schemas",
+    "app.application.classification.migration_values -> app.schemas.category",
     "app.application.classification.projection -> app.application",
     "app.application.classification.projection -> app.application.classification",
     "app.application.classification.projection -> app.application.classification.migration",
@@ -9652,7 +9660,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1009,
+  "module_count": 1010,
   "modules": [
     "app",
     "app.adapters",
@@ -9881,6 +9889,7 @@
     "app.application.classification.execution",
     "app.application.classification.legacy",
     "app.application.classification.migration",
+    "app.application.classification.migration_values",
     "app.application.classification.projection",
     "app.application.classification.reference",
     "app.application.classification.runtime",

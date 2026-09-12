@@ -60,8 +60,8 @@ _DEFAULT_MEDIA_CATEGORIES = (
 )
 
 
-def build_builtin_classification_policy() -> ClassificationPolicy:
-    """构造与仓库内 legacy category.yaml 默认值等效的标准分类策略。"""
+def _build_builtin_media_categories() -> list[ClassificationCategory]:
+    """构造内置媒体分类目录。"""
     categories = [
         ClassificationCategory(
             id=category_id,
@@ -71,7 +71,12 @@ def build_builtin_classification_policy() -> ClassificationPolicy:
         )
         for category_id, media_type, name, path in _DEFAULT_MEDIA_CATEGORIES
     ]
-    rules = [
+    return categories
+
+
+def _build_builtin_movie_rules() -> list[ClassificationRule]:
+    """构造内置电影分类规则。"""
+    return [
         ClassificationRule(
             id="movie.animation.default",
             name="动画电影",
@@ -98,6 +103,12 @@ def build_builtin_classification_policy() -> ClassificationPolicy:
             ),
             target=ClassificationTarget(category_id="movie.chinese"),
         ),
+    ]
+
+
+def _build_builtin_tv_rules() -> list[ClassificationRule]:
+    """构造内置电视剧分类规则。"""
+    return [
         ClassificationRule(
             id="tv.dongman.cn.default",
             name="国漫",
@@ -221,10 +232,14 @@ def build_builtin_classification_policy() -> ClassificationPolicy:
             target=ClassificationTarget(category_id="tv.asian"),
         ),
     ]
+
+
+def build_builtin_classification_policy() -> ClassificationPolicy:
+    """构造与仓库内 legacy category.yaml 默认值等效的标准分类策略。"""
     return with_default_music_classification(
         ClassificationPolicy(
-            categories=categories,
-            rules=rules,
+            categories=_build_builtin_media_categories(),
+            rules=[*_build_builtin_movie_rules(), *_build_builtin_tv_rules()],
             fallbacks={
                 "电影": "movie.foreign",
                 "电视剧": "tv.uncategorized",
