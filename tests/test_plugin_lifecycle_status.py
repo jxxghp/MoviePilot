@@ -40,8 +40,8 @@ def _lifecycle(
     lifecycle = PluginLifecycle(
         classes=classes,
         running=running,
-        load_plugins=lambda _plugin_id, _installed, _check: list(plugins),
-        installed_plugins=lambda: ["DemoPlugin"],
+        load_plugins=lambda _plugin_id, _installed, _check, _version=None: list(plugins),
+        loadable_plugins=lambda: ["DemoPlugin"],
         plugin_config=lambda _plugin_id: {},
         auth_checker=lambda _plugin: auth,
         clear_modules=MagicMock(),

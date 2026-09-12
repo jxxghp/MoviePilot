@@ -2,9 +2,12 @@ import asyncio
 import concurrent.futures
 import inspect
 import posixpath
+import shutil
 import threading
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar, Token
+from datetime import datetime
 from pathlib import Path
 from typing import (
     Any,
@@ -35,6 +38,11 @@ from app.runtime.extensions.plugin.monitor import PluginChangeMonitor
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin.runtime import PluginRuntime
 from app.runtime.extensions.plugin.tools import PluginToolCatalog
+from app.runtime.extensions.plugin.version import (
+    PLUGIN_VERSION_URL_PREFIX,
+    plugin_version_dir_name,
+)
+from app.runtime.log import clear_plugin_instance_log_level as clear_instance_log_level_override
 from app.runtime.log import logger
 from app.runtime.observability import observe_compat_facade
 from app.runtime.reload import ConfigReloadMixin
@@ -191,6 +199,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._suppressed_monitor_plugins: Dict[str, int] = {}
         self._monitor_suppressed_until: Dict[str, float] = {}
         self._plugin_quiesce_lock = threading.RLock()
+        # 包安装会跨越异步文件、数据库和重载阶段；独立于 quiesce 锁，避免
+        # 事件循环持锁等待 reload worker，同时让同步版本回收可以立即拒绝争用。
+        self._plugin_package_write_lock = threading.Lock()
+        self._plugin_package_write_depth: ContextVar[tuple[int, int, int]] = ContextVar(
+            "plugin_package_write_depth",
+            default=(0, -1, -1),
+        )
         self._plugin_quiesce_future: Optional[
             concurrent.futures.Future[bool]
         ] = None
@@ -219,6 +234,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_sync = self._plugin_runtime.sync
         self._plugin_clone = self._plugin_runtime.clone
         self._plugin_classification = self._plugin_runtime.classification
+        self._plugin_version_binding = self._plugin_runtime.version_binding
+        self._plugin_log_level = self._plugin_runtime.log_level
+        self._plugin_default_target = self._plugin_runtime.default_target
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
             "plugins",
@@ -569,22 +587,114 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """在插件包写入及其文件事件收敛期间阻止监控重复重载。"""
         with self.mutation("更新插件包"):
             normalized_id = plugin_id.lower()
-            with self._monitor_suppression_lock:
-                self._suppressed_monitor_plugins[normalized_id] = (
-                    self._suppressed_monitor_plugins.get(normalized_id, 0) + 1
+            # 回收路径在同一把 quiesce lock 下检查 pending journal/monitor 状态。
+            # 这里只保护窗口状态的登记，不能把锁持有到下面的 await 边界，否则
+            # 安装内部的 reload worker 会在等待同一把锁时与事件循环互相等待。
+            # 版本切换期间刷新动态路由可能同步等待事件循环；事件循环若在这里
+            # 阻塞等待同一把锁，就会和切版线程形成死锁。因此包写入遇到活跃切版
+            # 必须立即拒绝，交由安装调用方返回可重试失败，而不是阻塞事件循环。
+            if not self._plugin_quiesce_lock.acquire(blocking=False):
+                raise PluginMutationRejectedError(
+                    f"更新插件包 {plugin_id}（插件实例正在切换版本）"
                 )
             try:
+                package_lock_state = self._try_acquire_plugin_package_write()
+                if package_lock_state is None:
+                    raise PluginMutationRejectedError(
+                        f"更新插件包 {plugin_id}（插件包正在被另一事务更新）"
+                    )
+            finally:
+                self._plugin_quiesce_lock.release()
+            try:
+                with self._monitor_suppression_lock:
+                    self._suppressed_monitor_plugins[normalized_id] = (
+                        self._suppressed_monitor_plugins.get(normalized_id, 0) + 1
+                    )
                 yield
             finally:
-                with self._monitor_suppression_lock:
-                    count = self._suppressed_monitor_plugins.get(normalized_id, 0)
-                    if count <= 1:
-                        self._suppressed_monitor_plugins.pop(normalized_id, None)
-                        self._monitor_suppressed_until[normalized_id] = (
-                            time.monotonic() + self.MONITOR_SETTLE_SECONDS
-                        )
-                    else:
-                        self._suppressed_monitor_plugins[normalized_id] = count - 1
+                try:
+                    with self._monitor_suppression_lock:
+                        self._finish_monitor_suppression(normalized_id)
+                finally:
+                    self._release_plugin_package_write(package_lock_state)
+
+    def _get_plugin_package_write_state(
+        self,
+    ) -> tuple[threading.Lock, ContextVar[tuple[int, int, int]]]:
+        """返回包写入锁和当前事务的嵌套深度变量。"""
+        lock = getattr(self, "_plugin_package_write_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._plugin_package_write_lock = lock
+        depth = getattr(self, "_plugin_package_write_depth", None)
+        if depth is None:
+            depth = ContextVar("plugin_package_write_depth", default=(0, -1, -1))
+            self._plugin_package_write_depth = depth
+        return lock, depth
+
+    @staticmethod
+    def _plugin_package_write_owner() -> tuple[int, int]:
+        """返回当前线程与 asyncio task 的包写事务 owner 身份。"""
+        try:
+            task = asyncio.current_task()
+        except RuntimeError:
+            task = None
+        return threading.get_ident(), id(task) if task is not None else -1
+
+    def _get_plugin_package_write_lock(self) -> threading.Lock:
+        """返回包写入锁，供同步版本切换等旧接线做非阻塞检查。"""
+        return self._get_plugin_package_write_state()[0]
+
+    def _try_acquire_plugin_package_write(
+        self,
+    ) -> tuple[
+        threading.Lock,
+        ContextVar[tuple[int, int, int]],
+        Token[tuple[int, int, int]],
+        bool,
+    ] | None:
+        """非阻塞取得包写入锁，并允许同一执行 owner 的嵌套 guard 重入。"""
+        lock, depth = self._get_plugin_package_write_state()
+        current_depth, owner_thread, owner_task = depth.get()
+        current_thread, current_task = self._plugin_package_write_owner()
+        if (
+            current_depth > 0
+            and owner_thread == current_thread
+            and owner_task == current_task
+        ):
+            token = depth.set((current_depth + 1, current_thread, current_task))
+            return lock, depth, token, False
+        token = depth.set((1, current_thread, current_task))
+        if lock.acquire(blocking=False):
+            return lock, depth, token, True
+        depth.reset(token)
+        return None
+
+    @staticmethod
+    def _release_plugin_package_write(
+        state: tuple[
+            threading.Lock,
+            ContextVar[tuple[int, int, int]],
+            Token[tuple[int, int, int]],
+            bool,
+        ],
+    ) -> None:
+        """恢复事务嵌套深度，并释放最外层持有的包写入锁。"""
+        lock, depth, token, owns_lock = state
+        depth.reset(token)
+        if owns_lock:
+            lock.release()
+
+    def _finish_monitor_suppression(self, normalized_id: str) -> None:
+        """在 monitor 互斥锁内结束一次包写入抑制窗口。"""
+        count = self._suppressed_monitor_plugins.get(normalized_id, 0)
+        if count <= 1:
+            self._suppressed_monitor_plugins.pop(normalized_id, None)
+            self._monitor_suppressed_until[normalized_id] = (
+                time.monotonic() + self.MONITOR_SETTLE_SECONDS
+            )
+        else:
+            self._suppressed_monitor_plugins[normalized_id] = count - 1
 
     def is_plugin_monitor_suppressed(self, plugin_id: str) -> bool:
         """判断插件是否处于包写入或延迟文件事件收敛阶段。"""
@@ -646,10 +756,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             with self.mutation("重载插件实例树"):
                 with self._plugin_quiesce_lock:
                     source_plugin_id = self.get_plugin_source_id(plugin_id)
-                    status = self.reload_plugin(source_plugin_id)
+                    statuses = [self.reload_plugin(source_plugin_id)]
                     for instance in self._plugin_instance_store.for_source(source_plugin_id):
-                        self.reload_plugin(instance.instance_id)
-                    return status
+                        statuses.append(self.reload_plugin(instance.instance_id))
+                    if PluginRuntimeStatus.LOAD_FAILED in statuses:
+                        return PluginRuntimeStatus.LOAD_FAILED
+                    if PluginRuntimeStatus.BLOCKED_BY_POLICY in statuses:
+                        return PluginRuntimeStatus.BLOCKED_BY_POLICY
+                    return statuses[0]
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return PluginRuntimeStatus.LOAD_FAILED
@@ -758,11 +872,49 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def get_plugin_instance(self, plugin_id: str) -> Optional[PluginInstance]:
         """返回指定虚拟插件实例描述，物理插件返回空。"""
-        return self._plugin_instance_store.get(plugin_id)
+        instance = self._plugin_instance_store.get(plugin_id)
+        if instance is not None:
+            return instance
+        target = plugin_id.casefold()
+        return next(
+            (
+                candidate
+                for instance_id, candidate in self._plugin_instance_store.all().items()
+                if instance_id.casefold() == target
+            ),
+            None,
+        )
+
+    def get_plugin_version_binding(self, plugin_id: str) -> Optional[PluginInstance]:
+        """返回该 ID 对应实例的版本绑定，分身优先、回落到源插件本体。
+
+        按版本目录取源码或静态资源时必须走这个入口：只查分身会让本体恒为空，
+        资源随之按当前版本解析，而代码已按本体钉定的版本加载，同一个插件的资源
+        与代码就分处两个版本目录。
+        """
+        return self.get_plugin_instance(plugin_id) or self._plugin_instance_store.get_host(
+            plugin_id
+        )
+
+    def get_plugin_running_version(self, plugin_id: str) -> Optional[str]:
+        """返回运行实例实际加载的版本，停止或缺少版本声明时返回空。"""
+        plugin = self._plugin_registry.instance(plugin_id)
+        if plugin is None:
+            target = plugin_id.casefold()
+            plugin = next(
+                (
+                    instance
+                    for instance_id, instance in self._plugin_registry.running.items()
+                    if instance_id.casefold() == target
+                ),
+                None,
+            )
+        version = getattr(plugin, "plugin_version", None) if plugin is not None else None
+        return version if isinstance(version, str) and version else None
 
     def get_plugin_source_id(self, plugin_id: str) -> str:
         """解析插件运行身份对应的源码身份，普通插件保持原值。"""
-        instance = self._plugin_instance_store.get(plugin_id)
+        instance = self.get_plugin_instance(plugin_id)
         return instance.source_plugin_id if instance else plugin_id
 
     def get_plugin_source_instances(self, plugin_id: str) -> List[PluginInstance]:
@@ -770,13 +922,113 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return self._plugin_instance_store.for_source(plugin_id)
 
     def delete_plugin_instance(self, plugin_id: str) -> bool:
-        """删除虚拟实例描述；调用方仍负责停止实例和清理业务数据。"""
+        """卸载虚拟实例但留存其配置与展示信息；调用方仍负责停止实例。
+
+        留存正是「删掉后还能恢复」的依据：同后缀重建时配置与展示信息原样回来。
+        要连配置一并抹掉是另一条彻底清理路径，不从这里走。
+
+        同时清掉该实例的进程内日志等级覆盖：覆盖表按实例 ID 常驻进程，只动数据库
+        的话，同一进程内用相同后缀重建的分身会继承上一个分身的等级——界面显示
+        「跟随全局」，实际仍按旧等级输出，直到重启才恢复。
+        """
         try:
-            with self.mutation("删除插件实例描述"):
-                return self._plugin_instance_store.delete(plugin_id)
+            with self.mutation("卸载插件实例"):
+                deleted = self._plugin_instance_store.disable(plugin_id)
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return False
+        clear_instance_log_level_override(plugin_id)
+        return deleted
+
+    def mark_plugin_loadable(self, plugin_id: str) -> None:
+        """把源插件本体登记为应当装载，用于安装收尾。
+
+        本体的装载判据在实例表的启用位上，安装清单只回答「包在不在磁盘上」。安装
+        完成时不登记这一行，插件靠定向重载当次能跑起来，重启后却不会再被加载。
+        """
+        self._plugin_instance_store.enable_host(plugin_id)
+
+    def delete_plugin_data_rows(self, instance_id: str) -> None:
+        """只删该实例在插件数据表里的行，不碰它的自有数据库。
+
+        与 :meth:`delete_plugin_data` 的区别正在于此：那个方法把数据表与自有库捆在
+        一起删，而彻底清理要让用户逐项勾选，两者必须拆开。
+        """
+        self._plugin_config_store.delete_data_rows(instance_id)
+
+    def destroy_plugin_own_database(self, instance_id: str) -> None:
+        """销毁该实例的自有数据库并释放句柄。"""
+        self._plugin_config_store.destroy_database(instance_id)
+
+    def delete_plugin_data_directory(self, instance_id: str) -> bool:
+        """删除该实例在插件数据目录下的整个目录，返回删除前它是否存在。
+
+        这个目录此前没有任何代码清理过：插件把落盘文件写在这里，卸载与重置都只动
+        数据库，目录会一直留着，重建同名实例时静默继承上一轮的文件。
+        """
+        data_dir = Path(get_runtime_setting("PLUGIN_DATA_PATH")) / instance_id
+        if not data_dir.is_dir():
+            return False
+        shutil.rmtree(data_dir, ignore_errors=True)
+        return True
+
+    def purge_plugin_instance(self, instance_id: str) -> bool:
+        """彻底删除一个分身实例的行，连同其配置，返回删除前它是否存在。"""
+        return self._plugin_instance_store.purge(instance_id)
+
+    def is_plugin_clone(self, instance_id: str) -> bool:
+        """判断该实例 ID 是否为分身而非源插件本体。"""
+        return self._plugin_instance_store.get(instance_id) is not None
+
+    def set_plugin_instance_enabled(self, instance_id: str, enabled: bool) -> bool:
+        """启用或停用一个实例，本体与分身走同一个入口。
+
+        启用位是「这份配置是否应当被实例化并启动」的唯一判据，本体与分身因而可以
+        共用一个开关：调用方只给实例 ID，由本方法按它是分身还是本体分发。
+
+        停用不动任何设置：配置、展示信息与锚定版本原样留在那一行，再次启用即恢复。
+        彻底清理是另一条路径，不从这里走。
+
+        :param instance_id: 实例 ID，等于插件 ID 时表示本体自身
+        :param enabled: 目标启用状态
+        :return: 该实例存在且状态确实发生了变化
+        :raise PluginMutationRejectedError: 当前处于停机准入窗口
+        """
+        store = self._plugin_instance_store
+        is_clone = store.get(instance_id) is not None
+        with self.mutation(f"{'启用' if enabled else '停用'}插件实例 {instance_id}"):
+            if is_clone:
+                changed = store.enable(instance_id) if enabled else store.disable(instance_id)
+            elif enabled:
+                store.enable_host(instance_id)
+                changed = True
+            else:
+                changed = store.disable_host(instance_id)
+        if not changed:
+            return False
+        if enabled:
+            self.reload_plugin(instance_id)
+        else:
+            # 停用要把运行态一并摘掉，否则这一轮进程里它还在跑，重启才真的停下来
+            self.remove_plugin(instance_id)
+            clear_instance_log_level_override(instance_id)
+        return True
+
+    def delete_plugin_host_binding(self, plugin_id: str) -> bool:
+        """卸载源插件本体的记录但留存其配置，用于插件卸载收尾。
+
+        钉版本、日志等级覆盖与默认目标置位随卸载一并清除：不清会让重装同名插件
+        静默继承上一轮的设置，并按早已删除的版本目录解析源码。业务参数则保留，
+        重装后用户的配置应当还在。
+        """
+        try:
+            with self.mutation("卸载插件本体记录"):
+                deleted = self._plugin_instance_store.retire_host(plugin_id)
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False
+        clear_instance_log_level_override(plugin_id)
+        return deleted
 
     def save_plugin_config(self, pid: str, conf: dict, force: bool = False) -> bool:
         """
@@ -957,18 +1209,36 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         )
 
     @staticmethod
-    def get_plugin_remote_entry(plugin_id: str, dist_path: str) -> str:
-        """
-        获取插件的远程入口地址
-        :param plugin_id: 插件 ID
-        :param dist_path: 插件的分发路径
-        :return: 远程入口地址
+    def get_plugin_remote_entry(
+        plugin_id: str, dist_path: str, version: Optional[str] = None
+    ) -> str:
+        """构造按实例运行版本隔离的插件联邦入口地址。
+
+        版本目录作为 URL 的稳定路径段，使浏览器 ESM 缓存不会把同一实例的旧
+        remoteEntry 复用于新版本。实例目录通常不存在（分身共享源插件目录），
+        所以版本明确时即使无法从实例 ID 解析磁盘目录，也按安全的版本目录命名
+        生成地址；目标版本不存在时由静态资源端点返回 404，不改指向当前版本。
         """
         dist_path = dist_path.strip("/")
+        version_segment = ""
+        if version:
+            try:
+                requested_segment = plugin_version_dir_name(version)
+            except ValueError:
+                requested_segment = ""
+            if requested_segment:
+                # 版本明确时始终使用请求版本的命名空间；目标目录缺失交由
+                # 静态资源端点返回 404，不能回落到当前版本污染缓存。
+                version_segment = requested_segment
         path = posixpath.join(
             "plugin",
             "file",
             plugin_id.lower(),
+            *(
+                [PLUGIN_VERSION_URL_PREFIX, version_segment]
+                if version_segment
+                else []
+            ),
             dist_path,
             "remoteEntry.js",
         )
@@ -1225,16 +1495,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return PluginAccessPolicy.private_key(plugin_id)
 
-    def clone_plugin(self, plugin_id: str, suffix: str, name: str, description: str,
-                     version: str = None, icon: str = None) -> Tuple[bool, str]:
+    def clone_plugin(self, plugin_id: str, suffix: Optional[str], name: str, description: str,
+                     icon: str = None,
+                     pinned_version: Optional[str] = None,
+                     restore_previous: bool = True) -> Tuple[bool, str]:
         """
         创建插件分身
         :param plugin_id: 原插件ID
-        :param suffix: 分身后缀
+        :param suffix: 分身后缀；留空时由运行时自动分配最小可用序号
         :param name: 分身名称
         :param description: 分身描述
-        :param version: 自定义版本号
         :param icon: 自定义图标URL
+        :param pinned_version: 分身锚定的版本号；为空表示跟随源插件当前版本
+        :param restore_previous: 同后缀的上一个分身留有配置或数据时是否沿用
         :return: (是否成功, 错误信息)
         """
         try:
@@ -1244,75 +1517,178 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     suffix=suffix,
                     name=name,
                     description=description,
-                    version=version,
                     icon=icon,
+                    pinned_version=pinned_version,
+                    restore_previous=restore_previous,
                 )
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return False, str(error)
 
-    def _modify_plugin_files(self, plugin_dir: Path, original_id: str, suffix: str,
-                             name: str, description: str, version: str = None,
-                             icon: str = None) -> Tuple[bool, str]:
-        """
-        兼容旧内部调用，将分身文件改写委托给包适配器。
-        :param plugin_dir: 插件目录
-        :param original_id: 原插件ID
-        :param suffix: 分身后缀
-        :param name: 分身名称
-        :param description: 分身描述
-        :param version: 自定义版本号
-        :param icon: 自定义图标URL
-        :return: (是否成功, 错误信息)
-        """
-        original_plugin_class = self._plugins.get(original_id)
-        if not original_plugin_class:
-            return False, f"无法获取原插件类 {original_id}"
-        return self._plugin_runtime.system().modify_plugin_files(
-            plugin_dir=plugin_dir,
-            original_class_name=original_plugin_class.__name__,
-            suffix=suffix,
-            name=name,
-            description=description,
-            version=version,
-            icon=icon,
-        )
+    def get_restorable_plugin_instances(self, plugin_id: str) -> List[Dict[str, Any]]:
+        """列出该插件名下已卸载、设置仍留存可恢复的分身。
 
-    @staticmethod
-    def _modify_python_file(file_path: Path, original_class_name: str,
-                            clone_class_name: str, name: str, description: str,
-                            version: str = None, icon: str = None) -> Tuple[bool, str]:
-        """
-        兼容旧内部调用，将 Python 文件改写委托给包适配器。
-        """
-        return PluginManager()._plugin_runtime.system().modify_python_file(
-            file_path=file_path,
-            original_class_name=original_class_name,
-            clone_class_name=clone_class_name,
-            name=name,
-            description=description,
-            version=version,
-            icon=icon,
-        )
+        卸载只把启用位置假，配置、展示名与锚定版本都还在那一行上；用户在创建分身
+        时挑一个拿回来，比按后缀去猜有没有残留可靠得多。在册的分身不在此列——它们
+        的配置正被使用，拿来恢复没有意义。
 
-    def _modify_federation_files(self, dist_dir: Path, original_class_name: str,
-                                 clone_class_name: str) -> Tuple[bool, str]:
+        :param plugin_id: 源插件ID
+        :return: 每个可恢复分身的实例 ID、后缀、展示名与留存内容
         """
-        兼容旧内部调用，将联邦文件改写委托给包适配器。
-        """
-        return self._plugin_runtime.system().modify_federation_files(
-            dist_dir=dist_dir,
-            original_class_name=original_class_name,
-            clone_class_name=clone_class_name,
-        )
+        prefix_length = len(plugin_id)
+        results: List[Dict[str, Any]] = []
+        for instance in self._plugin_instance_store.disabled_for_source(plugin_id):
+            instance_id = instance.instance_id
+            results.append({
+                "instance_id": instance_id,
+                # 分身 ID 由源插件 ID 直接拼后缀而成，去掉前缀即还原用户当初填的后缀
+                "suffix": instance_id[prefix_length:] if instance_id.startswith(plugin_id) else instance_id,
+                "plugin_name": instance.plugin_name,
+                "pinned_version": instance.pinned_version,
+                "has_config": self._plugin_config_store.has_config(instance_id),
+                "has_data": bool(self._plugin_config_store.has_data(instance_id)),
+            })
+        return results
 
-    @staticmethod
-    def _rename_federation_assets(dist_dir: Path, original_class_name: str, clone_class_name: str):
+    def get_plugin_version_overview(self, plugin_id: str) -> Dict[str, Any]:
         """
-        兼容旧内部调用，将资源重命名委托给包适配器。
+        查询插件已装版本列表与各实例的版本绑定
+        :param plugin_id: 插件ID
+        :return: 含已装版本列表与各实例绑定信息的字典
+        :raise LookupError: 插件不存在
         """
-        PluginManager()._plugin_runtime.system().rename_federation_assets(
-            dist_dir,
-            original_class_name,
-            clone_class_name,
-        )
+        return self._plugin_version_binding.overview(plugin_id)
+
+    def set_plugin_instance_version(
+        self,
+        instance_id: str,
+        *,
+        pinned_version: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """
+        设置虚拟插件实例的版本绑定，并完成一次停止再启动
+        :param instance_id: 实例ID
+        :param pinned_version: 锚定的目标版本号；为空表示改为跟随当前版本
+        :return: (是否成功, 成功时为实例ID／失败时为可读原因)
+        """
+        try:
+            with self.mutation(f"切换插件实例 {instance_id} 版本"):
+                with self._plugin_quiesce_lock:
+                    package_lock = self._get_plugin_package_write_lock()
+                    if not package_lock.acquire(blocking=False):
+                        return False, (
+                            f"插件实例 {instance_id} 正在进行插件包更新，"
+                            "拒绝切换版本"
+                        )
+                    try:
+                        return self._plugin_version_binding.set_instance_version(
+                            instance_id,
+                            pinned_version=pinned_version,
+                        )
+                    finally:
+                        package_lock.release()
+        except PluginMutationRejectedError as error:
+            logger.warning(str(error))
+            return False, str(error)
+
+    def get_plugin_instance_log_levels(self, plugin_id: str) -> List[Dict[str, Any]]:
+        """
+        查询插件全部实例（含本体）当前的日志等级设置
+        :param plugin_id: 插件ID
+        :return: 每个实例的等级设置条目列表
+        :raise LookupError: 插件不存在
+        """
+        return self._plugin_log_level.list_levels(plugin_id)
+
+    def set_plugin_instance_log_level(
+        self,
+        plugin_id: str,
+        instance_id: str,
+        level: str,
+        expires_at: Optional[datetime] = None,
+    ) -> None:
+        """
+        设置指定插件实例的日志等级覆盖，运行期立即生效
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :param level: 目标日志等级
+        :param expires_at: 覆盖失效时间，None 表示不过期
+        :raise LookupError: 插件不存在，或实例不存在／不归属该插件
+        :raise ValueError: level 不是受支持的等级名
+        """
+        self._plugin_log_level.set_level(plugin_id, instance_id, level, expires_at)
+
+    def clear_plugin_instance_log_level(self, plugin_id: str, instance_id: str) -> None:
+        """
+        清除指定插件实例的日志等级覆盖，运行期立即回落全局等级
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :raise LookupError: 插件不存在，或实例不存在／不归属该插件
+        """
+        self._plugin_log_level.clear_level(plugin_id, instance_id)
+
+    def resolve_plugin_call_target(self, plugin_id: str) -> str:
+        """
+        确定按插件ID发起、未指定实例的调用应当落到哪个实例
+        :param plugin_id: 插件ID，也可以是调用方已经明确知道的具体实例ID
+        :return: 应当使用的实例ID
+        :raise LookupError: 该插件已有分身但未设置默认调用目标，或默认调用目标已停用
+        """
+        return self._plugin_default_target.resolve(plugin_id)
+
+    def set_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> bool:
+        """
+        设置指定插件实例为默认调用目标，并清除同插件的旧默认
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :return: 目标实例存在时为True，指定的非本体实例不归属该插件时为False
+        :raise LookupError: 插件不存在
+        """
+        return self._plugin_default_target.set_target(plugin_id, instance_id)
+
+    def clear_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> None:
+        """
+        清除指定插件实例的默认调用目标置位，仅当当前置位的正是该实例时才动作
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :raise LookupError: 插件不存在
+        """
+        self._plugin_default_target.clear_target(plugin_id, instance_id)
+
+    def recycle_plugin_versions(self, plugin_id: str) -> Dict[str, Any]:
+        """
+        回收指定插件不再被引用、也不在最近版本窗口内的已装版本目录
+        :param plugin_id: 插件ID
+        :return: 含 removed 与 kept 的回收结果
+        :raise LookupError: 插件不存在
+        :raise PluginMutationRejectedError: 当前处于停机准入窗口，拒绝本次回收
+        """
+        with self.mutation(f"回收插件 {plugin_id} 已装版本"):
+            package_lock_state = self._try_acquire_plugin_package_write()
+            if package_lock_state is None:
+                raise PluginMutationRejectedError(
+                    f"回收插件 {plugin_id} 已装版本（插件包正在更新）"
+                )
+            with self._plugin_quiesce_lock:
+                try:
+                    return self._plugin_version_binding.recycle_versions(plugin_id)
+                finally:
+                    self._release_plugin_package_write(package_lock_state)
+
+    def recycle_all_plugin_versions(self) -> Dict[str, Dict[str, Any]]:
+        """
+        回收全部源码插件不再被引用、也不在最近版本窗口内的已装版本目录
+        单个插件的回收失败（含引用集合收集失败、并发窗口拒绝）只记错误日志并
+        跳过该插件，不阻断其余插件的回收
+        :return: 插件ID到回收结果的映射，只含成功完成本次回收的插件
+        """
+        results: Dict[str, Dict[str, Any]] = {}
+        for plugin_id in self.get_plugin_ids():
+            if self.get_plugin_instance(plugin_id) is not None:
+                continue
+            try:
+                results[plugin_id] = self.recycle_plugin_versions(plugin_id)
+            except Exception as error:  # noqa: BLE001 - 单个插件的回收失败不能连带阻断其余插件
+                logger.error(f"插件 {plugin_id} 版本回收失败，跳过本次回收：{error}")
+        return results
+

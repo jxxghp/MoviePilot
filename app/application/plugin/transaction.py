@@ -258,6 +258,16 @@ class PluginPersistenceService:
         """列出全部待恢复或待清理的安装 journal。"""
         return await self.__executor.run(self.__installations.list)
 
+    def has_pending_installation(self, plugin_id: str) -> bool:
+        """在线程池中的同步回收路径检查插件是否仍有未收尾 journal。
+
+        版本目录回收由生命周期线程池执行，不能在事件循环中同步等待异步
+        ``list_installations``，也不能让后台 worker 反向取得事件循环锁。因此这个
+        窄接口直接复用同步安装 store；调用方必须已处于阻塞 worker 上，并与安装
+        package guard 的事务窗口共同作为回收安全判据。
+        """
+        return bool(self.__installations.list(plugin_id=plugin_id))
+
     async def get_installation(
         self,
         transaction_id: str,

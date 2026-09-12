@@ -1,9 +1,11 @@
 from unittest.mock import AsyncMock
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from pathlib import Path
 
 import pytest
 
+from app.schemas.plugin import PluginInstance
 from app.runtime.extensions.plugin.dependency import (
     PluginDependencyInstallResult,
     PluginDependencyService,
@@ -63,3 +65,43 @@ async def test_async_install_missing_uses_async_installer() -> None:
     )
     installer.async_find_missing.assert_awaited_once()
     installer.async_install.assert_awaited_once_with(["demo>=1"])
+
+
+def test_classification_uses_each_instance_bound_directory() -> None:
+    """本体与分身绑定不同版本时，各自状态不能互相覆盖。"""
+    host = PluginInstance(
+        instance_id="DemoPlugin",
+        source_plugin_id="DemoPlugin",
+        mode="host",
+        pinned_version="1.0.0",
+    )
+    clone = PluginInstance(
+        instance_id="DemoPluginCopy",
+        source_plugin_id="DemoPlugin",
+        pinned_version="2.0.0",
+    )
+    paths = {
+        "DemoPlugin": Path("/plugins/demo/v1_0_0"),
+        "DemoPluginCopy": Path("/plugins/demo/v2_0_0"),
+    }
+    installer = SimpleNamespace(
+        classify_plugins=MagicMock(return_value=([], ["DemoPlugin"], [])),
+        classify_plugin_directory=MagicMock(
+            side_effect=lambda path: (True, path == paths["DemoPlugin"])
+        ),
+    )
+    service = PluginDependencyService(
+        system=lambda: SimpleNamespace(dependency=installer),
+        instances=lambda: {clone.instance_id: clone},
+        host_instance=lambda _source: host,
+        instance_directory=lambda _source, instance: paths[
+            instance.instance_id if instance else "DemoPlugin"
+        ],
+        log=MagicMock(),
+    )
+
+    result = service.classify_plugins()
+
+    assert result.ready == ("DemoPlugin",)
+    assert result.missing_dependencies == ("DemoPluginCopy",)
+    assert result.missing_source == ()

@@ -567,6 +567,35 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     _write("plugin.folder.plugins.update", recovery=RecoveryMode.TRANSACTION),
     _write("plugin.folder.plugin.assign", recovery=RecoveryMode.TRANSACTION),
     _write("plugin.folder.plugin.remove", recovery=RecoveryMode.TRANSACTION),
+    _admin_read("plugin.versions.get", sensitivity=ResultSensitivity.PRIVATE),
+    _spec(
+        "plugin.versions.set_instance",
+        effect=ActionEffect.EXTERNAL_SIDE_EFFECT,
+        required_role=_ADMIN,
+        confirmation=_CONFIRM,
+        recovery=RecoveryMode.RECONCILE,
+    ),
+    _spec(
+        "plugin.versions.recycle",
+        effect=ActionEffect.EXTERNAL_SIDE_EFFECT,
+        required_role=_ADMIN,
+        confirmation=_CONFIRM,
+        recovery=RecoveryMode.RECONCILE,
+    ),
+    _admin_read("plugin.loglevel.get", sensitivity=ResultSensitivity.PRIVATE),
+    _write("plugin.loglevel.set"),
+    _write("plugin.loglevel.clear"),
+    _write("plugin.default_target.set"),
+    _write("plugin.default_target.clear"),
+    _write("plugin.instance.set_enabled"),
+    # 彻底清理不可逆且按勾选范围删用户数据，与卸载同档：要确认、按对账恢复
+    _spec(
+        "plugin.instance.purge",
+        effect=ActionEffect.EXTERNAL_SIDE_EFFECT,
+        required_role=_ADMIN,
+        confirmation=_CONFIRM,
+        recovery=RecoveryMode.RECONCILE,
+    ),
 )
 
 
@@ -814,6 +843,32 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     "plugin.folder.plugin.remove": ApiOperationRoute(
         "DELETE",
         "/api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}",
+    ),
+    "plugin.versions.get": ApiOperationRoute("GET", "/api/v1/plugin/versions/{plugin_id}"),
+    "plugin.versions.set_instance": ApiOperationRoute(
+        "PUT", "/api/v1/plugin/versions/{plugin_id}/{instance_id}"
+    ),
+    "plugin.versions.recycle": ApiOperationRoute(
+        "POST", "/api/v1/plugin/versions/{plugin_id}/recycle"
+    ),
+    "plugin.loglevel.get": ApiOperationRoute("GET", "/api/v1/plugin/loglevel/{plugin_id}"),
+    "plugin.loglevel.set": ApiOperationRoute(
+        "PUT", "/api/v1/plugin/loglevel/{plugin_id}/{instance_id}"
+    ),
+    "plugin.loglevel.clear": ApiOperationRoute(
+        "DELETE", "/api/v1/plugin/loglevel/{plugin_id}/{instance_id}"
+    ),
+    "plugin.default_target.set": ApiOperationRoute(
+        "PUT", "/api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target"
+    ),
+    "plugin.default_target.clear": ApiOperationRoute(
+        "DELETE", "/api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target"
+    ),
+    "plugin.instance.set_enabled": ApiOperationRoute(
+        "POST", "/api/v1/plugin/instance/{instance_id}/enabled"
+    ),
+    "plugin.instance.purge": ApiOperationRoute(
+        "POST", "/api/v1/plugin/instance/{instance_id}/purge"
     ),
 }
 

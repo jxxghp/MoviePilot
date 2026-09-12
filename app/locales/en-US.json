@@ -289,6 +289,8 @@
     "用户未通过认证，无法使用站点功能！": "User authentication has not passed, so site features cannot be used.",
     "该站点不支持，请检查站点域名是否正确": "This site is not supported. Please check whether the site domain is correct",
     "站点不存在": "Site does not exist",
+    "实例 {instance_id} 不存在或已处于启用状态": "Instance {instance_id} does not exist or is already enabled",
+    "实例 {instance_id} 不存在或已处于停用状态": "Instance {instance_id} does not exist or is already disabled",
     "站点 {site} 未配置域名": "Site {site} does not have a configured domain",
     "CookieCloud同步任务已启动！": "CookieCloud sync task has started!",
     "站点已重置！": "Site has been reset!",
@@ -450,7 +452,6 @@
     "字幕站点信息不存在": "Subtitle site information does not exist",
     "附件不存在或已过期": "Attachment does not exist or has expired",
     "附件超过 32MB，无法发送给智能助手": "The attachment exceeds 32MB and cannot be sent to the assistant",
-    "附件保存失败": "Failed to save attachment",
     "认证票据无效或已过期": "Authentication ticket is invalid or has expired",
     "用户不存在或已禁用": "The user does not exist or has been disabled",
     "用户权限不足": "Insufficient user permissions",
@@ -574,7 +575,8 @@
     "订阅资源匹配完成": "Subscription resource matching completed",
     "订阅元数据更新完成": "Subscription metadata update completed",
     "未配置 Follow 订阅用户，跳过刷新": "No Follow subscription users configured, skipping refresh",
-    "订阅日历预缓存完成": "Subscription calendar precache completed"
+    "订阅日历预缓存完成": "Subscription calendar precache completed",
+    "默认调用目标正被并发修改，请重试": "The default call target is being modified concurrently, please retry"
   },
   "message_patterns": [
     {

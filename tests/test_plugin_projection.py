@@ -194,13 +194,15 @@ def test_projection_builds_federation_and_auth_provider_entries():
     )
     projection = PluginProjection(
         {"Demo": plugin},
-        remote_entry_factory=lambda plugin_id, path: f"/{plugin_id}/{path}",
+        remote_entry_factory=lambda plugin_id, path, _version=None: f"/{plugin_id}/{path}",
     )
 
     assert projection.remotes() == [{
         "id": "Demo",
         "url": "/Demo/dist/assets",
         "name": "测试插件",
+        "version": None,
+        "remote_key": "Demo",
     }]
     assert projection.auth_providers() == [{
         "id": "demo-login",
@@ -213,6 +215,8 @@ def test_projection_builds_federation_and_auth_provider_entries():
             "id": "Demo",
             "url": "/Demo/dist/assets",
             "name": "测试插件",
+            "version": None,
+            "remote_key": "Demo",
         },
     }]
 
@@ -226,13 +230,15 @@ def test_projection_exposes_source_identity_for_virtual_frontend_instance():
     )
     projection = PluginProjection(
         {"DemoWork": plugin},
-        remote_entry_factory=lambda plugin_id, path: f"/{plugin_id}/{path}",
+        remote_entry_factory=lambda plugin_id, path, _version=None: f"/{plugin_id}/{path}",
     )
 
     assert projection.remotes()[0] == {
         "id": "DemoWork",
         "url": "/DemoWork/dist/assets",
         "name": "测试插件",
+        "version": None,
+        "remote_key": "DemoWork",
         "source_plugin_id": "Demo",
     }
     assert projection.auth_providers()[0]["remote"]["source_plugin_id"] == "Demo"

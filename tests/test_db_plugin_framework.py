@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import threading
 from pathlib import Path
 from typing import Any
@@ -644,6 +645,13 @@ def test_run_migrations_routes_the_postgresql_connection_through_the_handle(
         captured["revision"] = revision
 
     monkeypatch.setattr(migration_module, "upgrade", _record_upgrade)
+    # 该用例只验证借用连接的路由；revision 预检在真实 SQLite 迁移用例和
+    # 专门的兼容性用例中覆盖，避免用 MagicMock 冒充 Alembic 方言连接。
+    monkeypatch.setattr(
+        migration_module,
+        "_check_migration_compatibility",
+        lambda *_args: None,
+    )
     handle = _borrowed_engine_handle(MagicMock(name="derived_engine"))
 
     migration_module.run_migrations(handle, _write_migration_directory(tmp_path))
@@ -652,6 +660,40 @@ def test_run_migrations_routes_the_postgresql_connection_through_the_handle(
     assert captured["connection"] is connection
     assert captured["revision"] == "head"
     connection.commit.assert_called_once()
+
+
+def test_run_migrations_rejects_a_database_revision_unknown_to_the_selected_tree(
+    tmp_path,
+):
+    """切回不含数据库当前 revision 的旧迁移树时明确拒绝且不自动降级。"""
+    old_directory = _write_migration_directory(tmp_path / "old")
+    new_directory = tmp_path / "new" / "migrations"
+    shutil.copytree(old_directory, new_directory)
+    (new_directory / "versions" / "0002_add_title.py").write_text(
+        '''revision = "0002"
+down_revision = "0001"
+branch_labels = None
+depends_on = None
+
+def upgrade():
+    """新增版本。"""
+
+def downgrade():
+    """回退新增版本。"""
+''',
+        encoding="utf-8",
+    )
+    engine = create_engine(f"sqlite:///{tmp_path / 'migration.db'}")
+    handle = _borrowed_engine_handle(engine)
+    try:
+        migration_module.run_migrations(handle, new_directory)
+        with pytest.raises(
+            migration_module.PluginMigrationCompatibilityError,
+            match="不属于迁移脚本",
+        ):
+            migration_module.run_migrations(handle, old_directory)
+    finally:
+        engine.dispose()
 
 
 def test_release_after_destroy_keeps_a_database_rebuilt_by_a_stop_hook(

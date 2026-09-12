@@ -24,6 +24,7 @@ from app.api.dependencies.auth import (
 )
 from app.api.dependencies.plugin import get_plugin_config_command
 from app.api.endpoints.pluginfolder import router as plugin_folders_router
+from app.api.endpoints.plugininstance import router as plugin_instance_router
 from app.api.principal import ApiPrincipal
 from app.api.response import (
     COLLECTION_TOTAL_HEADER,
@@ -33,12 +34,10 @@ from app.api.response import (
     ResponseAPIRouter,
     resolve_compatible_pagination,
 )
-from app.application.commands import init_commands
 from app.application.configuration import get_api_runtime_config_snapshot, get_configured_system_config
 from app.application.plugin.catalog import get_plugin_catalog_query
 from app.application.plugin.config import PluginConfigCommand
 from app.application.plugin.data import PluginDataQueryService, PluginDataSummaryService
-from app.application.plugin.folders import add_clone_to_plugin_folder, remove_plugin_from_folders
 from app.application.plugin.gateway import get_plugin_install_service
 from app.application.plugin.management import (
     get_plugin_snapshot,
@@ -47,17 +46,21 @@ from app.application.plugin.management import (
 )
 from app.application.plugin.rating import PluginNotInstalledError, get_plugin_rating_service
 from app.application.plugin.release import get_plugin_release_service
-from app.application.plugin.routes import register_plugin_api, remove_plugin_api
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.plugin.transaction import get_plugin_persistence
-from app.application.scheduling import remove_plugin_job, update_plugin_job
 from app.runtime.extensions.plugin.contracts import PluginDashboardError, PluginNotFoundError
+from app.runtime.extensions.plugin.version import (
+    PLUGIN_VERSION_URL_PREFIX,
+    plugin_version_from_dir_name,
+    read_declared_plugin_version,
+    resolve_instance_version_dir,
+    resolve_plugin_version_dir,
+)
 from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
 from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import Plugin as _SchemaPlugin
-from app.schemas.plugin import PluginCloneRequest as _SchemaPluginCloneRequest
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
 from app.schemas.plugin import PluginDataSummary as _SchemaPluginDataSummary
@@ -86,6 +89,7 @@ from app.schemas.types import SystemConfigKey
 from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
+router.routes.extend(plugin_instance_router.routes)
 router.routes.extend(plugin_folders_router.routes)
 _plugin_release_refresh_tasks: set[asyncio.Task] = set()
 
@@ -130,18 +134,6 @@ def _schedule_plugin_release_refresh(plugin_id: str, repo_url: str, task_registr
     task.add_done_callback(_discard_task)
 
 
-def register_plugin(plugin_id: str):
-    """
-    注册一个插件相关的服务
-    """
-    # 注册插件服务
-    update_plugin_job(plugin_id)
-    # 注册菜单命令
-    init_commands(plugin_id)
-    # 注册插件API
-    register_plugin_api(plugin_id)
-
-
 def _is_plugin_auth_remote_file(plugin_id: str, filepath: str) -> bool:
     """
     判断静态文件是否属于插件声明的匿名登录认证远程组件。
@@ -182,6 +174,63 @@ def _verify_plugin_static_file_access(
     if _is_plugin_auth_remote_file(plugin_id, filepath):
         return
     verify_resource_token(resource_token)
+
+
+def _resolve_plugin_static_base(
+    manager: Any,
+    plugin_id: str,
+    filepath: str,
+) -> tuple[AsyncPath, str]:
+    """解析插件静态文件应当从哪个版本目录读取，以及去掉版本前缀后的相对路径。
+
+    两类 URL 语义不同：带 ``/v{主}_{次}_{修}/`` 前缀的显式版本 URL 固定读那一个版本，
+    这是远程组件按版本缓存的前提；不带前缀的旧 URL 仍按该实例实际运行的版本解析，
+    运行态给不出版本时退回它的版本绑定。
+
+    :param manager: 插件管理器
+    :param plugin_id: 实例 ID，分身会先归一到源插件以定位共享源码目录
+    :param filepath: URL 中的文件路径
+    :return: 版本目录与相对路径
+    :raise HTTPException: 版本前缀格式非法或目标版本目录不存在
+    """
+    source_plugin_id = manager.get_plugin_source_id(plugin_id)
+    plugin_root = get_api_runtime_config_snapshot().root_path / "app" / "plugins" / source_plugin_id.lower()
+    relative_filepath = filepath.lstrip("/")
+    path_parts = relative_filepath.split("/", 1)
+
+    if path_parts[0] != PLUGIN_VERSION_URL_PREFIX:
+        running_version = manager.get_plugin_running_version(plugin_id)
+        if isinstance(running_version, str) and running_version:
+            try:
+                return AsyncPath(resolve_plugin_version_dir(plugin_root, running_version)), relative_filepath
+            except ValueError:
+                pass
+        binding = manager.get_plugin_version_binding(plugin_id)
+        return AsyncPath(resolve_instance_version_dir(plugin_root, binding)), relative_filepath
+
+    if len(path_parts) != 2 or "/" not in path_parts[1]:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid plugin version remote entry path",
+        )
+    version_segment, relative_filepath = path_parts[1].split("/", 1)
+    requested_version = plugin_version_from_dir_name(version_segment)
+    if not requested_version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid plugin version remote entry path",
+        )
+    version_dir = plugin_root / version_segment
+    if version_dir.is_dir():
+        return AsyncPath(version_dir), relative_filepath
+    if read_declared_plugin_version(plugin_root / "__init__.py") == requested_version:
+        # 平铺插件只有在源码声明版本与 URL 一致时才允许回根目录，避免
+        # 任意 v999 URL 读取当前载荷造成缓存污染。
+        return AsyncPath(plugin_root), relative_filepath
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Plugin version directory does not exist: {requested_version}",
+    )
 
 
 @router.get(
@@ -714,12 +763,10 @@ async def plugin_static_file(
         logger.warning(f"Static File API: Path traversal attempt detected: {plugin_id}/{filepath}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    source_plugin_id = get_plugin_manager().get_plugin_source_id(plugin_id)
-    plugin_base_dir = (
-        AsyncPath(get_api_runtime_config_snapshot().root_path) / "app" / "plugins" / source_plugin_id.lower()
+    plugin_base_dir, relative_filepath = _resolve_plugin_static_base(
+        get_plugin_manager(), plugin_id, filepath
     )
-    plugin_file_path = plugin_base_dir / filepath.lstrip("/")
-
+    plugin_file_path = plugin_base_dir / relative_filepath
     try:
         resolved_base = await plugin_base_dir.resolve()
         resolved_file = await plugin_file_path.resolve()
@@ -765,39 +812,6 @@ async def plugin_static_file(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Internal Server Error")
-
-
-@router.post("/clone/{plugin_id}", summary="创建插件分身", response_model=_SchemaResponse[None])
-def clone_plugin(
-    plugin_id: str,
-    clone_data: _SchemaPluginCloneRequest,
-    _: ApiPrincipal = Depends(get_current_active_superuser),
-) -> Any:
-    """
-    创建插件分身
-    """
-    plugin_manager = get_plugin_manager()
-    try:
-        with plugin_manager.mutation(f"创建插件 {plugin_id} 分身"):
-            success, message = plugin_manager.clone_plugin(
-                plugin_id=plugin_id,
-                suffix=clone_data.suffix,
-                name=clone_data.name,
-                description=clone_data.description,
-                version=clone_data.version,
-                icon=clone_data.icon,
-            )
-
-            if success:
-                # 分身服务已完成运行态加载，此处只补齐宿主注册。
-                register_plugin(message)
-                # 将分身插件添加到原插件所在的文件夹中
-                add_clone_to_plugin_folder(plugin_id, message)
-                return _SchemaResponse(success=True, message="插件分身创建成功")
-            return _SchemaResponse(success=False, message=message)
-    except Exception as e:
-        logger.error(f"创建插件分身失败：{str(e)}")
-        return _SchemaResponse(success=False, message=f"创建插件分身失败：{str(e)}")
 
 
 @router.get(  # type: ignore[misc]
@@ -929,52 +943,3 @@ def set_plugin_config(
     return _SchemaResponse(success=result.success, message=result.message)
 
 
-@router.delete("/{plugin_id}", summary="卸载插件", response_model=_SchemaResponse[None])
-def uninstall_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)) -> Any:
-    """
-    卸载插件
-    """
-    plugin_manager = get_plugin_manager()
-    try:
-        with plugin_manager.mutation(f"卸载插件 {plugin_id}"):
-            virtual_instance = plugin_manager.get_plugin_instance(plugin_id)
-            source_instances = plugin_manager.get_plugin_source_instances(plugin_id)
-            if not virtual_instance and source_instances:
-                instance_ids = "、".join(item.instance_id for item in source_instances)
-                return _SchemaResponse(
-                    success=False,
-                    message=f"请先卸载该插件的分身：{instance_ids}",
-                )
-            config_oper = get_configured_system_config()
-            # 删除已安装信息
-            install_plugins = config_oper.get(SystemConfigKey.UserInstalledPlugins) or []
-            for plugin in install_plugins:
-                if plugin == plugin_id:
-                    install_plugins.remove(plugin)
-                    break
-            config_oper.set(SystemConfigKey.UserInstalledPlugins, install_plugins)
-            # 移除插件API
-            remove_plugin_api(plugin_id)
-            # 移除插件服务
-            remove_plugin_job(plugin_id)
-            # 判断是否为分身
-            plugin_class = plugin_manager.plugins.get(plugin_id)
-            # 删除必须晚于停止：停机钩子会重建刚删的自有库；停止同时注销插件类，故删除一律按 force
-            plugin_manager.stop(plugin_id)
-            if virtual_instance:
-                plugin_manager.delete_plugin_config(plugin_id, force=True)
-                plugin_manager.delete_plugin_data(plugin_id, force=True)
-                plugin_manager.delete_plugin_instance(plugin_id)
-            elif getattr(plugin_class, "is_clone", False):
-                plugin_manager.delete_plugin_config(plugin_id, force=True)
-                plugin_manager.delete_plugin_data(plugin_id, force=True)
-                # 分身物理目录只能由包文件 owner 删除。
-                if plugin_manager.remove_plugin_package(plugin_id):
-                    plugin_manager.plugins.pop(plugin_id, None)
-            # 从插件文件夹中移除该插件
-            remove_plugin_from_folders(plugin_id)
-            # 移除插件
-            plugin_manager.remove_plugin(plugin_id)
-            return _SchemaResponse(success=True)
-    except PluginMutationRejectedError as error:
-        return _SchemaResponse(success=False, message=str(error))

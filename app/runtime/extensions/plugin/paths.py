@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.runtime.extensions.plugin.system import PluginSystemServices
+from app.runtime.extensions.plugin.version import (
+    plugin_version_from_dir_name,
+    resolve_instance_version_dir,
+)
+from app.schemas.plugin import PluginInstance
 
 
 class PluginPathResolver:
@@ -20,6 +25,7 @@ class PluginPathResolver:
         running: Callable[[], Mapping[str, Any]],
         system: Callable[[], PluginSystemServices],
         strict_system_version: Callable[[], bool],
+        get_instance: Callable[[str], Optional[PluginInstance]],
         log: Any,
     ) -> None:
         """保存运行目录和插件市场路径解析端口。"""
@@ -27,6 +33,7 @@ class PluginPathResolver:
         self._running = running
         self._system = system
         self._strict_system_version = strict_system_version
+        self._get_instance = get_instance
         self._logger = log
 
     def federated_change(
@@ -71,16 +78,17 @@ class PluginPathResolver:
             ):
                 return None
             plugin_dir = plugin_dir.resolve()
-            dist_dir = (plugin_dir / relative_dist_path).resolve()
+            version_dir = resolve_instance_version_dir(plugin_dir, self._get_instance(plugin_id))
+            dist_dir = (version_dir / relative_dist_path).resolve()
             if (
-                dist_dir == plugin_dir
-                or not dist_dir.is_relative_to(plugin_dir)
+                dist_dir == version_dir
+                or not dist_dir.is_relative_to(version_dir)
                 or not event_path.is_relative_to(dist_dir)
             ):
                 return None
             remote_entry = dist_dir / "remoteEntry.js"
             ready = remote_entry.is_file() and remote_entry.resolve().is_relative_to(
-                plugin_dir
+                version_dir
             )
             return plugin_id, candidate, ready
         except Exception as error:
@@ -88,7 +96,12 @@ class PluginPathResolver:
             return None
 
     def runtime_plugin(self, event_path: Path) -> Optional[str]:
-        """从运行目录中的插件 ``__init__.py`` AST 解析插件类名。"""
+        """从运行目录中的插件 ``__init__.py`` AST 解析插件类名。
+
+        版本化布局把源码放在 ``<plugin>/v1_2_0`` 下；文件监控收到该目录内的
+        事件时，仍应返回源插件 ID，而不是因为插件根目录没有平铺
+        ``__init__.py`` 直接丢弃事件。
+        """
         try:
             event_path = event_path.resolve()
             if not event_path.is_relative_to(self._runtime_root):
@@ -96,7 +109,11 @@ class PluginPathResolver:
             parts = event_path.relative_to(self._runtime_root).parts
             if not parts:
                 return None
-            init_file = self._runtime_root / parts[0] / "__init__.py"
+            plugin_root = self._runtime_root / parts[0]
+            source_root = plugin_root
+            if len(parts) > 1 and plugin_version_from_dir_name(parts[1]):
+                source_root = plugin_root / parts[1]
+            init_file = source_root / "__init__.py"
             if not init_file.exists():
                 return None
             tree = ast.parse(

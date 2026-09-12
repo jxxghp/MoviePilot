@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager, nullcontext
 from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,6 +12,7 @@ from starlette.responses import Response
 from app import schemas
 from app.api.endpoints import plugin as plugin_endpoint
 from app.api.endpoints import pluginfolder as plugin_folders_endpoint
+from app.api.endpoints import plugininstance as plugin_instance_endpoint
 from app.api.endpoints.plugin import (
     plugin_capabilities,
     plugin_data_summary,
@@ -20,8 +22,8 @@ from app.api.endpoints.plugin import (
     reload_plugin,
     reset_plugin,
     runtime_status,
-    uninstall_plugin,
 )
+from app.api.endpoints.plugininstance import uninstall_plugin
 from app.api.endpoints.system import sync_plugin_market_from_wiki
 from app.application.plugin import release as release_module
 from app.application.plugin.catalog import PluginCatalogQuery
@@ -40,7 +42,7 @@ from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.tasks import TaskRegistry
 from app.schemas.event import PluginDataResetEventData
-from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
+from app.schemas.plugin import Plugin, PluginInstance, PluginRuntimeStatus
 from app.schemas.types import ChainEventType, SystemConfigKey
 
 NOW = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
@@ -323,6 +325,7 @@ def _release_service(
     *,
     persistence: MagicMock | None = None,
     plugin_helper: MagicMock | None = None,
+    source_plugin_id: Any = None,
 ) -> PluginReleaseService:
     """用端口替身构造与启动组合根等价的 Release 查询服务。"""
     if persistence is None:
@@ -333,6 +336,7 @@ def _release_service(
         plugin_helper.async_has_plugin_release_cache = AsyncMock(return_value=False)
         plugin_helper.async_get_plugin_release_versions = AsyncMock(return_value=[])
     return PluginReleaseService(
+        source_plugin_id=source_plugin_id or (lambda plugin_id: plugin_id),
         installed_plugins=plugin_manager.get_installed_plugins,
         local_repo_plugins=plugin_manager.get_local_repo_plugins,
         market_plugins=plugin_manager.async_get_plugins_from_market,
@@ -344,6 +348,87 @@ def _release_service(
         releases=plugin_helper.async_get_plugin_release_versions,
         refresh_releases=plugin_helper.async_get_plugin_release_versions,
     )
+
+
+def test_release_history_resolves_a_clone_to_its_source_plugin():
+    """分身查版本历史要归一化到源插件，分身自身 ID 在任何仓库里都不存在。
+
+    分身只是共享源码的运行实例，安装包与 Release 都登记在源插件名下；拿分身
+    ID（源插件 ID 加后缀）去查会一路落空，最终报「没有找到插件 X 的可用安装包」。
+    """
+    source_plugin = Plugin(id="ServerChanMsg", plugin_name="Server酱", installed=True)
+    plugin_manager = MagicMock()
+    plugin_manager.get_installed_plugins.return_value = [source_plugin]
+    plugin_manager.get_local_repo_plugins.return_value = []
+    service = _release_service(
+        plugin_manager,
+        source_plugin_id=lambda plugin_id: (
+            "ServerChanMsg" if plugin_id == "ServerChanMsgtest" else plugin_id
+        ),
+    )
+
+    result = asyncio.run(service.history("ServerChanMsgtest", force=False))
+
+    assert result is not None
+    assert result.id == "ServerChanMsg"
+
+
+def test_release_versions_resolves_a_clone_to_its_source_plugin():
+    """分身查 Release 版本列表时，可选版本按源插件解析。
+
+    市场里的候选只登记在源插件名下，拿分身 ID 过滤会一个都匹配不到。
+    """
+    source_release = Plugin(
+        id="ServerChanMsg", plugin_name="Server酱", plugin_version="1.2.0"
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.get_installed_plugins.return_value = []
+    plugin_manager.get_local_repo_plugins.return_value = []
+    plugin_manager.async_get_plugins_from_market = AsyncMock(
+        return_value=[source_release]
+    )
+    plugin_manager.get_local_plugin_version.return_value = "1.0.0"
+    service = _release_service(
+        plugin_manager,
+        source_plugin_id=lambda plugin_id: (
+            "ServerChanMsg" if plugin_id == "ServerChanMsgtest" else plugin_id
+        ),
+    )
+
+    snapshot = asyncio.run(
+        service.versions("ServerChanMsgtest", "https://example.com/repo")
+    )
+
+    # 归一化后才能在市场候选里匹配到源插件，拿到最新版本号
+    assert snapshot.latest_version == "1.2.0"
+
+
+def test_release_versions_reports_the_clone_own_running_version_as_current():
+    """「当前版本」取分身自己在跑的版本，不是源插件本体的版本。
+
+    可选版本来自市场、只登记在源插件名下，必须按源插件查；但分身可以钉在与本体
+    不同的版本上，若把当前版本也一并归一，会把本体的版本标成这个分身的当前版本。
+    """
+    plugin_manager = MagicMock()
+    plugin_manager.get_installed_plugins.return_value = []
+    plugin_manager.get_local_repo_plugins.return_value = []
+    plugin_manager.async_get_plugins_from_market = AsyncMock(return_value=[])
+    # 分身钉在 1.0.0，本体在跑 1.2.0
+    plugin_manager.get_local_plugin_version.side_effect = (
+        lambda pid: {"ServerChanMsgtest": "1.0.0", "ServerChanMsg": "1.2.0"}.get(pid)
+    )
+    service = _release_service(
+        plugin_manager,
+        source_plugin_id=lambda plugin_id: (
+            "ServerChanMsg" if plugin_id == "ServerChanMsgtest" else plugin_id
+        ),
+    )
+
+    snapshot = asyncio.run(
+        service.versions("ServerChanMsgtest", "https://example.com/repo")
+    )
+
+    assert snapshot.current_version == "1.0.0"
 
 
 def test_plugin_release_service_reset_isolates_lifespans(monkeypatch):
@@ -1158,6 +1243,12 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
         publish_reset=publish_reset,
         refresh_registrations=lambda _plugin_id: None,
         mutation=lambda _operation: nullcontext(),
+        # 重置不走这几条端口，给出不会被调用的实现即可
+        delete_plugin_data_rows=plugin_manager.delete_plugin_data_rows,
+        destroy_own_database=plugin_manager.destroy_plugin_own_database,
+        delete_data_directory=plugin_manager.delete_plugin_data_directory,
+        purge_instance=plugin_manager.purge_plugin_instance,
+        is_clone=plugin_manager.is_plugin_clone,
     )
     result = reset_plugin("SubscribeAssistantEnhanced", None, command)
 
@@ -1207,7 +1298,9 @@ def test_virtual_instance_static_file_reads_from_source_directory(tmp_path, monk
         lambda: MagicMock(root_path=tmp_path),
     )
 
-    response = asyncio.run(plugin_static_file("DemoPluginwork", "dist/remoteEntry.js", None))
+    response = asyncio.run(
+        plugin_static_file("demopluginwork", "dist/remoteEntry.js", None)
+    )
 
     async def read_body() -> bytes:
         """读取流式响应的全部测试内容。"""
@@ -1215,7 +1308,116 @@ def test_virtual_instance_static_file_reads_from_source_directory(tmp_path, monk
 
     assert asyncio.run(read_body()) == b"export default 'shared'"
     assert response.media_type == "application/javascript"
-    plugin_manager.get_plugin_source_id.assert_called_once_with("DemoPluginwork")
+    plugin_manager.get_plugin_source_id.assert_called_once_with("demopluginwork")
+
+
+def test_virtual_instance_static_file_reads_the_instances_bound_version_directory(
+    tmp_path, monkeypatch
+):
+    """源插件安装了多个版本时，分身按自身版本绑定读取源插件对应版本目录。"""
+    old_file = tmp_path / "app/plugins/demoplugin/v1_0_0/dist/remoteEntry.js"
+    old_file.parent.mkdir(parents=True)
+    old_file.write_text("export default 'v1'", encoding="utf-8")
+    new_file = tmp_path / "app/plugins/demoplugin/v2_0_0/dist/remoteEntry.js"
+    new_file.parent.mkdir(parents=True)
+    new_file.write_text("export default 'v2'", encoding="utf-8")
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_source_id.return_value = "DemoPlugin"
+    plugin_manager.get_plugin_version_binding.return_value = PluginInstance(
+        instance_id="DemoPluginwork",
+        source_plugin_id="DemoPlugin",
+        pinned_version="1.0.0",
+    )
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "get_api_runtime_config_snapshot",
+        lambda: MagicMock(root_path=tmp_path),
+    )
+
+    response = asyncio.run(
+        plugin_static_file("DemoPluginwork", "dist/remoteEntry.js", None)
+    )
+
+    async def read_body() -> bytes:
+        """读取流式响应的全部测试内容。"""
+        return b"".join([chunk async for chunk in response.body_iterator])
+
+    assert asyncio.run(read_body()) == b"export default 'v1'"
+    plugin_manager.get_plugin_version_binding.assert_called_once_with("DemoPluginwork")
+
+
+def test_host_static_file_reads_the_pinned_version_directory(tmp_path, monkeypatch):
+    """本体被钉在旧版本时，静态资源同样从被钉的版本目录读取。
+
+    资源解析若只认分身记录，本体恒为空、一律按当前版本取文件，就会出现代码跑在
+    钉定的旧版本、前端资源却来自新版本的错配。
+    """
+    old_file = tmp_path / "app/plugins/demoplugin/v1_0_0/dist/remoteEntry.js"
+    old_file.parent.mkdir(parents=True)
+    old_file.write_text("export default 'v1'", encoding="utf-8")
+    new_file = tmp_path / "app/plugins/demoplugin/v2_0_0/dist/remoteEntry.js"
+    new_file.parent.mkdir(parents=True)
+    new_file.write_text("export default 'v2'", encoding="utf-8")
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_source_id.return_value = "DemoPlugin"
+    plugin_manager.get_plugin_version_binding.return_value = PluginInstance(
+        instance_id="DemoPlugin",
+        source_plugin_id="DemoPlugin",
+        mode="host",
+        pinned_version="1.0.0",
+    )
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "get_api_runtime_config_snapshot",
+        lambda: MagicMock(root_path=tmp_path),
+    )
+
+    response = asyncio.run(plugin_static_file("DemoPlugin", "dist/remoteEntry.js", None))
+
+    async def read_body() -> bytes:
+        """读取流式响应的全部测试内容。"""
+        return b"".join([chunk async for chunk in response.body_iterator])
+
+    assert asyncio.run(read_body()) == b"export default 'v1'"
+
+
+def test_static_file_prefers_actual_running_version_after_binding_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    """回退后跟随绑定仍指向当前版本时，静态资源与实际运行代码保持一致。"""
+    old_file = tmp_path / "app/plugins/demoplugin/v1_0_0/dist/remoteEntry.js"
+    old_file.parent.mkdir(parents=True)
+    old_file.write_text("export default 'v1'", encoding="utf-8")
+    new_file = tmp_path / "app/plugins/demoplugin/v2_0_0/dist/remoteEntry.js"
+    new_file.parent.mkdir(parents=True)
+    new_file.write_text("export default 'v2'", encoding="utf-8")
+    plugin_manager = MagicMock()
+    plugin_manager.get_plugin_source_id.return_value = "DemoPlugin"
+    plugin_manager.get_plugin_running_version.return_value = "1.0.0"
+    plugin_manager.get_plugin_version_binding.return_value = PluginInstance(
+        instance_id="DemoPlugin",
+        source_plugin_id="DemoPlugin",
+        mode="host",
+        pinned_version=None,
+    )
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(
+        plugin_endpoint,
+        "get_api_runtime_config_snapshot",
+        lambda: MagicMock(root_path=tmp_path),
+    )
+
+    response = asyncio.run(plugin_static_file("DemoPlugin", "dist/remoteEntry.js", None))
+
+    async def read_body() -> bytes:
+        """读取流式响应的全部测试内容。"""
+        return b"".join([chunk async for chunk in response.body_iterator])
+
+    assert asyncio.run(read_body()) == b"export default 'v1'"
+    plugin_manager.get_plugin_running_version.assert_called_once_with("DemoPlugin")
 
 
 def test_uninstall_virtual_instance_never_removes_source_package(monkeypatch):
@@ -1228,11 +1430,11 @@ def test_uninstall_virtual_instance_never_removes_source_package(monkeypatch):
     plugin_manager.get_plugin_source_instances.return_value = []
     config = MagicMock()
     config.get.return_value = ["DemoPlugin"]
-    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
-    monkeypatch.setattr(plugin_endpoint, "get_configured_system_config", lambda: config)
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_api", MagicMock())
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_job", MagicMock())
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_from_folders", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_instance_endpoint, "get_configured_system_config", lambda: config)
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_from_folders", MagicMock())
 
     result = uninstall_plugin("DemoPluginwork", None)
 
@@ -1241,39 +1443,41 @@ def test_uninstall_virtual_instance_never_removes_source_package(monkeypatch):
         SystemConfigKey.UserInstalledPlugins,
         ["DemoPlugin"],
     )
-    plugin_manager.delete_plugin_config.assert_called_once_with(
-        "DemoPluginwork",
-        force=True,
-    )
-    plugin_manager.delete_plugin_data.assert_called_once_with(
-        "DemoPluginwork",
-        force=True,
-    )
+    # 与本体一致：卸载只摘掉实例身份，配置与业务数据留待同后缀重建时恢复
+    plugin_manager.delete_plugin_config.assert_not_called()
+    plugin_manager.delete_plugin_data.assert_not_called()
     plugin_manager.delete_plugin_instance.assert_called_once_with("DemoPluginwork")
     plugin_manager.remove_plugin.assert_called_once_with("DemoPluginwork")
     plugin_manager.remove_plugin_package.assert_not_called()
 
 
-def test_uninstall_clone_delegates_physical_removal_to_package_owner(monkeypatch):
-    """HTTP 分身卸载不得自行拼接路径或直接删除目录。"""
+def test_uninstall_clone_removes_instance_row_and_spares_shared_package(monkeypatch):
+    """分身卸载只摘掉实例身份，绝不删除与本体共享的插件包目录。
+
+    分身没有自己的源码，删包等于把本体和它的全部同胞一起删掉；本体绑定同理，
+    删了会让仍在册的本体失去装载依据。
+    """
     plugin_manager = MagicMock()
-    plugin_manager.get_plugin_instance.return_value = None
+    plugin_manager.get_plugin_instance.return_value = MagicMock(
+        instance_id="DemoPluginwork",
+        source_plugin_id="DemoPlugin",
+    )
     plugin_manager.get_plugin_source_instances.return_value = []
-    plugin_manager.plugins = {"DemoPluginwork": MagicMock(is_clone=True)}
-    plugin_manager.remove_plugin_package.return_value = True
+    plugin_manager.plugins = {"DemoPluginwork": MagicMock()}
     config = MagicMock()
     config.get.return_value = ["DemoPluginwork"]
-    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
-    monkeypatch.setattr(plugin_endpoint, "get_configured_system_config", lambda: config)
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_api", MagicMock())
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_job", MagicMock())
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_from_folders", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_instance_endpoint, "get_configured_system_config", lambda: config)
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_from_folders", MagicMock())
 
     result = uninstall_plugin("DemoPluginwork", None)
 
     assert result.success is True
-    plugin_manager.remove_plugin_package.assert_called_once_with("DemoPluginwork")
-    assert "DemoPluginwork" not in plugin_manager.plugins
+    plugin_manager.delete_plugin_instance.assert_called_once_with("DemoPluginwork")
+    plugin_manager.remove_plugin_package.assert_not_called()
+    plugin_manager.delete_plugin_host_binding.assert_not_called()
 
 
 def test_sealed_http_uninstall_rejects_before_first_side_effect(monkeypatch):
@@ -1285,14 +1489,14 @@ def test_sealed_http_uninstall_rejects_before_first_side_effect(monkeypatch):
     config_provider = MagicMock()
     remove_api = MagicMock()
     remove_job = MagicMock()
-    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
     monkeypatch.setattr(
-        plugin_endpoint,
+        plugin_instance_endpoint,
         "get_configured_system_config",
         config_provider,
     )
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_api", remove_api)
-    monkeypatch.setattr(plugin_endpoint, "remove_plugin_job", remove_job)
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_api", remove_api)
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_job", remove_job)
 
     result = uninstall_plugin("DemoPlugin", None)
 
@@ -1312,11 +1516,11 @@ def test_sealed_http_clone_rejects_before_runtime_and_registration(monkeypatch):
     plugin_manager.mutation.side_effect = admission.hold
     register = MagicMock()
     add_to_folder = MagicMock()
-    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
-    monkeypatch.setattr(plugin_endpoint, "register_plugin", register)
-    monkeypatch.setattr(plugin_endpoint, "add_clone_to_plugin_folder", add_to_folder)
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_instance_endpoint, "register_plugin", register)
+    monkeypatch.setattr(plugin_instance_endpoint, "add_clone_to_plugin_folder", add_to_folder)
 
-    result = plugin_endpoint.clone_plugin(
+    result = plugin_instance_endpoint.clone_plugin(
         "DemoPlugin",
         schemas.PluginCloneRequest(suffix="Work"),
         None,
@@ -1448,3 +1652,227 @@ def test_delete_plugin_data_can_force_delete_after_plugin_is_stopped():
 
     assert calls == ["DemoPlugin"]
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
+
+
+def _cascade_plugin_manager(clone_ids: list[str]) -> MagicMock:
+    """构造一个带指定分身的本体插件管理器替身。"""
+    plugin_manager = MagicMock()
+    plugin_manager.plugins = {"DemoPlugin": MagicMock(is_clone=False)}
+    for clone_id in clone_ids:
+        plugin_manager.plugins[clone_id] = MagicMock(is_clone=False)
+
+    instances = {
+        clone_id: PluginInstance(instance_id=clone_id, source_plugin_id="DemoPlugin")
+        for clone_id in clone_ids
+    }
+    plugin_manager.get_plugin_instance.side_effect = instances.get
+    plugin_manager.get_plugin_source_instances.side_effect = lambda plugin_id: (
+        list(instances.values()) if plugin_id == "DemoPlugin" else []
+    )
+    return plugin_manager
+
+
+def _patch_uninstall_side_effects(monkeypatch) -> MagicMock:
+    """接管卸载路径上的全部外部副作用，返回系统配置替身。"""
+    config = MagicMock()
+    config.get.return_value = ["DemoPlugin"]
+    monkeypatch.setattr(plugin_instance_endpoint, "get_configured_system_config", lambda: config)
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_api", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_job", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "remove_plugin_from_folders", MagicMock())
+    return config
+
+
+def test_uninstall_host_without_cascade_still_refuses_to_orphan_clones(monkeypatch):
+    """不带 cascade 时维持既有拒绝行为，级联不能因新增参数而悄悄变成默认。"""
+    plugin_manager = _cascade_plugin_manager(["DemoPluginwork"])
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    _patch_uninstall_side_effects(monkeypatch)
+
+    result = uninstall_plugin("DemoPlugin", None)
+
+    assert result.success is False
+    assert "DemoPluginwork" in result.message
+    plugin_manager.remove_plugin.assert_not_called()
+
+
+def test_uninstall_host_with_cascade_removes_every_clone_before_the_host(monkeypatch):
+    """级联卸载先清分身再卸本体，顺序反了会留下指向不存在源码的孤儿分身。"""
+    plugin_manager = _cascade_plugin_manager(["DemoPluginwork", "DemoPluginhome"])
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    _patch_uninstall_side_effects(monkeypatch)
+
+    result = uninstall_plugin("DemoPlugin", None, cascade=True)
+
+    assert result.success is True
+    assert [call.args[0] for call in plugin_manager.remove_plugin.call_args_list] == [
+        "DemoPluginwork",
+        "DemoPluginhome",
+        "DemoPlugin",
+    ]
+    plugin_manager.delete_plugin_instance.assert_any_call("DemoPluginwork")
+    plugin_manager.delete_plugin_instance.assert_any_call("DemoPluginhome")
+
+
+def test_uninstall_host_with_cascade_leaves_the_host_alone_when_a_clone_fails(monkeypatch):
+    """任一分身卸载失败立即中止，本体不得被触碰。"""
+    plugin_manager = _cascade_plugin_manager(["DemoPluginwork", "DemoPluginhome"])
+
+    def fail_on_second(plugin_id: str, **_kwargs) -> None:
+        """让第二个分身的实例摘除失败，模拟级联中途出错。"""
+        if plugin_id == "DemoPluginhome":
+            raise RuntimeError("实例描述符删除失败")
+
+    plugin_manager.delete_plugin_instance.side_effect = fail_on_second
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    _patch_uninstall_side_effects(monkeypatch)
+
+    result = uninstall_plugin("DemoPlugin", None, cascade=True)
+
+    assert result.success is False
+    assert "DemoPluginhome" in result.message
+    assert "DemoPlugin" not in [
+        call.args[0] for call in plugin_manager.remove_plugin.call_args_list
+    ][2:]
+    plugin_manager.delete_plugin_host_binding.assert_not_called()
+
+
+def test_uninstall_host_with_cascade_matches_plain_uninstall_when_there_is_no_clone(
+    monkeypatch,
+):
+    """没有分身时 cascade 与普通卸载完全等价。"""
+    plugin_manager = _cascade_plugin_manager([])
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    _patch_uninstall_side_effects(monkeypatch)
+
+    result = uninstall_plugin("DemoPlugin", None, cascade=True)
+
+    assert result.success is True
+    plugin_manager.remove_plugin.assert_called_once_with("DemoPlugin")
+    plugin_manager.delete_plugin_host_binding.assert_called_once_with("DemoPlugin")
+
+
+def test_reload_runtime_refreshes_registrations_for_every_instance_in_the_tree(
+    monkeypatch,
+):
+    """重载树含多个实例时逐个刷新注册投影，避免分身仍持有旧的 API 与调度。"""
+    from app.application.plugin import management
+
+    plugin_manager = MagicMock()
+    plugin_manager.reload_plugin_tree.return_value = PluginRuntimeStatus.ACTIVE
+    plugin_manager.get_plugin_reload_targets.return_value = [
+        "DemoPlugin",
+        "DemoPluginWork",
+    ]
+    refresh = MagicMock()
+    monkeypatch.setattr(management, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(management, "refresh_plugin_registrations", refresh)
+
+    status = management.reload_plugin_runtime("DemoPlugin")
+
+    assert status is PluginRuntimeStatus.ACTIVE
+    plugin_manager.reload_plugin_tree.assert_called_once_with("DemoPlugin")
+    assert [call.args for call in refresh.call_args_list] == [
+        ("DemoPlugin",),
+        ("DemoPluginWork",),
+    ]
+
+
+def test_restorable_endpoint_lists_only_uninstalled_clones(monkeypatch):
+    """可恢复清单只给出已卸载的分身；在册的不出现在里面。
+
+    在册分身的配置正被使用，摆进恢复选择器只会让用户误以为能把一个活着的实例
+    再创建一遍。过滤由运行时负责，端点如实转发它给出的清单。
+    """
+    plugin_manager = MagicMock()
+    plugin_manager.plugins = {"DemoPlugin": MagicMock()}
+    plugin_manager.get_restorable_plugin_instances.return_value = [
+        {
+            "instance_id": "DemoPluginwork",
+            "suffix": "work",
+            "plugin_name": "工作实例",
+            "pinned_version": "1.0.0",
+            "has_config": True,
+            "has_data": False,
+        }
+    ]
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+
+    # 路由返回裸清单，信封由 ResponseAPIRouter 统一套上
+    result = plugin_instance_endpoint.plugin_restorable_instances("DemoPlugin", None)
+
+    assert [item.instance_id for item in result] == ["DemoPluginwork"]
+    assert result[0].suffix == "work"
+    assert result[0].pinned_version == "1.0.0"
+    plugin_manager.get_restorable_plugin_instances.assert_called_once_with("DemoPlugin")
+
+
+def test_clone_endpoint_forwards_the_restore_choice(monkeypatch):
+    """创建分身时把「恢复/清空新建」的选择原样交给运行时，不在传输层擅自决定。"""
+    plugin_manager = MagicMock()
+    plugin_manager.clone_plugin.return_value = (True, "DemoPlugintest")
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_instance_endpoint, "register_plugin", MagicMock())
+    monkeypatch.setattr(plugin_instance_endpoint, "add_clone_to_plugin_folder", MagicMock())
+
+    plugin_instance_endpoint.clone_plugin(
+        "DemoPlugin",
+        schemas.PluginCloneRequest(suffix="Test", restore_previous=False),
+        None,
+    )
+
+    assert plugin_manager.clone_plugin.call_args.kwargs["restore_previous"] is False
+
+
+def test_instance_enabled_endpoint_forwards_the_target_state(monkeypatch):
+    """启用开关端点把目标状态原样交给运行时，本体与分身共用同一个入口。"""
+    plugin_manager = MagicMock()
+    plugin_manager.set_plugin_instance_enabled.return_value = True
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+
+    result = plugin_instance_endpoint.set_plugin_instance_enabled(
+        "DemoPluginWork",
+        plugin_instance_endpoint._SchemaPluginInstanceEnabledRequest(enabled=False),
+        None,
+    )
+
+    assert result.success is True
+    plugin_manager.set_plugin_instance_enabled.assert_called_once_with(
+        "DemoPluginWork", False
+    )
+
+
+def test_instance_enabled_endpoint_reports_a_noop_as_failure(monkeypatch):
+    """实例不存在或状态本就如此时如实回报，不让界面误以为改动已生效。"""
+    plugin_manager = MagicMock()
+    plugin_manager.set_plugin_instance_enabled.return_value = False
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+
+    result = plugin_instance_endpoint.set_plugin_instance_enabled(
+        "DemoPluginWork",
+        plugin_instance_endpoint._SchemaPluginInstanceEnabledRequest(enabled=True),
+        None,
+    )
+
+    assert result.success is False
+    assert "已处于启用状态" in result.message
+
+
+def test_instance_enabled_endpoint_surfaces_the_admission_rejection(monkeypatch):
+    """停机准入窗口内拒绝改动，理由要原样带回给调用方。"""
+    plugin_manager = MagicMock()
+    from app.schemas.exception import PluginMutationRejectedError
+
+    plugin_manager.set_plugin_instance_enabled.side_effect = PluginMutationRejectedError(
+        "正在停机，拒绝改动"
+    )
+    monkeypatch.setattr(plugin_instance_endpoint, "get_plugin_manager", lambda: plugin_manager)
+
+    result = plugin_instance_endpoint.set_plugin_instance_enabled(
+        "DemoPlugin",
+        plugin_instance_endpoint._SchemaPluginInstanceEnabledRequest(enabled=False),
+        None,
+    )
+
+    assert result.success is False
+    assert "正在停机" in result.message

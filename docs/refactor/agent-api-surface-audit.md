@@ -5,10 +5,10 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **401**
-- Stable `moviepilot_api` operations: **221**
-- Exact HTTP routes used by the gateway: **219**
-- OpenAPI routes matched directly by the gateway: **218**
+- OpenAPI HTTP operations: **412**
+- Stable `moviepilot_api` operations: **231**
+- Exact HTTP routes used by the gateway: **229**
+- OpenAPI routes matched directly by the gateway: **228**
 - Bounded dynamic gateway routes: **1**
 - Every gateway operation has a generated English oneOf input contract in MCP `tools/list` and `skills/moviepilot-api/SKILL.md`.
 - Every non-gateway OpenAPI operation is listed below with an explicit ownership boundary; it is not silently callable through arbitrary URL/method input.
@@ -19,11 +19,11 @@
 | :--- | ---: | :--- |
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
 | `consolidated` | 71 | Source/UI route represented by a stable aggregate Agent operation. |
-| `gateway` | 218 | Approved structured MoviePilot Agent operation. |
+| `gateway` | 228 | Approved structured MoviePilot Agent operation. |
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 13 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 14 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -193,6 +193,7 @@
 | `POST` | `/api/v1/openai/v1/responses` | openai | `transport_or_identity` | host-runtime | OpenAI compatible responses |
 | `GET` | `/api/v1/plugin/` | plugin | `gateway` | plugin.installed, plugin.market | 所有插件 |
 | `POST` | `/api/v1/plugin/clone/{plugin_id}` | plugin | `gateway` | plugin.clone | 创建插件分身 |
+| `GET` | `/api/v1/plugin/clone/{plugin_id}/restorable` | plugin | `ui_presentation` | host-ui | 列出可恢复的已卸载分身 |
 | `GET` | `/api/v1/plugin/dashboard/meta` | plugin | `ui_presentation` | host-ui | 获取所有插件仪表板元信息 |
 | `GET` | `/api/v1/plugin/dashboard/{plugin_id}` | plugin | `ui_presentation` | host-ui | 获取插件仪表板配置 |
 | `GET` | `/api/v1/plugin/dashboard/{plugin_id}/{key}` | plugin | `ui_presentation` | host-ui | 获取插件仪表板配置 |
@@ -209,6 +210,13 @@
 | `GET` | `/api/v1/plugin/history/{plugin_id}` | plugin | `gateway` | plugin.history | 获取插件更新说明 |
 | `GET` | `/api/v1/plugin/install/{plugin_id}` | plugin | `gateway` | plugin.install | 安装插件 |
 | `GET` | `/api/v1/plugin/installed` | plugin | `consolidated` | plugin.installed | 已安装插件 |
+| `POST` | `/api/v1/plugin/instance/{instance_id}/enabled` | plugin | `gateway` | plugin.instance.set_enabled | 启用或停用插件实例 |
+| `POST` | `/api/v1/plugin/instance/{instance_id}/purge` | plugin | `gateway` | plugin.instance.purge | 按选定范围彻底清理插件实例 |
+| `DELETE` | `/api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target` | plugin | `gateway` | plugin.default_target.clear | 清除插件实例的默认调用目标 |
+| `PUT` | `/api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target` | plugin | `gateway` | plugin.default_target.set | 设置插件实例的默认调用目标 |
+| `GET` | `/api/v1/plugin/loglevel/{plugin_id}` | plugin | `gateway` | plugin.loglevel.get | 查询插件全部实例的日志等级设置 |
+| `DELETE` | `/api/v1/plugin/loglevel/{plugin_id}/{instance_id}` | plugin | `gateway` | plugin.loglevel.clear | 清除插件实例的日志等级覆盖 |
+| `PUT` | `/api/v1/plugin/loglevel/{plugin_id}/{instance_id}` | plugin | `gateway` | plugin.loglevel.set | 设置插件实例的日志等级覆盖 |
 | `GET` | `/api/v1/plugin/page/{plugin_id}` | plugin | `ui_presentation` | host-ui | 获取插件数据页面 |
 | `GET` | `/api/v1/plugin/rating` | plugin | `gateway` | plugin.ratings | 批量查询插件评分 |
 | `GET` | `/api/v1/plugin/rating/{plugin_id}` | plugin | `gateway` | plugin.rating | 查询插件评分 |
@@ -227,6 +235,9 @@
 | `POST` | `/api/v1/plugin/source/{plugin_id}/install` | plugin | `gateway` | plugin.source.install | 按明确来源安装插件 |
 | `GET` | `/api/v1/plugin/source/{plugin_id}/options` | plugin | `consolidated` | plugin.source.options | 获取插件来源候选 |
 | `GET` | `/api/v1/plugin/statistic` | plugin | `gateway` | plugin.statistics | 插件安装统计 |
+| `GET` | `/api/v1/plugin/versions/{plugin_id}` | plugin | `gateway` | plugin.versions.get | 查询插件已装版本与实例版本绑定 |
+| `POST` | `/api/v1/plugin/versions/{plugin_id}/recycle` | plugin | `gateway` | plugin.versions.recycle | 回收插件不再引用的已装版本目录 |
+| `PUT` | `/api/v1/plugin/versions/{plugin_id}/{instance_id}` | plugin | `gateway` | plugin.versions.set_instance | 设置插件实例的版本绑定 |
 | `DELETE` | `/api/v1/plugin/{plugin_id}` | plugin | `gateway` | plugin.uninstall | 卸载插件 |
 | `GET` | `/api/v1/plugin/{plugin_id}` | plugin | `consolidated` | plugin.config.get | 获取插件配置 |
 | `PUT` | `/api/v1/plugin/{plugin_id}` | plugin | `gateway` | plugin.config.update | 更新插件配置 |

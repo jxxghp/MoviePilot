@@ -2,11 +2,11 @@
   "disposition_counts": {
     "alternate-auth-duplicate": 11,
     "consolidated": 71,
-    "gateway": 218,
+    "gateway": 228,
     "provider-skill": 12,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
-    "ui_presentation": 13
+    "ui_presentation": 14
   },
   "dynamic_gateway_routes": [
     {
@@ -18,10 +18,10 @@
       "reason": "The executor validates and expands this bounded source placeholder to one of tmdb, douban, bangumi, or anilist before calling the corresponding concrete OpenAPI route."
     }
   ],
-  "gateway_http_route_count": 219,
-  "gateway_operation_count": 221,
-  "matched_gateway_http_route_count": 218,
-  "openapi_operation_count": 401,
+  "gateway_http_route_count": 229,
+  "gateway_operation_count": 231,
+  "matched_gateway_http_route_count": 228,
+  "openapi_operation_count": 412,
   "operations": [
     {
       "disposition": "consolidated",
@@ -2044,6 +2044,18 @@
       "method": "GET",
       "operation_ids": [],
       "owner": "host-ui",
+      "path": "/api/v1/plugin/clone/{plugin_id}/restorable",
+      "reason": "Lists uninstalled clones whose settings are still kept so the creation form can offer restore-by-id; the Agent creates clones through plugin.clone and passes its own restore choice.",
+      "summary": "列出可恢复的已卸载分身",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
       "path": "/api/v1/plugin/dashboard/meta",
       "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
       "summary": "获取所有插件仪表板元信息",
@@ -2251,6 +2263,104 @@
       "path": "/api/v1/plugin/installed",
       "reason": "This compatibility, broader-response, or UI route is represented by the safer stable operation plugin.installed.",
       "summary": "已安装插件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "plugin.instance.set_enabled"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/instance/{instance_id}/enabled",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "启用或停用插件实例",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "plugin.instance.purge"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/instance/{instance_id}/purge",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "按选定范围彻底清理插件实例",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "plugin.default_target.clear"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "清除插件实例的默认调用目标",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "plugin.default_target.set"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "设置插件实例的默认调用目标",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.loglevel.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/loglevel/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询插件全部实例的日志等级设置",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "DELETE",
+      "operation_ids": [
+        "plugin.loglevel.clear"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/loglevel/{plugin_id}/{instance_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "清除插件实例的日志等级覆盖",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "plugin.loglevel.set"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/loglevel/{plugin_id}/{instance_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "设置插件实例的日志等级覆盖",
       "tags": [
         "plugin"
       ]
@@ -2495,6 +2605,48 @@
       "path": "/api/v1/plugin/statistic",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "插件安装统计",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.versions.get"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/versions/{plugin_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "查询插件已装版本与实例版本绑定",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "POST",
+      "operation_ids": [
+        "plugin.versions.recycle"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/versions/{plugin_id}/recycle",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "回收插件不再引用的已装版本目录",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "PUT",
+      "operation_ids": [
+        "plugin.versions.set_instance"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/versions/{plugin_id}/{instance_id}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "设置插件实例的版本绑定",
       "tags": [
         "plugin"
       ]

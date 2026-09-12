@@ -39,7 +39,7 @@ class PluginIdentityOper(DbOper):
                     select(PluginIdentity).where(
                         PluginIdentity.normalized_plugin_id.in_(plugin_ids)
                     )
-                ).scalars()
+                ).scalars().all()
             )
         )
 

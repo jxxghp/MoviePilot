@@ -5,15 +5,25 @@ from __future__ import annotations
 import inspect
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 from app.runtime.correlation import correlation_scope
 from app.runtime.event.binding import EventBindingResolver
 from app.runtime.event.registry import EventRegistry
 from app.runtime.execution import run_in_threadpool
-from app.runtime.log import logger
+from app.runtime.log import bind_plugin_instance, logger
 from app.runtime.observability import observe_duration
 from app.schemas.types import EventType
+
+
+def _instance_binding_scope(class_name: str) -> AbstractContextManager[None]:
+    """处理器归属某个类时绑定其插件实例日志上下文，自由函数处理器不绑定。
+
+    ``class_name`` 就是声明该处理器的类的 ``__name__``；宿主类处理器同样会
+    命中这里，但缓存里没有它们的等级覆盖记录，过滤时自然回落全局等级。
+    """
+    return bind_plugin_instance(class_name) if class_name else nullcontext()
 
 
 class EventDispatcher:
@@ -247,7 +257,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ):
+                ), _instance_binding_scope(class_name):
                     method(event)
             except Exception as err:
                 self._error_handler(
@@ -278,7 +288,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ):
+                ), _instance_binding_scope(class_name):
                     method(event)
             except Exception as err:
                 self._error_handler(
@@ -302,7 +312,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ):
+                ), _instance_binding_scope(class_name):
                     if inspect.iscoroutinefunction(method):
                         await method(event)
                     elif binding.run_sync_in_threadpool or not class_name:
@@ -339,7 +349,7 @@ class EventDispatcher:
                     "event.handler.duration",
                     event_type=event.event_type.value,
                     handler_type="bound" if class_name else "function",
-                ):
+                ), _instance_binding_scope(class_name):
                     if inspect.iscoroutinefunction(method):
                         await method(event)
                     elif run_sync_in_threadpool or binding.run_sync_in_threadpool or not class_name:
@@ -362,12 +372,24 @@ class EventDispatcher:
         handler_identifier: str,
         target_plugin_id: str,
     ) -> bool:
-        """只把定向输入事件投递给标识和声明均匹配的目标插件。"""
+        """只把定向输入事件投递给标识和声明均匹配的目标插件。
+
+        目标匹配按运行实例身份判断，不能只看类的限定名：分身共享源码，其
+        ``__qualname__`` 保持源类名不变，只比类名会让定向到分身的事件全部落空，
+        而定向到本体的事件被本体连同它的全部分身一起收到。实例身份编码在处理器
+        标识的模块段里（``app.plugins.<实例ID>``）；不是插件处理器时回落到类名比较，
+        保持宿主侧处理器的既有行为。
+        """
         class_name, method_name = EventBindingResolver.parse_handler_names(handler)
-        if class_name != target_plugin_id:
-            return False
         parts = (handler_identifier or "").split(".")
-        return len(parts) >= 2 and parts[-2:] == [class_name, method_name]
+        if len(parts) < 2 or parts[-2:] != [class_name, method_name]:
+            return False
+        module_path = ".".join(parts[:-2])
+        prefix = "app.plugins."
+        if module_path.startswith(prefix):
+            owner_id = module_path[len(prefix):].split(".")[0]
+            return owner_id.casefold() == target_plugin_id.casefold()
+        return class_name == target_plugin_id
 
     @staticmethod
     def _log_lifecycle(event: Any, stage: str) -> None:

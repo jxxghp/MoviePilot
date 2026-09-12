@@ -9,6 +9,7 @@ from app.runtime.extensions.plugin.contracts import (
     supports_plugin_hook,
 )
 from app.runtime.log import logger as default_logger
+from app.runtime.log import wrap_for_plugin_instance
 from app.schemas.plugin import PluginDashboard
 
 
@@ -19,12 +20,36 @@ class PluginProjection:
         self,
         running_plugins: Mapping[str, Any],
         log: Any = default_logger,
-        remote_entry_factory: Optional[Callable[[str, str], str]] = None,
+        remote_entry_factory: Optional[Callable[[str, str, Optional[str]], str]] = None,
     ) -> None:
         """保存运行态插件映射和错误日志端口。"""
         self._running_plugins = running_plugins
         self._logger = log
         self._remote_entry_factory = remote_entry_factory
+
+    def _remote_descriptor(
+        self, plugin_id: str, plugin: Any, dist_path: str
+    ) -> Dict[str, Any]:
+        """构造带版本身份的联邦远程描述，避免同一实例切版后复用旧入口。
+
+        ``plugin_version`` 来自实际加载的插件类，而不是实例的持久化绑定记录，
+        因此 URL 与 ``remote_key`` 始终描述本次运行中真正可用的构建产物。版本
+        信息缺失时保留旧的实例级 remote 标识与地址语义。
+        """
+        if not self._remote_entry_factory:
+            raise RuntimeError("插件联邦入口生成器尚未配置")
+        version = getattr(plugin, "plugin_version", None) or None
+        remote = {
+            "id": plugin_id,
+            "url": self._remote_entry_factory(plugin_id, dist_path, version),
+            "name": plugin.plugin_name,
+            "version": version,
+            "remote_key": f"{plugin_id}#{version}" if version else plugin_id,
+        }
+        source_plugin_id = getattr(plugin, "plugin_source_id", None)
+        if source_plugin_id:
+            remote["source_plugin_id"] = source_plugin_id
+        return remote
 
     def _items(self, pid: Optional[str]) -> list[tuple[str, Any]]:
         """返回指定插件或运行态插件的稳定快照。"""
@@ -51,7 +76,7 @@ class PluginProjection:
         return commands
 
     def apis(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合插件 API 并补充宿主路径和默认认证方式。"""
+        """聚合插件 API 并补充宿主路径和默认认证方式，端点绑定发起实例的日志上下文。"""
         apis: list[dict] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_api"):
@@ -62,6 +87,9 @@ class PluginProjection:
                     api["path"] = f"/{plugin_id}{api['path']}"
                     if not api.get("auth"):
                         api["auth"] = "apikey"
+                    endpoint = api.get("endpoint")
+                    if callable(endpoint):
+                        api["endpoint"] = wrap_for_plugin_instance(endpoint, plugin_id)
                     apis.append(api)
             except Exception as error:
                 self._logger.error(f"获取插件 {plugin_id} API出错：{str(error)}")
@@ -161,17 +189,7 @@ class PluginProjection:
             render_mode, dist_path = plugin.get_render_mode()
             if render_mode != "vue":
                 continue
-            if not self._remote_entry_factory:
-                raise RuntimeError("插件联邦入口生成器尚未配置")
-            remote = {
-                "id": plugin_id,
-                "url": self._remote_entry_factory(plugin_id, dist_path),
-                "name": plugin.plugin_name,
-            }
-            source_plugin_id = getattr(plugin, "plugin_source_id", None)
-            if source_plugin_id:
-                remote["source_plugin_id"] = source_plugin_id
-            remotes.append(remote)
+            remotes.append(self._remote_descriptor(plugin_id, plugin, dist_path))
         return remotes
 
     def auth_providers(self) -> List[Dict[str, Any]]:
@@ -203,18 +221,10 @@ class PluginProjection:
                 provider.setdefault("name", plugin.plugin_name)
                 provider.setdefault("enabled", True)
                 if render_mode == "vue" and dist_path:
-                    if not self._remote_entry_factory:
-                        raise RuntimeError("插件联邦入口生成器尚未配置")
                     provider.setdefault("component", "AuthPage")
-                    remote = {
-                        "id": plugin_id,
-                        "url": self._remote_entry_factory(plugin_id, dist_path),
-                        "name": plugin.plugin_name,
-                    }
-                    source_plugin_id = getattr(plugin, "plugin_source_id", None)
-                    if source_plugin_id:
-                        remote["source_plugin_id"] = source_plugin_id
-                    provider["remote"] = remote
+                    provider["remote"] = self._remote_descriptor(
+                        plugin_id, plugin, dist_path
+                    )
                 providers.append(provider)
         return providers
 
