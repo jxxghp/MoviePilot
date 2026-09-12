@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8581,
-  "edge_sha256": "7b89a2f04c4b256955e9d17821d7e4ac448c1847e12772aadf5906a520a4e3eb",
+  "edge_count": 8585,
+  "edge_sha256": "bdb99b1fdd69962aab0c46f7f90d9e9a8400d91710a7baf6261ce999b24795a4",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8916,6 +8916,7 @@
     "app.startup.composition.database -> app.application.database",
     "app.startup.composition.database -> app.application.maintenance",
     "app.startup.composition.database -> app.application.plugin",
+    "app.startup.composition.database -> app.application.plugin.runtime",
     "app.startup.composition.database -> app.application.plugin.transaction",
     "app.startup.composition.database -> app.application.query",
     "app.startup.composition.database -> app.application.workflow",
@@ -8932,10 +8933,13 @@
     "app.startup.composition.database -> app.db.maintenance",
     "app.startup.composition.database -> app.db.oper",
     "app.startup.composition.database -> app.db.oper.systemconfig",
+    "app.startup.composition.database -> app.db.plugin",
+    "app.startup.composition.database -> app.db.plugin.registry",
     "app.startup.composition.database -> app.db.session",
     "app.startup.composition.database -> app.db.uow",
     "app.startup.composition.database -> app.db.worker",
     "app.startup.composition.database -> app.runtime",
+    "app.startup.composition.database -> app.runtime.log",
     "app.startup.composition.database -> app.runtime.settings",
     "app.startup.composition.domain -> app.adapters",
     "app.startup.composition.domain -> app.adapters.network",
