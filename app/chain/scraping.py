@@ -1108,9 +1108,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param audio_files: 已确认属于本批次的音频文件；为空时按 fileitem 展开
         :param media_by_path: 每个音频文件对应的音乐身份，避免批次内不同单曲互相覆盖
         """
-        from app.chain.artwork import (  # pylint: disable=import-outside-toplevel
-            MusicArtworkChain,
-        )
+        from app.chain.artwork import MusicArtworkChain  # pylint: disable=import-outside-toplevel
 
         files = self._normalize_music_audio_fileitems(
             audio_files if audio_files is not None else self._music_audio_fileitems(fileitem)
