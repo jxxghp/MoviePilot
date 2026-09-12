@@ -786,14 +786,19 @@ class SessionSubscriptionRepository:
         self,
         username: Optional[str],
         state: str,
+        mtype: Optional[str] = None,
     ) -> builtins.list[int]:
-        """异步读取用户或管理员全局范围内指定状态的订阅主键。"""
+        """异步读取用户或管理员指定媒体类型范围内的订阅主键。"""
         snapshots = (
-            await self.async_list_by_username(username, state)
+            await self.async_list_by_username(username, state, mtype=mtype)
             if username is not None
             else await self.async_list(state)
         )
-        return [snapshot.id for snapshot in snapshots]
+        return [
+            snapshot.id
+            for snapshot in snapshots
+            if snapshot.id and (mtype is None or snapshot.type == mtype)
+        ]
 
     async def stage_delete(self, subscribe_id: int) -> None:
         """异步暂存删除订阅。"""

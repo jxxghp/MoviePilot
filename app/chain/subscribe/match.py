@@ -327,11 +327,15 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         self,
         torrents: Dict[str, List[Context]],
         progress_callback: Optional[Callable[..., None]] = None,
+        *,
+        mtype: Optional[str] = None,
     ) -> None:
         """
         从缓存中匹配订阅，并自动下载。
 
         该入口保持订阅刷新、定时任务和插件调用的稳定签名，具体匹配流程由内部阶段执行。
+
+        :param mtype: 可选媒体类型，省略时匹配所有类型
         """
         if not torrents:
             logger.warn("当前没有可检查的订阅资源")
@@ -343,18 +347,22 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         return self._run_match(
             torrents=torrents,
             progress_callback=progress_callback,
+            mtype=mtype,
         )
 
     def _run_match(
         self,
         torrents: Dict[str, List[Context]],
         progress_callback: Optional[Callable[..., None]] = None,
+        *,
+        mtype: Optional[str] = None,
     ) -> None:
         """
         从缓存中匹配订阅，并自动下载
 
         :param torrents: 按站点分组的资源上下文
         :param progress_callback: 订阅匹配进度更新回调
+        :param mtype: 可选媒体类型，省略时匹配所有类型
         """
         if not torrents:
             logger.warn("当前没有可检查的订阅资源")
@@ -378,6 +386,8 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
 
             # 所有订阅
             subscribes = self.subscription_repository.list(self.get_states_for_search("R"))
+            if mtype is not None:
+                subscribes = [subscribe for subscribe in subscribes if subscribe.type == mtype]
             total_num = len(subscribes)
             summary.total = total_num
             logger.info(summary.start_log())

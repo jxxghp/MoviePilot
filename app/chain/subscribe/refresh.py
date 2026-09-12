@@ -37,14 +37,20 @@ from app.schemas.types import (
 class SubscribeRefreshOwner(SubscribeMetadataOwner):
     """订阅元数据、进度与剧集范围刷新，作为 SubscribeChain 的单一职责实现 owner。"""
 
-    def refresh(self, progress_callback: Optional[Callable[..., None]] = None) -> None:
+    def refresh(
+        self,
+        progress_callback: Optional[Callable[..., None]] = None,
+        *,
+        mtype: Optional[str] = None,
+    ) -> None:
         """
-        订阅刷新
+        刷新指定媒体类型的订阅
 
         :param progress_callback: 定时服务进度更新回调
+        :param mtype: 可选媒体类型，省略时刷新所有类型
         """
         # 触发刷新站点资源，从缓存中匹配订阅
-        sites = self.get_subscribed_sites()
+        sites = self.get_subscribed_sites(mtype)
         if sites is None:
             if progress_callback:
                 progress_callback(value=100, text="没有订阅需要刷新")
@@ -81,11 +87,12 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             sites=sites,
             progress_callback=_update_refresh_progress if progress_callback else None,
             # 存在音乐订阅时额外抓取站点音乐专用入口，音乐不一定在默认种子首页
-            include_music=self.has_music_subscribe(),
+            include_music=self.has_music_subscribe(mtype),
         )
         self.match(
             candidates,
             progress_callback=_update_match_progress if progress_callback else None,
+            mtype=mtype,
         )
         if progress_callback:
             progress_callback(value=100, text="订阅刷新完成")
@@ -94,16 +101,21 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         self,
         progress_callback: Optional[Callable[..., None]] = None,
         reconcile_completion: bool = False,
+        *,
+        mtype: Optional[str] = None,
     ) -> None:
         """
         定时检查订阅，更新订阅信息
 
         :param progress_callback: 定时服务进度更新回调
         :param reconcile_completion: 是否复用本次新鲜媒体事实执行独立完成对账
+        :param mtype: 可选媒体类型，省略时检查所有类型
         """
         # 查询所有订阅
         repository = self.subscription_repository
         subscribes = repository.list()
+        if mtype is not None:
+            subscribes = [subscribe for subscribe in subscribes if subscribe.type == mtype]
         fresh_fact_lease = FreshFactLease()
         total_num = len(subscribes)
         if progress_callback:
@@ -148,11 +160,14 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
     def check_and_reconcile(
         self,
         progress_callback: Optional[Callable[..., None]] = None,
+        *,
+        mtype: Optional[str] = None,
     ) -> None:
-        """刷新订阅元数据，并复用同一轮新鲜事实执行完成对账。"""
+        """刷新指定媒体类型的元数据，并复用同一轮新鲜事实执行完成对账。"""
         return self.check(
             progress_callback=progress_callback,
             reconcile_completion=True,
+            mtype=mtype,
         )
 
     async def cache_calendar(

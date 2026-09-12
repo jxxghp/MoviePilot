@@ -22,14 +22,16 @@ class _Repository:
         self.candidate = candidate
         self.subscribe_ids = subscribe_ids or []
         self.list_calls = []
+        self.type_calls = []
 
     async def get_candidate(self, _subscribe_id):
         """返回预设订阅候选。"""
         return self.candidate
 
-    async def list_search_ids(self, username, state):
+    async def list_search_ids(self, username, state, mtype=None):
         """记录访问范围并返回预设编号。"""
         self.list_calls.append((username, state))
+        self.type_calls.append(mtype)
         return self.subscribe_ids
 
 
@@ -94,6 +96,27 @@ async def test_regular_user_search_all_schedules_only_owned_subscriptions():
 
     assert result is not None
     assert repository.list_calls == [("alice", "R")]
+    assert submitted == [((2, 5), False)]
+
+
+@pytest.mark.asyncio
+async def test_search_all_forwards_media_type_to_target_repository():
+    """按媒体类型搜索时把范围交给订阅读取端口裁剪。"""
+    submitted = []
+    repository = _Repository(subscribe_ids=[2, 5])
+    command = SearchSubscriptionsCommand(
+        repository=repository,
+        submit_search=_submitter(submitted),
+    )
+
+    result = await command.execute(
+        SubscribeSearchActor(username="admin", is_superuser=True),
+        mtype="电视剧",
+    )
+
+    assert result is not None
+    assert repository.list_calls == [(None, "R")]
+    assert repository.type_calls == ["电视剧"]
     assert submitted == [((2, 5), False)]
 
 

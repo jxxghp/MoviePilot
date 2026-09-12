@@ -56,18 +56,28 @@ class SearchSubscriptionsCommand:
         self,
         actor: SubscribeSearchActor,
         subscribe_id: int | None = None,
+        mtype: Optional[str] = None,
     ) -> Optional[SubscriptionSearchSubmission]:
-        """提交单条或当前用户全部可搜索订阅，目标不可访问时返回空。"""
+        """提交单条或指定媒体类型的可搜索订阅，目标不可访问时返回空。"""
         if subscribe_id is not None:
             candidate = await self._repository.get_candidate(subscribe_id)
-            if not self._can_access(candidate, actor):
+            if not self._can_access(candidate, actor) or (
+                mtype is not None
+                and (candidate is None or candidate.event_payload.get("type") != mtype)
+            ):
                 return None
             return await self._submit_search((subscribe_id,), True)
 
-        subscribe_ids = await self._repository.list_search_ids(
-            None if actor.is_superuser else actor.username,
-            "R",
-        )
+        search_username = None if actor.is_superuser else actor.username
+        if mtype is None:
+            # 保留旧调用形态，兼容仍只实现全量查询参数的外部端口测试替身。
+            subscribe_ids = await self._repository.list_search_ids(search_username, "R")
+        else:
+            subscribe_ids = await self._repository.list_search_ids(
+                search_username,
+                "R",
+                mtype=mtype,
+            )
         if not subscribe_ids:
             return SubscriptionSearchSubmission(
                 batch_ids=(),

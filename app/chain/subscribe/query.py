@@ -62,9 +62,14 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         # 如果交集为空，返回默认站点
         return intersection_sites if intersection_sites else default_sites
 
-    def get_subscribed_sites(self) -> Optional[List[int]]:
+    def get_subscribed_sites(self, mtype: Optional[str] = None) -> Optional[List[int]]:
         """
-        获取订阅中涉及的所有站点清单（节约资源）
+        获取指定媒体类型订阅涉及的站点清单（节约资源）
+
+        未指定媒体类型时保持原有全量订阅行为；指定类型却没有可搜索订阅时
+        返回 None，避免调用方把空站点误解为“搜索所有站点”。
+
+        :param mtype: 可选媒体类型
         :return: 返回[]代表所有站点命中，返回None代表没有订阅
         """
         ret_sites = []
@@ -72,19 +77,28 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         if not subscribes:
             # 没有订阅
             return None
+        has_searchable_subscription = False
         # 刷新订阅选中的Rss站点
         for subscribe in subscribes:
+            if mtype is not None and subscribe.type != mtype:
+                continue
             # 刷新选中的站点
             if subscribe.state in self.get_states_for_search("R"):
+                has_searchable_subscription = True
                 ret_sites.extend(self.get_sub_sites(subscribe))
         # 去重
         if ret_sites:
             ret_sites = list(set(ret_sites))
 
+        if mtype is not None and not has_searchable_subscription:
+            return None
+
         return ret_sites
 
-    def has_music_subscribe(self) -> bool:
-        """判断是否存在可搜索状态的音乐订阅，用于决定是否额外刷新站点音乐入口。"""
+    def has_music_subscribe(self, mtype: Optional[str] = None) -> bool:
+        """判断指定范围内是否存在音乐订阅，用于决定是否额外刷新站点音乐入口。"""
+        if mtype is not None and mtype != MediaType.MUSIC.value:
+            return False
         return cast(bool, self._subscription_query().has_music(self.get_states_for_search("R")))
 
     def get_subscribe_by_source(self, source: str) -> Optional[SubscriptionSnapshot]:

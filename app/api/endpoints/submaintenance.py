@@ -1,8 +1,8 @@
 """订阅维护命令端点。"""
 
-from typing import Any
+from typing import Annotated, Any, Optional
 
-from fastapi import Depends
+from fastapi import Depends, Query
 
 from app.api.dependencies.auth import (
     get_current_active_user,
@@ -28,8 +28,21 @@ from app.schemas.response import Response
 from app.schemas.subscribe import (
     SubscriptionSearchSubmission as SubscriptionSearchSubmissionSchema,
 )
+from app.schemas.types import MediaType
 
 router = ResponseAPIRouter()
+
+SubscriptionTypeParam = Annotated[
+    Optional[MediaType],
+    Query(alias="type", description="仅处理指定媒体类型的订阅；省略时处理全部类型"),
+]
+
+
+def _subscription_job_kwargs(subscription_type: Optional[MediaType]) -> dict[str, str]:
+    """把可选媒体类型转换为调度任务参数，未指定时保留全量任务语义。"""
+    if subscription_type is None:
+        return {}
+    return {"mtype": subscription_type.value}
 
 
 def _search_submission_message(submission: SubscriptionSearchSubmission) -> str:
@@ -77,12 +90,13 @@ def _search_submission_schema(
     "/refresh", summary="刷新订阅", response_model=Response[None]
 )
 def refresh_subscribes(
+    subscription_type: SubscriptionTypeParam = None,
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
-    """刷新所有订阅。"""
+    """刷新订阅，可选按媒体类型限定处理范围。"""
     if not current_user.is_superuser:
         return Response(success=False, message="订阅不存在")
-    get_scheduler().start("subscribe_refresh")
+    get_scheduler().start("subscribe_refresh", **_subscription_job_kwargs(subscription_type))
     return Response(success=True)
 
 
@@ -123,12 +137,13 @@ async def reset_subscribes(
     "/check", summary="刷新订阅 TMDB 信息", response_model=Response[None]
 )
 def check_subscribes(
+    subscription_type: SubscriptionTypeParam = None,
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
-    """刷新订阅 TMDB 信息。"""
+    """刷新订阅 TMDB 信息，可选按媒体类型限定处理范围。"""
     if not current_user.is_superuser:
         return Response(success=False, message="订阅不存在")
-    get_scheduler().start("subscribe_tmdb")
+    get_scheduler().start("subscribe_tmdb", **_subscription_job_kwargs(subscription_type))
     return Response(success=True)
 
 
@@ -145,15 +160,17 @@ def check_subscribes(
     response_model=Response[SubscriptionSearchSubmissionSchema],
 )
 async def search_subscribes(
+    subscription_type: SubscriptionTypeParam = None,
     command: SearchSubscriptionsCommand = Depends(get_search_subscriptions_command),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
-    """搜索当前用户可管理的全部订阅。"""
+    """搜索当前用户可管理的订阅，可选按媒体类型限定处理范围。"""
     submission = await command.execute(
         SubscribeSearchActor(
             username=current_user.name,
             is_superuser=current_user.is_superuser,
-        )
+        ),
+        mtype=subscription_type.value if subscription_type else None,
     )
     if submission is None:
         return Response(success=False, message="没有需要搜索的订阅")
@@ -178,16 +195,18 @@ async def search_subscribes(
 )
 async def search_subscribe(
     subscribe_id: int,
+    subscription_type: SubscriptionTypeParam = None,
     command: SearchSubscriptionsCommand = Depends(get_search_subscriptions_command),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
-    """根据订阅编号搜索一个订阅。"""
+    """根据订阅编号搜索一个订阅，可选校验媒体类型。"""
     submission = await command.execute(
         SubscribeSearchActor(
             username=current_user.name,
             is_superuser=current_user.is_superuser,
         ),
         subscribe_id=subscribe_id,
+        mtype=subscription_type.value if subscription_type else None,
     )
     if submission is None:
         return Response(success=False, message="订阅不存在")
