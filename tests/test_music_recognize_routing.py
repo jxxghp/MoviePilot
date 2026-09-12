@@ -324,6 +324,46 @@ def test_recognize_music_by_path_rejects_same_title_fingerprint_without_artist(m
     tier.assert_called_once()
 
 
+def test_recognize_music_by_path_applies_context_artist_to_filename_fallback(monkeypatch):
+    """标签无曲名时，同目录艺人共识仍必须约束文件名搜索。"""
+    merged = MetaMusic(title="Enchanted")
+    empty_tag = MetaMusic()
+    filename_meta = MetaMusic(title="Enchanted")
+    contextual = MetaMusic(
+        artists=["Taylor Swift"],
+        album_artist="Taylor Swift",
+        album="Speak Now",
+    )
+    expected = MusicInfo(
+        media_source="musicbrainz",
+        media_id="taylor-enchanted",
+        title="Enchanted",
+        artists=["Taylor Swift"],
+    )
+    chain = MediaChain()
+    tier = Mock(side_effect=[None, expected])
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(merged, empty_tag, filename_meta)),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=None),
+    )
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", tier)
+
+    _, recognized_info = chain.recognize_music_by_path(
+        "Enchanted.flac",
+        contextual_meta=contextual,
+    )
+
+    assert recognized_info is expected
+    filename_call = tier.call_args_list[1]
+    assert filename_call.kwargs["meta"].artists == ["Taylor Swift"]
+    assert filename_call.kwargs["meta"].album == "Speak Now"
+
+
 def test_recognize_music_by_path_rejects_fingerprint_text_mismatch(monkeypatch):
     """A high-confidence but wrongly mapped AcoustID result must fall back."""
     wrong_id = "f5ac0d7b-8540-4534-93cf-ac9642e43e4d"
