@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+import sqlalchemy as sa
+
 from app.adapters.external.market import (
     LOCAL_REPO_PREFIX,
     configure_installed_plugins_provider,
@@ -117,6 +119,7 @@ from app.runtime.extensions.plugin.runtime import (
     build_plugin_runtime,
 )
 from app.runtime.extensions.plugin.storage import (
+    LogLevelOverride,
     PluginInstanceDirectory,
     PluginStorage,
     configure_plugin_instance_directory,
@@ -129,7 +132,7 @@ from app.runtime.extensions.plugin.system import (
     configure_plugin_system,
     get_plugin_system,
 )
-from app.runtime.log import logger
+from app.runtime.log import logger, normalize_log_expiry, set_plugin_instance_log_level
 from app.runtime.loop import main_loop_registry
 from app.runtime.resources import acquire_managed_resource
 from app.runtime.settings import get_runtime_setting
@@ -156,6 +159,68 @@ def _delete_plugin_data(plugin_id: str) -> None:
             repository=PluginDataOper(session),
             unit_of_work=SqlAlchemyUnitOfWork(session),
         ).execute(plugin_id)
+    finally:
+        session.close()
+
+
+def _read_plugin_log_level(instance_id: str) -> LogLevelOverride:
+    """从实例行读取日志等级覆盖与失效时间。"""
+    session = SessionFactory()
+    try:
+        record = PluginInstanceRecord.get_by_instance_id(session, instance_id)
+        if record is None or not record.log_level:
+            return (None, None)
+        expires_at = (
+            datetime.fromisoformat(record.log_expires_at) if record.log_expires_at else None
+        )
+        return (record.log_level, expires_at)
+    finally:
+        session.close()
+
+
+def _write_plugin_log_level(
+    instance_id: str,
+    level: str | None,
+    expires_at: datetime | None,
+) -> None:
+    """把日志等级覆盖写进该实例行；没有实例行时按本体建出。
+
+    失效时间按 UTC 归一后再转字符串：库里存的是裸 ISO 文本，不带时区的写入会在
+    读回时被当成本地时间，同一个覆盖在不同进程时区下表示不同时刻。
+    """
+    normalized = normalize_log_expiry(expires_at)
+    PluginInstanceOper().set_log_level(
+        instance_id=instance_id,
+        log_level=level,
+        log_expires_at=normalized.isoformat() if normalized else None,
+    )
+
+
+def _prime_plugin_instance_log_levels() -> None:
+    """进程启动时把数据库中已设置的实例日志等级覆盖预热进运行期缓存。
+
+    过期覆盖也照常预热：过期判定统一在读取时惰性执行（见 `app.runtime.log`），
+    这里不重复实现一份过期过滤逻辑。单条记录预热失败不得阻断其余记录。
+    """
+    session = SessionFactory()
+    try:
+        records = session.execute(
+            sa.select(PluginInstanceRecord).where(
+                PluginInstanceRecord.log_level.is_not(None)
+            )
+        ).scalars().all()
+        for record in records:
+            try:
+                expires_at = (
+                    datetime.fromisoformat(record.log_expires_at)
+                    if record.log_expires_at
+                    else None
+                )
+                set_plugin_instance_log_level(record.instance_id, record.log_level, expires_at)
+            except ValueError as error:
+                logger.warning(
+                    f"预热插件实例 {record.instance_id} 的日志等级覆盖失败：{error}"
+                )
     finally:
         session.close()
 
@@ -481,9 +546,12 @@ def configure_plugin_services() -> None:
         async_write=_async_write_plugin_config,
         delete=lambda key: get_configured_system_config().delete(key),
         delete_data=_delete_plugin_data,
+        read_log_level=_read_plugin_log_level,
+        write_log_level=_write_plugin_log_level,
     ))
     configure_plugin_database(_build_plugin_database())
     configure_plugin_instance_directory(_build_plugin_instance_directory())
+    _prime_plugin_instance_log_levels()
 
 
 def _register_plugin_runtime(plugin_id: str) -> None:

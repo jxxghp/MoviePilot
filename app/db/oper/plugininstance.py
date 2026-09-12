@@ -142,6 +142,52 @@ class PluginInstanceOper(DbOper):
 
         return self._execute_sync_write(stage)
 
+    def set_log_level(
+        self,
+        *,
+        instance_id: str,
+        log_level: Optional[str],
+        log_expires_at: Optional[str],
+    ) -> bool:
+        """写入或清除该实例的日志等级覆盖，没有实例行时按本体建出。
+
+        只设过等级、从没存过参数的插件同样要有一行，否则覆盖无处落盘；反过来，
+        清除覆盖后若该行是本体且各列皆空，整行一并回收，与清空业务参数同一规则，
+        不让只剩一对身份列的空行堆积。
+
+        :param instance_id: 实例 ID
+        :param log_level: 目标等级名，None 表示清除覆盖
+        :param log_expires_at: 覆盖失效时间的 ISO-8601 文本，None 表示不过期
+        :return: 是否发生了写入；清除一个本来就没有覆盖的实例返回 False
+        """
+
+        def stage(session: Session) -> bool:
+            """在同一事务内写入等级覆盖，并回收清空后只剩身份的本体行。"""
+            record = PluginInstance.get_by_instance_id(session, instance_id)
+            if record is None:
+                if log_level is None and log_expires_at is None:
+                    return False
+                now = _now()
+                session.add(
+                    PluginInstance(
+                        instance_id=instance_id,
+                        source_plugin_id=instance_id,
+                        log_level=log_level,
+                        log_expires_at=log_expires_at,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                return True
+            record.log_level = log_level
+            record.log_expires_at = log_expires_at
+            record.updated_at = _now()
+            if record.is_host and record.carries_only_identity:
+                session.delete(record)
+            return True
+
+        return bool(self._execute_sync_write(stage))
+
     def clear_config_data(self, instance_id: str) -> bool:
         """清空某实例的业务参数，保留其身份与展示信息。
 

@@ -11,6 +11,7 @@ from app.foundation.version import compare_version
 from app.runtime.extensions.plugin.contracts import supports_plugin_hook
 from app.runtime.extensions.plugin.storage import PluginStorage
 from app.runtime.extensions.plugin.system import PluginSystemServices
+from app.runtime.log import get_plugin_instance_log_level_override
 from app.runtime.settings import get_runtime_setting
 from app.schemas.plugin import Plugin, PluginInstance, PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
@@ -96,6 +97,7 @@ class PluginCatalogFacade:
                 source_plugin_id=getattr(plugin_class, "plugin_source_id", None),
                 is_instance=instance is not None,
                 instance_mode=instance.mode if instance else None,
+                **self._instance_overlay(plugin_id),
             )
             if not self._auth_checker(plugin=plugin, source=plugin_class):
                 continue
@@ -130,10 +132,25 @@ class PluginCatalogFacade:
                 ),
                 is_instance=instance is not None,
                 instance_mode=instance.mode if instance else None,
+                **self._instance_overlay(plugin_id),
             ))
         # 展示顺序由持久化安装清单保留，避免后台恢复或占位卡片出现后改变用户看到的位置。
         # 前端可用用户级 PluginOrder 覆盖，plugin_order 只用于运行期插件发现顺序。
         return result
+
+    @staticmethod
+    def _instance_overlay(instance_id: str) -> dict[str, Any]:
+        """把该实例当前的日志等级覆盖投影为卡片列表的只读叠加字段。
+
+        直接按实例 ID 查进程内覆盖缓存，不回表：本体与分身在覆盖表里共用同一个
+        命名空间，而卡片的 ``plugin_id`` 本身就是运行实例的 ID，本体等于插件 ID、
+        分身等于分身实例 ID，再去查一次实例行只会为同一个键多走一趟数据库。
+
+        :param instance_id: 运行实例 ID
+        :return: 可直接展开进 ``Plugin(...)`` 构造参数的字段字典
+        """
+        override = get_plugin_instance_log_level_override(instance_id)
+        return {"log_level_effective": override[0] if override is not None else None}
 
     def local_version(self, plugin_id: str) -> Optional[str]:
         """读取指定已安装插件版本，不触发全量目录投影。"""

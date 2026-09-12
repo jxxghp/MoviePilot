@@ -26,6 +26,10 @@ class PluginInstance(Base):
     淹掉；而且它存的其实是实例 ID，表里没有任何一列说得出它属于哪个插件，想列出
     某个插件的全部实例配置就只能靠字符串前缀去猜。
 
+    ``log_level`` 为空表示该实例跟随全局日志等级；非空且未过期时覆盖全局等级，
+    ``log_expires_at`` 为空表示覆盖不过期。过期判定在读取时惰性执行，实现见
+    ``app.runtime.log``，库里只存原样设置，不存已折算的结果。
+
     表名由 ``Base`` 按类名自动派生为小写 ``plugininstance``。
     """
 
@@ -35,6 +39,8 @@ class PluginInstance(Base):
     plugin_name: Mapped[Optional[str]] = mapped_column(String(255))
     plugin_desc: Mapped[Optional[str]] = mapped_column(String(255))
     plugin_icon: Mapped[Optional[str]] = mapped_column(String(255))
+    log_level: Mapped[Optional[str]] = mapped_column(String(16))
+    log_expires_at: Mapped[Optional[str]] = mapped_column(String(40))
     config_data: Mapped[Optional[Any]] = mapped_column(JSON)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -60,6 +66,8 @@ class PluginInstance(Base):
         return not any(
             (
                 self.config_data is not None,
+                self.log_level,
+                self.log_expires_at,
                 self.plugin_name,
                 self.plugin_desc,
                 self.plugin_icon,

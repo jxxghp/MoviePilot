@@ -20,6 +20,7 @@ from app.runtime.extensions.plugin.database import PluginDatabase
 from app.runtime.extensions.plugin.dependency import PluginDependencyService
 from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
 from app.runtime.extensions.plugin.loader import PluginLoader
+from app.runtime.extensions.plugin.loglevel import PluginLogLevelControl
 from app.runtime.extensions.plugin.metadata import PluginMetadataMapper
 from app.runtime.extensions.plugin.monitor import PluginMonitorController
 from app.runtime.extensions.plugin.paths import PluginPathResolver
@@ -122,6 +123,7 @@ class PluginRuntime:
     metadata: PluginMetadataMapper
     sync: PluginSyncService
     clone: PluginCloneService
+    log_level: PluginLogLevelControl
     projection: PluginProjection
     classification: PluginClassificationRegistry
     recent_local_sync: dict[str, float]
@@ -321,6 +323,13 @@ def build_plugin_runtime(
         remove_plugin=host.remove_plugin,
         log=environment.logger,
     )
+    log_level = PluginLogLevelControl(
+        plugin_exists=lambda plugin_id: registry.plugin_class(plugin_id) is not None,
+        get_instance=instances.get,
+        instances_for_source=instances.for_source,
+        read_log_level=configs.read_log_level,
+        write_log_level=configs.write_log_level,
+    )
     projection = PluginProjection(
         registry.running,
         environment.logger,
@@ -346,6 +355,7 @@ def build_plugin_runtime(
         metadata=metadata,
         sync=sync,
         clone=clone,
+        log_level=log_level,
         projection=projection,
         classification=classification,
         recent_local_sync=recent_local_sync,

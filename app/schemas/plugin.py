@@ -1,3 +1,4 @@
+from datetime import datetime as _datetime
 from enum import Enum as _Enum
 from typing import Annotated as _Annotated
 from typing import Dict, List, Literal, Optional, Union
@@ -75,6 +76,34 @@ class PluginInstance(BaseModel):
         return "host" if self.is_host else "virtual"
 
 
+class PluginInstanceLogLevel(BaseModel):  # type: ignore[misc]
+    """单个实例的日志等级设置与生效结果。"""
+
+    instance_id: str = Field(description="实例 ID")
+    configured_level: Optional[str] = Field(default=None, description="该实例设置的日志等级覆盖，None 表示未设置或已过期")
+    expires_at: Optional[_datetime] = Field(default=None, description="日志等级覆盖的失效时间，None 表示不过期")
+    effective_level: str = Field(description="按过期回落判定后实际生效的日志等级")
+
+
+class PluginInstanceLogLevelOverview(BaseModel):  # type: ignore[misc]
+    """插件全部实例（含本体）的日志等级设置总览。"""
+
+    plugin_id: str = Field(description="插件 ID")
+    instances: List[PluginInstanceLogLevel] = Field(
+        default_factory=list, description="该插件全部实例的日志等级设置，首项固定是本体自身"
+    )
+
+
+class PluginInstanceLogLevelUpdateRequest(BaseModel):  # type: ignore[misc]
+    """设置实例日志等级覆盖的请求参数。"""
+
+    level: str = Field(description="目标日志等级，如 DEBUG、INFO、WARNING、ERROR、CRITICAL")
+    expires_at: Optional[_datetime] = Field(
+        default=None,
+        description="覆盖失效时间，None 表示不过期；不带时区时按 UTC 解读",
+    )
+
+
 class Plugin(BaseModel):
     """
     插件信息
@@ -143,6 +172,8 @@ class Plugin(BaseModel):
     is_instance: Optional[bool] = False
     # 实例实现模式；存量物理分身为空
     instance_mode: Optional[str] = None
+    # 该实例当前生效的日志等级覆盖；未设置覆盖或覆盖已过期回落全局等级时为空
+    log_level_effective: Optional[str] = None
 
     @property
     def package_version(self) -> Optional[str]:

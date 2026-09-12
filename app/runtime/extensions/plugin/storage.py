@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
+from datetime import datetime
+from typing import Any, Optional
 
 from pydantic import ValidationError
 
@@ -17,6 +18,10 @@ ConfigWriter = Callable[[Any, Any], Any]
 AsyncConfigWriter = Callable[[Any, Any], Awaitable[Any]]
 ConfigDeleter = Callable[[Any], bool]
 PluginDataDeleter = Callable[[str], Any]
+# 日志等级覆盖端口的载荷：`(等级名, 失效时间)`，两者皆为 None 即未设置覆盖
+LogLevelOverride = tuple[Optional[str], Optional[datetime]]
+LogLevelReader = Callable[[str], LogLevelOverride]
+LogLevelWriter = Callable[[str, Optional[str], Optional[datetime]], None]
 PluginExists = Callable[[str], bool]
 
 
@@ -42,6 +47,19 @@ def _ignore_plugin_data_delete(_plugin_id: str) -> None:
     """组合根尚未装配时忽略插件数据删除。"""
 
 
+def _no_log_level(_instance_id: str) -> LogLevelOverride:
+    """组合根尚未装配时报告实例没有日志等级覆盖。"""
+    return (None, None)
+
+
+def _ignore_log_level_write(
+    _instance_id: str,
+    _level: Optional[str],
+    _expires_at: Optional[datetime],
+) -> None:
+    """组合根尚未装配时忽略日志等级落盘。"""
+
+
 class PluginStorage:
     """封装插件运行时所需的最小持久化能力。"""
 
@@ -53,6 +71,8 @@ class PluginStorage:
             async_write: AsyncConfigWriter = _ignore_async_write,
             delete: ConfigDeleter = _ignore_delete,
             delete_data: PluginDataDeleter = _ignore_plugin_data_delete,
+            read_log_level: LogLevelReader = _no_log_level,
+            write_log_level: LogLevelWriter = _ignore_log_level_write,
     ) -> None:
         """保存由启动组合根提供的读写函数。"""
         self._read = read
@@ -60,6 +80,8 @@ class PluginStorage:
         self._async_write = async_write
         self._delete = delete
         self._delete_data = delete_data
+        self._read_log_level = read_log_level
+        self._write_log_level = write_log_level
 
     def read(self, key: Any) -> Any:
         """读取插件运行时配置。"""
@@ -80,6 +102,19 @@ class PluginStorage:
     def delete_data(self, plugin_id: str) -> Any:
         """删除指定插件的业务数据。"""
         return self._delete_data(plugin_id)
+
+    def read_log_level(self, instance_id: str) -> LogLevelOverride:
+        """读取实例配置里登记的日志等级覆盖与失效时间。"""
+        return self._read_log_level(instance_id)
+
+    def write_log_level(
+        self,
+        instance_id: str,
+        level: Optional[str],
+        expires_at: Optional[datetime],
+    ) -> None:
+        """把日志等级覆盖写进该实例的配置行。"""
+        self._write_log_level(instance_id, level, expires_at)
 
 
 class PluginConfigStore:
@@ -138,6 +173,19 @@ class PluginConfigStore:
         if not force and not self._plugin_exists(plugin_id):
             return False
         return self._storage().delete(self._key(plugin_id))
+
+    def read_log_level(self, instance_id: str) -> LogLevelOverride:
+        """读取实例的日志等级覆盖；它与业务参数同属该实例的配置。"""
+        return self._storage().read_log_level(instance_id)
+
+    def write_log_level(
+        self,
+        instance_id: str,
+        level: Optional[str],
+        expires_at: Optional[datetime],
+    ) -> None:
+        """写入实例的日志等级覆盖。"""
+        self._storage().write_log_level(instance_id, level, expires_at)
 
     def delete_data(self, plugin_id: str, force: bool = False) -> bool:
         """删除插件业务数据与自有数据库，并保持旧的布尔结果合同。"""

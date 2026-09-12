@@ -567,6 +567,9 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     _write("plugin.folder.plugins.update", recovery=RecoveryMode.TRANSACTION),
     _write("plugin.folder.plugin.assign", recovery=RecoveryMode.TRANSACTION),
     _write("plugin.folder.plugin.remove", recovery=RecoveryMode.TRANSACTION),
+    _admin_read("plugin.loglevel.get", sensitivity=ResultSensitivity.PRIVATE),
+    _write("plugin.loglevel.set"),
+    _write("plugin.loglevel.clear"),
 )
 
 
@@ -814,6 +817,13 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     "plugin.folder.plugin.remove": ApiOperationRoute(
         "DELETE",
         "/api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}",
+    ),
+    "plugin.loglevel.get": ApiOperationRoute("GET", "/api/v1/plugin/loglevel/{plugin_id}"),
+    "plugin.loglevel.set": ApiOperationRoute(
+        "PUT", "/api/v1/plugin/loglevel/{plugin_id}/{instance_id}"
+    ),
+    "plugin.loglevel.clear": ApiOperationRoute(
+        "DELETE", "/api/v1/plugin/loglevel/{plugin_id}/{instance_id}"
     ),
 }
 
