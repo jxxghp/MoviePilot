@@ -1,7 +1,6 @@
 """音频证据、单曲层级与统一路径识别 owner。"""
 
 import re
-from copy import deepcopy
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from enum import Enum
@@ -281,7 +280,7 @@ def _reconcile_fingerprint_release(
     ):
         return info
 
-    reconciled = deepcopy(info)
+    reconciled = MusicInfo.from_dict(info.to_dict())
     reconciled.album = primary.album
     reconciled.album_artist = primary.album_artist or info.artist
     reconciled.album_id = None
