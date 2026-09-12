@@ -13,9 +13,13 @@ from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPla
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.application.configuration import get_configured_system_config
-from app.application.mediaserver import MediaServerIdentityHelper, MusicMediaServerHelper
+from app.application.mediaserver import (
+    MediaServerIdentityHelper,
+    MusicMediaServerHelper,
+    format_emby_family_item,
+)
 from app.runtime.log import logger
-from app.modules.ugreen.api import Api
+from app.modules.ugreen.api import Api, UgreenMediaApi
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 from app.foundation.url import UrlUtils
 
@@ -24,6 +28,9 @@ class Ugreen:
     """绿联影视媒体服务器客户端。"""
 
     LIBRARY_PATH_PAGE_LIMIT = 200
+    MEDIA_SERVICE_PORT = 9443
+    INTERNAL_CONNECTION_MODE = "internal"
+    MEDIA_SERVICE_CONNECTION_MODE = "media_service"
 
     _username: Optional[str] = None
     _password: Optional[str] = None
@@ -37,8 +44,10 @@ class Ugreen:
     _sync_libraries: List[str] = []
     _scan_type: int = 2
     _verify_ssl: bool = True
+    _connection_mode: str = INTERNAL_CONNECTION_MODE
 
     _api: Optional[Api] = None
+    _media_api: Optional[UgreenMediaApi] = None
 
     def __init__(
         self,
@@ -50,8 +59,10 @@ class Ugreen:
         scan_mode: Optional[Union[str, int]] = None,
         scan_type: Optional[Union[str, int]] = None,
         verify_ssl: Optional[Union[bool, str, int]] = True,
+        mode: Optional[str] = None,
         **kwargs,
     ):
+        """初始化绿联连接，并按地址端口或显式模式选择认证协议。"""
         if not host or not username or not password:
             logger.error("绿联影视配置不完整！！")
             return
@@ -59,6 +70,7 @@ class Ugreen:
         self._host = host
         self._username = username
         self._password = password
+        self._connection_mode = self.__resolve_connection_mode(host, mode)
         self._sync_libraries = sync_libraries or []
         # 绿联媒体库扫描模式：
         # 1 新添加和修改、2 补充缺失、3 覆盖扫描
@@ -87,6 +99,13 @@ class Ugreen:
 
     def is_authenticated(self) -> bool:
         """检查绿联影视会话是否已认证"""
+        if self.__is_media_service_mode():
+            return bool(
+                self.is_configured()
+                and self._media_api is not None
+                and self._media_api.token
+                and self._media_api.user_id
+            )
         return (
             self.is_configured()
             and self._api is not None
@@ -98,16 +117,51 @@ class Ugreen:
         """检查绿联影视会话是否已失效"""
         if not self.is_authenticated():
             return True
+        if self.__is_media_service_mode():
+            self._userinfo = self._media_api.current_user() if self._media_api else None
+            return self._userinfo is None
         self._userinfo = self._api.current_user() if self._api else None
         return self._userinfo is None
 
+    @staticmethod
+    def __resolve_connection_mode(host: str, mode: Optional[str] = None) -> str:
+        """
+        解析绿联连接模式。
+
+        显式配置优先；未配置时按 UGOS Pro 媒体库服务固定使用的 9443 端口
+        自动选择 Emby 兼容接口，其他地址继续使用原有内部接口。
+        """
+        configured_mode = str(mode or "").strip().lower()
+        if configured_mode in {
+            Ugreen.MEDIA_SERVICE_CONNECTION_MODE,
+            "media-server",
+            "media_server",
+            "emby",
+        }:
+            return Ugreen.MEDIA_SERVICE_CONNECTION_MODE
+        if configured_mode in {Ugreen.INTERNAL_CONNECTION_MODE, "ugreen"}:
+            return Ugreen.INTERNAL_CONNECTION_MODE
+        try:
+            normalized_host = UrlUtils.standardize_base_url(host)
+            if urlparse(normalized_host).port == Ugreen.MEDIA_SERVICE_PORT:
+                return Ugreen.MEDIA_SERVICE_CONNECTION_MODE
+        except ValueError:
+            pass
+        return Ugreen.INTERNAL_CONNECTION_MODE
+
+    def __is_media_service_mode(self) -> bool:
+        """判断当前实例是否使用媒体库服务 Emby 兼容接口。"""
+        return getattr(self, "_connection_mode", self.INTERNAL_CONNECTION_MODE) == self.MEDIA_SERVICE_CONNECTION_MODE
+
     def __session_cache_key(self) -> str:
         """
-        生成当前绿联实例的会话缓存键（基于 host + username）。
+        生成当前绿联实例的会话缓存键（基于 host、username 和连接模式）。
         """
         normalized_host = UrlUtils.standardize_base_url(self._host or "").rstrip("/").lower()
         username = (self._username or "").strip().lower()
         raw = f"{normalized_host}|{username}"
+        if self.__is_media_service_mode():
+            raw = f"{raw}|{self.MEDIA_SERVICE_CONNECTION_MODE}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def __password_digest(self) -> str:
@@ -183,7 +237,14 @@ class Ugreen:
         return True
 
     def reconnect(self) -> bool:
+        """关闭旧连接并按当前连接模式重新认证绿联服务。"""
         if not self.is_configured():
+            return False
+
+        media_host = self._host
+        media_username = self._username
+        media_password = self._password
+        if not media_host or not media_username or not media_password:
             return False
 
         self._libraries = {}
@@ -191,6 +252,23 @@ class Ugreen:
 
         # 关闭旧连接（不主动登出，避免破坏可复用会话）
         self.disconnect(logout=False)
+
+        if self.__is_media_service_mode():
+            media_api = UgreenMediaApi(
+                host=media_host,
+                verify_ssl=self._verify_ssl,
+            )
+            session = media_api.authenticate(media_username, media_password)
+            if session is None:
+                media_api.close()
+                return False
+            self._media_api = media_api
+            self._userinfo = session.user or {
+                "Id": session.user_id,
+                "Name": media_username,
+            }
+            logger.debug(f"{self._username} 成功登录绿联媒体库服务")
+            return True
 
         if self.__restore_persisted_session():
             return True
@@ -211,6 +289,12 @@ class Ugreen:
         return True
 
     def disconnect(self, logout: bool = False):
+        """关闭当前绿联连接，并按需注销内部接口会话。"""
+        if self._media_api:
+            self._media_api.close()
+            self._media_api = None
+            self._userinfo = None
+            logger.debug(f"{self._username} 已断开绿联媒体库服务")
         if self._api:
             if logout:
                 # 显式登出时同步清理本地缓存
@@ -370,14 +454,168 @@ class Ugreen:
         """
         统一返回 NAS Web 根地址作为跳转链接，避免失效深链。
         """
-        host = self._playhost or (self._api.host if self._api else "")
+        host = self._playhost or (
+            self._media_api.host
+            if self._media_api
+            else self._api.host
+            if self._api
+            else ""
+        )
         if not host:
             return ""
         return f"{host.rstrip('/')}/"
 
     def __build_play_url(self, item_id: Union[str, int], video_type: Any, media_lib_set_id: Any) -> str:
+        if self.__is_media_service_mode() and self._media_api:
+            host = self._playhost or self._media_api.host
+            server_id = self._media_api.server_id
+            server_query = f"&serverId={server_id}" if server_id else ""
+            return f"{host.rstrip('/')}/web/index.html#!/item?id={item_id}&context=home{server_query}"
         # 绿联深链在部分版本会失效，统一回落到 NAS 根地址。
         return self.__build_root_url()
+
+    def __format_media_service_item(
+        self,
+        item: Mapping[str, Any],
+    ) -> Optional[_SchemaMediaServerItem]:
+        """把媒体库服务返回的 Emby 条目转换为绿联媒体条目模型。"""
+        if not isinstance(item, Mapping):
+            return None
+        media_item = format_emby_family_item(
+            item,
+            server="ugreen",
+            include_server_id=True,
+        )
+        if media_item and self._media_api and not media_item.server_id:
+            media_item.server_id = self._media_api.server_id
+        return media_item
+
+    @staticmethod
+    def __media_service_library_type(collection_type: Any) -> str:
+        """把 Emby 媒体库集合类型转换为 MoviePilot 媒体类型。"""
+        normalized_type = str(collection_type or "").strip().lower()
+        if normalized_type == "movies":
+            return MediaType.MOVIE.value
+        if normalized_type in {"tvshows", "tv", "series"}:
+            return MediaType.TV.value
+        if normalized_type in {"music", "musicvideos", "audio"}:
+            return MediaType.MUSIC.value
+        return MediaType.UNKNOWN.value
+
+    def __build_media_service_library_link(self, library_id: Union[str, int]) -> str:
+        """生成媒体库服务媒体库视图的 Emby 网页链接。"""
+        if not self._media_api:
+            return self.__build_root_url()
+        host = self._playhost or self._media_api.host
+        server_id = self._media_api.server_id
+        server_query = f"serverId={server_id}&" if server_id else ""
+        return f"{host.rstrip('/')}/web/index.html#!/videos?{server_query}parentId={library_id}"
+
+    def __get_media_service_librarys(self, hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
+        """
+        获取媒体库服务 Emby 兼容接口返回的媒体库列表。
+
+        绿联媒体库服务不实现 `GET /Users`，因此直接使用认证响应中的用户 ID
+        查询 `Users/{id}/Views`，避免沿用 Emby 适配器的全局用户枚举前置条件。
+        """
+        if not self.is_authenticated() or not self._media_api:
+            return None
+        source_libraries = self._media_api.views()
+        if source_libraries is None:
+            return None
+
+        self._libraries = {}
+        libraries: List[_SchemaMediaServerLibrary] = []
+        for library in source_libraries:
+            library_id = str(library.get("Id") or "").strip()
+            if not library_id or (hidden and self.__is_library_blocked(library_id)):
+                continue
+            library_path = library.get("Path") or library.get("Locations")
+            library_type = self.__media_service_library_type(library.get("CollectionType"))
+            if library_type == MediaType.UNKNOWN.value:
+                library_type = self.__infer_library_type(library.get("Name") or "", str(library_path or ""))
+            self._libraries[library_id] = {
+                "id": library_id,
+                "name": library.get("Name") or "",
+                "path": library_path,
+                "type": library_type,
+                "video_count": 0,
+            }
+            item_count = self.get_items_count(library_id)
+            self._libraries[library_id]["video_count"] = item_count or 0
+            libraries.append(
+                _SchemaMediaServerLibrary(
+                    server="ugreen",
+                    id=library_id,
+                    item_id=library_id,
+                    server_id=library.get("ServerId") or self._media_api.server_id,
+                    name=library.get("Name"),
+                    path=library_path,
+                    type=library_type,
+                    item_count=item_count,
+                    image=self.__build_media_service_image_url(library_id),
+                    link=self.__build_media_service_library_link(library_id),
+                    server_type="ugreen",
+                    use_cookies=False,
+                )
+            )
+        return libraries
+
+    def __build_media_service_play_item(self, item: Mapping[str, Any]) -> Optional[_SchemaMediaServerPlayItem]:
+        """把媒体库服务的继续观看或最近入库条目转换为播放模型。"""
+        if not self._media_api or not isinstance(item, Mapping):
+            return None
+        item_id = item.get("Id")
+        item_type = item.get("Type")
+        if not item_id or item_type not in {"Movie", "Series", "Episode"}:
+            return None
+
+        server_id = item.get("ServerId") or self._media_api.server_id
+        user_data_value = item.get("UserData")
+        user_data: Mapping[str, Any] = user_data_value if isinstance(user_data_value, Mapping) else {}
+        subtitle: Optional[str]
+        if item_type == "Episode":
+            title = item.get("SeriesName") or item.get("Name")
+            subtitle = f"S{item.get('ParentIndexNumber')}:{item.get('IndexNumber')} - {item.get('Name')}"
+            image_id = item.get("SeriesId") or item_id
+        else:
+            title = item.get("Name")
+            subtitle = str(item.get("ProductionYear")) if item.get("ProductionYear") else None
+            image_id = item_id
+        image_type = "Backdrop" if item.get("BackdropImageTags") else "Primary"
+        item_media_type = MediaType.TV.value if item_type in {"Series", "Episode"} else MediaType.MOVIE.value
+        return _SchemaMediaServerPlayItem(
+            id=item_id,
+            item_id=item_id,
+            server_id=server_id,
+            title=title,
+            subtitle=subtitle,
+            type=item_media_type,
+            image=self.__build_media_service_image_url(image_id, image_type, remote=True),
+            link=self.__build_play_url(item_id, item_type, item.get("ParentId")),
+            percent=user_data.get("PlayedPercentage"),
+            BackdropImageTags=item.get("BackdropImageTags") or [],
+            server_type="ugreen",
+            use_cookies=False,
+        )
+
+    def __build_media_service_image_url(
+        self,
+        item_id: Optional[Union[str, int]],
+        image_type: str = "Primary",
+        remote: bool = False,
+    ) -> Optional[str]:
+        """生成媒体库服务条目的图片地址，并在远程场景使用播放地址。"""
+        if not self._media_api or not item_id:
+            return None
+        image_url = self._media_api.image_url(item_id, image_type)
+        if remote and image_url and self._playhost:
+            return image_url.replace(
+                f"{self._media_api.host}/",
+                f"{self._playhost.rstrip('/')}/",
+                1,
+            )
+        return image_url
 
     def __build_play_item_from_wrapper(self, wrapper: dict) -> Optional[_SchemaMediaServerPlayItem]:
         video_info = wrapper.get("video_info") if isinstance(wrapper.get("video_info"), dict) else wrapper
@@ -538,6 +776,8 @@ class Ugreen:
         :param hidden: 是否过滤未启用同步的媒体库
         :return: 媒体库列表
         """
+        if self.__is_media_service_mode():
+            return self.__get_media_service_librarys(hidden=hidden)
         if not self.is_authenticated() or not self._api:
             return None
 
@@ -593,6 +833,9 @@ class Ugreen:
 
     def get_user_count(self) -> int:
         """获取绿联影视媒体库用户数量"""
+        if self.__is_media_service_mode():
+            # 媒体库服务不开放用户枚举，当前实例只代表一个已认证媒体库账号。
+            return 1 if self.is_authenticated() else 0
         if not self.is_authenticated() or not self._api:
             return 0
         users = self._api.media_lib_users()
@@ -600,6 +843,21 @@ class Ugreen:
 
     def get_medias_count(self) -> _SchemaStatistic:
         """获取绿联影视的电影和电视剧数量统计"""
+        if self.__is_media_service_mode():
+            if not self.is_authenticated() or not self._media_api:
+                return _SchemaStatistic()
+            counts = self._media_api.counts()
+            if not counts:
+                return _SchemaStatistic()
+            episode_count = counts.get("EpisodeCount")
+            return _SchemaStatistic(
+                movie_count=int(counts.get("MovieCount") or 0),
+                tv_count=int(counts.get("SeriesCount") or 0),
+                episode_count=(int(episode_count) if episode_count is not None else None),
+                music_count=int(
+                    counts.get("MusicAlbumCount") or counts.get("AlbumCount") or counts.get("SongCount") or 0
+                ),
+            )
         if not self.is_authenticated() or not self._api:
             return _SchemaStatistic()
 
@@ -616,10 +874,20 @@ class Ugreen:
         )
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
-        if not username or not password or not self._host:
+        """使用指定账号认证绿联内部接口或媒体库服务接口。"""
+        host = self._host
+        if not username or not password or not host:
             return None
 
-        api = Api(self._host, verify_ssl=self._verify_ssl)
+        if self.__is_media_service_mode():
+            media_api = UgreenMediaApi(host, verify_ssl=self._verify_ssl)
+            try:
+                session = media_api.authenticate(username, password)
+                return session.token if session else None
+            finally:
+                media_api.close()
+
+        api = Api(host, verify_ssl=self._verify_ssl)
         try:
             return api.login(username, password)
         finally:
@@ -642,11 +910,171 @@ class Ugreen:
                 result.append(dict(info))
         return result
 
+    def __get_media_service_movies(
+        self,
+        title: str,
+        year: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+    ) -> Optional[List[_SchemaMediaServerItem]]:
+        """通过媒体库服务用户条目接口查找电影。"""
+        if not self.is_authenticated() or not self._media_api or not title:
+            return None
+        data = self._media_api.items(
+            include_item_types="Movie",
+            search_term=title,
+            limit=10,
+            fields=("ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,UserDataLastPlayedDate,ParentId"),
+        )
+        if data is None:
+            return None
+
+        movies: List[_SchemaMediaServerItem] = []
+        for item in data.get("Items") or []:
+            media_item = self.__format_media_service_item(item)
+            if not media_item or not MediaServerIdentityHelper.is_compatible(media_item, media_source, media_id):
+                continue
+            if title not in [media_item.title, media_item.original_title]:
+                continue
+            if year and str(media_item.year) != str(year):
+                continue
+            movies.append(media_item)
+        return movies
+
+    def __get_media_service_music(
+        self,
+        title: Optional[str] = None,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+    ) -> List[_SchemaMediaServerItem]:
+        """通过媒体库服务用户条目接口查找音乐。"""
+        if not self.is_authenticated() or not self._media_api:
+            return []
+        query = " ".join(filter(None, [title, artist, album])).strip()
+        if not query:
+            return []
+        data = self._media_api.items(
+            include_item_types="MusicAlbum,Audio",
+            search_term=query,
+            limit=20,
+            fields=(
+                "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
+                "ProviderIds,OriginalTitle,ProductionYear,Path,ParentId"
+            ),
+        )
+        if not data:
+            return []
+        results: List[_SchemaMediaServerItem] = []
+        for item in data.get("Items") or []:
+            media_item = self.__format_media_service_item(item)
+            if media_item:
+                results.append(media_item)
+        return results
+
+    def __search_media_service_tv_item(
+        self,
+        title: str,
+        year: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+    ) -> Optional[_SchemaMediaServerItem]:
+        """通过媒体库服务用户条目接口查找电视剧。"""
+        if not self.is_authenticated() or not self._media_api or not title:
+            return None
+        data = self._media_api.items(
+            include_item_types="Series",
+            search_term=title,
+            limit=10,
+            fields="ProviderIds,OriginalTitle,ProductionYear,Path,ParentId",
+        )
+        if not data:
+            return None
+        for item in data.get("Items") or []:
+            media_item = self.__format_media_service_item(item)
+            if not media_item or not MediaServerIdentityHelper.is_compatible(media_item, media_source, media_id):
+                continue
+            if title not in [media_item.title, media_item.original_title]:
+                continue
+            if year and str(media_item.year) != str(year):
+                continue
+            return media_item
+        return None
+
+    def __get_media_service_tv_episodes(
+        self,
+        item_id: Optional[str] = None,
+        title: Optional[str] = None,
+        year: Optional[str] = None,
+        media_source: Optional[MediaSource] = None,
+        media_id: Optional[str] = None,
+        season: Optional[int] = None,
+    ) -> tuple[Optional[str], Optional[Dict[int, List[int]]]]:
+        """通过媒体库服务的 Shows/Episodes 接口查询已入库剧集。"""
+        if not self.is_authenticated() or not self._media_api:
+            return None, None
+        cached_item_id = item_id
+        if not item_id:
+            if not title:
+                return None, None
+            tv_item = self.__search_media_service_tv_item(title, year, media_source, media_id)
+            if not tv_item or not tv_item.item_id:
+                return None, None
+            item_id = tv_item.item_id
+        item_id = str(item_id)
+
+        item_info = self.get_iteminfo(item_id)
+        if not item_info and cached_item_id and title:
+            logger.warning(f"绿联媒体库服务缓存的电视剧媒体ID {cached_item_id} 已失效，尝试按标题重新搜索：{title}")
+            tv_item = self.__search_media_service_tv_item(title, year, media_source, media_id)
+            if not tv_item or not tv_item.item_id:
+                return None, {}
+            item_id = str(tv_item.item_id)
+            item_info = self.get_iteminfo(item_id)
+        if not item_info:
+            return None, {}
+        if not MediaServerIdentityHelper.is_compatible(item_info, media_source, media_id):
+            return None, {}
+
+        episodes = self._media_api.episodes(item_id, season=season)
+        if episodes is None:
+            return None, None
+        season_episodes: Dict[int, List[int]] = {}
+        for episode in episodes:
+            season_number = episode.get("ParentIndexNumber")
+            episode_number = episode.get("IndexNumber")
+            if not isinstance(season_number, int) or not isinstance(episode_number, int):
+                continue
+            season_episodes.setdefault(season_number, []).append(episode_number)
+        for season_number in list(season_episodes):
+            season_episodes[season_number] = sorted(set(season_episodes[season_number]))
+        return item_id, season_episodes
+
+    def __get_media_service_latest_items(self, num: int = 20) -> Optional[List[dict[str, Any]]]:
+        """按创建时间获取媒体库服务中的最近电影和剧集条目。"""
+        if not self.is_authenticated() or not self._media_api:
+            return None
+        page_size = max(1, num)
+        data = self._media_api.items(
+            include_item_types="Movie,Series",
+            limit=page_size,
+            sort_by="DateCreated",
+            sort_order="Descending",
+            fields=(
+                "ProviderIds,OriginalTitle,ProductionYear,Path,ParentId,"
+                "BackdropImageTags,UserDataPlayCount,UserDataLastPlayedDate"
+            ),
+        )
+        if data is None:
+            return None
+        return [dict(item) for item in data.get("Items") or [] if isinstance(item, Mapping)]
+
     def get_movies(
         self, title: str, year: Optional[str] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
     ) -> Optional[List[_SchemaMediaServerItem]]:
+        if self.__is_media_service_mode():
+            return self.__get_media_service_movies(title, year, media_source, media_id)
         if not self.is_authenticated() or not self._api or not title:
             return None
 
@@ -681,6 +1109,8 @@ class Ugreen:
         album: Optional[str] = None,
     ) -> List[_SchemaMediaServerItem]:
         """按歌曲、艺术家或专辑名称查询绿联影视音乐条目。"""
+        if self.__is_media_service_mode():
+            return self.__get_media_service_music(title, artist, album)
         if not self.is_authenticated() or not self._api:
             return []
         query = album or title or artist
@@ -750,6 +1180,15 @@ class Ugreen:
         :param season: 季号
         :return: 命中的剧集ID及每季已入库集数
         """
+        if self.__is_media_service_mode():
+            return self.__get_media_service_tv_episodes(
+                item_id=item_id,
+                title=title,
+                year=year,
+                media_source=media_source,
+                media_id=media_id,
+                season=season,
+            )
         if not self.is_authenticated() or not self._api:
             return None, None
 
@@ -817,6 +1256,12 @@ class Ugreen:
         return item_id, season_episodes
 
     def refresh_root_library(self, scan_mode: Optional[Union[str, int]] = None) -> Optional[bool]:
+        """刷新绿联媒体库；媒体库服务模式暂未开放刷新接口。"""
+        if self.__is_media_service_mode():
+            if not self.is_authenticated():
+                return None
+            logger.debug("绿联媒体库服务未实现媒体库刷新接口，跳过刷新")
+            return False
         if not self.is_authenticated() or not self._api:
             return None
 
@@ -855,6 +1300,12 @@ class Ugreen:
         items: List[_SchemaRefreshMediaItem],
         scan_mode: Optional[Union[str, int]] = None,
     ) -> Optional[bool]:
+        """按路径刷新绿联媒体库；媒体库服务模式暂未开放刷新接口。"""
+        if self.__is_media_service_mode():
+            if not self.is_authenticated():
+                return None
+            logger.debug("绿联媒体库服务未实现媒体库刷新接口，跳过刷新")
+            return False
         if not self.is_authenticated() or not self._api:
             return None
 
@@ -883,6 +1334,12 @@ class Ugreen:
         return None
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
+        """获取指定绿联媒体条目的统一详情模型。"""
+        if self.__is_media_service_mode():
+            if not self.is_authenticated() or not self._media_api or not itemid:
+                return None
+            item = self._media_api.item(itemid)
+            return self.__format_media_service_item(item) if item else None
         if not self.is_authenticated() or not self._api or not itemid:
             return None
 
@@ -937,6 +1394,63 @@ class Ugreen:
                     break
                 page += 1
 
+    def __iter_media_service_items(
+        self,
+        parent: Union[str, int],
+        start_index: Optional[int] = 0,
+        limit: Optional[int] = -1,
+    ) -> Generator[_SchemaMediaServerItem, Any, None]:
+        """分页遍历媒体库服务用户可见的电影、剧集和音乐专辑。"""
+        if not self.is_authenticated() or not self._media_api or not parent or self.__is_library_blocked(str(parent)):
+            return
+
+        remaining = None if limit in (None, -1) else max(0, limit or 0)
+        if remaining == 0:
+            return
+        offset = max(0, start_index or 0)
+        fields = (
+            "ProviderIds,OriginalTitle,ProductionYear,Path,ParentId,"
+            "BackdropImageTags,Album,AlbumArtist,AlbumArtists,Artists,"
+            "ArtistItems,ChildCount,UserDataPlayCount,UserDataLastPlayedDate"
+        )
+
+        while True:
+            page_size = min(100, remaining) if remaining is not None else 100
+            data = self._media_api.items(
+                parent_id=parent,
+                include_item_types="Movie,Series,MusicAlbum",
+                start_index=offset,
+                limit=page_size,
+                fields=fields,
+            )
+            if data is None:
+                return
+            page_items = data.get("Items")
+            if not isinstance(page_items, list) or not page_items:
+                return
+
+            for raw_item in page_items:
+                if not isinstance(raw_item, Mapping):
+                    continue
+                if raw_item.get("Type") not in {"Movie", "Series", "MusicAlbum"}:
+                    continue
+                media_item = self.__format_media_service_item(raw_item)
+                if media_item:
+                    yield media_item
+                    if remaining is not None:
+                        remaining -= 1
+                        if remaining <= 0:
+                            return
+
+            offset += len(page_items)
+            total_count = data.get("TotalRecordCount")
+            try:
+                reached_total = total_count is not None and offset >= int(total_count)
+            except TypeError, ValueError:
+                reached_total = False
+            if len(page_items) < page_size or reached_total:
+                return
+
     def get_items_count(self, parent: Union[str, int]) -> Optional[int]:
         """
         获取指定媒体库可同步的媒体条目总数
@@ -944,6 +1458,28 @@ class Ugreen:
         :param parent: 媒体库ID
         :return: 媒体条目总数，查询失败时返回None
         """
+        if self.__is_media_service_mode():
+            if not self.is_authenticated() or not self._media_api or not parent:
+                return None
+            media_library = self._libraries.get(str(parent), {})
+            library_type = str(media_library.get("type") or "")
+            include_item_types = {
+                MediaType.MOVIE.value: "Movie",
+                MediaType.TV.value: "Series",
+                MediaType.MUSIC.value: "MusicAlbum,Audio",
+            }.get(library_type, "Movie,Series,MusicAlbum")
+            data = self._media_api.items(
+                parent_id=parent,
+                include_item_types=include_item_types,
+                limit=0,
+            )
+            if data is None:
+                return None
+            total_count = data.get("TotalRecordCount")
+            try:
+                return int(total_count) if total_count is not None else None
+            except TypeError, ValueError:
+                return None
         if not self.is_authenticated() or not self._api:
             return None
         if not self._libraries:
@@ -967,6 +1503,9 @@ class Ugreen:
         :param limit: 最大返回条目数，-1表示不限制
         :return: 媒体条目生成器
         """
+        if self.__is_media_service_mode():
+            yield from self.__iter_media_service_items(parent, start_index, limit)
+            return None
         if not self.is_authenticated() or not self._api:
             return None
 
@@ -1001,6 +1540,18 @@ class Ugreen:
         return None
 
     def get_play_url(self, item_id: str) -> Optional[str]:
+        """获取指定绿联媒体条目的网页播放链接。"""
+        if self.__is_media_service_mode():
+            if not self.is_authenticated() or not self._media_api or not item_id:
+                return None
+            item = self._media_api.item(item_id)
+            if not item:
+                return None
+            return self.__build_play_url(
+                item_id=item_id,
+                video_type=item.get("Type"),
+                media_lib_set_id=item.get("ParentId"),
+            )
         if not self.is_authenticated() or not self._api:
             return None
 
@@ -1019,6 +1570,22 @@ class Ugreen:
         )
 
     def get_resume(self, num: Optional[int] = 12) -> Optional[List[_SchemaMediaServerPlayItem]]:
+        """获取绿联媒体库账号的继续观看项目。"""
+        if self.__is_media_service_mode():
+            if not self.is_authenticated() or not self._media_api:
+                return None
+            page_size = max(1, num or 12)
+            items = self._media_api.resume(limit=page_size)
+            if items is None:
+                return None
+            media_resume: List[_SchemaMediaServerPlayItem] = []
+            for item in items:
+                if len(media_resume) == page_size:
+                    break
+                play_item = self.__build_media_service_play_item(item)
+                if play_item:
+                    media_resume.append(play_item)
+            return media_resume
         if not self.is_authenticated() or not self._api:
             return None
 
@@ -1044,6 +1611,20 @@ class Ugreen:
         return ret_resume
 
     def get_latest(self, num: int = 20) -> Optional[List[_SchemaMediaServerPlayItem]]:
+        """获取绿联媒体库账号最近入库的电影和电视剧。"""
+        if self.__is_media_service_mode():
+            items = self.__get_media_service_latest_items(num=num)
+            if items is None:
+                return None
+            page_size = max(1, num)
+            media_latest: List[_SchemaMediaServerPlayItem] = []
+            for item in items:
+                if len(media_latest) == page_size:
+                    break
+                play_item = self.__build_media_service_play_item(item)
+                if play_item:
+                    media_latest.append(play_item)
+            return media_latest
         if not self.is_authenticated() or not self._api:
             return None
 
@@ -1070,6 +1651,22 @@ class Ugreen:
 
     def get_latest_backdrops(self, num: int = 20, remote: bool = False) -> Optional[List[str]]:
         """获取最近入库电影、电视剧的壁纸图片。"""
+        if self.__is_media_service_mode():
+            items = self.__get_media_service_latest_items(num=num)
+            if items is None:
+                return None
+            media_images: List[str] = []
+            for item in items:
+                if len(media_images) == num:
+                    break
+                item_id = item.get("Id")
+                if not item_id:
+                    continue
+                image_type = "Backdrop" if item.get("BackdropImageTags") else "Primary"
+                image = self.__build_media_service_image_url(item_id, image_type, remote=remote)
+                if image:
+                    media_images.append(image)
+            return media_images
         if not self.is_authenticated() or not self._api:
             return None
 
