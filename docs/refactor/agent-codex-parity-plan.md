@@ -117,4 +117,5 @@ uv run --locked --no-sync python -m scripts.evaluation \
 - 浏览器会话可靠性阶段：直接 `run()` 的参数/异常现在返回结构化恢复合同并限制 timeout 为 1–300 秒；点击等待遵守调用 deadline；关闭标签页正确调整 active index，关闭异常不再伪报成功；生成新 snapshot 前清理旧 ref，动态页面不会把过期 ref 静默指向新元素。浏览器、文件、Shell、子代理相关回归共 155 项通过。
 - 浏览器状态不确定性补强：关闭标签页的 provider 异常按 `execution_outcome=unknown` 返回，要求先 `list_tabs/snapshot` 核验，避免把可能已发生的动作当作失败后重复执行；补充了 active index 和关闭异常的真实回归。
 - 浏览器重定向安全阶段：点击、填写、选择、脚本执行、内容读取和标签页切换后统一复核当前 URL；动作已经发生但重定向到未授权私网时返回 `unknown`，要求先核验页面状态，不直接重复动作。浏览器、文件、Shell、子代理相关回归共 157 项通过。
+- 真实工具组合复核：同一本机 provider 的 `gpt-5.6-luna + max` 运行 `command_execution` live `/tmp/moviepilot-agent-round-luna-live-command-current-20260912.json` 通过（2 次模型调用、真实 Shell 回执、退出码 0）；浏览器 live `/tmp/moviepilot-agent-round-luna-live-browser-current-20260912.json` 通过（6 次模型调用、导航/快照/`click_ref`/正文 4 次回执，独立页面 oracle 为 `BROWSER_OK`）。这证明结构化恢复合同和动作后 URL 校验已进入真实生产图；原生浏览器仍因用户保存权限保持单独 blocked。
 - 浏览器环境复核：启动本机 Chrome 后用同一官方 OAuth 配置重跑 `/tmp/moviepilot-agent-round-luna-oauth-native-browser-chrome-20260912.json`，原生已加载 Browser plugin、node_repl 并选择 Chrome；真实回环导航仍被保存的浏览器权限拒绝。该结果排除了“CLI 未登录或未启动 Chrome”的解释，下一次只有在用户允许对应回环地址后才继续导航、点击和 oracle 配对。
