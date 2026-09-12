@@ -391,6 +391,39 @@ def test_recognize_music_by_path_accepts_minor_tag_typo_with_same_artist(monkeyp
     later_tier.assert_not_called()
 
 
+def test_recognize_music_by_path_accepts_equivalent_recording_qualifiers(monkeypatch):
+    """同艺人同基础曲名的 radio/pop 版本应保留指纹提供的实际录音身份。"""
+    recording_id = "teardrops-pop-version"
+    merged = MetaMusic(
+        title="Teardrops On My Guitar (Radio Single Version)",
+        artists=["Taylor Swift"],
+    )
+    expected = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="Teardrops on My Guitar (pop version)",
+        artists=["Taylor Swift"],
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(merged, merged, MetaMusic(title=merged.title))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(chain, "_recognize_musicbrainz_recording", Mock(return_value=expected))
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized_info = chain.recognize_music_by_path("Teardrops.flac")
+
+    assert recognized_info is expected
+    later_tier.assert_not_called()
+
+
 def test_musicbrainz_module_recognize_media_ignores_non_music():
     """非音乐请求应直接返回 None，不占用影视识别管线。"""
     result = MusicBrainzModule().recognize_media(

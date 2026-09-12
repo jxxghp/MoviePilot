@@ -35,6 +35,12 @@ from app.schemas.types import (
     MediaSource,
 )
 
+_FINGERPRINT_TITLE_QUALIFIER = re.compile(
+    r"\s*[\[(（【][^\])）】]*(?:radio|single|version|edit|mix|remix|remaster(?:ed)?|"
+    r"live|acoustic|demo|mono|stereo|recorded|pop|taylors)[^\])）】]*[\])）】]",
+    re.IGNORECASE,
+)
+
 
 def _is_regular_file(path: Path) -> bool:
     """判断路径是否仍指向可读取的普通文件。"""
@@ -201,6 +207,14 @@ def _fingerprint_info_matches_evidence(
             continue
         shorter, longer = sorted((candidate_key, evidence_key), key=len)
         if shorter and longer.startswith(shorter) and version_suffix.fullmatch(longer[len(shorter):]):
+            return True
+        qualified_evidence_key = music_text_key(
+            music_base_title(_FINGERPRINT_TITLE_QUALIFIER.sub("", primary.title))
+        )
+        qualified_candidate_key = music_text_key(
+            music_base_title(_FINGERPRINT_TITLE_QUALIFIER.sub("", title))
+        )
+        if qualified_evidence_key and qualified_evidence_key == qualified_candidate_key:
             return True
         if SequenceMatcher(None, candidate_key, evidence_key).ratio() >= 0.82:
             return True
