@@ -469,7 +469,7 @@ class FileFilterMixin(_TransferOwnerBase):
         """从下载历史字段或旧版音乐备注中恢复音乐实体类型。"""
         music_type = normalize_music_type(
             getattr(download_history, "music_type", None),
-            allow_artist=False,
+            allow_artist=True,
         )
         if music_type:
             return music_type
@@ -480,7 +480,7 @@ class FileFilterMixin(_TransferOwnerBase):
             return None
         return normalize_music_type(
             media_payload.get("music_type"),
-            allow_artist=False,
+            allow_artist=True,
         )
 
     @classmethod

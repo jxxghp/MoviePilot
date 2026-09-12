@@ -2,6 +2,7 @@ from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
+from app.application.history import DownloadHistorySnapshot
 from app.chain.media import MediaChain
 from app.chain.transfer.facade import TransferChain
 from app.chain.transfer.request import _should_discard_batch_music_identity
@@ -298,7 +299,114 @@ def test_artist_collection_batch_discards_shared_artist_identity() -> None:
         media_id=None,
         mediainfo=artist,
         history_music_type=MUSIC_ENTITY_ARTIST,
-    ) is False
+    ) is True
+
+
+def test_download_history_recovers_artist_collection_entity() -> None:
+    """下载监控逐文件触发时也必须从历史恢复艺术家合集任务类型。"""
+    current = SimpleNamespace(
+        music_type=MUSIC_ENTITY_ARTIST,
+        note=None,
+    )
+    legacy = SimpleNamespace(
+        music_type=None,
+        note={"music": {"media": {"music_type": MUSIC_ENTITY_ARTIST}}},
+    )
+
+    assert TransferChain._download_history_music_type(current) == MUSIC_ENTITY_ARTIST
+    assert TransferChain._download_history_music_type(legacy) == MUSIC_ENTITY_ARTIST
+
+
+def test_artist_collection_single_monitor_event_rematches_child_release(
+        tmp_path, monkeypatch,
+) -> None:
+    """下载监控逐文件触发时，子作品不得继承父合集分类。"""
+    release_dir = tmp_path / "Taylor Swift" / "willow (2021)"
+    release_dir.mkdir(parents=True)
+    audio_path = release_dir / "01 - willow.flac"
+    audio_path.write_bytes(b"audio")
+    fileitem = make_fileitem(audio_path.as_posix())
+    local_meta = MetaMusic(
+        title="willow",
+        artists=["Taylor Swift"],
+        album="willow",
+        year=2021,
+        track_number=1,
+    )
+    matched_info = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="recording-willow",
+        music_type="recording",
+        title="willow",
+        artists=["Taylor Swift"],
+        album="willow",
+        album_id="release-group-willow",
+        album_type="Single",
+        library_category="Single",
+        year=2021,
+        track_number=1,
+    )
+    chain = _prepare_chain(monkeypatch, [fileitem])
+    history = DownloadHistorySnapshot(
+        id=1,
+        path=release_dir.as_posix(),
+        type=MediaType.MUSIC.value,
+        title="Taylor Swift 艺术家合集",
+        music_type=MUSIC_ENTITY_ARTIST,
+        note=None,
+        custom_words=None,
+        downloader="qbittorrent",
+        download_hash="artist-collection-hash",
+    )
+    monkeypatch.setattr(
+        chain,
+        "_resolve_download_history",
+        lambda **_kwargs: history,
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda _path: deepcopy(local_meta)),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _path, **_kwargs: {
+            str(audio_path.resolve()): deepcopy(matched_info),
+        },
+    )
+    planned = []
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__handle_transfer",
+        lambda task, callback=None: (
+            planned.append(
+                (
+                    task.mediainfo.media_id,
+                    task.mediainfo.album_type,
+                    task.mediainfo.library_category,
+                )
+            )
+            or True,
+            "",
+        ),
+    )
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitem,
+        selected_fileitems=[fileitem],
+        mtype=MediaType.MUSIC,
+        background=False,
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == [("recording-willow", "Single", "Single")]
 
 
 def test_artist_collection_children_are_rematched_as_album(tmp_path, monkeypatch):
