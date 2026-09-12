@@ -108,11 +108,16 @@ class BackupArtifactStore(Protocol):
         db_type: str,
         created_at: datetime,
         suffix: str,
+        target: str = "moviepilot",
+        version: str | None = None,
     ) -> str:
         """返回当前根目录中可用的正式制品文件名。"""
 
     def database_type(self, name: str) -> str:
         """从受管文件名读取数据库类型。"""
+
+    def target(self, name: str) -> str:
+        """从受管文件名读取备份目标。"""
 
     def created_at(self, name: str) -> datetime:
         """从受管文件名读取制品创建时间。"""
