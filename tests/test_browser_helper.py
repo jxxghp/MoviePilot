@@ -573,6 +573,33 @@ def test_close_tab_failure_is_reported_as_unknown_state() -> None:
     assert "list_tabs" in payload["recovery"]
 
 
+def test_click_redirect_to_private_url_is_unknown_and_requires_recheck() -> None:
+    """点击后的私网重定向不能被当作成功，且不能诱导重复点击。"""
+    page = _FakePage("redirect")
+
+    def redirect(_selector: str, *_args, **_kwargs) -> None:
+        """模拟点击后跳转到未授权的私网地址。"""
+        page.url = "http://127.0.0.1:1234/private"
+
+    page.click = redirect
+    context = _FakeContext([page])
+    session = _BrowserSessionState("redirect", context, context.pages, active_index=0)
+    tool = BrowseWebpageTool(session_id="session-1", user_id="10001")
+    with patch.object(
+        BrowserSessionHelper,
+        "with_session",
+        side_effect=lambda callback, **_kwargs: callback(session),
+    ):
+        result = tool._execute_browser_action(
+            browser_action=BrowserAction.CLICK, url=None, selector="#go", ref=None, value=None,
+            script=None, content_type="text", timeout=3, cookies=None, user_agent=None,
+            session_key="redirect", tab_index=None, allow_private_network=False,
+        )
+    payload = json.loads(result)
+    assert payload["execution_outcome"] == "unknown"
+    assert "snapshot" in payload["recovery"]
+
+
 def test_browse_webpage_get_cookies_returns_current_domain_cookie_and_ua():
     """管理员 Cookie 动作应只返回当前页面域名的会话字段。"""
     page = _FakePage()

@@ -56,6 +56,10 @@ class BrowserAction(str, Enum):
     CLOSE_SESSION = "close_session"
 
 
+class BrowserNavigationUncertainError(RuntimeError):
+    """页面动作后地址校验失败，动作可能已发生但当前页面状态不能确认。"""
+
+
 class BrowseWebpageInput(BaseModel):
     """浏览器操作工具的输入参数模型"""
 
@@ -416,6 +420,13 @@ class BrowseWebpageTool(MoviePilotTool):
         except Exception as e:
             error_summary = summarize_error(e)
             logger.error(f"CloakBrowser 执行失败: {error_summary}", exc_info=True)
+            if isinstance(e, BrowserNavigationUncertainError):
+                return self._json_response({
+                    "success": False,
+                    "execution_outcome": "unknown",
+                    "error": "浏览器动作后页面地址未通过安全校验。",
+                    "recovery": "先使用 list_tabs 或 snapshot 核验当前页面；不要直接重试可能已经发生的点击或脚本动作。",
+                })
             if str(e) == "关闭浏览器标签页失败":
                 return self._json_response({
                     "success": False,
@@ -445,6 +456,15 @@ class BrowseWebpageTool(MoviePilotTool):
         """执行具体的浏览器操作"""
         page = session.active_page
 
+        def validate_after_action() -> None:
+            """检查动作可能触发的重定向，失败时保留不确定状态。"""
+            try:
+                BrowserSessionHelper.validate_current_url(
+                    page, allow_private_network=allow_private_network,
+                )
+            except ValueError as error:
+                raise BrowserNavigationUncertainError from error
+
         if browser_action == BrowserAction.GOTO:
             return self._action_goto(
                 helper,
@@ -459,12 +479,15 @@ class BrowseWebpageTool(MoviePilotTool):
                 page,
                 max_text_chars=MAX_CONTENT_LENGTH,
             )
+            validate_after_action()
             return self._json_response(
                 {"success": True, **snapshot}
             )
 
         elif browser_action == BrowserAction.GET_CONTENT:
-            return self._action_get_content(page, content_type)
+            result = self._action_get_content(page, content_type)
+            validate_after_action()
+            return result
 
         elif browser_action == BrowserAction.SCREENSHOT:
             return self._action_screenshot(page)
@@ -473,42 +496,56 @@ class BrowseWebpageTool(MoviePilotTool):
             return self._action_get_cookies(session, page)
 
         elif browser_action == BrowserAction.CLICK:
-            return self._action_click(page, selector, timeout)
+            result = self._action_click(page, selector, timeout)
+            validate_after_action()
+            return result
 
         elif browser_action == BrowserAction.CLICK_REF:
-            return self._action_click(
+            result = self._action_click(
                 page,
                 BrowserSessionHelper.ref_to_selector(ref),
                 timeout,
                 ref=ref,
             )
+            validate_after_action()
+            return result
 
         elif browser_action == BrowserAction.FILL:
-            return self._action_fill(page, selector, value, timeout)
+            result = self._action_fill(page, selector, value, timeout)
+            validate_after_action()
+            return result
 
         elif browser_action == BrowserAction.FILL_REF:
-            return self._action_fill(
+            result = self._action_fill(
                 page,
                 BrowserSessionHelper.ref_to_selector(ref),
                 value,
                 timeout,
                 ref=ref,
             )
+            validate_after_action()
+            return result
 
         elif browser_action == BrowserAction.SELECT:
-            return self._action_select(page, selector, value, timeout)
+            result = self._action_select(page, selector, value, timeout)
+            validate_after_action()
+            return result
 
         elif browser_action == BrowserAction.SELECT_REF:
-            return self._action_select(
+            result = self._action_select(
                 page,
                 BrowserSessionHelper.ref_to_selector(ref),
                 value,
                 timeout,
                 ref=ref,
             )
+            validate_after_action()
+            return result
 
         elif browser_action == BrowserAction.EVALUATE:
-            return self._action_evaluate(page, script)
+            result = self._action_evaluate(page, script)
+            validate_after_action()
+            return result
 
         elif browser_action == BrowserAction.WAIT:
             return self._action_wait(page, selector, timeout)
@@ -537,6 +574,7 @@ class BrowseWebpageTool(MoviePilotTool):
 
         elif browser_action == BrowserAction.FOCUS_TAB:
             page = BrowserSessionHelper.focus_tab(session, tab_index)
+            validate_after_action()
             return self._json_response(
                 {
                     "success": True,
