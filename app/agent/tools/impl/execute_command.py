@@ -509,6 +509,11 @@ class ExecuteCommandTool(MoviePilotTool):
         outcome = "failed" if scope_cancelled else (
             "unknown" if exit_code is None else ("succeeded" if succeeded else "failed")
         )
+        recovery = (
+            "命令结果未知；先用 action=read 或 action=wait 核对会话状态，不要直接重复可能产生副作用的命令。"
+            if outcome == "unknown" else
+            "检查 output 和 exit_code，修正命令或参数后再重试；不要把命令输出中的完成文字当作成功证据。"
+        )
         return ExecuteCommandTool._dump({
             "action": "run", "success": succeeded, "execution_outcome": outcome,
             "status": "cancelled" if scope_cancelled else (
@@ -517,7 +522,7 @@ class ExecuteCommandTool(MoviePilotTool):
             "exit_code": exit_code, "timed_out": timed_out, "timeout": timeout,
             "cwd": cwd, "shell": shell, "login": login, "stdin_closed": True,
             "output_truncated": output.preview_truncated, "output_file": output.temp_file_path,
-            "output": output.combined_preview, "message": result,
+            "output": output.combined_preview, "message": result, "recovery": recovery,
         })
 
     async def _run_once(
@@ -774,14 +779,17 @@ class ExecuteCommandTool(MoviePilotTool):
             return self._dump({
                 "error": str(err), "status": "error", "action": normalized_action,
                 "success": False, "execution_outcome": "failed", "code": "terminal_access_denied",
+                "recovery": "当前任务没有该终端作用域权限；使用当前任务创建的 session_id，或重新启动受控会话。",
             })
         except TerminalOutputError as err:
             return self._dump({
                 "error": str(err), "status": "error", "action": normalized_action,
                 "success": False, "execution_outcome": "failed",
                 "code": err.code, "minimum_read_bytes": err.minimum_read_bytes,
+                "recovery": "按 minimum_read_bytes 调整读取游标和页大小后重试，不要重新启动命令。",
             })
         except Exception as err:
             logger.error(f"执行命令 action 失败: {err}", exc_info=True)
             return self._dump({"error": str(err), "status": "error", "action": normalized_action,
-                               "success": False, "execution_outcome": "failed"})
+                               "success": False, "execution_outcome": "failed",
+                               "recovery": "修正 action、session_id 或参数后重试；不要重复启动未确认是否结束的命令。"})
