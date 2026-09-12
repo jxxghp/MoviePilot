@@ -797,7 +797,6 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     bluray_dir=bluray_dir,
                     download_hash=download_hash,
                 )
-
                 discard_music_identity = _should_discard_batch_music_identity(
                     multi_track_music_batch=multi_track_music_batch, manual=manual,
                     media_source=media_source,
