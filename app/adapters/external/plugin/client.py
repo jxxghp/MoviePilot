@@ -489,8 +489,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         candidates: PluginIndex = {}
         for repo_order, repo_path in enumerate(self.get_local_repo_paths()):
             if not repo_path.exists() or not repo_path.is_dir():
-                logger.warn(f"本地插件仓库目录不存在或不可读：{repo_path}")
-                continue
+                raise RuntimeError(f"本地插件仓库目录不存在或不可读：{repo_path}")
 
             package_candidates = []
             if get_runtime_setting('VERSION_FLAG'):

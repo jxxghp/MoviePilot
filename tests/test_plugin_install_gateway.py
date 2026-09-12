@@ -357,8 +357,8 @@ async def test_gateway_checks_compatibility_on_final_trusted_candidate() -> None
 
 
 @pytest.mark.asyncio
-async def test_gateway_source_inspection_preserves_sources_and_hides_local_path() -> None:
-    """来源查询按在线仓归并版本，本地候选只保留类型与版本。"""
+async def test_gateway_source_inspection_preserves_sources_and_local_repo_url() -> None:
+    """来源查询按在线仓归并版本，并保留本地候选仓库标识。"""
     official_v3 = _inventory().online_candidates[0]
     official_v2 = PluginMarketCandidate(
         plugin_id="DemoPlugin",
@@ -414,7 +414,7 @@ async def test_gateway_source_inspection_preserves_sources_and_hides_local_path(
     ]
     assert inspection.online_candidates[0].package_generation == "v3"
     assert inspection.local_candidate is local
-    assert "/private/plugins" not in str(inspection.local_candidate.public_dict())
+    assert inspection.local_candidate.public_dict()["repo_url"] == local.repo_url
 
 
 @pytest.mark.asyncio
