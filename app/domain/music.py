@@ -41,6 +41,16 @@ _TITLE_CREDIT = re.compile(
     r"\s*(?:[“「][^”」]+[”」])?\s*(?:主题曲|主題曲|片头曲|片頭曲|片尾曲|插曲))\s*[）)]",
     re.IGNORECASE,
 )
+_SOUNDTRACK_CREDIT = re.compile(
+    r"\s*[\[(（【]\s*from\s+(?:the\s+)?(?:original\s+)?"
+    r"(?:motion\s+picture|film|movie)\b[^\])）】]*[\])）】]",
+    re.IGNORECASE,
+)
+_CJK_SOUNDTRACK_SUFFIX = re.compile(
+    r"\s*《[^《》]+》\s*(?:电视剧|電視劇|电影|電影|影视剧|影視劇|动画|動畫)?\s*"
+    r"(?:原声|原聲)?\s*(?:主题曲|主題曲|片头曲|片頭曲|片尾曲|插曲)\s*$",
+    re.IGNORECASE,
+)
 _FEATURED_CREDIT = re.compile(r"[（(]\s*feat(?:uring)?\.?\s+([^()（）]+)[）)]", re.IGNORECASE)
 _COLLECTIVE_ARTISTS = ("Various Artists", "Various", "VA", "群星", "众艺人", "眾藝人")
 _VERSION_YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
@@ -123,7 +133,9 @@ def music_artist_matches(music: MusicInfo, parsed_artists: Iterable[str]) -> boo
 
 def music_base_title(value: Optional[str], *, preserve_editions: bool = False) -> str:
     """剥离明确署名、影视用途和版本注释，保留未知括号中的作品名。"""
-    text = _TITLE_CREDIT.sub("", str(value or ""))
+    text = _CJK_SOUNDTRACK_SUFFIX.sub(
+        "", _SOUNDTRACK_CREDIT.sub("", _TITLE_CREDIT.sub("", str(value or "")))
+    )
     if not preserve_editions:
         text = _EDITION.sub("", text)
 
