@@ -1,3 +1,4 @@
+import errno
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
@@ -38,6 +39,39 @@ def test_checkpoint_rollback_restores_existing_package(monkeypatch, tmp_path):
     checkpoint = manager.checkpoint("DemoPlugin")
     source_file.write_text("new", encoding="utf-8")
     (plugin_dir / "partial.py").write_text("partial", encoding="utf-8")
+    manager.rollback(checkpoint)
+
+    assert source_file.read_text(encoding="utf-8") == "old"
+    assert not (plugin_dir / "partial.py").exists()
+    assert not checkpoint.transaction_dir.exists()
+
+
+def test_checkpoint_rollback_handles_cross_device_plugin_directory(
+    monkeypatch,
+    tmp_path,
+):
+    """overlayfs 拒绝目录 rename 时仍应恢复旧插件并清理事务。"""
+    manager = _manager(monkeypatch, tmp_path)
+    plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
+    plugin_dir.mkdir(parents=True)
+    source_file = plugin_dir / "__init__.py"
+    source_file.write_text("old", encoding="utf-8")
+
+    checkpoint = manager.checkpoint("DemoPlugin")
+    source_file.write_text("new", encoding="utf-8")
+    (plugin_dir / "partial.py").write_text("partial", encoding="utf-8")
+
+    original_replace = Path.replace
+
+    def replace(self: Path, target: Path) -> Path:
+        """只模拟运行目录跨设备 rename 失败，保留其他替换操作。"""
+        if self == plugin_dir and target.name.startswith(
+            ".demoplugin.previous-"
+        ):
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", replace)
     manager.rollback(checkpoint)
 
     assert source_file.read_text(encoding="utf-8") == "old"

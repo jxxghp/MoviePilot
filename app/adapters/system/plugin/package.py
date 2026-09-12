@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import hashlib
 import io
 import re
@@ -447,31 +448,62 @@ class PluginPackageManager:
         existed: bool,
         label: str,
     ) -> None:
-        """用同级 staging 替换目录，失败时保留替换前的当前目录。"""
+        """用同级 staging 替换目录，并兼容 overlayfs 的跨设备替换。"""
         if existed and not snapshot.is_dir():
             raise FileNotFoundError(f"{label}补偿快照不存在：{snapshot}")
 
         target.parent.mkdir(parents=True, exist_ok=True)
         staging = target.parent / f".{target.name}.restore-{uuid.uuid4().hex}"
         previous = target.parent / f".{target.name}.previous-{uuid.uuid4().hex}"
+        previous_available = False
+        published = False
         try:
             if existed:
                 shutil.copytree(snapshot, staging)
             if target.exists():
-                target.replace(previous)
+                try:
+                    target.replace(previous)
+                except OSError as error:
+                    if error.errno != errno.EXDEV:
+                        raise
+                    # overlayfs 可能拒绝把镜像层目录直接 rename 到可写层，
+                    # 先复制旧目标保留回滚材料，再删除旧目录继续发布快照。
+                    if target.is_dir():
+                        shutil.copytree(target, previous, symlinks=True)
+                    else:
+                        shutil.copy2(target, previous, follow_symlinks=False)
+                    previous_available = True
+                    PluginPackageManager.__remove_snapshot_path(target)
+                else:
+                    previous_available = True
             if existed:
                 staging.replace(target)
-            if previous.exists():
-                shutil.rmtree(previous)
+            published = True
         except Exception:
-            if not target.exists() and previous.exists():
-                previous.replace(target)
+            if previous_available and not published:
+                try:
+                    PluginPackageManager.__remove_snapshot_path(target)
+                    previous.replace(target)
+                    previous_available = False
+                except Exception as rollback_error:
+                    logger.error(
+                        f"恢复{label}旧目录失败，已保留恢复材料 {previous}: "
+                        f"{rollback_error}"
+                    )
             raise
         finally:
             if staging.exists():
                 shutil.rmtree(staging, ignore_errors=True)
-            if target.exists() and previous.exists():
+            if published and previous.exists():
                 shutil.rmtree(previous, ignore_errors=True)
+
+    @staticmethod
+    def __remove_snapshot_path(path: Path) -> None:
+        """删除待替换的当前路径，保留快照材料供失败回滚。"""
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        elif path.exists() or path.is_symlink():
+            path.unlink()
 
     @classmethod
     def stage_persistent_backup(cls, checkpoint: PluginPackageCheckpoint) -> None:
