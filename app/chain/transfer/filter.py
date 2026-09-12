@@ -262,6 +262,8 @@ def _resolve_music_batch_file_context(
             owner._is_audio_file(file_item)
             and isinstance(task_mediainfo, MusicInfo)
             and owner._get_file_key(file_item) in batch_context.album_main_keys
+            and str(task_mediainfo.album_type or "").casefold()
+            not in {"ep", "broadcast", "other"}
     ):
         # 曲目可能同时作为 Single 单独发行。整理完整多音轨目录时，目录内
         # 高一致性的专辑/专辑艺人标签是当前文件归属的更强证据，不能让某一

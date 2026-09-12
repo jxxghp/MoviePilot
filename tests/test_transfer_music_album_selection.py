@@ -920,6 +920,89 @@ def test_album_directory_consensus_overrides_title_track_single_release(
     assert planned == [("Album", "Album"), ("Album", "Album")]
 
 
+def test_album_directory_consensus_preserves_explicit_ep_type(
+        tmp_path, monkeypatch,
+):
+    """多音轨目录已由 MusicBrainz 明确识别为 EP 时不得强制改成 Album。"""
+    ep_dir = tmp_path / "Taylor Swift" / "The Taylor Swift Holiday Collection"
+    ep_dir.mkdir(parents=True)
+    audio_paths = [ep_dir / "01.flac", ep_dir / "02.flac"]
+    for path in audio_paths:
+        path.write_bytes(b"audio")
+    fileitems = [make_fileitem(path.as_posix()) for path in audio_paths]
+    local_metas = {
+        path: MetaMusic(
+            title=f"Holiday {index}",
+            artists=["Taylor Swift"],
+            album="The Taylor Swift Holiday Collection",
+            year=2007,
+        )
+        for index, path in enumerate(audio_paths, 1)
+    }
+    artist = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="artist-taylor-swift",
+        title="Taylor Swift",
+        artists=["Taylor Swift"],
+        music_type=MUSIC_ENTITY_ARTIST,
+        album_type="Artist Collection",
+        library_category="Artist Collection",
+    )
+    chain = _prepare_chain(monkeypatch, fileitems)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.filter.AudioMetadataHelper.read_tags",
+        lambda path: deepcopy(local_metas[path]),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda path: deepcopy(local_metas[Path(path)])),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _path, **_kwargs: {},
+    )
+
+    def recognize_ep(_self, path, **_kwargs):
+        meta = deepcopy(local_metas[Path(path)])
+        info = MusicInfo.from_meta(meta)
+        info.media_source = MediaSource.MusicBrainz
+        info.media_id = f"recording-{Path(path).stem}"
+        info.album_type = "EP"
+        info.set_library_category("EP")
+        return meta, info
+
+    monkeypatch.setattr(MediaChain, "recognize_music_by_path", recognize_ep)
+    planned = []
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__handle_transfer",
+        lambda task, callback=None: (
+            planned.append((task.mediainfo.album_type, task.mediainfo.library_category))
+            or True,
+            "",
+        ),
+    )
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitems[0],
+        selected_fileitems=fileitems,
+        mediainfo=artist,
+        mtype=MediaType.MUSIC,
+        background=False,
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == [("EP", "EP"), ("EP", "EP")]
+
+
 def test_manual_album_identity_forwards_full_selected_album(monkeypatch):
     """手动指定专辑 ID 时不应在进入整理链前丢失曲目表。"""
     chain = make_transfer_chain()
