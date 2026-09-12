@@ -376,6 +376,39 @@ def test_music_album_fallback_sync_async_isolate_directory_errors(
     assert asyncio.run(chain._async_music_album_dir_fallback(path)) is None
 
 
+def test_music_meta_tier_sync_async_reject_year_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """标签和文件名层都不能接受同名作品的冲突发行年份。"""
+    chain = MediaChain()
+    meta = MetaMusic(
+        title="Enchanted",
+        artists=["Taylor Swift"],
+        album="Speak Now: World Tour Live",
+        year=2011,
+    )
+    candidate = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="recording-enchanted-2025",
+        title="Enchanted",
+        artists=["Taylor Swift"],
+        album="Speak Now: World Tour Live",
+        year=2025,
+        release_date="2025-04-25",
+    )
+    monkeypatch.setattr(MediaChain, "recognize_media", Mock(return_value=candidate))
+    monkeypatch.setattr(
+        MediaChain,
+        "async_recognize_media",
+        AsyncMock(return_value=candidate),
+    )
+
+    assert chain._recognize_music_meta_tier(meta, None, "文件标签") is None
+    assert asyncio.run(
+        chain._async_recognize_music_meta_tier(meta, None, "文件标签")
+    ) is None
+
+
 @pytest.mark.parametrize("recognized", [False, True])
 def test_video_path_sync_async_share_route_and_failure_context(
     monkeypatch: pytest.MonkeyPatch,

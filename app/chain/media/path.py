@@ -339,6 +339,16 @@ def _reconcile_fingerprint_release(
     return reconciled
 
 
+def _music_info_matches_text_evidence(
+    info: Optional[MusicInfo],
+    meta: Optional[MetaMusic],
+) -> bool:
+    """统一校验各识别层都必须遵守的版本和发行年份证据。"""
+    if not _has_remote_music_identity(info) or not meta:
+        return False
+    return music_version_matches(info, meta) and music_year_matches(info, meta)
+
+
 def _music_tier_plan(
     meta: Optional[MetaMusic],
     media_source: Optional[MediaSource],
@@ -524,6 +534,12 @@ class MediaPathOwner(_MediaOwnerBase):
                 action = plan.send(result)
         except StopIteration as completed:
             outcome = cast(_MusicTierOutcome, completed.value)
+        if outcome.info and not _music_info_matches_text_evidence(outcome.info, meta):
+            logger.warning(
+                f"{tier_name}音乐候选与本地版本或发行年份冲突，已忽略："
+                f"{outcome.info.artist} - {outcome.info.title} ({outcome.info.year or '-'})"
+            )
+            return None
         if outcome.message:
             logger.info(outcome.message)
         return outcome.info
@@ -555,6 +571,12 @@ class MediaPathOwner(_MediaOwnerBase):
                 action = plan.send(result)
         except StopIteration as completed:
             outcome = cast(_MusicTierOutcome, completed.value)
+        if outcome.info and not _music_info_matches_text_evidence(outcome.info, meta):
+            logger.warning(
+                f"{tier_name}音乐候选与本地版本或发行年份冲突，已忽略："
+                f"{outcome.info.artist} - {outcome.info.title} ({outcome.info.year or '-'})"
+            )
+            return None
         if outcome.message:
             logger.info(outcome.message)
         return outcome.info
@@ -633,6 +655,13 @@ class MediaPathOwner(_MediaOwnerBase):
                         logger.info("音乐识别命中 AcoustID 指纹层，已跳过标签和文件名识别")
                 elif action.kind is _MusicPathActionKind.ALBUM:
                     info = self._music_album_dir_fallback(path)
+                    if info and not _music_info_matches_text_evidence(info, meta):
+                        logger.warning(
+                            "音乐目录候选与本地版本或发行年份冲突，已忽略："
+                            f"{Path(path).name} -> {info.artist} - {info.album or info.title} "
+                            f"({info.year or '-'})"
+                        )
+                        info = None
                 else:
                     info = self._recognize_music_meta_tier(
                         meta=action.meta,
@@ -700,6 +729,13 @@ class MediaPathOwner(_MediaOwnerBase):
                         logger.info("音乐识别命中 AcoustID 指纹层，已跳过标签和文件名识别")
                 elif action.kind is _MusicPathActionKind.ALBUM:
                     info = await self._async_music_album_dir_fallback(path)
+                    if info and not _music_info_matches_text_evidence(info, meta):
+                        logger.warning(
+                            "音乐目录候选与本地版本或发行年份冲突，已忽略："
+                            f"{Path(path).name} -> {info.artist} - {info.album or info.title} "
+                            f"({info.year or '-'})"
+                        )
+                        info = None
                 else:
                     info = await self._async_recognize_music_meta_tier(
                         meta=action.meta,
