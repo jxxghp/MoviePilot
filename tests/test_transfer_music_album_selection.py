@@ -763,7 +763,7 @@ def test_manual_single_track_directory_has_local_single_fallback(
         tmp_path, monkeypatch,
 ):
     """无显式媒体 ID 的手动单曲目录在远端不可用时仍可归入 Single。"""
-    single_dir = tmp_path / "Taylor Swift" / "Today Was a Fairytale"
+    single_dir = tmp_path / "Taylor Swift" / "2010-Today Was a Fairytale"
     single_dir.mkdir(parents=True)
     audio_path = single_dir / "Taylor Swift - Today Was a Fairytale.flac"
     audio_path.write_bytes(b"audio")
@@ -772,7 +772,7 @@ def test_manual_single_track_directory_has_local_single_fallback(
         title="Today Was a Fairytale",
         artists=["Taylor Swift"],
         album="Today Was a Fairytale",
-        year=2010,
+        year=2011,
     )
     chain = _prepare_chain(monkeypatch, [fileitem])
     monkeypatch.setattr(
@@ -801,7 +801,7 @@ def test_manual_single_track_directory_has_local_single_fallback(
         chain,
         "_TransferChain__handle_transfer",
         lambda task, callback=None: (
-            planned.append(task.mediainfo.library_category) or True,
+            planned.append((task.mediainfo.library_category, task.mediainfo.year)) or True,
             "",
         ),
     )
@@ -817,7 +817,7 @@ def test_manual_single_track_directory_has_local_single_fallback(
 
     assert state is True
     assert message == ""
-    assert planned == ["Single"]
+    assert planned == [("Single", 2010)]
 
 
 def test_artist_collection_multi_track_directory_has_consensus_album_fallback(

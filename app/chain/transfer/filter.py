@@ -1,4 +1,5 @@
 """整理文件筛选、音乐上下文与源目录清理判定。"""
+import re
 import threading
 from collections import Counter
 from copy import deepcopy
@@ -165,6 +166,16 @@ def _apply_music_directory_evidence(
     return merged
 
 
+def _apply_music_directory_year(meta: MetaMusic, file_path: Path) -> MetaMusic:
+    """用发行目录开头的四位年份纠正合集内不可靠的音频年份标签。"""
+    match = re.match(r"^((?:19|20)\d{2})(?:\D|$)", file_path.parent.name)
+    if not match:
+        return meta
+    merged = deepcopy(meta)
+    merged.year = int(match.group(1))
+    return merged
+
+
 def _prepare_music_batch_context(
         owner: _TransferOwnerBase,
         file_items: list[tuple[FileItem, bool]],
@@ -246,6 +257,8 @@ def _resolve_music_batch_file_context(
             file_meta,
             batch_context.directory_evidence.get(owner._get_file_parent_key(file_item)),
         )
+        if discard_shared_identity:
+            file_meta = _apply_music_directory_year(file_meta, file_path)
     if not task_mediainfo and isinstance(file_meta, MetaMusic):
         file_meta, task_mediainfo = _recognize_music_batch_file(
             owner,
