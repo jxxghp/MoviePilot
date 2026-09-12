@@ -385,6 +385,45 @@ def test_control_tool_starts_tasks_concurrently_and_waits():
     asyncio.run(_run_test())
 
 
+def test_control_tool_updates_task_with_same_id_after_bounded_cancel():
+    """update 应取消旧任务、复用 task_id 并把新描述交给子代理。"""
+
+    async def _run_test():
+        model = FakeListChatModel(responses=["ok"])
+        middleware = SubAgentTaskControlMiddleware(
+            model=model,
+            profiles=subagent_module._builtin_subagent_profiles(),
+            tools=[],
+        )
+        calls = []
+        release = asyncio.Event()
+
+        async def _fake_run_task(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
+            calls.append(description)
+            if description == "旧任务":
+                await release.wait()
+            return f"完成:{description}"
+
+        with patch.object(subagent_module._SubAgentAgentProvider, "run_task", new=_fake_run_task):
+            started = json.loads(await middleware._control_task(action="start", description="旧任务"))
+            task_id = started["tasks"][0]["task_id"]
+            await asyncio.sleep(0)
+            updated = json.loads(await middleware._control_task(
+                action="update", task_id=task_id, description="更新后的任务",
+            ))
+            release.set()
+            await middleware._wait_records(
+                records=[middleware._tasks[task_id]], wait_mode="all", timeout_ms=1000,
+            )
+
+        assert updated["success"] is True
+        assert updated["task_id"] == task_id
+        assert updated["tasks"][0]["description"] == "更新后的任务"
+        assert calls == ["旧任务", "更新后的任务"]
+
+    asyncio.run(_run_test())
+
+
 def test_control_tool_pipeline_passes_previous_results_to_next_step():
     """管道模式应顺序执行子代理，并把上一步结果作为下一步私有上下文。"""
 
