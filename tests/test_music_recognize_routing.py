@@ -328,6 +328,69 @@ def test_recognize_music_by_path_rejects_fingerprint_text_mismatch(monkeypatch):
     )
 
 
+def test_recognize_music_by_path_accepts_fingerprint_radio_version_suffix(monkeypatch):
+    """同艺人的 Radio Single Version 标签应接受正确的基础录音指纹。"""
+    recording_id = "08f535c5-b651-4cc2-a8a8-349aa6060b16"
+    merged = MetaMusic(
+        title="Our Song (Radio Single Version)",
+        artists=["Taylor Swift"],
+    )
+    expected = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="Our Song",
+        artists=["Taylor Swift"],
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(merged, merged, MetaMusic(title="Our Song"))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(chain, "_recognize_musicbrainz_recording", Mock(return_value=expected))
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized_info = chain.recognize_music_by_path("Our Song.flac")
+
+    assert recognized_info is expected
+    later_tier.assert_not_called()
+
+
+def test_recognize_music_by_path_accepts_minor_tag_typo_with_same_artist(monkeypatch):
+    """同艺人且高度相似的旧标签拼写差异不应丢失远端分类。"""
+    recording_id = "25aa1b18-5e85-454e-a15b-145d5559d0fe"
+    merged = MetaMusic(title="Cold As You Are", artists=["Taylor Swift"])
+    expected = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="Cold as You",
+        artists=["Taylor Swift"],
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(merged, merged, MetaMusic(title="Cold As You Are"))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(chain, "_recognize_musicbrainz_recording", Mock(return_value=expected))
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized_info = chain.recognize_music_by_path("Cold As You Are.flac")
+
+    assert recognized_info is expected
+    later_tier.assert_not_called()
+
+
 def test_musicbrainz_module_recognize_media_ignores_non_music():
     """非音乐请求应直接返回 None，不占用影视识别管线。"""
     result = MusicBrainzModule().recognize_media(

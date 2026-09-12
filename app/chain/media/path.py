@@ -1,6 +1,8 @@
 """音频证据、单曲层级与统一路径识别 owner。"""
 
+import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from enum import Enum
 from pathlib import Path
 from typing import Any, Generator, Optional, Tuple, TypeGuard, Union, cast
@@ -19,7 +21,10 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
 from app.domain.music import (
     music_artist_matches,
+    music_base_title,
+    music_text_key,
     music_title_matches,
+    music_titles,
     music_version_matches,
 )
 from app.runtime.execution import run_in_threadpool
@@ -170,14 +175,36 @@ def _fingerprint_info_matches_evidence(
     primary = tag_meta if tag_meta and tag_meta.title else filename_meta
     if not primary or not primary.title:
         return False
-    if not music_title_matches(info, primary.title):
-        return False
-    if not music_version_matches(info, primary):
-        return False
     artist_evidence = primary.artists or (
         filename_meta.artists if filename_meta else []
     )
-    return not artist_evidence or music_artist_matches(info, artist_evidence)
+    if artist_evidence and not music_artist_matches(info, artist_evidence):
+        return False
+    if not music_version_matches(info, primary):
+        return False
+    if music_title_matches(info, primary.title):
+        return True
+    # AcoustID is strong audio evidence once the artist agrees.  Allow common
+    # radio/edit/remaster suffixes and very small legacy-tag typos, while still
+    # rejecting unrelated recordings.  Without local artist evidence we retain
+    # the exact-title requirement above.
+    if not artist_evidence:
+        return False
+    evidence_key = music_text_key(music_base_title(primary.title))
+    version_suffix = re.compile(
+        r"(?:radio|single|version|edit|mix|remix|remaster(?:ed)?|live|acoustic|"
+        r"demo|mono|stereo|recorded|taylors)+"
+    )
+    for title in music_titles(info):
+        candidate_key = music_text_key(music_base_title(title))
+        if not candidate_key:
+            continue
+        shorter, longer = sorted((candidate_key, evidence_key), key=len)
+        if shorter and longer.startswith(shorter) and version_suffix.fullmatch(longer[len(shorter):]):
+            return True
+        if SequenceMatcher(None, candidate_key, evidence_key).ratio() >= 0.82:
+            return True
+    return False
 
 
 def _music_tier_plan(
