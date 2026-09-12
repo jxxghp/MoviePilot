@@ -17,6 +17,7 @@ from app.domain.music import (
     match_music_resource,
     music_album_matches,
     music_isrc_matches,
+    music_title_matches,
     music_version_matches,
     music_year_matches,
 )
@@ -122,6 +123,17 @@ def test_resource_parser_keeps_bracketed_title():
     meta = MetaMusic.parse_resource("【永遠・是朋友】24bit／96kHz", "專輯藝人：周華健；無損音樂")
     assert meta.title and "永遠" in meta.title
     assert meta.artists == ["周華健"]
+
+
+@pytest.mark.parametrize("title", [
+    'Macavity (From The Motion Picture Soundtrack "Cats")',
+    'Beautiful Ghosts (From The Motion Picture "Cats")',
+    "Beautiful Ghosts《猫》原声插曲",
+])
+def test_soundtrack_credit_does_not_change_recording_title(title):
+    """影视来源说明不是歌名本体，不能让正确的 MusicBrainz 录音候选被拒绝。"""
+    expected = "Macavity" if title.startswith("Macavity") else "Beautiful Ghosts"
+    assert music_title_matches(MusicInfo(title=expected), title)
 
 
 def test_music_album_field_cannot_match_target_recording():
