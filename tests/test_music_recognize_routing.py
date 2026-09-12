@@ -339,6 +339,7 @@ def test_recognize_music_by_path_applies_context_artist_to_filename_fallback(mon
         artists=["Taylor Swift"],
         album_artist="Taylor Swift",
         album="Speak Now",
+        year=2010,
     )
     expected = MusicInfo(
         media_source="musicbrainz",
@@ -368,6 +369,7 @@ def test_recognize_music_by_path_applies_context_artist_to_filename_fallback(mon
     filename_call = tier.call_args_list[1]
     assert filename_call.kwargs["meta"].artists == ["Taylor Swift"]
     assert filename_call.kwargs["meta"].album == "Speak Now"
+    assert filename_call.kwargs["meta"].year == 2010
 
 
 def test_recognize_music_by_path_rejects_fingerprint_text_mismatch(monkeypatch):
