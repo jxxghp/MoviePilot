@@ -607,11 +607,15 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             merged_meta.album_artist = info.album_artist
         if info.year:
             merged_meta.year = cast(Any, info.year)
-        if info.disc_number:
+        # 曲序和碟号描述的是当前物理文件在本地发行目录中的位置。MusicBrainz
+        # Recording 可能同时属于多个发行版，候选 release 的曲序并不一定对应
+        # 用户手里的这一版；只有本地没有这些字段时才用远端值补齐，避免同一
+        # 专辑的多首歌被错误写到相同目标文件名并相互覆盖。
+        if not merged_meta.disc_number and info.disc_number:
             merged_meta.disc_number = info.disc_number
-        if info.track_number:
+        if not merged_meta.track_number and info.track_number:
             merged_meta.track_number = info.track_number
-        if info.total_tracks:
+        if not merged_meta.total_tracks and info.total_tracks:
             merged_meta.total_tracks = info.total_tracks
         merged_meta.media_source = info.media_source
         merged_meta.media_id = info.media_id
