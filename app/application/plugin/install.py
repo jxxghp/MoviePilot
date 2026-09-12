@@ -450,7 +450,9 @@ class PluginInstallCommand:
                 self.__packages.async_activate_persistent_backup(state.checkpoint)
             )
 
-            registrations_refreshed = await self.__reload_and_refresh(plugin_id, state)
+            runtime_reloaded, registrations_refreshed = await self.__reload_and_refresh(
+                plugin_id, state
+            )
         except asyncio.CancelledError:
             raise
         except Exception as error:
@@ -603,7 +605,7 @@ class PluginInstallCommand:
         self,
         plugin_id: str,
         state: _InstallState,
-    ) -> bool:
+    ) -> tuple[bool, bool]:
         """重载运行态，激活后才刷新宿主注册，逐步标记已触达的补偿范围。
 
         重载没激活时插件还是旧载荷，此时刷新注册会把旧实现的服务与路由登记成新一
@@ -611,7 +613,7 @@ class PluginInstallCommand:
 
         :param plugin_id: 插件ID
         :param state: 安装事务状态
-        :return: 是否已刷新宿主注册
+        :return: 重载是否激活，以及是否已刷新宿主注册
         """
         state.stage = "runtime_reload"
         state.runtime_touched = True
@@ -620,11 +622,11 @@ class PluginInstallCommand:
             allow_pending_restart=bool(state.native_dependency_changes),
         )
         if not runtime_reloaded:
-            return False
+            return False, False
         state.stage = "registration_refresh"
         state.registrations_touched = True
         await _await_side_effect(self.__registration_refresher(plugin_id))
-        return True
+        return True, True
 
     async def __reload_active(
         self,
