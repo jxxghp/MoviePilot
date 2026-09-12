@@ -20,6 +20,11 @@ from app.domain.context import (
 )
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
+from app.domain.music import (
+    music_artist_matches,
+    music_title_matches,
+    music_version_matches,
+)
 from app.runtime.cache import async_fresh, fresh
 from app.runtime.events import Event
 from app.runtime.execution import run_in_threadpool
@@ -221,6 +226,25 @@ class _RecognitionOutcome:
             and self.candidate
             and not getattr(self.candidate, "recognize_cache_hit", False)
         )
+
+
+def _shared_music_candidate_matches(
+        plan: _RecognitionPlan,
+        candidate: Optional[MediaInfo | MusicInfo],
+) -> bool:
+    """共享音乐身份必须与本地文本证据一致，避免同名曲目跨艺人污染。
+
+    共享服务只提供远端身份，第二次原生查询能够证明这个身份存在，却不能
+    证明它属于当前文件。影视共享命中仍保持原有行为；音乐录音则至少核验
+    文件标签或目录上下文提供的艺人、曲名和录音版本。
+    """
+    if not isinstance(plan.meta, MetaMusic) or not isinstance(candidate, MusicInfo):
+        return True
+    if plan.meta.artists and not music_artist_matches(candidate, plan.meta.artists):
+        return False
+    if plan.meta.title and not music_title_matches(candidate, plan.meta.title):
+        return False
+    return music_version_matches(candidate, plan.meta)
 
 
 class _RecognitionAction(Enum):
@@ -505,6 +529,13 @@ class RecognitionMixin:
                     kwargs=plan.shared_module_kwargs(shared_params),
                     cache=plan.cache,
                 )
+                if not _shared_music_candidate_matches(plan, mediainfo):
+                    logger.warning(
+                        "共享音乐识别候选与本地艺人、曲名或版本证据冲突，已忽略："
+                        f"{getattr(mediainfo, 'artist', None)} - "
+                        f"{getattr(mediainfo, 'title', None)}"
+                    )
+                    mediainfo = None
                 outcome = _RecognitionOutcome.decide(mediainfo, outcome.fallback)
                 if outcome.has_identity:
                     yield _RecognitionStep(

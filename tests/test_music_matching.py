@@ -185,6 +185,22 @@ def test_music_version_checks_only_explicit_conflicting_dates(expected, actual, 
     assert music_version_matches(target, meta) is matched
 
 
+def test_taylors_version_is_distinct_from_original_recording():
+    """Taylor's Version 是重新录制，不得与原版仅凭同名和同艺人互换。"""
+    rerecorded = MusicInfo(
+        title="Back to December (Taylor's Version)",
+        artists=["Taylor Swift"],
+    )
+    original = MetaMusic(title="Back To December", artists=["Taylor Swift"])
+    same_version = MetaMusic(
+        title="Back To December (Taylor’s Version)",
+        artists=["Taylor Swift"],
+    )
+
+    assert music_version_matches(rerecorded, original) is False
+    assert music_version_matches(rerecorded, same_version) is True
+
+
 def test_music_resource_rejects_different_dated_live_recording():
     """版本日期可来自标题括号，不将两场同名现场录音自动绑定成同一作品。"""
     target = MusicInfo(title="Song (Live 2001-05-02)", artists=["Artist"])

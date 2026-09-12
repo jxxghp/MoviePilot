@@ -22,6 +22,7 @@ _VERSIONS = {
     "instrumental": r"\binstrumental\b|\bkaraoke\b|伴奏|纯音乐|純音樂",
     "acoustic": r"\bacoustic\b|\bunplugged\b|不插电|不插電",
     "demo": r"\bdemo\b",
+    "rerecorded": r"\btaylor(?:'|’)?s version\b|\bre-?record(?:ed|ing)\b|重录|重錄",
 }
 _VERSION_SUFFIX = re.compile(
     r"\s*[\[(（【][^\])）】]*(?:\blive\b|\bremix\b|\binstrumental\b|\bacoustic\b|"

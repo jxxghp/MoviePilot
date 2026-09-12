@@ -37,7 +37,7 @@ from app.schemas.types import (
 
 _FINGERPRINT_TITLE_QUALIFIER = re.compile(
     r"\s*[\[(（【][^\])）】]*(?:radio|single|version|edit|mix|remix|remaster(?:ed)?|"
-    r"live|acoustic|demo|mono|stereo|recorded|pop|taylors)[^\])）】]*[\])）】]",
+    r"live|acoustic|demo|mono|stereo|recorded|pop)[^\])）】]*[\])）】]",
     re.IGNORECASE,
 )
 
@@ -215,7 +215,7 @@ def _fingerprint_info_matches_evidence(
     evidence_key = music_text_key(music_base_title(primary.title))
     version_suffix = re.compile(
         r"(?:radio|single|version|edit|mix|remix|remaster(?:ed)?|live|acoustic|"
-        r"demo|mono|stereo|recorded|taylors)+"
+        r"demo|mono|stereo|recorded)+"
     )
     for title in music_titles(info):
         candidate_key = music_text_key(music_base_title(title))
