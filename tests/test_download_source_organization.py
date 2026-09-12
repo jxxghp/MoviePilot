@@ -325,6 +325,23 @@ def test_windows_paths_remain_absolute():
 
 
 def test_qb_module_uses_native_api_and_is_not_plugin_overridable(monkeypatch):
+    import sys
+    from types import ModuleType
+
+    qbittorrentapi = sys.modules.setdefault("qbittorrentapi", ModuleType("qbittorrentapi"))
+    monkeypatch.setattr(qbittorrentapi, "TorrentDictionary", dict, raising=False)
+    monkeypatch.setattr(qbittorrentapi, "TorrentFilesList", list, raising=False)
+    qbittorrentapi_client = sys.modules.setdefault(
+        "qbittorrentapi.client", ModuleType("qbittorrentapi.client")
+    )
+    monkeypatch.setattr(qbittorrentapi_client, "Client", object, raising=False)
+    qbittorrentapi_transfer = sys.modules.setdefault(
+        "qbittorrentapi.transfer", ModuleType("qbittorrentapi.transfer")
+    )
+    monkeypatch.setattr(
+        qbittorrentapi_transfer, "TransferInfoDictionary", dict, raising=False
+    )
+
     from app.modules.qbittorrent import QbittorrentModule
     from app.runtime.extensions.module.contracts import get_module_method_contract
 

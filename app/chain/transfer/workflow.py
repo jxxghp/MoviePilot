@@ -797,12 +797,16 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     bluray_dir=bluray_dir,
                     download_hash=download_hash,
                 )
-                discard_music_identity = _should_discard_batch_music_identity(
-                    multi_track_music_batch=multi_track_music_batch, manual=manual,
-                    media_source=media_source,
-                    media_id=media_id,
-                    mediainfo=mediainfo,
-                    history_music_type=self._download_history_music_type(download_history),
+                discard_music_identity = (
+                    self._is_audio_file(file_item)
+                    and _should_discard_batch_music_identity(
+                        multi_track_music_batch=multi_track_music_batch,
+                        manual=manual,
+                        media_source=media_source,
+                        media_id=media_id,
+                        mediainfo=mediainfo,
+                        history_music_type=self._download_history_music_type(download_history),
+                    )
                 )
                 history_music_meta, history_music_info = self._restore_music_download_context(
                     download_history=download_history,
