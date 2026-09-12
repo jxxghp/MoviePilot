@@ -17,6 +17,11 @@ from app.domain.context import (
 from app.domain.media import is_music_media_source
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
+from app.domain.music import (
+    music_artist_matches,
+    music_title_matches,
+    music_version_matches,
+)
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.schemas.media import normalize_media_source
@@ -146,6 +151,33 @@ def _finalize_music_path_info(
         # 没有远程身份，不参与该推断。
         result.album_type = "Single"
     return result
+
+
+def _fingerprint_info_matches_evidence(
+    info: Optional[MusicInfo],
+    tag_meta: Optional[MetaMusic],
+    filename_meta: Optional[MetaMusic],
+) -> bool:
+    """Require an AcoustID candidate to agree with local textual evidence.
+
+    Public AcoustID mappings can point to the wrong MusicBrainz recording even
+    at a high score.  A hit is therefore only authoritative when its title and
+    version, plus any locally available artist credit, agree with the tags or
+    parsed filename.
+    """
+    if not _has_remote_music_identity(info):
+        return False
+    primary = tag_meta if tag_meta and tag_meta.title else filename_meta
+    if not primary or not primary.title:
+        return False
+    if not music_title_matches(info, primary.title):
+        return False
+    if not music_version_matches(info, primary):
+        return False
+    artist_evidence = primary.artists or (
+        filename_meta.artists if filename_meta else []
+    )
+    return not artist_evidence or music_artist_matches(info, artist_evidence)
 
 
 def _music_tier_plan(
@@ -413,6 +445,14 @@ class MediaPathOwner(_MediaOwnerBase):
                 if action.kind is _MusicPathActionKind.FINGERPRINT:
                     recording_id = AcoustIdChain().identify_music_by_fingerprint(path)
                     info = self._recognize_musicbrainz_recording(meta, recording_id) if recording_id else None
+                    if self._is_remote_music_info(info) and not _fingerprint_info_matches_evidence(
+                        info, tag_meta, filename_meta,
+                    ):
+                        logger.warning(
+                            "AcoustID 候选与本地标签/文件名不符，"
+                            f"已回退文本识别：{Path(path).name} -> {info.artist} - {info.title}"
+                        )
+                        info = None
                     if self._is_remote_music_info(info):
                         logger.info("音乐识别命中 AcoustID 指纹层，已跳过标签和文件名识别")
                 elif action.kind is _MusicPathActionKind.ALBUM:
@@ -458,6 +498,14 @@ class MediaPathOwner(_MediaOwnerBase):
                         if recording_id
                         else None
                     )
+                    if self._is_remote_music_info(info) and not _fingerprint_info_matches_evidence(
+                        info, tag_meta, filename_meta,
+                    ):
+                        logger.warning(
+                            "AcoustID 候选与本地标签/文件名不符，"
+                            f"已回退文本识别：{Path(path).name} -> {info.artist} - {info.title}"
+                        )
+                        info = None
                     if self._is_remote_music_info(info):
                         logger.info("音乐识别命中 AcoustID 指纹层，已跳过标签和文件名识别")
                 elif action.kind is _MusicPathActionKind.ALBUM:

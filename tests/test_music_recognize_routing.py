@@ -146,12 +146,13 @@ def test_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkeypatch)
     """AcoustID 命中后应按 MBID 直查，且不再执行标签和文件名匹配。"""
     recording_id = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
     merged = MetaMusic(title="Get Lucky", audio_format="FLAC")
-    tag_meta = MetaMusic(title="Tagged Title")
+    tag_meta = MetaMusic(title="Get Lucky", artists=["Daft Punk"])
     filename_meta = MetaMusic(title="Filename Title")
     expected = MusicInfo(
         media_source="musicbrainz",
         media_id=recording_id,
         title="Get Lucky",
+        artists=["Daft Punk"],
     )
     chain = MediaChain()
     direct = Mock(return_value=expected)
@@ -266,7 +267,7 @@ def test_async_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkey
     later_tier = AsyncMock()
     monkeypatch.setattr(
         "app.chain.media.path.AudioMetadataHelper.read_evidence",
-        Mock(return_value=(merged, MetaMusic(), MetaMusic())),
+        Mock(return_value=(merged, MetaMusic(title="Get Lucky"), MetaMusic(title="track"))),
     )
     monkeypatch.setattr(
         AcoustIdChain,
@@ -284,6 +285,47 @@ def test_async_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkey
     assert recognized_info is expected
     direct.assert_awaited_once_with(merged, recording_id)
     later_tier.assert_not_awaited()
+
+
+def test_recognize_music_by_path_rejects_fingerprint_text_mismatch(monkeypatch):
+    """A high-confidence but wrongly mapped AcoustID result must fall back."""
+    wrong_id = "f5ac0d7b-8540-4534-93cf-ac9642e43e4d"
+    merged = MetaMusic(title="Christmas Tree Farm", artists=["Taylor Swift"])
+    filename_meta = MetaMusic(title="Christmas Tree Farm", artists=["Taylor Swift"])
+    wrong = MusicInfo(
+        media_source="musicbrainz",
+        media_id=wrong_id,
+        title="Wrapped in Red (My Heart for You) [Christmas in the Trees Mix]",
+        artists=["Justin Lovemaker"],
+    )
+    expected = MusicInfo(
+        media_source="musicbrainz",
+        media_id="correct-recording",
+        title="Christmas Tree Farm",
+        artists=["Taylor Swift"],
+    )
+    chain = MediaChain()
+    tier = Mock(return_value=expected)
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(merged, merged, filename_meta)),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=wrong_id),
+    )
+    monkeypatch.setattr(chain, "_recognize_musicbrainz_recording", Mock(return_value=wrong))
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", tier)
+
+    _, recognized_info = chain.recognize_music_by_path("Christmas Tree Farm.mp3")
+
+    assert recognized_info is expected
+    tier.assert_called_once_with(
+        meta=merged,
+        media_source=None,
+        tier_name="文件标签",
+    )
 
 
 def test_musicbrainz_module_recognize_media_ignores_non_music():
