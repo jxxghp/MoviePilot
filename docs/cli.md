@@ -529,6 +529,8 @@ docker compose start <service>
 说明：
 
 - SQLite 使用在线备份 API，PostgreSQL 使用镜像内置的 `pg_dump` custom format
+- SQLite 插件自有数据库会在创建宿主备份时同步备份到 `database_backup/plugins/<插件ID>/`，文件名格式为 `<插件ID>_<插件版本>_sqlite_<时间>.db`
+- PostgreSQL 插件自有数据库使用独立 schema；插件建库会校验当前账号的 schema 使用和建表权限，权限不足时插件不会进入运行态
 - 源码部署使用 PostgreSQL 时，宿主机需安装 `pg_dump` 和 `pg_restore` 并加入 `PATH`；Docker 镜像已内置
 - 默认目录为配置目录下的 `database_backup/`，可通过 `DB_BACKUP_PATH` 调整
 - 备份、列举和校验可独立通过 CLI 执行

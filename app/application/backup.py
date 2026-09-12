@@ -33,6 +33,7 @@ class BackupArtifact:
     created_at: datetime
     path: Path
     size: int
+    target: str = "moviepilot"
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,11 +138,15 @@ class DatabaseBackupService:
         artifact_store_factory: BackupArtifactStoreFactory,
         policy_reader: Callable[[], BackupPolicy],
         clock: Callable[[], datetime] = datetime.now,
+        target: str = "moviepilot",
+        version: str | None = None,
     ) -> None:
         self._backend = backend
         self._artifact_store_factory = artifact_store_factory
         self._policy_reader = policy_reader
         self._clock = clock
+        self._target = target
+        self._version = version
         self._create_lock = Lock()
 
     def create(self) -> BackupArtifact:
@@ -156,6 +161,8 @@ class DatabaseBackupService:
                 db_type=self._backend.db_type,
                 created_at=created_at,
                 suffix=self._backend.suffix,
+                target=self._target,
+                version=self._version,
             )
             temporary = files.create_temporary(self._backend.suffix)
             try:
@@ -263,4 +270,5 @@ class DatabaseBackupService:
             created_at=created_at or files.created_at(path.name),
             path=path,
             size=files.size(path.name),
+            target=files.target(path.name),
         )
