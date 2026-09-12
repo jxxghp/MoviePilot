@@ -285,15 +285,16 @@ async def validate_policy(
 async def preview_policy(
     request: ClassificationPreviewRequest,
     _: object = Depends(get_current_active_user_async),
-    runtime: ClassificationRuntime = Depends(get_classification_runtime),
+    host_runtime: HostRuntime = Depends(get_host_runtime),
 ) -> ClassificationEvaluation | JSONResponse:
     """对选择的媒体信息或兼容事实执行策略，并返回完整匹配说明。"""
+    runtime = host_runtime.classification
     if request.policy is None:
         _require_active_policy(runtime)
     try:
         return ClassificationAnalysisService(
             runtime.service,
-            execution=runtime.classification_execution,
+            execution=host_runtime.classification_execution,
         ).preview(request)
     except ClassificationPolicyValidationError as error:
         return _validation_response(error)

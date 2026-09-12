@@ -8,7 +8,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Callable, Final, Literal, Optional, TypeAlias, Union, cast
 
-from app.application.classification.migration_values import (
+from app.application.classification.compiler import (
     _all_or_single,
     _any_or_single,
     _legacy_field_definition,

@@ -460,7 +460,7 @@ def test_application_classification_uses_same_named_package() -> None:
         "execution.py",
         "legacy.py",
         "migration.py",
-        "migration_values.py",
+        "compiler.py",
         "projection.py",
         "reference.py",
         "runtime.py",
