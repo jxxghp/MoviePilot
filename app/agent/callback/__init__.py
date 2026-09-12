@@ -42,7 +42,7 @@ class StreamingHandler:
        - 后续有新内容时编辑同一条消息（通过 edit_message）
        - 当消息长度接近渠道限制时，冻结当前消息并发送新消息继续输出
     4. 工具调用时：
-       - 流式渠道：工具消息直接 emit() 追加到 buffer，与 Agent 文字合并为同一条流式消息
+       - 可编辑渠道：工具摘要实时写入 buffer；同一批次的后续调用会原地更新摘要块
        - 非流式渠道：调用 take() 取出已积累的文字，与工具消息合并独立发送
     5. Agent最终完成时调用 stop_streaming()：执行最后一次刷新，
        返回是否已通过流式发送完所有内容（调用方据此决定是否还需额外发送）
@@ -75,8 +75,13 @@ class StreamingHandler:
         self._original_chat_id: Optional[str] = None
         self._title: str = ""
         self._allow_dispatch_without_context = False
-        # 非啰嗦模式下的待输出工具统计，等下一段文本到来时再统一补一句摘要
+        # 非啰嗦模式下尚未写入展示的工具统计。
         self._pending_tool_stats: dict[str, dict[str, Any]] = {}
+        # 当前正在实时更新的工具摘要块：(起始偏移, 完整块, 摘要行)。
+        # 正文到来后清空，使下一次工具调用开启新的统计批次。
+        self._live_tool_summary: Optional[tuple[int, str, str]] = None
+        # 当前实时摘要批次的累计统计，不能随着每次渲染摘要被消费掉。
+        self._live_tool_stats: dict[str, dict[str, Any]] = {}
         # 本轮已写入缓冲区的工具展示行，供 Telegram 富文本渲染时做区分样式
         self._tool_summaries: set[str] = set()
 
@@ -96,8 +101,16 @@ class StreamingHandler:
             emitted = token or ""
 
             if self._pending_tool_stats:
-                summary = self._consume_pending_tool_summary_locked()
+                if self._live_tool_summary:
+                    # 实时摘要已经直接更新了 buffer，正文只需继续追加，避免把
+                    # 本次替换后的摘要块再次拼接到缓冲区末尾。
+                    self._flush_live_tool_summary_locked()
+                    summary = ""
+                else:
+                    summary = self._consume_pending_tool_summary_locked()
                 if summary:
+                    self._live_tool_summary = None
+                    self._live_tool_stats = {}
                     if emitted:
                         emitted = f"{summary}{emitted.lstrip(chr(10))}"
                     else:
@@ -107,6 +120,9 @@ class StreamingHandler:
             if self._buffer.endswith("\n\n") and emitted.startswith("\n"):
                 emitted = emitted.lstrip("\n")
             self._buffer += emitted
+            if emitted:
+                self._live_tool_summary = None
+                self._live_tool_stats = {}
             return emitted
 
     def emit_tool_message(self, message: str) -> str:
@@ -179,10 +195,14 @@ class StreamingHandler:
 
         with self._lock:
             if not self._buffer:
+                self._live_tool_summary = None
+                self._live_tool_stats = {}
                 return ""
             message = self._buffer
             logger.info(f"Agent消息: {message}")
             self._buffer = ""
+            self._live_tool_summary = None
+            self._live_tool_stats = {}
             return message
 
     def clear(self):
@@ -196,6 +216,8 @@ class StreamingHandler:
             self._msg_start_offset = 0
             self._pending_tool_stats = {}
             self._tool_summaries = set()
+            self._live_tool_summary = None
+            self._live_tool_stats = {}
 
     def reset(self):
         """
@@ -211,6 +233,8 @@ class StreamingHandler:
             self._msg_start_offset = 0
             self._pending_tool_stats = {}
             self._tool_summaries = set()
+            self._live_tool_summary = None
+            self._live_tool_stats = {}
 
     async def start_streaming(
         self,
@@ -274,6 +298,8 @@ class StreamingHandler:
         self._msg_start_offset = 0
         self._pending_tool_stats = {}
         self._tool_summaries = set()
+        self._live_tool_summary = None
+        self._live_tool_stats = {}
 
         # 检查渠道是否支持消息编辑，不支持则仅收集 token 到 buffer，不实时推送
         if not self._can_stream():
@@ -338,6 +364,8 @@ class StreamingHandler:
             self._msg_start_offset = 0
             self._pending_tool_stats = {}
             self._tool_summaries = set()
+            self._live_tool_summary = None
+            self._live_tool_stats = {}
             if all_sent:
                 # 所有内容已通过流式发送，清空缓冲区
                 self._buffer = ""
@@ -382,6 +410,15 @@ class StreamingHandler:
             for target_value in target_values:
                 bucket["targets"].add(str(target_value))
 
+        self._on_tool_stats_recorded()
+
+    def _on_tool_stats_recorded(self) -> None:
+        """工具统计新增后，在支持编辑的流式渠道中立即刷新当前摘要块。"""
+        if not self._streaming_enabled or not self._can_stream():
+            return
+        with self._lock:
+            self._flush_live_tool_summary_locked()
+
     @staticmethod
     def _extract_subagent_targets(tool_kwargs: dict[str, Any]) -> list[str]:
         """按实际委派条目数量生成通用子代理统计目标。"""
@@ -404,10 +441,57 @@ class StreamingHandler:
         将待输出的工具统计摘要补入缓冲区，并返回本次新增的摘要文本。
         """
         with self._lock:
+            if self._live_tool_summary and self._pending_tool_stats:
+                return self._flush_live_tool_summary_locked()
             summary = self._consume_pending_tool_summary_locked()
             if summary:
                 self._buffer += summary
+                self._live_tool_summary = None
+                self._live_tool_stats = {}
             return summary
+
+    def _flush_live_tool_summary_locked(self) -> str:
+        """在缓冲区末尾追加或原地替换当前工具批次摘要。"""
+        live_summary = self._live_tool_summary
+        visible_buffer = self._buffer
+        live_start = len(self._buffer)
+        old_summary = None
+
+        if live_summary and self._buffer[live_summary[0] :] == live_summary[1]:
+            live_start, _old_block, old_summary = live_summary
+            visible_buffer = self._buffer[:live_start]
+
+        if self._pending_tool_stats:
+            self._merge_tool_stats_locked(self._live_tool_stats, self._pending_tool_stats)
+            self._pending_tool_stats = {}
+        pending_summary = self._build_tool_summary_locked(self._live_tool_stats, visible_buffer)
+        if not pending_summary:
+            return ""
+
+        summary, summary_block = pending_summary
+        if old_summary:
+            self._tool_summaries.discard(old_summary)
+        self._tool_summaries.add(summary)
+        self._buffer = visible_buffer + summary_block
+        self._live_tool_summary = (len(visible_buffer), summary_block, summary)
+        return summary_block
+
+    @staticmethod
+    def _merge_tool_stats_locked(
+        accumulated_stats: dict[str, dict[str, Any]],
+        new_stats: dict[str, dict[str, Any]],
+    ) -> None:
+        """将新一轮工具统计并入当前实时摘要批次。"""
+        for category, bucket in new_stats.items():
+            accumulated_bucket = accumulated_stats.setdefault(
+                category,
+                {
+                    "count": 0,
+                    "targets": set(),
+                },
+            )
+            accumulated_bucket["count"] += bucket["count"]
+            accumulated_bucket["targets"].update(bucket["targets"])
 
     @staticmethod
     def _classify_tool_call(
@@ -516,11 +600,36 @@ class StreamingHandler:
         return "tool", None
 
     def _consume_pending_tool_summary_locked(self) -> str:
-        if not self._pending_tool_stats:
+        pending_summary = self._build_pending_tool_summary_locked(self._buffer)
+        if not pending_summary:
             return ""
+        summary, summary_block = pending_summary
+        self._tool_summaries.add(summary)
+        return summary_block
+
+    def _build_pending_tool_summary_locked(
+        self,
+        visible_buffer: str,
+    ) -> Optional[tuple[str, str]]:
+        """消费待统计数据，并按给定可见文本计算摘要块的段落边界。"""
+        if not self._pending_tool_stats:
+            return None
+
+        pending_stats = self._pending_tool_stats
+        self._pending_tool_stats = {}
+        return self._build_tool_summary_locked(pending_stats, visible_buffer)
+
+    def _build_tool_summary_locked(
+        self,
+        tool_stats: dict[str, dict[str, Any]],
+        visible_buffer: str,
+    ) -> Optional[tuple[str, str]]:
+        """按给定工具统计和可见文本生成摘要行及其段落块。"""
+        if not tool_stats:
+            return None
 
         parts = []
-        for category, bucket in self._pending_tool_stats.items():
+        for category, bucket in tool_stats.items():
             value = bucket["count"]
             if category in {"file_read", "file_write", "directory", "web_browse", "skill"} and bucket["targets"]:
                 value = len(bucket["targets"])
@@ -528,20 +637,18 @@ class StreamingHandler:
             if part:
                 parts.append(part)
 
-        self._pending_tool_stats = {}
         if not parts:
-            return ""
+            return None
 
         summary = f"（{'，'.join(parts)}）"
-        self._tool_summaries.add(summary)
         # 摘要前始终保证一个空行，让工具执行信息与正文分属不同段落，
         # 避免 Markdown 富文本把单个换行折叠成同一段落内的软换行
-        visible_buffer = self._buffer.rstrip(" \t")
+        visible_buffer = visible_buffer.rstrip(" \t")
         trailing_newlines = len(visible_buffer) - len(visible_buffer.rstrip("\n"))
         prefix = ""
         if visible_buffer.strip():
             prefix = "\n" * max(2 - trailing_newlines, 0)
-        return f"{prefix}{summary}\n\n"
+        return summary, f"{prefix}{summary}\n\n"
 
     @staticmethod
     def _format_tool_stat(category: str, count: int) -> str:

@@ -121,8 +121,16 @@ class _WebAgentStreamingHandlerMixin:
             tool_message=tool_message,
             tool_kwargs=tool_kwargs,
         )
-        # 结构化回调存在但未启用详细模式时，等下一段正文或流结束后一次性输出
-        # 多种工具的计数，避免每个调用各自生成一条摘要。
+
+    def _on_tool_stats_recorded(self) -> None:
+        """WebAgent 非啰嗦模式在每次工具开始时立即发布最新摘要。"""
+        if self._uses_structured_tool_events():
+            return
+        if self._streaming_enabled:
+            self.flush_pending_tool_summary()
+            return
+        # 兼容尚未进入流式生命周期的直接调用；正式 Web 请求会在上面的
+        # 分支中逐次回调 SSE，而不会等正文或流结束后才显示统计。
         if not self._on_tool_event:
             self.flush_pending_tool_summary()
 
@@ -177,6 +185,7 @@ class _WebAgentStreamingHandlerMixin:
         self._message_response = None
         self._msg_start_offset = 0
         self._pending_tool_stats = {}
+        self._live_tool_summary = None
 
     async def stop_streaming(self) -> tuple[bool, str]:
         """停止 Web SSE 流式状态，保留缓冲区给 Agent 收口逻辑去重。"""
@@ -189,6 +198,7 @@ class _WebAgentStreamingHandlerMixin:
             self._message_response = None
             self._msg_start_offset = 0
             self._pending_tool_stats = {}
+            self._live_tool_summary = None
         return False, ""
 
     @property
