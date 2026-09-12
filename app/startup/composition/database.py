@@ -215,10 +215,9 @@ def build_database_governance() -> DatabaseGovernance:
             version = manager.get_local_plugin_version(handle.plugin_id)
             if not version:
                 logger.warning(
-                    "跳过插件 %s 的数据库备份：未找到插件版本",
+                    "插件 %s 未找到版本，将使用无版本文件名继续备份数据库",
                     handle.plugin_id,
                 )
-                continue
             plugin_service = DatabaseBackupService(
                 backend=SQLiteBackupBackend(handle.engine),
                 artifact_store_factory=BackupFiles,

@@ -76,6 +76,42 @@ def test_market_sync_keeps_install_rollback_enabled() -> None:
     install.assert_called_once_with(plugin.id, None, False, None)
 
 
+def test_market_sync_arbitrates_online_versions_before_local_overlay() -> None:
+    """在线候选先按版本仲裁，不能因输入顺序选择旧版本。"""
+    old = SimpleNamespace(
+        id="DemoPlugin",
+        repo_url="https://example.com/old",
+        plugin_name="Demo old",
+        plugin_version="1.0.0",
+        system_version_compatible=True,
+    )
+    new = SimpleNamespace(
+        id="DemoPlugin",
+        repo_url="https://example.com/new",
+        plugin_name="Demo new",
+        plugin_version="2.0.0",
+        system_version_compatible=True,
+    )
+    install = Mock(return_value=(True, ""))
+
+    def merge_online(items, *_args):
+        return [max(items, key=lambda item: Version(item.plugin_version))]
+
+    service = PluginSyncService(
+        frozen=lambda: False,
+        installed_plugins=lambda: [old.id],
+        online_plugins=lambda: [new, old],
+        local_plugins=lambda: [],
+        merge_plugins=merge_online,
+        plugin_exists=lambda *_args: False,
+        install=install,
+        log=Mock(),
+    )
+
+    assert service.sync() == [new.id]
+    install.assert_called_once_with(new.id, None, False, None)
+
+
 def test_market_sync_restores_trusted_online_payload_after_local_source_removed() -> None:
     """本地高版本来源消失后，启动同步仍恢复已绑定的在线载荷。"""
     plugin = SimpleNamespace(

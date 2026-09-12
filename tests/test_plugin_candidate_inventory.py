@@ -222,15 +222,15 @@ def test_local_scan_preserves_absent_present_and_failed_states() -> None:
     assert failed.local_read.error == "local repository unavailable"
 
 
-def test_local_candidates_keep_source_marker_in_inventory_projection() -> None:
-    """本地候选可参与库存，并保留可供来源选择使用的来源标识。"""
+def test_local_candidates_hide_path_in_inventory_projection() -> None:
+    """本地候选可参与库存，但库存公共投影不包含仓库路径。"""
     reader = PluginCandidateInventoryReader(
         market_loader=lambda *_args: {},
         local_candidate_loader=lambda: {
             "LocalPlugin": {
                 "version": "3.0.0",
                 "package_version": "v3",
-                "repo_url": "local://LocalPlugin?path=/private/local&version=v3",
+                "repo_url": "local://LocalPlugin?version=v3",
                 "path": "/private/local/plugins/LocalPlugin",
                 "repo_path": "/private/local",
             },
@@ -244,10 +244,11 @@ def test_local_candidates_keep_source_marker_in_inventory_projection() -> None:
     assert public["local_candidates"] == [{
         "plugin_id": "LocalPlugin",
         "source_type": "local",
-        "repo_url": "local://LocalPlugin?path=/private/local&version=v3",
+        "repo_url": "local://LocalPlugin?version=v3",
         "package_generation": "v3",
         "plugin_version": "3.0.0",
     }]
+    assert "/private/local" not in str(public)
 
 
 def test_invalid_local_candidate_does_not_abort_online_inventory() -> None:

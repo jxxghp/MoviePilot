@@ -82,11 +82,12 @@ class PluginSyncService:
             if restore_plugin_ids or (missing_ids - local_plugin_ids)
             else []
         )
-        # 启动同步只负责恢复缺失载荷；候选来源按本地优先建立索引，避免
-        # 市场目录合并结果把本地候选替换成在线候选。
+        # 先沿用目录服务对在线候选的版本仲裁，再以本地候选覆盖同 ID 的在线候选。
+        # 这样既保持本地载荷优先，也不会因字典遍历顺序把高版本在线候选覆盖掉。
+        merged_online = self._merge_plugins(online, [], []) if online else []
         candidates_by_id: dict[str, Any] = {
             plugin.id.lower(): plugin
-            for plugin in online
+            for plugin in merged_online
             if getattr(plugin, "id", None)
         }
         candidates_by_id.update(

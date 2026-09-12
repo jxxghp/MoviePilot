@@ -11,8 +11,8 @@ from pathlib import Path
 from app.runtime.version import get_app_version
 
 _BACKUP_NAME = re.compile(
-    r"^(?:(?P<target>[0-9A-Za-z][0-9A-Za-z_-]*)_"
-    r"(?P<version>v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)_)?"
+    r"^(?:(?P<target>[0-9A-Za-z][0-9A-Za-z_-]*)"
+    r"(?:_(?P<version>v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?))?_)?"
     r"(?P<db_type>sqlite|postgresql)_"
     r"(?P<timestamp>\d{8}_\d{6})"
     r"(?:_(?P<sequence>\d+))?"
@@ -85,16 +85,21 @@ class BackupFiles:
         target: str = "moviepilot",
         version: str | None = None,
     ) -> str:
-        """生成包含目标、版本、数据库类型和时间的可读文件名。"""
+        """生成包含目标、可选版本、数据库类型和时间的可读文件名。"""
         timestamp = created_at.strftime("%Y%m%d_%H%M%S")
-        version = (version or get_app_version()).strip()
-        if not version.startswith("v"):
-            version = f"v{version}"
-        if _RELEASE_VERSION.fullmatch(version) is None or not re.fullmatch(
-            r"[0-9A-Za-z][0-9A-Za-z_-]*", target
-        ):
+        if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z_-]*", target):
             raise ValueError("数据库备份目标或版本号无法用于文件命名")
-        base = f"{target}_{version}_{db_type}_{timestamp}"
+        normalized_version = version.strip() if version else None
+        if normalized_version is None and target == "moviepilot":
+            normalized_version = get_app_version().strip()
+        if normalized_version:
+            if not normalized_version.startswith("v"):
+                normalized_version = f"v{normalized_version}"
+            if _RELEASE_VERSION.fullmatch(normalized_version) is None:
+                raise ValueError("数据库备份目标或版本号无法用于文件命名")
+            base = f"{target}_{normalized_version}_{db_type}_{timestamp}"
+        else:
+            base = f"{target}_{db_type}_{timestamp}"
         candidate = f"{base}{suffix}"
         sequence = 1
         while (self.root / candidate).exists():
