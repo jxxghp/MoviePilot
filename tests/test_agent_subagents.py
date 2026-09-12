@@ -539,6 +539,8 @@ def test_control_tool_pipeline_timeout_is_bounded_when_task_ignores_cancel():
 
         assert payload["success"] is False
         assert "等待超时" in payload["error"]
+        assert payload["execution_outcome"] == "failed"
+        assert "修正任务描述" in payload["recovery"]
         assert payload["tasks"][0]["status"] == "running"
         assert cancelled.is_set()
 

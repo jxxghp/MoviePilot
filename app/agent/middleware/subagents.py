@@ -686,8 +686,15 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
 
     @staticmethod
     def _json_response(payload: dict[str, Any]) -> str:
-        """将工具响应序列化为稳定 JSON。"""
-        return json.dumps(payload, ensure_ascii=False, indent=2)
+        """将工具响应序列化为稳定 JSON，并为失败提供模型恢复路径。"""
+        normalized = dict(payload)
+        if normalized.get("success") is False:
+            normalized.setdefault("execution_outcome", "failed")
+            normalized.setdefault(
+                "recovery",
+                "根据 error 或 tasks 中的状态修正任务描述或参数；不要重复启动已在途的子代理。",
+            )
+        return json.dumps(normalized, ensure_ascii=False, indent=2)
 
     @staticmethod
     def _normalize_timeout_ms(timeout_ms: Optional[int]) -> int:
@@ -733,6 +740,8 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         error = record.task.exception()
         if error:
             payload["error"] = summarize_error(error)
+            payload["execution_outcome"] = "failed"
+            payload["recovery"] = "根据子代理错误修正任务描述或参数后重试；不要重复启动仍在途的任务。"
             return payload
 
         result, result_truncated = _clip_text(
