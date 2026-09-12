@@ -570,6 +570,41 @@ def test_parse_album_dir_without_artist():
     assert info["year"] == 2013
 
 
+def test_parse_album_dir_with_prefix_year_does_not_invent_artist():
+    """年份前缀目录不应把年份和专辑片段误判成艺人。"""
+    info = MetaMusic.parse_album_dir(
+        "2021-All Too Well (Sad Girl Autumn Version) - Recorded at Long Pond Studios [Explicit]"
+    )
+
+    assert info["artist"] is None
+    assert info["album"] == "All Too Well - Recorded at Long Pond Studios"
+    assert info["year"] == 2021
+
+
+def test_apply_path_context_keeps_artist_out_of_prefix_year_directory(tmp_path):
+    """有标签艺人的单曲不应继承年份前缀目录生成的伪专辑艺人。"""
+    album_dir = tmp_path / (
+        "2021-All Too Well (Sad Girl Autumn Version) - Recorded at Long Pond Studios [Explicit]"
+    )
+    album_dir.mkdir()
+    audio_file = album_dir / "Taylor Swift - All Too Well (Sad Girl Autumn Version).mp3"
+    audio_file.write_bytes(b"")
+    meta = MetaMusic(
+        org_string=audio_file.name,
+        title="All Too Well (Sad Girl Autumn Version)",
+        artists=["Taylor Swift"],
+        album="All Too Well (Sad Girl Autumn Version)",
+        track_number=1,
+        audio_format="MP3",
+    )
+
+    meta.apply_path_context(audio_file)
+
+    assert meta.artists == ["Taylor Swift"]
+    assert meta.album_artist is None
+    assert meta.year == 2021
+
+
 def test_apply_path_context_fills_wav_meta(tmp_path):
     """无标签 WAV 应从文件名和目录结构补齐曲序、专辑和歌手。"""
     album_dir = tmp_path / "周杰伦 - 七里香 (2004) [FLAC]"
