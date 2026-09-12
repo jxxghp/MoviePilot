@@ -197,6 +197,7 @@ def _fingerprint_info_matches_evidence(
     parsed filename.
     """
     from difflib import SequenceMatcher
+
     from app.domain.music import (  # pylint: disable=import-outside-toplevel
         music_album_matches,
         music_artist_matches,
