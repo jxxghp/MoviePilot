@@ -510,6 +510,123 @@ def test_recognize_music_by_path_accepts_equivalent_recording_qualifiers(monkeyp
     later_tier.assert_not_called()
 
 
+def test_recognize_music_by_path_reconciles_standalone_single_release(monkeypatch):
+    """指纹录音属于多个发行版时，应尊重本地同名单曲标签。"""
+    recording_id = "131b296c-3533-4e55-9800-a6dd83b90737"
+    single_title = 'Beautiful Ghosts (From The Motion Picture "Cats")'
+    tagged = MetaMusic(
+        title=single_title,
+        artists=["Taylor Swift"],
+        album=single_title,
+        album_artist="Taylor Swift",
+        year=2019,
+        track_number=1,
+        total_tracks=1,
+    )
+    soundtrack = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="Beautiful Ghosts",
+        artists=["Taylor Swift"],
+        album="Cats: Highlights From the Motion Picture Soundtrack",
+        album_artist="Andrew Lloyd Webber",
+        album_id="cats-release-group",
+        album_type="Album",
+        secondary_types=["Soundtrack"],
+        year=2019,
+        track_number=3,
+        total_tracks=16,
+        cover_url="https://cover.example/cats.jpg",
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(tagged, tagged, MetaMusic(title="Beautiful Ghosts"))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_recognize_musicbrainz_recording",
+        Mock(return_value=soundtrack),
+    )
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized = chain.recognize_music_by_path("Beautiful Ghosts.mp3")
+
+    assert recognized is not soundtrack
+    assert recognized.media_id == recording_id
+    assert recognized.title == "Beautiful Ghosts"
+    assert recognized.album == single_title
+    assert recognized.album_artist == "Taylor Swift"
+    assert recognized.album_id is None
+    assert recognized.album_type == "Single"
+    assert recognized.secondary_types == []
+    assert recognized.year == 2019
+    assert recognized.track_number == 1
+    assert recognized.total_tracks == 1
+    assert recognized.cover_url is None
+    assert recognized.metadata_category == "Single"
+    later_tier.assert_not_called()
+
+
+def test_async_recognize_music_by_path_reconciles_standalone_single_release(monkeypatch):
+    """异步路径必须与同步路径使用相同的单曲发行校正规则。"""
+    recording_id = "131b296c-3533-4e55-9800-a6dd83b90737"
+    single_title = 'Beautiful Ghosts (From The Motion Picture "Cats")'
+    tagged = MetaMusic(
+        title=single_title,
+        artists=["Taylor Swift"],
+        album=single_title,
+        year=2019,
+    )
+    soundtrack = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="Beautiful Ghosts",
+        artists=["Taylor Swift"],
+        album="Cats: Highlights From the Motion Picture Soundtrack",
+        album_id="cats-release-group",
+        album_type="Album",
+        secondary_types=["Soundtrack"],
+        year=2019,
+        cover_url="https://cover.example/cats.jpg",
+    )
+    chain = MediaChain()
+    later_tier = AsyncMock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(tagged, tagged, MetaMusic(title="Beautiful Ghosts"))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "async_identify_music_by_fingerprint",
+        AsyncMock(return_value=recording_id),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_async_recognize_musicbrainz_recording",
+        AsyncMock(return_value=soundtrack),
+    )
+    monkeypatch.setattr(chain, "_async_recognize_music_meta_tier", later_tier)
+
+    _, recognized = asyncio.run(
+        chain.async_recognize_music_by_path("Beautiful Ghosts.mp3")
+    )
+
+    assert recognized.album == single_title
+    assert recognized.album_id is None
+    assert recognized.album_type == "Single"
+    assert recognized.secondary_types == []
+    assert recognized.cover_url is None
+    assert recognized.metadata_category == "Single"
+    later_tier.assert_not_awaited()
+
+
 def test_musicbrainz_module_recognize_media_ignores_non_music():
     """非音乐请求应直接返回 None，不占用影视识别管线。"""
     result = MusicBrainzModule().recognize_media(

@@ -1,6 +1,7 @@
 """音频证据、单曲层级与统一路径识别 owner。"""
 
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from enum import Enum
@@ -213,7 +214,12 @@ def _fingerprint_info_matches_evidence(
         return False
     if not music_version_matches(info, primary):
         return False
-    if primary.album and info.album and not music_album_matches(info, primary.album):
+    if (
+        primary.album
+        and info.album
+        and not music_album_matches(info, primary.album)
+        and not _is_standalone_single_evidence(primary)
+    ):
         return False
     if not music_year_matches(info, primary):
         return False
@@ -245,6 +251,53 @@ def _fingerprint_info_matches_evidence(
         if SequenceMatcher(None, candidate_key, evidence_key).ratio() >= 0.82:
             return True
     return False
+
+
+def _is_standalone_single_evidence(meta: MetaMusic) -> bool:
+    """判断本地标签是否明确把当前录音描述为同名单曲发行。"""
+    title_key = music_text_key(music_base_title(meta.title or ""))
+    album_key = music_text_key(music_base_title(meta.album or ""))
+    return bool(title_key and album_key and title_key == album_key)
+
+
+def _reconcile_fingerprint_release(
+    info: MusicInfo,
+    tag_meta: Optional[MetaMusic],
+    filename_meta: Optional[MetaMusic],
+) -> MusicInfo:
+    """用明确的本地单曲标签校正指纹录音所选中的任意关联发行版。
+
+    MusicBrainz Recording 可以同时收录于单曲和原声专辑。指纹证明的是录音
+    身份，而不是具体发行版；当本地标题和专辑同名时，保留录音 MBID，并把
+    发行层字段收敛为本地单曲证据，避免错误归入远端返回的另一张专辑。
+    """
+    primary = tag_meta if tag_meta and tag_meta.title else filename_meta
+    if (
+        not primary
+        or not _is_standalone_single_evidence(primary)
+        or not primary.album
+        or not info.album
+        or music_album_matches(info, primary.album)
+    ):
+        return info
+
+    reconciled = deepcopy(info)
+    reconciled.album = primary.album
+    reconciled.album_artist = primary.album_artist or info.artist
+    reconciled.album_id = None
+    reconciled.album_type = "Single"
+    reconciled.secondary_types = []
+    reconciled.year = primary.year
+    reconciled.release_date = None
+    reconciled.release_status = None
+    reconciled.disc_number = primary.disc_number
+    reconciled.track_number = primary.track_number
+    reconciled.total_tracks = primary.total_tracks
+    reconciled.cover_url = None
+    reconciled.category = ""
+    reconciled.metadata_category = "Single"
+    reconciled.classification = None
+    return reconciled
 
 
 def _music_info_matches_text_evidence(
@@ -553,6 +606,11 @@ class MediaPathOwner(_MediaOwnerBase):
                         )
                         info = None
                     if self._is_remote_music_info(info):
+                        info = _reconcile_fingerprint_release(
+                            info,
+                            tag_meta,
+                            filename_meta,
+                        )
                         logger.info("音乐识别命中 AcoustID 指纹层，已跳过标签和文件名识别")
                 elif action.kind is _MusicPathActionKind.ALBUM:
                     info = self._music_album_dir_fallback(path)
@@ -620,6 +678,11 @@ class MediaPathOwner(_MediaOwnerBase):
                         )
                         info = None
                     if self._is_remote_music_info(info):
+                        info = _reconcile_fingerprint_release(
+                            info,
+                            tag_meta,
+                            filename_meta,
+                        )
                         logger.info("音乐识别命中 AcoustID 指纹层，已跳过标签和文件名识别")
                 elif action.kind is _MusicPathActionKind.ALBUM:
                     info = await self._async_music_album_dir_fallback(path)
