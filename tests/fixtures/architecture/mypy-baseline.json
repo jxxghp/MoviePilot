@@ -187,7 +187,6 @@
   },
   "app/agent/middleware/subagents.py": {
     "arg-type": 2,
-    "assignment": 1,
     "attr-defined": 2,
     "misc": 7,
     "type-arg": 5,

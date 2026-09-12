@@ -1002,12 +1002,14 @@ class SubAgentTaskControlMiddleware(AgentMiddleware):
         record.task = asyncio.create_task(
             self._execute_managed_task(record), name=record.task_id,
         )
-        record.task.add_done_callback(
-            lambda finished_task, finished_task_id=record.task_id: self._mark_task_finished(
-                finished_task_id, finished_task,
-            )
-        )
+        record.task.add_done_callback(self._task_finished_callback(record.task_id))
         return True, None
+
+    def _task_finished_callback(
+        self, task_id: str,
+    ) -> Callable[[asyncio.Task[Any]], None]:
+        """返回带稳定 task_id 的完成回调，供任务更新复用。"""
+        return lambda finished_task: self._mark_task_finished(task_id, finished_task)
 
     def seal(self) -> None:
         """封住新的 detached 子代理提交，既有任务继续由记录表持有。"""
