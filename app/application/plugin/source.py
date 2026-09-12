@@ -6,6 +6,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, TypeAlias
+from urllib.parse import quote
 
 from app.application.plugin.identity import (
     PluginIdentity,
@@ -14,13 +15,21 @@ from app.application.plugin.identity import (
     normalize_physical_plugin_id,
     validate_online_source_key,
 )
-from app.domain.plugin import build_local_plugin_source
 from app.application.plugin.identity import (
     PluginSourceCandidate as IdentitySourceCandidate,
 )
 from app.foundation.version import compare_version
 
 PLUGIN_GENERATIONS = ("v1", "v2", "v3")
+LOCAL_PLUGIN_SOURCE_PREFIX = "local://"
+
+
+def _build_public_local_source(plugin_id: str, package_generation: str) -> str:
+    """生成不携带宿主路径的本地候选标识。"""
+    source = f"{LOCAL_PLUGIN_SOURCE_PREFIX}{quote(plugin_id, safe='')}"
+    if package_generation != "v1":
+        source += f"?version={quote(package_generation, safe='')}"
+    return source
 
 
 class MarketReadStatus(StrEnum):
@@ -128,11 +137,9 @@ class PluginLocalCandidate:
 
     def public_dict(self) -> dict[str, Any]:
         """生成不包含本地仓库路径的公共候选投影。"""
-        public_repo_url = build_local_plugin_source(
+        public_repo_url = _build_public_local_source(
             self.plugin_id,
-            package_generation=(
-                None if self.package_generation == "v1" else self.package_generation
-            ),
+            self.package_generation,
         )
         return {
             "plugin_id": self.plugin_id,
