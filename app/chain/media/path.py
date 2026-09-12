@@ -2,7 +2,6 @@
 
 import re
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 from enum import Enum
 from pathlib import Path
 from typing import Any, Generator, Optional, Tuple, TypeGuard, Union, cast
@@ -19,16 +18,6 @@ from app.domain.context import (
 from app.domain.media import is_music_media_source
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
-from app.domain.music import (
-    music_album_matches,
-    music_artist_matches,
-    music_base_title,
-    music_text_key,
-    music_title_matches,
-    music_titles,
-    music_version_matches,
-    music_year_matches,
-)
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.schemas.media import normalize_media_source
@@ -207,6 +196,18 @@ def _fingerprint_info_matches_evidence(
     version, plus any locally available artist credit, agree with the tags or
     parsed filename.
     """
+    from difflib import SequenceMatcher
+    from app.domain.music import (  # pylint: disable=import-outside-toplevel
+        music_album_matches,
+        music_artist_matches,
+        music_base_title,
+        music_text_key,
+        music_title_matches,
+        music_titles,
+        music_version_matches,
+        music_year_matches,
+    )
+
     if not _has_remote_music_identity(info):
         return False
     primary = tag_meta if tag_meta and tag_meta.title else filename_meta
@@ -267,6 +268,11 @@ def _fingerprint_info_matches_evidence(
 
 def _is_standalone_single_evidence(meta: MetaMusic) -> bool:
     """判断本地标签是否明确把当前录音描述为同名单曲发行。"""
+    from app.domain.music import (  # pylint: disable=import-outside-toplevel
+        music_base_title,
+        music_text_key,
+    )
+
     title_key = music_text_key(
         music_base_title(
             _SINGLE_RELEASE_SUFFIX.sub(
@@ -297,6 +303,11 @@ def _reconcile_fingerprint_release(
     身份，而不是具体发行版；当本地标题和专辑同名时，保留录音 MBID，并把
     发行层字段收敛为本地单曲证据，避免错误归入远端返回的另一张专辑。
     """
+    from app.domain.music import (  # pylint: disable=import-outside-toplevel
+        music_album_matches,
+        music_year_matches,
+    )
+
     primary = tag_meta if tag_meta and tag_meta.title else filename_meta
     if (
         not primary
@@ -334,6 +345,11 @@ def _music_info_matches_text_evidence(
     meta: Optional[MetaMusic],
 ) -> bool:
     """统一校验各识别层都必须遵守的版本和发行年份证据。"""
+    from app.domain.music import (  # pylint: disable=import-outside-toplevel
+        music_version_matches,
+        music_year_matches,
+    )
+
     if not _has_remote_music_identity(info) or not meta:
         return False
     return bool(music_version_matches(info, meta) and music_year_matches(info, meta))

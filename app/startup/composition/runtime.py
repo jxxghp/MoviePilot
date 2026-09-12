@@ -17,10 +17,6 @@ from app.application.history import (
     configure_transfer_history_repository,
     reset_transfer_history_repository,
 )
-from app.application.music.acquisition import (
-    ArtistAcquisitionRepository,
-    configure_artist_acquisition_repository,
-)
 from app.application.site.contract import SiteRepository
 from app.application.site.health import (
     SiteHealthService,
@@ -55,6 +51,7 @@ if TYPE_CHECKING:
     from app.application.classification.execution import ClassificationExecutionPort
     from app.application.classification.runtime import ClassificationRuntime
     from app.application.messaging.message import MessageHelper, MessageQueueManager
+    from app.application.music.acquisition import ArtistAcquisitionRepository
     from app.application.subscription.execution import SubscriptionSearchRepository
     from app.startup.composition.agent import AgentComposition
     from app.startup.composition.configuration import ConfigurationComposition
@@ -303,6 +300,10 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
 
 def publish_runtime(composition: RuntimeComposition) -> None:
     """发布 HostRuntime 派生的兼容端口与共享领域服务。"""
+    from app.application.music.acquisition import (  # pylint: disable=import-outside-toplevel
+        configure_artist_acquisition_repository,
+    )
+
     configure_api_data_runtime(composition.api_data)
     configure_transfer_history_repository(lambda: composition.dependencies.transfer_history)
     configure_site_query_service(composition.site_query)
@@ -314,6 +315,10 @@ def publish_runtime(composition: RuntimeComposition) -> None:
 
 def reset_runtime() -> None:
     """撤销当前 lifespan 由运行时组合根发布的全部投影。"""
+    from app.application.music.acquisition import (  # pylint: disable=import-outside-toplevel
+        configure_artist_acquisition_repository,
+    )
+
     reset_site_health_service()
     reset_site_query_service()
     reset_transfer_history_repository()

@@ -97,7 +97,7 @@ def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:
         "app.chain.scraping.MediaChain.get_music_album",
         return_value=None,
     ) as get_music_album, patch(
-        "app.chain.scraping.MusicArtworkChain",
+        "app.chain.artwork.MusicArtworkChain",
     ) as artwork_chain:
         artwork_chain.return_value.scrape_artist_images.return_value = {
             "saved": 0,
