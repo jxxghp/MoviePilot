@@ -394,7 +394,7 @@ def test_rollback_rejects_revision_outside_bounded_history() -> None:
 def test_returned_active_state_and_history_cannot_mutate_internal_snapshot() -> None:
     """所有读取结果都必须与服务内部活动引用隔离。"""
     service = _service(_MemoryPolicyStore())
-    service.initialize()
+    initialized = service.initialize()
     service.publish(_renamed_draft("第二版"), expected_revision=1)
 
     active = service.active()
@@ -405,7 +405,7 @@ def test_returned_active_state_and_history_cannot_mutate_internal_snapshot() -> 
     history[0].categories[0].name = "篡改历史"
 
     assert service.active().categories[0].name == "第二版"
-    assert service.history()[0].categories[0].name == "未分类"
+    assert service.history()[0].categories[0].name == initialized.categories[0].name
 
 
 @pytest.mark.asyncio  # type: ignore[misc]
@@ -428,4 +428,4 @@ async def test_async_entrypoints_delegate_to_same_version_semantics() -> None:
         2,
         3,
     )
-    assert rolled_back.categories[0].name == "未分类"
+    assert rolled_back.categories[0].name == initialized.categories[0].name

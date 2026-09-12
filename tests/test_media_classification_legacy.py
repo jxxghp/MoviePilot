@@ -1,10 +1,13 @@
 """旧版 TMDB 分类配置到新版策略的纯迁移与兼容投影测试。"""
 
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, Optional, cast
 
 import pytest
+import yaml
 
+from app.application.classification.configuration import build_builtin_classification_policy
 from app.application.classification.legacy import (
     LegacyClassificationMigrationResult,
     build_legacy_tmdb_extension_facts,
@@ -23,6 +26,7 @@ from app.schemas.category import (
     ClassificationConditionNode,
     ClassificationFacts,
     ClassificationMediaType,
+    ClassificationPolicy,
 )
 from app.schemas.types import MediaType
 
@@ -153,6 +157,14 @@ def _category_name(
     return categories.get(category_id or "", "")
 
 
+def _policy_category_name(policy: ClassificationPolicy, facts: ClassificationFacts) -> str:
+    """执行指定策略并返回推荐分类名称，用于比较不同策略的业务结果。"""
+    evaluation = ClassificationEvaluator.evaluate(policy, facts)
+    category_id = evaluation.result.recommended.category_id
+    categories = {str(category.id): str(category.name) for category in policy.categories}
+    return categories.get(category_id or "", "")
+
+
 def _leaf_fields(node: ClassificationConditionNode) -> list[str]:
     """按条件树顺序提取叶子字段。"""
     if isinstance(node, ClassificationCondition):
@@ -169,8 +181,8 @@ def _leaf_fields(node: ClassificationConditionNode) -> list[str]:
     return [field for child in children for field in _leaf_fields(child)]
 
 
-def test_default_style_config_preserves_order_and_uses_safe_standard_fields() -> None:
-    """默认式配置应保持顺序，已知风格使用标准字段，其余字段保持等价。"""
+def test_default_style_config_preserves_order_and_migrates_equivalent_fields() -> None:
+    """默认式配置应保持顺序，具有等价语义的字段直接迁移到标准字段。"""
     result = migrate_legacy_category_config(_legacy_config())
 
     assert result.valid
@@ -190,22 +202,67 @@ def test_default_style_config_preserves_order_and_uses_safe_standard_fields() ->
     all_fields = [field for rule in result.policy.rules for field in _leaf_fields(rule.when)]
     assert "media.genre_keys" in all_fields
     assert "extensions.themoviedb.genre_ids" not in all_fields
-    assert "media.language" not in all_fields
-    assert "media.countries" not in all_fields
-    assert "extensions.themoviedb.original_language" in all_fields
-    assert "extensions.themoviedb.production_countries" in all_fields
-    assert "extensions.themoviedb.origin_country" in all_fields
+    assert "media.language" in all_fields
+    assert "media.countries" in all_fields
+    assert "extensions.themoviedb.original_language" not in all_fields
+    assert "extensions.themoviedb.production_countries" not in all_fields
+    assert "extensions.themoviedb.origin_country" not in all_fields
     assert legacy_extension_fields_from_policy(result.policy) == result.extra_fields
     assert ClassificationPolicyValidator.validate(result.policy, result.extra_fields).valid
-    origin_country = next(
-        field
-        for field in result.extra_fields
-        if field.id == "extensions.themoviedb.origin_country"
+    assert result.extra_fields == ()
+
+
+def test_official_category_yaml_has_no_unknown_genre_ids() -> None:
+    """仓库官方旧模板中的 Genre ID 均应直接迁移为标准风格键。"""
+    config = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "config" / "category.yaml").read_text(),
     )
-    assert origin_country.label == "原产国家/地区（旧规则）"
-    assert origin_country.group == "旧规则"
-    assert origin_country.selectable is False
-    assert origin_country.replacement_field == "media.countries"
+
+    result = migrate_legacy_category_config(config)
+
+    assert result.valid
+    assert result.extra_fields == ()
+    assert all(
+        field_id == "media.genre_keys"
+        for rule in result.policy.rules
+        for field_id in _leaf_fields(rule.when)
+        if "genre" in field_id
+    )
+
+
+@pytest.mark.parametrize(
+    ("media_type", "tmdb_info", "expected"),
+    [
+        ("电影", {"genre_ids": [16]}, "动画电影"),
+        ("电影", {"original_language": "zh"}, "华语电影"),
+        ("电影", {"original_language": "en"}, "外语电影"),
+        ("电视剧", {"genre_ids": [16], "origin_country": ["CN"]}, "国漫"),
+        ("电视剧", {"genre_ids": [16], "origin_country": ["JP"]}, "日番"),
+        ("电视剧", {"genre_ids": [99]}, "纪录片"),
+        ("电视剧", {"genre_ids": [10762]}, "儿童"),
+        ("电视剧", {"genre_ids": [10764]}, "综艺"),
+        ("电视剧", {"origin_country": ["CN"]}, "国产剧"),
+        ("电视剧", {"origin_country": ["US"]}, "欧美剧"),
+        ("电视剧", {"origin_country": ["JP"]}, "日韩剧"),
+        ("电视剧", {"origin_country": ["AU"]}, "未分类"),
+    ],
+)
+def test_builtin_policy_matches_official_legacy_category_semantics(
+    media_type: ClassificationMediaType,
+    tmdb_info: Mapping[str, object],
+    expected: str,
+) -> None:
+    """内置标准规则应逐个复现官方 category.yaml 的分类结果。"""
+    config = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "config" / "category.yaml").read_text(),
+    )
+    migrated = migrate_legacy_category_config(config)
+    facts = _tmdb_facts(migrated, tmdb_info, media_type)
+    builtin = build_builtin_classification_policy()
+
+    assert _legacy_tmdb_category(config["movie" if media_type == "电影" else "tv"], tmdb_info) == expected
+    assert _category_name(migrated, facts) == expected
+    assert _policy_category_name(builtin, facts) == expected
 
 
 def test_deleted_legacy_rules_keep_alias_only_fields_registered() -> None:
@@ -220,9 +277,7 @@ def test_deleted_legacy_rules_keep_alias_only_fields_registered() -> None:
 
     fields = legacy_extension_fields_from_policy(policy)
 
-    assert [field.id for field in fields] == [
-        "extensions.themoviedb.original_language"
-    ]
+    assert fields == ()
     assert ClassificationPolicyValidator.validate(policy, fields).valid
 
 
@@ -261,7 +316,7 @@ def test_first_empty_rule_becomes_global_fallback_and_later_entries_are_disabled
 
 
 def test_mixed_genre_ids_keep_positive_or_and_negative_and_semantics() -> None:
-    """已知与未知 Genre ID 混合时，正值保持 OR，排除值必须全部满足。"""
+    """用户自定义未知 Genre ID 与已知值混用时仍保持旧的 OR 与排除语义。"""
     result = migrate_legacy_category_config(
         {
             "movie": {
@@ -289,6 +344,27 @@ def test_mixed_genre_ids_keep_positive_or_and_negative_and_semantics() -> None:
     assert _category_name(result, _tmdb_facts(result, {"genre_ids": [16, 99]}, "电影")) == "兜底"
     assert _category_name(result, _tmdb_facts(result, {"genre_ids": [999, 777]}, "电影")) == "兜底"
     assert _category_name(result, _tmdb_facts(result, {}, "电影")) == "兜底"
+
+
+def test_known_negative_genre_ids_use_standard_field() -> None:
+    """官方词表内的排除 Genre ID 也应直接迁移到标准风格字段。"""
+    result = migrate_legacy_category_config(
+        {
+            "movie": {
+                "非动画纪录": {"genre_ids": "!16,!99"},
+                "兜底": None,
+            },
+            "tv": {},
+        }
+    )
+
+    fields = _leaf_fields(result.policy.rules[0].when)
+    assert result.valid
+    assert fields == ["media.genre_keys"]
+    assert "extensions.themoviedb.genre_ids" not in fields
+    assert result.extra_fields == ()
+    assert _category_name(result, _tmdb_facts(result, {"genre_ids": [16]}, "电影")) == "兜底"
+    assert _category_name(result, _tmdb_facts(result, {"genre_ids": [18]}, "电影")) == "非动画纪录"
 
 
 @pytest.mark.parametrize("negative", [False, True])
@@ -382,10 +458,6 @@ def test_extension_fact_projection_reproduces_legacy_string_views() -> None:
     assert by_policy == by_fields
     assert by_policy == {
         "themoviedb": {
-            "runtime": ["120"],
-            "origin_country": ["CN", "HK"],
-            "production_countries": ["US", "NONE"],
-            "release_year": ["2024"],
             "keywords": ["ONE", "{'ID': 1}"],
             "genre_ids": ["999"],
         }
@@ -564,6 +636,5 @@ def test_legacy_country_dictionary_keeps_country_codes_and_genre_ids_distinct() 
     """旧地区条件能直接选择代码，未知旧风格编号不能误填为标准风格键。"""
     result = migrate_legacy_category_config({"tv": {"日韩剧": {"origin_country": "JP,KR", "genre_ids": "999"}}})
     fields = {item.id: item for item in result.extra_fields}
-    countries = fields["extensions.themoviedb.origin_country"]
-    assert any(item.value == "JP" and item.label == "日本" for item in countries.options)
+    assert all(field_id != "extensions.themoviedb.origin_country" for field_id in fields)
     assert not fields["extensions.themoviedb.genre_ids"].options

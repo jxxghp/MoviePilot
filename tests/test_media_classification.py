@@ -414,6 +414,23 @@ def test_rule_source_and_media_type_restrictions_are_applied_before_conditions(
     assert evaluation.result.recommended.category_id == expected_category
 
 
+def test_unavailable_source_field_is_rejected() -> None:
+    """限定到完全不支持字段的来源时，策略不得发布。"""
+    result = _validation_report(
+        _policy(
+            _category_rule(
+                "rule.unavailable",
+                _leaf("media.runtime", "gte", 90),
+                media_types=["电影"],
+                sources=["tvdb"],
+            )
+        ).model_dump(mode="json")
+    )
+
+    assert result.valid is False
+    assert any(issue.code == "unavailable_field_support" for issue in result.issues)
+
+
 def test_trace_reports_actual_values_and_match_decisions() -> None:
     evaluation = _evaluate(
         _policy(

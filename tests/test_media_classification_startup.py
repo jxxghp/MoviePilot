@@ -20,6 +20,7 @@ from app.application.classification.contract import ClassificationPolicyConflict
 from app.application.classification.legacy import migrate_legacy_category_config
 from app.application.classification.runtime import ClassificationRuntime
 from app.schemas.category import (
+    ClassificationCategory,
     ClassificationConditionGroup,
     ClassificationPolicyState,
 )
@@ -99,16 +100,31 @@ def _published_legacy_default_state() -> ClassificationPolicyState:
     """构造旧版本仅含三个未分类兜底的 revision 1 状态。"""
     policy = build_default_classification_policy()
     policy.categories = [
-        category
-        for category in policy.categories
-        if category.id
-        in {
-            "movie.uncategorized",
-            "tv.uncategorized",
-            "music.uncategorized",
-        }
+        ClassificationCategory(
+            id="movie.uncategorized",
+            media_type="电影",
+            name="未分类",
+            path=["未分类"],
+        ),
+        ClassificationCategory(
+            id="tv.uncategorized",
+            media_type="电视剧",
+            name="未分类",
+            path=["未分类"],
+        ),
+        ClassificationCategory(
+            id="music.uncategorized",
+            media_type="音乐",
+            name="未分类",
+            path=["未分类"],
+        ),
     ]
     policy.rules = []
+    policy.fallbacks = {
+        "电影": "movie.uncategorized",
+        "电视剧": "tv.uncategorized",
+        "音乐": "music.uncategorized",
+    }
     return ClassificationPolicyState(active=policy.model_copy(update={"revision": 1}))
 
 
@@ -546,16 +562,17 @@ async def test_legacy_category_get_endpoints_use_classification_runtime_only(
 
     assert before.success is True
     assert before.data == {"movie": {}, "tv": {}}
+    default_policy = build_default_classification_policy()
+    expected_categories = {
+        media_type: [
+            category.name
+            for category in default_policy.categories
+            if category.media_type == media_type and category.enabled
+        ]
+        for media_type in ("电影", "电视剧", "音乐")
+    }
     assert categories.root == {
-        "电影": ["未分类"],
-        "电视剧": ["未分类"],
-        "音乐": [
-            "未分类",
-            "Album",
-            "Album / Compilation",
-            "EP",
-            "Single",
-        ],
+        **expected_categories,
     }
 
 

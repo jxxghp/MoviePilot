@@ -22,6 +22,7 @@ from app.api.routers import API_V1_ROUTER_SPECS
 from app.application.classification.analysis import (
     ClassificationAnalysisService,
     RecentHistoryClassificationSampleProvider,
+    build_classification_facts_from_media_payload,
 )
 from app.application.classification.configuration import (
     ClassificationPolicyConfigurationService,
@@ -240,6 +241,32 @@ def test_field_catalog_exposes_retired_fields_outside_new_rule_options() -> None
     assert catalog.retired_fields[0].replacement_field == "media.genre_keys"
 
 
+def test_preview_media_payload_preserves_dotted_plugin_source_facts() -> None:
+    """扩展来源 ID 含点号时，预览仍按完整命名空间读取事实。"""
+    field = ClassificationFieldDefinition(
+        id="extensions.plugin.example.region",
+        label="区域",
+        value_type="string",
+        operators=["equals"],
+        media_types=["电影"],
+        source_support={"plugin.example": "extension"},
+    )
+
+    facts = build_classification_facts_from_media_payload(
+        {
+            "media_source": "plugin.example",
+            "media_id": "native-1",
+            "type": "电影",
+            "classification_facts": {
+                "extensions.plugin.example.region": "east-asia",
+            },
+        },
+        extra_fields=[field],
+    )
+
+    assert facts.extensions == {"plugin.example": {"region": "east-asia"}}
+
+
 def test_preview_returns_condition_path_and_structured_missing_fact_warning() -> None:
     """预览 trace 能定位规则条件，缺失字段提示保留代码、字段和来源。"""
     service = _service()
@@ -273,8 +300,9 @@ def test_preview_returns_condition_path_and_structured_missing_fact_warning() ->
         trace for trace in evaluation.trace if trace.rule_id == "rule.language"
     )
     assert language_trace.conditions[0].path == ["rules", rule_index, "when"]
-    assert evaluation.warnings[0].code == "missing_fact"
-    assert evaluation.warnings[0].field == "media.language"
+    assert evaluation.warnings
+    assert all(warning.code == "missing_fact" for warning in evaluation.warnings)
+    assert any(warning.field == "media.language" for warning in evaluation.warnings)
     assert evaluation.warnings[0].source == "themoviedb"
 
 
@@ -410,6 +438,28 @@ async def test_recent_history_samples_are_bounded_deduplicated_and_honest() -> N
     assert batch.facts[1].music is not None
     assert batch.facts[1].music.entity_type == "album"
     assert "仅稳定保存" in batch.warnings[0]
+
+
+@pytest.mark.asyncio  # type: ignore[misc]
+async def test_explicit_impact_samples_are_deduplicated_by_primary_identity() -> None:
+    """显式影响样本重复提交时不得放大分类变化统计。"""
+    service = _service()
+    analysis = ClassificationAnalysisService(service)
+    sample = _facts(media_source="douban", media_id="same")
+
+    result = await analysis.impact(
+        _candidate_policy(),
+        expected_revision=1,
+        sample_limit=100,
+        example_limit=20,
+        samples=[sample, sample.model_copy(deep=True)],
+    )
+
+    assert result.sample_count == 1
+    assert result.scanned_count == 2
+    assert result.skipped_count == 1
+    assert result.truncated is True
+    assert any("重复" in warning for warning in result.warnings)
 
 
 @pytest.mark.asyncio  # type: ignore[misc]
@@ -692,6 +742,10 @@ def test_fastapi_envelope_and_conflict_payload_are_frontend_compatible() -> None
 
     client = TestClient(app)
     policy_response = client.get("/api/v1/media/classification/policy")
+    default_policy_response = client.get(
+        "/api/v1/media/classification/policy",
+        params={"template": "default"},
+    )
     conflict_response = client.put(
         "/api/v1/media/classification/policy",
         json={
@@ -703,6 +757,8 @@ def test_fastapi_envelope_and_conflict_payload_are_frontend_compatible() -> None
     assert policy_response.status_code == 200
     assert policy_response.json()["data"]["revision"] == 1
     assert "success" not in policy_response.json()["data"]
+    assert default_policy_response.status_code == 200
+    assert default_policy_response.json()["data"] == build_default_classification_policy().model_dump(mode="json")
     assert conflict_response.status_code == 409
     assert conflict_response.json()["data"] == {
         "code": "classification_revision_conflict",

@@ -61,6 +61,15 @@ class ClassificationExecutionPort(Protocol):
         """异步构造与实际分类一致的完整事实快照，不写入媒体或策略。"""
         ...
 
+    def build_facts(
+        self,
+        media: ClassificationSubject,
+        *,
+        policy: ClassificationPolicy | None = None,
+    ) -> ClassificationFacts | None:
+        """同步构造与实际分类一致的完整事实快照，不写入媒体或策略。"""
+        ...
+
     def finalize(
         self,
         media: ClassificationSubject,
@@ -149,6 +158,30 @@ class ClassificationExecutionService:
                 pass
         return facts
 
+    def build_facts(
+        self,
+        media: ClassificationSubject,
+        *,
+        policy: ClassificationPolicy | None = None,
+    ) -> ClassificationFacts | None:
+        """同步构造并按当前策略补充缺失事实，不修改媒体对象。"""
+        finalized, active_policy, facts, _ = self._prepare(
+            media,
+            extensions=None,
+            effective_override=None,
+            refresh=True,
+            policy_override=policy,
+        )
+        if active_policy is None or facts is None:
+            return None
+        policy = policy or active_policy
+        if self._enrichment is not None:
+            try:
+                facts = self._enrichment.enrich(policy, facts, finalized)
+            except Exception:  # noqa: BLE001 详情补充失败时保留主来源事实
+                pass
+        return facts
+
     def finalize(
         self,
         media: ClassificationSubject,
@@ -226,6 +259,7 @@ class ClassificationExecutionService:
         extensions: Mapping[str, Mapping[str, ClassificationFactValue]] | None,
         effective_override: ClassificationSelection | None,
         refresh: bool,
+        policy_override: ClassificationPolicy | None = None,
     ) -> tuple[
         ClassificationSubject,
         ClassificationPolicy | None,
@@ -236,7 +270,7 @@ class ClassificationExecutionService:
         del refresh
         effective_override = effective_override or _explicit_effective_override(media)
         finalized = deepcopy(media)
-        policy = self._runtime.active_policy()
+        policy = policy_override or self._runtime.active_policy()
         if policy is None:
             self._apply_invalid_policy_fallback(
                 finalized,
@@ -281,10 +315,7 @@ class ClassificationExecutionService:
         effective_override: ClassificationSelection | None,
     ) -> ClassificationSubject:
         """应用纯求值结果和人工覆盖，并更新兼容目录分类。"""
-        evaluation = ClassificationEvaluator.evaluate(policy, facts)
-        legacy_evaluation = _evaluate_legacy_tmdb_compatibility(policy, facts)
-        if legacy_evaluation is not None and _uses_fallback(evaluation.result):
-            evaluation = legacy_evaluation
+        evaluation = evaluate_classification_facts(policy, facts)
         result = evaluation.result.model_copy(deep=True)
         if effective_override:
             result.effective = effective_override.model_copy(deep=True)
@@ -356,12 +387,16 @@ class ClassificationExecutionService:
 def _evaluate_legacy_tmdb_compatibility(
     policy: ClassificationPolicy,
     facts: ClassificationFacts,
+    *,
+    trace: bool = False,
 ) -> ClassificationEvaluation | None:
     """让旧 TMDB 分类规则消费非 TMDB 来源已经拥有的标准事实。"""
     if facts.identity.media_source == _LEGACY_TMDB_SOURCE:
         return None
     legacy_rules = [
-        rule for rule in policy.rules if rule.id.startswith(_LEGACY_RULE_PREFIX)
+        rule.model_copy(deep=True, update={"sources": []})
+        for rule in policy.rules
+        if rule.id.startswith(_LEGACY_RULE_PREFIX)
     ]
     if not legacy_rules:
         return None
@@ -373,6 +408,7 @@ def _evaluate_legacy_tmdb_compatibility(
     return ClassificationEvaluator.evaluate(
         compatibility_policy,
         compatibility_facts,
+        trace=trace,
     )
 
 
@@ -393,16 +429,27 @@ def _legacy_tmdb_compatibility_facts(
         target = extensions.setdefault(source, {})
         for field, value in values.items():
             target.setdefault(field, value)
-    identity = facts.identity.model_copy(
-        update={"media_source": _LEGACY_TMDB_SOURCE}
-    )
     return cast(
         ClassificationFacts,
         facts.model_copy(
             deep=True,
-            update={"identity": identity, "extensions": extensions},
+            update={"extensions": extensions},
         ),
     )
+
+
+def evaluate_classification_facts(
+    policy: ClassificationPolicy,
+    facts: ClassificationFacts,
+    *,
+    trace: bool = False,
+) -> ClassificationEvaluation:
+    """按真实执行路径求值事实，并兼容非 TMDB 来源的旧 TMDB 规则。"""
+    evaluation = ClassificationEvaluator.evaluate(policy, facts, trace=trace)
+    legacy_evaluation = _evaluate_legacy_tmdb_compatibility(policy, facts, trace=trace)
+    if legacy_evaluation is not None and _uses_fallback(evaluation.result):
+        return legacy_evaluation
+    return evaluation
 
 
 def _legacy_tmdb_info_from_standard_facts(
@@ -452,7 +499,7 @@ def _classification_extensions(
         for source, values in (supplied or {}).items()
     }
     tmdb_info = getattr(media, "tmdb_info", None)
-    if isinstance(tmdb_info, Mapping):
+    if _enum_text(getattr(media, "media_source", None)) == _LEGACY_TMDB_SOURCE and isinstance(tmdb_info, Mapping):
         for source, values in build_legacy_tmdb_extension_facts(
             policy,
             tmdb_info,

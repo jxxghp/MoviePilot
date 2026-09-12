@@ -6,7 +6,7 @@ from enum import Enum
 from functools import partial
 from typing import cast
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 
 from app.api.context import (
@@ -27,6 +27,7 @@ from app.application.classification.configuration import (
     ClassificationPolicyNotInitializedError,
     ClassificationPolicyRevisionNotFoundError,
     ClassificationPolicyValidationError,
+    build_default_classification_policy,
 )
 from app.application.classification.contract import (
     ClassificationPolicyConflictError,
@@ -77,6 +78,7 @@ def _get_analysis_service(
     """组装分类分析服务及其只读近期历史样本端口。"""
     return ClassificationAnalysisService(
         runtime.classification.service,
+        execution=runtime.classification_execution,
         sample_provider=RecentHistoryClassificationSampleProvider(
             download_history=cast(
                 DownloadHistoryQueryPort,
@@ -198,8 +200,19 @@ def _validation_response(
 async def get_policy(
     _: object = Depends(get_current_active_user_async),
     runtime: ClassificationRuntime = Depends(get_classification_runtime),
+    template: str | None = Query(
+        default=None,
+        description="读取内置分类策略模板时传入 default；省略则读取活动策略",
+    ),
 ) -> ClassificationPolicy:
-    """返回与运行时内部引用隔离的活动策略和 revision。"""
+    """返回活动策略，或返回不写入运行时的内置默认策略草稿。"""
+    if template == "default":
+        return build_default_classification_policy()
+    if template is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不支持的分类策略模板",
+        )
     return _require_active_policy(runtime)
 
 
@@ -278,7 +291,10 @@ async def preview_policy(
     if request.policy is None:
         _require_active_policy(runtime)
     try:
-        return ClassificationAnalysisService(runtime.service).preview(request)
+        return ClassificationAnalysisService(
+            runtime.service,
+            execution=runtime.classification_execution,
+        ).preview(request)
     except ClassificationPolicyValidationError as error:
         return _validation_response(error)
 

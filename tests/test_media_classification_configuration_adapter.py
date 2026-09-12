@@ -107,6 +107,39 @@ def test_old_source_fallback_is_promoted_to_global_fallback() -> None:
     assert "source_fallbacks" not in normalized["history"][0]
 
 
+def test_old_non_tmdb_source_fallback_becomes_compatibility_rule() -> None:
+    """旧非 TMDB 来源兜底应转换为末尾来源限定规则，避免升级丢失行为。"""
+    state = {
+        "active": {
+            "fallbacks": {
+                "电影": "movie.uncategorized",
+                "电视剧": "tv.uncategorized",
+                "音乐": "music.uncategorized",
+            },
+            "rules": [],
+            "source_fallbacks": {
+                "douban": {"电影": "legacy.douban.movie"},
+            },
+        },
+        "history": [],
+    }
+
+    normalized = discard_removed_source_fallbacks(state)
+
+    rules = normalized["active"]["rules"]
+    assert len(rules) == 1
+    assert rules[0]["id"] == "compat.source-fallback.douban.movie"
+    assert rules[0]["sources"] == ["douban"]
+    assert rules[0]["media_types"] == ["电影"]
+    assert rules[0]["when"] == {
+        "field": "identity.media_source",
+        "operator": "equals",
+        "value": "douban",
+    }
+    assert rules[0]["target"] == {"category_id": "legacy.douban.movie"}
+    assert "source_fallbacks" not in normalized["active"]
+
+
 def test_adapter_initializes_and_round_trips_json_datetime(db: Any) -> None:
     """首次创建原子写入 JSON，并在提交后发布系统配置快照。"""
     store, oper = _store(db)

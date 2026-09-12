@@ -449,6 +449,7 @@ class ClassificationPolicyValidator:
         cls._validate_condition_value(condition, definition, path, collector)
         cls._validate_extension_scope(condition.field, rule, definition, path, collector)
         cls._warn_partial_support(condition.field, rule, definition, path, collector)
+        cls._validate_unavailable_support(condition.field, rule, definition, path, collector)
 
     @classmethod
     def _validate_condition_value(
@@ -586,6 +587,31 @@ class ClassificationPolicyValidator:
             collector.warning(
                 "partial_field_support",
                 f"字段 {field_id} 在以下来源仅部分可用：{', '.join(partial_sources)}",
+                [*path, "field"],
+            )
+
+    @classmethod
+    def _validate_unavailable_support(
+        cls,
+        field_id: str,
+        rule: ClassificationRule,
+        definition: ClassificationFieldDefinition,
+        path: list[str | int],
+        collector: _ValidationCollector,
+    ) -> None:
+        """阻止规则限定到全部无法提供该字段的数据源。"""
+        scoped_sources = rule.sources or list(definition.source_support)
+        if not scoped_sources:
+            return
+        unavailable = [
+            source
+            for source in scoped_sources
+            if definition.source_support.get(source, "unavailable") == "unavailable"
+        ]
+        if len(unavailable) == len(scoped_sources):
+            collector.error(
+                "unavailable_field_support",
+                f"字段 {field_id} 在所选来源中均不可用：{', '.join(unavailable)}",
                 [*path, "field"],
             )
 

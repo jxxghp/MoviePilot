@@ -157,11 +157,11 @@ def resolve_legacy_tmdb_category(
 
 
 def _category_rules(policy: ClassificationPolicy) -> dict[str, ClassificationRule]:
-    """按目标分类 ID 索引 TMDB 主分类规则，保持首条规则优先。"""
+    """按迁移分类目标 ID 索引主分类规则，保持首条规则优先。"""
     result: dict[str, ClassificationRule] = {}
     for rule in policy.rules:
         category_id = rule.target.category_id or _archived_category_id(rule)
-        if category_id and _TMDB_SOURCE in rule.sources:
+        if category_id and category_id.startswith("legacy."):
             result.setdefault(category_id, rule)
     return result
 
@@ -211,6 +211,7 @@ def _project_rule(
             policy,
             diagnostics,
             rule.id,
+            media_type=rule.media_types[0] if rule.media_types else None,
         )
         if field_name is None:
             continue
@@ -250,9 +251,19 @@ def _project_condition(
     policy: ClassificationPolicy,
     diagnostics: list[LegacyClassificationDiagnostic],
     rule_id: str,
+    *,
+    media_type: Optional[str],
 ) -> tuple[Optional[str], list[str], bool]:
     """把一个迁移器叶子恢复为旧字段、值集合和排除标志。"""
-    if condition.operator not in {"contains_any", "contains_none", "exists"}:
+    if condition.operator not in {
+        "contains_any",
+        "contains_none",
+        "exists",
+        "in",
+        "not_in",
+        "is_true",
+        "is_false",
+    }:
         diagnostics.append(
             _projection_warning(
                 "unsupported_policy_condition",
@@ -277,6 +288,72 @@ def _project_condition(
                 continue
             projected_values.append(genre_id)
         return "genre_ids", projected_values, condition.operator == "contains_none"
+    if condition.field == "media.language":
+        if condition.operator not in {"in", "not_in"}:
+            diagnostics.append(
+                _projection_warning(
+                    "unsupported_policy_condition",
+                    f"规则 {rule_id} 的语言操作符 {condition.operator} 无法投影到旧配置",
+                    ["rules", rule_id, "when"],
+                )
+            )
+            return None, [], False
+        aliases = policy.field_aliases.get(condition.field, {})
+        return (
+            "original_language",
+            [_original_standard_value(value, aliases) for value in values],
+            condition.operator == "not_in",
+        )
+    if condition.field == "media.countries":
+        if condition.operator not in {"contains_any", "contains_none"}:
+            diagnostics.append(
+                _projection_warning(
+                    "unsupported_policy_condition",
+                    f"规则 {rule_id} 的国家操作符 {condition.operator} 无法投影到旧配置",
+                    ["rules", rule_id, "when"],
+                )
+            )
+            return None, [], False
+        field_name = "production_countries" if media_type == "电影" else "origin_country"
+        aliases = policy.field_aliases.get(condition.field, {})
+        return (
+            field_name,
+            [_original_standard_value(value, aliases) for value in values],
+            condition.operator == "contains_none",
+        )
+    if condition.field == "media.year":
+        if condition.operator not in {"in", "not_in"}:
+            diagnostics.append(
+                _projection_warning(
+                    "unsupported_policy_condition",
+                    f"规则 {rule_id} 的年份操作符 {condition.operator} 无法投影到旧配置",
+                    ["rules", rule_id, "when"],
+                )
+            )
+            return None, [], False
+        return "release_year", values, condition.operator == "not_in"
+    if condition.field == "media.runtime":
+        if condition.operator not in {"in", "not_in"}:
+            diagnostics.append(
+                _projection_warning(
+                    "unsupported_policy_condition",
+                    f"规则 {rule_id} 的片长操作符 {condition.operator} 无法投影到旧配置",
+                    ["rules", rule_id, "when"],
+                )
+            )
+            return None, [], False
+        return "runtime", values, condition.operator == "not_in"
+    if condition.field == "media.adult":
+        if condition.operator not in {"is_true", "is_false"}:
+            diagnostics.append(
+                _projection_warning(
+                    "unsupported_policy_condition",
+                    f"规则 {rule_id} 的成人标记操作符 {condition.operator} 无法投影到旧配置",
+                    ["rules", rule_id, "when"],
+                )
+            )
+            return None, [], False
+        return "adult", ["TRUE" if condition.operator == "is_true" else "FALSE"], False
     if condition.field.startswith(_EXTENSION_PREFIX):
         field_name = condition.field.removeprefix(_EXTENSION_PREFIX)
         aliases = policy.field_aliases.get(condition.field, {})
@@ -296,6 +373,14 @@ def _original_alias_value(value: str, aliases: Mapping[str, str]) -> str:
     """优先恢复迁移条件中保留的原始大小写值。"""
     for alias, canonical in aliases.items():
         if canonical == value.upper():
+            return alias
+    return value
+
+
+def _original_standard_value(value: str, aliases: Mapping[str, str]) -> str:
+    """恢复标准字段迁移前的低位写法，不把生成的标题大小写别名写回旧配置。"""
+    for alias, canonical in aliases.items():
+        if canonical == value and alias == alias.casefold() and alias != value:
             return alias
     return value
 

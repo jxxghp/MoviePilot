@@ -34,7 +34,12 @@ DirectoryConfigurationNormalizer = Callable[
 
 
 def discard_removed_source_fallbacks(value: Any) -> Any:
-    """读取旧持久化策略时把 TMDB 兜底平移为媒体类型全局兜底。"""
+    """读取旧持久化策略时兼容已移除的来源级兜底字段。
+
+    来源级兜底不能再直接写入新版策略模型，因此将其转换为策略末尾的
+    来源限定 catch-all 分类规则。分类求值器会在已有分类命中后跳过后续
+    分类规则，这与旧版“来源兜底仅在规则未命中时生效”的语义一致。
+    """
     if not isinstance(value, Mapping):
         return value
 
@@ -52,14 +57,89 @@ def discard_removed_source_fallbacks(value: Any) -> Any:
             continue
         fallbacks = policy.get("fallbacks")
         tmdb_fallbacks = source_fallbacks.get("themoviedb")
-        if not isinstance(fallbacks, dict) or not isinstance(tmdb_fallbacks, Mapping):
-            continue
-        for media_type, category_id in tmdb_fallbacks.items():
-            if fallbacks.get(media_type) != _COMMON_FALLBACK_IDS.get(media_type):
-                continue
-            if category_id:
-                fallbacks[media_type] = category_id
+        if isinstance(fallbacks, dict) and isinstance(tmdb_fallbacks, Mapping):
+            for media_type, category_id in tmdb_fallbacks.items():
+                if fallbacks.get(media_type) != _COMMON_FALLBACK_IDS.get(media_type):
+                    continue
+                if category_id:
+                    fallbacks[media_type] = category_id
+        _promote_source_fallback_rules(
+            policy,
+            {
+                source: values
+                for source, values in source_fallbacks.items()
+                if str(source).strip().casefold() != "themoviedb"
+            },
+        )
     return state
+
+
+_SOURCE_FALLBACK_MEDIA_TYPES = frozenset({"电影", "电视剧", "音乐"})
+_SOURCE_FALLBACK_MEDIA_KEYS = {
+    "电影": "movie",
+    "电视剧": "tv",
+    "音乐": "music",
+}
+
+
+def _promote_source_fallback_rules(
+    policy: dict[str, Any],
+    source_fallbacks: Mapping[Any, Any],
+) -> None:
+    """把旧来源兜底转换为末尾的来源限定分类规则。"""
+    raw_rules = policy.get("rules")
+    rules = raw_rules if isinstance(raw_rules, list) else []
+    if rules is not raw_rules:
+        policy["rules"] = rules
+
+    used_ids = {
+        str(rule.get("id"))
+        for rule in rules
+        if isinstance(rule, Mapping) and rule.get("id")
+    }
+    priorities = [
+        _safe_priority(rule.get("priority", index), index)
+        for index, rule in enumerate(rules)
+        if isinstance(rule, Mapping)
+    ]
+    next_priority = max(priorities, default=-1) + 1
+
+    for raw_source, raw_fallbacks in source_fallbacks.items():
+        source = str(raw_source or "").strip().casefold()
+        if not source or not isinstance(raw_fallbacks, Mapping):
+            continue
+        for raw_media_type, raw_category_id in raw_fallbacks.items():
+            media_type = str(raw_media_type or "").strip()
+            category_id = str(raw_category_id or "").strip()
+            if media_type not in _SOURCE_FALLBACK_MEDIA_TYPES or not category_id:
+                continue
+            rule_id = f"compat.source-fallback.{source}.{_SOURCE_FALLBACK_MEDIA_KEYS[media_type]}"
+            if rule_id in used_ids:
+                continue
+            rules.append(
+                {
+                    "id": rule_id,
+                    "name": f"兼容来源兜底 · {source} · {media_type}",
+                    "kind": "category",
+                    "enabled": True,
+                    "priority": next_priority,
+                    "media_types": [media_type],
+                    "sources": [source],
+                    "when": {
+                        "field": "identity.media_source",
+                        "operator": "equals",
+                        "value": source,
+                    },
+                    "target": {"category_id": category_id},
+                }
+            )
+            used_ids.add(rule_id)
+            next_priority += 1
+
+
+def _safe_priority(value: Any, fallback: int) -> int:
+    """读取损坏旧策略中的优先级，异常值退回稳定列表位置。"""
+    return value if isinstance(value, int) and not isinstance(value, bool) else fallback
 
 
 _COMMON_FALLBACK_IDS = {

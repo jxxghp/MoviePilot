@@ -7,7 +7,11 @@ from copy import deepcopy
 from typing import Optional
 from unittest.mock import AsyncMock, Mock, patch
 
-from app.application.classification.execution import ClassificationExecutionService
+from app.application.classification.analysis import build_classification_facts_from_media
+from app.application.classification.execution import (
+    ClassificationExecutionService,
+    evaluate_classification_facts,
+)
 from app.application.classification.legacy import migrate_legacy_category_config
 from app.chain.base import ChainBase
 from app.domain.context import MediaInfo, MusicArtistInfo, MusicInfo
@@ -212,6 +216,51 @@ def test_legacy_tmdb_rules_use_non_tmdb_standard_facts() -> None:
         for category in migration.policy.categories
         if category.name == "国产剧"
     )
+
+
+def test_legacy_compatibility_preserves_primary_source_provenance() -> None:
+    """旧 TMDB 规则兼容求值不得把非 TMDB 主身份伪装成 TMDB。"""
+    migration = migrate_legacy_category_config(
+        {"movie": {"华语电影": {"original_language": "zh"}}, "tv": {}}
+    )
+    media = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="douban-1",
+        type=MediaType.MOVIE,
+        original_language="zh",
+    )
+    facts = build_classification_facts_from_media(media)
+
+    evaluation = evaluate_classification_facts(migration.policy, facts)
+
+    assert evaluation.facts.identity.media_source == MediaSource.Douban.value
+    assert all(
+        warning.source == MediaSource.Douban.value for warning in evaluation.warnings
+    )
+
+
+def test_non_tmdb_tmdb_info_does_not_override_primary_standard_facts() -> None:
+    """非 TMDB 媒体携带的旧 tmdb_info 不得覆盖主来源标准事实。"""
+    migration = migrate_legacy_category_config(
+        {
+            "movie": {
+                "华语电影": {"original_language": "zh"},
+                "外语电影": None,
+            },
+            "tv": {},
+        }
+    )
+    media = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="douban-1",
+        type=MediaType.MOVIE,
+        original_language="zh",
+        tmdb_info={"original_language": "en"},
+    )
+
+    finalized = ClassificationExecutionService(_Runtime(migration.policy)).finalize(media)
+
+    assert finalized.library_category == "华语电影"
 
 
 def test_execution_builds_complete_facts_without_mutating_media() -> None:

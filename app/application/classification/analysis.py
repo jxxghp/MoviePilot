@@ -20,14 +20,18 @@ from app.application.classification.configuration import (
     ClassificationPolicyValidationError,
 )
 from app.application.classification.contract import ClassificationPolicyConflictError
+from app.application.classification.execution import (
+    ClassificationExecutionPort,
+    evaluate_classification_facts,
+)
 from app.application.history import (
     DownloadHistoryQueryPort,
     DownloadHistorySnapshot,
     TransferHistoryQueryPort,
     TransferHistorySnapshot,
 )
-from app.domain.classification.evaluator import ClassificationEvaluator
 from app.domain.classification.facts import build_classification_facts
+from app.domain.classification.fields import field_definition_map
 from app.domain.classification.validation import (
     MAX_CATEGORY_DEPTH,
     MAX_CATEGORY_PATH_LENGTH,
@@ -238,10 +242,12 @@ class ClassificationAnalysisService:
         configuration: ClassificationPolicyConfigurationService,
         *,
         sample_provider: ClassificationImpactSampleProvider | None = None,
+        execution: ClassificationExecutionPort | None = None,
     ) -> None:
-        """保存策略配置服务和可选近期样本提供器。"""
+        """保存策略配置、样本提供器和可选的统一执行事实端口。"""
         self._configuration = configuration
         self._sample_provider = sample_provider
+        self._execution = execution
 
     def fields(self) -> ClassificationFieldCatalog:
         """分开返回新规则可选字段和已有规则使用的退役字段。"""
@@ -276,10 +282,31 @@ class ClassificationAnalysisService:
         policy = request.policy or self._configuration.active()
         if request.policy is not None:
             self._require_valid(policy)
-        return ClassificationEvaluator.evaluate(
-            policy,
-            _preview_facts(request.input),
-            trace=True,
+        facts = self._preview_facts(
+            request.input,
+            policy=policy,
+            use_execution=self._execution is not None,
+        )
+        return evaluate_classification_facts(policy, facts, trace=True)
+
+    def _preview_facts(
+        self,
+        input_data: ClassificationPreviewInput,
+        *,
+        policy: ClassificationPolicy,
+        use_execution: bool,
+    ) -> ClassificationFacts:
+        """构造预览事实；活动策略优先复用真实执行端口的补充链路。"""
+        if input_data.kind == "facts":
+            return input_data.facts
+        media = _preview_media(input_data.media)
+        if use_execution and self._execution is not None:
+            facts = self._execution.build_facts(cast(Any, media), policy=policy)
+            if facts is not None:
+                return facts
+        return build_classification_facts_from_media(
+            media,
+            extra_fields=self._configuration.extra_fields(),
         )
 
     async def impact(
@@ -324,22 +351,45 @@ class ClassificationAnalysisService:
     ) -> ClassificationImpactSampleBatch:
         """优先使用请求事实，否则委托近期历史提供器生成样本。"""
         if samples:
-            selected = tuple(
-                cast(ClassificationFacts, sample.model_copy(deep=True))
-                for sample in samples[:sample_limit]
-            )
+            selected_list: list[ClassificationFacts] = []
+            seen: set[tuple[str, str, str, str]] = set()
+            skipped_count = 0
+            for sample in samples:
+                identity = sample.identity
+                identity_key = _classification_identity_key(sample)
+                if not identity.media_source.strip() or not identity.media_id.strip():
+                    skipped_count += 1
+                    continue
+                if identity_key in seen:
+                    skipped_count += 1
+                    continue
+                if len(selected_list) >= sample_limit:
+                    skipped_count += 1
+                    continue
+                seen.add(identity_key)
+                selected_list.append(sample.model_copy(deep=True))
+            selected = tuple(selected_list)
             warnings = (
-                (f"显式事实共 {len(samples)} 条，仅比较前 {sample_limit} 条",)
-                if len(samples) > sample_limit
-                else ()
+                tuple(
+                    item
+                    for item in (
+                        f"显式事实共 {len(samples)} 条，仅比较前 {sample_limit} 条"
+                        if len(samples) > sample_limit
+                        else "",
+                        "显式事实中存在重复或缺少稳定身份的记录，已跳过"
+                        if skipped_count
+                        else "",
+                    )
+                    if item
+                )
             )
             return ClassificationImpactSampleBatch(
                 source="request",
                 facts=selected,
                 scanned_count=len(samples),
-                skipped_count=0,
+                skipped_count=skipped_count,
                 unresolved_count=0,
-                truncated=len(samples) > sample_limit,
+                truncated=skipped_count > 0 or len(samples) > sample_limit,
                 warnings=warnings,
             )
         if self._sample_provider is None:
@@ -393,48 +443,78 @@ def _classification_identity_key(facts: ClassificationFacts) -> tuple[str, str, 
     )
 
 
-def _preview_facts(input_data: ClassificationPreviewInput) -> ClassificationFacts:
-    """根据预览输入选择兼容事实或媒体搜索结果转换器。"""
-    if input_data.kind == "facts":
-        return input_data.facts
-    return build_classification_facts_from_media_payload(input_data.media)
+def _preview_media(payload: Mapping[str, Any]) -> object:
+    """把预览媒体载荷转换为可供执行服务消费的媒体对象。"""
+    media_type = _enum_text(payload.get("type"))
+    model = SchemaMusicInfo if media_type == "音乐" else SchemaMediaInfo
+    try:
+        return model.model_validate(dict(payload))
+    except ValueError:
+        # 插件来源不一定属于内置 MediaSource 枚举，使用轻量对象保留其完整字段。
+        return SimpleNamespace(**dict(payload))
 
 
-def build_classification_facts_from_media(media: object) -> ClassificationFacts:
+def build_classification_facts_from_media(
+    media: object,
+    *,
+    extra_fields: Sequence[object] = (),
+) -> ClassificationFacts:
     """把搜索或识别得到的完整媒体对象转换为统一分类数据。"""
     return build_classification_facts(
         cast(Any, media),
-        extensions=_media_extension_facts(media),
+        extensions=_media_extension_facts(media, extra_fields=extra_fields),
     )
 
 
 def build_classification_facts_from_media_payload(
     payload: Mapping[str, Any],
+    *,
+    extra_fields: Sequence[object] = (),
 ) -> ClassificationFacts:
     """把前端选择的媒体搜索结果转换为统一分类数据，并兼容插件来源。"""
-    media_type = _enum_text(payload.get("type"))
-    model = SchemaMusicInfo if media_type == "音乐" else SchemaMediaInfo
-    try:
-        media = model.model_validate(dict(payload))
-    except ValueError:
-        # 插件来源不一定属于内置 MediaSource 枚举，使用轻量对象保留其完整字段。
-        media = SimpleNamespace(**dict(payload))
-    return build_classification_facts_from_media(media)
+    return build_classification_facts_from_media(
+        _preview_media(payload),
+        extra_fields=extra_fields,
+    )
 
 
-def _media_extension_facts(media: object) -> dict[str, dict[str, ClassificationFactValue]]:
+def _media_extension_facts(
+    media: object,
+    *,
+    extra_fields: Sequence[object] = (),
+) -> dict[str, dict[str, ClassificationFactValue]]:
     """按 extensions.<source>.<field> 命名空间整理媒体携带的扩展字段。"""
     raw_facts = getattr(media, "classification_facts", None)
     if not isinstance(raw_facts, Mapping):
         return {}
+    definitions = field_definition_map(cast(Any, extra_fields))
     extensions: dict[str, dict[str, ClassificationFactValue]] = {}
     for raw_field, value in raw_facts.items():
-        parts = str(raw_field or "").split(".", 2)
-        if len(parts) != 3 or parts[0] != "extensions" or not parts[1] or not parts[2]:
+        field_id = str(raw_field or "").strip()
+        if not field_id.startswith("extensions."):
             continue
         if not _is_classification_fact_value(value):
             continue
-        extensions.setdefault(parts[1], {})[parts[2]] = cast(ClassificationFactValue, value)
+        definition = definitions.get(field_id)
+        if definition is None:
+            parts = field_id.split(".", 2)
+            if len(parts) != 3 or not parts[1] or not parts[2]:
+                continue
+            extensions.setdefault(parts[1], {})[parts[2]] = cast(
+                ClassificationFactValue, value
+            )
+            continue
+        extension_sources = [
+            source
+            for source, support in definition.source_support.items()
+            if support == "extension"
+        ]
+        if len(extension_sources) != 1:
+            continue
+        source = extension_sources[0]
+        local_field = field_id.removeprefix(f"extensions.{source}.")
+        if source and local_field:
+            extensions.setdefault(source, {})[local_field] = cast(ClassificationFactValue, value)
     return extensions
 
 
@@ -494,8 +574,8 @@ def _build_impact_analysis(
     rule_changed_only_count = 0
     became_fallback_count = 0
     for facts in batch.facts:
-        previous = ClassificationEvaluator.evaluate(active, facts).result
-        proposed = ClassificationEvaluator.evaluate(candidate, facts).result
+        previous = evaluate_classification_facts(active, facts).result
+        proposed = evaluate_classification_facts(candidate, facts).result
         previous_categories[_category_id(previous)] += 1
         candidate_categories[_category_id(proposed)] += 1
         if "partial" in {previous.state, proposed.state}:

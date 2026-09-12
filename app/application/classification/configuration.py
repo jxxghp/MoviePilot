@@ -20,6 +20,7 @@ from app.domain.classification.validation import ClassificationPolicyValidator
 from app.schemas.category import (
     ClassificationCategory,
     ClassificationCondition,
+    ClassificationConditionGroup,
     ClassificationFieldDefinition,
     ClassificationOperator,
     ClassificationPolicy,
@@ -41,6 +42,196 @@ _DEFAULT_MUSIC_CATEGORIES = (
     ("music.ep", "EP", ("EP",)),
     ("music.single", "Single", ("Single",)),
 )
+
+_DEFAULT_MEDIA_CATEGORIES = (
+    ("movie.animation", "电影", "动画电影", ("动画电影",)),
+    ("movie.chinese", "电影", "华语电影", ("华语电影",)),
+    ("movie.foreign", "电影", "外语电影", ("外语电影",)),
+    ("tv.dongman.cn", "电视剧", "国漫", ("国漫",)),
+    ("tv.dongman.jp", "电视剧", "日番", ("日番",)),
+    ("tv.documentary", "电视剧", "纪录片", ("纪录片",)),
+    ("tv.kids", "电视剧", "儿童", ("儿童",)),
+    ("tv.variety", "电视剧", "综艺", ("综艺",)),
+    ("tv.chinese", "电视剧", "国产剧", ("国产剧",)),
+    ("tv.western", "电视剧", "欧美剧", ("欧美剧",)),
+    ("tv.asian", "电视剧", "日韩剧", ("日韩剧",)),
+    ("tv.uncategorized", "电视剧", "未分类", ("未分类",)),
+    ("music.uncategorized", "音乐", "未分类", ("未分类",)),
+)
+
+
+def build_builtin_classification_policy() -> ClassificationPolicy:
+    """构造与仓库内 legacy category.yaml 默认值等效的标准分类策略。"""
+    categories = [
+        ClassificationCategory(
+            id=category_id,
+            media_type=media_type,
+            name=name,
+            path=list(path),
+        )
+        for category_id, media_type, name, path in _DEFAULT_MEDIA_CATEGORIES
+    ]
+    rules = [
+        ClassificationRule(
+            id="movie.animation.default",
+            name="动画电影",
+            kind="category",
+            priority=0,
+            media_types=["电影"],
+            when=ClassificationCondition(
+                field="media.genre_keys",
+                operator="contains_any",
+                value=["animation"],
+            ),
+            target=ClassificationTarget(category_id="movie.animation"),
+        ),
+        ClassificationRule(
+            id="movie.chinese.default",
+            name="华语电影",
+            kind="category",
+            priority=1,
+            media_types=["电影"],
+            when=ClassificationCondition(
+                field="media.language",
+                operator="in",
+                value=["zh", "cn", "bo", "za"],
+            ),
+            target=ClassificationTarget(category_id="movie.chinese"),
+        ),
+        ClassificationRule(
+            id="tv.dongman.cn.default",
+            name="国漫",
+            kind="category",
+            priority=2,
+            media_types=["电视剧"],
+            when=ClassificationConditionGroup(
+                all=[
+                    ClassificationCondition(
+                        field="media.genre_keys",
+                        operator="contains_any",
+                        value=["animation"],
+                    ),
+                    ClassificationCondition(
+                        field="media.countries",
+                        operator="contains_any",
+                        value=["CN", "TW", "HK"],
+                    ),
+                ]
+            ),
+            target=ClassificationTarget(category_id="tv.dongman.cn"),
+        ),
+        ClassificationRule(
+            id="tv.dongman.jp.default",
+            name="日番",
+            kind="category",
+            priority=3,
+            media_types=["电视剧"],
+            when=ClassificationConditionGroup(
+                all=[
+                    ClassificationCondition(
+                        field="media.genre_keys",
+                        operator="contains_any",
+                        value=["animation"],
+                    ),
+                    ClassificationCondition(
+                        field="media.countries",
+                        operator="contains_any",
+                        value=["JP"],
+                    ),
+                ]
+            ),
+            target=ClassificationTarget(category_id="tv.dongman.jp"),
+        ),
+        ClassificationRule(
+            id="tv.documentary.default",
+            name="纪录片",
+            kind="category",
+            priority=4,
+            media_types=["电视剧"],
+            when=ClassificationCondition(
+                field="media.genre_keys",
+                operator="contains_any",
+                value=["documentary"],
+            ),
+            target=ClassificationTarget(category_id="tv.documentary"),
+        ),
+        ClassificationRule(
+            id="tv.kids.default",
+            name="儿童",
+            kind="category",
+            priority=5,
+            media_types=["电视剧"],
+            when=ClassificationCondition(
+                field="media.genre_keys",
+                operator="contains_any",
+                value=["kids"],
+            ),
+            target=ClassificationTarget(category_id="tv.kids"),
+        ),
+        ClassificationRule(
+            id="tv.variety.default",
+            name="综艺",
+            kind="category",
+            priority=6,
+            media_types=["电视剧"],
+            when=ClassificationCondition(
+                field="media.genre_keys",
+                operator="contains_any",
+                value=["reality", "talk"],
+            ),
+            target=ClassificationTarget(category_id="tv.variety"),
+        ),
+        ClassificationRule(
+            id="tv.chinese.default",
+            name="国产剧",
+            kind="category",
+            priority=7,
+            media_types=["电视剧"],
+            when=ClassificationCondition(
+                field="media.countries",
+                operator="contains_any",
+                value=["CN", "TW", "HK"],
+            ),
+            target=ClassificationTarget(category_id="tv.chinese"),
+        ),
+        ClassificationRule(
+            id="tv.western.default",
+            name="欧美剧",
+            kind="category",
+            priority=8,
+            media_types=["电视剧"],
+            when=ClassificationCondition(
+                field="media.countries",
+                operator="contains_any",
+                value=["US", "FR", "GB", "DE", "ES", "IT", "NL", "PT", "RU", "UK"],
+            ),
+            target=ClassificationTarget(category_id="tv.western"),
+        ),
+        ClassificationRule(
+            id="tv.asian.default",
+            name="日韩剧",
+            kind="category",
+            priority=9,
+            media_types=["电视剧"],
+            when=ClassificationCondition(
+                field="media.countries",
+                operator="contains_any",
+                value=["JP", "KP", "KR", "TH", "IN", "SG"],
+            ),
+            target=ClassificationTarget(category_id="tv.asian"),
+        ),
+    ]
+    return with_default_music_classification(
+        ClassificationPolicy(
+            categories=categories,
+            rules=rules,
+            fallbacks={
+                "电影": "movie.foreign",
+                "电视剧": "tv.uncategorized",
+                "音乐": "music.uncategorized",
+            },
+        )
+    )
 
 
 class ClassificationPolicyNotInitializedError(RuntimeError):
@@ -191,9 +382,7 @@ def needs_default_music_classification(policy: ClassificationPolicy) -> bool:
 
 def build_default_classification_policy() -> ClassificationPolicy:
     """构造带稳定兜底和常用音乐专辑分类的初始草稿。"""
-    return with_default_music_classification(
-        _build_uncategorized_classification_policy()
-    )
+    return build_builtin_classification_policy()
 
 
 class ClassificationPolicyConfigurationService:

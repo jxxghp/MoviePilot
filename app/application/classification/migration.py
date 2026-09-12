@@ -6,8 +6,11 @@ import hashlib
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Final, Literal, Optional, TypeAlias, Union, cast
+from typing import Callable, Final, Literal, Optional, TypeAlias, Union, cast
 
+from app.domain.classification.vocabulary import (
+    COUNTRY_CODE_ALIASES as _COUNTRY_CODE_ALIASES,
+)
 from app.domain.classification.vocabulary import (
     TMDB_GENRE_KEYS as _TMDB_GENRE_KEYS,
 )
@@ -153,6 +156,21 @@ class _MigrationContext:
             normalized = value.upper()
             if value != normalized:
                 aliases[value] = normalized
+
+    def register_standard_aliases(
+        self,
+        field_id: str,
+        values: Iterable[str],
+        *,
+        canonicalizer: Callable[[str], str] | None = None,
+    ) -> None:
+        """登记标准字符串字段的大小写别名，保持旧配置的无大小写比较语义。"""
+        aliases = self.field_aliases.setdefault(field_id, {})
+        for value in values:
+            canonical = canonicalizer(value) if canonicalizer else value.casefold()
+            for alias in (value, value.upper(), value.capitalize()):
+                if alias != canonical:
+                    aliases[alias] = canonical
 
     def build_field_definitions(self) -> tuple[ClassificationFieldDefinition, ...]:
         """按首次出现顺序构造仅供已有规则解析的退役字段声明。"""
@@ -377,6 +395,15 @@ def _migrate_media_categories(
             nodes.append(_tmdb_identity_condition())
             category_has_error = True
         rule_kind, target = _retained_rule_output(category_id, unreachable)
+        rule_sources = (
+            [_TMDB_SOURCE]
+            if any(
+                field_id.startswith(_EXTENSION_PREFIX)
+                for node in nodes
+                for field_id in _condition_field_ids(node)
+            )
+            else []
+        )
         rules.append(
             ClassificationRule(
                 id=f"{category_id}.rule",
@@ -385,7 +412,7 @@ def _migrate_media_categories(
                 enabled=not unreachable and not category_has_error,
                 priority=category_index,
                 media_types=[media_type],
-                sources=[_TMDB_SOURCE],
+                sources=rule_sources,
                 when=_all_or_single(nodes),
                 target=target,
             )
@@ -488,12 +515,270 @@ def _migrate_legacy_field(
             context=context,
         )
 
-    field_id = context.register_extension_field(raw_field, media_type)
+    if raw_field == "original_language":
+        return _standard_string_condition(
+            "media.language",
+            tokens,
+            requires_exists,
+            context=context,
+        )
+    if raw_field in {"origin_country", "production_countries"}:
+        return _standard_country_condition(
+            tokens,
+            requires_exists,
+            context=context,
+        )
+    if raw_field == "release_year":
+        return _standard_numeric_condition(
+            "media.year",
+            tokens,
+            requires_exists,
+            media_type=media_type,
+            extension_field="release_year",
+            context=context,
+        )
+    if raw_field == "runtime":
+        return _standard_numeric_condition(
+            "media.runtime",
+            tokens,
+            requires_exists,
+            media_type=media_type,
+            extension_field="runtime",
+            context=context,
+        )
+    if raw_field == "adult":
+        return _standard_boolean_condition(
+            tokens,
+            requires_exists,
+            media_type=media_type,
+            context=context,
+        )
+
+    return _legacy_extension_condition(
+        raw_field,
+        tokens,
+        requires_exists,
+        media_type=media_type,
+        context=context,
+    )
+
+
+def _standard_string_condition(
+    field_id: str,
+    tokens: Sequence[_LegacyToken],
+    requires_exists: bool,
+    *,
+    context: _MigrationContext,
+) -> ClassificationConditionNode:
+    """把旧字符串枚举转换为标准字段的 in/not_in 条件。"""
+    context.register_standard_aliases(
+        field_id,
+        (value for token in tokens for value in token.values),
+    )
+    positives = [
+        ClassificationCondition(
+            field=field_id,
+            operator="in",
+            value=[value.casefold() for value in token.values],
+        )
+        for token in tokens
+        if not token.negative
+    ]
+    negatives = [
+        ClassificationCondition(
+            field=field_id,
+            operator="not_in",
+            value=[value.casefold() for value in token.values],
+        )
+        for token in tokens
+        if token.negative
+    ]
+    nodes: list[ClassificationConditionNode] = [*positives, *negatives]
+    if not nodes and requires_exists:
+        return ClassificationCondition(field=field_id, operator="exists")
+    return _all_or_single(nodes)
+
+
+def _standard_country_condition(
+    tokens: Sequence[_LegacyToken],
+    requires_exists: bool,
+    *,
+    context: _MigrationContext,
+) -> ClassificationConditionNode:
+    """把旧电影/电视剧国家枚举转换为统一国家代码列表条件。"""
+    context.register_standard_aliases(
+        "media.countries",
+        (value for token in tokens for value in token.values),
+        canonicalizer=_standard_country_code,
+    )
+    positives = [
+        ClassificationCondition(
+            field="media.countries",
+            operator="contains_any",
+            value=[_standard_country_code(value) for value in token.values],
+        )
+        for token in tokens
+        if not token.negative
+    ]
+    negatives = [
+        ClassificationCondition(
+            field="media.countries",
+            operator="contains_none",
+            value=[_standard_country_code(value) for value in token.values],
+        )
+        for token in tokens
+        if token.negative
+    ]
+    nodes: list[ClassificationConditionNode] = [*positives, *negatives]
+    if not nodes and requires_exists:
+        return ClassificationCondition(field="media.countries", operator="exists")
+    return _all_or_single(nodes)
+
+
+def _standard_numeric_condition(
+    field_id: str,
+    tokens: Sequence[_LegacyToken],
+    requires_exists: bool,
+    *,
+    media_type: ClassificationMediaType,
+    extension_field: str,
+    context: _MigrationContext,
+) -> ClassificationConditionNode:
+    """把可表示的旧数字枚举迁移为标准数值条件，其余值留在 TMDB 扩展字段。"""
+    positive_nodes: list[ClassificationConditionNode] = []
+    negative_nodes: list[ClassificationConditionNode] = []
+    extension_field_id: str | None = None
+    for token in tokens:
+        numeric_values: list[int] = []
+        unknown_values: list[str] = []
+        for value in token.values:
+            if value.isdigit():
+                numeric_values.append(int(value))
+            else:
+                unknown_values.append(value)
+        token_nodes: list[ClassificationConditionNode] = []
+        if numeric_values:
+            token_nodes.append(
+                ClassificationCondition(
+                    field=field_id,
+                    operator="not_in" if token.negative else "in",
+                    value=numeric_values,
+                )
+            )
+        if unknown_values:
+            if extension_field_id is None:
+                extension_field_id = context.register_extension_field(
+                    extension_field,
+                    media_type,
+                )
+            context.register_aliases(extension_field_id, unknown_values)
+            token_nodes.append(
+                ClassificationCondition(
+                    field=extension_field_id,
+                    operator=("contains_none" if token.negative else "contains_any"),
+                    value=unknown_values,
+                )
+            )
+        if not token_nodes:
+            continue
+        if token.negative:
+            negative_nodes.extend(token_nodes)
+        else:
+            positive_nodes.append(_any_or_single(token_nodes))
+
+    nodes: list[ClassificationConditionNode] = []
+    if positive_nodes:
+        nodes.append(_any_or_single(positive_nodes))
+    nodes.extend(negative_nodes)
+    if not nodes and requires_exists:
+        if extension_field_id is not None:
+            return ClassificationCondition(field=extension_field_id, operator="exists")
+        return ClassificationCondition(field=field_id, operator="exists")
+    return _all_or_single(nodes)
+
+
+def _standard_boolean_condition(
+    tokens: Sequence[_LegacyToken],
+    requires_exists: bool,
+    *,
+    media_type: ClassificationMediaType,
+    context: _MigrationContext,
+) -> ClassificationConditionNode:
+    """把旧 TRUE/FALSE 条件迁移为标准成人标记，未知值继续使用 TMDB 扩展。"""
+    positive_nodes: list[ClassificationConditionNode] = []
+    negative_nodes: list[ClassificationConditionNode] = []
+    extension_field_id: str | None = None
+    true_values = {"true", "1", "yes"}
+    false_values = {"false", "0", "no"}
+    for token in tokens:
+        standard_nodes: list[ClassificationConditionNode] = []
+        unknown_values: list[str] = []
+        for value in token.values:
+            normalized = value.casefold()
+            if normalized in true_values | false_values:
+                is_true = normalized in true_values
+                if token.negative:
+                    is_true = not is_true
+                standard_nodes.append(
+                    ClassificationCondition(
+                        field="media.adult",
+                        operator="is_true" if is_true else "is_false",
+                    )
+                )
+            else:
+                unknown_values.append(value)
+        if unknown_values:
+            if extension_field_id is None:
+                extension_field_id = context.register_extension_field("adult", media_type)
+            context.register_aliases(extension_field_id, unknown_values)
+            standard_nodes.append(
+                ClassificationCondition(
+                    field=extension_field_id,
+                    operator=("contains_none" if token.negative else "contains_any"),
+                    value=unknown_values,
+                )
+            )
+        if not standard_nodes:
+            continue
+        if token.negative:
+            negative_nodes.extend(standard_nodes)
+        else:
+            positive_nodes.append(_any_or_single(standard_nodes))
+
+    nodes: list[ClassificationConditionNode] = []
+    if positive_nodes:
+        nodes.append(_any_or_single(positive_nodes))
+    nodes.extend(negative_nodes)
+    if not nodes and requires_exists:
+        if extension_field_id is not None:
+            return ClassificationCondition(field=extension_field_id, operator="exists")
+        return ClassificationCondition(field="media.adult", operator="exists")
+    return _all_or_single(nodes)
+
+
+def _legacy_extension_condition(
+    field_name: str,
+    tokens: Sequence[_LegacyToken],
+    requires_exists: bool,
+    *,
+    media_type: ClassificationMediaType,
+    context: _MigrationContext,
+) -> ClassificationConditionNode:
+    """把没有标准等价字段的旧值登记为来源受限扩展条件。"""
+    field_id = context.register_extension_field(field_name, media_type)
     context.register_aliases(
         field_id,
         (value for token in tokens for value in token.values),
     )
     return _legacy_list_condition(field_id, tokens, requires_exists)
+
+
+def _standard_country_code(value: str) -> str:
+    """把旧国家枚举值归一为标准事实使用的 ISO 代码。"""
+    normalized = value.strip()
+    if len(normalized) == 2 and normalized.isascii() and normalized.isalpha():
+        return normalized.upper()
+    return _COUNTRY_CODE_ALIASES.get(normalized.casefold(), normalized.upper())
 
 
 def _legacy_field_definition(
@@ -592,60 +877,47 @@ def _migrate_genre_tokens(
     media_type: ClassificationMediaType,
     context: _MigrationContext,
 ) -> ClassificationConditionNode:
-    """已知正向 Genre ID 使用规范风格，其余条件保留原始视图。"""
+    """已知 Genre ID 使用标准风格键，混入未知值时整体保留 TMDB 原始视图。"""
+    if any(
+        value.upper() not in _TMDB_GENRE_KEYS
+        for token in tokens
+        for value in token.values
+    ):
+        extension_field_id = context.register_extension_field("genre_ids", media_type)
+        context.register_aliases(
+            extension_field_id,
+            (value for token in tokens for value in token.values),
+        )
+        return _legacy_list_condition(extension_field_id, tokens, requires_exists)
+
     positive_nodes: list[ClassificationConditionNode] = []
     negative_nodes: list[ClassificationConditionNode] = []
-    extension_field_id: Optional[str] = None
     for token in tokens:
-        if token.negative:
-            if extension_field_id is None:
-                extension_field_id = context.register_extension_field("genre_ids", media_type)
-            context.register_aliases(extension_field_id, token.values)
-            negative_nodes.append(
-                ClassificationCondition(
-                    field=extension_field_id,
-                    operator="contains_none",
-                    value=list(token.values),
-                )
-            )
-            continue
         known_keys: list[str] = []
-        unknown_ids: list[str] = []
         for value in token.values:
             if genre_key := _TMDB_GENRE_KEYS.get(value.upper()):
                 _append_unique(known_keys, genre_key)
-            else:
-                _append_unique(unknown_ids, value)
         token_nodes: list[ClassificationConditionNode] = []
         if known_keys:
             token_nodes.append(
                 ClassificationCondition(
                     field="media.genre_keys",
-                    operator="contains_any",
+                    operator="contains_none" if token.negative else "contains_any",
                     value=known_keys,
                 )
             )
-        if unknown_ids:
-            if extension_field_id is None:
-                extension_field_id = context.register_extension_field("genre_ids", media_type)
-            context.register_aliases(extension_field_id, unknown_ids)
-            token_nodes.append(
-                ClassificationCondition(
-                    field=extension_field_id,
-                    operator="contains_any",
-                    value=unknown_ids,
-                )
-            )
         if token_nodes:
-            positive_nodes.append(_any_or_single(token_nodes))
+            if token.negative:
+                negative_nodes.extend(token_nodes)
+            else:
+                positive_nodes.append(_any_or_single(token_nodes))
 
     nodes: list[ClassificationConditionNode] = []
     if positive_nodes:
         nodes.append(_any_or_single(positive_nodes))
     nodes.extend(negative_nodes)
     if not nodes and requires_exists:
-        extension_field_id = context.register_extension_field("genre_ids", media_type)
-        return ClassificationCondition(field=extension_field_id, operator="exists")
+        return ClassificationCondition(field="media.genre_keys", operator="exists")
     return _all_or_single(nodes)
 
 
