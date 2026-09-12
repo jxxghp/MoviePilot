@@ -130,6 +130,23 @@ def serialize_tool_result_for_agent(result: Any) -> str:
         return str(result)
 
 
+def normalize_tool_failure_for_agent(result: Any, *, tool_name: str) -> Any:
+    """将旧工具返回的裸错误文本统一成模型可恢复的结构化失败回执。"""
+    if not isinstance(result, str):
+        return result
+    text = result.strip()
+    if not text or text.startswith("{") or text.startswith("["):
+        return result
+    markers = ("错误", "操作失败", "浏览器操作失败", "工具执行异常")
+    if not text.startswith(markers):
+        return result
+    return json.dumps({
+        "success": False,
+        "execution_outcome": "failed",
+        "tool": tool_name,
+        "error": text,
+        "recovery": "根据错误信息修正输入或改用正确工具后重试；不要重复未确认的写入。",
+    }, ensure_ascii=False)
 TOOL_RESULT_RECORDER: ContextVar[Optional[Callable[[str, str], dict[str, Any]]]] = ContextVar(
     "agent_tool_result_recorder", default=None,
 )
@@ -537,7 +554,9 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         # 执行具体工具逻辑
         try:
             result = await self.run_with_timeout(**kwargs)
-            formatted_result = self.format_agent_result(result, **kwargs)
+            formatted_result = normalize_tool_failure_for_agent(
+                self.format_agent_result(result, **kwargs), tool_name=self.name,
+            )
             
             logger.info(
                 f"Agent工具 {self.name} 返回结果，状态: {inspect_tool_result(formatted_result).value}，"

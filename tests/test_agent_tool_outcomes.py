@@ -16,7 +16,7 @@ from app.agent.api.executor import ApiExecutionContext, MoviePilotApiExecutor
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.policy.contracts import AuthSource, ExecutionOutcome, PrincipalType, ToolOrigin, ToolPolicyContext
 from app.agent.policy.orchestrator import AgentToolPolicyOrchestrator
-from app.agent.tools.base import MoviePilotTool
+from app.agent.tools.base import MoviePilotTool, normalize_tool_failure_for_agent
 from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.mcp import McpExternalTool
 from app.agent.tools.manager import MoviePilotToolsManager
@@ -180,6 +180,14 @@ def test_mcp_error_with_text_content_does_not_lose_error_flag():
     assert json.loads(result) == payload
     assert inspect_tool_result(result) is ExecutionOutcome.FAILED
     assert McpExternalTool._format_mcp_result({"content": payload["content"]}) == "operation rejected"
+
+
+def test_legacy_tool_error_text_gets_structured_recovery_contract():
+    """旧浏览器、文件和命令工具的裸错误在 Agent 入口统一可恢复。"""
+    payload = json.loads(normalize_tool_failure_for_agent("错误：文件不存在", tool_name="read_file"))
+    assert payload["execution_outcome"] == "failed"
+    assert payload["tool"] == "read_file"
+    assert "修正输入" in payload["recovery"]
 
 
 def _api_tool(request: AsyncMock) -> MoviePilotApiTool:
