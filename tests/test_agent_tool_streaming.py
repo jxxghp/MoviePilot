@@ -554,14 +554,15 @@ class TestAgentToolStreaming:
                 user_id="1",
                 username="admin",
             )
-            tool_id = handler.tool_call_started("search", "查询媒体")
-            handler.emit_tool_message("查询媒体")
-            handler.record_tool_call(
-                tool_name="search",
-                tool_message="查询媒体",
-                tool_kwargs={"query": "MoviePilot"},
-            )
-            handler.tool_call_finished(tool_id, "done")
+            with patch("app.agent.callback.get_runtime_setting", return_value=True):
+                tool_id = handler.tool_call_started("search", "查询媒体")
+                handler.emit_tool_message("查询媒体")
+                handler.record_tool_call(
+                    tool_name="search",
+                    tool_message="查询媒体",
+                    tool_kwargs={"query": "MoviePilot"},
+                )
+                handler.tool_call_finished(tool_id, "done")
             return tool_id, emitted, tool_events
 
         tool_id, emitted, tool_events = asyncio.run(_run())
@@ -578,6 +579,70 @@ class TestAgentToolStreaming:
             },
             {"type": "tool", "status": "done", "tool_id": tool_id},
         ]
+
+    def test_web_streaming_handler_aggregates_tools_when_not_verbose(self):
+        """WebAgent 关闭啰嗦模式时应隐藏逐条事件并汇总各类工具次数。"""
+
+        async def _run():
+            emitted = []
+            tool_events = []
+            handler = _get_web_agent_streaming_handler_type()(
+                emitted.append,
+                tool_events.append,
+            )
+            await handler.start_streaming(
+                channel=NotificationChannel.WebAgent.value,
+                source="web-agent",
+                user_id="1",
+                username="admin",
+            )
+            with patch("app.agent.callback.get_runtime_setting", return_value=False):
+                assert handler.tool_call_started("search", "查询媒体") == ""
+                handler.report_tool_call(
+                    tool_name="search_web",
+                    tool_message="搜索网络内容",
+                    tool_kwargs={"query": "MoviePilot"},
+                )
+                handler.report_tool_call(
+                    tool_name="read_file",
+                    tool_message="读取文件",
+                    tool_kwargs={"file_path": "/tmp/app.py"},
+                )
+                handler.emit("查询完成")
+            return emitted, tool_events
+
+        emitted, tool_events = asyncio.run(_run())
+
+        assert tool_events == []
+        assert emitted == ["（执行了 1 次搜索，读取了 1 个文件）\n\n查询完成"]
+
+    def test_web_streaming_handler_aggregates_normal_tool_when_not_verbose(self):
+        """普通工具在 WebAgent 非啰嗦模式下也应走计数汇总路径。"""
+
+        async def _run():
+            emitted = []
+            tool_events = []
+            handler = _get_web_agent_streaming_handler_type()(
+                emitted.append,
+                tool_events.append,
+            )
+            await handler.start_streaming(
+                channel=NotificationChannel.WebAgent.value,
+                source="web-agent",
+                user_id="1",
+                username="admin",
+            )
+            tool = DummyTool(session_id="session-1", user_id="1")
+            tool.set_stream_handler(handler)
+            with patch.object(settings, "AI_AGENT_VERBOSE", False):
+                await tool._arun()
+                handler.emit("查询完成")
+            return emitted, tool_events
+
+        emitted, tool_events = asyncio.run(_run())
+
+        assert tool_events == []
+        assert emitted == ["（调用了 1 次工具）\n\n查询完成"]
 
     def test_rich_message_keeps_body_text_unquoted_for_telegram(self):
         """校验 Telegram 富文本只转换工具摘要行，正文保持原样。"""

@@ -127,6 +127,10 @@ class StreamingHandler:
             )
         return self.emit(f"\n\n{tool_message}\n\n")
 
+    def _is_verbose_mode(self) -> bool:
+        """判断当前是否启用逐条工具调用展示。"""
+        return bool(get_runtime_setting("AI_AGENT_VERBOSE"))
+
     def report_tool_call(
         self,
         tool_name: str,
@@ -140,7 +144,7 @@ class StreamingHandler:
         相同的详细模式语义，避免无条件调用 ``record_tool_call`` 后只显示汇总。
         """
         safe_message = sanitize_for_host(tool_message) if tool_message else tool_message
-        if get_runtime_setting("AI_AGENT_VERBOSE") and safe_message:
+        if self._is_verbose_mode() and safe_message:
             return self.emit_tool_message(str(safe_message))
         self.record_tool_call(
             tool_name=tool_name,
