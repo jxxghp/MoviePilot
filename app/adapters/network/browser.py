@@ -651,14 +651,21 @@ class BrowserSessionHelper:
         """
         if tab_index < 0 or tab_index >= len(session.pages):
             raise ValueError(f"标签页索引不存在: {tab_index}")
+        active_index = session.active_index
         page = session.pages.pop(tab_index)
+        close_error: Exception | None = None
         try:
             page.close()
         except Exception as err:
+            close_error = err
             logger.warning(f"关闭浏览器标签页失败: {str(err)}")
         if not session.pages:
             session.pages.append(session.context.new_page())
-        session.active_index = min(session.active_index, len(session.pages) - 1)
+        elif tab_index < active_index:
+            active_index -= 1
+        session.active_index = min(active_index, len(session.pages) - 1)
+        if close_error is not None:
+            raise RuntimeError("关闭浏览器标签页失败") from close_error
         return BrowserSessionHelper.list_tabs(session)
 
     @staticmethod
@@ -962,6 +969,8 @@ class BrowserSessionHelper:
         script = f"""
             () => {{
                 const limit = {int(max_elements)};
+                document.querySelectorAll('[{cls.REF_ATTRIBUTE}]').forEach((el) =>
+                    el.removeAttribute('{cls.REF_ATTRIBUTE}'));
                 const selector = [
                     'a[href]',
                     'button',
