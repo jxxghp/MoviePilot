@@ -453,4 +453,4 @@ can be accepted only once without Application knowing the configured backend.
 - `settings.API_TOKEN` and other secret fields must not be included in log output or API responses.
 - The `config list --show-secrets` flag exists specifically to gate secret visibility in the CLI.
 
-*Last Updated: 2026-09-12*
+*Last Updated: 2026-09-13*

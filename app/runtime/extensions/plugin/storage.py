@@ -343,10 +343,12 @@ def _payload_fingerprint(payload: dict[str, Any]) -> str:
 
 
 class PluginInstanceStore:
-    """管理共享源码的分身实例描述，并把源插件本体自身的那一行隔离在视图之外。
+    """管理共享源码的分身实例描述，并把源插件本体自身的那一行单独成一组读写口。
 
     两类记录同存一张表，靠 ``instance_id`` 是否等于 ``source_plugin_id`` 区分：
-    本类只服务分身，本体行（它承载插件自身的业务参数）读不到也改不到。
+    ``all()``/``get()``/``save()``/``delete()``/``for_source()`` 只服务分身，
+    ``all_hosts()``/``get_host()``/``save_host()`` 只服务本体，任何一侧都读不到、
+    也改不到对方的记录——只有调用方知道自己要的是分身清单还是本体那一行。
     """
 
     def __init__(
@@ -464,6 +466,36 @@ class PluginInstanceStore:
         if record is None:
             return False
         return self._directory().delete(record.instance_id)
+
+    def all_hosts(self) -> dict[str, PluginInstance]:
+        """一次性读取全部源插件本体记录，不含分身实例。
+
+        供目录投影批量取数使用：按插件 ID 遍历卡片时只做内存字典查找，不再逐张卡片
+        各查一次数据库。
+        """
+        self._ensure_bootstrapped()
+        return {
+            record.instance_id: record
+            for record in self._directory().list_all()
+            if record.is_host
+        }
+
+    def get_host(self, plugin_id: str) -> PluginInstance | None:
+        """读取源插件本体自身那一行；该插件从未登记过任何设置时为 None。"""
+        self._ensure_bootstrapped()
+        record = self._directory().get(plugin_id)
+        return record if record is not None and record.is_host else None
+
+    def save_host(self, instance: PluginInstance) -> None:
+        """新增或更新源插件本体自身那一行，本体的 ``source_plugin_id`` 恒等于自身 ID。
+
+        归一而不是拒绝：本体行的一对身份列必然相等，调用方传进来的 ``source_plugin_id``
+        对本体而言没有可选值，就地纠正比让调用方各自记住这条约束更不容易出错。
+        """
+        self._ensure_bootstrapped()
+        self._directory().save(
+            instance.model_copy(update={"source_plugin_id": instance.instance_id})
+        )
 
     def for_source(self, source_plugin_id: str) -> list[PluginInstance]:
         """按持久化顺序返回引用同一源码插件的全部分身，不含本体自身那一行。"""

@@ -61,6 +61,10 @@ class PluginInstance(BaseModel):
     plugin_name: Optional[str] = Field(default=None, description="实例展示名称")
     plugin_desc: Optional[str] = Field(default=None, description="实例展示描述")
     plugin_icon: Optional[str] = Field(default=None, description="实例展示图标")
+    is_default_target: bool = Field(
+        default=False,
+        description="该实例是否为所属源插件的默认调用目标",
+    )
 
     @property
     def is_host(self) -> bool:
@@ -172,6 +176,8 @@ class Plugin(BaseModel):
     is_instance: Optional[bool] = False
     # 实例实现模式；存量物理分身为空
     instance_mode: Optional[str] = None
+    # 该实例是否为所属源插件的默认调用目标
+    is_default_target: Optional[bool] = False
     # 该实例当前生效的日志等级覆盖；未设置覆盖或覆盖已过期回落全局等级时为空
     log_level_effective: Optional[str] = None
 

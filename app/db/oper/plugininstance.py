@@ -6,7 +6,7 @@ import copy
 from datetime import datetime, timezone
 from typing import Any, Optional, Union
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -143,6 +143,64 @@ class PluginInstanceOper(DbOper):
             return True
 
         return bool(self._execute_sync_write(stage))
+
+    def set_default_target(self, source_plugin_id: str, instance_id: str) -> bool:
+        """原子地把某源插件的默认调用目标改为指定实例，同一事务内清旧置新。
+
+        目标行须已经落盘：这里只按 ``instance_id`` 与 ``source_plugin_id`` 双重匹配
+        定位目标行，不做隐式创建；命中失败原样返回，不动同插件原有的置位。命中时
+        先清后置，两条 DML 处在同一 session、同一事务内提交，中途不会出现两行同时
+        为真；并发写入下的唯一性最终由表上的条件唯一索引兜底。
+
+        :param source_plugin_id: 源插件 ID
+        :param instance_id: 要设为默认调用目标的实例 ID
+        :return: 目标行存在并已置位为 True，目标行不存在时为 False
+        """
+
+        def stage(session: Session) -> bool:
+            """在同一事务内定位目标行、清除同插件其余置位、置位目标行。"""
+            target = session.execute(
+                select(PluginInstance).where(
+                    PluginInstance.instance_id == instance_id,
+                    PluginInstance.source_plugin_id == source_plugin_id,
+                )
+            ).scalars().first()
+            if target is None:
+                return False
+            session.execute(
+                update(PluginInstance)
+                .where(
+                    PluginInstance.source_plugin_id == source_plugin_id,
+                    PluginInstance.instance_id != instance_id,
+                    PluginInstance.is_default_target.is_(True),
+                )
+                .values(is_default_target=False)
+            )
+            target.is_default_target = True
+            target.updated_at = _now()
+            return True
+
+        return bool(self._execute_sync_write(stage))
+
+    def clear_default_target(self, source_plugin_id: str) -> None:
+        """清除某源插件的默认调用目标置位，重复调用保持幂等。
+
+        置位被清掉后该行若已只剩身份列则不在这里回收：本体行的回收统一由清空业务
+        参数与清除日志等级两处判定，多一处入口只会让「行何时消失」变得难以预期。
+        """
+
+        def stage(session: Session) -> None:
+            """在同一事务内清除该源插件全部置位的行。"""
+            session.execute(
+                update(PluginInstance)
+                .where(
+                    PluginInstance.source_plugin_id == source_plugin_id,
+                    PluginInstance.is_default_target.is_(True),
+                )
+                .values(is_default_target=False, updated_at=_now())
+            )
+
+        self._execute_sync_write(stage)
 
     def get_config_data(self, instance_id: str) -> Any:
         """读取某实例的业务参数；该行不存在或从未存过参数都返回 None。

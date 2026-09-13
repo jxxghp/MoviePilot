@@ -39,6 +39,20 @@ Purpose: Read a bounded preview of one plugin's persisted data.
 - `query`: `key` (string|null): Optional exact plugin data key used to narrow the returned preview.; `max_chars` (integer|null): Maximum number of serialized plugin-data characters to return.
 - `body`: none
 
+### `plugin.default_target.clear`
+`DELETE /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target`; policy effect: `reversible_write`.
+Purpose: Clear one plugin instance's default-call-target flag, only if it is the plugin's current default.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: none
+
+### `plugin.default_target.set`
+`PUT /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target`; policy effect: `reversible_write`.
+Purpose: Set one plugin instance as the plugin's default call target, automatically clearing any previous default.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: none
+
 ### `plugin.folder.create`
 `POST /api/v1/plugin/folders/{folder_name}`; policy effect: `reversible_write`.
 Purpose: Create one named plugin folder.
