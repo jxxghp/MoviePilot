@@ -297,6 +297,101 @@ def test_merging_legacy_entries_is_idempotent_across_restarts():
     assert written == [SystemConfigKey.PluginInstancesImported]
 
 
+def test_entries_deleted_by_an_older_version_are_removed_from_the_table():
+    """回滚到旧版本删掉的分身，切回新版本后必须从独立表里一并消失。
+
+    旧键是旧版本唯一认得的清单，保留它作回滚依据就等于承诺「在那边做的改动切回来
+    还算数」。只合并新增与改写、不同步删除，用户在旧版本里删掉的分身会在新版本里
+    继续出现并继续被装载。
+    """
+    values = _legacy_values(
+        DemoPluginWork={
+            "instance_id": "DemoPluginWork",
+            "source_plugin_id": "DemoPlugin",
+        },
+        DemoPluginHome={
+            "instance_id": "DemoPluginHome",
+            "source_plugin_id": "DemoPlugin",
+        },
+    )
+    storage, _written = _make_storage(values)
+    directory, records = _make_directory()
+
+    first = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+    assert set(first.all()) == {"DemoPluginWork", "DemoPluginHome"}
+
+    # 回滚到旧版本：旧版本只认旧键，用户在那里删掉了一个分身
+    del values[SystemConfigKey.PluginInstances]["DemoPluginHome"]
+
+    second = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+
+    assert set(second.all()) == {"DemoPluginWork"}
+    assert set(records) == {"DemoPluginWork"}
+    assert set(values[SystemConfigKey.PluginInstancesImported]) == {"DemoPluginWork"}
+
+
+def test_renaming_in_the_legacy_key_does_not_leave_the_old_row_behind():
+    """旧版本里的重命名表现为「旧 ID 消失 + 新 ID 出现」，旧行不得残留。"""
+    values = _legacy_values(
+        DemoPluginWork={
+            "instance_id": "DemoPluginWork",
+            "source_plugin_id": "DemoPlugin",
+            "plugin_name": "工作实例",
+        }
+    )
+    storage, _written = _make_storage(values)
+    directory, records = _make_directory()
+
+    first = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+    assert set(first.all()) == {"DemoPluginWork"}
+
+    values[SystemConfigKey.PluginInstances] = {
+        "DemoPluginHome": {
+            "instance_id": "DemoPluginHome",
+            "source_plugin_id": "DemoPlugin",
+            "plugin_name": "工作实例",
+        }
+    }
+
+    second = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+
+    assert set(second.all()) == {"DemoPluginHome"}
+    assert set(records) == {"DemoPluginHome"}
+
+
+def test_rows_created_natively_in_the_new_table_survive_legacy_deletions():
+    """新表里原生创建、从未由旧键导入过的分身不受旧键删除牵连。
+
+    删除判据必须是「曾经认领过指纹、现在旧键里没有了」；若退化成「旧键里没有就删」，
+    新版本创建的分身会在下一次启动时被旧键当成「已删除」整批清掉。
+    """
+    values = _legacy_values(
+        DemoPluginWork={
+            "instance_id": "DemoPluginWork",
+            "source_plugin_id": "DemoPlugin",
+        }
+    )
+    storage, _written = _make_storage(values)
+    directory, records = _make_directory()
+
+    first = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+    first.save(
+        PluginInstance(
+            instance_id="DemoPluginNative",
+            source_plugin_id="DemoPlugin",
+        )
+    )
+    assert set(first.all()) == {"DemoPluginWork", "DemoPluginNative"}
+
+    # 旧版本删掉它自己那条，原生创建的那条与旧键无关
+    del values[SystemConfigKey.PluginInstances]["DemoPluginWork"]
+
+    second = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+
+    assert set(second.all()) == {"DemoPluginNative"}
+    assert set(records) == {"DemoPluginNative"}
+
+
 def test_bootstrap_is_retried_after_a_transient_persistence_failure():
     """引导过程中的暂时性故障不得让同一进程此后永久跳过引导。
 

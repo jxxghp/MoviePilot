@@ -414,18 +414,22 @@ class PluginInstanceStore:
             self._bootstrap_checked = True
 
     def _merge_legacy_instances(self) -> None:
-        """执行一轮旧键与独立表的合并：把新增或变化的实例描述搬进独立表。
+        """执行一轮旧键与独立表的合并：新增、改写与删除三类变更都要同步过去。
 
         alembic 迁移已经搬过一轮，这里兜的是「库结构升级后又用旧版本写过分身」这类
         回滚往返：旧键刻意保留作回滚依据、从不清理，旧版本只认它，因此它在迁移之后
-        仍可能长出新条目或被改写。判据既不能是「表当前为空」——用户删光分身后表会重新
-        变空，下次启动会把删掉的分身整批导回来；也不能是一条一次性的永久标记——标记
-        落下之后旧版本新增的分身就永远看不见。
+        仍可能长出新条目、被改写或被删条目。判据既不能是「表当前为空」——用户删光分身
+        后表会重新变空，下次启动会把删掉的分身整批导回来；也不能是一条一次性的永久
+        标记——标记落下之后旧版本新增的分身就永远看不见。
 
         因此按条目记住导入时的内容指纹：指纹对得上就跳过，表里那行用户怎么改都不会被
         旧副本盖回去；指纹对不上说明旧版本改写过该条目，合并进来；指纹没记过且表里也
         没有该行说明旧版本新增过它，导入。指纹没记过但表里已有该行（迁移刚搬过去的那
         一批），只认领指纹而不覆盖。指纹表始终与旧键当前内容对齐，重复启动不再产生写入。
+
+        删除同样以指纹表为准：只清理「曾经认领过指纹、现在旧键里没有了」的行，新表里
+        原生创建、从未在旧键出现过的分身因此不会被牵连。旧版本里的重命名表现为「旧 ID
+        消失 + 新 ID 出现」，按同一套规则自然得到删旧建新。
         """
         storage = self._storage()
         recorded = storage.read(SystemConfigKey.PluginInstancesImported)
@@ -436,13 +440,19 @@ class PluginInstanceStore:
             for instance_id, entry in legacy.items()
             if imported.get(instance_id) != entry.fingerprint
         }
-        if pending:
+        dropped = [
+            instance_id for instance_id in imported if instance_id not in legacy
+        ]
+        if pending or dropped:
             directory = self._directory()
-            # 只在确有待定条目时扫一次现有行，让无变化的启动不额外查表
-            present = {record.instance_id for record in directory.list_all()}
-            for instance_id, entry in pending.items():
-                if instance_id in imported or instance_id not in present:
-                    directory.save(entry.instance)
+            if pending:
+                # 只在确有待定条目时扫一次现有行，让无变化的启动不额外查表
+                present = {record.instance_id for record in directory.list_all()}
+                for instance_id, entry in pending.items():
+                    if instance_id in imported or instance_id not in present:
+                        directory.save(entry.instance)
+            for instance_id in dropped:
+                directory.delete(instance_id)
         fingerprints = {
             instance_id: entry.fingerprint for instance_id, entry in legacy.items()
         }
