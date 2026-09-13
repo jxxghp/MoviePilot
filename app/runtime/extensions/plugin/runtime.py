@@ -355,9 +355,43 @@ def build_plugin_runtime(
         ) or []
         return plugin_id in installed
 
+    def instance_id_taken(instance_id: str) -> bool:
+        """判断一个候选实例 ID 是否已被占用。
+
+        创建分身的判存与自动分配后缀共用这一个判据，自动分配因此不可能挑中一个手填
+        时会被拒绝的 ID。四条依据各自覆盖一类占用者，缺一条就会让新分身顶掉一个真实
+        存在的插件身份：
+
+        * 类注册表——当前已装载的本体与分身；
+        * 实例行——含已停用的分身与本体，它们的配置还留在行上，不是空位；
+        * 安装清单——装过但此刻未装载的物理插件；
+        * 插件包目录——卸载不删源码，磁盘上因此会留下不在前三者里的插件包，占了它的
+          号会让那个插件以后再也装不回来（实例行的归属列对不上，写入直接被拒）。
+
+        判存不能只看运行态：源插件本次加载失败时，已有的同名分身会被判成「不存在」
+        而放行，随后它的描述符被覆盖，再在回滚里连同配置一起删掉。``catalog.exists``
+        不足以充当磁盘判据——它要从**运行中**的实例上取版本号，未装载的插件包一律
+        报告不存在，因而这里直接看包目录。
+
+        :param instance_id: 候选实例 ID
+        :return: 该 ID 是否已被占用
+        """
+        if registry.plugin_class(instance_id) is not None:
+            return True
+        if instances.get(instance_id) is not None:
+            return True
+        if instances.get_host(instance_id) is not None:
+            return True
+        installed = environment.storage().read(
+            SystemConfigKey.UserInstalledPlugins
+        ) or []
+        if instance_id in installed:
+            return True
+        return (environment.plugins_root / instance_id.lower()).is_dir()
+
     clone = PluginCloneService(
         plugin_class=registry.plugin_class,
-        plugin_exists=catalog.exists,
+        instance_id_taken=instance_id_taken,
         source_plugin_id=source_plugin_id,
         save_instance=instances.save,
         delete_instance=instances.delete,

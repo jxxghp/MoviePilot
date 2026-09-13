@@ -16,13 +16,18 @@ from app.api.response import ResponseAPIRouter
 from app.application.plugin.folders import add_clone_to_plugin_folder
 from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.log import logger
+from app.schemas.plugin import PluginCloneOutcome as _SchemaPluginCloneOutcome
 from app.schemas.plugin import PluginCloneRequest as _SchemaPluginCloneRequest
 from app.schemas.response import Response as _SchemaResponse
 
 router = ResponseAPIRouter()
 
 
-@router.post("/clone/{plugin_id}", summary="创建插件分身", response_model=_SchemaResponse[None])
+@router.post(  # type: ignore[misc]
+    "/clone/{plugin_id}",
+    summary="创建插件分身",
+    response_model=_SchemaResponse[_SchemaPluginCloneOutcome],
+)
 def clone_plugin(
     plugin_id: str,
     clone_data: _SchemaPluginCloneRequest,
@@ -30,6 +35,8 @@ def clone_plugin(
 ) -> Any:
     """
     创建插件分身
+
+    不填后缀时由服务端分配一个最小可用序号，因而实例 ID 只能由回执给出。
     """
     plugin_manager = get_plugin_manager()
     try:
@@ -42,15 +49,27 @@ def clone_plugin(
                 version=clone_data.version,
                 icon=clone_data.icon,
             )
-
-            if success:
-                # 分身服务已完成运行态加载，此处只补齐宿主注册。
+            if not success:
+                return _SchemaResponse(success=False, message=message)
+            # 分身此时已经创建并加载完成，后面只是补齐宿主注册。这一步失败不能报成
+            # 「创建失败」：分身确实已经存在，用户照提示重试只会撞上「分身已存在」，
+            # 真正的原因反而被那句话盖掉。
+            outcome = _SchemaPluginCloneOutcome(instance_id=message)
+            try:
                 register_plugin(message)
                 # 将分身插件添加到原插件所在的文件夹中
                 add_clone_to_plugin_folder(plugin_id, message)
-                return _SchemaResponse(success=True, message="插件分身创建成功")
-            return _SchemaResponse(success=False, message=message)
+            except Exception as register_error:  # noqa: BLE001
+                logger.error(f"插件分身 {message} 已创建，注册宿主能力失败：{register_error}")
+                return _SchemaResponse(
+                    success=False,
+                    message=(
+                        f"插件分身 {message} 已创建，但注册定时任务或路由失败："
+                        f"{register_error}；请检查该分身配置后重载插件"
+                    ),
+                    data=outcome,
+                )
+            return _SchemaResponse(success=True, message="插件分身创建成功", data=outcome)
     except Exception as e:
         logger.error(f"创建插件分身失败：{str(e)}")
         return _SchemaResponse(success=False, message=f"创建插件分身失败：{str(e)}")
-

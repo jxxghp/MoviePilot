@@ -1282,17 +1282,17 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return PluginAccessPolicy.private_key(plugin_id)
 
-    def clone_plugin(self, plugin_id: str, suffix: str, name: str, description: str,
+    def clone_plugin(self, plugin_id: str, suffix: Optional[str], name: str, description: str,
                      version: str = None, icon: str = None) -> Tuple[bool, str]:
         """
         创建插件分身
         :param plugin_id: 原插件ID
-        :param suffix: 分身后缀
+        :param suffix: 分身后缀；留空时由运行时自动分配最小可用序号
         :param name: 分身名称
         :param description: 分身描述
-        :param version: 自定义版本号
+        :param version: 自定义版本号，分身始终跟随源插件版本，仅为旧客户端保留
         :param icon: 自定义图标URL
-        :return: (是否成功, 错误信息)
+        :return: (是否成功, 成功时为分身实例ID／失败时为可读原因)
         """
         try:
             with self.mutation("创建插件分身"):
