@@ -230,6 +230,47 @@ def test_wrap_for_plugin_instance_is_idempotent_for_the_same_instance():
     assert wrap_for_plugin_instance(wrapped, "OtherInstance") is not wrapped
 
 
+def test_rebinding_a_wrapped_callable_to_another_instance_switches_the_context():
+    """同一个回调先为 A 包装再为 B 包装，执行时上下文必须是 B。
+
+    插件的 `get_api`／`get_service` 可能每次都返回同一份缓存好的声明，多个分身
+    依次注册就会把同一个回调对象接连包装；拿旧包装器当内层的话，内层会在外层
+    绑定之后再把上下文改回 A，B 的日志就按 A 的覆盖等级过滤。
+    """
+    seen: list[str | None] = []
+
+    def _callback() -> None:
+        seen.append(current_plugin_instance_id())
+
+    for_a = wrap_for_plugin_instance(_callback, "InstanceA")
+    for_b = wrap_for_plugin_instance(for_a, "InstanceB")
+    for_b()
+
+    assert seen == ["InstanceB"]
+    # 重绑包的是内层原始回调，包装链不随重绑次数变长
+    assert for_b.__wrapped__ is _callback
+    assert wrap_for_plugin_instance(for_b, "InstanceB") is for_b
+    # 已经交出去的 A 包装器不受重绑影响，仍按 A 绑定
+    for_a()
+    assert seen == ["InstanceB", "InstanceA"]
+
+
+def test_rebinding_a_wrapped_coroutine_to_another_instance_switches_the_context():
+    """异步回调重绑到另一个实例后，等待期间的上下文必须是新实例。"""
+    seen: list[str | None] = []
+
+    async def _callback() -> None:
+        seen.append(current_plugin_instance_id())
+
+    for_a = wrap_for_plugin_instance(_callback, "InstanceA")
+    for_b = wrap_for_plugin_instance(for_a, "InstanceB")
+    assert inspect.iscoroutinefunction(for_b)
+    asyncio.run(for_b())
+
+    assert seen == ["InstanceB"]
+    assert for_b.__wrapped__ is _callback
+
+
 def test_bound_instance_with_lower_override_emits_debug_log(fake_writer):
     """绑定实例设了更宽松的覆盖时，全局等级挡不住的 DEBUG 日志应放行。"""
     set_plugin_instance_log_level("DemoPluginWork", "DEBUG")

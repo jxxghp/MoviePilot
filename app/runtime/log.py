@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from types import FrameType
-from typing import Any, Callable, Dict, Iterator, Optional, Protocol, Self, Tuple
+from typing import Any, Callable, Dict, Iterator, NamedTuple, Optional, Protocol, Self, Tuple
 
 import click
 from pydantic import BaseModel, ConfigDict
@@ -273,7 +273,19 @@ def bind_plugin_instance(instance_id: str) -> Iterator[None]:
         _current_plugin_instance.reset(token)
 
 
-# 标记包装函数已绑定的实例，用于判定是否已经包过，避免重复包装叠成长链
+class _InstanceBinding(NamedTuple):
+    """包装函数身上的绑定标记：已绑定的实例，以及被包在最内层的原始回调。
+
+    用私有类型而非裸值承载，是为了能用 `isinstance` 认出这确实是本模块包的：
+    插件回调可能是 `Mock` 之类会为任意属性名凭空造值的对象，按属性名取值会拿到
+    与包装无关的垃圾。
+    """
+
+    instance_id: str
+    origin: Callable[..., Any]
+
+
+# 包装函数携带绑定标记的属性名
 _PLUGIN_BINDING_MARK = "_plugin_instance_binding"
 
 
@@ -291,30 +303,39 @@ def wrap_for_plugin_instance(
     对同一实例重复包装直接返回原对象：插件的 `get_api`／`get_service` 可能
     每次都返回同一份缓存好的声明，每次刷新注册再包一层会让包装链随重载次数
     无限增长。
+
+    换成另一个实例重绑时，包的是内层的原始回调而不是上一个包装器：绑定发生在
+    包装函数体内，旧包装器嵌在新绑定里只会在新绑定之后再把上下文改回旧实例，
+    原始回调仍按旧实例的等级过滤。共享同一份缓存声明的多个分身依次注册即可触发。
     :param func: 插件提供的原始回调，通常是插件实例的绑定方法
     :param instance_id: 实例 ID
     :return: 包装后的可调用对象
     """
-    if getattr(func, _PLUGIN_BINDING_MARK, None) == instance_id:
+    binding = getattr(func, _PLUGIN_BINDING_MARK, None)
+    if not isinstance(binding, _InstanceBinding):
+        origin = func
+    elif binding.instance_id == instance_id:
         return func
+    else:
+        origin = binding.origin
 
-    if inspect.iscoroutinefunction(func):
-        @functools.wraps(func)
+    if inspect.iscoroutinefunction(origin):
+        @functools.wraps(origin)
         async def _async_wrapped(*args: Any, **kwargs: Any) -> Any:
             """在绑定实例上下文内等待原始协程回调。"""
             with bind_plugin_instance(instance_id):
-                return await func(*args, **kwargs)
+                return await origin(*args, **kwargs)
 
-        setattr(_async_wrapped, _PLUGIN_BINDING_MARK, instance_id)
+        setattr(_async_wrapped, _PLUGIN_BINDING_MARK, _InstanceBinding(instance_id, origin))
         return _async_wrapped
 
-    @functools.wraps(func)
+    @functools.wraps(origin)
     def _sync_wrapped(*args: Any, **kwargs: Any) -> Any:
         """在绑定实例上下文内调用原始同步回调。"""
         with bind_plugin_instance(instance_id):
-            return func(*args, **kwargs)
+            return origin(*args, **kwargs)
 
-    setattr(_sync_wrapped, _PLUGIN_BINDING_MARK, instance_id)
+    setattr(_sync_wrapped, _PLUGIN_BINDING_MARK, _InstanceBinding(instance_id, origin))
     return _sync_wrapped
 
 
