@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 from pydantic import ValidationError
 
@@ -273,6 +275,26 @@ class PluginInstanceDirectory:
         return self._delete(instance_id)
 
 
+class _LegacyInstanceEntry(NamedTuple):
+    """旧 systemconfig 单键里的一条实例描述，连同其原始载荷的内容指纹。"""
+
+    instance: PluginInstance
+    fingerprint: str
+
+
+def _payload_fingerprint(payload: dict[str, Any]) -> str:
+    """为旧键里的一条原始载荷算内容指纹，用于判定旧版本此后有没有改动过它。
+
+    指纹取自原始载荷而非模型 dump：模型字段将来增减会让全部指纹一起失配，把用户在
+    独立表里的改动当成「旧载荷变化」整批盖回去。键排序后再序列化，旧版本重写整个键
+    造成的字段顺序变化不会被误判成内容变化。
+    :param payload: 旧键里的单条原始载荷
+    :return: 十六进制摘要
+    """
+    canonical = json.dumps(payload, sort_keys=True, default=str, ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 class PluginInstanceStore:
     """管理共享源码的分身实例描述，并把源插件本体自身的那一行隔离在视图之外。
 
@@ -292,13 +314,18 @@ class PluginInstanceStore:
         self._bootstrap_checked = False
 
     def _ensure_bootstrapped(self) -> None:
-        """旧 systemconfig 单键的内容向独立表兜底导入一次，且只导入一次。
+        """把旧 systemconfig 单键里新增或变化的实例描述合并进独立表，每进程判定一次。
 
         alembic 迁移已经搬过一轮，这里兜的是「库结构升级后又用旧版本写过分身」这类
-        回滚往返。导入完成后落一个持久化标记，判据不能是「表当前为空」：旧键刻意保留
-        作回滚依据、从不清理，用户把分身全部删光后表就会重新变空，下次进程启动会把
-        已删除的分身整批导回来，删一次复活一次。进程内另外维护一个已检查标志，避免
-        每次访问都为此多打一次查询。
+        回滚往返：旧键刻意保留作回滚依据、从不清理，旧版本只认它，因此它在迁移之后
+        仍可能长出新条目或被改写。判据既不能是「表当前为空」——用户删光分身后表会重新
+        变空，下次启动会把删掉的分身整批导回来；也不能是一条一次性的永久标记——标记
+        落下之后旧版本新增的分身就永远看不见。
+
+        因此按条目记住导入时的内容指纹：指纹对得上就跳过，表里那行用户怎么改都不会被
+        旧副本盖回去；指纹对不上说明旧版本改写过该条目，合并进来；指纹没记过且表里也
+        没有该行说明旧版本新增过它，导入。指纹没记过但表里已有该行（迁移刚搬过去的那
+        一批），只认领指纹而不覆盖。指纹表始终与旧键当前内容对齐，重复启动不再产生写入。
 
         :raise Exception: 导入失败时向上抛出，不吞掉持久化层错误
         """
@@ -306,15 +333,28 @@ class PluginInstanceStore:
             return
         self._bootstrap_checked = True
         storage = self._storage()
-        if storage.read(SystemConfigKey.PluginInstancesImported):
-            return
-        directory = self._directory()
-        if not directory.list_all():
-            for instance in self._legacy_instances().values():
-                directory.save(instance)
-        storage.write(SystemConfigKey.PluginInstancesImported, True)
+        recorded = storage.read(SystemConfigKey.PluginInstancesImported)
+        imported: dict[str, str] = dict(recorded) if isinstance(recorded, dict) else {}
+        legacy = self._legacy_instances()
+        pending = {
+            instance_id: entry
+            for instance_id, entry in legacy.items()
+            if imported.get(instance_id) != entry.fingerprint
+        }
+        if pending:
+            directory = self._directory()
+            # 只在确有待定条目时扫一次现有行，让无变化的启动不额外查表
+            present = {record.instance_id for record in directory.list_all()}
+            for instance_id, entry in pending.items():
+                if instance_id in imported or instance_id not in present:
+                    directory.save(entry.instance)
+        fingerprints = {
+            instance_id: entry.fingerprint for instance_id, entry in legacy.items()
+        }
+        if fingerprints != imported:
+            storage.write(SystemConfigKey.PluginInstancesImported, fingerprints)
 
-    def _legacy_instances(self) -> dict[str, PluginInstance]:
+    def _legacy_instances(self) -> dict[str, _LegacyInstanceEntry]:
         """解析旧 systemconfig 单键里的实例描述，兼容历史字典与列表两种载荷形态。"""
         raw_instances = self._storage().read(SystemConfigKey.PluginInstances) or {}
         if isinstance(raw_instances, list):
@@ -328,13 +368,16 @@ class PluginInstanceStore:
         else:
             return {}
 
-        instances: dict[str, PluginInstance] = {}
+        instances: dict[str, _LegacyInstanceEntry] = {}
         for instance_id, raw_instance in entries.items():
             try:
                 payload = dict(raw_instance) if isinstance(raw_instance, dict) else {}
                 payload.setdefault("instance_id", instance_id)
                 instance = PluginInstance.model_validate(payload)
-                instances[instance.instance_id] = instance
+                instances[instance.instance_id] = _LegacyInstanceEntry(
+                    instance=instance,
+                    fingerprint=_payload_fingerprint(payload),
+                )
             except (TypeError, ValidationError):
                 continue
         return instances

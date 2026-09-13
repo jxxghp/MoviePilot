@@ -37,6 +37,23 @@ def _make_directory() -> tuple[PluginInstanceDirectory, dict[str, PluginInstance
     return directory, records
 
 
+def _make_storage(values: dict) -> tuple[PluginStorage, list]:
+    """构造进程内配置存储，并记录写入过的键，供幂等性断言使用。"""
+    written: list = []
+
+    def _write(key, value):
+        """记录写入键并落进内存配置字典。"""
+        written.append(key)
+        values[key] = value
+
+    return PluginStorage(read=values.get, write=_write), written
+
+
+def _legacy_values(**entries) -> dict:
+    """构造只含旧 systemconfig 单键的配置字典。"""
+    return {SystemConfigKey.PluginInstances: dict(entries)}
+
+
 def _logger() -> SimpleNamespace:
     """提供加载器测试所需的最小日志对象。"""
     return SimpleNamespace(
@@ -150,6 +167,134 @@ def test_legacy_instances_are_not_reimported_after_being_deleted():
 
     assert second.all() == {}
     assert values[SystemConfigKey.PluginInstances] is not None
+
+
+def test_legacy_entries_added_by_an_older_version_are_merged_in():
+    """回滚到旧版本新增的分身，切回新版本后要能合并进独立表。
+
+    旧版本只认 `PluginInstances` 旧键，在那里新建的分身既不在独立表里，也不在
+    已导入指纹里。若判据只有「一条永久标记」加「整表是否为空」，标记落下且表非空
+    之后这些分身会被永久跳过，保留旧键作回滚依据的承诺就落空了。
+    """
+    values = _legacy_values(
+        DemoPluginWork={
+            "instance_id": "DemoPluginWork",
+            "source_plugin_id": "DemoPlugin",
+        }
+    )
+    storage, _written = _make_storage(values)
+    directory, records = _make_directory()
+
+    # 新版本首次启动：旧键内容导入独立表，落下已导入指纹
+    first = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+    assert set(first.all()) == {"DemoPluginWork"}
+    assert values[SystemConfigKey.PluginInstancesImported]
+
+    # 回滚到旧版本：旧版本只往旧键里新建分身，独立表保持不动
+    values[SystemConfigKey.PluginInstances]["DemoPluginHome"] = {
+        "instance_id": "DemoPluginHome",
+        "source_plugin_id": "DemoPlugin",
+        "plugin_name": "家庭实例",
+    }
+
+    # 切回新版本
+    second = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+
+    assert set(second.all()) == {"DemoPluginWork", "DemoPluginHome"}
+    assert records["DemoPluginHome"].plugin_name == "家庭实例"
+
+
+def test_legacy_entries_changed_by_an_older_version_are_merged_in():
+    """回滚到旧版本改写过的分身，切回新版本后要按旧键的新内容合并。"""
+    values = _legacy_values(
+        DemoPluginWork={
+            "instance_id": "DemoPluginWork",
+            "source_plugin_id": "DemoPlugin",
+            "plugin_name": "工作实例",
+        }
+    )
+    storage, _written = _make_storage(values)
+    directory, records = _make_directory()
+
+    first = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+    assert first.all()["DemoPluginWork"].plugin_name == "工作实例"
+
+    values[SystemConfigKey.PluginInstances]["DemoPluginWork"]["plugin_name"] = "旧版本改过"
+
+    second = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+
+    assert second.all()["DemoPluginWork"].plugin_name == "旧版本改过"
+    assert records["DemoPluginWork"].plugin_name == "旧版本改过"
+
+
+def test_rows_edited_in_the_new_table_are_not_overwritten_by_stale_legacy_copies():
+    """旧键没变时，独立表里被用户改过的行不得被旧键里的陈旧副本盖回去。"""
+    values = _legacy_values(
+        DemoPluginWork={
+            "instance_id": "DemoPluginWork",
+            "source_plugin_id": "DemoPlugin",
+            "plugin_name": "工作实例",
+        }
+    )
+    storage, _written = _make_storage(values)
+    directory, records = _make_directory()
+
+    first = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+    assert set(first.all()) == {"DemoPluginWork"}
+
+    # 用户在新版本里改名，旧键始终没人动过
+    records["DemoPluginWork"] = PluginInstance(
+        instance_id="DemoPluginWork",
+        source_plugin_id="DemoPlugin",
+        plugin_name="用户改过",
+    )
+
+    second = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+
+    assert second.all()["DemoPluginWork"].plugin_name == "用户改过"
+
+
+def test_rows_migrated_by_alembic_are_claimed_without_being_overwritten():
+    """迁移已搬进独立表、指纹还没记过的那批行，只认领指纹不覆盖内容。"""
+    values = _legacy_values(
+        DemoPluginWork={
+            "instance_id": "DemoPluginWork",
+            "source_plugin_id": "DemoPlugin",
+            "plugin_name": "工作实例",
+        }
+    )
+    storage, _written = _make_storage(values)
+    directory, records = _make_directory()
+    # 模拟 alembic 迁移搬完之后用户又改过名
+    records["DemoPluginWork"] = PluginInstance(
+        instance_id="DemoPluginWork",
+        source_plugin_id="DemoPlugin",
+        plugin_name="迁移后改过",
+    )
+
+    store = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+
+    assert store.all()["DemoPluginWork"].plugin_name == "迁移后改过"
+    assert set(values[SystemConfigKey.PluginInstancesImported]) == {"DemoPluginWork"}
+
+
+def test_merging_legacy_entries_is_idempotent_across_restarts():
+    """旧键没有新增或变化时，重复启动既不重复建行也不重复落盘指纹。"""
+    values = _legacy_values(
+        DemoPluginWork={
+            "instance_id": "DemoPluginWork",
+            "source_plugin_id": "DemoPlugin",
+        }
+    )
+    storage, written = _make_storage(values)
+    directory, records = _make_directory()
+
+    for _restart in range(3):
+        store = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+        assert set(store.all()) == {"DemoPluginWork"}
+
+    assert set(records) == {"DemoPluginWork"}
+    assert written == [SystemConfigKey.PluginInstancesImported]
 
 
 def test_loader_executes_each_instance_in_an_isolated_module_namespace(
