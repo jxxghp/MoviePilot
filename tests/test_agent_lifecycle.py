@@ -7,7 +7,9 @@ import app.agent.orchestrator as agent_module
 from app.adapters.system import resource as resource_module
 from app.adapters.system.resource import configure_resource_version_provider
 from app.agent.memory import MemoryManager
-from app.agent.orchestrator import (
+# pylint 解析不出该模块的这几个名字，但它们在运行期确实存在（已实测导入成功），
+# 属误报；这里精确抑制，不放宽整个文件的检查。
+from app.agent.orchestrator import (  # pylint: disable=no-name-in-module
     AGENT_SESSION_QUEUE_MAX_SIZE,
     AgentManager,
     AgentManagerQueueFullError,
