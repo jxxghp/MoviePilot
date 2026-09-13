@@ -916,13 +916,15 @@ def _plugin_source_id(plugin_manager: PluginManager, plugin_id: str) -> str:
 
 def _local_plugin_sources(plugin_manager: PluginManager) -> set[str]:
     """返回安装清单中存在本地仓候选的物理插件身份。"""
-    installed = {
-        normalize_physical_plugin_id(plugin_id)
-        for plugin_id in (
-            get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins)
-            or []
-        )
-    }
+    installed: set[str] = set()
+    for plugin_id in (
+        get_configured_system_config().get(SystemConfigKey.UserInstalledPlugins)
+        or []
+    ):
+        try:
+            installed.add(normalize_physical_plugin_id(plugin_id))
+        except ValueError as error:
+            logger.warning("跳过无效的已安装插件 ID %s：%s", plugin_id, error)
     candidates: set[str] = set()
     for plugin in plugin_manager.get_local_repo_plugins():
         try:

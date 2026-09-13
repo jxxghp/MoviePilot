@@ -140,6 +140,32 @@ def test_init_plugins_defers_installed_local_candidate_until_sync(monkeypatch) -
     assert order == ["OnlineOnly"]
 
 
+def test_init_plugins_skips_invalid_installed_plugin_id(monkeypatch) -> None:
+    """历史安装清单含不合规 ID 时，不能阻断其他插件的启动。"""
+    manager = MagicMock()
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=("ReadyPlugin",),
+        missing_dependencies=(),
+        missing_source=(),
+    )
+    manager.reopen_plugins.return_value = True
+    manager.get_local_repo_plugins.return_value = []
+    manager.get_plugin_source_id.side_effect = lambda plugin_id: plugin_id
+    config = MagicMock()
+    config.get.return_value = ["legacy-plugin", "ReadyPlugin"]
+    monkeypatch.setattr(plugins_initializer, "PluginManager", lambda: manager)
+    monkeypatch.setattr(
+        plugins_initializer,
+        "get_configured_system_config",
+        lambda: config,
+    )
+    monkeypatch.setattr(plugins_initializer, "register_plugin_api", MagicMock())
+
+    plugins_initializer.init_plugins()
+
+    manager.start.assert_called_once_with("ReadyPlugin")
+
+
 def test_plugin_manager_projects_dependency_classification_to_runtime_status() -> None:
     """真实管理器按分类字段写入三类启动状态，避免测试替身掩盖字段漂移。"""
     _reset_plugin_manager()
