@@ -125,6 +125,79 @@ def test_torrent_fake_port_preserves_rate_limit_message(monkeypatch) -> None:
     assert result[1:] == (None, "", [], "触发站点流控，请稍后重试")
 
 
+def test_torrent_binary_is_parsed_before_first_download_html_detection(monkeypatch) -> None:
+    """合法二进制种子包含首次下载提示文本时仍应按 torrent 解析。"""
+    marker = "下载种子文件".encode("utf-8")
+    torrent_content = (
+        b"d4:infod7:comment"
+        + str(len(marker)).encode("ascii")
+        + b":"
+        + marker
+        + b"4:name7:foo.mkv6:lengthi1eee"
+    )
+    cached: list[bytes] = []
+
+    class Cache:
+        """记录合法种子缓存写入，不接触真实缓存后端。"""
+
+        @staticmethod
+        def get(*_args, **_kwargs):
+            """固定返回缓存未命中。"""
+            return None
+
+        @staticmethod
+        def set(_key, value, **_kwargs):
+            """记录原始二进制种子内容。"""
+            cached.append(value)
+
+    class HttpPort:
+        """返回包含提示文本的合法二进制种子响应。"""
+
+        @staticmethod
+        def request(**_kwargs):
+            """返回固定 torrent 响应。"""
+            return SimpleNamespace(
+                status_code=200,
+                headers={"Content-Type": "application/x-bittorrent"},
+                content=torrent_content,
+                text=torrent_content.decode("utf-8"),
+                reason="",
+            )
+
+    monkeypatch.setattr(torrent_module, "FileCache", Cache)
+    configure_torrent_port(HttpPort())
+
+    result = TorrentHelper().download_torrent("https://example.test/download/1")
+
+    assert result[1:] == (torrent_content, "", ["foo.mkv"], "")
+    assert cached == [torrent_content]
+
+
+def test_torrent_invalid_http_200_body_is_rejected_before_downloader(monkeypatch) -> None:
+    """HTTP 200 返回非种子内容时应在下载层终止并避免缓存。"""
+
+    class HttpPort:
+        """返回登录页面的种子 HTTP 假端口。"""
+
+        @staticmethod
+        def request(**_kwargs):
+            """返回固定 HTML 响应。"""
+            return SimpleNamespace(
+                status_code=200,
+                headers={"Content-Type": "text/html"},
+                content=b"<html>login</html>",
+                text="<html>login</html>",
+                reason="",
+            )
+
+    monkeypatch.setattr(torrent_module, "FileCache", _EmptyCache)
+    configure_torrent_port(HttpPort())
+
+    result = TorrentHelper().download_torrent("https://example.test/download/2")
+
+    assert result[1:] == (None, "", [], "种子数据有误，请确认链接是否正确")
+
+
 def test_cookie_invalid_parameters_keep_legacy_result_without_ports() -> None:
     """参数错误属于 Application 语义，不应依赖浏览器端口已装配。"""
     assert CookieHelper().get_site_cookie_ua("", "", "") == (
