@@ -356,7 +356,7 @@ class Jellyfin:
         优先遍历用户媒体库视图逐库统计：全局 `Items/Counts` 按数据库原始条目
         计数，同一影片在库内有多个版本/多个文件夹拷贝时会重复累计（#5915），
         而用户级 `Users/{user}/Items` 查询会折叠版本，与 Jellyfin 页面显示一致。
-        仅在用户视图不可用时回退到 `Items/Counts`。
+        仅在用户视图不可用或没有可识别媒体库时回退到 `Items/Counts`。
         :return: MovieCount SeriesCount EpisodeCount
         """
         if not self._host or not self._apikey:
@@ -392,7 +392,7 @@ class Jellyfin:
 
         `Users/{user}/Views` 每个媒体库仅返回一条记录（库包含多个文件夹时
         也不会重复），按 `CollectionType` 分桶后用用户级条目查询累计。
-        :return: 统计结果，用户或媒体库视图不可用时返回None（由调用方回退）
+        :return: 统计结果；用户、媒体库视图不可用或没有可识别媒体库时返回None（由调用方回退）
         """
         if not self.user:
             return None
@@ -400,19 +400,23 @@ class Jellyfin:
         if not librarys:
             return None
         stat = _SchemaStatistic()
+        has_known_library = False
         for library in librarys:
             library_id = library.get("Id")
             if not library_id:
                 continue
             collection_type = library.get("CollectionType")
             if collection_type == "movies":
+                has_known_library = True
                 stat.movie_count += self.get_items_count(library_id, include_item_types="Movie") or 0
             elif collection_type == "tvshows":
+                has_known_library = True
                 stat.tv_count += self.get_items_count(library_id, include_item_types="Series") or 0
                 stat.episode_count += self.get_items_count(library_id, include_item_types="Episode") or 0
             elif collection_type in ("music", "musicvideos"):
+                has_known_library = True
                 stat.music_count += self.get_items_count(library_id, include_item_types="MusicAlbum") or 0
-        return stat
+        return stat if has_known_library else None
 
     def __get_jellyfin_series_id_by_name(self, name: str, year: str) -> Optional[str]:
         """
