@@ -419,17 +419,17 @@ class FileManagerModule(_ModuleBase):
             fileitem: FileItem,
             meta: MetaBase,
             mediainfo: Union[MediaInfo, MusicInfo],
-                      target_directory: Optional[TransferDirectoryConf] = None,
-                      target_storage: Optional[str] = None,
-                      target_path: Optional[Path] = None,
-                      transfer_type: Optional[str] = None, scrape: Optional[bool] = None,
-                      library_type_folder: Optional[bool] = None,
-                      library_category_folder: Optional[bool] = None,
-                      episodes_info: Optional[List[TmdbEpisode]] = None,
-                      source_oper: Optional[StorageBase] = None,
-                      preview: Optional[bool] = False,
-                      planning_input: Optional[TransferPlanningInput] = None,
-                      ) -> TransferPlanCheckpoint:
+            target_directory: Optional[TransferDirectoryConf] = None,
+            target_storage: Optional[str] = None,
+            target_path: Optional[Path] = None,
+            transfer_type: Optional[str] = None, scrape: Optional[bool] = None,
+            library_type_folder: Optional[bool] = None,
+            library_category_folder: Optional[bool] = None,
+            episodes_info: Optional[List[TmdbEpisode]] = None,
+            source_oper: Optional[StorageBase] = None,
+            preview: Optional[bool] = False,
+            planning_input: Optional[TransferPlanningInput] = None,
+    ) -> TransferPlanCheckpoint:
         """
         解析整理策略并生成零写副作用的冻结计划。
         :param fileitem:  文件信息
@@ -444,6 +444,7 @@ class FileManagerModule(_ModuleBase):
         :param library_category_folder: 是否按媒体类别创建目录
         :param episodes_info: 当前季的全部集信息
         :param source_oper: 源存储操作对象
+        :param preview: 是否预览模式
         :param planning_input: admission 阶段冻结的原始请求，传入时不得改写
         :return: 可持久化的整理计划检查点
         """
