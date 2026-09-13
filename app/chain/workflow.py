@@ -31,8 +31,6 @@ ARTIFACT_FIELDS = {"torrents", "medias", "fileitems", "downloads", "sites", "sub
 DEFAULT_WORKFLOW_MAX_WORKERS = 4
 WORKFLOW_EXECUTOR_STOP_TIMEOUT_SECONDS = 10.0
 CIRCULAR_REFERENCE_PLACEHOLDER = "[Circular]"
-
-
 def _serialize_workflow_key(key: Any) -> Any:
     """将映射键转换为 JSON 安全值。"""
     if key is None or isinstance(key, (str, int, float, bool)):
