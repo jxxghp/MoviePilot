@@ -29,22 +29,21 @@ def _new_torrent_helper() -> TorrentHelper:
 class DownloadBatchOwner(_DownloadOwnerBase):
     """批量下载编排 owner。"""
 
-
     def batch_download(
-                       self,
-                       contexts: List[Context],
-                       no_exists: Optional[Dict[str, Dict[int, NotExistMediaInfo]]] = None,
-                       save_path: Optional[str] = None,
-                       channel: Optional[NotificationChannel] = None,
-                       source: Optional[str] = None,
-                       userid: Optional[str] = None,
-                       username: Optional[str] = None,
-                       downloader: Optional[str] = None,
-                       custom_words: Optional[str] = None, governance: Optional[SubscriptionDownloadGovernance] = None,
-                       ) -> Tuple[
-                           List[Context],
-                           Optional[Dict[str, Dict[int, NotExistMediaInfo]]],
-                       ]:
+            self,
+            contexts: List[Context],
+            no_exists: Optional[Dict[str, Dict[int, NotExistMediaInfo]]] = None,
+            save_path: Optional[str] = None,
+            channel: Optional[NotificationChannel] = None,
+            source: Optional[str] = None,
+            userid: Optional[str] = None,
+            username: Optional[str] = None,
+            downloader: Optional[str] = None,
+            custom_words: Optional[str] = None, governance: Optional[SubscriptionDownloadGovernance] = None,
+    ) -> Tuple[
+        List[Context],
+        Optional[Dict[str, Dict[int, NotExistMediaInfo]]],
+    ]:
         """
         兼容批量下载公开入口，委托给内部候选匹配阶段。
 
@@ -64,19 +63,20 @@ class DownloadBatchOwner(_DownloadOwnerBase):
         )
 
     def _execute_batch_download(self,
-                       contexts: List[Context],
-                       no_exists: Optional[Dict[str, Dict[int, NotExistMediaInfo]]] = None,
-                       save_path: Optional[str] = None,
-                       channel: Optional[NotificationChannel] = None,
-                       source: Optional[str] = None,
-                       userid: Optional[str] = None,
-                       username: Optional[str] = None,
-                       downloader: Optional[str] = None,
-                       custom_words: Optional[str] = None, governance: Optional[SubscriptionDownloadGovernance] = None,
-                       ) -> Tuple[
-                           List[Context],
-                           Optional[Dict[str, Dict[int, NotExistMediaInfo]]],
-                       ]:
+                                contexts: List[Context],
+                                no_exists: Optional[Dict[str, Dict[int, NotExistMediaInfo]]] = None,
+                                save_path: Optional[str] = None,
+                                channel: Optional[NotificationChannel] = None,
+                                source: Optional[str] = None,
+                                userid: Optional[str] = None,
+                                username: Optional[str] = None,
+                                downloader: Optional[str] = None,
+                                custom_words: Optional[str] = None,
+                                governance: Optional[SubscriptionDownloadGovernance] = None,
+                                ) -> Tuple[
+        List[Context],
+        Optional[Dict[str, Dict[int, NotExistMediaInfo]]],
+    ]:
         """
         根据缺失数据，自动种子列表中组合择优下载
         :param contexts:  资源上下文列表
@@ -101,18 +101,18 @@ class DownloadBatchOwner(_DownloadOwnerBase):
         # 缺集记账与覆盖判定规则已下沉至 app/application/download/selection.py；
         # 此处仅保留闭包委托，让编排循环保持原调用形态。
         def __update_seasons(
-            _mid: str,
-            _need: List[int],
-            _current: List[int],
+                _mid: str,
+                _need: List[int],
+                _current: List[int],
         ) -> List[int]:
             """更新need_tvs季数，返回剩余季数。"""
             return _selection.update_no_exists_seasons(no_exists, _mid, _need, _current)
 
         def __update_episodes(
-            _mid: str,
-            _sea: int,
-            _need: List[int],
-            _current: Set[int],
+                _mid: str,
+                _sea: int,
+                _need: List[int],
+                _current: Set[int],
         ) -> List[int]:
             """更新need_tvs集数，返回剩余集数。"""
             return _selection.update_no_exists_episodes(no_exists, _mid, _sea, _need, _current)
@@ -134,19 +134,11 @@ class DownloadBatchOwner(_DownloadOwnerBase):
             return _selection.requires_complete_coverage(_tv)
 
         def __apply_allowed_episodes(
-            _need_episodes: Set[int] | List[int],
-            _context: Context,
+                _need_episodes: Set[int] | List[int],
+                _context: Context,
         ) -> Set[int]:
             """根据候选允许集裁剪 need_episodes，返回真正可下载的剧集集合。"""
             return _selection.apply_allowed_episodes(set(_need_episodes), _context)
-
-        def __get_movie_download_key(_context: Context) -> str:
-            """获取电影下载去重键。"""
-            return _selection.get_movie_download_key(_context)
-
-        def __get_music_download_key(_context: Context) -> str:
-            """获取音乐下载去重键。"""
-            return _selection.get_music_download_key(_context)
 
         # 仅排序，不提前按媒体控重；下载失败时需要继续尝试同组后续候选。
         contexts, active_failure_records = self._prepare_batch_download_contexts(

@@ -117,6 +117,7 @@ def is_debug_log_enabled() -> bool:
         return True
     return getattr(logging, log_settings.LOG_LEVEL.upper(), logging.INFO) <= logging.DEBUG
 
+
 def parse_indexer_torrents(
         html_text: str,
         domain: str,

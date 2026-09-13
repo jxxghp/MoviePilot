@@ -404,7 +404,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         return server.delete_torrents(delete_file=delete_file, ids=hashs)
 
     def set_torrents_tag(self, hashs: Union[str, list], tags: list,
-                        downloader: Optional[str] = None) -> Optional[bool]:
+                         downloader: Optional[str] = None) -> Optional[bool]:
         """
         设置种子标签
         :param hashs:  种子Hash

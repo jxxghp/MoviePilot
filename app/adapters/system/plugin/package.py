@@ -944,8 +944,8 @@ class PluginPackageManager:
             logger.warning("记录插件原生依赖安装前状态失败：%s", error)
 
     def install_raw(self, pid: str, repo_url: str, package_version: Optional[str] = None,
-                          release_version: Optional[str] = None, force_install: bool = False,
-                          before_dependency_install: Optional[Callable[[], None]] = None) \
+                    release_version: Optional[str] = None, force_install: bool = False,
+                    before_dependency_install: Optional[Callable[[], None]] = None) \
             -> tuple[bool, str]:
         """执行已通过来源准入的同步包安装，不负责身份或运行态提交。"""
         if self.is_local_repo_url(repo_url):
@@ -1034,6 +1034,7 @@ class PluginPackageManager:
                 before_dependency_install,
             )
         # 未声明 release 打包的插件继续使用文件列表方式安装。
+
         def prepare_filelist() -> tuple[bool, str]:
             return self.__prepare_content_via_filelist_sync(
                 pid,
@@ -1188,7 +1189,7 @@ class PluginPackageManager:
             return None, "插件源码目录不存在"
         elif res.status_code != 200:
             return None, f"连接仓库失败：{res.status_code} - " \
-                         f"{'超出速率限制，请设置Github Token或稍后重试' if res.status_code == 403 else res.reason}"
+                f"{'超出速率限制，请设置Github Token或稍后重试' if res.status_code == 403 else res.reason}"
 
         try:
             ret = res.json()
@@ -1416,9 +1417,9 @@ class PluginPackageManager:
         """读取远端插件元数据，并把异常收敛为空映射。"""
         try:
             plugins = (
-                          self.get_plugins(repo_url) if not package_version
-                          else self.get_plugins(repo_url, package_version)
-                      ) or {}
+                self.get_plugins(repo_url) if not package_version
+                else self.get_plugins(repo_url, package_version)
+            ) or {}
             meta = plugins.get(pid)
             return meta if isinstance(meta, dict) else {}
         except Exception as e:
@@ -1657,7 +1658,7 @@ class PluginPackageManager:
             return None, "插件源码目录不存在"
         elif res.status_code != 200:
             return None, f"连接仓库失败：{res.status_code} - " \
-                         f"{'超出速率限制，请设置Github Token或稍后重试' if res.status_code == 403 else res.text}"
+                f"{'超出速率限制，请设置Github Token或稍后重试' if res.status_code == 403 else res.text}"
 
         try:
             ret = res.json()
@@ -1934,6 +1935,7 @@ class PluginPackageManager:
                 before_dependency_install,
             )
         # 未声明 release 打包的插件继续使用文件列表方式安装。
+
         async def prepare_filelist() -> tuple[bool, str]:
             return await self.__prepare_content_via_filelist_async(
                 pid,
@@ -1991,9 +1993,9 @@ class PluginPackageManager:
         """异步读取远端插件元数据，并把异常收敛为空映射。"""
         try:
             plugins = (
-                          await self.async_get_plugins(repo_url) if not package_version
-                          else await self.async_get_plugins(repo_url, package_version)
-                      ) or {}
+                await self.async_get_plugins(repo_url) if not package_version
+                else await self.async_get_plugins(repo_url, package_version)
+            ) or {}
             meta = plugins.get(pid)
             return meta if isinstance(meta, dict) else {}
         except Exception as e:

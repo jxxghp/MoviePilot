@@ -234,7 +234,6 @@ class DownloadHistory(Base):
             statement.order_by(DownloadHistory.id.desc())
         ).scalars().all())
 
-
     @classmethod
     def list_by_user_date(cls, db: Session, date: str, username: Optional[str] = None):
         """

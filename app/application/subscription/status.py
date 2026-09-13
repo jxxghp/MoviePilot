@@ -87,6 +87,7 @@ class SubscriptionExecutionStatusService:
         "submitting",
         "cancelling",
     }
+
     def __init__(
         self,
         repository: SubscriptionExecutionReadRepository,

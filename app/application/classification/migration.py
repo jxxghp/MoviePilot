@@ -63,6 +63,8 @@ _COMMON_FALLBACKS: Final[dict[ClassificationMediaType, str]] = {
     "电视剧": "tv.uncategorized",
     "音乐": "music.uncategorized",
 }
+
+
 @dataclass(frozen=True, slots=True)
 class LegacyClassificationDiagnostic:
     """描述旧配置迁移或兼容投影中的结构化错误与警告。"""
@@ -771,10 +773,6 @@ def _standard_country_code(value: str) -> str:
     return _COUNTRY_CODE_ALIASES.get(normalized.casefold(), normalized.upper())
 
 
-
-
-
-
 def _migrate_genre_tokens(
     *,
     tokens: Sequence[_LegacyToken],
@@ -824,8 +822,6 @@ def _migrate_genre_tokens(
     if not nodes and requires_exists:
         return ClassificationCondition(field="media.genre_keys", operator="exists")
     return _all_or_single(nodes)
-
-
 
 
 def _tmdb_identity_condition() -> ClassificationCondition:

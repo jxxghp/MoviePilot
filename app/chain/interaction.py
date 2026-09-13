@@ -1450,9 +1450,9 @@ class MediaInteractionChain(ChainBase):
         判断是否为自动匹配下载目录选项。
         """
         return (
-                download_dir.name == cls._auto_download_dir_name
-                and not download_dir.download_path
-                and not download_dir.save_path
+            download_dir.name == cls._auto_download_dir_name
+            and not download_dir.download_path
+            and not download_dir.save_path
         )
 
     @staticmethod
@@ -1529,8 +1529,8 @@ class MediaInteractionChain(ChainBase):
         return bool(
             auto_download_user
             and (
-                    auto_download_user == "all"
-                    or any(userid == user for user in auto_download_user.split(","))
+                auto_download_user == "all"
+                or any(userid == user for user in auto_download_user.split(","))
             )
         )
 

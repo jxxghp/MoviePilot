@@ -227,6 +227,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             "plugins",
             _resolve_plugin_handler_instance,
         )
+
     def resolve_event_handler_instance(
             self,
             owner_class: Type[Any],

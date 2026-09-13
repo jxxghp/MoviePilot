@@ -465,7 +465,7 @@ def test_frozen_disc_plan_executes_and_replays_with_real_step_ledger(
         FileItem(storage="local", path="/disc/BDMV/STREAM/00001.m2ts",
                  name="00001.m2ts", type="file", size=200).model_dump(
                      mode="json", exclude_unset=sparse,
-                 )
+        )
         if directory else dict(source)
     )
     target = "/library/disc" if directory else "/library/disc.iso"

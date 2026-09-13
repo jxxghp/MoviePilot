@@ -404,7 +404,7 @@ def _patch_openai_responses_instructions_support():
 
         # 处理 ChatGPT 官方 Responses API (Codex) 端点兼容性
         is_codex = "chatgpt.com/backend-api/codex" in base_url
-        
+
         if is_codex and (getattr(self, "use_responses_api", False) or "input" in payload):
             instructions = payload.get("instructions", "")
             inputs = payload.get("input", [])
@@ -424,10 +424,10 @@ def _patch_openai_responses_instructions_support():
             payload["input"] = new_inputs
             payload["instructions"] = instructions or "You are a helpful assistant."
             payload["store"] = False
-            
+
             # Codex 端点不支持的部分常见补全参数，统一清理避免 400 报错
             unsupported_keys = [
-                "presence_penalty", "frequency_penalty", "top_p", "n", "user", 
+                "presence_penalty", "frequency_penalty", "top_p", "n", "user",
                 "stop", "metadata", "logit_bias", "logprobs", "top_logprobs",
                 "stream_options", "temperature"
             ]
@@ -1386,7 +1386,7 @@ class LLMHelper:
             from langchain_openai import ChatOpenAI
 
             _patch_openai_responses_instructions_support()
-            
+
             # ChatGPT Codex 端点强制要求 stream: True
             if runtime.get("use_responses_api") and "chatgpt.com/backend-api/codex" in str(runtime.get("base_url") or ""):
                 streaming = True

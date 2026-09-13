@@ -13,7 +13,6 @@ from app.runtime.settings import get_runtime_setting
 from app.schemas.types import ModuleType, OtherModulesType
 
 
-
 class LrclibModule(_ModuleBase):
     """通过 LRCLIB 获取与单个音轨匹配的同步歌词或纯文本歌词。"""
 

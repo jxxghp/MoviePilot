@@ -295,9 +295,9 @@ def format_markdown_table(
     生成 Markdown 表格文本。
     """
     header_line = (
-            "| "
-            + " | ".join(escape_markdown_table_cell(item) for item in headers)
-            + " |"
+        "| "
+        + " | ".join(escape_markdown_table_cell(item) for item in headers)
+        + " |"
     )
     separator_line = "| " + " | ".join("---" for _ in headers) + " |"
     data_lines = [

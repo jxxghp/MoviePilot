@@ -260,7 +260,7 @@ class PassKeyHelper:
     ) -> Tuple[str, str]:
         """
         生成注册选项
-        
+
         :param user_id: 用户ID
         :param username: 用户名
         :param display_name: 显示名称
@@ -318,7 +318,7 @@ class PassKeyHelper:
     ) -> Tuple[str, str, int, Optional[str]]:
         """
         验证注册响应
-        
+
         :param credential: 客户端返回的凭证
         :param expected_challenge: 期望的challenge
         :param expected_origin: 期望的源地址
@@ -374,7 +374,7 @@ class PassKeyHelper:
     ) -> Tuple[str, str]:
         """
         生成认证选项
-        
+
         :param existing_credentials: 已存在的凭证列表（用于限制可用凭证）
         :param user_verification: 用户验证要求，如果不指定则从配置中读取
         :return: (options_json, challenge)
@@ -417,7 +417,7 @@ class PassKeyHelper:
     ) -> Tuple[bool, int]:
         """
         验证认证响应
-        
+
         :param credential: 客户端返回的凭证
         :param expected_challenge: 期望的challenge
         :param credential_public_key: 凭证公钥

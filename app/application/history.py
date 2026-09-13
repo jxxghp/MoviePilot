@@ -418,6 +418,7 @@ class TransferHistoryStagingPort(TransferHistoryReplacePort, Protocol):
         """在调用方 Session 内按源路径读取成功历史快照。"""
         ...
 
+
 class TransferHistoryRepository(
     TransferHistoryQueryPort,
     TransferHistoryWritePort,

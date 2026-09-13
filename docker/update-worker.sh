@@ -25,6 +25,12 @@ if ! "${VENV_PATH}/bin/python3" -m app.cli apply-prepared-update; then
     exit 1
 fi
 
+# /app 可能刚刚被替换，切回稳定目录后再调用 supervisor 控制面。
+if ! cd /; then
+    ERROR "→ 更新后无法切回稳定工作目录。"
+    exit 1
+fi
+
 if ! mkdir -p "$(dirname "${RESTART_REQUEST_FILE}")"; then
     ERROR "→ 无法记录更新后的重启请求。"
     exit 1

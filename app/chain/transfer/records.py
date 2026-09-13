@@ -38,8 +38,8 @@ TransferMediaT = TypeVar("TransferMediaT", MediaInfo, MusicInfo)
 
 
 def apply_download_history_classification(
-    media: TransferMediaT,
-    history: DownloadHistorySnapshot,
+        media: TransferMediaT,
+        history: DownloadHistorySnapshot,
 ) -> TransferMediaT:
     """按下载发生时的分类标量恢复媒体，不读取或解析当前活动策略。"""
     snapshot = persisted_classification_snapshot(
@@ -51,6 +51,7 @@ def apply_download_history_classification(
     )
     restored = apply_persisted_classification_snapshot(media, snapshot)
     return cast(TransferMediaT, restored or media)
+
 
 # 字幕文件常见语言、默认和强制标记；匹配主视频时只剥离这些字幕专属尾缀。
 SUBTITLE_STEM_TAGS = {
@@ -227,8 +228,8 @@ class HistoryMatchMixin(_TransferOwnerBase):
             except (TypeError, ValueError):
                 return False
         return (
-                media_type == MediaType.MOVIE
-                and str(file_year) != str(media_year)
+            media_type == MediaType.MOVIE
+            and str(file_year) != str(media_year)
         )
 
     @staticmethod

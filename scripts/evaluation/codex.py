@@ -170,6 +170,7 @@ def _catalog(payload: Any, model: str) -> tuple[dict[str, Any], dict[str, Any]]:
     original = matches[0]
     projected = copy.deepcopy(original)
     projected["tool_mode"] = "direct"
+
     def digest(value: Any) -> str:
         """对相同序列化规则取指纹，便于复验单字段投影。"""
         return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()

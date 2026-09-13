@@ -65,6 +65,7 @@ def _require_torrent_port() -> TorrentHttpPort:
         raise RuntimeError("种子下载端口尚未由启动组合根装配")
     return _torrent_http_port
 
+
 # 站点首页、RSS 与音乐独立缓存的稳定键名；迁移脚本也复用这一事实来源。
 _TORRENT_CACHE_KEYS = (
     "__torrents_cache__",
@@ -485,16 +486,16 @@ class TorrentHelper:
             return True
         # 要匹配的媒体标题、原标题
         media_titles = {
-                           text_tools.normalize_upper(mediainfo.title),
-                           text_tools.normalize_upper(mediainfo.original_title)
-                       } - {""}
+            text_tools.normalize_upper(mediainfo.title),
+            text_tools.normalize_upper(mediainfo.original_title)
+        } - {""}
         # 要匹配的媒体别名、译名
         media_names = {text_tools.normalize_upper(name) for name in mediainfo.names if name}
         # 识别的种子中英文名
         meta_names = {
-                         text_tools.normalize_upper(torrent_meta.cn_name),
-                         text_tools.normalize_upper(torrent_meta.en_name)
-                     } - {""}
+            text_tools.normalize_upper(torrent_meta.cn_name),
+            text_tools.normalize_upper(torrent_meta.en_name)
+        } - {""}
         # 比对种子识别类型
         if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
             logger.debug(f'{torrent.site_name} - {torrent.title} 种子标题类型为 {torrent_meta.type.value}，'

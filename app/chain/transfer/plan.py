@@ -744,6 +744,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
             TmdbEpisode.model_validate(item)
             for item in invocation.episodes_info
         ]
+
         def invoke_provider_sequence() -> Optional[TransferInfo]:
             """按冻结顺序调用旧 provider，并校验其兼容返回类型。"""
             result = self._module_dispatcher.execute_frozen_plugin_providers(

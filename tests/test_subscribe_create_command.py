@@ -222,6 +222,7 @@ async def test_async_report_failure_happens_after_event_without_rollback() -> No
 def test_async_batch_command_commits_once_and_stages_each_added_intent(db) -> None:
     """真实数据库中的多季订阅与各自事件、通知、统计 intent 只提交一次。"""
     db.watermark(Subscribe, OutboxMessage)
+
     async def execute() -> tuple[tuple[int, ...], list[int]]:
         """在真实 AsyncSession 中执行批量 writer 并记录提交后回调。"""
         async with async_session_scope() as session:

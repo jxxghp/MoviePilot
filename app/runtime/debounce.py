@@ -13,6 +13,7 @@ class BaseDebouncer(ABC):
     防抖器的抽象基类。定义了防抖器的基本接口和日志功能。
     所有防抖器实现类必须继承此类并实现其抽象方法。
     """
+
     def __init__(self, func: Callable, interval: float, *,
                  leading: bool = False, enable_logging: bool = False, source: str = ""):
         """
@@ -178,6 +179,7 @@ class AsyncDebouncer(BaseDebouncer):
     """
     异步防抖实现类。
     """
+
     def __init__(self, *args, **kwargs):
         """
         初始化异步防抖器实例。

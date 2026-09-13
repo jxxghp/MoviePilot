@@ -118,10 +118,10 @@ class IncomingMessage(BaseModel):
                 return cls(ref=value)
             if isinstance(value, dict):
                 ref = (
-                        value.get("ref")
-                        or value.get("url")
-                        or value.get("image_url")
-                        or value.get("file_url")
+                    value.get("ref")
+                    or value.get("url")
+                    or value.get("image_url")
+                    or value.get("file_url")
                 )
                 if not ref:
                     return None

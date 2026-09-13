@@ -459,17 +459,17 @@ class TestAgentBackgroundOutput:
             created = await agent._create_agent(streaming=False)
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
-                "AgentPolicyMiddleware",
-                "ToolOutputMiddleware",
-                "skills",
-                "jobs",
-                "runtime",
-                "PlanMiddleware",
-                "memory",
-                "patch",
-                "FinalRequestCompactionMiddleware",
-                "VisionMiddleware",
-                "usage",
+            "AgentPolicyMiddleware",
+            "ToolOutputMiddleware",
+            "skills",
+            "jobs",
+            "runtime",
+            "PlanMiddleware",
+            "memory",
+            "patch",
+            "FinalRequestCompactionMiddleware",
+            "VisionMiddleware",
+            "usage",
         ]
 
     async def test_create_agent_registers_skill_tool_from_middleware(self):
@@ -575,17 +575,17 @@ class TestAgentBackgroundOutput:
             created = await agent._create_agent(streaming=False)
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
-                "AgentPolicyMiddleware",
-                "ToolOutputMiddleware",
-                "skills",
-                "jobs",
-                "runtime",
-                "PlanMiddleware",
-                "memory",
-                "patch",
-                "FinalRequestCompactionMiddleware",
-                "VisionMiddleware",
-                "usage",
+            "AgentPolicyMiddleware",
+            "ToolOutputMiddleware",
+            "skills",
+            "jobs",
+            "runtime",
+            "PlanMiddleware",
+            "memory",
+            "patch",
+            "FinalRequestCompactionMiddleware",
+            "VisionMiddleware",
+            "usage",
         ]
 
     def test_message_tool_is_not_always_included_by_tool_selector(self):
@@ -781,18 +781,18 @@ class TestAgentBackgroundOutput:
             created = await agent._create_agent(streaming=False)
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
-                "AgentPolicyMiddleware",
-                "ToolOutputMiddleware",
-                "skills",
-                "jobs",
-                "runtime",
-                "PlanMiddleware",
-                "memory",
-                "activity",
-                "patch",
-                "FinalRequestCompactionMiddleware",
-                "VisionMiddleware",
-                "usage",
+            "AgentPolicyMiddleware",
+            "ToolOutputMiddleware",
+            "skills",
+            "jobs",
+            "runtime",
+            "PlanMiddleware",
+            "memory",
+            "activity",
+            "patch",
+            "FinalRequestCompactionMiddleware",
+            "VisionMiddleware",
+            "usage",
         ]
 
     async def test_run_background_prompt_forces_disable_message_tools_when_capture_only(self):

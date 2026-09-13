@@ -387,6 +387,73 @@ async def test_edited_legacy_default_policy_is_not_automatically_changed(
 
 
 @pytest.mark.asyncio  # type: ignore[misc]
+async def test_fresh_environment_initializes_builtin_default_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """没有旧配置文件的新环境应持久化完整内置分类，而不是只有未分类兜底。"""
+    store = _MemoryPolicyStore()
+    monkeypatch.setattr(
+        classification_composition,
+        "SystemConfigClassificationPolicyStore",
+        lambda *_args: store,
+    )
+
+    composition = await classification_composition.compose_classification(
+        executor=cast(Any, _InlineExecutor()),
+        settings=cast(Any, SimpleNamespace(CONFIG_PATH=tmp_path)),
+        system_config=cast(Any, _SystemConfig({})),
+    )
+
+    policy = composition.runtime.require_policy()
+    assert composition.migrated is False
+    assert policy.revision == 1
+    assert [category.id for category in policy.categories] == [
+        "movie.animation",
+        "movie.chinese",
+        "movie.foreign",
+        "tv.dongman.cn",
+        "tv.dongman.jp",
+        "tv.documentary",
+        "tv.kids",
+        "tv.variety",
+        "tv.chinese",
+        "tv.western",
+        "tv.asian",
+        "tv.uncategorized",
+        "music.uncategorized",
+        "music.album",
+        "music.compilation",
+        "music.ep",
+        "music.single",
+    ]
+    assert [rule.id for rule in policy.rules] == [
+        "movie.animation.default",
+        "movie.chinese.default",
+        "tv.dongman.cn.default",
+        "tv.dongman.jp.default",
+        "tv.documentary.default",
+        "tv.kids.default",
+        "tv.variety.default",
+        "tv.chinese.default",
+        "tv.western.default",
+        "tv.asian.default",
+        "music.compilation.default",
+        "music.ep.default",
+        "music.single.default",
+        "music.album.default",
+    ]
+    assert policy.fallbacks == {
+        "电影": "movie.foreign",
+        "电视剧": "tv.uncategorized",
+        "音乐": "music.uncategorized",
+    }
+    assert store.state is not None
+    assert store.state.active == policy
+    assert store.write_count == 1
+
+
+@pytest.mark.asyncio  # type: ignore[misc]
 async def test_absent_policy_migrates_yaml_once_without_rewriting_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

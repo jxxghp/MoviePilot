@@ -311,9 +311,9 @@ class Slack:
                     "type": "mrkdwn",
                     "text": f"*{title}*\n{text or ''}"
                 }, 'accessory': {
-                        "type": "image",
-                        "image_url": f"{image}",
-                        "alt_text": f"{title}"
+                    "type": "image",
+                    "image_url": f"{image}",
+                    "alt_text": f"{title}"
                 }})
             elif buttons or link:
                 blocks.append({
@@ -520,13 +520,13 @@ class Slack:
                         if media.get_poster_image():
                             if media.vote_star:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                       f"\n类型：{media.type.value}" \
-                                       f"\n{media.vote_star}" \
-                                       f"\n{media.get_overview_string(50)}"
+                                    f"\n类型：{media.type.value}" \
+                                    f"\n{media.vote_star}" \
+                                    f"\n{media.get_overview_string(50)}"
                             else:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                       f"\n类型：{media.type.value}" \
-                                       f"\n{media.get_overview_string(50)}"
+                                    f"\n类型：{media.type.value}" \
+                                    f"\n{media.get_overview_string(50)}"
                             blocks.append(
                                 {
                                     "type": "section",
@@ -580,13 +580,13 @@ class Slack:
                         if media.get_poster_image():
                             if media.vote_star:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                       f"\n类型：{media.type.value}" \
-                                       f"\n{media.vote_star}" \
-                                       f"\n{media.get_overview_string(50)}"
+                                    f"\n类型：{media.type.value}" \
+                                    f"\n{media.vote_star}" \
+                                    f"\n{media.get_overview_string(50)}"
                             else:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                       f"\n类型：{media.type.value}" \
-                                       f"\n{media.get_overview_string(50)}"
+                                    f"\n类型：{media.type.value}" \
+                                    f"\n{media.get_overview_string(50)}"
                             blocks.append(
                                 {
                                     "type": "section",
@@ -687,16 +687,16 @@ class Slack:
                     meta = MetaInfo(torrent.title, torrent.description)
                     link = torrent.page_url
                     title_text = f"{meta.season_episode} " \
-                                 f"{meta.resource_term} " \
-                                 f"{meta.video_term} " \
-                                 f"{meta.release_group}"
+                        f"{meta.resource_term} " \
+                        f"{meta.video_term} " \
+                        f"{meta.release_group}"
                     title_text = re.sub(r"\s+", " ", title_text).strip()
                     free = torrent.volume_factor
                     seeder = f"{torrent.seeders}↑"
                     description = torrent.description
                     text = f"{index}. 【{site_name}】<{link}|{title_text}> " \
-                           f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}\n" \
-                           f"{description}"
+                        f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}\n" \
+                        f"{description}"
                     blocks.append(
                         {
                             "type": "section",
@@ -747,16 +747,16 @@ class Slack:
                     meta = MetaInfo(torrent.title, torrent.description)
                     link = torrent.page_url
                     title_text = f"{meta.season_episode} " \
-                                 f"{meta.resource_term} " \
-                                 f"{meta.video_term} " \
-                                 f"{meta.release_group}"
+                        f"{meta.resource_term} " \
+                        f"{meta.video_term} " \
+                        f"{meta.release_group}"
                     title_text = re.sub(r"\s+", " ", title_text).strip()
                     free = torrent.volume_factor
                     seeder = f"{torrent.seeders}↑"
                     description = torrent.description
                     text = f"{index}. 【{site_name}】<{link}|{title_text}> " \
-                           f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}\n" \
-                           f"{description}"
+                        f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}\n" \
+                        f"{description}"
                     blocks.append(
                         {
                             "type": "section",

@@ -120,12 +120,12 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
         ),
     )
     monkeypatch.setattr("app.chain.transfer.filter.MediaChain", lambda: SimpleNamespace(
-            recognize_media=lambda **kwargs: pytest.fail("不应按合集历史 ID 识别"),
-            recognize_by_meta=lambda meta, obtain_images: (
-                recognized_meta.append(meta) or fallback_media
-            ),
-            supplement_tmdb_info=lambda media, _meta: media,
-        ))
+        recognize_media=lambda **kwargs: pytest.fail("不应按合集历史 ID 识别"),
+        recognize_by_meta=lambda meta, obtain_images: (
+            recognized_meta.append(meta) or fallback_media
+        ),
+        supplement_tmdb_info=lambda media, _meta: media,
+    ))
     task = TransferTask(
         fileitem=FileItem(
             storage="local",

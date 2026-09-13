@@ -39,6 +39,7 @@ from app.schemas.workflow import WorkflowShare as _SchemaWorkflowShare
 
 router = ResponseAPIRouter()
 
+
 @router.get(
     "/",
     summary="所有工作流",

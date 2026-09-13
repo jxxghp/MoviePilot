@@ -816,7 +816,7 @@ async def test_async_broadcast_submission_is_registered_before_stop_snapshot(
 
 
 @pytest.mark.parametrize("event_type", [EventType.TransferFailed, EventType.SubtitleTransferFailed,
-                                       EventType.AudioTransferFailed])
+                                        EventType.AudioTransferFailed])
 def test_outbox_retries_strict_failure_without_repeating_system_alert(
         isolated_eventmanager, monkeypatch, event_type):
     """真实失败 handler 仍重试至死信，相同事件的系统错误提示只发送一次。"""
@@ -843,8 +843,8 @@ def test_outbox_retries_strict_failure_without_repeating_system_alert(
     event_key = f"{event_type.value}:task-1:1"
     store.claim.side_effect = [
         ClaimedOutboxMessage(1, event_key, event_type.value,
-                            {"idempotency_key": event_key,
-                             "transferinfo": {"success": False, "message": "failed"}}, 1, attempt)
+                             {"idempotency_key": event_key,
+                              "transferinfo": {"success": False, "message": "failed"}}, 1, attempt)
         for attempt in range(1, 6)
     ] + [None]
     dispatcher = OutboxDispatcher(store, outbox.build_outbox_handlers())

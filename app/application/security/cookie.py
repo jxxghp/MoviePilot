@@ -384,6 +384,7 @@ class CookieLoginFormMixin:
                 pass
         return False
 
+
 class CookieHelper(CookieLoginFormMixin):
     """处理站点登录表单、验证码和 Cookie 获取流程。"""
 

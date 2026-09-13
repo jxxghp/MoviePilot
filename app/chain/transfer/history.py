@@ -379,8 +379,8 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 if (
                         file_path.suffix in self._allowed_exts
                         and not self._is_blocked_by_exclude_words(
-                    file_path.as_posix(), transfer_exclude_words
-                )
+                            file_path.as_posix(), transfer_exclude_words
+                        )
                         and file_path.exists()
                 ):
                     return False

@@ -634,16 +634,16 @@ def _project_update_candidate(
     return cast(
         Plugin,
         plugin.model_copy(
-        update={
-            "update_candidate": PluginUpdateCandidate(
-                source_type=source_type.value,
-                source_key=source_key,
-                repo_url=repo_url,
-                version=plugin.plugin_version,
-                is_bound=bool(
-                    identity and identity.trusted_source_key == source_key
-                ),
-            )
-        },
+            update={
+                "update_candidate": PluginUpdateCandidate(
+                    source_type=source_type.value,
+                    source_key=source_key,
+                    repo_url=repo_url,
+                    version=plugin.plugin_version,
+                    is_bound=bool(
+                        identity and identity.trusted_source_key == source_key
+                    ),
+                )
+            },
         ),
     )

@@ -31,7 +31,6 @@ class _FakeResponse:
         """模拟释放短生命周期响应。"""
 
 
-
 def _build_indexer() -> dict:
     """构造 YemaPT 开放 API Spider 所需的最小站点配置。"""
     return {
@@ -336,7 +335,7 @@ def test_yemapt_download_generates_and_urlencodes_temporary_key(monkeypatch):
         fake_post_res,
     )
     monkeypatch.setattr(
-            "app.chain.download.submission.TorrentHelper.download_torrent",
+        "app.chain.download.submission.TorrentHelper.download_torrent",
         fake_download_torrent,
     )
     enclosure = YemaSpider(_build_indexer())._build_download_url(100)

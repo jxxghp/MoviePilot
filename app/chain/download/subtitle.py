@@ -98,7 +98,6 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         ".rar": "rar",
     }
 
-
     @staticmethod
     def _safe_subtitle_file_name(file_name: str, fallback_name: str) -> str:
         """

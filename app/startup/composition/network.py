@@ -283,7 +283,14 @@ class _ScrapingHttpAdapter:
         timeout: int,
     ) -> Optional[ScrapingResponsePort]:
         """读取需要完整载荷的音乐封面响应。"""
-        options: dict[str, Any] = {"proxies": proxies, "ua": ua, "timeout": timeout}
+        options: dict[str, Any] = {
+            "proxies": proxies,
+            "ua": ua,
+            "timeout": timeout,
+            "referer": (
+                "https://movie.douban.com/" if "doubanio.com" in url else None
+            ),
+        }
         response = RequestUtils(**options).get_res(url)
         return cast(Optional[ScrapingResponsePort], response)
 
@@ -295,7 +302,13 @@ class _ScrapingHttpAdapter:
         ua: str,
     ) -> ScrapingStreamResponsePort:
         """打开由刮削链上下文关闭的流式图片响应。"""
-        options: dict[str, Any] = {"proxies": proxies, "ua": ua}
+        options: dict[str, Any] = {
+            "proxies": proxies,
+            "ua": ua,
+            "referer": (
+                "https://movie.douban.com/" if "doubanio.com" in url else None
+            ),
+        }
         response = RequestUtils(**options).get_stream(url=url)
         return cast(ScrapingStreamResponsePort, response)
 

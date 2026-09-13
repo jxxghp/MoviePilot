@@ -942,6 +942,24 @@ def test_release_update_worker_applies_before_supervisor_shutdown() -> None:
     assert worker.index("apply-prepared-update") < worker.index("shutdown")
 
 
+def test_update_reexec_uses_stable_working_directory() -> None:
+    """更新替换 /app 后，入口重入和 worker 控制面调用必须离开旧工作目录。"""
+    entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    worker = (ROOT / "docker" / "update-worker.sh").read_text(encoding="utf-8")
+
+    reexec = entrypoint.split("function reexec_entrypoint()", 1)[1].split("}", 1)[0]
+    assert reexec.index("cd / || exit 1") < reexec.index("exec /entrypoint.sh")
+    assert entrypoint.count("exec /entrypoint.sh --post-update-reexec") == 1
+    assert entrypoint.count("reexec_entrypoint") == 5
+
+    supervisor_start = entrypoint.index("/usr/bin/supervisord -n")
+    assert entrypoint.rfind("cd / || exit 1", 0, supervisor_start) > entrypoint.rfind(
+        "cd /app || exit", 0, supervisor_start
+    )
+    worker_stable_cwd = worker.index("cd /", worker.index("apply-prepared-update"))
+    assert worker_stable_cwd < worker.index("supervisorctl")
+
+
 @pytest.mark.parametrize(
     ("pyproject_changed", "lock_changed", "expected_route_calls", "expected_sync_calls"),
     (

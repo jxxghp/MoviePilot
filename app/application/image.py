@@ -461,11 +461,11 @@ class ImageHelper(metaclass=Singleton):
         return (response.content, mime_type) if mime_type else None
 
     def fetch_image(
-        self,
-        url: str,
-        proxy: Optional[bool] = None,
-        use_cache: bool = True,
-        cookies: Optional[str | dict] = None) -> Optional[bytes]:
+            self,
+            url: str,
+            proxy: Optional[bool] = None,
+            use_cache: bool = True,
+            cookies: Optional[str | dict] = None) -> Optional[bytes]:
         """
         获取图片（同步版本）
         """
@@ -514,11 +514,11 @@ class ImageHelper(metaclass=Singleton):
         return result
 
     async def async_fetch_image(
-        self,
-        url: str,
-        proxy: Optional[bool] = None,
-        use_cache: bool = True,
-        cookies: Optional[str | dict] = None) -> Optional[bytes]:
+            self,
+            url: str,
+            proxy: Optional[bool] = None,
+            use_cache: bool = True,
+            cookies: Optional[str | dict] = None) -> Optional[bytes]:
         """
         获取图片（异步版本）
         """

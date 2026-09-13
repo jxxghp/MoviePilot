@@ -29,7 +29,7 @@ def _reset_failed_retries(src_path, storage=None):
 def _failed_history(history_id: int, src_path: str, storage: str):
     """构造一条持续失败的整理记录替身，模拟同一源路径屡次整理失败后落库的状态。"""
     return SimpleNamespace(id=history_id, status=False, src_fileitem=None,
-                            src=src_path, src_storage=storage)
+                           src=src_path, src_storage=storage)
 
 
 def test_transient_failures_self_heal_within_retry_budget(monkeypatch):
@@ -105,11 +105,11 @@ def test_delete_transfer_history_endpoint_clears_retry_count(monkeypatch):
         id=101,
         src=src_path,
         src_storage=storage,
-            dest_fileitem=None,
-            src_fileitem=None,
-            download_hash=None,
-            transfer_task_id=None,
-        )
+        dest_fileitem=None,
+        src_fileitem=None,
+        download_hash=None,
+        transfer_task_id=None,
+    )
     repository = Mock()
     repository.get.return_value = history
     command = TransferHistoryMutationCommand(

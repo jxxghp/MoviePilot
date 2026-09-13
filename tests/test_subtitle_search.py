@@ -29,6 +29,7 @@ def test_explicit_special_season_zero_overrides_recognized_season():
     assert _resolve_media_season(explicit_season=0, recognized_season=1) == 0
     assert _resolve_media_season(explicit_season=None, recognized_season=1) == 1
 
+
 HHANCLUB_SUBTITLE_HTML = """
 <div class="flex flex-col w-full items-center mt-[25px] gap-y-[10px] bg-[#F1F3F5] !rounded-md p-5" id="subtitles-table">
   <div class="grid grid-cols-[10%_60%_10%_10%_10%] w-[95%] !rounded-md py-1 items-center bg-[#FFFFFF]/[0.7]">

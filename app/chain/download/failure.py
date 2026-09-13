@@ -37,9 +37,9 @@ DOWNLOAD_FAILURE_RESOURCE_ERROR_KEYWORDS = (
     "专辑资源",
 )
 
+
 class DownloadFailureOwner(_DownloadOwnerBase):
     """下载失败指纹、冷却和持久化 owner。"""
-
 
     @staticmethod
     def _is_subscribe_source(source: Optional[str]) -> bool:
