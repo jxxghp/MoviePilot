@@ -106,75 +106,82 @@ class PluginLifecycle:
         self,
         plugin_id: Optional[str] = None,
     ) -> dict[str, PluginRuntimeStatus]:
-        """加载并初始化插件，返回每个目标的明确运行结果。"""
-        loadable_plugins = self._loadable_plugins()
-        results: dict[str, PluginRuntimeStatus] = {}
-        if plugin_id:
-            self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
+        """加载并初始化插件，返回每个目标的明确运行结果。
 
-        def check_module(module: Any) -> bool:
-            """判断模块是否具备宿主插件最小生命周期钩子。"""
-            return hasattr(module, "init_plugin") and hasattr(module, "plugin_name")
+        与 stop／quiesce 共用同一把可重入锁。加载要构造实例、建库并注册事件订阅，
+        停止取的却是进入时的运行表快照：两者交叠时，本次加载的实例落在快照之外而
+        停止仍会把它从运行表里抹掉，它注册的定时任务、线程和事件订阅却留在原处，
+        此后没有任何句柄能再停掉它。
+        """
+        with self._lifecycle_lock:
+            loadable_plugins = self._loadable_plugins()
+            results: dict[str, PluginRuntimeStatus] = {}
+            if plugin_id:
+                self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
 
-        plugins = self._load_plugins(plugin_id, loadable_plugins, check_module)
-        plugins.sort(key=lambda item: getattr(item, "plugin_order", 0))
-        for plugin in plugins:
-            current_id = plugin.__name__
-            if plugin_id and current_id.casefold() != plugin_id.casefold():
-                continue
-            try:
-                if not self._auth_checker(plugin):
+            def check_module(module: Any) -> bool:
+                """判断模块是否具备宿主插件最小生命周期钩子。"""
+                return hasattr(module, "init_plugin") and hasattr(module, "plugin_name")
+
+            plugins = self._load_plugins(plugin_id, loadable_plugins, check_module)
+            plugins.sort(key=lambda item: getattr(item, "plugin_order", 0))
+            for plugin in plugins:
+                current_id = plugin.__name__
+                if plugin_id and current_id.casefold() != plugin_id.casefold():
+                    continue
+                try:
+                    if not self._auth_checker(plugin):
+                        self._remove_classification(current_id)
+                        if current_id in self._classes:
+                            self._classes[current_id] = plugin
+                        status = PluginRuntimeStatus.BLOCKED_BY_POLICY
+                        self._runtime_status_writer(plugin_id or current_id, status)
+                        results[plugin_id or current_id] = status
+                        continue
                     self._remove_classification(current_id)
-                    if current_id in self._classes:
-                        self._classes[current_id] = plugin
-                    status = PluginRuntimeStatus.BLOCKED_BY_POLICY
+                    self._classes[current_id] = plugin
+                    with bind_plugin_instance(current_id):
+                        instance = plugin()
+                        instance.init_plugin(self._plugin_config(current_id))
+                    self._ensure_database(current_id, instance)
+                    enabled = bool(instance.get_state())
+                    if enabled:
+                        self._refresh_classification_safely(current_id, instance)
+                    else:
+                        self._remove_classification(current_id)
+                    self._quiesced_hooks.pop(current_id, None)
+                    self._running[current_id] = instance
+                    self._logger.info(
+                        f"加载插件：{current_id} 版本：{instance.plugin_version}"
+                    )
+                    if enabled:
+                        self._enable_events(plugin)
+                    else:
+                        self._disable_events(plugin)
+                    status = PluginRuntimeStatus.ACTIVE
                     self._runtime_status_writer(plugin_id or current_id, status)
                     results[plugin_id or current_id] = status
-                    continue
-                self._remove_classification(current_id)
-                self._classes[current_id] = plugin
-                with bind_plugin_instance(current_id):
-                    instance = plugin()
-                    instance.init_plugin(self._plugin_config(current_id))
-                self._ensure_database(current_id, instance)
-                enabled = bool(instance.get_state())
-                if enabled:
-                    self._refresh_classification_safely(current_id, instance)
-                else:
+                except Exception as error:  # noqa: BLE001
                     self._remove_classification(current_id)
-                self._quiesced_hooks.pop(current_id, None)
-                self._running[current_id] = instance
-                self._logger.info(
-                    f"加载插件：{current_id} 版本：{instance.plugin_version}"
-                )
-                if enabled:
-                    self._enable_events(plugin)
-                else:
-                    self._disable_events(plugin)
-                status = PluginRuntimeStatus.ACTIVE
-                self._runtime_status_writer(plugin_id or current_id, status)
-                results[plugin_id or current_id] = status
-            except Exception as error:  # noqa: BLE001
-                self._remove_classification(current_id)
+                    status = PluginRuntimeStatus.LOAD_FAILED
+                    self._runtime_status_writer(plugin_id or current_id, status)
+                    results[plugin_id or current_id] = status
+                    # 建库发生在进入运行态之前：失败的插件不会出现在 _running 里，卸载路径
+                    # 因此够不到它，句柄只能在这里释放
+                    self._release_databases((current_id,))
+                    self._logger.error(
+                        f"加载插件 {current_id} 出错：{error} - {traceback.format_exc()}"
+                    )
+            if plugin_id and not any(
+                result_id.casefold() == plugin_id.casefold()
+                for result_id in results
+            ):
+                self._remove_classification(plugin_id)
                 status = PluginRuntimeStatus.LOAD_FAILED
-                self._runtime_status_writer(plugin_id or current_id, status)
-                results[plugin_id or current_id] = status
-                # 建库发生在进入运行态之前：失败的插件不会出现在 _running 里，卸载路径
-                # 因此够不到它，句柄只能在这里释放
-                self._release_databases((current_id,))
-                self._logger.error(
-                    f"加载插件 {current_id} 出错：{error} - {traceback.format_exc()}"
-                )
-        if plugin_id and not any(
-            result_id.casefold() == plugin_id.casefold()
-            for result_id in results
-        ):
-            self._remove_classification(plugin_id)
-            status = PluginRuntimeStatus.LOAD_FAILED
-            self._runtime_status_writer(plugin_id, status)
-            results[plugin_id] = status
-        self._clear_tools()
-        return results
+                self._runtime_status_writer(plugin_id, status)
+                results[plugin_id] = status
+            self._clear_tools()
+            return results
 
     @staticmethod
     def _declaration(instance: Any, hook_name: str) -> Any:
