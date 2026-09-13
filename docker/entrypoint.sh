@@ -294,6 +294,12 @@ function source_control_generation() {
     /entrypoint.sh --source-generation 2>/dev/null
 }
 
+# 更新会原子替换 /app；重入前切到稳定目录，避免新 Bash 进程继承已删除的工作目录。
+function reexec_entrypoint() {
+    cd / || exit 1
+    exec /entrypoint.sh --post-update-reexec
+}
+
 function maybe_reexec_control_bundle() {
     [ "${MOVIEPILOT_UPDATE_RESULT:-noop}" = "updated" ] || return 0
 
@@ -309,7 +315,7 @@ function maybe_reexec_control_bundle() {
         "${next_control_generation}" \
         "${MOVIEPILOT_BOOTSTRAP_REEXECUTED:-0}"; then
         INFO "→ 检测到容器控制脚本更新，使用新版本继续本次启动。"
-        exec /entrypoint.sh --post-update-reexec
+        reexec_entrypoint
     elif [ "$?" -eq 2 ]; then
         ERROR "→ 容器控制脚本在单次启动中重复变化，已终止以避免重启循环。"
         exit 1
@@ -505,7 +511,7 @@ if [ "${MOVIEPILOT_BOOTSTRAP_UPDATE_DONE:-0}" != "1" ] \
     && [ -f "${CONFIG_DIR}/temp/moviepilot-update/install.json" ]; then
     if apply_pending_release_update_at_startup; then
         INFO "→ 未完成的 Release 更新已安装，重新执行入口加载新代码。"
-        exec /entrypoint.sh --post-update-reexec
+        reexec_entrypoint
     fi
 fi
 
@@ -542,6 +548,10 @@ ensure_browser_kernel
 
 # 证书管理
 source "${MP_CONTROL_DIR:-/usr/local/lib/moviepilot/control}/cert.sh"
+
+# /app 会被 Release worker 原子替换；常驻入口必须留在稳定目录，避免 worker 关闭 supervisor 后
+# 当前 shell 继承已删除的旧工作目录，导致重入时 Bash 连续报告 getcwd 错误。
+cd / || exit 1
 
 # supervisord 常驻前台并统一托管 Nginx 与后端；带更新标记的 shutdown 会回到本入口消费更新包。
 install -d -m 0755 /run/moviepilot
@@ -584,13 +594,13 @@ while true; do
             exit 1
         fi
         INFO "→ 更新代码已落盘，重新执行容器入口以加载新版本。"
-        exec /entrypoint.sh --post-update-reexec
+        reexec_entrypoint
     fi
 
     if [ -f "${ONE_SHOT_DEV_UPDATE_FLAG}" ]; then
         if run_pending_dev_update_after_supervisor_shutdown; then
             INFO "→ 更新包已安装，重新执行容器入口以加载新版本。"
-            exec /entrypoint.sh --post-update-reexec
+            reexec_entrypoint
         fi
         if [ -f "${ONE_SHOT_DEV_UPDATE_FLAG}" ]; then
             ERROR "→ 更新请求未能完成且标记仍存在，停止启动。"

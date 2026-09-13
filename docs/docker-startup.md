@@ -425,7 +425,8 @@ Python lifespan 会先撤销 readiness，再按组件声明的 `stop_order` 停�
 普通应用重启通过本地 `supervisorctl restart all` 同时重启 Nginx 和后端。确认安装 Release 时，
 `SystemHelper` 只启动 root `moviepilot-update-worker`；worker 先替换 `/app`、`/public` 或站点资源，
 再写入 `moviepilot.pending_supervisor_restart` 并执行 `supervisorctl shutdown`。外层 entrypoint 看到标记后
-重新执行 launcher，加载新代码。Dev 更新仍通过一次性 Dev 标记关闭 Supervisor，再由 entrypoint 调用
+重新执行 launcher，加载新代码。载荷替换期间外层 entrypoint、worker 的控制面调用和所有入口重入都使用 `/`
+作为稳定工作目录，避免旧 `/app` 被删除后产生 `getcwd` 错误。Dev 更新仍通过一次性 Dev 标记关闭 Supervisor，再由 entrypoint 调用
 `update.sh`。这样更新包不会因只重启受管进程而停留在暂存目录；整个过程不访问 Docker API，也不依赖
 Docker restart policy。
 
