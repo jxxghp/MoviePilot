@@ -281,6 +281,20 @@ it must be an absolute, existing directory — `ensure` raises
 `FileNotFoundError` before creating anything rather than leaving behind a
 database with neither tables nor a version stamp.
 
+Before the upgrade runs, `run_migrations` compares the revisions already
+stamped in the plugin database against the script tree shipped with the
+installed plugin version. A revision that tree cannot locate means the
+database was stamped by a newer build — the ordinary outcome of reinstalling
+an older version — and the host raises `PluginMigrationCompatibilityError`
+naming both the revision and the directory instead of letting Alembic fail
+with a bare `Can't locate revision`. The host never downgrades automatically:
+downgrade scripts normally drop tables and columns, so running them unattended
+would destroy whatever the user produced under the newer version, with no way
+back. Recovery is to install a plugin version whose migration tree contains
+that revision, or to have an administrator perform an explicit data migration.
+A database with no `alembic_version` table yet reports no revisions, so first
+creation is never blocked by this check.
+
 Models must inherit `app.sdk.database.plugin_declarative_base()`, which mints
 a fresh `MetaData` per call so a plugin's tables never collide with
 `app.db.base.Base.metadata` or with another plugin's same-named tables. At
