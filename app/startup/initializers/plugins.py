@@ -555,6 +555,8 @@ def configure_plugin_services() -> None:
         ),
         executor=command,
         clock=lambda: datetime.now(timezone.utc),
+        # 分身的安装包只登记在源插件名下，勘察来源候选前必须先归一
+        source_plugin_id=plugin_manager.get_plugin_source_id,
     )
     configure_plugin_install_service(gateway)
     configure_plugin_installation_recovery(
