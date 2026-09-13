@@ -297,6 +297,47 @@ def test_merging_legacy_entries_is_idempotent_across_restarts():
     assert written == [SystemConfigKey.PluginInstancesImported]
 
 
+def test_bootstrap_is_retried_after_a_transient_persistence_failure():
+    """引导过程中的暂时性故障不得让同一进程此后永久跳过引导。
+
+    完成标记若在读取、合并、写指纹之前就落下，首次访问撞上一次数据库抖动之后，
+    本进程剩余生命周期里读到的都是一份没导完的分身清单，只能靠重启自愈。
+    """
+    values = _legacy_values(
+        DemoPluginWork={
+            "instance_id": "DemoPluginWork",
+            "source_plugin_id": "DemoPlugin",
+        }
+    )
+    directory, _records = _make_directory()
+    reads: list = []
+    failures = {"remaining": 1}
+
+    def _read(key):
+        """第一次读旧键时模拟一次持久化层抖动。"""
+        reads.append(key)
+        if key is SystemConfigKey.PluginInstances and failures["remaining"]:
+            failures["remaining"] -= 1
+            raise RuntimeError("持久化层暂时不可用")
+        return values.get(key)
+
+    storage = PluginStorage(
+        read=_read,
+        write=lambda key, value: values.__setitem__(key, value),
+    )
+    store = PluginInstanceStore(storage=lambda: storage, directory=lambda: directory)
+
+    with pytest.raises(RuntimeError):
+        store.all()
+
+    assert set(store.all()) == {"DemoPluginWork"}
+
+    # 成功之后仍然是一次性的：后续读取不再回头查旧键
+    reads_after_success = len(reads)
+    assert set(store.all()) == {"DemoPluginWork"}
+    assert len(reads) == reads_after_success
+
+
 def test_loader_executes_each_instance_in_an_isolated_module_namespace(
     tmp_path,
     monkeypatch,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any, NamedTuple, Optional
@@ -389,9 +390,31 @@ class PluginInstanceStore:
         self._storage = storage
         self._directory = directory
         self._bootstrap_checked = False
+        # 引导只应发生一次，但完成标记要等合并真正成功才提交，两者之间存在窗口；
+        # 用可重入锁把窗口关上，多线程同时首次访问时只有一个真的去合并
+        self._bootstrap_lock = threading.RLock()
 
     def _ensure_bootstrapped(self) -> None:
-        """把旧 systemconfig 单键里新增或变化的实例描述合并进独立表，每进程判定一次。
+        """把旧 systemconfig 单键的实例描述变更合并进独立表，每进程成功一次。
+
+        完成标记在合并与指纹落盘全部成功之后才提交：读取、列举、保存、写指纹任何
+        一步遇到暂时性故障都会把异常抛给调用方，此时若标记已经落下，本进程后续调用
+        就会跳过引导、静默返回一份没导完的分身清单，只能靠重启自愈。失败后重试仍然
+        是一次性的——标记一旦提交，后续调用连旧键都不再读。
+
+        :raise Exception: 导入失败时向上抛出，不吞掉持久化层错误
+        """
+        if self._bootstrap_checked:
+            return
+        with self._bootstrap_lock:
+            # 持锁后复查：等锁期间前一个线程可能已经把引导做完了，不能重复导入
+            if self._bootstrap_checked:
+                return
+            self._merge_legacy_instances()
+            self._bootstrap_checked = True
+
+    def _merge_legacy_instances(self) -> None:
+        """执行一轮旧键与独立表的合并：把新增或变化的实例描述搬进独立表。
 
         alembic 迁移已经搬过一轮，这里兜的是「库结构升级后又用旧版本写过分身」这类
         回滚往返：旧键刻意保留作回滚依据、从不清理，旧版本只认它，因此它在迁移之后
@@ -403,12 +426,7 @@ class PluginInstanceStore:
         旧副本盖回去；指纹对不上说明旧版本改写过该条目，合并进来；指纹没记过且表里也
         没有该行说明旧版本新增过它，导入。指纹没记过但表里已有该行（迁移刚搬过去的那
         一批），只认领指纹而不覆盖。指纹表始终与旧键当前内容对齐，重复启动不再产生写入。
-
-        :raise Exception: 导入失败时向上抛出，不吞掉持久化层错误
         """
-        if self._bootstrap_checked:
-            return
-        self._bootstrap_checked = True
         storage = self._storage()
         recorded = storage.read(SystemConfigKey.PluginInstancesImported)
         imported: dict[str, str] = dict(recorded) if isinstance(recorded, dict) else {}
