@@ -372,12 +372,24 @@ class EventDispatcher:
         handler_identifier: str,
         target_plugin_id: str,
     ) -> bool:
-        """只把定向输入事件投递给标识和声明均匹配的目标插件。"""
+        """只把定向输入事件投递给标识和声明均匹配的目标插件。
+
+        目标匹配按运行实例身份判断，不能只看处理器的限定名：分身共享源码，其
+        ``__qualname__`` 保持源类名不变，只比类名会让定向到分身的事件全部落空，
+        而定向到本体的事件被本体连同它的全部分身一起收到。实例身份编码在处理器
+        标识的模块段里（``app.plugins.<实例ID>``）；不是插件处理器时回落到类名比较，
+        保持宿主侧处理器的既有行为。
+        """
         class_name, method_name = EventBindingResolver.parse_handler_names(handler)
-        if class_name != target_plugin_id:
-            return False
         parts = (handler_identifier or "").split(".")
-        return len(parts) >= 2 and parts[-2:] == [class_name, method_name]
+        if len(parts) < 2 or parts[-2:] != [class_name, method_name]:
+            return False
+        module_path = ".".join(parts[:-2])
+        prefix = "app.plugins."
+        if module_path.startswith(prefix):
+            owner_id = module_path[len(prefix):].split(".")[0]
+            return owner_id.casefold() == target_plugin_id.casefold()
+        return class_name == target_plugin_id
 
     @staticmethod
     def _log_lifecycle(event: Any, stage: str) -> None:
