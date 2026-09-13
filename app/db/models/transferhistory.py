@@ -205,11 +205,11 @@ class TransferHistory(Base):
             query = select(cls).order_by(
                 cls.date.desc()
             )
-        
+
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
             query = query.offset((page - 1) * count).limit(count)
-        
+
         result = await db.execute(query)
         return list(result.scalars().all())
 
@@ -640,8 +640,8 @@ class TransferHistory(Base):
         elif mtype and season is not None and dest:
             # 类型 + 转移路径（媒体服务器 webhook 缺少远端身份场景）
             return list(db.execute(select(cls).where(cls.type == mtype,
-                                                cls.seasons == season,
-                                                cls.dest.like(f"{dest}%"))).scalars().all())
+                                                     cls.seasons == season,
+                                                     cls.dest.like(f"{dest}%"))).scalars().all())
         else:
             return []
         if season is not None and episode:

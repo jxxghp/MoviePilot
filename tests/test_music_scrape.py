@@ -309,18 +309,18 @@ def test_album_track_match_uses_disc_track_title_and_duration() -> None:
         media_id="album-1",
         title="叶惠美",
         tracks=[
-                MusicInfo(
-                    media_source="musicbrainz",
-                    media_id="recording-1",
+            MusicInfo(
+                media_source="musicbrainz",
+                media_id="recording-1",
                 title="以父之名",
                 artists=["周杰伦"],
                 disc_number=1,
                 track_number=1,
                 duration=342,
             ),
-                MusicInfo(
-                    media_source="musicbrainz",
-                    media_id="recording-3",
+            MusicInfo(
+                media_source="musicbrainz",
+                media_id="recording-3",
                 title="晴天",
                 artists=["周杰伦"],
                 disc_number=1,

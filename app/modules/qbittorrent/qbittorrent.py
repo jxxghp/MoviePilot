@@ -23,6 +23,7 @@ class Qbittorrent:
     """
     qbittorrent下载器
     """
+
     def __init__(self, host: Optional[str] = None, port: int = None,
                  username: Optional[str] = None, password: Optional[str] = None,
                  apikey: Optional[str] = None,

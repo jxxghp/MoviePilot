@@ -39,6 +39,7 @@ class MarketReadStatus(StrEnum):
     ABSENT = "absent"
     FAILED = "failed"
 
+
 class PluginSelectionStatus(StrEnum):
     """插件候选选择的可观察结果。"""
 
@@ -98,6 +99,7 @@ class PluginMarketCandidate:
             "plugin_version": self.plugin_version,
         }
 
+
 @dataclass(frozen=True, slots=True)
 class PluginLocalCandidate:
     """一个本地插件载荷候选，与在线来源身份保持独立。"""
@@ -148,6 +150,7 @@ class PluginLocalCandidate:
             "package_generation": self.package_generation,
             "plugin_version": self.plugin_version,
         }
+
 
 @dataclass(frozen=True, slots=True)
 class MarketRead:
@@ -462,6 +465,7 @@ class CandidateInventory:
             "complete": self.complete,
         }
 
+
 @dataclass(frozen=True, slots=True)
 class PluginSelection:
     """候选选择结果，冲突和不完整状态均不降级为静默空值。"""
@@ -500,6 +504,7 @@ class PluginSelection:
         if self.candidate is not None:
             result["candidate"] = self.candidate.public_dict()
         return result
+
 
 Candidate: TypeAlias = PluginMarketCandidate | PluginLocalCandidate
 

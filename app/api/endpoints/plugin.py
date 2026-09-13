@@ -965,7 +965,11 @@ def uninstall_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_activ
                 plugin_manager.delete_plugin_config(plugin_id, force=True)
                 plugin_manager.delete_plugin_data(plugin_id, force=True)
                 plugin_manager.delete_plugin_instance(plugin_id)
-            elif getattr(plugin_class, "is_clone", False):
+            else:
+                # 本体的装载判据在实例表的启用位上：不停用这一行，卸载后重启仍会
+                # 按已删除的包去加载它。业务参数保留，重装后用户的配置应当还在
+                plugin_manager.disable_plugin_host(plugin_id)
+            if not virtual_instance and getattr(plugin_class, "is_clone", False):
                 plugin_manager.delete_plugin_config(plugin_id, force=True)
                 plugin_manager.delete_plugin_data(plugin_id, force=True)
                 # 分身物理目录只能由包文件 owner 删除。

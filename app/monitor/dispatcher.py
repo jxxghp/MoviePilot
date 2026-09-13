@@ -211,7 +211,6 @@ class TransferDispatcher:
             )
             return None
 
-
     def _register_pending(self, storage: str, event_path: Path, file_size: float = None,
                           file_modify_time: float = None, fileid: Optional[str] = None,
                           reason: str = "整理历史查询失败"):

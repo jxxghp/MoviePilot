@@ -136,6 +136,7 @@ def _transfer_task_meta(task: "TransferTask") -> MetaBase:
     """声明进入作业管理器的整理任务已经完成元数据解析。"""
     return cast(MetaBase, task.meta)
 
+
 TRANSFER_ADMISSION_ACCEPTED = "accepted"
 TRANSFER_ADMISSION_PROVIDER_PENDING = "provider_pending"
 TRANSFER_ADMISSION_PLANNED = "planned"
@@ -1201,6 +1202,7 @@ class TransferFailureNotificationAggregator:
 # 作业锁：JobManager 与 TransferChain 共享，保护整理作业视图。
 job_lock = threading.Lock()
 
+
 class JobManager:
     """
     作业管理器
@@ -1852,8 +1854,8 @@ class JobManager:
 
             __metaid__ = self.__get_meta_id(meta=meta, season=season)
             return (
-                    __metaid__ in self._job_view
-                    and len(_job_tasks(self._job_view[__metaid__])) > 0
+                __metaid__ in self._job_view
+                and len(_job_tasks(self._job_view[__metaid__])) > 0
             )
 
     def success_tasks(

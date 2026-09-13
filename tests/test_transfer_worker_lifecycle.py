@@ -679,6 +679,7 @@ def test_durable_task_identity_flows_to_unsettled_terminal_claim_release(monkeyp
     chain._processed_num = 0
     chain._fail_num = 0
     chain._total_num = 0
+
     def complete_with_checkpoint(*, task, callback):
         """模拟真实 worker 只有提交 checkpoint 后才返回终态成功。"""
         task.bind_plan_checkpoint(MagicMock())

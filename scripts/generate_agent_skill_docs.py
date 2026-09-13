@@ -26,6 +26,16 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "Tracing Agent history or context restoration by user, session, or update time.",
         "Owned by the Agent conversation service; do not rewrite message JSON, counters, or ownership.",
     ),
+    "agentinvocation": (
+        "Durable Agent write invocation identity and last observed outcome, including confirmed asynchronous "
+        "submission.",
+        "Inspect an exact principal and session's running, unknown, pending, succeeded, or failed receipts; "
+        "compare timestamps when diagnosing an interrupted write.",
+        "Owned by the host's atomic claim and reconciliation path. Never change IDs, fingerprints, claim "
+        "tokens, or statuses to bypass duplicate protection. Running and unknown records are recovery state; "
+        "ordinary retention does not delete them. Pending means submission was confirmed, not that the "
+        "external task finished. Raw arguments and tool output are not stored here.",
+    ),
     "agenttask": (
         "Stores one-shot or recurring Agent task definitions, triggers, and the latest execution summary.",
         "Inspecting task ownership, enablement, cron/run_at settings, and the latest result.",
@@ -85,6 +95,16 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "Stores plugin installation phase, membership target, identity revisions, and backup state.",
         "Diagnosing interrupted installations, rollback conditions, and package or backup presence.",
         "Owned by the plugin installation state machine; never advance phase or overwrite evidence manually.",
+    ),
+    "plugininstance": (
+        "Stores one row per shared-source plugin runtime instance, covering both clones and the host plugin "
+        "itself (instance_id equals source_plugin_id, so equality identifies the host and inequality a clone), "
+        "together with that instance's display overrides, its own log-level override and the moment that "
+        "override expires, and the plugin's own configuration payload. A clone exists exactly while its row "
+        "exists, so deleting the row uninstalls the clone and discards its configuration.",
+        "Diagnosing clone naming and ownership, inspecting what a plugin or one of its clones is configured "
+        "with, or finding which instance currently overrides the global log level and until when.",
+        "Owned by the plugin instance, plugin configuration, and plugin log-level APIs; never edit rows directly.",
     ),
     "site": (
         "Stores private-tracker URLs, RSS, credentials, rate limits, proxy state, and downloader binding.",

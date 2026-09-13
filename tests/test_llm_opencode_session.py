@@ -52,7 +52,7 @@ def test_opencode_model_sends_stable_session_on_every_request(monkeypatch, base_
                 )
                 bound = model.bind_tools([{
                     "type": "function", "function": {"name": "example", "description": "测试工具",
-                        "parameters": {"type": "object", "properties": {}}},
+                                                     "parameters": {"type": "object", "properties": {}}},
                 }])
                 assert bound.invoke("hello").content == "OK"
                 assert (await bound.ainvoke("again")).content == "OK"

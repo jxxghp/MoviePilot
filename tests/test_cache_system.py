@@ -38,6 +38,7 @@ def test_file_backend_items_keep_relative_keys_and_bytes(tmp_path):
     assert cache.popitem(region="images") == ("nested/poster.jpg", b"\xff\xd8image")
     assert not cache.exists("nested/poster.jpg", region="images")
 
+
 def test_clear_package_tool_cache_only_removes_pip_and_uv_old_files(tmp_path, monkeypatch):
     """
     包安装工具缓存清理只处理 pip/uv 子目录，不接管整个 .cache 或业务缓存。
@@ -66,6 +67,7 @@ def test_clear_package_tool_cache_only_removes_pip_and_uv_old_files(tmp_path, mo
     assert unknown.exists()
     assert business.exists()
 
+
 def test_clear_package_tool_cache_disabled_when_days_non_positive(tmp_path, monkeypatch):
     """
     PACKAGE_CACHE_DAYS 小于等于 0 时不清理包安装缓存。
@@ -85,6 +87,7 @@ def test_clear_package_tool_cache_disabled_when_days_non_positive(tmp_path, monk
     clear_package_tool_cache()
 
     assert old_pip.exists()
+
 
 def test_clear_package_tool_cache_isolates_subdir_errors(tmp_path, monkeypatch):
     """
@@ -107,6 +110,7 @@ def test_clear_package_tool_cache_isolates_subdir_errors(tmp_path, monkeypatch):
     clear_package_tool_cache()
 
     assert calls == [("pip", 30), ("uv", 30)]
+
 
 def test_clear_package_tool_cache_uses_package_cache_root(tmp_path, monkeypatch):
     """
@@ -131,6 +135,7 @@ def test_clear_package_tool_cache_uses_package_cache_root(tmp_path, monkeypatch)
 
     assert not old_pip.exists()
     assert default_pip.exists()
+
 
 def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
     """
@@ -173,6 +178,7 @@ def test_init_modules_does_not_clear_package_tool_cache(monkeypatch):
     assert called is False
     init_agent.assert_awaited_once_with()
 
+
 def test_file_backend_delete_missing_key_is_noop(tmp_path):
     """
     删除不存在的文件缓存 key 应保持幂等，不向调用方抛出文件系统异常。
@@ -183,6 +189,7 @@ def test_file_backend_delete_missing_key_is_noop(tmp_path):
 
     assert not cache.exists("missing", region="default")
 
+
 def test_memory_backend_delete_missing_key_is_noop():
     """
     内存缓存后端 delete 与其他后端保持一致，不存在时直接返回。
@@ -192,6 +199,7 @@ def test_memory_backend_delete_missing_key_is_noop():
     cache.delete("missing", region="missing_delete")
 
     assert not cache.exists("missing", region="missing_delete")
+
 
 def test_memory_backend_supports_per_key_ttl():
     """
@@ -209,6 +217,7 @@ def test_memory_backend_supports_per_key_ttl():
     assert cache.get("short", region=region) is None
     assert cache.get("long", region=region) == "long-value"
     assert list(cache.items(region=region)) == [("long", "long-value")]
+
 
 def test_memory_backend_resets_ttl_when_key_is_rewritten():
     """
@@ -229,6 +238,7 @@ def test_memory_backend_resets_ttl_when_key_is_rewritten():
 
     assert cache.get("key", region=region) is None
 
+
 def test_memory_backend_instances_share_region_with_per_key_ttl():
     """
     多个 backend 仍共享 region 数据，但每次写入的显式 TTL 应独立生效。
@@ -245,6 +255,7 @@ def test_memory_backend_instances_share_region_with_per_key_ttl():
 
     assert second.get("first", region=region) is None
     assert first.get("second", region=region) == "second-value"
+
 
 def test_async_memory_backend_supports_per_key_ttl():
     """
@@ -265,6 +276,7 @@ def test_async_memory_backend_supports_per_key_ttl():
 
     asyncio.run(run_test())
 
+
 def test_memory_lru_backend_keeps_capacity_eviction_behavior():
     """
     per-key TTL 改造不应影响 LRU region 的容量淘汰行为。
@@ -277,6 +289,7 @@ def test_memory_lru_backend_keeps_capacity_eviction_behavior():
 
     assert cache.get("first", region=region) is None
     assert list(cache.items(region=region)) == [("second", 2), ("third", 3)]
+
 
 def test_cached_zero_ttl_does_not_cache_sync_result():
     """
@@ -292,6 +305,7 @@ def test_cached_zero_ttl_does_not_cache_sync_result():
 
     assert load_value() == 1
     assert load_value() == 2
+
 
 def test_cached_zero_ttl_does_not_cache_async_result():
     """
@@ -504,6 +518,7 @@ def test_memory_backend_rejects_region_cache_type_conflicts():
     assert ttl_cache.get("ttl", region=region) == 1
     assert ttl_cache.get("lru", region=region) is None
 
+
 def test_memory_backend_reuses_existing_region_cache():
     """
     同一 region 的后续写入应复用首次创建的底层缓存对象。
@@ -542,6 +557,7 @@ def test_memory_backend_preserves_zero_ttl():
 
     assert cache.get("key", region="zero_ttl") is None
 
+
 def test_memory_backend_preserves_negative_ttl():
     """
     显式负 TTL 应保持立即过期语义，并删除已有同名值。
@@ -552,6 +568,7 @@ def test_memory_backend_preserves_negative_ttl():
 
     assert cache.get("key", region="negative_ttl") is None
 
+
 def test_memory_backend_uses_zero_default_ttl():
     """
     backend 的默认 ttl=0 应保持立即过期语义。
@@ -560,6 +577,7 @@ def test_memory_backend_uses_zero_default_ttl():
     cache.set("key", "value", region="zero_default_ttl")
 
     assert cache.get("key", region="zero_default_ttl") is None
+
 
 def test_redis_backend_treats_zero_ttl_as_expired():
     """
@@ -583,6 +601,7 @@ def test_redis_backend_treats_zero_ttl_as_expired():
 
     assert cache.redis_helper.deleted == ("key", "zero_ttl")
     assert not cache.redis_helper.set_called
+
 
 def test_async_redis_backend_treats_zero_ttl_as_expired():
     """
@@ -609,6 +628,7 @@ def test_async_redis_backend_treats_zero_ttl_as_expired():
 
     assert helper.deleted == ("key", "zero_ttl")
     assert not helper.set_called
+
 
 def test_file_cache_preserves_zero_ttl_in_redis_mode(monkeypatch):
     """
@@ -646,6 +666,7 @@ def test_redis_original_key_decodes_quoted_key():
     redis_key = b"region:DEFAULT:key:nested/poster%20one.jpg"
 
     assert RedisHelper._RedisHelper__get_original_key(redis_key) == "nested/poster one.jpg"
+
 
 def test_redis_helper_uses_blocking_pool_settings(monkeypatch):
     """
@@ -878,6 +899,7 @@ def test_async_redis_helper_uses_blocking_pool_settings(monkeypatch):
     assert calls["ping"] is True
     assert ("maxmemory-policy", "allkeys-lru") in config_calls
 
+
 def test_redis_helpers_watch_pool_settings():
     """
     Redis 连接池配置变化应触发客户端重建。
@@ -889,6 +911,7 @@ def test_redis_helpers_watch_pool_settings():
     assert "BIG_MEMORY_MODE" in RedisHelper.CONFIG_WATCH
     assert "BIG_MEMORY_MODE" in AsyncRedisHelper.CONFIG_WATCH
 
+
 def test_async_file_backend_missing_region_has_no_items(tmp_path):
     """
     异步文件缓存缺失区域时应返回空迭代，而不是伪造空 key。
@@ -899,6 +922,7 @@ def test_async_file_backend_missing_region_has_no_items(tmp_path):
         return [item async for item in cache.items(region="missing")]
 
     assert asyncio.run(collect_items()) == []
+
 
 def test_async_file_backend_items_keep_relative_keys_and_bytes(tmp_path):
     """
@@ -918,6 +942,7 @@ def test_async_file_backend_items_keep_relative_keys_and_bytes(tmp_path):
     assert items == [("nested/poster.jpg", b"\xff\xd8image")]
     assert popped == ("nested/poster.jpg", b"\xff\xd8image")
     assert not exists
+
 
 def test_file_backend_items_skip_directories(tmp_path):
     """

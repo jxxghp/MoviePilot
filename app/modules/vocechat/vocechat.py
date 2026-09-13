@@ -208,14 +208,14 @@ class VoceChat:
                 meta = MetaInfo(torrent.title, torrent.description)
                 link = torrent.page_url
                 title = f"{meta.season_episode} " \
-                        f"{meta.resource_term} " \
-                        f"{meta.video_term} " \
-                        f"{meta.release_group}"
+                    f"{meta.resource_term} " \
+                    f"{meta.video_term} " \
+                    f"{meta.release_group}"
                 title = re.sub(r"\s+", " ", title).strip()
                 free = torrent.volume_factor
                 seeder = f"{torrent.seeders}↑"
                 caption = f"{caption}\n{index}.【{site_name}】[{title}]({link}) " \
-                          f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}"
+                    f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}"
                 index += 1
 
             if link:

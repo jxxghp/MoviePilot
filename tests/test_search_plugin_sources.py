@@ -120,6 +120,7 @@ def test_async_search_returns_plugin_results_without_indexers():
         return [plugin_item]
 
     chain.async_search_plugin_torrents = plugin_search
+
     async def run_search():
         with (
             patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,
@@ -144,6 +145,7 @@ def test_async_search_stream_emits_plugin_results_once_without_indexers():
         return [plugin_item]
 
     chain.async_search_plugin_torrents = plugin_search
+
     async def collect_events():
         with (
             patch("app.chain.search.provider.get_configured_system_config") as system_config_oper,

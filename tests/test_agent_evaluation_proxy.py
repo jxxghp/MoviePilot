@@ -62,7 +62,7 @@ async def _client(proxy: EvaluationModelProxy) -> AsyncIterator[httpx.AsyncClien
     """ASGI 与 MockTransport 两侧都留在内存，不访问真实网络。"""
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(proxy.app), base_url="http://127.0.0.1",
-                                    headers={"Authorization": f"Bearer {proxy.bearer_token}"}) as client:
+                                     headers={"Authorization": f"Bearer {proxy.bearer_token}"}) as client:
             yield client
     finally:
         await proxy.close()
@@ -207,7 +207,7 @@ async def test_parallel_requests_share_atomic_hard_limit_and_unknown_failure_cos
 
 
 @pytest.mark.parametrize("usage", [None, {}, {"input_tokens": 2}, {**USAGE, "input_tokens": True},
-                                          {**USAGE, "input_tokens": -1}, {**USAGE, "input_tokens": 2.5}])
+                                   {**USAGE, "input_tokens": -1}, {**USAGE, "input_tokens": 2.5}])
 @pytest.mark.asyncio
 async def test_partial_or_invalid_usage_stays_unknown(usage: Any) -> None:
     """完成响应缺少完整合法用量时，不能输出虚构的零 token。"""
@@ -283,7 +283,7 @@ async def test_credentials_split_across_deltas_cannot_be_reassembled_by_client()
 
 
 @pytest.mark.parametrize("chunks", [[b"data: invalid\n\n"], [b"data: {"],
-                                     [_event({"type": "response.created"})], [httpx.ReadError("private failure")]])
+                                    [_event({"type": "response.created"})], [httpx.ReadError("private failure")]])
 @pytest.mark.asyncio
 async def test_malformed_truncated_or_failed_stream_has_unknown_completion(chunks: list[Any]) -> None:
     """没有完整终态或网络中断的流必须保留失败证据，且关闭上游。"""

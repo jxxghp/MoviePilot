@@ -1734,6 +1734,7 @@ def build_web_agent_command_items() -> list[dict[str, Any]]:
         )
     return sorted(items, key=lambda item: (item["category"], item["command"]))
 
+
 def extract_web_agent_slash_command(text: str) -> Optional[str]:
     """
     从 WebAgent 输入中提取斜杠命令名。

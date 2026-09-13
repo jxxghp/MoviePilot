@@ -566,6 +566,7 @@ class SubscriptionWritePort(Protocol):
         """在独立异步事务中新增订阅；occurrence_id 标识本次创建事实。"""
         ...
 
+
 class SubscriptionStagingPort(Protocol):
     """复用调用方 Session 且不自行提交的订阅写端口。"""
 

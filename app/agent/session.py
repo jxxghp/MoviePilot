@@ -58,12 +58,12 @@ async def _async_start_processing_status(
             return cast(
                 Optional[dict[str, Any]],
                 AgentChain().start_message_processing_status(
-                channel=NotificationChannel(task.channel),
-                source=task.source,
-                userid=task.user_id,
-                message_id=task.original_message_id,
-                chat_id=task.original_chat_id,
-                text=task.message,
+                    channel=NotificationChannel(task.channel),
+                    source=task.source,
+                    userid=task.user_id,
+                    message_id=task.original_message_id,
+                    chat_id=task.original_chat_id,
+                    text=task.message,
                 ),
             )
         except Exception as err:
@@ -83,7 +83,6 @@ async def _async_finish_processing_status(
     if not status:
         return
     await run_in_threadpool(_finish_processing_status, status, user_id)
-
 
 
 @dataclass
@@ -224,8 +223,8 @@ class AgentSessionOwner:
             pending_shutdown and not pending_shutdown.done()
         )
         status["is_processing"] = (
-                session_id in self._session_workers
-                and not self._session_workers[session_id].done()
+            session_id in self._session_workers
+            and not self._session_workers[session_id].done()
         )
         inbox = self._session_steering_inboxes.get(session_id)
         status["steering_pending"] = inbox.pending_count if inbox else 0

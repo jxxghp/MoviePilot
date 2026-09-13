@@ -4,7 +4,7 @@
     "app/application/messaging/site.py:SiteInteractionHandler": 579,
     "app/application/messaging/skill.py:SkillInteractionHandler": 1101,
     "app/application/messaging/subscribe.py:SubscribeInteractionHandler": 694,
-    "app/application/plugin/install.py:PluginInstallCommand": 739,
+    "app/application/plugin/install.py:PluginInstallCommand": 743,
     "app/application/rss.py:RssHelper": 531,
     "app/application/security/url.py:SecurityUtils": 771,
     "app/application/torrent/download.py:TorrentHelper": 738,
@@ -44,11 +44,11 @@
     "app/chain/base.py": 1201,
     "app/chain/interaction.py": 1571,
     "app/chain/message.py": 1984,
-    "app/chain/scraping.py": 2065,
+    "app/chain/scraping.py": 2068,
     "app/chain/site.py": 1187,
     "app/chain/transfer/queue.py": 1631,
     "app/chain/transfer/workflow.py": 1106,
-    "app/chain/workflow.py": 1391
+    "app/chain/workflow.py": 1393
   },
   "method": {
     "app/api/endpoints/transfer.py:_execute_manual_transfer": 296,
@@ -58,7 +58,7 @@
     "app/application/messaging/skill.py:SkillInteractionHandler._handle_text_interaction": 296,
     "app/application/messaging/subscribe.py:SubscribeInteractionHandler._handle_text_interaction": 205,
     "app/application/network.py:NetworkTestService._build_rules": 206,
-    "app/application/plugin/install.py:PluginInstallCommand.__execute_locked": 277,
+    "app/application/plugin/install.py:PluginInstallCommand.__execute_locked": 279,
     "app/application/rss.py:RssHelper._parse_impl": 213,
     "app/application/security/cookie.py:CookieHelper._get_site_cookie_ua_impl": 241,
     "app/application/security/cookie.py:CookieHelper._get_site_cookie_ua_impl.__page_handler": 214,

@@ -25,6 +25,8 @@ register_channel_admin_resolver(
 
 
 class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
+    """负责 Synology Chat 消息收发、附件解析和管理员命令校验。"""
+
     # 管理员配置键，与渠道 resolver 保持一致
     _admin_config_key = "SYNOLOGYCHAT_ADMINS"
     _IMAGE_SUFFIXES = (
@@ -62,6 +64,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     @staticmethod
     def get_name() -> str:
+        """获取模块显示名称"""
         return "Synology Chat"
 
     @staticmethod
@@ -85,10 +88,16 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
         """
         return 5
 
+    def _commands_enabled(self, config: Optional[dict[str, Any]]) -> bool:
+        """客户端不提供命令菜单注册或删除 API，跳过基类的菜单注册流程。"""
+        return False
+
     def stop(self):
+        """客户端没有需要在模块停止时释放的后台资源。"""
         pass
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """实例由通知服务配置管理，不额外声明环境开关。"""
         pass
 
     @staticmethod
@@ -152,13 +161,13 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                     f"files={len(files) if files else 0}"
                 )
                 return IncomingMessage(channel=NotificationChannel.SynologyChat, source=client_config.name,
-                                      userid=user_id, username=user_name,
-                                      is_channel_admin=matches_channel_admin(
-                                          NotificationChannel.SynologyChat,
-                                          client_config.config,
-                                          user_id,
-                                      ), text=text or "",
-                                      images=images, audio_refs=audio_refs, files=files)
+                                       userid=user_id, username=user_name,
+                                       is_channel_admin=matches_channel_admin(
+                                           NotificationChannel.SynologyChat,
+                                           client_config.config,
+                                           user_id,
+                                       ), text=text or "",
+                                       images=images, audio_refs=audio_refs, files=files)
         except Exception as err:
             logger.debug(f"解析SynologyChat消息失败：{str(err)}")
         return None
@@ -167,6 +176,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
     def _extract_images(
         cls, message: dict
     ) -> Optional[List[IncomingMessage.MessageImage]]:
+        """从消息字段和附件中提取并去重图片引用"""
         images = []
         for key in ("file_url", "image_url", "pic_url"):
             value = message.get(key)
@@ -206,6 +216,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     @classmethod
     def _extract_audio_refs(cls, message: dict) -> Optional[List[str]]:
+        """从消息字段和附件中提取并去重音频下载引用"""
         audio_refs = []
         for key in ("audio_url", "voice_url", "file_url"):
             value = message.get(key)
@@ -249,6 +260,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     @classmethod
     def _looks_like_image(cls, value: str) -> bool:
+        """判断 HTTP 地址是否包含支持的图片扩展名"""
         if not value or not isinstance(value, str):
             return False
         lowered = value.lower()
@@ -258,6 +270,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     @classmethod
     def _looks_like_audio(cls, value: str) -> bool:
+        """判断 HTTP 地址是否包含支持的音频扩展名"""
         if not value or not isinstance(value, str):
             return False
         lowered = value.lower()
@@ -269,6 +282,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
     def _extract_files(
         cls, message: dict
     ) -> Optional[List[IncomingMessage.MessageAttachment]]:
+        """提取普通附件下载引用，排除已归类的图片和音频"""
         files = []
         for key in ("attachments", "files"):
             raw_value = message.get(key)

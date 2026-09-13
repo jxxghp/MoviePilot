@@ -112,6 +112,7 @@ class SearchChain(ChainBase):
     )
     _should_continue_search_pages = SearchPaginationOwner._should_continue_search_pages
     _should_continue_subtitle_search_pages = staticmethod(SearchPaginationOwner._should_continue_subtitle_search_pages)
+
     @property
     def is_ai_recommend_enabled(self) -> bool:
         """经推荐 owner 的原始描述符读取启用状态，避免 Facade 属性递归。"""
@@ -123,6 +124,7 @@ class SearchChain(ChainBase):
 
     _calculate_recommend_request_hash = staticmethod(SearchRecommendOwner._calculate_recommend_request_hash)
     _build_ai_recommend_status = SearchRecommendOwner._build_ai_recommend_status
+
     def get_current_recommend_status_only(self) -> dict[str, Any]:
         """返回当前推荐状态，不改变推荐请求代际。"""
         return SearchRecommendOwner.get_current_recommend_status_only(
@@ -157,6 +159,7 @@ class SearchChain(ChainBase):
     _async_save_subtitles = SearchCacheOwner._async_save_subtitles
     save_last_search_params = SearchCacheOwner.save_last_search_params
     async_save_last_search_params = SearchCacheOwner.async_save_last_search_params
+
     def last_search_params(self) -> Optional[dict[str, str]]:
         """返回最近一次搜索参数。"""
         return SearchCacheOwner.last_search_params(cast(SearchCacheOwner, self))
@@ -170,6 +173,7 @@ class SearchChain(ChainBase):
     _extract_recommend_items = staticmethod(SearchRecommendOwner._extract_recommend_items)
     _restore_original_indices = staticmethod(SearchRecommendOwner._restore_original_indices)
     _invoke_recommend_llm = staticmethod(SearchRecommendOwner._invoke_recommend_llm)
+
     def start_recommend_task(
         self,
         filtered_indices: Optional[list[int]],
@@ -371,6 +375,7 @@ class SearchChain(ChainBase):
             yield event
     _build_title_search_meta = staticmethod(SearchTitleOwner._build_title_search_meta)
     _filter_title_search_torrents = SearchTitleOwner._filter_title_search_torrents
+
     async def async_search_by_id_stream(
         self,
         media_source: MediaSource,

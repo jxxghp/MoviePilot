@@ -856,7 +856,7 @@ class TestPluginHelper:
         _patch_catalog_settings(monkeypatch, VERSION_FLAG="v2")
         monkeypatch.setattr(
             "app.runtime.extensions.plugin.storage._plugin_storage",
-            SimpleNamespace(read=lambda _key: []),
+            SimpleNamespace(read=lambda _key: [], write=lambda _key, _value: None),
         )
         monkeypatch.setattr(
             "app.runtime.extensions.plugin.manager._site_auth_level_provider",
@@ -928,7 +928,7 @@ class TestPluginHelper:
         )
         monkeypatch.setattr(
             "app.runtime.extensions.plugin.storage._plugin_storage",
-            SimpleNamespace(read=lambda _key: []),
+            SimpleNamespace(read=lambda _key: [], write=lambda _key, _value: None),
         )
         monkeypatch.setattr(
             "app.runtime.extensions.plugin.manager._site_auth_level_provider",
@@ -1154,7 +1154,8 @@ class TestPluginHelper:
             SimpleNamespace(
                 read=lambda key: ["DemoPlugin"]
                 if key == SystemConfigKey.UserInstalledPlugins
-                else None
+                else None,
+                write=lambda _key, _value: None,
             ),
         )
 
@@ -1240,7 +1241,7 @@ class TestPluginHelper:
                         PluginRuntimeHealth,
                         "_PluginRuntimeHealth__run_runtime_healthcheck",
                         return_value={"uv check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
-                    ), \
+            ), \
                     patch("app.adapters.system.plugin.health.SystemUtils.execute_with_subprocess", side_effect=fake_execute), \
                     patch(
                         "app.adapters.system.plugin.health.get_runtime_setting",
@@ -1252,7 +1253,7 @@ class TestPluginHelper:
                             "PROXY_HOST": "http://proxy.example:7890",
                             "PIP_PROXY": "https://user:pass@mirror.example/simple",
                         }.get(key),
-                    ):
+            ):
                 success, message = PluginRuntimeHealth.install_packages_with_fallback(req)
 
         assert success
@@ -1313,7 +1314,7 @@ demo = { index = "private" }
                         PluginRuntimeHealth,
                         "_PluginRuntimeHealth__run_runtime_healthcheck",
                         return_value={"uv check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
-                    ), \
+            ), \
                     patch("app.adapters.system.plugin.health.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
                 success, message = PluginRuntimeHealth.install_packages_with_fallback(
                     [modern, legacy]
@@ -1687,13 +1688,13 @@ demo = { index = "private" }
                         PluginRuntimeHealth,
                         "_PluginRuntimeHealth__run_runtime_healthcheck",
                         side_effect=health_snapshots,
-                    ), \
+            ), \
                     patch.object(PluginRuntimeHealth, "_PluginRuntimeHealth__repair_main_runtime_dependencies") as repair_mock, \
                     patch("app.adapters.system.plugin.health.logger.warning") as warning_mock, \
                     patch(
                         "app.adapters.system.plugin.health.SystemUtils.execute_with_subprocess",
                         return_value=(True, "installed"),
-                    ):
+            ):
                 success, message = PluginRuntimeHealth.install_packages_with_fallback(requirements_file)
 
         assert success
@@ -1739,16 +1740,16 @@ demo = { index = "private" }
                         PluginRuntimeHealth,
                         "_PluginRuntimeHealth__run_runtime_healthcheck",
                         side_effect=health_snapshots,
-                    ), \
+            ), \
                     patch.object(
                         PluginRuntimeHealth,
                         "_PluginRuntimeHealth__repair_main_runtime_dependencies",
                         return_value=(True, "repaired"),
-                    ) as repair_mock, \
+            ) as repair_mock, \
                     patch(
                         "app.adapters.system.plugin.health.SystemUtils.execute_with_subprocess",
                         return_value=(True, "installed"),
-                    ):
+            ):
                 success, message = PluginRuntimeHealth.install_packages_with_fallback(requirements_file)
 
         assert not success
@@ -1833,13 +1834,13 @@ demo = { index = "private" }
                             {"uv check": (False, "broken"), "核心依赖导入检查": (True, "ok")},
                             {"uv check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
                         ],
-                    ), \
+            ), \
                     patch.object(
                         PluginRuntimeHealth,
                         "_PluginRuntimeHealth__repair_main_runtime_dependencies",
                         side_effect=lambda snapshot_file=None: repair_calls.append(snapshot_file)
                         or (True, "runtime repaired"),
-                    ), \
+            ), \
                     patch("app.adapters.system.plugin.health.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
                 success, message = PluginRuntimeHealth.install_packages_with_fallback(req)
 
@@ -1885,13 +1886,13 @@ demo = { index = "private" }
                             {"uv check": (False, "broken"), "核心依赖导入检查": (True, "ok")},
                             {"uv check": (True, "ok"), "核心依赖导入检查": (True, "ok")},
                         ],
-                    ), \
+            ), \
                     patch.object(
                         PluginRuntimeHealth,
                         "_PluginRuntimeHealth__repair_main_runtime_dependencies",
                         side_effect=lambda snapshot_file=None: repair_calls.append(snapshot_file)
                         or (True, "runtime repaired"),
-                    ), \
+            ), \
                     patch("app.adapters.system.plugin.health.settings.PIP_PROXY", "https://mirror.example/simple"), \
                     patch("app.adapters.system.plugin.health.settings.PROXY_HOST", "http://proxy.example:7890"), \
                     patch("app.adapters.system.plugin.health.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
@@ -1938,7 +1939,7 @@ demo = { index = "private" }
                             "PIP_PROXY": "https://user:pass@mirror.example/simple",
                             "PROXY_HOST": "http://proxy.example:7890",
                         }.get(key),
-                    ), \
+            ), \
                     patch("app.adapters.system.plugin.health.SystemUtils.execute_with_subprocess", side_effect=fake_execute):
                 success, message = PluginRuntimeHealth._PluginRuntimeHealth__repair_main_runtime_dependencies(req)
 
@@ -2031,7 +2032,6 @@ demo = { index = "private" }
     def test_async_package_install_cancellation_closes_full_lifecycle(self, tmp_path):
         """取消真实安装进程后必须回收进程树、临时约束和安装锁。"""
         import psutil
-
 
         helper = PluginRuntimeHealth()
         requirements_file = tmp_path / "requirements.txt"

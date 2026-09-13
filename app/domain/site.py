@@ -54,7 +54,6 @@ def resolve_page_url(site_url: str, page_path: Optional[str]) -> str:
 class SiteUtils:
     """提供站点域名、Cookie 和访问参数处理能力。"""
 
-
     @classmethod
     def is_logged_in(cls, html_text: str) -> bool:
         """

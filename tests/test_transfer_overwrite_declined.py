@@ -336,6 +336,7 @@ def test_durable_callback_settles_overwrite_skip_without_history_as_failed():
         overwrite_skipped=True,
         need_notify=False,
     )
+
     def durable_transfer_result(**kwargs):
         """执行失败历史暂存并返回 task-aware 结算回执。"""
         history = kwargs["stage_history"](SimpleNamespace())

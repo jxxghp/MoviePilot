@@ -219,14 +219,22 @@ def configure_plugin_system_services():
         PluginRuntimeEnvironment,
         build_plugin_runtime,
     )
-    from app.runtime.extensions.plugin.storage import get_plugin_storage
+    from app.runtime.extensions.plugin.storage import (
+        get_plugin_instance_directory,
+        get_plugin_storage,
+    )
     from app.runtime.extensions.plugin.system import get_plugin_system
     from app.runtime.extensions.service import ServiceConfigHelper
+    from app.startup.initializers.plugins import (
+        _clear_plugin_default_target,
+        _set_plugin_default_target,
+    )
 
     configure_service_directory(
         configs=ServiceConfigHelper.get_configs,
         modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),
     )
+
     def build_test_plugin_runtime(host):
         """在 pytest 组合根装配直接构造 Manager 所需的隔离 Runtime。"""
         return build_plugin_runtime(
@@ -234,6 +242,7 @@ def configure_plugin_system_services():
             PluginRuntimeEnvironment(
                 plugins_root=settings.ROOT_PATH / "app" / "plugins",
                 storage=get_plugin_storage,
+                instance_directory=get_plugin_instance_directory,
                 system=get_plugin_system,
                 database=get_plugin_database,
                 catalog_factory=lambda mapper: (
@@ -251,6 +260,8 @@ def configure_plugin_system_services():
                     plugin_manager_module.get_runtime_setting('DEV')
                 ),
                 logger=plugin_manager_module.logger,
+                set_default_target=_set_plugin_default_target,
+                clear_default_target=_clear_plugin_default_target,
             ),
             tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
         )
@@ -356,6 +367,7 @@ def configure_plugin_system_services():
             "sync": SqlAlchemyUnitOfWork,
         },
     )
+
     def site_repository() -> TransactionalSiteRepository:
         """按生产组合根方式创建显式事务站点仓储。"""
         return TransactionalSiteRepository(

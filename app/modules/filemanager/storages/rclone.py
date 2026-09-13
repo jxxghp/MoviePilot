@@ -90,13 +90,13 @@ class Rclone(StorageBase):
         """
         if not line:
             return None
-        
+
         line = line.strip()
-        
+
         # 检查是否包含百分比
         if '%' not in line:
             return None
-            
+
         try:
             # 尝试多种进度输出格式
             if 'ETA' in line:
@@ -115,7 +115,7 @@ class Rclone(StorageBase):
                         return float(percent_str)
         except (ValueError, IndexError):
             pass
-            
+
         return None
 
     def __get_rcloneitem(self, item: dict, parent: Optional[str] = "/") -> _SchemaFileItem:
@@ -380,11 +380,11 @@ class Rclone(StorageBase):
         local_path = self._build_download_path(fileitem, path or get_runtime_setting('TEMP_PATH'))
         if not local_path:
             return None
-        
+
         # 初始化进度条
         logger.info(f"【rclone】开始下载: {fileitem.name} -> {local_path}")
         progress_callback = transfer_process(Path(fileitem.path).as_posix())
-        
+
         try:
             # 使用rclone的进度显示功能
             process = subprocess.Popen(
@@ -401,7 +401,7 @@ class Rclone(StorageBase):
                 universal_newlines=True,
                 bufsize=1
             )
-            
+
             # 监控进度输出
             last_progress = 0
             for line in process.stdout:
@@ -413,7 +413,7 @@ class Rclone(StorageBase):
                         last_progress = progress
                         if progress >= 100:
                             break
-            
+
             # 等待进程完成
             retcode = process.wait()
             if retcode == 0:
@@ -422,7 +422,7 @@ class Rclone(StorageBase):
             else:
                 logger.error(f"【rclone】下载失败: {fileitem.name}")
                 return None
-                
+
         except Exception as err:
             logger.error(f"【rclone】下载失败: {fileitem.name} - {err}")
             # 删除可能部分下载的文件
@@ -440,11 +440,11 @@ class Rclone(StorageBase):
         """
         target_name = new_name or path.name
         new_path = Path(fileitem.path) / target_name
-        
+
         # 初始化进度条
         logger.info(f"【rclone】开始上传: {path} -> {new_path}")
         progress_callback = transfer_process(path.as_posix())
-        
+
         try:
             # 使用rclone的进度显示功能
             process = subprocess.Popen(
@@ -461,7 +461,7 @@ class Rclone(StorageBase):
                 universal_newlines=True,
                 bufsize=1
             )
-            
+
             # 监控进度输出
             last_progress = 0
             for line in process.stdout:
@@ -473,7 +473,7 @@ class Rclone(StorageBase):
                         last_progress = progress
                         if progress >= 100:
                             break
-            
+
             # 等待进程完成
             retcode = process.wait()
             if retcode == 0:
@@ -482,7 +482,7 @@ class Rclone(StorageBase):
             else:
                 logger.error(f"【rclone】上传失败: {target_name}")
                 return None
-                
+
         except Exception as err:
             logger.error(f"【rclone】上传失败: {target_name} - {err}")
             return None
@@ -515,11 +515,11 @@ class Rclone(StorageBase):
         :param new_name: 新文件名
         """
         target_path = path / new_name
-        
+
         # 初始化进度条
         logger.info(f"【rclone】开始移动: {fileitem.path} -> {target_path}")
         progress_callback = transfer_process(Path(fileitem.path).as_posix())
-        
+
         try:
             # 使用rclone的进度显示功能
             process = subprocess.Popen(
@@ -536,7 +536,7 @@ class Rclone(StorageBase):
                 universal_newlines=True,
                 bufsize=1
             )
-            
+
             # 监控进度输出
             last_progress = 0
             for line in process.stdout:
@@ -548,7 +548,7 @@ class Rclone(StorageBase):
                         last_progress = progress
                         if progress >= 100:
                             break
-            
+
             # 等待进程完成
             retcode = process.wait()
             if retcode == 0:
@@ -557,7 +557,7 @@ class Rclone(StorageBase):
             else:
                 logger.error(f"【rclone】移动失败: {fileitem.name}")
                 return False
-                
+
         except Exception as err:
             logger.error(f"【rclone】移动失败: {fileitem.name} - {err}")
             return False
@@ -570,11 +570,11 @@ class Rclone(StorageBase):
         :param new_name: 新文件名
         """
         target_path = path / new_name
-        
+
         # 初始化进度条
         logger.info(f"【rclone】开始复制: {fileitem.path} -> {target_path}")
         progress_callback = transfer_process(Path(fileitem.path).as_posix())
-        
+
         try:
             # 使用rclone的进度显示功能
             process = subprocess.Popen(
@@ -591,7 +591,7 @@ class Rclone(StorageBase):
                 universal_newlines=True,
                 bufsize=1
             )
-            
+
             # 监控进度输出
             last_progress = 0
             for line in process.stdout:
@@ -603,7 +603,7 @@ class Rclone(StorageBase):
                         last_progress = progress
                         if progress >= 100:
                             break
-            
+
             # 等待进程完成
             retcode = process.wait()
             if retcode == 0:
@@ -612,7 +612,7 @@ class Rclone(StorageBase):
             else:
                 logger.error(f"【rclone】复制失败: {fileitem.name}")
                 return False
-                
+
         except Exception as err:
             logger.error(f"【rclone】复制失败: {fileitem.name} - {err}")
             return False

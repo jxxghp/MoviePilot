@@ -18,7 +18,6 @@ class ScrapeBatchMixin(_TransferOwnerBase):
 
     __mixin_host_protocol__ = TransferMixinHost
 
-
     def _send_metadata_scrape_event(
             self, task: TransferTask, transferinfo: TransferInfo
     ):

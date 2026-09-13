@@ -347,6 +347,7 @@ async def test_reset_commits_before_runtime_cleanup():
     command, dependencies = _definition_command(existing=_workflow())
     dependencies["unit_of_work"].commit.side_effect = lambda: calls.append("commit")
     dependencies["stop_running"].side_effect = lambda _id: calls.append("stop")
+
     async def delete_cache(_id):
         calls.append("cache")
 

@@ -678,7 +678,7 @@ class DirectoryHelper:
                 continue
             # 处理特例，有的人重命名的第一层是年份、分辨率
             if (any("title" in m for m in matchs)
-                and not any("season" in m for m in matchs)):
+                    and not any("season" in m for m in matchs)):
                 # 找出最后一层含有标题且不含季参数的目录作为媒体根目录
                 rename_format_level = level
                 break

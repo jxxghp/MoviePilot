@@ -30,7 +30,6 @@ from app.schemas.types import (
 class DownloadHistoryOwner(_DownloadOwnerBase):
     """下载历史原子写入与持久化结算 owner。"""
 
-
     @staticmethod
     def _build_download_note(
             source: Optional[str],

@@ -124,8 +124,8 @@ def test_transfer_stops_when_automatic_category_has_no_tmdb_result(monkeypatch) 
         ),
     )
     monkeypatch.setattr("app.chain.transfer.filter.MediaChain", lambda: SimpleNamespace(
-            supplement_tmdb_info=lambda media, _meta: media,
-        ))
+        supplement_tmdb_info=lambda media, _meta: media,
+    ))
     task = TransferTask(
         fileitem=FileItem(
             storage="local",

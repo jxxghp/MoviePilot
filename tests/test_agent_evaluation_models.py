@@ -36,7 +36,7 @@ def test_model_settings_do_not_expose_explicit_credential(tmp_path):
 def test_chat_completions_provider_is_supported(tmp_path):
     """Google 等 OpenAI 兼容 provider 可以明确选择 Chat Completions 协议。"""
     path = _config(tmp_path).read_text(encoding="utf-8").replace('wire_api = "responses"',
-                                                                     'wire_api = "chat_completions"')
+                                                                 'wire_api = "chat_completions"')
     config = tmp_path / "chat-completions.toml"
     config.write_text(path, encoding="utf-8")
     settings = load_codex_model_settings(config)

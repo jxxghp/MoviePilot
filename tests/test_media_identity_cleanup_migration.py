@@ -268,9 +268,9 @@ def test_cleanup_migration_backfills_every_supported_mediaid_prefix(monkeypatch)
                     "mediaid": f"{prefix}:native-{index}",
                 }
                 for index, (prefix, _) in enumerate(PREFIXED_IDENTITIES, start=1)
-        ] + [{
-            "id": len(PREFIXED_IDENTITIES) + 1,
-            "mediaid": "audioXdb:must-not-match-alias",
+            ] + [{
+                "id": len(PREFIXED_IDENTITIES) + 1,
+                "mediaid": "audioXdb:must-not-match-alias",
             }],
         )
 

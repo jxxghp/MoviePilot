@@ -425,6 +425,7 @@ class OutboxDispatcher:
         """释放 dispatcher 工厂创建的短生命周期持久化资源。"""
         self._close()
 
+
 _configured_dispatcher: Optional[Callable[[], OutboxDispatcher]] = None
 
 

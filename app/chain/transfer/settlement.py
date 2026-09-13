@@ -276,6 +276,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 transferinfo=transferinfo,
                 transfer_history_oper=staging,
             )
+
         def write_result() -> Any:
             """以相同 task_id 和执行指纹提交或回读同一终态。"""
             return writer.transfer_result(
@@ -352,12 +353,12 @@ class TransferSettlementOwner(_TransferOwnerBase):
             """
             # 更新文件数量
             transferinfo.file_count = (
-                    self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
+                self.jobview.count(task.mediainfo, task.meta.begin_season) or 1
             )
             # 更新文件大小
             transferinfo.total_size = (
-                    self.jobview.size(task.mediainfo, task.meta.begin_season)
-                    or task.fileitem.size
+                self.jobview.size(task.mediainfo, task.meta.begin_season)
+                or task.fileitem.size
             )
             # 发送通知，实时手动整理时不发
             if transferinfo.need_notify and (task.background or not task.manual):
@@ -646,14 +647,13 @@ class TransferSettlementOwner(_TransferOwnerBase):
                     not t.download_hash
                     and t.fileitem
                     and self._should_delete_empty_source_directories(
-                t,
-                delete_mounted_local_disk_empty_dirs,
-                mounted_filesystem_cache,
-            )
+                        t,
+                        delete_mounted_local_disk_empty_dirs,
+                        mounted_filesystem_cache,
+                    )
             ):
                 # 删除剩余空目录
                 StorageChain().delete_media_file(t.fileitem, delete_self=False)
-
 
     def queue_failed_transfer_notification(
             self,

@@ -806,6 +806,7 @@ def test_late_cancel_completes_when_download_side_effect_already_started(tmp_pat
     queue = chain.subscription_search_repository
     cancel_checks = iter((False, True))
     monkeypatch.setattr(queue, "is_cancel_requested", lambda _task_id: next(cancel_checks))
+
     def process(item, _searchchain, *, execution_context):
         """模拟当前任务复用或完成下载后才收到取消。"""
         execution_context.mark_download_started()

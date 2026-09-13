@@ -58,7 +58,6 @@ class _PreparedDownload:
 class _DownloadResourceOwner(_DownloadOwnerBase):
     """种子获取、间接地址解析与资源下载事件 owner。"""
 
-
     @staticmethod
     def _normalize_indirect_download_url(url: str, base_url: Optional[str] = None) -> str:
         """

@@ -419,17 +419,17 @@ class FileManagerModule(_ModuleBase):
             fileitem: FileItem,
             meta: MetaBase,
             mediainfo: Union[MediaInfo, MusicInfo],
-                      target_directory: Optional[TransferDirectoryConf] = None,
-                      target_storage: Optional[str] = None,
-                      target_path: Optional[Path] = None,
-                      transfer_type: Optional[str] = None, scrape: Optional[bool] = None,
-                      library_type_folder: Optional[bool] = None,
-                      library_category_folder: Optional[bool] = None,
-                      episodes_info: Optional[List[TmdbEpisode]] = None,
-                      source_oper: Optional[StorageBase] = None,
-                      preview: Optional[bool] = False,
-                      planning_input: Optional[TransferPlanningInput] = None,
-                      ) -> TransferPlanCheckpoint:
+            target_directory: Optional[TransferDirectoryConf] = None,
+            target_storage: Optional[str] = None,
+            target_path: Optional[Path] = None,
+            transfer_type: Optional[str] = None, scrape: Optional[bool] = None,
+            library_type_folder: Optional[bool] = None,
+            library_category_folder: Optional[bool] = None,
+            episodes_info: Optional[List[TmdbEpisode]] = None,
+            source_oper: Optional[StorageBase] = None,
+            preview: Optional[bool] = False,
+            planning_input: Optional[TransferPlanningInput] = None,
+    ) -> TransferPlanCheckpoint:
         """
         解析整理策略并生成零写副作用的冻结计划。
         :param fileitem:  文件信息
@@ -444,6 +444,7 @@ class FileManagerModule(_ModuleBase):
         :param library_category_folder: 是否按媒体类别创建目录
         :param episodes_info: 当前季的全部集信息
         :param source_oper: 源存储操作对象
+        :param preview: 是否预览模式
         :param planning_input: admission 阶段冻结的原始请求，传入时不得改写
         :return: 可持久化的整理计划检查点
         """
@@ -570,7 +571,14 @@ class FileManagerModule(_ModuleBase):
             raise_exception: bool = False,
     ) -> TransferInfo:
         """解析存储适配器并通过统一删除能力执行已冻结计划。
-
+        :param checkpoint: 冻结的整理计划检查点
+        :param meta: 预识别的元数据
+        :param mediainfo: 识别的媒体信息
+        :param source_oper: 源存储操作对象
+        :param target_oper: 目标存储操作对象
+        :param cleanup_media_file: 统一删除能力，返回 True 表示已清理
+        :param observe_cleanup_media_file: 统一删除能力的只读观察接口，返回 True 表示已清理
+        :param step_runner: 传入时使用自定义的步骤执行器，None 时使用默认的串行执行器
         :param raise_exception: 仅供模块调度器控制异常是否传播，模块不改变执行语义
         """
         del raise_exception

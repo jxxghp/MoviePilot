@@ -50,6 +50,7 @@ def test_read_sites_by_media_type_filters_configured_active_sites(monkeypatch, m
         {"id": 4, "category": {}},
         {"id": 5, "media_type": "music"},
     ]
+
     async def list_sites_from_query(**filters):
         """模拟站点查询端口在数据库层应用启用状态和站点标识筛选。"""
         site_ids = set(filters["site_ids"])

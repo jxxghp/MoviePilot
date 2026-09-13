@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
+import sqlalchemy as sa
+from pydantic import ValidationError
+
 from app.adapters.external.market import (
     LOCAL_REPO_PREFIX,
     configure_installed_plugins_provider,
@@ -77,7 +80,9 @@ from app.application.plugin.transaction import (
 )
 from app.application.scheduling import update_plugin_job
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.db.models.plugininstance import PluginInstance as PluginInstanceRecord
 from app.db.oper.plugindata import PluginDataOper
+from app.db.oper.plugininstance import PluginInstanceOper
 from app.db.plugin.registry import (
     destroy_database,
     ensure_database,
@@ -115,8 +120,12 @@ from app.runtime.extensions.plugin.runtime import (
     build_plugin_runtime,
 )
 from app.runtime.extensions.plugin.storage import (
+    LogLevelOverride,
+    PluginInstanceDirectory,
     PluginStorage,
+    configure_plugin_instance_directory,
     configure_plugin_storage,
+    get_plugin_instance_directory,
     get_plugin_storage,
 )
 from app.runtime.extensions.plugin.system import (
@@ -124,12 +133,12 @@ from app.runtime.extensions.plugin.system import (
     configure_plugin_system,
     get_plugin_system,
 )
-from app.runtime.log import logger
+from app.runtime.log import logger, normalize_log_expiry, set_plugin_instance_log_level
 from app.runtime.loop import main_loop_registry
 from app.runtime.resources import acquire_managed_resource
 from app.runtime.settings import get_runtime_setting
 from app.schemas.exception import PluginMutationRejectedError
-from app.schemas.plugin import PluginRuntimeStatus
+from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 from app.schemas.types import SystemConfigKey
 from app.startup.composition.plugin import (
     compose_plugin_market,
@@ -138,9 +147,42 @@ from app.startup.composition.plugin import (
 )
 
 
-async def _async_write_plugin_config(key, value):
-    """通过数据库操作器异步保存插件运行时配置。"""
-    return await get_configured_system_config().async_set(key, value)
+def _read_plugin_config(instance_id: str) -> Any:
+    """从实例行读取该实例的业务参数。"""
+    return PluginInstanceOper().get_config_data(instance_id)
+
+
+def _write_plugin_config(instance_id: str, config: Any) -> Any:
+    """把业务参数写进该实例行；没有实例行时按本体建出。
+
+    分身的实例行由分身服务先行建出，这里建不出分身；能落到建行分支的只有本体
+    自身，源插件因而就是它自己。
+    """
+    return PluginInstanceOper().save_config_data(
+        instance_id=instance_id,
+        source_plugin_id=instance_id,
+        config_data=config,
+    )
+
+
+async def _async_write_plugin_config(instance_id: str, config: Any) -> Any:
+    """异步把业务参数写进该实例行，建行规则与同步写入一致。"""
+    return await PluginInstanceOper().async_save_config_data(
+        instance_id=instance_id,
+        source_plugin_id=instance_id,
+        config_data=config,
+    )
+
+
+def _delete_plugin_config(instance_id: str) -> bool:
+    """清空该实例的业务参数，保留其身份与展示信息。
+
+    只清业务参数：这一行还承载着实例身份与展示信息，整行删掉会把「删一份配置」
+    变成「删掉这个实例」。该行本就不存在时同样报告已删除，删除只承诺事后没有
+    这份配置。
+    """
+    PluginInstanceOper().clear_config_data(instance_id)
+    return True
 
 
 def _delete_plugin_data(plugin_id: str) -> None:
@@ -153,6 +195,187 @@ def _delete_plugin_data(plugin_id: str) -> None:
         ).execute(plugin_id)
     finally:
         session.close()
+
+
+def _read_plugin_log_level(instance_id: str) -> LogLevelOverride:
+    """从实例行读取日志等级覆盖与失效时间。"""
+    session = SessionFactory()
+    try:
+        record = PluginInstanceRecord.get_by_instance_id(session, instance_id)
+        if record is None or not record.log_level:
+            return (None, None)
+        expires_at = (
+            datetime.fromisoformat(record.log_expires_at) if record.log_expires_at else None
+        )
+        return (record.log_level, expires_at)
+    finally:
+        session.close()
+
+
+def _write_plugin_log_level(
+    instance_id: str,
+    level: str | None,
+    expires_at: datetime | None,
+) -> None:
+    """把日志等级覆盖写进该实例行；没有实例行时按本体建出。
+
+    失效时间按 UTC 归一后再转字符串：库里存的是裸 ISO 文本，不带时区的写入会在
+    读回时被当成本地时间，同一个覆盖在不同进程时区下表示不同时刻。
+    """
+    normalized = normalize_log_expiry(expires_at)
+    PluginInstanceOper().set_log_level(
+        instance_id=instance_id,
+        log_level=level,
+        log_expires_at=normalized.isoformat() if normalized else None,
+    )
+
+
+def _prime_plugin_instance_log_levels() -> None:
+    """进程启动时把数据库中已设置的实例日志等级覆盖预热进运行期缓存。
+
+    过期覆盖也照常预热：过期判定统一在读取时惰性执行（见 `app.runtime.log`），
+    这里不重复实现一份过期过滤逻辑。单条记录预热失败不得阻断其余记录。
+    """
+    session = SessionFactory()
+    try:
+        records = session.execute(
+            sa.select(PluginInstanceRecord).where(
+                PluginInstanceRecord.log_level.is_not(None)
+            )
+        ).scalars().all()
+        for record in records:
+            try:
+                expires_at = (
+                    datetime.fromisoformat(record.log_expires_at)
+                    if record.log_expires_at
+                    else None
+                )
+                set_plugin_instance_log_level(record.instance_id, record.log_level, expires_at)
+            except ValueError as error:
+                logger.warning(
+                    f"预热插件实例 {record.instance_id} 的日志等级覆盖失败：{error}"
+                )
+    finally:
+        session.close()
+
+
+def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance | None:
+    """把插件实例表的 ORM 行投影为运行时端口使用的 Pydantic 描述。
+
+    只投影描述符各列：业务参数走插件配置读取端口，运行时端口拿到的应当是一份实例
+    身份、展示信息与调用目标置位的视图。
+
+    历史版本写入的脏实例行不能阻断整个插件目录的读取；严格模型校验仍保留，只把
+    当前行视为不可装载并交给上层跳过。数据库异常不在这里捕获，避免把真正的存储故障
+    伪装成单个插件问题。
+    """
+    try:
+        return PluginInstance(
+            instance_id=record.instance_id,
+            source_plugin_id=record.source_plugin_id,
+            plugin_name=record.plugin_name,
+            plugin_desc=record.plugin_desc,
+            plugin_icon=record.plugin_icon,
+            is_default_target=record.is_default_target,
+            is_enabled=record.is_enabled,
+        )
+    except ValidationError as error:
+        logger.warning(
+            "跳过无效插件实例记录：instance_id=%r, source_plugin_id=%r, error=%s",
+            record.instance_id,
+            record.source_plugin_id,
+            error,
+        )
+        return None
+
+
+def _plugin_instances_from_records(
+    records: list[PluginInstanceRecord],
+) -> list[PluginInstance]:
+    """逐行投影实例记录，跳过不能通过运行时模型校验的历史行。"""
+    instances: list[PluginInstance] = []
+    for record in records:
+        instance = _plugin_instance_from_record(record)
+        if instance is not None:
+            instances.append(instance)
+    return instances
+
+
+def _save_plugin_instance_record(instance: PluginInstance) -> None:
+    """把运行时实例描述写入插件实例表，以实例 ID 为稳定键做新增或更新。
+
+    默认调用目标置位与启用位随描述一起写：读取口 ``_plugin_instance_from_record`` 会
+    把它们投影出来，读改写一轮下来原值原样回去，不存在被顺手抹掉的风险；漏写反而会让
+    「改个展示名」这种无关写入把用户选定的调用目标悄悄清掉，或是把新建的实例落成停用
+    ——装载判据正是启用位，实例会建出来却永不加载。真正的置位与启停仍走各自的专用
+    端口，这里只负责不丢值。
+
+    业务参数与日志等级不在此列：它们由插件自身和日志等级控制面各自写入端口落盘、不进
+    运行时描述，原样写回会把用户刚存的配置覆盖成空。
+    """
+    PluginInstanceOper().save(
+        instance_id=instance.instance_id,
+        source_plugin_id=instance.source_plugin_id,
+        plugin_name=instance.plugin_name,
+        plugin_desc=instance.plugin_desc,
+        plugin_icon=instance.plugin_icon,
+        is_default_target=instance.is_default_target,
+        is_enabled=instance.is_enabled,
+    )
+
+
+def _set_plugin_default_target(source_plugin_id: str, instance_id: str) -> bool:
+    """把某源插件的默认调用目标置为指定实例，清旧与置新在库层同一事务内完成。
+
+    不经实例表的逐行写入端口：那条路径按实例 ID 各写各的行，清旧与置新会落进两个
+    事务，中间窗口里两行同时为真，正好撞上「同一源插件至多一个默认目标」的条件
+    唯一索引。
+
+    :param source_plugin_id: 源插件 ID
+    :param instance_id: 要设为默认调用目标的实例 ID
+    :return: 目标行存在并已置位
+    """
+    return PluginInstanceOper().set_default_target(source_plugin_id, instance_id)
+
+
+def _clear_plugin_default_target(source_plugin_id: str) -> None:
+    """清除某源插件的默认调用目标置位。"""
+    PluginInstanceOper().clear_default_target(source_plugin_id)
+
+
+def _build_plugin_instance_directory() -> PluginInstanceDirectory:
+    """把插件实例表端口装配到 db 层实现。"""
+    oper = PluginInstanceOper()
+
+    def _get(instance_id: str) -> PluginInstance | None:
+        """按实例 ID 查询实例并投影为运行时描述。"""
+        record = oper.get(instance_id)
+        return _plugin_instance_from_record(record) if record is not None else None
+
+    def _list_all() -> list[PluginInstance]:
+        """列出全部可用实例描述，历史无效行只影响自身。"""
+        return _plugin_instances_from_records(oper.list_all())
+
+    def _list_by_source(source_plugin_id: str) -> list[PluginInstance]:
+        """列出指定源插件的可用实例描述，跳过历史无效行。"""
+        return _plugin_instances_from_records(oper.list_by_source(source_plugin_id))
+
+    def _list_enabled() -> list[PluginInstance]:
+        """列出启用且可投影的实例描述，供启动依赖分类使用。"""
+        return _plugin_instances_from_records(oper.list_enabled())
+
+    return PluginInstanceDirectory(
+        get=_get,
+        list_all=_list_all,
+        list_by_source=_list_by_source,
+        save=_save_plugin_instance_record,
+        delete=oper.delete,
+        list_enabled=_list_enabled,
+        set_enabled=lambda instance_id, is_enabled: oper.set_enabled(
+            instance_id=instance_id,
+            is_enabled=is_enabled,
+        ),
+    )
 
 
 def _build_plugin_database() -> PluginDatabase:
@@ -180,6 +403,7 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
         PluginRuntimeEnvironment(
             plugins_root=Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins",
             storage=lambda: get_plugin_storage(),
+            instance_directory=lambda: get_plugin_instance_directory(),
             system=lambda: get_plugin_system(),
             database=lambda: get_plugin_database(),
             catalog_factory=lambda mapper: _build_plugin_catalog(mapper),
@@ -189,6 +413,8 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
             remote_entry=host.get_plugin_remote_entry,
             development=lambda: bool(get_runtime_setting('DEV')),
             logger=logger,
+            set_default_target=_set_plugin_default_target,
+            clear_default_target=_clear_plugin_default_target,
         ),
         tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
     )
@@ -303,6 +529,7 @@ def configure_plugin_services() -> None:
         installed_plugins_reader=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
+        loadable_marker=plugin_manager.mark_plugin_loadable,
         plugin_ids_provider=plugin_manager.get_plugin_ids,
         packages=package_manager,
         install_reporter=lambda plugin_id, repo_url: (
@@ -419,11 +646,19 @@ def configure_plugin_services() -> None:
     configure_plugin_storage(PluginStorage(
         read=lambda key: get_configured_system_config().get(key),
         write=lambda key, value: get_configured_system_config().set(key, value),
-        async_write=_async_write_plugin_config,
+        async_write=lambda key, value: get_configured_system_config().async_set(key, value),
         delete=lambda key: get_configured_system_config().delete(key),
+        read_config=_read_plugin_config,
+        write_config=_write_plugin_config,
+        async_write_config=_async_write_plugin_config,
+        delete_config=_delete_plugin_config,
         delete_data=_delete_plugin_data,
+        read_log_level=_read_plugin_log_level,
+        write_log_level=_write_plugin_log_level,
     ))
     configure_plugin_database(_build_plugin_database())
+    configure_plugin_instance_directory(_build_plugin_instance_directory())
+    _prime_plugin_instance_log_levels()
 
 
 def _register_plugin_runtime(plugin_id: str) -> None:

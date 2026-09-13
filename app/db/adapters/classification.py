@@ -250,6 +250,7 @@ class SystemConfigClassificationPolicyStore:
                 expected_revision=expected_revision,
                 current_revision=current.active.revision if current else 0,
             ) from error
+
     @staticmethod
     def _decode(value: Any) -> ClassificationPolicyState | None:
         """把 JSON 配置解析为独立状态对象，并标记损坏数据。"""

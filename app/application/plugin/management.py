@@ -339,7 +339,11 @@ async def uninstall_plugin_runtime(plugin_id: str) -> dict[str, Any]:
             plugin_manager.delete_plugin_config(plugin_id, force=True)
             plugin_manager.delete_plugin_data(plugin_id, force=True)
             plugin_manager.delete_plugin_instance(plugin_id)
-        elif was_clone:
+        else:
+            # 本体的装载判据在实例表的启用位上：不停用这一行，卸载后重启仍会
+            # 按已删除的包去加载它。业务参数保留，重装后用户的配置应当还在
+            plugin_manager.disable_plugin_host(plugin_id)
+        if not virtual_instance and was_clone:
             plugin_manager.delete_plugin_config(plugin_id, force=True)
             plugin_manager.delete_plugin_data(plugin_id, force=True)
             try:

@@ -555,7 +555,7 @@ async def test_douban_compilation_lookup_preserves_performer_evidence(async_mode
     meta = MetaMusic(title="Song", artists=["Performer"], album="Sampler", album_artist="Various Artists")
     if async_mode:
         result = await module.async_recognize_media(meta=meta, media_source=MediaSource.DoubanMusic,
-                                                     music_type="recording")
+                                                    music_type="recording")
     else:
         result = module.recognize_media(meta=meta, media_source=MediaSource.DoubanMusic, music_type="recording")
     assert result and result.media_id == "1:1"

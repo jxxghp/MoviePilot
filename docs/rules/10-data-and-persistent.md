@@ -20,6 +20,7 @@ Models are SQLAlchemy declarative classes. Each model maps to one database table
 | `Message` | Message log |
 | `PluginData` | Plugin-persisted data |
 | `PluginIdentity` | Installed physical-plugin source binding and payload provenance |
+| `PluginInstance` | Per-instance plugin descriptor and configuration, one row per instance |
 | `PassKey` | Passkey authentication records |
 | `Workflow` | Workflow definitions |
 
@@ -63,6 +64,7 @@ directly in chain, module, or endpoint code.
 | `MessageOper` | `oper/message.py` |
 | `PluginDataOper` | `oper/plugindata.py` |
 | `PluginIdentityOper` | `oper/pluginidentity.py` |
+| `PluginInstanceOper` | `oper/plugininstance.py` |
 | `SiteOper` | `oper/site.py` |
 | `SubscribeHistoryOper` | `oper/subscribehistory.py` |
 | `SubscribeOper` | `oper/subscribe.py` |
@@ -346,6 +348,16 @@ configuration.set(SystemConfigKey.RssUrls, ["https://example.com/rss"])
 
 **Rule:** Never use raw string literals as `SystemConfig` keys. Always define a new `SystemConfigKey` enum entry first. Raw string key lookups are not searchable and cannot be refactored safely.
 
+**Rule:** Plugin configuration is not `SystemConfig`. A plugin instance's own settings
+live on its `PluginInstance` row (`plugininstance.config_data`) and are reached through
+the plugin configuration channel — `_PluginBase.get_config()` / `update_config()` for
+plugins, `PluginConfigStore` and the `PluginStorage` instance-config ports for the host.
+`SystemConfigOper` treats every key alike and holds no knowledge of plugins; it must
+never branch on a key's value. A plugin that reads or writes its own configuration
+directly through `SystemConfig` (for example under a `plugin.<PluginId>` key) is
+unsupported: such a key is an ordinary, unrelated `SystemConfig` row that the plugin
+configuration channel neither reads nor writes.
+
 ---
 
 ## UserConfig — Per-User Configuration
@@ -441,4 +453,4 @@ can be accepted only once without Application knowing the configured backend.
 - `settings.API_TOKEN` and other secret fields must not be included in log output or API responses.
 - The `config list --show-secrets` flag exists specifically to gate secret visibility in the CLI.
 
-*Last Updated: 2026-09-02*
+*Last Updated: 2026-09-13*
