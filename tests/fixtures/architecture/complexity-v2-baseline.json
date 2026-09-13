@@ -44,11 +44,11 @@
     "app/chain/base.py": 1201,
     "app/chain/interaction.py": 1571,
     "app/chain/message.py": 1984,
-    "app/chain/scraping.py": 2065,
+    "app/chain/scraping.py": 2068,
     "app/chain/site.py": 1187,
     "app/chain/transfer/queue.py": 1631,
     "app/chain/transfer/workflow.py": 1106,
-    "app/chain/workflow.py": 1391
+    "app/chain/workflow.py": 1393
   },
   "method": {
     "app/api/endpoints/transfer.py:_execute_manual_transfer": 296,
