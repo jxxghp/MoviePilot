@@ -117,6 +117,27 @@ Purpose: List installed plugins and their runtime status.
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer|null): Optional upper bound on plugin catalog results, from 1 to 200; omit it for the complete catalog.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=installed): Literal installed, selecting only installed plugin catalog entries.
 - `body`: none
 
+### `plugin.loglevel.clear`
+`DELETE /api/v1/plugin/loglevel/{plugin_id}/{instance_id}`; policy effect: `reversible_write`.
+Purpose: Clear one plugin instance's log-level override so it immediately follows the global log level again.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: none
+
+### `plugin.loglevel.get`
+`GET /api/v1/plugin/loglevel/{plugin_id}`; policy effect: `safe_read`.
+Purpose: List one plugin's instances, including the plugin itself, with each instance's configured and effective log level.
+- `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: none
+
+### `plugin.loglevel.set`
+`PUT /api/v1/plugin/loglevel/{plugin_id}/{instance_id}`; policy effect: `reversible_write`.
+Purpose: Set one plugin instance's log-level override, taking effect immediately without following the global log level.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: `expires_at` (string|null): Expiry timestamp for a plugin instance's log-level override; null means it never expires. A timestamp without a timezone is read as UTC.; `level*` (string): Target log level, one of DEBUG, INFO, WARNING, ERROR, or CRITICAL.
+
 ### `plugin.market`
 `GET /api/v1/plugin/`; policy effect: `safe_read`.
 Purpose: List plugins available from configured marketplaces.

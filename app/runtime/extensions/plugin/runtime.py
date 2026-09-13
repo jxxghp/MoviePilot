@@ -20,6 +20,7 @@ from app.runtime.extensions.plugin.database import PluginDatabase
 from app.runtime.extensions.plugin.dependency import PluginDependencyService
 from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
 from app.runtime.extensions.plugin.loader import PluginLoader
+from app.runtime.extensions.plugin.loglevel import PluginLogLevelControl
 from app.runtime.extensions.plugin.metadata import PluginMetadataMapper
 from app.runtime.extensions.plugin.monitor import PluginMonitorController
 from app.runtime.extensions.plugin.paths import PluginPathResolver
@@ -27,6 +28,7 @@ from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.storage import (
     PluginConfigStore,
+    PluginInstanceDirectory,
     PluginInstanceStore,
     PluginStorage,
 )
@@ -89,6 +91,7 @@ class PluginRuntimeEnvironment:
 
     plugins_root: Path
     storage: Callable[[], PluginStorage]
+    instance_directory: Callable[[], PluginInstanceDirectory]
     system: Callable[[], PluginSystemServices]
     database: Callable[[], PluginDatabase]
     catalog_factory: PluginCatalogFactory
@@ -120,6 +123,7 @@ class PluginRuntime:
     metadata: PluginMetadataMapper
     sync: PluginSyncService
     clone: PluginCloneService
+    log_level: PluginLogLevelControl
     projection: PluginProjection
     classification: PluginClassificationRegistry
     recent_local_sync: dict[str, float]
@@ -134,7 +138,10 @@ def build_plugin_runtime(
 ) -> PluginRuntime:
     """按依赖顺序构造唯一插件运行时，各业务能力仍由对应 owner 实现。"""
     registry = PluginRegistry()
-    instances = PluginInstanceStore(storage=environment.storage)
+    instances = PluginInstanceStore(
+        storage=environment.storage,
+        directory=environment.instance_directory,
+    )
     configs = PluginConfigStore(
         storage=environment.storage,
         database=environment.database,
@@ -317,6 +324,13 @@ def build_plugin_runtime(
         remove_plugin=host.remove_plugin,
         log=environment.logger,
     )
+    log_level = PluginLogLevelControl(
+        plugin_exists=lambda plugin_id: registry.plugin_class(plugin_id) is not None,
+        get_instance=instances.get,
+        instances_for_source=instances.for_source,
+        read_log_level=configs.read_log_level,
+        write_log_level=configs.write_log_level,
+    )
     projection = PluginProjection(
         registry.running,
         environment.logger,
@@ -342,6 +356,7 @@ def build_plugin_runtime(
         metadata=metadata,
         sync=sync,
         clone=clone,
+        log_level=log_level,
         projection=projection,
         classification=classification,
         recent_local_sync=recent_local_sync,

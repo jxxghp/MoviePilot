@@ -2776,7 +2776,7 @@
     "arg-type": 5,
     "no-any-return": 2,
     "no-untyped-call": 2,
-    "no-untyped-def": 5
+    "no-untyped-def": 4
   },
   "app/startup/initializers/routers.py": {
     "no-untyped-def": 1

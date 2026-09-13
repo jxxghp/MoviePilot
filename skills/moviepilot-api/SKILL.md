@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 31
+version: 32
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -60,7 +60,8 @@ allowed-api-operations: >-
   plugin.statistics plugin.reset plugin.clone config.user.get config.public.get
   system.usage.statistics plugin.folders.get plugin.folders.update plugin.folder.create
   plugin.folder.update plugin.folder.delete plugin.folder.plugins.update
-  plugin.folder.plugin.assign plugin.folder.plugin.remove
+  plugin.folder.plugin.assign plugin.folder.plugin.remove plugin.loglevel.get plugin.loglevel.set
+  plugin.loglevel.clear
 ---
 
 # MoviePilot API

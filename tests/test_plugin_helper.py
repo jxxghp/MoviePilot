@@ -856,7 +856,7 @@ class TestPluginHelper:
         _patch_catalog_settings(monkeypatch, VERSION_FLAG="v2")
         monkeypatch.setattr(
             "app.runtime.extensions.plugin.storage._plugin_storage",
-            SimpleNamespace(read=lambda _key: []),
+            SimpleNamespace(read=lambda _key: [], write=lambda _key, _value: None),
         )
         monkeypatch.setattr(
             "app.runtime.extensions.plugin.manager._site_auth_level_provider",
@@ -928,7 +928,7 @@ class TestPluginHelper:
         )
         monkeypatch.setattr(
             "app.runtime.extensions.plugin.storage._plugin_storage",
-            SimpleNamespace(read=lambda _key: []),
+            SimpleNamespace(read=lambda _key: [], write=lambda _key, _value: None),
         )
         monkeypatch.setattr(
             "app.runtime.extensions.plugin.manager._site_auth_level_provider",
@@ -1154,7 +1154,8 @@ class TestPluginHelper:
             SimpleNamespace(
                 read=lambda key: ["DemoPlugin"]
                 if key == SystemConfigKey.UserInstalledPlugins
-                else None
+                else None,
+                write=lambda _key, _value: None,
             ),
         )
 

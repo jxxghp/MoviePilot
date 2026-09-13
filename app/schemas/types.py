@@ -385,8 +385,11 @@ class SystemConfigKey(Enum):
     UserCustomCSS = "UserCustomCSS"
     # 用户已安装的插件
     UserInstalledPlugins = "UserInstalledPlugins"
-    # 共享源码插件的虚拟运行实例
+    # 共享源码插件的虚拟运行实例（已迁移到独立表，本键保留作回滚依据）
     PluginInstances = "PluginInstances"
+    # 上面那个旧键各条目导入独立表时的内容指纹 {实例ID: 摘要}，据此识别回滚到旧版本
+    # 后新增或改写过的条目，同时避免把用户删掉的分身重新导回
+    PluginInstancesImported = "PluginInstancesImported"
     # 插件文件夹分组配置
     PluginFolders = "PluginFolders"
     # 默认电影订阅规则

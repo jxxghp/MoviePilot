@@ -41,6 +41,22 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 
 MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。如果客户端缓存了工具列表，插件状态变化后需要让客户端重新请求 `tools/list`；无法手动刷新的客户端应重新连接 MCP 服务或新建会话。
 
+### 插件实例日志等级
+
+`plugin.loglevel.get` 使用源插件 ID 查询，返回该插件全部实例（首项固定是本体自身，其后
+是各个分身）的 `configured_level`、`expires_at` 与 `effective_level`。用某个分身自身的
+实例 ID 当作 `plugin_id` 会被拒绝——分身的日志等级归它的源插件管。`configured_level`
+为 `null` 表示没有覆盖或覆盖已过期；`effective_level` 才是此刻真正用于过滤的等级。
+
+`plugin.loglevel.set` 与 `plugin.loglevel.clear` 使用该总览返回的精确 `instance_id`，
+运行期立即生效，不必重载插件，也不改变全局日志等级。`expires_at` 为空表示覆盖不过期；
+提交不带时区的时间会按 UTC 解读，与查询接口返回的 UTC 时刻保持一致。覆盖过期后自动回落
+全局等级，不需要再调一次 `clear`；重复 `clear` 保持幂等。
+
+覆盖只对宿主受控调用点内产生的日志生效——插件的构造与 `init_plugin`、事件处理器、定时
+服务回调、插件自己声明的 HTTP 端点。插件自建的原生线程不继承这个绑定，其中的日志仍按
+全局等级过滤，不要据此断定覆盖没有写进去。
+
 ## 3.1 结构化 Agent 工具与完整参数合同
 
 `tools/list` 会为以下四个正式入口返回可直接校验的 JSON Schema。每个入口都按 operation/action 生成 `oneOf` 分支，分支中包含必填字段、类型、默认值、枚举、嵌套对象和互斥/至少一项等跨字段规则；外部 MCP 客户端可以在一次 `tools/call` 中完成参数构造，不需要猜测 URL、HTTP 方法或第三方 SDK 参数。
