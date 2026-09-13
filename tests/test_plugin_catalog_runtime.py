@@ -35,6 +35,7 @@ def _facade(**overrides):
         plugin_attr=lambda _plugin_id, _attr: None,
         plugin_instance=lambda _plugin_id: None,
         plugin_instances=lambda: {},
+        host_instances=lambda: {},
         runtime_status=lambda _plugin_id: None,
         log=SimpleNamespace(error=lambda *_args: None, info=lambda *_args: None),
     )
@@ -80,6 +81,7 @@ async def test_async_online_normalizes_market_configuration(monkeypatch) -> None
         plugin_attr=lambda _plugin_id, _attr: None,
         plugin_instance=lambda _plugin_id: None,
         plugin_instances=lambda: {},
+        host_instances=lambda: {},
         runtime_status=lambda _plugin_id: None,
         log=SimpleNamespace(info=lambda *_args: None),
     )
@@ -120,6 +122,7 @@ def test_installed_catalog_keeps_plugins_that_are_not_loaded():
         plugin_attr=lambda _plugin_id, _attr: None,
         plugin_instance=lambda _plugin_id: None,
         plugin_instances=lambda: {},
+        host_instances=lambda: {},
         runtime_status=statuses.get,
         log=SimpleNamespace(error=lambda *_args: None, info=lambda *_args: None),
     )
@@ -162,6 +165,7 @@ def test_local_repository_failure_does_not_break_catalog_projection():
         plugin_attr=lambda _plugin_id, _attr: None,
         plugin_instance=lambda _plugin_id: None,
         plugin_instances=lambda: {},
+        host_instances=lambda: {},
         runtime_status=lambda _plugin_id: None,
         log=SimpleNamespace(
             error=lambda *_args: None,

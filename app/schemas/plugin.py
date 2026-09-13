@@ -61,6 +61,16 @@ class PluginInstance(BaseModel):
     plugin_name: Optional[str] = Field(default=None, description="实例展示名称")
     plugin_desc: Optional[str] = Field(default=None, description="实例展示描述")
     plugin_icon: Optional[str] = Field(default=None, description="实例展示图标")
+    is_default_target: bool = Field(
+        default=False,
+        description="该实例是否为所属源插件的默认调用目标",
+    )
+    # 默认为真而库列默认为假：这个模型是运行时描述，被构造出来就是要拿去装载的；
+    # 库列默认为假则是为了让「只写了配置」这类隐式建出的行不因此变成可装载
+    is_enabled: bool = Field(
+        default=True,
+        description="这份配置是否应当被实例化并启动；置假即停用，配置与展示信息留存待再次启用",
+    )
 
     @property
     def is_host(self) -> bool:
@@ -74,6 +84,14 @@ class PluginInstance(BaseModel):
     def mode(self) -> Literal["virtual", "host"]:
         """由一对身份 ID 派生实例角色，而非另存一份可能失步的副本。"""
         return "host" if self.is_host else "virtual"
+
+
+class PluginInstanceEnabledRequest(BaseModel):  # type: ignore[misc]
+    """启用或停用一个插件实例的请求参数。"""
+
+    enabled: bool = Field(
+        description="目标启用状态；置假即停用，业务参数与展示信息原样留存等待再次启用"
+    )
 
 
 class PluginInstanceLogLevel(BaseModel):  # type: ignore[misc]
@@ -172,6 +190,10 @@ class Plugin(BaseModel):
     is_instance: Optional[bool] = False
     # 实例实现模式；存量物理分身为空
     instance_mode: Optional[str] = None
+    # 该实例是否为所属源插件的默认调用目标
+    is_default_target: Optional[bool] = False
+    # 该实例是否应当被实例化并启动；与 state 不同，后者说的是此刻在不在跑
+    is_enabled: Optional[bool] = True
     # 该实例当前生效的日志等级覆盖；未设置覆盖或覆盖已过期回落全局等级时为空
     log_level_effective: Optional[str] = None
 

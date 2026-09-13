@@ -221,6 +221,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_sync = self._plugin_runtime.sync
         self._plugin_clone = self._plugin_runtime.clone
         self._plugin_log_level = self._plugin_runtime.log_level
+        self._plugin_default_target = self._plugin_runtime.default_target
         self._plugin_classification = self._plugin_runtime.classification
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
@@ -1297,6 +1298,90 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :raise LookupError: 插件不存在，或实例不存在／不归属该插件
         """
         self._plugin_log_level.clear_level(plugin_id, instance_id)
+
+    def mark_plugin_loadable(self, plugin_id: str) -> None:
+        """
+        把源插件本体登记为应当装载，用于安装收尾
+
+        本体的装载判据在实例表的启用位上，安装清单只回答「包在不在磁盘上」。安装
+        完成时不登记这一行，插件靠定向重载当次能跑起来，重启后却不会再被加载。
+        :param plugin_id: 插件ID
+        """
+        self._plugin_instance_store.enable_host(plugin_id)
+
+    def disable_plugin_host(self, plugin_id: str) -> bool:
+        """
+        卸载收尾：停用源插件本体但保留其业务参数
+
+        业务参数是用户的数据，重装同名插件后应当还在；默认目标置位与日志等级覆盖
+        只对在册实例有意义，随停用一并清除，不会被下一次重装静默继承。
+        :param plugin_id: 插件ID
+        :return: 停用前它是否存在且处于启用状态
+        """
+        changed = self._plugin_instance_store.disable_host(plugin_id)
+        clear_instance_log_level_override(plugin_id)
+        return changed
+
+    def set_plugin_instance_enabled(self, instance_id: str, enabled: bool) -> bool:
+        """
+        启用或停用一个实例，本体与分身走同一个入口
+
+        启用位是「这份配置是否应当被实例化并启动」的唯一判据，本体与分身因而可以
+        共用一个开关：调用方只给实例ID，由本方法按它是分身还是本体分发。
+
+        停用不删任何设置：业务参数与展示信息原样留在那一行，再次启用即恢复；删行
+        才是彻底清理，不从这里走。
+        :param instance_id: 实例ID，等于插件ID时表示本体自身
+        :param enabled: 目标启用状态
+        :return: 该实例存在且状态确实发生了变化
+        :raise PluginMutationRejectedError: 当前处于停机准入窗口
+        """
+        store = self._plugin_instance_store
+        is_clone = store.get(instance_id) is not None
+        with self.mutation(f"{'启用' if enabled else '停用'}插件实例 {instance_id}"):
+            if is_clone:
+                changed = store.enable(instance_id) if enabled else store.disable(instance_id)
+            elif enabled:
+                changed = store.enable_host(instance_id)
+            else:
+                changed = store.disable_host(instance_id)
+        if not changed:
+            return False
+        if enabled:
+            self.reload_plugin(instance_id)
+        else:
+            # 停用要把运行态一并摘掉，否则这一轮进程里它还在跑，重启才真的停下来
+            self.remove_plugin(instance_id)
+            clear_instance_log_level_override(instance_id)
+        return True
+
+    def resolve_plugin_call_target(self, plugin_id: str) -> str:
+        """
+        确定按插件ID发起、未指定实例的调用应当落到哪个实例
+        :param plugin_id: 插件ID，也可以是调用方已经明确知道的具体实例ID
+        :return: 应当使用的实例ID
+        :raise LookupError: 该插件已有分身但未设置默认调用目标，或默认调用目标已停用
+        """
+        return self._plugin_default_target.resolve(plugin_id)
+
+    def set_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> bool:
+        """
+        设置指定插件实例为默认调用目标，并清除同插件的旧默认
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :return: 目标实例存在时为True，指定的非本体实例不归属该插件时为False
+        :raise LookupError: 插件不存在，或 plugin_id 实为某个分身自身的实例ID
+        """
+        return self._plugin_default_target.set_target(plugin_id, instance_id)
+
+    def clear_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> None:
+        """
+        清除指定插件实例的默认调用目标置位，仅当当前置位的正是该实例时才动作
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :raise LookupError: 插件不存在，或 plugin_id 实为某个分身自身的实例ID
+        """
+        self._plugin_default_target.clear_target(plugin_id, instance_id)
 
     def _modify_plugin_files(self, plugin_dir: Path, original_id: str, suffix: str,
                              name: str, description: str, version: str = None,

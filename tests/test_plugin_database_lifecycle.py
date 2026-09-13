@@ -97,7 +97,7 @@ def _build_lifecycle(**overrides: Any) -> PluginLifecycle:
         classes={},
         running={},
         load_plugins=lambda _plugin_id, _installed, _check: [],
-        installed_plugins=lambda: [],
+        loadable_plugins=lambda: [],
         plugin_config=lambda _plugin_id: {},
         auth_checker=lambda _plugin: True,
         clear_modules=lambda _plugin_id: None,
@@ -141,7 +141,7 @@ def test_start_ensures_the_database_after_init_plugin():
     plugin_cls = _make_plugin_class("DemoPlugin", calls=calls)
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
 
@@ -157,7 +157,7 @@ def test_start_passes_the_declared_models_and_migration_directory():
     plugin_cls = _make_plugin_class("DemoPlugin", models=(ModelA,), migrations="m")
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
 
@@ -173,7 +173,7 @@ def test_start_reports_empty_declarations_for_plugins_without_a_database():
     plugin_cls = _make_plugin_class("DemoPlugin", declare_hooks=False)
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
 
@@ -193,7 +193,7 @@ def test_plugin_failing_to_ensure_is_not_registered_as_running():
 
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: PluginDatabase(ensure=_raise_ensure),
     )
 
@@ -209,7 +209,7 @@ def test_stop_releases_the_database_and_never_destroys_it():
     plugin_cls = _make_plugin_class("DemoPlugin")
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
     lifecycle.start("DemoPlugin")
@@ -227,7 +227,7 @@ def test_stop_without_plugin_id_releases_every_running_plugin():
     plugin_b = _make_plugin_class("PluginB")
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_a, plugin_b],
-        installed_plugins=lambda: ["PluginA", "PluginB"],
+        loadable_plugins=lambda: ["PluginA", "PluginB"],
         database=lambda: _recording_database(calls),
     )
     lifecycle.start()
@@ -244,7 +244,7 @@ def test_reload_releases_then_ensures_again():
     plugin_cls = _make_plugin_class("DemoPlugin")
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
     lifecycle.start("DemoPlugin")
@@ -267,7 +267,7 @@ def test_release_failure_does_not_block_unloading():
 
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: PluginDatabase(release=_raise_release),
     )
     lifecycle.start("DemoPlugin")
@@ -405,7 +405,7 @@ def test_start_releases_the_database_of_a_plugin_that_failed_to_load():
 
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: PluginDatabase(
             ensure=_raise_ensure,
             release=lambda plugin_id: calls.append(("release", plugin_id)),
@@ -429,7 +429,7 @@ def test_stop_all_releases_plugins_that_never_reached_the_running_registry():
 
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: PluginDatabase(
             ensure=_raise_ensure,
             release=lambda plugin_id: calls.append(("release", plugin_id)),
@@ -451,7 +451,7 @@ def test_stopping_an_already_stopped_plugin_stays_idempotent():
     plugin_cls = _make_plugin_class("DemoPlugin")
     lifecycle = _build_lifecycle(
         load_plugins=lambda *_a, **_kw: [plugin_cls],
-        installed_plugins=lambda: ["DemoPlugin"],
+        loadable_plugins=lambda: ["DemoPlugin"],
         database=lambda: _recording_database(calls),
     )
     lifecycle.start("DemoPlugin")

@@ -3146,6 +3146,21 @@
       "title": "PluginFoldersData",
       "type": "object"
     },
+    "PluginInstanceEnabledRequest": {
+      "description": "One plugin instance's enable-or-disable request; disabling keeps its configuration for a later re-enable.",
+      "properties": {
+        "enabled": {
+          "description": "Whether this category or classification rule participates in evaluation.",
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "title": "PluginInstanceEnabledRequest",
+      "type": "object"
+    },
     "PluginInstanceLogLevelUpdateRequest": {
       "description": "One plugin instance's log-level override update request.",
       "properties": {
@@ -9758,6 +9773,82 @@
     },
     {
       "additionalProperties": false,
+      "description": "Clear one plugin instance's default-call-target flag, only if it is the plugin's current default. Method: DELETE. Path: /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target. Effect: reversible_write.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.default_target.clear",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.default_target.clear. Clear one plugin instance's default-call-target flag, only if it is the plugin's current default. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.loglevel.get.",
+              "title": "Instance Id",
+              "type": "string"
+            },
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id",
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.default_target.clear",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Set one plugin instance as the plugin's default call target, automatically clearing any previous default. Method: PUT. Path: /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target. Effect: reversible_write.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.default_target.set",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.default_target.set. Set one plugin instance as the plugin's default call target, automatically clearing any previous default. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.loglevel.get.",
+              "title": "Instance Id",
+              "type": "string"
+            },
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id",
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.default_target.set",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "Create one named plugin folder. Method: POST. Path: /api/v1/plugin/folders/{folder_name}. Effect: reversible_write.",
       "properties": {
         "operation_id": {
@@ -10236,6 +10327,43 @@
         "result_count_field": "collection.result_count",
         "total_count_field": "collection.total_count"
       }
+    },
+    {
+      "additionalProperties": false,
+      "description": "Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable. Method: POST. Path: /api/v1/plugin/instance/{instance_id}/enabled. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/PluginInstanceEnabledRequest",
+          "description": "Request value for plugin.instance.set_enabled. Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "plugin.instance.set_enabled",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.instance.set_enabled. Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.loglevel.get.",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "plugin.instance.set_enabled",
+      "type": "object"
     },
     {
       "additionalProperties": false,
@@ -16087,6 +16215,8 @@
         "plugin.config.get",
         "plugin.config.update",
         "plugin.data",
+        "plugin.default_target.clear",
+        "plugin.default_target.set",
         "plugin.folder.create",
         "plugin.folder.delete",
         "plugin.folder.plugin.assign",
@@ -16098,6 +16228,7 @@
         "plugin.history",
         "plugin.install",
         "plugin.installed",
+        "plugin.instance.set_enabled",
         "plugin.loglevel.clear",
         "plugin.loglevel.get",
         "plugin.loglevel.set",

@@ -37,6 +37,7 @@ from app.runtime.extensions.plugin.sync import (
     PluginSyncService,
 )
 from app.runtime.extensions.plugin.system import PluginSystemServices
+from app.runtime.extensions.plugin.target import PluginDefaultTargetControl
 from app.runtime.extensions.plugin.tools import PluginToolCatalog
 from app.schemas.types import SystemConfigKey
 
@@ -101,6 +102,10 @@ class PluginRuntimeEnvironment:
     remote_entry: PluginRemoteEntryBuilder
     development: Callable[[], bool]
     logger: Any
+    # 默认调用目标的置位与清除必须在库层一个事务内清旧置新，因而由组合根直接给出
+    # 原子写入端口，不经过按实例逐行读写的实例表端口
+    set_default_target: Callable[[str, str], bool]
+    clear_default_target: Callable[[str], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +129,7 @@ class PluginRuntime:
     sync: PluginSyncService
     clone: PluginCloneService
     log_level: PluginLogLevelControl
+    default_target: PluginDefaultTargetControl
     projection: PluginProjection
     classification: PluginClassificationRegistry
     recent_local_sync: dict[str, float]
@@ -173,7 +179,7 @@ def build_plugin_runtime(
 
     def load_plugins(
         plugin_id: Optional[str],
-        installed_plugins: list[str],
+        loadable_plugins: list[str],
         validator: Callable[[Any], bool],
     ) -> list[Any]:
         """加载物理插件或虚拟实例，并保持持久化实例顺序。"""
@@ -181,9 +187,10 @@ def build_plugin_runtime(
             instance = instances.get(plugin_id)
             if instance:
                 return loader.load_instance(instance, validator)
-            return loader.load(plugin_id, installed_plugins, validator)
-        plugins = loader.load(None, installed_plugins, validator)
-        for instance in instances.all().values():
+            return loader.load(plugin_id, loadable_plugins, validator)
+        plugins = loader.load(None, loadable_plugins, validator)
+        # 只装载启用的配置：停用的分身仍登记在册、卡片可见，但不该被实例化
+        for instance in instances.enabled().values():
             plugins.extend(loader.load_instance(instance, validator))
         return plugins
 
@@ -191,9 +198,9 @@ def build_plugin_runtime(
         classes=registry.classes,
         running=registry.running,
         load_plugins=load_plugins,
-        installed_plugins=lambda: environment.storage().read(
-            SystemConfigKey.UserInstalledPlugins
-        ) or [],
+        # 本体的装载判据归口到实例表的启用位；安装清单只回答「包在不在磁盘上」，
+        # 它同时兼任运行开关时，「装着但先不跑」根本没有地方可以表达
+        loadable_plugins=lambda: list(instances.enabled_hosts()),
         plugin_config=configs.read,
         auth_checker=lambda plugin: access.check(plugin),
         clear_modules=loader.clear_modules,
@@ -255,6 +262,7 @@ def build_plugin_runtime(
         ),
         plugin_instance=instances.get,
         plugin_instances=instances.all,
+        host_instances=instances.all_hosts,
         runtime_status=registry.runtime_status,
         log=environment.logger,
     )
@@ -277,7 +285,9 @@ def build_plugin_runtime(
     )
     dependencies = PluginDependencyService(
         system=environment.system,
-        instances=instances.all,
+        # 分类结果会被逐个 start()，因此两层都只能给出应当装载的那一部分
+        instances=instances.enabled,
+        loadable_hosts=lambda: set(instances.enabled_hosts()),
         registry=registry,
         log=environment.logger,
     )
@@ -331,6 +341,16 @@ def build_plugin_runtime(
         read_log_level=configs.read_log_level,
         write_log_level=configs.write_log_level,
     )
+    default_target = PluginDefaultTargetControl(
+        plugin_exists=lambda plugin_id: registry.plugin_class(plugin_id) is not None,
+        get_instance=instances.get,
+        instances_for_source=instances.for_source,
+        get_host_instance=instances.get_host,
+        save_host_instance=instances.save_host,
+        running=lambda: registry.running,
+        set_default_target=environment.set_default_target,
+        clear_default_target=environment.clear_default_target,
+    )
     projection = PluginProjection(
         registry.running,
         environment.logger,
@@ -357,6 +377,7 @@ def build_plugin_runtime(
         sync=sync,
         clone=clone,
         log_level=log_level,
+        default_target=default_target,
         projection=projection,
         classification=classification,
         recent_local_sync=recent_local_sync,

@@ -279,6 +279,7 @@
     "验证失败": "Verification failed",
     "没有传入仓库地址，无法正确安装插件，请检查配置": "No repository URL was provided, so the plugin cannot be installed. Please check the configuration",
     "插件分身创建成功": "Plugin clone created successfully",
+    "默认调用目标正被并发修改，请重试": "The default call target is being modified concurrently, please retry",
     "未识别到豆瓣媒体信息": "Unable to recognize Douban media information",
     "未识别到TMDB媒体信息": "Unable to recognize TMDB media information",
     "未知的媒体ID": "Unknown media ID",

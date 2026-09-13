@@ -6,7 +6,7 @@ import copy
 from datetime import datetime, timezone
 from typing import Any, Optional, Union
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -90,6 +90,16 @@ class PluginInstanceOper(DbOper):
             )
         )
 
+    def list_enabled(self) -> list[PluginInstance]:
+        """列举应当被实例化并启动的实例，供运行期批量装载使用。"""
+        return list(
+            self._execute_sync_query(
+                lambda session: session.execute(
+                    select(PluginInstance).where(PluginInstance.is_enabled.is_(True))
+                ).scalars().all()
+            )
+        )
+
     def save(self, **fields: Any) -> PluginInstance:
         """按 ``instance_id`` 新增或更新一行，只写入本次给出的列。
 
@@ -143,6 +153,93 @@ class PluginInstanceOper(DbOper):
             return True
 
         return bool(self._execute_sync_write(stage))
+
+    def set_enabled(self, *, instance_id: str, is_enabled: bool) -> bool:
+        """写入启用位，它同时就是卸载与恢复的开关。
+
+        置假即卸载：业务参数与展示信息原样留在这一行等待再次启用，因而不需要另设
+        一个卸载时间列。同时清掉两项只对在册实例才有意义的状态——默认调用目标置位，
+        否则未指定实例的外部调用会被路由到一个不会被实例化的实例；日志等级覆盖，
+        它带失效时间、本就是临时调试设置，而运行期在停用时会同步清掉进程内的等级
+        覆盖表，库里留着只会让两边不一致。
+
+        :param instance_id: 实例 ID
+        :param is_enabled: 目标启用状态
+        :return: 该行是否存在
+        """
+
+        def stage(session: Session) -> bool:
+            """在同一事务内写入启用位，停用时一并清掉仅对在册实例有意义的状态。"""
+            record = PluginInstance.get_by_instance_id(session, instance_id)
+            if record is None:
+                return False
+            record.is_enabled = is_enabled
+            if not is_enabled:
+                record.is_default_target = False
+                record.log_level = None
+                record.log_expires_at = None
+            record.updated_at = _now()
+            return True
+
+        return bool(self._execute_sync_write(stage))
+
+    def set_default_target(self, source_plugin_id: str, instance_id: str) -> bool:
+        """原子地把某源插件的默认调用目标改为指定实例，同一事务内清旧置新。
+
+        目标行须已经落盘：这里只按 ``instance_id`` 与 ``source_plugin_id`` 双重匹配
+        定位目标行，不做隐式创建；命中失败原样返回，不动同插件原有的置位。命中时
+        先清后置，两条 DML 处在同一 session、同一事务内提交，中途不会出现两行同时
+        为真；并发写入下的唯一性最终由表上的条件唯一索引兜底。
+
+        :param source_plugin_id: 源插件 ID
+        :param instance_id: 要设为默认调用目标的实例 ID
+        :return: 目标行存在并已置位为 True，目标行不存在时为 False
+        """
+
+        def stage(session: Session) -> bool:
+            """在同一事务内定位目标行、清除同插件其余置位、置位目标行。"""
+            target = session.execute(
+                select(PluginInstance).where(
+                    PluginInstance.instance_id == instance_id,
+                    PluginInstance.source_plugin_id == source_plugin_id,
+                )
+            ).scalars().first()
+            if target is None:
+                return False
+            session.execute(
+                update(PluginInstance)
+                .where(
+                    PluginInstance.source_plugin_id == source_plugin_id,
+                    PluginInstance.instance_id != instance_id,
+                    PluginInstance.is_default_target.is_(True),
+                )
+                .values(is_default_target=False)
+            )
+            target.is_default_target = True
+            target.updated_at = _now()
+            return True
+
+        return bool(self._execute_sync_write(stage))
+
+    def clear_default_target(self, source_plugin_id: str) -> None:
+        """清除某源插件的默认调用目标置位，重复调用保持幂等。
+
+        置位被清掉后该行若已只剩身份列则不在这里回收：本体行的回收统一由清空业务
+        参数与清除日志等级两处判定，多一处入口只会让「行何时消失」变得难以预期。
+        """
+
+        def stage(session: Session) -> None:
+            """在同一事务内清除该源插件全部置位的行。"""
+            session.execute(
+                update(PluginInstance)
+                .where(
+                    PluginInstance.source_plugin_id == source_plugin_id,
+                    PluginInstance.is_default_target.is_(True),
+                )
+                .values(is_default_target=False, updated_at=_now())
+            )
+
+        self._execute_sync_write(stage)
 
     def get_config_data(self, instance_id: str) -> Any:
         """读取某实例的业务参数；该行不存在或从未存过参数都返回 None。

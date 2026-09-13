@@ -63,7 +63,7 @@ class PluginLifecycle:
         classes: dict[str, Any],
         running: dict[str, Any],
         load_plugins: Callable[[Optional[str], list[str], Callable[[Any], bool]], list[Any]],
-        installed_plugins: Callable[[], list[str]],
+        loadable_plugins: Callable[[], list[str]],
         plugin_config: Callable[[str], dict],
         auth_checker: Callable[[Any], bool],
         clear_modules: Callable[[Optional[str]], Any],
@@ -81,7 +81,7 @@ class PluginLifecycle:
         self._classes = classes
         self._running = running
         self._load_plugins = load_plugins
-        self._installed_plugins = installed_plugins
+        self._loadable_plugins = loadable_plugins
         self._plugin_config = plugin_config
         self._auth_checker = auth_checker
         self._clear_modules = clear_modules
@@ -107,7 +107,7 @@ class PluginLifecycle:
         plugin_id: Optional[str] = None,
     ) -> dict[str, PluginRuntimeStatus]:
         """加载并初始化插件，返回每个目标的明确运行结果。"""
-        installed_plugins = self._installed_plugins()
+        loadable_plugins = self._loadable_plugins()
         results: dict[str, PluginRuntimeStatus] = {}
         if plugin_id:
             self._runtime_status_writer(plugin_id, PluginRuntimeStatus.READY)
@@ -116,7 +116,7 @@ class PluginLifecycle:
             """判断模块是否具备宿主插件最小生命周期钩子。"""
             return hasattr(module, "init_plugin") and hasattr(module, "plugin_name")
 
-        plugins = self._load_plugins(plugin_id, installed_plugins, check_module)
+        plugins = self._load_plugins(plugin_id, loadable_plugins, check_module)
         plugins.sort(key=lambda item: getattr(item, "plugin_order", 0))
         for plugin in plugins:
             current_id = plugin.__name__

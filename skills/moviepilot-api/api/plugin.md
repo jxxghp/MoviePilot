@@ -39,6 +39,20 @@ Purpose: Read a bounded preview of one plugin's persisted data.
 - `query`: `key` (string|null): Optional exact plugin data key used to narrow the returned preview.; `max_chars` (integer|null): Maximum number of serialized plugin-data characters to return.
 - `body`: none
 
+### `plugin.default_target.clear`
+`DELETE /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target`; policy effect: `reversible_write`.
+Purpose: Clear one plugin instance's default-call-target flag, only if it is the plugin's current default.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: none
+
+### `plugin.default_target.set`
+`PUT /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target`; policy effect: `reversible_write`.
+Purpose: Set one plugin instance as the plugin's default call target, automatically clearing any previous default.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: none
+- `body`: none
+
 ### `plugin.folder.create`
 `POST /api/v1/plugin/folders/{folder_name}`; policy effect: `reversible_write`.
 Purpose: Create one named plugin folder.
@@ -116,6 +130,13 @@ Purpose: List installed plugins and their runtime status.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer|null): Optional upper bound on plugin catalog results, from 1 to 200; omit it for the complete catalog.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=installed): Literal installed, selecting only installed plugin catalog entries.
 - `body`: none
+
+### `plugin.instance.set_enabled`
+`POST /api/v1/plugin/instance/{instance_id}/enabled`; policy effect: `reversible_write`.
+Purpose: Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.
+- `query`: none
+- `body`: `enabled*` (boolean): Whether this category or classification rule participates in evaluation.
 
 ### `plugin.loglevel.clear`
 `DELETE /api/v1/plugin/loglevel/{plugin_id}/{instance_id}`; policy effect: `reversible_write`.

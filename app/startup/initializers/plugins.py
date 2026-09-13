@@ -262,7 +262,7 @@ def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance
     """把插件实例表的 ORM 行投影为运行时端口使用的 Pydantic 描述。
 
     只投影描述符各列：业务参数走插件配置读取端口，运行时端口拿到的应当是一份实例
-    身份与展示信息的视图。
+    身份、展示信息与调用目标置位的视图。
     """
     return PluginInstance(
         instance_id=record.instance_id,
@@ -270,14 +270,22 @@ def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance
         plugin_name=record.plugin_name,
         plugin_desc=record.plugin_desc,
         plugin_icon=record.plugin_icon,
+        is_default_target=record.is_default_target,
+        is_enabled=record.is_enabled,
     )
 
 
 def _save_plugin_instance_record(instance: PluginInstance) -> None:
     """把运行时实例描述写入插件实例表，以实例 ID 为稳定键做新增或更新。
 
-    业务参数不在此列：它由插件自身通过插件配置写入端口落盘、不进运行时描述，原样
-    写回会把用户刚存的配置覆盖成空。
+    默认调用目标置位与启用位随描述一起写：读取口 ``_plugin_instance_from_record`` 会
+    把它们投影出来，读改写一轮下来原值原样回去，不存在被顺手抹掉的风险；漏写反而会让
+    「改个展示名」这种无关写入把用户选定的调用目标悄悄清掉，或是把新建的实例落成停用
+    ——装载判据正是启用位，实例会建出来却永不加载。真正的置位与启停仍走各自的专用
+    端口，这里只负责不丢值。
+
+    业务参数与日志等级不在此列：它们由插件自身和日志等级控制面各自写入端口落盘、不进
+    运行时描述，原样写回会把用户刚存的配置覆盖成空。
     """
     PluginInstanceOper().save(
         instance_id=instance.instance_id,
@@ -285,7 +293,28 @@ def _save_plugin_instance_record(instance: PluginInstance) -> None:
         plugin_name=instance.plugin_name,
         plugin_desc=instance.plugin_desc,
         plugin_icon=instance.plugin_icon,
+        is_default_target=instance.is_default_target,
+        is_enabled=instance.is_enabled,
     )
+
+
+def _set_plugin_default_target(source_plugin_id: str, instance_id: str) -> bool:
+    """把某源插件的默认调用目标置为指定实例，清旧与置新在库层同一事务内完成。
+
+    不经实例表的逐行写入端口：那条路径按实例 ID 各写各的行，清旧与置新会落进两个
+    事务，中间窗口里两行同时为真，正好撞上「同一源插件至多一个默认目标」的条件
+    唯一索引。
+
+    :param source_plugin_id: 源插件 ID
+    :param instance_id: 要设为默认调用目标的实例 ID
+    :return: 目标行存在并已置位
+    """
+    return PluginInstanceOper().set_default_target(source_plugin_id, instance_id)
+
+
+def _clear_plugin_default_target(source_plugin_id: str) -> None:
+    """清除某源插件的默认调用目标置位。"""
+    PluginInstanceOper().clear_default_target(source_plugin_id)
 
 
 def _build_plugin_instance_directory() -> PluginInstanceDirectory:
@@ -308,6 +337,13 @@ def _build_plugin_instance_directory() -> PluginInstanceDirectory:
         ],
         save=_save_plugin_instance_record,
         delete=oper.delete,
+        list_enabled=lambda: [
+            _plugin_instance_from_record(record) for record in oper.list_enabled()
+        ],
+        set_enabled=lambda instance_id, is_enabled: oper.set_enabled(
+            instance_id=instance_id,
+            is_enabled=is_enabled,
+        ),
     )
 
 
@@ -346,6 +382,8 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
             remote_entry=host.get_plugin_remote_entry,
             development=lambda: bool(get_runtime_setting('DEV')),
             logger=logger,
+            set_default_target=_set_plugin_default_target,
+            clear_default_target=_clear_plugin_default_target,
         ),
         tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
     )
@@ -460,6 +498,7 @@ def configure_plugin_services() -> None:
         installed_plugins_reader=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
+        loadable_marker=plugin_manager.mark_plugin_loadable,
         plugin_ids_provider=plugin_manager.get_plugin_ids,
         packages=package_manager,
         install_reporter=lambda plugin_id, repo_url: (
