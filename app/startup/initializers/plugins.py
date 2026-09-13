@@ -465,6 +465,8 @@ def configure_plugin_services() -> None:
 
     configure_plugin_release_service(
         PluginReleaseService(
+            # 分身的安装清单与 Release 都登记在源插件名下，查询前必须先归一
+            source_plugin_id=plugin_manager.get_plugin_source_id,
             installed_plugins=plugin_manager.get_installed_plugins,
             local_repo_plugins=plugin_manager.get_local_repo_plugins,
             market_plugins=plugin_manager.async_get_plugins_from_market,

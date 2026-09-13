@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -318,11 +319,17 @@ def _persistence(identity: PluginIdentity) -> MagicMock:
     return persistence
 
 
+def _no_clone_source_plugin_id(plugin_id: str) -> str:
+    """未建分身时的源身份归一：任何 ID 都是它自己的源插件。"""
+    return plugin_id
+
+
 def _release_service(
     plugin_manager: MagicMock,
     *,
     persistence: MagicMock | None = None,
     plugin_helper: MagicMock | None = None,
+    source_plugin_id: Callable[[str], str] = _no_clone_source_plugin_id,
 ) -> PluginReleaseService:
     """用端口替身构造与启动组合根等价的 Release 查询服务。"""
     if persistence is None:
@@ -333,6 +340,7 @@ def _release_service(
         plugin_helper.async_has_plugin_release_cache = AsyncMock(return_value=False)
         plugin_helper.async_get_plugin_release_versions = AsyncMock(return_value=[])
     return PluginReleaseService(
+        source_plugin_id=source_plugin_id,
         installed_plugins=plugin_manager.get_installed_plugins,
         local_repo_plugins=plugin_manager.get_local_repo_plugins,
         market_plugins=plugin_manager.async_get_plugins_from_market,
@@ -1453,3 +1461,87 @@ def test_delete_plugin_data_can_force_delete_after_plugin_is_stopped():
 
     assert calls == ["DemoPlugin"]
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
+
+
+def _clone_source_plugin_id(plugin_id: str) -> str:
+    """把测试用分身 ID 归一到源插件，其余 ID 保持原值。"""
+    return "DemoPlugin" if plugin_id == "DemoPluginwork" else plugin_id
+
+
+def test_plugin_history_resolves_clone_id_to_its_source_plugin():
+    """分身查更新说明必须归一到源插件，否则安装清单里查不到而报 404。"""
+    installed_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_name="Demo Plugin",
+        plugin_version="1.0.0",
+        installed=True,
+        history={},
+    )
+    market_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        repo_url=SOURCE_URL,
+        history={"v1.1.0": "- 新增更新说明"},
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.get_installed_plugins.return_value = [installed_plugin]
+    plugin_manager.get_local_repo_plugins.return_value = []
+    plugin_manager.async_get_plugins_from_market = AsyncMock(
+        return_value=[market_plugin]
+    )
+    persistence = _persistence(_plugin_identity())
+    release_service = _release_service(
+        plugin_manager,
+        persistence=persistence,
+        source_plugin_id=_clone_source_plugin_id,
+    )
+
+    with patch(
+        "app.api.endpoints.plugin.get_plugin_release_service",
+        return_value=release_service,
+    ):
+        result = asyncio.run(plugin_history("DemoPluginwork", None, True))
+
+    assert result.id == "DemoPlugin"
+    assert result.history == {"v1.1.0": "- 新增更新说明"}
+    persistence.get_identity.assert_awaited_once_with("DemoPlugin")
+
+
+def test_plugin_releases_resolves_clone_id_to_its_source_plugin():
+    """分身查 Release 必须归一到源插件，否则市场索引与本地版本一并落空。"""
+    market_plugin = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="1.2.3",
+        repo_url=SOURCE_URL,
+        release=True,
+    )
+    plugin_manager = MagicMock()
+    plugin_manager.async_get_plugins_from_market = AsyncMock(
+        return_value=[market_plugin]
+    )
+    plugin_manager.get_local_plugin_version.return_value = "1.2.0"
+    plugin_helper = MagicMock()
+    plugin_helper.async_has_plugin_release_cache = AsyncMock(return_value=False)
+    plugin_helper.async_get_plugin_release_versions = AsyncMock(
+        return_value=[{"version": "1.2.3"}, {"version": "1.2.0"}]
+    )
+    release_service = _release_service(
+        plugin_manager,
+        plugin_helper=plugin_helper,
+        source_plugin_id=_clone_source_plugin_id,
+    )
+
+    with patch(
+        "app.api.endpoints.plugin.get_plugin_release_service",
+        return_value=release_service,
+    ):
+        result = asyncio.run(
+            plugin_releases("DemoPluginwork", None, SOURCE_URL, False)
+        )
+
+    assert result["release_supported"] is True
+    assert result["latest_version"] == "1.2.3"
+    assert result["current_version"] == "1.2.0"
+    plugin_manager.get_local_plugin_version.assert_called_once_with("DemoPlugin")
+    plugin_helper.async_get_plugin_release_versions.assert_awaited_once_with(
+        "DemoPlugin", SOURCE_URL
+    )
