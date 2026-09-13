@@ -35,6 +35,8 @@ def is_windows() -> bool:
 
 def is_exe() -> bool:
     """判断当前是否为 MoviePilot-V3.exe 部署环境。"""
+    if not is_windows():
+        return False
     return Path.exists(Path(__file__).parents[4] / "MoviePilot-V3.exe")
 
 
