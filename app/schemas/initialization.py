@@ -6,9 +6,14 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class InitializationStatus(BaseModel):  # type: ignore[misc]
-    """描述 MoviePilot 是否已经存在可用的本地用户记录。"""
+    """
+    描述 MoviePilot 的首次初始化状态
+
+    未初始化且部署配置已提供 SUPERUSER 时，同时返回固定的管理员用户名，供初始化页面锁定输入。
+    """
 
     initialized: bool
+    configured_username: str | None = None
 
 
 class InitializationRequest(BaseModel):  # type: ignore[misc]

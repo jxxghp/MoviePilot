@@ -40,10 +40,21 @@ _INITIALIZATION_LOCK = asyncio.Lock()
 async def get_initialization_status(
     service: UserService = Depends(get_user_service),
 ) -> _SchemaResponse[_SchemaInitializationStatus]:
-    """返回当前实例是否已经存在用户，供启动页决定是否接管导航。"""
+    """
+    返回首次初始化状态，并在尚未创建用户时提供部署固定的超级管理员用户名
+
+    用户创建后不再返回配置用户名，避免把初始化接口变成已部署实例的用户枚举入口。
+    """
+    initialized = await service.is_initialized()
+    configured_username = None
+    if not initialized:
+        configured_username = str(get_runtime_settings().get("SUPERUSER") or "").strip() or None
     return _SchemaResponse(
         success=True,
-        data=_SchemaInitializationStatus(initialized=await service.is_initialized()),
+        data=_SchemaInitializationStatus(
+            initialized=initialized,
+            configured_username=configured_username,
+        ),
     )
 
 
@@ -56,7 +67,11 @@ async def initialize_instance(
     payload: _SchemaInitializationRequest,
     service: UserService = Depends(get_user_service),
 ) -> _SchemaResponse[None]:
-    """原子创建首个超级管理员，并保存 API Key 供后续服务认证。"""
+    """
+    原子创建首个超级管理员，并保存 API Key 供后续服务认证
+
+    如果部署配置已经提供 SUPERUSER，则该值是管理员身份的唯一来源，不能被初始化表单覆盖。
+    """
     async with _INITIALIZATION_LOCK:
         if await service.is_initialized():
             raise HTTPException(status_code=409, detail="系统已经完成初始化")
@@ -64,9 +79,21 @@ async def initialize_instance(
         runtime_settings = get_runtime_settings()
         previous_superuser = runtime_settings.get("SUPERUSER", "")
         previous_api_token = runtime_settings.get("API_TOKEN")
+        configured_superuser = str(previous_superuser or "").strip()
+        if configured_superuser and payload.username != configured_superuser:
+            raise HTTPException(
+                status_code=400,
+                detail="SUPERUSER 已由配置文件或环境变量固定，初始化用户名不能修改",
+            )
+
+        username = configured_superuser or payload.username
         updated_keys: list[str] = []
         try:
-            for key, value in (("SUPERUSER", payload.username), ("API_TOKEN", payload.api_key)):
+            settings_to_update = (("API_TOKEN", payload.api_key),)
+            if not configured_superuser:
+                settings_to_update = (("SUPERUSER", username),) + settings_to_update
+
+            for key, value in settings_to_update:
                 success, message = runtime_settings.update(key, value)
                 if success is False:
                     raise RuntimeError(message or f"配置项 {key} 更新失败")
@@ -79,7 +106,7 @@ async def initialize_instance(
 
             created_user = await service.create(
                 {
-                    "name": payload.username,
+                    "name": username,
                     "email": "admin@movie-pilot.org",
                     "hashed_password": hashed_password,
                     "is_active": True,
