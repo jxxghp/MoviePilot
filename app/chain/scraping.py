@@ -132,6 +132,7 @@ def _scraping_http_snapshot() -> ScrapingHttpPort:
         raise RuntimeError("刮削 HTTP 端口尚未由启动组合根装配")
     return http
 
+
 scraping_lock = Lock()
 
 current_umask = os.umask(0)
@@ -144,6 +145,7 @@ class _MusicScrapeFileResult:
 
     metadata_success: bool = True
     lyrics_status: str = "disabled"
+
 
 class ScrapingOption:
     """刮削选项"""
@@ -192,6 +194,7 @@ class ScrapingOption:
     def is_upgrade(self) -> bool:
         """是否只在歌词等产物质量更高时替换。"""
         return self.policy == ScrapingPolicy.UPGRADE
+
 
 class ScrapingConfig:
     """媒体刮削配置"""
