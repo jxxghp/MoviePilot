@@ -14,10 +14,10 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Mapped, mapped_column, scoped_session, sessionmaker
 
 import app.db.engine as engine_module
-import app.db.plugin.locator as locator_module
 import app.db.plugin.migration as migration_module
 import app.db.plugin.registry as registry_module
 import app.db.session as session_module
+import app.runtime.extensions.plugin.datadir as datadir_module
 from app.db.base import Base as HostBase
 from app.db.plugin.base import plugin_declarative_base
 from app.db.plugin.container import PluginDatabaseHandle
@@ -124,7 +124,7 @@ def plugin_data_root(tmp_path, monkeypatch) -> Path:
     """把插件数据库文件隔离到进程私有的临时目录。"""
     root = tmp_path / "plugins"
     monkeypatch.setattr(
-        locator_module,
+        datadir_module,
         "get_runtime_setting",
         lambda key, default=None: root if key == "PLUGIN_DATA_PATH" else default,
     )

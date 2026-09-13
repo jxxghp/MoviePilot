@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8630,
-  "edge_sha256": "498714193dc86bf3580b72f889a8f9ce874cd5185e1bdaaf951d83c523d98b65",
+  "edge_count": 8635,
+  "edge_sha256": "d4f6ee030d0e8b3fcd5b62b7560c5b0ee44497623d65bd87b1c03bd9716d0690",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -6090,7 +6090,9 @@
     "app.db.oper.workflow -> app.db.oper",
     "app.db.oper.workflow -> app.db.oper.query",
     "app.db.plugin.locator -> app.runtime",
-    "app.db.plugin.locator -> app.runtime.settings",
+    "app.db.plugin.locator -> app.runtime.extensions",
+    "app.db.plugin.locator -> app.runtime.extensions.plugin",
+    "app.db.plugin.locator -> app.runtime.extensions.plugin.datadir",
     "app.db.plugin.migration -> app.db",
     "app.db.plugin.migration -> app.db.plugin",
     "app.db.plugin.migration -> app.db.plugin.container",
@@ -8254,6 +8256,9 @@
     "app.runtime.extensions.plugin.clone -> app.schemas.plugin",
     "app.runtime.extensions.plugin.contracts -> app.foundation",
     "app.runtime.extensions.plugin.contracts -> app.foundation.reflection",
+    "app.runtime.extensions.plugin.datadir -> app.runtime",
+    "app.runtime.extensions.plugin.datadir -> app.runtime.log",
+    "app.runtime.extensions.plugin.datadir -> app.runtime.settings",
     "app.runtime.extensions.plugin.dependency -> app.runtime",
     "app.runtime.extensions.plugin.dependency -> app.runtime.extensions",
     "app.runtime.extensions.plugin.dependency -> app.runtime.extensions.plugin",
@@ -9711,7 +9716,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1016,
+  "module_count": 1017,
   "modules": [
     "app",
     "app.adapters",
@@ -10550,6 +10555,7 @@
     "app.runtime.extensions.plugin.clone",
     "app.runtime.extensions.plugin.contracts",
     "app.runtime.extensions.plugin.database",
+    "app.runtime.extensions.plugin.datadir",
     "app.runtime.extensions.plugin.dependency",
     "app.runtime.extensions.plugin.lifecycle",
     "app.runtime.extensions.plugin.loader",
