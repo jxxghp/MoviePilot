@@ -30,6 +30,10 @@ class SchedulerLifecycleOwner(_SchedulerOwnerBase):
         with self._lock:
             if self._lifecycle_state != "reloading":
                 return
+        services = getattr(self, "_services", None)
+        clear_wallpaper_cache = getattr(services, "clear_wallpaper_cache", None)
+        if callable(clear_wallpaper_cache):
+            clear_wallpaper_cache()
         self.init(_already_stopped=True)
 
     def init(self, *, _already_stopped: bool = False) -> None:

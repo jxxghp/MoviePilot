@@ -184,6 +184,10 @@ class WallpaperHelper(metaclass=Singleton):
     壁纸帮助类
     """
 
+    def clear_cache(self) -> None:
+        """清除全部壁纸来源缓存，使壁纸配置变更即时生效。"""
+        _clear_wallpaper_caches()
+
     def get_wallpaper(self) -> Optional[str]:
         """
         获取登录页面壁纸

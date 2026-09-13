@@ -32,3 +32,4 @@ class SchedulerServices:
     process_workflow: JobCallable
     put_message: JobCallable
     post_message: Callable[[Message], Any]
+    clear_wallpaper_cache: Callable[[], None] | None = None

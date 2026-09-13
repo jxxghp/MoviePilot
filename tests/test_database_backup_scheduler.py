@@ -82,6 +82,38 @@ def test_auto_update_setting_is_hot_reloadable() -> None:
     assert "AUTO_UPDATE_RESOURCE" in Scheduler.CONFIG_WATCH
 
 
+def test_wallpaper_settings_are_hot_reloadable() -> None:
+    """壁纸来源或地址变化时必须重建调度器并清理缓存。"""
+    assert Scheduler.CONFIG_WATCH.issuperset({
+        "WALLPAPER",
+        "WALLPAPER_IMAGE_URL",
+        "CUSTOMIZE_WALLPAPER_API_URL",
+    })
+
+
+@pytest.mark.parametrize("wallpaper", ["", "tmdb"])
+def test_wallpaper_schedule_follows_wallpaper_setting(monkeypatch, wallpaper) -> None:
+    """无壁纸时不注册缓存任务，启用来源后恢复注册。"""
+    scheduler = _scheduler()
+    scheduler._services = Mock()
+    background_scheduler = Mock()
+    monkeypatch.setattr(scheduler_catalog, "BackgroundScheduler", lambda **_kwargs: background_scheduler)
+    monkeypatch.setattr(scheduler_catalog, "get_plugin_manager", lambda: Mock())
+    monkeypatch.setattr(scheduler_catalog, "get_mediaserver_configs", lambda **_kwargs: [])
+    monkeypatch.setattr(scheduler, "init_workflow_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_agent_task_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_plugin_jobs", lambda: None)
+
+    scheduler._initialize_catalog(_config(wallpaper=wallpaper))
+
+    registered = wallpaper != ""
+    assert ("random_wallpager" in scheduler._jobs) is registered
+    assert any(
+        call.kwargs.get("id") == "random_wallpager"
+        for call in background_scheduler.add_job.call_args_list
+    ) is registered
+
+
 def test_disabled_database_backup_does_not_register_job() -> None:
     """关闭备份时不注册作业。"""
     scheduler = _scheduler()

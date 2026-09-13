@@ -588,6 +588,26 @@ async def test_config_reload_does_not_restart_scheduler_during_shutdown() -> Non
 
 
 @pytest.mark.anyio
+async def test_config_reload_clears_wallpaper_cache_before_reinitializing() -> None:
+    """壁纸配置热重载应先清理旧缓存，再建立新任务目录。"""
+    scheduler = _scheduler("reload-wallpaper", lambda: None)
+    calls = []
+    scheduler._services = SimpleNamespace(
+        clear_wallpaper_cache=lambda: calls.append("clear"),
+    )
+
+    def init(**_kwargs) -> None:
+        calls.append("init")
+        scheduler._lifecycle_state = "running"
+
+    scheduler.init = init
+
+    await scheduler.on_config_changed()
+
+    assert calls == ["clear", "init"]
+
+
+@pytest.mark.anyio
 async def test_concurrent_config_reload_waits_for_old_scheduler_shutdown(
         monkeypatch,
 ) -> None:

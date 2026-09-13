@@ -197,6 +197,7 @@ def build_scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig
         site_link=settings.MP_DOMAIN("#/site"),
         auto_update=settings.MOVIEPILOT_AUTO_UPDATE,
         auto_update_resource=settings.AUTO_UPDATE_RESOURCE,
+        wallpaper=settings.WALLPAPER,
     )
 
 

@@ -69,6 +69,7 @@ def configure_scheduler_services() -> None:
             cleanup_data=scheduler_chain.cleanup,
             run_modules=scheduler_chain.scheduler_job,
             get_wallpapers=WallpaperHelper().get_wallpapers,
+            clear_wallpaper_cache=WallpaperHelper().clear_cache,
             refresh_site_data=site_chain.refresh_userdatas,
             refresh_recommend=recommend_chain.refresh_recommend,
             cache_subscribe_calendar=subscribe_chain.cache_calendar,

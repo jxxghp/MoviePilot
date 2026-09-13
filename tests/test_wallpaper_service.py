@@ -13,8 +13,10 @@ from app.application.image import (
     configure_image_ports,
     configure_wallpaper_providers,
     reset_image_ports,
+    reset_wallpaper_providers,
 )
-from app.runtime.config import ConfigModel
+from app.runtime.config import ConfigModel, Settings
+from app.startup.composition.configuration import build_scheduler_runtime_config
 
 
 class _WallpaperTransport:
@@ -119,6 +121,24 @@ def test_reconfigure_image_ports_clears_wallpaper_cache():
         reset_image_ports(*previous)
 
 
+def test_wallpaper_helper_clear_cache_refreshes_provider_result():
+    """壁纸配置热重载后必须丢弃旧来源缓存。"""
+    helper = WallpaperHelper()
+    values = iter(("old-wallpaper", "new-wallpaper"))
+    configure_wallpaper_providers(
+        tmdb_wallpaper=lambda: next(values),
+        tmdb_wallpapers=lambda _count: [],
+        mediaserver_wallpaper=lambda: None,
+        mediaserver_wallpapers=lambda _count: [],
+    )
+    try:
+        assert helper.get_tmdb_wallpaper() == "old-wallpaper"
+        helper.clear_cache()
+        assert helper.get_tmdb_wallpaper() == "new-wallpaper"
+    finally:
+        reset_wallpaper_providers()
+
+
 def test_static_wallpaper_returns_local_or_remote_address_directly(monkeypatch):
     """静态模式不发起 API 请求，直接沿用用户填写的本地路径或 URL。"""
     config = SimpleNamespace(wallpaper="static", wallpaper_image_url="/local/wallpaper.jpg")
@@ -139,6 +159,13 @@ def test_wallpaper_settings_define_backward_compatible_defaults():
     assert ChainRuntimeConfig(media_extensions=()).wallpaper == ""
     assert ConfigModel.model_fields["WALLPAPER_ROTATION_INTERVAL"].default == 15
     assert ConfigModel.model_fields["WALLPAPER_IMAGE_URL"].default is None
+
+
+def test_scheduler_runtime_config_carries_wallpaper_setting():
+    """调度器快照必须读取当前壁纸来源，供任务目录决定是否注册缓存。"""
+    settings = Settings(WALLPAPER="tmdb")
+
+    assert build_scheduler_runtime_config(settings).wallpaper == "tmdb"
 
 
 def test_login_global_settings_expose_wallpaper_rotation_interval(monkeypatch):

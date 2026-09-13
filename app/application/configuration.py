@@ -183,6 +183,7 @@ class SchedulerRuntimeConfig:
     site_link: str | None
     auto_update: bool = False
     auto_update_resource: bool = True
+    wallpaper: str = ""
 
     @property
     def update_check_enabled(self) -> bool:
