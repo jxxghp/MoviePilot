@@ -668,8 +668,8 @@ class ConfigModel(BaseModel):
     MEDIA_RECOGNIZE_SHARE_API: Optional[str] = None
 
     # ==================== 个性化 ====================
-    # 登录页面壁纸来源：tmdb/bing/mediaserver/customize/static
-    WALLPAPER: str = "tmdb"
+    # 登录页面壁纸来源：空字符串表示无壁纸，另支持 tmdb/bing/mediaserver/customize/static
+    WALLPAPER: str = ""
     # 壁纸轮换间隔（秒），0 表示不轮换
     WALLPAPER_ROTATION_INTERVAL: int = 15
     # 静态壁纸地址，可使用前端可访问的本地路径或 URL

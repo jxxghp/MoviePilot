@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 import app.application.image as image_service
 from app.api.endpoints import system as system_endpoint
+from app.application.configuration import ChainRuntimeConfig
 from app.application.image import (
     ImageHelper,
     ImageResponsePort,
@@ -133,7 +134,9 @@ def test_static_wallpaper_returns_local_or_remote_address_directly(monkeypatch):
 
 
 def test_wallpaper_settings_define_backward_compatible_defaults():
-    """未配置新字段时维持 15 秒轮换，静态地址保持为空。"""
+    """未配置壁纸时保持无壁纸，轮换间隔和静态地址沿用兼容默认值。"""
+    assert ConfigModel.model_fields["WALLPAPER"].default == ""
+    assert ChainRuntimeConfig(media_extensions=()).wallpaper == ""
     assert ConfigModel.model_fields["WALLPAPER_ROTATION_INTERVAL"].default == 15
     assert ConfigModel.model_fields["WALLPAPER_IMAGE_URL"].default is None
 
