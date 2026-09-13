@@ -333,10 +333,15 @@ def build_plugin_runtime(
     def plugin_registered(plugin_id: str) -> bool:
         """判断插件是否在册：装过（安装清单里有）或留有持久化的实例行。
 
-        管理接口的存在性不能绑在运行期类注册表上：启动只把启用中的本体与分身装进
-        注册表，某插件的全部实例停用后重启，注册表里就没有它的类了，但它的安装记录
-        与实例行都还在。绑在注册表上等于说「停用即不存在」，而停用不是卸载——在册的
-        实例必须仍然可见、可管理，否则用户再也无法把它重新指回默认调用目标。
+        默认调用目标与实例日志等级这两个管理接口问的都是「这个插件还在不在册、能不能
+        被管理」，因此共用这一个判据，而不能绑在运行期类注册表上：启动只把启用中的
+        本体与分身装进注册表，某插件的全部实例停用后重启，注册表里就没有它的类了，
+        但它的安装记录与实例行都还在。绑在注册表上等于说「停用即不存在」，而停用不是
+        卸载——在册的实例必须仍然可见、可管理，否则用户再也无法把它重新指回默认调用
+        目标，也调不出它的日志等级设置，而那份设置正是排查它为什么被停用时要看的。
+
+        「当前是否装载」是另一个问题，由各自的端口回答：插件配置读写看类注册表，
+        分身建号与安装前置看包在不在磁盘上，都不走这里。
 
         :param plugin_id: 插件 ID
         :return: 该插件是否在册
@@ -368,7 +373,7 @@ def build_plugin_runtime(
         log=environment.logger,
     )
     log_level = PluginLogLevelControl(
-        plugin_exists=lambda plugin_id: registry.plugin_class(plugin_id) is not None,
+        plugin_exists=plugin_registered,
         get_instance=instances.get,
         instances_for_source=instances.for_source,
         read_log_level=configs.read_log_level,

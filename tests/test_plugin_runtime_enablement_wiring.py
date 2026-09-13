@@ -20,6 +20,10 @@ from app.runtime.extensions.plugin.storage import (
     PluginInstanceDirectory,
     PluginStorage,
 )
+from app.runtime.log import (
+    clear_plugin_instance_log_level,
+    get_effective_plugin_instance_log_level,
+)
 from app.schemas.plugin import PluginInstance
 from app.schemas.types import SystemConfigKey
 
@@ -252,3 +256,49 @@ def test_targeted_load_still_starts_an_enabled_host(monkeypatch):
     runtime.lifecycle.start("DemoPlugin")
 
     assert loaded == ["DemoPlugin"]
+
+
+# --------------------------------------------------------------------------- #
+# 实例日志等级：存在性判据与默认调用目标同源，同样不得绑定在类注册表上
+# --------------------------------------------------------------------------- #
+
+
+def test_log_level_management_survives_all_instances_being_disabled():
+    """插件全部实例停用并重启后，日志等级仍要可查询、可设置。
+
+    与默认调用目标同一个问题：这两个接口问的都是「这个插件还在不在册、能不能被
+    管理」，不是「它此刻装载了没有」。绑在运行期类注册表上，用户停用一个插件之后
+    就再也调不出它的日志等级设置，而那份设置正是排查它为什么被停用时要看的。
+    """
+    runtime, _rows = _build_runtime(
+        records={
+            "DemoPlugin": PluginInstance(
+                instance_id="DemoPlugin",
+                source_plugin_id="DemoPlugin",
+                is_enabled=False,
+            )
+        },
+        installed=["DemoPlugin"],
+    )
+    # 前置事实：停用的插件没有被装载，运行期类注册表里查不到它
+    assert runtime.registry.plugin_class("DemoPlugin") is None
+
+    try:
+        levels = runtime.log_level.list_levels("DemoPlugin")
+        assert [entry["instance_id"] for entry in levels] == ["DemoPlugin"]
+
+        runtime.log_level.set_level("DemoPlugin", "DemoPlugin", "DEBUG")
+        assert get_effective_plugin_instance_log_level("DemoPlugin") == "DEBUG"
+
+        runtime.log_level.clear_level("DemoPlugin", "DemoPlugin")
+    finally:
+        # 覆盖缓存是进程级状态，用例自己收干净
+        clear_plugin_instance_log_level("DemoPlugin")
+
+
+def test_log_level_management_still_rejects_a_plugin_that_is_not_installed():
+    """既没装过、也没有任何实例行的插件仍要按不存在拒绝。"""
+    runtime, _rows = _build_runtime(records={}, installed=[])
+
+    with pytest.raises(LookupError):
+        runtime.log_level.list_levels("GhostPlugin")
