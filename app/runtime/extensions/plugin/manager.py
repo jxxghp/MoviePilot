@@ -1282,17 +1282,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return PluginAccessPolicy.private_key(plugin_id)
 
-    def clone_plugin(self, plugin_id: str, suffix: str, name: str, description: str,
-                     version: str = None, icon: str = None) -> Tuple[bool, str]:
+    def clone_plugin(self, plugin_id: str, suffix: Optional[str], name: str, description: str,
+                     version: str = None, icon: str = None,
+                     restore_previous: bool = True) -> Tuple[bool, str]:
         """
         创建插件分身
         :param plugin_id: 原插件ID
-        :param suffix: 分身后缀
+        :param suffix: 分身后缀；留空时由运行时自动分配最小可用序号
         :param name: 分身名称
         :param description: 分身描述
-        :param version: 自定义版本号
+        :param version: 自定义版本号，分身始终跟随源插件版本，仅为旧客户端保留
         :param icon: 自定义图标URL
-        :return: (是否成功, 错误信息)
+        :param restore_previous: 同后缀名下留有已停用的分身时是否沿用它的业务参数
+        :return: (是否成功, 成功时为分身实例ID／失败时为可读原因)
         """
         try:
             with self.mutation("创建插件分身"):
@@ -1303,10 +1305,41 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     description=description,
                     version=version,
                     icon=icon,
+                    restore_previous=restore_previous,
                 )
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return False, str(error)
+
+    def get_restorable_plugin_instances(self, plugin_id: str) -> List[Dict[str, Any]]:
+        """列出该插件名下已停用、设置仍留存可恢复的分身。
+
+        停用只把启用位置假，业务参数与展示信息都还在那一行上；用户在创建分身时挑一个
+        拿回来，比按后缀去猜哪个留有残留可靠得多。启用中的分身不在此列——它们的配置
+        正被使用，摆进恢复选择器只会让人误以为能把一个活着的实例再建一遍。
+
+        :param plugin_id: 源插件ID
+        :return: 每个可恢复分身的实例ID、后缀、展示信息与是否留有业务参数
+        """
+        prefix_length = len(plugin_id)
+        results: List[Dict[str, Any]] = []
+        for instance in self._plugin_instance_store.for_source(plugin_id):
+            if instance.is_enabled:
+                continue
+            instance_id = instance.instance_id
+            results.append({
+                "instance_id": instance_id,
+                # 分身ID由源插件ID直接拼后缀而成，去掉前缀即还原用户当初填的后缀
+                "suffix": (
+                    instance_id[prefix_length:]
+                    if instance_id.startswith(plugin_id)
+                    else instance_id
+                ),
+                "plugin_name": instance.plugin_name,
+                "plugin_desc": instance.plugin_desc,
+                "has_config": self._plugin_config_store.has_config(instance_id),
+            })
+        return results
 
     def get_plugin_instance_log_levels(self, plugin_id: str) -> List[Dict[str, Any]]:
         """

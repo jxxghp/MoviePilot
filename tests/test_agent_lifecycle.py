@@ -4,8 +4,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import app.agent.orchestrator as agent_module
+from app.adapters.system import resource as resource_module
+from app.adapters.system.resource import configure_resource_version_provider
 from app.agent.memory import MemoryManager
-from app.agent.orchestrator import (
+from app.agent.orchestrator import (  # pylint: disable=no-name-in-module
     AGENT_SESSION_QUEUE_MAX_SIZE,
     AgentManager,
     AgentManagerQueueFullError,
@@ -20,6 +22,21 @@ from app.application.messaging.agent import (
 from app.sdk import queries as query_sdk
 from app.startup.initializers import agent as agent_initializer
 from app.startup.initializers import modules as modules_initializer
+
+
+@pytest.fixture(autouse=True)
+def restore_resource_version_provider():
+    """还原进程级的站点资源版本读取器。
+
+    本文件有用例把 ``SitesHelper`` 桩成 MagicMock 后去跑真实的 ``init_modules``，
+    而组合根会把那个桩对象捕获进 ``_resource_version_provider`` 这个进程级闭包里。
+    ``monkeypatch`` 只还原它自己改过的 ``modules_initializer.SitesHelper`` 属性，
+    还不掉已经被闭包捕获的那份引用；不显式撤销，同一进程内后续任何读取站点资源
+    版本的用例都会拿到 MagicMock，而它既不是字符串也无法参与版本比较。
+    """
+    previous = resource_module._resource_version_provider
+    yield
+    configure_resource_version_provider(previous)
 
 
 @pytest.mark.anyio

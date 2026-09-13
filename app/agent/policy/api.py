@@ -555,6 +555,7 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
         effect=ActionEffect.DESTRUCTIVE_WRITE,
         recovery=RecoveryMode.MANUAL_ONLY,
     ),
+    _admin_read("plugin.clone.restorable", sensitivity=ResultSensitivity.PRIVATE),
     _write("plugin.clone", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, recovery=RecoveryMode.RECONCILE),
     _spec("config.user.get", result_sensitivity=ResultSensitivity.PRIVATE),
     _spec("config.public.get"),
@@ -810,6 +811,9 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     "plugin.statistics": ApiOperationRoute("GET", "/api/v1/plugin/statistic"),
     "plugin.reset": ApiOperationRoute("GET", "/api/v1/plugin/reset/{plugin_id}"),
     "plugin.clone": ApiOperationRoute("POST", "/api/v1/plugin/clone/{plugin_id}"),
+    "plugin.clone.restorable": ApiOperationRoute(
+        "GET", "/api/v1/plugin/clone/{plugin_id}/restorable"
+    ),
     "config.user.get": ApiOperationRoute("GET", "/api/v1/system/global/user"),
     "config.public.get": ApiOperationRoute("GET", "/api/v1/system/setting/public/{key}"),
     "system.usage.statistics": ApiOperationRoute("GET", "/api/v1/system/usage/statistic"),

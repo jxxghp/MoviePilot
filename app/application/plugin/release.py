@@ -15,6 +15,7 @@ ReleaseCacheProbe = Callable[[str], Awaitable[bool]]
 ReleaseLoader = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
 ReleaseRefresher = Callable[[str, str], Awaitable[object]]
 IdentityReader = Callable[[str], Awaitable[PluginIdentity | None]]
+SourcePluginIdResolver = Callable[[str], str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +35,7 @@ class PluginReleaseService:
     def __init__(
         self,
         *,
+        source_plugin_id: SourcePluginIdResolver,
         installed_plugins: Callable[[], Sequence[Plugin]],
         local_repo_plugins: Callable[[], Sequence[Plugin]],
         market_plugins: MarketPluginLoader,
@@ -45,7 +47,8 @@ class PluginReleaseService:
         releases: ReleaseLoader,
         refresh_releases: ReleaseRefresher,
     ) -> None:
-        """保存运行态、来源身份和市场读取窄端口。"""
+        """保存源身份归一、运行态、来源身份和市场读取窄端口。"""
+        self._source_plugin_id = source_plugin_id
         self._installed_plugins = installed_plugins
         self._local_repo_plugins = local_repo_plugins
         self._market_plugins = market_plugins
@@ -58,7 +61,13 @@ class PluginReleaseService:
         self._refresh_releases = refresh_releases
 
     async def history(self, plugin_id: str, *, force: bool = True) -> Plugin | None:
-        """按可信绑定仓库读取单个已安装插件的更新说明。"""
+        """按可信绑定仓库读取单个已安装插件的更新说明。
+
+        先把分身归一到源插件：分身只是共享同一份源码的运行实例，安装清单、本地插件
+        仓与来源身份都只登记在源插件名下，拿分身自身 ID（源插件 ID 加后缀）去查会一路
+        落空，端点据此判定「插件不存在或未安装」并返回 404。
+        """
+        plugin_id = self._source_plugin_id(plugin_id)
         installed_plugin = next(
             (plugin for plugin in self._installed_plugins() if plugin.id == plugin_id),
             None,
@@ -107,7 +116,12 @@ class PluginReleaseService:
         *,
         force: bool = False,
     ) -> PluginReleaseSnapshot:
-        """读取 Release 快照，并标记是否需要后台强制刷新已有缓存。"""
+        """读取 Release 快照，并标记是否需要后台强制刷新已有缓存。
+
+        先把分身归一到源插件：Release 记录与本地版本号都按源插件登记，拿分身自身 ID
+        去查市场索引与本地版本会一并落空，界面上表现为该分身没有任何可选版本。
+        """
+        plugin_id = self._source_plugin_id(plugin_id)
         if not repo_url:
             return PluginReleaseSnapshot(False, None, None, ())
 

@@ -495,7 +495,7 @@
   "app/api/endpoints/plugin.py": {
     "assignment": 1,
     "import-untyped": 1,
-    "misc": 29,
+    "misc": 28,
     "no-any-return": 5,
     "no-untyped-call": 1,
     "no-untyped-def": 2,

@@ -35,6 +35,11 @@ async def test_successful_install_flows_remove_transient_backups(
     )
     monkeypatch.setattr(
         package,
+        "_PluginPackageManager__swap_staged_plugin_content",
+        lambda _staging_dir, _final_dir: None,
+    )
+    monkeypatch.setattr(
+        package,
         "_PluginPackageManager__install_dependencies_if_required",
         lambda _pid: (False, False, "不存在依赖"),
     )
@@ -47,7 +52,7 @@ async def test_successful_install_flows_remove_transient_backups(
     sync_result = package._PluginPackageManager__install_flow_sync(
         "DemoPlugin",
         False,
-        lambda: (True, ""),
+        lambda _staging_dir: (True, ""),
     )
 
     async def backup_plugin(_pid: str) -> str:
@@ -61,9 +66,12 @@ async def test_successful_install_flows_remove_transient_backups(
         """表示测试插件没有额外依赖。"""
         return False, False, "不存在依赖"
 
-    async def prepare_content() -> tuple[bool, str]:
+    async def prepare_content(_staging_dir: Path) -> tuple[bool, str]:
         """表示异步内容准备成功。"""
         return True, ""
+
+    async def swap_content(_staging_dir: Path, _final_dir: Path) -> None:
+        """隔离测试中的真实运行目录换入。"""
 
     monkeypatch.setattr(
         package,
@@ -74,6 +82,11 @@ async def test_successful_install_flows_remove_transient_backups(
         package,
         "_PluginPackageManager__async_remove_old_plugin",
         remove_plugin,
+    )
+    monkeypatch.setattr(
+        package,
+        "_PluginPackageManager__async_swap_staged_plugin_content",
+        swap_content,
     )
     monkeypatch.setattr(
         package,

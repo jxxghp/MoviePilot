@@ -205,12 +205,18 @@ def _patch_sync_remote_install(helper, monkeypatch, meta: dict,
     monkeypatch.setattr(helper, "_PluginPackageManager__backup_plugin", lambda _pid: None)
     monkeypatch.setattr(helper, "_PluginPackageManager__remove_old_plugin", lambda _pid: calls.append("remove"))
     monkeypatch.setattr(helper, "_PluginPackageManager__install_dependencies_if_required", lambda _pid: (False, True, ""))
+    # 内容准备被替身接管、不会真的产出暂存内容，换入同样替身化，避免测试写入真实运行目录
+    monkeypatch.setattr(
+        helper,
+        "_PluginPackageManager__swap_staged_plugin_content",
+        lambda _staging_dir, _final_dir: None,
+    )
 
-    def fake_release(_pid, _user_repo, _release_tag):
+    def fake_release(_pid, _user_repo, _release_tag, _dest_root=None):
         calls.append("release")
         return release_result
 
-    def fake_filelist(_pid, _user_repo, _package_version):
+    def fake_filelist(_pid, _user_repo, _package_version, _dest_root=None):
         calls.append("filelist")
         return filelist_result
 
@@ -240,13 +246,16 @@ def _patch_async_remote_install(helper, monkeypatch, meta: dict,
     async def fake_dependencies(_pid):
         return False, True, ""
 
-    async def fake_release(_pid, _user_repo, _release_tag):
+    async def fake_release(_pid, _user_repo, _release_tag, _dest_root=None):
         calls.append("release")
         return release_result
 
-    async def fake_filelist(_pid, _user_repo, _package_version):
+    async def fake_filelist(_pid, _user_repo, _package_version, _dest_root=None):
         calls.append("filelist")
         return filelist_result
+
+    async def fake_swap(_staging_dir, _final_dir):
+        """内容准备被替身接管，换入同样替身化，避免测试写入真实运行目录。"""
 
     async def fake_to_thread(func, *args, **kwargs):
         calls.append(("to_thread", func, args, kwargs))
@@ -256,6 +265,9 @@ def _patch_async_remote_install(helper, monkeypatch, meta: dict,
     monkeypatch.setattr(helper, "_PluginPackageManager__async_get_plugin_meta", fake_meta)
     monkeypatch.setattr(helper, "_PluginPackageManager__async_backup_plugin", fake_backup)
     monkeypatch.setattr(helper, "_PluginPackageManager__async_remove_old_plugin", fake_remove)
+    monkeypatch.setattr(
+        helper, "_PluginPackageManager__async_swap_staged_plugin_content", fake_swap
+    )
     monkeypatch.setattr(helper, "_PluginPackageManager__async_install_dependencies_if_required", fake_dependencies)
     monkeypatch.setattr(helper, "_PluginPackageManager__async_install_from_release", fake_release)
     monkeypatch.setattr(helper, "_PluginPackageManager__prepare_content_via_filelist_async", fake_filelist)
@@ -2232,11 +2244,11 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["remove", "release"] == calls
+        assert ["release"] == calls
 
     def test_install_falls_back_to_filelist_when_release_is_missing(self, monkeypatch):
         """
-        release 标记存在但 tag 或 zip 尚未生成时，清理可能残留的安装目录后回退文件列表安装。
+        release 标记存在但 tag 或 zip 尚未生成时，清理本次暂存的半份产物后回退文件列表安装。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -2256,11 +2268,11 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["remove", "release", "remove", "filelist"] == calls
+        assert ["release", "filelist"] == calls
 
     def test_install_reports_filelist_error_after_release_fallback_fails(self, monkeypatch):
         """
-        release 和源码目录都不存在时返回稳定业务错误，并在每次写入前后保持目录可回滚。
+        release 和源码目录都不存在时返回稳定业务错误，全程不触碰已安装的运行目录。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -2280,7 +2292,7 @@ demo = { index = "private" }
 
         assert not success
         assert "DemoPlugin 插件源码目录不存在" == message
-        assert ["remove", "release", "remove", "filelist", "remove"] == calls
+        assert ["release", "filelist"] == calls
 
     def test_install_uses_filelist_when_release_flag_is_disabled(self, monkeypatch):
         """
@@ -2304,7 +2316,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["remove", "filelist"] == calls
+        assert ["filelist"] == calls
 
     def test_install_rejects_release_without_version(self, monkeypatch):
         """
@@ -2414,7 +2426,7 @@ demo = { index = "private" }
 
         assert not success
         assert "未找到资产文件：demoplugin_v1.2.0.zip" == message
-        assert ["remove", "release", "remove"] == calls
+        assert ["release"] == calls
 
     def test_install_rejects_release_version_missing_from_release_list(self, monkeypatch):
         """
@@ -2508,6 +2520,11 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__remove_old_plugin", lambda _pid: None)
         monkeypatch.setattr(helper, "_PluginPackageManager__install_dependencies_if_required", lambda _pid: (False, True, ""))
         monkeypatch.setattr(helper, "_PluginPackageManager__prepare_content_via_filelist_sync", lambda *_args: (True, ""))
+        monkeypatch.setattr(
+            helper,
+            "_PluginPackageManager__swap_staged_plugin_content",
+            lambda _staging_dir, _final_dir: None,
+        )
 
         success, message = helper.install_raw(PLUGIN_ID, REPO_URL, force_install=True)
 
@@ -2561,7 +2578,7 @@ demo = { index = "private" }
 
     def test_install_release_download_failure_falls_back_to_filelist(self, monkeypatch):
         """
-        release tag 存在但 zip 下载失败时清理可能残留的目录，再回退文件列表安装。
+        release tag 存在但 zip 下载失败时清理本次暂存的半份产物，再回退文件列表安装。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -2581,7 +2598,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert ["remove", "release", "remove", "filelist"] == calls
+        assert ["release", "filelist"] == calls
 
     def test_async_install_uses_release_package_when_asset_is_available(self, monkeypatch):
         """
@@ -2606,11 +2623,11 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert calls == ["remove", "release"]
+        assert calls == ["release"]
 
     def test_async_install_falls_back_to_filelist_when_release_is_missing(self, monkeypatch):
         """
-        异步安装路径在 release tag 或 zip 未生成时，清理可能残留的安装目录后回退文件列表安装。
+        异步安装路径在 release tag 或 zip 未生成时，清理本次暂存的半份产物后回退文件列表安装。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -2632,7 +2649,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert calls == ["remove", "release", "remove", "filelist"]
+        assert calls == ["release", "filelist"]
 
     def test_async_install_old_release_version_uses_release_asset_without_filelist_fallback(self, monkeypatch):
         """
@@ -2666,7 +2683,7 @@ demo = { index = "private" }
 
         assert not success
         assert "未找到资产文件：demoplugin_v1.2.0.zip" == message
-        assert calls[:3] == ["remove", "release", "remove"]
+        assert calls[:1] == ["release"]
 
     def test_async_install_rejects_release_version_missing_from_release_list(self, monkeypatch):
         """
@@ -2724,7 +2741,7 @@ demo = { index = "private" }
 
         assert not success
         assert "DemoPlugin 插件源码目录不存在" == message
-        assert calls == ["remove", "release", "remove", "filelist", "remove"]
+        assert calls == ["release", "filelist"]
 
     def test_async_install_release_fallback_preserves_plugin_id(self, monkeypatch):
         """
@@ -2745,7 +2762,7 @@ demo = { index = "private" }
             (True, ""),
         )
 
-        async def fake_filelist(pid, _user_repo, _package_version):
+        async def fake_filelist(pid, _user_repo, _package_version, _dest_root=None):
             filelist_pids.append(pid)
             return True, ""
 
@@ -2778,7 +2795,7 @@ demo = { index = "private" }
             (True, ""),
         )
 
-        async def fake_filelist(pid, _user_repo, _package_version):
+        async def fake_filelist(pid, _user_repo, _package_version, _dest_root=None):
             filelist_pids.append(pid)
             return True, ""
 
@@ -3093,9 +3110,9 @@ demo = { index = "private" }
         assert not success
         assert "解压 Release 压缩包失败" in message
 
-    def test_install_flow_sync_restores_backup_when_prepare_fails(self, monkeypatch):
+    def test_install_flow_sync_keeps_installed_plugin_when_prepare_fails(self, monkeypatch):
         """
-        内容准备失败时恢复备份，避免安装失败后留下半成品目录。
+        内容准备失败时运行目录尚未被触碰，既不需要还原也不该被清理。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -3109,12 +3126,12 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__restore_plugin", lambda _pid, _backup: calls.append("restore"))
 
         success, message = helper._PluginPackageManager__install_flow_sync(
-            PLUGIN_ID, False, lambda: (False, "prepare failed")
+            PLUGIN_ID, False, lambda _staging_dir: (False, "prepare failed")
         )
 
         assert not success
         assert "prepare failed" == message
-        assert ["remove", "restore"] == calls
+        assert [] == calls
 
     def test_install_flow_sync_restores_backup_when_dependency_install_fails(self, monkeypatch):
         """
@@ -3132,17 +3149,22 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__restore_plugin", lambda _pid, _backup: calls.append("restore"))
         monkeypatch.setattr(
             helper,
+            "_PluginPackageManager__swap_staged_plugin_content",
+            lambda _staging_dir, _final_dir: calls.append("swap"),
+        )
+        monkeypatch.setattr(
+            helper,
             "_PluginPackageManager__install_dependencies_if_required",
             lambda _pid: (True, False, "dependency failed"),
         )
 
         success, message = helper._PluginPackageManager__install_flow_sync(
-            PLUGIN_ID, False, lambda: (True, "")
+            PLUGIN_ID, False, lambda _staging_dir: (True, "")
         )
 
         assert not success
         assert "dependency failed" == message
-        assert ["remove", "restore"] == calls
+        assert ["swap", "restore"] == calls
 
     def test_install_flow_sync_restores_backup_for_invalid_modern_manifest(self, tmp_path, monkeypatch):
         """现代清单无效时恢复旧插件目录。"""
@@ -3155,9 +3177,9 @@ demo = { index = "private" }
         monkeypatch.setattr(market_module, "PLUGIN_DIR", plugin_root)
         monkeypatch.setattr(market_module.settings, "CONFIG_DIR", str(tmp_path))
 
-        def prepare_content():
-            plugin_dir.mkdir(parents=True)
-            (plugin_dir / "pyproject.toml").write_text(
+        def prepare_content(staging_dir):
+            staging_dir.mkdir(parents=True)
+            (staging_dir / "pyproject.toml").write_text(
                 "[project]\nname = 'demo'\n",
                 encoding="utf-8",
             )
@@ -3271,7 +3293,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert calls == [("demoplugin", file_list, "demo/repo", "v2")]
+        assert calls == [("demoplugin", file_list, "demo/repo", "v2", None)]
 
     def test_prepare_content_via_filelist_sync_reports_missing_file_list(self, monkeypatch):
         """
@@ -3369,7 +3391,7 @@ demo = { index = "private" }
 
         assert success
         assert "" == message
-        assert calls == [("demoplugin", file_list, "demo/repo", "v2")]
+        assert calls == [("demoplugin", file_list, "demo/repo", "v2", None)]
 
     def test_async_prepare_content_via_filelist_reports_missing_file_list(self, monkeypatch):
         """
@@ -3453,9 +3475,9 @@ demo = { index = "private" }
         assert not success
         assert "download failed" == message
 
-    def test_install_flow_async_restores_backup_when_prepare_fails(self, monkeypatch):
+    def test_install_flow_async_keeps_installed_plugin_when_prepare_fails(self, monkeypatch):
         """
-        异步内容准备失败时恢复备份。
+        异步内容准备失败时运行目录尚未被触碰，既不需要还原也不该被清理。
         """
         try:
             from app.adapters.external.market import PluginHelper
@@ -3474,7 +3496,7 @@ demo = { index = "private" }
         async def restore(_pid, _backup):
             calls.append("restore")
 
-        async def prepare():
+        async def prepare(_staging_dir):
             return False, "prepare failed"
 
         monkeypatch.setattr(helper, "_PluginPackageManager__async_backup_plugin", backup)
@@ -3485,7 +3507,7 @@ demo = { index = "private" }
 
         assert not success
         assert "prepare failed" == message
-        assert ["remove", "restore"] == calls
+        assert [] == calls
 
     def test_install_flow_async_restores_backup_when_dependency_install_fails(self, monkeypatch):
         """
@@ -3508,8 +3530,11 @@ demo = { index = "private" }
         async def restore(_pid, _backup):
             calls.append("restore")
 
-        async def prepare():
+        async def prepare(_staging_dir):
             return True, ""
+
+        async def swap(_staging_dir, _final_dir):
+            calls.append("swap")
 
         async def dependencies(_pid):
             return True, False, "dependency failed"
@@ -3517,13 +3542,14 @@ demo = { index = "private" }
         monkeypatch.setattr(helper, "_PluginPackageManager__async_backup_plugin", backup)
         monkeypatch.setattr(helper, "_PluginPackageManager__async_remove_old_plugin", remove)
         monkeypatch.setattr(helper, "_PluginPackageManager__async_restore_plugin", restore)
+        monkeypatch.setattr(helper, "_PluginPackageManager__async_swap_staged_plugin_content", swap)
         monkeypatch.setattr(helper, "_PluginPackageManager__async_install_dependencies_if_required", dependencies)
 
         success, message = asyncio.run(helper._PluginPackageManager__install_flow_async(PLUGIN_ID, False, prepare))
 
         assert not success
         assert "dependency failed" == message
-        assert ["remove", "restore"] == calls
+        assert ["swap", "restore"] == calls
 
     def test_async_install_from_release_reports_missing_asset(self, monkeypatch):
         """

@@ -13,10 +13,18 @@ Purpose: Inspect the runtime capabilities exposed by installed plugins.
 
 ### `plugin.clone`
 `POST /api/v1/plugin/clone/{plugin_id}`; policy effect: `external_side_effect`.
-Purpose: Create a configurable clone of one installed plugin.
+Purpose: Create a configurable clone of one installed plugin; leave suffix empty to let the server allocate the next free instance ID, and reusing the suffix of a disabled clone re-enables that clone together with its stored configuration.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
-- `body`: `description` (string; default ``): Human-readable media, torrent, or subscription description.; `icon` (string|null): Icon name or URL used by a workflow, network target, plugin, or category.; `name` (string; default ``): Human-readable name of the site, storage item, subscription, or rule group.; `suffix*` (string; minimum length `1`): File suffix or extension matched by an automatic category rule.; `version` (string|null): Plugin release or schema version selected by the operation.
+- `body`: `description` (string; default ``): Human-readable media, torrent, or subscription description.; `icon` (string|null): Icon name or URL used by a workflow, network target, plugin, or category.; `name` (string; default ``): Human-readable name of the site, storage item, subscription, or rule group.; `restore_previous` (boolean; default `True`): When creating a plugin clone, reuse the stored configuration of a disabled clone that already holds the same suffix; false rebuilds that clone's configuration from the source plugin template.; `suffix` (string|null): File suffix or extension matched by an automatic category rule.; `version` (string|null): Plugin release or schema version selected by the operation.
+
+### `plugin.clone.restorable`
+`GET /api/v1/plugin/clone/{plugin_id}/restorable`; policy effect: `safe_read`.
+Purpose: List one plugin's disabled clones whose configuration is still stored and can be brought back by creating a clone with the same suffix.
+- `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
+- `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
+- `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
+- `body`: none
 
 ### `plugin.config.get`
 `GET /api/v1/plugin/form/{plugin_id}`; policy effect: `safe_read`.

@@ -57,9 +57,9 @@ allowed-api-operations: >-
   system.network.targets system.network.test system.module.list system.module.catalog
   system.module.settings system.module.test plugin.market.sync_wiki plugin.runtime.status
   plugin.history plugin.releases plugin.ratings plugin.rating plugin.rating.submit
-  plugin.statistics plugin.reset plugin.clone config.user.get config.public.get
-  system.usage.statistics plugin.folders.get plugin.folders.update plugin.folder.create
-  plugin.folder.update plugin.folder.delete plugin.folder.plugins.update
+  plugin.statistics plugin.reset plugin.clone.restorable plugin.clone config.user.get
+  config.public.get system.usage.statistics plugin.folders.get plugin.folders.update
+  plugin.folder.create plugin.folder.update plugin.folder.delete plugin.folder.plugins.update
   plugin.folder.plugin.assign plugin.folder.plugin.remove plugin.loglevel.get plugin.loglevel.set
   plugin.loglevel.clear plugin.default_target.set plugin.default_target.clear
   plugin.instance.set_enabled plugin.instance.purge
