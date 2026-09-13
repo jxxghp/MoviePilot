@@ -3,14 +3,18 @@
 import importlib.util
 import sys
 import threading
+from contextlib import nullcontext
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
+import app.application.plugin.management as plugin_management
 from app.runtime.event.registry import EventRegistry
 from app.runtime.extensions.plugin.clone import PluginCloneService
 from app.runtime.extensions.plugin.loader import PluginLoader
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.extensions.plugin.storage import (
     PluginInstanceDirectory,
     PluginInstanceStore,
@@ -731,3 +735,80 @@ def test_clone_service_rolls_back_descriptor_and_config_after_load_failure():
     assert instances == {}
     assert configs == {"DemoPlugin": {"enabled": True}}
     assert removed == ["DemoPluginbroken"]
+
+
+def _tree_manager(reloaded: list[str]) -> MagicMock:
+    """构造带一个分身的插件管理器替身，重载树语义取自真实实现。
+
+    只替换重载动作本身，实例树的解析仍走 PluginManager 的真实方法，避免用例把
+    「分身也被重载」断言在一个自己编造的树上。
+    """
+    directory, records = _make_directory()
+    records["DemoPluginwork"] = PluginInstance(
+        instance_id="DemoPluginwork",
+        source_plugin_id="DemoPlugin",
+        plugin_name="工作实例",
+    )
+    storage, _written = _make_storage({})
+    manager = MagicMock()
+    manager._plugin_instance_store = PluginInstanceStore(
+        storage=lambda: storage,
+        directory=lambda: directory,
+    )
+    manager._plugin_quiesce_lock = threading.RLock()
+    manager.mutation.side_effect = lambda _operation: nullcontext()
+    manager.reload_plugin.side_effect = lambda plugin_id: (
+        reloaded.append(plugin_id) or PluginRuntimeStatus.ACTIVE
+    )
+    manager.get_plugin_source_id.side_effect = lambda plugin_id: (
+        PluginManager.get_plugin_source_id(manager, plugin_id)
+    )
+    manager.reload_plugin_tree.side_effect = lambda plugin_id: (
+        PluginManager.reload_plugin_tree(manager, plugin_id)
+    )
+    manager.get_plugin_reload_targets.side_effect = lambda plugin_id: (
+        PluginManager.get_plugin_reload_targets(manager, plugin_id)
+    )
+    return manager
+
+
+def test_manual_reload_covers_source_plugin_and_its_clones(monkeypatch):
+    """手工重载本体要连分身一起换掉旧类对象，并逐个刷新它们的注册。
+
+    只重载本体时，分身继续持有旧模块与旧类对象，改完源码点重载后新旧代码会在同一
+    进程内并存，分身的 API、调度与命令注册也不会刷新。
+    """
+    reloaded: list[str] = []
+    refreshed: list[str] = []
+    manager = _tree_manager(reloaded)
+    monkeypatch.setattr(plugin_management, "get_plugin_manager", lambda: manager)
+    monkeypatch.setattr(
+        plugin_management,
+        "refresh_plugin_registrations",
+        refreshed.append,
+    )
+
+    status = plugin_management.reload_plugin_runtime("DemoPlugin")
+
+    assert status is PluginRuntimeStatus.ACTIVE
+    assert reloaded == ["DemoPlugin", "DemoPluginwork"]
+    assert refreshed == ["DemoPlugin", "DemoPluginwork"]
+
+
+def test_manual_reload_of_a_clone_rebuilds_the_whole_instance_tree(monkeypatch):
+    """从分身发起的重载要回到源码本体，再带上同源的全部分身。"""
+    reloaded: list[str] = []
+    refreshed: list[str] = []
+    manager = _tree_manager(reloaded)
+    monkeypatch.setattr(plugin_management, "get_plugin_manager", lambda: manager)
+    monkeypatch.setattr(
+        plugin_management,
+        "refresh_plugin_registrations",
+        refreshed.append,
+    )
+
+    status = plugin_management.reload_plugin_runtime("DemoPluginwork")
+
+    assert status is PluginRuntimeStatus.ACTIVE
+    assert reloaded == ["DemoPlugin", "DemoPluginwork"]
+    assert refreshed == ["DemoPlugin", "DemoPluginwork"]
