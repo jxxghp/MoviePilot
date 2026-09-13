@@ -16,6 +16,7 @@ from typing import Any, Optional
 import pytest
 from pydantic import ValidationError
 
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.extensions.plugin.runtime import (
     PluginRuntime,
     PluginRuntimeEnvironment,
@@ -65,6 +66,19 @@ class _World:
         params.update(kwargs)
         return self.runtime.clone.clone(**params)
 
+    def restorable(self) -> list[dict[str, Any]]:
+        """调用管理器上的可恢复清单投影。
+
+        ``get_restorable_plugin_instances`` 是一段纯投影，只用到实例表与配置表两个
+        属性；用一个替身 self 调用它，既验证真实投影逻辑，又不必把 PluginManager
+        这个单例连同它的文件监控与线程池一起启动起来。
+        """
+        assert self.runtime is not None
+        stand_in = SimpleNamespace(
+            _plugin_instance_store=self.runtime.instances,
+            _plugin_config_store=self.runtime.configs,
+        )
+        return PluginManager.get_restorable_plugin_instances(stand_in, "DemoPlugin")
 
 
 def _build_world(
@@ -545,8 +559,54 @@ def test_concurrent_auto_allocation_never_hands_out_the_same_instance_id():
     assert sorted(world.rows) == ["DemoPlugin2", "DemoPlugin3"]
 
 
+# --------------------------------------------------------------------------- #
+# 可恢复清单
+# --------------------------------------------------------------------------- #
 
 
+def test_restorable_listing_only_reports_disabled_clones():
+    """在册的分身与本体那一行都不在恢复清单里。
+
+    活着的分身配置正被使用，摆进恢复选择器只会让人误以为能把它再创建一遍；本体不是
+    分身，也没有「恢复成分身」这回事。
+    """
+    world = _build_world(
+        rows={
+            "DemoPlugin": PluginInstance(
+                instance_id="DemoPlugin",
+                source_plugin_id="DemoPlugin",
+                is_enabled=False,
+            ),
+            "DemoPlugin2": _disabled_clone("DemoPlugin2", is_enabled=True),
+            "DemoPlugin3": _disabled_clone("DemoPlugin3"),
+        },
+    )
+
+    assert [item["instance_id"] for item in world.restorable()] == ["DemoPlugin3"]
 
 
+def test_restorable_listing_reports_suffix_display_info_and_stored_config():
+    """清单给出后缀、展示信息与是否留有业务参数，供恢复选择器直接渲染。"""
+    world = _build_world(
+        rows={
+            "DemoPluginwork": _disabled_clone(
+                "DemoPluginwork",
+                plugin_name="工作实例",
+                plugin_desc="独立配置",
+            ),
+            "DemoPlugin9": _disabled_clone("DemoPlugin9"),
+        },
+        configs={"DemoPluginwork": {"token": "留着"}},
+    )
 
+    listing = {item["instance_id"]: item for item in world.restorable()}
+
+    assert listing["DemoPluginwork"] == {
+        "instance_id": "DemoPluginwork",
+        "suffix": "work",
+        "plugin_name": "工作实例",
+        "plugin_desc": "独立配置",
+        "has_config": True,
+    }
+    # 停用的实例不在类注册表里，「有没有配置」不能走要求插件在册的读取口去问
+    assert listing["DemoPlugin9"]["has_config"] is False

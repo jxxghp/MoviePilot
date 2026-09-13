@@ -378,6 +378,20 @@ class PluginCloneOutcome(BaseModel):  # type: ignore[misc]
     instance_id: str = Field(description="新建或恢复出来的分身实例 ID")
 
 
+class PluginRestorableInstance(BaseModel):  # type: ignore[misc]
+    """一个已停用、其设置仍留存可被恢复的分身实例。
+
+    在册启用的分身不在此列：它们的配置正在被使用，拿来「恢复」没有意义，摆进选择器
+    只会让用户误以为能把一个活着的实例再创建一遍。
+    """
+
+    instance_id: str = Field(description="分身实例 ID")
+    suffix: str = Field(description="该实例相对源插件 ID 的后缀")
+    plugin_name: Optional[str] = Field(default=None, description="停用前登记的展示名称")
+    plugin_desc: Optional[str] = Field(default=None, description="停用前登记的展示描述")
+    has_config: bool = Field(default=False, description="是否留有业务参数")
+
+
 class PluginSourceIdentity(BaseModel):  # type: ignore[misc]
     """显式换源确认所需的插件来源身份投影。"""
 

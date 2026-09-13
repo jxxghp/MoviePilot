@@ -124,6 +124,7 @@ OPERATION_DESCRIPTIONS = {
     "media.seasons": "List seasons for one exact media identity or a title-and-year fallback.",
     "media.sources": "List metadata sources currently registered for MoviePilot media operations.",
     "plugin.clone": "Create a configurable clone of one installed plugin; leave suffix empty to let the server allocate the next free instance ID, and reusing the suffix of a disabled clone re-enables that clone together with its stored configuration.",
+    "plugin.clone.restorable": "List one plugin's disabled clones whose configuration is still stored and can be brought back by creating a clone with the same suffix.",
     "plugin.history": "Read marketplace update notes and history for one plugin.",
     "plugin.market.sync_wiki": "Refresh the configured plugin marketplace repositories from the MoviePilot Wiki.",
     "plugin.rating": "Read the current aggregate rating for one plugin.",

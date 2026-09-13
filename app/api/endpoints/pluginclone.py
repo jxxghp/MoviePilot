@@ -1,26 +1,68 @@
-"""插件分身的创建与恢复接口。
+"""插件分身的创建、恢复与可恢复清单接口。
 
 这些路由并入 ``plugin`` 路由器，路径与单文件时期完全一致；单独成篇只是让分身创建与
 插件目录、市场、静态资源等关注点各自分开，与 ``pluginfolder``/``pluginloglevel``/
 ``plugintarget`` 的切分方式一致。
 """
 
-from typing import Any
+from typing import Any, List
 
-from fastapi import Depends
+from fastapi import Depends, Response
 
 from app.api.dependencies.auth import get_current_active_superuser
 from app.api.endpoints.plugin import register_plugin
 from app.api.principal import ApiPrincipal
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+    resolve_compatible_pagination,
+)
 from app.application.plugin.folders import add_clone_to_plugin_folder
 from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.log import logger
 from app.schemas.plugin import PluginCloneOutcome as _SchemaPluginCloneOutcome
 from app.schemas.plugin import PluginCloneRequest as _SchemaPluginCloneRequest
+from app.schemas.plugin import PluginRestorableInstance as _SchemaPluginRestorableInstance
 from app.schemas.response import Response as _SchemaResponse
 
 router = ResponseAPIRouter()
+
+
+@router.get(  # type: ignore[misc]
+    "/clone/{plugin_id}/restorable",
+    summary="列出可恢复的已停用分身",
+    response_model=List[_SchemaPluginRestorableInstance],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
+)
+def plugin_restorable_instances(
+    plugin_id: str,
+    _: ApiPrincipal = Depends(get_current_active_superuser),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
+    response: Response = None,
+) -> Any:
+    """
+    列出该插件名下已停用、设置仍留存可被恢复的分身
+
+    停用只把启用位置假，业务参数与展示信息都还留在那一行上。启用中的分身不在此列
+    ——它们的配置正被使用，摆进恢复选择器只会让人误以为能把一个活着的实例再建一遍。
+
+    未指定分页时返回完整清单：一个插件的历史分身数量有限，恢复选择器要一次看全。
+    """
+    instances = [
+        _SchemaPluginRestorableInstance(**item)
+        for item in get_plugin_manager().get_restorable_plugin_instances(plugin_id)
+    ]
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(len(instances))
+    if page is not None or count is not None:
+        page, count = resolve_compatible_pagination(page, count)
+        assert page is not None and count is not None
+        return instances[(page - 1) * count: page * count]
+    return instances
 
 
 @router.post(  # type: ignore[misc]
