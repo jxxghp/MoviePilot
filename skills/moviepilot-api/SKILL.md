@@ -62,6 +62,7 @@ allowed-api-operations: >-
   plugin.folder.update plugin.folder.delete plugin.folder.plugins.update
   plugin.folder.plugin.assign plugin.folder.plugin.remove plugin.loglevel.get plugin.loglevel.set
   plugin.loglevel.clear plugin.default_target.set plugin.default_target.clear
+  plugin.instance.set_enabled
 ---
 
 # MoviePilot API

@@ -250,6 +250,7 @@ InstanceLister = Callable[[], "list[PluginInstance]"]
 InstanceSourceLister = Callable[[str], "list[PluginInstance]"]
 InstanceWriter = Callable[["PluginInstance"], None]
 InstanceDeleter = Callable[[str], bool]
+InstanceEnabler = Callable[[str, bool], bool]
 
 
 def _empty_instance_get(_instance_id: str) -> PluginInstance | None:
@@ -276,6 +277,11 @@ def _ignore_instance_delete(_instance_id: str) -> bool:
     return False
 
 
+def _ignore_instance_enable(_instance_id: str, _is_enabled: bool) -> bool:
+    """组合根尚未装配时报告启用位未写入。"""
+    return False
+
+
 class PluginInstanceDirectory:
     """封装插件实例表的持久化能力。
 
@@ -283,6 +289,10 @@ class PluginInstanceDirectory:
     ``source_plugin_id`` 区分；本类不做角色过滤，角色隔离由调用方
     （``PluginInstanceStore``）负责，因为只有调用方知道当前服务的是分身清单还是
     本体自身的那一行。
+
+    ``list_all``/``get`` 一律返回全部登记行（含停用的），``list_enabled`` 才是运行期
+    装载的取数口：是否实例化由 ``is_enabled`` 单独表达，读取口不替调用方把停用的行
+    藏起来——藏起来会让卡片、卸载守卫和默认目标候选一并丢掉这些行。
     """
 
     def __init__(
@@ -293,6 +303,8 @@ class PluginInstanceDirectory:
             list_by_source: InstanceSourceLister = _empty_instance_list_by_source,
             save: InstanceWriter = _ignore_instance_save,
             delete: InstanceDeleter = _ignore_instance_delete,
+            list_enabled: InstanceLister = _empty_instance_list,
+            set_enabled: InstanceEnabler = _ignore_instance_enable,
     ) -> None:
         """保存由启动组合根提供的实例表读写函数。"""
         self._get = get
@@ -300,6 +312,8 @@ class PluginInstanceDirectory:
         self._list_by_source = list_by_source
         self._save = save
         self._delete = delete
+        self._list_enabled = list_enabled
+        self._set_enabled = set_enabled
 
     def get(self, instance_id: str) -> PluginInstance | None:
         """按实例 ID 读取单条描述，不区分分身与本体。"""
@@ -320,6 +334,14 @@ class PluginInstanceDirectory:
     def delete(self, instance_id: str) -> bool:
         """按实例 ID 删除一行，连同其配置，返回删除前是否存在。"""
         return self._delete(instance_id)
+
+    def list_enabled(self) -> list[PluginInstance]:
+        """列出应当被实例化并启动的行，不含停用的，不区分分身与本体。"""
+        return self._list_enabled()
+
+    def set_enabled(self, instance_id: str, is_enabled: bool) -> bool:
+        """写入启用位，返回该行是否存在。"""
+        return self._set_enabled(instance_id, is_enabled)
 
 
 class _LegacyInstanceEntry(NamedTuple):
@@ -346,9 +368,13 @@ class PluginInstanceStore:
     """管理共享源码的分身实例描述，并把源插件本体自身的那一行单独成一组读写口。
 
     两类记录同存一张表，靠 ``instance_id`` 是否等于 ``source_plugin_id`` 区分：
-    ``all()``/``get()``/``save()``/``delete()``/``for_source()`` 只服务分身，
-    ``all_hosts()``/``get_host()``/``save_host()`` 只服务本体，任何一侧都读不到、
-    也改不到对方的记录——只有调用方知道自己要的是分身清单还是本体那一行。
+    ``all()``/``get()``/``save()``/``delete()``/``for_source()``/``enabled()`` 只服务分身，
+    ``all_hosts()``/``get_host()``/``save_host()``/``enabled_hosts()`` 只服务本体，任何
+    一侧都读不到、也改不到对方的记录——只有调用方知道自己要的是分身清单还是本体那一行。
+
+    除 ``enabled()``/``enabled_hosts()`` 外的读取口一律返回全部登记行（含停用的）：
+    停用的实例仍是一份在册配置，卡片要看得见、卸载守卫要拦得住、默认调用目标的候选
+    清单也要列得出。是否应当被实例化单由 ``is_enabled`` 表达，运行期取数走前两者。
     """
 
     def __init__(
@@ -467,6 +493,35 @@ class PluginInstanceStore:
             return False
         return self._directory().delete(record.instance_id)
 
+    def enabled(self) -> dict[str, PluginInstance]:
+        """读取应当被实例化并启动的分身实例，不含停用的与本体记录。"""
+        self._ensure_bootstrapped()
+        return {
+            record.instance_id: record
+            for record in self._directory().list_enabled()
+            if not record.is_host
+        }
+
+    def enable(self, instance_id: str) -> bool:
+        """启用指定分身实例，返回启用前它是否存在且处于停用状态。"""
+        self._ensure_bootstrapped()
+        record = self.get(instance_id)
+        if record is None or record.is_enabled:
+            return False
+        return self._directory().set_enabled(record.instance_id, True)
+
+    def disable(self, instance_id: str) -> bool:
+        """停用指定分身实例，返回停用前它是否存在且处于启用状态。
+
+        停用不删行：业务参数、展示信息原样留在那一行，再次启用即恢复。要连配置一并
+        抹掉走 :meth:`delete`。
+        """
+        self._ensure_bootstrapped()
+        record = self.get(instance_id)
+        if record is None or not record.is_enabled:
+            return False
+        return self._directory().set_enabled(record.instance_id, False)
+
     def all_hosts(self) -> dict[str, PluginInstance]:
         """一次性读取全部源插件本体记录，不含分身实例。
 
@@ -479,6 +534,57 @@ class PluginInstanceStore:
             for record in self._directory().list_all()
             if record.is_host
         }
+
+    def enabled_hosts(self) -> dict[str, PluginInstance]:
+        """读取应当被装载的源插件本体记录，不含停用的与分身实例。
+
+        本体与分身在这里终于用同一个判据：``is_enabled`` 决定一份配置是否应当被
+        实例化并启动。安装清单退回去只回答「这个插件的包在不在磁盘上」，不再兼任
+        运行开关——两者本是两件事，一处安装记录同时充当开关会让「装着但先不跑」
+        无从表达。
+        """
+        self._ensure_bootstrapped()
+        return {
+            record.instance_id: record
+            for record in self._directory().list_enabled()
+            if record.is_host
+        }
+
+    def enable_host(self, plugin_id: str) -> bool:
+        """把源插件本体登记为应当装载，没有本体记录时按默认视图建出。
+
+        安装收尾必须调用：本体的装载判据已经归口到启用位，只往安装清单里加一条而
+        不建出这一行，插件会装完却不加载。
+
+        :param plugin_id: 插件 ID
+        :return: 本次是否改变了状态；本体已处于启用状态时为 False
+        """
+        self._ensure_bootstrapped()
+        host = self.get_host(plugin_id)
+        if host is None:
+            self.save_host(
+                PluginInstance(
+                    instance_id=plugin_id,
+                    source_plugin_id=plugin_id,
+                    is_enabled=True,
+                )
+            )
+            return True
+        if host.is_enabled:
+            return False
+        return self._directory().set_enabled(host.instance_id, True)
+
+    def disable_host(self, plugin_id: str) -> bool:
+        """停用源插件本体但保留其全部设置，返回停用前它是否存在且处于启用状态。
+
+        业务参数保留——那是用户的数据，重装或重新启用后应当还在；默认目标置位与
+        日志等级覆盖由启用位置假时一并清掉，它们只对在册实例有意义。
+        """
+        self._ensure_bootstrapped()
+        host = self.get_host(plugin_id)
+        if host is None or not host.is_enabled:
+            return False
+        return self._directory().set_enabled(host.instance_id, False)
 
     def get_host(self, plugin_id: str) -> PluginInstance | None:
         """读取源插件本体自身那一行；该插件从未登记过任何设置时为 None。"""

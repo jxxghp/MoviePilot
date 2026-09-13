@@ -233,6 +233,7 @@ OPERATION_DESCRIPTIONS = {
     "plugin.loglevel.clear": "Clear one plugin instance's log-level override so it immediately follows the global log level again.",
     "plugin.default_target.set": "Set one plugin instance as the plugin's default call target, automatically clearing any previous default.",
     "plugin.default_target.clear": "Clear one plugin instance's default-call-target flag, only if it is the plugin's current default.",
+    "plugin.instance.set_enabled": "Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable.",
 }
 
 
@@ -340,6 +341,7 @@ FIELD_DESCRIPTIONS = {
     "include_values": "Return complete setting values instead of discovery summaries.",
     "instance_id": "Exact plugin instance ID returned by plugin.loglevel.get.",
     "is_default_target": "Whether this plugin instance is the plugin's default call target, used when a caller does not specify an instance.",
+    "enabled": "Target enabled state; false stops the instance while keeping its configuration and display information.",
     "is_active": "Whether the configured site is enabled.",
     "jobid": "Exact scheduler job ID returned by scheduler.list.",
     "key": "Optional exact plugin data key used to narrow the returned preview.",
@@ -663,6 +665,7 @@ MODEL_DESCRIPTIONS = {
     "MediaSource": "Canonical metadata source identifier paired with a source-native media ID.",
     "MediaType": "MoviePilot media type.",
     "MusicRecognizeRequest": "Exact source-native recording or album identity to resolve into canonical music metadata.",
+    "PluginInstanceEnabledRequest": "One plugin instance's enable-or-disable request; disabling keeps its configuration for a later re-enable.",
     "PluginInstanceLogLevelUpdateRequest": "One plugin instance's log-level override update request.",
     "PluginSourceChangeRequest": "Explicit online-source change request guarded by the current identity revision.",
     "PluginSourceInstallRequest": "Explicit online-source installation request for an unbound plugin.",

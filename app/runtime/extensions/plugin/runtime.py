@@ -179,7 +179,7 @@ def build_plugin_runtime(
 
     def load_plugins(
         plugin_id: Optional[str],
-        installed_plugins: list[str],
+        loadable_plugins: list[str],
         validator: Callable[[Any], bool],
     ) -> list[Any]:
         """加载物理插件或虚拟实例，并保持持久化实例顺序。"""
@@ -187,9 +187,10 @@ def build_plugin_runtime(
             instance = instances.get(plugin_id)
             if instance:
                 return loader.load_instance(instance, validator)
-            return loader.load(plugin_id, installed_plugins, validator)
-        plugins = loader.load(None, installed_plugins, validator)
-        for instance in instances.all().values():
+            return loader.load(plugin_id, loadable_plugins, validator)
+        plugins = loader.load(None, loadable_plugins, validator)
+        # 只装载启用的配置：停用的分身仍登记在册、卡片可见，但不该被实例化
+        for instance in instances.enabled().values():
             plugins.extend(loader.load_instance(instance, validator))
         return plugins
 
@@ -197,9 +198,9 @@ def build_plugin_runtime(
         classes=registry.classes,
         running=registry.running,
         load_plugins=load_plugins,
-        installed_plugins=lambda: environment.storage().read(
-            SystemConfigKey.UserInstalledPlugins
-        ) or [],
+        # 本体的装载判据归口到实例表的启用位；安装清单只回答「包在不在磁盘上」，
+        # 它同时兼任运行开关时，「装着但先不跑」根本没有地方可以表达
+        loadable_plugins=lambda: list(instances.enabled_hosts()),
         plugin_config=configs.read,
         auth_checker=lambda plugin: access.check(plugin),
         clear_modules=loader.clear_modules,
@@ -284,7 +285,9 @@ def build_plugin_runtime(
     )
     dependencies = PluginDependencyService(
         system=environment.system,
-        instances=instances.all,
+        # 分类结果会被逐个 start()，因此两层都只能给出应当装载的那一部分
+        instances=instances.enabled,
+        loadable_hosts=lambda: set(instances.enabled_hosts()),
         registry=registry,
         log=environment.logger,
     )

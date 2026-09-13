@@ -40,6 +40,14 @@ class PluginInstance(Base):
     ``log_expires_at`` 为空表示覆盖不过期。过期判定在读取时惰性执行，实现见
     ``app.runtime.log``，库里只存原样设置，不存已折算的结果。
 
+    ``is_enabled`` 是「这份配置是否应当被实例化并启动」的唯一判据，也是卸载与恢复的
+    开关：置假即卸载，配置与展示信息原样留在这一行等待再次启用，因而不需要另设一个
+    卸载时间列去表达同一件事。行被删掉才是彻底清理。这一列的价值就是把「在册」与
+    「有配置」拆开——此前两者绑死，想保住配置就只能留着一个在跑的实例。
+
+    它与该实例此刻是否在运行无关——运行态由运行时持有、不落盘；也与插件自身在
+    ``config_data`` 里按场景判定的业务开关无关。
+
     ``is_default_target`` 标记该实例是否为所属源插件的默认调用目标，即外部调用只给
     插件 ID、没给实例 ID 时应当选中的那一行；与该实例是本体还是分身无关，两者都可能
     被选为默认调用目标。「同一源插件至多一个默认调用目标」这条不变量由
@@ -58,6 +66,9 @@ class PluginInstance(Base):
     # server_default 与迁移 DDL 保持一致：只写 Python 端 default 时 create_all 建出的
     # 表不带 DEFAULT，与迁移建出的表结构不同，alembic 会一直报出差异
     is_default_target: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    is_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false()
     )
     log_level: Mapped[Optional[str]] = mapped_column(String(16))
@@ -93,11 +104,15 @@ class PluginInstance(Base):
         本体行会在插件首次存配置时被隐式建出，配置被删掉后若各列皆空就只剩身份列，
         留着会让「有哪些插件登记过本体设置」的枚举逐步失真，因而可以回收。分身行不
         适用：分身的存在本身就由这一行表达，清空设置不等于删除分身。
+
+        启用位必须计入：它是本体的装载判据，一个启用中的本体行清空配置后若被当成
+        空行回收掉，该插件下次启动就再也不会被加载。
         """
         return not any(
             (
                 self.config_data is not None,
                 self.is_default_target,
+                self.is_enabled,
                 self.log_level,
                 self.log_expires_at,
                 self.plugin_name,

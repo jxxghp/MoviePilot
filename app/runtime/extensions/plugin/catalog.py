@@ -153,9 +153,10 @@ class PluginCatalogFacade:
         日志等级直接按实例 ID 查进程内覆盖缓存，不回表：本体与分身在覆盖表里共用
         同一个命名空间，而卡片的 ``plugin_id`` 本身就是运行实例的 ID，本体等于插件
         ID、分身等于分身实例 ID，再去查一次实例行只会为同一个键多走一趟数据库。
-        默认目标置位是落盘状态、进程内没有副本，因而由调用方把已经取到的实例行
-        （分身来自遍历，本体来自批量取到的字典）传进来，同样不额外发查询；没有
-        对应行时按未置位处理——从未登记过设置的插件本就不可能是默认调用目标。
+        默认目标置位与启用位是落盘状态、进程内没有副本，因而由调用方把已经取到的
+        实例行（分身来自遍历，本体来自批量取到的字典）传进来，同样不额外发查询；
+        没有对应行时按未置位、未启用处理——没有这一行就意味着它不会被装载，也不可能
+        是默认调用目标。
 
         :param instance_id: 运行实例 ID
         :param record: 该实例已在内存中的实例行，没有登记过时为 None
@@ -164,6 +165,7 @@ class PluginCatalogFacade:
         override = get_plugin_instance_log_level_override(instance_id)
         return {
             "is_default_target": record.is_default_target if record else False,
+            "is_enabled": record.is_enabled if record else False,
             "log_level_effective": override[0] if override is not None else None,
         }
 

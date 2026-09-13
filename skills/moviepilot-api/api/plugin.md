@@ -131,6 +131,13 @@ Purpose: List installed plugins and their runtime status.
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer|null): Optional upper bound on plugin catalog results, from 1 to 200; omit it for the complete catalog.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=installed): Literal installed, selecting only installed plugin catalog entries.
 - `body`: none
 
+### `plugin.instance.set_enabled`
+`POST /api/v1/plugin/instance/{instance_id}/enabled`; policy effect: `reversible_write`.
+Purpose: Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.
+- `query`: none
+- `body`: `enabled*` (boolean): Whether this category or classification rule participates in evaluation.
+
 ### `plugin.loglevel.clear`
 `DELETE /api/v1/plugin/loglevel/{plugin_id}/{instance_id}`; policy effect: `reversible_write`.
 Purpose: Clear one plugin instance's log-level override so it immediately follows the global log level again.

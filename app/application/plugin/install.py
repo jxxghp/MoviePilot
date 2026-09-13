@@ -34,6 +34,7 @@ PluginRegistrationRefresher = Callable[[str], Awaitable[object]]
 PluginMutationAdmission = Callable[[str], ContextManager[None]]
 PluginPackageWriteGuard = Callable[[str], ContextManager[None]]
 RestartRequiredRecorder = Callable[[str, tuple[str, ...]], None]
+LoadableMarker = Callable[[str], None]
 T = TypeVar("T")
 
 
@@ -162,6 +163,7 @@ class PluginInstallCommand:
         *,
         persistence: PluginPersistenceService,
         installed_plugins_reader: InstalledPluginsReader,
+        loadable_marker: LoadableMarker,
         plugin_ids_provider: PluginIdsProvider,
         packages: PluginPackageTransactionPort,
         install_reporter: InstallReporter,
@@ -177,6 +179,7 @@ class PluginInstallCommand:
         """保存单一安装事务所需的窄端口。"""
         self.__persistence = persistence
         self.__installed_plugins_reader = installed_plugins_reader
+        self.__loadable_marker = loadable_marker
         self.__plugin_ids_provider = plugin_ids_provider
         self.__packages = packages
         self.__install_reporter = install_reporter
@@ -391,6 +394,8 @@ class PluginInstallCommand:
                     identity_target=state.target_identity,
                 )
             )
+            # 装载判据在实例表启用位上，不登记则插件装完当次能跑、重启即消失
+            self.__loadable_marker(plugin_id)
 
             state.stage = "persistent_backup_stage"
             await self.__await_side_effect(

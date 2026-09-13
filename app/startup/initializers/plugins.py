@@ -271,15 +271,17 @@ def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance
         plugin_desc=record.plugin_desc,
         plugin_icon=record.plugin_icon,
         is_default_target=record.is_default_target,
+        is_enabled=record.is_enabled,
     )
 
 
 def _save_plugin_instance_record(instance: PluginInstance) -> None:
     """把运行时实例描述写入插件实例表，以实例 ID 为稳定键做新增或更新。
 
-    默认调用目标置位随描述一起写：读取口 ``_plugin_instance_from_record`` 会把它投影
-    出来，读改写一轮下来原值原样回去，不存在被顺手抹掉的风险；漏写它反而会让「改个
-    展示名」这种无关写入把用户选定的调用目标悄悄清掉。真正的置位仍走清旧置新的原子
+    默认调用目标置位与启用位随描述一起写：读取口 ``_plugin_instance_from_record`` 会
+    把它们投影出来，读改写一轮下来原值原样回去，不存在被顺手抹掉的风险；漏写反而会让
+    「改个展示名」这种无关写入把用户选定的调用目标悄悄清掉，或是把新建的实例落成停用
+    ——装载判据正是启用位，实例会建出来却永不加载。真正的置位与启停仍走各自的专用
     端口，这里只负责不丢值。
 
     业务参数与日志等级不在此列：它们由插件自身和日志等级控制面各自写入端口落盘、不进
@@ -292,6 +294,7 @@ def _save_plugin_instance_record(instance: PluginInstance) -> None:
         plugin_desc=instance.plugin_desc,
         plugin_icon=instance.plugin_icon,
         is_default_target=instance.is_default_target,
+        is_enabled=instance.is_enabled,
     )
 
 
@@ -334,6 +337,13 @@ def _build_plugin_instance_directory() -> PluginInstanceDirectory:
         ],
         save=_save_plugin_instance_record,
         delete=oper.delete,
+        list_enabled=lambda: [
+            _plugin_instance_from_record(record) for record in oper.list_enabled()
+        ],
+        set_enabled=lambda instance_id, is_enabled: oper.set_enabled(
+            instance_id=instance_id,
+            is_enabled=is_enabled,
+        ),
     )
 
 
@@ -488,6 +498,7 @@ def configure_plugin_services() -> None:
         installed_plugins_reader=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         ) or [],
+        loadable_marker=plugin_manager.mark_plugin_loadable,
         plugin_ids_provider=plugin_manager.get_plugin_ids,
         packages=package_manager,
         install_reporter=lambda plugin_id, repo_url: (

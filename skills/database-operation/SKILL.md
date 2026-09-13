@@ -210,7 +210,7 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Purpose: Stores one row per shared-source plugin runtime instance, covering both clones and the host plugin itself (instance_id equals source_plugin_id, so equality identifies the host and inequality a clone), together with that instance's display overrides, its own log-level override and the moment that override expires, and the plugin's own configuration payload. A clone exists exactly while its row exists, so deleting the row uninstalls the clone and discards its configuration.
 - Useful queries: Diagnosing clone naming and ownership, inspecting what a plugin or one of its clones is configured with, or finding which instance currently overrides the global log level and until when.
 - Write boundary: Owned by the plugin instance, plugin configuration, and plugin log-level APIs; never edit rows directly.
-- Columns: `id`, `instance_id`, `source_plugin_id`, `plugin_name`, `plugin_desc`, `plugin_icon`, `is_default_target`, `log_level`, `log_expires_at`, `config_data`, `created_at`, `updated_at`
+- Columns: `id`, `instance_id`, `source_plugin_id`, `plugin_name`, `plugin_desc`, `plugin_icon`, `is_default_target`, `is_enabled`, `log_level`, `log_expires_at`, `config_data`, `created_at`, `updated_at`
 
 ### `site`
 - Purpose: Stores private-tracker URLs, RSS, credentials, rate limits, proxy state, and downloader binding.

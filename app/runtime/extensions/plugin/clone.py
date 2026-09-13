@@ -66,6 +66,8 @@ class PluginCloneService:
                 plugin_name=name or None,
                 plugin_desc=description or None,
                 plugin_icon=icon or None,
+                # 新建的分身就是要拿去跑的；启用位是装载判据，留空会让它建出来却不加载
+                is_enabled=True,
             )
             self._save_instance(instance)
 

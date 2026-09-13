@@ -353,6 +353,7 @@ SCHEMA_EXPORTS = {
     'PluginFoldersData': ('app.schemas.plugin', 'PluginFoldersData'),
     'PluginInstallOutcome': ('app.schemas.plugin', 'PluginInstallOutcome'),
     'PluginInstance': ('app.schemas.plugin', 'PluginInstance'),
+    'PluginInstanceEnabledRequest': ('app.schemas.plugin', 'PluginInstanceEnabledRequest'),
     'PluginInstanceLogLevel': ('app.schemas.plugin', 'PluginInstanceLogLevel'),
     'PluginInstanceLogLevelOverview': ('app.schemas.plugin', 'PluginInstanceLogLevelOverview'),
     'PluginInstanceLogLevelUpdateRequest': ('app.schemas.plugin', 'PluginInstanceLogLevelUpdateRequest'),

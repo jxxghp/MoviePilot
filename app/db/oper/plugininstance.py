@@ -90,6 +90,16 @@ class PluginInstanceOper(DbOper):
             )
         )
 
+    def list_enabled(self) -> list[PluginInstance]:
+        """列举应当被实例化并启动的实例，供运行期批量装载使用。"""
+        return list(
+            self._execute_sync_query(
+                lambda session: session.execute(
+                    select(PluginInstance).where(PluginInstance.is_enabled.is_(True))
+                ).scalars().all()
+            )
+        )
+
     def save(self, **fields: Any) -> PluginInstance:
         """按 ``instance_id`` 新增或更新一行，只写入本次给出的列。
 
@@ -140,6 +150,35 @@ class PluginInstanceOper(DbOper):
             if existing is None:
                 return False
             session.delete(existing)
+            return True
+
+        return bool(self._execute_sync_write(stage))
+
+    def set_enabled(self, *, instance_id: str, is_enabled: bool) -> bool:
+        """写入启用位，它同时就是卸载与恢复的开关。
+
+        置假即卸载：业务参数与展示信息原样留在这一行等待再次启用，因而不需要另设
+        一个卸载时间列。同时清掉两项只对在册实例才有意义的状态——默认调用目标置位，
+        否则未指定实例的外部调用会被路由到一个不会被实例化的实例；日志等级覆盖，
+        它带失效时间、本就是临时调试设置，而运行期在停用时会同步清掉进程内的等级
+        覆盖表，库里留着只会让两边不一致。
+
+        :param instance_id: 实例 ID
+        :param is_enabled: 目标启用状态
+        :return: 该行是否存在
+        """
+
+        def stage(session: Session) -> bool:
+            """在同一事务内写入启用位，停用时一并清掉仅对在册实例有意义的状态。"""
+            record = PluginInstance.get_by_instance_id(session, instance_id)
+            if record is None:
+                return False
+            record.is_enabled = is_enabled
+            if not is_enabled:
+                record.is_default_target = False
+                record.log_level = None
+                record.log_expires_at = None
+            record.updated_at = _now()
             return True
 
         return bool(self._execute_sync_write(stage))

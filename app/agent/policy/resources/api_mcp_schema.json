@@ -3146,6 +3146,21 @@
       "title": "PluginFoldersData",
       "type": "object"
     },
+    "PluginInstanceEnabledRequest": {
+      "description": "One plugin instance's enable-or-disable request; disabling keeps its configuration for a later re-enable.",
+      "properties": {
+        "enabled": {
+          "description": "Whether this category or classification rule participates in evaluation.",
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "title": "PluginInstanceEnabledRequest",
+      "type": "object"
+    },
     "PluginInstanceLogLevelUpdateRequest": {
       "description": "One plugin instance's log-level override update request.",
       "properties": {
@@ -10315,6 +10330,43 @@
     },
     {
       "additionalProperties": false,
+      "description": "Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable. Method: POST. Path: /api/v1/plugin/instance/{instance_id}/enabled. Effect: reversible_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/PluginInstanceEnabledRequest",
+          "description": "Request value for plugin.instance.set_enabled. Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "plugin.instance.set_enabled",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.instance.set_enabled. Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.loglevel.get.",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "plugin.instance.set_enabled",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "Clear one plugin instance's log-level override so it immediately follows the global log level again. Method: DELETE. Path: /api/v1/plugin/loglevel/{plugin_id}/{instance_id}. Effect: reversible_write.",
       "properties": {
         "operation_id": {
@@ -16176,6 +16228,7 @@
         "plugin.history",
         "plugin.install",
         "plugin.installed",
+        "plugin.instance.set_enabled",
         "plugin.loglevel.clear",
         "plugin.loglevel.get",
         "plugin.loglevel.set",

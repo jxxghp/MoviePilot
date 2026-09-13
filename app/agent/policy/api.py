@@ -572,6 +572,7 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     _write("plugin.loglevel.clear"),
     _write("plugin.default_target.set"),
     _write("plugin.default_target.clear"),
+    _write("plugin.instance.set_enabled"),
 )
 
 
@@ -832,6 +833,9 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     ),
     "plugin.default_target.clear": ApiOperationRoute(
         "DELETE", "/api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target"
+    ),
+    "plugin.instance.set_enabled": ApiOperationRoute(
+        "POST", "/api/v1/plugin/instance/{instance_id}/enabled"
     ),
 }
 
