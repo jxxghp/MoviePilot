@@ -2533,10 +2533,10 @@
     "type-arg": 2
   },
   "app/runtime/extensions/plugin/manager.py": {
-    "assignment": 8,
+    "assignment": 4,
     "attr-defined": 1,
     "no-untyped-call": 1,
-    "no-untyped-def": 12,
+    "no-untyped-def": 11,
     "type-arg": 10
   },
   "app/runtime/extensions/plugin/metadata.py": {

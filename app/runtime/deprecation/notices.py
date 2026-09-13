@@ -69,38 +69,6 @@ NOTICES: Dict[str, DeprecationNotice] = {
     notice.key: notice
     for notice in (
         DeprecationNotice(
-            key="PluginManager._modify_plugin_files",
-            subject="PluginManager._modify_plugin_files()",
-            stage=DeprecationStage.SILENT,
-            since="v3.0.0",
-            replacement="get_plugin_system().package._modify_plugin_files()",
-            reason="分身文件改写已由插件包适配器实现，此处只为旧内部调用保留转发",
-        ),
-        DeprecationNotice(
-            key="PluginManager._modify_python_file",
-            subject="PluginManager._modify_python_file()",
-            stage=DeprecationStage.SILENT,
-            since="v3.0.0",
-            replacement="get_plugin_system().package._modify_python_file()",
-            reason="Python 文件改写已由插件包适配器实现，此处只为旧内部调用保留转发",
-        ),
-        DeprecationNotice(
-            key="PluginManager._modify_federation_files",
-            subject="PluginManager._modify_federation_files()",
-            stage=DeprecationStage.SILENT,
-            since="v3.0.0",
-            replacement="get_plugin_system().package._modify_federation_files()",
-            reason="联邦文件改写已由插件包适配器实现，此处只为旧内部调用保留转发",
-        ),
-        DeprecationNotice(
-            key="PluginManager._rename_federation_assets",
-            subject="PluginManager._rename_federation_assets()",
-            stage=DeprecationStage.SILENT,
-            since="v3.0.0",
-            replacement="get_plugin_system().package._rename_federation_assets()",
-            reason="联邦资源重命名已由插件包适配器实现，此处只为旧内部调用保留转发",
-        ),
-        DeprecationNotice(
             key="PluginHelper.find_missing_dependencies",
             subject="PluginHelper.find_missing_dependencies()",
             stage=DeprecationStage.SILENT,
