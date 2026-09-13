@@ -517,7 +517,7 @@
   "app/api/endpoints/site.py": {
     "arg-type": 6,
     "assignment": 2,
-    "attr-defined": 3,
+    "attr-defined": 2,
     "misc": 26,
     "no-untyped-def": 2,
     "return-value": 2,
