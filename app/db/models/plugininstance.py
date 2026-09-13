@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, List, Optional, Self, cast
 
 from sqlalchemy import JSON, Index, String, UniqueConstraint, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
@@ -81,6 +82,16 @@ class PluginInstance(Base):
             Optional[Self],
             db.execute(select(cls).where(cls.instance_id == instance_id)).scalars().first(),
         )
+
+    @classmethod
+    async def async_get_by_instance_id(
+        cls,
+        db: AsyncSession,
+        instance_id: str,
+    ) -> Optional[Self]:
+        """在调用方 AsyncSession 中按实例 ID 查询单行。"""
+        result = await db.execute(select(cls).where(cls.instance_id == instance_id))
+        return cast(Optional[Self], result.scalars().first())
 
     @classmethod
     def list_by_source_plugin_id(cls, db: Session, source_plugin_id: str) -> List[Self]:

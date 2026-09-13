@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8617,
-  "edge_sha256": "ec4a6fc00aec0b61b100a5065dacd0f13d3dbff602bff74c40ff8e85fc8b8c28",
+  "edge_count": 8614,
+  "edge_sha256": "70b80d471a4080e365c0fd45dd87ca2768aac360b406f58e645ab68805d587b0",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -6031,10 +6031,7 @@
     "app.db.oper.systemconfig -> app.db",
     "app.db.oper.systemconfig -> app.db.base",
     "app.db.oper.systemconfig -> app.db.models",
-    "app.db.oper.systemconfig -> app.db.models.plugininstance",
     "app.db.oper.systemconfig -> app.db.models.systemconfig",
-    "app.db.oper.systemconfig -> app.db.oper",
-    "app.db.oper.systemconfig -> app.db.oper.plugininstance",
     "app.db.oper.systemconfig -> app.foundation",
     "app.db.oper.systemconfig -> app.foundation.singleton",
     "app.db.oper.systemconfig -> app.schemas",

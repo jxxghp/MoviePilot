@@ -7,9 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
-from app.db.models.plugininstance import PluginInstance
 from app.db.models.systemconfig import SystemConfig
-from app.db.oper.plugininstance import PluginInstanceOper
 from app.foundation.singleton import Singleton
 from app.schemas.types import SystemConfigKey
 
@@ -20,19 +18,6 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
     """
     系统配置管理
     """
-    # 插件配置沿用 plugin.<实例ID> 这个对外契约，但物理上存进插件实例表。路由必须落在
-    # 这一层：_PluginBase 之外还有第三方插件直接拿 SystemConfigOper 读写这个键，在每个
-    # 调用方各改一处必然漏掉它们。
-    PLUGIN_CONFIG_KEY_PREFIX = "plugin."
-
-    @classmethod
-    def _plugin_id_of(cls, key: str) -> Optional[str]:
-        """把 plugin.<实例ID> 解析为实例 ID；非插件配置键返回 None。"""
-        if not key.startswith(cls.PLUGIN_CONFIG_KEY_PREFIX):
-            return None
-        instance_id = key[len(cls.PLUGIN_CONFIG_KEY_PREFIX):]
-        return instance_id or None
-
     def __init__(self):
         """初始化空快照，数据库加载由启动组合根显式执行。"""
         super().__init__()
@@ -47,20 +32,10 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             items = SystemConfig.list(db) if db is not None else self._execute_sync_query(
                 SystemConfig.list
             )
-            instances = PluginInstance.list(db) if db is not None else self._execute_sync_query(
-                PluginInstance.list
-            )
             snapshot = {
                 item.key: copy.deepcopy(item.value)
                 for item in items
             }
-            # 插件配置以同一套 plugin.<实例ID> 键进入快照，读取端感知不到换表
-            snapshot.update({
-                f"{self.PLUGIN_CONFIG_KEY_PREFIX}{item.instance_id}":
-                    copy.deepcopy(item.config_data)
-                for item in instances
-                if item.config_data is not None
-            })
             with self._snapshot_lock:
                 self.__SYSTEMCONF = snapshot
                 self._loaded = True
@@ -101,17 +76,6 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             key = key.value
         self._require_loaded()
         with self._write_lock:
-            instance_id = self._plugin_id_of(key)
-            if instance_id is not None:
-                # 分身的实例行由分身服务先行建出，这里建不出分身；能落到建行分支的
-                # 只有本体自身，源插件因而就是它自己
-                result = PluginInstanceOper().save_config_data(
-                    instance_id=instance_id,
-                    source_plugin_id=instance_id,
-                    config_data=value,
-                )
-                self._publish_value(key, value)
-                return result
 
             def write(db):
                 """在当前事务中创建或更新配置记录。"""
@@ -205,13 +169,6 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
             key = key.value
         self._require_loaded()
         with self._write_lock:
-            instance_id = self._plugin_id_of(key)
-            if instance_id is not None:
-                # 只清业务参数：这一行还承载着实例身份与展示信息，整行删掉会把
-                # 「删一份配置」变成「删掉这个实例」
-                PluginInstanceOper().clear_config_data(instance_id)
-                self._publish_delete(key)
-                return True
 
             def delete(db):
                 """在当前事务中删除配置记录。"""

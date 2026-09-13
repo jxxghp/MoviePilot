@@ -6,6 +6,7 @@ from app.chain import ChainBase
 from app.core.config import settings
 from app.core.event import EventManager
 from app.db.oper.plugindata import PluginDataOper
+from app.db.oper.plugininstance import PluginInstanceOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.db.plugin.container import PluginDatabaseHandle
 from app.db.plugin.registry import get_database as get_plugin_database
@@ -42,6 +43,8 @@ class _PluginBase(metaclass=ABCMeta):
     def __init__(self):
         # 插件数据
         self.plugindata = PluginDataOper()
+        # 插件实例配置，仅供 get_config()/update_config() 使用，不属于插件公开面
+        self._plugininstance = PluginInstanceOper()
         # 处理链
         self.chain = PluginChian()
         # 系统配置
@@ -280,7 +283,11 @@ class _PluginBase(metaclass=ABCMeta):
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
-        return self.systemconfig.set(f"plugin.{plugin_id}", config)
+        return self._plugininstance.save_config_data(
+            instance_id=plugin_id,
+            source_plugin_id=plugin_id,
+            config_data=config,
+        )
 
     def get_config(self, plugin_id: Optional[str] = None) -> Any:
         """
@@ -289,7 +296,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
-        return self.systemconfig.get(f"plugin.{plugin_id}")
+        return self._plugininstance.get_config_data(plugin_id)
 
     def get_data_path(self, plugin_id: Optional[str] = None) -> Path:
         """

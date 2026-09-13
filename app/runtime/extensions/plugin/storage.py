@@ -19,6 +19,12 @@ ConfigReader = Callable[[Any], Any]
 ConfigWriter = Callable[[Any, Any], Any]
 AsyncConfigWriter = Callable[[Any, Any], Awaitable[Any]]
 ConfigDeleter = Callable[[Any], bool]
+# 插件配置端口按实例 ID 寻址，不经过任何字符串键：一个实例的业务参数存在它自己
+# 那一行上，宿主的系统设置存储不必知道插件存在
+InstanceConfigReader = Callable[[str], Any]
+InstanceConfigWriter = Callable[[str, Any], Any]
+AsyncInstanceConfigWriter = Callable[[str, Any], Awaitable[Any]]
+InstanceConfigDeleter = Callable[[str], bool]
 PluginDataDeleter = Callable[[str], Any]
 # 日志等级覆盖端口的载荷：`(等级名, 失效时间)`，两者皆为 None 即未设置覆盖
 LogLevelOverride = tuple[Optional[str], Optional[datetime]]
@@ -42,6 +48,24 @@ async def _ignore_async_write(_key: Any, _value: Any) -> None:
 
 def _ignore_delete(_key: Any) -> bool:
     """组合根尚未装配时报告配置未删除。"""
+    return False
+
+
+def _empty_read_config(_instance_id: str) -> Any:
+    """组合根尚未装配时报告实例没有业务参数。"""
+    return None
+
+
+def _ignore_write_config(_instance_id: str, _config: Any) -> None:
+    """组合根尚未装配时忽略同步业务参数写入。"""
+
+
+async def _ignore_async_write_config(_instance_id: str, _config: Any) -> None:
+    """组合根尚未装配时忽略异步业务参数写入。"""
+
+
+def _ignore_delete_config(_instance_id: str) -> bool:
+    """组合根尚未装配时报告业务参数未删除。"""
     return False
 
 
@@ -72,6 +96,10 @@ class PluginStorage:
             write: ConfigWriter = _ignore_write,
             async_write: AsyncConfigWriter = _ignore_async_write,
             delete: ConfigDeleter = _ignore_delete,
+            read_config: InstanceConfigReader = _empty_read_config,
+            write_config: InstanceConfigWriter = _ignore_write_config,
+            async_write_config: AsyncInstanceConfigWriter = _ignore_async_write_config,
+            delete_config: InstanceConfigDeleter = _ignore_delete_config,
             delete_data: PluginDataDeleter = _ignore_plugin_data_delete,
             read_log_level: LogLevelReader = _no_log_level,
             write_log_level: LogLevelWriter = _ignore_log_level_write,
@@ -81,6 +109,10 @@ class PluginStorage:
         self._write = write
         self._async_write = async_write
         self._delete = delete
+        self._read_config = read_config
+        self._write_config = write_config
+        self._async_write_config = async_write_config
+        self._delete_config = delete_config
         self._delete_data = delete_data
         self._read_log_level = read_log_level
         self._write_log_level = write_log_level
@@ -101,6 +133,22 @@ class PluginStorage:
         """删除插件运行时配置。"""
         return self._delete(key)
 
+    def read_config(self, instance_id: str) -> Any:
+        """读取该实例配置行上的业务参数。"""
+        return self._read_config(instance_id)
+
+    def write_config(self, instance_id: str, config: Any) -> Any:
+        """同步把业务参数写进该实例的配置行。"""
+        return self._write_config(instance_id, config)
+
+    async def async_write_config(self, instance_id: str, config: Any) -> Any:
+        """异步把业务参数写进该实例的配置行。"""
+        return await self._async_write_config(instance_id, config)
+
+    def delete_config(self, instance_id: str) -> bool:
+        """清除该实例配置行上的业务参数。"""
+        return self._delete_config(instance_id)
+
     def delete_data(self, plugin_id: str) -> Any:
         """删除指定插件的业务数据。"""
         return self._delete_data(plugin_id)
@@ -120,7 +168,12 @@ class PluginStorage:
 
 
 class PluginConfigStore:
-    """封装插件配置键、存在性和强制删除规则。"""
+    """封装插件配置的存在性和强制删除规则。
+
+    配置按实例 ID 直接落在该实例自己的配置行上，不再经过宿主系统设置存储的字符串键：
+    插件配置与系统设置的生命周期、数量级和归属都不同，共用一张键值表会让系统设置被
+    插件条目淹没，也会让「某插件的全部实例配置」只能靠键前缀去猜。
+    """
 
     def __init__(
         self,
@@ -128,23 +181,17 @@ class PluginConfigStore:
         storage: Callable[[], "PluginStorage"],
         database: Callable[[], PluginDatabase],
         plugin_exists: PluginExists,
-        key_prefix: str = "plugin.%s",
     ) -> None:
         """保存持久化端口、自有数据库端口和运行态插件查询端口。"""
         self._storage = storage
         self._database = database
         self._plugin_exists = plugin_exists
-        self._key_prefix = key_prefix
-
-    def _key(self, plugin_id: str) -> str:
-        """构造插件配置在统一配置存储中的键。"""
-        return self._key_prefix % plugin_id
 
     def read(self, plugin_id: str) -> dict:
         """读取配置并过滤历史空键。"""
         if not self._plugin_exists(plugin_id):
             return {}
-        config = self._storage().read(self._key(plugin_id))
+        config = self._storage().read_config(plugin_id)
         return {
             key: value
             for key, value in (config or {}).items()
@@ -155,7 +202,7 @@ class PluginConfigStore:
         """保存配置，默认拒绝不存在插件的配置写入。"""
         if not force and not self._plugin_exists(plugin_id):
             return False
-        self._storage().write(self._key(plugin_id), config)
+        self._storage().write_config(plugin_id, config)
         return True
 
     async def async_write(
@@ -167,14 +214,14 @@ class PluginConfigStore:
         """异步保存配置并保持同步写入的存在性规则。"""
         if not force and not self._plugin_exists(plugin_id):
             return False
-        await self._storage().async_write(self._key(plugin_id), config)
+        await self._storage().async_write_config(plugin_id, config)
         return True
 
     def delete(self, plugin_id: str, force: bool = False) -> bool:
         """删除配置并保持停止插件后的强制删除能力。"""
         if not force and not self._plugin_exists(plugin_id):
             return False
-        return self._storage().delete(self._key(plugin_id))
+        return self._storage().delete_config(plugin_id)
 
     def read_log_level(self, instance_id: str) -> LogLevelOverride:
         """读取实例的日志等级覆盖；它与业务参数同属该实例的配置。"""

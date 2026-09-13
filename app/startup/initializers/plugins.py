@@ -146,9 +146,42 @@ from app.startup.composition.plugin import (
 )
 
 
-async def _async_write_plugin_config(key, value):
-    """通过数据库操作器异步保存插件运行时配置。"""
-    return await get_configured_system_config().async_set(key, value)
+def _read_plugin_config(instance_id: str) -> Any:
+    """从实例行读取该实例的业务参数。"""
+    return PluginInstanceOper().get_config_data(instance_id)
+
+
+def _write_plugin_config(instance_id: str, config: Any) -> Any:
+    """把业务参数写进该实例行；没有实例行时按本体建出。
+
+    分身的实例行由分身服务先行建出，这里建不出分身；能落到建行分支的只有本体
+    自身，源插件因而就是它自己。
+    """
+    return PluginInstanceOper().save_config_data(
+        instance_id=instance_id,
+        source_plugin_id=instance_id,
+        config_data=config,
+    )
+
+
+async def _async_write_plugin_config(instance_id: str, config: Any) -> Any:
+    """异步把业务参数写进该实例行，建行规则与同步写入一致。"""
+    return await PluginInstanceOper().async_save_config_data(
+        instance_id=instance_id,
+        source_plugin_id=instance_id,
+        config_data=config,
+    )
+
+
+def _delete_plugin_config(instance_id: str) -> bool:
+    """清空该实例的业务参数，保留其身份与展示信息。
+
+    只清业务参数：这一行还承载着实例身份与展示信息，整行删掉会把「删一份配置」
+    变成「删掉这个实例」。该行本就不存在时同样报告已删除，删除只承诺事后没有
+    这份配置。
+    """
+    PluginInstanceOper().clear_config_data(instance_id)
+    return True
 
 
 def _delete_plugin_data(plugin_id: str) -> None:
@@ -228,8 +261,8 @@ def _prime_plugin_instance_log_levels() -> None:
 def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance:
     """把插件实例表的 ORM 行投影为运行时端口使用的 Pydantic 描述。
 
-    只投影描述符各列：业务参数走 plugin.<实例ID> 配置读取口，运行时端口拿到的应当是
-    一份实例身份与展示信息的视图。
+    只投影描述符各列：业务参数走插件配置读取端口，运行时端口拿到的应当是一份实例
+    身份与展示信息的视图。
     """
     return PluginInstance(
         instance_id=record.instance_id,
@@ -243,8 +276,8 @@ def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance
 def _save_plugin_instance_record(instance: PluginInstance) -> None:
     """把运行时实例描述写入插件实例表，以实例 ID 为稳定键做新增或更新。
 
-    业务参数不在此列：它由插件自身通过 plugin.<实例ID> 配置口写入、不进运行时描述，
-    原样写回会把用户刚存的配置覆盖成空。
+    业务参数不在此列：它由插件自身通过插件配置写入端口落盘、不进运行时描述，原样
+    写回会把用户刚存的配置覆盖成空。
     """
     PluginInstanceOper().save(
         instance_id=instance.instance_id,
@@ -543,8 +576,12 @@ def configure_plugin_services() -> None:
     configure_plugin_storage(PluginStorage(
         read=lambda key: get_configured_system_config().get(key),
         write=lambda key, value: get_configured_system_config().set(key, value),
-        async_write=_async_write_plugin_config,
+        async_write=lambda key, value: get_configured_system_config().async_set(key, value),
         delete=lambda key: get_configured_system_config().delete(key),
+        read_config=_read_plugin_config,
+        write_config=_write_plugin_config,
+        async_write_config=_async_write_plugin_config,
+        delete_config=_delete_plugin_config,
         delete_data=_delete_plugin_data,
         read_log_level=_read_plugin_log_level,
         write_log_level=_write_plugin_log_level,

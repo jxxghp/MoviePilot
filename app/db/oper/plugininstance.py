@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import copy
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
@@ -16,6 +17,45 @@ from app.db.models.plugininstance import PluginInstance
 def _now() -> str:
     """返回实例行使用的 ISO-8601 时间戳。"""
     return datetime.now(timezone.utc).isoformat()
+
+
+def _apply_config_data(
+    session: Union[Session, AsyncSession],
+    record: Optional[PluginInstance],
+    *,
+    instance_id: str,
+    source_plugin_id: str,
+    config_data: Any,
+) -> Optional[bool]:
+    """把业务参数写进已查出的行，行不存在则按本次身份建出一行。
+
+    同步与异步写入只有查询方式不同，落库决策共用这一份：两边各写一份会让
+    「值未变化不写」和「建行用哪个源插件」在两条路径上悄悄分叉。
+
+    :param session: 调用方事务所持的会话，同步与异步的 ``add`` 都是同步方法
+    :param record: 已查出的实例行，None 表示该实例尚无行
+    :param instance_id: 实例 ID
+    :param source_plugin_id: 该行不存在时用于建行的源插件 ID
+    :param config_data: 业务参数
+    :return: True 已写入，None 值未变化无需写入
+    """
+    if record is None:
+        now = _now()
+        session.add(
+            PluginInstance(
+                instance_id=instance_id,
+                source_plugin_id=source_plugin_id,
+                config_data=copy.deepcopy(config_data),
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        return True
+    if record.config_data == config_data:
+        return None
+    record.config_data = copy.deepcopy(config_data)
+    record.updated_at = _now()
+    return True
 
 
 class PluginInstanceOper(DbOper):
@@ -104,6 +144,18 @@ class PluginInstanceOper(DbOper):
 
         return bool(self._execute_sync_write(stage))
 
+    def get_config_data(self, instance_id: str) -> Any:
+        """读取某实例的业务参数；该行不存在或从未存过参数都返回 None。
+
+        返回深拷贝：调用方拿到的是一份独立副本，就地改动不会顺着 ORM 行漏进
+        下一次写入的「值未变化」判定。
+
+        :param instance_id: 实例 ID
+        :return: 业务参数，无则 None
+        """
+        record = self.get(instance_id)
+        return copy.deepcopy(record.config_data) if record is not None else None
+
     def save_config_data(
         self,
         *,
@@ -121,26 +173,42 @@ class PluginInstanceOper(DbOper):
 
         def stage(session: Session) -> Optional[bool]:
             """在同一事务内创建或更新业务参数。"""
-            record = PluginInstance.get_by_instance_id(session, instance_id)
-            if record is None:
-                now = _now()
-                session.add(
-                    PluginInstance(
-                        instance_id=instance_id,
-                        source_plugin_id=source_plugin_id,
-                        config_data=copy.deepcopy(config_data),
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-                return True
-            if record.config_data == config_data:
-                return None
-            record.config_data = copy.deepcopy(config_data)
-            record.updated_at = _now()
-            return True
+            return _apply_config_data(
+                session,
+                PluginInstance.get_by_instance_id(session, instance_id),
+                instance_id=instance_id,
+                source_plugin_id=source_plugin_id,
+                config_data=config_data,
+            )
 
         return self._execute_sync_write(stage)
+
+    async def async_save_config_data(
+        self,
+        *,
+        instance_id: str,
+        source_plugin_id: str,
+        config_data: Any,
+    ) -> Optional[bool]:
+        """在异步事务中写入业务参数，行为与同步写入一致。
+
+        :param instance_id: 实例 ID
+        :param source_plugin_id: 该行不存在时用于建行的源插件 ID
+        :param config_data: 业务参数
+        :return: True 已写入，None 值未变化无需写入
+        """
+
+        async def stage(session: AsyncSession) -> Optional[bool]:
+            """在同一异步事务内创建或更新业务参数。"""
+            return _apply_config_data(
+                session,
+                await PluginInstance.async_get_by_instance_id(session, instance_id),
+                instance_id=instance_id,
+                source_plugin_id=source_plugin_id,
+                config_data=config_data,
+            )
+
+        return await self._execute_async_write(stage)
 
     def set_log_level(
         self,
