@@ -571,7 +571,14 @@ class FileManagerModule(_ModuleBase):
             raise_exception: bool = False,
     ) -> TransferInfo:
         """解析存储适配器并通过统一删除能力执行已冻结计划。
-
+        :param checkpoint: 冻结的整理计划检查点
+        :param meta: 预识别的元数据
+        :param mediainfo: 识别的媒体信息
+        :param source_oper: 源存储操作对象
+        :param target_oper: 目标存储操作对象
+        :param cleanup_media_file: 统一删除能力，返回 True 表示已清理
+        :param observe_cleanup_media_file: 统一删除能力的只读观察接口，返回 True 表示已清理
+        :param step_runner: 传入时使用自定义的步骤执行器，None 时使用默认的串行执行器
         :param raise_exception: 仅供模块调度器控制异常是否传播，模块不改变执行语义
         """
         del raise_exception
