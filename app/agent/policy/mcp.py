@@ -234,6 +234,7 @@ OPERATION_DESCRIPTIONS = {
     "plugin.default_target.set": "Set one plugin instance as the plugin's default call target, automatically clearing any previous default.",
     "plugin.default_target.clear": "Clear one plugin instance's default-call-target flag, only if it is the plugin's current default.",
     "plugin.instance.set_enabled": "Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable.",
+    "plugin.instance.purge": "Permanently delete one plugin instance's selected data: saved configuration, plugin data rows, its own database and its data directory; a clone also loses its instance record. Nothing is deleted unless explicitly selected.",
 }
 
 
@@ -340,6 +341,10 @@ FIELD_DESCRIPTIONS = {
     "include_usage": "Include the subscriptions or defaults that reference each rule group.",
     "include_values": "Return complete setting values instead of discovery summaries.",
     "instance_id": "Exact plugin instance ID returned by plugin.loglevel.get.",
+    "config": "Purge scope flag: delete this plugin instance's saved configuration values.",
+    "plugin_data": "Purge scope flag: delete this plugin instance's rows in the shared plugin data table.",
+    "own_database": "Purge scope flag: destroy this plugin instance's own database.",
+    "data_directory": "Purge scope flag: delete this plugin instance's entire data directory; its own database is always destroyed first.",
     "is_default_target": "Whether this plugin instance is the plugin's default call target, used when a caller does not specify an instance.",
     "enabled": "Target enabled state; false stops the instance while keeping its configuration and display information.",
     "is_active": "Whether the configured site is enabled.",
@@ -667,6 +672,7 @@ MODEL_DESCRIPTIONS = {
     "MusicRecognizeRequest": "Exact source-native recording or album identity to resolve into canonical music metadata.",
     "PluginInstanceEnabledRequest": "One plugin instance's enable-or-disable request; disabling keeps its configuration for a later re-enable.",
     "PluginInstanceLogLevelUpdateRequest": "One plugin instance's log-level override update request.",
+    "PluginInstancePurgeRequest": "One plugin instance's purge scope; every listed item is deleted only when explicitly selected.",
     "PluginSourceChangeRequest": "Explicit online-source change request guarded by the current identity revision.",
     "PluginSourceInstallRequest": "Explicit online-source installation request for an unbound plugin.",
     "Site-Input": "Complete site configuration and runtime state.",

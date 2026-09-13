@@ -1158,6 +1158,11 @@ def test_reset_plugin_sends_pre_reset_chain_event_before_deleting_data():
         publish_reset=publish_reset,
         refresh_registrations=lambda _plugin_id: None,
         mutation=lambda _operation: nullcontext(),
+        delete_plugin_data_rows=plugin_manager.delete_plugin_data_rows,
+        destroy_own_database=plugin_manager.destroy_plugin_own_database,
+        delete_data_directory=plugin_manager.delete_plugin_data_directory,
+        purge_instance=plugin_manager.purge_plugin_instance,
+        is_clone=plugin_manager.is_plugin_clone,
     )
     result = reset_plugin("SubscribeAssistantEnhanced", None, command)
 

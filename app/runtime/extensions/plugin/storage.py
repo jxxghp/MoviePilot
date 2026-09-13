@@ -244,6 +244,18 @@ class PluginConfigStore:
         self._database().destroy(plugin_id)
         return True
 
+    def delete_data_rows(self, plugin_id: str) -> None:
+        """只删该实例在插件数据表里的行，不碰它的自有数据库。
+
+        彻底清理要让用户逐项勾选删除范围，因而这两件事必须能分开做；
+        :meth:`delete_data` 仍把它们捆在一起，服务「重置」那条既有语义。
+        """
+        self._storage().delete_data(plugin_id)
+
+    def destroy_database(self, plugin_id: str) -> None:
+        """销毁该实例的自有数据库并释放句柄。"""
+        self._database().destroy(plugin_id)
+
 
 InstanceReader = Callable[[str], "PluginInstance | None"]
 InstanceLister = Callable[[], "list[PluginInstance]"]

@@ -357,6 +357,8 @@ SCHEMA_EXPORTS = {
     'PluginInstanceLogLevel': ('app.schemas.plugin', 'PluginInstanceLogLevel'),
     'PluginInstanceLogLevelOverview': ('app.schemas.plugin', 'PluginInstanceLogLevelOverview'),
     'PluginInstanceLogLevelUpdateRequest': ('app.schemas.plugin', 'PluginInstanceLogLevelUpdateRequest'),
+    'PluginInstancePurgeOutcome': ('app.schemas.plugin', 'PluginInstancePurgeOutcome'),
+    'PluginInstancePurgeRequest': ('app.schemas.plugin', 'PluginInstancePurgeRequest'),
     'PluginMarketSyncData': ('app.schemas.system', 'PluginMarketSyncData'),
     'PluginMarketSyncRequest': ('app.schemas.system', 'PluginMarketSyncRequest'),
     'PluginMemoryInfo': ('app.schemas.plugin', 'PluginMemoryInfo'),
@@ -571,6 +573,7 @@ SCHEMA_EXPORTS = {
     'json': ('app.schemas.subscribe', 'json'),
     'model_validator': ('app.schemas.transfer', 'model_validator'),
     're': ('app.schemas.file', 're'),
+    'validate_plugin_id': ('app.schemas.plugin', 'validate_plugin_id'),
 }
 
 SCHEMA_CONFLICTS = {

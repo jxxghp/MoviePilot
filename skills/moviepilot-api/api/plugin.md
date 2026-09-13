@@ -131,6 +131,13 @@ Purpose: List installed plugins and their runtime status.
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer|null): Optional upper bound on plugin catalog results, from 1 to 200; omit it for the complete catalog.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=installed): Literal installed, selecting only installed plugin catalog entries.
 - `body`: none
 
+### `plugin.instance.purge`
+`POST /api/v1/plugin/instance/{instance_id}/purge`; policy effect: `destructive_write`.
+Purpose: Permanently delete one plugin instance's selected data: saved configuration, plugin data rows, its own database and its data directory; a clone also loses its instance record. Nothing is deleted unless explicitly selected.
+- `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.
+- `query`: none
+- `body`: `config` (boolean; default `False`): Purge scope flag: delete this plugin instance's saved configuration values.; `data_directory` (boolean; default `False`): Purge scope flag: delete this plugin instance's entire data directory; its own database is always destroyed first.; `own_database` (boolean; default `False`): Purge scope flag: destroy this plugin instance's own database.; `plugin_data` (boolean; default `False`): Purge scope flag: delete this plugin instance's rows in the shared plugin data table.
+
 ### `plugin.instance.set_enabled`
 `POST /api/v1/plugin/instance/{instance_id}/enabled`; policy effect: `reversible_write`.
 Purpose: Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable.

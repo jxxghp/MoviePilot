@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from app.runtime.settings import get_runtime_setting
+from app.runtime.extensions.plugin.datadir import resolve_plugin_data_directory
 
 __all__ = [
     "plugin_schema_name",
@@ -30,10 +30,15 @@ def sqlite_database_path(plugin_id: str) -> Path:
     落在与 ``_PluginBase.get_data_path()`` 完全相同的插件数据目录下，插件库因此随插件
     数据一起被备份、迁移和删除，不会形成第二份需要单独维护的持久化根。本函数不创建
     目录：``ensure`` 在插件什么都没声明时不得凭空产生目录。
+
+    目录解析走统一入口而不是就地拼接：销毁数据库会 ``unlink`` 这些文件，而插件标识在
+    重置、卸载等路径上直接来自 HTTP 路径段，就地拼接会让一个 ``..`` 把删除抬到插件数据
+    根之外。
     :param plugin_id: 插件标识
     :return: 库文件绝对路径
+    :raise ValueError: 插件标识不是一个合法的单层目录名
     """
-    return Path(get_runtime_setting("PLUGIN_DATA_PATH")) / plugin_id / DATABASE_FILENAME
+    return resolve_plugin_data_directory(plugin_id) / DATABASE_FILENAME
 
 
 def sqlite_sidecar_paths(db_path: Path) -> tuple[Path, ...]:

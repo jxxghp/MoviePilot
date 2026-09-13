@@ -27,6 +27,7 @@ from app.foundation.singleton import Singleton
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.access import PluginAccessPolicy
+from app.runtime.extensions.plugin.datadir import remove_plugin_data_directory
 from app.runtime.extensions.plugin.dependency import (
     PluginDependencyClassification,
     PluginDependencyInstallResult,
@@ -789,6 +790,50 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return False
         clear_instance_log_level_override(plugin_id)
         return deleted
+
+    def delete_plugin_data_rows(self, instance_id: str) -> None:
+        """只删该实例在插件数据表里的行，不碰它的自有数据库。
+
+        与 :meth:`delete_plugin_data` 的区别正在于此：那个方法把数据表与自有库捆在
+        一起删，而彻底清理要让用户逐项勾选，两者必须拆开。
+        """
+        self._plugin_config_store.delete_data_rows(instance_id)
+
+    def destroy_plugin_own_database(self, instance_id: str) -> None:
+        """销毁该实例的自有数据库并释放句柄。"""
+        self._plugin_config_store.destroy_database(instance_id)
+
+    def delete_plugin_data_directory(self, instance_id: str) -> bool:
+        """删除该实例在插件数据目录下的整个目录，返回删除前它是否存在。
+
+        这个目录此前没有任何代码清理过：插件把落盘文件写在这里，卸载与重置都只动
+        数据库，目录会一直留着，重建同名实例时静默继承上一轮的文件。
+
+        :param instance_id: 实例 ID
+        :return: 删除前该目录是否存在
+        :raise ValueError: 标识越界，或目标目录解析后不在插件数据根之内
+        """
+        return remove_plugin_data_directory(instance_id)
+
+    def purge_plugin_instance(self, instance_id: str) -> bool:
+        """彻底删除一个分身实例的行连同其配置，返回删除前它是否存在。
+
+        调用方需自行持有 ``mutation`` 上下文；彻底清理的各个步骤必须落在同一个
+        lease 内，否则停机封口可能卡在两步之间，留下删了一半的实例。
+
+        本体的行删不掉：底层读取口只认分身，本体传进来一律返回未删除。这是有意的，
+        本体那一行还承载着该插件的启用状态与展示覆盖，删掉等于把装着的插件静默停用。
+
+        同时清掉该实例的进程内日志等级覆盖：覆盖表按实例 ID 常驻进程，只删库里那一
+        行的话，同一进程内用相同 ID 重建的分身会继承上一个分身的等级。
+        """
+        deleted = self._plugin_instance_store.delete(instance_id)
+        clear_instance_log_level_override(instance_id)
+        return deleted
+
+    def is_plugin_clone(self, instance_id: str) -> bool:
+        """判断该实例 ID 是否为分身而非源插件本体。"""
+        return self._plugin_instance_store.get(instance_id) is not None
 
     def save_plugin_config(self, pid: str, conf: dict, force: bool = False) -> bool:
         """

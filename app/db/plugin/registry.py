@@ -265,7 +265,13 @@ def _remove_storage(plugin_id: str, handle: PluginDatabaseHandle | None) -> None
         _drop_schema(plugin_id, schema)
         return
 
-    db_path = (handle.db_path if handle else None) or sqlite_database_path(plugin_id)
+    try:
+        db_path = (handle.db_path if handle else None) or sqlite_database_path(plugin_id)
+    except ValueError as error:
+        # 标识越界时没有「该插件的库」可言，删除请求本身就是伪造的；与其它删除失败
+        # 同样只记日志：销毁是一次收尾操作，抛出只会把调用方的收尾流程整条打断
+        logger.warning(f"拒绝按非法插件标识 {plugin_id!r} 删除数据库文件：{error}")
+        return
     for candidate in (db_path, *sqlite_sidecar_paths(db_path)):
         try:
             candidate.unlink(missing_ok=True)
