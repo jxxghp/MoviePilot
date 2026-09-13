@@ -16,7 +16,6 @@ from app.api.dependencies.site import (
     get_site_query_service,
     get_site_sync_query_service,
 )
-from app.api.endpoints.plugin import register_plugin_api
 from app.api.principal import ApiPrincipal
 from app.api.response import (
     COLLECTION_TOTAL_HEADER,
@@ -28,6 +27,7 @@ from app.api.response import (
 )
 from app.application.commands import init_commands
 from app.application.configuration import get_configured_system_config
+from app.application.plugin.routes import register_plugin_api
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.scheduling import get_scheduler
 from app.application.site.mutation import SiteMutationCommand

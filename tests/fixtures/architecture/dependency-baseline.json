@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8650,
-  "edge_sha256": "b127ad724b438d3a940f056676b637592f97903a38457b1c99842b56ea1deb0f",
+  "edge_count": 8649,
+  "edge_sha256": "4cf69f3cc7b8327b86efdf7a84c48e6b55dde47317aabb4758778ffa96a48aba",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2816,14 +2816,13 @@
     "app.api.endpoints.site -> app.api.dependencies",
     "app.api.endpoints.site -> app.api.dependencies.auth",
     "app.api.endpoints.site -> app.api.dependencies.site",
-    "app.api.endpoints.site -> app.api.endpoints",
-    "app.api.endpoints.site -> app.api.endpoints.plugin",
     "app.api.endpoints.site -> app.api.principal",
     "app.api.endpoints.site -> app.api.response",
     "app.api.endpoints.site -> app.application",
     "app.api.endpoints.site -> app.application.commands",
     "app.api.endpoints.site -> app.application.configuration",
     "app.api.endpoints.site -> app.application.plugin",
+    "app.api.endpoints.site -> app.application.plugin.routes",
     "app.api.endpoints.site -> app.application.plugin.runtime",
     "app.api.endpoints.site -> app.application.scheduling",
     "app.api.endpoints.site -> app.application.site",
