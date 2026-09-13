@@ -33,13 +33,15 @@ class PluginIdentityOper(DbOper):
         """批量读取规范化物理插件 ID 对应的身份。"""
         if not plugin_ids:
             return []
+        # 无会话调用由组合根另开短事务，会话在 lambda 返回后立刻关闭；游标必须在事务
+        # 内物化，否则外层消费时身份映射已失效，读不到任何行
         return list(
             self._execute_sync_query(
                 lambda session: session.execute(
                     select(PluginIdentity).where(
                         PluginIdentity.normalized_plugin_id.in_(plugin_ids)
                     )
-                ).scalars()
+                ).scalars().all()
             )
         )
 
