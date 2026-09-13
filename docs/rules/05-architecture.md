@@ -843,6 +843,15 @@ caller-owned transaction. Canonical callers never receive history ORM rows or
 raw Oper objects, while old plugin imports resolve only through SDK Legacy and
 the exact Compat manifest.
 
+Source resource normalization remains in `app/application/download/organization.py`:
+download post-processing, download history, and file management share one plan and
+qB verification state machine. The history repository CAS-writes its checkpoint
+and stages a source-organization outbox intent atomically; successful path and
+file-identity verification precedes the transaction updating download paths.
+`rename_source_root` is an explicit host-internal downloader module contract, not
+a plugin-overridable file-manager rename hook. No source normalization caller
+renames files directly or changes the media-library transfer naming policy.
+
 Durable post-commit side effects have a separate boundary:
 
 - `app/application/outbox.py` separates `OutboxStager`, which only stages in the

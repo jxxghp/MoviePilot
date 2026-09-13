@@ -28,11 +28,13 @@ from app.domain.context import (
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
+from app.domain.music import music_scrape_identity
 from app.foundation.singleton import Singleton
 from app.runtime.cache import cached
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -45,8 +47,6 @@ from app.schemas.types import (
     ScrapingTarget,
     SystemConfigKey,
 )
-from app.schemas.workflow import FileItem
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 
 class ScrapingResponsePort(Protocol):
@@ -699,7 +699,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return
         event_data = event.event_data or {}
         # 读取事件载荷
-        fileitem: FileItem = event_data.get("fileitem")
+        fileitem: _SchemaFileItem = event_data.get("fileitem")
         file_list: List[str] = list(dict.fromkeys(event_data.get("file_list") or []))
         meta: MetaBase = event_data.get("meta")
         mediainfo: MediaInfo = event_data.get("mediainfo")
@@ -1111,6 +1111,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         :param audio_files: 已确认属于本批次的音频文件；为空时按 fileitem 展开
         :param media_by_path: 每个音频文件对应的音乐身份，避免批次内不同单曲互相覆盖
         """
+        from app.chain.artwork import MusicArtworkChain  # pylint: disable=import-outside-toplevel
+
         files = self._normalize_music_audio_fileitems(
             audio_files if audio_files is not None else self._music_audio_fileitems(fileitem)
         )
@@ -1126,7 +1128,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             for item in files
         ]
         distinct_recordings = {
-            self._music_scrape_identity(info)
+            music_scrape_identity(info)
             for info in file_media
             if info and info.music_type != MUSIC_ENTITY_ALBUM
         }
@@ -1208,6 +1210,15 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if result.lyrics_status == "failed":
                 failures.append(f"{audio_item.name or audio_item.path} 歌词保存失败")
 
+        artist_image_counts = (
+            MusicArtworkChain().scrape_artist_images(
+                files=files,
+                media=file_media,
+                overwrite=overwrite or poster_option.is_overwrite,
+                image_loader=self._download_music_cover,
+            ) if with_cover else {}
+        )
+
         message = f"已刮削 {len(files)} 个音频文件"
         if not lyrics_option.is_skip:
             message += (
@@ -1221,21 +1232,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                 message += f"、失败 {lyrics_counts['failed']} 首"
             if lyrics_counts["budget_exceeded"]:
                 message += f"、预算耗尽 {lyrics_counts['budget_exceeded']} 首"
+        message = MusicArtworkChain.append_summary(message, artist_image_counts)
         if failures:
             return False, f"{message}；{'；'.join(failures[:3])}"
         return True, message
-
-    @staticmethod
-    def _music_scrape_identity(info: MusicInfo) -> tuple:
-        """构造音乐刮削身份键，用于识别同一单曲被错误套用到多个文件。"""
-        return (
-            info.media_source,
-            info.media_id,
-            info.music_type,
-            info.title,
-            info.disc_number,
-            info.track_number,
-        )
 
     @staticmethod
     @cached(

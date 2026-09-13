@@ -1,25 +1,46 @@
-from typing import Annotated, Optional
+from collections.abc import Callable
+from dataclasses import asdict
+from typing import Annotated, Any, Optional, cast
 
 from fastapi import Depends, HTTPException, Query
 
 from app.adapters.web.security.access import verify_token
-from app.api.dependencies.auth import get_current_active_superuser_async
+from app.api.dependencies.auth import (
+    get_current_active_manage_user,
+    get_current_active_superuser_async,
+    get_current_active_user,
+)
+from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
+from app.application.music.acquisition import ArtistAcquisitionSnapshot, ArtistWork
 from app.chain.listenbrainz import (
     LISTENBRAINZ_CHART_RANGES,
     LISTENBRAINZ_FRESH_MAX_DAYS,
     LISTENBRAINZ_FRESH_SORTS,
 )
 from app.chain.media import MediaChain
+from app.chain.musicacquisition import MusicArtistAcquisitionChain
 from app.chain.musicbrainz import MusicBrainzChain
 from app.chain.recommend import RecommendChain
-from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
+from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo, TorrentInfo
 from app.schemas.music import MusicAlbumInfo as _SchemaMusicAlbumInfo
 from app.schemas.music import MusicArtistInfo as _SchemaMusicArtistInfo
 from app.schemas.music import MusicLibraryStatus as _SchemaMusicLibraryStatus
 from app.schemas.music import MusicLibraryStatusRequest as _SchemaMusicLibraryStatusRequest
 from app.schemas.music import MusicRecognitionCacheData as _SchemaMusicRecognitionCacheData
 from app.schemas.music import MusicRecognizeRequest as _SchemaMusicRecognizeRequest
+from app.schemas.musicacquisition import (
+    ArtistAcquisitionRequest as _SchemaArtistAcquisitionRequest,
+)
+from app.schemas.musicacquisition import (
+    ArtistAcquisitionTask as _SchemaArtistAcquisitionTask,
+)
+from app.schemas.musicacquisition import (
+    ArtistCollectionCoverage as _SchemaArtistCollectionCoverage,
+)
+from app.schemas.musicacquisition import (
+    ArtistCollectionProbeRequest as _SchemaArtistCollectionProbeRequest,
+)
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
@@ -84,7 +105,7 @@ def _serialize_artist(info: MusicArtistInfo) -> _SchemaMusicArtistInfo:
     return _SchemaMusicArtistInfo(**info.to_dict())
 
 
-@router.post(
+@router.post(  # type: ignore[misc]
     "/recognize",
     summary="识别音乐元数据详情",
     response_model=_SchemaMusicInfo,
@@ -355,3 +376,95 @@ async def music_artist(
     if not info:
         raise HTTPException(status_code=404, detail="未识别到艺术家信息")
     return _serialize_artist(info)
+
+
+@router.post(  # type: ignore[misc]
+    "/artist-collection/probe",
+    summary="检测艺术家合集对官方作品的覆盖",
+    response_model=_SchemaArtistCollectionCoverage,
+)
+def probe_artist_collection(
+    request: _SchemaArtistCollectionProbeRequest,
+    _: _SchemaTokenPayload = Depends(verify_token),
+) -> _SchemaArtistCollectionCoverage:
+    """仅解析种子文件清单，不向下载器添加任务。"""
+    torrent = TorrentInfo()
+    torrent.from_dict(request.torrent.model_dump())
+    works = tuple(
+        ArtistWork(
+            media_id=str(item.media_id or ""),
+            title=str(item.title or item.album or ""),
+            year=item.year,
+            album_type=str(item.album_type or "Album"),
+            title_aliases=tuple(item.title_aliases),
+        )
+        for item in request.works
+    )
+    coverage = MusicArtistAcquisitionChain.probe_collection(
+        torrent=torrent,
+        works=works,
+    )
+    return _SchemaArtistCollectionCoverage(
+        folder_name=coverage.folder_name,
+        file_count=coverage.file_count,
+        confirmed_count=coverage.confirmed_count,
+        probable_count=coverage.probable_count,
+        missing_count=coverage.missing_count,
+        works=[asdict(item) for item in coverage.works],
+    )
+
+
+def _artist_acquisition_task(
+    snapshot: ArtistAcquisitionSnapshot,
+) -> _SchemaArtistAcquisitionTask:
+    """将应用层不可变快照投影为 API 模型。"""
+    return cast(
+        _SchemaArtistAcquisitionTask,
+        _SchemaArtistAcquisitionTask.model_validate(snapshot, from_attributes=True),
+    )
+
+
+@router.post(  # type: ignore[misc]
+    "/artist-acquisition",
+    summary="提交艺术家合集与缺失作品补齐任务",
+    response_model=_SchemaArtistAcquisitionTask,
+)
+def create_artist_acquisition(
+    request: _SchemaArtistAcquisitionRequest,
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+) -> _SchemaArtistAcquisitionTask:
+    """以一个防重聚合任务提交所有站点资源。"""
+    if request.normalize_source:
+        cast(Callable[[ApiPrincipal], object], get_current_active_manage_user)(current_user)
+    collection = request.collection.model_dump() if request.collection else None
+    supplements = tuple(item.model_dump() for item in request.supplements)
+    snapshot = MusicArtistAcquisitionChain().submit(
+        username=current_user.name,
+        artist_source=request.artist_source.value,
+        artist_id=request.artist_id.strip(),
+        artist_name=request.artist_name.strip(),
+        works=tuple(cast(Any, item).model_dump() for item in request.works),
+        collection=collection,
+        supplements=supplements,
+        normalize_source=request.normalize_source,
+        downloader=request.downloader,
+        save_path=request.save_path,
+    )
+    return _artist_acquisition_task(snapshot)
+
+
+@router.get(  # type: ignore[misc]
+    "/artist-acquisition/{job_id}",
+    summary="查询艺术家作品获取任务",
+    response_model=_SchemaArtistAcquisitionTask,
+)
+def get_artist_acquisition(
+    job_id: str,
+    current_user: ApiPrincipal = Depends(get_current_active_user),
+) -> _SchemaArtistAcquisitionTask:
+    snapshot = MusicArtistAcquisitionChain.get(job_id)
+    if snapshot is None or (
+        snapshot.username != current_user.name and not current_user.is_superuser
+    ):
+        raise HTTPException(status_code=404, detail="艺术家作品获取任务不存在")
+    return _artist_acquisition_task(snapshot)

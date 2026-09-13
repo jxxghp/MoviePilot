@@ -70,6 +70,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             username: Optional[str],
             torrent_content: Union[str, bytes],
             custom_words: Optional[str],
+            normalize_source: bool = False,
     ) -> None:
         """提交下载历史、文件明细和 durable 下载事件。"""
         if layout == "NoSubfolder" or not folder_name:
@@ -153,6 +154,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             torrent_content=torrent_content,
             download_hash=download_hash,
             downloader=downloader,
+            normalize_source=normalize_source,
         )
 
         durable_event_writer = getattr(self, "durable_event_writer", None)

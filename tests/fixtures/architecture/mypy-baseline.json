@@ -475,7 +475,7 @@
   "app/api/endpoints/music.py": {
     "arg-type": 6,
     "attr-defined": 1,
-    "misc": 10,
+    "misc": 9,
     "type-arg": 3
   },
   "app/api/endpoints/notification.py": {
@@ -889,14 +889,13 @@
   "app/chain/scraping.py": {
     "arg-type": 30,
     "assignment": 13,
-    "attr-defined": 2,
     "call-arg": 1,
     "index": 1,
     "misc": 1,
     "no-any-return": 1,
     "no-untyped-def": 14,
     "return-value": 1,
-    "type-arg": 2,
+    "type-arg": 1,
     "var-annotated": 1
   },
   "app/chain/site.py": {
@@ -1000,7 +999,6 @@
   },
   "app/chain/transfer/filter.py": {
     "arg-type": 1,
-    "assignment": 1,
     "attr-defined": 1
   },
   "app/chain/transfer/format.py": {

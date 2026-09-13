@@ -7037,6 +7037,28 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "rename_source_root": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "downloader",
+      "input_contract": "SourceRootRenameRequest",
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "downloader",
+        "hash_string",
+        "kind",
+        "new_name",
+        "old_name"
+      ],
+      "result_contract": "bool | None",
+      "result_shape": "boolean",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "scheduler_job": {
       "aggregation": "fan_out",
       "error_policy": "isolate_provider",
@@ -7962,10 +7984,10 @@
     }
   },
   "run_module": {
-    "call_count": 262,
+    "call_count": 264,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 211,
+    "method_count": 212,
     "methods": {
       "anilist_credits": [
         {
@@ -9094,6 +9116,11 @@
       ],
       "music_artist": [
         {
+          "caller": "app.chain.artwork",
+          "count": 1,
+          "mode": "sync"
+        },
+        {
           "caller": "app.chain.musicbrainz",
           "count": 1,
           "mode": "async"
@@ -9258,6 +9285,13 @@
       "rename_file": [
         {
           "caller": "app.chain.storage",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "rename_source_root": [
+        {
+          "caller": "app.application.download.organization",
           "count": 1,
           "mode": "sync"
         }

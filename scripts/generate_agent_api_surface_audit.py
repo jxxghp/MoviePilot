@@ -115,6 +115,10 @@ EXPLICIT_TRANSPORT_PATHS = frozenset(
 )
 SUBSCRIPTION_EXECUTION_UI_PREFIX = "/api/v1/subscribe/execution/"
 MUSIC_LIBRARY_STATUS_UI_PATH = "/api/v1/music/library/status"
+ARTIST_ACQUISITION_UI_PREFIXES = (
+    "/api/v1/music/artist-acquisition",
+    "/api/v1/music/artist-collection/probe",
+)
 
 
 def _gateway_routes() -> dict[tuple[str, str], list[str]]:
@@ -197,6 +201,13 @@ def _classify(
             "ui_presentation",
             "host-ui",
             "Batch music-library presence is a bounded projection for the authenticated artist resource matrix; it is not a standalone Agent business action.",
+            [],
+        )
+    if path.startswith(ARTIST_ACQUISITION_UI_PREFIXES):
+        return (
+            "ui_presentation",
+            "host-ui",
+            "Artist collection probing and aggregate acquisition are owned by the authenticated discography workflow; they are not yet a stable Agent business contract.",
             [],
         )
     if path in EXPLICIT_TRANSPORT_PATHS:

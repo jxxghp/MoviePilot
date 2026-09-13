@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional, Set, Tuple, Union, cast
 from urllib.parse import urlencode, urljoin, urlparse
 
 from app.application.configuration import get_chain_runtime_config_snapshot
-from app.application.directory import validate_download_save_path
+from app.application.directory import DirectoryHelper, validate_download_save_path
 from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
@@ -301,6 +301,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                         return_detail: bool = False,
                         custom_words: Optional[str] = None,
                         governance: Optional[SubscriptionDownloadGovernance] = None,
+                        normalize_source: Optional[bool] = None,
                         ) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
         """
         下载单个资源并发送结果通知。
@@ -322,6 +323,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             return_detail=return_detail,
             custom_words=custom_words,
             governance=governance,
+            normalize_source=normalize_source,
         )
 
     def _execute_download_single(
@@ -340,6 +342,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         return_detail: bool = False,
         custom_words: Optional[str] = None,
         governance: Optional[SubscriptionDownloadGovernance] = None,
+        normalize_source: Optional[bool] = None,
     ) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
         """准备下载事实，提交下载器并按订阅治理合同结算结果。"""
         prepared, error_msg = self._prepare_download_single(
@@ -356,6 +359,12 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         )
         if prepared is None:
             return (None, error_msg) if return_detail else None
+        if normalize_source is None:
+            directory = DirectoryHelper().get_download_dir_by_task_path(prepared.media, prepared.download_dir.as_posix())
+            normalize_source = bool(directory and getattr(directory, "source_normalization", False))
+        if normalize_source and not getattr(self, "durable_event_writer", None):
+            error_msg = "资源规范化需要持久下载后处理服务，未添加下载任务"
+            return (None, error_msg) if return_detail else None
         download_hash, error_msg = self._submit_prepared_download(
             prepared=prepared,
             context=context,
@@ -368,6 +377,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             label=label,
             custom_words=custom_words,
             governance=governance,
+            normalize_source=normalize_source,
         )
         return (download_hash, error_msg) if return_detail else download_hash
 
@@ -480,6 +490,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         label: Optional[str],
         custom_words: Optional[str],
         governance: Optional[SubscriptionDownloadGovernance],
+        normalize_source: bool = False,
     ) -> tuple[Optional[str], Optional[str]]:
         """在可取消边界后调用下载器，并分派成功或拒绝结算。"""
         if self._subscription_download_cancelled(governance):
@@ -511,6 +522,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                 actual_downloader=actual_downloader,
                 download_hash=download_hash,
                 layout=layout,
+                normalize_source=normalize_source,
             )
         else:
             self._record_rejected_download(
@@ -540,6 +552,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         actual_downloader: Optional[str],
         download_hash: str,
         layout: Optional[str],
+        normalize_source: bool = False,
     ) -> None:
         """按普通下载合同结算下载器明确返回的成功结果。"""
         self._settle_download_success(
@@ -552,6 +565,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             download_dir=prepared.download_dir,
             layout=layout,
             downloader=actual_downloader,
+            normalize_source=normalize_source,
             download_hash=download_hash,
             download_episodes=prepared.download_episodes,
             episodes=episodes,

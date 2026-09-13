@@ -146,12 +146,13 @@ def test_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkeypatch)
     """AcoustID 命中后应按 MBID 直查，且不再执行标签和文件名匹配。"""
     recording_id = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
     merged = MetaMusic(title="Get Lucky", audio_format="FLAC")
-    tag_meta = MetaMusic(title="Tagged Title")
+    tag_meta = MetaMusic(title="Get Lucky", artists=["Daft Punk"])
     filename_meta = MetaMusic(title="Filename Title")
     expected = MusicInfo(
         media_source="musicbrainz",
         media_id=recording_id,
         title="Get Lucky",
+        artists=["Daft Punk"],
     )
     chain = MediaChain()
     direct = Mock(return_value=expected)
@@ -172,6 +173,7 @@ def test_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkeypatch)
 
     assert recognized_meta is merged
     assert recognized_info is expected
+    assert recognized_info.album_type == "Single"
     direct.assert_called_once_with(merged, recording_id)
     later_tier.assert_not_called()
 
@@ -218,7 +220,12 @@ def test_recognize_music_by_path_tag_mbid_skips_multi_source_matching(monkeypatc
 
 def test_recognize_music_by_path_falls_back_from_tags_to_filename(monkeypatch):
     """标签层未获得远端身份时应继续使用文件名层，且顺序不可反转。"""
-    tag_meta = MetaMusic(title="Tagged Title")
+    tag_meta = MetaMusic(
+        title="Tagged Title",
+        artists=["Taylor Swift"],
+        album="Speak Now",
+        year=2010,
+    )
     filename_meta = MetaMusic(title="Filename Title")
     expected = MusicInfo(
         media_source="musicbrainz",
@@ -241,10 +248,12 @@ def test_recognize_music_by_path_falls_back_from_tags_to_filename(monkeypatch):
     _, recognized_info = chain.recognize_music_by_path("track.flac")
 
     assert recognized_info is expected
-    assert [call.kwargs["meta"] for call in recognize.call_args_list] == [
-        tag_meta,
-        filename_meta,
-    ]
+    calls = [call.kwargs["meta"] for call in recognize.call_args_list]
+    assert calls[0] is tag_meta
+    assert calls[1].title == "Filename Title"
+    assert calls[1].artists == ["Taylor Swift"]
+    assert calls[1].album == "Speak Now"
+    assert calls[1].year == 2010
     assert all(
         call.kwargs["music_type"] == "recording"
         for call in recognize.call_args_list
@@ -254,18 +263,19 @@ def test_recognize_music_by_path_falls_back_from_tags_to_filename(monkeypatch):
 def test_async_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkeypatch):
     """异步路径也应在 AcoustID 命中后直查 MBID 并停止后续层级。"""
     recording_id = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
-    merged = MetaMusic(title="Get Lucky")
+    merged = MetaMusic(title="Get Lucky", artists=["Daft Punk"])
     expected = MusicInfo(
         media_source="musicbrainz",
         media_id=recording_id,
         title="Get Lucky",
+        artists=["Daft Punk"],
     )
     chain = MediaChain()
     direct = AsyncMock(return_value=expected)
     later_tier = AsyncMock()
     monkeypatch.setattr(
         "app.chain.media.path.AudioMetadataHelper.read_evidence",
-        Mock(return_value=(merged, MetaMusic(), MetaMusic())),
+        Mock(return_value=(merged, MetaMusic(title="Get Lucky", artists=["Daft Punk"]), MetaMusic(title="track"))),
     )
     monkeypatch.setattr(
         AcoustIdChain,
@@ -282,6 +292,390 @@ def test_async_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkey
     assert recognized_meta is merged
     assert recognized_info is expected
     direct.assert_awaited_once_with(merged, recording_id)
+    later_tier.assert_not_awaited()
+
+
+def test_recognize_music_by_path_rejects_same_title_fingerprint_without_artist(monkeypatch):
+    """只有同名曲名不足以证明 AcoustID 候选属于正确艺人。"""
+    wrong_id = "wrong-dear-john"
+    merged = MetaMusic(title="Dear John")
+    wrong = MusicInfo(
+        media_source="musicbrainz",
+        media_id=wrong_id,
+        title="Dear John",
+        artists=["Tamia"],
+    )
+    expected = MusicInfo(
+        media_source="musicbrainz",
+        media_id="fallback-recording",
+        title="Dear John",
+        artists=["Taylor Swift"],
+    )
+    chain = MediaChain()
+    tier = Mock(return_value=expected)
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(merged, merged, MetaMusic(title="Dear John"))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=wrong_id),
+    )
+    monkeypatch.setattr(chain, "_recognize_musicbrainz_recording", Mock(return_value=wrong))
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", tier)
+
+    _, recognized_info = chain.recognize_music_by_path("Dear John.flac")
+
+    assert recognized_info is expected
+    tier.assert_called_once()
+
+
+def test_recognize_music_by_path_applies_context_artist_to_filename_fallback(monkeypatch):
+    """标签无曲名时，同目录艺人共识仍必须约束文件名搜索。"""
+    merged = MetaMusic(title="Enchanted", year=2011)
+    empty_tag = MetaMusic(year=2011)
+    filename_meta = MetaMusic(title="Enchanted")
+    contextual = MetaMusic(
+        artists=["Taylor Swift"],
+        album_artist="Taylor Swift",
+        album="Speak Now",
+        year=2023,
+    )
+    expected = MusicInfo(
+        media_source="musicbrainz",
+        media_id="taylor-enchanted",
+        title="Enchanted",
+        artists=["Taylor Swift"],
+    )
+    chain = MediaChain()
+    tier = Mock(side_effect=[None, expected])
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(merged, empty_tag, filename_meta)),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=None),
+    )
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", tier)
+
+    _, recognized_info = chain.recognize_music_by_path(
+        "Enchanted.flac",
+        contextual_meta=contextual,
+    )
+
+    assert recognized_info is expected
+    assert tier.call_args_list[0].kwargs["meta"].year == 2023
+    filename_call = tier.call_args_list[1]
+    assert filename_call.kwargs["meta"].artists == ["Taylor Swift"]
+    assert filename_call.kwargs["meta"].album == "Speak Now"
+    assert filename_call.kwargs["meta"].year == 2023
+
+
+def test_recognize_music_by_path_rejects_fingerprint_text_mismatch(monkeypatch):
+    """A high-confidence but wrongly mapped AcoustID result must fall back."""
+    wrong_id = "f5ac0d7b-8540-4534-93cf-ac9642e43e4d"
+    merged = MetaMusic(title="Christmas Tree Farm", artists=["Taylor Swift"])
+    filename_meta = MetaMusic(title="Christmas Tree Farm", artists=["Taylor Swift"])
+    wrong = MusicInfo(
+        media_source="musicbrainz",
+        media_id=wrong_id,
+        title="Wrapped in Red (My Heart for You) [Christmas in the Trees Mix]",
+        artists=["Justin Lovemaker"],
+    )
+    expected = MusicInfo(
+        media_source="musicbrainz",
+        media_id="correct-recording",
+        title="Christmas Tree Farm",
+        artists=["Taylor Swift"],
+    )
+    chain = MediaChain()
+    tier = Mock(return_value=expected)
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(merged, merged, filename_meta)),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=wrong_id),
+    )
+    monkeypatch.setattr(chain, "_recognize_musicbrainz_recording", Mock(return_value=wrong))
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", tier)
+
+    _, recognized_info = chain.recognize_music_by_path("Christmas Tree Farm.mp3")
+
+    assert recognized_info is expected
+    tier.assert_called_once_with(
+        meta=merged,
+        media_source=None,
+        tier_name="文件标签",
+    )
+
+
+def test_recognize_music_by_path_accepts_fingerprint_radio_version_suffix(monkeypatch):
+    """同艺人的 Radio Single Version 标签应接受正确的基础录音指纹。"""
+    recording_id = "08f535c5-b651-4cc2-a8a8-349aa6060b16"
+    merged = MetaMusic(
+        title="Our Song (Radio Single Version)",
+        artists=["Taylor Swift"],
+    )
+    expected = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="Our Song",
+        artists=["Taylor Swift"],
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(merged, merged, MetaMusic(title="Our Song"))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(chain, "_recognize_musicbrainz_recording", Mock(return_value=expected))
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized_info = chain.recognize_music_by_path("Our Song.flac")
+
+    assert recognized_info is expected
+    later_tier.assert_not_called()
+
+
+def test_recognize_music_by_path_accepts_minor_tag_typo_with_same_artist(monkeypatch):
+    """同艺人且高度相似的旧标签拼写差异不应丢失远端分类。"""
+    recording_id = "25aa1b18-5e85-454e-a15b-145d5559d0fe"
+    merged = MetaMusic(title="Cold As You Are", artists=["Taylor Swift"])
+    expected = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="Cold as You",
+        artists=["Taylor Swift"],
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(merged, merged, MetaMusic(title="Cold As You Are"))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(chain, "_recognize_musicbrainz_recording", Mock(return_value=expected))
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized_info = chain.recognize_music_by_path("Cold As You Are.flac")
+
+    assert recognized_info is expected
+    later_tier.assert_not_called()
+
+
+def test_recognize_music_by_path_accepts_equivalent_recording_qualifiers(monkeypatch):
+    """同艺人同基础曲名的 radio/pop 版本应保留指纹提供的实际录音身份。"""
+    recording_id = "teardrops-pop-version"
+    merged = MetaMusic(
+        title="Teardrops On My Guitar (Radio Single Version)",
+        artists=["Taylor Swift"],
+    )
+    expected = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="Teardrops on My Guitar (pop version)",
+        artists=["Taylor Swift"],
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(merged, merged, MetaMusic(title=merged.title))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(chain, "_recognize_musicbrainz_recording", Mock(return_value=expected))
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized_info = chain.recognize_music_by_path("Teardrops.flac")
+
+    assert recognized_info is expected
+    later_tier.assert_not_called()
+
+
+def test_recognize_music_by_path_reconciles_standalone_single_release(monkeypatch):
+    """指纹录音属于多个发行版时，应尊重本地同名单曲标签。"""
+    recording_id = "131b296c-3533-4e55-9800-a6dd83b90737"
+    single_title = 'Beautiful Ghosts (From The Motion Picture "Cats")'
+    tagged = MetaMusic(
+        title=single_title,
+        artists=["Taylor Swift"],
+        album=single_title,
+        album_artist="Taylor Swift",
+        year=2019,
+        track_number=1,
+        total_tracks=1,
+    )
+    soundtrack = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="Beautiful Ghosts",
+        artists=["Taylor Swift"],
+        album="Cats: Highlights From the Motion Picture Soundtrack",
+        album_artist="Andrew Lloyd Webber",
+        album_id="cats-release-group",
+        album_type="Album",
+        secondary_types=["Soundtrack"],
+        year=2019,
+        track_number=3,
+        total_tracks=16,
+        cover_url="https://cover.example/cats.jpg",
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(tagged, tagged, MetaMusic(title="Beautiful Ghosts"))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_recognize_musicbrainz_recording",
+        Mock(return_value=soundtrack),
+    )
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized = chain.recognize_music_by_path("Beautiful Ghosts.mp3")
+
+    assert recognized is not soundtrack
+    assert recognized.media_id == recording_id
+    assert recognized.title == "Beautiful Ghosts"
+    assert recognized.album == single_title
+    assert recognized.album_artist == "Taylor Swift"
+    assert recognized.album_id is None
+    assert recognized.album_type == "Single"
+    assert recognized.secondary_types == []
+    assert recognized.year == 2019
+    assert recognized.track_number == 1
+    assert recognized.total_tracks == 1
+    assert recognized.cover_url is None
+    assert recognized.metadata_category == "Single"
+    later_tier.assert_not_called()
+
+
+def test_recognize_music_by_path_ignores_single_content_rating_qualifier(monkeypatch):
+    """Explicit/Clean 只描述内容分级，不应阻止同名单曲发行证据。"""
+    recording_id = "7b35656c-5589-48d3-9a96-467a637e9bd2"
+    title = "All Too Well (10 Minute Version) (Taylor's Version) (Live Acoustic|Explicit)"
+    album = "All Too Well (10 Minute Version) [Taylor's Version] [Live Acoustic] [Explicit]"
+    tagged = MetaMusic(
+        title=title,
+        artists=["Taylor Swift"],
+        album=f"{album} - Single",
+        year=2023,
+        track_number=1,
+    )
+    candidate = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="All Too Well (10 Minute version) (Taylor’s version) (live acoustic)",
+        artists=["Taylor Swift"],
+        album="Red (Taylor's Version)",
+        album_id="red-release-group",
+        album_type="Album",
+        year=2019,
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(tagged, tagged, MetaMusic(title=title))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_recognize_musicbrainz_recording",
+        Mock(return_value=candidate),
+    )
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized = chain.recognize_music_by_path("All Too Well.mp3")
+
+    assert recognized.media_id == recording_id
+    assert recognized.album == f"{album} - Single"
+    assert recognized.album_id is None
+    assert recognized.album_type == "Single"
+    assert recognized.track_number == 1
+    assert recognized.year == 2023
+    later_tier.assert_not_called()
+
+
+def test_async_recognize_music_by_path_reconciles_standalone_single_release(monkeypatch):
+    """异步路径必须与同步路径使用相同的单曲发行校正规则。"""
+    recording_id = "131b296c-3533-4e55-9800-a6dd83b90737"
+    single_title = 'Beautiful Ghosts (From The Motion Picture "Cats")'
+    tagged = MetaMusic(
+        title=single_title,
+        artists=["Taylor Swift"],
+        album=single_title,
+        year=2019,
+    )
+    soundtrack = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="Beautiful Ghosts",
+        artists=["Taylor Swift"],
+        album="Cats: Highlights From the Motion Picture Soundtrack",
+        album_id="cats-release-group",
+        album_type="Album",
+        secondary_types=["Soundtrack"],
+        year=2019,
+        cover_url="https://cover.example/cats.jpg",
+    )
+    chain = MediaChain()
+    later_tier = AsyncMock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(tagged, tagged, MetaMusic(title="Beautiful Ghosts"))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "async_identify_music_by_fingerprint",
+        AsyncMock(return_value=recording_id),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_async_recognize_musicbrainz_recording",
+        AsyncMock(return_value=soundtrack),
+    )
+    monkeypatch.setattr(chain, "_async_recognize_music_meta_tier", later_tier)
+
+    _, recognized = asyncio.run(
+        chain.async_recognize_music_by_path("Beautiful Ghosts.mp3")
+    )
+
+    assert recognized.album == single_title
+    assert recognized.album_id is None
+    assert recognized.album_type == "Single"
+    assert recognized.secondary_types == []
+    assert recognized.cover_url is None
+    assert recognized.metadata_category == "Single"
     later_tier.assert_not_awaited()
 
 

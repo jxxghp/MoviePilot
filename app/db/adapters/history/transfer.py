@@ -101,6 +101,10 @@ def project_transfer_history(record: object) -> TransferHistorySnapshot:
             "transfer_settlement_revision",
             None,
         ),
+        transfer_batch_id=getattr(record, "transfer_batch_id", None),
+        transfer_batch_title=getattr(record, "transfer_batch_title", None),
+        transfer_batch_root=getattr(record, "transfer_batch_root", None),
+        transfer_batch_total=getattr(record, "transfer_batch_total", None),
         src=getattr(record, "src", None),
         src_storage=getattr(record, "src_storage", None),
         src_fileitem=deepcopy(getattr(record, "src_fileitem", None)),
@@ -339,6 +343,15 @@ class TransactionalTransferHistoryRepository:
             record = await TransferHistoryOper(session).async_get(history_id)
             return project_transfer_history(record) if record is not None else None
 
+    async def async_list_by_hash(
+        self,
+        download_hash: str,
+    ) -> list[TransferHistorySnapshot]:
+        """异步按下载任务 Hash 返回历史快照。"""
+        async with self._async_session() as session:
+            records = await TransferHistoryOper(session).async_list_by_hash(download_hash)
+            return [project_transfer_history(record) for record in records]
+
     async def async_list_by_title(
         self,
         title: str,
@@ -372,6 +385,31 @@ class TransactionalTransferHistoryRepository:
                 status,
             )
             return [project_transfer_history(record) for record in records]
+
+    async def async_list_by_batch_id(
+        self,
+        batch_id: str,
+        status: Optional[bool] = None,
+    ) -> list[TransferHistorySnapshot]:
+        """异步返回同一目录整理批次的全部历史快照。"""
+        async with self._async_session() as session:
+            records = await TransferHistoryOper(session).async_list_by_batch_id(
+                batch_id,
+                status,
+            )
+            return [project_transfer_history(record) for record in records]
+
+    async def async_count_by_batch_id(
+        self,
+        batch_id: str,
+        status: Optional[bool] = None,
+    ) -> int:
+        """异步统计同一目录整理批次的历史数量。"""
+        async with self._async_session() as session:
+            return await TransferHistoryOper(session).async_count_by_batch_id(
+                batch_id,
+                status,
+            )
 
     async def async_count(self, status: Optional[bool] = None) -> int:
         """异步统计指定状态的整理历史数量。"""

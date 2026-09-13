@@ -100,6 +100,7 @@ class DownloadProcessingSnapshot:
     torrent_content: str | bytes
     download_hash: str | None = None
     downloader: str | None = None
+    normalize_source: bool = False
 
 
 def snapshot_download_notification(message: Message | None) -> dict[str, Any] | None:
@@ -116,6 +117,7 @@ def snapshot_download_processing(
     torrent_content: str | bytes,
     download_hash: str | None = None,
     downloader: str | None = None,
+    normalize_source: bool = False,
 ) -> dict[str, Any]:
     """冻结下载后处理输入，并保留查询下载器实际内容路径所需的身份。"""
     if isinstance(torrent_content, bytes):
@@ -131,6 +133,7 @@ def snapshot_download_processing(
         "torrent_content": content,
         "download_hash": download_hash,
         "downloader": downloader,
+        "normalize_source": normalize_source,
     }))
 
 
@@ -141,6 +144,9 @@ def restore_download_processing(payload: dict[str, Any]) -> DownloadProcessingSn
     download_dir = payload.get("download_dir")
     download_hash = payload.get("download_hash")
     downloader = payload.get("downloader")
+    normalize_source = payload.get("normalize_source", False)
+    if not isinstance(normalize_source, bool):
+        raise ValueError("资源规范化开关必须是布尔值")
     if not isinstance(context, dict) or not isinstance(content, dict):
         raise ValueError("下载后处理快照缺少 context 或 torrent_content")
     if not isinstance(download_dir, str) or not download_dir:
@@ -171,6 +177,7 @@ def restore_download_processing(payload: dict[str, Any]) -> DownloadProcessingSn
         torrent_content=restored_content,
         download_hash=download_hash,
         downloader=downloader,
+        normalize_source=normalize_source,
     )
 
 

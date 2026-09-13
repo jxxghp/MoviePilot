@@ -155,6 +155,8 @@ SCHEMA_EXPORTS = {
     'DownloadHistory': ('app.schemas.history', 'DownloadHistory'),
     'DownloadSourceClassificationData': ('app.schemas.download', 'DownloadSourceClassificationData'),
     'DownloadSourceClassificationRequest': ('app.schemas.download', 'DownloadSourceClassificationRequest'),
+    'DownloadSourcePathRequest': ('app.schemas.download', 'DownloadSourcePathRequest'),
+    'DownloadSourceStatusRequest': ('app.schemas.download', 'DownloadSourceStatusRequest'),
     'DownloadTask': ('app.schemas.workflow', 'DownloadTask'),
     'DownloadTaskMedia': ('app.schemas.transfer', 'DownloadTaskMedia'),
     'DownloadTaskMutationResult': ('app.schemas.download', 'DownloadTaskMutationResult'),

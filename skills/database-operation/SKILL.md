@@ -176,6 +176,12 @@ python scripts/mp-db.py write "UPDATE subscribe SET state = 'S' WHERE id = 123"
 - Write boundary: Written by messaging and notification services; clean it through the message API or retention job.
 - Columns: `id`, `channel`, `source`, `mtype`, `title`, `text`, `image`, `link`, `userid`, `reg_time`, `action`, `note`
 
+### `musicartistacquisition`
+- Purpose: Stores one durable artist-discography acquisition plan, its collection coverage, supplement submissions, and terminal state.
+- Useful queries: Diagnosing artist collection coverage, missing album or single supplements, per-resource download IDs, and failed submissions.
+- Write boundary: Owned by the artist acquisition API and repository; retry or replace a plan through the music workflow instead of editing state directly.
+- Columns: `id`, `job_id`, `plan_key`, `username`, `artist_source`, `artist_id`, `artist_name`, `state`, `scope`, `plan`, `results`, `total_count`, `covered_count`, `supplement_count`, `failed_count`, `created_at`, `updated_at`, `finished_at`, `last_error`
+
 ### `outboxmessage`
 - Purpose: Stores externally visible side-effect intents committed atomically with business transactions.
 - Useful queries: Diagnosing pending/processing/failed state, leases, attempts, and the last error.

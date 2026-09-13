@@ -67,7 +67,7 @@ def test_contract_v2_freezes_every_observed_host_method() -> None:
     contracts = list_explicit_module_contracts()
 
     assert len(contracts) >= 211
-    host_internal_methods = {"plan_transfer", "execute_transfer_plan"}
+    host_internal_methods = {"plan_transfer", "execute_transfer_plan", "rename_source_root"}
     for method_name, contract in contracts.items():
         assert contract.version == 1
         assert contract.input_contract != "legacy_args"

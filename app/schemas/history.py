@@ -80,6 +80,11 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
     id: int
     # durable 整理任务标识仅供宿主入口选择重试协议，不属于公开历史响应
     transfer_task_id: Optional[str] = Field(default=None, exclude=True)
+    # 同一目录整理批次；前端用它把艺术家合集折叠为一个可续跑任务。
+    transfer_batch_id: Optional[str] = None
+    transfer_batch_title: Optional[str] = None
+    transfer_batch_root: Optional[str] = None
+    transfer_batch_total: Optional[int] = None
     # 源存储类型
     src_storage: Optional[str] = None
     # 目标存储类型

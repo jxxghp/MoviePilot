@@ -53,6 +53,50 @@ def test_artist_alias_lookup_verifies_identity_in_both_io_modes(monkeypatch):
     assert module._artist_alias_values(payload, "other-artist") == []
 
 
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_explicit_artist_identity_uses_artist_detail_endpoint(monkeypatch, async_mode):
+    """艺术家合集的 MBID 必须请求 Artist，不能误探测 Recording 或 Release Group。"""
+    module = MusicBrainzModule()
+    artist_id = "e5d8c705-8ea4-4820-b11d-fbf580d85ce4"
+    payload = {
+        "id": artist_id,
+        "name": "林俊傑",
+        "aliases": [{"name": "林俊杰"}],
+        "country": "SG",
+        "type": "Person",
+    }
+    sync_request = Mock(return_value=payload)
+    async_request = AsyncMock(return_value=payload)
+    monkeypatch.setattr(module, "_request_json", sync_request)
+    monkeypatch.setattr(module, "_async_request_json", async_request)
+
+    kwargs = {
+        "meta": MetaMusic(title="林俊杰 艺术家合集"),
+        "media_source": MediaSource.MusicBrainz,
+        "media_id": artist_id,
+        "music_type": "artist",
+        "cache": False,
+    }
+    result = (
+        asyncio.run(module.async_recognize_media(**kwargs))
+        if async_mode
+        else module.recognize_media(**kwargs)
+    )
+
+    assert result is not None
+    assert result.media_id == artist_id
+    assert result.music_type == "artist"
+    assert result.title == "林俊傑"
+    assert result.title_aliases == ["林俊杰"]
+    expected_path = f"/artist/{artist_id}"
+    if async_mode:
+        assert async_request.await_args.args == (expected_path,)
+        assert sync_request.call_count == 0
+    else:
+        assert sync_request.call_args.args == (expected_path,)
+        assert async_request.await_count == 0
+
+
 def test_metadata_ranking_prefers_complete_name_over_partial_character_hit():
     """宽召回之后也应按完整标题与署名排序，避免单字相关候选压过准确目标。"""
     exact = MusicInfo(title="晴天", artists=["周杰倫"])
@@ -722,6 +766,57 @@ def test_music_artist_maps_profile_links_and_image(monkeypatch):
     assert set(artist.external_links) == {"official homepage", "wikidata"}
 
 
+def test_music_artist_uses_wikidata_image_when_direct_relation_is_missing(monkeypatch):
+    """MusicBrainz 没有直接 image 关系时应用 Wikidata P18 补全艺人图片。"""
+    module = MusicBrainzModule()
+    monkeypatch.setattr(
+        MusicBrainzModule,
+        "_request_json",
+        staticmethod(lambda path, params=None: {
+            "id": "artist-1",
+            "name": "Queen",
+            "relations": [{
+                "type": "wikidata",
+                "target-type": "url",
+                "url": {"resource": "https://www.wikidata.org/wiki/Q15862"},
+            }],
+        }),
+    )
+    wikidata_image = Mock(return_value="https://commons.example/Queen.jpg")
+    monkeypatch.setattr(MusicBrainzModule, "_wikidata_artist_image", wikidata_image)
+
+    artist = module.music_artist("musicbrainz", "artist-1")
+
+    assert artist is not None
+    assert artist.image_url == "https://commons.example/Queen.jpg"
+    wikidata_image.assert_called_once_with("https://www.wikidata.org/wiki/Q15862")
+
+
+def test_wikidata_artist_image_payload_uses_p18_commons_file() -> None:
+    """Wikidata P18 文件名应转换为可下载的 Commons 缩放直链。"""
+    image_url = MusicBrainzModule._wikidata_image_from_payload(
+        {
+            "entities": {
+                "Q15862": {
+                    "claims": {
+                        "P18": [{
+                            "mainsnak": {
+                                "datavalue": {"value": "Queen – 1984.jpg"},
+                            },
+                        }],
+                    },
+                },
+            },
+        },
+        "Q15862",
+    )
+
+    assert image_url == (
+        "https://commons.wikimedia.org/wiki/Special:FilePath/"
+        "Queen%20%E2%80%93%201984.jpg?width=500"
+    )
+
+
 def test_music_artist_albums_sorts_page_by_release_date(monkeypatch):
     """艺术家专辑列表应按发行日期倒序，并带上专辑类型筛选参数。"""
     module = MusicBrainzModule()
@@ -1168,6 +1263,28 @@ def test_select_candidate_rejects_wrong_artist_same_title():
     )
 
     assert MusicBrainzModule._select_candidate(meta, [wrong_artist], media_source="musicbrainz") is None
+
+
+def test_select_candidate_rejects_wrong_release_year_and_album():
+    """曲名和艺人相同也不能把有明确专辑证据的原版投影到其他发行版。"""
+    meta = MetaMusic(
+        title="Sparks Fly",
+        artists=["Taylor Swift"],
+        album="Speak Now",
+        year=2010,
+    )
+    wrong_release = MusicInfo(
+        media_source="musicbrainz",
+        media_id="recording-wrong-release",
+        title="Sparks Fly",
+        artists=["Taylor Swift"],
+        album="Now That's What I Call Music",
+        year=2025,
+    )
+
+    assert MusicBrainzModule._select_candidate(
+        meta, [wrong_release], media_source="musicbrainz"
+    ) is None
 
 
 def test_select_candidate_rejects_artist_only_match():

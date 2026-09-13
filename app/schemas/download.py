@@ -85,7 +85,7 @@ class DownloadSourceClassificationRequest(BaseModel):  # type: ignore[misc]
 
     downloader: Optional[str] = None
     execute: bool = False
-    mode: Literal["recognize", "manual"] = "recognize"
+    mode: Literal["keep", "recognize", "manual"] = "recognize"
     target_path: Optional[str] = None
     type_name: Optional[Literal["电影", "电视剧", "音乐"]] = None
     media_source: Optional[_MediaSource] = None
@@ -115,7 +115,7 @@ class DownloadSourceClassificationData(BaseModel):  # type: ignore[misc]
 
     hash: str
     downloader: str
-    mode: Literal["recognize", "manual"]
+    mode: Literal["keep", "recognize", "manual"]
     recognized: bool
     media_type: Optional[str] = None
     media_source: Optional[str] = None
@@ -125,6 +125,8 @@ class DownloadSourceClassificationData(BaseModel):  # type: ignore[misc]
     current_save_path: str
     target_save_path: str
     current_content_path: Optional[str] = None
+    target_content_path: Optional[str] = None
+    rename_kind: Optional[Literal["folder", "file"]] = None
     category: Optional[str] = None
     secondary_categories: list[str] = Field(default_factory=list)
     current_root_name: Optional[str] = None
@@ -135,3 +137,20 @@ class DownloadSourceClassificationData(BaseModel):  # type: ignore[misc]
     executed: bool
     relocated: bool = False
     renamed: bool = False
+    operation_id: Optional[str] = None
+    state: Literal["preview", "prepared", "rename_requested", "move_requested", "complete", "needs_attention"] = "preview"
+    message: Optional[str] = None
+
+
+class DownloadSourceStatusRequest(BaseModel):  # type: ignore[misc]
+    """核验已经确认的操作；不创建或替换新的改名计划。"""
+
+    downloader: str = Field(min_length=1)
+    operation_id: Optional[str] = None
+
+
+class DownloadSourcePathRequest(DownloadSourceClassificationRequest):
+    """文件管理入口使用同一规范命名计划，路径必须唯一对应下载任务根。"""
+
+    source_path: str = Field(min_length=1, description="MP 可见的下载任务根目录或单文件完整路径")
+    storage: Literal["local"] = "local"

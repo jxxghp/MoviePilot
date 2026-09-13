@@ -13,7 +13,14 @@ from app.domain.context import Context, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.runtime import get_metainfo_accelerator
 from app.domain.metainfo import MetaInfo, MetaInfoPath
-from app.domain.music import match_music_resource, music_isrc_matches, music_version_matches
+from app.domain.music import (
+    match_music_resource,
+    music_album_matches,
+    music_isrc_matches,
+    music_title_matches,
+    music_version_matches,
+    music_year_matches,
+)
 from app.schemas.music import MusicMeta
 from app.schemas.types import MediaType
 
@@ -118,6 +125,17 @@ def test_resource_parser_keeps_bracketed_title():
     assert meta.artists == ["周華健"]
 
 
+@pytest.mark.parametrize("title", [
+    'Macavity (From The Motion Picture Soundtrack "Cats")',
+    'Beautiful Ghosts (From The Motion Picture "Cats")',
+    "Beautiful Ghosts《猫》原声插曲",
+])
+def test_soundtrack_credit_does_not_change_recording_title(title):
+    """影视来源说明不是歌名本体，不能让正确的 MusicBrainz 录音候选被拒绝。"""
+    expected = "Macavity" if title.startswith("Macavity") else "Beautiful Ghosts"
+    assert music_title_matches(MusicInfo(title=expected), title)
+
+
 def test_music_album_field_cannot_match_target_recording():
     """结构化资源中的所属专辑不能冒充同名目标单曲。"""
     music = MusicInfo(title="Album", artists=["Artist"])
@@ -183,6 +201,41 @@ def test_music_version_checks_only_explicit_conflicting_dates(expected, actual, 
     target = MusicInfo(title="1999", artists=["Artist"], version=expected)
     meta = MetaMusic(title="1999", artists=["Artist"], version=actual)
     assert music_version_matches(target, meta) is matched
+
+
+def test_taylors_version_is_distinct_from_original_recording():
+    """Taylor's Version 是重新录制，不得与原版仅凭同名和同艺人互换。"""
+    rerecorded = MusicInfo(
+        title="Back to December (Taylor's Version)",
+        artists=["Taylor Swift"],
+    )
+    original = MetaMusic(title="Back To December", artists=["Taylor Swift"])
+    same_version = MetaMusic(
+        title="Back To December (Taylor’s Version)",
+        artists=["Taylor Swift"],
+    )
+
+    assert music_version_matches(rerecorded, original) is False
+    assert music_version_matches(rerecorded, same_version) is True
+
+
+def test_music_release_evidence_rejects_wrong_album_and_year():
+    """同名同艺人的录音仍须服从文件标签中的专辑本体和发行年份。"""
+    info = MusicInfo(
+        title="Sparks Fly",
+        artists=["Taylor Swift"],
+        album="Speak Now",
+        year=2025,
+    )
+    meta = MetaMusic(
+        title="Sparks Fly",
+        artists=["Taylor Swift"],
+        album="Speak Now (Target Exclusive Deluxe Edition 2CD).CD1",
+        year=2010,
+    )
+
+    assert music_album_matches(info, meta.album) is True
+    assert music_year_matches(info, meta) is False
 
 
 def test_music_resource_rejects_different_dated_live_recording():

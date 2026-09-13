@@ -32,6 +32,14 @@ username, password, API key, Cookie, or arbitrary URL.
   MoviePilot media categories. For an existing MoviePilot task, use the Web UI
   resource-category preview and confirmation flow when the target should come
   from MoviePilot's download history and resource-directory rules.
+  The Web UI resource normalization tool is shared by new downloads, download
+  history, and file management. It only changes the qB task root or single-file
+  name; music category/artist folders use MusicBrainz primary type (Artist
+  Collection is an MP extension). It verifies live paths and file identities
+  before synchronizing MP records. An accepted provider request is not completed
+  normalization. Resume an existing operation through the Web UI or the
+  admin-only POST /api/v1/download/{hashString}/source-status contract, never by
+  re-adding the torrent or blindly calling raw location/rename operations.
 
 ## Instance And Provider Discovery
 

@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
-from typing import Any, List, Optional, Protocol, Tuple
+from typing import Any, List, Optional, Protocol, Tuple, cast
 
 from pydantic import ValidationError
 
@@ -10,10 +10,12 @@ from app.application.classification.reference import (
     ClassificationCategoryResolution,
     ClassificationCategoryResolver,
     append_classification_category_path,
+    apply_persisted_classification_snapshot,
     category_path_below_media_type,
     classification_category_resolver_snapshot,
     classification_media_type,
     configure_classification_category_resolver,
+    persisted_classification_snapshot,
     reset_classification_category_resolver,
 )
 from app.application.configuration import (
@@ -31,13 +33,30 @@ from app.runtime.log import logger
 from app.schemas.category import ClassificationPolicy
 from app.schemas.file import FileURI as _SchemaFileURI
 from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
-from app.schemas.types import MediaType, StorageSchema, SystemConfigKey
+from app.schemas.types import MUSIC_ARTIST_COLLECTION_CATEGORY, MediaType, StorageSchema, SystemConfigKey
 
 JINJA2_VAR_PATTERN = re.compile(r"\{\{.*?}}", re.DOTALL)
 WINDOWS_DRIVE_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 WINDOWS_DRIVE_PREFIX_PATTERN = re.compile(r"^[A-Za-z]:")
 DirectoryMedia = MediaInfo | MusicInfo
 """目录选择支持的完整影视或音乐媒体对象。"""
+
+
+def source_directory_media(media: DirectoryMedia, category: Optional[str] = None) -> DirectoryMedia:
+    """统一资源目录分类身份；合集按包归档，普通作品尊重识别分类，显式选择优先。"""
+    selection = getattr(getattr(media, "classification", None), "effective", None)
+    if not category and getattr(selection, "source", None) == "manual":
+        return media
+    if not category and str(getattr(media, "music_type", "")) == "artist":
+        category = MUSIC_ARTIST_COLLECTION_CATEGORY
+    if not category:
+        return media
+    return cast(
+        DirectoryMedia,
+        apply_persisted_classification_snapshot(
+            media, persisted_classification_snapshot(category_path=category, source="manual")
+        ),
+    )
 
 
 def build_media_download_path(
@@ -47,6 +66,7 @@ def build_media_download_path(
     directory_helper: Optional["DirectoryHelper"] = None,
 ) -> Path:
     """按下载目录开关和稳定分类快照构造保存路径。"""
+    media = source_directory_media(media)
     download_path = root_path
     type_folder_enabled = bool(
         not directory.media_type and directory.download_type_folder

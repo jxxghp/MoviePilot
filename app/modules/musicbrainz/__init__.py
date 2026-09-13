@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any, Iterable, Optional, Tuple, Union
+from urllib.parse import quote
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.classification.evaluator import read_fact
@@ -19,6 +20,7 @@ from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import (
+    music_album_matches,
     music_artist_affix_matches,
     music_artist_matches,
     music_base_title,
@@ -27,6 +29,7 @@ from app.domain.music import (
     music_title_matches,
     music_titles,
     music_version_matches,
+    music_year_matches,
     unique_music_texts,
 )
 from app.foundation.text import convert as zhconv_convert
@@ -128,6 +131,7 @@ class MusicBrainzModule(_ModuleBase):
     _album_detail_url = "https://musicbrainz.org/release-group"
     _artist_detail_url = "https://musicbrainz.org/artist"
     _cover_url = "https://coverartarchive.org/release-group"
+    _wikidata_entity_url = "https://www.wikidata.org/wiki/Special:EntityData"
     _request_interval = 1.0
     _request_lock = threading.Lock()
     _last_request_at = 0.0
@@ -1323,8 +1327,16 @@ class MusicBrainzModule(_ModuleBase):
             return None
         if plan.music_type and cached_info.music_type != plan.music_type:
             return None
-        if cached_info.media_id and not music_isrc_matches(cached_info, meta) and not music_version_matches(cached_info, meta):
-            return None
+        if cached_info.media_id:
+            album_matches = not meta.album or not cached_info.album or music_album_matches(cached_info, meta.album)
+            release_matches = album_matches and music_year_matches(cached_info, meta)
+            identity_matches = (
+                (not meta.artists or music_artist_matches(cached_info, meta.artists))
+                and (not meta.title or music_title_matches(cached_info, meta.title))
+                and music_version_matches(cached_info, meta)
+            )
+            if not release_matches or (not music_isrc_matches(cached_info, meta) and not identity_matches):
+                return None
         if cached_info.media_id:
             logger.info(f"{meta.title} 使用音乐识别缓存：{cached_info.title}")
         else:
@@ -1456,7 +1468,9 @@ class MusicBrainzModule(_ModuleBase):
         for candidate in candidates:
             if normalized_source and str(candidate.media_source or "").casefold() != normalized_source:
                 continue
-            if music_isrc_matches(candidate, meta):
+            album_matches = not meta.album or not candidate.album or music_album_matches(candidate, meta.album)
+            release_matches = album_matches and music_year_matches(candidate, meta)
+            if music_isrc_matches(candidate, meta) and release_matches:
                 # 相同 ISRC 是明确录音身份，不能被另一条纯标题命中的得分压过。
                 return candidate
             score = 0
@@ -1484,7 +1498,10 @@ class MusicBrainzModule(_ModuleBase):
                 score += 1
             # 非显式身份必须同时满足作品名、已有署名与版本，不能只靠累计得分确认。
             if (
-                (meta.artists and not artist_match) or not title_match or not music_version_matches(candidate, meta)
+                (meta.artists and not artist_match)
+                or not title_match
+                or not music_version_matches(candidate, meta)
+                or not release_matches
             ):
                 continue
             ranked.append((exact_title, score, candidate))
@@ -1668,6 +1685,12 @@ class MusicBrainzModule(_ModuleBase):
         plan = self._detail_plan(media_source, media_id, music_type)
         if not plan:
             return None
+        if plan.music_type == MUSIC_ENTITY_ARTIST:
+            artist = self.music_artist(
+                plan.media_source,
+                plan.require_media_id(),
+            )
+            return artist.to_music_info() if artist else None
         result: Optional[MusicInfo] = None
         if plan.search_recording:
             payload = self._request_json(
@@ -1697,6 +1720,13 @@ class MusicBrainzModule(_ModuleBase):
         plan = self._detail_plan(media_source, media_id, music_type)
         if not plan:
             return None
+        if plan.music_type == MUSIC_ENTITY_ARTIST:
+            payload = await self._async_request_json(
+                f"/artist/{plan.require_media_id()}",
+                params={"inc": "url-rels+genres+tags+aliases", "fmt": "json"},
+            )
+            artist = self._artist_to_info(payload) if payload else None
+            return artist.to_music_info() if artist else None
         result: Optional[MusicInfo] = None
         if plan.search_recording:
             payload = await self._async_request_json(
@@ -1867,7 +1897,12 @@ class MusicBrainzModule(_ModuleBase):
             f"/artist/{media_id}",
             params={"inc": "url-rels+genres+tags+aliases", "fmt": "json"},
         )
-        return self._artist_to_info(payload) if payload else None
+        artist = self._artist_to_info(payload) if payload else None
+        if artist and not artist.image_url:
+            artist.image_url = self._wikidata_artist_image(
+                artist.external_links.get("wikidata")
+            )
+        return artist
 
     def music_artist_albums(
             self,
@@ -2362,10 +2397,70 @@ class MusicBrainzModule(_ModuleBase):
                 file_name = resource.rsplit("File:", 1)[-1]
                 return (
                     "https://commons.wikimedia.org/wiki/Special:FilePath/"
-                    f"{file_name}?width=500"
+                    f"{quote(file_name, safe='')}?width=500"
                 )
             if resource:
                 return resource
+        return None
+
+    @classmethod
+    @cached(  # type: ignore[misc]
+        maxsize=get_runtime_setting('CONF').musicbrainz,
+        ttl=get_runtime_setting('CONF').meta,
+        skip_none=True,
+    )
+    def _wikidata_artist_image(cls, wikidata_url: Optional[str]) -> Optional[str]:
+        """从 MusicBrainz 关联的 Wikidata 实体解析 Commons 艺术家图片。"""
+        entity_id = cls._wikidata_entity_id(wikidata_url)
+        if not entity_id:
+            return None
+        response = cls._get_request().get_res(
+            f"{cls._wikidata_entity_url}/{entity_id}.json"
+        )
+        if response is None:
+            return None
+        try:
+            if response.status_code != 200:
+                logger.warning(
+                    f"Wikidata 艺术家图片请求失败：{response.status_code} {entity_id}"
+                )
+                return None
+            try:
+                payload = response.json()
+            except (TypeError, ValueError) as err:
+                logger.warning(f"Wikidata 艺术家图片解析失败：{err}")
+                return None
+            return cls._wikidata_image_from_payload(payload, entity_id)
+        finally:
+            response.close()
+
+    @staticmethod
+    def _wikidata_entity_id(wikidata_url: Optional[str]) -> Optional[str]:
+        """从 Wikidata 关系地址中提取实体 ID。"""
+        match = re.search(r"/(Q\d+)(?:[/?#]|$)", str(wikidata_url or ""), flags=re.IGNORECASE)
+        return match.group(1).upper() if match else None
+
+    @staticmethod
+    def _wikidata_image_from_payload(
+            payload: Any,
+            entity_id: str,
+    ) -> Optional[str]:
+        """从 Wikidata EntityData 响应的 P18 声明生成 Commons 直链。"""
+        if not isinstance(payload, dict):
+            return None
+        entity = (payload.get("entities") or {}).get(entity_id) or {}
+        claims = entity.get("claims") or {}
+        for claim in claims.get("P18") or []:
+            value = (
+                ((claim.get("mainsnak") or {}).get("datavalue") or {}).get("value")
+                if isinstance(claim, dict)
+                else None
+            )
+            if isinstance(value, str) and value.strip():
+                return (
+                    "https://commons.wikimedia.org/wiki/Special:FilePath/"
+                    f"{quote(value.strip(), safe='')}?width=500"
+                )
         return None
 
     @classmethod

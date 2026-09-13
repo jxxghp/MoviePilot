@@ -50,6 +50,18 @@ def test_music_routes_are_registered():
         for path, methods in routes
     )
     assert any(
+        path == "/music/artist-collection/probe" and "POST" in methods
+        for path, methods in routes
+    )
+    assert any(
+        path == "/music/artist-acquisition" and "POST" in methods
+        for path, methods in routes
+    )
+    assert any(
+        path == "/music/artist-acquisition/{job_id}" and "GET" in methods
+        for path, methods in routes
+    )
+    assert any(
         path == "/music/artist/{artist_id}/related" and "GET" in methods
         for path, methods in routes
     )
@@ -137,8 +149,6 @@ def test_media_search_forwards_explicit_music_source():
 
 def test_recognize_music_returns_detail():
     """音乐识别接口应按来源和 ID 经统一识别入口返回详情。"""
-    from app.chain.media import MediaChain
-
     chain = Mock()
     chain.async_recognize_media = AsyncMock(
         return_value=MusicInfo(
@@ -171,8 +181,6 @@ def test_recognize_music_returns_detail():
 
 def test_recognize_music_returns_404_for_unknown_item():
     """音乐详情不存在时接口应返回 404。"""
-    from app.chain.media import MediaChain
-
     chain = Mock()
     chain.async_recognize_media = AsyncMock(return_value=None)
 

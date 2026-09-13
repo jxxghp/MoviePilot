@@ -1310,6 +1310,16 @@ _METHOD_CONTRACTS = {
             "seeding_time_limit",
         ),
     ),
+    "rename_source_root": ModuleMethodContract(
+        family="downloader",
+        input_contract="SourceRootRenameRequest",
+        result_contract="bool | None",
+        result_shape=ModuleResultShape.BOOLEAN,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("downloader", "hash_string", "old_name", "new_name", "kind"),
+        public_to_plugins=False,
+        supports_async=False,
+    ),
     "transfer_completed": ModuleMethodContract(
         family="downloader",
         input_contract="TransferCompletedHook",

@@ -205,6 +205,71 @@ class TransactionalTransferAdmissionRepository:
                 self._assert_input_match(pending, planning_input)
                 return self._project(pending)
 
+    def admit_batch(
+            self,
+            *,
+            items: list[tuple[str, str, TransferPlanningInput]],
+            replace_inactive: bool = False,
+    ) -> list[TransferAdmission]:
+        """在单一事务中登记完整批次，任何一项冲突都不留下半批记录。"""
+        if not items:
+            return []
+        identities = [(storage, src_path) for storage, src_path, _ in items]
+        if len(set(identities)) != len(identities):
+            raise ValueError("整理批次包含重复源文件")
+        for storage, src_path, planning_input in items:
+            if not storage or not src_path:
+                raise ValueError("整理任务的存储与源路径不能为空")
+            if (
+                    planning_input.source_fileitem.get("storage") != storage
+                    or planning_input.source_fileitem.get("path") != src_path
+            ):
+                raise ValueError("整理规划输入的源文件身份与准入参数不一致")
+
+        now_time = self._now()
+        try:
+            with self._session_factory() as session:
+                transaction = SqlAlchemyUnitOfWork(session)
+                try:
+                    oper = TransferPendingOper(db=session)
+                    admissions: list[TransferAdmission] = []
+                    for storage, src_path, planning_input in items:
+                        new_task_id = uuid4().hex
+                        if replace_inactive:
+                            self._stage_inactive_replacement(
+                                session=session,
+                                storage=storage,
+                                src_path=src_path,
+                            )
+                        pending = oper.stage_admit(
+                            task_id=new_task_id,
+                            storage=storage,
+                            src_path=src_path,
+                            state=TRANSFER_ADMISSION_ACCEPTED,
+                            now_time=now_time,
+                            input_version=planning_input.schema_version,
+                            planning_input=planning_input.to_payload(),
+                            input_fingerprint=planning_input.fingerprint,
+                        )
+                        if pending is None:
+                            raise TransferAdmissionConflictError(
+                                f"整理源文件已有持久终态回执: {storage}:{src_path}"
+                            )
+                        if replace_inactive and pending.task_id != new_task_id:
+                            raise TransferAdmissionConflictError(self._REPLACEMENT_CONFLICT)
+                        session.flush()
+                        self._assert_input_match(pending, planning_input)
+                        admissions.append(self._project(pending))
+                    transaction.commit()
+                    return admissions
+                except Exception:
+                    transaction.rollback()
+                    raise
+        except IntegrityError as error:
+            raise TransferAdmissionConflictError(
+                "整理批次并发准入冲突，请稍后重试"
+            ) from error
+
     def _stage_inactive_replacement(
             self,
             *,

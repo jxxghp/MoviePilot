@@ -207,6 +207,7 @@
     "后台服务不存在": "Background service does not exist",
     "当前管理用户缺少可审计身份": "The current administrator does not have an auditable identity",
     "人工复核任务不存在": "The manual review task does not exist",
+    "艺术家作品获取任务不存在": "The artist discography acquisition task does not exist",
     "任务添加失败": "Failed to add task",
     "没有需要搜索的订阅": "No subscriptions need searching",
     "这个订阅已经在搜索中，请稍候": "This subscription is already being searched. Please wait",

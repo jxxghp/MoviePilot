@@ -1,24 +1,23 @@
 from pathlib import Path
-from typing import Set, Tuple, Optional, Union, List, Dict
+from typing import Dict, List, Optional, Set, Tuple, Union
 
-from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.domain.metainfo import MetaInfo
-from app.runtime.log import logger
-from app.runtime.settings import get_runtime_setting
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
 from app.modules._base.downloader import _DownloaderModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.types import (
-    DownloadTaskState,
     DownloaderType,
+    DownloadTaskState,
     ModuleType,
     TorrentQueryStatus,
     TorrentStatus,
 )
-from app.foundation import size as size_tools
-from app.foundation import temporal as time_tools
-from app.foundation import text as text_tools
-
 
 _QBITTORRENT_DOWNLOADING_STATES = {
     "allocating",
@@ -118,7 +117,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                                                                                              bytes) and content.startswith(
             b"magnet:")
         if not torrent_from_file and not is_magnet:
-            return None, None, None, f"添加种子任务失败：无法读取种子文件"
+            return None, None, None, "添加种子任务失败：无法读取种子文件"
 
         # 获取下载器
         server: Qbittorrent = self.get_instance(downloader)
@@ -172,7 +171,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                                     server.set_torrents_tag(ids=torrent_hash, tags=[get_runtime_setting('TORRENT_TAG')])
                                 # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
                                 torrent_layout = server.get_content_layout()
-                                return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
+                                return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "下载任务已存在"
                     finally:
                         torrents.clear()
                         del torrents
@@ -300,6 +299,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                 seeding_time_limit=torrent_data.get('seeding_time_limit'),
                 progress=(torrent_data.get('progress') or 0) * 100,
                 state=self.__normalize_torrent_state(torrent_data.get('state')),
+                raw_state=torrent_data.get('state'),
                 dlspeed=size_tools.format_compact_size(dlspeed),
                 upspeed=size_tools.format_compact_size(torrent_data.get('upspeed')),
                 left_time=time_tools.format_duration(
@@ -534,6 +534,24 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
         return self._normalize_torrent_files(
             server.get_files(tid=tid), DownloaderFile.model_validate
         )
+
+    def rename_source_root(
+        self, *, downloader: str, hash_string: str, old_name: str, new_name: str, kind: str,
+    ) -> Optional[bool]:
+        """只通过 qB 变更种子内容名称；返回接受情况，不代表路径已完成变更。"""
+        server = self.get_instance(downloader)
+        if not server:
+            return None
+        if kind not in ("file", "folder"):
+            raise ValueError("不支持的根路径类型")
+        if any(not name or name in (".", "..") or "/" in name or "\\" in name for name in (old_name, new_name)):
+            raise ValueError("只允许修改任务最外层名称")
+        client = server.qbc
+        if client is None:
+            return False
+        rename = client.torrents_rename_file if kind == "file" else client.torrents_rename_folder
+        rename(torrent_hash=hash_string, old_path=old_name, new_path=new_name)
+        return True
 
     def downloader_info(self, downloader: Optional[str] = None) -> Optional[List[_SchemaDownloaderInfo]]:
         """

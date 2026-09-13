@@ -70,6 +70,12 @@ class TransferPlanningOwner(_TransferOwnerBase):
             "username": task.username,
             "downloader": task.downloader,
             "download_hash": task.download_hash,
+            "transfer_batch_id": task.transfer_batch_id,
+            "transfer_batch_title": task.transfer_batch_title,
+            "transfer_batch_root": task.transfer_batch_root,
+            "transfer_batch_total": task.transfer_batch_total,
+            "music_release_regions": task.music_release_regions,
+            "music_release_scripts": task.music_release_scripts,
             "cleanup_dest_fileitem": self._TransferChain__json_snapshot(cleanup_dest_fileitem),
             "_meta_kind": type(task.meta).__name__ if task.meta else None,
             "_mediainfo_kind": (

@@ -26,6 +26,7 @@ class DownloaderTorrent(BaseModel):
     size: Optional[float] = 0.0
     progress: Optional[float] = 0.0
     state: Optional[str] = 'downloading'
+    raw_state: Optional[str] = Field(default=None, description="下载器原始状态，用于确认移动及校验完成")
     upspeed: Optional[str] = None
     dlspeed: Optional[str] = None
     tags: Optional[str] = None
@@ -318,6 +319,14 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     reorganize: Optional[bool] = False
     # 跳过成功历史，优先于重新整理；预览与执行使用相同过滤范围
     skip_success: bool = False
+    # 继续既有整理批次时沿用的稳定批次标识
+    transfer_batch_id: Optional[str] = Field(default=None, max_length=128)
+    # 整理批次显示名称
+    transfer_batch_title: Optional[str] = Field(default=None, max_length=512)
+    # 整理批次源根目录
+    transfer_batch_root: Optional[str] = Field(default=None, max_length=4096)
+    # 原批次候选总数；继续整理时不能缩减为本次剩余数量
+    transfer_batch_total: Optional[int] = Field(default=None, ge=1)
 
     @model_validator(mode="after")  # type: ignore[misc]
     def normalize_music_release_preferences(self) -> "ManualTransferItem":
