@@ -149,6 +149,8 @@ def _repo_frontend_version() -> str:
     if not frontend_version:
         raise RuntimeError(f"版本文件未定义有效的 FRONTEND_VERSION：{version_file}")
     return frontend_version
+
+
 LOCAL_FRONTEND_SERVICE_SCRIPT = textwrap.dedent(
     """
     const http = require('node:http')

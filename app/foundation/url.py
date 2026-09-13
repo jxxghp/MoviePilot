@@ -5,6 +5,7 @@ from typing import Optional, Union, Tuple
 from urllib import parse
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
+
 class UrlUtils:
     """提供不发起网络请求的 URL 解析与组合能力。"""
 
@@ -98,7 +99,6 @@ class UrlUtils:
             return str(complete_url)
         except Exception:
             return None
-
 
     @staticmethod
     def get_mime_type(path_or_url: Union[str, Path], default_type: str = "application/octet-stream") -> str:

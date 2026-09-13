@@ -211,7 +211,7 @@ def test_torrent_title_match_ignores_question_mark_variants():
         season_years={},
     )
     torrent_meta = SimpleNamespace(
-                                        cn_name=None,
+        cn_name=None,
         en_name="Otaku ni Yasashii Gal wa Inai",
         type=MediaType.TV,
         year=None,
@@ -221,7 +221,7 @@ def test_torrent_title_match_ignores_question_mark_variants():
         site_name="MiKan",
         title="[今晚月色真美][Otaku ni Yasashii Gal wa Inai!?][12][1080P]",
         category=MediaType.TV.value,
-                description=None,
+        description=None,
     )
 
     assert TorrentHelper.match_torrent(

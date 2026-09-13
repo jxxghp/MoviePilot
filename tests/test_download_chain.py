@@ -708,11 +708,11 @@ def test_batch_download_rejects_complete_coverage_when_files_do_not_cover_target
     no_exists = _tv_no_exists(
         1,
         NotExistMediaInfo(
-                season=1,
-                episodes=[],
-                total_episode=143,
-                start_episode=1,
-                require_complete_coverage=True,
+            season=1,
+            episodes=[],
+            total_episode=143,
+            start_episode=1,
+            require_complete_coverage=True,
         ),
     )
 
@@ -745,11 +745,11 @@ def test_batch_download_preserves_special_season_zero(monkeypatch):
     no_exists = _tv_no_exists(
         0,
         NotExistMediaInfo(
-                season=0,
-                episodes=[],
-                total_episode=6,
-                start_episode=1,
-                require_complete_coverage=True,
+            season=0,
+            episodes=[],
+            total_episode=6,
+            start_episode=1,
+            require_complete_coverage=True,
         ),
     )
 
@@ -779,11 +779,11 @@ def test_batch_download_rejects_complete_coverage_when_only_missing_episodes_mat
     no_exists = _tv_no_exists(
         1,
         NotExistMediaInfo(
-                season=1,
-                episodes=[4, 5],
-                total_episode=5,
-                start_episode=1,
-                require_complete_coverage=True,
+            season=1,
+            episodes=[4, 5],
+            total_episode=5,
+            start_episode=1,
+            require_complete_coverage=True,
         ),
     )
 
@@ -816,10 +816,10 @@ def test_batch_download_tries_next_episode_candidate_when_first_download_fails(m
     no_exists = _tv_no_exists(
         1,
         NotExistMediaInfo(
-                season=1,
-                episodes=[1],
-                total_episode=1,
-                start_episode=1,
+            season=1,
+            episodes=[1],
+            total_episode=1,
+            start_episode=1,
         ),
     )
 
@@ -914,10 +914,10 @@ def test_batch_download_applies_custom_words_to_torrent_file_episodes(monkeypatc
     no_exists = _tv_no_exists(
         1,
         NotExistMediaInfo(
-                season=1,
-                episodes=[170],
-                total_episode=200,
-                start_episode=155,
+            season=1,
+            episodes=[170],
+            total_episode=200,
+            start_episode=155,
         ),
     )
     custom_words = (
@@ -1212,11 +1212,11 @@ def test_batch_download_accepts_complete_coverage_when_files_cover_target_range(
     no_exists = _tv_no_exists(
         1,
         NotExistMediaInfo(
-                season=1,
-                episodes=[],
-                total_episode=143,
-                start_episode=100,
-                require_complete_coverage=True,
+            season=1,
+            episodes=[],
+            total_episode=143,
+            start_episode=100,
+            require_complete_coverage=True,
         ),
     )
 
@@ -1247,11 +1247,11 @@ def test_batch_download_rejects_complete_coverage_when_files_have_same_count_but
     no_exists = _tv_no_exists(
         1,
         NotExistMediaInfo(
-                season=1,
-                episodes=[],
-                total_episode=143,
-                start_episode=100,
-                require_complete_coverage=True,
+            season=1,
+            episodes=[],
+            total_episode=143,
+            start_episode=100,
+            require_complete_coverage=True,
         ),
     )
 
@@ -1282,11 +1282,11 @@ def test_batch_download_accepts_complete_coverage_when_title_episodes_cover_targ
     no_exists = _tv_no_exists(
         1,
         NotExistMediaInfo(
-                season=1,
-                episodes=[],
-                total_episode=143,
-                start_episode=1,
-                require_complete_coverage=True,
+            season=1,
+            episodes=[],
+            total_episode=143,
+            start_episode=1,
+            require_complete_coverage=True,
         ),
     )
 
@@ -1318,11 +1318,11 @@ def test_batch_download_rejects_complete_coverage_when_title_episodes_are_partia
     no_exists = _tv_no_exists(
         1,
         NotExistMediaInfo(
-                season=1,
-                episodes=[],
-                total_episode=143,
-                start_episode=1,
-                require_complete_coverage=True,
+            season=1,
+            episodes=[],
+            total_episode=143,
+            start_episode=1,
+            require_complete_coverage=True,
         ),
     )
 
@@ -1355,11 +1355,11 @@ def test_batch_download_complete_coverage_ignores_allowed_episode_narrowing(monk
     no_exists = _tv_no_exists(
         1,
         NotExistMediaInfo(
-                season=1,
-                episodes=[],
-                total_episode=12,
-                start_episode=1,
-                require_complete_coverage=True,
+            season=1,
+            episodes=[],
+            total_episode=12,
+            start_episode=1,
+            require_complete_coverage=True,
         ),
     )
 
@@ -1391,10 +1391,10 @@ def test_batch_download_keeps_count_check_without_complete_coverage(monkeypatch)
     no_exists = _tv_no_exists(
         1,
         NotExistMediaInfo(
-                season=1,
-                episodes=[],
-                total_episode=143,
-                start_episode=1,
+            season=1,
+            episodes=[],
+            total_episode=143,
+            start_episode=1,
         ),
     )
 

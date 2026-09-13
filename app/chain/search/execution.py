@@ -220,6 +220,7 @@ class SearchExecutionOwner:
                         "text": f"正在过滤匹配 {len(step.params['torrents'])} 个候选资源 ...",
                     }
                 response = await run_in_threadpool(owner._parse_result, **step.params)
+
     @staticmethod
     def _completion_events(outcome: _SearchOutcome, streaming: bool) -> Iterator[Dict[str, Any]]:
         """只在状态机正常完成后统一发布结果，失败和提前关闭不会伪造完成状态。"""

@@ -27,8 +27,8 @@ from app.runtime.config import settings
 
 
 def make_history(status: bool, size=1024, has_src_fileitem: bool = True,
-                  history_id: int = 1, src_fileitem_override=None,
-                  src=None, src_storage=None, modify_time=None, fileid=None):
+                 history_id: int = 1, src_fileitem_override=None,
+                 src=None, src_storage=None, modify_time=None, fileid=None):
     """构造用于查重闸判定的整理记录替身。"""
     if src_fileitem_override is not None:
         src_fileitem = src_fileitem_override
@@ -41,7 +41,7 @@ def make_history(status: bool, size=1024, has_src_fileitem: bool = True,
     else:
         src_fileitem = None
     return SimpleNamespace(id=history_id, status=status, src_fileitem=src_fileitem,
-                            src=src, src_storage=src_storage)
+                           src=src, src_storage=src_storage)
 
 
 def _reset_failed_retries(src_path, storage=None):
@@ -553,7 +553,7 @@ def test_describe_history_gate_reports_failed_status_with_retry_progress(monkeyp
         record_transfer_failure(src_path, "local")
         record_transfer_failure(src_path, "local")
         history = make_history(status=False, size=1024, history_id=5,
-                                src=src_path, src_storage="local")
+                               src=src_path, src_storage="local")
 
         description = describe_history_gate(history, file_size=1024)
 

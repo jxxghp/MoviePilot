@@ -862,7 +862,6 @@ class MessageChain(ChainBase):
         )
         return False
 
-
     def _handle_agent_choice_callback(
             self,
             *,
@@ -1136,7 +1135,7 @@ class MessageChain(ChainBase):
                 f"({context_ratio * 100:.2f}%)"
                 if context_ratio is not None
                 else f"{cls._format_token_count(last_input_tokens)} / "
-                     f"{cls._format_token_count(context_window_tokens)}"
+                f"{cls._format_token_count(context_window_tokens)}"
             )
         else:
             context_usage_text = "暂无模型调用数据"
@@ -1162,10 +1161,10 @@ class MessageChain(ChainBase):
             lines.extend(
                 [
                     f"最终请求估算: {estimate_text}",
-                "估算组成: "
-                f"消息 {cls._format_token_count(status.get('last_estimated_message_tokens'))} / "
-                f"系统 {cls._format_token_count(status.get('last_estimated_system_tokens'))} / "
-                f"工具 {cls._format_token_count(status.get('last_estimated_tool_tokens'))} / "
+                    "估算组成: "
+                    f"消息 {cls._format_token_count(status.get('last_estimated_message_tokens'))} / "
+                    f"系统 {cls._format_token_count(status.get('last_estimated_system_tokens'))} / "
+                    f"工具 {cls._format_token_count(status.get('last_estimated_tool_tokens'))} / "
                     f"其中图片固定成本 {cls._format_token_count(status.get('last_estimated_multimodal_tokens'))}",
                 ]
             )

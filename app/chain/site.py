@@ -250,7 +250,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             self.post_message(Message(
                 mtype=MessageType.SiteMessage,
                 title=f"站点 {site.get('name')} 收到 "
-                      f"{userdata.message_unread} 条新消息，请登陆查看",
+                f"{userdata.message_unread} 条新消息，请登陆查看",
                 link=site.get("url")
             ))
             return
@@ -803,9 +803,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
                                                      ua=self.runtime_config.user_agent)
         if icon_url:
             repository.update_icon(name=icon_name,
-                                 domain=domain,
-                                 icon_url=icon_url,
-                                 icon_base64=icon_base64 or "")
+                                   domain=domain,
+                                   icon_url=icon_url,
+                                   icon_base64=icon_base64 or "")
             logger.info(f"缓存站点 {indexer.get('name')} 图标成功")
         else:
             logger.warn(f"缓存站点 {indexer.get('name')} 图标失败")
@@ -1158,17 +1158,17 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     incUploads += upload
                     incDownloads += download
                     messages[upload + (rand / 1000)] = (
-                            f"【{site}】{updated_date}\n"
-                            + f"上传量：{size_tools.format_compact_size(upload)}\n"
-                            + f"下载量：{size_tools.format_compact_size(download)}\n"
-                            + "————————————"
+                        f"【{site}】{updated_date}\n"
+                        + f"上传量：{size_tools.format_compact_size(upload)}\n"
+                        + f"下载量：{size_tools.format_compact_size(download)}\n"
+                        + "————————————"
                     )
             if incDownloads or incUploads:
                 sorted_messages = [messages[key] for key in sorted(messages.keys(), reverse=True)]
                 sorted_messages.insert(0, f"【汇总】\n"
-                                          f"总上传：{size_tools.format_compact_size(incUploads)}\n"
-                                          f"总下载：{size_tools.format_compact_size(incDownloads)}\n"
-                                          f"————————————")
+                                       f"总上传：{size_tools.format_compact_size(incUploads)}\n"
+                                       f"总下载：{size_tools.format_compact_size(incDownloads)}\n"
+                                       f"————————————")
                 self.post_message(Message(
                     channel=channel,
                     source=source,

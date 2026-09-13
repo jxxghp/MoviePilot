@@ -48,6 +48,7 @@ TERMINAL_KILL_GRACE_SECONDS = 3
 _KILL_SIGNAL = getattr(signal, "SIGKILL", 9)
 _SHARE_ACTIONS = frozenset({"read", "wait", "write", "interrupt", "kill"})
 
+
 class _TerminalSessionManager:
     """管理 Agent 后台终端会话的生命周期。"""
 
@@ -725,12 +726,6 @@ class _TerminalSessionManager:
             raise ValueError("yield_time_ms 必须为非负整数")
         return min(yield_time_ms, TERMINAL_YIELD_MAX_MS)
 
-
-
-
-
-
-
     @staticmethod
     def _resolve_signal(sig: Optional[str | int]) -> int:
         """只接受已知有效且当前终止路径可真实发送的信号，绝不把拼写错误当 TERM。"""
@@ -782,8 +777,6 @@ class _TerminalSessionManager:
         for session_id in expired_ids:
             session = self._sessions.pop(session_id)
             session.close_pty()
-
-
 
 
 terminal_session_manager = _TerminalSessionManager()

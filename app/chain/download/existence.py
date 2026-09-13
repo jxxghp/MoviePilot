@@ -21,7 +21,6 @@ from app.schemas.types import (
 class DownloadExistenceOwner(_DownloadOwnerBase):
     """媒体存在性计算与缺失集投影 owner。"""
 
-
     def get_no_exists_info(self, meta: MetaBase,
                            mediainfo: MediaInfo | MusicInfo,
                            no_exists: Optional[Dict[str, Dict[int, NotExistMediaInfo]]] = None,

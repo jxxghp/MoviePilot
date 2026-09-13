@@ -674,6 +674,7 @@ class TransferExecutionRepository(Protocol):
     ) -> TransferExecutionSnapshot:
         """确认所有引用步骤成功后提交聚合执行检查点。"""
 
+
 class TransferStepRunner(Protocol):
     """定义文件执行方可注入的单步骤持久执行边界。"""
 
@@ -961,6 +962,7 @@ class TransferManualReviewQuery:
         if result is not None:
             self._validate_state(result.state)
         return result
+
 
 __all__ = [
     "TRANSFER_EXECUTION_VERSION",

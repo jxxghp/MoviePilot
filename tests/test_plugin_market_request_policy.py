@@ -15,9 +15,9 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
     """同步与异步请求必须使用相同镜像和单一出口顺序及参数。"""
     proxy = {"all": "http://proxy.example:7890"}
     runtime_settings = SimpleNamespace(
-            GITHUB_PROXY="https://mirror.example",
-            PROXY_HOST="http://proxy.example:7890",
-            PROXY=proxy,
+        GITHUB_PROXY="https://mirror.example",
+        PROXY_HOST="http://proxy.example:7890",
+        PROXY=proxy,
     )
     monkeypatch.setattr(
         client,
@@ -86,9 +86,9 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
 def test_github_api_request_policy_skips_content_mirror(monkeypatch) -> None:
     """GitHub API 请求必须跳过只用于 raw 内容的镜像站。"""
     runtime_settings = SimpleNamespace(
-            GITHUB_PROXY="https://mirror.example",
-            PROXY_HOST=None,
-            PROXY=None,
+        GITHUB_PROXY="https://mirror.example",
+        PROXY_HOST=None,
+        PROXY=None,
     )
     monkeypatch.setattr(
         client,

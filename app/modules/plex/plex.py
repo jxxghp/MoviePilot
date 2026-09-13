@@ -167,7 +167,7 @@ class Plex:
                     item_count=self.get_items_count(library.key),
                     image_list=image_list,
                     link=f"{self._playhost or self._host}web/index.html#!/media/{self._plex.machineIdentifier}"
-                         f"/com.plexapp.plugins.library?source={library.key}&X-Plex-Token={self._token}",
+                    f"/com.plexapp.plugins.library?source={library.key}&X-Plex-Token={self._token}",
                     server_type='plex'
                 )
             )

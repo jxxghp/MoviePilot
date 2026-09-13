@@ -152,13 +152,13 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                     f"files={len(files) if files else 0}"
                 )
                 return IncomingMessage(channel=NotificationChannel.SynologyChat, source=client_config.name,
-                                      userid=user_id, username=user_name,
-                                      is_channel_admin=matches_channel_admin(
-                                          NotificationChannel.SynologyChat,
-                                          client_config.config,
-                                          user_id,
-                                      ), text=text or "",
-                                      images=images, audio_refs=audio_refs, files=files)
+                                       userid=user_id, username=user_name,
+                                       is_channel_admin=matches_channel_admin(
+                                           NotificationChannel.SynologyChat,
+                                           client_config.config,
+                                           user_id,
+                                       ), text=text or "",
+                                       images=images, audio_refs=audio_refs, files=files)
         except Exception as err:
             logger.debug(f"解析SynologyChat消息失败：{str(err)}")
         return None

@@ -409,7 +409,7 @@ def test_recognize_media_reports_network_error_message_and_skips_cache_on_connec
 
     meta = MetaInfo(title="测试标题")
     result = module.recognize_media(meta=meta, media_source=MediaSource.TMDB,
-                                   media_id="98865", cache=True)
+                                    media_id="98865", cache=True)
 
     assert result is None
     # 网络故障场景不写入任何缓存条目（正缓存/负缓存皆不写）
@@ -434,7 +434,7 @@ def test_recognize_media_keeps_not_found_message_when_both_types_confirmed_absen
 
     meta = MetaInfo(title="测试标题")
     result = module.recognize_media(meta=meta, media_source=MediaSource.TMDB,
-                                   media_id="98865", cache=True)
+                                    media_id="98865", cache=True)
 
     assert result is None
     assert module.cache.update_calls == []
@@ -458,7 +458,7 @@ def test_async_recognize_media_reports_network_error_message_and_skips_cache_on_
     meta = MetaInfo(title="测试标题")
     result = asyncio.run(
         module.async_recognize_media(meta=meta, media_source=MediaSource.TMDB,
-                                   media_id="98865", cache=True)
+                                     media_id="98865", cache=True)
     )
 
     assert result is None

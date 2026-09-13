@@ -51,6 +51,7 @@ def configure_cache_factories(
     _async_file_factory = async_file_factory
     _file_ttl_provider = file_ttl_provider
 
+
 # 上下文变量来控制缓存行为
 _fresh = contextvars.ContextVar('fresh', default=False)
 
@@ -727,6 +728,7 @@ def fresh(fresh: bool = True):
     finally:
         _fresh.reset(token)
 
+
 @asynccontextmanager
 async def async_fresh(fresh: bool = True):
     """
@@ -742,6 +744,7 @@ async def async_fresh(fresh: bool = True):
     finally:
         _fresh.reset(token)
 
+
 def is_fresh() -> bool:
     """
     是否获取新数据
@@ -750,6 +753,7 @@ def is_fresh() -> bool:
         return _fresh.get()
     except LookupError:
         return False
+
 
 def FileCache(base: Optional[Path] = None, ttl: Optional[int] = None) -> CacheBackend:
     """
@@ -973,6 +977,7 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 ttl=ttl if ttl is not None else 1,
             )
             # 异步函数的缓存装饰器
+
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
                 # 获取缓存键
@@ -982,7 +987,7 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                     # 尝试获取缓存
                     cached_value = await cache_backend.get(cache_key, region=cache_region)
                     if should_cache(cached_value) and await async_is_valid_cache_value(cache_key, cached_value,
-                                                                                    cache_region):
+                                                                                       cache_region):
                         return cached_value
                 # 执行异步函数并缓存结果
                 result = await func(*args, **kwargs)
@@ -1030,6 +1035,7 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 ttl=ttl if ttl is not None else 1,
             )
             # 同步函数的缓存装饰器
+
             @wraps(func)
             def wrapper(*args, **kwargs):
                 # 获取缓存键

@@ -192,7 +192,6 @@ class TransferFailureNotification:
     cleanup_error: Optional[str] = None
 
 
-
 def render_transfer_failure_notification(
     notifications: list[TransferFailureNotification],
 ) -> tuple[str, str]:

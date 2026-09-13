@@ -31,7 +31,6 @@ class EpisodeFormatMixin(_TransferOwnerBase):
 
     __mixin_host_protocol__ = TransferMixinHost
 
-
     def recommend_name(
         self,
         meta: Optional[MetaBase],

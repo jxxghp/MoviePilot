@@ -1366,9 +1366,9 @@ class AgentImageSupportTest(unittest.TestCase):
                 temporary_path=Path(tempdir),
             )
             with patch.object(
-            chain,
-            "_download_message_file_bytes",
-            return_value="你好，MoviePilot".encode("utf-8"),
+                chain,
+                "_download_message_file_bytes",
+                return_value="你好，MoviePilot".encode("utf-8"),
             ):
                 prepared = chain._prepare_agent_files(
                     session_id="session-1",

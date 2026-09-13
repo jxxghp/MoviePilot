@@ -391,6 +391,7 @@ def migrate_to_media_job(jobview: JobManager, task: TransferTask):
 
 class TestTransferJobManager:
     """整理作业、重试预算与终态回调的原生 pytest 回归。"""
+
     def test_same_storage_success_uses_target_path_when_metadata_is_delayed(self):
         """
         网盘操作已成功但目标元数据暂不可见时，整理结果应按成功路径落库。
@@ -1284,7 +1285,7 @@ class TestTransferJobManager:
         assert ([
                 main_fileitem.path,
                 subtitle_fileitem.path,
-            ]) == (planned)
+                ]) == (planned)
 
     def test_manual_transfer_enables_sync_extra_files(self):
         """手动整理默认启用附属文件同步。"""
@@ -1389,7 +1390,7 @@ class TestTransferJobManager:
                 "summary": {"total": 0, "success": 0, "failed": 0},
                 "items": [],
                 "message": "",
-            }) == (errmsg)
+                }) == (errmsg)
         assert ([]) == (planned)
 
     def test_do_transfer_syncs_extra_files_when_epformat_only_matches_main_video(self):
@@ -1463,7 +1464,7 @@ class TestTransferJobManager:
         assert ("") == (errmsg)
         assert ([
                 (main_fileitem.path, 1),
-            ]) == (planned)
+                ]) == (planned)
 
     def test_do_transfer_syncs_matching_extra_files_for_each_main_video(self):
         """批量整理时附属文件应逐个匹配各自主视频。"""
@@ -1564,7 +1565,7 @@ class TestTransferJobManager:
                 (main_ep2_fileitem.path, 2),
                 (ep2_subtitle_fileitem.path, 2),
                 (other_title_fileitem.path, 1),
-            ]) == (planned)
+                ]) == (planned)
         assert ([]) == (list_files_calls)
 
     def test_scrape_event_is_aggregated_by_transfer_batch_across_seasons(self):
@@ -1655,7 +1656,7 @@ class TestTransferJobManager:
         assert ([
                 "/library/Test Show (2026)/Season 1/Test.Show.S01E01.mkv",
                 "/library/Test Show (2026)/Season 2/Test.Show.S02E01.mkv",
-            ]) == (event_data["file_list"])
+                ]) == (event_data["file_list"])
         assert ({}) == (chain._scrape_batches)
 
     def test_scrape_event_keeps_immediate_behavior_without_transfer_batch(self):

@@ -460,7 +460,7 @@ class EvaluationModelProxy:
             # 输入；请求正文、密钥和供应商响应仍不会回显。
             message = str(error) or "请求字段不符合评测合同"
             self._rejected_requests.append({"error_type": type(error).__name__, "message": message,
-                                             "input_blocks": _input_metadata(parsed)})
+                                            "input_blocks": _input_metadata(parsed)})
             return self._error(f"Invalid evaluation model request: {message}")
         if self.probe_only:
             self.requests.append(record)

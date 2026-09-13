@@ -421,11 +421,11 @@ def test_upgrade_reconciles_invalid_execution_combinations(monkeypatch) -> None:
         }
         assert connection.execute(sa.text(
             "SELECT COUNT(*) FROM transferexecutionstep "
-                "WHERE kind = 'legacy_execution_review' "
-                "AND task_id IN ('unknown', 'settling-missing', 'failed-missing', "
-                "'retry-missing-due', 'partial-checkpoint', 'completed', "
-                "'invalid-outcome', 'invalid-overwrite')"
-            )).scalar_one() == len(invalid)
+            "WHERE kind = 'legacy_execution_review' "
+            "AND task_id IN ('unknown', 'settling-missing', 'failed-missing', "
+            "'retry-missing-due', 'partial-checkpoint', 'completed', "
+            "'invalid-outcome', 'invalid-overwrite')"
+        )).scalar_one() == len(invalid)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     reviews = TransferManualReviewQuery(
         TransactionalTransferExecutionRepository(factory)

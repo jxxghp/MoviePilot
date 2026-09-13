@@ -372,7 +372,6 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
 
         return await self._async_read(operation)
 
-
     async def async_list(
         self,
         state: Optional[str] = None,
@@ -462,6 +461,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
             return [_project_subscription(record) for record in records]
 
         return await self._async_read(operation)
+
 
 class TransactionalSubscriptionHistoryRepository:
     """以独立短 AsyncSession 实现 Agent 等后台入口的订阅历史查询。"""

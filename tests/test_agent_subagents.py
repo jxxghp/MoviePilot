@@ -201,11 +201,11 @@ def test_task_tool_call_reports_streaming_execution():
         )
         request = SimpleNamespace(
             tool=SimpleNamespace(name=SUBAGENT_TASK_TOOL_NAME),
-                tool_call={
-                    "args": {
-                        "description": "检查媒体信息",
-                    }
-                },
+            tool_call={
+                "args": {
+                    "description": "检查媒体信息",
+                }
+            },
         )
 
         async def _fake_handler(_request):
@@ -219,11 +219,11 @@ def test_task_tool_call_reports_streaming_execution():
     assert result == "ok"
     assert calls == [
         {
-                "tool_name": SUBAGENT_TASK_TOOL_NAME,
-                "tool_message": "调用子代理：general-purpose",
-                "tool_kwargs": {
-                    "description": "检查媒体信息",
-                },
+            "tool_name": SUBAGENT_TASK_TOOL_NAME,
+            "tool_message": "调用子代理：general-purpose",
+            "tool_kwargs": {
+                "description": "检查媒体信息",
+            },
         }
     ]
 
@@ -313,12 +313,12 @@ def test_control_tool_call_reports_streaming_execution():
         {
             "tool_name": SUBAGENT_CONTROL_TOOL_NAME,
             "tool_message": "管理子代理任务：action=start",
-                    "tool_kwargs": {
-                        "action": "start",
-                        "tasks": [
+            "tool_kwargs": {
+                "action": "start",
+                "tasks": [
                             {"description": "检查媒体库"},
                             {"description": "检查下载器"},
-                        ],
+                ],
             },
         }
     ]

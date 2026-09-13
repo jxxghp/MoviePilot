@@ -132,6 +132,7 @@ def _scraping_http_snapshot() -> ScrapingHttpPort:
         raise RuntimeError("刮削 HTTP 端口尚未由启动组合根装配")
     return http
 
+
 scraping_lock = Lock()
 
 current_umask = os.umask(0)
@@ -144,6 +145,7 @@ class _MusicScrapeFileResult:
 
     metadata_success: bool = True
     lyrics_status: str = "disabled"
+
 
 class ScrapingOption:
     """刮削选项"""
@@ -192,6 +194,7 @@ class ScrapingOption:
     def is_upgrade(self) -> bool:
         """是否只在歌词等产物质量更高时替换。"""
         return self.policy == ScrapingPolicy.UPGRADE
+
 
 class ScrapingConfig:
     """媒体刮削配置"""
@@ -466,8 +469,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     # 电影文件NFO: 放在电影文件同级目录，名称与电影文件主体一致，后缀.nfo
                     final_filename = f"{target_dir_path.stem}.nfo"
                     target_dir_item = (
-                            parent_fileitem
-                            or self.storagechain.get_parent_item(current_fileitem)
+                        parent_fileitem
+                        or self.storagechain.get_parent_item(current_fileitem)
                     )
                     if not target_dir_item:
                         logger.error(
@@ -718,9 +721,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         Path(context.get("path")).as_posix(): context.get("mediainfo")
                         for context in event_data.get("file_contexts") or []
                         if (
-                                isinstance(context, dict)
-                                and context.get("path")
-                                and isinstance(context.get("mediainfo"), MusicInfo)
+                            isinstance(context, dict)
+                            and context.get("path")
+                            and isinstance(context.get("mediainfo"), MusicInfo)
                         )
                     }
                 _, message = self.scrape_metadata(
@@ -781,8 +784,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                                 getattr(mediainfo, "type", None) == MediaType.TV
                                 and root_path.parent != root_path
                                 and (
-                                        root_path.name in self.runtime_config.season_zero_names
-                                        or MetaInfo(root_path.name).begin_season is not None
+                                    root_path.name in self.runtime_config.season_zero_names
+                                    or MetaInfo(root_path.name).begin_season is not None
                                 )
                         ):
                             # 整理事件可能以季目录为根，补回剧集根目录才能触发电视剧分支。

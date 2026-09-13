@@ -57,7 +57,6 @@ def _request_durable_transfer_retry(
     return result.accepted, result.message
 
 
-
 class FailedRetryMixin(_TransferOwnerBase):
     """提供失败整理的按钮、回调和兼容重试流程。"""
 
@@ -306,7 +305,7 @@ class FailedRetryMixin(_TransferOwnerBase):
                         username=username,
                         title="智能助手整理完成",
                         text=final_output.strip()
-                             or f"整理记录 #{history_id} 已由智能助手处理完成。",
+                        or f"整理记录 #{history_id} 已由智能助手处理完成。",
                         link=self.runtime_config.history_url,
                         save_history=False,
                     )

@@ -157,6 +157,7 @@ VERSION_BACKWARD_COMPATIBLE_FLAGS: Dict[str, List[str]] = {
 normalize_plugin_market_repo_url = _normalize_plugin_market_repo_url
 split_plugin_market_repo_urls = _split_plugin_market_repo_urls
 
+
 def extract_plugin_market_repos_from_wiki(
     markdown: str, require_markers: bool = False
 ) -> list[str]:
@@ -203,6 +204,7 @@ def merge_plugin_market_repos(
         merged_repos.append(normalized_repo)
         seen_repos.add(normalized_repo.lower())
     return merged_repos
+
 
 class PluginMarketTransport(metaclass=WeakSingleton):
     """负责插件市场、本地仓库和 GitHub 元数据读取。"""
@@ -494,7 +496,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             package_candidates = []
             if get_runtime_setting('VERSION_FLAG'):
                 package_candidates.append((get_runtime_setting('VERSION_FLAG'), self.__get_local_package(repo_path,
-                                                                                           get_runtime_setting('VERSION_FLAG'))))
+                                                                                                         get_runtime_setting('VERSION_FLAG'))))
                 # 向后兼容：补充扫描更低版本的 package 文件，便于本地仓库复用历史版本插件。
                 for backward_flag in VERSION_BACKWARD_COMPATIBLE_FLAGS.get(get_runtime_setting('VERSION_FLAG'), []):
                     package_candidates.append((backward_flag, self.__get_local_package(repo_path, backward_flag)))

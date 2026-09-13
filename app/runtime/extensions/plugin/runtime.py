@@ -294,6 +294,7 @@ def build_plugin_runtime(
         runtime_status_writer=registry.set_runtime_status,
         log=environment.logger,
     )
+
     def source_plugin_id(plugin_id: str) -> str:
         """把虚拟实例归一到持久化的物理源码插件。"""
         instance = instances.get(plugin_id)

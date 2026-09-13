@@ -656,7 +656,6 @@ BUILTIN_RULE_SET: Dict[str, dict[str, Any]] = {
 }
 
 
-
 class RuleParser:
 
     _lock = threading.Lock()
@@ -683,9 +682,9 @@ class RuleParser:
 
                 # 运算符优先级
                 self.expr = infix_notation(expr,
-                                          [(operator_not, 1, opAssoc.RIGHT),
-                                           (operator_and, 2, opAssoc.LEFT),
-                                           (operator_or, 2, opAssoc.LEFT)])
+                                           [(operator_not, 1, opAssoc.RIGHT),
+                                            (operator_and, 2, opAssoc.LEFT),
+                                            (operator_or, 2, opAssoc.LEFT)])
 
                 self._thread_local.expr = self.expr
                 self._thread_local.initialized = True

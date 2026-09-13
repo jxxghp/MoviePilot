@@ -13,6 +13,7 @@ from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 
+
 class BitptSiteUserInfo(SiteParserBase):
     schema = SiteSchema.Bitpt
 

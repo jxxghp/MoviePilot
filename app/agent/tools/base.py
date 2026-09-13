@@ -94,7 +94,6 @@ else:
             ...
 
 
-
 def __getattr__(name: str) -> Any:
     """显式访问历史 StreamingHandler 符号时返回 canonical 实现。"""
     if name == "StreamingHandler":
@@ -147,6 +146,8 @@ def normalize_tool_failure_for_agent(result: Any, *, tool_name: str) -> str | li
         "error": text,
         "recovery": "根据错误信息修正输入或改用正确工具后重试；不要重复未确认的写入。",
     }, ensure_ascii=False)
+
+
 TOOL_RESULT_RECORDER: ContextVar[Optional[Callable[[str, str], dict[str, Any]]]] = ContextVar(
     "agent_tool_result_recorder", default=None,
 )
@@ -557,12 +558,12 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             formatted_result = normalize_tool_failure_for_agent(
                 self.format_agent_result(result, **kwargs), tool_name=self.name,
             )
-            
+
             logger.info(
                 f"Agent工具 {self.name} 返回结果，状态: {inspect_tool_result(formatted_result).value}，"
                 f"结果摘要: {summarize_result(formatted_result)}"
             )
-            
+
             if tool_call_id:
                 finish_tool_call = getattr(self._stream_handler, "tool_call_finished", None)
                 if callable(finish_tool_call):

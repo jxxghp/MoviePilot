@@ -500,6 +500,7 @@ class SystemUpdateInteractionHandler:
             original_chat_id=original_chat_id,
         )
 
+
 class _SystemUpdateProgressMonitor:
     """管理主程序更新下载的后台轮询与消息刷新。"""
 
@@ -640,6 +641,7 @@ class _SystemUpdateProgressMonitor:
         finally:
             with _monitor_lock:
                 _monitored_requests.discard(request_id)
+
 
 class _SystemUpdateRenderer:
     """把主程序更新状态转换为渠道消息并负责发送或编辑。"""

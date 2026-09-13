@@ -211,10 +211,10 @@ async def test_http_boundary_rejects_bad_auth_origin_host_protocol_and_accept(he
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("payload", [[], {"jsonrpc": "1.0", "id": 1, "method": "ping"},
-    {"jsonrpc": "2.0", "id": True, "method": "ping"}, {"jsonrpc": "2.0", "id": 1, "method": []},
-    {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": []},
-    {"jsonrpc": "2.0", "id": 1, "method": "ping", "oracle": True},
-])
+                                     {"jsonrpc": "2.0", "id": True, "method": "ping"}, {"jsonrpc": "2.0", "id": 1, "method": []},
+                                     {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": []},
+                                     {"jsonrpc": "2.0", "id": 1, "method": "ping", "oracle": True},
+                                     ])
 async def test_jsonrpc_shape_errors_are_fixed_and_do_not_execute(payload: Any) -> None:
     """batch、错误 ID/参数类型及未知顶层字段均明确拒绝。"""
     world = EvaluationWorld("dedup_existing")

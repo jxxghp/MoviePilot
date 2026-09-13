@@ -172,10 +172,10 @@ def test_scrape_music_uses_musicbrainz_uuid_and_music_scraper() -> None:
         result = scrape(
             fileitem=fileitem,
             storage="local",
-        media_source="musicbrainz",
-        media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
-        type_name=MediaType.MUSIC,
-        music_type="recording",
+            media_source="musicbrainz",
+            media_id="977e6978-139d-425c-bb98-6b0c62d1e45e",
+            type_name=MediaType.MUSIC,
+            music_type="recording",
             _=Mock(),
         )
 

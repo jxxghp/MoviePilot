@@ -10,6 +10,7 @@ from app.agent.terminal.session import _TerminalSession
 TERMINAL_DEFAULT_READ_BYTES = 10 * 1024
 TERMINAL_MAX_READ_BYTES = 64 * 1024
 
+
 class TerminalOutputError(ValueError):
     """携带稳定错误码和最小页预算的可恢复输出读取错误。"""
 
@@ -20,12 +21,10 @@ class TerminalOutputError(ValueError):
         self.minimum_read_bytes = minimum_read_bytes
 
 
-
 def validate_output_budget(max_output_chars: Optional[int]) -> None:
     """宿主内部预算必须容纳有界命令预览和完整恢复元数据。"""
     if max_output_chars is not None and (type(max_output_chars) is not int or max_output_chars < 4096):
         raise ValueError("max_output_chars 必须为空或至少 4096 的整数")
-
 
 
 def normalize_read_limit(max_bytes: Optional[int]) -> int:
@@ -37,7 +36,6 @@ def normalize_read_limit(max_bytes: Optional[int]) -> int:
     if normalized <= 0:
         return TERMINAL_DEFAULT_READ_BYTES
     return min(normalized, TERMINAL_MAX_READ_BYTES)
-
 
 
 def resolve_cursor(
@@ -69,7 +67,6 @@ def resolve_cursor(
     return seq, offset, session.output_lost
 
 
-
 def _slice_output(encoded: bytes, limit: int, *, partial: bool) -> bytes:
     """遵守页预算和完整字符边界；零进展明确报错，不能伪装成成功分页。"""
     if len(encoded) <= limit:
@@ -87,7 +84,6 @@ def _slice_output(encoded: bytes, limit: int, *, partial: bool) -> bytes:
             code="read_limit_too_small", minimum_read_bytes=minimum,
         )
     return text.encode("utf-8")
-
 
 
 def collect_output(
@@ -180,7 +176,6 @@ def read_payload(
     return payload
 
 
-
 def _text_preview(value: str, limit: int = 1024) -> str:
     """按 JSON 实际转义开销限制元数据预览，极长命令不能挤掉输出游标。"""
     low, high = 0, min(len(value), limit)
@@ -191,7 +186,6 @@ def _text_preview(value: str, limit: int = 1024) -> str:
         else:
             high = middle - 1
     return value[:low]
-
 
 
 def _session_payload(

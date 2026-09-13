@@ -486,10 +486,10 @@ class FileFilterMixin(_TransferOwnerBase):
             return False
         normalized_path = file_path.replace("\\", "/")
         return (
-                "/@Recycle/" in normalized_path
-                or "/#recycle/" in normalized_path
-                or "/." in normalized_path
-                or "/@eaDir" in normalized_path
+            "/@Recycle/" in normalized_path
+            or "/#recycle/" in normalized_path
+            or "/." in normalized_path
+            or "/@eaDir" in normalized_path
         )
 
     @staticmethod

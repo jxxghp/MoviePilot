@@ -288,7 +288,6 @@ class _DurableTransferStepRunner:
         return snapshot.checkpoint
 
 
-
 class TransferExecutionOwner(_TransferOwnerBase):
     """持有整理准入租约、外部步骤执行与结果检查点。"""
 
@@ -409,7 +408,6 @@ class TransferExecutionOwner(_TransferOwnerBase):
             self._TransferChain__admit_transfer(task)
             return
         self._TransferChain__claim_admitted_task(task, task.admission_task_id)
-
 
     def _TransferChain__handle_transfer(
             self, task: TransferTask, callback: Optional[Callable] = None

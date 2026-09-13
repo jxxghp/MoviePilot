@@ -155,6 +155,7 @@ class TransactionalChainDurableEventWriter(ChainDurableEventWriter):
                 stager=outbox,
                 store=SqlAlchemyOutboxDispatchStore(self._session_factory),
             )
+
             def stage_business() -> int:
                 """在同一事务暂存下载历史和可选文件清单。"""
                 record = repository.stage_add(history.to_payload())

@@ -227,6 +227,7 @@ def configure_plugin_system_services():
         configs=ServiceConfigHelper.get_configs,
         modules=lambda module_type: ModuleManager().get_running_type_modules(module_type),
     )
+
     def build_test_plugin_runtime(host):
         """在 pytest 组合根装配直接构造 Manager 所需的隔离 Runtime。"""
         return build_plugin_runtime(
@@ -356,6 +357,7 @@ def configure_plugin_system_services():
             "sync": SqlAlchemyUnitOfWork,
         },
     )
+
     def site_repository() -> TransactionalSiteRepository:
         """按生产组合根方式创建显式事务站点仓储。"""
         return TransactionalSiteRepository(

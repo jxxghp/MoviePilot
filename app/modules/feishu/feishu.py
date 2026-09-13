@@ -1550,7 +1550,7 @@ class Feishu:
         return getattr(data, "image_key", None)
 
     def _upload_file(self, file_path: Path, file_name: Optional[str] = None, duration: Optional[int] = None) -> \
-    Optional[str]:
+            Optional[str]:
         if not self._api_client:
             return None
         with file_path.open("rb") as fp:
@@ -1603,7 +1603,7 @@ class Feishu:
         return response.file.read(), response.file_name, content_type
 
     def download_message_resource_bytes(self, message_id: str, file_key: str, resource_type: str) -> Optional[
-        Tuple[bytes, Optional[str], Optional[str]]]:
+            Tuple[bytes, Optional[str], Optional[str]]]:
         if not self._api_client or not message_id or not file_key:
             return None
         response = self._api_client.im.v1.message_resource.get(
@@ -1796,9 +1796,9 @@ class Feishu:
     ) -> Optional[dict]:
         """发送通知消息，优先使用交互卡片承载按钮。"""
         is_streaming_agent_text = (
-                message.mtype == MessageType.Agent
-                and not message.buttons
-                and not message.link
+            message.mtype == MessageType.Agent
+            and not message.buttons
+            and not message.link
         )
         if is_streaming_agent_text:
             try:
@@ -1880,7 +1880,7 @@ class Feishu:
             logger.debug("准备更新飞书流式卡片：card_id=%s, sequence=%s (before incr: %s)", card_id, sequence, stream_meta.get("sequence"))
             # 无论远端是否响应成功都自增 sequence，防止某次超时导致后续 sequence 一直因为没有递增而被拒绝
             stream_meta["sequence"] = sequence
-            
+
             if card_id and element_id:
                 content = self._escape_card_text(
                     self._strip_streaming_markdown_images(text)

@@ -87,6 +87,7 @@ _PUBLIC_SYSTEM_CONFIG_KEYS = {
 }
 _PUBLIC_SETTINGS_KEYS = {"PLUGIN_MARKET"}
 
+
 def _database_backup_artifact_data(artifact: Any) -> _SchemaDatabaseBackupArtifactData:
     """将内部备份制品映射为不含宿主路径的 Web DTO。"""
     return _SchemaDatabaseBackupArtifactData(

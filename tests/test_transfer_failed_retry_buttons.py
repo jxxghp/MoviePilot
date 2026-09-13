@@ -55,6 +55,7 @@ def test_remote_transfer_supports_history_only_retry():
     redo.assert_called_once_with(12)
     post_message.assert_not_called()
 
+
 def test_message_chain_routes_transfer_callback_to_transfer_chain():
     """MessageChain 收到整理失败按钮回调时委托 TransferChain 处理。"""
     chain = MessageChain()
@@ -78,6 +79,7 @@ def test_message_chain_routes_transfer_callback_to_transfer_chain():
         userid="10001",
         username="tester",
     )
+
 
 def test_transfer_retry_callback_retries_history():
     """重试回调应执行历史重整并发送开始、完成消息。"""

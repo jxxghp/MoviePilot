@@ -15,6 +15,7 @@ if sys.stderr.encoding != "utf-8":
 
 ENDPOINT = "https://api.anysearch.com/mcp"
 
+
 def _load_env():
     """Load API keys from .env files near the skill.
 
@@ -59,6 +60,7 @@ def _build_headers(api_key: str) -> dict:
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     return headers
+
 
 def _call_api(tool_name: str, arguments: dict, api_key: str) -> str:
     payload = {

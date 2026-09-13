@@ -57,10 +57,10 @@ class DataCleanupChainTest(unittest.TestCase):
                 health=MagicMock(),
                 backup=MagicMock(),
                 cleanup=DataCleanupService(
-                repository=DatabaseCleanupRepository(
-                    session_factory=self.SessionFactory,
-                ),
-                policy_reader=read_cleanup_policy,
+                    repository=DatabaseCleanupRepository(
+                        session_factory=self.SessionFactory,
+                    ),
+                    policy_reader=read_cleanup_policy,
                 ),
             )
         )

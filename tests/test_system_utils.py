@@ -868,7 +868,7 @@ def test_dashboard_downloader_forwards_btrfs_fsid_setting():
 
     download_dir = MagicMock(download_path="/downloads")
     with patch.object(dashboard_module.DirectoryHelper, "get_local_download_dirs",
-                         return_value=[download_dir]), \
+                      return_value=[download_dir]), \
             patch.object(SystemUtils, "space_usage", return_value=(4.0, 2.0)) as usage_mock, \
             patch.object(dashboard_module.DashboardChain, "downloader_info", return_value=[]):
         dashboard_module._build_downloader(btrfs_fsid_dedup=True)

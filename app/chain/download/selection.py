@@ -45,7 +45,6 @@ def _confirmed_batch_contexts(contexts: List[Context]) -> List[Context]:
 class DownloadSelectionOwner(_DownloadOwnerBase):
     """下载候选规范化、排序和媒体选择 owner。"""
 
-
     @classmethod
     def _validate_music_album_resource(
             cls,

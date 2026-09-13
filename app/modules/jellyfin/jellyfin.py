@@ -181,19 +181,19 @@ class Jellyfin:
             if library.get("CollectionType") == "movies":
                 library_type = MediaType.MOVIE.value
                 link = f"{self._playhost or self._host}web/index.html#!" \
-                       f"/movies.html?topParentId={library.get('Id')}"
+                    f"/movies.html?topParentId={library.get('Id')}"
             elif library.get("CollectionType") == "tvshows":
                 library_type = MediaType.TV.value
                 link = f"{self._playhost or self._host}web/index.html#!" \
-                       f"/tv.html?topParentId={library.get('Id')}"
+                    f"/tv.html?topParentId={library.get('Id')}"
             elif library.get("CollectionType") in ("music", "musicvideos"):
                 library_type = MediaType.MUSIC.value
                 link = f"{self._playhost or self._host}web/index.html#!" \
-                       f"/music.html?topParentId={library.get('Id')}"
+                    f"/music.html?topParentId={library.get('Id')}"
             else:
                 library_type = MediaType.UNKNOWN.value
                 link = f"{self._playhost or self._host}web/index.html#!" \
-                       f"/library.html?topParentId={library.get('Id')}"
+                    f"/library.html?topParentId={library.get('Id')}"
             image = self.__get_local_image_by_id(library.get("Id"))
             libraries.append(
                 _SchemaMediaServerLibrary(
@@ -305,10 +305,10 @@ class Jellyfin:
         try:
             res = self._request(headers={
                 'X-Emby-Authorization': f'MediaBrowser Client="MoviePilot", '
-                                        f'Device="requests", '
-                                        f'DeviceId="1", '
-                                        f'Version="1.0.0", '
-                                        f'Token="{self._apikey}"',
+                f'Device="requests", '
+                f'DeviceId="1", '
+                f'Version="1.0.0", '
+                f'Token="{self._apikey}"',
                 'Content-Type': 'application/json',
                 "Accept": "application/json"
             }).post_res(
@@ -1029,7 +1029,7 @@ class Jellyfin:
         :param item_id: 媒体的的ID
         """
         return f"{self._playhost or self._host}web/index.html#!" \
-               f"/details?id={item_id}&serverId={self.serverid}"
+            f"/details?id={item_id}&serverId={self.serverid}"
 
     def __get_local_image_by_id(self, item_id: str) -> str:
         """
@@ -1058,7 +1058,7 @@ class Jellyfin:
         else:
             host_url = self._host
         return f"{host_url}Items/{item_id}/" \
-               f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
+            f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
     def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """

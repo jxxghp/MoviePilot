@@ -1192,7 +1192,7 @@ def test_follow_preserves_album_entity_and_track_count():
             patch(
                 "app.startup.composition.chain.MoviePilotServerHelper.get_subscribe_shares",
                 return_value=[share],
-            ), \
+    ), \
             patch("app.chain.subscribe.query.MetaInfo") as video_meta, \
             patch.object(SubscribeChain, "add", return_value=(1, "")) as add:
         chain.follow(repository=subscribe_oper)

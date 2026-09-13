@@ -232,7 +232,7 @@ for line in sys.stdin:
     events, _final_text, completed = codex._events(result["stdout"])
     assert completed is True
     queued_index = next(i for i, event in enumerate(events)
-                         if event["type"] == "evaluation.steering.queued")
+                        if event["type"] == "evaluation.steering.queued")
     applied_index = next(i for i, event in enumerate(events)
                          if event["type"] == "evaluation.steering.applied")
     user_index = next(i for i, event in enumerate(events)
@@ -452,7 +452,7 @@ def test_native_app_server_stream_timeout_follows_evaluation_budget() -> None:
 
 
 def test_browser_runtime_expands_portable_skill_root_in_private_instruction_copy(tmp_path: Path,
-                                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+                                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
     """独立 CLI 没有桌面插件上下文时，浏览器 Skill 的根路径仍必须可执行且不改写安装文件。"""
     codex_home = tmp_path / "codex-home"
     plugin_root = codex_home / ".tmp" / "bundled-marketplaces" / "openai-bundled" / "plugins" / "browser"
@@ -561,7 +561,7 @@ async def _run_case(monkeypatch: pytest.MonkeyPatch, *, returncode: int = 0, com
         assert set(mcp) == {"evaluation"}
         assert set(mcp["evaluation"]["enabled_tools"]) == {"moviepilot_api", "read_skill", "read_tool_result"}
         assert mcp["evaluation"]["tools"] == {name: {"approval_mode": "approve"}
-                                                for name in mcp["evaluation"]["enabled_tools"]}
+                                              for name in mcp["evaluation"]["enabled_tools"]}
         assert settings.api_key not in json.dumps(command)
         assert "oracle" not in prompt and "dedup_existing" not in prompt
         world = worlds[0]
@@ -592,7 +592,7 @@ async def _run_case(monkeypatch: pytest.MonkeyPatch, *, returncode: int = 0, com
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("returncode", "completed", "error_type"), [(7, True, None), (0, False, None), (0, True, "TimeoutError"), (0, True, None)])
 async def test_native_success_is_required_even_when_real_oracle_passes(monkeypatch: pytest.MonkeyPatch, returncode: int,
-                                                                    completed: bool, error_type: Optional[str]) -> None:
+                                                                       completed: bool, error_type: Optional[str]) -> None:
     """真实状态和读取证据正确也不能掩盖原生退出、未完成或控制器异常。"""
     report = await _run_case(monkeypatch, returncode=returncode, completed=completed, error_type=error_type)
     assert report["task_passed"] is True
@@ -618,8 +618,8 @@ async def test_local_tokens_are_removed_after_native_json_unicode_decoding(monke
     (["tool_search"], 0, [], 1, False),
 ])
 def test_probe_requires_fixture_discovery_without_model_or_world_execution(names: list[str], calls: int,
-                                                                          rejected: list[Any], world_calls: int,
-                                                                          ready: bool) -> None:
+                                                                           rejected: list[Any], world_calls: int,
+                                                                           ready: bool) -> None:
     """空目录和仅计划目录不能被作为可执行对照入口，探针也不能消耗真实预算。"""
     usage = {"probe_requests": 1, "model_calls": calls, "rejected_requests": rejected,
              "model_requests": [{"retained_tools": names}]}

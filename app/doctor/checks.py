@@ -917,7 +917,6 @@ def _check_database_backups(runner: DoctorRunnerProtocol) -> None:
         )
         return
 
-
     failures = "; ".join(
         f"{backup['name']}: {backup['detail'] or backup['method']}"
         for backup in backups

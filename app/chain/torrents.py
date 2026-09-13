@@ -701,13 +701,13 @@ class TorrentsChain(ChainBase):
                     # 发送消息
                     self.post_message(
                         Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                     link=self.runtime_config.site_url)
+                                link=self.runtime_config.site_url)
                     )
             else:
                 self.post_message(
                     Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                 link=self.runtime_config.site_url))
+                            link=self.runtime_config.site_url))
         except Exception as e:
             logger.error(f"站点 {domain} RSS链接自动获取失败：{str(e)} - {traceback.format_exc()}")
             self.post_message(Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                           link=self.runtime_config.site_url))
+                                      link=self.runtime_config.site_url))
