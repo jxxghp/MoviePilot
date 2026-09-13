@@ -326,6 +326,7 @@ async def test_market_sync_preserves_generation_priority_through_gateway(
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
     monkeypatch.setattr(
         global_vars,
@@ -464,6 +465,7 @@ async def test_market_sync_blocks_activation_when_gateway_selected_local_fails(
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
     monkeypatch.setattr(
         global_vars,
@@ -607,6 +609,7 @@ async def test_market_sync_reuses_startup_lease_through_real_gateway(
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
     monkeypatch.setattr(
         global_vars,

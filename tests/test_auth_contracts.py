@@ -688,3 +688,48 @@ def test_auth_exchange_rejects_missing_or_disabled_user(user):
     assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
     assert "set-cookie" not in response.headers
     service.build_token_response.assert_not_called()
+
+
+def test_auth_providers_response_model_keeps_plugin_clone_source_id():
+    """分身登录入口经 response_model 序列化后必须仍带源插件 ID。
+
+    端点声明了 response_model，schema 未声明的键会被 pydantic 静默丢弃，投影层写
+    进去也到不了前端联邦加载器；这条用例走一遍真实的响应序列化来锁住该字段。
+    """
+    plugin_manager = Mock()
+    plugin_manager.get_plugin_auth_providers.return_value = [
+        {
+            "id": "plugin:DemoPluginwork",
+            "type": "plugin",
+            "name": "Demo 分身",
+            "enabled": True,
+            "component": "AuthPage",
+            "plugin_id": "DemoPluginwork",
+            "remote": {
+                "id": "DemoPluginwork",
+                "url": "/plugin/DemoPluginwork/dist/remoteEntry.js",
+                "name": "Demo 分身",
+                "source_plugin_id": "DemoPlugin",
+            },
+        }
+    ]
+    app = FastAPI()
+    app.include_router(auth_endpoint.router, prefix="/auth")
+    app.dependency_overrides[auth_endpoint.get_auth_service] = lambda: SimpleNamespace(
+        has_passkey=Mock(return_value=False)
+    )
+
+    with patch.object(
+        auth_endpoint,
+        "get_plugin_manager",
+        return_value=plugin_manager,
+    ), TestClient(app) as client:
+        response = client.get("/auth/providers")
+
+    assert response.status_code == 200
+    plugin_provider = next(
+        provider
+        for provider in response.json()["data"]
+        if provider["type"] == "plugin"
+    )
+    assert plugin_provider["remote"]["source_plugin_id"] == "DemoPlugin"
