@@ -95,7 +95,16 @@ class PluginInstallGateway:
         startup_token: PluginStartupLease | None = None,
         local_sync: bool = False,
     ) -> PluginInstallResult:
-        """读取冻结库存并执行一次不能绕过来源身份的插件写入。"""
+        """读取冻结库存并执行一次不能绕过来源身份的插件写入。
+
+        先把分身归一到源插件，理由与来源勘察相同：安装包只登记在源插件名下，拿
+        分身自身 ID 去查候选必然落空。界面上分身卡片的「版本历史」与「关于」两条
+        入口都会把分身自己的 ID 送进来。
+
+        归一必须早于生命周期占位：``hold`` 按 ID 互斥，用分身 ID 占位不会把同源
+        分身的并发安装串起来，它们会同时改写同一份源插件载荷。
+        """
+        plugin_id = self.__source_plugin_id(plugin_id)
         try:
             # 安装 ``force`` 只控制载荷覆盖；远程市场索引由市场手动刷新和
             # 定时缓存任务维护，不能让单个插件更新放大全部仓库请求。

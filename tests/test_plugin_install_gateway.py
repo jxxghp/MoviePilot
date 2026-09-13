@@ -1,10 +1,12 @@
 """统一插件安装 Gateway 测试。"""
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from app.application.plugin import gateway as gateway_module
 from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.gateway import PluginInstallGateway
 from app.application.plugin.identity import (
@@ -547,3 +549,77 @@ async def test_inspect_source_resolves_clone_id_to_its_source_plugin() -> None:
     assert inspection.selection.candidate is not None
     assert inspection.plugin_id == "DemoPlugin"
     identity.assert_awaited_once_with("DemoPlugin")
+
+
+@pytest.mark.asyncio
+async def test_install_resolves_clone_id_to_its_source_plugin() -> None:
+    """分身安装必须先归一到源插件，否则准入阶段就找不到安装包。"""
+    executor = AsyncMock()
+    executor.execute.return_value = type(
+        "Result",
+        (),
+        {"success": True, "message": ""},
+    )()
+    identity = AsyncMock(return_value=None)
+    gateway = PluginInstallGateway(
+        inventory=AsyncMock(return_value=_inventory()),
+        identity=identity,
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=executor,
+        clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: (
+            "DemoPlugin" if plugin_id == "DemoPluginwork" else plugin_id
+        ),
+    )
+
+    result = await gateway.install(
+        plugin_id="DemoPluginwork",
+        repo_url=REPO_URL,
+        package_version="v3",
+        explicit_source=True,
+    )
+
+    assert result.success is True
+    admission = executor.execute.await_args.kwargs["admission"]
+    assert admission.candidate.plugin_id == "DemoPlugin"
+    identity.assert_awaited_once_with("DemoPlugin")
+
+
+@pytest.mark.asyncio
+async def test_install_holds_lifecycle_on_the_source_plugin_for_clones() -> None:
+    """分身安装的生命周期占位必须落在源插件上，同源分身才不会并发改写同一份载荷。"""
+    held: list[str] = []
+
+    @asynccontextmanager
+    async def _record_hold(plugin_id: str, _startup_token=None):
+        """记录安装期间实际占位的插件 ID。"""
+        held.append(plugin_id)
+        yield
+
+    executor = AsyncMock()
+    executor.execute.return_value = type(
+        "Result",
+        (),
+        {"success": True, "message": ""},
+    )()
+    gateway = PluginInstallGateway(
+        inventory=AsyncMock(return_value=_inventory()),
+        identity=AsyncMock(return_value=None),
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=executor,
+        clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: (
+            "DemoPlugin" if plugin_id == "DemoPluginwork" else plugin_id
+        ),
+    )
+
+    with patch.object(gateway_module.plugin_lifecycle, "hold", _record_hold):
+        result = await gateway.install(
+            plugin_id="DemoPluginwork",
+            repo_url=REPO_URL,
+            package_version="v3",
+            explicit_source=True,
+        )
+
+    assert result.success is True
+    assert held == ["DemoPlugin"]
