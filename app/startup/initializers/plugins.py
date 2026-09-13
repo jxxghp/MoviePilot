@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import sqlalchemy as sa
+from pydantic import ValidationError
 
 from app.adapters.external.market import (
     LOCAL_REPO_PREFIX,
@@ -258,21 +259,46 @@ def _prime_plugin_instance_log_levels() -> None:
         session.close()
 
 
-def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance:
+def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance | None:
     """把插件实例表的 ORM 行投影为运行时端口使用的 Pydantic 描述。
 
     只投影描述符各列：业务参数走插件配置读取端口，运行时端口拿到的应当是一份实例
     身份、展示信息与调用目标置位的视图。
+
+    历史版本写入的脏实例行不能阻断整个插件目录的读取；严格模型校验仍保留，只把
+    当前行视为不可装载并交给上层跳过。数据库异常不在这里捕获，避免把真正的存储故障
+    伪装成单个插件问题。
     """
-    return PluginInstance(
-        instance_id=record.instance_id,
-        source_plugin_id=record.source_plugin_id,
-        plugin_name=record.plugin_name,
-        plugin_desc=record.plugin_desc,
-        plugin_icon=record.plugin_icon,
-        is_default_target=record.is_default_target,
-        is_enabled=record.is_enabled,
-    )
+    try:
+        return PluginInstance(
+            instance_id=record.instance_id,
+            source_plugin_id=record.source_plugin_id,
+            plugin_name=record.plugin_name,
+            plugin_desc=record.plugin_desc,
+            plugin_icon=record.plugin_icon,
+            is_default_target=record.is_default_target,
+            is_enabled=record.is_enabled,
+        )
+    except ValidationError as error:
+        logger.warning(
+            "跳过无效插件实例记录：instance_id=%r, source_plugin_id=%r, error=%s",
+            record.instance_id,
+            record.source_plugin_id,
+            error,
+        )
+        return None
+
+
+def _plugin_instances_from_records(
+    records: list[PluginInstanceRecord],
+) -> list[PluginInstance]:
+    """逐行投影实例记录，跳过不能通过运行时模型校验的历史行。"""
+    instances: list[PluginInstance] = []
+    for record in records:
+        instance = _plugin_instance_from_record(record)
+        if instance is not None:
+            instances.append(instance)
+    return instances
 
 
 def _save_plugin_instance_record(instance: PluginInstance) -> None:
@@ -326,20 +352,25 @@ def _build_plugin_instance_directory() -> PluginInstanceDirectory:
         record = oper.get(instance_id)
         return _plugin_instance_from_record(record) if record is not None else None
 
+    def _list_all() -> list[PluginInstance]:
+        """列出全部可用实例描述，历史无效行只影响自身。"""
+        return _plugin_instances_from_records(oper.list_all())
+
+    def _list_by_source(source_plugin_id: str) -> list[PluginInstance]:
+        """列出指定源插件的可用实例描述，跳过历史无效行。"""
+        return _plugin_instances_from_records(oper.list_by_source(source_plugin_id))
+
+    def _list_enabled() -> list[PluginInstance]:
+        """列出启用且可投影的实例描述，供启动依赖分类使用。"""
+        return _plugin_instances_from_records(oper.list_enabled())
+
     return PluginInstanceDirectory(
         get=_get,
-        list_all=lambda: [
-            _plugin_instance_from_record(record) for record in oper.list_all()
-        ],
-        list_by_source=lambda source_plugin_id: [
-            _plugin_instance_from_record(record)
-            for record in oper.list_by_source(source_plugin_id)
-        ],
+        list_all=_list_all,
+        list_by_source=_list_by_source,
         save=_save_plugin_instance_record,
         delete=oper.delete,
-        list_enabled=lambda: [
-            _plugin_instance_from_record(record) for record in oper.list_enabled()
-        ],
+        list_enabled=_list_enabled,
         set_enabled=lambda instance_id, is_enabled: oper.set_enabled(
             instance_id=instance_id,
             is_enabled=is_enabled,

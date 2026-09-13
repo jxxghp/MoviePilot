@@ -14,7 +14,6 @@ from app.runtime.extensions.plugin.database import PluginDatabase
 from app.schemas.plugin import PluginInstance
 from app.schemas.types import SystemConfigKey
 
-
 ConfigReader = Callable[[Any], Any]
 ConfigWriter = Callable[[Any, Any], Any]
 AsyncConfigWriter = Callable[[Any, Any], Awaitable[Any]]
@@ -293,6 +292,9 @@ class PluginInstanceDirectory:
     ``list_all``/``get`` 一律返回全部登记行（含停用的），``list_enabled`` 才是运行期
     装载的取数口：是否实例化由 ``is_enabled`` 单独表达，读取口不替调用方把停用的行
     藏起来——藏起来会让卡片、卸载守卫和默认目标候选一并丢掉这些行。
+
+    历史脏行如果无法投影为运行时 ``PluginInstance``，由启动组合根的读取适配器记录并
+    跳过；本端口仍只向上层暴露可安全使用的实例描述，避免单个旧插件记录阻断整个启动。
     """
 
     def __init__(
