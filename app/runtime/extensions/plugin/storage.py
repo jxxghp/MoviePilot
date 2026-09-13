@@ -198,6 +198,17 @@ class PluginConfigStore:
             if key
         }
 
+    def has_config(self, instance_id: str) -> bool:
+        """判断该实例行上是否留有业务参数。
+
+        不复用 :meth:`read`：那里要求插件类当前已登记，而这里问的恰恰是已停用、因而
+        不在类注册表里的实例——走 :meth:`read` 会让每一个可恢复分身都报告「没有配置」。
+
+        :param instance_id: 实例 ID
+        :return: 该实例是否留有业务参数
+        """
+        return bool(self._storage().read_config(instance_id))
+
     def write(self, plugin_id: str, config: dict, force: bool = False) -> bool:
         """保存配置，默认拒绝不存在插件的配置写入。"""
         if not force and not self._plugin_exists(plugin_id):

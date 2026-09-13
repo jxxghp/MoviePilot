@@ -38,7 +38,7 @@ from app.application.configuration import get_api_runtime_config_snapshot, get_c
 from app.application.plugin.catalog import get_plugin_catalog_query
 from app.application.plugin.config import PluginConfigCommand
 from app.application.plugin.data import PluginDataQueryService, PluginDataSummaryService
-from app.application.plugin.folders import add_clone_to_plugin_folder, remove_plugin_from_folders
+from app.application.plugin.folders import remove_plugin_from_folders
 from app.application.plugin.gateway import get_plugin_install_service
 from app.application.plugin.management import (
     get_plugin_snapshot,
@@ -57,7 +57,6 @@ from app.runtime.tasks import TaskRegistry
 from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import Plugin as _SchemaPlugin
-from app.schemas.plugin import PluginCloneRequest as _SchemaPluginCloneRequest
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
 from app.schemas.plugin import PluginDataSummary as _SchemaPluginDataSummary
@@ -765,39 +764,6 @@ async def plugin_static_file(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Internal Server Error")
-
-
-@router.post("/clone/{plugin_id}", summary="创建插件分身", response_model=_SchemaResponse[None])
-def clone_plugin(
-    plugin_id: str,
-    clone_data: _SchemaPluginCloneRequest,
-    _: ApiPrincipal = Depends(get_current_active_superuser),
-) -> Any:
-    """
-    创建插件分身
-    """
-    plugin_manager = get_plugin_manager()
-    try:
-        with plugin_manager.mutation(f"创建插件 {plugin_id} 分身"):
-            success, message = plugin_manager.clone_plugin(
-                plugin_id=plugin_id,
-                suffix=clone_data.suffix,
-                name=clone_data.name,
-                description=clone_data.description,
-                version=clone_data.version,
-                icon=clone_data.icon,
-            )
-
-            if success:
-                # 分身服务已完成运行态加载，此处只补齐宿主注册。
-                register_plugin(message)
-                # 将分身插件添加到原插件所在的文件夹中
-                add_clone_to_plugin_folder(plugin_id, message)
-                return _SchemaResponse(success=True, message="插件分身创建成功")
-            return _SchemaResponse(success=False, message=message)
-    except Exception as e:
-        logger.error(f"创建插件分身失败：{str(e)}")
-        return _SchemaResponse(success=False, message=f"创建插件分身失败：{str(e)}")
 
 
 @router.get(  # type: ignore[misc]

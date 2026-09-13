@@ -656,13 +656,15 @@ def test_clone_service_persists_descriptor_without_copying_source_package():
 
     service = PluginCloneService(
         plugin_class=lambda plugin_id: DemoPlugin if plugin_id == "DemoPlugin" else None,
-        plugin_exists=lambda plugin_id: plugin_id in instances,
+        instance_id_taken=lambda plugin_id: plugin_id in instances,
+        get_instance=instances.get,
         source_plugin_id=lambda plugin_id: plugin_id,
         save_instance=lambda instance: instances.__setitem__(
             instance.instance_id,
             instance,
         ),
         delete_instance=lambda plugin_id: instances.pop(plugin_id, None) is not None,
+        disable_instance=lambda plugin_id: plugin_id in instances,
         read_config=lambda plugin_id: configs.get(plugin_id, {}),
         save_config=lambda plugin_id, config: not configs.__setitem__(plugin_id, config),
         delete_config=lambda plugin_id: configs.pop(plugin_id, None) is not None,
@@ -704,13 +706,15 @@ def test_clone_service_rolls_back_descriptor_and_config_after_load_failure():
 
     service = PluginCloneService(
         plugin_class=lambda _plugin_id: DemoPlugin,
-        plugin_exists=lambda plugin_id: plugin_id in instances,
+        instance_id_taken=lambda plugin_id: plugin_id in instances,
+        get_instance=instances.get,
         source_plugin_id=lambda plugin_id: plugin_id,
         save_instance=lambda instance: instances.__setitem__(
             instance.instance_id,
             instance,
         ),
         delete_instance=lambda plugin_id: instances.pop(plugin_id, None) is not None,
+        disable_instance=lambda plugin_id: plugin_id in instances,
         read_config=lambda plugin_id: configs.get(plugin_id, {}),
         save_config=lambda plugin_id, config: not configs.__setitem__(plugin_id, config),
         delete_config=lambda plugin_id: configs.pop(plugin_id, None) is not None,

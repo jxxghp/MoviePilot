@@ -5,10 +5,10 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **408**
-- Stable `moviepilot_api` operations: **228**
-- Exact HTTP routes used by the gateway: **226**
-- OpenAPI routes matched directly by the gateway: **225**
+- OpenAPI HTTP operations: **409**
+- Stable `moviepilot_api` operations: **229**
+- Exact HTTP routes used by the gateway: **227**
+- OpenAPI routes matched directly by the gateway: **226**
 - Bounded dynamic gateway routes: **1**
 - Every gateway operation has a generated English oneOf input contract in MCP `tools/list` and `skills/moviepilot-api/SKILL.md`.
 - Every non-gateway OpenAPI operation is listed below with an explicit ownership boundary; it is not silently callable through arbitrary URL/method input.
@@ -19,7 +19,7 @@
 | :--- | ---: | :--- |
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
 | `consolidated` | 71 | Source/UI route represented by a stable aggregate Agent operation. |
-| `gateway` | 225 | Approved structured MoviePilot Agent operation. |
+| `gateway` | 226 | Approved structured MoviePilot Agent operation. |
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
@@ -193,6 +193,7 @@
 | `POST` | `/api/v1/openai/v1/responses` | openai | `transport_or_identity` | host-runtime | OpenAI compatible responses |
 | `GET` | `/api/v1/plugin/` | plugin | `gateway` | plugin.installed, plugin.market | 所有插件 |
 | `POST` | `/api/v1/plugin/clone/{plugin_id}` | plugin | `gateway` | plugin.clone | 创建插件分身 |
+| `GET` | `/api/v1/plugin/clone/{plugin_id}/restorable` | plugin | `gateway` | plugin.clone.restorable | 列出可恢复的已停用分身 |
 | `GET` | `/api/v1/plugin/dashboard/meta` | plugin | `ui_presentation` | host-ui | 获取所有插件仪表板元信息 |
 | `GET` | `/api/v1/plugin/dashboard/{plugin_id}` | plugin | `ui_presentation` | host-ui | 获取插件仪表板配置 |
 | `GET` | `/api/v1/plugin/dashboard/{plugin_id}/{key}` | plugin | `ui_presentation` | host-ui | 获取插件仪表板配置 |

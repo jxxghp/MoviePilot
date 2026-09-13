@@ -5,6 +5,7 @@ from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import AfterValidator as _AfterValidator
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
+from pydantic import BeforeValidator as _BeforeValidator
 from pydantic import PrivateAttr as _PrivateAttr
 from pydantic import computed_field as _computed_field
 
@@ -327,14 +328,32 @@ class PluginInstallOutcome(BaseModel):
     restart_required: bool = Field(description="本次依赖更新是否需要重启 MoviePilot 才能完成")
 
 
+def _blank_clone_suffix_to_none(value: object) -> object:
+    """把「没填后缀」的三种写法归一成同一个值。
+
+    前端的后缀输入框留空时可能整个字段不带、带 null，也可能带一个空串或只有空白；
+    三者表达的都是「由服务端挑一个」。不归一的话空串会撞上格式校验，用户看到的是
+    一条与他的操作对不上的格式错误，而不是自动分配。
+    """
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    return value
+
+
+_CloneSuffix = _Annotated[Optional[str], _BeforeValidator(_blank_clone_suffix_to_none)]
+
+
 class PluginCloneRequest(BaseModel):
     """创建虚拟插件分身的请求参数。"""
 
-    suffix: str = Field(
-        min_length=1,
+    # 格式与长度在这一层判定：非法后缀拼出的实例 ID 用不了 Python 类名与路由段，
+    # 等落库之后再报错意味着已经写进一行、还要靠回滚把它擦掉
+    suffix: _CloneSuffix = Field(
+        default=None,
         max_length=20,
         pattern=r"^[A-Za-z0-9]+$",
-        description="追加到当前插件 ID 后的 ASCII 字母或数字后缀",
+        description="追加到当前插件 ID 后的 ASCII 字母或数字后缀；留空时由服务端自动分配",
     )
     name: str = Field(default="", description="分身展示名称")
     description: str = Field(default="", description="分身展示描述")
@@ -343,6 +362,34 @@ class PluginCloneRequest(BaseModel):
         default=None,
         description="兼容旧客户端保留，虚拟分身始终跟随源插件版本",
     )
+    restore_previous: bool = Field(
+        default=True,
+        description="该后缀名下留有一个已停用的分身时是否沿用它的业务参数，为假时按源插件模板重建",
+    )
+
+
+class PluginCloneOutcome(BaseModel):  # type: ignore[misc]
+    """一次分身创建或恢复的结果。
+
+    实例 ID 必须回传：后缀可以由服务端自动分配，调用方因此再也算不出它，而后续要
+    拿它去打开配置、刷新列表或跳转。
+    """
+
+    instance_id: str = Field(description="新建或恢复出来的分身实例 ID")
+
+
+class PluginRestorableInstance(BaseModel):  # type: ignore[misc]
+    """一个已停用、其设置仍留存可被恢复的分身实例。
+
+    在册启用的分身不在此列：它们的配置正在被使用，拿来「恢复」没有意义，摆进选择器
+    只会让用户误以为能把一个活着的实例再创建一遍。
+    """
+
+    instance_id: str = Field(description="分身实例 ID")
+    suffix: str = Field(description="该实例相对源插件 ID 的后缀")
+    plugin_name: Optional[str] = Field(default=None, description="停用前登记的展示名称")
+    plugin_desc: Optional[str] = Field(default=None, description="停用前登记的展示描述")
+    has_config: bool = Field(default=False, description="是否留有业务参数")
 
 
 class PluginSourceIdentity(BaseModel):  # type: ignore[misc]

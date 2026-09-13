@@ -10,6 +10,7 @@ from starlette.responses import Response
 
 from app import schemas
 from app.api.endpoints import plugin as plugin_endpoint
+from app.api.endpoints import pluginclone as plugin_clone_endpoint
 from app.api.endpoints import pluginfolder as plugin_folders_endpoint
 from app.api.endpoints.plugin import (
     plugin_capabilities,
@@ -1317,11 +1318,11 @@ def test_sealed_http_clone_rejects_before_runtime_and_registration(monkeypatch):
     plugin_manager.mutation.side_effect = admission.hold
     register = MagicMock()
     add_to_folder = MagicMock()
-    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: plugin_manager)
-    monkeypatch.setattr(plugin_endpoint, "register_plugin", register)
-    monkeypatch.setattr(plugin_endpoint, "add_clone_to_plugin_folder", add_to_folder)
+    monkeypatch.setattr(plugin_clone_endpoint, "get_plugin_manager", lambda: plugin_manager)
+    monkeypatch.setattr(plugin_clone_endpoint, "register_plugin", register)
+    monkeypatch.setattr(plugin_clone_endpoint, "add_clone_to_plugin_folder", add_to_folder)
 
-    result = plugin_endpoint.clone_plugin(
+    result = plugin_clone_endpoint.clone_plugin(
         "DemoPlugin",
         schemas.PluginCloneRequest(suffix="Work"),
         None,
