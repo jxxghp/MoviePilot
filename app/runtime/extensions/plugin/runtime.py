@@ -392,9 +392,11 @@ def build_plugin_runtime(
     clone = PluginCloneService(
         plugin_class=registry.plugin_class,
         instance_id_taken=instance_id_taken,
+        get_instance=instances.get,
         source_plugin_id=source_plugin_id,
         save_instance=instances.save,
         delete_instance=instances.delete,
+        disable_instance=instances.disable,
         read_config=configs.read,
         save_config=lambda plugin_id, config: configs.write(
             plugin_id,

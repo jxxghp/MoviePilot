@@ -190,7 +190,24 @@ def test_auto_allocated_suffix_starts_right_after_the_host_instance():
     assert world.rows["DemoPlugin2"].is_enabled is True
 
 
+def test_auto_allocated_suffix_skips_a_disabled_clone_row():
+    """已停用的分身同样占号，自动分配不得挑中它。
 
+    重用它的 ID 是「恢复」而不是新建：用户点的是「新建一个」，却拿到上一个分身留下
+    的业务参数，等于凭空继承了一份他没打算要的配置。
+    """
+    world = _build_world(
+        rows={"DemoPlugin2": _disabled_clone("DemoPlugin2")},
+        configs={"DemoPlugin2": {"token": "旧的"}},
+    )
+
+    success, instance_id = world.clone(plugin_id="DemoPlugin")
+
+    assert success is True
+    assert instance_id == "DemoPlugin3"
+    # 旧行原样留着，没有被这次新建顶掉
+    assert world.rows["DemoPlugin2"].is_enabled is False
+    assert world.configs["DemoPlugin2"] == {"token": "旧的"}
 
 
 def test_auto_allocated_suffix_skips_an_enabled_clone_row():
@@ -278,7 +295,23 @@ def test_explicit_suffix_colliding_with_an_enabled_clone_is_rejected():
     assert world.rows["DemoPlugin2"].plugin_name == "在跑的"
 
 
+def test_explicit_suffix_colliding_with_another_sources_clone_is_rejected():
+    """归属对不上的停用行不算可恢复：它是别的源插件的分身，不能被这里改嫁。"""
+    world = _build_world(
+        rows={
+            "DemoPlugin2": PluginInstance(
+                instance_id="DemoPlugin2",
+                source_plugin_id="OtherPlugin",
+                is_enabled=False,
+            ),
+        },
+    )
 
+    success, message = world.clone(plugin_id="DemoPlugin", suffix="2")
+
+    assert success is False
+    assert "已存在" in message
+    assert world.rows["DemoPlugin2"].source_plugin_id == "OtherPlugin"
 
 
 def test_a_clone_cannot_be_used_as_a_clone_source():
@@ -306,18 +339,109 @@ def test_repeating_the_same_create_is_rejected_rather_than_overwriting():
     assert world.rows["DemoPluginwork"].plugin_name == "第一次"
 
 
+# --------------------------------------------------------------------------- #
+# 按 ID 恢复已停用的分身
+# --------------------------------------------------------------------------- #
 
 
+def test_restoring_a_disabled_clone_brings_back_its_config_and_display_info():
+    """按 ID 恢复就是把那一行重新置为启用，配置与展示信息原样回来。
+
+    停用从不删行，业务参数一直挂在上面；恢复因而不能是「新建一行再按源插件模板铺一份
+    配置」，那会把用户特意留着的东西盖掉。
+    """
+    world = _build_world(
+        rows={
+            "DemoPlugin2": _disabled_clone(
+                "DemoPlugin2",
+                plugin_name="夜间任务",
+                plugin_desc="只在夜里跑",
+                plugin_icon="night.png",
+            ),
+        },
+        configs={
+            "DemoPlugin": {"token": "源插件的"},
+            "DemoPlugin2": {"token": "分身自己的", "cron": "0 3 * * *"},
+        },
+    )
+
+    success, instance_id = world.clone(plugin_id="DemoPlugin", suffix="2")
+
+    assert (success, instance_id) == (True, "DemoPlugin2")
+    restored = world.rows["DemoPlugin2"]
+    assert restored.is_enabled is True
+    assert restored.plugin_name == "夜间任务"
+    assert restored.plugin_desc == "只在夜里跑"
+    assert restored.plugin_icon == "night.png"
+    # 配置没有被源插件模板顶掉，这正是用户要拿回来的东西
+    assert world.configs["DemoPlugin2"] == {"token": "分身自己的", "cron": "0 3 * * *"}
+    assert world.reloaded == ["DemoPlugin2"]
 
 
+def test_restoring_accepts_a_new_display_name_while_keeping_the_config():
+    """恢复时可以顺手改名，改的只是展示信息，业务参数仍然沿用。"""
+    world = _build_world(
+        rows={"DemoPlugin2": _disabled_clone("DemoPlugin2", plugin_name="旧名字")},
+        configs={"DemoPlugin2": {"token": "留着"}},
+    )
+
+    success, _instance_id = world.clone(
+        plugin_id="DemoPlugin",
+        suffix="2",
+        name="新名字",
+    )
+
+    assert success is True
+    assert world.rows["DemoPlugin2"].plugin_name == "新名字"
+    assert world.configs["DemoPlugin2"] == {"token": "留着"}
 
 
+def test_restore_previous_false_rebuilds_the_config_from_the_source_template():
+    """显式要求全新时按源插件模板重建配置，并保持业务开关关闭待用户配置。"""
+    world = _build_world(
+        rows={"DemoPlugin2": _disabled_clone("DemoPlugin2", plugin_name="旧名字")},
+        configs={
+            "DemoPlugin": {"enable": True, "token": "源插件的"},
+            "DemoPlugin2": {"token": "该被丢弃"},
+        },
+    )
+
+    success, _instance_id = world.clone(
+        plugin_id="DemoPlugin",
+        suffix="2",
+        name="全新",
+        restore_previous=False,
+    )
+
+    assert success is True
+    assert world.configs["DemoPlugin2"] == {
+        "enable": False,
+        "enabled": False,
+        "token": "源插件的",
+    }
+    assert world.rows["DemoPlugin2"].plugin_name == "全新"
 
 
+def test_failed_restore_only_puts_the_row_back_to_disabled():
+    """恢复失败只把启用位退回停用，不得连同用户留存的配置一起毁掉。
 
+    那一行是用户特意留着的，不是本次创建的产物；一次加载失败就删掉它，等于让用户为
+    一个可重试的故障付出丢数据的代价。
+    """
+    world = _build_world(
+        rows={"DemoPlugin2": _disabled_clone("DemoPlugin2", plugin_name="夜间任务")},
+        configs={"DemoPlugin2": {"token": "必须留着"}},
+    )
+    world.status = PluginRuntimeStatus.LOAD_FAILED
 
+    success, message = world.clone(plugin_id="DemoPlugin", suffix="2")
 
-
+    assert success is False
+    assert "加载失败" in message
+    assert world.rows["DemoPlugin2"].is_enabled is False
+    assert world.rows["DemoPlugin2"].plugin_name == "夜间任务"
+    assert world.configs["DemoPlugin2"] == {"token": "必须留着"}
+    assert world.removed == ["DemoPlugin2"]
 
 
 def test_failed_fresh_creation_still_removes_the_row_it_created():
@@ -359,7 +483,9 @@ def test_request_schema_trims_and_keeps_a_legal_suffix():
     assert PluginCloneRequest(suffix="  Work  ").suffix == "Work"
 
 
-
+def test_restore_previous_defaults_to_reusing_the_stored_settings():
+    """默认沿用留存设置：静默丢弃用户数据不能是默认行为。"""
+    assert PluginCloneRequest().restore_previous is True
 
 
 def test_an_overlong_composed_instance_id_is_rejected_before_any_write():

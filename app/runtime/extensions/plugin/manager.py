@@ -1283,7 +1283,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return PluginAccessPolicy.private_key(plugin_id)
 
     def clone_plugin(self, plugin_id: str, suffix: Optional[str], name: str, description: str,
-                     version: str = None, icon: str = None) -> Tuple[bool, str]:
+                     version: str = None, icon: str = None,
+                     restore_previous: bool = True) -> Tuple[bool, str]:
         """
         创建插件分身
         :param plugin_id: 原插件ID
@@ -1292,6 +1293,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         :param description: 分身描述
         :param version: 自定义版本号，分身始终跟随源插件版本，仅为旧客户端保留
         :param icon: 自定义图标URL
+        :param restore_previous: 同后缀名下留有已停用的分身时是否沿用它的业务参数
         :return: (是否成功, 成功时为分身实例ID／失败时为可读原因)
         """
         try:
@@ -1303,6 +1305,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     description=description,
                     version=version,
                     icon=icon,
+                    restore_previous=restore_previous,
                 )
         except PluginMutationRejectedError as error:
             logger.warning(str(error))

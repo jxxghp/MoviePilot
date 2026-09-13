@@ -1,4 +1,4 @@
-"""插件分身的创建接口。
+"""插件分身的创建与恢复接口。
 
 这些路由并入 ``plugin`` 路由器，路径与单文件时期完全一致；单独成篇只是让分身创建与
 插件目录、市场、静态资源等关注点各自分开，与 ``pluginfolder``/``pluginloglevel``/
@@ -36,7 +36,8 @@ def clone_plugin(
     """
     创建插件分身
 
-    不填后缀时由服务端分配一个最小可用序号，因而实例 ID 只能由回执给出。
+    不填后缀时由服务端分配一个最小可用序号，因而实例 ID 只能由回执给出；该后缀名下
+    留有一个已停用的分身时，本次创建就是把那一行连同它的业务参数重新启用。
     """
     plugin_manager = get_plugin_manager()
     try:
@@ -48,6 +49,7 @@ def clone_plugin(
                 description=clone_data.description,
                 version=clone_data.version,
                 icon=clone_data.icon,
+                restore_previous=clone_data.restore_previous,
             )
             if not success:
                 return _SchemaResponse(success=False, message=message)

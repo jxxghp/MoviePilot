@@ -362,6 +362,10 @@ class PluginCloneRequest(BaseModel):
         default=None,
         description="兼容旧客户端保留，虚拟分身始终跟随源插件版本",
     )
+    restore_previous: bool = Field(
+        default=True,
+        description="该后缀名下留有一个已停用的分身时是否沿用它的业务参数，为假时按源插件模板重建",
+    )
 
 
 class PluginCloneOutcome(BaseModel):  # type: ignore[misc]
