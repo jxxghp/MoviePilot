@@ -65,6 +65,7 @@
   "app/adapters/system/plugin/package.py:app.runtime.execution.run_in_threadpool_to_completion": {
     "owners": {
       "PluginPackageManager.__async_install_dependencies_if_required": 1,
+      "PluginPackageManager.__async_swap_staged_plugin_content": 1,
       "PluginPackageManager.async_activate_persistent_backup": 1,
       "PluginPackageManager.async_checkpoint": 1,
       "PluginPackageManager.async_cleanup": 1,

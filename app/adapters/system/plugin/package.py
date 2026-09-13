@@ -993,11 +993,12 @@ class PluginPackageManager:
 
         release_tag = selection.release_tag
         if release_tag and not selection.fallback_to_filelist:
-            def prepare_selected_release() -> tuple[bool, str]:
+            def prepare_selected_release(staging_dir: Path) -> tuple[bool, str]:
                 return self.__install_from_release(
                     pid,
                     selection.user_repo,
                     release_tag,
+                    staging_dir,
                 )
 
             return self.__install_flow_sync(
@@ -1010,20 +1011,24 @@ class PluginPackageManager:
 
         if release_tag:
             # 当前索引 Release 失败时回退文件列表，避免发布产物短暂滞后阻断安装。
-            def prepare_release() -> tuple[bool, str]:
+            def prepare_release(staging_dir: Path) -> tuple[bool, str]:
                 ok, msg = self.__install_from_release(
                     pid,
                     selection.user_repo,
                     release_tag,
+                    staging_dir,
                 )
                 if ok:
                     return True, msg
                 logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
-                self.__remove_old_plugin(pid)
+                # 回退前只清理本次暂存的半份 Release 产物；已安装的运行目录
+                # 此刻还没有被触碰，清理它会让一次可恢复的回退变成数据丢失。
+                shutil.rmtree(staging_dir, ignore_errors=True)
                 return self.__prepare_content_via_filelist_sync(
                     pid,
                     selection.user_repo,
                     selection.package_version,
+                    staging_dir,
                 )
 
             return self.__install_flow_sync(
@@ -1035,11 +1040,12 @@ class PluginPackageManager:
             )
         # 未声明 release 打包的插件继续使用文件列表方式安装。
 
-        def prepare_filelist() -> tuple[bool, str]:
+        def prepare_filelist(staging_dir: Path) -> tuple[bool, str]:
             return self.__prepare_content_via_filelist_sync(
                 pid,
                 selection.user_repo,
                 selection.package_version,
+                staging_dir,
             )
 
         return self.__install_flow_sync(
@@ -1126,11 +1132,11 @@ class PluginPackageManager:
         except Exception:
             return False, "本地插件来源路径无效"
 
-        def prepare_local() -> tuple[bool, str]:
+        def prepare_local(staging_dir: Path) -> tuple[bool, str]:
             try:
                 shutil.copytree(
                     source_dir,
-                    dest_dir,
+                    staging_dir,
                     dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store", "node_modules")
                 )
@@ -1206,8 +1212,9 @@ class PluginPackageManager:
         pid: str,
         remote_path: object,
         package_version: Optional[str],
+        dest_root: Path,
     ) -> Path:
-        """把市场文件路径限定到当前插件目录，拒绝绝对路径和目录穿越。"""
+        """把市场文件路径限定到给定落盘根目录之内，拒绝绝对路径和目录穿越。"""
         if not isinstance(remote_path, str) or not remote_path or "\\" in remote_path:
             raise ValueError("插件文件路径无效")
         pure_path = PurePosixPath(remote_path)
@@ -1222,24 +1229,30 @@ class PluginPackageManager:
             or any(part in {"", ".", ".."} for part in parts[2:])
         ):
             raise ValueError("插件文件路径无效")
-        plugin_dir = (self._plugins_root() / pid.lower()).resolve()
-        file_path = (plugin_dir / Path(*parts[2:])).resolve()
-        if not file_path.is_relative_to(plugin_dir):
+        resolved_root = dest_root.resolve()
+        file_path = (resolved_root / Path(*parts[2:])).resolve()
+        if not file_path.is_relative_to(resolved_root):
             raise ValueError("插件文件路径无效")
         return file_path
 
     def __download_files(self, pid: str, file_list: list[dict[str, Any]], user_repo: str,
-                         package_version: Optional[str] = None) -> tuple[bool, str]:
+                         package_version: Optional[str] = None,
+                         dest_root: Optional[Path] = None) -> tuple[bool, str]:
         """
         下载插件文件
         :param pid: 插件 ID
         :param file_list: 要下载的文件列表，包含文件的元数据（包括下载链接）
         :param user_repo: GitHub 仓库的 user/repo 路径
+        :param dest_root: 文件落盘的根目录，未指定时直接写入插件运行目录
         :return: (是否成功, 错误信息)
         """
         if not file_list:
             return False, "文件列表为空"
 
+        download_root = (
+            dest_root if dest_root is not None
+            else self._plugins_root() / pid.lower()
+        )
         # 使用栈结构来替代递归调用，避免递归深度过大问题
         stack = [(pid, file_list)]
 
@@ -1254,6 +1267,7 @@ class PluginPackageManager:
                             pid,
                             item.get("path"),
                             package_version,
+                            download_root,
                         )
                     except ValueError as error:
                         return False, str(error)
@@ -1426,56 +1440,152 @@ class PluginPackageManager:
             logger.error(f"获取插件 {pid} 元数据失败：{e}")
             return {}
 
+    def __new_install_staging_dir(self, pid: str) -> Path:
+        """分配一个全新的安装暂存目录，让新内容在触碰运行目录前先完整就位。"""
+        return (
+            Path(get_runtime_setting('TEMP_PATH'))
+            / "plugin_install_staging"
+            / f"{pid.lower()}-{uuid.uuid4().hex}"
+        )
+
+    @staticmethod
+    def __swap_staged_plugin_content(staging_dir: Path, final_dir: Path) -> None:
+        """把已就位的暂存内容换入插件运行目录，失败时运行目录保持换入前的内容。
+
+        手法与运行目录补偿替换一致（见 __restore_tree）：先把旧目录改名挪到同级
+        隐藏位置留作回滚材料，再把暂存目录改名落位，确认落位后才删除旧目录。同一
+        文件系统内两次改名都是原子的，因此进程在任意时刻被杀，磁盘上要么是旧内容
+        要么是新内容，唯一的中间态是"运行目录短暂缺失、旧内容完整躺在 previous
+        目录里"，仍可人工恢复，不会出现任何一份内容被删到无处可取的时点。
+
+        两个改名都可能因跨文件系统失败：overlayfs 会拒绝把镜像层的插件目录直接改
+        名到可写层，暂存目录又常落在独立的临时分区。两处都退化为复制，代价是复制
+        期间可能中途失败留下半份目录，因此复制失败一律先删掉半成品再把旧目录换
+        回；换回本身也失败时只记录旧目录的保留位置、不吞掉原始异常，避免出现
+        "看起来只是安装失败"实则运行目录已空的假象。
+
+        :param staging_dir: 已就位的待安装内容目录
+        :param final_dir: 插件运行目录，可能已存在旧内容
+        :raise OSError: 换入失败，且已尽力把运行目录恢复或保留为换入前的内容
+        """
+        final_dir.parent.mkdir(parents=True, exist_ok=True)
+        previous = final_dir.parent / f".{final_dir.name}.previous-{uuid.uuid4().hex}"
+        previous_available = False
+        cleared = False
+        published = False
+        try:
+            if final_dir.exists():
+                try:
+                    final_dir.replace(previous)
+                except OSError as error:
+                    if error.errno != errno.EXDEV:
+                        raise
+                    shutil.copytree(final_dir, previous, symlinks=True)
+                    previous_available = True
+                    PluginPackageManager.__remove_snapshot_path(final_dir)
+                else:
+                    previous_available = True
+            # 旧内容已挪开或本来就不存在，此后才允许重建运行目录
+            cleared = True
+            try:
+                staging_dir.replace(final_dir)
+            except OSError as error:
+                if error.errno != errno.EXDEV:
+                    raise
+                logger.debug(
+                    f"插件安装内容跨文件系统无法改名换入，退化为复制：{staging_dir}"
+                )
+                shutil.copytree(staging_dir, final_dir, symlinks=True)
+            published = True
+        except Exception:
+            if cleared and not published:
+                try:
+                    PluginPackageManager.__remove_snapshot_path(final_dir)
+                    if previous_available:
+                        previous.replace(final_dir)
+                        previous_available = False
+                except Exception as rollback_error:
+                    logger.error(
+                        f"插件安装换入失败后恢复旧目录失败，已保留恢复材料 {previous}: "
+                        f"{rollback_error}"
+                    )
+            raise
+        finally:
+            if previous.exists() and (published or not previous_available):
+                shutil.rmtree(previous, ignore_errors=True)
+
+    async def __async_swap_staged_plugin_content(
+        self, staging_dir: Path, final_dir: Path
+    ) -> None:
+        """在线程中执行换入，避免目录改名与复制阻塞事件循环，语义与同步换入一致。"""
+        await _await_thread_operation(
+            self.__swap_staged_plugin_content, staging_dir, final_dir
+        )
+
     def __install_flow_sync(
         self,
         pid: str,
         force_install: bool,
-        prepare_content: Callable[[], tuple[bool, str]],
+        prepare_content: Callable[[Path], tuple[bool, str]],
         repo_url: Optional[str] = None,
         before_dependency_install: Optional[Callable[[], None]] = None,
     ) -> tuple[bool, str]:
         """
-        同步安装统一流程：备份→清理→准备内容→安装依赖→上报
-        prepare_content 负责把插件文件放到 app/plugins/{pid}
+        同步安装统一流程：暂存内容→备份→换入→安装依赖→上报
+        prepare_content 负责把插件文件放到调用时给定的暂存目录；只有新内容在暂存
+        目录里完整就位后才会触碰运行目录，因此下载或解压失败时已装插件原样保留。
         """
-        backup_dir = None
-        if not force_install:
-            backup_dir = self.__backup_plugin(pid)
+        plugin_dir = self.__plugin_dir(pid)
+        staging_dir = self.__new_install_staging_dir(pid)
+        try:
+            success, message = prepare_content(staging_dir)
+            if not success:
+                # 运行目录此刻尚未被触碰，已装插件天然完整，无需还原也无需清理
+                logger.error(f"{pid} 准备插件内容失败：{message}")
+                return False, message
 
-        self.__remove_old_plugin(pid)
+            backup_dir = None
+            if not force_install:
+                backup_dir = self.__backup_plugin(pid)
 
-        success, message = prepare_content()
-        if not success:
-            logger.error(f"{pid} 准备插件内容失败：{message}")
-            if backup_dir:
-                self.__restore_plugin(pid, backup_dir)
-                logger.warn(f"{pid} 插件安装失败，已还原备份插件")
-            else:
-                self.__remove_old_plugin(pid)
-                logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
-            return False, message
+            try:
+                self.__swap_staged_plugin_content(staging_dir, plugin_dir)
+            except OSError as error:
+                message = f"写入插件内容失败：{error}"
+                logger.error(f"{pid} {message}")
+                # 换入函数已保证失败时运行目录保持换入前的内容；只有连恢复都失败、
+                # 运行目录确实缺失时，才动用本次的临时备份兜底。
+                if backup_dir and not plugin_dir.exists():
+                    self.__restore_plugin(pid, backup_dir)
+                    logger.warn(f"{pid} 插件安装失败，已还原备份插件")
+                elif backup_dir:
+                    shutil.rmtree(backup_dir, ignore_errors=True)
+                return False, message
 
-        dependencies_exist, dep_ok, dep_msg = (
-            self.__install_dependencies_if_required(
-                pid,
-                before_dependency_install,
+            dependencies_exist, dep_ok, dep_msg = (
+                self.__install_dependencies_if_required(
+                    pid,
+                    before_dependency_install,
+                )
+                if before_dependency_install is not None
+                else self.__install_dependencies_if_required(pid)
             )
-            if before_dependency_install is not None
-            else self.__install_dependencies_if_required(pid)
-        )
-        if dependencies_exist and not dep_ok:
-            logger.error(f"{pid} 依赖安装失败：{dep_msg}")
-            if backup_dir:
-                self.__restore_plugin(pid, backup_dir)
-                logger.warn(f"{pid} 插件安装失败，已还原备份插件")
-            else:
-                self.__remove_old_plugin(pid)
-                logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
-            return False, dep_msg
+            if dependencies_exist and not dep_ok:
+                logger.error(f"{pid} 依赖安装失败：{dep_msg}")
+                if backup_dir:
+                    self.__restore_plugin(pid, backup_dir)
+                    logger.warn(f"{pid} 插件安装失败，已还原备份插件")
+                else:
+                    self.__remove_old_plugin(pid)
+                    logger.warn(f"{pid} 已清理对应插件目录，请尝试重新安装")
+                return False, dep_msg
 
-        if backup_dir:
-            shutil.rmtree(backup_dir, ignore_errors=True)
-        return True, ""
+            if backup_dir:
+                shutil.rmtree(backup_dir, ignore_errors=True)
+            return True, ""
+        finally:
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir, ignore_errors=True)
 
     @staticmethod
     def __validate_release_zip_name(name: str) -> None:
@@ -1566,11 +1676,12 @@ class PluginPackageManager:
             targets.append((info, dest_path, info.is_dir()))
         return targets
 
-    def __install_from_release(self, pid: str, user_repo: str, release_tag: str) -> tuple[bool, str]:
+    def __install_from_release(self, pid: str, user_repo: str, release_tag: str,
+                               dest_root: Optional[Path] = None) -> tuple[bool, str]:
         """
         通过 GitHub Release 资产文件安装插件。
         规范：release 中存在名为 "{pid}_v{version}.zip" 的资产，zip 根即插件文件；
-        将其全部解压到 app/plugins/{pid}
+        将其全部解压到 dest_root，未指定时直接解压到插件运行目录。
         """
         # 拼接资产文件名
         asset_name = f"{release_tag.lower()}.zip"
@@ -1616,7 +1727,10 @@ class PluginPackageManager:
                 infos = zf.infolist()
                 if not infos:
                     return False, "压缩包内容为空"
-                dest_base = self._plugins_root() / pid.lower()
+                dest_base = (
+                    dest_root if dest_root is not None
+                    else self._plugins_root() / pid.lower()
+                )
                 targets = self.__iter_release_zip_targets(zf, dest_base)
                 wrote_any = False
                 for info, dest_path, is_dir in targets:
@@ -1671,17 +1785,23 @@ class PluginPackageManager:
             return None, "插件数据解析失败"
 
     async def __async_download_files(self, pid: str, file_list: list[dict[str, Any]], user_repo: str,
-                                     package_version: Optional[str] = None) -> tuple[bool, str]:
+                                     package_version: Optional[str] = None,
+                                     dest_root: Optional[Path] = None) -> tuple[bool, str]:
         """
         异步下载插件文件
         :param pid: 插件 ID
         :param file_list: 要下载的文件列表，包含文件的元数据（包括下载链接）
         :param user_repo: GitHub 仓库的 user/repo 路径
+        :param dest_root: 文件落盘的根目录，未指定时直接写入插件运行目录
         :return: (是否成功, 错误信息)
         """
         if not file_list:
             return False, "文件列表为空"
 
+        download_root = (
+            dest_root if dest_root is not None
+            else self._plugins_root() / pid.lower()
+        )
         # 使用栈结构来替代递归调用，避免递归深度过大问题
         stack = [(pid, file_list)]
 
@@ -1696,6 +1816,7 @@ class PluginPackageManager:
                             pid,
                             item.get("path"),
                             package_version,
+                            download_root,
                         )
                     except ValueError as error:
                         return False, str(error)
@@ -1894,11 +2015,12 @@ class PluginPackageManager:
 
         release_tag = selection.release_tag
         if release_tag and not selection.fallback_to_filelist:
-            async def prepare_selected_release() -> tuple[bool, str]:
+            async def prepare_selected_release(staging_dir: Path) -> tuple[bool, str]:
                 return await self.__async_install_from_release(
                     pid,
                     selection.user_repo,
                     release_tag,
+                    staging_dir,
                 )
 
             return await self.__install_flow_async(
@@ -1911,20 +2033,24 @@ class PluginPackageManager:
 
         if release_tag:
             # 当前索引 Release 失败时回退文件列表，保持同步与异步安装一致。
-            async def prepare_release() -> tuple[bool, str]:
+            async def prepare_release(staging_dir: Path) -> tuple[bool, str]:
                 ok, msg = await self.__async_install_from_release(
                     pid,
                     selection.user_repo,
                     release_tag,
+                    staging_dir,
                 )
                 if ok:
                     return True, msg
                 logger.warning(f"{pid} Release 安装失败，回退文件列表安装：{msg}")
-                await self.__async_remove_old_plugin(pid)
+                # 回退前只清理本次暂存的半份 Release 产物；已安装的运行目录
+                # 此刻还没有被触碰，清理它会让一次可恢复的回退变成数据丢失。
+                await aioshutil.rmtree(staging_dir, ignore_errors=True)
                 return await self.__prepare_content_via_filelist_async(
                     pid,
                     selection.user_repo,
                     selection.package_version,
+                    staging_dir,
                 )
 
             return await self.__install_flow_async(
@@ -1936,11 +2062,12 @@ class PluginPackageManager:
             )
         # 未声明 release 打包的插件继续使用文件列表方式安装。
 
-        async def prepare_filelist() -> tuple[bool, str]:
+        async def prepare_filelist(staging_dir: Path) -> tuple[bool, str]:
             return await self.__prepare_content_via_filelist_async(
                 pid,
                 selection.user_repo,
                 selection.package_version,
+                staging_dir,
             )
 
         return await self.__install_flow_async(
@@ -2006,29 +2133,38 @@ class PluginPackageManager:
         self,
         pid: str,
         force_install: bool,
-        prepare_content: Callable[[], Awaitable[tuple[bool, str]]],
+        prepare_content: Callable[[Path], Awaitable[tuple[bool, str]]],
         repo_url: Optional[str] = None,
         before_dependency_install: Optional[Callable[[], None]] = None,
     ) -> tuple[bool, str]:
         """
-        异步安装流程，处理插件内容准备、依赖安装和注册
+        异步安装统一流程：暂存内容→备份→换入→安装依赖→上报
+        prepare_content 负责把插件文件放到调用时给定的暂存目录；只有新内容在暂存
+        目录里完整就位后才会触碰运行目录，中断语义与同步流程一致。
         """
+        plugin_dir = self.__plugin_dir(pid)
+        staging_dir = self.__new_install_staging_dir(pid)
         backup_dir = None
         try:
+            success, message = await prepare_content(staging_dir)
+            if not success:
+                # 运行目录此刻尚未被触碰，已装插件天然完整，无需还原也无需清理
+                logger.error(f"{pid} 准备插件内容失败：{message}")
+                return False, message
+
             if not force_install:
                 backup_dir = await self.__async_backup_plugin(pid)
 
-            await self.__async_remove_old_plugin(pid)
-
-            success, message = await prepare_content()
-            if not success:
-                logger.error(f"{pid} 准备插件内容失败：{message}")
-                if backup_dir:
+            try:
+                await self.__async_swap_staged_plugin_content(staging_dir, plugin_dir)
+            except OSError as error:
+                message = f"写入插件内容失败：{error}"
+                logger.error(f"{pid} {message}")
+                # 换入函数已保证失败时运行目录保持换入前的内容；只有连恢复都失败、
+                # 运行目录确实缺失时，才动用本次的临时备份兜底。
+                if backup_dir and not plugin_dir.exists():
                     await self.__async_restore_plugin(pid, backup_dir)
                     logger.warning(f"{pid} 插件安装失败，已还原备份插件")
-                else:
-                    await self.__async_remove_old_plugin(pid)
-                    logger.warning(f"{pid} 已清理对应插件目录，请尝试重新安装")
                 return False, message
 
             dependencies_exist, dep_ok, dep_msg = (
@@ -2058,11 +2194,15 @@ class PluginPackageManager:
         finally:
             if backup_dir:
                 await aioshutil.rmtree(backup_dir, ignore_errors=True)
+            if await AsyncPath(staging_dir).exists():
+                await aioshutil.rmtree(staging_dir, ignore_errors=True)
 
     def __prepare_content_via_filelist_sync(self, pid: str, user_repo: str,
-                                            package_version: Optional[str]) -> tuple[bool, str]:
+                                            package_version: Optional[str],
+                                            dest_root: Optional[Path] = None) -> tuple[bool, str]:
         """
         同步准备插件内容，通过文件列表获取插件文件和依赖
+        :param dest_root: 文件落盘的根目录，未指定时直接写入插件运行目录
         """
         runtime_pid = pid.lower()
         file_list, msg = self.__get_file_list(runtime_pid, user_repo, package_version)
@@ -2070,15 +2210,19 @@ class PluginPackageManager:
             if msg == "插件源码目录不存在":
                 return False, f"{pid} {msg}"
             return False, msg or "插件文件列表读取失败"
-        ok, m = self.__download_files(runtime_pid, file_list, user_repo, package_version)
+        ok, m = self.__download_files(
+            runtime_pid, file_list, user_repo, package_version, dest_root
+        )
         if not ok:
             return False, m
         return True, ""
 
     async def __prepare_content_via_filelist_async(self, pid: str, user_repo: str,
-                                                   package_version: Optional[str]) -> tuple[bool, str]:
+                                                   package_version: Optional[str],
+                                                   dest_root: Optional[Path] = None) -> tuple[bool, str]:
         """
         异步准备插件内容，通过文件列表获取插件文件和依赖
+        :param dest_root: 文件落盘的根目录，未指定时直接写入插件运行目录
         """
         runtime_pid = pid.lower()
         file_list, msg = await self.__async_get_file_list(
@@ -2095,16 +2239,18 @@ class PluginPackageManager:
             file_list,
             user_repo,
             package_version,
+            dest_root,
         )
         if not ok:
             return False, m
         return True, ""
 
-    async def __async_install_from_release(self, pid: str, user_repo: str, release_tag: str) -> tuple[bool, str]:
+    async def __async_install_from_release(self, pid: str, user_repo: str, release_tag: str,
+                                           dest_root: Optional[Path] = None) -> tuple[bool, str]:
         """
         通过 GitHub Release 资产文件安装插件（异步）。
         规范：release 中存在名为 "{pid}_v{version}.zip" 的资产，zip 根即插件文件；
-        将其全部解压到 app/plugins/{pid}
+        将其全部解压到 dest_root，未指定时直接解压到插件运行目录。
         """
         # 拼接资产文件名
         asset_name = f"{release_tag.lower()}.zip"
@@ -2152,7 +2298,10 @@ class PluginPackageManager:
                 infos = zf.infolist()
                 if not infos:
                     return False, "压缩包内容为空"
-                dest_base = self._plugins_root() / pid.lower()
+                dest_base = (
+                    dest_root if dest_root is not None
+                    else self._plugins_root() / pid.lower()
+                )
                 targets = self.__iter_release_zip_targets(zf, dest_base)
                 wrote_any = False
                 for info, dest_path, is_dir in targets:
