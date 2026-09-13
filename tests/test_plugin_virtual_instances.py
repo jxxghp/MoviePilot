@@ -1,10 +1,14 @@
 """虚拟插件实例的持久化、加载和创建行为测试。"""
 
+import importlib.util
 import sys
+import threading
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
 
+from app.runtime.event.registry import EventRegistry
 from app.runtime.extensions.plugin.clone import PluginCloneService
 from app.runtime.extensions.plugin.loader import PluginLoader
 from app.runtime.extensions.plugin.storage import (
@@ -13,7 +17,7 @@ from app.runtime.extensions.plugin.storage import (
     PluginStorage,
 )
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import EventType, SystemConfigKey
 
 
 def _make_directory() -> tuple[PluginInstanceDirectory, dict[str, PluginInstance]]:
@@ -501,6 +505,114 @@ def test_loader_executes_each_instance_in_an_isolated_module_namespace(
     ]
     assert sys.modules["app.plugins.demoplugin"] is source_module
     assert plugin_package.demoplugin is source_module
+
+
+def _import_host_package(module_name: str, source_dir: Path) -> ModuleType:
+    """按源插件本体的模块名导入磁盘源码，复刻本体已被装载的运行事实。
+
+    本体必须真的在 ``sys.modules`` 里：处理器的注册键要靠函数的 ``__module__``
+    反查模块对象才能算出来，本体缺席会让两边都算成同一个占位名，掩盖分身与本体
+    撞键这件事本身。
+    """
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        source_dir / "__init__.py",
+        submodule_search_locations=[str(source_dir)],
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _forget_modules(*prefixes: str) -> None:
+    """清除用例在模块缓存里留下的插件模块，避免污染后续用例。"""
+    for name in list(sys.modules):
+        if any(name == prefix or name.startswith(f"{prefix}.") for prefix in prefixes):
+            sys.modules.pop(name, None)
+
+
+def test_loader_gives_submodule_handlers_of_each_instance_distinct_registry_keys(
+    tmp_path,
+    monkeypatch,
+):
+    """分身在子模块类体内声明的处理器，注册键必须与本体的区分开。
+
+    事件处理器的注册键取自函数所在模块名。类体内的函数是类的属性而不是模块的
+    属性，只遍历模块顶层碰不到它们；漏改会让分身与本体注册到同一个键上，后注册
+    的顶掉先注册的：分身收不到事件，停掉本体会把分身一起停掉。
+    """
+    source_dir = tmp_path / "identityplugin"
+    source_dir.mkdir()
+    (source_dir / "core.py").write_text(
+        "class IdentityHandlers:\n"
+        "    def on_event(self, event):\n"
+        "        return event\n"
+        "\n"
+        "    @staticmethod\n"
+        "    def on_static_event(event):\n"
+        "        return event\n",
+        encoding="utf-8",
+    )
+    (source_dir / "__init__.py").write_text(
+        "from app.plugins.identityplugin.core import IdentityHandlers\n"
+        "\n"
+        "\n"
+        "class IdentityPlugin(IdentityHandlers):\n"
+        "    plugin_name = 'Identity'\n"
+        "\n"
+        "    def init_plugin(self, _config):\n"
+        "        return None\n",
+        encoding="utf-8",
+    )
+    import app.plugins as plugin_package
+
+    loader = PluginLoader(
+        plugins_root=tmp_path,
+        import_preparer=lambda **_kwargs: None,
+        import_scanner=lambda **_kwargs: None,
+        log=_logger(),
+    )
+    try:
+        host_module = _import_host_package("app.plugins.identityplugin", source_dir)
+        monkeypatch.setattr(
+            plugin_package, "identityplugin", host_module, raising=False
+        )
+        clone_class = loader.load_instance(
+            PluginInstance(
+                instance_id="IdentityPluginWork",
+                source_plugin_id="IdentityPlugin",
+            ),
+            lambda candidate: hasattr(candidate, "init_plugin"),
+        )[0]
+        host_handler = host_module.IdentityPlugin.on_event
+        clone_handler = clone_class.on_event
+        subscribers: dict = {}
+        registry = EventRegistry(
+            lock=threading.RLock(),
+            broadcast_subscribers=lambda: subscribers,
+            chain_subscribers=dict,
+            disabled_handlers=set,
+            disabled_classes=set,
+        )
+        registry.add(EventType.PluginAction, host_handler, 0)
+        registry.add(EventType.PluginAction, clone_handler, 0)
+
+        assert len(subscribers[EventType.PluginAction]) == 2
+        assert EventRegistry.handler_identifier(host_handler) == (
+            "app.plugins.identityplugin.core.IdentityHandlers.on_event"
+        )
+        assert EventRegistry.handler_identifier(clone_handler) == (
+            "app.plugins.identitypluginwork.core.IdentityHandlers.on_event"
+        )
+        assert EventRegistry.handler_identifier(clone_class.on_static_event) == (
+            "app.plugins.identitypluginwork.core.IdentityHandlers.on_static_event"
+        )
+    finally:
+        _forget_modules(
+            "app.plugins.identityplugin",
+            "app.plugins.identitypluginwork",
+        )
 
 
 def test_loader_runtime_gate_only_rejects_explicit_incompatible_declarations(
