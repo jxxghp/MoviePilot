@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import io
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -310,3 +312,69 @@ def test_other_bound_instance_is_unaffected_by_sibling_override(fake_writer):
     assert any(
         "sibling routine progress" in message for _level, message, _path in fake_writer.entries
     )
+
+
+@pytest.fixture(name="console_output")
+def fixture_console_output(monkeypatch, tmp_path):
+    """把真实控制台日志器的输出接到内存缓冲区，供用例断言用户实际看到了什么。
+
+    `fake_writer` 把 `_get_console_logger` 整个换成哑对象，覆盖到的只有文件那一路；
+    实例覆盖能不能贯穿到控制台，只有拿到 handler 真正写出的文本才算验证。
+    """
+    logfile = Path("moviepilot.log")
+    monkeypatch.delenv("MOVIEPILOT_DISABLE_CONSOLE_LOG", raising=False)
+    monkeypatch.setattr(LoggerManager, "_loggers", {})
+    monkeypatch.setattr(LoggerManager, "_writer", _CapturingLogWriter())
+    monkeypatch.setattr(LoggerManager, "_log_path", tmp_path)
+    buffer = io.StringIO()
+    console = LoggerManager()._get_console_logger(logfile)
+    for handler in console.handlers:
+        if isinstance(handler, logging.StreamHandler):
+            handler.setStream(buffer)
+    yield buffer
+    # 标准库日志器按名字全局共享，换过流的是同一个 handler 对象；不重建，后续用例
+    # 的控制台日志都会写进本用例这个已经没人看的缓冲区
+    LoggerManager._setup_console_logger(logfile)
+
+
+def test_looser_instance_override_reaches_console_output(console_output):
+    """全局 INFO、实例覆盖 DEBUG 时，DEBUG 日志必须真的出现在控制台。
+
+    等级判定归 `LoggerManager.logger` 一处，输出端若还各自按全局等级再过滤一遍，
+    用户设了 DEBUG 会看到文件里有、控制台没有，与「覆盖立即生效」的接口承诺不符。
+    """
+    set_plugin_instance_log_level("DemoPluginWork", "DEBUG")
+
+    with bind_plugin_instance("DemoPluginWork"):
+        logger.debug("控制台可见性探针")
+
+    assert "控制台可见性探针" in console_output.getvalue()
+
+
+def test_looser_override_does_not_loosen_a_sibling_instance_console_output(console_output):
+    """一个实例把等级放宽，不得让另一个实例的 DEBUG 日志跟着冒出来。"""
+    set_plugin_instance_log_level("DemoPluginWork", "DEBUG")
+
+    with bind_plugin_instance("SiblingInstance"):
+        logger.debug("兄弟实例不该出现")
+
+    assert "兄弟实例不该出现" not in console_output.getvalue()
+
+
+def test_looser_override_does_not_loosen_host_console_output(console_output):
+    """一个实例把等级放宽，不得让宿主自身未绑定实例的 DEBUG 日志跟着冒出来。"""
+    set_plugin_instance_log_level("DemoPluginWork", "DEBUG")
+
+    logger.debug("宿主自身不该出现")
+
+    assert "宿主自身不该出现" not in console_output.getvalue()
+
+
+def test_stricter_instance_override_is_still_filtered_out_of_console_output(console_output):
+    """实例覆盖比全局更严格时，全局本会放行的 INFO 日志同样不得出现在控制台。"""
+    set_plugin_instance_log_level("DemoPluginWork", "ERROR")
+
+    with bind_plugin_instance("DemoPluginWork"):
+        logger.info("被更严格覆盖挡住")
+
+    assert "被更严格覆盖挡住" not in console_output.getvalue()

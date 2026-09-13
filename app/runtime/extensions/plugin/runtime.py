@@ -182,11 +182,24 @@ def build_plugin_runtime(
         loadable_plugins: list[str],
         validator: Callable[[Any], bool],
     ) -> list[Any]:
-        """加载物理插件或虚拟实例，并保持持久化实例顺序。"""
+        """加载物理插件或虚拟实例，并保持持久化实例顺序。
+
+        带具体实例 ID 的定向装载同样认启用位。实例存储的读取口刻意返回全部在册行
+        （含停用的），加载器在收到具体插件 ID 时也只按这个 ID 找目录、不看可装载
+        清单；两处叠在一起，源码变更触发的实例树重载、按 ID 发起的重载就会绕过启用
+        判据，把用户停用的实例又拉起来跑到下次重启。
+        """
         if plugin_id:
             instance = instances.get(plugin_id)
             if instance:
+                if not instance.is_enabled:
+                    return []
                 return loader.load_instance(instance, validator)
+            if not any(
+                loadable.casefold() == plugin_id.casefold()
+                for loadable in loadable_plugins
+            ):
+                return []
             return loader.load(plugin_id, loadable_plugins, validator)
         plugins = loader.load(None, loadable_plugins, validator)
         # 只装载启用的配置：停用的分身仍登记在册、卡片可见，但不该被实例化
@@ -317,6 +330,31 @@ def build_plugin_runtime(
         instance = instances.get(plugin_id)
         return instance.source_plugin_id if instance else plugin_id
 
+    def plugin_registered(plugin_id: str) -> bool:
+        """判断插件是否在册：装过（安装清单里有）或留有持久化的实例行。
+
+        默认调用目标与实例日志等级这两个管理接口问的都是「这个插件还在不在册、能不能
+        被管理」，因此共用这一个判据，而不能绑在运行期类注册表上：启动只把启用中的
+        本体与分身装进注册表，某插件的全部实例停用后重启，注册表里就没有它的类了，
+        但它的安装记录与实例行都还在。绑在注册表上等于说「停用即不存在」，而停用不是
+        卸载——在册的实例必须仍然可见、可管理，否则用户再也无法把它重新指回默认调用
+        目标，也调不出它的日志等级设置，而那份设置正是排查它为什么被停用时要看的。
+
+        「当前是否装载」是另一个问题，由各自的端口回答：插件配置读写看类注册表，
+        分身建号与安装前置看包在不在磁盘上，都不走这里。
+
+        :param plugin_id: 插件 ID
+        :return: 该插件是否在册
+        """
+        if instances.get_host(plugin_id) is not None:
+            return True
+        if instances.for_source(plugin_id):
+            return True
+        installed = environment.storage().read(
+            SystemConfigKey.UserInstalledPlugins
+        ) or []
+        return plugin_id in installed
+
     clone = PluginCloneService(
         plugin_class=registry.plugin_class,
         plugin_exists=catalog.exists,
@@ -335,14 +373,14 @@ def build_plugin_runtime(
         log=environment.logger,
     )
     log_level = PluginLogLevelControl(
-        plugin_exists=lambda plugin_id: registry.plugin_class(plugin_id) is not None,
+        plugin_exists=plugin_registered,
         get_instance=instances.get,
         instances_for_source=instances.for_source,
         read_log_level=configs.read_log_level,
         write_log_level=configs.write_log_level,
     )
     default_target = PluginDefaultTargetControl(
-        plugin_exists=lambda plugin_id: registry.plugin_class(plugin_id) is not None,
+        plugin_exists=plugin_registered,
         get_instance=instances.get,
         instances_for_source=instances.for_source,
         get_host_instance=instances.get_host,

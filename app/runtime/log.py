@@ -113,6 +113,10 @@ def _get_log_correlation_id() -> str:
 # 插件实例日志等级允许的取值，与标准库 logging 的等级名保持一致。
 LOG_LEVELS: Tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
+# 控制台日志器自身的等级闸：取受支持等级里最低的一档，让它永不先于
+# `_ContextLevelFilter` 把记录挡掉；等级判定只在过滤器里做一次。
+_CONSOLE_PIPELINE_LEVEL: int = logging.DEBUG
+
 
 def _current_global_log_level() -> int:
     """返回当前全局日志策略对应的标准库日志级别。"""
@@ -255,6 +259,33 @@ def _effective_instance_level_int(instance_id: str) -> int:
 def current_plugin_instance_id() -> Optional[str]:
     """返回当前受控调用点绑定的插件实例 ID，未绑定时为 None。"""
     return _current_plugin_instance.get()
+
+
+def _effective_context_log_level() -> int:
+    """返回当前上下文过滤日志时实际使用的等级整数。
+
+    命中受控调用点绑定的插件实例时按该实例的覆盖等级（未设置覆盖时等同全局等级），
+    未绑定任何实例时按全局等级。门面与输出端共用这一个判据，两处才不会各算一次、
+    在实例把等级放宽时给出相反的结论。
+    """
+    instance_id = current_plugin_instance_id()
+    if instance_id:
+        return _effective_instance_level_int(instance_id)
+    return _current_global_log_level()
+
+
+class _ContextLevelFilter(logging.Filter):
+    """按当前上下文生效的等级过滤输出，取代日志器自身那道固定的等级闸。
+
+    控制台日志器按日志文件复用，同一插件的多个实例共用一个；把某个实例的覆盖等级
+    写进日志器会泄漏给它的兄弟实例，并发下还会互相改写。这里每条记录现算一次，
+    取值只依赖当前上下文绑定的实例，因此一个实例放宽等级不会放宽任何其他实例或
+    宿主自身的过滤。
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """判断该记录在当前上下文的生效等级下是否应当输出。"""
+        return record.levelno >= _effective_context_log_level()
 
 
 @contextmanager
@@ -691,16 +722,23 @@ class LoggerManager:
 
     @classmethod
     def _setup_console_logger(cls, logfile: Path) -> logging.Logger:
-        """创建只负责控制台输出的标准库日志器。"""
+        """创建只负责控制台输出的标准库日志器。
+
+        日志器自身的等级闸固定放到 `_CONSOLE_PIPELINE_LEVEL`，真正的等级判定交给
+        handler 上的 `_ContextLevelFilter`：日志器按日志文件复用，等级写死在它身上
+        就只能是全局等级，某个实例把等级放宽（全局 INFO、实例 DEBUG）时记录会在这里
+        被静默丢掉，于是文件里有、控制台没有，与「覆盖立即生效」的接口承诺不符。
+        """
         logger_name = str(logfile.with_suffix(""))
         configured_logger = logging.getLogger(logger_name)
-        configured_logger.setLevel(cls._get_log_level())
+        configured_logger.setLevel(_CONSOLE_PIPELINE_LEVEL)
         configured_logger.handlers.clear()
         if os.getenv("MOVIEPILOT_DISABLE_CONSOLE_LOG") != "1":
             console_handler = logging.StreamHandler()
             console_handler.setFormatter(
                 CustomFormatter(log_settings.LOG_CONSOLE_FORMAT)
             )
+            console_handler.addFilter(_ContextLevelFilter())
             configured_logger.addHandler(console_handler)
         configured_logger.propagate = False
         return configured_logger
@@ -735,7 +773,11 @@ class LoggerManager:
             writer.write_log(level, message, Path(log_path) / logfile)
 
     def update_loggers(self) -> None:
-        """让已创建的控制台日志器应用最新级别和格式。"""
+        """让已创建的控制台日志器应用最新格式。
+
+        等级不在这里刷新：它由 `_ContextLevelFilter` 每条记录现算，`log_settings`
+        一改就立即生效，无须逐个日志器回填。
+        """
         with self._lock:
             for configured_logger in self._loggers.values():
                 for handler in configured_logger.handlers:
@@ -743,12 +785,7 @@ class LoggerManager:
                         handler.setFormatter(
                             CustomFormatter(log_settings.LOG_CONSOLE_FORMAT)
                         )
-                configured_logger.setLevel(self._get_log_level())
-
-    @staticmethod
-    def _get_log_level() -> int:
-        """返回当前日志策略对应的标准库日志级别。"""
-        return _current_global_log_level()
+                configured_logger.setLevel(_CONSOLE_PIPELINE_LEVEL)
 
     @classmethod
     def _write_file_log(cls, level: str, message: str, logfile: Path) -> None:
@@ -771,15 +808,12 @@ class LoggerManager:
         这条日志。栈回溯识别出的调用来源只用于文件路由，不参与等级判定：插件
         经宿主公共方法转发调用时，栈顶是宿主而不是发起调用的插件，按它判等级
         会认错来源。
+
+        这里只是一道提前短路，省掉被丢弃日志的栈帧内省与格式化；控制台输出端
+        由 `_ContextLevelFilter` 用同一个判据再判一次，两处结论因而一致。
         """
         method_level = getattr(logging, method.upper(), logging.INFO)
-        instance_id = current_plugin_instance_id()
-        effective_level = (
-            _effective_instance_level_int(instance_id)
-            if instance_id
-            else _current_global_log_level()
-        )
-        if method_level < effective_level:
+        if method_level < _effective_context_log_level():
             return
 
         caller_name, plugin_name = self._get_caller()
