@@ -1,10 +1,12 @@
 """统一插件安装 Gateway 测试。"""
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from app.application.plugin import gateway as gateway_module
 from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.gateway import PluginInstallGateway
 from app.application.plugin.identity import (
@@ -61,6 +63,7 @@ async def test_gateway_freezes_admission_before_executing_transaction() -> None:
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
 
     result = await gateway.install(
@@ -92,6 +95,7 @@ async def test_force_install_reuses_cached_candidate_inventory() -> None:
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
 
     result = await gateway.install(
@@ -166,6 +170,7 @@ async def test_local_only_requires_explicit_online_binding() -> None:
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
 
     automatic = await gateway.install(
@@ -265,6 +270,7 @@ async def test_explicit_local_sync_uses_local_candidate_and_execution_mode() -> 
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
 
     result = await gateway.install(
@@ -304,6 +310,7 @@ async def test_gateway_rejects_source_conflict_before_package_execution() -> Non
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
 
     result = await gateway.install(
@@ -372,6 +379,7 @@ async def test_gateway_checks_compatibility_on_final_trusted_candidate() -> None
         candidate_compatibility=compatibility,
         executor=executor,
         clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
 
     result = await gateway.install(
@@ -435,6 +443,7 @@ async def test_gateway_source_inspection_preserves_sources_without_local_path() 
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=AsyncMock(),
         clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
 
     inspection = await gateway.inspect_source(plugin_id="DemoPlugin")
@@ -498,6 +507,7 @@ async def test_gateway_forwards_explicit_source_change_revision() -> None:
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
 
     result = await gateway.install(
@@ -514,3 +524,102 @@ async def test_gateway_forwards_explicit_source_change_revision() -> None:
     assert admission.expected_revision == 4
     assert admission.binding_basis is PluginBindingBasis.EXPLICIT_SOURCE_CHANGE
     assert admission.trusted_source_key == candidate.source_key
+
+
+@pytest.mark.asyncio
+async def test_inspect_source_resolves_clone_id_to_its_source_plugin() -> None:
+    """分身勘察来源必须先归一到源插件，否则查不到任何安装包。"""
+    identity = AsyncMock(return_value=None)
+    gateway = PluginInstallGateway(
+        inventory=AsyncMock(return_value=_inventory()),
+        identity=identity,
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=AsyncMock(),
+        clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: (
+            "DemoPlugin" if plugin_id == "DemoPluginwork" else plugin_id
+        ),
+    )
+
+    inspection = await gateway.inspect_source(plugin_id="DemoPluginwork")
+
+    assert [candidate.plugin_id for candidate in inspection.online_candidates] == [
+        "DemoPlugin"
+    ]
+    assert inspection.selection.candidate is not None
+    assert inspection.plugin_id == "DemoPlugin"
+    identity.assert_awaited_once_with("DemoPlugin")
+
+
+@pytest.mark.asyncio
+async def test_install_resolves_clone_id_to_its_source_plugin() -> None:
+    """分身安装必须先归一到源插件，否则准入阶段就找不到安装包。"""
+    executor = AsyncMock()
+    executor.execute.return_value = type(
+        "Result",
+        (),
+        {"success": True, "message": ""},
+    )()
+    identity = AsyncMock(return_value=None)
+    gateway = PluginInstallGateway(
+        inventory=AsyncMock(return_value=_inventory()),
+        identity=identity,
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=executor,
+        clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: (
+            "DemoPlugin" if plugin_id == "DemoPluginwork" else plugin_id
+        ),
+    )
+
+    result = await gateway.install(
+        plugin_id="DemoPluginwork",
+        repo_url=REPO_URL,
+        package_version="v3",
+        explicit_source=True,
+    )
+
+    assert result.success is True
+    admission = executor.execute.await_args.kwargs["admission"]
+    assert admission.candidate.plugin_id == "DemoPlugin"
+    identity.assert_awaited_once_with("DemoPlugin")
+
+
+@pytest.mark.asyncio
+async def test_install_holds_lifecycle_on_the_source_plugin_for_clones() -> None:
+    """分身安装的生命周期占位必须落在源插件上，同源分身才不会并发改写同一份载荷。"""
+    held: list[str] = []
+
+    @asynccontextmanager
+    async def _record_hold(plugin_id: str, _startup_token=None):
+        """记录安装期间实际占位的插件 ID。"""
+        held.append(plugin_id)
+        yield
+
+    executor = AsyncMock()
+    executor.execute.return_value = type(
+        "Result",
+        (),
+        {"success": True, "message": ""},
+    )()
+    gateway = PluginInstallGateway(
+        inventory=AsyncMock(return_value=_inventory()),
+        identity=AsyncMock(return_value=None),
+        candidate_compatibility=lambda _candidate: (True, ""),
+        executor=executor,
+        clock=lambda: NOW,
+        source_plugin_id=lambda plugin_id: (
+            "DemoPlugin" if plugin_id == "DemoPluginwork" else plugin_id
+        ),
+    )
+
+    with patch.object(gateway_module.plugin_lifecycle, "hold", _record_hold):
+        result = await gateway.install(
+            plugin_id="DemoPluginwork",
+            repo_url=REPO_URL,
+            package_version="v3",
+            explicit_source=True,
+        )
+
+    assert result.success is True
+    assert held == ["DemoPlugin"]

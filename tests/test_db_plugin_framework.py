@@ -63,13 +63,20 @@ def _borrowed_engine_handle(engine: Any) -> PluginDatabaseHandle:
     )
 
 
-def _write_migration_directory(root: Path) -> Path:
+def _write_migration_directory(
+    root: Path,
+    *,
+    name: str = "migrations",
+    follow_up_revision: str | None = None,
+) -> Path:
     """
     写出一个最小可用的 Alembic script_location，只含一条建表迁移。
     :param root: 承载迁移目录的父目录
+    :param name: 迁移目录名，用于在同一父目录下并存新旧两棵迁移树
+    :param follow_up_revision: 追加一条以 0001 为父的后续迁移，模拟插件新版本
     :return: 迁移目录路径
     """
-    directory = root / "migrations"
+    directory = root / name
     (directory / "versions").mkdir(parents=True)
     (directory / "env.py").write_text(
         """from alembic import context
@@ -116,6 +123,30 @@ def downgrade():
 ''',
         encoding="utf-8",
     )
+    if follow_up_revision is not None:
+        (directory / "versions" / f"{follow_up_revision}_add_tags.py").write_text(
+            f'''"""插件新版本追加的表。"""
+
+import sqlalchemy as sa
+from alembic import op
+
+revision = "{follow_up_revision}"
+down_revision = "0001"
+branch_labels = None
+depends_on = None
+
+
+def upgrade():
+    """建出新版本才有的表。"""
+    op.create_table("tags", sa.Column("id", sa.Integer(), primary_key=True))
+
+
+def downgrade():
+    """回退建表。"""
+    op.drop_table("tags")
+''',
+            encoding="utf-8",
+        )
     return directory
 
 
@@ -631,6 +662,48 @@ def test_run_migrations_upgrades_a_sqlite_plugin_database(plugin_data_root, sqli
     assert set(sa_inspect(handle.engine).get_table_names()) == tables
 
 
+def test_run_migrations_rejects_a_revision_the_script_tree_cannot_locate(
+    plugin_data_root,
+    sqlite_backend,
+    tmp_path,
+):
+    """装回旧版本时库里残留的新 revision 必须被明确拒绝，且不得自动降级。"""
+    newer = _write_migration_directory(
+        tmp_path,
+        name="migrations-new",
+        follow_up_revision="0002",
+    )
+    registry_module.ensure_database("demo", (), newer)
+    older = _write_migration_directory(tmp_path, name="migrations-old")
+
+    with pytest.raises(migration_module.PluginMigrationCompatibilityError) as error:
+        registry_module.ensure_database("demo", (), older)
+
+    assert "0002" in str(error.value)
+    handle = registry_module.get_database("demo")
+    with handle.engine.connect() as connection:
+        stamped = connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar()
+    assert stamped == "0002"
+    assert "tags" in set(sa_inspect(handle.engine).get_table_names())
+
+
+def test_run_migrations_accepts_a_database_stamped_by_the_same_script_tree(
+    plugin_data_root,
+    sqlite_backend,
+    tmp_path,
+):
+    """同一棵迁移树内的旧 revision 仍须正常升到 head，兼容检查不得误伤。"""
+    directory = _write_migration_directory(tmp_path, follow_up_revision="0002")
+    registry_module.ensure_database("demo", (), directory)
+
+    registry_module.ensure_database("demo", (), directory)
+
+    handle = registry_module.get_database("demo")
+    assert {"notes", "tags"} <= set(sa_inspect(handle.engine).get_table_names())
+
+
 def test_run_migrations_routes_the_postgresql_connection_through_the_handle(
     monkeypatch,
     tmp_path,
@@ -643,13 +716,21 @@ def test_run_migrations_routes_the_postgresql_connection_through_the_handle(
         captured["connection"] = config.attributes.get("connection")
         captured["revision"] = revision
 
+    def _record_guard(connection, _config, _directory):
+        """记录 revision 兼容检查落在哪条连接上。"""
+        captured["guarded"] = connection
+
     monkeypatch.setattr(migration_module, "upgrade", _record_upgrade)
+    # 替身引擎答不出真实 revision，这里只验证路由：兼容检查必须与升级共用同一条连接，
+    # 否则它读到的是未被 schema_translate_map 限定的库
+    monkeypatch.setattr(migration_module, "_reject_unknown_revisions", _record_guard)
     handle = _borrowed_engine_handle(MagicMock(name="derived_engine"))
 
     migration_module.run_migrations(handle, _write_migration_directory(tmp_path))
 
     connection = handle.engine.connect.return_value.__enter__.return_value
     assert captured["connection"] is connection
+    assert captured["guarded"] is connection
     assert captured["revision"] == "head"
     connection.commit.assert_called_once()
 

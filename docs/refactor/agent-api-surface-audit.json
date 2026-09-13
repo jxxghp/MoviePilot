@@ -2,7 +2,7 @@
   "disposition_counts": {
     "alternate-auth-duplicate": 11,
     "consolidated": 71,
-    "gateway": 225,
+    "gateway": 226,
     "provider-skill": 12,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
@@ -18,10 +18,10 @@
       "reason": "The executor validates and expands this bounded source placeholder to one of tmdb, douban, bangumi, or anilist before calling the corresponding concrete OpenAPI route."
     }
   ],
-  "gateway_http_route_count": 226,
-  "gateway_operation_count": 228,
-  "matched_gateway_http_route_count": 225,
-  "openapi_operation_count": 408,
+  "gateway_http_route_count": 227,
+  "gateway_operation_count": 229,
+  "matched_gateway_http_route_count": 226,
+  "openapi_operation_count": 409,
   "operations": [
     {
       "disposition": "consolidated",
@@ -2035,6 +2035,20 @@
       "path": "/api/v1/plugin/clone/{plugin_id}",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "创建插件分身",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "plugin.clone.restorable"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/plugin/clone/{plugin_id}/restorable",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "列出可恢复的已停用分身",
       "tags": [
         "plugin"
       ]

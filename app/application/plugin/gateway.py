@@ -31,6 +31,7 @@ from app.application.plugin.source import (
 InventoryProvider = Callable[[bool], Awaitable[CandidateInventory]]
 IdentityReader = Callable[[str], Awaitable[PluginIdentity | None]]
 CandidateCompatibility = Callable[[Candidate], tuple[bool, str]]
+SourcePluginIdResolver = Callable[[str], str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,8 +71,10 @@ class PluginInstallGateway:
         candidate_compatibility: CandidateCompatibility,
         executor: PluginInstallExecutor,
         clock: Callable[[], datetime],
+        source_plugin_id: SourcePluginIdResolver,
     ) -> None:
-        """保存候选事实、身份读取、兼容校验、事务执行和时间端口。"""
+        """保存候选事实、身份读取、兼容校验、事务执行、时间和源身份归一端口。"""
+        self.__source_plugin_id = source_plugin_id
         self.__inventory = inventory
         self.__identity = identity
         self.__candidate_compatibility = candidate_compatibility
@@ -92,7 +95,16 @@ class PluginInstallGateway:
         startup_token: PluginStartupLease | None = None,
         local_sync: bool = False,
     ) -> PluginInstallResult:
-        """读取冻结库存并执行一次不能绕过来源身份的插件写入。"""
+        """读取冻结库存并执行一次不能绕过来源身份的插件写入。
+
+        先把分身归一到源插件，理由与来源勘察相同：安装包只登记在源插件名下，拿
+        分身自身 ID 去查候选必然落空。界面上分身卡片的「版本历史」与「关于」两条
+        入口都会把分身自己的 ID 送进来。
+
+        归一必须早于生命周期占位：``hold`` 按 ID 互斥，用分身 ID 占位不会把同源
+        分身的并发安装串起来，它们会同时改写同一份源插件载荷。
+        """
+        plugin_id = self.__source_plugin_id(plugin_id)
         try:
             # 安装 ``force`` 只控制载荷覆盖；远程市场索引由市场手动刷新和
             # 定时缓存任务维护，不能让单个插件更新放大全部仓库请求。
@@ -143,7 +155,13 @@ class PluginInstallGateway:
         package_version: str | None = None,
         force: bool = False,
     ) -> PluginSourceInspection:
-        """读取与真实安装相同的库存和身份，返回脱敏来源选择快照。"""
+        """读取与真实安装相同的库存和身份，返回脱敏来源选择快照。
+
+        先把分身归一到源插件：分身只是共享同一份源码的运行实例，安装包与来源身份
+        都只登记在源插件名下，拿分身自身 ID（源插件 ID 加后缀）去查库存必然落空，
+        界面上表现为「没有找到插件 X 的可用安装包」。
+        """
+        plugin_id = self.__source_plugin_id(plugin_id)
         inventory = await self.__inventory(force)
         identity = await self.__identity(plugin_id)
         generations = _generation_order(package_version)

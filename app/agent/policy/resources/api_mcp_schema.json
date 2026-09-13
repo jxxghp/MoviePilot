@@ -2899,13 +2899,25 @@
           "title": "Name",
           "type": "string"
         },
+        "restore_previous": {
+          "default": true,
+          "description": "When creating a plugin clone, reuse the stored configuration of a disabled clone that already holds the same suffix; false rebuilds that clone's configuration from the source plugin template.",
+          "title": "Restore Previous",
+          "type": "boolean"
+        },
         "suffix": {
+          "anyOf": [
+            {
+              "maxLength": 20,
+              "pattern": "^[A-Za-z0-9]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "description": "File suffix or extension matched by an automatic category rule.",
-          "maxLength": 20,
-          "minLength": 1,
-          "pattern": "^[A-Za-z0-9]+$",
-          "title": "Suffix",
-          "type": "string"
+          "title": "Suffix"
         },
         "version": {
           "anyOf": [
@@ -2920,9 +2932,6 @@
           "title": "Version"
         }
       },
-      "required": [
-        "suffix"
-      ],
       "title": "PluginCloneRequest",
       "type": "object"
     },
@@ -9632,11 +9641,11 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create a configurable clone of one installed plugin. Method: POST. Path: /api/v1/plugin/clone/{plugin_id}. Effect: external_side_effect.",
+      "description": "Create a configurable clone of one installed plugin; leave suffix empty to let the server allocate the next free instance ID, and reusing the suffix of a disabled clone re-enables that clone together with its stored configuration. Method: POST. Path: /api/v1/plugin/clone/{plugin_id}. Effect: external_side_effect.",
       "properties": {
         "body": {
           "$ref": "#/$defs/PluginCloneRequest",
-          "description": "Request value for plugin.clone. Create a configurable clone of one installed plugin. Use the exact type and fields below."
+          "description": "Request value for plugin.clone. Create a configurable clone of one installed plugin; leave suffix empty to let the server allocate the next free instance ID, and reusing the suffix of a disabled clone re-enables that clone together with its stored configuration. Use the exact type and fields below."
         },
         "operation_id": {
           "const": "plugin.clone",
@@ -9645,7 +9654,7 @@
         },
         "path_params": {
           "additionalProperties": false,
-          "description": "Resource identity placeholders for plugin.clone. Create a configurable clone of one installed plugin. Use only the named fields below.",
+          "description": "Resource identity placeholders for plugin.clone. Create a configurable clone of one installed plugin; leave suffix empty to let the server allocate the next free instance ID, and reusing the suffix of a disabled clone re-enables that clone together with its stored configuration. Use only the named fields below.",
           "properties": {
             "plugin_id": {
               "description": "Exact installed or marketplace plugin ID.",
@@ -9666,6 +9675,78 @@
       ],
       "title": "plugin.clone",
       "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "List one plugin's disabled clones whose configuration is still stored and can be brought back by creating a clone with the same suffix. Method: GET. Path: /api/v1/plugin/clone/{plugin_id}/restorable. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "properties": {
+        "operation_id": {
+          "const": "plugin.clone.restorable",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.clone.restorable. List one plugin's disabled clones whose configuration is still stored and can be brought back by creating a clone with the same suffix. Use only the named fields below.",
+          "properties": {
+            "plugin_id": {
+              "description": "Exact installed or marketplace plugin ID.",
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "plugin_id"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for plugin.clone.restorable. List one plugin's disabled clones whose configuration is still stored and can be brought back by creating a clone with the same suffix. Use only the named fields below.",
+          "properties": {
+            "count": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.",
+              "title": "Count"
+            },
+            "page": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.",
+              "title": "Page"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "plugin.clone.restorable",
+      "type": "object",
+      "x-moviepilot-collection": {
+        "body_shape": "list",
+        "default_pagination": "unpaginated",
+        "result_count_field": "collection.result_count",
+        "total_count_field": "collection.total_count"
+      }
     },
     {
       "additionalProperties": false,
@@ -16280,6 +16361,7 @@
         "music.recognize",
         "plugin.capabilities",
         "plugin.clone",
+        "plugin.clone.restorable",
         "plugin.config.get",
         "plugin.config.update",
         "plugin.data",
