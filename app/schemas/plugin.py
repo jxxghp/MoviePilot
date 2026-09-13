@@ -41,8 +41,15 @@ class PluginUpdateCandidate(BaseModel):  # type: ignore[misc]
     is_bound: bool = Field(description="候选仓库是否为插件当前已绑定仓库")
 
 
-def _validate_plugin_id(value: str) -> str:
-    """限制插件实例标识为可安全用作 Python 类名和路由段的格式。"""
+def validate_plugin_id(value: str) -> str:
+    """限制插件实例标识为可安全用作 Python 类名和路由段的格式。
+
+    公开可调用：凡是把实例 ID 拼进文件系统路径、模块名或路由段的入口都应当先过这道
+    校验，而不是各自另写一套字符白名单——多套规则之间迟早出现缝隙。
+    :param value: 待校验的插件实例 ID
+    :return: 原样返回的合法 ID
+    :raise ValueError: ID 为空、不以字母开头、含字母数字以外的字符或超长
+    """
     if not value or not value[0].isalpha() or not value.isalnum():
         raise ValueError("插件 ID 必须以字母开头且只能包含字母和数字")
     if len(value) > 128:
@@ -50,7 +57,7 @@ def _validate_plugin_id(value: str) -> str:
     return value
 
 
-_PluginId = _Annotated[str, _AfterValidator(_validate_plugin_id)]
+_PluginId = _Annotated[str, _AfterValidator(validate_plugin_id)]
 
 
 class PluginInstance(BaseModel):
@@ -91,6 +98,32 @@ class PluginInstanceEnabledRequest(BaseModel):  # type: ignore[misc]
 
     enabled: bool = Field(
         description="目标启用状态；置假即停用，业务参数与展示信息原样留存等待再次启用"
+    )
+
+
+class PluginInstancePurgeRequest(BaseModel):  # type: ignore[misc]
+    """彻底清理一个插件实例时选定的删除范围。
+
+    各项默认为假：清理不可逆，漏选一项只是少删了东西，多选一项则可能毁掉用户特意
+    保留的数据，因而由调用方逐项明确给出，服务端不替它补默认值。
+    """
+
+    config: bool = Field(default=False, description="是否删除该实例的业务参数")
+    plugin_data: bool = Field(default=False, description="是否删除该实例在插件数据表中的行")
+    own_database: bool = Field(default=False, description="是否销毁该实例的自有数据库")
+    data_directory: bool = Field(
+        default=False,
+        description="是否删除该实例在插件数据目录下的整个目录；选中时自有数据库必然一并销毁",
+    )
+
+
+class PluginInstancePurgeOutcome(BaseModel):  # type: ignore[misc]
+    """彻底清理的执行结果。"""
+
+    purged: List[str] = Field(default_factory=list, description="实际清掉的范围标识")
+    instance_removed: bool = Field(
+        default=False,
+        description="实例行是否随之删除；分身会删，本体保留——它还承载着该插件的展示与启用状态",
     )
 
 

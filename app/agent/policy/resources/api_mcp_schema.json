@@ -3189,6 +3189,37 @@
       "title": "PluginInstanceLogLevelUpdateRequest",
       "type": "object"
     },
+    "PluginInstancePurgeRequest": {
+      "description": "One plugin instance's purge scope; every listed item is deleted only when explicitly selected.",
+      "properties": {
+        "config": {
+          "default": false,
+          "description": "Purge scope flag: delete this plugin instance's saved configuration values.",
+          "title": "Config",
+          "type": "boolean"
+        },
+        "data_directory": {
+          "default": false,
+          "description": "Purge scope flag: delete this plugin instance's entire data directory; its own database is always destroyed first.",
+          "title": "Data Directory",
+          "type": "boolean"
+        },
+        "own_database": {
+          "default": false,
+          "description": "Purge scope flag: destroy this plugin instance's own database.",
+          "title": "Own Database",
+          "type": "boolean"
+        },
+        "plugin_data": {
+          "default": false,
+          "description": "Purge scope flag: delete this plugin instance's rows in the shared plugin data table.",
+          "title": "Plugin Data",
+          "type": "boolean"
+        }
+      },
+      "title": "PluginInstancePurgeRequest",
+      "type": "object"
+    },
     "PluginMarketSyncRequest": {
       "description": "Approved Wiki source request for plugin-market synchronization.",
       "properties": {
@@ -10330,6 +10361,43 @@
     },
     {
       "additionalProperties": false,
+      "description": "Permanently delete one plugin instance's selected data: saved configuration, plugin data rows, its own database and its data directory; a clone also loses its instance record. Nothing is deleted unless explicitly selected. Method: POST. Path: /api/v1/plugin/instance/{instance_id}/purge. Effect: destructive_write.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/PluginInstancePurgeRequest",
+          "description": "Request value for plugin.instance.purge. Permanently delete one plugin instance's selected data: saved configuration, plugin data rows, its own database and its data directory; a clone also loses its instance record. Nothing is deleted unless explicitly selected. Use the exact type and fields below."
+        },
+        "operation_id": {
+          "const": "plugin.instance.purge",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for plugin.instance.purge. Permanently delete one plugin instance's selected data: saved configuration, plugin data rows, its own database and its data directory; a clone also loses its instance record. Nothing is deleted unless explicitly selected. Use only the named fields below.",
+          "properties": {
+            "instance_id": {
+              "description": "Exact plugin instance ID returned by plugin.loglevel.get.",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "instance_id"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params",
+        "body"
+      ],
+      "title": "plugin.instance.purge",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable. Method: POST. Path: /api/v1/plugin/instance/{instance_id}/enabled. Effect: reversible_write.",
       "properties": {
         "body": {
@@ -16228,6 +16296,7 @@
         "plugin.history",
         "plugin.install",
         "plugin.installed",
+        "plugin.instance.purge",
         "plugin.instance.set_enabled",
         "plugin.loglevel.clear",
         "plugin.loglevel.get",
