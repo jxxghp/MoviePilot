@@ -182,11 +182,24 @@ def build_plugin_runtime(
         loadable_plugins: list[str],
         validator: Callable[[Any], bool],
     ) -> list[Any]:
-        """加载物理插件或虚拟实例，并保持持久化实例顺序。"""
+        """加载物理插件或虚拟实例，并保持持久化实例顺序。
+
+        带具体实例 ID 的定向装载同样认启用位。实例存储的读取口刻意返回全部在册行
+        （含停用的），加载器在收到具体插件 ID 时也只按这个 ID 找目录、不看可装载
+        清单；两处叠在一起，源码变更触发的实例树重载、按 ID 发起的重载就会绕过启用
+        判据，把用户停用的实例又拉起来跑到下次重启。
+        """
         if plugin_id:
             instance = instances.get(plugin_id)
             if instance:
+                if not instance.is_enabled:
+                    return []
                 return loader.load_instance(instance, validator)
+            if not any(
+                loadable.casefold() == plugin_id.casefold()
+                for loadable in loadable_plugins
+            ):
+                return []
             return loader.load(plugin_id, loadable_plugins, validator)
         plugins = loader.load(None, loadable_plugins, validator)
         # 只装载启用的配置：停用的分身仍登记在册、卡片可见，但不该被实例化

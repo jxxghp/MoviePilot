@@ -1,7 +1,7 @@
-"""插件运行时组合根的启用语义接线测试：默认调用目标的存在性判据。
+"""插件运行时组合根的启用语义接线测试：定向装载取数与默认目标存在性判据。
 
-这件事只在 ``build_plugin_runtime`` 里成立：能力类自己只认注入进来的端口，端口接到
-哪一个判据是组合根的决定，因而只能在这一层验证。
+这两件事都只在 ``build_plugin_runtime`` 里成立：各能力类自己只认注入进来的端口，
+端口接到哪一个判据是组合根的决定，因而只能在这一层验证。
 """
 
 from __future__ import annotations
@@ -142,3 +142,113 @@ def test_default_target_management_still_rejects_a_plugin_that_is_not_installed(
 
     with pytest.raises(LookupError):
         runtime.default_target.set_target("GhostPlugin", "GhostPlugin")
+
+
+# --------------------------------------------------------------------------- #
+# 定向装载：带具体实例 ID 的装载同样要认启用位
+# --------------------------------------------------------------------------- #
+
+
+def test_targeted_load_does_not_start_a_disabled_clone(monkeypatch):
+    """定向重载一个停用的分身不得把它重新拉起来。
+
+    源码变更触发的实例树重载会带着每个分身的实例 ID 走这条路；实例存储的读取口
+    刻意返回全部在册行（含停用的），这条路不自己认启用位，用户停用的分身就会在
+    下一次源码变更时又开始跑。
+    """
+    runtime, _rows = _build_runtime(
+        records={
+            "DemoPluginWork": PluginInstance(
+                instance_id="DemoPluginWork",
+                source_plugin_id="DemoPlugin",
+                is_enabled=False,
+            )
+        },
+        installed=["DemoPlugin"],
+    )
+    loaded: list[str] = []
+    monkeypatch.setattr(
+        runtime.loader,
+        "load_instance",
+        lambda instance, _validator: loaded.append(instance.instance_id) or [],
+    )
+
+    runtime.lifecycle.start("DemoPluginWork")
+
+    assert loaded == []
+
+
+def test_targeted_load_still_starts_an_enabled_clone(monkeypatch):
+    """启用中的分身仍按原路装载，启用位不得把正常重载一并挡掉。"""
+    runtime, _rows = _build_runtime(
+        records={
+            "DemoPluginWork": PluginInstance(
+                instance_id="DemoPluginWork",
+                source_plugin_id="DemoPlugin",
+                is_enabled=True,
+            )
+        },
+        installed=["DemoPlugin"],
+    )
+    loaded: list[str] = []
+    monkeypatch.setattr(
+        runtime.loader,
+        "load_instance",
+        lambda instance, _validator: loaded.append(instance.instance_id) or [],
+    )
+
+    runtime.lifecycle.start("DemoPluginWork")
+
+    assert loaded == ["DemoPluginWork"]
+
+
+def test_targeted_load_does_not_start_a_disabled_host(monkeypatch):
+    """定向重载一个停用的本体同样不得把它重新拉起来。
+
+    加载器在收到具体插件 ID 时只按这个 ID 找目录，完全不看传进来的可装载清单；
+    本体的装载判据搬到启用位之后，这条路就绕开了那个判据。
+    """
+    runtime, _rows = _build_runtime(
+        records={
+            "DemoPlugin": PluginInstance(
+                instance_id="DemoPlugin",
+                source_plugin_id="DemoPlugin",
+                is_enabled=False,
+            )
+        },
+        installed=["DemoPlugin"],
+    )
+    loaded: list[str] = []
+    monkeypatch.setattr(
+        runtime.loader,
+        "load",
+        lambda plugin_id, _loadable, _validator: loaded.append(plugin_id) or [],
+    )
+
+    runtime.lifecycle.start("DemoPlugin")
+
+    assert loaded == []
+
+
+def test_targeted_load_still_starts_an_enabled_host(monkeypatch):
+    """启用中的本体仍按原路装载。"""
+    runtime, _rows = _build_runtime(
+        records={
+            "DemoPlugin": PluginInstance(
+                instance_id="DemoPlugin",
+                source_plugin_id="DemoPlugin",
+                is_enabled=True,
+            )
+        },
+        installed=["DemoPlugin"],
+    )
+    loaded: list[str] = []
+    monkeypatch.setattr(
+        runtime.loader,
+        "load",
+        lambda plugin_id, _loadable, _validator: loaded.append(plugin_id) or [],
+    )
+
+    runtime.lifecycle.start("DemoPlugin")
+
+    assert loaded == ["DemoPlugin"]
