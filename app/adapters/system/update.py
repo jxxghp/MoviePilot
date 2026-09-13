@@ -18,7 +18,7 @@ from typing import Any, cast
 
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.resource import ResourceHelper, get_resource_versions
-from app.foundation.environment import is_docker
+from app.foundation.environment import is_docker, is_exe
 from app.foundation.singleton import SingletonClass
 from app.foundation.version import compare_version
 from app.runtime.dependencies.profile import runtime_sync_arguments
@@ -559,7 +559,8 @@ class SystemUpdateManager(metaclass=SingletonClass):
             try:
                 prepared = self._read_prepared_manifest()
                 if target == _APPLICATION:
-                    self._validate_application_manifest(prepared)
+                    if not is_exe():
+                        self._validate_application_manifest(prepared)
                     message = "主程序更新包已就绪，正在重启安装"
                 else:
                     self._validate_resource_manifest(prepared)
@@ -1075,7 +1076,10 @@ class SystemUpdateManager(metaclass=SingletonClass):
         """在后台线程中下载并校验指定升级类型的制品。"""
         try:
             if target == _APPLICATION:
-                self._download_application()
+                if is_exe():
+                    self._simulate_application_download()
+                else:
+                    self._download_application()
             else:
                 self._download_resources()
         except Exception as error:  # noqa: BLE001  后台线程必须沉淀为可查询失败
@@ -1085,6 +1089,35 @@ class SystemUpdateManager(metaclass=SingletonClass):
             with self._lock:
                 self._download_active = False
                 self._active_target = None
+
+    def _simulate_application_download(self) -> None:
+        """exe 部署下模拟主程序下载，直接写入准备清单并反馈完成。"""
+        if get_runtime_setting("MOVIEPILOT_AUTO_UPDATE") is not True:
+            raise RuntimeError("请先在高级设置里启用自动检查版本更新")
+        target_item = self._get_item(self._read_state(), _APPLICATION)
+        version = str(target_item.get("version") or "")
+        if not version:
+            raise RuntimeError("主程序更新缺少目标版本")
+        self._merge_prepared_manifest(
+            {
+                "version": version,
+                "frontend_version": version,
+                "backend_archive": str(self._backend_archive),
+                "frontend_archive": str(self._frontend_archive),
+                "backend_sha256": "",
+                "frontend_sha256": "",
+                "prepared_at": self._now(),
+            },
+        )
+        self._write_item(
+            _APPLICATION,
+            state="ready",
+            downloaded_bytes=100,
+            total_bytes=100,
+            error=None,
+            can_update=False,
+            can_install=True,
+        )
 
     def _download_application(self) -> None:
         """下载后端 Release 和其 version.py 声明的前端 dist.zip。"""

@@ -33,6 +33,11 @@ def is_windows() -> bool:
     return os.name == "nt"
 
 
+def is_exe() -> bool:
+    """判断当前是否为 MoviePilot-V3.exe 部署环境。"""
+    return Path.exists(Path(__file__).parents[4] / "MoviePilot-V3.exe")
+
+
 def is_macos() -> bool:
     """判断当前操作系统是否为 macOS。"""
     return platform.system() == "Darwin"
