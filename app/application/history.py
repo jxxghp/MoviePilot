@@ -25,21 +25,20 @@ from app.application.historymutation import (
 from app.application.historymutation import (
     TransferHistoryMutationRepository as TransferHistoryMutationRepository,
 )
-from app.application.transfer.history_write import (
-    add_transfer_fail as add_transfer_fail,
-)
-from app.application.transfer.history_write import (
-    add_transfer_success as add_transfer_success,
-)
+from app.application.transfer import history as history_projection
+from app.domain.context import MediaInfo, MusicInfo
+from app.domain.meta.metabase import MetaBase
 from app.foundation.text import cut as jieba_cut
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 from app.schemas.common import JsonData
+from app.schemas.file import FileItem
 from app.schemas.history import (
     DownloadHistory,
     TransferHistory,
     TransferHistoryPage,
 )
+from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaSource
 
 # 失败重试次数的合法区间。下界为 1：一次瞬时故障（网络抖动、TMDB 瞬断、移动失败）
@@ -414,10 +413,10 @@ class TransferHistoryWritePort(Protocol):
         ...
 
     def update_cleanup_status(
-            self,
-            history_id: int,
-            status: str,
-            error: Optional[str] = None,
+        self,
+        history_id: int,
+        status: str,
+        error: Optional[str] = None,
     ) -> None:
         """在独立事务中记录媒体入库后的下载器清理结果。"""
         ...
@@ -459,9 +458,7 @@ class TransferHistoryRepository(
     """组合宿主所需全部整理历史查询和变更能力。"""
 
 
-_configured_transfer_history_repository: (
-    Callable[[], TransferHistoryRepository] | None
-) = None
+_configured_transfer_history_repository: Callable[[], TransferHistoryRepository] | None = None
 
 
 def configure_transfer_history_repository(
@@ -483,6 +480,44 @@ def get_transfer_history_repository() -> TransferHistoryRepository:
     if _configured_transfer_history_repository is None:
         raise RuntimeError("类型化整理历史仓储尚未配置")
     return _configured_transfer_history_repository()
+
+
+def add_transfer_success(
+    fileitem: FileItem, mode: str, meta: MetaBase, mediainfo: Union[MediaInfo, MusicInfo],
+    transferinfo: TransferInfo, downloader: Optional[str] = None, download_hash: Optional[str] = None,
+    transfer_batch_id: Optional[str] = None, transfer_batch_title: Optional[str] = None,
+    transfer_batch_root: Optional[str] = None, transfer_batch_total: Optional[int] = None,
+    transfer_history_oper: Optional[TransferHistoryReplacePort] = None,
+) -> TransferHistorySnapshot:
+    """新增转移成功历史记录，并保留目录批次归属。"""
+    repository = transfer_history_oper or get_transfer_history_repository()
+    fields = history_projection.success_fields(
+        fileitem=fileitem, mode=mode, meta=meta, mediainfo=mediainfo, transferinfo=transferinfo,
+        downloader=downloader, download_hash=download_hash, transfer_batch_id=transfer_batch_id,
+        transfer_batch_title=transfer_batch_title, transfer_batch_root=transfer_batch_root,
+        transfer_batch_total=transfer_batch_total,
+    )
+    return repository.replace(TransferHistoryWrite(**fields))
+
+
+def add_transfer_fail(
+    fileitem: FileItem, mode: str, meta: MetaBase, mediainfo: Optional[Union[MediaInfo, MusicInfo]] = None,
+    transferinfo: Optional[TransferInfo] = None, downloader: Optional[str] = None,
+    download_hash: Optional[str] = None,
+    retry_count: Optional[int] = None, auto_paused: bool = False,
+    transfer_batch_id: Optional[str] = None, transfer_batch_title: Optional[str] = None,
+    transfer_batch_root: Optional[str] = None, transfer_batch_total: Optional[int] = None,
+    transfer_history_oper: Optional[TransferHistoryReplacePort] = None,
+) -> TransferHistorySnapshot:
+    """新增转移失败历史记录，并保留目录批次归属。"""
+    repository = transfer_history_oper or get_transfer_history_repository()
+    fields = history_projection.failure_fields(
+        fileitem=fileitem, mode=mode, meta=meta, mediainfo=mediainfo, transferinfo=transferinfo,
+        downloader=downloader, download_hash=download_hash, retry_count=retry_count, auto_paused=auto_paused,
+        transfer_batch_id=transfer_batch_id, transfer_batch_title=transfer_batch_title,
+        transfer_batch_root=transfer_batch_root, transfer_batch_total=transfer_batch_total,
+    )
+    return repository.replace(TransferHistoryWrite(**fields))
 
 
 @dataclass(frozen=True, slots=True)
@@ -728,12 +763,8 @@ class TransferHistoryLookupService:
         record = self._repository.get(history_id)
         if record is None:
             return None
-        src_fileitem = (
-            record.src_fileitem if isinstance(record.src_fileitem, dict) else None
-        )
-        dest_fileitem = (
-            record.dest_fileitem if isinstance(record.dest_fileitem, dict) else None
-        )
+        src_fileitem = record.src_fileitem if isinstance(record.src_fileitem, dict) else None
+        dest_fileitem = record.dest_fileitem if isinstance(record.dest_fileitem, dict) else None
         return ManualTransferHistory(
             id=record.id,
             status=bool(record.status),
@@ -872,6 +903,7 @@ class HistoryGateAction:
     共用本模块，避免两处各写一套去重策略后互相对冲：上游放行的文件被下游按
     「存在记录即拦」全额收回，等于放行逻辑完全失效。
     """
+
     # 没有整理记录
     PASS_NO_RECORD = "pass_no_record"
     # 上次整理失败且重试次数未用尽，放行重试
@@ -906,17 +938,18 @@ def max_failed_retries(config: TransferRetryConfig | None = None) -> int:
     raw = (config or get_transfer_retry_config()).max_failed_retries
     try:
         value = int(raw)
-    except (TypeError, ValueError):
-        logger.warn(f"TRANSFER_MAX_FAILED_RETRIES 配置非法（{raw!r}），"
-                    f"已回退为 {MIN_FAILED_RETRIES}")
+    except TypeError, ValueError:
+        logger.warn(f"TRANSFER_MAX_FAILED_RETRIES 配置非法（{raw!r}），已回退为 {MIN_FAILED_RETRIES}")
         return MIN_FAILED_RETRIES
     if value < MIN_FAILED_RETRIES:
-        logger.warn(f"TRANSFER_MAX_FAILED_RETRIES 不能小于 {MIN_FAILED_RETRIES}"
-                    f"（当前 {value}），已按 {MIN_FAILED_RETRIES} 处理")
+        logger.warn(
+            f"TRANSFER_MAX_FAILED_RETRIES 不能小于 {MIN_FAILED_RETRIES}（当前 {value}），已按 {MIN_FAILED_RETRIES} 处理"
+        )
         return MIN_FAILED_RETRIES
     if value > MAX_FAILED_RETRIES:
-        logger.warn(f"TRANSFER_MAX_FAILED_RETRIES 不能大于 {MAX_FAILED_RETRIES}"
-                    f"（当前 {value}），已按 {MAX_FAILED_RETRIES} 处理")
+        logger.warn(
+            f"TRANSFER_MAX_FAILED_RETRIES 不能大于 {MAX_FAILED_RETRIES}（当前 {value}），已按 {MAX_FAILED_RETRIES} 处理"
+        )
         return MAX_FAILED_RETRIES
     return value
 
@@ -943,7 +976,7 @@ def coerce_modify_time(modify_time: Any) -> Optional[float]:
         return None
     try:
         return float(modify_time)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -960,9 +993,9 @@ def coerce_fileid(fileid: Any) -> Optional[str]:
 
 
 def file_fingerprint(
-        file_size: Any = None,
-        file_modify_time: Any = None,
-        fileid: Any = None,
+    file_size: Any = None,
+    file_modify_time: Any = None,
+    fileid: Any = None,
 ) -> Dict[str, Any]:
     """
     生成用于区分同一路径文件版本的稳定指纹。
@@ -998,7 +1031,7 @@ def _retry_state(value: Any) -> tuple[int, Dict[str, Any]]:
         raw_fingerprint = None
     try:
         count = max(int(raw_count or 0), 0)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         count = 0
     fingerprint = (
         file_fingerprint(
@@ -1013,25 +1046,25 @@ def _retry_state(value: Any) -> tuple[int, Dict[str, Any]]:
 
 
 def _is_file_version_changed(
-        recorded_fingerprint: Dict[str, Any],
-        current_fingerprint: Dict[str, Any],
+    recorded_fingerprint: Dict[str, Any],
+    current_fingerprint: Dict[str, Any],
 ) -> bool:
     """判断两个可比文件指纹是否指向不同版本。"""
     for field in ("fileid", "modify_time", "size"):
         recorded_value = recorded_fingerprint.get(field)
         current_value = current_fingerprint.get(field)
-        if (
-                recorded_value is not None
-                and current_value is not None
-                and recorded_value != current_value
-        ):
+        if recorded_value is not None and current_value is not None and recorded_value != current_value:
             return True
     return False
 
 
-def failed_retry_count(src_path: Optional[str], storage: Optional[str] = None,
-                       file_size: Any = None, file_modify_time: Any = None,
-                       fileid: Any = None) -> int:
+def failed_retry_count(
+    src_path: Optional[str],
+    storage: Optional[str] = None,
+    file_size: Any = None,
+    file_modify_time: Any = None,
+    fileid: Any = None,
+) -> int:
     """
     读取同一源路径已累计的连续整理失败次数。
     :param src_path: 整理记录使用的源路径
@@ -1051,17 +1084,21 @@ def failed_retry_count(src_path: Optional[str], storage: Optional[str] = None,
         fileid=fileid,
     )
     if (
-            recorded_fingerprint
-            and current_fingerprint
-            and _is_file_version_changed(recorded_fingerprint, current_fingerprint)
+        recorded_fingerprint
+        and current_fingerprint
+        and _is_file_version_changed(recorded_fingerprint, current_fingerprint)
     ):
         return 0
     return count
 
 
-def record_transfer_failure(src_path: Optional[str], storage: Optional[str] = None,
-                            file_size: Any = None, file_modify_time: Any = None,
-                            fileid: Any = None) -> int:
+def record_transfer_failure(
+    src_path: Optional[str],
+    storage: Optional[str] = None,
+    file_size: Any = None,
+    file_modify_time: Any = None,
+    fileid: Any = None,
+) -> int:
     """
     累计一次整理失败。
     :param src_path: 整理记录使用的源路径
@@ -1081,8 +1118,7 @@ def record_transfer_failure(src_path: Optional[str], storage: Optional[str] = No
         fileid=fileid,
     )
     if current_fingerprint and (
-            not recorded_fingerprint
-            or _is_file_version_changed(recorded_fingerprint, current_fingerprint)
+        not recorded_fingerprint or _is_file_version_changed(recorded_fingerprint, current_fingerprint)
     ):
         count = 0
     count += 1
@@ -1125,7 +1161,7 @@ def coerce_size(size: Any) -> Optional[int]:
         return None
     try:
         return int(size)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -1179,11 +1215,13 @@ def resolve_history(
     return history
 
 
-def evaluate_history_gate(history: Optional[TransferHistorySnapshot],
-                          file_size: Optional[float] = None,
-                          file_modify_time: Optional[float] = None,
-                          fileid: Optional[str] = None,
-                          retry_count: Optional[int] = None) -> str:
+def evaluate_history_gate(
+    history: Optional[TransferHistorySnapshot],
+    file_size: Optional[float] = None,
+    file_modify_time: Optional[float] = None,
+    fileid: Optional[str] = None,
+    retry_count: Optional[int] = None,
+) -> str:
     """
     依据整理历史判断本次是否跳过整理。
 
@@ -1231,10 +1269,12 @@ def evaluate_history_gate(history: Optional[TransferHistorySnapshot],
     return HistoryGateAction.SKIP
 
 
-def describe_history_gate(history: Optional[TransferHistorySnapshot],
-                          file_size: Optional[float] = None,
-                          file_modify_time: Optional[float] = None,
-                          fileid: Optional[str] = None) -> str:
+def describe_history_gate(
+    history: Optional[TransferHistorySnapshot],
+    file_size: Optional[float] = None,
+    file_modify_time: Optional[float] = None,
+    fileid: Optional[str] = None,
+) -> str:
     """
     生成查重闸判定的可读说明，供日志定位「到底是哪条记录在拦」。
     :param history: 整理记录

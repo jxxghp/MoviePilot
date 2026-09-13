@@ -1685,6 +1685,12 @@ class MusicBrainzModule(_ModuleBase):
         plan = self._detail_plan(media_source, media_id, music_type)
         if not plan:
             return None
+        if plan.music_type == MUSIC_ENTITY_ARTIST:
+            artist = self.music_artist(
+                plan.media_source,
+                plan.require_media_id(),
+            )
+            return artist.to_music_info() if artist else None
         result: Optional[MusicInfo] = None
         if plan.search_recording:
             payload = self._request_json(
@@ -1714,6 +1720,13 @@ class MusicBrainzModule(_ModuleBase):
         plan = self._detail_plan(media_source, media_id, music_type)
         if not plan:
             return None
+        if plan.music_type == MUSIC_ENTITY_ARTIST:
+            payload = await self._async_request_json(
+                f"/artist/{plan.require_media_id()}",
+                params={"inc": "url-rels+genres+tags+aliases", "fmt": "json"},
+            )
+            artist = self._artist_to_info(payload) if payload else None
+            return artist.to_music_info() if artist else None
         result: Optional[MusicInfo] = None
         if plan.search_recording:
             payload = await self._async_request_json(

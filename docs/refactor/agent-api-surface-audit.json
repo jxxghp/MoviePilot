@@ -3,10 +3,10 @@
     "alternate-auth-duplicate": 11,
     "consolidated": 71,
     "gateway": 224,
-    "provider-skill": 12,
+    "provider-skill": 14,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
-    "ui_presentation": 13
+    "ui_presentation": 16
   },
   "dynamic_gateway_routes": [
     {
@@ -21,7 +21,7 @@
   "gateway_http_route_count": 225,
   "gateway_operation_count": 227,
   "matched_gateway_http_route_count": 224,
-  "openapi_operation_count": 407,
+  "openapi_operation_count": 412,
   "operations": [
     {
       "disposition": "consolidated",
@@ -683,6 +683,18 @@
     },
     {
       "disposition": "provider-skill",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "downloader-operation",
+      "path": "/api/v1/download/source/normalize",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "从文件路径规范化下载任务名称",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
       "method": "GET",
       "operation_ids": [],
       "owner": "downloader-operation",
@@ -748,7 +760,19 @@
       "owner": "downloader-operation",
       "path": "/api/v1/download/{hashString}/classify-source",
       "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
-      "summary": "识别并归类已有下载任务",
+      "summary": "识别并规范化已有任务名称与保存位置",
+      "tags": [
+        "download"
+      ]
+    },
+    {
+      "disposition": "provider-skill",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "downloader-operation",
+      "path": "/api/v1/download/{hashString}/source-status",
+      "reason": "Low-level provider behavior is exposed by the self-describing provider Skill; high-level MoviePilot operations remain in moviepilot-api.",
+      "summary": "核验并恢复已确认的资源规范化操作",
       "tags": [
         "download"
       ]
@@ -1822,6 +1846,42 @@
       "path": "/api/v1/music/album/{album_id}/related",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "查询关联音乐专辑",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/music/artist-acquisition",
+      "reason": "Artist collection probing and aggregate acquisition are owned by the authenticated discography workflow; they are not yet a stable Agent business contract.",
+      "summary": "提交艺术家合集与缺失作品补齐任务",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/music/artist-acquisition/{job_id}",
+      "reason": "Artist collection probing and aggregate acquisition are owned by the authenticated discography workflow; they are not yet a stable Agent business contract.",
+      "summary": "查询艺术家作品获取任务",
+      "tags": [
+        "music"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/music/artist-collection/probe",
+      "reason": "Artist collection probing and aggregate acquisition are owned by the authenticated discography workflow; they are not yet a stable Agent business contract.",
+      "summary": "检测艺术家合集对官方作品的覆盖",
       "tags": [
         "music"
       ]

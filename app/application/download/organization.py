@@ -329,34 +329,64 @@ def reconcile_source_operation(
         current = _local_path(torrent.save_path, label="当前保存路径").as_posix()
         content = _local_path(torrent.content_path or torrent.path, label="当前内容路径").as_posix()
         original = operation["original_files"]
-        renamed = operation["target_files"]
+        target_files = operation["target_files"]
         old_content = plan["current_content_path"]
         intermediate = (_local_path(plan["current_save_path"], label="原保存路径") / plan["proposed_root_name"]).as_posix()
-        valid_paths = {
-            (plan["current_save_path"], old_content),
-            (plan["current_save_path"], intermediate),
-            (plan["target_save_path"], plan["target_content_path"]),
-        }
+        initial = (
+            current == plan["current_save_path"]
+            and content == old_content
+            and actual_files == original
+        )
+        at_renamed_root = (
+            current == plan["current_save_path"]
+            and content == intermediate
+            and actual_files == target_files
+        )
+        at_target = (
+            current == plan["target_save_path"]
+            and content == plan["target_content_path"]
+            and actual_files == target_files
+        )
         raw_state = str(getattr(torrent, "raw_state", "") or "").casefold()
         busy = not raw_state or raw_state == "moving" or "checking" in raw_state
         if busy:
             operation["message"] = "qB 正在移动、校验或尚未返回状态，等待稳定后同步 MP"
             return _operation_result(operation)
-        invalid = (current, content) not in valid_paths or actual_files not in (original, renamed)
+        invalid = (
+            current not in (plan["current_save_path"], plan["target_save_path"])
+            or content not in (old_content, intermediate, plan["target_content_path"])
+            or actual_files not in (original, target_files)
+        )
         if invalid or raw_state in ("error", "missingfiles", "unknown"):
             operation.update(state="needs_attention", message="下载器路径、文件清单或状态与确认计划不一致；已停止自动修改，请核对 qB")
             repository.save_source_operation(history, operation)
             return _operation_result(operation)
-        at_target = current == plan["target_save_path"] and content == plan["target_content_path"] and actual_files == renamed
         if at_target and not busy:
             operation.update(state="complete", message="qB 内容路径及文件清单已核验，MP 下载历史和文件记录已同步")
             if repository.save_source_operation(history, operation):
                 return _operation_result(operation)
             continue
+        if operation["state"] == "needs_attention":
+            recovered_state = (
+                "prepared"
+                if initial
+                else "rename_requested"
+                if at_renamed_root
+                else None
+            )
+            if recovered_state:
+                operation.update(
+                    state=recovered_state,
+                    updated_at=time.time(),
+                    message="qB 已回到确认计划中的可验证阶段，继续安全核验",
+                )
+                if repository.save_source_operation(history, operation):
+                    continue
+                continue
         action = None
-        if operation["state"] == "prepared" and not busy:
+        if operation["state"] == "prepared" and initial and not busy:
             action = "rename" if plan["rename_required"] else "move"
-        elif operation["state"] == "rename_requested" and actual_files == renamed and content == intermediate and not busy:
+        elif operation["state"] == "rename_requested" and at_renamed_root and not busy:
             if current != plan["target_save_path"]:
                 action = "move"
         if action:
@@ -387,6 +417,8 @@ def reconcile_source_operation(
         if time.time() - operation["updated_at"] > 3600 and not busy:
             operation.update(state="needs_attention", message="超过核验期限仍未到达目标路径，请检查 qB；不会重复提交动作")
             repository.save_source_operation(history, operation)
+        elif operation["state"] != "needs_attention":
+            operation["message"] = "qB 路径与文件清单正在收敛到确认计划，稍后将继续核验"
         return _operation_result(operation)
     return _operation_result(operation)
 
@@ -550,18 +582,31 @@ def _begin_source_operation(hash_value: str, downloader: str, history: Any, plan
         {**item, "name": str(PurePosixPath(proposed_root_name).joinpath(*PurePosixPath(item["name"]).parts[1:]))}
         for item in original_files
     ]
-    file_updates = []
+    history_root = None
+    try:
+        candidate = _local_path(history.path, label="下载历史路径")
+        if candidate.name == current_root_name:
+            history_root = candidate
+    except ValueError:
+        pass
+    file_updates: list[dict[str, Any]] = []
     for before, after in zip(original_files, target_files):
         # 文件记录既可能以保存目录为基准，也可能以任务根目录为基准；
         # fullpath 精确匹配是唯一更新条件，不对前缀相同的其它文件做替换。
         new_full = (target / after["name"]).as_posix()
         relative = PurePosixPath(after["name"])
-        file_updates.append({
-            "old_fullpath": (current / before["name"]).as_posix(),
+        update = {
             "fullpath": new_full,
             "savepath": target_content if rename_kind == "folder" else target_text,
             "filepath": PurePosixPath(*relative.parts[1:]).as_posix() if rename_kind == "folder" else relative.name,
-        })
+        }
+        old_fullpaths = [(current / before["name"]).as_posix()]
+        if history_root:
+            remainder = PurePosixPath(before["name"]).parts[1:]
+            history_fullpath = history_root.joinpath(*remainder).as_posix()
+            if history_fullpath not in old_fullpaths:
+                old_fullpaths.append(history_fullpath)
+        file_updates.extend({**update, "old_fullpath": old_fullpath} for old_fullpath in old_fullpaths)
     operation: dict[str, Any] = {
         "id": uuid4().hex, "state": "prepared", "updated_at": time.time(),
         "plan": plan, "original_files": original_files, "target_files": target_files,

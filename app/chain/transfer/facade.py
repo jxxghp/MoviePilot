@@ -6,7 +6,6 @@ from app.chain.storage import StorageChain
 from app.foundation.singleton import Singleton
 from app.runtime.reload import ConfigReloadMixin
 
-from .batch import TransferBatchMixin
 from .execution import TransferExecutionOwner
 from .filter import FileFilterMixin
 from .format import EpisodeFormatMixin
@@ -21,23 +20,22 @@ from .workflow import TransferWorkflowOwner
 
 
 class TransferChain(
-        FileFilterMixin,
-        ScrapeBatchMixin,
-        EpisodeFormatMixin,
-        HistoryMatchMixin,
-        FileKeyMixin,
-        ManualHistoryMixin,
-        FailedRetryMixin,
-        TransferQueueOwner,
-        TransferPlanningOwner,
-        TransferExecutionOwner,
-        TransferSettlementOwner,
-        TransferBatchMixin,
-        TransferWorkflowOwner,
-        TransferHistoryOwner,
-        ChainBase,
-        ConfigReloadMixin,
-        metaclass=Singleton,
+    FileFilterMixin,
+    ScrapeBatchMixin,
+    EpisodeFormatMixin,
+    HistoryMatchMixin,
+    FileKeyMixin,
+    ManualHistoryMixin,
+    FailedRetryMixin,
+    TransferQueueOwner,
+    TransferPlanningOwner,
+    TransferExecutionOwner,
+    TransferSettlementOwner,
+    TransferWorkflowOwner,
+    TransferHistoryOwner,
+    ChainBase,
+    ConfigReloadMixin,
+    metaclass=Singleton,
 ):
     """保留文件整理处理链的稳定类型身份并组合单一职责 owner。"""
 
@@ -45,18 +43,21 @@ class TransferChain(
     def _transfer_media_chain(cls):
         """为整理 mixin 提供可替换的媒体识别构造点。"""
         from . import filter as transfer_filter
+
         return (transfer_filter.MediaChain or MediaChain)()
 
     @classmethod
     def _transfer_storage_chain(cls) -> StorageChain:
         """为整理 mixin 提供可替换的存储构造点。"""
         from . import records as transfer_records
+
         return (transfer_records.StorageChain or StorageChain)()
 
     @classmethod
     def _transfer_subscribe_chain(cls):
         """为整理 mixin 提供可替换的订阅构造点。"""
         from app.chain.subscribe.facade import SubscribeChain as _SubscribeChain
+
         return _SubscribeChain()
 
     _retain_failed_singleton = True

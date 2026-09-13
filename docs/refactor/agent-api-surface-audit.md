@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **407**
+- OpenAPI HTTP operations: **412**
 - Stable `moviepilot_api` operations: **227**
 - Exact HTTP routes used by the gateway: **225**
 - OpenAPI routes matched directly by the gateway: **224**
@@ -20,10 +20,10 @@
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
 | `consolidated` | 71 | Source/UI route represented by a stable aggregate Agent operation. |
 | `gateway` | 224 | Approved structured MoviePilot Agent operation. |
-| `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
+| `provider-skill` | 14 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 13 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 16 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -87,12 +87,14 @@
 | `POST` | `/api/v1/download/artist-collection` | download | `gateway` | download.artist_collection | 添加艺术家合集下载 |
 | `GET` | `/api/v1/download/clients` | download | `gateway` | download.clients | 查询可用下载器 |
 | `GET` | `/api/v1/download/paths` | download | `gateway` | download.paths | 查询可用下载路径 |
+| `POST` | `/api/v1/download/source/normalize` | download | `provider-skill` | downloader-operation | 从文件路径规范化下载任务名称 |
 | `GET` | `/api/v1/download/start/{hashString}` | download | `provider-skill` | downloader-operation | 开始任务 |
 | `GET` | `/api/v1/download/stop/{hashString}` | download | `provider-skill` | downloader-operation | 暂停任务 |
 | `POST` | `/api/v1/download/subtitle` | download | `provider-skill` | downloader-operation | 下载字幕 |
 | `DELETE` | `/api/v1/download/{hashString}` | download | `provider-skill` | downloader-operation | 删除下载任务 |
 | `PATCH` | `/api/v1/download/{hashString}` | download | `provider-skill` | downloader-operation | 高级更新下载任务 |
-| `POST` | `/api/v1/download/{hashString}/classify-source` | download | `provider-skill` | downloader-operation | 识别并归类已有下载任务 |
+| `POST` | `/api/v1/download/{hashString}/classify-source` | download | `provider-skill` | downloader-operation | 识别并规范化已有任务名称与保存位置 |
+| `POST` | `/api/v1/download/{hashString}/source-status` | download | `provider-skill` | downloader-operation | 核验并恢复已确认的资源规范化操作 |
 | `DELETE` | `/api/v1/history/download` | history | `gateway` | download.history.delete | 删除下载历史记录 |
 | `GET` | `/api/v1/history/download` | history | `gateway` | download.history.list | 查询下载历史记录 |
 | `DELETE` | `/api/v1/history/transfer` | history | `gateway` | transfer.history.delete | 删除整理记录 |
@@ -177,6 +179,9 @@
 | `POST` | `/api/v1/mfa/passkey/register/start` | mfa | `transport_or_identity` | host-runtime | 开始注册 PassKey |
 | `GET` | `/api/v1/music/album/{album_id}` | music | `gateway` | music.album.get | 查询音乐专辑详情 |
 | `GET` | `/api/v1/music/album/{album_id}/related` | music | `gateway` | music.album.related | 查询关联音乐专辑 |
+| `POST` | `/api/v1/music/artist-acquisition` | music | `ui_presentation` | host-ui | 提交艺术家合集与缺失作品补齐任务 |
+| `GET` | `/api/v1/music/artist-acquisition/{job_id}` | music | `ui_presentation` | host-ui | 查询艺术家作品获取任务 |
+| `POST` | `/api/v1/music/artist-collection/probe` | music | `ui_presentation` | host-ui | 检测艺术家合集对官方作品的覆盖 |
 | `GET` | `/api/v1/music/artist/{artist_id}` | music | `gateway` | music.artist.get | 查询音乐艺术家详情 |
 | `GET` | `/api/v1/music/artist/{artist_id}/albums` | music | `gateway` | music.artist.albums | 查询艺术家的专辑列表 |
 | `GET` | `/api/v1/music/artist/{artist_id}/related` | music | `gateway` | music.artist.related | 查询关联艺术家 |

@@ -455,9 +455,6 @@
   "app/runtime/extensions/plugin/loader.py": {
     "I001": 1
   },
-  "app/runtime/extensions/plugin/storage.py": {
-    "I001": 1
-  },
   "app/runtime/gc.py": {
     "I001": 1
   },

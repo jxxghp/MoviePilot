@@ -53,6 +53,50 @@ def test_artist_alias_lookup_verifies_identity_in_both_io_modes(monkeypatch):
     assert module._artist_alias_values(payload, "other-artist") == []
 
 
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_explicit_artist_identity_uses_artist_detail_endpoint(monkeypatch, async_mode):
+    """艺术家合集的 MBID 必须请求 Artist，不能误探测 Recording 或 Release Group。"""
+    module = MusicBrainzModule()
+    artist_id = "e5d8c705-8ea4-4820-b11d-fbf580d85ce4"
+    payload = {
+        "id": artist_id,
+        "name": "林俊傑",
+        "aliases": [{"name": "林俊杰"}],
+        "country": "SG",
+        "type": "Person",
+    }
+    sync_request = Mock(return_value=payload)
+    async_request = AsyncMock(return_value=payload)
+    monkeypatch.setattr(module, "_request_json", sync_request)
+    monkeypatch.setattr(module, "_async_request_json", async_request)
+
+    kwargs = {
+        "meta": MetaMusic(title="林俊杰 艺术家合集"),
+        "media_source": MediaSource.MusicBrainz,
+        "media_id": artist_id,
+        "music_type": "artist",
+        "cache": False,
+    }
+    result = (
+        asyncio.run(module.async_recognize_media(**kwargs))
+        if async_mode
+        else module.recognize_media(**kwargs)
+    )
+
+    assert result is not None
+    assert result.media_id == artist_id
+    assert result.music_type == "artist"
+    assert result.title == "林俊傑"
+    assert result.title_aliases == ["林俊杰"]
+    expected_path = f"/artist/{artist_id}"
+    if async_mode:
+        assert async_request.await_args.args == (expected_path,)
+        assert sync_request.call_count == 0
+    else:
+        assert sync_request.call_args.args == (expected_path,)
+        assert async_request.await_count == 0
+
+
 def test_metadata_ranking_prefers_complete_name_over_partial_character_hit():
     """宽召回之后也应按完整标题与署名排序，避免单字相关候选压过准确目标。"""
     exact = MusicInfo(title="晴天", artists=["周杰倫"])

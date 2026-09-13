@@ -1,6 +1,7 @@
 """资源规范化三个入口共享的路径计划、qB 核验及事务同步回归测试。"""
 
 import copy
+import json
 from pathlib import PurePosixPath
 from types import SimpleNamespace as NS
 from unittest.mock import Mock
@@ -130,6 +131,29 @@ def test_same_hash_in_other_downloader_and_unrelated_paths_are_not_updated(case)
     assert next(item for item in files if item.downloader == "other").fullpath == "/music/original/01.flac"
 
 
+def test_completion_updates_preclassified_history_file_alias(case):
+    """历史若已记录分类前缀，仍应随 qB 实际根目录计划精确同步到最终路径。"""
+    legacy_root = "/music/Artist Collection/original"
+    with case.sessions() as session:
+        history = session.get(DownloadHistory, case.history_id)
+        history.path = legacy_root
+        file_record = session.scalar(select(DownloadFiles).where(
+            DownloadFiles.downloader == "qb",
+            DownloadFiles.download_hash == case.digest,
+        ))
+        file_record.fullpath = legacy_root + "/01.flac"
+        file_record.savepath = legacy_root
+        session.commit()
+
+    result = case.execute()
+
+    assert result["state"] == "complete"
+    files = case.repository.get_files_by_hash(case.digest)
+    file_record = next(item for item in files if item.downloader == "qb")
+    assert file_record.fullpath == result["target_content_path"] + "/01.flac"
+    assert file_record.savepath == result["target_content_path"]
+
+
 def test_compare_exchange_rejects_stale_writer(case):
     snapshot = case.repository.get_by_task(case.digest, "qb")
     case.execute()
@@ -169,6 +193,42 @@ def test_recovery_after_move_completed_while_browser_closed(case):
     case.status()
     case.chain.update_torrent.assert_called_once()
     assert case.repository.get_by_task(case.digest, "qb").path == result["target_content_path"]
+
+
+def test_non_atomic_qb_move_snapshot_waits_instead_of_raising_attention(case):
+    """qB 分步更新保存路径与内容路径时属于合法中间态，不能立即误报冲突。"""
+    def moving(**kwargs):
+        case.torrent.save_path = kwargs["save_path"]
+        return {"save_path": True}
+
+    case.chain.update_torrent.side_effect = moving
+    result = case.execute()
+
+    assert result["state"] == "move_requested"
+    assert "正在收敛" in result["message"]
+    case.torrent.content_path = result["target_content_path"]
+    case.torrent.path = result["target_content_path"]
+    assert case.status()["state"] == "complete"
+
+
+def test_needs_attention_recovers_from_verified_renamed_stage(case):
+    """历史误报 needs_attention 后，确认仍处于已改名阶段即可继续移动且不重复改名。"""
+    move = case.chain.update_torrent.side_effect
+    case.chain.update_torrent.side_effect = None
+    case.chain.update_torrent.return_value = {"save_path": True}
+    result = case.execute()
+    assert result["state"] == "move_requested"
+
+    history = case.repository.get_by_task(case.digest, "qb")
+    operation_state = json.loads(json.dumps(history.note["source_organization"]))
+    operation_state["state"] = "needs_attention"
+    operation_state["message"] = "旧版误报"
+    assert case.repository.save_source_operation(history, operation_state)
+
+    case.chain.update_torrent.side_effect = move
+    result = case.status()
+    assert result["state"] == "complete"
+    case.chain.run_module.assert_called_once()
 
 
 def test_moving_state_never_marks_complete(case):

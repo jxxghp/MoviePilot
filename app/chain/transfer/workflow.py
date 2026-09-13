@@ -43,12 +43,14 @@ from app.schemas.types import (
 )
 from app.schemas.workflow import FileItem
 
-from .batch import TransferBatchRun
 from .request import (
+    TransferBatchRun,
     _should_discard_batch_music_identity,
     _TransferCandidatePlanner,
     _TransferSubmissionCollector,
+    bind_batch_admission,
     build_transfer_preview_item,
+    run_transfer_batch,
 )
 
 
@@ -520,20 +522,12 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             if recovery_admission and recovery_admission.planning_input
             else {}
         )
-        transfer_batch_id = str(
-            recovery_options.get("transfer_batch_id")
-            or request_transfer_batch_id
-            or uuid.uuid4()
-        )
+        transfer_batch_id = str(recovery_options.get("transfer_batch_id") or request_transfer_batch_id or uuid.uuid4())
         transfer_batch_title = str(
-            recovery_options.get("transfer_batch_title")
-            or request_transfer_batch_title
-            or fileitem.name
+            recovery_options.get("transfer_batch_title") or request_transfer_batch_title or fileitem.name
         )
         transfer_batch_root = str(
-            recovery_options.get("transfer_batch_root")
-            or request_transfer_batch_root
-            or fileitem.path
+            recovery_options.get("transfer_batch_root") or request_transfer_batch_root or fileitem.path
         )
         batch_mtype = getattr(mediainfo, "type", None)
         if batch_mtype in (None, MediaType.UNKNOWN):
@@ -592,7 +586,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             logger.warn(f"{fileitem.path} 没有找到可整理的媒体文件")
             return False, f"{fileitem.name} 没有找到可整理的媒体文件"
 
-        file_items = self._filter_manual_transfer_history(file_items, bool(manual and skip_success), submission.record_history_skip)
+        file_items = self._filter_manual_transfer_history(
+            file_items, bool(manual and skip_success), submission.record_history_skip
+        )
         if not file_items:
             return submission.result(True, [], preview=bool(preview), preview_items=[])
         file_items, inherited_meta_map = candidate_planner._plan_file_items(file_items)
@@ -603,42 +599,62 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         if selected_music_error:
             return False, selected_music_error
 
-        return self._run_transfer_batch(TransferBatchRun(
-            root_fileitem=fileitem, file_items=file_items,
-            inherited_meta_map=inherited_meta_map,
-            build_file_meta=candidate_planner._build_file_meta,
-            meta=meta, mediainfo=mediainfo, media_source=media_source,
-            media_id=media_id, batch_mtype=batch_mtype,
-            target_directory=target_directory, target_storage=target_storage,
-            target_path=target_path, transfer_type=transfer_type, scrape=scrape,
-            library_type_folder=library_type_folder,
-            library_category_folder=library_category_folder,
-            downloader=downloader, download_hash=download_hash,
-            transfer_batch_id=transfer_batch_id,
-            transfer_batch_title=transfer_batch_title,
-            transfer_batch_root=transfer_batch_root,
-            requested_batch_total=request_transfer_batch_total,
-            recovery_options=recovery_options, manual=bool(manual),
-            background=bool(background), preview=bool(preview),
-            reorganize=bool(reorganize), force=bool(force),
-            continue_callback=continue_callback,
-            cleanup_dest_fileitem=cleanup_dest_fileitem,
-            recovery_admission=recovery_admission,
-            music_release_regions=music_release_regions,
-            music_release_scripts=music_release_scripts,
-            selected_music_track_map=selected_music_track_map,
-            submission=submission,
-        ))
+        return run_transfer_batch(
+            self,
+            TransferBatchRun(
+                root_fileitem=fileitem,
+                file_items=file_items,
+                inherited_meta_map=inherited_meta_map,
+                build_file_meta=candidate_planner._build_file_meta,
+                meta=meta,
+                mediainfo=mediainfo,
+                media_source=media_source,
+                media_id=media_id,
+                batch_mtype=batch_mtype,
+                target_directory=target_directory,
+                target_storage=target_storage,
+                target_path=target_path,
+                transfer_type=transfer_type,
+                scrape=scrape,
+                library_type_folder=library_type_folder,
+                library_category_folder=library_category_folder,
+                downloader=downloader,
+                download_hash=download_hash,
+                transfer_batch_id=transfer_batch_id,
+                transfer_batch_title=transfer_batch_title,
+                transfer_batch_root=transfer_batch_root,
+                requested_batch_total=request_transfer_batch_total,
+                recovery_options=recovery_options,
+                manual=bool(manual),
+                background=bool(background),
+                preview=bool(preview),
+                reorganize=bool(reorganize),
+                force=bool(force),
+                continue_callback=continue_callback,
+                cleanup_dest_fileitem=cleanup_dest_fileitem,
+                recovery_admission=recovery_admission,
+                music_release_regions=music_release_regions,
+                music_release_scripts=music_release_scripts,
+                selected_music_track_map=selected_music_track_map,
+                submission=submission,
+            ),
+            execute_tasks=lambda **kwargs: self._execute_transfer_tasks(**kwargs),
+        )
 
     def _enqueue_transfer_candidate(
-        self, task: TransferTask, errors: list[str], submission: _TransferSubmissionCollector,
+        self,
+        task: TransferTask,
+        errors: list[str],
+        submission: _TransferSubmissionCollector,
     ) -> Optional[bool]:
         """在唯一队列入口捕获准入失败，给同批其余文件保留执行机会和错误回执。"""
         try:
             return bool(self.put_to_queue(task=task))
         except Exception as error:
             logger.error(f"{task.fileitem.name} 加入整理队列失败：{error}", exc_info=True)
-            message = str(error) if isinstance(error, TransferAdmissionConflictError) else "未能加入整理队列，请稍后重试"
+            message = (
+                str(error) if isinstance(error, TransferAdmissionConflictError) else "未能加入整理队列，请稍后重试"
+            )
             errors.append(f"{task.fileitem.name} {message}")
             submission.record(task.fileitem, "failed", message, target_dir=task.target_path)
             return None
@@ -689,8 +705,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         skipped_torrents = set()
         cleanup_intent_assigned = False
         multi_track_music_batch = (
-            batch_mtype == MediaType.MUSIC
-            and sum(self._is_audio_file(item) for item, _ in file_items) > 1
+            batch_mtype == MediaType.MUSIC and sum(self._is_audio_file(item) for item, _ in file_items) > 1
         )
         music_batch_context = self._prepare_music_batch_context(file_items, batch_mtype)
         try:
@@ -761,7 +776,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                                 transferd = None
 
                         if transferd:
-                            submission.record(file_item, "skipped" if transferd.status else "failed", f"{file_item.name} 已整理过")
+                            submission.record(
+                                file_item, "skipped" if transferd.status else "failed", f"{file_item.name} 已整理过"
+                            )
                             skipped_history_count += 1
                             if not transferd.status:
                                 all_success = False
@@ -785,13 +802,13 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     bluray_dir=bluray_dir,
                     download_hash=download_hash,
                 )
-                discard_music_identity = (
-                    self._is_audio_file(file_item)
-                    and _should_discard_batch_music_identity(
-                        multi_track_music_batch=multi_track_music_batch, manual=manual,
-                        media_source=media_source, media_id=media_id, mediainfo=mediainfo,
-                        history_music_type=self._download_history_music_type(download_history),
-                    )
+                discard_music_identity = self._is_audio_file(file_item) and _should_discard_batch_music_identity(
+                    multi_track_music_batch=multi_track_music_batch,
+                    manual=manual,
+                    media_source=media_source,
+                    media_id=media_id,
+                    mediainfo=mediainfo,
+                    history_music_type=self._download_history_music_type(download_history),
                 )
                 history_music_meta, history_music_info = self._restore_music_download_context(
                     download_history=download_history,
@@ -879,9 +896,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         cleanup_dest_fileitem=cleanup_intent,
                     )
                 )
-                self._bind_batch_admission(
-                    transfer_task, recovery_admission, preadmissions
-                )
+                bind_batch_admission(self, transfer_task, recovery_admission, preadmissions)
                 if background:
                     queued = self._enqueue_transfer_candidate(transfer_task, err_msgs, submission)
                     if queued is None:
@@ -1042,7 +1057,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                         state = False
                         err_msg = "整理任务结果暂未确认，后台将自动重试"
                     submission.execution(
-                        transfer_task, state, err_msg,
+                        transfer_task,
+                        state,
+                        err_msg,
                         durable_state=self._submission_execution_state(transfer_task, submission.enabled),
                     )
                     if not state:
@@ -1058,10 +1075,15 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                             not preview_items or preview_items[-1].get("source") != transfer_task.fileitem.path
                         ):
                             preview_items.append(
-                                build_transfer_preview_item(transfer_task, TransferInfo(
-                                    success=False, message=err_msg, failure_stage="execution",
-                                    recovery_action="刷新整理历史，等待任务结束；仍无法继续时提交人工复核",
-                                ))
+                                build_transfer_preview_item(
+                                    transfer_task,
+                                    TransferInfo(
+                                        success=False,
+                                        message=err_msg,
+                                        failure_stage="execution",
+                                        recovery_action="刷新整理历史，等待任务结束；仍无法继续时提交人工复核",
+                                    ),
+                                )
                             )
                         fail_num += 1
                     else:
