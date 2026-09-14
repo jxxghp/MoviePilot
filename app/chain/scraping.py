@@ -659,7 +659,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             mediainfo: MediaInfo,
             season: Optional[int] = None,
             episode: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, str]]:
         """
         获取图片名称和url，合并所有模块的结果。
         优先使用高优先级模块的图片，低优先级模块补充缺失的图片类型。

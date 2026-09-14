@@ -3,6 +3,7 @@ import re
 import threading
 from collections import Counter
 from copy import deepcopy
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Tuple, Union, cast
 

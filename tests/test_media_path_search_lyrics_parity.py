@@ -1,6 +1,7 @@
 """媒体搜索、路径识别与歌词聚合的同步异步同形回归。"""
 
 import asyncio
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
@@ -12,6 +13,21 @@ from app.chain.media import MediaChain
 from app.domain.context import MediaInfo, MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaSource, MediaType
+
+
+def _release_media_chain_singleton() -> None:
+    """释放测试间共享的 MediaChain 单例，避免实例桩跨用例传播。"""
+    instance = MediaChain.get_existing_instance()
+    if instance is not None:
+        MediaChain.release_existing_instance(instance)
+
+
+@pytest.fixture(autouse=True)
+def isolate_media_chain_singleton() -> Iterator[None]:
+    """隔离路径回归与其它测试对单例方法的 monkeypatch。"""
+    _release_media_chain_singleton()
+    yield
+    _release_media_chain_singleton()
 
 
 def _remote_music(stage: str) -> MusicInfo:
