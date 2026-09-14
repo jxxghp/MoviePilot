@@ -295,18 +295,34 @@ class PluginCloneService:
         restore_previous: bool,
     ) -> None:
         """准备配置并完成首次加载，失败一律抛出，由 :meth:`clone` 统一回滚。"""
-        clone_id = reservation.clone_id
         # 恢复留存配置时不得用源插件模板盖掉它，那正是用户要拿回来的东西
         if not (reservation.restoring and restore_previous):
-            original_config = self._read_config(plugin_id)
-            if original_config:
-                clone_config = dict(original_config)
-                clone_config["enable"] = False
-                clone_config["enabled"] = False
-                if not self._save_config(clone_id, clone_config):
-                    raise RuntimeError("虚拟实例配置保存失败")
-        if self._reload_plugin(clone_id) is PluginRuntimeStatus.LOAD_FAILED:
+            self._rebuild_config(reservation.clone_id, source_plugin_id=plugin_id)
+        if self._reload_plugin(reservation.clone_id) is PluginRuntimeStatus.LOAD_FAILED:
             raise RuntimeError("虚拟实例加载失败")
+
+    def _rebuild_config(self, clone_id: str, *, source_plugin_id: str) -> None:
+        """按源插件当前的配置模板重建分身配置，模板为空时清掉分身原有的那一份。
+
+        源插件没有配置与源插件配置为空字典都落在「模板里没有可继承的业务参数」这一档，
+        两者都必须清除：只是跳过写入的话，已停用分身留存的旧参数会原样活下来并在重载后
+        继续生效，用户要的「按模板重建一份」于是变成了「沿用旧配置」，且毫无提示。
+
+        :param clone_id: 分身实例 ID
+        :param source_plugin_id: 提供配置模板的源插件 ID
+        :raise RuntimeError: 配置写入被持久化层拒绝
+        """
+        template = self._read_config(source_plugin_id)
+        if not template:
+            self._delete_config(clone_id)
+            return
+        clone_config = dict(template)
+        # 分身是照着源插件的参数建出来的，业务开关一律置假：它还没被用户配过，直接开跑
+        # 等于拿着别人的参数上线
+        clone_config["enable"] = False
+        clone_config["enabled"] = False
+        if not self._save_config(clone_id, clone_config):
+            raise RuntimeError("虚拟实例配置保存失败")
 
     def _rollback(self, clone_id: str, *, purge_instance: bool) -> None:
         """逐项清理失败实例，单个清理错误不得阻断其余回滚。
