@@ -271,7 +271,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                 hash=torrent_data.hashString,
                 title=torrent_data.name,
                 name=meta.name,
-                year=meta.year,
+                year=str(meta.year) if meta.year is not None else None,
                 season_episode=meta.season_episode,
                 path=Path(self.normalize_return_path(torrent_path, downloader_name)),
                 save_path=self.normalize_return_path(
