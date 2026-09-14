@@ -89,7 +89,7 @@ async def initialize_instance(
         username = configured_superuser or payload.username
         updated_keys: list[str] = []
         try:
-            settings_to_update = (("API_TOKEN", payload.api_key),)
+            settings_to_update: tuple[tuple[str, str], ...] = (("API_TOKEN", payload.api_key),)
             if not configured_superuser:
                 settings_to_update = (("SUPERUSER", username),) + settings_to_update
 
