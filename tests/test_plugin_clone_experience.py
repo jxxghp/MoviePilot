@@ -443,6 +443,47 @@ def test_restore_previous_false_rebuilds_the_config_from_the_source_template():
     assert world.rows["DemoPlugin2"].plugin_name == "全新"
 
 
+def _world_with_a_disabled_clone_and_a_foreign_occupant(kind: str, tmp_path: Path) -> _World:
+    """建出「停用分身行还在，同一个 ID 又被某个真实插件占住」的世界。
+
+    停用从不删行，那一行可以在表里躺很久；这段时间里同名的真实插件完全可能出现——
+    磁盘上被放进一个同名插件包、安装清单里多出一条、或者它已经装载进类注册表。
+    """
+    rows = {"DemoPlugin2": _disabled_clone("DemoPlugin2", plugin_name="夜间任务")}
+    configs = {"DemoPlugin2": {"token": "必须留着"}}
+    if kind == "disk-package":
+        (tmp_path / "demoplugin2").mkdir()
+        return _build_world(rows=rows, configs=configs, plugins_root=tmp_path)
+    if kind == "installed-entry":
+        return _build_world(
+            rows=rows,
+            configs=configs,
+            installed=["DemoPlugin", "DemoPlugin2"],
+        )
+    world = _build_world(rows=rows, configs=configs)
+    world.runtime.registry.classes["DemoPlugin2"] = DemoPlugin
+    return world
+
+
+@pytest.mark.parametrize("kind", ["disk-package", "installed-entry", "loaded-class"])
+def test_restoring_still_refuses_an_id_a_real_plugin_already_holds(kind, tmp_path):
+    """恢复只豁免待恢复的那一行自身，另外三类占用者仍然要挡。
+
+    豁免写成「只要停用行在就全放行」的话，恢复会绕过全部判存：该 ID 上压着的真实
+    插件身份被分身顶掉，那个插件此后既装不回来，实例行的归属列也对不上。
+    """
+    world = _world_with_a_disabled_clone_and_a_foreign_occupant(kind, tmp_path)
+
+    success, message = world.clone(plugin_id="DemoPlugin", suffix="2")
+
+    assert success is False
+    assert "占用" in message
+    # 被拒绝的恢复不得改动那一行，也不得把它拉起来跑
+    assert world.rows["DemoPlugin2"].is_enabled is False
+    assert world.configs["DemoPlugin2"] == {"token": "必须留着"}
+    assert world.reloaded == []
+
+
 def test_failed_restore_only_puts_the_row_back_to_disabled():
     """恢复失败只把启用位退回停用，不得连同用户留存的配置一起毁掉。
 
