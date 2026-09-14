@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from app.application.subscription.contract import (
     SubscriptionHistoryQueryPort,
@@ -58,7 +58,7 @@ class SubscriptionQueryService:
         payload = record.to_dict()
         payload["completed_tracks"] = compute_subscribe_completed_tracks(record)
         payload.pop("downloaded_tracks", None)
-        return SubscribeView.model_validate(payload)
+        return cast(SubscribeView, SubscribeView.model_validate(payload))
 
     async def list_public(
         self,
