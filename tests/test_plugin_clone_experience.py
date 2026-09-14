@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Optional
@@ -58,6 +59,7 @@ class _World:
         self.status = PluginRuntimeStatus.ACTIVE
         self.probe_delay = 0.0
         self.save_failure: Optional[Exception] = None
+        self.on_remove: Optional[Callable[[], None]] = None
         self.runtime: Optional[PluginRuntime] = None
 
     def clone(self, **kwargs: Any) -> tuple[bool, str]:
@@ -114,10 +116,21 @@ def _build_world(
         return True
 
     def _save_row(instance: PluginInstance) -> None:
-        """写入实例行，可按需让这一步抛异常以模拟持久化故障。"""
-        if world.save_failure is not None:
-            raise world.save_failure
+        """写入实例行；预置的故障只对下一次写入生效。
+
+        一次性是为了并发用例：同一个世界里只让先到的那个请求落库失败，后到的请求
+        必须能正常写进去，才谈得上验证前者的清理有没有越权删掉后者的行。
+        """
+        failure, world.save_failure = world.save_failure, None
+        if failure is not None:
+            raise failure
         world.rows[instance.instance_id] = instance
+
+    def _remove_runtime(instance_id: str) -> None:
+        """摘掉运行态，并在回滚的第一步给用例一个确定的交错点。"""
+        world.removed.append(instance_id)
+        if world.on_remove is not None:
+            world.on_remove()
 
     storage = PluginStorage(
         read=values.get,
@@ -169,7 +182,7 @@ def _build_world(
     runtime = build_plugin_runtime(
         SimpleNamespace(
             reload_plugin=_reload,
-            remove_plugin=world.removed.append,
+            remove_plugin=_remove_runtime,
             get_plugin_remote_entry=lambda _plugin_id, _page: "",
             _run_file_watcher=lambda: None,
             get_plugins_from_market=lambda *_args, **_kwargs: None,
@@ -596,6 +609,61 @@ def test_a_failed_row_write_while_restoring_keeps_the_stored_settings():
     assert world.rows["DemoPlugin2"].is_enabled is False
     assert world.rows["DemoPlugin2"].plugin_name == "夜间任务"
     assert world.configs["DemoPlugin2"] == {"token": "必须留着"}
+
+
+def test_a_failed_row_write_never_rolls_back_another_requests_instance():
+    """落库失败的清理只许清掉自己这次的预留，不得抹掉另一个请求刚建好的同 ID 实例。
+
+    清理一旦跑在占位锁之外，判据就只剩「ID 相同」：先到的请求落库失败、锁随异常释放，
+    后到的同后缀请求立刻把这个 ID 占下来并成功落库，随后前者按同一个 ID 执行回滚，
+    删掉的是后者的实例行、配置与运行态。
+    """
+    world = _build_world(configs={"DemoPlugin": {"token": "源插件的"}})
+    # 只让先到的请求落库失败，后到的请求必须能正常建成
+    world.save_failure = RuntimeError("实例表不可写")
+    rollback_started = threading.Event()
+    later_request_done = threading.Event()
+    outcomes: dict[str, tuple[bool, str]] = {}
+
+    def _hold_until_the_later_request_lands() -> None:
+        """卡在先到请求的回滚第一步，直到后到的请求把自己的行写完。
+
+        交错由事件定序，不靠抢跑：清理若在锁外，后者此刻必然能落库，这一等确定等得到；
+        清理留在锁内，后者进不来，这一等走超时返回，两种实现下的顺序都是确定的。
+        """
+        rollback_started.set()
+        later_request_done.wait(timeout=1)
+
+    world.on_remove = _hold_until_the_later_request_lands
+
+    def _first() -> None:
+        """先到的请求：落库失败，随后执行清理。"""
+        outcomes["first"] = world.clone(plugin_id="DemoPlugin", suffix="2")
+
+    def _later() -> None:
+        """后到的请求：同一个后缀，落库成功。"""
+        outcomes["later"] = world.clone(plugin_id="DemoPlugin", suffix="2")
+        later_request_done.set()
+
+    first = threading.Thread(target=_first)
+    first.start()
+    assert rollback_started.wait(timeout=10)
+    later = threading.Thread(target=_later)
+    later.start()
+    for thread in (later, first):
+        thread.join(timeout=20)
+
+    assert outcomes["first"][0] is False
+    assert "实例表不可写" in outcomes["first"][1]
+    assert outcomes["later"] == (True, "DemoPlugin2")
+    # 后到请求建出来的这一行不是前者的产物，前者的清理无权碰它
+    assert "DemoPlugin2" in world.rows
+    assert world.rows["DemoPlugin2"].is_enabled is True
+    assert world.configs["DemoPlugin2"] == {
+        "enable": False,
+        "enabled": False,
+        "token": "源插件的",
+    }
 
 
 # --------------------------------------------------------------------------- #
