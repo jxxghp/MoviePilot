@@ -442,13 +442,13 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
     ),
     "app.core.module": ModuleAlias(
         target="app.runtime.extensions.module.manager",
-        replacement="app.sdk.plugins",
+        replacement="app.sdk.plugin.manager",
         introduced="v3.0.0",
         owner="runtime",
     ),
     "app.core.plugin": ModuleAlias(
         target="app.runtime.extensions.plugin.manager",
-        replacement="app.sdk.plugins",
+        replacement="app.sdk.plugin.manager",
         introduced="v3.0.0",
         owner="runtime",
     ),
@@ -645,6 +645,12 @@ MODULE_ALIASES: Dict[str, ModuleAlias] = {
         replacement="app.agent.llm.helper",
         introduced="v3.0.0",
         owner="agent",
+    ),
+    "app.sdk.plugins": ModuleAlias(
+        target="app.sdk.plugin.manager",
+        replacement="app.sdk.plugin.manager",
+        introduced="v3.0.0",
+        owner="sdk",
     ),
 }
 
@@ -1042,4 +1048,17 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
         ),
     },
     "app.schemas.message": _MESSAGE_NOTIFICATION_SYMBOL_ALIASES,
+    # 插件契约基类归 SDK：安装命名空间包根只保留说明，旧包根符号在此精确承接
+    "app.plugins": {
+        "PluginChian": SymbolAlias(
+            target_module="app.sdk.plugin.base",
+            target_name="PluginChain",
+            replacement="app.sdk.plugin.PluginChain",
+        ),
+        "_PluginBase": SymbolAlias(
+            target_module="app.sdk.plugin.base",
+            target_name="_PluginBase",
+            replacement="app.sdk.plugin._PluginBase",
+        ),
+    },
 }

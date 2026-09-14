@@ -19,10 +19,10 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
     系统配置管理
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化空快照，数据库加载由启动组合根显式执行。"""
         super().__init__()
-        self.__SYSTEMCONF = {}
+        self.__SYSTEMCONF: dict[str, Any] = {}
         self._snapshot_lock = threading.RLock()
         self._write_lock = threading.RLock()
         self._loaded = False

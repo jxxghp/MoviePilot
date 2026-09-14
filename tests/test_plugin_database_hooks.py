@@ -13,7 +13,7 @@ import app.db.plugin.registry as registry_module
 import app.runtime.extensions.plugin.datadir as datadir_module
 from app.db.decorators import db_query, db_update
 from app.db.plugin.base import plugin_declarative_base
-from app.plugins import _PluginBase
+from app.sdk.plugin import _PluginBase
 
 
 class _SamplePlugin(_PluginBase):

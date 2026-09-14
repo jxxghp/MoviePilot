@@ -667,7 +667,11 @@ flowchart TB
   `app/api/` 的宿主端点。插件若已经自行返回 `Response`、字典、列表或其它可序列化值，宿主不再二次包裹。
 - `app/runtime/extensions/plugin/manager.py` 是 canonical 管理器 owner，发现、加载、生命周期、
   目录、同步等实现共同归入 `app/runtime/extensions/plugin/`。旧插件仍从 `app.core.plugin` 或
-  `app.sdk.plugins` 进入，并由 Compat 精确路由到同一个 `PluginManager` 身份。
+  `app.sdk.plugins` 进入，并由 Compat 精确路由到同一个 `PluginManager` 身份；新入口是
+  `app.sdk.plugin.manager`。
+- `app/sdk/plugin/base.py` 是插件契约基类 `_PluginBase` 与 `PluginChain` 的 owner。
+  `app/plugins/` 只是插件安装命名空间，包根不再导出符号，`app.plugins._PluginBase` 与历史拼写
+  `app.plugins.PluginChian` 由 Compat 精确叠加承接。
 - 插件可参与 `run_module` 方法分发（同名方法优先响应）并注册事件处理器。
 
 ---
@@ -757,7 +761,7 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 1020 |
-| 内部导入边 | 8,678 |
+| 内部导入边 | 8,698 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |

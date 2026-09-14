@@ -483,6 +483,7 @@ def test_plugin_scan_reports_moved_symbol_import(tmp_path: Path):
 def test_symbol_alias_manifest_covers_all_moved_public_symbols():
     """符号级映射清单应覆盖媒体身份、整理工作项、刮削拆分与消息/通知命名统一的旧入口。"""
     assert set(SYMBOL_ALIASES["app.chain"]) == {"ChainBase"}
+    assert set(SYMBOL_ALIASES["app.plugins"]) == {"PluginChian", "_PluginBase"}
     assert set(SYMBOL_ALIASES["app.db.oper"]) == {
         "SiteOper",
         "SubscribeHistoryOper",
@@ -551,3 +552,45 @@ def test_chain_base_legacy_sdk_and_canonical_imports_share_identity(monkeypatch)
     assert sdk is canonical
     assert legacy_chain.ChainBase._compat_identity_marker is marker
     assert sdk._compat_identity_marker is marker
+
+
+def test_plugin_base_legacy_and_sdk_imports_share_canonical_identity(monkeypatch):
+    """插件安装包根与 SDK 必须解析到同一个契约基类，属性补丁对两条路径同时可见。"""
+    legacy_plugins = importlib.import_module("app.plugins")
+    canonical = importlib.import_module("app.sdk.plugin.base")._PluginBase
+    sdk = importlib.import_module("app.sdk.plugin")._PluginBase
+    marker = object()
+
+    monkeypatch.setattr(canonical, "_compat_identity_marker", marker, raising=False)
+
+    assert legacy_plugins._PluginBase is canonical
+    assert sdk is canonical
+    assert legacy_plugins._PluginBase._compat_identity_marker is marker
+
+
+def test_legacy_plugin_chain_spelling_resolves_to_renamed_sdk_class():
+    """历史拼写 PluginChian 只存在于兼容层，解析到 SDK 的正名 PluginChain。"""
+    configure_legacy_import_diagnostics(enabled=False, emitter=lambda _: None)
+    try:
+        legacy_plugins = importlib.import_module("app.plugins")
+        sdk = importlib.import_module("app.sdk.plugin")
+
+        assert legacy_plugins.PluginChian is sdk.PluginChain
+        assert not hasattr(sdk, "PluginChian")
+        assert "PluginChian" not in legacy_plugins.__all__
+    finally:
+        reset_legacy_import_diagnostics()
+
+
+def test_sdk_plugins_module_alias_reuses_manager_module():
+    """旧 SDK 路径 app.sdk.plugins 只经精确别名复用插件管理器模块。"""
+    alias = MODULE_ALIASES["app.sdk.plugins"]
+    configure_legacy_import_diagnostics(enabled=False, emitter=lambda _: None)
+    try:
+        assert alias.target == "app.sdk.plugin.manager"
+        assert alias.replacement == "app.sdk.plugin.manager"
+        assert importlib.import_module("app.sdk.plugins") is importlib.import_module(
+            "app.sdk.plugin.manager"
+        )
+    finally:
+        reset_legacy_import_diagnostics()

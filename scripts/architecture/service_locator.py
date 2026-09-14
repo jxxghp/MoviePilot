@@ -46,7 +46,7 @@ RUNTIME_FACADE_POLICIES = (
         dependency="app.runtime.extensions.module.manager",
         exact_consumers=frozenset(
             {
-                "app.sdk.plugins",
+                "app.sdk.plugin.manager",
                 "app.startup.composition.chain",
                 "app.startup.initializers.modules",
             }
@@ -57,7 +57,7 @@ RUNTIME_FACADE_POLICIES = (
         dependency="app.runtime.extensions.plugin.manager",
         exact_consumers=frozenset(
             {
-                "app.sdk.plugins",
+                "app.sdk.plugin.manager",
                 "app.startup.composition.chain",
                 "app.startup.initializers.plugins",
             }

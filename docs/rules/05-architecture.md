@@ -540,7 +540,10 @@ Use these questions in order before creating or moving a migrated capability:
 9. Does it implement a named external product/ecosystem? Put it in
    `app/adapters/external`.
 10. Is it public to plugins or only preserving an old path? Curate it in
-    `app/sdk` or map it in `app/runtime/compat`; never move implementation there.
+    `app/sdk` or map it in `app/runtime/compat`. `app/sdk` owns plugin contract
+    types themselves, such as the `_PluginBase` abstract base class plugins
+    inherit; business implementation still belongs to its canonical layer and
+    never moves there.
 
 Do not create generic `common`, `helper` or `utils` buckets. Reuse does not erase
 ownership.
@@ -1008,7 +1011,10 @@ or stale policy entry fails. The current policy has one classification:
 The target remains zero canonical host cycles except the precisely contained
 vendor component. `ChainBase` lives in `app.chain.base`; the physical package root
 has no eager export, and the old package-root symbol is available only through the
-exact Compat overlay backed by `app.sdk.chain`.
+exact Compat overlay backed by `app.sdk.chain`. `_PluginBase` and `PluginChain`
+live in `app.sdk.plugin.base`; `app/plugins/` is the plugin install namespace and
+its package root only documents that, so `app.plugins._PluginBase` and the historic
+spelling `app.plugins.PluginChian` resolve solely through the exact Compat overlay.
 
 The same fact/policy split governs direct Adapter imports. The generated
 dependency baseline records the original runtime imports from `app.application`
@@ -1191,6 +1197,7 @@ driven workflow registration.
 | `app/application/mediaserver.py` | Configured media-server discovery and identity matching |
 | `app/runtime/compat/manifest.py` | Exact legacy-to-canonical import manifest |
 | `app/sdk/` | Stable plugin imports, including provider-neutral browser launch functions |
+| `app/sdk/plugin/` | Plugin contract base class (`base.py`) and runtime manager facade (`manager.py`); the package root is a lazy export map so importing the contract does not load the managers |
 
 Run `tests/test_architecture_dependencies.py` after every ownership or import
 change. It rejects physical legacy or retired canonical sources, forbidden
