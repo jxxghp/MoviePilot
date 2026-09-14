@@ -38,6 +38,14 @@ from app.schemas.types import (
 )
 
 
+def _public_subscribe_view(subscribe: SubscriptionSnapshot) -> _SchemaSubscribe:
+    """将订阅内部快照投影为公开 DTO，并隐藏活动音轨事实。"""
+    payload = subscribe.to_dict()
+    payload["completed_tracks"] = compute_subscribe_completed_tracks(subscribe)
+    payload.pop("downloaded_tracks", None)
+    return _SchemaSubscribe(**payload)
+
+
 class SubscribeQueryOwner(_SubscribeOwnerBase):
     """订阅查询、关注与现存媒体投影，作为 SubscribeChain 的单一职责实现 owner。"""
 
@@ -401,10 +409,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         self._append_subscribe_media_servers(subscribe, mediainfo, episodes)
 
         # 更新订阅信息
-        subscribe_payload = subscribe.to_dict()
-        subscribe_payload["completed_tracks"] = compute_subscribe_completed_tracks(subscribe)
-        subscribe_payload.pop("downloaded_tracks", None)
-        subscribe_info.subscribe = _SchemaSubscribe(**subscribe_payload)
+        subscribe_info.subscribe = _public_subscribe_view(subscribe)
         subscribe_info.episodes = episodes
         return subscribe_info
 

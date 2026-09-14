@@ -22,6 +22,29 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, NotificationChannel
 subscribe_interaction_manager = SlashInteractionManager()
 
 
+def _format_subscribe_progress(subscribe: SubscriptionSnapshot) -> str:
+    """构造订阅的季和进度说明，专辑按累计曲目数展示。"""
+    if subscribe.type == MediaType.MOVIE.value:
+        return "电影"
+    if (
+            subscribe.type == MediaType.MUSIC.value
+            and subscribe.music_type == MUSIC_ENTITY_ALBUM
+            and subscribe.total_tracks
+    ):
+        completed_tracks = compute_subscribe_completed_tracks(subscribe) or 0
+        return f"专辑 [{completed_tracks}/{subscribe.total_tracks}]"
+    season = subscribe.season if subscribe.season is not None else 1
+    if subscribe.total_episode:
+        lack_episode = (
+            subscribe.lack_episode
+            if subscribe.lack_episode is not None
+            else subscribe.total_episode
+        )
+        downloaded = max(subscribe.total_episode - lack_episode, 0)
+        return f"第{season}季 [{downloaded}/{subscribe.total_episode}]"
+    return f"第{season}季"
+
+
 class SubscribeInteractionActions(Protocol):
     """
     声明订阅交互需要调用的业务动作。
@@ -540,28 +563,8 @@ class SubscribeInteractionHandler:
 
     @staticmethod
     def _format_subscribe_progress(subscribe: SubscriptionSnapshot) -> str:
-        """
-        构造订阅的季和进度说明。
-        """
-        if subscribe.type == MediaType.MOVIE.value:
-            return "电影"
-        if (
-                subscribe.type == MediaType.MUSIC.value
-                and subscribe.music_type == MUSIC_ENTITY_ALBUM
-                and subscribe.total_tracks
-        ):
-            completed_tracks = compute_subscribe_completed_tracks(subscribe) or 0
-            return f"专辑 [{completed_tracks}/{subscribe.total_tracks}]"
-        season = subscribe.season if subscribe.season is not None else 1
-        if subscribe.total_episode:
-            lack_episode = (
-                subscribe.lack_episode
-                if subscribe.lack_episode is not None
-                else subscribe.total_episode
-            )
-            downloaded = max(subscribe.total_episode - lack_episode, 0)
-            return f"第{season}季 [{downloaded}/{subscribe.total_episode}]"
-        return f"第{season}季"
+        """构造订阅的季和进度说明。"""
+        return _format_subscribe_progress(subscribe)
 
     @staticmethod
     def _subscribe_prompt(awaiting_input: Optional[str]) -> str:
