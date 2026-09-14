@@ -120,6 +120,101 @@ def test_exist_by_media_identity_requires_source_id_and_type(db):
     ) is not None
 
 
+def test_media_server_exists_falls_back_to_title_after_source_miss(db):
+    """非主来源身份未命中时，电影和电视剧应按标题信息回退且校验季号。"""
+    movie = _item(
+        "emby",
+        "cross-source-movie",
+        title="跨来源电影",
+        item_type="电影",
+        year="2024",
+        media_id="tmdb-movie",
+    )
+    tv = _item(
+        "emby",
+        "cross-source-tv",
+        title="跨来源剧集",
+        item_type="电视剧",
+        year="2023",
+        media_id="tmdb-tv",
+    )
+    tv.seasoninfo = {2: [1, 2]}
+    preferred = _item(
+        "emby",
+        "exact-source-movie",
+        title="精确身份电影",
+        item_type="电影",
+        year="2024",
+        media_id="douban-preferred",
+    )
+    title_fallback = _item(
+        "emby",
+        "title-fallback-movie",
+        title="精确身份电影",
+        item_type="电影",
+        year="2024",
+        media_id="tmdb-preferred",
+    )
+    db.add(movie, tv, preferred, title_fallback)
+
+    oper = MediaServerOper(db.session)
+    assert oper.exists(
+        title="跨来源电影",
+        year="2024",
+        mtype="电影",
+        media_source=MediaSource.Douban,
+        media_id="douban-movie",
+    ) is movie
+    assert oper.exists(
+        title="跨来源剧集",
+        year="2023",
+        mtype="电视剧",
+        media_source=MediaSource.Douban,
+        media_id="douban-tv",
+        season=2,
+    ) is tv
+    assert oper.exists(
+        title="跨来源剧集",
+        year="2023",
+        mtype="电视剧",
+        media_source=MediaSource.Douban,
+        media_id="douban-tv",
+        season=1,
+    ) is None
+    assert oper.exists(
+        title="精确身份电影",
+        year="2024",
+        mtype="电影",
+        media_source=MediaSource.Douban,
+        media_id="douban-preferred",
+    ) is preferred
+
+
+def test_async_media_server_exists_falls_back_to_title_after_source_miss(db):
+    """异步媒体库查询应与同步入口一样支持跨来源标题回退。"""
+    item = _item(
+        "emby",
+        "async-cross-source",
+        title="异步跨来源电影",
+        item_type="电影",
+        year="2022",
+        media_id="tmdb-async",
+    )
+    db.add(item)
+
+    async def query(session):
+        """在显式异步会话中查询跨来源电影。"""
+        return await MediaServerOper(session).async_exists(
+            title="异步跨来源电影",
+            year="2022",
+            mtype="电影",
+            media_source=MediaSource.Douban,
+            media_id="douban-async",
+        )
+
+    assert db.run_async_session(query).item_id == item.item_id
+
+
 @pytest.mark.parametrize("mtype,year,expected", [
     (None, None, "标题匹配"),
     ("电影", None, "标题匹配"),
