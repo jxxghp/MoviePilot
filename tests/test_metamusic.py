@@ -6,8 +6,8 @@ import pytest
 from app.domain.meta.metamusic import (
     MetaMusic,
     MusicNameContext,
-    MusicNameParseResult,
     MusicNameParser,
+    MusicNameParseResult,
     MusicNamePattern,
     MusicNameRegistry,
 )

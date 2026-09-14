@@ -1,6 +1,7 @@
 """音频证据、单曲层级与统一路径识别 owner。"""
 
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from enum import Enum
@@ -40,6 +41,14 @@ from app.schemas.types import (
 _FINGERPRINT_TITLE_QUALIFIER = re.compile(
     r"\s*[\[(（【][^\])）】]*(?:radio|single|version|edit|mix|remix|remaster(?:ed)?|"
     r"live|acoustic|demo|mono|stereo|recorded|pop)[^\])）】]*[\])）】]",
+    re.IGNORECASE,
+)
+_CONTENT_RATING_QUALIFIER = re.compile(
+    r"\s*[\[(（【]\s*(?:explicit|clean)\s*[\])）】]",
+    re.IGNORECASE,
+)
+_SINGLE_RELEASE_SUFFIX = re.compile(
+    r"\s*[-–—]\s*(?:single|单曲)\s*$",
     re.IGNORECASE,
 )
 
@@ -132,6 +141,27 @@ def _without_music_identity(meta: MetaMusic) -> MetaMusic:
     return clean_meta
 
 
+def _merge_music_path_evidence(
+    meta: Optional[MetaMusic],
+    evidence: Optional[MetaMusic],
+) -> Optional[MetaMusic]:
+    """把已确认的标签证据补入文件名搜索，但不传播远程身份。"""
+    if not meta or not evidence:
+        return meta
+    merged = MetaMusic.from_dict(meta.to_dict())
+    if not merged.artists and evidence.artists:
+        merged.artists = list(evidence.artists)
+    if not merged.album_artist and evidence.album_artist:
+        merged.album_artist = evidence.album_artist
+    if not merged.album and evidence.album:
+        merged.album = evidence.album
+    if not merged.year and evidence.year:
+        merged.year = evidence.year
+    if not merged.version and evidence.version:
+        merged.version = evidence.version
+    return merged
+
+
 def _merge_music_audio_quality(info: MusicInfo, meta: MetaMusic) -> MusicInfo:
     """将本地文件的实际音频参数合并到音乐识别结果。"""
     for key in (
@@ -152,7 +182,15 @@ def _finalize_music_path_info(
     info: Optional[MusicInfo],
 ) -> MusicInfo:
     """统一远端命中和本地兜底的音频质量合并。"""
-    return _merge_music_audio_quality(info or MusicInfo.from_meta(meta), meta)
+    result = _merge_music_audio_quality(info or MusicInfo.from_meta(meta), meta)
+    if (
+        _has_remote_music_identity(result)
+        and result.music_type == MUSIC_ENTITY_RECORDING
+        and not result.album_type
+    ):
+        # 部分 MusicBrainz Recording 没有关联 Release Group 类型，统一按单曲归类。
+        result.album_type = "Single"
+    return result
 
 
 def _fingerprint_info_matches_evidence(
@@ -179,9 +217,15 @@ def _fingerprint_info_matches_evidence(
         return False
     if not music_version_matches(info, primary):
         return False
-    if primary.album and info.album and not music_album_matches(info, primary.album):
+    standalone_single = _is_standalone_single_evidence(primary)
+    if (
+        primary.album
+        and info.album
+        and not music_album_matches(info, primary.album)
+        and not standalone_single
+    ):
         return False
-    if not music_year_matches(info, primary):
+    if not standalone_single and not music_year_matches(info, primary):
         return False
     if music_title_matches(info, primary.title):
         return True
@@ -214,6 +258,65 @@ def _fingerprint_info_matches_evidence(
         if SequenceMatcher(None, candidate_key, evidence_key).ratio() >= 0.82:
             return True
     return False
+
+
+def _is_standalone_single_evidence(meta: MetaMusic) -> bool:
+    """判断本地标签是否明确把当前录音描述为同名单曲发行。"""
+    title_key = music_text_key(
+        music_base_title(
+            _SINGLE_RELEASE_SUFFIX.sub(
+                "",
+                _CONTENT_RATING_QUALIFIER.sub("", meta.title or ""),
+            )
+        )
+    )
+    album_key = music_text_key(
+        music_base_title(
+            _SINGLE_RELEASE_SUFFIX.sub(
+                "",
+                _CONTENT_RATING_QUALIFIER.sub("", meta.album or ""),
+            )
+        )
+    )
+    return bool(title_key and album_key and title_key == album_key)
+
+
+def _reconcile_fingerprint_release(
+    info: MusicInfo,
+    tag_meta: Optional[MetaMusic],
+    filename_meta: Optional[MetaMusic],
+) -> MusicInfo:
+    """用明确的本地单曲标签校正指纹命中的其他关联发行版。"""
+    primary = tag_meta if tag_meta and tag_meta.title else filename_meta
+    if (
+        not primary
+        or not _is_standalone_single_evidence(primary)
+        or not primary.album
+        or not info.album
+        or (
+            music_album_matches(info, primary.album)
+            and music_year_matches(info, primary)
+        )
+    ):
+        return info
+
+    reconciled = deepcopy(info)
+    reconciled.album = primary.album
+    reconciled.album_artist = primary.album_artist or info.artist
+    reconciled.album_id = None
+    reconciled.album_type = "Single"
+    reconciled.secondary_types = []
+    reconciled.year = int(primary.year) if primary.year is not None else None
+    reconciled.release_date = None
+    reconciled.release_status = None
+    reconciled.disc_number = primary.disc_number
+    reconciled.track_number = primary.track_number
+    reconciled.total_tracks = primary.total_tracks
+    reconciled.cover_url = None
+    reconciled.category = ""
+    reconciled.metadata_category = "Single"
+    reconciled.classification = None
+    return reconciled
 
 
 def _music_tier_plan(
@@ -473,6 +576,7 @@ class MediaPathOwner(_MediaOwnerBase):
     ) -> Tuple[MetaMusic, MusicInfo]:
         """按指纹、文件标签、文件名三级顺序识别本地音乐。"""
         meta, tag_meta, filename_meta = AudioMetadataHelper.read_evidence(Path(path))
+        filename_meta = _merge_music_path_evidence(filename_meta, meta)
         plan = _music_path_plan(tag_meta, filename_meta, media_source)
         info: Optional[MusicInfo] = None
         try:
@@ -490,6 +594,11 @@ class MediaPathOwner(_MediaOwnerBase):
                         )
                         info = None
                     if self._is_remote_music_info(info):
+                        info = _reconcile_fingerprint_release(
+                            info,
+                            tag_meta,
+                            filename_meta,
+                        )
                         logger.info("音乐识别命中 AcoustID 指纹层，已跳过标签和文件名识别")
                 elif action.kind is _MusicPathActionKind.ALBUM:
                     info = self._music_album_dir_fallback(path)
@@ -519,6 +628,7 @@ class MediaPathOwner(_MediaOwnerBase):
             AudioMetadataHelper.read_evidence,
             Path(path),
         )
+        filename_meta = _merge_music_path_evidence(filename_meta, meta)
         plan = _music_path_plan(tag_meta, filename_meta, media_source)
         info: Optional[MusicInfo] = None
         try:
@@ -543,6 +653,11 @@ class MediaPathOwner(_MediaOwnerBase):
                         )
                         info = None
                     if self._is_remote_music_info(info):
+                        info = _reconcile_fingerprint_release(
+                            info,
+                            tag_meta,
+                            filename_meta,
+                        )
                         logger.info("音乐识别命中 AcoustID 指纹层，已跳过标签和文件名识别")
                 elif action.kind is _MusicPathActionKind.ALBUM:
                     info = await self._async_music_album_dir_fallback(path)

@@ -219,7 +219,12 @@ def test_recognize_music_by_path_tag_mbid_skips_multi_source_matching(monkeypatc
 
 def test_recognize_music_by_path_falls_back_from_tags_to_filename(monkeypatch):
     """标签层未获得远端身份时应继续使用文件名层，且顺序不可反转。"""
-    tag_meta = MetaMusic(title="Tagged Title")
+    tag_meta = MetaMusic(
+        title="Tagged Title",
+        artists=["Taylor Swift"],
+        album="Speak Now",
+        year=2010,
+    )
     filename_meta = MetaMusic(title="Filename Title")
     expected = MusicInfo(
         media_source="musicbrainz",
@@ -242,10 +247,12 @@ def test_recognize_music_by_path_falls_back_from_tags_to_filename(monkeypatch):
     _, recognized_info = chain.recognize_music_by_path("track.flac")
 
     assert recognized_info is expected
-    assert [call.kwargs["meta"] for call in recognize.call_args_list] == [
-        tag_meta,
-        filename_meta,
-    ]
+    calls = [call.kwargs["meta"] for call in recognize.call_args_list]
+    assert calls[0] is tag_meta
+    assert calls[1].title == "Filename Title"
+    assert calls[1].artists == ["Taylor Swift"]
+    assert calls[1].album == "Speak Now"
+    assert calls[1].year == 2010
     assert all(
         call.kwargs["music_type"] == "recording"
         for call in recognize.call_args_list
@@ -420,6 +427,120 @@ def test_recognize_music_by_path_accepts_equivalent_recording_qualifiers(monkeyp
     _, recognized_info = chain.recognize_music_by_path("Teardrops.flac")
 
     assert recognized_info is expected
+    later_tier.assert_not_called()
+
+
+def test_recognize_music_by_path_reconciles_standalone_single_release(monkeypatch):
+    """指纹录音属于多个发行版时，应尊重本地同名单曲标签。"""
+    recording_id = "131b296c-3533-4e55-9800-a6dd83b90737"
+    single_title = 'Beautiful Ghosts (From The Motion Picture "Cats")'
+    tagged = MetaMusic(
+        title=single_title,
+        artists=["Taylor Swift"],
+        album=f"{single_title} - Single",
+        album_artist="Taylor Swift",
+        year=2019,
+        track_number=1,
+        total_tracks=1,
+    )
+    soundtrack = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="Beautiful Ghosts",
+        artists=["Taylor Swift"],
+        album="Cats: Highlights From the Motion Picture Soundtrack",
+        album_artist="Andrew Lloyd Webber",
+        album_id="cats-release-group",
+        album_type="Album",
+        secondary_types=["Soundtrack"],
+        year=2019,
+        track_number=3,
+        total_tracks=16,
+        cover_url="https://cover.example/cats.jpg",
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(tagged, tagged, MetaMusic(title="Beautiful Ghosts"))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_recognize_musicbrainz_recording",
+        Mock(return_value=soundtrack),
+    )
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized = chain.recognize_music_by_path("Beautiful Ghosts.mp3")
+
+    assert recognized is not soundtrack
+    assert recognized.media_id == recording_id
+    assert recognized.album == f"{single_title} - Single"
+    assert recognized.album_artist == "Taylor Swift"
+    assert recognized.album_id is None
+    assert recognized.album_type == "Single"
+    assert recognized.secondary_types == []
+    assert recognized.year == 2019
+    assert recognized.track_number == 1
+    assert recognized.total_tracks == 1
+    assert recognized.cover_url is None
+    assert recognized.metadata_category == "Single"
+    later_tier.assert_not_called()
+
+
+def test_recognize_music_by_path_ignores_single_content_rating_qualifier(monkeypatch):
+    """Explicit/Clean 只描述内容分级，不应阻止同名单曲发行证据。"""
+    recording_id = "7b35656c-5589-48d3-9a96-467a637e9bd2"
+    title = "All Too Well (10 Minute Version) (Taylor's Version) (Live Acoustic|Explicit)"
+    album = "All Too Well (10 Minute Version) [Taylor's Version] [Live Acoustic] [Explicit] - Single"
+    tagged = MetaMusic(
+        title=title,
+        artists=["Taylor Swift"],
+        album=album,
+        year=2023,
+        track_number=1,
+    )
+    candidate = MusicInfo(
+        media_source="musicbrainz",
+        media_id=recording_id,
+        title="All Too Well (10 Minute version) (Taylor's version) (live acoustic)",
+        artists=["Taylor Swift"],
+        album="Red (Taylor's Version)",
+        album_id="red-release-group",
+        album_type="Album",
+        year=2019,
+    )
+    chain = MediaChain()
+    later_tier = Mock()
+    monkeypatch.setattr(
+        "app.chain.media.path.AudioMetadataHelper.read_evidence",
+        Mock(return_value=(tagged, tagged, MetaMusic(title=title))),
+    )
+    monkeypatch.setattr(
+        AcoustIdChain,
+        "identify_music_by_fingerprint",
+        Mock(return_value=recording_id),
+    )
+    monkeypatch.setattr(
+        chain,
+        "_recognize_musicbrainz_recording",
+        Mock(return_value=candidate),
+    )
+    monkeypatch.setattr(chain, "_recognize_music_meta_tier", later_tier)
+
+    _, recognized = chain.recognize_music_by_path("All Too Well.mp3")
+
+    assert recognized.media_id == recording_id
+    assert recognized.album == album
+    assert recognized.album_id is None
+    assert recognized.album_type == "Single"
+    assert recognized.year == 2023
+    assert recognized.track_number == 1
     later_tier.assert_not_called()
 
 
