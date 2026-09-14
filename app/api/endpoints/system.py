@@ -4,6 +4,7 @@ import json
 import zipfile
 from datetime import datetime
 from typing import Annotated, Any, Optional, Union
+from urllib.parse import urlsplit
 
 import anyio
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
@@ -88,6 +89,23 @@ _PUBLIC_SYSTEM_CONFIG_KEYS = {
 _PUBLIC_SETTINGS_KEYS = {"PLUGIN_MARKET"}
 
 
+def _get_image_proxy_allowed_domains() -> set[str]:
+    """返回图片代理允许的域名，并纳入已启用的 Bangumi 图片代理主机。"""
+    runtime_settings = get_runtime_settings()
+    allowed_domains = set(runtime_settings.get("SECURITY_IMAGE_DOMAINS", []))
+    if not runtime_settings.get("BANGUMI_PROXY_ENABLE"):
+        return allowed_domains
+
+    image_proxy = str(runtime_settings.get("BANGUMI_IMAGE_DOMAIN") or "").strip()
+    if not image_proxy:
+        return allowed_domains
+    candidate = image_proxy if "://" in image_proxy else f"https://{image_proxy}"
+    parsed = urlsplit(candidate)
+    if parsed.scheme in {"http", "https"} and parsed.netloc:
+        allowed_domains.add(parsed.netloc)
+    return allowed_domains
+
+
 def _database_backup_artifact_data(artifact: Any) -> _SchemaDatabaseBackupArtifactData:
     """将内部备份制品映射为不含宿主路径的 Web DTO。"""
     return _SchemaDatabaseBackupArtifactData(
@@ -157,7 +175,7 @@ async def fetch_image(
         return None
 
     if allowed_domains is None:
-        allowed_domains = set(get_runtime_settings().get("SECURITY_IMAGE_DOMAINS", []))
+        allowed_domains = _get_image_proxy_allowed_domains()
 
     fetch_url = SecurityUtils.strip_url_signature(url)
     # 验证URL安全性
@@ -228,7 +246,7 @@ async def proxy_img(
     """
     图片代理，可选是否使用代理服务器，支持 HTTP 缓存
     """
-    allowed_domains = set(get_runtime_settings().get("SECURITY_IMAGE_DOMAINS", []))
+    allowed_domains = _get_image_proxy_allowed_domains()
     cookies = MediaServerChain().get_image_cookies(server=None, image_url=imgurl) if use_cookies else None
     return await fetch_image(
         url=imgurl,
@@ -290,6 +308,8 @@ def get_global_setting(token: str):
     runtime_settings = get_runtime_settings()
     info = runtime_settings.snapshot(
         include={
+            "BANGUMI_PROXY_ENABLE",
+            "BANGUMI_IMAGE_DOMAIN",
             "TMDB_IMAGE_DOMAIN",
             "GLOBAL_IMAGE_CACHE",
             "WALLPAPER_ROTATION_INTERVAL",
@@ -327,6 +347,8 @@ async def get_user_global_setting(
         include={
             "AI_AGENT_ENABLE",
             "AI_AGENT_HIDE_ENTRY",
+            "BANGUMI_PROXY_ENABLE",
+            "BANGUMI_IMAGE_DOMAIN",
             "LLM_SUPPORT_AUDIO_INPUT",
             "LLM_SUPPORT_AUDIO_OUTPUT",
             "RECOGNIZE_SOURCE",

@@ -391,6 +391,14 @@ class ConfigModel(BaseModel):
     # TMDB API Key
     TMDB_API_KEY: str = "db55323b8d3e4154498498a75642b381"
 
+    # ==================== Bangumi配置 ====================
+    # 是否启用 Bangumi 数据与图片代理
+    BANGUMI_PROXY_ENABLE: bool = False
+    # Bangumi API代理地址，留空使用官方地址
+    BANGUMI_API_DOMAIN: str = ""
+    # Bangumi图片代理地址，留空时由后端代理端点直接拉取原始图片
+    BANGUMI_IMAGE_DOMAIN: str = ""
+
     # ==================== 音乐配置 ====================
     # 音乐封面代理地址（用于解决 coverartarchive.org 无法访问导致的封面不显示问题，留空则使用官方地址）
     MUSIC_COVER_PROXY: str = ""
@@ -750,6 +758,9 @@ class ConfigModel(BaseModel):
             "bing.com",
             "doubanio.com",
             "lain.bgm.tv",
+            "bgm.tv",
+            "bangumi.tv",
+            "bangumi.lol",
             "raw.githubusercontent.com",
             "github.com",
             "thetvdb.com",

@@ -85,6 +85,23 @@ def _image_bytes(image_format: str, trailing: bytes = b"") -> bytes:
     return buffer.getvalue() + trailing
 
 
+def test_bangumi_image_proxy_domain_is_added_to_allowlist() -> None:
+    """启用 Bangumi 图片代理时，应允许其配置主机通过通用图片端点。"""
+    with patch.object(
+        system_endpoint,
+        "get_runtime_settings",
+        return_value={
+            "BANGUMI_PROXY_ENABLE": True,
+            "BANGUMI_IMAGE_DOMAIN": "https://image-proxy.example/?url=",
+            "SECURITY_IMAGE_DOMAINS": ["lain.bgm.tv"],
+        },
+    ):
+        assert system_endpoint._get_image_proxy_allowed_domains() == {
+            "lain.bgm.tv",
+            "image-proxy.example",
+        }
+
+
 @pytest.mark.parametrize(
     ("image_format", "expected_mime"),
     [

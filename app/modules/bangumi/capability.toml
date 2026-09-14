@@ -12,4 +12,4 @@ priority = 3
 
 [activation]
 policy = "bootstrap"
-watch = ["PROXY_HOST"]
+watch = ["PROXY_HOST", "BANGUMI_PROXY_ENABLE", "BANGUMI_API_DOMAIN"]

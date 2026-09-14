@@ -76,16 +76,26 @@ def test_bangumi_test_uses_generation_snapshot_until_reload(monkeypatch):
     """长生命周期模块应在 init/reload 时换快照，而不是每次调用读取全局配置。"""
     module = BangumiModule()
     monkeypatch.setattr(settings, "PROXY_HOST", "http://old-proxy")
+    monkeypatch.setattr(settings, "BANGUMI_PROXY_ENABLE", True)
+    monkeypatch.setattr(settings, "BANGUMI_API_DOMAIN", "https://old-bangumi.example/api")
     module.init_module()
     old_proxy = settings.PROXY
     monkeypatch.setattr(settings, "PROXY_HOST", "http://new-proxy")
+    monkeypatch.setattr(settings, "BANGUMI_PROXY_ENABLE", True)
+    monkeypatch.setattr(settings, "BANGUMI_API_DOMAIN", "https://new-bangumi.example/api")
     new_proxy = settings.PROXY
 
     with patch("app.modules.bangumi.RequestUtils") as request_utils:
         request_utils.return_value.get_res.return_value = MagicMock(status_code=200)
         module.test()
         assert request_utils.call_args.kwargs["proxies"] == old_proxy
+        assert request_utils.return_value.get_res.call_args.args[0] == (
+            "https://old-bangumi.example/api/"
+        )
 
         module.on_config_changed()
         module.test()
         assert request_utils.call_args.kwargs["proxies"] == new_proxy
+        assert request_utils.return_value.get_res.call_args.args[0] == (
+            "https://new-bangumi.example/api/"
+        )
