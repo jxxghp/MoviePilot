@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from typing import Any, NamedTuple, Optional
+from typing import Any, NamedTuple, Optional, Protocol
 
 from pydantic import ValidationError
 
@@ -12,14 +12,32 @@ from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 
 # 自动分配的后缀从 2 起算：源插件本体在用户眼里就是第 1 个实例，分身接着往下排
 _FIRST_AUTO_SUFFIX = 2
-# 探测次数上限：占用判据若因端口故障恒为真，没有上限会让请求线程原地打转并一直扣着占位锁
-_MAX_AUTO_SUFFIX_PROBES = 1000
+# 在「已登记分身数」之上再多探测的号数，取值见 PluginCloneService._allocate_suffix
+_AUTO_SUFFIX_PROBE_SLACK = 1000
 
 
 def _first_validation_message(error: ValidationError) -> str:
     """取校验错误里的首条说明，供回给用户的单行原因使用。"""
     details = error.errors()
     return str(details[0].get("msg")) if details else str(error)
+
+
+class InstanceIdTaken(Protocol):
+    """候选实例 ID 的占用判据。"""
+
+    def __call__(
+        self,
+        instance_id: str,
+        *,
+        ignore_instance_row: bool = False,
+    ) -> bool:
+        """判断该 ID 是否已被某个插件身份占住。
+
+        :param instance_id: 候选实例 ID
+        :param ignore_instance_row: 是否把「实例表里已有这一行」排除在占用之外。恢复
+            一个已停用的分身时为真：那一行正是本次要拿回来的东西，它自己不构成冲突
+        :return: 该 ID 是否已被占用
+        """
 
 
 class _Reservation(NamedTuple):
@@ -29,6 +47,13 @@ class _Reservation(NamedTuple):
     restoring: bool
 
 
+class _ClonePlan(NamedTuple):
+    """落库之前定下的分身方案：写哪一行，以及这一行是新建还是恢复。"""
+
+    reservation: _Reservation
+    instance: PluginInstance
+
+
 class PluginCloneService:
     """创建共享源码的虚拟插件实例并协调失败回滚。"""
 
@@ -36,8 +61,9 @@ class PluginCloneService:
         self,
         *,
         plugin_class: Callable[[str], Optional[Any]],
-        instance_id_taken: Callable[[str], bool],
+        instance_id_taken: InstanceIdTaken,
         get_instance: Callable[[str], Optional[PluginInstance]],
+        instances_for_source: Callable[[str], list[PluginInstance]],
         source_plugin_id: Callable[[str], str],
         save_instance: Callable[[PluginInstance], Any],
         delete_instance: Callable[[str], bool],
@@ -53,6 +79,7 @@ class PluginCloneService:
         self._plugin_class = plugin_class
         self._instance_id_taken = instance_id_taken
         self._get_instance = get_instance
+        self._instances_for_source = instances_for_source
         self._source_plugin_id = source_plugin_id
         self._save_instance = save_instance
         self._delete_instance = delete_instance
@@ -96,22 +123,43 @@ class PluginCloneService:
         if rejection:
             return False, rejection
 
-        with self._reservation_lock:
-            reservation, message = self._reserve(
+        # 实例行落库、备配置与首次加载同属一次创建，共用这一个异常与清理边界：落库留在
+        # 边界之外时，写到一半失败既不会按约定回报 (False, 原因)，也不会触发回滚，一行
+        # 没有配置、也没有运行态的实例就此留在表里
+        reservation: Optional[_Reservation] = None
+        try:
+            with self._reservation_lock:
+                plan, message = self._plan(
+                    plugin_id=plugin_id,
+                    suffix=suffix,
+                    name=name,
+                    description=description,
+                    icon=icon,
+                    restore_previous=restore_previous,
+                )
+                if plan is None:
+                    return False, message
+                # 来历要赶在落库之前记下：写入抛异常时，回滚靠它判断该抹掉整行还是只
+                # 把启用位退回停用
+                reservation = plan.reservation
+                self._save_instance(plan.instance)
+            self._activate(
+                reservation,
                 plugin_id=plugin_id,
-                suffix=suffix,
-                name=name,
-                description=description,
-                icon=icon,
                 restore_previous=restore_previous,
             )
-        if reservation is None:
-            return False, message
-        return self._activate(
-            reservation,
-            plugin_id=plugin_id,
-            restore_previous=restore_previous,
-        )
+            action = "恢复" if reservation.restoring else "创建"
+            self._logger.info(f"插件分身 {reservation.clone_id} {action}成功")
+            return True, reservation.clone_id
+        except Exception as error:  # noqa: BLE001
+            # 占位之前失败的话没有任何东西落下来，无需也无从回滚
+            if reservation is not None:
+                self._rollback(
+                    reservation.clone_id,
+                    purge_instance=not reservation.restoring,
+                )
+            self._logger.error(f"创建插件分身失败：{error}")
+            return False, f"创建插件分身失败：{error}"
 
     def _reject_invalid_source(self, plugin_id: str) -> str:
         """判断给定插件能否作为分身来源，可以时返回空串。
@@ -132,7 +180,7 @@ class PluginCloneService:
             )
         return ""
 
-    def _reserve(
+    def _plan(
         self,
         *,
         plugin_id: str,
@@ -141,11 +189,11 @@ class PluginCloneService:
         description: str,
         icon: Optional[str],
         restore_previous: bool,
-    ) -> tuple[Optional[_Reservation], str]:
-        """定下分身 ID 并把实例行落库，返回占位结果或拒绝原因。
+    ) -> tuple[Optional[_ClonePlan], str]:
+        """定下分身 ID 与要写出的实例行，或给出拒绝原因；本方法自身不写任何东西。
 
-        调用方须持有占位锁：本方法内部先读后写，两个并发创建各自读到「未占用」就会
-        落到同一行上。
+        调用方须持有占位锁：判存是「先读后写」的前半段，两个并发创建各自读到「未占用」
+        就会落到同一行上。
         """
         resolved_suffix = (suffix or "").strip().lower() or self._allocate_suffix(plugin_id)
         if not resolved_suffix:
@@ -159,8 +207,15 @@ class PluginCloneService:
             and not previous.is_enabled
             and previous.source_plugin_id == plugin_id
         )
-        if not restoring and self._instance_id_taken(clone_id):
-            return None, f"分身插件 {clone_id} 已存在"
+        # 恢复只豁免待恢复的那一行自身。停用从不删行，那一行可以在表里躺很久，其间同名
+        # 的真实插件完全可能出现（装进类注册表、进安装清单、或在磁盘上留下插件包）；此时
+        # 放行等于让分身顶掉一个真实插件的身份，那个插件此后连装都装不回来
+        if self._instance_id_taken(clone_id, ignore_instance_row=restoring):
+            return None, (
+                f"分身插件 {clone_id} 的 ID 已被其他插件占用，无法恢复"
+                if restoring
+                else f"分身插件 {clone_id} 已存在"
+            )
 
         instance, message = self._build_instance(
             clone_id=clone_id,
@@ -173,8 +228,10 @@ class PluginCloneService:
         )
         if instance is None:
             return None, message
-        self._save_instance(instance)
-        return _Reservation(clone_id=clone_id, restoring=restoring), ""
+        return _ClonePlan(
+            reservation=_Reservation(clone_id=clone_id, restoring=restoring),
+            instance=instance,
+        ), ""
 
     def _allocate_suffix(self, plugin_id: str) -> str:
         """为新分身分配一个最小可用的数字后缀，无号可用时返回空串。
@@ -182,11 +239,14 @@ class PluginCloneService:
         占用判据与显式指定后缀走的是同一个 ``instance_id_taken``，自动分配因此不可能
         挑中一个手填时会被判成「已存在」的 ID。已停用的分身同样占位：重用它的 ID 是
         「恢复」而不是新建，用户没点恢复就不该凭空拿到上一个分身留下的配置。
+
+        探测上限随该插件已登记的分身数一起抬高。定成一个常数的话，分身数量越过它之后
+        每次自动分配都报「后缀已耗尽」，而下一个号明明空着；按鸽巢原理，N 个已登记分身
+        最多占掉 N 个号，再多探测一段余量必然能撞上空位。上限仍然有限：占用判据若因端口
+        故障恒为真，无界的循环会让请求线程原地打转并一直扣着占位锁。
         """
-        for index in range(
-            _FIRST_AUTO_SUFFIX,
-            _FIRST_AUTO_SUFFIX + _MAX_AUTO_SUFFIX_PROBES,
-        ):
+        probe_limit = len(self._instances_for_source(plugin_id)) + _AUTO_SUFFIX_PROBE_SLACK
+        for index in range(_FIRST_AUTO_SUFFIX, _FIRST_AUTO_SUFFIX + probe_limit):
             if not self._instance_id_taken(f"{plugin_id}{index}"):
                 return str(index)
         return ""
@@ -238,31 +298,36 @@ class PluginCloneService:
         *,
         plugin_id: str,
         restore_previous: bool,
-    ) -> tuple[bool, str]:
-        """准备配置并完成首次加载，失败时按来历回滚。"""
-        clone_id = reservation.clone_id
+    ) -> None:
+        """准备配置并完成首次加载，失败一律抛出，由 :meth:`clone` 统一回滚。"""
         # 恢复留存配置时不得用源插件模板盖掉它，那正是用户要拿回来的东西
-        keep_previous_config = reservation.restoring and restore_previous
-        try:
-            if not keep_previous_config:
-                original_config = self._read_config(plugin_id)
-                if original_config:
-                    clone_config = dict(original_config)
-                    clone_config["enable"] = False
-                    clone_config["enabled"] = False
-                    if not self._save_config(clone_id, clone_config):
-                        raise RuntimeError("虚拟实例配置保存失败")
+        if not (reservation.restoring and restore_previous):
+            self._rebuild_config(reservation.clone_id, source_plugin_id=plugin_id)
+        if self._reload_plugin(reservation.clone_id) is PluginRuntimeStatus.LOAD_FAILED:
+            raise RuntimeError("虚拟实例加载失败")
 
-            status = self._reload_plugin(clone_id)
-            if status is PluginRuntimeStatus.LOAD_FAILED:
-                raise RuntimeError("虚拟实例加载失败")
-            action = "恢复" if reservation.restoring else "创建"
-            self._logger.info(f"插件分身 {clone_id} {action}成功")
-            return True, clone_id
-        except Exception as error:  # noqa: BLE001
-            self._rollback(clone_id, purge_instance=not reservation.restoring)
-            self._logger.error(f"创建插件分身失败：{error}")
-            return False, f"创建插件分身失败：{error}"
+    def _rebuild_config(self, clone_id: str, *, source_plugin_id: str) -> None:
+        """按源插件当前的配置模板重建分身配置，模板为空时清掉分身原有的那一份。
+
+        源插件没有配置与源插件配置为空字典都落在「模板里没有可继承的业务参数」这一档，
+        两者都必须清除：只是跳过写入的话，已停用分身留存的旧参数会原样活下来并在重载后
+        继续生效，用户要的「按模板重建一份」于是变成了「沿用旧配置」，且毫无提示。
+
+        :param clone_id: 分身实例 ID
+        :param source_plugin_id: 提供配置模板的源插件 ID
+        :raise RuntimeError: 配置写入被持久化层拒绝
+        """
+        template = self._read_config(source_plugin_id)
+        if not template:
+            self._delete_config(clone_id)
+            return
+        clone_config = dict(template)
+        # 分身是照着源插件的参数建出来的，业务开关一律置假：它还没被用户配过，直接开跑
+        # 等于拿着别人的参数上线
+        clone_config["enable"] = False
+        clone_config["enabled"] = False
+        if not self._save_config(clone_id, clone_config):
+            raise RuntimeError("虚拟实例配置保存失败")
 
     def _rollback(self, clone_id: str, *, purge_instance: bool) -> None:
         """逐项清理失败实例，单个清理错误不得阻断其余回滚。

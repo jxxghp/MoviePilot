@@ -57,6 +57,7 @@ class _World:
         self.removed: list[str] = []
         self.status = PluginRuntimeStatus.ACTIVE
         self.probe_delay = 0.0
+        self.save_failure: Optional[Exception] = None
         self.runtime: Optional[PluginRuntime] = None
 
     def clone(self, **kwargs: Any) -> tuple[bool, str]:
@@ -112,6 +113,12 @@ def _build_world(
         world.rows[instance_id] = record.model_copy(update={"is_enabled": is_enabled})
         return True
 
+    def _save_row(instance: PluginInstance) -> None:
+        """写入实例行，可按需让这一步抛异常以模拟持久化故障。"""
+        if world.save_failure is not None:
+            raise world.save_failure
+        world.rows[instance.instance_id] = instance
+
     storage = PluginStorage(
         read=values.get,
         write=values.__setitem__,
@@ -130,7 +137,7 @@ def _build_world(
             for record in world.rows.values()
             if record.source_plugin_id == source_plugin_id
         ],
-        save=lambda instance: world.rows.__setitem__(instance.instance_id, instance),
+        save=_save_row,
         delete=lambda instance_id: world.rows.pop(instance_id, None) is not None,
         list_enabled=lambda: [
             record for record in world.rows.values() if record.is_enabled
@@ -278,6 +285,23 @@ def test_auto_allocated_suffix_skips_a_currently_loaded_plugin_class():
 
     assert success is True
     assert instance_id == "DemoPlugin3"
+
+
+def test_auto_allocation_keeps_looking_past_a_long_run_of_taken_numbers():
+    """已登记分身多到超过固定探测窗口时，仍要挑出真正最小的可用序号。
+
+    探测次数若定死成一个常数，分身数量越过它之后每次自动分配都报「后缀已耗尽」，
+    可实际上下一个号就空着；用户此时只能改为手填一个号，而手填走的又是同一套判据。
+    """
+    taken = {
+        f"DemoPlugin{index}": _disabled_clone(f"DemoPlugin{index}", is_enabled=True)
+        for index in range(2, 1002)
+    }
+    world = _build_world(rows=taken)
+
+    success, instance_id = world.clone(plugin_id="DemoPlugin")
+
+    assert (success, instance_id) == (True, "DemoPlugin1002")
 
 
 @pytest.mark.parametrize("blank", ["", "   ", None])
@@ -436,6 +460,72 @@ def test_restore_previous_false_rebuilds_the_config_from_the_source_template():
     assert world.rows["DemoPlugin2"].plugin_name == "全新"
 
 
+@pytest.mark.parametrize("template", [None, {}])
+def test_restore_previous_false_clears_the_old_config_when_the_source_has_none(template):
+    """源插件没有配置或配置为空时，按模板重建同样要把旧配置清掉。
+
+    两种情形下模板里都没有可继承的业务参数；若只是跳过写入，用户明确要求的「重建一份
+    全新配置」会变成「原样沿用旧配置」，那些旧参数在重载后继续生效，且毫无提示。
+    """
+    configs: dict[str, dict] = {"DemoPlugin2": {"token": "该被丢弃"}}
+    if template is not None:
+        configs["DemoPlugin"] = template
+    world = _build_world(
+        rows={"DemoPlugin2": _disabled_clone("DemoPlugin2")},
+        configs=configs,
+    )
+
+    success, _instance_id = world.clone(
+        plugin_id="DemoPlugin",
+        suffix="2",
+        restore_previous=False,
+    )
+
+    assert success is True
+    assert "DemoPlugin2" not in world.configs
+
+
+def _world_with_a_disabled_clone_and_a_foreign_occupant(kind: str, tmp_path: Path) -> _World:
+    """建出「停用分身行还在，同一个 ID 又被某个真实插件占住」的世界。
+
+    停用从不删行，那一行可以在表里躺很久；这段时间里同名的真实插件完全可能出现——
+    磁盘上被放进一个同名插件包、安装清单里多出一条、或者它已经装载进类注册表。
+    """
+    rows = {"DemoPlugin2": _disabled_clone("DemoPlugin2", plugin_name="夜间任务")}
+    configs = {"DemoPlugin2": {"token": "必须留着"}}
+    if kind == "disk-package":
+        (tmp_path / "demoplugin2").mkdir()
+        return _build_world(rows=rows, configs=configs, plugins_root=tmp_path)
+    if kind == "installed-entry":
+        return _build_world(
+            rows=rows,
+            configs=configs,
+            installed=["DemoPlugin", "DemoPlugin2"],
+        )
+    world = _build_world(rows=rows, configs=configs)
+    world.runtime.registry.classes["DemoPlugin2"] = DemoPlugin
+    return world
+
+
+@pytest.mark.parametrize("kind", ["disk-package", "installed-entry", "loaded-class"])
+def test_restoring_still_refuses_an_id_a_real_plugin_already_holds(kind, tmp_path):
+    """恢复只豁免待恢复的那一行自身，另外三类占用者仍然要挡。
+
+    豁免写成「只要停用行在就全放行」的话，恢复会绕过全部判存：该 ID 上压着的真实
+    插件身份被分身顶掉，那个插件此后既装不回来，实例行的归属列也对不上。
+    """
+    world = _world_with_a_disabled_clone_and_a_foreign_occupant(kind, tmp_path)
+
+    success, message = world.clone(plugin_id="DemoPlugin", suffix="2")
+
+    assert success is False
+    assert "占用" in message
+    # 被拒绝的恢复不得改动那一行，也不得把它拉起来跑
+    assert world.rows["DemoPlugin2"].is_enabled is False
+    assert world.configs["DemoPlugin2"] == {"token": "必须留着"}
+    assert world.reloaded == []
+
+
 def test_failed_restore_only_puts_the_row_back_to_disabled():
     """恢复失败只把启用位退回停用，不得连同用户留存的配置一起毁掉。
 
@@ -469,6 +559,43 @@ def test_failed_fresh_creation_still_removes_the_row_it_created():
     assert "加载失败" in message
     assert "DemoPluginwork" not in world.rows
     assert "DemoPluginwork" not in world.configs
+
+
+def test_a_failed_row_write_is_reported_and_cleaned_up_like_a_failed_load():
+    """实例行落库失败按失败回执返回并清理，不把异常抛给调用方。
+
+    落库是本次创建写出的第一样东西，它与备配置、首次加载同属一次创建；把它留在异常
+    边界之外，写到一半失败时既没有回滚、也没有 ``(False, 原因)``，只有一个异常冒到
+    上层，而半写的实例行仍留在表里。
+    """
+    world = _build_world(configs={"DemoPlugin": {"token": "源插件的"}})
+    world.save_failure = RuntimeError("实例表不可写")
+
+    success, message = world.clone(plugin_id="DemoPlugin", suffix="Work")
+
+    assert success is False
+    assert "实例表不可写" in message
+    assert world.rows == {}
+    assert world.configs == {"DemoPlugin": {"token": "源插件的"}}
+    assert world.reloaded == []
+    assert world.removed == ["DemoPluginwork"]
+
+
+def test_a_failed_row_write_while_restoring_keeps_the_stored_settings():
+    """恢复途中落库失败同样只把启用位退回停用，用户留存的配置不受牵连。"""
+    world = _build_world(
+        rows={"DemoPlugin2": _disabled_clone("DemoPlugin2", plugin_name="夜间任务")},
+        configs={"DemoPlugin2": {"token": "必须留着"}},
+    )
+    world.save_failure = RuntimeError("实例表不可写")
+
+    success, message = world.clone(plugin_id="DemoPlugin", suffix="2")
+
+    assert success is False
+    assert "实例表不可写" in message
+    assert world.rows["DemoPlugin2"].is_enabled is False
+    assert world.rows["DemoPlugin2"].plugin_name == "夜间任务"
+    assert world.configs["DemoPlugin2"] == {"token": "必须留着"}
 
 
 # --------------------------------------------------------------------------- #

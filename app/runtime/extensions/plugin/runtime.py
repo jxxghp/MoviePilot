@@ -355,7 +355,11 @@ def build_plugin_runtime(
         ) or []
         return plugin_id in installed
 
-    def instance_id_taken(instance_id: str) -> bool:
+    def instance_id_taken(
+        instance_id: str,
+        *,
+        ignore_instance_row: bool = False,
+    ) -> bool:
         """判断一个候选实例 ID 是否已被占用。
 
         创建分身的判存与自动分配后缀共用这一个判据，自动分配因此不可能挑中一个手填
@@ -374,14 +378,19 @@ def build_plugin_runtime(
         报告不存在，因而这里直接看包目录。
 
         :param instance_id: 候选实例 ID
+        :param ignore_instance_row: 是否把实例行这一类占用者排除在外。恢复一个已停用的
+            分身时为真：那一行正是本次要拿回来的东西，它自己不构成冲突。一个 ID 在实例
+            表里至多一行，忽略这一类即等于只豁免待恢复的那一行，另外三类仍然要挡——否则
+            恢复会绕开全部判存，把一个真实插件的身份顶掉
         :return: 该 ID 是否已被占用
         """
         if registry.plugin_class(instance_id) is not None:
             return True
-        if instances.get(instance_id) is not None:
-            return True
-        if instances.get_host(instance_id) is not None:
-            return True
+        if not ignore_instance_row:
+            if instances.get(instance_id) is not None:
+                return True
+            if instances.get_host(instance_id) is not None:
+                return True
         installed = environment.storage().read(
             SystemConfigKey.UserInstalledPlugins
         ) or []
@@ -393,6 +402,7 @@ def build_plugin_runtime(
         plugin_class=registry.plugin_class,
         instance_id_taken=instance_id_taken,
         get_instance=instances.get,
+        instances_for_source=instances.for_source,
         source_plugin_id=source_plugin_id,
         save_instance=instances.save,
         delete_instance=instances.delete,

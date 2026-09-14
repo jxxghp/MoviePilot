@@ -660,8 +660,9 @@ def test_clone_service_persists_descriptor_without_copying_source_package():
 
     service = PluginCloneService(
         plugin_class=lambda plugin_id: DemoPlugin if plugin_id == "DemoPlugin" else None,
-        instance_id_taken=lambda plugin_id: plugin_id in instances,
+        instance_id_taken=lambda plugin_id, **_kwargs: plugin_id in instances,
         get_instance=instances.get,
+        instances_for_source=lambda _plugin_id: list(instances.values()),
         source_plugin_id=lambda plugin_id: plugin_id,
         save_instance=lambda instance: instances.__setitem__(
             instance.instance_id,
@@ -699,6 +700,39 @@ def test_clone_service_persists_descriptor_without_copying_source_package():
     assert removed == []
 
 
+def test_clone_service_gives_up_allocating_when_no_id_is_ever_reported_free():
+    """占用判据恒为真时自动分配必须有限次放弃，不能扣着占位锁原地打转。
+
+    探测上限随已登记分身数抬高是为了不把仍可用的号误报成耗尽；上限本身不能因此取消，
+    判据一旦因端口故障恒为真，无界的循环会让请求线程一直占着创建入口不放。
+    """
+
+    class DemoPlugin:
+        """提供探测上限用例需要的最小源插件类。"""
+
+    service = PluginCloneService(
+        plugin_class=lambda _plugin_id: DemoPlugin,
+        instance_id_taken=lambda _plugin_id, **_kwargs: True,
+        get_instance=lambda _plugin_id: None,
+        instances_for_source=lambda _plugin_id: [],
+        source_plugin_id=lambda plugin_id: plugin_id,
+        save_instance=lambda _instance: None,
+        delete_instance=lambda _plugin_id: False,
+        disable_instance=lambda _plugin_id: False,
+        read_config=lambda _plugin_id: {},
+        save_config=lambda _plugin_id, _config: True,
+        delete_config=lambda _plugin_id: False,
+        reload_plugin=lambda _plugin_id: PluginRuntimeStatus.ACTIVE,
+        remove_plugin=lambda _plugin_id: None,
+        log=_logger(),
+    )
+
+    success, message = service.clone(plugin_id="DemoPlugin", name="", description="")
+
+    assert success is False
+    assert "耗尽" in message
+
+
 def test_clone_service_rolls_back_descriptor_and_config_after_load_failure():
     """实例首次加载失败时不留下不可见描述或孤立配置。"""
     instances: dict[str, PluginInstance] = {}
@@ -710,8 +744,9 @@ def test_clone_service_rolls_back_descriptor_and_config_after_load_failure():
 
     service = PluginCloneService(
         plugin_class=lambda _plugin_id: DemoPlugin,
-        instance_id_taken=lambda plugin_id: plugin_id in instances,
+        instance_id_taken=lambda plugin_id, **_kwargs: plugin_id in instances,
         get_instance=instances.get,
+        instances_for_source=lambda _plugin_id: list(instances.values()),
         source_plugin_id=lambda plugin_id: plugin_id,
         save_instance=lambda instance: instances.__setitem__(
             instance.instance_id,
