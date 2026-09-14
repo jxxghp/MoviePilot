@@ -57,6 +57,7 @@ class _World:
         self.removed: list[str] = []
         self.status = PluginRuntimeStatus.ACTIVE
         self.probe_delay = 0.0
+        self.save_failure: Optional[Exception] = None
         self.runtime: Optional[PluginRuntime] = None
 
     def clone(self, **kwargs: Any) -> tuple[bool, str]:
@@ -112,6 +113,12 @@ def _build_world(
         world.rows[instance_id] = record.model_copy(update={"is_enabled": is_enabled})
         return True
 
+    def _save_row(instance: PluginInstance) -> None:
+        """写入实例行，可按需让这一步抛异常以模拟持久化故障。"""
+        if world.save_failure is not None:
+            raise world.save_failure
+        world.rows[instance.instance_id] = instance
+
     storage = PluginStorage(
         read=values.get,
         write=values.__setitem__,
@@ -130,7 +137,7 @@ def _build_world(
             for record in world.rows.values()
             if record.source_plugin_id == source_plugin_id
         ],
-        save=lambda instance: world.rows.__setitem__(instance.instance_id, instance),
+        save=_save_row,
         delete=lambda instance_id: world.rows.pop(instance_id, None) is not None,
         list_enabled=lambda: [
             record for record in world.rows.values() if record.is_enabled
@@ -469,6 +476,43 @@ def test_failed_fresh_creation_still_removes_the_row_it_created():
     assert "加载失败" in message
     assert "DemoPluginwork" not in world.rows
     assert "DemoPluginwork" not in world.configs
+
+
+def test_a_failed_row_write_is_reported_and_cleaned_up_like_a_failed_load():
+    """实例行落库失败按失败回执返回并清理，不把异常抛给调用方。
+
+    落库是本次创建写出的第一样东西，它与备配置、首次加载同属一次创建；把它留在异常
+    边界之外，写到一半失败时既没有回滚、也没有 ``(False, 原因)``，只有一个异常冒到
+    上层，而半写的实例行仍留在表里。
+    """
+    world = _build_world(configs={"DemoPlugin": {"token": "源插件的"}})
+    world.save_failure = RuntimeError("实例表不可写")
+
+    success, message = world.clone(plugin_id="DemoPlugin", suffix="Work")
+
+    assert success is False
+    assert "实例表不可写" in message
+    assert world.rows == {}
+    assert world.configs == {"DemoPlugin": {"token": "源插件的"}}
+    assert world.reloaded == []
+    assert world.removed == ["DemoPluginwork"]
+
+
+def test_a_failed_row_write_while_restoring_keeps_the_stored_settings():
+    """恢复途中落库失败同样只把启用位退回停用，用户留存的配置不受牵连。"""
+    world = _build_world(
+        rows={"DemoPlugin2": _disabled_clone("DemoPlugin2", plugin_name="夜间任务")},
+        configs={"DemoPlugin2": {"token": "必须留着"}},
+    )
+    world.save_failure = RuntimeError("实例表不可写")
+
+    success, message = world.clone(plugin_id="DemoPlugin", suffix="2")
+
+    assert success is False
+    assert "实例表不可写" in message
+    assert world.rows["DemoPlugin2"].is_enabled is False
+    assert world.rows["DemoPlugin2"].plugin_name == "夜间任务"
+    assert world.configs["DemoPlugin2"] == {"token": "必须留着"}
 
 
 # --------------------------------------------------------------------------- #
