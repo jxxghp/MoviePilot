@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8675,
-  "edge_sha256": "3647a36d702bf615d83bcb6299ca2ea34dfcf6f91e9f2454574a6f1c18efec95",
+  "edge_count": 8683,
+  "edge_sha256": "5882451c9fd0a09fb640b3320497faecc5868b9bd6dfaf7e9bdf30eac5be0fef",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8313,6 +8313,9 @@
     "app.runtime.extensions.plugin.loader -> app.foundation",
     "app.runtime.extensions.plugin.loader -> app.foundation.environment",
     "app.runtime.extensions.plugin.loader -> app.runtime",
+    "app.runtime.extensions.plugin.loader -> app.runtime.extensions",
+    "app.runtime.extensions.plugin.loader -> app.runtime.extensions.plugin",
+    "app.runtime.extensions.plugin.loader -> app.runtime.extensions.plugin.version",
     "app.runtime.extensions.plugin.loader -> app.runtime.settings",
     "app.runtime.extensions.plugin.loader -> app.schemas",
     "app.runtime.extensions.plugin.loader -> app.schemas.plugin",
@@ -8356,6 +8359,7 @@
     "app.runtime.extensions.plugin.paths -> app.runtime.extensions",
     "app.runtime.extensions.plugin.paths -> app.runtime.extensions.plugin",
     "app.runtime.extensions.plugin.paths -> app.runtime.extensions.plugin.system",
+    "app.runtime.extensions.plugin.paths -> app.runtime.extensions.plugin.version",
     "app.runtime.extensions.plugin.projection -> app.runtime",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions",
     "app.runtime.extensions.plugin.projection -> app.runtime.extensions.plugin",
@@ -8414,6 +8418,10 @@
     "app.runtime.extensions.plugin.tools -> app.runtime.extensions",
     "app.runtime.extensions.plugin.tools -> app.runtime.extensions.plugin",
     "app.runtime.extensions.plugin.tools -> app.runtime.extensions.plugin.contracts",
+    "app.runtime.extensions.plugin.version -> app.foundation",
+    "app.runtime.extensions.plugin.version -> app.foundation.version",
+    "app.runtime.extensions.plugin.version -> app.runtime",
+    "app.runtime.extensions.plugin.version -> app.runtime.log",
     "app.runtime.extensions.resource -> app.runtime",
     "app.runtime.extensions.resource -> app.runtime.capabilities",
     "app.runtime.extensions.resource -> app.runtime.capabilities.errors",
@@ -9756,7 +9764,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1020,
+  "module_count": 1021,
   "modules": [
     "app",
     "app.adapters",
@@ -10615,6 +10623,7 @@
     "app.runtime.extensions.plugin.system",
     "app.runtime.extensions.plugin.target",
     "app.runtime.extensions.plugin.tools",
+    "app.runtime.extensions.plugin.version",
     "app.runtime.extensions.resource",
     "app.runtime.extensions.service",
     "app.runtime.gc",
