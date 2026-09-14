@@ -1418,9 +1418,6 @@
     "return-value": 1,
     "type-arg": 7
   },
-  "app/modules/bangumi/bangumi.py": {
-    "no-untyped-def": 2
-  },
   "app/modules/dingtalk/__init__.py": {
     "arg-type": 2,
     "no-untyped-def": 1

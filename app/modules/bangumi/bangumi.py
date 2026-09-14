@@ -127,24 +127,29 @@ class BangumiApi:
             return None
         return self._project_response(response.status_code, payload, key)
 
-    @cached(
+    @cached(  # type: ignore[misc]  # 缓存装饰器的运行时签名由宿主统一维护
         maxsize=get_runtime_setting('CONF').bangumi,
         ttl=get_runtime_setting('CONF').meta,
         shared_key="get",
     )
     def _cached_invoke(
             self,
-            url,
-            key=None,
+            url: str,
+            key: Optional[str] = None,
             _cache_token: str = "",
-            **kwargs,
-    ):
+            **kwargs: Any,
+    ) -> Any:
         """执行带配置身份的同步 HTTP 请求，并复用统一响应解码。"""
         plan = self._request_plan(url, key=key, **kwargs)
         response = self._req.get_res(url=plan.url, params=plan.params)
         return self._decode_response(response, plan.key)
 
-    def __invoke(self, url, key=None, **kwargs):
+    def __invoke(
+            self,
+            url: str,
+            key: Optional[str] = None,
+            **kwargs: Any,
+    ) -> Any:
         """执行同步 Bangumi 请求，并把当前代理配置纳入缓存键。"""
         return self._cached_invoke(
             url,
@@ -153,24 +158,29 @@ class BangumiApi:
             **kwargs,
         )
 
-    @cached(
+    @cached(  # type: ignore[misc]  # 缓存装饰器的运行时签名由宿主统一维护
         maxsize=get_runtime_setting('CONF').bangumi,
         ttl=get_runtime_setting('CONF').meta,
         shared_key="get",
     )
     async def _cached_async_invoke(
             self,
-            url,
-            key=None,
+            url: str,
+            key: Optional[str] = None,
             _cache_token: str = "",
-            **kwargs,
-    ):
+            **kwargs: Any,
+    ) -> Any:
         """执行带配置身份的异步 HTTP 请求，并复用统一响应解码。"""
         plan = self._request_plan(url, key=key, **kwargs)
         response = await self._async_req.get_res(url=plan.url, params=plan.params)
         return self._decode_response(response, plan.key)
 
-    async def __async_invoke(self, url, key=None, **kwargs):
+    async def __async_invoke(
+            self,
+            url: str,
+            key: Optional[str] = None,
+            **kwargs: Any,
+    ) -> Any:
         """执行异步 Bangumi 请求，并把当前代理配置纳入缓存键。"""
         return await self._cached_async_invoke(
             url,
