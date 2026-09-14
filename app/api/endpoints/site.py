@@ -30,6 +30,7 @@ from app.application.configuration import get_configured_system_config
 from app.application.plugin.routes import register_plugin_api
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.scheduling import get_scheduler
+from app.application.site.auth import normalize_site_auth_params
 from app.application.site.mutation import SiteMutationCommand
 from app.application.site.query import SiteQueryService
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
@@ -790,8 +791,18 @@ def auth_site(
     """
     if not auth_info or not auth_info.site or not auth_info.params:
         return _SchemaResponse(success=False, message="请输入认证站点和认证参数")
-    status, msg = SitesHelper().check_user(auth_info.site, auth_info.params)
-    get_configured_system_config().set(SystemConfigKey.UserSiteAuthParams, auth_info.model_dump())
+    sites_helper = SitesHelper()
+    auth_params = normalize_site_auth_params(
+        auth_info.site,
+        auth_info.params,
+        sites_helper.get_authsites(),
+    )
+    status, msg = sites_helper.check_user(auth_info.site, auth_params)
+    if status:
+        get_configured_system_config().set(
+            SystemConfigKey.UserSiteAuthParams,
+            {"site": auth_info.site, "params": auth_params},
+        )
     # 认证成功后，重新初始化插件
     get_plugin_manager().init_config()
     get_scheduler().init_plugin_jobs()

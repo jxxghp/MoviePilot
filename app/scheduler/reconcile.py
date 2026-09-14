@@ -19,10 +19,12 @@ from app.application.scheduling import (  # noqa: E402
     JobRecoveryPolicy,
     JobSpec,
 )
+from app.application.site.auth import normalize_site_auth_config
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.workflow import WorkflowSnapshot
 from app.runtime.log import logger, wrap_for_plugin_instance
 from app.runtime.scheduling import TimerUtils
+from app.runtime.settings import get_runtime_setting
 from app.scheduler.contract import _SchedulerOwnerBase
 from app.schemas.message import Message
 from app.schemas.types import MessageType, SystemConfigKey
@@ -478,10 +480,18 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
             return
         logger.info("用户未认证，正在尝试认证...")
         auth_conf = get_configured_system_config().get(SystemConfigKey.UserSiteAuthParams)
-        if auth_conf:
-            status, msg = SitesHelper().check_user(**auth_conf)
+        sites_helper = SitesHelper()
+        if get_runtime_setting("AUTH_SITE"):
+            status, msg = sites_helper.check_user()
         else:
-            status, msg = SitesHelper().check_user()
+            normalized_auth_conf = normalize_site_auth_config(
+                auth_conf,
+                sites_helper.get_authsites(),
+            )
+            if normalized_auth_conf:
+                status, msg = sites_helper.check_user(**normalized_auth_conf)
+            else:
+                status, msg = sites_helper.check_user()
         if status:
             self._auth_count = 0
             logger.info(f"{msg} 用户认证成功")

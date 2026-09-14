@@ -2594,13 +2594,19 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         and site_auth_item.get("site")
         and site_auth_item.get("params")
     ):
-        system_config_service.set(SystemConfigKey.UserSiteAuthParams, site_auth_item)
         try:
+            from app.application.site.auth import normalize_site_auth_params
             from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 
-            status, msg = SitesHelper().check_user(
-                site_auth_item.get("site"), site_auth_item.get("params")
+            sites_helper = SitesHelper()
+            auth_params = normalize_site_auth_params(
+                site_auth_item.get("site"),
+                site_auth_item.get("params"),
+                sites_helper.get_authsites(),
             )
+            site_auth_item = {**site_auth_item, "params": auth_params}
+            system_config_service.set(SystemConfigKey.UserSiteAuthParams, site_auth_item)
+            status, msg = sites_helper.check_user(site_auth_item.get("site"), auth_params)
             if status:
                 print_step(f"站点认证校验成功：{msg}")
             else:
