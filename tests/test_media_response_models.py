@@ -282,3 +282,32 @@ async def test_media_exists_not_found_is_a_successful_query() -> None:
 
     assert response.success is True
     assert response.data == {"item": {}}
+
+
+@pytest.mark.asyncio
+async def test_media_exists_normalizes_chinese_season_suffix_before_query() -> None:
+    """豆瓣标题带第 x 季时，应拆成基础标题和季号再查询媒体库。"""
+    service = Mock()
+    service.find_item_id = AsyncMock(return_value="tv-item-2")
+
+    response = await mediaserver_endpoint.exists_local(
+        title="跨来源剧集第二季",
+        year="2023",
+        mtype="电视剧",
+        media_source=MediaSource.Douban,
+        media_id="douban-tv-2",
+        season=None,
+        service=service,
+        _=None,
+    )
+
+    assert response.success is True
+    assert response.data == {"item": {"id": "tv-item-2"}}
+    service.find_item_id.assert_awaited_once_with(
+        title="跨来源剧集",
+        year="2023",
+        mtype="电视剧",
+        media_source=MediaSource.Douban,
+        media_id="douban-tv-2",
+        season=2,
+    )
