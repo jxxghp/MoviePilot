@@ -139,10 +139,10 @@ class PluginCloneService:
                 )
                 if plan is None:
                     return False, message
-                # 来历要赶在落库之前记下：写入抛异常时，回滚靠它判断该抹掉整行还是只
-                # 把启用位退回停用
+                self._claim(plan)
+                # 记下来历的时机就是占位成功的时机：此后这一行确定归本次所有，锁外的
+                # 清理不会误伤别人。落库失败的清理由 _claim 在锁内自己做完
                 reservation = plan.reservation
-                self._save_instance(plan.instance)
             self._activate(
                 reservation,
                 plugin_id=plugin_id,
@@ -152,7 +152,7 @@ class PluginCloneService:
             self._logger.info(f"插件分身 {reservation.clone_id} {action}成功")
             return True, reservation.clone_id
         except Exception as error:  # noqa: BLE001
-            # 占位之前失败的话没有任何东西落下来，无需也无从回滚
+            # 没占到位就没有任何东西落下来，无需也无从回滚
             if reservation is not None:
                 self._rollback(
                     reservation.clone_id,
@@ -232,6 +232,26 @@ class PluginCloneService:
             reservation=_Reservation(clone_id=clone_id, restoring=restoring),
             instance=instance,
         ), ""
+
+    def _claim(self, plan: _ClonePlan) -> None:
+        """把实例行写出去占住这个 ID，写入失败时就地清理并把异常抛出。
+
+        调用方须持有占位锁，清理也必须在锁内做完：锁一放开，另一个同后缀请求立刻就能
+        把这个 ID 占下来并成功落库，而按 ID 清理分不出那一行是谁写的，删掉的会是它的
+        行、配置和运行态。占位成功之后则不必再持锁——实例行此时已经挡住同 ID 的后续
+        请求（判存认这一行），这个 ID 确定归本次所有，直到本次自己把它清掉。
+
+        :param plan: 本次要写出的实例行与它的来历
+        :raise Exception: 原样抛出持久化层的写入错误，交由 :meth:`clone` 统一回报
+        """
+        try:
+            self._save_instance(plan.instance)
+        except Exception:
+            self._rollback(
+                plan.reservation.clone_id,
+                purge_instance=not plan.reservation.restoring,
+            )
+            raise
 
     def _allocate_suffix(self, plugin_id: str) -> str:
         """为新分身分配一个最小可用的数字后缀，无号可用时返回空串。
