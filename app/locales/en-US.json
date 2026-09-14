@@ -336,6 +336,7 @@
     "用户名不能为空": "Username cannot be empty",
     "用户名已被使用": "Username is already in use",
     "系统已经完成初始化": "The system has already been initialized",
+    "SUPERUSER 已由配置文件或环境变量固定，初始化用户名不能修改": "SUPERUSER is fixed by the configuration file or environment variable; the initialization username cannot be changed",
     "必须保留至少一个启用的超级管理员": "At least one active superuser must remain",
     "用户不存在": "User does not exist",
     "已存在相同名称的工作流": "A workflow with the same name already exists",
