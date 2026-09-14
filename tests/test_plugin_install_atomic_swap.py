@@ -8,7 +8,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.adapters.system.plugin.package import PluginPackageManager
+from app.adapters.system.plugin.package import (
+    PluginContentSwapError,
+    PluginPackageManager,
+)
 
 PLUGIN_ID = "DemoPlugin"
 REPO_URL = "https://github.com/demo/MoviePilot-Plugins"
@@ -262,6 +265,29 @@ def _break_replace(monkeypatch, *, source: Path, code: int) -> None:
     monkeypatch.setattr(Path, "replace", guarded)
 
 
+def _break_rmtree(monkeypatch, *, target: Path, failures: int) -> None:
+    """让指定目录的前若干次删除在删掉部分内容后失败，模拟删到一半中断。
+
+    逐次按逆字典序删掉一个文件再抛错，既留下"目录还在但内容残缺"的现场，
+    也让后续断言能稳定指出是哪一份内容丢了。
+    """
+    original = shutil.rmtree
+    remaining = {"count": failures}
+
+    def guarded(path, *args, **kwargs):
+        """只拦截被指定的目录，其它删除仍走真实实现。"""
+        if Path(path) == target and remaining["count"] > 0:
+            remaining["count"] -= 1
+            for child in sorted(Path(path).iterdir(), reverse=True):
+                if child.is_file():
+                    child.unlink()
+                    break
+            raise OSError(errno.EIO, "simulated")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr("app.adapters.system.plugin.package.shutil.rmtree", guarded)
+
+
 def test_swap_publishes_new_content_and_drops_old_content(tmp_path: Path) -> None:
     """换入后运行目录只剩新内容，回滚材料被清理。"""
     staging_dir, final_dir = _staged_pair(tmp_path)
@@ -354,3 +380,118 @@ def test_swap_rolls_back_when_cross_filesystem_copy_fails(
     assert (final_dir / "stale.py").exists()
     assert not (final_dir / "partial.py").exists()
     _assert_no_swap_residue(final_dir)
+
+
+def test_swap_rolls_back_when_removing_old_directory_fails_midway(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """旧目录退化为复制后删到一半失败，也必须回滚出完整的旧内容。"""
+    staging_dir, final_dir = _staged_pair(tmp_path)
+    _break_replace(monkeypatch, source=final_dir, code=errno.EXDEV)
+    _break_rmtree(monkeypatch, target=final_dir, failures=1)
+
+    with pytest.raises(PluginContentSwapError) as failure:
+        _swap(staging_dir, final_dir)
+
+    assert failure.value.runtime_intact is True
+    assert (final_dir / "__init__.py").read_text(encoding="utf-8") == INSTALLED_MARK
+    assert (final_dir / "stale.py").exists()
+    assert (staging_dir / "__init__.py").exists()
+    _assert_no_swap_residue(final_dir)
+
+
+def test_swap_reports_broken_runtime_and_keeps_material_when_rollback_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """回滚也失败时必须上报运行目录未恢复，并把完整旧内容留在恢复材料里。"""
+    staging_dir, final_dir = _staged_pair(tmp_path)
+    _break_replace(monkeypatch, source=final_dir, code=errno.EXDEV)
+    _break_rmtree(monkeypatch, target=final_dir, failures=2)
+
+    with pytest.raises(PluginContentSwapError) as failure:
+        _swap(staging_dir, final_dir)
+
+    assert failure.value.runtime_intact is False
+    materials = list(final_dir.parent.glob(f".{final_dir.name}.previous-*"))
+    assert len(materials) == 1
+    assert (materials[0] / "__init__.py").read_text(encoding="utf-8") == INSTALLED_MARK
+    assert (materials[0] / "stale.py").exists()
+
+
+def test_swap_reports_intact_runtime_when_old_directory_cannot_be_moved_aside(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """旧目录连挪都没挪动时运行目录天然完好，不该让上层白走一次备份还原。"""
+    staging_dir, final_dir = _staged_pair(tmp_path)
+    _break_replace(monkeypatch, source=final_dir, code=errno.EACCES)
+
+    with pytest.raises(PluginContentSwapError) as failure:
+        _swap(staging_dir, final_dir)
+
+    assert failure.value.runtime_intact is True
+    _assert_no_swap_residue(final_dir)
+
+
+def test_sync_install_restores_backup_when_swap_rollback_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """回滚也失败时上层必须用本次备份补齐运行目录，而不是看目录还在就丢掉备份。"""
+    manager, plugin_dir = _installed_manager(monkeypatch, tmp_path)
+    (plugin_dir / "stale.py").write_text("stale", encoding="utf-8")
+    _stub_market_lookup(manager, monkeypatch)
+
+    def prepare(_pid, _user_repo, _package_version, dest_root: Path) -> tuple[bool, str]:
+        """内容准备成功，失败只发生在随后的换入阶段。"""
+        dest_root.mkdir(parents=True, exist_ok=True)
+        (dest_root / "__init__.py").write_text("upgraded", encoding="utf-8")
+        return True, ""
+
+    monkeypatch.setattr(
+        manager, "_PluginPackageManager__prepare_content_via_filelist_sync", prepare
+    )
+    _break_replace(monkeypatch, source=plugin_dir, code=errno.EXDEV)
+    _break_rmtree(monkeypatch, target=plugin_dir, failures=2)
+
+    success, message = manager.install_raw(
+        PLUGIN_ID, REPO_URL, package_version="v2", force_install=False
+    )
+
+    assert not success
+    assert "写入插件内容失败" in message
+    assert (plugin_dir / "__init__.py").read_text(encoding="utf-8") == INSTALLED_MARK
+    assert (plugin_dir / "stale.py").exists()
+    _assert_no_staging_residue(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_async_install_restores_backup_when_swap_rollback_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """异步流程的备份处置同样只认回滚结论，不认运行目录是否还在。"""
+    manager, plugin_dir = _installed_manager(monkeypatch, tmp_path)
+    (plugin_dir / "stale.py").write_text("stale", encoding="utf-8")
+    _stub_market_lookup(manager, monkeypatch)
+
+    async def prepare(
+        _pid, _user_repo, _package_version, dest_root: Path
+    ) -> tuple[bool, str]:
+        """内容准备成功，失败只发生在随后的换入阶段。"""
+        dest_root.mkdir(parents=True, exist_ok=True)
+        (dest_root / "__init__.py").write_text("upgraded", encoding="utf-8")
+        return True, ""
+
+    monkeypatch.setattr(
+        manager, "_PluginPackageManager__prepare_content_via_filelist_async", prepare
+    )
+    _break_replace(monkeypatch, source=plugin_dir, code=errno.EXDEV)
+    _break_rmtree(monkeypatch, target=plugin_dir, failures=2)
+
+    success, message = await manager.async_install_raw(
+        PLUGIN_ID, REPO_URL, package_version="v2", force_install=False
+    )
+
+    assert not success
+    assert "写入插件内容失败" in message
+    assert (plugin_dir / "__init__.py").read_text(encoding="utf-8") == INSTALLED_MARK
+    assert (plugin_dir / "stale.py").exists()
+    _assert_no_staging_residue(tmp_path)

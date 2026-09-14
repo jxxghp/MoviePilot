@@ -44,6 +44,25 @@ from app.runtime.settings import get_runtime_setting
 from app.runtime.version import get_app_version
 
 
+class PluginContentSwapError(OSError):
+    """插件内容换入失败，并随异常携带运行目录的实际恢复结论。
+
+    上层能观察到的只有运行目录还在不在，而被删到一半的运行目录同样"存在"；
+    只凭存在与否判断就会把残骸当成完好的旧插件，进而把本次的临时备份当作多余
+    材料删掉，结果是安装报失败、运行目录却只剩半份旧文件且无处可取。因此把
+    "运行目录是否仍是换入前那一份"由换入方作为事实上报，不让上层去猜。
+    """
+
+    def __init__(self, cause: BaseException, *, runtime_intact: bool) -> None:
+        """按原始失败构造换入异常，并记录运行目录的恢复结论。
+
+        :param cause: 触发换入失败的原始异常，消息原样透传给上层展示
+        :param runtime_intact: 运行目录是否仍是换入前那一份（未触碰或已回滚到位）
+        """
+        super().__init__(str(cause))
+        self.runtime_intact = runtime_intact
+
+
 class PluginPackageSourcePort(Protocol):
     """声明包 owner 读取市场元数据和远端制品所需的外部端口。"""
 
@@ -1460,17 +1479,22 @@ class PluginPackageManager:
         两个改名都可能因跨文件系统失败：overlayfs 会拒绝把镜像层的插件目录直接改
         名到可写层，暂存目录又常落在独立的临时分区。两处都退化为复制，代价是复制
         期间可能中途失败留下半份目录，因此复制失败一律先删掉半成品再把旧目录换
-        回；换回本身也失败时只记录旧目录的保留位置、不吞掉原始异常，避免出现
-        "看起来只是安装失败"实则运行目录已空的假象。
+        回；换回本身也失败时只记录旧目录的保留位置，原始失败原样挂在异常链上不被
+        吞掉，避免出现"看起来只是安装失败"实则运行目录已空的假象。
+
+        旧目录退化为复制后还得逐个删掉原目录，这一步同样可能删到一半才失败。删除
+        一旦开始运行目录就不再完整，因此把"可回滚"状态提前到删除之前置位：只要运
+        行目录有被改动的可能就必须走回滚，绝不能因为删除没跑完就跳过回滚。回滚到
+        底有没有把旧内容放回，由抛出的异常如实上报，供上层决定要不要动用备份。
 
         :param staging_dir: 已就位的待安装内容目录
         :param final_dir: 插件运行目录，可能已存在旧内容
-        :raise OSError: 换入失败，且已尽力把运行目录恢复或保留为换入前的内容
+        :raise PluginContentSwapError: 换入失败，异常携带运行目录的实际恢复结论
         """
         final_dir.parent.mkdir(parents=True, exist_ok=True)
         previous = final_dir.parent / f".{final_dir.name}.previous-{uuid.uuid4().hex}"
         previous_available = False
-        cleared = False
+        runtime_dirty = False
         published = False
         try:
             if final_dir.exists():
@@ -1481,11 +1505,13 @@ class PluginPackageManager:
                         raise
                     shutil.copytree(final_dir, previous, symlinks=True)
                     previous_available = True
+                    # 删除从这一刻起就可能只删一半，先认账再动手
+                    runtime_dirty = True
                     PluginPackageManager.__remove_snapshot_path(final_dir)
                 else:
                     previous_available = True
             # 旧内容已挪开或本来就不存在，此后才允许重建运行目录
-            cleared = True
+            runtime_dirty = True
             try:
                 staging_dir.replace(final_dir)
             except OSError as error:
@@ -1496,19 +1522,24 @@ class PluginPackageManager:
                 )
                 shutil.copytree(staging_dir, final_dir, symlinks=True)
             published = True
-        except Exception:
-            if cleared and not published:
+        except Exception as error:
+            # 运行目录从未被触碰时无需回滚，它本身就还是换入前那一份
+            runtime_intact = not runtime_dirty
+            if runtime_dirty and not published:
                 try:
                     PluginPackageManager.__remove_snapshot_path(final_dir)
                     if previous_available:
                         previous.replace(final_dir)
                         previous_available = False
+                    runtime_intact = True
                 except Exception as rollback_error:
                     logger.error(
                         f"插件安装换入失败后恢复旧目录失败，已保留恢复材料 {previous}: "
                         f"{rollback_error}"
                     )
-            raise
+            raise PluginContentSwapError(
+                error, runtime_intact=runtime_intact
+            ) from error
         finally:
             if previous.exists() and (published or not previous_available):
                 shutil.rmtree(previous, ignore_errors=True)
@@ -1519,6 +1550,60 @@ class PluginPackageManager:
         """在线程中执行换入，避免目录改名与复制阻塞事件循环，语义与同步换入一致。"""
         await _await_thread_operation(
             self.__swap_staged_plugin_content, staging_dir, final_dir
+        )
+
+    @staticmethod
+    def __swap_left_runtime_intact(error: OSError) -> bool:
+        """判断换入失败后运行目录是否确定仍是换入前那一份。
+
+        只认换入方随异常带出的回滚结论：运行目录存在与否区分不了"完整旧内容"和
+        "删到一半的残骸"。拿不到结论的异常按最坏情况处理，宁可多走一次备份兜底。
+
+        :param error: 换入阶段抛出的异常
+        :return: 运行目录是否确定保持换入前内容
+        """
+        return isinstance(error, PluginContentSwapError) and error.runtime_intact
+
+    def __recover_after_swap_failure(
+        self, pid: str, error: OSError, backup_dir: Optional[str]
+    ) -> None:
+        """换入失败后按实际回滚结论处置本次临时备份。
+
+        :param pid: 插件 ID
+        :param error: 换入阶段抛出的异常
+        :param backup_dir: 本次安装前留下的临时备份目录，强制安装时为空
+        """
+        if self.__swap_left_runtime_intact(error):
+            if backup_dir:
+                shutil.rmtree(backup_dir, ignore_errors=True)
+            return
+        if backup_dir:
+            self.__restore_plugin(pid, backup_dir)
+            logger.warn(f"{pid} 插件安装失败，已还原备份插件")
+            return
+        logger.error(
+            f"{pid} 换入失败且运行目录未能恢复，本次未留临时备份，"
+            f"请按上一条日志保留的恢复材料人工处理"
+        )
+
+    async def __async_recover_after_swap_failure(
+        self, pid: str, error: OSError, backup_dir: Optional[str]
+    ) -> None:
+        """异步流程的备份处置，判据与同步一致；备份清理由统一 finally 负责。
+
+        :param pid: 插件 ID
+        :param error: 换入阶段抛出的异常
+        :param backup_dir: 本次安装前留下的临时备份目录，强制安装时为空
+        """
+        if self.__swap_left_runtime_intact(error):
+            return
+        if backup_dir:
+            await self.__async_restore_plugin(pid, backup_dir)
+            logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+            return
+        logger.error(
+            f"{pid} 换入失败且运行目录未能恢复，本次未留临时备份，"
+            f"请按上一条日志保留的恢复材料人工处理"
         )
 
     def __install_flow_sync(
@@ -1552,13 +1637,7 @@ class PluginPackageManager:
             except OSError as error:
                 message = f"写入插件内容失败：{error}"
                 logger.error(f"{pid} {message}")
-                # 换入函数已保证失败时运行目录保持换入前的内容；只有连恢复都失败、
-                # 运行目录确实缺失时，才动用本次的临时备份兜底。
-                if backup_dir and not plugin_dir.exists():
-                    self.__restore_plugin(pid, backup_dir)
-                    logger.warn(f"{pid} 插件安装失败，已还原备份插件")
-                elif backup_dir:
-                    shutil.rmtree(backup_dir, ignore_errors=True)
+                self.__recover_after_swap_failure(pid, error, backup_dir)
                 return False, message
 
             dependencies_exist, dep_ok, dep_msg = (
@@ -2159,11 +2238,7 @@ class PluginPackageManager:
             except OSError as error:
                 message = f"写入插件内容失败：{error}"
                 logger.error(f"{pid} {message}")
-                # 换入函数已保证失败时运行目录保持换入前的内容；只有连恢复都失败、
-                # 运行目录确实缺失时，才动用本次的临时备份兜底。
-                if backup_dir and not plugin_dir.exists():
-                    await self.__async_restore_plugin(pid, backup_dir)
-                    logger.warning(f"{pid} 插件安装失败，已还原备份插件")
+                await self.__async_recover_after_swap_failure(pid, error, backup_dir)
                 return False, message
 
             dependencies_exist, dep_ok, dep_msg = (
