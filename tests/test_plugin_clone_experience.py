@@ -443,6 +443,31 @@ def test_restore_previous_false_rebuilds_the_config_from_the_source_template():
     assert world.rows["DemoPlugin2"].plugin_name == "全新"
 
 
+@pytest.mark.parametrize("template", [None, {}])
+def test_restore_previous_false_clears_the_old_config_when_the_source_has_none(template):
+    """源插件没有配置或配置为空时，按模板重建同样要把旧配置清掉。
+
+    两种情形下模板里都没有可继承的业务参数；若只是跳过写入，用户明确要求的「重建一份
+    全新配置」会变成「原样沿用旧配置」，那些旧参数在重载后继续生效，且毫无提示。
+    """
+    configs: dict[str, dict] = {"DemoPlugin2": {"token": "该被丢弃"}}
+    if template is not None:
+        configs["DemoPlugin"] = template
+    world = _build_world(
+        rows={"DemoPlugin2": _disabled_clone("DemoPlugin2")},
+        configs=configs,
+    )
+
+    success, _instance_id = world.clone(
+        plugin_id="DemoPlugin",
+        suffix="2",
+        restore_previous=False,
+    )
+
+    assert success is True
+    assert "DemoPlugin2" not in world.configs
+
+
 def _world_with_a_disabled_clone_and_a_foreign_occupant(kind: str, tmp_path: Path) -> _World:
     """建出「停用分身行还在，同一个 ID 又被某个真实插件占住」的世界。
 
