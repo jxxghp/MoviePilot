@@ -12,8 +12,8 @@ from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 
 # 自动分配的后缀从 2 起算：源插件本体在用户眼里就是第 1 个实例，分身接着往下排
 _FIRST_AUTO_SUFFIX = 2
-# 探测次数上限：占用判据若因端口故障恒为真，没有上限会让请求线程原地打转并一直扣着占位锁
-_MAX_AUTO_SUFFIX_PROBES = 1000
+# 在「已登记分身数」之上再多探测的号数，取值见 PluginCloneService._allocate_suffix
+_AUTO_SUFFIX_PROBE_SLACK = 1000
 
 
 def _first_validation_message(error: ValidationError) -> str:
@@ -63,6 +63,7 @@ class PluginCloneService:
         plugin_class: Callable[[str], Optional[Any]],
         instance_id_taken: InstanceIdTaken,
         get_instance: Callable[[str], Optional[PluginInstance]],
+        instances_for_source: Callable[[str], list[PluginInstance]],
         source_plugin_id: Callable[[str], str],
         save_instance: Callable[[PluginInstance], Any],
         delete_instance: Callable[[str], bool],
@@ -78,6 +79,7 @@ class PluginCloneService:
         self._plugin_class = plugin_class
         self._instance_id_taken = instance_id_taken
         self._get_instance = get_instance
+        self._instances_for_source = instances_for_source
         self._source_plugin_id = source_plugin_id
         self._save_instance = save_instance
         self._delete_instance = delete_instance
@@ -237,11 +239,14 @@ class PluginCloneService:
         占用判据与显式指定后缀走的是同一个 ``instance_id_taken``，自动分配因此不可能
         挑中一个手填时会被判成「已存在」的 ID。已停用的分身同样占位：重用它的 ID 是
         「恢复」而不是新建，用户没点恢复就不该凭空拿到上一个分身留下的配置。
+
+        探测上限随该插件已登记的分身数一起抬高。定成一个常数的话，分身数量越过它之后
+        每次自动分配都报「后缀已耗尽」，而下一个号明明空着；按鸽巢原理，N 个已登记分身
+        最多占掉 N 个号，再多探测一段余量必然能撞上空位。上限仍然有限：占用判据若因端口
+        故障恒为真，无界的循环会让请求线程原地打转并一直扣着占位锁。
         """
-        for index in range(
-            _FIRST_AUTO_SUFFIX,
-            _FIRST_AUTO_SUFFIX + _MAX_AUTO_SUFFIX_PROBES,
-        ):
+        probe_limit = len(self._instances_for_source(plugin_id)) + _AUTO_SUFFIX_PROBE_SLACK
+        for index in range(_FIRST_AUTO_SUFFIX, _FIRST_AUTO_SUFFIX + probe_limit):
             if not self._instance_id_taken(f"{plugin_id}{index}"):
                 return str(index)
         return ""

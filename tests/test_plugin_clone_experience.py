@@ -287,6 +287,23 @@ def test_auto_allocated_suffix_skips_a_currently_loaded_plugin_class():
     assert instance_id == "DemoPlugin3"
 
 
+def test_auto_allocation_keeps_looking_past_a_long_run_of_taken_numbers():
+    """已登记分身多到超过固定探测窗口时，仍要挑出真正最小的可用序号。
+
+    探测次数若定死成一个常数，分身数量越过它之后每次自动分配都报「后缀已耗尽」，
+    可实际上下一个号就空着；用户此时只能改为手填一个号，而手填走的又是同一套判据。
+    """
+    taken = {
+        f"DemoPlugin{index}": _disabled_clone(f"DemoPlugin{index}", is_enabled=True)
+        for index in range(2, 1002)
+    }
+    world = _build_world(rows=taken)
+
+    success, instance_id = world.clone(plugin_id="DemoPlugin")
+
+    assert (success, instance_id) == (True, "DemoPlugin1002")
+
+
 @pytest.mark.parametrize("blank", ["", "   ", None])
 def test_blank_suffix_falls_back_to_automatic_allocation(blank):
     """后缀留空的几种写法都走自动分配，而不是拼出一个等于源插件 ID 的实例。"""
