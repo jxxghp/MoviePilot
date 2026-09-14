@@ -118,7 +118,7 @@ def test_music_path_sync_async_follow_one_fallback_state_machine(
     chain = MediaChain()
     path = Path("Track.flac")
     merged = MetaMusic(title="Track", audio_format="FLAC")
-    tag_meta = MetaMusic(title="Tagged")
+    tag_meta = MetaMusic(title="Tagged", artists=["Artist"])
     filename_meta = MetaMusic(title="Filename")
     sync_order: list[str] = []
     async_order: list[str] = []
@@ -178,12 +178,22 @@ def test_music_path_sync_async_follow_one_fallback_state_machine(
     monkeypatch.setattr(
         MediaChain,
         "_recognize_musicbrainz_recording",
-        Mock(return_value=_remote_music("fingerprint")),
+        Mock(return_value=MusicInfo(
+            media_source=MediaSource.MusicBrainz,
+            media_id="recording-fingerprint",
+            title="Tagged",
+            artists=["Artist"],
+        )),
     )
     monkeypatch.setattr(
         MediaChain,
         "_async_recognize_musicbrainz_recording",
-        AsyncMock(return_value=_remote_music("fingerprint")),
+        AsyncMock(return_value=MusicInfo(
+            media_source=MediaSource.MusicBrainz,
+            media_id="recording-fingerprint",
+            title="Tagged",
+            artists=["Artist"],
+        )),
     )
     monkeypatch.setattr(MediaChain, "_recognize_music_meta_tier", sync_tier)
     monkeypatch.setattr(MediaChain, "_async_recognize_music_meta_tier", async_tier)

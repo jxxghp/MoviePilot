@@ -259,6 +259,491 @@ def test_automatic_music_fileitems_receive_album_identity_and_category(tmp_path,
     ]
 
 
+def test_artist_collection_batch_discards_shared_artist_identity() -> None:
+    """艺术家合集身份只属于下载任务，不能继承给内部音轨。"""
+    artist = MusicInfo(
+        title="许嵩",
+        artists=["许嵩"],
+        music_type=MUSIC_ENTITY_ARTIST,
+        album_type="Artist Collection",
+        library_category="Artist Collection",
+    )
+
+    assert _should_discard_batch_music_identity(
+        manual=False,
+        multi_track_music_batch=True,
+        media_source=None,
+        media_id=None,
+        mediainfo=artist,
+        history_music_type=None,
+    ) is True
+    assert _should_discard_batch_music_identity(
+        manual=False,
+        multi_track_music_batch=True,
+        media_source=None,
+        media_id=None,
+        mediainfo=None,
+        history_music_type=MUSIC_ENTITY_ARTIST,
+    ) is True
+    assert _should_discard_batch_music_identity(
+        manual=False,
+        multi_track_music_batch=False,
+        media_source=None,
+        media_id=None,
+        mediainfo=artist,
+        history_music_type=MUSIC_ENTITY_ARTIST,
+    ) is True
+
+
+def test_download_history_recovers_artist_collection_entity() -> None:
+    """下载监控逐文件触发时也必须从历史恢复艺术家合集任务类型。"""
+    current = SimpleNamespace(
+        music_type=MUSIC_ENTITY_ARTIST,
+        note=None,
+    )
+    legacy = SimpleNamespace(
+        music_type=None,
+        note={"music": {"media": {"music_type": MUSIC_ENTITY_ARTIST}}},
+    )
+
+    assert TransferChain._download_history_music_type(current) == MUSIC_ENTITY_ARTIST
+    assert TransferChain._download_history_music_type(legacy) == MUSIC_ENTITY_ARTIST
+
+
+def test_artist_collection_single_monitor_event_rematches_child_release(
+        tmp_path, monkeypatch,
+) -> None:
+    """下载监控逐文件触发时，子作品不得继承父合集分类。"""
+    release_dir = tmp_path / "Taylor Swift" / "willow (2021)"
+    release_dir.mkdir(parents=True)
+    audio_path = release_dir / "01 - willow.flac"
+    audio_path.write_bytes(b"audio")
+    fileitem = make_fileitem(audio_path.as_posix())
+    local_meta = MetaMusic(
+        title="willow",
+        artists=["Taylor Swift"],
+        album="willow",
+        year=2021,
+        track_number=1,
+    )
+    matched_info = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="recording-willow",
+        music_type="recording",
+        title="willow",
+        artists=["Taylor Swift"],
+        album="willow",
+        album_id="release-group-willow",
+        album_type="Single",
+        library_category="Single",
+        year=2021,
+        track_number=1,
+    )
+    chain = _prepare_chain(monkeypatch, [fileitem])
+    history = DownloadHistorySnapshot(
+        id=1,
+        path=release_dir.as_posix(),
+        type=MediaType.MUSIC.value,
+        title="Taylor Swift 艺术家合集",
+        music_type=MUSIC_ENTITY_ARTIST,
+        note=None,
+        custom_words=None,
+        downloader="qbittorrent",
+        download_hash="artist-collection-hash",
+    )
+    monkeypatch.setattr(
+        chain,
+        "_resolve_download_history",
+        lambda **_kwargs: history,
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda _path: deepcopy(local_meta)),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _path, **_kwargs: {
+            str(audio_path.resolve()): deepcopy(matched_info),
+        },
+    )
+    planned = []
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__handle_transfer",
+        lambda task, callback=None: (
+            planned.append(
+                (
+                    task.mediainfo.media_id,
+                    task.mediainfo.album_type,
+                    task.mediainfo.library_category,
+                )
+            )
+            or True,
+            "",
+        ),
+    )
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitem,
+        selected_fileitems=[fileitem],
+        mtype=MediaType.MUSIC,
+        background=False,
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == [("recording-willow", "Single", "Single")]
+
+
+def test_artist_collection_children_are_rematched_as_album(tmp_path, monkeypatch):
+    """自动整理艺术家合集时，内部音轨与歌词应按专辑重新识别和分类。"""
+    album_dir = tmp_path / "许嵩" / "自定义 (2009)"
+    album_dir.mkdir(parents=True)
+    audio_paths = [album_dir / "01.flac", album_dir / "02.flac"]
+    paths = [
+        audio_paths[0],
+        album_dir / "01.lrc",
+        audio_paths[1],
+        album_dir / "02.lrc",
+    ]
+    for path in paths:
+        path.write_bytes(b"audio")
+    fileitems = [make_fileitem(path.as_posix()) for path in paths]
+    local_metas = {
+        audio_paths[0]: MetaMusic(title="如果当时", artists=["许嵩"], track_number=1),
+        audio_paths[1]: MetaMusic(title="多余的解释", artists=["许嵩"], track_number=2),
+    }
+    album = MusicAlbumInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="release-group-custom",
+        title="自定义",
+        artists=["许嵩"],
+        album_type="Album",
+        release_date="2009-01-10",
+        library_category="Album",
+        tracks=[
+            MusicInfo(
+                media_source=MediaSource.MusicBrainz,
+                media_id=f"recording-{index}",
+                title=meta.title,
+                artists=["许嵩"],
+                album="自定义",
+                album_id="release-group-custom",
+                album_type="Album",
+                library_category="Album",
+                track_number=index,
+            )
+            for index, meta in enumerate(local_metas.values(), start=1)
+        ],
+    )
+    matched = {
+        str(path.resolve()): deepcopy(track)
+        for path, track in zip(audio_paths, album.tracks)
+    }
+    artist = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="artist-xusong",
+        title="许嵩",
+        artists=["许嵩"],
+        music_type=MUSIC_ENTITY_ARTIST,
+        album_type="Artist Collection",
+        library_category="Artist Collection",
+    )
+    chain = _prepare_chain(monkeypatch, fileitems)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda path: deepcopy(local_metas[path])),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _path, **_kwargs: matched,
+    )
+    planned = []
+
+    def handle_transfer(task, callback=None):
+        del callback
+        planned.append(
+            (
+                Path(task.fileitem.path).suffix,
+                task.mediainfo.album,
+                task.mediainfo.album_type,
+                task.mediainfo.library_category,
+            )
+        )
+        return True, ""
+
+    monkeypatch.setattr(chain, "_TransferChain__handle_transfer", handle_transfer)
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitems[0],
+        selected_fileitems=fileitems,
+        mediainfo=artist,
+        mtype=MediaType.MUSIC,
+        background=False,
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == [
+        (".flac", "自定义", "Album", "Album"),
+        (".lrc", "自定义", "Album", "Album"),
+        (".flac", "自定义", "Album", "Album"),
+        (".lrc", "自定义", "Album", "Album"),
+    ]
+
+
+def test_artist_collection_album_miss_falls_back_to_recording_evidence(
+        tmp_path, monkeypatch,
+):
+    """目录级专辑未命中时，缺发行类型的 MB Recording 按单曲归档。"""
+    single_dir = tmp_path / "许嵩" / "绝代风华"
+    single_dir.mkdir(parents=True)
+    paths = [single_dir / "绝代风华.flac", single_dir / "绝代风华伴奏.flac"]
+    for path in paths:
+        path.write_bytes(b"audio")
+    fileitems = [make_fileitem(path.as_posix()) for path in paths]
+    local_metas = {
+        path: MetaMusic(title=path.stem, artists=["许嵩"], track_number=index)
+        for index, path in enumerate(paths, start=1)
+    }
+    artist = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="artist-xusong",
+        title="许嵩",
+        artists=["许嵩"],
+        music_type=MUSIC_ENTITY_ARTIST,
+        album_type="Artist Collection",
+        library_category="Artist Collection",
+    )
+    chain = _prepare_chain(monkeypatch, fileitems)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda path: deepcopy(local_metas[path])),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _path, **_kwargs: {},
+    )
+
+    def recognize_track(_self, path, media_source=None, contextual_meta=None):
+        del media_source, contextual_meta
+        meta = deepcopy(local_metas[path])
+        return meta, MusicInfo(
+            media_source=MediaSource.MusicBrainz,
+            media_id=f"recording-{path.stem}",
+            title=meta.title,
+            artists=["许嵩"],
+            album=meta.title,
+            album_type="Single",
+            library_category="Single",
+            track_number=1,
+        )
+
+    monkeypatch.setattr(MediaChain, "recognize_music_by_path", recognize_track)
+    planned = []
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__handle_transfer",
+        lambda task, callback=None: (
+            planned.append(task.mediainfo.library_category) or True,
+            "",
+        ),
+    )
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitems[0],
+        selected_fileitems=fileitems,
+        mediainfo=artist,
+        mtype=MediaType.MUSIC,
+        background=False,
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == ["Single", "Single"]
+
+
+def test_artist_collection_directory_consensus_constrains_untagged_track(
+        tmp_path, monkeypatch,
+) -> None:
+    """同一专辑其他音轨的一致艺人标签应约束缺标签的同名曲。"""
+    album_dir = tmp_path / "Taylor Swift" / "Speak Now (2010)"
+    album_dir.mkdir(parents=True)
+    paths = [
+        album_dir / "01 - Mine.flac",
+        album_dir / "02 - Sparks Fly.flac",
+        album_dir / "05 - Dear John.flac",
+    ]
+    for path in paths:
+        path.write_bytes(b"audio")
+    fileitems = [make_fileitem(path.as_posix()) for path in paths]
+    local_metas = {
+        paths[0]: MetaMusic(title="Mine", artists=["Taylor Swift"], album="Speak Now"),
+        paths[1]: MetaMusic(title="Sparks Fly", artists=["Taylor Swift"], album="Speak Now"),
+        paths[2]: MetaMusic(title="Dear John"),
+    }
+    chain = _prepare_chain(monkeypatch, fileitems)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        "app.chain.transfer.filter.AudioMetadataHelper.read_tags",
+        lambda path: deepcopy(local_metas[path]),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda path: deepcopy(local_metas[path])),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _path, **_kwargs: {},
+    )
+    observed = []
+
+    def recognize_track(_self, path, media_source=None, contextual_meta=None):
+        del media_source
+        observed.append((path.name, list(contextual_meta.artists), contextual_meta.album))
+        return deepcopy(contextual_meta), MusicInfo(
+            media_source=MediaSource.MusicBrainz,
+            media_id=f"recording-{path.stem}",
+            title=contextual_meta.title,
+            artists=list(contextual_meta.artists),
+            album=contextual_meta.album,
+            album_type="Album",
+            library_category="Album",
+        )
+
+    monkeypatch.setattr(MediaChain, "recognize_music_by_path", recognize_track)
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__handle_transfer",
+        lambda task, callback=None: (True, ""),
+    )
+    artist = MusicInfo(
+        music_type=MUSIC_ENTITY_ARTIST,
+        title="Taylor Swift",
+        artists=["Taylor Swift"],
+        album_type="Artist Collection",
+    )
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitems[0],
+        selected_fileitems=fileitems,
+        mediainfo=artist,
+        mtype=MediaType.MUSIC,
+        background=False,
+    )
+
+    assert state is True
+    assert message == ""
+    assert observed[-1] == ("05 - Dear John.flac", ["Taylor Swift"], "Speak Now")
+
+
+def test_artist_collection_single_track_directory_has_local_single_fallback(
+        tmp_path, monkeypatch,
+):
+    """艺术家合集单音轨目录远端未命中时，只在该受限结构下按 Single 归档。"""
+    single_dir = tmp_path / "许嵩" / "天知道"
+    single_dir.mkdir(parents=True)
+    audio_path = single_dir / "许嵩 - 天知道.flac"
+    lyric_path = single_dir / "许嵩 - 天知道.lrc"
+    second_dir = tmp_path / "许嵩" / "合拍"
+    second_dir.mkdir(parents=True)
+    second_audio_path = second_dir / "许嵩 - 合拍.flac"
+    second_lyric_path = second_dir / "许嵩 - 合拍.lrc"
+    audio_path.write_bytes(b"audio")
+    lyric_path.write_text("lyrics", encoding="utf-8")
+    second_audio_path.write_bytes(b"audio")
+    second_lyric_path.write_text("lyrics", encoding="utf-8")
+    fileitems = [
+        make_fileitem(path.as_posix())
+        for path in (audio_path, lyric_path, second_audio_path, second_lyric_path)
+    ]
+    local_meta = MetaMusic(title="天知道", artists=["许嵩"], album="天知道")
+    artist = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="artist-xusong",
+        title="许嵩",
+        artists=["许嵩"],
+        music_type=MUSIC_ENTITY_ARTIST,
+        album_type="Artist Collection",
+        library_category="Artist Collection",
+    )
+    chain = _prepare_chain(monkeypatch, fileitems)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_item",
+        lambda _self, item: item,
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        staticmethod(lambda _path: deepcopy(local_meta)),
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_album_directory",
+        lambda _self, _path, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        MediaChain,
+        "recognize_music_by_path",
+        lambda _self, _path: (deepcopy(local_meta), MusicInfo.from_meta(local_meta)),
+    )
+    planned = []
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__handle_transfer",
+        lambda task, callback=None: (
+            planned.append((Path(task.fileitem.path).suffix, task.mediainfo.library_category))
+            or True,
+            "",
+        ),
+    )
+
+    state, message = TransferChain._execute_transfer(
+        chain,
+        fileitem=fileitems[0],
+        selected_fileitems=fileitems,
+        mediainfo=artist,
+        mtype=MediaType.MUSIC,
+        background=False,
+    )
+
+    assert state is True
+    assert message == ""
+    assert planned == [
+        (".flac", "Single"),
+        (".lrc", "Single"),
+        (".flac", "Single"),
+        (".lrc", "Single"),
+    ]
+
+
 def test_manual_album_identity_forwards_full_selected_album(monkeypatch):
     """手动指定专辑 ID 时不应在进入整理链前丢失曲目表。"""
     chain = make_transfer_chain()
