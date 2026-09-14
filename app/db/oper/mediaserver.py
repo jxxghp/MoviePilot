@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -126,9 +126,9 @@ class MediaServerOper(DbOper):
                 item = self._execute_sync_query(
                     lambda session: MediaServerItem.exists_by_title(
                         session,
-                        title=kwargs.get("title"),
-                        mtype=kwargs.get("mtype"),
-                        year=kwargs.get("year"),
+                        title=cast(str, kwargs.get("title")),
+                        mtype=cast(str, kwargs.get("mtype")),
+                        year=cast(str, kwargs.get("year")),
                     )
                 )
         elif kwargs.get("title"):
@@ -170,9 +170,9 @@ class MediaServerOper(DbOper):
                 item = await self._execute_async_query(
                     lambda session: MediaServerItem.async_exists_by_title(
                         session,
-                        title=kwargs.get("title"),
-                        mtype=kwargs.get("mtype"),
-                        year=kwargs.get("year"),
+                        title=cast(str, kwargs.get("title")),
+                        mtype=cast(str, kwargs.get("mtype")),
+                        year=cast(str, kwargs.get("year")),
                     )
                 )
         elif kwargs.get("title"):
