@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8675,
-  "edge_sha256": "3647a36d702bf615d83bcb6299ca2ea34dfcf6f91e9f2454574a6f1c18efec95",
+  "edge_count": 8678,
+  "edge_sha256": "9b87d035b9111bd3653439c36cbe2320e9847ca67eb550d7f7133626b9abc6aa",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3591,6 +3591,7 @@
     "app.application.messaging.subscribe -> app.application.subscription.contract",
     "app.application.messaging.subscribe -> app.schemas",
     "app.application.messaging.subscribe -> app.schemas.message",
+    "app.application.messaging.subscribe -> app.schemas.subscribe",
     "app.application.messaging.subscribe -> app.schemas.types",
     "app.application.messaging.update -> app.application",
     "app.application.messaging.update -> app.application.messaging",
@@ -3930,6 +3931,7 @@
     "app.application.subscription.mutation -> app.schemas",
     "app.application.subscription.mutation -> app.schemas.common",
     "app.application.subscription.mutation -> app.schemas.event",
+    "app.application.subscription.mutation -> app.schemas.types",
     "app.application.subscription.observability -> app.application",
     "app.application.subscription.observability -> app.application.subscription",
     "app.application.subscription.observability -> app.application.subscription.execution",
@@ -3955,6 +3957,7 @@
     "app.application.subscription.query -> app.schemas",
     "app.application.subscription.query -> app.schemas.common",
     "app.application.subscription.query -> app.schemas.media",
+    "app.application.subscription.query -> app.schemas.subscribe",
     "app.application.subscription.query -> app.schemas.types",
     "app.application.subscription.query -> app.schemas.workflow",
     "app.application.subscription.search -> app.application",
