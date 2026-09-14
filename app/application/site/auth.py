@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Optional
+from typing import Optional, TypedDict, cast
 
 from app.schemas.common import JsonData
+
+
+class _SiteAuthConfig(TypedDict):
+    """认证资源公共入口接受的站点配置形状。"""
+
+    site: str
+    params: dict[str, JsonData]
 
 
 def normalize_site_auth_params(
@@ -46,7 +53,7 @@ def normalize_site_auth_params(
 def normalize_site_auth_config(
     auth_config: Optional[Mapping[str, JsonData]],
     auth_sites: Mapping[str, JsonData],
-) -> Optional[dict[str, JsonData]]:
+) -> Optional[_SiteAuthConfig]:
     """规范化持久化的站点认证配置，兼容旧字段名。"""
     if not auth_config:
         return None
@@ -58,4 +65,4 @@ def normalize_site_auth_config(
 
     normalized = dict(auth_config)
     normalized["params"] = normalize_site_auth_params(site, params, auth_sites)
-    return normalized
+    return cast(_SiteAuthConfig, normalized)
