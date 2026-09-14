@@ -3,6 +3,7 @@ import importlib
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -12,7 +13,10 @@ from app.runtime.compat.diagnostics import (
     reset_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
 )
-from app.runtime.compat.imports import install_legacy_import_hook
+from app.runtime.compat.imports import (
+    detect_shadowed_exports,
+    install_legacy_import_hook,
+)
 from app.runtime.compat.manifest import (
     _MESSAGE_NOTIFICATION_SYMBOL_ALIASES,
     MODULE_ALIASES,
@@ -578,6 +582,44 @@ def test_legacy_plugin_chain_spelling_resolves_to_renamed_sdk_class():
         assert legacy_plugins.PluginChian is sdk.PluginChain
         assert not hasattr(sdk, "PluginChian")
         assert "PluginChian" not in legacy_plugins.__all__
+    finally:
+        reset_legacy_import_diagnostics()
+
+
+def test_shadow_detection_flags_second_implementation():
+    """物理模块自带第二份实现时必须被判定为遮蔽兼容符号。"""
+    module = ModuleType("app.plugins")
+    module._PluginBase = type("_PluginBase", (), {})
+
+    shadowed = detect_shadowed_exports(module, SYMBOL_ALIASES["app.plugins"])
+
+    assert shadowed == [("_PluginBase", "app.sdk.plugin._PluginBase")]
+
+
+def test_shadow_detection_allows_reimported_canonical_symbol():
+    """物理模块重新导入同一个 canonical 对象不算遮蔽。"""
+    canonical = importlib.import_module("app.sdk.plugin.base")
+    module = ModuleType("app.plugins")
+    module._PluginBase = canonical._PluginBase
+    module.PluginChian = canonical.PluginChain
+
+    assert detect_shadowed_exports(module, SYMBOL_ALIASES["app.plugins"]) == []
+
+
+def test_installed_symbol_overlay_modules_have_no_shadowed_exports():
+    """已装载的兼容叠加模块都不得用第二份实现遮蔽登记符号。"""
+    configure_legacy_import_diagnostics(enabled=False, emitter=lambda _: None)
+    try:
+        violations: dict[str, list] = {}
+        for module_name, exports in SYMBOL_ALIASES.items():
+            try:
+                module = importlib.import_module(module_name)
+            except ModuleNotFoundError:
+                continue
+            shadowed = detect_shadowed_exports(module, exports)
+            if shadowed:
+                violations[module_name] = shadowed
+        assert violations == {}
     finally:
         reset_legacy_import_diagnostics()
 

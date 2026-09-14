@@ -334,6 +334,8 @@ function stage_runtime_payload() {
     fi
     # 保留 app.plugins 兼容入口；V1/V2 插件仍从这里导入 _PluginBase。
     # 删除后 app.plugins 会退化为 namespace package，旧插件会在启动时全部导入失败。
+    # 该文件必须是不含实现的包说明：契约基类归 app.sdk.plugin，包根自带旧版实现会
+    # 遮蔽兼容符号，此时 Compat 会直接拒绝导入并报出覆盖了哪个 canonical 路径。
     if [ ! -f "${stage_plugin_dir}/__init__.py" ]; then
         ERROR "插件运行目录缺少 app.plugins 兼容入口"
         return 1

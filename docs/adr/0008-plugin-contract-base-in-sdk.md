@@ -45,3 +45,16 @@
 
 既装插件的 `from app.plugins import _PluginBase` 保持可用，Compat 按既有规则在 DEBUG 下
 每插件每符号发一次可执行的迁移提示。新插件使用 `from app.sdk.plugin import _PluginBase`。
+
+## 包根遮蔽兼容符号的防护
+
+模块级 `__getattr__` 只在属性查找失败时触发。物理包根一旦自带同名定义，符号叠加就完全
+不会被调用：旧版本的 `app/plugins/__init__.py` 被挂载或复制进运行目录时，
+`app.plugins._PluginBase` 会命中那份旧实现，而宿主判定插件用的是
+`hasattr(module, "init_plugin") and hasattr(module, "plugin_name")` 这样的鸭子判据，
+不看基类身份，于是插件照常加载、配置读写却落到与宿主不同的存储上，全程没有任何报错。
+
+`detect_shadowed_exports()` 因此在符号叠加安装前比对身份：物理定义与 canonical 是同一
+对象时属于无害的重新导入（`app.agent.orchestrator.AgentChain` 等既有情况），身份不同才是
+遮蔽，此时直接抛 `ImportError` 并指出覆盖了哪个 canonical 路径。宁可插件装载失败也不接受
+静默分裂——后者会让用户在界面上改的配置对插件不可见，且难以归因。
