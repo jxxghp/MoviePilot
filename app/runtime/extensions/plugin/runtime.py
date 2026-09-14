@@ -402,6 +402,7 @@ def build_plugin_runtime(
         plugin_class=registry.plugin_class,
         instance_id_taken=instance_id_taken,
         get_instance=instances.get,
+        instances_for_source=instances.for_source,
         source_plugin_id=source_plugin_id,
         save_instance=instances.save,
         delete_instance=instances.delete,
