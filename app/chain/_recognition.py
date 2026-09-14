@@ -251,6 +251,20 @@ def _shared_music_candidate_matches(
     return music_version_matches(candidate, plan.meta) and music_year_matches(candidate, plan.meta)
 
 
+def _validate_shared_music_candidate(
+        plan: _RecognitionPlan,
+        candidate: Optional[MediaInfo | MusicInfo],
+) -> Optional[MediaInfo | MusicInfo]:
+    """校验共享音乐候选；冲突时记录原因并回退到本地识别结果。"""
+    if _shared_music_candidate_matches(plan, candidate):
+        return candidate
+    logger.warning(
+        "共享音乐识别候选与本地艺人、曲名或版本证据冲突，已忽略："
+        f"{getattr(candidate, 'artist', None)} - {getattr(candidate, 'title', None)}"
+    )
+    return None
+
+
 class _RecognitionAction(Enum):
     """标识媒体识别纯状态机请求同步或异步外壳执行的 I/O 动作。"""
 
@@ -332,7 +346,6 @@ class _RecognitionFinalizationOwner:
 
 class RecognitionMixin:
     """为媒体 Chain 提供本地识别、共享识别和插件补充识别流程。"""
-
     __mixin_host_protocol__ = ChainRuntimeMixinHost
     eventmanager: Any
     _finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._finalize_recognition_result)
@@ -533,13 +546,7 @@ class RecognitionMixin:
                     kwargs=plan.shared_module_kwargs(shared_params),
                     cache=plan.cache,
                 )
-                if not _shared_music_candidate_matches(plan, mediainfo):
-                    logger.warning(
-                        "共享音乐识别候选与本地艺人、曲名或版本证据冲突，已忽略："
-                        f"{getattr(mediainfo, 'artist', None)} - "
-                        f"{getattr(mediainfo, 'title', None)}"
-                    )
-                    mediainfo = None
+                mediainfo = _validate_shared_music_candidate(plan, mediainfo)
                 outcome = _RecognitionOutcome.decide(mediainfo, outcome.fallback)
                 if outcome.has_identity:
                     yield _RecognitionStep(

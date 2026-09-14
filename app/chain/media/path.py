@@ -142,9 +142,9 @@ def _without_music_identity(meta: MetaMusic) -> MetaMusic:
 
 
 def _merge_music_path_evidence(
-    meta: Optional[MetaMusic],
+    meta: MetaMusic,
     evidence: Optional[MetaMusic],
-) -> Optional[MetaMusic]:
+) -> MetaMusic:
     """把已确认的标签证据补入文件名搜索，但不传播远程身份。"""
     if not meta or not evidence:
         return meta
@@ -445,7 +445,7 @@ class MediaPathOwner(_MediaOwnerBase):
         return _without_music_identity(meta)
 
     @staticmethod
-    def _is_remote_music_info(info: Optional[MusicInfo]) -> bool:
+    def _is_remote_music_info(info: Optional[MusicInfo]) -> TypeGuard[MusicInfo]:
         """判断音乐识别结果是否携带可复用的远程身份。"""
         return _has_remote_music_identity(info)
 
@@ -585,14 +585,15 @@ class MediaPathOwner(_MediaOwnerBase):
                 if action.kind is _MusicPathActionKind.FINGERPRINT:
                     recording_id = AcoustIdChain().identify_music_by_fingerprint(path)
                     info = self._recognize_musicbrainz_recording(meta, recording_id) if recording_id else None
-                    if self._is_remote_music_info(info) and not _fingerprint_info_matches_evidence(
-                        info, tag_meta, filename_meta,
-                    ):
-                        logger.warning(
-                            "AcoustID 候选与本地标签/文件名不符，"
-                            f"已回退文本识别：{Path(path).name} -> {info.artist} - {info.title}"
-                        )
-                        info = None
+                    if self._is_remote_music_info(info):
+                        if not _fingerprint_info_matches_evidence(
+                            info, tag_meta, filename_meta,
+                        ):
+                            logger.warning(
+                                "AcoustID 候选与本地标签/文件名不符，"
+                                f"已回退文本识别：{Path(path).name} -> {info.artist} - {info.title}"
+                            )
+                            info = None
                     if self._is_remote_music_info(info):
                         info = _reconcile_fingerprint_release(
                             info,
@@ -644,14 +645,15 @@ class MediaPathOwner(_MediaOwnerBase):
                         if recording_id
                         else None
                     )
-                    if self._is_remote_music_info(info) and not _fingerprint_info_matches_evidence(
-                        info, tag_meta, filename_meta,
-                    ):
-                        logger.warning(
-                            "AcoustID 候选与本地标签/文件名不符，"
-                            f"已回退文本识别：{Path(path).name} -> {info.artist} - {info.title}"
-                        )
-                        info = None
+                    if self._is_remote_music_info(info):
+                        if not _fingerprint_info_matches_evidence(
+                            info, tag_meta, filename_meta,
+                        ):
+                            logger.warning(
+                                "AcoustID 候选与本地标签/文件名不符，"
+                                f"已回退文本识别：{Path(path).name} -> {info.artist} - {info.title}"
+                            )
+                            info = None
                     if self._is_remote_music_info(info):
                         info = _reconcile_fingerprint_release(
                             info,
