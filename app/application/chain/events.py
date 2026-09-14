@@ -299,6 +299,7 @@ def _restore_context(payload: dict[str, Any]) -> Context:
     media_payload = payload.get("media_info")
     torrent_payload = payload.get("torrent_info")
     allowed_episodes = payload.get("allowed_episodes")
+    music_track_keys = payload.get("music_track_keys")
     return Context(
         meta_info=(
             _restore_meta(meta_payload) if isinstance(meta_payload, dict) else None
@@ -322,6 +323,10 @@ def _restore_context(payload: dict[str, Any]) -> Context:
             set(allowed_episodes) if allowed_episodes is not None else None
         ),
         confirmed_full_coverage=bool(payload.get("confirmed_full_coverage")),
+        music_track_keys=[
+            item for item in music_track_keys
+            if isinstance(item, str) and item
+        ] if isinstance(music_track_keys, (list, tuple)) else None,
     )
 
 

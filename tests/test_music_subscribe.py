@@ -67,6 +67,7 @@ def _subscribe(**overrides) -> SimpleNamespace:
         mediaid=None,
         music_type="recording",
         total_tracks=None,
+        downloaded_tracks=None,
         season=None,
         episode_group=None,
         tmdbid=None,
@@ -545,8 +546,8 @@ def test_music_rss_rejects_subtitle_version_or_partial_album(album_target):
     assert chain._filter_music_subscribe_contexts(_subscribe(), target, [context]) == []
 
 
-def test_album_best_version_requires_confirmed_full_coverage():
-    """最高优先级的非完整专辑不得写入洗版基线或完成订阅。"""
+def test_album_best_version_waits_for_accumulated_full_coverage():
+    """专辑洗版在累计曲目达到总数前不更新质量基线，达到后才允许更新。"""
     subscribe = _subscribe(
         name="叶惠美",
         music_type=MUSIC_ENTITY_ALBUM,
@@ -572,7 +573,7 @@ def test_album_best_version_requires_confirmed_full_coverage():
         ),
         meta_info=meta,
         media_info=album,
-        confirmed_full_coverage=False,
+        music_track_keys=["[1,1]"],
     )
     download_chain = Mock()
     download_chain.batch_download.return_value = ([downloaded], None)
@@ -581,13 +582,41 @@ def test_album_best_version_requires_confirmed_full_coverage():
     chain = SubscribeChain()
     _configure_subscription_write(chain, subscribe_oper)
 
-    with patch("app.chain._music.DownloadChain", return_value=download_chain), \
-            patch.object(chain, "_SubscribeChain__finish_subscribe") as finish:
+    chain.finish_subscribe_or_not = Mock()
+    with patch("app.chain._music.DownloadChain", return_value=download_chain):
         chain._download_music_subscribe(subscribe, album, [downloaded])
 
     subscribe_oper.update.assert_not_called()
     assert subscribe.current_priority == 90
-    finish.assert_not_called()
+    chain.finish_subscribe_or_not.assert_called_once()
+
+    full_subscribe = _subscribe(
+        name="叶惠美",
+        music_type=MUSIC_ENTITY_ALBUM,
+        total_tracks=11,
+        downloaded_tracks=[f"[{index},1]" for index in range(1, 11)],
+        best_version=1,
+        current_priority=90,
+    )
+    updated = _subscribe(
+        name="叶惠美",
+        music_type=MUSIC_ENTITY_ALBUM,
+        total_tracks=11,
+        downloaded_tracks=full_subscribe.downloaded_tracks,
+        best_version=1,
+        current_priority=100,
+    )
+    subscribe_oper.reset_mock()
+    subscribe_oper.get.return_value = full_subscribe
+    subscribe_oper.update.return_value = updated
+    chain.finish_subscribe_or_not.reset_mock()
+    downloaded.music_track_keys = ["[11,1]"]
+
+    with patch("app.chain._music.DownloadChain", return_value=download_chain):
+        chain._download_music_subscribe(full_subscribe, album, [downloaded])
+
+    subscribe_oper.update.assert_called_once()
+    assert subscribe_oper.update.call_args.args[1].to_payload()["current_priority"] == 100
 
 
 def test_music_subscribe_ignores_non_music_category():
@@ -911,9 +940,13 @@ def test_async_music_subscription_fallback_snapshot_is_finalized() -> None:
     )
 
 
-def test_album_subscription_finishes_only_after_confirmed_full_pack():
-    """专辑与电视剧全集相同，必须确认整专覆盖；单曲仍在任一成功下载后完成。"""
-    album_subscribe = _subscribe(music_type=MUSIC_ENTITY_ALBUM, total_tracks=11)
+def test_album_subscription_finishes_only_after_accumulated_tracks():
+    """专辑按跨资源累计的独立曲目数完成，单曲仍在任一成功下载后完成。"""
+    album_subscribe = _subscribe(
+        music_type=MUSIC_ENTITY_ALBUM,
+        total_tracks=11,
+        downloaded_tracks=[f"[{index},1]" for index in range(1, 12)],
+    )
     album = MusicInfo(
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",
@@ -924,18 +957,64 @@ def test_album_subscription_finishes_only_after_confirmed_full_pack():
     assert SubscribeChain._is_music_download_complete(
         album_subscribe,
         album,
-        [Context(confirmed_full_coverage=False)],
-    ) is False
-    assert SubscribeChain._is_music_download_complete(
-        album_subscribe,
-        album,
-        [Context(confirmed_full_coverage=True)],
+        [],
     ) is True
+    assert SubscribeChain._is_music_download_complete(
+        _subscribe(
+            music_type=MUSIC_ENTITY_ALBUM,
+            total_tracks=11,
+            downloaded_tracks=["[1,1]"],
+        ),
+        album,
+        [Context(music_track_keys=["[1,2]"])],
+    ) is False
     assert SubscribeChain._is_music_download_complete(
         _subscribe(),
         _music_info(),
         [Context()],
     ) is True
+
+
+def test_album_download_facts_accumulate_and_finish_at_total_tracks():
+    """专辑下载事实跨轮次合并去重，达到总曲目数后才触发完成。"""
+    album_subscribe = _subscribe(
+        name="叶惠美",
+        media_id="release-group-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        total_tracks=3,
+        downloaded_tracks=["[1,1]"],
+    )
+    album = MusicInfo(
+        media_source="musicbrainz",
+        media_id="release-group-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="叶惠美",
+        album="叶惠美",
+        total_tracks=3,
+    )
+    download = Context(
+        torrent_info=TorrentInfo(title="叶惠美 FLAC", category=MediaType.MUSIC.value),
+        meta_info=MetaMusic.from_music_info(album),
+        media_info=album,
+        music_track_keys=["[1,2]", "[1,2]", "[1,3]"],
+    )
+    subscribe_oper = Mock()
+    chain = SubscribeChain()
+    _configure_subscription_write(chain, subscribe_oper)
+
+    with patch.object(SubscribeChain, "_SubscribeChain__finish_subscribe") as finish:
+        chain.finish_subscribe_or_not(
+            subscribe=album_subscribe,
+            meta=MetaMusic.from_music_info(album),
+            mediainfo=album,
+            downloads=[download],
+        )
+
+    payload = subscribe_oper.update.call_args.args[1].to_payload()
+    assert payload["downloaded_tracks"] == ["[1,1]", "[1,2]", "[1,3]"]
+    finish.assert_called_once()
+    completed = finish.call_args.kwargs["subscribe"]
+    assert completed.downloaded_tracks == ["[1,1]", "[1,2]", "[1,3]"]
 
 
 def test_music_subscribe_target_validation_enforces_entity_semantics():

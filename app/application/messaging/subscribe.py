@@ -16,7 +16,8 @@ from app.application.subscription.contract import (
     SubscriptionSnapshot,
 )
 from app.schemas.message import Message
-from app.schemas.types import MediaType, NotificationChannel
+from app.schemas.subscribe import compute_subscribe_completed_tracks
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType, NotificationChannel
 
 subscribe_interaction_manager = SlashInteractionManager()
 
@@ -544,6 +545,13 @@ class SubscribeInteractionHandler:
         """
         if subscribe.type == MediaType.MOVIE.value:
             return "电影"
+        if (
+                subscribe.type == MediaType.MUSIC.value
+                and subscribe.music_type == MUSIC_ENTITY_ALBUM
+                and subscribe.total_tracks
+        ):
+            completed_tracks = compute_subscribe_completed_tracks(subscribe) or 0
+            return f"专辑 [{completed_tracks}/{subscribe.total_tracks}]"
         season = subscribe.season if subscribe.season is not None else 1
         if subscribe.total_episode:
             lack_episode = (

@@ -15,7 +15,7 @@ from app.application.subscription.contract import (
 )
 from app.application.subscription.mutation import SubscriptionMutation
 from app.schemas.mediaserver import NotExistMediaInfo
-from app.schemas.types import MediaSource, MediaType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
 
 
 def _load_subscribe_chain_class():
@@ -698,6 +698,19 @@ class TestSubscribeChain:
         progress = SubscribeInteractionHandler._format_subscribe_progress(subscribe)
 
         assert progress == "第0季"
+
+    def test_format_subscribe_progress_shows_accumulated_album_tracks(self):
+        """消息订阅列表应像电视剧一样显示专辑已累计曲目进度。"""
+        subscribe = self._build_subscribe(
+            type=MediaType.MUSIC.value,
+            music_type=MUSIC_ENTITY_ALBUM,
+            total_tracks=11,
+            downloaded_tracks=["[1,1]", "[1,2]", "[1,2]"],
+        )
+
+        progress = SubscribeInteractionHandler._format_subscribe_progress(subscribe)
+
+        assert progress == "专辑 [2/11]"
 
     def test_match_title_fallback_calls_torrent_match_from_class(self):
         """确保标题兜底匹配不依赖 TorrentHelper 实例绑定。"""

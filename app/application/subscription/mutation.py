@@ -31,6 +31,7 @@ from app.application.subscription.contract import (
 from app.application.subscription.delete import AsyncUnitOfWork
 from app.schemas.common import JsonData
 from app.schemas.event import SubscribeModifiedEventData
+from app.schemas.types import MUSIC_ENTITY_ALBUM
 
 SubscribeModifiedPublisher = Callable[[dict[str, JsonData]], Awaitable[None]]
 SyncSubscribeModifiedPublisher = Callable[[dict[str, JsonData]], None]
@@ -93,6 +94,7 @@ def _reset_payload(subscribe: SubscriptionSnapshot) -> dict[str, JsonData]:
     """构造同步与异步重置共享的订阅字段补丁。"""
     return {
         "note": [],
+        "downloaded_tracks": [] if subscribe.music_type == MUSIC_ENTITY_ALBUM else None,
         "lack_episode": subscribe.total_episode,
         "current_priority": None,
         "current_audio_format": None,

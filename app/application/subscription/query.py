@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 from app.application.subscription.contract import (
     SubscriptionHistoryQueryPort,
@@ -16,6 +16,7 @@ from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.common import JsonData
 from app.schemas.media import resolve_media_identity
+from app.schemas.subscribe import compute_subscribe_completed_tracks
 from app.schemas.types import MediaSource, MediaType
 from app.schemas.workflow import Subscribe as SubscribeView
 
@@ -51,6 +52,14 @@ class SubscriptionQueryService:
         self._async_repository = async_repository
         self._history_repository = history_repository
 
+    @staticmethod
+    def _to_public_view(record: Any) -> SubscribeView:
+        """把活动订阅内部快照投影为公开 DTO，并派生专辑曲目进度。"""
+        payload = record.to_dict()
+        payload["completed_tracks"] = compute_subscribe_completed_tracks(record)
+        payload.pop("downloaded_tracks", None)
+        return SubscribeView.model_validate(payload)
+
     async def list_public(
         self,
         username: Optional[str] = None,
@@ -79,7 +88,7 @@ class SubscriptionQueryService:
                     page=page,
                     count=count,
                 )
-        return [SubscribeView.model_validate(record) for record in records]
+        return [self._to_public_view(record) for record in records]
 
     async def count_public(self, username: Optional[str] = None) -> int:
         """按 owner 范围返回公开订阅精确总数。"""
@@ -92,7 +101,7 @@ class SubscriptionQueryService:
         if self._async_repository is None:
             raise RuntimeError("异步订阅查询端口未注册")
         record = await self._async_repository.async_get(subscribe_id)
-        return SubscribeView.model_validate(record) if record else None
+        return self._to_public_view(record) if record else None
 
     async def list_by_media_identity(
         self,
@@ -109,7 +118,9 @@ class SubscriptionQueryService:
             music_type=music_type,
         )
         return [
-            SubscribeView.model_validate(record) for record in records if self._matches_music_type(record, music_type)
+            self._to_public_view(record)
+            for record in records
+            if self._matches_music_type(record, music_type)
         ]
 
     async def list_history(
@@ -138,7 +149,7 @@ class SubscriptionQueryService:
             )
         result = []
         for record in records:
-            item = SubscribeView.model_validate(record)
+            item = self._to_public_view(record)
             if item.type == MediaType.TV.value:
                 item.total_episode = 0
                 item.lack_episode = 0

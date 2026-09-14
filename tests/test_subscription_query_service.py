@@ -3,7 +3,11 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.application.subscription.contract import SubscriptionIdentity
+from app.application.subscription.contract import (
+    SubscriptionHistorySnapshot,
+    SubscriptionIdentity,
+    SubscriptionSnapshot,
+)
 from app.application.subscription.query import SubscriptionQueryService
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
@@ -166,3 +170,49 @@ def test_subscribe_chain_facade_delegates_three_query_slices() -> None:
         "media_id": "123",
     })
     service.has_music.assert_called_once_with("R,P")
+
+
+@pytest.mark.asyncio
+async def test_public_subscription_view_derives_album_progress_without_track_keys() -> None:
+    """公开订阅响应应返回累计曲目数，但不能泄漏内部音轨稳定键。"""
+    record = SubscriptionSnapshot(
+        id=31,
+        name="叶惠美",
+        type=MediaType.MUSIC.value,
+        media_source=MediaSource.MusicBrainz,
+        media_id="release-group-31",
+        music_type="album",
+        total_tracks=3,
+        downloaded_tracks=["[1,1]", "[1,1]", "[1,2]", ""],
+    )
+    repository = Mock()
+    repository.async_list = AsyncMock(return_value=[record])
+    service = SubscriptionQueryService(repository, async_repository=repository)
+
+    [result] = await service.list_public()
+
+    assert result.completed_tracks == 2
+    assert "downloaded_tracks" not in result.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_public_subscription_history_does_not_invent_album_progress() -> None:
+    """不含活动音轨事实的订阅历史不能伪造为零首进度。"""
+    record = SubscriptionHistorySnapshot(
+        id=32,
+        name="叶惠美",
+        type=MediaType.MUSIC.value,
+        music_type="album",
+        total_tracks=3,
+    )
+    repository = Mock()
+    history_repository = Mock()
+    history_repository.async_list_by_type = AsyncMock(return_value=[record])
+    service = SubscriptionQueryService(
+        repository,
+        history_repository=history_repository,
+    )
+
+    [result] = await service.list_history(MediaType.MUSIC.value)
+
+    assert result.completed_tracks is None

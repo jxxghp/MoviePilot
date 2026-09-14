@@ -137,7 +137,7 @@ class MusicSubscribeMixin:
             mediainfo: MediaInfo,
             requested_music_type: Optional[str] = None,
     ) -> Optional[str]:
-        """校验音乐订阅实体一致性，并确保专辑具备可验证的曲目总数。"""
+        """校验音乐订阅实体一致性，并确保专辑具备可累计的曲目总数。"""
         if mediainfo.type != MediaType.MUSIC:
             return "识别结果不是音乐"
         music_type = getattr(mediainfo, "music_type", None)
@@ -149,7 +149,7 @@ class MusicSubscribeMixin:
             return f"音乐订阅类型不匹配：请求 {requested_music_type}，识别为 {music_type}"
         if music_type == MUSIC_ENTITY_ALBUM \
                 and _normalize_music_total_tracks(getattr(mediainfo, "total_tracks", None)) is None:
-            return "专辑总曲目数未知，无法校验整张专辑资源"
+            return "专辑总曲目数未知，无法累计专辑下载进度"
         return None
 
     @staticmethod
@@ -328,13 +328,49 @@ class MusicSubscribeMixin:
             mediainfo: MusicInfo,
             downloads: Optional[List[Context]],
     ) -> bool:
-        """判断音乐下载是否满足订阅完成条件；专辑必须由下载层确认整专曲目覆盖。"""
-        if not downloads:
-            return False
+        """判断音乐下载是否满足订阅完成条件；专辑按累计独立曲目数完成。"""
         music_type = getattr(subscribe, "music_type", None) or mediainfo.music_type
         if music_type != MUSIC_ENTITY_ALBUM:
-            return True
-        return any(context.confirmed_full_coverage for context in downloads)
+            return bool(downloads)
+        total_tracks = _normalize_music_total_tracks(
+            getattr(subscribe, "total_tracks", None) or mediainfo.total_tracks
+        )
+        if total_tracks is None:
+            return False
+        downloaded_tracks = {
+            item
+            for item in (getattr(subscribe, "downloaded_tracks", None) or [])
+            if isinstance(item, str) and item
+        }
+        return len(downloaded_tracks) >= total_tracks
+
+    @staticmethod
+    def _music_downloads_complete_after_merge(
+            subscribe: SubscriptionSnapshot,
+            mediainfo: MusicInfo,
+            downloads: Optional[List[Context]],
+    ) -> bool:
+        """判断本轮下载事实并入订阅后是否达到整专曲目总数。"""
+        music_type = getattr(subscribe, "music_type", None) or mediainfo.music_type
+        if music_type != MUSIC_ENTITY_ALBUM:
+            return bool(downloads)
+        total_tracks = _normalize_music_total_tracks(
+            getattr(subscribe, "total_tracks", None) or mediainfo.total_tracks
+        )
+        if total_tracks is None:
+            return False
+        downloaded_tracks = {
+            item
+            for item in (getattr(subscribe, "downloaded_tracks", None) or [])
+            if isinstance(item, str) and item
+        }
+        for context in downloads or []:
+            downloaded_tracks.update(
+                item
+                for item in (getattr(context, "music_track_keys", None) or [])
+                if isinstance(item, str) and item
+            )
+        return len(downloaded_tracks) >= total_tracks
 
     def _prepare_music_subscribe(
             self,
@@ -485,10 +521,11 @@ class MusicSubscribeMixin:
         ]
         quality_downloads = successful
         if getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM:
-            quality_downloads = [
-                context for context in successful
-                if context.confirmed_full_coverage
-            ]
+            quality_downloads = successful if self._music_downloads_complete_after_merge(
+                subscribe,
+                mediainfo,
+                successful,
+            ) else []
         current_subscribe = None
         if subscribe.best_version and quality_downloads:
             best_context = max(quality_downloads, key=lambda item: item.torrent_info.pri_order)

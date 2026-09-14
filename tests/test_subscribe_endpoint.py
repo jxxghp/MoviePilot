@@ -937,6 +937,7 @@ class TestSubscribeEndpoint:
             total_episode=10,
             lack_episode=3,
             note=[1, 2, 3],
+            completed_tracks=3,
             state="S",
             last_update="2026-07-20 12:00:00",
             username="forged-user",
@@ -968,6 +969,7 @@ class TestSubscribeEndpoint:
             "episode_priority",
             "date",
             "completed_episode",
+            "completed_tracks",
         ):
             assert field not in payload
 

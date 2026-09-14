@@ -404,6 +404,8 @@ def _translate(
             "vote": mediainfo.vote_average,
             "description": mediainfo.overview,
             "music_type": music_type,
+            # 专辑进度从空集合开始累计；单曲不使用专辑曲目事实。
+            "downloaded_tracks": [] if music_type == MUSIC_ENTITY_ALBUM else None,
             # 整专完成判定拿 total_tracks 当分母，单曲带着专辑的曲目数会永远判不到完成
             "total_tracks": getattr(mediainfo, "total_tracks", None) if music_type == MUSIC_ENTITY_ALBUM else None,
         }

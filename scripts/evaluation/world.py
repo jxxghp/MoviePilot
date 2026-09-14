@@ -41,7 +41,7 @@ _TORRENT_FIELDS = frozenset({
 })
 _SUBSCRIPTION_FIELDS = frozenset({
     "audio_format", "audio_quality", "backdrop", "best_version", "best_version_full", "classification_policy_revision",
-    "classification_rule_id", "classification_source", "completed_episode", "current_audio_format", "current_bit_depth",
+    "classification_rule_id", "classification_source", "completed_episode", "completed_tracks", "current_audio_format", "current_bit_depth",
     "current_bitrate", "current_priority", "current_sample_rate", "custom_words", "date", "description", "downloader",
     "effect", "episode_group", "episode_priority", "exclude", "execution_status", "filter", "filter_groups", "id",
     "include", "keyword", "lack_episode", "last_search", "last_update", "media_category", "media_category_id", "media_id",

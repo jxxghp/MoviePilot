@@ -1949,6 +1949,8 @@ class Context:
     selected_episodes: Optional[List[int]] = None
     # 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源。
     confirmed_full_coverage: bool = False
+    # 下载层从种子文件清单提取的稳定音轨键，供专辑订阅跨轮次累计下载进度。
+    music_track_keys: Optional[List[str]] = None
 
     def to_dict(self) -> dict[str, Any]:
         """
@@ -1969,4 +1971,5 @@ class Context:
             "allowed_episodes": sorted(self.allowed_episodes) if self.allowed_episodes is not None else None,
             "selected_episodes": self.selected_episodes,
             "confirmed_full_coverage": self.confirmed_full_coverage,
+            "music_track_keys": self.music_track_keys,
         }

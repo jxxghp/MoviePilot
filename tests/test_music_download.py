@@ -76,54 +76,52 @@ def test_download_note_keeps_versioned_music_context():
     assert "raw_data" not in note["music"]["media"]
 
 
-def test_album_resource_requires_all_independent_audio_tracks():
-    """整专资源只有在独立音频文件数覆盖专辑曲目数时才可标记完整。"""
+def test_album_resource_records_independent_audio_track_keys():
+    """整专资源记录可识别的独立音轨键，不再因数量不足而拒绝下载。"""
     context = Context(media_info=_album_info(total_tracks=3))
 
-    error = DownloadChain._validate_music_album_resource(
+    DownloadChain._record_music_album_track_keys(
         context,
         ["叶惠美/01.flac", "叶惠美/02.flac", "叶惠美/03.m4a", "叶惠美/cover.jpg"],
     )
 
-    assert error is None
-    assert context.confirmed_full_coverage is True
+    assert context.music_track_keys is not None
+    assert len(context.music_track_keys) == 3
+    assert context.confirmed_full_coverage is False
 
 
-def test_album_resource_rejects_incomplete_or_unverifiable_pack():
-    """曲目不足、未知曲目总数或无文件清单时不得把专辑订阅判定为完成。"""
+def test_album_resource_accepts_partial_or_unverifiable_pack():
+    """曲目不足、未知总数或无文件清单都允许进入下载，完成交给订阅累计进度判断。"""
     incomplete = Context(media_info=_album_info(total_tracks=3))
     unknown = Context(media_info=_album_info(total_tracks=None))
 
-    assert "仅包含 1 个独立音频文件" in (
-        DownloadChain._validate_music_album_resource(incomplete, ["叶惠美/disc.flac"]) or ""
-    )
+    DownloadChain._record_music_album_track_keys(incomplete, ["叶惠美/disc.flac"])
     assert incomplete.confirmed_full_coverage is False
-    assert "总曲目数未知" in (
-        DownloadChain._validate_music_album_resource(unknown, ["叶惠美/01.flac"]) or ""
-    )
-    assert "未提供文件清单" in (
-        DownloadChain._validate_music_album_resource(
-            Context(media_info=_album_info(total_tracks=3)),
-            [],
-        ) or ""
-    )
+    assert len(incomplete.music_track_keys or []) == 1
+
+    DownloadChain._record_music_album_track_keys(unknown, ["叶惠美/01.flac"])
+    assert len(unknown.music_track_keys or []) == 1
+
+    empty = Context(media_info=_album_info(total_tracks=3))
+    DownloadChain._record_music_album_track_keys(empty, [])
+    assert empty.music_track_keys is None
 
 
 def test_album_resource_dedupes_same_track_in_different_formats():
     """同一盘同一曲序的多种编码不能冒充多首独立曲目。"""
     context = Context(media_info=_album_info(total_tracks=2))
 
-    error = DownloadChain._validate_music_album_resource(
+    DownloadChain._record_music_album_track_keys(
         context,
         ["叶惠美/01 - 以父之名.flac", "叶惠美/01 - 以父之名.mp3"],
     )
 
-    assert "仅包含 1 个独立音频文件" in (error or "")
+    assert len(context.music_track_keys or []) == 1
     assert context.confirmed_full_coverage is False
 
 
-def test_download_single_stops_before_client_when_album_pack_is_incomplete():
-    """下载入口应在添加任务前拒绝不完整专辑，并记录可供后续候选继续尝试的失败原因。"""
+def test_download_single_prepares_partial_album_for_client_submission():
+    """下载入口允许不完整专辑进入下载器，并把本轮音轨事实附着到上下文。"""
     context = Context(
         media_info=_album_info(total_tracks=3),
         meta_info=MetaMusic.from_music_info(_album_info(total_tracks=3)),
@@ -134,6 +132,9 @@ def test_download_single_stops_before_client_when_album_pack_is_incomplete():
     )
     chain = DownloadChain()
     chain._record_download_failure = Mock()
+    chain._resolve_media_download_dir = Mock(
+        return_value=("local", Path("/downloads"), None)
+    )
     media_chain = Mock()
     media_chain.supplement_tmdb_info.return_value = context.media_info
     torrent_helper = Mock()
@@ -145,15 +146,23 @@ def test_download_single_stops_before_client_when_album_pack_is_incomplete():
     with patch.object(download_submission, "MediaChain", return_value=media_chain), \
             patch.object(download_submission, "TorrentHelper", return_value=torrent_helper), \
             patch.object(download_submission.eventmanager, "send_event", return_value=None):
-        task_id, error = chain.download_single(
-            context,
+        prepared, error = chain._prepare_download_single(
+            context=context,
             torrent_content=b"torrent",
-            return_detail=True,
+            torrent_file=None,
+            episodes=None,
+            channel=None,
+            source=None,
+            downloader=None,
+            save_path=None,
+            userid=None,
+            username=None,
         )
 
-    assert task_id is None
-    assert "专辑资源不完整" in error
-    chain._record_download_failure.assert_called_once()
+    assert prepared is not None
+    assert error is None
+    assert len(context.music_track_keys or []) == 1
+    chain._record_download_failure.assert_not_called()
 
 
 def test_download_endpoint_builds_music_context():

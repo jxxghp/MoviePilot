@@ -429,17 +429,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         folder_name, file_list = cast(Any, TorrentHelper)().get_fileinfo_from_torrent_content(
             torrent_content
         )
-        album_error = self._validate_music_album_resource(context, file_list)
-        if album_error:
-            logger.info(f"{torrent.title} {album_error}，跳过该资源")
-            self._record_download_failure(
-                context=context,
-                error_msg=album_error,
-                downloader=downloader or site_downloader,
-                source=source,
-                episodes=episodes,
-            )
-            return None, album_error
+        self._record_music_album_track_keys(context, file_list)
         storage, download_dir, error_msg = self._resolve_media_download_dir(
             media_info=media,
             save_path=save_path,

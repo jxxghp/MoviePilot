@@ -30,6 +30,7 @@ from app.schemas.subscribe import Subscribe as _SchemaSubscribe
 from app.schemas.subscribe import SubscribeDownloadFileInfo as _SchemaSubscribeDownloadFileInfo
 from app.schemas.subscribe import SubscribeEpisodeInfo as _SchemaSubscribeEpisodeInfo
 from app.schemas.subscribe import SubscribeLibraryFileInfo as _SchemaSubscribeLibraryFileInfo
+from app.schemas.subscribe import compute_subscribe_completed_tracks
 from app.schemas.types import (
     MediaSource,
     MediaType,
@@ -400,7 +401,10 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         self._append_subscribe_media_servers(subscribe, mediainfo, episodes)
 
         # 更新订阅信息
-        subscribe_info.subscribe = _SchemaSubscribe(**subscribe.to_dict())
+        subscribe_payload = subscribe.to_dict()
+        subscribe_payload["completed_tracks"] = compute_subscribe_completed_tracks(subscribe)
+        subscribe_payload.pop("downloaded_tracks", None)
+        subscribe_info.subscribe = _SchemaSubscribe(**subscribe_payload)
         subscribe_info.episodes = episodes
         return subscribe_info
 

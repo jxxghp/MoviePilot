@@ -30,8 +30,10 @@ class Subscribe(Base):
     media_id: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 音乐实体类型：recording 单曲、album 专辑
     music_type: Mapped[Optional[str]] = mapped_column(String)
-    # 专辑预期总曲目数，供整专资源完整性判断
+    # 专辑预期总曲目数，作为分批下载完成判定的分母
     total_tracks: Mapped[Optional[int]] = mapped_column(Integer)
+    # 已接受资源中可识别音轨的稳定键集合，供专辑订阅跨轮次累计进度
+    downloaded_tracks: Mapped[Optional[Any]] = mapped_column(JSON)
     # 季号
     season: Mapped[Optional[int]] = mapped_column(Integer)
     # 海报

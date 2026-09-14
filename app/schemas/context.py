@@ -559,6 +559,8 @@ class Context(BaseModel):
     match_reason: Optional[str] = None
     # 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源
     confirmed_full_coverage: Optional[bool] = False
+    # 下载层从种子文件清单提取的稳定音轨键，供专辑订阅跨轮次累计下载进度
+    music_track_keys: Optional[List[str]] = None
 
 
 class MediaPerson(BaseModel):

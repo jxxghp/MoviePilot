@@ -271,6 +271,7 @@ FIELD_DESCRIPTIONS = {
     "code": "Two-factor verification code or site-specific authentication secret.",
     "command": "Complete slash command, including the leading slash and all arguments.",
     "completed_episode": "Highest episode number already completed for the subscription.",
+    "completed_tracks": "Number of distinct album tracks accepted for the subscription so far.",
     "current_site_id": "Configured site ID currently handling the subscription execution.",
     "cookie": "Site authentication cookie. Treat this value as a secret.",
     "configured_level": "Plugin instance's own configured log-level override, null when unset or expired.",

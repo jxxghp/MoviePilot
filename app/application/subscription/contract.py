@@ -27,6 +27,7 @@ _SUBSCRIPTION_FIELDS = frozenset(
         "media_id",
         "music_type",
         "total_tracks",
+        "downloaded_tracks",
         "season",
         "poster",
         "backdrop",
@@ -83,6 +84,7 @@ _CLASSIFICATION_HISTORY_FIELDS = frozenset(
 _SUBSCRIPTION_HISTORY_FIELDS = (_SUBSCRIPTION_FIELDS - {
     "lack_episode",
     "note",
+    "downloaded_tracks",
     "state",
     "last_update",
     "last_search",
@@ -161,6 +163,8 @@ class SubscriptionSnapshot:
     media_id: Optional[str] = None
     music_type: Optional[str] = None
     total_tracks: Optional[int] = None
+    # 专辑已接受资源中可识别音轨的稳定键；只存在于活动订阅，完成后不写入历史。
+    downloaded_tracks: Optional[builtins.list[str]] = None
     season: Optional[int] = None
     poster: Optional[str] = None
     backdrop: Optional[str] = None
@@ -207,7 +211,7 @@ class SubscriptionSnapshot:
 
     def __post_init__(self) -> None:
         """冻结订阅中的全部 JSON 列。"""
-        for name in ("note", "sites", "episode_priority", "filter_groups"):
+        for name in ("note", "downloaded_tracks", "sites", "episode_priority", "filter_groups"):
             object.__setattr__(self, name, _freeze_json(getattr(self, name)))
 
     def to_dict(self) -> dict[str, JsonData]:

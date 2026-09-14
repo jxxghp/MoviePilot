@@ -3833,6 +3833,18 @@
           "description": "Highest episode number already completed for the subscription.",
           "title": "Completed Episode"
         },
+        "completed_tracks": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Number of distinct album tracks accepted for the subscription so far.",
+          "title": "Completed Tracks"
+        },
         "current_audio_format": {
           "anyOf": [
             {

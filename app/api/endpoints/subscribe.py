@@ -338,6 +338,15 @@ async def update_subscribe(
         subscribe_dict["type"] = subscribe.type
         subscribe_dict["music_type"] = subscribe.music_type
         subscribe_dict["total_tracks"] = subscribe.total_tracks if subscribe.music_type == MUSIC_ENTITY_ALBUM else None
+        if identity_fields and subscribe.music_type == MUSIC_ENTITY_ALBUM:
+            old_identity = resolve_media_identity(media=subscribe)
+            new_identity = resolve_media_identity(
+                media_source=subscribe_dict.get("media_source"),
+                media_id=subscribe_dict.get("media_id"),
+            )
+            if old_identity != new_identity:
+                # 媒体身份变化后，旧专辑的音轨事实不能迁移到新专辑。
+                subscribe_dict["downloaded_tracks"] = []
     total_episode_updated = "total_episode" in subscribe_in.model_fields_set
     if (
         total_episode_updated

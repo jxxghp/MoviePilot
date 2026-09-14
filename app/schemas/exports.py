@@ -568,6 +568,7 @@ SCHEMA_EXPORTS = {
     'WorkflowRuntimeState': ('app.schemas.workflow', 'WorkflowRuntimeState'),
     'WorkflowShare': ('app.schemas.workflow', 'WorkflowShare'),
     'compute_subscribe_completed_episode': ('app.schemas.subscribe', 'compute_subscribe_completed_episode'),
+    'compute_subscribe_completed_tracks': ('app.schemas.subscribe', 'compute_subscribe_completed_tracks'),
     'dataclass': ('app.schemas.system', 'dataclass'),
     'datetime': ('app.schemas.monitoring', 'datetime'),
     'field_serializer': ('app.schemas.agent', 'field_serializer'),

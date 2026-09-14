@@ -82,6 +82,7 @@ def _project_subscription(record: Subscribe) -> SubscriptionSnapshot:
         media_id=record.media_id,
         music_type=record.music_type,
         total_tracks=record.total_tracks,
+        downloaded_tracks=cast(Optional[builtins.list[str]], record.downloaded_tracks),
         season=record.season,
         poster=record.poster,
         backdrop=record.backdrop,
