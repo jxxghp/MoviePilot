@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from typing import Any, NamedTuple, Optional
+from typing import Any, NamedTuple, Optional, Protocol
 
 from pydantic import ValidationError
 
@@ -20,6 +20,24 @@ def _first_validation_message(error: ValidationError) -> str:
     """取校验错误里的首条说明，供回给用户的单行原因使用。"""
     details = error.errors()
     return str(details[0].get("msg")) if details else str(error)
+
+
+class InstanceIdTaken(Protocol):
+    """候选实例 ID 的占用判据。"""
+
+    def __call__(
+        self,
+        instance_id: str,
+        *,
+        ignore_instance_row: bool = False,
+    ) -> bool:
+        """判断该 ID 是否已被某个插件身份占住。
+
+        :param instance_id: 候选实例 ID
+        :param ignore_instance_row: 是否把「实例表里已有这一行」排除在占用之外。恢复
+            一个已停用的分身时为真：那一行正是本次要拿回来的东西，它自己不构成冲突
+        :return: 该 ID 是否已被占用
+        """
 
 
 class _Reservation(NamedTuple):
@@ -43,7 +61,7 @@ class PluginCloneService:
         self,
         *,
         plugin_class: Callable[[str], Optional[Any]],
-        instance_id_taken: Callable[[str], bool],
+        instance_id_taken: InstanceIdTaken,
         get_instance: Callable[[str], Optional[PluginInstance]],
         source_plugin_id: Callable[[str], str],
         save_instance: Callable[[PluginInstance], Any],
@@ -187,8 +205,15 @@ class PluginCloneService:
             and not previous.is_enabled
             and previous.source_plugin_id == plugin_id
         )
-        if not restoring and self._instance_id_taken(clone_id):
-            return None, f"分身插件 {clone_id} 已存在"
+        # 恢复只豁免待恢复的那一行自身。停用从不删行，那一行可以在表里躺很久，其间同名
+        # 的真实插件完全可能出现（装进类注册表、进安装清单、或在磁盘上留下插件包）；此时
+        # 放行等于让分身顶掉一个真实插件的身份，那个插件此后连装都装不回来
+        if self._instance_id_taken(clone_id, ignore_instance_row=restoring):
+            return None, (
+                f"分身插件 {clone_id} 的 ID 已被其他插件占用，无法恢复"
+                if restoring
+                else f"分身插件 {clone_id} 已存在"
+            )
 
         instance, message = self._build_instance(
             clone_id=clone_id,
