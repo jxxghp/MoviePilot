@@ -517,23 +517,25 @@ class ImdbApi:
     ) -> tuple[list[ImdbEpisode], Optional[str]]:
         """解析一页 GraphQL 单集边及下一页游标。"""
         title = cls._first_title(data) or {}
-        connection = title.get("episodes", {}).get("episodes") or {}
+        connection = (title.get("episodes") or {}).get("episodes") or {}
         episodes: list[ImdbEpisode] = []
         for edge in connection.get("edges") or []:
             node = edge.get("node") or {}
-            episode_number = node.get("series", {}).get("episodeNumber") or {}
+            episode_number = (node.get("series") or {}).get("episodeNumber") or {}
             episode = cls._parse(
                 ImdbEpisode,
                 {
                     "id": node.get("id"),
-                    "title": node.get("titleText", {}).get("text"),
+                    "title": (node.get("titleText") or {}).get("text"),
                     "primaryImage": node.get("primaryImage"),
                     "season": str(episode_number.get("seasonNumber"))
                     if episode_number.get("seasonNumber") is not None
                     else None,
                     "episodeNumber": episode_number.get("episodeNumber"),
-                    "runtimeSeconds": node.get("runtime", {}).get("seconds"),
-                    "plot": node.get("plot", {}).get("plotText", {}).get("plainText"),
+                    "runtimeSeconds": (node.get("runtime") or {}).get("seconds"),
+                    "plot": ((node.get("plot") or {}).get("plotText") or {}).get(
+                        "plainText"
+                    ),
                     "rating": node.get("ratingsSummary"),
                     "releaseDate": node.get("releaseDate"),
                 },

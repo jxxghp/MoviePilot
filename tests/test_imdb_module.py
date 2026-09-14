@@ -202,6 +202,46 @@ def test_imdb_title_parser_accepts_null_optional_objects() -> None:
     assert detail.plot is None
 
 
+def test_imdb_episode_parser_accepts_null_optional_objects() -> None:
+    """剧集 GraphQL 可选对象为 null 时应保留单集并归一为空值。"""
+    episodes, next_cursor = ImdbApi._parse_episode_page(
+        {
+            "titles": [
+                {
+                    "episodes": {
+                        "episodes": {
+                            "edges": [
+                                {
+                                    "node": {
+                                        "id": "tt-episode",
+                                        "titleText": None,
+                                        "series": None,
+                                        "runtime": None,
+                                        "plot": {"plotText": None},
+                                    }
+                                }
+                            ],
+                            "pageInfo": {
+                                "hasNextPage": False,
+                                "endCursor": None,
+                            },
+                        }
+                    }
+                }
+            ]
+        }
+    )
+
+    assert next_cursor is None
+    assert len(episodes) == 1
+    assert episodes[0].id == "tt-episode"
+    assert episodes[0].title is None
+    assert episodes[0].season is None
+    assert episodes[0].episode_number is None
+    assert episodes[0].runtime_seconds is None
+    assert episodes[0].plot is None
+
+
 def test_imdb_clear_cache_registers_async_cleanup_in_running_loop() -> None:
     """同步清缓存入口在异步宿主中应登记任务，并保留原同步调用约定。"""
 
