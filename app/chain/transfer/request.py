@@ -58,6 +58,7 @@ def _should_discard_batch_recording_identity(
 
 def _should_discard_batch_music_identity(
         *,
+        batch_mtype: Optional[MediaType],
         manual: bool,
         multi_track_music_batch: bool,
         media_source: Optional[MediaSource],
@@ -65,8 +66,10 @@ def _should_discard_batch_music_identity(
         mediainfo: Optional[MediaInfo | MusicInfo],
         history_music_type: Optional[str],
 ) -> bool:
-    """批次误带单曲身份或未显式指定媒体时重新识别整张专辑。"""
-    if manual and multi_track_music_batch and not (media_source and media_id):
+    """仅音乐批次在未显式指定媒体时丢弃共享身份并重新识别内部作品。"""
+    if batch_mtype != MediaType.MUSIC:
+        return False
+    if manual and not (media_source and media_id):
         return True
     return _should_discard_batch_recording_identity(
         multi_track_music_batch=multi_track_music_batch,

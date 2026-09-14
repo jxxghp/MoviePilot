@@ -33,6 +33,7 @@ from app.runtime.cache import cached
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -45,8 +46,6 @@ from app.schemas.types import (
     ScrapingTarget,
     SystemConfigKey,
 )
-from app.schemas.workflow import FileItem
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 
 class ScrapingResponsePort(Protocol):
@@ -660,7 +659,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             mediainfo: MediaInfo,
             season: Optional[int] = None,
             episode: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, str]]:
         """
         获取图片名称和url，合并所有模块的结果。
         优先使用高优先级模块的图片，低优先级模块补充缺失的图片类型。
@@ -699,7 +698,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             return
         event_data = event.event_data or {}
         # 读取事件载荷
-        fileitem: FileItem = event_data.get("fileitem")
+        fileitem: _SchemaFileItem = event_data.get("fileitem")
         file_list: List[str] = list(dict.fromkeys(event_data.get("file_list") or []))
         meta: MetaBase = event_data.get("meta")
         mediainfo: MediaInfo = event_data.get("mediainfo")

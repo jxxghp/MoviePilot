@@ -742,9 +742,6 @@
   "tests/test_metainfo.py": {
     "I001": 1
   },
-  "tests/test_metamusic.py": {
-    "I001": 1
-  },
   "tests/test_module_quality.py": {
     "I001": 1
   },

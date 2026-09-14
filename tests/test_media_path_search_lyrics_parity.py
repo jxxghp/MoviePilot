@@ -1,6 +1,7 @@
 """媒体搜索、路径识别与歌词聚合的同步异步同形回归。"""
 
 import asyncio
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
@@ -12,6 +13,21 @@ from app.chain.media import MediaChain
 from app.domain.context import MediaInfo, MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaSource, MediaType
+
+
+def _release_media_chain_singleton() -> None:
+    """释放测试间共享的 MediaChain 单例，避免实例桩跨用例传播。"""
+    instance = MediaChain.get_existing_instance()
+    if instance is not None:
+        MediaChain.release_existing_instance(instance)
+
+
+@pytest.fixture(autouse=True)
+def isolate_media_chain_singleton() -> Iterator[None]:
+    """隔离路径回归与其它测试对单例方法的 monkeypatch。"""
+    _release_media_chain_singleton()
+    yield
+    _release_media_chain_singleton()
 
 
 def _remote_music(stage: str) -> MusicInfo:
@@ -118,7 +134,7 @@ def test_music_path_sync_async_follow_one_fallback_state_machine(
     chain = MediaChain()
     path = Path("Track.flac")
     merged = MetaMusic(title="Track", audio_format="FLAC")
-    tag_meta = MetaMusic(title="Tagged")
+    tag_meta = MetaMusic(title="Tagged", artists=["Artist"])
     filename_meta = MetaMusic(title="Filename")
     sync_order: list[str] = []
     async_order: list[str] = []
@@ -178,12 +194,22 @@ def test_music_path_sync_async_follow_one_fallback_state_machine(
     monkeypatch.setattr(
         MediaChain,
         "_recognize_musicbrainz_recording",
-        Mock(return_value=_remote_music("fingerprint")),
+        Mock(return_value=MusicInfo(
+            media_source=MediaSource.MusicBrainz,
+            media_id="recording-fingerprint",
+            title="Tagged",
+            artists=["Artist"],
+        )),
     )
     monkeypatch.setattr(
         MediaChain,
         "_async_recognize_musicbrainz_recording",
-        AsyncMock(return_value=_remote_music("fingerprint")),
+        AsyncMock(return_value=MusicInfo(
+            media_source=MediaSource.MusicBrainz,
+            media_id="recording-fingerprint",
+            title="Tagged",
+            artists=["Artist"],
+        )),
     )
     monkeypatch.setattr(MediaChain, "_recognize_music_meta_tier", sync_tier)
     monkeypatch.setattr(MediaChain, "_async_recognize_music_meta_tier", async_tier)
@@ -364,6 +390,39 @@ def test_music_album_fallback_sync_async_isolate_directory_errors(
 
     assert chain._music_album_dir_fallback(path) is None
     assert asyncio.run(chain._async_music_album_dir_fallback(path)) is None
+
+
+def test_music_meta_tier_sync_async_reject_year_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """标签和文件名层都不能接受同名作品的冲突发行年份。"""
+    chain = MediaChain()
+    meta = MetaMusic(
+        title="Enchanted",
+        artists=["Taylor Swift"],
+        album="Speak Now: World Tour Live",
+        year=2011,
+    )
+    candidate = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="recording-enchanted-2025",
+        title="Enchanted",
+        artists=["Taylor Swift"],
+        album="Speak Now: World Tour Live",
+        year=2025,
+        release_date="2025-04-25",
+    )
+    monkeypatch.setattr(MediaChain, "recognize_media", Mock(return_value=candidate))
+    monkeypatch.setattr(
+        MediaChain,
+        "async_recognize_media",
+        AsyncMock(return_value=candidate),
+    )
+
+    assert chain._recognize_music_meta_tier(meta, None, "文件标签") is None
+    assert asyncio.run(
+        chain._async_recognize_music_meta_tier(meta, None, "文件标签")
+    ) is None
 
 
 @pytest.mark.parametrize("recognized", [False, True])
