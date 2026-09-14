@@ -22,7 +22,7 @@ def test_service_locator_gate_detects_each_concrete_runtime_family() -> None:
         "app.api.plugin_bypass": {"app.runtime.extensions.plugin.manager"},
         "app.api.command_bypass": {"app.command"},
         "app.api.workflow_bypass": {"app.workflow"},
-        "app.sdk.plugins": {
+        "app.sdk.plugin.manager": {
             "app.runtime.extensions.module.manager",
             "app.runtime.extensions.plugin.manager",
         },

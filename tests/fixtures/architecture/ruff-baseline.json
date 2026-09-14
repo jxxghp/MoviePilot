@@ -498,9 +498,6 @@
   "app/sdk/network.py": {
     "I001": 1
   },
-  "app/sdk/plugins.py": {
-    "I001": 1
-  },
   "app/sdk/services.py": {
     "I001": 1
   },

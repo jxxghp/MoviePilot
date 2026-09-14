@@ -1,0 +1,407 @@
+"""插件继承的契约基类与插件处理链。"""
+
+from abc import ABCMeta, abstractmethod
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
+
+from app.application.messaging.message import MessageHelper
+from app.chain.base import ChainBase
+from app.db.oper.plugindata import PluginDataOper
+from app.db.oper.plugininstance import PluginInstanceOper
+from app.db.oper.systemconfig import SystemConfigOper
+from app.db.plugin.container import PluginDatabaseHandle
+from app.db.plugin.registry import get_database as get_plugin_database
+from app.runtime.events import EventManager
+from app.schemas.message import Message
+from app.schemas.types import MessageType, NotificationChannel
+from app.sdk.config import settings
+
+__all__ = ["PluginChain", "_PluginBase"]
+
+
+class PluginChain(ChainBase):
+    """
+    插件处理链
+    """
+    pass
+
+
+class _PluginBase(metaclass=ABCMeta):
+    """
+    插件模块基类，通过继续该类实现插件功能
+    除内置属性外，还有以下方法可以扩展或调用：
+    - stop_service() 停止插件服务
+    - get_config() 获取配置信息
+    - update_config() 更新配置信息
+    - init_plugin() 生效配置信息
+    - get_data_path() 获取插件数据保存目录
+    """
+    # 插件名称
+    plugin_name: Optional[str] = ""
+    # 插件描述
+    plugin_desc: Optional[str] = ""
+    # 插件顺序
+    plugin_order: Optional[int] = 9999
+    # 是否为插件分身
+    is_clone: bool = False
+
+    def __init__(self) -> None:
+        # 插件数据
+        self.plugindata = PluginDataOper()
+        # 处理链
+        self.chain = PluginChain()
+        # 系统配置
+        self.systemconfig = SystemConfigOper()
+        # 插件实例配置，仅供 get_config()/update_config() 使用，不属于插件公开面
+        self._plugininstance = PluginInstanceOper()
+        # 系统消息
+        self.systemmessage = MessageHelper()
+        # 事件管理器
+        self.eventmanager = EventManager()
+
+    @abstractmethod
+    def init_plugin(self, config: Optional[Dict[str, Any]] = None) -> None:
+        """
+        生效配置信息
+        :param config: 配置信息字典
+        """
+        pass
+
+    def get_name(self) -> Optional[str]:
+        """
+        获取插件名称
+        :return: 插件名称
+        """
+        return self.plugin_name
+
+    @abstractmethod
+    def get_state(self) -> bool:
+        """
+        获取插件运行状态
+        """
+        pass
+
+    @staticmethod
+    def get_command() -> Optional[List[Dict[str, Any]]]:
+        """
+        注册插件远程命令
+        [{
+            "cmd": "/xx",
+            "event": EventType.xx,
+            "desc": "名称",
+            "category": "分类，需要注册到Wechat时必须有分类",
+            "data": {}
+        }]
+        """
+        pass
+
+    @staticmethod
+    def get_render_mode() -> Tuple[str, Optional[str]]:
+        """
+        获取插件渲染模式
+        :return: 1、渲染模式，支持：vue/vuetify，默认vuetify；2、vue模式下编译后文件的相对路径，默认为`dist/asserts`，vuetify模式下为None
+        """
+        return "vuetify", None
+
+    @abstractmethod
+    def get_api(self) -> List[Dict[str, Any]]:
+        """
+        注册插件API
+        [{
+            "path": "/xx",
+            "endpoint": self.xxx,
+            "methods": ["GET", "POST"],
+            "auth: "apikey",  # 鉴权类型：apikey/bear
+            "summary": "API名称",
+            "description": "API说明"
+        }]
+        """
+        pass
+
+    @abstractmethod
+    def get_form(self) -> Tuple[Optional[List[Dict[str, Any]]], Dict[str, Any]]:
+        """
+        拼装插件配置页面，插件配置页面使用Vuetify组件拼装，参考：https://vuetifyjs.com/
+        :return: 1、页面配置（vuetify模式）或 None（vue模式）；2、默认数据结构
+        """
+        pass
+
+    @abstractmethod
+    def get_page(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        拼装插件详情页面，需要返回页面配置，同时附带数据
+        插件详情页面使用Vuetify组件拼装，参考：https://vuetifyjs.com/
+        :return: 页面配置（vuetify模式）或 None（vue模式）
+        """
+        pass
+
+    def get_service(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        注册插件公共服务
+        [{
+            "id": "服务ID",
+            "name": "服务名称",
+            "trigger": "触发器：cron/interval/date/CronTrigger.from_crontab()",
+            "func": self.xxx,
+            "kwargs": {} # 定时器参数
+        }]
+        """
+        pass
+
+    def get_dashboard(
+        self, key: str, **kwargs: Any
+    ) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], Optional[List[Dict[str, Any]]]]]:
+        """
+        获取插件仪表盘页面，需要返回：1、仪表板col配置字典；2、全局配置（布局、自动刷新等）；3、仪表板页面元素配置含数据json（vuetify）或 None（vue模式）
+        1、col配置参考：
+        {
+            "cols": 12, "md": 6
+        }
+        2、全局配置参考：
+        {
+            "refresh": 10, // 自动刷新时间，单位秒
+            "border": True, // 是否显示边框，默认True，为False时取消组件边框和边距，由插件自行控制
+            "title": "组件标题", // 组件标题，如有将显示该标题，否则显示插件名称
+            "subtitle": "组件子标题", // 组件子标题，缺省时不展示子标题
+        }
+        3、vuetify模式页面配置使用Vuetify组件拼装，参考：https://vuetifyjs.com/；vue模式为None
+
+        kwargs参数可获取的值：1、user_agent：浏览器UA
+
+        :param key: 仪表盘key，根据指定的key返回相应的仪表盘数据，缺省时返回一个固定的仪表盘数据（兼容旧版）
+        """
+        pass
+
+    def get_dashboard_meta(self) -> Optional[List[Dict[str, str]]]:
+        """
+        获取插件仪表盘元信息
+        返回示例：
+            [{
+                "key": "dashboard1", // 仪表盘的key，在当前插件范围唯一
+                "name": "仪表盘1" // 仪表盘的名称
+            }, {
+                "key": "dashboard2",
+                "name": "仪表盘2"
+            }]
+        """
+        pass
+
+    def get_auth_providers(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        声明插件提供的登录认证入口。
+
+        返回示例：
+        [{
+            "id": "oidc",
+            "name": "OIDC 登录",
+            "icon": "mdi-openid",
+            "component": "AuthPage",
+            "enabled": True
+        }]
+        """
+        pass
+
+    def get_module(self) -> Optional[Dict[str, Any]]:
+        """
+        获取插件模块声明，用于胁持系统模块实现（方法名：方法实现）
+        {
+            "id1": self.xxx1,
+            "id2": self.xxx2,
+        }
+        """
+        pass
+
+    def get_media_source(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        注册插件提供的媒体数据源。
+
+        返回的每项至少包含 ``name``、``media_source`` 和 ``media_types``；实际的
+        搜索、识别、图片和 NFO 刮削实现通过 ``get_module`` 暴露对应方法。
+        """
+        pass
+
+    def get_actions(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        获取插件工作流动作
+        [{
+            "id": "动作ID",
+            "name": "动作名称",
+            "func": self.xxx,
+            "kwargs": {} # 需要附加传递的参数
+        }]
+
+        对实现函数的要求：
+        1、函数的第一个参数固定为 ActionContent 实例，如需要传递额外参数，在kwargs中定义
+        2、函数的返回：执行状态 True / False，更新后的 ActionContent 实例
+        """
+        pass
+
+    def get_agent_tools(self) -> Optional[List[Type[Any]]]:
+        """
+        获取插件智能体工具
+        返回工具类列表，每个工具类必须继承自 MoviePilotTool
+        [ToolClass1, ToolClass2, ...]
+
+        对工具类的要求：
+        1、工具类必须继承自 app.agent.tools.base.MoviePilotTool
+        2、工具类需要实现 run 方法（异步方法）
+        3、工具类需要定义 name 和 description 属性
+        4、工具类可以定义 args_schema 来指定输入参数模型
+        """
+        pass
+
+    def get_database_models(self) -> Optional[List[Type[Any]]]:
+        """
+        声明插件自有数据库中的模型
+        [ModelClass1, ModelClass2, ...]
+
+        对模型类的要求：
+        1、模型类必须继承 app.sdk.database.plugin_declarative_base() 产出的基类
+        2、同一插件的模型应继承同一个基类，它们的表在插件启动时一并建立
+        3、同时声明了迁移目录时本声明被忽略，改由 alembic 建表
+        """
+        pass
+
+    def get_database_migrations(self) -> Optional[Union[str, Path]]:
+        """
+        声明插件自有数据库的 Alembic 迁移脚本目录
+        目录须符合 Alembic script_location 布局，且必须是绝对路径，否则插件启动时报错
+        （相对路径按宿主进程的当前工作目录解析，插件无法预期它指向哪里，
+        建议用 Path(__file__).parent / "migrations" 之类的写法取得）
+
+        声明后插件启动时执行 alembic upgrade head，不再按 get_database_models() 建表。
+        PostgreSQL 下迁移脚本的 env.py 必须从 context.config.attributes["connection"]
+        取用宿主传入的连接，否则迁移会落在 public schema 而不是本插件的 schema。
+        """
+        pass
+
+    @abstractmethod
+    def stop_service(self) -> None:
+        """
+        停止插件
+        """
+        pass
+
+    def update_config(self, config: Dict[str, Any], plugin_id: Optional[str] = None) -> Optional[bool]:
+        """
+        更新配置信息
+        :param config: 配置信息字典
+        :param plugin_id: 插件ID
+        """
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        return self._plugininstance.save_config_data(
+            instance_id=plugin_id,
+            source_plugin_id=plugin_id,
+            config_data=config,
+        )
+
+    def get_config(self, plugin_id: Optional[str] = None) -> Any:
+        """
+        获取配置信息
+        :param plugin_id: 插件ID
+        """
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        return self._plugininstance.get_config_data(plugin_id)
+
+    def get_data_path(self, plugin_id: Optional[str] = None) -> Path:
+        """
+        获取插件数据保存目录
+        """
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        data_path: Path = settings.PLUGIN_DATA_PATH / f"{plugin_id}"
+        if not data_path.exists():
+            data_path.mkdir(parents=True)
+        return data_path
+
+    def get_database(self, plugin_id: Optional[str] = None) -> PluginDatabaseHandle:
+        """
+        获取插件自有数据库句柄，用于取会话读写插件自有表
+        句柄不存在时按需建立，不要求先声明模型
+        PostgreSQL 下句柄的会话与连接在每个事务开始时把 search_path 限定到本插件 schema，
+        未限定的原生 SQL 因此同样解析到插件自己的表，找不到的表名直接报错而非落到宿主表
+        :param plugin_id: 插件ID
+        """
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        return get_plugin_database(plugin_id)
+
+    def save_data(self, key: str, value: Any, plugin_id: Optional[str] = None) -> None:
+        """
+        保存插件数据
+        :param key: 数据key
+        :param value: 数据值
+        :param plugin_id: 插件ID
+        """
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        self.plugindata.save(plugin_id, key, value)
+
+    async def async_save_data(
+        self, key: str, value: Any, plugin_id: Optional[str] = None
+    ) -> None:
+        """
+        异步保存插件数据
+
+        :param key: 数据键
+        :param value: 数据值
+        :param plugin_id: 插件ID
+        """
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        await self.plugindata.async_save(plugin_id, key, value)
+
+    def get_data(self, key: Optional[str] = None, plugin_id: Optional[str] = None) -> Any:
+        """
+        获取插件数据
+        :param key: 数据key
+        :param plugin_id: plugin_id
+        """
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        return self.plugindata.get_data(plugin_id, key)
+
+    async def async_get_data(
+        self, key: Optional[str] = None, plugin_id: Optional[str] = None
+    ) -> Any:
+        """
+        异步获取插件数据
+
+        :param key: 数据键
+        :param plugin_id: 插件ID
+        :return: 指定键的数据值或插件的全部数据
+        """
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        return await self.plugindata.async_get_data(plugin_id, key)
+
+    def del_data(self, key: str, plugin_id: Optional[str] = None) -> Any:
+        """
+        删除插件数据
+        :param key: 数据key
+        :param plugin_id: plugin_id
+        """
+        if not plugin_id:
+            plugin_id = self.__class__.__name__
+        return self.plugindata.del_data(plugin_id, key)
+
+    def post_message(self, channel: Optional[NotificationChannel] = None,
+                     mtype: Optional[MessageType] = None,
+                     title: Optional[str] = None,
+                     text: Optional[str] = None, image: Optional[str] = None, link: Optional[str] = None,
+                     userid: Optional[str] = None, username: Optional[str] = None,
+                     **kwargs: Any) -> None:
+        """
+        发送消息
+        """
+        if not link:
+            link = settings.MP_DOMAIN(f"#/plugins?tab=installed&id={self.__class__.__name__}")
+        self.chain.post_message(Message(
+            channel=channel, mtype=mtype, title=title, text=text,
+            image=image, link=link, userid=userid, username=username, **kwargs
+        ))
+
+    def close(self) -> None:
+        pass

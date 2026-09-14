@@ -359,7 +359,7 @@ def configure_config_reload_event_handler_resolver() -> None:
             owner_name=owner_class.__name__,
         )
 
-    EventManager().register_handler_instance_resolver(  # type: ignore[no-untyped-call]
+    EventManager().register_handler_instance_resolver(
         "config_reload",
         resolve,
     )

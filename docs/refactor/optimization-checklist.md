@@ -94,7 +94,7 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 1020 / 8,678 | `dependency-baseline.json` 当前快照；分类、下载资源归类、订阅搜索、整理恢复、Agent 计划、工具视觉、终端生命周期与终端作用域模块的受控依赖 |
+| 宿主 Python 模块 / 内部依赖边 | 1022 / 8,698 | `dependency-baseline.json` 当前快照；分类、下载资源归类、订阅搜索、整理恢复、Agent 计划、工具视觉、终端生命周期与终端作用域模块的受控依赖 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -102,8 +102,8 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 305,884 行 | 排除 `app/plugins/**`；61 个文件超过 1,000 行，11 个超过 2,000 行 |
 | 长方法 | 290 个超过 80 行 | AST 统计排除 `app/plugins/**`；65 个超过 150 行，21 个超过 250 行 |
-| 全量 mypy 历史债务 | 9,360 / 509 文件 | Agent API 重构后的现状基线；canonical Facade 与 endpoint 类型边界已补齐，低水位只允许继续下降 |
-| Ruff 历史诊断 | 518 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 全量 mypy 历史债务 | 9,349 / 509 文件 | Agent API 重构后的现状基线；canonical Facade 与 endpoint 类型边界已补齐，低水位只允许继续下降 |
+| Ruff 历史诊断 | 517 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率固定基线 | Application 80.00%，Domain 80.00% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -687,7 +687,7 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 
 - [x] `PluginHelper` 继续作为兼容入口，但市场、包、依赖、备份/恢复、健康修复分别委托现有 owner。
 - [x] `PluginManager` 的服务图构造移到 startup typed `PluginRuntime` factory，Facade 只保留稳定 API。
-- [x] `PluginHelper` 不进入推荐 SDK，仅保留 `app.helper.plugin` 精确 Compat；`app.sdk.plugins` 只保留
+- [x] `PluginHelper` 不进入推荐 SDK，仅保留 `app.helper.plugin` 精确 Compat；`app.sdk.plugin.manager` 只保留
   审计过的 Manager ABI，不重复导出 canonical 实现。
 - [x] 用最新官方插件仓 baseline 和真实插件导入/兼容探针决定退场，不按宿主“无人引用”判断。
 
