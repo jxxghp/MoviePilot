@@ -10,7 +10,6 @@ from app.application.server.payload import build_subscribe_payload
 from app.domain.classification.conditions import condition_field_ids
 from app.schemas.category import ClassificationCondition, ClassificationConditionGroup
 
-
 PROJECT_ROOT = Path(__file__).parents[1]
 
 

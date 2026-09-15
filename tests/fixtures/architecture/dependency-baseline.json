@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8829,
-  "edge_sha256": "1c9a0e908924988746ee43009c931bd43c3df419ce4de07f663d564626d89f60",
+  "edge_count": 8827,
+  "edge_sha256": "793daf5a91297680e70a665611d7184f16bb61391bca7fca83ffc7d65ddc8c21",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4145,7 +4145,6 @@
     "app.application.transfer.models -> app.domain.context",
     "app.application.transfer.models -> app.domain.meta",
     "app.application.transfer.models -> app.domain.meta.metabase",
-    "app.application.transfer.models -> app.domain.meta.metamusic",
     "app.application.transfer.models -> app.schemas",
     "app.application.transfer.models -> app.schemas.file",
     "app.application.transfer.models -> app.schemas.media",
@@ -4172,7 +4171,6 @@
     "app.application.transfer.workflow -> app.application.transfer.jobs",
     "app.application.transfer.workflow -> app.application.transfer.models",
     "app.application.transfer.workflow -> app.application.transfer.notifications",
-    "app.application.transfer.workflow -> app.application.transfer.projection",
     "app.application.transfer.workflow -> app.schemas",
     "app.application.transfer.workflow -> app.schemas.file",
     "app.application.transfer.workflow -> app.schemas.transfer",

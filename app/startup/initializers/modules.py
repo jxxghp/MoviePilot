@@ -26,7 +26,6 @@ from app.application.messaging.agent import (
     shutdown_web_agent_background_tasks,
     wait_web_agent_background_tasks,
 )
-from app.application.messaging.webagent.events import dispatch_web_agent_message_event
 from app.application.messaging.chat import (
     get_configured_agent_chat_persistence,
 )
@@ -34,6 +33,7 @@ from app.application.messaging.message import (
     MessageHelper,
     stop_message,
 )
+from app.application.messaging.webagent.events import dispatch_web_agent_message_event
 from app.application.module import configure_module_runtime, reset_module_runtime
 from app.application.outbox import configure_outbox_dispatcher
 from app.application.plugin.runtime import get_existing_plugin_manager

@@ -13,7 +13,6 @@ from app.application.history.contracts import (
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 
-
 # 失败重试次数的合法区间，避免瞬时故障永久漏件或永久失败反复刷通知。
 MIN_FAILED_RETRIES = 1
 MAX_FAILED_RETRIES = 10

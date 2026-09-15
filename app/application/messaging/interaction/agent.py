@@ -1,10 +1,10 @@
 """Agent 按钮选择交互契约与进程内待处理请求管理。"""
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from threading import Lock
 from typing import Any, Optional
-import uuid
 
 # Agent 选择按钮回调前缀，新旧两种格式都必须继续兼容。
 AGENT_CHOICE_PREFIX = "agent_interaction:choice:"

@@ -15,16 +15,13 @@ from typing import Any, Protocol, TypeAlias, cast
 
 from pydantic import ValidationError
 
-from app.domain.classification.evaluator import read_fact
 from app.domain.classification.conditions import condition_field_ids
+from app.domain.classification.evaluator import read_fact
 from app.domain.classification.fields import (
     classification_fact_matches_definition,
     field_definition_map,
 )
 from app.schemas.category import (
-    ClassificationCondition,
-    ClassificationConditionGroup,
-    ClassificationConditionNode,
     ClassificationEnrichmentRequest,
     ClassificationEnrichmentResponse,
     ClassificationFacts,

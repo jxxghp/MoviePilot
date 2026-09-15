@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-import threading
 import sys
+import threading
 from copy import deepcopy
 from pathlib import Path
 from time import monotonic as _system_monotonic
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Tuple, Union, cast
+from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, Tuple, Union, cast
 
 from app.application.transfer.projection import (
     domain_to_dict as _domain_to_dict,
+)
+from app.application.transfer.projection import (
     transfer_task_meta as _transfer_task_meta,
 )
 from app.domain.context import MediaInfo, MusicInfo

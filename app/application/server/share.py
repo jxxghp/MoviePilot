@@ -7,8 +7,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
 
-from app.application.workflow import WorkflowSnapshot
 from app.application.server.payload import build_subscribe_payload
+from app.application.workflow import WorkflowSnapshot
 
 
 @dataclass(frozen=True, slots=True)

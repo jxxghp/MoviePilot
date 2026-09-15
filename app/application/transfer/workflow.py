@@ -13,13 +13,12 @@ app.schemas -> app.schemas.transfer -> app.domain.* -> app.schemas.types -> app.
 TransferJob / TransferJobTask，那两个用 app.schemas 的同名 DTO——一个是工作项，一个是
 视图，分开表达之后两边都不必再迁就对方。
 """
-from time import monotonic
 from typing import (
     Callable,
     List,
-    Optional,
 )
 
+from app.application.transfer.feedback import TransferFailureNotification
 from app.application.transfer.jobs import (
     DirectorySize,
     JobManager,
@@ -53,14 +52,8 @@ from app.application.transfer.notifications import (
     TransferFailureNotificationAggregator,
     build_transfer_failure_group_key,
 )
-from app.application.transfer.feedback import TransferFailureNotification
-from app.application.transfer.projection import (
-    domain_to_dict as _domain_to_dict,
-    transfer_task_meta as _transfer_task_meta,
-)
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferJob
-
 
 __all__ = [
     "DirectorySize",

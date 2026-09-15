@@ -2,11 +2,11 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Callable, List, Optional, Protocol, Tuple, Union
 
 from app.application.messaging.interaction import (
-    _ExpiringUserInteractionStore,
     MessageGateway,
+    _ExpiringUserInteractionStore,
     build_navigation_buttons,
     page_items,
     supports_interaction_buttons,

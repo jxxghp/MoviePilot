@@ -6,7 +6,7 @@ import hashlib
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Protocol, TypeAlias, Union
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Protocol, TypeAlias, Union
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
@@ -15,11 +15,9 @@ from app.application.transfer import checkpoint as checkpoint_codec
 from app.application.transfer.execution import TransferExecutionCheckpoint
 from app.application.transfer.projection import (
     domain_to_dict as _domain_to_dict,
-    transfer_task_meta as _transfer_task_meta,
 )
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
 from app.schemas.file import FileItem
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.system import TransferDirectoryConf

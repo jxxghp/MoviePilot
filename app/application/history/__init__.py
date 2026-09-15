@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Callable, Dict, Optional, Protocol, Union
+from typing import Any, Optional, Protocol, Union
 
 from app.application.history.contracts import (
-    _freeze_json,
     TransferHistoryMonthlyStatistics,
     TransferHistoryQueryPort,
     TransferHistoryReplacePort,
@@ -14,6 +13,7 @@ from app.application.history.contracts import (
     TransferHistoryStatisticSnapshot,
     TransferHistoryWrite,
     TransferHistoryWritePort,
+    _freeze_json,
     configure_transfer_history_repository,
     get_transfer_history_repository,
     reset_transfer_history_repository,
@@ -52,7 +52,6 @@ from app.schemas.history import (
 )
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaSource
-
 
 __all__ = [
     "DownloadFileMutationRepository",

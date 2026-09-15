@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Callable, Dict, NoReturn, Optional, Protocol
+from typing import Any, Callable, NoReturn, Optional, Protocol
 
 from app.schemas.common import JsonData
 from app.schemas.types import MediaSource
+
 
 class _FrozenJsonDict(dict[str, JsonData]):
     """保留 JSON 字典读取与序列化行为，并拒绝常规原地修改。"""

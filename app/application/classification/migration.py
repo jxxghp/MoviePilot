@@ -16,13 +16,13 @@ from app.application.classification.compiler import (
     _LegacyToken,
     _parse_legacy_tokens,
 )
+from app.domain.classification.conditions import condition_field_ids
 from app.domain.classification.vocabulary import (
     COUNTRY_CODE_ALIASES as _COUNTRY_CODE_ALIASES,
 )
 from app.domain.classification.vocabulary import (
     TMDB_GENRE_KEYS as _TMDB_GENRE_KEYS,
 )
-from app.domain.classification.conditions import condition_field_ids
 from app.schemas.category import (
     CategoryConfig,
     CategoryRule,

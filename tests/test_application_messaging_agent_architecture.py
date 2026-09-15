@@ -35,9 +35,7 @@ def test_agent_interaction_has_one_canonical_owner() -> None:
         "parse_agent_choice_callback",
     }
     facade = importlib.import_module("app.application.messaging.agent")
-    interaction = importlib.import_module(
-        "app.application.messaging.interaction.agent"
-    )
+    importlib.import_module("app.application.messaging.interaction.agent")
 
     assert names <= _top_level_owners(AGENT_INTERACTION_PATH)
     assert names.isdisjoint(_top_level_owners(AGENT_FACADE_PATH))
@@ -52,9 +50,7 @@ def test_channel_admin_has_one_canonical_owner() -> None:
         "resolve_config_principal_ids",
     }
     facade = importlib.import_module("app.application.messaging.agent")
-    channel_admin = importlib.import_module(
-        "app.application.messaging.channel.admin"
-    )
+    importlib.import_module("app.application.messaging.channel.admin")
 
     assert names <= _top_level_owners(CHANNEL_ADMIN_PATH)
     assert names.isdisjoint(_top_level_owners(AGENT_FACADE_PATH))
@@ -77,9 +73,7 @@ def test_web_agent_event_bridge_has_one_canonical_owner() -> None:
         "normalize_web_agent_button_rows",
     }
     facade = importlib.import_module("app.application.messaging.agent")
-    events = importlib.import_module(
-        "app.application.messaging.webagent.events"
-    )
+    importlib.import_module("app.application.messaging.webagent.events")
 
     assert names <= _top_level_owners(WEB_AGENT_EVENTS_PATH)
     assert names.isdisjoint(_top_level_owners(AGENT_FACADE_PATH))
