@@ -9,7 +9,7 @@
 因此这里断言的是「落库后每个字段的实际值」，不是「调用了什么」。
 
 它们与同一张表的读侧规则（查重闸，见 test_transfer_history_gate.py）同住
-app/application/history.py；此前长在 TransferHistoryOper 上，故本文件旧名为
+app/application/history/；此前长在 TransferHistoryOper 上，故本文件旧名为
 test_db_transferhistory_write_path.py。
 """
 import pytest

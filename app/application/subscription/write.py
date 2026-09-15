@@ -5,7 +5,7 @@
 长在 SubscribeOper.add 上，但取标题、选海报尺寸、判音乐实体、决定哪几个字段构成一条
 订阅的身份，都是订阅业务的规则而非数据访问——Oper 只该收敛查询，领域对象不该出现在
 它的入参里。搬上来之后 SubscribeOper 收到的是纯粹的持久化字典，与
-app/application/history.py 里整理历史的写入路径同构。
+app/application/history/ 里整理历史的写入路径同构。
 
 留在 Oper 的是列类型强转与建库时间戳：那几步是为 PostgreSQL 的严格类型检查和订阅表
 自己的列类型而存在的，跟着列走比跟着调用方走更不容易漂。

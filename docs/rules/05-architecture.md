@@ -60,22 +60,22 @@ to make the directory tree look symmetrical.
 
 | Path | Ownership |
 |---|---|
-| `app/application/*.py` | Established single-module application services and compatibility facades |
+| `app/application/*.py` | Established single-word application services; same-domain implementations use subpackages, while old paths are routed only by the exact Compat/SDK boundaries |
 | `app/application/subscription/` | Subscription use cases: `write.py` owns media-to-row translation and the write port; `contract.py` owns shared metadata/media-key projection; query, mutation, deletion, identity and search stay in their single-word modules |
 | `app/application/search/` | Search state and later search-plan use cases |
 | `app/application/download/` | Download task querying/control and selection use cases; `failures.py` owns the frozen failure-cooldown write/query DTOs and persistence Port |
-| `app/application/history.py` | History use cases and persistence contracts; DownloadHistory and TransferHistory own deeply frozen DTOs plus typed query/write/staging ports |
+| `app/application/history/` | History use cases and persistence contracts; DownloadHistory and TransferHistory own deeply frozen DTOs plus typed query/write/staging ports |
 | `app/application/music/` | Multi-source music catalog orchestration |
 | `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the typed runtime and persistence dependency aggregate, and `events.py` owns durable event write contracts plus replayable payload conversion |
 | `app/application/agent.py` | Agent orchestration facade and typed `AgentDataContext`; startup injects one explicit data context into the manager, memory, tool and scheduler owners without a process-wide persistence locator |
 | `app/application/invocation.py` | Frozen Agent write-call identity, claim and receipt contracts; the injected repository provides atomic claim, fenced settlement and unresolved-state reads, while `db/adapters/invocation.py` owns short transactions and cold-start recovery is invoked by startup |
 | `app/application/network.py` | System network-test target catalog, immutable public/private projections, URL and redirect admission, response validation and the injected transport Port; startup owns concrete HTTP Adapter assembly |
 | `app/application/outbox.py` | Durable intent, transaction-only stager, short-transaction dispatch store, claim fencing and structured post-commit result contracts |
-| `app/application/transfer/` | Durable transfer use cases: `workflow.py` owns admission/planning/queue behavior; `execution.py` owns stable operation identity, step/checkpoint state, retry/manual-review commands and terminal-settlement DTOs; `recovery.py` owns failed/corrupt task cleanup and history detachment through the execution repository; `history.py` projects history write fields and file fingerprints; `feedback.py` owns failure stages, notification snapshots and message text, while Chain owns notification delivery and cleanup side effects |
+| `app/application/transfer/` | Durable transfer use cases: `workflow.py` owns queue service orchestration; `models.py` owns admission/planning/task contracts; `jobs.py` owns in-process task views; `notifications.py` owns failure aggregation; `projection.py` owns domain projections; `execution.py` owns stable operation identity, step/checkpoint state, retry/manual-review commands and terminal-settlement DTOs; `recovery.py` owns failed/corrupt task cleanup and history detachment through the execution repository; `history.py` projects history write fields and file fingerprints; `feedback.py` owns failure stages, notification snapshots and message text, while Chain owns notification delivery and cleanup side effects |
 | `app/application/plugin/` | Plugin market catalog, installation command, installed-plugin identity contract and startup migration, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `identity.py`, `migration.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
 | `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
-| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `ingress.py` owns the single channel-to-host loopback boundary; `interaction.py` shared interaction contracts and view helpers; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `agent.py` owns Agent choice state, callback protocol, bounded WebAgent event publication, display projection, session identity/persistence coordination, temporary attachment registry and audio preparation/transcription; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
+| `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `ingress.py` owns the single channel-to-host loopback boundary; `interaction/` owns generic interaction state plus Agent choice contracts; `channel/admin.py` owns channel administrator resolution; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `webagent/` owns WebAgent notification events and stream transport; `agent.py` owns WebAgent application orchestration, display projection, session identity/persistence coordination, temporary attachment registry and audio preparation/transcription; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
 | `app/application/security/` | Authentication, authorization, frozen user/auth projections, atomic user aggregate commands, per-user configuration publication, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
 
 ### Agent runtime boundaries
@@ -122,10 +122,9 @@ directory categories.
 `app/api/endpoints/agent.py` must not recreate WebAgent file registries, audio
 conversion/transcription policy, traditional-message dispatch, Agent execution
 lifecycle, event-to-display projection or AgentChat snapshot writes. Those reusable
-state transitions and the transport-neutral event-stream use case belong to
-`app/application/messaging/agent.py`; the endpoint maps FastAPI principals and DTOs,
-translates upload/domain failures to HTTP responses, and frames Application events
-as SSE.
+state transitions belong to `app/application/messaging/agent.py` and its
+`webagent/` subpackage; the endpoint maps FastAPI principals and DTOs, translates
+upload/domain failures to HTTP responses, and frames Application events as SSE.
 
 ### Runtime boundaries
 
@@ -293,7 +292,7 @@ were host-internal migration scaffolding, never plugin ABI, and must not gain SD
 Legacy public Agent imports remain exact SDK/Compat boundaries and must not be reintroduced as
 Oper aliases in canonical Agent modules.
 Monitor history checks use `get_transfer_history_repository()` from
-`app/application/history.py`; old constructible Oper-style facades are available
+`app/application/history/`; old constructible Oper-style facades are available
 only through the exact SDK Legacy/Compat mapping.
 
 Durable transfer execution follows one explicit boundary. The Chain freezes each
@@ -837,7 +836,7 @@ The configured user-configuration repository publishes its in-memory snapshot
 only after the user transaction commits, and reloads from the database if
 publication fails.
 
-History is a verified typed boundary: `app/application/history.py` owns deeply
+History is a verified typed boundary: `app/application/history/` owns deeply
 frozen DownloadHistory and TransferHistory snapshots plus typed query/write and
 staging ports. `app/db/adapters/history/download.py` and
 `app/db/adapters/history/transfer.py` perform ORM projection and mutations inside
@@ -1110,7 +1109,7 @@ driven workflow registration.
 | `app/application/download/failures.py` | Frozen download-failure cooldown write/query DTOs and Chain persistence Port |
 | `app/db/adapters/download.py` | Short-session download-failure snapshot and mutation adapter |
 | `app/db/adapters/mediaserver.py` | Per-operation media-server cache query/upsert/cleanup transaction adapter |
-| `app/application/history.py` | History use cases; deeply frozen DownloadHistory/TransferHistory DTOs and typed query/write/staging ports |
+| `app/application/history/` | History use cases; deeply frozen DownloadHistory/TransferHistory DTOs and typed query/write/staging ports |
 | `app/db/adapters/history/download.py` | DownloadHistory short-session snapshot, query and mutation adapter |
 | `app/chain/download/` | Stable DownloadChain facade plus single-owner selection, submission, batch, existence, failure, history, post-processing, subtitle, task and technical-port modules |
 | `app/chain/search/` | Stable SearchChain facade plus shared execution, plan, provider, pagination, result, cache, title, media, music policy, subtitle, site and recommendation owners |
@@ -1122,7 +1121,7 @@ driven workflow registration.
 | `app/application/outbox.py` | Durable intent, stager/store, claim fencing, topic handler and structured post-commit contracts |
 | `app/db/adapters/outbox.py` | SQLAlchemy Outbox transaction-only stagers and short-transaction claim/settlement stores |
 | `app/application/chain/events.py` | Chain durable-event write port, settlement projection and replayable payload conversion |
-| `app/application/transfer/workflow.py` | Transfer task, durable admission, versioned planning input/checkpoint contracts and queue use case |
+| `app/application/transfer/` | `models.py` owns transfer task, durable admission and versioned planning contracts; `jobs.py` owns task views; `workflow.py` owns the queue use case; execution, recovery, notification and projection policies remain in their single-word modules |
 | `app/db/adapters/transfer/admission.py` | SQLAlchemy admission/checkpoint persistence, CAS state transition and detached snapshot adapter |
 | `app/application/scheduling.py` | Runtime scheduler facade for Agent tools and endpoints; `Scheduler` class registered by `app/startup/initializers/scheduler.py` |
 | `app/scheduler/` | Scheduler implementation package: stable facade plus catalog, execution/bridge/progress, registry, reconcile, lifecycle and maintenance owners; no business Chain construction |

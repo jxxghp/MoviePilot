@@ -634,7 +634,7 @@
     "operator": 3,
     "type-arg": 2
   },
-  "app/application/history.py": {
+  "app/application/history/__init__.py": {
     "no-any-return": 1
   },
   "app/application/image.py": {
@@ -652,21 +652,14 @@
     "operator": 1
   },
   "app/application/messaging/agent.py": {
-    "arg-type": 1,
-    "attr-defined": 1,
-    "no-untyped-call": 1,
-    "no-untyped-def": 1
+    "arg-type": 1
   },
   "app/application/messaging/chat.py": {
     "type-arg": 8
   },
-  "app/application/messaging/interaction.py": {
+  "app/application/messaging/interaction/__init__.py": {
     "no-untyped-def": 1,
     "type-arg": 2
-  },
-  "app/application/messaging/media.py": {
-    "no-untyped-call": 1,
-    "no-untyped-def": 1
   },
   "app/application/messaging/message.py": {
     "arg-type": 5,
@@ -692,8 +685,7 @@
     "no-untyped-def": 2
   },
   "app/application/messaging/skill.py": {
-    "no-untyped-call": 4,
-    "no-untyped-def": 4,
+    "no-untyped-def": 1,
     "type-arg": 6
   },
   "app/application/messaging/subscribe.py": {

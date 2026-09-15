@@ -15,10 +15,11 @@ def condition_field_ids(node: ClassificationConditionNode) -> tuple[str, ...]:
         return (node.field,)
     if not isinstance(node, ClassificationConditionGroup):
         return ()
+    children: tuple[ClassificationConditionNode, ...]
     if node.all is not None:
-        children = node.all
+        children = tuple(node.all)
     elif node.any is not None:
-        children = node.any
+        children = tuple(node.any)
     elif node.not_ is not None:
         children = (node.not_,)
     else:

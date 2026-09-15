@@ -54,6 +54,44 @@ from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaSource
 
 
+__all__ = [
+    "DownloadFileMutationRepository",
+    "DownloadFileSnapshot",
+    "DownloadFileWrite",
+    "DownloadHistory",
+    "DownloadHistoryMutationCommand",
+    "DownloadHistoryMutationRepository",
+    "DownloadHistoryQueryPort",
+    "DownloadHistoryRepository",
+    "DownloadHistorySnapshot",
+    "DownloadHistoryWrite",
+    "DownloadHistoryWritePort",
+    "HistoryMutationResult",
+    "HistoryQueryService",
+    "HistoryUnitOfWork",
+    "ManualTransferHistory",
+    "TransferHistory",
+    "TransferHistoryLookupRepository",
+    "TransferHistoryLookupService",
+    "TransferHistoryMonthlyStatistics",
+    "TransferHistoryMutationCommand",
+    "TransferHistoryPage",
+    "TransferHistoryQueryPort",
+    "TransferHistoryReplacePort",
+    "TransferHistoryRepository",
+    "TransferHistorySnapshot",
+    "TransferHistoryStagingPort",
+    "TransferHistoryStatisticSnapshot",
+    "TransferHistoryWrite",
+    "TransferHistoryWritePort",
+    "add_transfer_fail",
+    "add_transfer_success",
+    "configure_transfer_history_repository",
+    "get_transfer_history_repository",
+    "reset_transfer_history_repository",
+]
+
+
 @dataclass(frozen=True, slots=True)
 class DownloadHistorySnapshot:
     """脱离数据库会话后供宿主下载、订阅和整理用例读取的历史快照。"""

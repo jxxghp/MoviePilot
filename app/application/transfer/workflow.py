@@ -23,8 +23,6 @@ from typing import (
 from app.application.transfer.jobs import (
     DirectorySize,
     JobManager,
-    _domain_to_dict,
-    _transfer_task_meta,
     configure_directory_size,
     job_lock,
 )
@@ -52,12 +50,49 @@ from app.application.transfer.models import (
     TransferTask,
 )
 from app.application.transfer.notifications import (
-    TransferFailureNotification,
     TransferFailureNotificationAggregator,
     build_transfer_failure_group_key,
 )
+from app.application.transfer.feedback import TransferFailureNotification
+from app.application.transfer.projection import (
+    domain_to_dict as _domain_to_dict,
+    transfer_task_meta as _transfer_task_meta,
+)
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferJob
+
+
+__all__ = [
+    "DirectorySize",
+    "JobManager",
+    "configure_directory_size",
+    "job_lock",
+    "TRANSFER_ADMISSION_ACCEPTED",
+    "TRANSFER_ADMISSION_PLANNED",
+    "TRANSFER_ADMISSION_PROVIDER_PENDING",
+    "TRANSFER_PLAN_CHECKPOINT_LEGACY_VERSION",
+    "TRANSFER_PLAN_CHECKPOINT_VERSION",
+    "TRANSFER_PLANNING_INPUT_VERSION",
+    "TRANSFER_PROVIDER_INVOCATION_VERSION",
+    "TransferAdmission",
+    "TransferAdmissionConflictError",
+    "TransferAdmissionProjectionError",
+    "TransferAdmissionRepository",
+    "TransferCallback",
+    "TransferFailureNotification",
+    "TransferFailureNotificationAggregator",
+    "TransferLeaseLostError",
+    "TransferPlanCheckpoint",
+    "TransferPlanItem",
+    "TransferPlanningInput",
+    "TransferPlanningStateError",
+    "TransferProviderInvocationSnapshot",
+    "TransferProviderReference",
+    "TransferQueue",
+    "TransferTask",
+    "build_transfer_failure_group_key",
+    "TransferQueueService",
+]
 
 
 class TransferQueueService:

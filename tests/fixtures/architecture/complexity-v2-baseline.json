@@ -8,7 +8,7 @@
     "app/application/rss.py:RssHelper": 531,
     "app/application/security/url.py:SecurityUtils": 771,
     "app/application/torrent/download.py:TorrentHelper": 738,
-    "app/application/transfer/workflow.py:JobManager": 754,
+    "app/application/transfer/jobs.py:JobManager": 754,
     "app/chain/_recognition.py:RecognitionMixin": 570,
     "app/chain/base.py:ChainBase": 1161,
     "app/chain/download/batch.py:DownloadBatchOwner": 515,
@@ -35,7 +35,6 @@
   "file": {
     "app/api/endpoints/system.py": 1152,
     "app/application/formatting.py": 1523,
-    "app/application/history.py": 1348,
     "app/application/messaging/agent.py": 2195,
     "app/application/messaging/message.py": 1314,
     "app/application/messaging/skill.py": 1300,

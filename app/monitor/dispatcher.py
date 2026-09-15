@@ -128,7 +128,7 @@ class TransferDispatcher:
         """
         依据整理历史判断本次是否跳过整理。
 
-        判定策略由 app/application/history.py 统一提供，整理链的计划整理段使用
+        判定策略由 app/application/history/ 统一提供，整理链的计划整理段使用
         同一套判定，避免此处放行的文件在下游被另一套「存在记录即拦」的策略收回。
         :param storage: 存储
         :param src_path: 整理记录使用的源路径

@@ -66,7 +66,7 @@ def build_web_agent_message_update_event(
     """构造可应用到 WebAgent 原消息的 SSE 更新事件。"""
     button_rows = normalize_web_agent_button_rows(buttons)
     content_parts = [part for part in (title, text) if part]
-    target_message = {
+    target_message: dict[str, Any] = {
         "id": str(message_id),
         "content": "" if button_rows else "\n\n".join(content_parts),
         "choices": [],

@@ -1,5 +1,5 @@
 """
-覆盖 app/application/history.py 的整理历史查重闸。
+覆盖 app/application/history/ 的整理历史查重闸。
 
 监控分发（app/monitor/dispatcher.py）与整理链计划整理 owner（app/chain/transfer/plan.py）
 共用这套判定，本文件只测判定本身的真值表与查询辅助函数，不涉及调用方。

@@ -15,7 +15,7 @@ class _DictionarySerializable(Protocol):
 class _TransferTaskMetaSource(Protocol):
     """描述整理任务提供已解析领域元数据的最小形状。"""
 
-    meta: object
+    meta: MetaBase | None
 
 
 def domain_to_dict(value: object) -> dict[str, Any]:

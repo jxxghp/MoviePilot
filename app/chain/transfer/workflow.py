@@ -713,7 +713,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     raise OperationInterrupted()
                 file_path = Path(file_item.path)
 
-                # 自动整理按 app/application/history.py 的统一判定去重（失败记录放行重试、
+                # 自动整理按 app/application/history/ 的统一判定去重（失败记录放行重试、
                 # 成功但源文件已变化放行交 overwrite_mode 决断）；手动整理可清理失败记录，
                 # 或按用户确认清理成功记录；手动显式指定媒体身份时，先解除旧失败任务再重新规划。
                 if (

@@ -50,6 +50,30 @@ MYPY_PATH_MIGRATIONS = {
         ("app/agent/tools/impl/_plugin_tool_utils.py",),
         ("app/application/plugin/management.py",),
     ),
+    "history-package": (
+        (
+            "app/application/history.py",
+            "app/application/history_contracts.py",
+            "app/application/history_retry.py",
+            "app/application/historymutation.py",
+        ),
+        ("app/application/history/",),
+    ),
+    "messaging-interaction-package": (
+        (
+            "app/application/messaging/interaction.py",
+            "app/application/messaging/agent_interaction.py",
+        ),
+        ("app/application/messaging/interaction/",),
+    ),
+    "messaging-channel-package": (
+        ("app/application/messaging/channel_admin.py",),
+        ("app/application/messaging/channel/",),
+    ),
+    "messaging-webagent-package": (
+        ("app/application/messaging/webagentstream.py",),
+        ("app/application/messaging/webagent/",),
+    ),
 }
 
 # 形如 app/foo.py:12: error: 消息说明 [error-code]；个别错误可能缺代码。

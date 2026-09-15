@@ -12,7 +12,7 @@ from app.runtime.log import logger
 from app.schemas.media import resolve_media_identity
 
 if TYPE_CHECKING:
-    from app.application.transfer.workflow import TransferTask
+    from app.application.transfer.models import TransferTask
 
 
 def build_transfer_failure_group_key(task: TransferTask) -> str:

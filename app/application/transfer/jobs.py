@@ -29,7 +29,7 @@ from app.schemas.transfer import TransferJob, TransferJobTask
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType
 
 if TYPE_CHECKING:
-    from app.application.transfer.workflow import TransferTask
+    from app.application.transfer.models import TransferTask
 
 
 def monotonic() -> float:
@@ -37,7 +37,7 @@ def monotonic() -> float:
     workflow = sys.modules.get("app.application.transfer.workflow")
     legacy_clock = getattr(workflow, "monotonic", None)
     if callable(legacy_clock) and legacy_clock is not monotonic:
-        return legacy_clock()
+        return cast(float, legacy_clock())
     return _system_monotonic()
 
 JobId = tuple[object, ...]
@@ -176,7 +176,7 @@ class JobManager:
         )
         return fileitem.storage or "local", normalized_path
 
-    def __get_id(self, task: Optional[TransferTask] = None) -> JobId:
+    def __get_id(self, task: TransferTask) -> JobId:
         """
         获取作业ID
         """
