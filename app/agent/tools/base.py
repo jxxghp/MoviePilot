@@ -22,7 +22,7 @@ from app.agent.policy.sanitizer import (
 from app.agent.tools.result import ToolExecutionError, inspect_tool_result
 from app.agent.tools.tags import ToolTag
 from app.application.agent import AgentDataContext
-from app.application.messaging.agent import matches_channel_admin
+from app.application.messaging.channel_admin import matches_channel_admin
 from app.application.notification import get_notification_configs
 from app.chain.base import ChainBase
 from app.runtime.log import logger

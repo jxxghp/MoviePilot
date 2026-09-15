@@ -16,7 +16,6 @@ from typing import (
     AsyncIterator,
     Awaitable,
     Callable,
-    Iterable,
     Optional,
     Protocol,
     Union,
@@ -48,6 +47,11 @@ from app.application.messaging.agent_interaction import (
     build_agent_choice_callback,
     parse_agent_choice_callback,
 )
+from app.application.messaging.channel_admin import (
+    matches_channel_admin,
+    register_channel_admin_resolver,
+    resolve_config_principal_ids,
+)
 from app.application.messaging.router import has_pending_interaction
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
@@ -62,8 +66,6 @@ _WEB_AGENT_EDIT_QUEUES: dict[str, list[Queue[dict[str, Any]]]] = {}
 _WEB_AGENT_EDIT_LOCK = Lock()
 _WEB_AGENT_MESSAGE_QUEUES: dict[str, list[Queue[Message]]] = {}
 _WEB_AGENT_MESSAGE_LOCK = Lock()
-_ChannelAdminResolver = Callable[[Optional[dict[str, Any]]], Iterable[Union[str, int]]]
-_CHANNEL_ADMIN_RESOLVERS: dict[str, _ChannelAdminResolver] = {}
 _WEB_AGENT_BACKGROUND_TASKS: set[asyncio.Task[object]] = set()
 
 
@@ -99,71 +101,6 @@ async def wait_web_agent_background_tasks() -> None:
     tasks = tuple(_WEB_AGENT_BACKGROUND_TASKS)
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
-
-
-def register_channel_admin_resolver(
-    channel: Union[NotificationChannel, str],
-    resolver: _ChannelAdminResolver,
-) -> None:
-    """
-    注册消息渠道的管理员主体 ID 解析器。
-
-    :param channel: 消息渠道
-    :param resolver: 由渠道配置解析全部管理员主体 ID 的函数
-    """
-    channel_value = channel.value if isinstance(channel, NotificationChannel) else str(channel)
-    _CHANNEL_ADMIN_RESOLVERS[channel_value] = resolver
-
-
-def resolve_config_principal_ids(
-    config: Optional[dict[str, Any]],
-    *config_keys: str,
-) -> set[str]:
-    """
-    从渠道自行声明的配置键中解析主体 ID。
-
-    :param config: 当前消息渠道配置
-    :param config_keys: 由渠道模块维护的主体 ID 配置键
-    :return: 去空白后的主体 ID 集合
-    """
-    principal_ids: set[str] = set()
-    for config_key in config_keys:
-        principal_ids.update(
-            item.strip() for item in str((config or {}).get(config_key) or "").split(",") if item.strip()
-        )
-    return principal_ids
-
-
-def matches_channel_admin(
-    channel: Union[NotificationChannel, str],
-    config: Optional[dict[str, Any]],
-    *principal_ids: Optional[Union[str, int]],
-) -> bool:
-    """
-    按渠道配置中的稳定主体 ID 判断管理员身份。
-
-    :param channel: 消息渠道
-    :param config: 当前消息渠道配置
-    :param principal_ids: 消息渠道提供的稳定用户主体 ID
-    :return: 任一用户主体 ID 命中渠道注册的管理员集合时返回 True
-    """
-    channel_value = channel.value if isinstance(channel, NotificationChannel) else str(channel)
-    resolver = _CHANNEL_ADMIN_RESOLVERS.get(channel_value)
-    if not resolver:
-        return False
-    authorized_ids = {
-        str(principal_id).strip()
-        for principal_id in resolver(config)
-        if principal_id is not None and str(principal_id).strip()
-    }
-    if not authorized_ids:
-        return False
-    candidates = {
-        str(principal_id).strip()
-        for principal_id in principal_ids
-        if principal_id is not None and str(principal_id).strip()
-    }
-    return bool(authorized_ids.intersection(candidates))
 
 
 def normalize_web_agent_button_rows(buttons: Optional[list[list[dict[str, Any]]]]) -> list[list[dict[str, Any]]]:

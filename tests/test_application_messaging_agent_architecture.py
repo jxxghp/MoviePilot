@@ -8,6 +8,7 @@ PROJECT_ROOT = Path(__file__).parents[1]
 MESSAGING_ROOT = PROJECT_ROOT / "app" / "application" / "messaging"
 AGENT_FACADE_PATH = MESSAGING_ROOT / "agent.py"
 AGENT_INTERACTION_PATH = MESSAGING_ROOT / "agent_interaction.py"
+CHANNEL_ADMIN_PATH = MESSAGING_ROOT / "channel_admin.py"
 
 
 def _top_level_owners(path: Path) -> set[str]:
@@ -39,3 +40,21 @@ def test_agent_interaction_has_one_canonical_owner() -> None:
     assert names.isdisjoint(_top_level_owners(AGENT_FACADE_PATH))
     for name in names | {"agent_interaction_manager"}:
         assert getattr(facade, name) is getattr(interaction, name)
+
+
+def test_channel_admin_has_one_canonical_owner() -> None:
+    """渠道管理员匹配只能在权限模块实现，旧 Agent 入口保留兼容导出。"""
+    names = {
+        "matches_channel_admin",
+        "register_channel_admin_resolver",
+        "resolve_config_principal_ids",
+    }
+    facade = importlib.import_module("app.application.messaging.agent")
+    channel_admin = importlib.import_module(
+        "app.application.messaging.channel_admin"
+    )
+
+    assert names <= _top_level_owners(CHANNEL_ADMIN_PATH)
+    assert names.isdisjoint(_top_level_owners(AGENT_FACADE_PATH))
+    for name in names:
+        assert getattr(facade, name) is getattr(channel_admin, name)
