@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import threading
+import sys
 from copy import deepcopy
 from pathlib import Path
 from time import monotonic as _system_monotonic
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Tuple, Union, cast
 
+from app.application.transfer.projection import (
+    domain_to_dict as _domain_to_dict,
+    transfer_task_meta as _transfer_task_meta,
+)
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metabase import MetaBase
@@ -29,19 +34,14 @@ if TYPE_CHECKING:
 
 def monotonic() -> float:
     """读取旧 workflow 暴露的可替换时钟入口，保持失活检测注入兼容。"""
-    from app.application.transfer import workflow
-
-    return workflow.monotonic() if workflow.monotonic is not monotonic else _system_monotonic()
+    workflow = sys.modules.get("app.application.transfer.workflow")
+    legacy_clock = getattr(workflow, "monotonic", None)
+    if callable(legacy_clock) and legacy_clock is not monotonic:
+        return legacy_clock()
+    return _system_monotonic()
 
 JobId = tuple[object, ...]
 FileKey = tuple[str, str]
-
-
-class _DictionarySerializable(Protocol):
-    """描述领域对象沿用的字典投影能力。"""
-
-    def to_dict(self) -> dict[str, Any]:
-        """返回领域对象的字典投影。"""
 
 
 class DirectorySize(Protocol):
@@ -59,11 +59,6 @@ def configure_directory_size(reader: Optional[DirectorySize]) -> None:
     """由启动组合根注入或清除本地目录大小适配器。"""
     global _directory_size
     _directory_size = reader
-
-
-def _domain_to_dict(value: object) -> dict[str, Any]:
-    """按领域对象既有 ``to_dict`` 合同生成字典投影。"""
-    return cast(_DictionarySerializable, value).to_dict()
 
 
 def _job_tasks(job: TransferJob) -> list[TransferJobTask]:
@@ -86,11 +81,6 @@ def _job_task_size(task: TransferJobTask) -> int:
             raise RuntimeError("本地目录大小能力尚未由启动组合根配置")
         return _directory_size.get_directory_size(Path(cast(str, fileitem.path)))
     return 0
-
-
-def _transfer_task_meta(task: "TransferTask") -> MetaBase:
-    """声明进入作业管理器的整理任务已经完成元数据解析。"""
-    return cast(MetaBase, task.meta)
 
 
 job_lock = threading.Lock()

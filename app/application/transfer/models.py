@@ -13,7 +13,10 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from app.application.history import DownloadHistorySnapshot
 from app.application.transfer import checkpoint as checkpoint_codec
 from app.application.transfer.execution import TransferExecutionCheckpoint
-from app.application.transfer.jobs import _domain_to_dict, _transfer_task_meta
+from app.application.transfer.projection import (
+    domain_to_dict as _domain_to_dict,
+    transfer_task_meta as _transfer_task_meta,
+)
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -866,5 +869,4 @@ class TransferAdmissionRepository(Protocol):
     def abandon_unstarted(self, *, task_id: str, lease_token: str) -> int:
         """仅允许当前 lease owner 删除确认未开始且源已消失的登记。"""
         ...
-
 

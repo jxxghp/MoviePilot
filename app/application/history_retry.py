@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import Any, Dict, Optional
 
 from app.application.configuration import TransferRetryConfig, get_transfer_retry_config
+from app.application.history_contracts import (
+    TransferHistoryQueryPort,
+    TransferHistorySnapshot,
+    get_transfer_history_repository,
+)
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
-
-if TYPE_CHECKING:
-    from app.application.history import TransferHistoryQueryPort, TransferHistorySnapshot
 
 
 # 失败重试次数的合法区间，避免瞬时故障永久漏件或永久失败反复刷通知。
@@ -249,9 +251,6 @@ def resolve_history(
     transfer_history_oper: Optional[TransferHistoryQueryPort] = None,
 ) -> Optional[TransferHistorySnapshot]:
     """查询源路径对应的整理记录，并优先返回成功记录。"""
-    # 延迟导入避免查重策略模块与历史仓储契约之间形成初始化环。
-    from app.application.history import get_transfer_history_repository
-
     repository = transfer_history_oper or get_transfer_history_repository()
     history = repository.get_by_src(src_path, storage=storage)
     if history is not None and not history.status:
