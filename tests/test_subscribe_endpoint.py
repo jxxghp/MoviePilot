@@ -598,6 +598,88 @@ class TestSubscribeEndpoint:
         assert result.id is None
         repository.async_list_by_title.assert_not_awaited()
 
+    def test_subscribe_media_identity_falls_back_to_video_metadata(self):
+        """豆瓣身份未命中时，电影应按类型、标题和年份匹配已有订阅。"""
+        from app.api.endpoints.subscribe import subscribe_media_identity
+
+        other_year = _EndpointSubscribe(
+            id=31,
+            username="alice",
+            name="跨来源电影",
+            year="2024",
+            type=MediaType.MOVIE.value,
+            media_source=MediaSource.TMDB,
+            media_id="tmdb-2024",
+        )
+        matched = _EndpointSubscribe(
+            id=32,
+            username="alice",
+            name="跨来源电影",
+            year="2025",
+            type=MediaType.MOVIE.value,
+            media_source=MediaSource.TMDB,
+            media_id="tmdb-2025",
+        )
+        inaccessible_exact = _EndpointSubscribe(
+            id=30,
+            username="bob",
+            name="跨来源电影",
+            year="2025",
+            type=MediaType.MOVIE.value,
+            media_source=MediaSource.Douban,
+            media_id="douban-2025",
+        )
+        repository = _SubscriptionRepositoryFake(inaccessible_exact, other_year, matched)
+
+        result = asyncio.run(
+            subscribe_media_identity(
+                media_id="douban-2025",
+                media_source=MediaSource.Douban,
+                title="跨来源电影",
+                year="2025",
+                mtype=MediaType.MOVIE,
+                query=_subscription_query(repository),
+                current_user=_EndpointUser(name="alice", is_superuser=False),
+            )
+        )
+
+        assert result.id == 32
+        repository.async_list_by_title.assert_awaited_once_with(
+            title="跨来源电影",
+            season=None,
+        )
+
+    def test_subscribe_media_identity_keeps_tmdb_lookup_strict(self):
+        """TMDB 身份可用时不得退化为同名年份查询。"""
+        from app.api.endpoints.subscribe import subscribe_media_identity
+
+        repository = _SubscriptionRepositoryFake(
+            _EndpointSubscribe(
+                id=33,
+                username="alice",
+                name="同名电影",
+                year="2025",
+                type=MediaType.MOVIE.value,
+                media_source=MediaSource.Douban,
+                media_id="douban-same-title",
+            )
+        )
+
+        result = asyncio.run(
+            subscribe_media_identity(
+                media_id="missing-tmdb",
+                media_source=MediaSource.TMDB,
+                title="同名电影",
+                year="2025",
+                mtype=MediaType.MOVIE,
+                query=_subscription_query(repository),
+                current_user=_EndpointUser(name="alice", is_superuser=False),
+            )
+        )
+
+        assert result.id is None
+        repository.async_list_by_title.assert_not_awaited()
+
     def test_delete_subscribe_by_media_identity_deletes_owner_candidate(self):
         """
         按媒体删除端点应把媒体身份和当前用户交给应用命令。

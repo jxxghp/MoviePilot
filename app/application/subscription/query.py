@@ -123,6 +123,31 @@ class SubscriptionQueryService:
             if self._matches_music_type(record, music_type)
         ]
 
+    async def list_by_video_metadata(
+        self,
+        *,
+        title: str,
+        year: str,
+        media_type: MediaType,
+        season: Optional[int] = None,
+    ) -> list[SubscribeView]:
+        """按影视类型、规范标题、年份和可选季号读取跨来源订阅。"""
+        if self._async_repository is None:
+            raise RuntimeError("异步订阅查询端口未注册")
+        if media_type not in (MediaType.MOVIE, MediaType.TV):
+            return []
+        records = await self._async_repository.async_list_by_title(
+            title=title,
+            season=season,
+        )
+        expected_year = str(year).strip()
+        return [
+            self._to_public_view(record)
+            for record in records
+            if record.type == media_type.value
+            and str(record.year or "").strip() == expected_year
+        ]
+
     async def list_history(
         self,
         mtype: str,
