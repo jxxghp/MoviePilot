@@ -814,7 +814,7 @@ mechanics. Every schema change requires an Alembic migration under
 
 Oper classes take and return persistence values, not domain objects. Translating
 `MediaInfo` / `MetaBase` into a row is business logic and belongs in
-`app/application/` — see `application/subscription/write.py` and `application/history.py`
+`app/application/` — see `application/subscription/write.py` and `application/history/`
 for the two write paths. Column-type coercion (numeric year to string, boolean
 switches to integers) stays in the Oper because it follows the column, not the
 caller.

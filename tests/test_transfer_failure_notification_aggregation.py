@@ -10,7 +10,7 @@ from app.application.transfer.workflow import (
     TransferTask,
     build_transfer_failure_group_key,
 )
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.config import ConfigModel
@@ -268,7 +268,7 @@ def test_aggregator_close_observes_flush_callback_error():
         loop=loop,
     )
 
-    with patch("app.application.transfer.workflow.logger.error") as log_error:
+    with patch("app.application.transfer.notifications.logger.error") as log_error:
         aggregator.close()
 
     callback.assert_called_once_with([notice])

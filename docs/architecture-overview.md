@@ -453,7 +453,7 @@ flowchart LR
 ```
 
 - Oper 只接收和返回持久化值；`MediaInfo` / `MetaBase` 与数据库行之间的转换属于业务逻辑，
-  归 `app/application/`（见 `application/subscription/write.py`、`application/history.py`）。
+  归 `app/application/`（见 `application/subscription/write.py`、`application/history/`）。
   订阅新增、查询、变更、删除、身份和搜索契约已经统一收口在 `application/subscription/`，
   不再保留主题包之外的第二个写入入口。
 - 规范写入口中的 Oper 只 stage mutation，不创建独立 Session、不提交；Application Command
@@ -761,7 +761,7 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 1025 |
-| 内部导入边 | 8,733 |
+| 内部导入边 | 8,829 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |

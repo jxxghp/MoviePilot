@@ -37,7 +37,7 @@ def test_legacy_transfer_history_oper_preserves_exact_write_abi() -> None:
 
     assert public_methods == {"add_success", "add_fail", "add_force"}
     assert str(inspect.signature(oper_type.add_force)) == (
-        "(self, **kwargs) -> app.application.history.TransferHistorySnapshot | None"
+        "(self, **kwargs) -> app.application.history.contracts.TransferHistorySnapshot | None"
     )
     assert str(inspect.signature(oper_type.add_success)) == (
         "(self, fileitem: app.schemas.file.FileItem, mode: str, "

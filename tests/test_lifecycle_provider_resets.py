@@ -479,9 +479,9 @@ def test_outbox_dispatcher_reset_contract() -> None:
 
 def test_transfer_history_repository_reset_contract() -> None:
     """整理历史仓储 factory 撤销后不再暴露旧 lifespan 仓储。"""
-    from app.application import history as history_module
+    from app.application.history import contracts as history_contracts
 
-    previous = history_module._configured_transfer_history_repository
+    previous = history_contracts._configured_transfer_history_repository
     first = object()
     second = object()
     try:
