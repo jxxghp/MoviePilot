@@ -1,6 +1,6 @@
 """整理任务失活收敛行为测试。"""
 
-from app.application.transfer import workflow as app_transfer
+from app.application.transfer import jobs as app_transfer_jobs
 from app.application.transfer.workflow import JobManager, TransferTask
 from app.domain.meta.metabase import MetaBase
 from app.schemas.file import FileItem
@@ -73,7 +73,7 @@ def _make_task(name: str = "Test.Show.S01E01.mkv") -> TransferTask:
 def test_external_running_task_expires_without_heartbeat(monkeypatch):
     """外部接管的运行中任务超过心跳期限后应被标记失败并清理。"""
     clock = [100.0]
-    monkeypatch.setattr(app_transfer, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(app_transfer_jobs, "monotonic", lambda: clock[0])
     manager = JobManager()
     task = _make_task()
     assert manager.add_task(task)
@@ -89,7 +89,7 @@ def test_external_running_task_expires_without_heartbeat(monkeypatch):
 def test_main_thread_execution_is_not_expired(monkeypatch):
     """主程序整理线程仍在执行的任务不应被失活检测伪清理。"""
     clock = [100.0]
-    monkeypatch.setattr(app_transfer, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(app_transfer_jobs, "monotonic", lambda: clock[0])
     manager = JobManager()
     task = _make_task()
     assert manager.add_task(task)
@@ -109,7 +109,7 @@ def test_main_thread_execution_is_not_expired(monkeypatch):
 def test_waiting_task_and_refreshed_heartbeat_do_not_expire(monkeypatch):
     """等待中任务不受失活期限影响，重复运行状态更新可刷新外部心跳。"""
     clock = [100.0]
-    monkeypatch.setattr(app_transfer, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(app_transfer_jobs, "monotonic", lambda: clock[0])
     manager = JobManager()
     waiting_task = _make_task("Test.Show.S01E01.waiting.mkv")
     running_task = _make_task("Test.Show.S01E02.running.mkv")

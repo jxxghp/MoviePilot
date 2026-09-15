@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 import threading
 from copy import deepcopy
 from pathlib import Path
@@ -35,11 +34,7 @@ if TYPE_CHECKING:
 
 
 def monotonic() -> float:
-    """读取旧 workflow 暴露的可替换时钟入口，保持失活检测注入兼容。"""
-    workflow = sys.modules.get("app.application.transfer.workflow")
-    legacy_clock = getattr(workflow, "monotonic", None)
-    if callable(legacy_clock) and legacy_clock is not monotonic:
-        return cast(float, legacy_clock())
+    """读取整理作业失活检测使用的单调时钟。"""
     return _system_monotonic()
 
 JobId = tuple[object, ...]
