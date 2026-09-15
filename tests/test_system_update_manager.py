@@ -1,11 +1,13 @@
 """系统后台更新状态机测试。"""
 
+from contextlib import nullcontext
 import errno
 import json
 import threading
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -149,6 +151,46 @@ def test_check_logs_when_application_is_current(monkeypatch, tmp_path):
     assert status.state == "idle"
     assert status.can_update is False
     assert logs == ["MoviePilot 主程序已是最新版本：v3.0.0"]
+
+
+def test_public_download_request_omits_github_authorization(monkeypatch, tmp_path):
+    """公开归档下载不得复用 GitHub API 的认证请求头。"""
+    manager = _manager(monkeypatch, tmp_path)
+    settings = {
+        "TEMP_PATH": tmp_path,
+        "PROXY": {"https": "http://proxy.example:7890"},
+        "GITHUB_HEADERS": {"Authorization": "Bearer github-token"},
+    }
+    monkeypatch.setattr(update_module, "get_runtime_setting", settings.__getitem__)
+    request_utils = Mock()
+    request_utils.return_value.get_stream.return_value = nullcontext(
+        SimpleNamespace(
+            status_code=200,
+            headers={"content-length": "7"},
+            iter_content=lambda **_kwargs: [b"archive"],
+        )
+    )
+    monkeypatch.setattr(update_module, "RequestUtils", request_utils)
+
+    manager._request()
+    destination = tmp_path / "backend.zip"
+    downloaded, content_length = manager._download_file(
+        "https://github.com/jxxghp/MoviePilot/archive/refs/tags/v3.0.2.zip",
+        destination,
+        0,
+        0,
+    )
+
+    assert request_utils.call_args_list == [
+        call(
+            proxies=settings["PROXY"],
+            headers=settings["GITHUB_HEADERS"],
+            timeout=60,
+        ),
+        call(proxies=settings["PROXY"], timeout=60),
+    ]
+    assert downloaded == content_length == 7
+    assert destination.read_bytes() == b"archive"
 
 
 def test_scheduled_check_failure_stays_silent(monkeypatch, tmp_path):
@@ -433,6 +475,7 @@ def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugin
     (plugin_dir / "__init__.py").write_text("# compatibility\n", encoding="utf-8")
     (plugin_dir / "local_plugin.py").write_text("local\n", encoding="utf-8")
     (resource_dir / "user.sites.v3.bin").write_text("old-resource\n", encoding="utf-8")
+    (resource_dir / "legacy.py").write_text("old-source\n", encoding="utf-8")
     (app_dir / "old.py").write_text("old\n", encoding="utf-8")
     (app_dir / "pyproject.toml").write_text("old-project\n", encoding="utf-8")
     (app_dir / "uv.lock").write_text("old-lock\n", encoding="utf-8")
@@ -447,6 +490,14 @@ def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugin
         archive.writestr("MoviePilot-v3.1.0/pyproject.toml", "[project]\n")
         archive.writestr("MoviePilot-v3.1.0/uv.lock", "version = 1\n")
         archive.writestr("MoviePilot-v3.1.0/new.py", "new\n")
+        archive.writestr(
+            "MoviePilot-v3.1.0/app/application/site/__init__.py",
+            "",
+        )
+        archive.writestr(
+            "MoviePilot-v3.1.0/app/application/site/auth.py",
+            "new-auth\n",
+        )
     with zipfile.ZipFile(manager._frontend_archive, "w") as archive:
         archive.writestr("dist/index.html", "new-front\n")
         archive.writestr("dist/version.txt", "v3.1.0\n")
@@ -482,6 +533,8 @@ def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugin
     assert not (app_dir / "old.py").exists()
     assert (app_dir / "app" / "plugins" / "local_plugin.py").exists()
     assert (resource_dir / "user.sites.v3.bin").read_text(encoding="utf-8") == "old-resource\n"
+    assert (resource_dir / "auth.py").read_text(encoding="utf-8") == "new-auth\n"
+    assert not (resource_dir / "legacy.py").exists()
     assert (public_dir / "index.html").read_text(encoding="utf-8") == "new-front\n"
     assert not manager._install_file.exists()
     assert not (manager._root / "prepared.json").exists()
