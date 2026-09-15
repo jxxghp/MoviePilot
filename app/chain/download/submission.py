@@ -532,6 +532,12 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         layout: Optional[str],
     ) -> None:
         """按普通下载合同结算下载器明确返回的成功结果。"""
+        # 下载器中已存在相同 Hash 时下载器会沿用原保存目录，须以实际目录记录
+        download_dir = self._resolve_actual_download_dir(
+            downloader=actual_downloader,
+            download_hash=download_hash,
+            fallback=prepared.download_dir,
+        )
         self._settle_download_success(
             context=context,
             media=prepared.media,
@@ -539,7 +545,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             torrent=prepared.torrent,
             folder_name=prepared.folder_name,
             file_list=prepared.file_list,
-            download_dir=prepared.download_dir,
+            download_dir=download_dir,
             layout=layout,
             downloader=actual_downloader,
             download_hash=download_hash,
@@ -552,6 +558,50 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             torrent_content=prepared.torrent_content,
             custom_words=custom_words,
         )
+
+    def _resolve_actual_download_dir(
+        self,
+        *,
+        downloader: Optional[str],
+        download_hash: str,
+        fallback: Path,
+    ) -> Path:
+        """
+        获取下载器中该任务的真实保存目录，作为下载历史与文件明细的落库路径。
+
+        下载器中已存在相同 Hash 的任务时（例如刷流插件先下载），下载器会沿用
+        其原有保存目录；此时按预期下载目录记录会得到磁盘上不存在的路径，后续
+        整理与手动整理都无法关联该文件。仅本地绝对路径需要回读，远程存储的
+        目录由对应存储协议自身管理，保持原值不变。
+        """
+        if not download_hash or not fallback.is_absolute():
+            return fallback
+        try:
+            torrents = self.list_torrents(hashs=[download_hash], downloader=downloader)
+        except Exception as err:
+            logger.debug(f"查询下载任务实际保存目录失败：{str(err)}")
+            return fallback
+        if not torrents:
+            return fallback
+        torrent = next(
+            (
+                item for item in torrents
+                if str(getattr(item, "hash", "")) == str(download_hash)
+            ),
+            torrents[0],
+        )
+        save_path = getattr(torrent, "save_path", None)
+        if not save_path:
+            return fallback
+        actual_dir = Path(str(save_path))
+        if not actual_dir.is_absolute():
+            return fallback
+        if actual_dir != fallback:
+            logger.warn(
+                f"下载器中已存在该任务，实际保存目录 {actual_dir.as_posix()} 与预期 "
+                f"{fallback.as_posix()} 不一致，按实际目录记录下载历史"
+            )
+        return actual_dir
 
     def _record_rejected_download(
         self,
