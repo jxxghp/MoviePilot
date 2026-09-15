@@ -3,11 +3,100 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from threading import Lock
-from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 from app.schemas.message import Message
 from app.schemas.notification import ChannelCapabilityManager
 from app.schemas.types import NotificationChannel
+
+
+class _UserInteractionEntry(Protocol):
+    """声明按用户维护的交互状态所需的最小字段。"""
+
+    request_id: str
+    user_id: str
+    created_at: datetime
+
+
+InteractionEntryT = TypeVar("InteractionEntryT", bound=_UserInteractionEntry)
+
+
+class _ExpiringUserInteractionStore(Generic[InteractionEntryT]):
+    """提供单用户单会话的过期状态存储和双向索引。"""
+
+    _ttl = timedelta(hours=24)
+
+    def __init__(self) -> None:
+        """初始化按请求 ID、用户 ID 查询的线程安全状态表。"""
+        self._by_id: Dict[str, InteractionEntryT] = {}
+        self._by_user: Dict[str, str] = {}
+        self._lock = Lock()
+
+    def _cleanup_locked(self) -> None:
+        """在持锁状态下移除超过统一保留时间的交互状态。"""
+        expire_before = datetime.now() - self._ttl
+        expired = [
+            request_id
+            for request_id, request in self._by_id.items()
+            if request.created_at < expire_before
+        ]
+        for request_id in expired:
+            request = self._by_id.pop(request_id, None)
+            if request:
+                self._by_user.pop(str(request.user_id), None)
+
+    def _replace_locked(self, request: InteractionEntryT) -> None:
+        """在持锁状态下替换用户旧状态并写入新的双向索引。"""
+        user_key = str(request.user_id)
+        old_request_id = self._by_user.get(user_key)
+        if old_request_id:
+            self._by_id.pop(old_request_id, None)
+        self._by_id[request.request_id] = request
+        self._by_user[user_key] = request.request_id
+
+    def get_by_user(self, user_id: Union[str, int]) -> Optional[InteractionEntryT]:
+        """按用户返回当前仍有效的交互状态。"""
+        with self._lock:
+            self._cleanup_locked()
+            request_id = self._by_user.get(str(user_id))
+            if not request_id:
+                return None
+            return self._by_id.get(request_id)
+
+    def get_by_id(
+            self, request_id: str, user_id: Union[str, int]
+    ) -> Optional[InteractionEntryT]:
+        """按请求 ID 查询状态，并校验请求属于当前用户。"""
+        with self._lock:
+            self._cleanup_locked()
+            request = self._by_id.get(request_id)
+            if not request or str(request.user_id) != str(user_id):
+                return None
+            return request
+
+    def remove(self, request_id: str) -> None:
+        """删除指定交互状态及其用户索引。"""
+        with self._lock:
+            request = self._by_id.pop(request_id, None)
+            if request:
+                self._by_user.pop(str(request.user_id), None)
+
+    def clear(self) -> None:
+        """清空全部交互状态，供生命周期结束和测试场景使用。"""
+        with self._lock:
+            self._by_id.clear()
+            self._by_user.clear()
 
 
 @dataclass
@@ -27,31 +116,12 @@ class PendingSlashInteraction:
     created_at: datetime = field(default_factory=datetime.now)
 
 
-class SlashInteractionManager:
+class SlashInteractionManager(
+        _ExpiringUserInteractionStore[PendingSlashInteraction]
+):
     """
     管理单个 slash 命令的交互会话。
     """
-
-    _ttl = timedelta(hours=24)
-
-    def __init__(self) -> None:
-        """初始化按请求和用户索引的 slash 会话表。"""
-        self._by_id: Dict[str, PendingSlashInteraction] = {}
-        self._by_user: Dict[str, str] = {}
-        self._lock = Lock()
-
-    def _cleanup_locked(self) -> None:
-        """在持锁状态下移除过期 slash 会话。"""
-        expire_before = datetime.now() - self._ttl
-        expired = [
-            request_id
-            for request_id, request in self._by_id.items()
-            if request.created_at < expire_before
-        ]
-        for request_id in expired:
-            request = self._by_id.pop(request_id, None)
-            if request:
-                self._by_user.pop(str(request.user_id), None)
 
     def create_or_replace(
             self,
@@ -65,9 +135,6 @@ class SlashInteractionManager:
         with self._lock:
             self._cleanup_locked()
             user_key = str(user_id)
-            old_request_id = self._by_user.get(user_key)
-            if old_request_id:
-                self._by_id.pop(old_request_id, None)
             request = PendingSlashInteraction(
                 request_id=uuid.uuid4().hex[:12],
                 user_id=user_key,
@@ -76,44 +143,8 @@ class SlashInteractionManager:
                 source=source,
                 username=username,
             )
-            self._by_id[request.request_id] = request
-            self._by_user[user_key] = request.request_id
+            self._replace_locked(request)
             return request
-
-    def get_by_user(
-            self, user_id: Union[str, int]
-    ) -> Optional[PendingSlashInteraction]:
-        """按用户返回仍有效的 slash 会话。"""
-        with self._lock:
-            self._cleanup_locked()
-            request_id = self._by_user.get(str(user_id))
-            if not request_id:
-                return None
-            return self._by_id.get(request_id)
-
-    def get_by_id(
-            self, request_id: str, user_id: Union[str, int]
-    ) -> Optional[PendingSlashInteraction]:
-        """按请求 ID 和用户联合校验 slash 会话。"""
-        with self._lock:
-            self._cleanup_locked()
-            request = self._by_id.get(request_id)
-            if not request or str(request.user_id) != str(user_id):
-                return None
-            return request
-
-    def remove(self, request_id: str) -> None:
-        """删除指定 slash 会话及其用户索引。"""
-        with self._lock:
-            request = self._by_id.pop(request_id, None)
-            if request:
-                self._by_user.pop(str(request.user_id), None)
-
-    def clear(self) -> None:
-        """清空全部 slash 会话。"""
-        with self._lock:
-            self._by_id.clear()
-            self._by_user.clear()
 
 
 @dataclass(frozen=True, slots=True)
