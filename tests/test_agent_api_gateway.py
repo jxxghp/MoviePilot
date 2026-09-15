@@ -194,6 +194,16 @@ def test_mcp_tools_list_preserves_all_moviepilot_api_operation_branches() -> Non
     assert operation_ids == set(API_OPERATION_ROUTES)
 
 
+def test_local_agent_tool_uses_the_same_precise_operation_schema() -> None:
+    """本地 Agent 绑定的工具 schema 至少必须提示 body 是 JSON 结构值。"""
+    tool = MoviePilotApiTool(session_id="session", user_id="api_user")
+    schema = tool.tool_call_schema
+    assert not isinstance(schema, dict)
+    body = schema.model_json_schema()["properties"]["body"]
+
+    assert body["$ref"].endswith("/JsonData")
+
+
 def test_mcp_collection_contract_distinguishes_exact_and_unavailable_totals() -> None:
     """MCP 必须说明缺省全量、精确总数和外部无总数三种集合语义。"""
     schema = MoviePilotApiTool(session_id="session", user_id="api_user").get_mcp_input_schema()

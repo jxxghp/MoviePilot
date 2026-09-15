@@ -16,6 +16,7 @@ from app.agent.policy.sanitizer import summarize_input
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.result import inspect_tool_result
 from app.agent.tools.tags import ToolTag
+from app.schemas.common import JsonData
 from app.schemas.types import NotificationChannel
 
 _TOOL_MESSAGE_OPERATION_MAX_CHARS = 96
@@ -55,11 +56,13 @@ class MoviePilotApiInput(BaseModel):  # type: ignore[misc]
         default_factory=dict,
         description="Query-string fields declared by the selected operation.",
     )
-    body: Any = Field(
+    body: JsonData = Field(
         default=None,
         description=(
             "JSON request value declared by the selected operation and its loaded Skill contract. "
-            "Most operations use an object; a oneOf branch may require an exact scalar."
+            "Most operations use an object; a oneOf branch may require an exact scalar. "
+            "Keep objects and arrays, including nested file items, as native JSON values; "
+            "never JSON-encode them into strings."
         ),
     )
 
