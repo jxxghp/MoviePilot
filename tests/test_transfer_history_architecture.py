@@ -1,11 +1,13 @@
 """整理历史类型化边界与适配器布局门禁。"""
 
 import ast
+import importlib
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
 HISTORY_APPLICATION_PATH = APP_ROOT / "application" / "history.py"
+HISTORY_CONTRACTS_APPLICATION_PATH = APP_ROOT / "application" / "history_contracts.py"
 HISTORY_RETRY_APPLICATION_PATH = APP_ROOT / "application" / "history_retry.py"
 QUERY_APPLICATION_PATH = APP_ROOT / "application" / "query.py"
 HISTORY_ADAPTER_PACKAGE = APP_ROOT / "db" / "adapters" / "history"
@@ -60,8 +62,8 @@ def _is_frozen_slotted_dataclass(node: ast.ClassDef) -> bool:
 def test_transfer_history_contract_is_typed_and_frozen() -> None:
     """整理历史必须使用冻结 DTO 和明确 Query/Write/Repository 端口。"""
     tree = ast.parse(
-        HISTORY_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
-        filename=str(HISTORY_APPLICATION_PATH),
+        HISTORY_CONTRACTS_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
+        filename=str(HISTORY_CONTRACTS_APPLICATION_PATH),
     )
     classes = {
         node.name: node
@@ -105,6 +107,35 @@ def test_transfer_history_contract_is_typed_and_frozen() -> None:
                     violations.append(f"{class_name}:{node.lineno}:{node.name}")
 
     assert violations == []
+
+
+def test_transfer_history_contract_has_one_canonical_owner() -> None:
+    """整理历史契约只能在独立模块定义，旧入口必须保留对象级兼容导出。"""
+    contract_names = {
+        "TransferHistorySnapshot",
+        "TransferHistoryWrite",
+        "TransferHistoryStatisticSnapshot",
+        "TransferHistoryMonthlyStatistics",
+        "TransferHistoryQueryPort",
+        "TransferHistoryWritePort",
+        "TransferHistoryReplacePort",
+        "TransferHistoryStagingPort",
+        "TransferHistoryRepository",
+    }
+    history_tree = ast.parse(
+        HISTORY_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
+        filename=str(HISTORY_APPLICATION_PATH),
+    )
+    facade = importlib.import_module("app.application.history")
+    contracts = importlib.import_module("app.application.history_contracts")
+
+    assert {
+        node.name
+        for node in history_tree.body
+        if isinstance(node, ast.ClassDef) and node.name in contract_names
+    } == set()
+    for name in contract_names:
+        assert getattr(facade, name) is getattr(contracts, name)
 
 
 def test_history_query_port_returns_explicit_snapshots() -> None:
