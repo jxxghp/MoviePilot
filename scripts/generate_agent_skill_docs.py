@@ -14,6 +14,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+MOVIEPILOT_API_SKILL_VERSION = "33"
+
 
 DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
     "alembic_version": (
@@ -753,6 +755,17 @@ def _sync_api_frontmatter(text: str) -> str:
     )
     if frontmatter_end is None:
         raise ValueError("moviepilot-api Skill frontmatter closing marker is missing")
+    version_index = next(
+        (
+            index
+            for index, line in enumerate(lines[:frontmatter_end])
+            if line.startswith("version:")
+        ),
+        None,
+    )
+    if version_index is None:
+        raise ValueError("moviepilot-api Skill version field is missing")
+    lines[version_index] = f"version: {MOVIEPILOT_API_SKILL_VERSION}\n"
     field_index = next(
         (
             index

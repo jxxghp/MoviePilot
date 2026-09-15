@@ -4991,6 +4991,20 @@
     "SystemSettingsUpdateRequest": {
       "description": "One registered system-setting update request.",
       "properties": {
+        "expected_revision": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional revision returned by config.system.describe or config.system.get for this exact setting. When supplied, the update is rejected if another writer changed the setting after that read. New Agent clients should always provide it.",
+          "title": "Expected Revision"
+        },
         "match_field": {
           "anyOf": [
             {
@@ -6614,6 +6628,57 @@
     },
     {
       "additionalProperties": false,
+      "description": "Read one exact system setting contract, current value, and revision. Method: GET. Path: /api/v1/system/settings/describe/{setting_key}. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "config.system.describe",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "path_params": {
+          "additionalProperties": false,
+          "description": "Resource identity placeholders for config.system.describe. Read one exact system setting contract, current value, and revision. Use only the named fields below.",
+          "properties": {
+            "setting_key": {
+              "description": "Exact registered setting key returned by config.system.get discovery.",
+              "title": "Setting Key",
+              "type": "string"
+            }
+          },
+          "required": [
+            "setting_key"
+          ],
+          "type": "object"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for config.system.describe. Read one exact system setting contract, current value, and revision. Use only the named fields below.",
+          "properties": {
+            "include_value": {
+              "default": true,
+              "description": "Return the current value in addition to the complete contract.",
+              "title": "Include Value",
+              "type": "boolean"
+            },
+            "show_secrets": {
+              "default": false,
+              "description": "Return unredacted secret values only when explicitly authorized.",
+              "title": "Show Secrets",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "path_params"
+      ],
+      "title": "config.system.describe",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
       "description": "Discover registered system settings or read one exact setting. Method: GET. Path: /api/v1/system/settings. Effect: safe_read.",
       "properties": {
         "operation_id": {
@@ -6635,7 +6700,7 @@
                 }
               ],
               "default": "all",
-              "description": "Discovery group used when setting_key is omitted. Supported groups are all, settings, systemconfig, downloaders, media_servers, notifications, notification_switches, storages, directories, search_sites, subscribe_sites, site_auth, ai_agent, filter_rules, subscribe_defaults, plugins, customization, transfer, scraping, and misc.",
+              "description": "Discovery group used when setting_key is omitted. Use config.system.list for a complete, machine-readable group index; this compatibility endpoint accepts all registered catalog groups, including settings and systemconfig.",
               "title": "Group"
             },
             "include_values": {
@@ -6671,7 +6736,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Exact setting key. Accepts Settings field names such as APP_DOMAIN or LLM_MODEL, SystemConfigKey values or enum names such as Downloaders or MediaServers, and aliases that resolve to one unique setting. Omit it to discover settings.",
+              "description": "Exact setting key. Accepts Settings field names such as APP_DOMAIN or LLM_MODEL, SystemConfigKey values or enum names such as Downloaders or MediaServers, and aliases that resolve to one unique setting. Omit it to use list-style discovery.",
               "title": "Setting Key"
             },
             "show_secrets": {
@@ -6688,6 +6753,81 @@
         "operation_id"
       ],
       "title": "config.system.get",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "List compact machine-readable contracts for registered system settings. Method: GET. Path: /api/v1/system/settings/catalog. Effect: safe_read.",
+      "properties": {
+        "operation_id": {
+          "const": "config.system.list",
+          "description": "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.",
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "description": "Filters and control values for config.system.list. List compact machine-readable contracts for registered system settings. Use only the named fields below.",
+          "properties": {
+            "group": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "all",
+              "description": "Setting contract group. Use all to list every registered setting.",
+              "title": "Group"
+            },
+            "keyword": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring matched against key, group, label, or description.",
+              "title": "Keyword"
+            },
+            "limit": {
+              "default": 100,
+              "description": "Maximum contracts to return.",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "offset": {
+              "default": 0,
+              "description": "Zero-based result offset.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional source filter: settings or systemconfig.",
+              "title": "Source"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "config.system.list",
       "type": "object"
     },
     {
@@ -13246,6 +13386,18 @@
               "$ref": "#/$defs/MediaSource",
               "description": "Metadata source identifier. Preserve the exact value returned with media_id."
             },
+            "mtype": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/MediaType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "MoviePilot media type or subscription-history category required by the operation.",
+              "title": "Mtype"
+            },
             "music_type": {
               "anyOf": [
                 {
@@ -13281,6 +13433,18 @@
               ],
               "description": "Media, torrent, subscription, or history title used by the operation.",
               "title": "Title"
+            },
+            "year": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Release or premiere year used to disambiguate the media title.",
+              "title": "Year"
             }
           },
           "required": [
@@ -16303,7 +16467,9 @@
         "config.identifiers.get",
         "config.identifiers.update",
         "config.public.get",
+        "config.system.describe",
         "config.system.get",
+        "config.system.list",
         "config.system.update",
         "config.user.get",
         "dashboard.cpu",

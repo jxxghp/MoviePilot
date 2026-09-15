@@ -31,21 +31,31 @@ class LogConfigModel(BaseModel):  # type: ignore[misc]
 
     model_config = ConfigDict(extra="ignore")
 
+    # 配置文件目录
     CONFIG_DIR: Optional[str] = None
+    # 是否启用调试日志
     DEBUG: bool = False
+    # 全局日志等级
     LOG_LEVEL: str = "INFO"
+    # 单个日志文件最大大小，单位 MB
     LOG_MAX_FILE_SIZE: int = 5
+    # 每类日志保留的滚动备份文件数量
     LOG_BACKUP_COUNT: int = 10
+    # 控制台日志格式
     LOG_CONSOLE_FORMAT: str = (
         "%(leveltext)s[%(name)s] %(asctime)s [%(correlation_id)s] %(message)s"
     )
+    # 文件日志格式
     LOG_FILE_FORMAT: str = (
         "【%(levelname)s】%(asctime)s [%(correlation_id)s] - %(message)s"
     )
+    # 异步文件日志队列容量
     ASYNC_FILE_QUEUE_SIZE: int = 1000
     # 保留历史配置解析兼容；协程环境文件日志已统一由单一有界队列 writer 执行。
     ASYNC_FILE_WORKERS: int = 2
+    # 单批文件日志最大写入条数
     BATCH_WRITE_SIZE: int = 50
+    # 日志写入等待超时时间，单位秒
     WRITE_TIMEOUT: float = 3.0
 
     @property

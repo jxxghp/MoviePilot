@@ -62,7 +62,7 @@ Purpose: Read the media-classification field catalog and source capabilities.
 `GET /api/v1/media/classification/policy`; policy effect: `safe_read`.
 Purpose: Read the active automatic media-classification policy.
 - `path_params`: none
-- `query`: none
+- `query`: `template` (string|null): Pass default to read the built-in media-classification policy template; omit it to read the active policy.
 - `body`: none
 
 ### `media.classification.policy.history`

@@ -243,6 +243,23 @@ def test_system_settings_secret_read_query_cannot_bypass_confirmation() -> None:
     assert policy.result_sensitivity is ResultSensitivity.SECRET
 
 
+def test_system_settings_describe_secret_read_has_the_same_confirmation_boundary() -> None:
+    """新的精确设置读取入口不能绕过旧入口的明文敏感值确认。"""
+    policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+        tool_name="moviepilot_api",
+        arguments={
+            "operation_id": "config.system.describe",
+            "query": {"show_secrets": True},
+        },
+        requires_admin=True,
+    )
+
+    assert policy.effect is ActionEffect.SENSITIVE_READ
+    assert policy.required_role is PrincipalRole.SYSTEM_ADMIN
+    assert policy.confirmation is ConfirmationMode.REQUIRED
+    assert policy.result_sensitivity is ResultSensitivity.SECRET
+
+
 def test_legacy_shadow_decision_allows_without_claiming_enforcement() -> None:
     """shadow 决策只能观测，不能拒绝或要求确认。"""
     context = _interactive_context()

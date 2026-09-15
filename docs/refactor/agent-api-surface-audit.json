@@ -2,7 +2,7 @@
   "disposition_counts": {
     "alternate-auth-duplicate": 11,
     "consolidated": 71,
-    "gateway": 226,
+    "gateway": 228,
     "provider-skill": 12,
     "stream_or_binary": 10,
     "transport_or_identity": 66,
@@ -18,10 +18,10 @@
       "reason": "The executor validates and expands this bounded source placeholder to one of tmdb, douban, bangumi, or anilist before calling the corresponding concrete OpenAPI route."
     }
   ],
-  "gateway_http_route_count": 227,
-  "gateway_operation_count": 229,
-  "matched_gateway_http_route_count": 226,
-  "openapi_operation_count": 409,
+  "gateway_http_route_count": 229,
+  "gateway_operation_count": 231,
+  "matched_gateway_http_route_count": 228,
+  "openapi_operation_count": 411,
   "operations": [
     {
       "disposition": "consolidated",
@@ -4573,6 +4573,34 @@
       "path": "/api/v1/system/settings",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "Update one registered system setting",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "config.system.list"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/settings/catalog",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "List system setting contracts",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "gateway",
+      "method": "GET",
+      "operation_ids": [
+        "config.system.describe"
+      ],
+      "owner": "moviepilot-api",
+      "path": "/api/v1/system/settings/describe/{setting_key}",
+      "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
+      "summary": "Describe one system setting contract",
       "tags": [
         "system"
       ]

@@ -51,6 +51,11 @@
       "reason": "工具包根只负责稳定 Tool 类型的延迟解析。"
     },
     {
+      "mode": "public_facade",
+      "path": "app/application/settings/__init__.py",
+      "reason": "设置包根通过显式懒加载清单保留 app.application.settings 的兼容导入路径，并隔离服务实现与合同模块。"
+    },
+    {
       "mode": "implementation",
       "path": "app/db/models/__init__.py",
       "reason": "load_all_models 是数据库组合根显式加载全部 ORM 映射的唯一入口。"

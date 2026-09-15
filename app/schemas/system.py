@@ -190,6 +190,16 @@ class SystemSettingsUpdateRequest(BaseModel):  # type: ignore[misc]
         default=None,
         description="Value compared against match_field. If omitted, use value[match_field]; scalar lists use value directly.",
     )
+    expected_revision: Optional[str] = Field(
+        description=(
+            "Optional revision returned by config.system.describe or config.system.get for this exact setting. "
+            "When supplied, the update is rejected if another writer changed the setting after that read. "
+            "New Agent clients should always provide it."
+        ),
+        default=None,
+        min_length=1,
+        max_length=128,
+    )
 
 
 class CustomIdentifiersUpdateRequest(BaseModel):  # type: ignore[misc]

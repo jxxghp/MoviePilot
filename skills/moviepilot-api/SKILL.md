@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 32
+version: 33
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -23,24 +23,24 @@ allowed-api-operations: >-
   slash.list config.identifiers.get config.identifiers.update search.torrents search.results
   filter.builtin filter.custom filter.groups filter.custom.add filter.custom.update
   filter.custom.delete filter.group.add filter.group.update filter.group.delete plugin.data
-  config.system.get config.system.update slash.run music.recognize music.explore music.album.get
-  music.album.related music.artist.get music.artist.albums music.artist.related music.cache.get
-  music.cache.delete music.cache.clear system.versions system.update.status system.update.check
-  system.update.download system.restart system.update.install system.upgrade.dev
-  dashboard.media.statistics dashboard.storage dashboard.processes dashboard.system
-  dashboard.downloader scheduler.progress dashboard.transfer.statistics dashboard.cpu
-  dashboard.memory dashboard.network media.sources media.recognize_file media.cache.get
-  media.cache.delete media.cache.clear media.classification.fields media.classification.policy.get
-  media.classification.policy.validate media.classification.policy.preview
-  media.classification.policy.impact media.classification.policy.history
-  media.classification.policy.update media.classification.policy.rollback media.episode_groups
-  media.episode_group.seasons media.seasons search.title search.recommend subtitle.search.title
-  subtitle.search.media site.add site.delete site.auth.options site.authenticate
-  site.cookiecloud.sync site.cookie.set site.reset site.priorities.update site.userdata.refresh
-  site.userdata.latest site.category site.resource site.searchable site.rss site.statistics
-  site.statistic site.mapping site.supporting subscription.get subscription.find
-  subscription.delete_by_media subscription.status.update subscription.reset
-  subscription.search_all subscription.refresh subscription.metadata.refresh
+  config.system.list config.system.describe config.system.get config.system.update slash.run
+  music.recognize music.explore music.album.get music.album.related music.artist.get
+  music.artist.albums music.artist.related music.cache.get music.cache.delete music.cache.clear
+  system.versions system.update.status system.update.check system.update.download system.restart
+  system.update.install system.upgrade.dev dashboard.media.statistics dashboard.storage
+  dashboard.processes dashboard.system dashboard.downloader scheduler.progress
+  dashboard.transfer.statistics dashboard.cpu dashboard.memory dashboard.network media.sources
+  media.recognize_file media.cache.get media.cache.delete media.cache.clear
+  media.classification.fields media.classification.policy.get media.classification.policy.validate
+  media.classification.policy.preview media.classification.policy.impact
+  media.classification.policy.history media.classification.policy.update
+  media.classification.policy.rollback media.episode_groups media.episode_group.seasons
+  media.seasons search.title search.recommend subtitle.search.title subtitle.search.media site.add
+  site.delete site.auth.options site.authenticate site.cookiecloud.sync site.cookie.set site.reset
+  site.priorities.update site.userdata.refresh site.userdata.latest site.category site.resource
+  site.searchable site.rss site.statistics site.statistic site.mapping site.supporting
+  subscription.get subscription.find subscription.delete_by_media subscription.status.update
+  subscription.reset subscription.search_all subscription.refresh subscription.metadata.refresh
   subscription.history.delete subscription.user.list subscription.files
   subscription.execution.list subscription.execution.get subscription.execution.cancel
   subscription.share subscription.share.delete subscription.fork subscription.follow.list

@@ -1,0 +1,1759 @@
+{
+  "schema_version": 1,
+  "settings": {
+    "ACCESS_TOKEN_EXPIRE_MINUTES": {
+      "description": "TOKEN过期时间",
+      "group": "authentication",
+      "source_file": "app/runtime/config.py",
+      "source_line": 210
+    },
+    "ACOUSTID_API_KEY": {
+      "description": "AcoustID 应用 API Key，用于查询本地音频的 Chromaprint 指纹",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 406
+    },
+    "AI_AGENT_ENABLE": {
+      "description": "AI智能体开关",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 808
+    },
+    "AI_AGENT_GLOBAL": {
+      "description": "合局AI智能体",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 810
+    },
+    "AI_AGENT_HIDE_ENTRY": {
+      "description": "是否隐藏前端全局智能体入口",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 812
+    },
+    "AI_AGENT_JOB_INTERVAL": {
+      "description": "AI智能体定时任务检查间隔（小时），0为不启用，默认24小时",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 861
+    },
+    "AI_AGENT_RETRY_TRANSFER": {
+      "description": "AI智能体自动重试整理失败记录开关",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 865
+    },
+    "AI_AGENT_VERBOSE": {
+      "description": "AI智能体啰嗦模式，开启后会回复工具调用过程",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 863
+    },
+    "AI_RECOMMEND_ENABLED": {
+      "description": "是否启用AI推荐",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 852
+    },
+    "AI_RECOMMEND_MAX_ITEMS": {
+      "description": "AI推荐条目数量限制",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 857
+    },
+    "AI_RECOMMEND_USER_PREFERENCE": {
+      "description": "AI推荐用户偏好",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 854
+    },
+    "ALIPAN_APP_ID": {
+      "description": "Alipan AppId",
+      "group": "cloud_storage",
+      "source_file": "app/runtime/config.py",
+      "source_line": 444
+    },
+    "ALIPAN_SNAPSHOT_CHECK_FOLDER_MODTIME": {
+      "description": "对阿里云盘进行快照对比时，是否检查文件夹的修改时间（默认关闭，因为阿里云盘目录时间不随子文件变更而更新）",
+      "group": "storage",
+      "source_file": "app/runtime/config.py",
+      "source_line": 801
+    },
+    "ALLOWED_HOSTS": {
+      "description": "允许的域名",
+      "group": "authentication",
+      "source_file": "app/runtime/config.py",
+      "source_line": 208
+    },
+    "AMLL_BASE_URL": {
+      "description": "AMLL TTML 歌词 API 地址，可指向兼容原生接口的自建实例",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 418
+    },
+    "ANIME_GENREIDS": {
+      "description": "电视剧动漫的分类genre_ids",
+      "group": "media_metadata",
+      "source_file": "app/runtime/config.py",
+      "source_line": 378
+    },
+    "API_TOKEN": {
+      "description": "API密钥，需要更换",
+      "group": "authentication",
+      "source_file": "app/runtime/config.py",
+      "source_line": 220
+    },
+    "API_V1_STR": {
+      "description": "API路径",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 181
+    },
+    "API_WORKERS": {
+      "description": "API 服务的 worker 进程数。连接池是进程级的，每个 worker 各持一份， 数据库连接额度校验按它换算总用量。注意：当前主程序以单进程方式启动 （uvicorn.Config 的 workers 仅在多进程 supervisor 路径下生效）， 调大此项前需先解决调度器会在每个 worker 内重复执行的问题",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 232
+    },
+    "APP_DOMAIN": {
+      "description": "域名 格式；https://movie-pilot.org",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 179
+    },
+    "ASYNC_FILE_QUEUE_SIZE": {
+      "description": "异步文件日志队列容量",
+      "group": "logging",
+      "source_file": "app/runtime/log.py",
+      "source_line": 53
+    },
+    "ASYNC_FILE_WORKERS": {
+      "description": "保留历史配置解析兼容；协程环境文件日志已统一由单一有界队列 writer 执行。",
+      "group": "logging",
+      "source_file": "app/runtime/log.py",
+      "source_line": 55
+    },
+    "AUDIO_INPUT_API_KEY": {
+      "description": "音频输入 API 密钥",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 872
+    },
+    "AUDIO_INPUT_BASE_URL": {
+      "description": "音频输入基础URL",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 874
+    },
+    "AUDIO_INPUT_LANGUAGE": {
+      "description": "音频输入识别语言",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 878
+    },
+    "AUDIO_INPUT_MODEL": {
+      "description": "音频输入模型",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 876
+    },
+    "AUDIO_INPUT_PROVIDER": {
+      "description": "音频输入提供商：openai/openai_chat_audio/mimo/minimax",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 870
+    },
+    "AUDIO_OUTPUT_API_KEY": {
+      "description": "音频输出 API 密钥",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 882
+    },
+    "AUDIO_OUTPUT_BASE_URL": {
+      "description": "音频输出基础URL",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 884
+    },
+    "AUDIO_OUTPUT_INCLUDE_TEXT": {
+      "description": "回复语音时是否同时附带文字说明",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 890
+    },
+    "AUDIO_OUTPUT_MODEL": {
+      "description": "音频输出模型",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 886
+    },
+    "AUDIO_OUTPUT_PROVIDER": {
+      "description": "音频输出提供商：openai/openai_chat_audio/mimo/minimax",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 880
+    },
+    "AUDIO_OUTPUT_VOICE": {
+      "description": "音频输出音色/发音人",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 888
+    },
+    "AUTH_SITE": {
+      "description": "用户认证站点",
+      "group": "authentication",
+      "source_file": "app/runtime/config.py",
+      "source_line": 225
+    },
+    "AUTO_DOWNLOAD_USER": {
+      "description": "交互搜索自动下载用户ID，使用,分割",
+      "group": "downloads",
+      "source_file": "app/runtime/config.py",
+      "source_line": 583
+    },
+    "AUTO_UPDATE_RESOURCE": {
+      "description": "后台检查站点资源包，确认后由启动器在进程拉起前应用",
+      "group": "system_update",
+      "source_file": "app/runtime/config.py",
+      "source_line": 461
+    },
+    "AUXILIARY_AUTH_ENABLE": {
+      "description": "辅助认证，允许通过外部服务进行认证、单点登录以及自动创建用户",
+      "group": "authentication",
+      "source_file": "app/runtime/config.py",
+      "source_line": 218
+    },
+    "BANGUMI_API_DOMAIN": {
+      "description": "Bangumi API代理地址，留空使用官方地址",
+      "group": "bangumi",
+      "source_file": "app/runtime/config.py",
+      "source_line": 398
+    },
+    "BANGUMI_IMAGE_DOMAIN": {
+      "description": "Bangumi图片代理地址，留空时由后端代理端点直接拉取原始图片",
+      "group": "bangumi",
+      "source_file": "app/runtime/config.py",
+      "source_line": 400
+    },
+    "BANGUMI_PROXY_ENABLE": {
+      "description": "是否启用 Bangumi 数据与图片代理",
+      "group": "bangumi",
+      "source_file": "app/runtime/config.py",
+      "source_line": 396
+    },
+    "BATCH_WRITE_SIZE": {
+      "description": "单批文件日志最大写入条数",
+      "group": "logging",
+      "source_file": "app/runtime/log.py",
+      "source_line": 57
+    },
+    "BIG_MEMORY_MODE": {
+      "description": "大内存模式",
+      "group": "performance",
+      "source_file": "app/runtime/config.py",
+      "source_line": 742
+    },
+    "BROWSER_EMULATION": {
+      "description": "仿真类型：cloakbrowser 或 flaresolverr，其他值按 cloakbrowser 处理",
+      "group": "sites",
+      "source_file": "app/runtime/config.py",
+      "source_line": 561
+    },
+    "BTRFS_FSID_DEDUP": {
+      "description": "是否启用 Btrfs FSID 子卷容量去重（仅 Linux amd64/arm64）",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 197
+    },
+    "CACHE_BACKEND_TYPE": {
+      "description": "缓存类型，支持 cachetools 和 redis，默认使用 cachetools",
+      "group": "cache",
+      "source_file": "app/runtime/config.py",
+      "source_line": 327
+    },
+    "CACHE_BACKEND_URL": {
+      "description": "缓存连接字符串，仅外部缓存（如 Redis、Memcached）需要，支持 Redis Unix Socket URL",
+      "group": "cache",
+      "source_file": "app/runtime/config.py",
+      "source_line": 329
+    },
+    "CACHE_REDIS_MAXMEMORY": {
+      "description": "Redis 缓存最大内存限制，未配置时，如开启大内存模式时为 \"1024mb\"，未开启时为 \"256mb\"",
+      "group": "cache",
+      "source_file": "app/runtime/config.py",
+      "source_line": 331
+    },
+    "CACHE_REDIS_MAX_CONNECTIONS": {
+      "description": "Redis 连接池最大连接数",
+      "group": "cache",
+      "source_file": "app/runtime/config.py",
+      "source_line": 333
+    },
+    "CACHE_REDIS_POOL_TIMEOUT": {
+      "description": "Redis 连接池耗尽时等待可用连接的时间（秒）",
+      "group": "cache",
+      "source_file": "app/runtime/config.py",
+      "source_line": 335
+    },
+    "CLOAKBROWSER_HUMANIZE": {
+      "description": "CloakBrowser 是否启用拟人化输入",
+      "group": "sites",
+      "source_file": "app/runtime/config.py",
+      "source_line": 563
+    },
+    "CLOAKBROWSER_HUMAN_PRESET": {
+      "description": "CloakBrowser 拟人化输入预设：default 或 careful",
+      "group": "sites",
+      "source_file": "app/runtime/config.py",
+      "source_line": 565
+    },
+    "CONFIG_DIR": {
+      "description": "配置文件目录",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 193
+    },
+    "COOKIECLOUD_AUTH_HEADER": {
+      "description": "CookieCloud本地上传接口的X-CookieCloud-Auth期望值，留空表示不校验",
+      "group": "cookiecloud",
+      "source_file": "app/runtime/config.py",
+      "source_line": 610
+    },
+    "COOKIECLOUD_BLACKLIST": {
+      "description": "CookieCloud同步黑名单，多个域名,分割",
+      "group": "cookiecloud",
+      "source_file": "app/runtime/config.py",
+      "source_line": 614
+    },
+    "COOKIECLOUD_ENABLE_LOCAL": {
+      "description": "CookieCloud是否启动本地服务",
+      "group": "cookiecloud",
+      "source_file": "app/runtime/config.py",
+      "source_line": 602
+    },
+    "COOKIECLOUD_HOST": {
+      "description": "CookieCloud服务器地址",
+      "group": "cookiecloud",
+      "source_file": "app/runtime/config.py",
+      "source_line": 604
+    },
+    "COOKIECLOUD_INTERVAL": {
+      "description": "CookieCloud同步间隔（分钟）",
+      "group": "cookiecloud",
+      "source_file": "app/runtime/config.py",
+      "source_line": 612
+    },
+    "COOKIECLOUD_KEY": {
+      "description": "CookieCloud用户KEY",
+      "group": "cookiecloud",
+      "source_file": "app/runtime/config.py",
+      "source_line": 606
+    },
+    "COOKIECLOUD_PASSWORD": {
+      "description": "CookieCloud端对端加密密码",
+      "group": "cookiecloud",
+      "source_file": "app/runtime/config.py",
+      "source_line": 608
+    },
+    "CUSTOMIZE_WALLPAPER_API_URL": {
+      "description": "自定义壁纸api地址",
+      "group": "personalization",
+      "source_file": "app/runtime/config.py",
+      "source_line": 687
+    },
+    "DATA_CLEANUP_AGENT_CHAT_DAYS": {
+      "description": "Agent 会话历史保留天数，0为不清理",
+      "group": "data_cleanup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 317
+    },
+    "DATA_CLEANUP_AGENT_TASK_RUN_DAYS": {
+      "description": "Agent 定时任务运行历史保留天数，0为不清理",
+      "group": "data_cleanup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 319
+    },
+    "DATA_CLEANUP_DOWNLOAD_FAILURE_DAYS": {
+      "description": "下载失败冷却记录保留天数，0为不清理",
+      "group": "data_cleanup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 313
+    },
+    "DATA_CLEANUP_DOWNLOAD_HISTORY_DAYS": {
+      "description": "下载历史表保留天数，0为不清理",
+      "group": "data_cleanup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 307
+    },
+    "DATA_CLEANUP_ENABLE": {
+      "description": "是否启用数据表定时清理",
+      "group": "data_cleanup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 303
+    },
+    "DATA_CLEANUP_MESSAGE_DAYS": {
+      "description": "消息表保留天数，0为不清理",
+      "group": "data_cleanup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 305
+    },
+    "DATA_CLEANUP_OUTBOX_COMPLETED_DAYS": {
+      "description": "Outbox 已完成记录保留天数，0为不清理",
+      "group": "data_cleanup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 321
+    },
+    "DATA_CLEANUP_OUTBOX_DEAD_DAYS": {
+      "description": "Outbox 死信记录保留天数，0为不清理",
+      "group": "data_cleanup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 323
+    },
+    "DATA_CLEANUP_SITE_USERDATA_DAYS": {
+      "description": "站点用户数据表保留天数，0为不清理",
+      "group": "data_cleanup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 309
+    },
+    "DATA_CLEANUP_SUBSCRIBE_HISTORY_DAYS": {
+      "description": "订阅完成历史保留天数，0为不清理",
+      "group": "data_cleanup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 315
+    },
+    "DATA_CLEANUP_TRANSFER_HISTORY_DAYS": {
+      "description": "整理历史表保留天数，0为不清理",
+      "group": "data_cleanup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 311
+    },
+    "DB_ASYNC_FALLBACK_LIMIT": {
+      "description": "未被池化的事件循环（临时循环）共享的全局并发连接配额。 池化路径由连接池自身限流，这里只为 NullPool 兜底路径补上背压， 防止临时循环上的突发并发再次无界增长。 实测常驻的 feishu/discord 循环不访问数据库，走此路径的只有插件与调度器 兜底分支的零星调用，因此取值不必大——它直接计入连接总额度",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 283
+    },
+    "DB_ASYNC_MAX_OVERFLOW": {
+      "description": "异步连接池溢出数量（每个被池化的事件循环）",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 277
+    },
+    "DB_ASYNC_POOL_SIZE": {
+      "description": "异步连接池大小（每个被池化的事件循环）",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 275
+    },
+    "DB_ASYNC_POOL_TYPE": {
+      "description": "异步连接池类型：QueuePool / NullPool。 NullPool 下每个异步会话独占一条物理连接、零复用且无上限，突发并发会直接顶穿 PostgreSQL 的 max_connections（表现为 TooManyConnectionsError），在 SQLite 上 则表现为 WAL 写争用导致的长时间卡顿。默认 QueuePool：仅对常驻主事件循环池化， 其余事件循环自动回退 NullPool，避免跨循环复用连接。遇到兼容问题可设为 NullPool 回到旧行为。",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 273
+    },
+    "DB_BACKUP_CRON": {
+      "description": "定时备份的 Cron 表达式，留空时不注册定时任务",
+      "group": "database_backup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 292
+    },
+    "DB_BACKUP_ENABLE": {
+      "description": "是否启用主程序数据库自动备份",
+      "group": "database_backup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 290
+    },
+    "DB_BACKUP_MAX_COUNT": {
+      "description": "本地备份的最大保留份数，0 表示不按数量清理",
+      "group": "database_backup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 300
+    },
+    "DB_BACKUP_ON_UPGRADE": {
+      "description": "检测到现有数据库需要迁移时，在结构变更前创建恢复点",
+      "group": "database_backup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 294
+    },
+    "DB_BACKUP_PATH": {
+      "description": "备份根目录；未配置时使用 CONFIG_PATH/database_backup",
+      "group": "database_backup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 296
+    },
+    "DB_BACKUP_RETENTION_DAYS": {
+      "description": "本地备份的保留天数，0 表示不按时间清理",
+      "group": "database_backup",
+      "source_file": "app/runtime/config.py",
+      "source_line": 298
+    },
+    "DB_CONNECT_ARGS": {
+      "description": "驱动级连接参数，透传给 create_engine/create_async_engine 的 connect_args。 例如经 PgBouncer 事务模式接入时 asyncpg 需要 {\"statement_cache_size\": 0}",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 286
+    },
+    "DB_ECHO": {
+      "description": "是否在控制台输出 SQL 语句，默认关闭",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 236
+    },
+    "DB_POOL_PRE_PING": {
+      "description": "是否在获取连接时进行预先 ping 操作",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 244
+    },
+    "DB_POOL_RECYCLE": {
+      "description": "数据库连接的回收时间（秒）",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 246
+    },
+    "DB_POOL_TIMEOUT": {
+      "description": "数据库连接池获取连接的超时时间（秒）",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 248
+    },
+    "DB_POOL_TYPE": {
+      "description": "数据库连接池类型，QueuePool, NullPool",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 242
+    },
+    "DB_POSTGRESQL_DATABASE": {
+      "description": "PostgreSQL 数据库名",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 258
+    },
+    "DB_POSTGRESQL_HOST": {
+      "description": "PostgreSQL 主机地址",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 254
+    },
+    "DB_POSTGRESQL_MAX_OVERFLOW": {
+      "description": "PostgreSQL 连接池溢出数量",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 266
+    },
+    "DB_POSTGRESQL_PASSWORD": {
+      "description": "PostgreSQL 密码",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 262
+    },
+    "DB_POSTGRESQL_POOL_SIZE": {
+      "description": "PostgreSQL 连接池大小",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 264
+    },
+    "DB_POSTGRESQL_PORT": {
+      "description": "PostgreSQL 端口；使用 Unix Socket 时可留空",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 256
+    },
+    "DB_POSTGRESQL_USERNAME": {
+      "description": "PostgreSQL 用户名",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 260
+    },
+    "DB_SQLITE_MAX_OVERFLOW": {
+      "description": "SQLite 连接池溢出数量",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 252
+    },
+    "DB_SQLITE_POOL_SIZE": {
+      "description": "SQLite 连接池大小",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 250
+    },
+    "DB_TIMEOUT": {
+      "description": "数据库连接超时时间（秒），默认为 60 秒",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 238
+    },
+    "DB_TYPE": {
+      "description": "数据库类型，支持 sqlite 和 postgresql，默认使用 sqlite",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 234
+    },
+    "DB_WAL_ENABLE": {
+      "description": "是否启用 WAL 模式，仅适用于SQLite，默认开启",
+      "group": "database",
+      "source_file": "app/runtime/config.py",
+      "source_line": 240
+    },
+    "DEBUG": {
+      "description": "是否调试模式",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 199
+    },
+    "DEFAULT_SUB": {
+      "description": "为指定默认字幕添加.default后缀",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 665
+    },
+    "DEPRECATION_ENABLED": {
+      "description": "临时放行的废弃标识，多个用,分隔；仅对已进入停用阶段的接口有效，用于观察真实依赖方",
+      "group": "plugins",
+      "source_file": "app/runtime/config.py",
+      "source_line": 701
+    },
+    "DEV": {
+      "description": "是否开发模式",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 201
+    },
+    "DOH_DOMAINS": {
+      "description": "使用 DOH 解析的域名列表",
+      "group": "network",
+      "source_file": "app/runtime/config.py",
+      "source_line": 355
+    },
+    "DOH_ENABLE": {
+      "description": "是否启用DOH解析域名",
+      "group": "network",
+      "source_file": "app/runtime/config.py",
+      "source_line": 353
+    },
+    "DOH_RESOLVERS": {
+      "description": "DOH 解析服务器列表",
+      "group": "network",
+      "source_file": "app/runtime/config.py",
+      "source_line": 366
+    },
+    "DOWNLOAD_SUBTITLE": {
+      "description": "下载站点字幕",
+      "group": "downloads",
+      "source_file": "app/runtime/config.py",
+      "source_line": 581
+    },
+    "DOWNLOAD_TMPEXT": {
+      "description": "下载器临时文件后缀",
+      "group": "downloads",
+      "source_file": "app/runtime/config.py",
+      "source_line": 585
+    },
+    "EMPTY_RESULT_CACHE_TTL": {
+      "description": "TMDB空结果缓存独立过期时间（秒），故障期间产生的空响应快速过期，故障自愈后可自然恢复",
+      "group": "tmdb",
+      "source_file": "app/runtime/config.py",
+      "source_line": 388
+    },
+    "ENCODING_DETECTION_MIN_CONFIDENCE": {
+      "description": "编码探测的最低置信度阈值",
+      "group": "performance",
+      "source_file": "app/runtime/config.py",
+      "source_line": 748
+    },
+    "ENCODING_DETECTION_PERFORMANCE_MODE": {
+      "description": "是否启用编码探测的性能模式",
+      "group": "performance",
+      "source_file": "app/runtime/config.py",
+      "source_line": 746
+    },
+    "FANART_API_KEY": {
+      "description": "Fanart API Key",
+      "group": "fanart",
+      "source_file": "app/runtime/config.py",
+      "source_line": 436
+    },
+    "FANART_ENABLE": {
+      "description": "Fanart开关",
+      "group": "fanart",
+      "source_file": "app/runtime/config.py",
+      "source_line": 432
+    },
+    "FANART_LANG": {
+      "description": "Fanart语言",
+      "group": "fanart",
+      "source_file": "app/runtime/config.py",
+      "source_line": 434
+    },
+    "FEISHU_ADMINS": {
+      "description": "飞书管理员 Open ID 列表，多个使用 , 分隔",
+      "group": "feishu",
+      "source_file": "app/runtime/config.py",
+      "source_line": 734
+    },
+    "FEISHU_APP_ID": {
+      "description": "飞书应用 App ID",
+      "group": "feishu",
+      "source_file": "app/runtime/config.py",
+      "source_line": 726
+    },
+    "FEISHU_APP_SECRET": {
+      "description": "飞书应用 App Secret",
+      "group": "feishu",
+      "source_file": "app/runtime/config.py",
+      "source_line": 728
+    },
+    "FEISHU_CHAT_ID": {
+      "description": "飞书默认接收群聊 Chat ID",
+      "group": "feishu",
+      "source_file": "app/runtime/config.py",
+      "source_line": 732
+    },
+    "FEISHU_ENCRYPT_KEY": {
+      "description": "飞书事件加密 Key",
+      "group": "feishu",
+      "source_file": "app/runtime/config.py",
+      "source_line": 738
+    },
+    "FEISHU_OPEN_ID": {
+      "description": "飞书默认接收用户 Open ID",
+      "group": "feishu",
+      "source_file": "app/runtime/config.py",
+      "source_line": 730
+    },
+    "FEISHU_VERIFICATION_TOKEN": {
+      "description": "飞书事件校验 Token",
+      "group": "feishu",
+      "source_file": "app/runtime/config.py",
+      "source_line": 736
+    },
+    "FLARESOLVERR_URL": {
+      "description": "FlareSolverr 服务地址，例如 http://127.0.0.1:8191",
+      "group": "sites",
+      "source_file": "app/runtime/config.py",
+      "source_line": 567
+    },
+    "FRONTEND_PATH": {
+      "description": "前端资源路径",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 183
+    },
+    "FS_PROXY_ENABLED": {
+      "description": "本地文件操作是否走可强杀的子进程代理。 FUSE/网络挂载进入「请求永不返回」状态时，stat/listdir 这类调用会永久悬挂， 而 Python 既不能中断已发出的系统调用、也不能强杀线程，阻塞其上的线程无法回收。 走子进程后超时可以 SIGKILL 真正回收，block 型故障被转换成各层已能处理的 crash 型故障（OSError）。出现兼容问题时可关闭回到直接调用。",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 624
+    },
+    "FS_PROXY_STALL_TIMEOUT": {
+      "description": "复制大文件时两次进度上报之间的最长间隔秒数。代理每秒上报一次进度作为心跳， 因此这个阈值判定的是「传输完全没有推进」而不是「传输很慢」， 复制几小时的大文件也不会被误杀",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 631
+    },
+    "FS_PROXY_TIMEOUT": {
+      "description": "单次本地快操作（stat/listdir/删除/重命名）的超时秒数， 超时即判定挂载无响应并回收代理进程",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 627
+    },
+    "GITHUB_PROXY": {
+      "description": "Github代理服务器，格式：https://mirror.ghproxy.com/",
+      "group": "dependencies",
+      "source_file": "app/runtime/config.py",
+      "source_line": 718
+    },
+    "GITHUB_TOKEN": {
+      "description": "Github token，提高请求api限流阈值 ghp_****",
+      "group": "dependencies",
+      "source_file": "app/runtime/config.py",
+      "source_line": 716
+    },
+    "GLOBAL_IMAGE_CACHE": {
+      "description": "全局图片缓存，将媒体图片缓存到本地",
+      "group": "cache",
+      "source_file": "app/runtime/config.py",
+      "source_line": 337
+    },
+    "GLOBAL_IMAGE_CACHE_DAYS": {
+      "description": "全局图片缓存保留天数",
+      "group": "cache",
+      "source_file": "app/runtime/config.py",
+      "source_line": 339
+    },
+    "HOST": {
+      "description": "API监听地址",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 187
+    },
+    "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES": {
+      "description": "图片代理允许访问的非公网 IP/CIDR，默认不放行任何非公网解析结果",
+      "group": "security",
+      "source_file": "app/runtime/config.py",
+      "source_line": 783
+    },
+    "LLM_API_KEY": {
+      "description": "LLM API密钥",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 830
+    },
+    "LLM_API_PROTOCOL": {
+      "description": "OpenAI兼容接口API协议：auto（自动）/ chat_completions / responses",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 820
+    },
+    "LLM_BASE_URL": {
+      "description": "LLM基础URL（用于自定义API端点）",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 832
+    },
+    "LLM_BASE_URL_PRESET": {
+      "description": "LLM Base URL 预设标识，用于区分同一 Base URL 下的不同模型目录",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 836
+    },
+    "LLM_MAX_CONTEXT_TOKENS": {
+      "description": "LLM最大上下文Token数量（K），用于目录缺失回退和未匹配兼容端点的保守上限",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 838
+    },
+    "LLM_MAX_ITERATIONS": {
+      "description": "LLM最大迭代次数",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 844
+    },
+    "LLM_MAX_TOOLS": {
+      "description": "LLM工具选择中间件最大工具数量，0为不启用工具选择中间件",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 859
+    },
+    "LLM_MEMORY_RETENTION_DAYS": {
+      "description": "内存记忆保留天数",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 850
+    },
+    "LLM_MODEL": {
+      "description": "LLM模型名称",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 816
+    },
+    "LLM_PROVIDER": {
+      "description": "LLM提供商（支持内置 provider，以及从 models.dev 动态补充的平台）",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 814
+    },
+    "LLM_SUPPORT_AUDIO_INPUT": {
+      "description": "是否启用音频输入，开启后用户语音会先转写为文本再进入 Agent",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 826
+    },
+    "LLM_SUPPORT_AUDIO_OUTPUT": {
+      "description": "是否启用音频输出，开启后 Agent 可在支持渠道发送语音回复",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 828
+    },
+    "LLM_SUPPORT_IMAGE_INPUT": {
+      "description": "LLM是否支持图片输入，开启后消息图片会按多模态输入发送给模型",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 824
+    },
+    "LLM_TEMPERATURE": {
+      "description": "LLM温度参数",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 842
+    },
+    "LLM_THINKING_LEVEL": {
+      "description": "思考模式/深度配置：off/auto/minimal/low/medium/high/max/xhigh",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 818
+    },
+    "LLM_TOOL_TIMEOUT": {
+      "description": "LLM工具调用超时时间（秒）",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 846
+    },
+    "LLM_USER_AGENT": {
+      "description": "LLM OpenAI兼容接口请求User-Agent",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 840
+    },
+    "LLM_USE_PROXY": {
+      "description": "LLM调用是否使用系统代理",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 834
+    },
+    "LLM_VERBOSE": {
+      "description": "是否启用详细日志",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 848
+    },
+    "LLM_WEB_SEARCH_MODE": {
+      "description": "联网搜索模式：local（本地）/ builtin（模型服务端）/ auto（自动）/ disabled（关闭）",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 822
+    },
+    "LOCAL_EXISTS_SEARCH": {
+      "description": "检查本地媒体库是否存在资源开关",
+      "group": "subscriptions",
+      "source_file": "app/runtime/config.py",
+      "source_line": 549
+    },
+    "LOG_BACKUP_COUNT": {
+      "description": "每类日志保留的滚动备份文件数量",
+      "group": "logging",
+      "source_file": "app/runtime/log.py",
+      "source_line": 43
+    },
+    "LOG_CONSOLE_FORMAT": {
+      "description": "控制台日志格式",
+      "group": "logging",
+      "source_file": "app/runtime/log.py",
+      "source_line": 45
+    },
+    "LOG_FILE_FORMAT": {
+      "description": "文件日志格式",
+      "group": "logging",
+      "source_file": "app/runtime/log.py",
+      "source_line": 49
+    },
+    "LOG_LEVEL": {
+      "description": "全局日志等级",
+      "group": "logging",
+      "source_file": "app/runtime/log.py",
+      "source_line": 39
+    },
+    "LOG_MAX_FILE_SIZE": {
+      "description": "单个日志文件最大大小，单位 MB",
+      "group": "logging",
+      "source_file": "app/runtime/log.py",
+      "source_line": 41
+    },
+    "LRCLIB_BASE_URL": {
+      "description": "LRCLIB 服务地址，可指向兼容官方 API 的自建实例",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 416
+    },
+    "LYRICS_BATCH_TIMEOUT": {
+      "description": "单次音乐刮削批次用于在线歌词查询的总预算（秒）",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 420
+    },
+    "LYRICS_PROVIDER_RETRY_MAX_WAIT": {
+      "description": "供应商要求的重试等待超过该值时进入冷却，不阻塞整个批次",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 422
+    },
+    "MAX_SEARCH_NAME_LIMIT": {
+      "description": "最大搜索名称数量",
+      "group": "search",
+      "source_file": "app/runtime/config.py",
+      "source_line": 573
+    },
+    "MEDIASERVER_SYNC_INTERVAL": {
+      "description": "媒体服务器同步间隔（小时）",
+      "group": "media_servers",
+      "source_file": "app/runtime/config.py",
+      "source_line": 535
+    },
+    "MEDIA_RECOGNIZE_SHARE": {
+      "description": "共享使用媒体识别数据",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 671
+    },
+    "MEDIA_RECOGNIZE_SHARE_API": {
+      "description": "共享媒体识别API地址，留空时默认拼接为 MP_SERVER_HOST + /recognize/share",
+      "group": "services",
+      "source_file": "app/runtime/config.py",
+      "source_line": 677
+    },
+    "MEMORY_GC_INTERVAL": {
+      "description": "主动内存回收时间间隔（分钟），0为不启用",
+      "group": "performance",
+      "source_file": "app/runtime/config.py",
+      "source_line": 750
+    },
+    "META_CACHE_EXPIRE": {
+      "description": "单条元数据识别缓存有效期（小时），0为自动",
+      "group": "cache",
+      "source_file": "app/runtime/config.py",
+      "source_line": 347
+    },
+    "MODULE_ENABLE": {
+      "description": "无独立配置项的内置模块开关；未列出的模块默认开启。",
+      "group": "media_metadata",
+      "source_file": "app/runtime/config.py",
+      "source_line": 370
+    },
+    "MONITOR_NETWORK_FAST_MODE": {
+      "description": "允许网络文件系统使用快速模式（inotify）。部分 FUSE 实现（如 CloudDrive2） 会正常下发内核通知，快速模式可用，且比每 N 秒 stat 全部目录的轮询对挂载后端 的压力小得多，由用户确认后开启",
+      "group": "directory_monitor",
+      "source_file": "app/runtime/config.py",
+      "source_line": 591
+    },
+    "MONITOR_POLL_DELAY_NETWORK": {
+      "description": "网络文件系统的轮询扫描间隔（毫秒），0 表示使用内置默认值",
+      "group": "directory_monitor",
+      "source_file": "app/runtime/config.py",
+      "source_line": 593
+    },
+    "MONITOR_RESCAN_DELAYS": {
+      "description": "新增目录延迟重扫的轮次延迟秒数，多个使用,分隔，如 \"30,120,600,1800\"。 FUSE 挂载（如 CloudDrive2）上超大目录树呈现完整内容可能超过分钟级， 默认值在常见的 30/120 秒窗口后追加两轮成本极低的长延迟轮次兜底； 解析失败（如格式非法、包含非正整数）时回退默认值并记录 warn 日志",
+      "group": "directory_monitor",
+      "source_file": "app/runtime/config.py",
+      "source_line": 598
+    },
+    "MOVIEPILOT_AUTO_UPDATE": {
+      "description": "自动检查稳定版本并提示升级，不自动下载或安装。",
+      "group": "system_update",
+      "source_file": "app/runtime/config.py",
+      "source_line": 448
+    },
+    "MOVIEPILOT_SAFE_MODE": {
+      "description": "安全模式，仅保留核心 API，跳过插件、调度器、监控、命令和工作流等扩展启动项",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 195
+    },
+    "MOVIEPILOT_UPDATE_DEV": {
+      "description": "独立控制启动时跟踪 v3 开发分支。",
+      "group": "system_update",
+      "source_file": "app/runtime/config.py",
+      "source_line": 457
+    },
+    "MOVIE_RENAME_FORMAT": {
+      "description": "电影重命名格式",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 643
+    },
+    "MP_SERVER_HOST": {
+      "description": "服务器地址，对应 https://github.com/jxxghp/MoviePilot-Server 项目",
+      "group": "services",
+      "source_file": "app/runtime/config.py",
+      "source_line": 675
+    },
+    "MUSIC_COVER_PROXY": {
+      "description": "音乐封面代理地址（用于解决 coverartarchive.org 无法访问导致的封面不显示问题，留空则使用官方地址）",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 404
+    },
+    "MUSIC_METADATA_TO_SIMPLIFIED": {
+      "description": "是否将识别到的音乐标题、艺术家、专辑等标准元数据转换为简体中文",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 408
+    },
+    "MUSIC_RELEASE_REGION_PRIORITY": {
+      "description": "MusicBrainz 发行地区优先级，按 ISO 3166-1 两位代码从高到低排列",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 410
+    },
+    "MUSIC_RELEASE_SCRIPT_PRIORITY": {
+      "description": "MusicBrainz 发行文字字形优先级，按 ISO 15924 四位代码从高到低排列",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 412
+    },
+    "MUSIC_RENAME_FORMAT": {
+      "description": "音乐重命名格式",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 656
+    },
+    "NGINX_PORT": {
+      "description": "前端监听端口",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 191
+    },
+    "NO_CACHE_SITE_KEY": {
+      "description": "不能缓存站点资源的站点域名，多个使用,分隔",
+      "group": "sites",
+      "source_file": "app/runtime/config.py",
+      "source_line": 557
+    },
+    "OCR_HOST": {
+      "description": "OCR服务器地址，用于识别站点验证码",
+      "group": "sites",
+      "source_file": "app/runtime/config.py",
+      "source_line": 559
+    },
+    "OPENLIST_SNAPSHOT_CHECK_FOLDER_MODTIME": {
+      "description": "对OpenList进行快照对比时，是否检查文件夹的修改时间",
+      "group": "storage",
+      "source_file": "app/runtime/config.py",
+      "source_line": 799
+    },
+    "PACKAGE_CACHE_DAYS": {
+      "description": "pip/uv 包下载缓存保留天数",
+      "group": "cache",
+      "source_file": "app/runtime/config.py",
+      "source_line": 343
+    },
+    "PACKAGE_CACHE_ROOT": {
+      "description": "pip/uv 包下载缓存根目录，留空时使用配置目录下的 .cache",
+      "group": "cache",
+      "source_file": "app/runtime/config.py",
+      "source_line": 345
+    },
+    "PASSKEY_REQUIRE_UV": {
+      "description": "PassKey 是否强制用户验证（生物识别等）",
+      "group": "security",
+      "source_file": "app/runtime/config.py",
+      "source_line": 789
+    },
+    "PIP_PROXY": {
+      "description": "pip镜像站点，格式：https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple",
+      "group": "dependencies",
+      "source_file": "app/runtime/config.py",
+      "source_line": 720
+    },
+    "PLAYWRIGHT_BROWSER_TYPE": {
+      "description": "Playwright浏览器类型，供智能体浏览器工具和插件直接使用 Playwright 时读取",
+      "group": "storage",
+      "source_file": "app/runtime/config.py",
+      "source_line": 804
+    },
+    "PLUGIN_AUTO_RELOAD": {
+      "description": "是否开启插件热加载",
+      "group": "plugins",
+      "source_file": "app/runtime/config.py",
+      "source_line": 699
+    },
+    "PLUGIN_LOCAL_REPO_PATHS": {
+      "description": "本地插件仓库目录，多个地址使用,分隔",
+      "group": "plugins",
+      "source_file": "app/runtime/config.py",
+      "source_line": 703
+    },
+    "PLUGIN_MARKET": {
+      "description": "插件市场仓库地址，多个地址使用,分隔，地址以/结尾",
+      "group": "plugins",
+      "source_file": "app/runtime/config.py",
+      "source_line": 691
+    },
+    "PLUGIN_STATISTIC_SHARE": {
+      "description": "插件安装数据共享",
+      "group": "plugins",
+      "source_file": "app/runtime/config.py",
+      "source_line": 695
+    },
+    "PORT": {
+      "description": "API监听端口",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 189
+    },
+    "PROJECT_NAME": {
+      "description": "项目名称",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 177
+    },
+    "PROXY_HOST": {
+      "description": "网络代理服务器地址",
+      "group": "network",
+      "source_file": "app/runtime/config.py",
+      "source_line": 351
+    },
+    "RCLONE_SNAPSHOT_CHECK_FOLDER_MODTIME": {
+      "description": "对rclone进行快照对比时，是否检查文件夹的修改时间",
+      "group": "storage",
+      "source_file": "app/runtime/config.py",
+      "source_line": 797
+    },
+    "RECOGNIZE_PLUGIN_FIRST": {
+      "description": "优先使用辅助识别",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 669
+    },
+    "RECOGNIZE_SOURCE": {
+      "description": "媒体识别来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic",
+      "group": "media_metadata",
+      "source_file": "app/runtime/config.py",
+      "source_line": 374
+    },
+    "RENAME_FORMAT_S0_NAMES": {
+      "description": "重命名时支持的S0别名",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 663
+    },
+    "REPO_GITHUB_TOKEN": {
+      "description": "指定的仓库Github token，多个仓库使用,分隔，格式：{user1}/{repo1}:ghp_****,{user2}/{repo2}:github_pat_****",
+      "group": "dependencies",
+      "source_file": "app/runtime/config.py",
+      "source_line": 722
+    },
+    "RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS": {
+      "description": "RESOURCE_TOKEN过期时间",
+      "group": "authentication",
+      "source_file": "app/runtime/config.py",
+      "source_line": 212
+    },
+    "RESOURCE_SECRET_KEY": {
+      "description": "RESOURCE密钥",
+      "group": "authentication",
+      "source_file": "app/runtime/config.py",
+      "source_line": 206
+    },
+    "RMT_AUDIOEXT": {
+      "description": "支持的音轨文件后缀格式",
+      "group": "media_formats",
+      "source_file": "app/runtime/config.py",
+      "source_line": 490
+    },
+    "RMT_MEDIAEXT": {
+      "description": "支持的视频文件后缀格式",
+      "group": "media_formats",
+      "source_file": "app/runtime/config.py",
+      "source_line": 465
+    },
+    "RMT_SUBEXT": {
+      "description": "支持的字幕文件后缀格式",
+      "group": "media_formats",
+      "source_file": "app/runtime/config.py",
+      "source_line": 488
+    },
+    "RUST_ACCEL": {
+      "description": "Rust 加速总开关，free-threaded 运行时固定启用",
+      "group": "performance",
+      "source_file": "app/runtime/config.py",
+      "source_line": 744
+    },
+    "SCRAP_FOLLOW_TMDB": {
+      "description": "新增已入库媒体是否跟随TMDB信息变化",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 667
+    },
+    "SCRAP_SOURCE": {
+      "description": "刮削来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic",
+      "group": "media_metadata",
+      "source_file": "app/runtime/config.py",
+      "source_line": 376
+    },
+    "SEARCH_MULTIPLE_NAME": {
+      "description": "搜索多个名称",
+      "group": "search",
+      "source_file": "app/runtime/config.py",
+      "source_line": 571
+    },
+    "SEARCH_RESOURCE_PAGES": {
+      "description": "搜索资源获取页数",
+      "group": "search",
+      "source_file": "app/runtime/config.py",
+      "source_line": 575
+    },
+    "SEARCH_SOURCE": {
+      "description": "媒体搜索来源 themoviedb/douban/bangumi/anilist/imdb/musicbrainz/theaudiodb/doubanmusic，多个用,分隔",
+      "group": "media_metadata",
+      "source_file": "app/runtime/config.py",
+      "source_line": 372
+    },
+    "SECRET_KEY": {
+      "description": "密钥",
+      "group": "authentication",
+      "source_file": "app/runtime/config.py",
+      "source_line": 204
+    },
+    "SECURITY_IMAGE_DOMAINS": {
+      "description": "允许的图片缓存域名",
+      "group": "security",
+      "source_file": "app/runtime/config.py",
+      "source_line": 754
+    },
+    "SECURITY_IMAGE_SUFFIXES": {
+      "description": "允许的图片文件后缀格式",
+      "group": "security",
+      "source_file": "app/runtime/config.py",
+      "source_line": 785
+    },
+    "SITEDATA_REFRESH_INTERVAL": {
+      "description": "站点数据刷新间隔（小时）",
+      "group": "sites",
+      "source_file": "app/runtime/config.py",
+      "source_line": 553
+    },
+    "SITE_MESSAGE": {
+      "description": "读取和发送站点消息",
+      "group": "sites",
+      "source_file": "app/runtime/config.py",
+      "source_line": 555
+    },
+    "SKILL_MARKET": {
+      "description": "技能市场仓库地址，多个地址使用,分隔",
+      "group": "skills",
+      "source_file": "app/runtime/config.py",
+      "source_line": 707
+    },
+    "SUBSCRIBE_MODE": {
+      "description": "订阅模式",
+      "group": "subscriptions",
+      "source_file": "app/runtime/config.py",
+      "source_line": 539
+    },
+    "SUBSCRIBE_RSS_INTERVAL": {
+      "description": "RSS订阅模式刷新时间间隔（分钟）",
+      "group": "subscriptions",
+      "source_file": "app/runtime/config.py",
+      "source_line": 541
+    },
+    "SUBSCRIBE_SEARCH": {
+      "description": "订阅搜索开关",
+      "group": "subscriptions",
+      "source_file": "app/runtime/config.py",
+      "source_line": 545
+    },
+    "SUBSCRIBE_SEARCH_INTERVAL": {
+      "description": "订阅搜索时间间隔（小时）",
+      "group": "subscriptions",
+      "source_file": "app/runtime/config.py",
+      "source_line": 547
+    },
+    "SUBSCRIBE_STATISTIC_SHARE": {
+      "description": "订阅数据共享",
+      "group": "subscriptions",
+      "source_file": "app/runtime/config.py",
+      "source_line": 543
+    },
+    "SUPERUSER": {
+      "description": "超级管理员用户名；V3 首次启动时为空，由初始化页面设置",
+      "group": "authentication",
+      "source_file": "app/runtime/config.py",
+      "source_line": 214
+    },
+    "SUPERUSER_PASSWORD": {
+      "description": "超级管理员密码不再通过部署配置初始化，始终由数据库存储哈希",
+      "group": "authentication",
+      "source_file": "app/runtime/config.py",
+      "source_line": 216
+    },
+    "TEMP_FILE_DAYS": {
+      "description": "临时文件保留天数",
+      "group": "cache",
+      "source_file": "app/runtime/config.py",
+      "source_line": 341
+    },
+    "THEAUDIODB_API_KEY": {
+      "description": "TheAudioDB API Key，默认使用官方公开的免费 V1 Key，可通过环境变量覆盖",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 414
+    },
+    "TMDB_API_DOMAIN": {
+      "description": "TMDB API地址",
+      "group": "tmdb",
+      "source_file": "app/runtime/config.py",
+      "source_line": 384
+    },
+    "TMDB_API_KEY": {
+      "description": "TMDB API Key",
+      "group": "tmdb",
+      "source_file": "app/runtime/config.py",
+      "source_line": 392
+    },
+    "TMDB_IMAGE_DOMAIN": {
+      "description": "TMDB图片地址",
+      "group": "tmdb",
+      "source_file": "app/runtime/config.py",
+      "source_line": 382
+    },
+    "TMDB_LOCALE": {
+      "description": "TMDB元数据语言",
+      "group": "tmdb",
+      "source_file": "app/runtime/config.py",
+      "source_line": 386
+    },
+    "TMDB_SCRAP_ORIGINAL_IMAGE": {
+      "description": "刮削使用TMDB原始语种图片",
+      "group": "tmdb",
+      "source_file": "app/runtime/config.py",
+      "source_line": 390
+    },
+    "TORRENT_TAG": {
+      "description": "种子标签",
+      "group": "downloads",
+      "source_file": "app/runtime/config.py",
+      "source_line": 579
+    },
+    "TRANSFER_FAILURE_NOTIFICATION_AGGREGATION": {
+      "description": "是否按媒体聚合整理失败通知，关闭时保持逐条发送",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 867
+    },
+    "TRANSFER_MAX_FAILED_RETRIES": {
+      "description": "自动整理（目录监控、下载器轮询）遇到失败整理记录时，同一源路径允许自动重试的最大次数。 一次瞬时故障（网络抖动、TMDB 瞬断、移动失败）不该让文件永久漏整理，因此必须重试； 但永远识别不出的文件重试再多也不会成功，只会重复推送失败通知，批量导入时更会刷屏， 因此必须有界。取值区间 1-10，越界或非法值会被钳制到边界并记录 warn： 既不支持关闭重试，也不支持无限重试。整理成功或删除整理记录时计数清零。 与本项无关的是同路径新版本：已成功整理的文件源大小变化时一律放行， 由整理链的 overwrite_mode 决断是否覆盖",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 639
+    },
+    "TRANSFER_TASK_TIMEOUT": {
+      "description": "外部接管的运行中整理任务无状态心跳超时（分钟），0 表示禁用",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 641
+    },
+    "TRANSFER_THREADS": {
+      "description": "文件整理线程数",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 618
+    },
+    "TVDB_V4_API_KEY": {
+      "description": "TVDB API Key",
+      "group": "tvdb",
+      "source_file": "app/runtime/config.py",
+      "source_line": 426
+    },
+    "TVDB_V4_API_PIN": {
+      "description": "TVDB V4 订阅 PIN",
+      "group": "tvdb",
+      "source_file": "app/runtime/config.py",
+      "source_line": 428
+    },
+    "TV_RENAME_FORMAT": {
+      "description": "电视剧重命名格式",
+      "group": "transfer",
+      "source_file": "app/runtime/config.py",
+      "source_line": 649
+    },
+    "TZ": {
+      "description": "时区",
+      "group": "application",
+      "source_file": "app/runtime/config.py",
+      "source_line": 185
+    },
+    "U115_APP_ID": {
+      "description": "115 AppId",
+      "group": "cloud_storage",
+      "source_file": "app/runtime/config.py",
+      "source_line": 440
+    },
+    "U115_AUTH_SERVER": {
+      "description": "115 OAuth2 Server 地址",
+      "group": "cloud_storage",
+      "source_file": "app/runtime/config.py",
+      "source_line": 442
+    },
+    "USAGE_STATISTIC_SHARE": {
+      "description": "安装版本统计上报",
+      "group": "plugins",
+      "source_file": "app/runtime/config.py",
+      "source_line": 697
+    },
+    "WALLPAPER": {
+      "description": "登录页面壁纸来源：空字符串表示无壁纸，另支持 tmdb/bing/mediaserver/customize/static",
+      "group": "personalization",
+      "source_file": "app/runtime/config.py",
+      "source_line": 681
+    },
+    "WALLPAPER_IMAGE_URL": {
+      "description": "静态壁纸地址，可使用前端可访问的本地路径或 URL",
+      "group": "personalization",
+      "source_file": "app/runtime/config.py",
+      "source_line": 685
+    },
+    "WALLPAPER_ROTATION_INTERVAL": {
+      "description": "壁纸轮换间隔（秒），0 表示不轮换",
+      "group": "personalization",
+      "source_file": "app/runtime/config.py",
+      "source_line": 683
+    },
+    "WORKFLOW_STATISTIC_SHARE": {
+      "description": "工作流数据共享",
+      "group": "workflow",
+      "source_file": "app/runtime/config.py",
+      "source_line": 793
+    },
+    "WRITE_TIMEOUT": {
+      "description": "日志写入等待超时时间，单位秒",
+      "group": "logging",
+      "source_file": "app/runtime/log.py",
+      "source_line": 59
+    }
+  },
+  "systemconfig": {
+    "AIAgentConfig": {
+      "description": "AI智能体配置",
+      "enum_name": "AIAgentConfig",
+      "source_file": "app/schemas/types.py",
+      "source_line": 408
+    },
+    "AIAgentMcpServers": {
+      "description": "AI智能体外部MCP服务器配置",
+      "enum_name": "AIAgentMcpServers",
+      "source_file": "app/schemas/types.py",
+      "source_line": 410
+    },
+    "BestVersionFilterRuleGroups": {
+      "description": "洗版默认过滤规则组",
+      "enum_name": "BestVersionFilterRuleGroups",
+      "source_file": "app/schemas/types.py",
+      "source_line": 381
+    },
+    "CustomFilterRules": {
+      "description": "用户自定义规则",
+      "enum_name": "CustomFilterRules",
+      "source_file": "app/schemas/types.py",
+      "source_line": 371
+    },
+    "CustomIdentifiers": {
+      "description": "自定义识别词",
+      "enum_name": "CustomIdentifiers",
+      "source_file": "app/schemas/types.py",
+      "source_line": 363
+    },
+    "CustomReleaseGroups": {
+      "description": "自定义制作组/字幕组",
+      "enum_name": "CustomReleaseGroups",
+      "source_file": "app/schemas/types.py",
+      "source_line": 359
+    },
+    "Customization": {
+      "description": "自定义占位符",
+      "enum_name": "Customization",
+      "source_file": "app/schemas/types.py",
+      "source_line": 361
+    },
+    "DefaultMovieSubscribeConfig": {
+      "description": "默认电影订阅规则",
+      "enum_name": "DefaultMovieSubscribeConfig",
+      "source_file": "app/schemas/types.py",
+      "source_line": 396
+    },
+    "DefaultMusicSubscribeConfig": {
+      "description": "默认音乐订阅规则",
+      "enum_name": "DefaultMusicSubscribeConfig",
+      "source_file": "app/schemas/types.py",
+      "source_line": 400
+    },
+    "DefaultTvSubscribeConfig": {
+      "description": "默认电视剧订阅规则",
+      "enum_name": "DefaultTvSubscribeConfig",
+      "source_file": "app/schemas/types.py",
+      "source_line": 398
+    },
+    "Directories": {
+      "description": "目录配置",
+      "enum_name": "Directories",
+      "source_file": "app/schemas/types.py",
+      "source_line": 349
+    },
+    "Downloaders": {
+      "description": "下载器配置",
+      "enum_name": "Downloaders",
+      "source_file": "app/schemas/types.py",
+      "source_line": 341
+    },
+    "EpisodeFormatRuleTable": {
+      "description": "集数定位规则词表",
+      "enum_name": "EpisodeFormatRuleTable",
+      "source_file": "app/schemas/types.py",
+      "source_line": 365
+    },
+    "FollowSubscribers": {
+      "description": "Follow订阅分享者",
+      "enum_name": "FollowSubscribers",
+      "source_file": "app/schemas/types.py",
+      "source_line": 404
+    },
+    "IndexerSites": {
+      "description": "搜索站点范围",
+      "enum_name": "IndexerSites",
+      "source_file": "app/schemas/types.py",
+      "source_line": 355
+    },
+    "MediaClassificationPolicy": {
+      "description": "多媒体自动分类策略及其有界历史",
+      "enum_name": "MediaClassificationPolicy",
+      "source_file": "app/schemas/types.py",
+      "source_line": 424
+    },
+    "MediaRecognizeShareCount": {
+      "description": "共享媒体识别成功次数",
+      "enum_name": "MediaRecognizeShareCount",
+      "source_file": "app/schemas/types.py",
+      "source_line": 422
+    },
+    "MediaServers": {
+      "description": "媒体服务器配置",
+      "enum_name": "MediaServers",
+      "source_file": "app/schemas/types.py",
+      "source_line": 343
+    },
+    "MountedLocalDiskDeleteEmptyDirs": {
+      "description": "挂载型本地盘是否删除空目录",
+      "enum_name": "MountedLocalDiskDeleteEmptyDirs",
+      "source_file": "app/schemas/types.py",
+      "source_line": 351
+    },
+    "NotificationClearBefore": {
+      "description": "通知中心清理时间",
+      "enum_name": "NotificationClearBefore",
+      "source_file": "app/schemas/types.py",
+      "source_line": 414
+    },
+    "NotificationSendTime": {
+      "description": "通知发送时间",
+      "enum_name": "NotificationSendTime",
+      "source_file": "app/schemas/types.py",
+      "source_line": 406
+    },
+    "NotificationSwitchs": {
+      "description": "通知场景开关设置",
+      "enum_name": "NotificationSwitchs",
+      "source_file": "app/schemas/types.py",
+      "source_line": 347
+    },
+    "NotificationTemplates": {
+      "description": "通知消息格式模板",
+      "enum_name": "NotificationTemplates",
+      "source_file": "app/schemas/types.py",
+      "source_line": 412
+    },
+    "Notifications": {
+      "description": "消息通知配置",
+      "enum_name": "Notifications",
+      "source_file": "app/schemas/types.py",
+      "source_line": 345
+    },
+    "PluginFolders": {
+      "description": "插件文件夹分组配置",
+      "enum_name": "PluginFolders",
+      "source_file": "app/schemas/types.py",
+      "source_line": 394
+    },
+    "PluginInstallReport": {
+      "description": "插件安装统计",
+      "enum_name": "PluginInstallReport",
+      "source_file": "app/schemas/types.py",
+      "source_line": 418
+    },
+    "PluginInstances": {
+      "description": "共享源码插件的虚拟运行实例（已迁移到独立表，本键保留作回滚依据）",
+      "enum_name": "PluginInstances",
+      "source_file": "app/schemas/types.py",
+      "source_line": 389
+    },
+    "PluginInstancesImported": {
+      "description": "上面那个旧键各条目导入独立表时的内容指纹 {实例ID: 摘要}，据此识别回滚到旧版本 后新增或改写过的条目，同时避免把用户删掉的分身重新导回",
+      "enum_name": "PluginInstancesImported",
+      "source_file": "app/schemas/types.py",
+      "source_line": 392
+    },
+    "RssSites": {
+      "description": "订阅站点范围",
+      "enum_name": "RssSites",
+      "source_file": "app/schemas/types.py",
+      "source_line": 357
+    },
+    "ScrapingSwitchs": {
+      "description": "刮削开关设置",
+      "enum_name": "ScrapingSwitchs",
+      "source_file": "app/schemas/types.py",
+      "source_line": 416
+    },
+    "SearchFilterRuleGroups": {
+      "description": "搜索默认过滤规则组",
+      "enum_name": "SearchFilterRuleGroups",
+      "source_file": "app/schemas/types.py",
+      "source_line": 375
+    },
+    "Storages": {
+      "description": "存储配置",
+      "enum_name": "Storages",
+      "source_file": "app/schemas/types.py",
+      "source_line": 353
+    },
+    "SubscribeDefaultParams": {
+      "description": "订阅默认参数",
+      "enum_name": "SubscribeDefaultParams",
+      "source_file": "app/schemas/types.py",
+      "source_line": 379
+    },
+    "SubscribeFilterRuleGroups": {
+      "description": "订阅默认过滤规则组",
+      "enum_name": "SubscribeFilterRuleGroups",
+      "source_file": "app/schemas/types.py",
+      "source_line": 377
+    },
+    "SubscribeReport": {
+      "description": "订阅统计",
+      "enum_name": "SubscribeReport",
+      "source_file": "app/schemas/types.py",
+      "source_line": 383
+    },
+    "TorrentsPriority": {
+      "description": "种子优先级规则",
+      "enum_name": "TorrentsPriority",
+      "source_file": "app/schemas/types.py",
+      "source_line": 369
+    },
+    "TransferExcludeWords": {
+      "description": "转移屏蔽词",
+      "enum_name": "TransferExcludeWords",
+      "source_file": "app/schemas/types.py",
+      "source_line": 367
+    },
+    "UgreenSessionCache": {
+      "description": "绿联影视登录会话缓存",
+      "enum_name": "UgreenSessionCache",
+      "source_file": "app/schemas/types.py",
+      "source_line": 420
+    },
+    "UserCustomCSS": {
+      "description": "用户自定义CSS",
+      "enum_name": "UserCustomCSS",
+      "source_file": "app/schemas/types.py",
+      "source_line": 385
+    },
+    "UserFilterRuleGroups": {
+      "description": "用户规则组",
+      "enum_name": "UserFilterRuleGroups",
+      "source_file": "app/schemas/types.py",
+      "source_line": 373
+    },
+    "UserInstalledPlugins": {
+      "description": "用户已安装的插件",
+      "enum_name": "UserInstalledPlugins",
+      "source_file": "app/schemas/types.py",
+      "source_line": 387
+    },
+    "UserSiteAuthParams": {
+      "description": "用户站点认证参数",
+      "enum_name": "UserSiteAuthParams",
+      "source_file": "app/schemas/types.py",
+      "source_line": 402
+    }
+  }
+}

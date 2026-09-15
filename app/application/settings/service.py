@@ -1,182 +1,33 @@
 """系统设置元数据、查询更新语义和敏感值脱敏能力。"""
 
 import copy
+import hashlib
+import json
+import threading
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, ContextManager, Optional, cast
 
 from app.application.configuration import (
     RuntimeSettingsService,
     SystemConfigService,
 )
-from app.application.plugin.runtime import plugin_system_config_mutation
 from app.application.security.secrets import is_secret_setting_key
-from app.runtime.config import Settings
+from app.application.settings.contract import (
+    ALL_SETTING_SPECS,
+    CORE_SETTING_SPECS,
+    SETTING_GROUPS,
+    SYSTEMCONFIG_SETTING_SPECS,
+    SettingSpec,
+    build_value_schema,
+    validate_setting_value,
+)
 from app.schemas.types import SystemConfigKey
 
 SystemSettingPublisher = Callable[[Any, Any], Awaitable[None]]
 
 
-@dataclass(frozen=True)
-class SettingSpec:
-    """描述一个可被 Agent 读写的系统设置项。"""
-
-    key: str
-    source: str
-    group: str
-    label: str
-    declared_type: str = "unknown"
-    systemconfig_key: Optional[SystemConfigKey] = None
-
-
 class SystemSettingConflictError(ValueError):
     """表示条件更新所依据的系统配置快照已经过期。"""
-
-
-SYSTEMCONFIG_SETTING_METADATA = {
-    SystemConfigKey.Downloaders.value: {
-        "group": "downloaders",
-        "label": "Downloader configurations",
-    },
-    SystemConfigKey.MediaServers.value: {
-        "group": "media_servers",
-        "label": "Media-server configurations",
-    },
-    SystemConfigKey.Notifications.value: {
-        "group": "notifications",
-        "label": "Notification-channel configurations",
-    },
-    SystemConfigKey.NotificationSwitchs.value: {
-        "group": "notification_switches",
-        "label": "Notification-scenario switches",
-    },
-    SystemConfigKey.Directories.value: {
-        "group": "directories",
-        "label": "Directory configurations",
-    },
-    SystemConfigKey.Storages.value: {
-        "group": "storages",
-        "label": "Storage configurations",
-    },
-    SystemConfigKey.IndexerSites.value: {
-        "group": "search_sites",
-        "label": "Search-site scope",
-    },
-    SystemConfigKey.RssSites.value: {
-        "group": "subscribe_sites",
-        "label": "Subscription-site scope",
-    },
-    SystemConfigKey.UserSiteAuthParams.value: {
-        "group": "site_auth",
-        "label": "Site authentication parameters",
-    },
-    SystemConfigKey.AIAgentConfig.value: {
-        "group": "ai_agent",
-        "label": "AI Agent configuration",
-    },
-    SystemConfigKey.AIAgentMcpServers.value: {
-        "group": "ai_agent",
-        "label": "AI Agent external MCP servers",
-    },
-    SystemConfigKey.CustomIdentifiers.value: {
-        "group": "custom_identifiers",
-        "label": "Custom recognition identifiers",
-    },
-    SystemConfigKey.EpisodeFormatRuleTable.value: {
-        "group": "transfer",
-        "label": "Episode-position rule table",
-    },
-    SystemConfigKey.CustomReleaseGroups.value: {
-        "group": "customization",
-        "label": "Custom release and subtitle groups",
-    },
-    SystemConfigKey.Customization.value: {
-        "group": "customization",
-        "label": "Custom placeholders",
-    },
-    SystemConfigKey.TransferExcludeWords.value: {
-        "group": "transfer",
-        "label": "Transfer exclusion words",
-    },
-    SystemConfigKey.TorrentsPriority.value: {
-        "group": "filter_rules",
-        "label": "Torrent-priority rules",
-    },
-    SystemConfigKey.CustomFilterRules.value: {
-        "group": "filter_rules",
-        "label": "User-defined filter rules",
-    },
-    SystemConfigKey.UserFilterRuleGroups.value: {
-        "group": "filter_rules",
-        "label": "User filter-rule groups",
-    },
-    SystemConfigKey.SearchFilterRuleGroups.value: {
-        "group": "filter_rules",
-        "label": "Default search filter-rule groups",
-    },
-    SystemConfigKey.SubscribeFilterRuleGroups.value: {
-        "group": "filter_rules",
-        "label": "Default subscription filter-rule groups",
-    },
-    SystemConfigKey.BestVersionFilterRuleGroups.value: {
-        "group": "filter_rules",
-        "label": "Default upgrade filter-rule groups",
-    },
-    SystemConfigKey.SubscribeDefaultParams.value: {
-        "group": "subscribe_defaults",
-        "label": "Default subscription parameters",
-    },
-    SystemConfigKey.DefaultMovieSubscribeConfig.value: {
-        "group": "subscribe_defaults",
-        "label": "Default movie subscription rules",
-    },
-    SystemConfigKey.DefaultTvSubscribeConfig.value: {
-        "group": "subscribe_defaults",
-        "label": "Default TV subscription rules",
-    },
-    SystemConfigKey.DefaultMusicSubscribeConfig.value: {
-        "group": "subscribe_defaults",
-        "label": "Default music subscription rules",
-    },
-    SystemConfigKey.UserInstalledPlugins.value: {
-        "group": "plugins",
-        "label": "Installed plugin list",
-    },
-    SystemConfigKey.PluginFolders.value: {
-        "group": "plugins",
-        "label": "Plugin folder grouping",
-    },
-    SystemConfigKey.PluginInstallReport.value: {
-        "group": "plugins",
-        "label": "Plugin installation report",
-    },
-    SystemConfigKey.NotificationSendTime.value: {
-        "group": "notifications",
-        "label": "Notification delivery time",
-    },
-    SystemConfigKey.NotificationTemplates.value: {
-        "group": "notifications",
-        "label": "Notification templates",
-    },
-    SystemConfigKey.ScrapingSwitchs.value: {
-        "group": "scraping",
-        "label": "Metadata-scraping switches",
-    },
-    SystemConfigKey.FollowSubscribers.value: {
-        "group": "subscribe_sites",
-        "label": "Followed subscription publishers",
-    },
-}
-
-
-LIST_ITEM_MATCH_FIELD_DEFAULTS = {
-    SystemConfigKey.Downloaders.value: "name",
-    SystemConfigKey.MediaServers.value: "name",
-    SystemConfigKey.Notifications.value: "name",
-    SystemConfigKey.NotificationSwitchs.value: "type",
-    SystemConfigKey.Directories.value: "name",
-    SystemConfigKey.Storages.value: "name",
-}
 
 
 GROUP_ALIASES = {
@@ -222,16 +73,16 @@ GROUP_ALIASES = {
     "ai_agent": "ai_agent",
     "agent": "ai_agent",
     "智能体": "ai_agent",
-    "custom_identifiers": "custom_identifiers",
-    "自定义识别词": "custom_identifiers",
+    "custom_identifiers": "recognition_words",
+    "自定义识别词": "recognition_words",
     "filter_rules": "filter_rules",
     "过滤规则": "filter_rules",
     "subscribe_defaults": "subscribe_defaults",
     "订阅默认": "subscribe_defaults",
     "plugins": "plugins",
     "插件": "plugins",
-    "customization": "customization",
-    "自定义": "customization",
+    "customization": "recognition_words",
+    "自定义": "recognition_words",
     "transfer": "transfer",
     "整理": "transfer",
     "scraping": "scraping",
@@ -240,66 +91,12 @@ GROUP_ALIASES = {
     "其他": "misc",
 }
 
-
-# 这些前缀共同组成可启动、推理和扩展 AI Agent 的同一业务配置域。
-AI_AGENT_CORE_SETTING_PREFIXES = (
-    "AI_AGENT_",
-    "LLM_",
-    "AUDIO_INPUT_",
-    "AUDIO_OUTPUT_",
-    "AI_RECOMMEND_",
-)
+_RUNTIME_SETTINGS_UPDATE_LOCK = threading.RLock()
 
 
 def _normalize_token(value: str) -> str:
+    """把键名或别名转换为大小写和连字符无关的比较形式。"""
     return str(value).strip().lower().replace("-", "_")
-
-
-def _resolve_core_setting_group(key: str) -> str:
-    """根据基础设置的业务归属返回 Agent 可查询的分类。"""
-
-    if key.startswith(AI_AGENT_CORE_SETTING_PREFIXES):
-        return "ai_agent"
-    return "settings"
-
-
-def _format_declared_type(annotation: Any) -> str:
-    """把 Pydantic 字段注解转换为稳定且便于 Agent 阅读的类型文本。"""
-    rendered = str(annotation).replace("typing.", "")
-    return rendered.replace("<class '", "").replace("'>", "")
-
-
-def _build_specs() -> tuple[dict[str, SettingSpec], dict[str, SettingSpec]]:
-    core_specs = {
-        key: SettingSpec(
-            key=key,
-            source="settings",
-            group=_resolve_core_setting_group(key),
-            label=key,
-            declared_type=_format_declared_type(field.annotation),
-        )
-        for key, field in Settings.model_fields.items()
-    }
-    system_specs = {}
-    for item in SystemConfigKey:
-        metadata = SYSTEMCONFIG_SETTING_METADATA.get(item.value, {})
-        system_specs[item.value] = SettingSpec(
-            key=item.value,
-            source="systemconfig",
-            group=metadata.get("group", "misc"),
-            label=metadata.get("label", item.value),
-            declared_type=(
-                "list[object]"
-                if item.value in LIST_ITEM_MATCH_FIELD_DEFAULTS
-                else "JSON-compatible value"
-            ),
-            systemconfig_key=item,
-        )
-    return core_specs, system_specs
-
-
-CORE_SETTING_SPECS, SYSTEMCONFIG_SETTING_SPECS = _build_specs()
-ALL_SETTING_SPECS = {**CORE_SETTING_SPECS, **SYSTEMCONFIG_SETTING_SPECS}
 
 
 SETTING_KEY_ALIASES = {}
@@ -321,14 +118,15 @@ SINGLE_KEY_GROUP_ALIASES = {
 
 
 def normalize_group(group: Optional[str]) -> str:
+    """解析内置分类别名或来源目录中的精确分类名。"""
     if not group:
         return "all"
-    normalized = GROUP_ALIASES.get(_normalize_token(group))
+    token = _normalize_token(group)
+    normalized = GROUP_ALIASES.get(token) or (token if token in SETTING_GROUPS else None)
     if not normalized:
         raise ValueError(
-            "group 不支持，支持值包括 all/settings/systemconfig 以及"
-            " downloaders、media_servers、notifications、storages、directories、"
-            "search_sites、subscribe_sites、site_auth、ai_agent 等分类别名"
+            "group 不支持，支持 all/settings/systemconfig 或目录返回的分类："
+            f"{', '.join(sorted(SETTING_GROUPS))}"
         )
     return normalized
 
@@ -367,13 +165,16 @@ def list_setting_specs(group: Optional[str] = "all", keyword: Optional[str] = No
             if normalized_keyword in _normalize_token(spec.key)
             or normalized_keyword in _normalize_token(spec.group)
             or normalized_keyword in _normalize_token(spec.label)
+            or normalized_keyword in _normalize_token(spec.description)
         ]
 
     return sorted(specs, key=lambda spec: (spec.source, spec.group, spec.key))
 
 
 def get_default_list_match_field(setting_key: str) -> Optional[str]:
-    return LIST_ITEM_MATCH_FIELD_DEFAULTS.get(setting_key)
+    """返回合同声明的列表项默认匹配字段。"""
+    spec = ALL_SETTING_SPECS.get(setting_key)
+    return spec.default_match_field if spec else None
 
 
 def redact_secret_value(value: Any, *, redact_scalar: bool = False) -> Any:
@@ -390,15 +191,109 @@ def redact_secret_value(value: Any, *, redact_scalar: bool = False) -> Any:
     return value
 
 
+def _contains_secret_field(value: Any) -> bool:
+    """递归判断一个配置值是否包含命名为敏感字段的成员。"""
+    if isinstance(value, dict):
+        return any(
+            is_secret_setting_key(str(key)) or _contains_secret_field(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, list):
+        return any(_contains_secret_field(item) for item in value)
+    return False
+
+
 def should_redact_setting(spec: SettingSpec, value: Any) -> bool:
     """判断某项设置在默认查询响应中是否需要脱敏。"""
-    if is_secret_setting_key(spec.key):
+    return spec.sensitive or is_secret_setting_key(spec.key) or _contains_secret_field(value)
+
+
+def redact_setting_value(spec: SettingSpec, value: Any) -> Any:
+    """按设置结构脱敏，保留复杂配置中的非敏感匹配字段。"""
+    if not should_redact_setting(spec, value):
+        return value
+    redact_scalar = is_secret_setting_key(spec.key) or not isinstance(value, (dict, list))
+    return redact_secret_value(value, redact_scalar=redact_scalar)
+
+
+def build_setting_revision(value: Any) -> str:
+    """为当前完整配置值生成稳定且不暴露原文的并发修订标识。"""
+    serialized = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+    return f"sha256:{digest}"
+
+
+def _system_config_mutation(key: Any) -> ContextManager[None]:
+    """解析配置 mutation 上下文，并保留旧 settings 模块的替换兼容性。"""
+    from app.application import settings as settings_facade
+
+    mutation = getattr(settings_facade, "plugin_system_config_mutation")
+    return cast(ContextManager[None], mutation(key))
+
+
+def _schema_allows_null(schema: dict[str, Any]) -> bool:
+    """判断一个自包含 JSON Schema 是否允许 null。"""
+    schema_type = schema.get("type")
+    if schema_type == "null" or (isinstance(schema_type, list) and "null" in schema_type):
         return True
-    if isinstance(value, dict):
-        return any(is_secret_setting_key(str(key)) for key in value.keys())
+    return any(
+        isinstance(option, dict) and _schema_allows_null(option)
+        for keyword in ("anyOf", "oneOf")
+        for option in schema.get(keyword, [])
+    )
+
+
+def _summarize_setting_value(value: Any, *, redacted: bool = False) -> dict[str, Any]:
+    """生成有界值摘要，避免配置列表和字典挤占响应上下文。"""
+    summary: dict[str, Any] = {
+        "has_value": value is not None,
+        "value_type": type(value).__name__,
+        "redacted": redacted,
+    }
     if isinstance(value, list):
-        return any(should_redact_setting(spec, item) for item in value if isinstance(item, dict))
-    return False
+        summary["item_count"] = len(value)
+        if value:
+            summary["item_type"] = type(value[0]).__name__
+    elif isinstance(value, dict):
+        keys = list(value)
+        summary["item_count"] = len(keys)
+        summary["keys_preview"] = keys[:10]
+        summary["keys_truncated"] = len(keys) > 10
+    elif isinstance(value, str):
+        summary["length"] = len(value)
+        summary["value_preview"] = value[:200]
+        summary["value_truncated"] = len(value) > 200
+    elif value is not None:
+        summary["value_preview"] = value
+    return summary
+
+
+def _catalog_item(spec: SettingSpec) -> dict[str, Any]:
+    """投影适合批量扫描的轻量设置合同摘要。"""
+    return {
+        "setting_key": spec.key,
+        "source": spec.source,
+        "group": spec.group,
+        "label": spec.label,
+        "description": spec.description,
+        "declared_type": spec.declared_type,
+        "sensitive": spec.sensitive,
+        "generic_write_allowed": spec.generic_write_allowed,
+        "update_operations": list(spec.update_operations),
+        "default_match_field": spec.default_match_field,
+        "preferred_operation_ids": list(spec.preferred_operation_ids),
+        "dependencies": list(spec.dependencies),
+        "conflicts": list(spec.conflicts),
+        "apply_mode": spec.apply_mode,
+        "unit": spec.unit,
+        "examples": list(spec.examples),
+    }
 
 
 class SystemSettingsService:
@@ -422,52 +317,110 @@ class SystemSettingsService:
         return self._system_config.get(spec.systemconfig_key)
 
     @staticmethod
-    def _summarize(value: Any, *, redacted: bool = False) -> dict[str, Any]:
-        """生成有界值摘要，避免配置列表和字典挤占响应上下文。"""
-        summary: dict[str, Any] = {
-            "has_value": value is not None,
-            "value_type": type(value).__name__,
-            "redacted": redacted,
-        }
-        if isinstance(value, list):
-            summary["item_count"] = len(value)
-            if value:
-                summary["item_type"] = type(value[0]).__name__
-        elif isinstance(value, dict):
-            keys = list(value)
-            summary["item_count"] = len(keys)
-            summary["keys_preview"] = keys[:10]
-            summary["keys_truncated"] = len(keys) > 10
-        elif isinstance(value, str):
-            summary["length"] = len(value)
-            summary["value_preview"] = value[:200]
-            summary["value_truncated"] = len(value) > 200
-        elif value is not None:
-            summary["value_preview"] = value
-        return summary
-
-    @staticmethod
-    def _definition(spec: SettingSpec, value: Any, *, sensitive: bool) -> dict[str, Any]:
-        """返回当前设置值形状、持久化位置和允许的更新操作。"""
-        default_match_field = get_default_list_match_field(spec.key)
-        if isinstance(value, list) or (value is None and default_match_field):
-            update_operations = ["replace", "upsert_list_item", "remove_list_item"]
-            value_shape = "list"
-        elif isinstance(value, dict):
-            update_operations = ["replace", "merge_dict"]
-            value_shape = "object"
-        else:
-            update_operations = ["replace"]
-            value_shape = type(value).__name__ if value is not None else "unknown"
-        return {
+    def _definition(
+        spec: SettingSpec,
+        value: Any,
+        *,
+        sensitive: bool,
+        include_schema: bool,
+    ) -> dict[str, Any]:
+        """返回由静态合同声明的设置结构、写入边界和来源信息。"""
+        schema = build_value_schema(spec)
+        definition = {
+            "description": spec.description,
             "declared_type": spec.declared_type,
-            "value_shape": value_shape,
-            "nullable": value is None,
+            "default": schema.get("default"),
+            "value_shape": type(value).__name__ if value is not None else "null",
+            "nullable": _schema_allows_null(schema),
             "sensitive": sensitive,
-            "update_operations": update_operations,
-            "default_match_field": default_match_field,
-            "persistence": "app.env" if spec.source == "settings" else "database:systemconfig",
+            "generic_write_allowed": spec.generic_write_allowed,
+            "update_operations": list(spec.update_operations),
+            "default_match_field": spec.default_match_field,
+            "preferred_operation_ids": list(spec.preferred_operation_ids),
+            "dependencies": list(spec.dependencies),
+            "conflicts": list(spec.conflicts),
+            "apply_mode": spec.apply_mode,
+            "unit": spec.unit,
+            "examples": list(spec.examples),
+            "persistence": (
+                "app.env"
+                if spec.source == "settings"
+                else "database:systemconfig"
+            ),
+            "source": {
+                "file": spec.source_file,
+                "line": spec.source_line,
+            },
         }
+        if include_schema:
+            definition["value_schema"] = schema
+        return definition
+
+    def catalog(
+        self,
+        *,
+        group: Optional[str] = "all",
+        keyword: Optional[str] = None,
+        source: Optional[str] = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """分页列出轻量设置合同，不读取或返回当前配置值。"""
+        if source not in {None, "settings", "systemconfig"}:
+            raise ValueError("source 仅支持 settings 或 systemconfig")
+        if offset < 0:
+            raise ValueError("offset 必须大于等于 0")
+        if limit < 1 or limit > 500:
+            raise ValueError("limit 必须在 1 到 500 之间")
+        specs = list_setting_specs(group=group, keyword=keyword)
+        if source:
+            specs = [spec for spec in specs if spec.source == source]
+        page = specs[offset : offset + limit]
+        return {
+            "matched_count": len(specs),
+            "returned_count": len(page),
+            "offset": offset,
+            "limit": limit,
+            "has_more": offset + len(page) < len(specs),
+            "settings": [_catalog_item(spec) for spec in page],
+        }
+
+    def describe(
+        self,
+        *,
+        setting_key: str,
+        include_value: bool = True,
+        show_secrets: bool = False,
+    ) -> dict[str, Any]:
+        """返回一个设置的完整合同、当前 revision 和可选脱敏值。"""
+        spec = resolve_setting_spec(setting_key)
+        if spec is None:
+            raise ValueError(f"系统设置项 '{setting_key}' 不存在")
+        value = self._load(spec)
+        sensitive = should_redact_setting(spec, value)
+        redacted = sensitive and not show_secrets
+        response_value = (
+            redact_setting_value(spec, value)
+            if redacted
+            else value
+        )
+        item = {
+            "setting_key": spec.key,
+            "source": spec.source,
+            "group": spec.group,
+            "label": spec.label,
+            "revision": build_setting_revision(value),
+            "definition": self._definition(
+                spec,
+                value,
+                sensitive=sensitive,
+                include_schema=True,
+            ),
+            **_summarize_setting_value(response_value, redacted=redacted),
+        }
+        if include_value:
+            item["value"] = response_value
+        return item
 
     def query(
         self,
@@ -478,26 +431,31 @@ class SystemSettingsService:
         include_values: Optional[bool] = None,
         show_secrets: bool = False,
     ) -> dict[str, Any]:
-        """查询登记设置，并在未授权明文读取时递归脱敏。"""
+        """保留旧查询入口，并投影增强后的合同和 revision。"""
         if setting_key:
-            spec = resolve_setting_spec(setting_key)
-            if spec is None:
-                raise ValueError(f"系统设置项 '{setting_key}' 不存在")
-            specs = [spec]
-        else:
-            specs = list_setting_specs(group=group, keyword=keyword)
-            if not specs:
-                raise ValueError("没有找到匹配的系统设置项")
-        should_include_values = include_values if include_values is not None else len(specs) == 1
+            should_include_values = include_values if include_values is not None else True
+            item = self.describe(
+                setting_key=setting_key,
+                include_value=should_include_values,
+                show_secrets=show_secrets,
+            )
+            return {
+                "matched_count": 1,
+                "include_values": should_include_values,
+                "show_secrets": show_secrets,
+                "settings": [item],
+            }
+        specs = list_setting_specs(group=group, keyword=keyword)
+        if not specs:
+            raise ValueError("没有找到匹配的系统设置项")
+        should_include_values = include_values if include_values is not None else False
         payload = []
         for spec in specs:
             value = self._load(spec)
-            redacted = should_redact_setting(spec, value) and not show_secrets
+            sensitive = should_redact_setting(spec, value)
+            redacted = sensitive and not show_secrets
             response_value = (
-                redact_secret_value(
-                    value,
-                    redact_scalar=is_secret_setting_key(spec.key),
-                )
+                redact_setting_value(spec, value)
                 if redacted
                 else value
             )
@@ -506,12 +464,14 @@ class SystemSettingsService:
                 "source": spec.source,
                 "group": spec.group,
                 "label": spec.label,
+                "revision": build_setting_revision(value),
                 "definition": self._definition(
                     spec,
                     value,
-                    sensitive=should_redact_setting(spec, value),
+                    sensitive=sensitive,
+                    include_schema=False,
                 ),
-                **self._summarize(response_value, redacted=redacted),
+                **_summarize_setting_value(response_value, redacted=redacted),
             }
             if should_include_values:
                 item["value"] = response_value
@@ -612,6 +572,54 @@ class SystemSettingsService:
             and not (not resolved_field and item == resolved_value)
         ]
 
+    @staticmethod
+    def _assert_update_allowed(
+        spec: SettingSpec,
+        operation: str,
+        *,
+        allow_managed_write: bool,
+    ) -> None:
+        """按合同拒绝通用写入和未声明的更新语义。"""
+        if not spec.generic_write_allowed and not allow_managed_write:
+            preferred = ", ".join(spec.preferred_operation_ids)
+            if preferred:
+                raise ValueError(
+                    f"系统设置 {spec.key} 禁止通用写入，请改用专用 operation: {preferred}"
+                )
+            raise ValueError(f"系统设置 {spec.key} 是内部状态，禁止通过通用设置接口写入")
+        allowed_operations = spec.update_operations
+        if allow_managed_write and not allowed_operations:
+            allowed_operations = ("replace",)
+        if operation not in allowed_operations:
+            supported = ", ".join(allowed_operations) or "无"
+            raise ValueError(
+                f"系统设置 {spec.key} 不允许 {operation}，支持的更新操作: {supported}"
+            )
+
+    def _prepare_systemconfig_value(
+        self,
+        spec: SettingSpec,
+        current_value: Any,
+        value: Any,
+        operation: str,
+        remove_keys: Optional[list[str]],
+        match_field: Optional[str],
+        match_value: Any,
+    ) -> Any:
+        """构造、规范化并按完整合同验证数据库设置候选值。"""
+        next_value = self._prepare_next_value(
+            spec,
+            current_value,
+            value,
+            operation,
+            remove_keys,
+            match_field,
+            match_value,
+        )
+        normalized_value = self._normalize_systemconfig_value(next_value)
+        validate_setting_value(spec, normalized_value)
+        return normalized_value
+
     async def update(
         self,
         *,
@@ -621,45 +629,69 @@ class SystemSettingsService:
         remove_keys: Optional[list[str]] = None,
         match_field: Optional[str] = None,
         match_value: Any = None,
+        expected_revision: Optional[str] = None,
         expected_value: Any = None,
         enforce_expected_value: bool = False,
+        allow_managed_write: bool = False,
     ) -> dict[str, Any]:
-        """更新登记设置，可选校验旧值，并发布统一配置变更事件。"""
+        """按合同和 revision 原子更新设置，并发布统一配置变更事件。"""
         spec = resolve_setting_spec(setting_key)
         if spec is None:
             raise ValueError(f"系统设置项 '{setting_key}' 不存在")
         if enforce_expected_value and spec.source != "systemconfig":
             raise ValueError("条件更新仅支持数据库系统配置")
+        self._assert_update_allowed(
+            spec,
+            operation,
+            allow_managed_write=allow_managed_write or enforce_expected_value,
+        )
         mutation_key = spec.systemconfig_key if spec.source == "systemconfig" else None
-        with plugin_system_config_mutation(mutation_key):
+        with _system_config_mutation(mutation_key):
             message = ""
             if spec.source == "settings":
-                previous_value = self._load(spec)
-                next_value = self._prepare_next_value(
-                    spec,
-                    previous_value,
-                    value,
-                    operation,
-                    remove_keys,
-                    match_field,
-                    match_value,
+                with _RUNTIME_SETTINGS_UPDATE_LOCK:
+                    previous_value = self._load(spec)
+                    previous_revision = build_setting_revision(previous_value)
+                    if expected_revision is not None and expected_revision != previous_revision:
+                        raise SystemSettingConflictError(
+                            f"系统设置 {spec.key} 的 expected_revision 已过期，请重新读取后再保存"
+                        )
+                    next_value = self._prepare_next_value(
+                        spec,
+                        previous_value,
+                        value,
+                        operation,
+                        remove_keys,
+                        match_field,
+                        match_value,
+                    )
+                    success, message = self._runtime_settings.update(spec.key, next_value)
+                    if success is False:
+                        raise ValueError(message or f"更新设置 {spec.key} 失败")
+                    changed = success is True
+                    event_value = self._load(spec)
+            elif expected_revision is not None or enforce_expected_value:
+                normalized_expected = (
+                    self._normalize_comparison_value(spec, expected_value)
+                    if enforce_expected_value
+                    else None
                 )
-                event_value = next_value
-                success, message = self._runtime_settings.update(spec.key, next_value)
-                if success is False:
-                    raise ValueError(message or f"更新设置 {spec.key} 失败")
-                changed = success is True
-            elif enforce_expected_value:
-                normalized_expected = self._normalize_comparison_value(spec, expected_value)
 
                 def mutate(current_value: Any) -> tuple[tuple[Any, Any, bool], Any]:
-                    """在配置写锁内校验旧值并构造本次替换结果。"""
+                    """在配置写锁内校验 revision 或旧值并构造合法结果。"""
+                    if (
+                        expected_revision is not None
+                        and build_setting_revision(current_value) != expected_revision
+                    ):
+                        raise SystemSettingConflictError(
+                            f"系统设置 {spec.key} 的 expected_revision 已过期，请重新读取后再保存"
+                        )
                     normalized_current = self._normalize_comparison_value(spec, current_value)
-                    if normalized_current != normalized_expected:
+                    if enforce_expected_value and normalized_current != normalized_expected:
                         raise SystemSettingConflictError(
                             f"系统设置 {spec.key} 已被其他会话更新，请重新加载后再保存"
                         )
-                    next_value = self._prepare_next_value(
+                    normalized_next = self._prepare_systemconfig_value(
                         spec,
                         current_value,
                         value,
@@ -668,11 +700,10 @@ class SystemSettingsService:
                         match_field,
                         match_value,
                     )
-                    normalized_next = self._normalize_systemconfig_value(next_value)
                     return (
                         current_value,
                         normalized_next,
-                        normalized_current != normalized_next,
+                        current_value != normalized_next,
                     ), normalized_next
 
                 previous_value, event_value, changed = (
@@ -683,7 +714,7 @@ class SystemSettingsService:
                 )
             else:
                 previous_value = self._load(spec)
-                next_value = self._prepare_next_value(
+                event_value = self._prepare_systemconfig_value(
                     spec,
                     previous_value,
                     value,
@@ -692,7 +723,6 @@ class SystemSettingsService:
                     match_field,
                     match_value,
                 )
-                event_value = self._normalize_systemconfig_value(next_value)
                 write_result = (
                     await self._system_config.async_set_with_normalized_value(
                         spec.systemconfig_key,
@@ -704,6 +734,8 @@ class SystemSettingsService:
             if changed:
                 await self._publish_config_changed(spec.key, event_value)
             saved_value = self._load(spec)
+            previous_revision = build_setting_revision(previous_value)
+            saved_revision = build_setting_revision(saved_value)
             redact_values = should_redact_setting(spec, previous_value) or should_redact_setting(spec, saved_value)
             return {
                 "message": message or (f"系统设置 {spec.key} 已更新" if changed else "配置值未发生变化"),
@@ -715,20 +747,16 @@ class SystemSettingsService:
                     "group": spec.group,
                     "label": spec.label,
                 },
+                "previous_revision": previous_revision,
+                "revision": saved_revision,
                 "values_redacted": redact_values,
                 "previous_value": (
-                    redact_secret_value(
-                        previous_value,
-                        redact_scalar=is_secret_setting_key(spec.key),
-                    )
+                    redact_setting_value(spec, previous_value)
                     if redact_values
                     else previous_value
                 ),
                 "saved_value": (
-                    redact_secret_value(
-                        saved_value,
-                        redact_scalar=is_secret_setting_key(spec.key),
-                    )
+                    redact_setting_value(spec, saved_value)
                     if redact_values
                     else saved_value
                 ),

@@ -218,15 +218,16 @@ async def test_save_system_config_and_settings_service(monkeypatch):
     secret = service.query(setting_key=SystemConfigKey.Downloaders.value, include_values=True)
     assert secret["settings"][0]["value"][0]["token"] == "***"
     definition = secret["settings"][0]["definition"]
-    assert definition == {
-        "declared_type": "list[object]",
-        "value_shape": "list",
-        "nullable": False,
-        "sensitive": True,
-        "update_operations": ["replace", "upsert_list_item", "remove_list_item"],
-        "default_match_field": "name",
-        "persistence": "database:systemconfig",
-    }
+    assert definition["declared_type"].startswith("list[")
+    assert definition["value_shape"] == "list"
+    assert definition["nullable"] is True
+    assert definition["sensitive"] is True
+    assert definition["generic_write_allowed"] is True
+    assert definition["update_operations"] == ["replace", "upsert_list_item", "remove_list_item"]
+    assert definition["default_match_field"] == "name"
+    assert definition["persistence"] == "database:systemconfig"
+    assert any(item.get("type") == "array" for item in definition["value_schema"]["anyOf"])
+    assert definition["description"]
     shown = service.query(setting_key=SystemConfigKey.Downloaders.value, include_values=True, show_secrets=True)
     assert shown["settings"][0]["value"][0]["token"] == "secret"
     assert service.query(group="ai_agent")["include_values"] is False

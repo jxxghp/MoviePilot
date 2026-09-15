@@ -5,10 +5,10 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **409**
-- Stable `moviepilot_api` operations: **229**
-- Exact HTTP routes used by the gateway: **227**
-- OpenAPI routes matched directly by the gateway: **226**
+- OpenAPI HTTP operations: **411**
+- Stable `moviepilot_api` operations: **231**
+- Exact HTTP routes used by the gateway: **229**
+- OpenAPI routes matched directly by the gateway: **228**
 - Bounded dynamic gateway routes: **1**
 - Every gateway operation has a generated English oneOf input contract in MCP `tools/list` and `skills/moviepilot-api/SKILL.md`.
 - Every non-gateway OpenAPI operation is listed below with an explicit ownership boundary; it is not silently callable through arbitrary URL/method input.
@@ -19,7 +19,7 @@
 | :--- | ---: | :--- |
 | `alternate-auth-duplicate` | 11 | API-token compatibility duplicate of a bearer-authenticated capability. |
 | `consolidated` | 71 | Source/UI route represented by a stable aggregate Agent operation. |
-| `gateway` | 226 | Approved structured MoviePilot Agent operation. |
+| `gateway` | 228 | Approved structured MoviePilot Agent operation. |
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
@@ -380,6 +380,8 @@
 | `POST` | `/api/v1/system/setting/{key}` | system | `consolidated` | config.system.update | 更新系统设置 |
 | `GET` | `/api/v1/system/settings` | system | `gateway` | config.system.get | Discover or read registered system settings |
 | `POST` | `/api/v1/system/settings` | system | `gateway` | config.system.update | Update one registered system setting |
+| `GET` | `/api/v1/system/settings/catalog` | system | `gateway` | config.system.list | List system setting contracts |
+| `GET` | `/api/v1/system/settings/describe/{setting_key}` | system | `gateway` | config.system.describe | Describe one system setting contract |
 | `POST` | `/api/v1/system/update/check` | system | `gateway` | system.update.check | 立即检查系统更新 |
 | `POST` | `/api/v1/system/update/download` | system | `gateway` | system.update.download | 后台下载系统更新 |
 | `POST` | `/api/v1/system/update/install` | system | `gateway` | system.update.install | 确认重启安装系统更新 |

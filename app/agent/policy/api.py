@@ -219,6 +219,8 @@ API_PARITY_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     _write("filter.group.update", recovery=RecoveryMode.TRANSACTION),
     _write("filter.group.delete", effect=ActionEffect.DESTRUCTIVE_WRITE, recovery=RecoveryMode.TRANSACTION),
     _admin_read("plugin.data", sensitivity=ResultSensitivity.PRIVATE),
+    _admin_read("config.system.list", sensitivity=ResultSensitivity.PRIVATE),
+    _admin_read("config.system.describe", sensitivity=ResultSensitivity.PRIVATE),
     _admin_read("config.system.get", sensitivity=ResultSensitivity.PRIVATE),
     _write("config.system.update", recovery=RecoveryMode.TRANSACTION, sensitivity=ResultSensitivity.PRIVATE),
     _spec(
@@ -670,6 +672,10 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
     "filter.group.update": ApiOperationRoute("PUT", "/api/v1/rule/groups/{name}"),
     "filter.group.delete": ApiOperationRoute("DELETE", "/api/v1/rule/groups/{name}"),
     "plugin.data": ApiOperationRoute("GET", "/api/v1/plugin/runtime/{plugin_id}/data"),
+    "config.system.list": ApiOperationRoute("GET", "/api/v1/system/settings/catalog"),
+    "config.system.describe": ApiOperationRoute(
+        "GET", "/api/v1/system/settings/describe/{setting_key}"
+    ),
     "config.system.get": ApiOperationRoute("GET", "/api/v1/system/settings"),
     "config.system.update": ApiOperationRoute("POST", "/api/v1/system/settings"),
     "slash.run": ApiOperationRoute("POST", "/api/v1/message/agent/commands/run"),

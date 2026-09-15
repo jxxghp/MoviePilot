@@ -9,6 +9,8 @@ from typing import Any, Mapping, Sequence
 OPERATION_DESCRIPTIONS = {
     "config.identifiers.get": "Read the complete custom media-recognition identifier list.",
     "config.identifiers.update": "Replace the complete custom media-recognition identifier list.",
+    "config.system.list": "List compact machine-readable contracts for registered system settings.",
+    "config.system.describe": "Read one exact system setting contract, current value, and revision.",
     "config.system.get": "Discover registered system settings or read one exact setting.",
     "config.system.update": "Update one exact registered system setting.",
     "download.add": "Submit one torrent to MoviePilot's normal download workflow.",

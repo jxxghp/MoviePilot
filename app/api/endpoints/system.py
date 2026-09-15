@@ -3,12 +3,12 @@ import io
 import json
 import zipfile
 from datetime import datetime
-from typing import Annotated, Any, Optional, Union
+from typing import Annotated, Any, Optional
 from urllib.parse import urlsplit
 
 import anyio
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
-from fastapi import Body, Depends, Header, HTTPException, Query, Request, Response
+from fastapi import Body, Depends, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.adapters.web.security.access import verify_apitoken, verify_resource_token, verify_token
@@ -20,6 +20,15 @@ from app.api.dependencies.auth import (
 )
 from app.api.endpoints.identifier import router as system_identifiers_router
 from app.api.endpoints.module import router as module_router
+from app.api.endpoints.settings import (
+    catalog_settings,
+    describe_setting,
+    get_setting,
+    query_settings,
+    set_setting,
+    update_settings,
+)
+from app.api.endpoints.settings import router as system_settings_router
 from app.api.principal import ApiPrincipal
 from app.api.response import CompatibleCountParam, CompatiblePageParam, ResponseAPIRouter
 from app.application.backup import DatabaseBackupInProgressError
@@ -34,7 +43,6 @@ from app.application.network import get_configured_network_test_service
 from app.application.rules import RuleHelper
 from app.application.scheduling import get_scheduler
 from app.application.security.url import SecurityUtils
-from app.application.settings import SystemSettingsService
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.system import LogFileData, LogNotFoundError
 from app.chain.media import MediaChain
@@ -62,7 +70,6 @@ from app.schemas.system import PluginMarketSyncData as _SchemaPluginMarketSyncDa
 from app.schemas.system import PluginMarketSyncRequest as _SchemaPluginMarketSyncRequest
 from app.schemas.system import RuleTestData as _SchemaRuleTestData
 from app.schemas.system import SystemEnvironmentUpdateData as _SchemaSystemEnvironmentUpdateData
-from app.schemas.system import SystemSettingsUpdateRequest as _SchemaSystemSettingsUpdateRequest
 from app.schemas.system import SystemUpdateRequest as _SchemaSystemUpdateRequest
 from app.schemas.system import SystemUpdateStatus as _SchemaSystemUpdateStatus
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -72,6 +79,16 @@ from app.startup.composition.context import HostRuntime
 router = ResponseAPIRouter()
 router.routes.extend(system_identifiers_router.routes)
 router.routes.extend(module_router.routes)
+
+# Re-export setting handlers for existing endpoint-level imports and tests.
+__all__ = [
+    "catalog_settings",
+    "describe_setting",
+    "get_setting",
+    "query_settings",
+    "set_setting",
+    "update_settings",
+]
 
 _PUBLIC_SYSTEM_CONFIG_KEYS = {
     item.value: item
@@ -610,119 +627,6 @@ async def sync_plugin_market_from_wiki(
 
 
 @router.get(
-    "/setting/{key}",
-    summary="查询系统设置",
-    response_model=_SchemaResponse[_SchemaValueData],
-)
-async def get_setting(key: str, _: ApiPrincipal = Depends(get_current_active_superuser_async)) -> _SchemaResponse:
-    """
-    查询系统设置（仅管理员）
-    """
-    runtime_settings = get_runtime_settings()
-    if runtime_settings.contains(key):
-        value = runtime_settings.get(key)
-    else:
-        value = get_configured_system_config().get(key)
-    return _SchemaResponse(success=True, data={"value": value})
-
-
-@router.post("/setting/{key}", summary="更新系统设置", response_model=_SchemaResponse[None])
-async def set_setting(
-    key: str,
-    value: Annotated[Union[list, dict, bool, int, str] | None, Body()] = None,
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
-    runtime: HostRuntime = Depends(get_host_runtime),
-):
-    """
-    更新系统设置（仅管理员）
-    """
-    result = await runtime.system.update_setting(key, value)
-    return _SchemaResponse(success=result.success, message=result.message)
-
-
-@router.get(  # type: ignore[misc]
-    "/settings",
-    summary="Discover or read registered system settings",
-    response_model=_SchemaResponse[_SchemaJsonObject],
-)
-async def query_settings(
-    setting_key: Annotated[
-        Optional[str],
-        Query(
-            description=(
-                "Exact setting key. Accepts Settings field names such as APP_DOMAIN or LLM_MODEL, "
-                "SystemConfigKey values or enum names such as Downloaders or MediaServers, and "
-                "aliases that resolve to one unique setting. Omit it to discover settings."
-            )
-        ),
-    ] = None,
-    group: Annotated[
-        Optional[str],
-        Query(
-            description=(
-                "Discovery group used when setting_key is omitted. Supported groups are all, settings, systemconfig, downloaders, "
-                "media_servers, notifications, notification_switches, storages, directories, "
-                "search_sites, subscribe_sites, site_auth, ai_agent, filter_rules, "
-                "subscribe_defaults, plugins, customization, transfer, scraping, and misc."
-            )
-        ),
-    ] = "all",
-    keyword: Annotated[
-        Optional[str],
-        Query(description="Case-insensitive substring used to discover matching keys, groups, or labels."),
-    ] = None,
-    include_values: Annotated[
-        Optional[bool],
-        Query(description="Return full values. Defaults to true for one exact key and false for discovery results."),
-    ] = None,
-    show_secrets: Annotated[
-        bool,
-        Query(description="Return unredacted secret values. Defaults to false and remains confirmation-protected."),
-    ] = False,
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
-    runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse[Any]:
-    """按登记元数据查询设置，并默认对敏感值递归脱敏。"""
-    try:
-        data = SystemSettingsService(
-            get_runtime_settings(),
-            get_configured_system_config(),
-            runtime.system.publish_config_changed,
-        ).query(
-            setting_key=setting_key,
-            group=group,
-            keyword=keyword,
-            include_values=include_values,
-            show_secrets=show_secrets,
-        )
-    except ValueError as error:
-        return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, data=data)
-
-
-@router.post(  # type: ignore[misc]
-    "/settings",
-    summary="Update one registered system setting",
-    response_model=_SchemaResponse[_SchemaJsonObject],
-)
-async def update_settings(
-    payload: _SchemaSystemSettingsUpdateRequest,
-    _: ApiPrincipal = Depends(get_current_active_superuser_async),
-    runtime: HostRuntime = Depends(get_host_runtime),
-) -> _SchemaResponse[Any]:
-    """按替换、字典合并或列表项操作更新一个登记设置。"""
-    try:
-        data = await SystemSettingsService(
-            get_runtime_settings(),
-            get_configured_system_config(),
-            runtime.system.publish_config_changed,
-        ).update(**payload.model_dump())
-    except ValueError as error:
-        return _SchemaResponse(success=False, message=str(error))
-    return _SchemaResponse(success=True, message=data.get("message"), data=data)
-
-
-@router.get(
     "/message",
     summary="实时消息",
     response_model=None,
@@ -1099,3 +1003,7 @@ def run_scheduler2(jobid: str, _: Annotated[str, Depends(verify_apitoken)]):
     else:
         get_scheduler().start(jobid)
     return _SchemaResponse(success=True)
+
+
+# Keep the settings routes in the legacy system router while owning their code separately.
+router.routes.extend(system_settings_router.routes)

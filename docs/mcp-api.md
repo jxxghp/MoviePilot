@@ -137,12 +137,12 @@ MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。
 
 `app/agent/policy/resources/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。
 
-当前完整 FastAPI OpenAPI 包含 400 个 HTTP 操作，其中 220 个稳定业务操作进入
-`moviepilot_api`，使用 218 个固定路由模板：217 条 OpenAPI 路由直接匹配，另有 1 条只允许
+当前完整 FastAPI OpenAPI 包含 411 个 HTTP 操作，其中 231 个稳定业务操作进入
+`moviepilot_api`，使用 229 个固定路由模板：228 条 OpenAPI 路由直接匹配，另有 1 条只允许
 `tmdb`、`douban`、`bangumi`、`anilist` 四个来源的受限人物作品动态路由。每个 operation
 均同时具备固定 method/path、角色权限、副作用等级、确认与恢复策略、结果敏感性、英文用途说明，
 以及可直接提交的 path/query/body JSON Schema；Skill front matter、正文 operation 章节、运行时
-注册表和 MCP `tools/list` 的 220 个 `oneOf` 分支必须完全一致。
+注册表和 MCP `tools/list` 的 231 个 `oneOf` 分支必须完全一致。
 
 数量不相等是明确的安全与语义边界，而不是漏生成。当前 400 条路由均被审计并锁定为以下一种
 归属，审计生成器不再提供“未归类”兜底：
@@ -235,13 +235,16 @@ operation ID、权限、副作用、确认、恢复、结果敏感性及精确�
 
 系统设置统一使用 `moviepilot_api`，不需要恢复旧的 `query_system_settings` / `update_system_settings` 工具：
 
+- `config.system.list` 只返回分页的轻量合同索引，不读取当前值；支持 `group`、`keyword`、`source`、`offset` 和 `limit`。
+- `config.system.describe` 读取一个精确设置的完整 JSON Schema、默认值/单位/示例、依赖与冲突、写入边界、当前值和稳定 `revision`；敏感值默认脱敏。
 - `config.system.get` 同时查询 `Settings` 运行配置变量和 `SystemConfigKey` 数据库配置。可用 `setting_key` 精确读取，或用 `group` + `keyword` 发现键；单项默认返回完整值，多项默认只返回摘要。
 - 每个发现结果都返回动态 `definition`：声明类型、当前值形状、是否可空/敏感、允许的更新操作、列表默认匹配字段和持久化位置。Agent 应先发现定义，再按返回的精确键和形状调用更新。
 - `config.system.update` 支持 `replace`、`merge_dict`、`upsert_list_item`、`remove_list_item`。`Settings` 字段会执行类型转换并持久化到 `app.env`；`SystemConfigKey` 会经配置服务写入数据库并发布配置变更事件。
+- 新客户端应将 `describe` 返回的 `revision` 作为 `expected_revision` 回传；省略该字段仍保留旧客户端的非条件更新兼容行为。`generic_write_allowed=false` 的复杂或内部配置必须改用返回的专用 operation，过期 revision 返回冲突而不覆盖其他写入。
 - 敏感值默认脱敏；只有管理员明确要求时才传 `query.show_secrets=true`，并继续受宿主确认和保护输出策略约束。
 - `database_operation` 直接修改 `systemconfig` 只用于受控数据修复。普通配置修改不得绕过键注册、类型转换、插件 mutation 门禁和事件通知。
 
-`skills/moviepilot-api/SKILL.md` 只维护稳定的发现与更新流程，不复制当前版本全部 `Settings` / `SystemConfigKey` 清单。真实键、类型和值形状由 `config.system.get` 运行时发现；MCP `tools/list` 的 `config.system.get/update` 分支负责说明发现参数和更新请求结构。
+`skills/moviepilot-api/SKILL.md` 只维护稳定的发现与更新流程，不复制当前版本全部 `Settings` / `SystemConfigKey` 清单。真实键、类型和值形状由 `config.system.list` / `config.system.describe` 运行时发现；MCP `tools/list` 的 `config.system.list/describe/get/update` 分支负责说明发现参数和更新请求结构。
 
 ---
 

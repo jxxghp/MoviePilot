@@ -13,7 +13,9 @@ from scripts.evaluation.scenarios import get_scenario
 _PAGINATION = frozenset({"page", "count"})
 _QUERY_FIELDS = {
     "subscription.list": _PAGINATION,
-    "subscription.find": frozenset({"media_source", "season", "title", "music_type"}),
+    "subscription.find": frozenset(
+        {"media_source", "season", "title", "music_type", "mtype", "year"}
+    ),
     "subscription.get": frozenset(),
     "subscription.add": frozenset(),
     "subscription.delete": frozenset(),

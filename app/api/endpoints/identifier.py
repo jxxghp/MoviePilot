@@ -12,7 +12,10 @@ from app.application.configuration import (
     get_configured_system_config,
     get_runtime_settings,
 )
-from app.application.settings import SystemSettingConflictError, SystemSettingsService
+from app.application.settings.service import (
+    SystemSettingConflictError,
+    SystemSettingsService,
+)
 from app.schemas.common import JsonObject
 from app.schemas.response import Response
 from app.schemas.system import CustomIdentifiersUpdateRequest

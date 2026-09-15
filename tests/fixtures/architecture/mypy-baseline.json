@@ -541,10 +541,10 @@
   "app/api/endpoints/system.py": {
     "arg-type": 1,
     "attr-defined": 4,
-    "misc": 32,
+    "misc": 30,
     "no-untyped-call": 6,
-    "no-untyped-def": 25,
-    "type-arg": 9
+    "no-untyped-def": 24,
+    "type-arg": 6
   },
   "app/api/endpoints/tmdb.py": {
     "attr-defined": 1,
