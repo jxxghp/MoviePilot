@@ -1,9 +1,9 @@
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import text
 
 from app.db.models.systemconfig import SystemConfig
 from app.db.oper.systemconfig import SystemConfigOper
@@ -50,19 +50,19 @@ def test_load_snapshot_publishes_complete_dictionary(monkeypatch):
     """重新加载期间读取方只会看到完整旧快照或完整新快照。"""
     Singleton._instances.pop((SystemConfigOper, (), frozenset()), None)
     oper = SystemConfigOper()
-    values = [SimpleNamespace(key="key", value="old")]
     entered = threading.Event()
     release = threading.Event()
 
-    monkeypatch.setattr(SystemConfig, "list", lambda _db: values)
+    monkeypatch.setattr(oper, "_load_snapshot_values", lambda _db: {"key": "old"})
     oper.load_snapshot()
 
     def load_new_snapshot(_db):
+        """阻塞新快照构造，供主线程确认旧快照仍可读取。"""
         entered.set()
         release.wait(1)
-        return [SimpleNamespace(key="key", value="new")]
+        return {"key": "new"}
 
-    monkeypatch.setattr(SystemConfig, "list", load_new_snapshot)
+    monkeypatch.setattr(oper, "_load_snapshot_values", load_new_snapshot)
     thread = threading.Thread(target=oper.load_snapshot)
     thread.start()
     assert entered.wait(1)
@@ -73,6 +73,31 @@ def test_load_snapshot_publishes_complete_dictionary(monkeypatch):
     thread.join(1)
     assert thread.is_alive() is False
     assert oper.get("key") == "new"
+
+
+def test_load_snapshot_repairs_malformed_json_and_allows_follow_up_write():
+    """启动加载遇到单条非法 JSON 时应修复该行，并允许随后覆盖配置。"""
+    key = _unique_key()
+    with SessionFactory() as session:
+        session.execute(
+            text("INSERT INTO systemconfig (key, value) VALUES (:key, :value)"),
+            {"key": key, "value": "not-json"},
+        )
+        session.commit()
+
+    oper = _fresh_oper()
+
+    assert oper.get(key) is None
+    with SessionFactory() as session:
+        stored = session.execute(
+            text("SELECT value FROM systemconfig WHERE key = :key"),
+            {"key": key},
+        ).scalar_one()
+    assert stored is None
+
+    assert oper.set(key, {"recovered": True}) is True
+    assert oper.get(key) == {"recovered": True}
+    assert _stored_config(key).value == {"recovered": True}
 
 
 def test_read_does_not_wait_for_slow_write_transaction(monkeypatch):

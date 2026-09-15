@@ -1,9 +1,11 @@
 import copy
+import json
+import logging
 import threading
 from collections.abc import Callable, Mapping
 from typing import Any, Optional, TypeVar, Union
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
@@ -12,6 +14,7 @@ from app.foundation.singleton import Singleton
 from app.schemas.types import SystemConfigKey
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 class SystemConfigOper(DbOper, metaclass=Singleton):
@@ -30,16 +33,44 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
     def load_snapshot(self, db: Optional[Session] = None) -> None:
         """从显式会话或 Oper 事务边界加载配置并发布内存快照。"""
         with self._write_lock:
-            items = SystemConfig.list(db) if db is not None else self._execute_sync_query(
-                SystemConfig.list
-            )
-            snapshot = {
-                item.key: copy.deepcopy(item.value)
-                for item in items
-            }
+            snapshot = self._load_snapshot_values(db)
             with self._snapshot_lock:
                 self.__SYSTEMCONF = snapshot
                 self._loaded = True
+
+    def _load_snapshot_values(self, db: Optional[Session]) -> dict[str, Any]:
+        """逐行读取配置并把历史非法 JSON 修复为可继续运行的空值。"""
+        def load(session: Session) -> dict[str, Any]:
+            """读取原始列值，避免单条坏记录触发 SQLAlchemy JSON 反序列化。"""
+            snapshot: dict[str, Any] = {}
+            rows = session.execute(
+                text("SELECT id, key, value FROM systemconfig ORDER BY id")
+            ).mappings()
+            for row in rows:
+                key = row["key"]
+                if not key:
+                    continue
+                raw_value = row["value"]
+                try:
+                    value = (
+                        json.loads(raw_value)
+                        if isinstance(raw_value, (str, bytes, bytearray))
+                        else raw_value
+                    )
+                except (TypeError, ValueError, UnicodeDecodeError) as error:
+                    # 配置快照是启动关键路径；归零坏行后仍允许管理员进入系统重新保存。
+                    logger.warning(
+                        f"系统配置 JSON 无法解析，已重置为空值：id={row['id']}，key={key}，error={error}"
+                    )
+                    session.execute(
+                        text("UPDATE systemconfig SET value = NULL WHERE id = :id"),
+                        {"id": row["id"]},
+                    )
+                    value = None
+                snapshot[str(key)] = copy.deepcopy(value)
+            return snapshot
+
+        return load(db) if db is not None else self._execute_sync_query(load)
 
     def _require_loaded(self) -> None:
         """阻止消费者读取尚未完成启动加载的半成品快照。"""
