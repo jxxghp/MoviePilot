@@ -16,6 +16,7 @@ from typing import Any, Protocol, TypeAlias, cast
 from pydantic import ValidationError
 
 from app.domain.classification.evaluator import read_fact
+from app.domain.classification.conditions import condition_field_ids
 from app.domain.classification.fields import (
     classification_fact_matches_definition,
     field_definition_map,
@@ -429,7 +430,7 @@ def _referenced_missing_standard_fields(
             continue
         if rule.sources and media_source not in rule.sources:
             continue
-        for field_id in _condition_field_ids(rule.when):
+        for field_id in condition_field_ids(rule.when):
             if field_id.startswith(("identity.", "extensions.")):
                 continue
             definition = definitions.get(field_id)
@@ -439,27 +440,6 @@ def _referenced_missing_standard_fields(
             if missing and field_id not in fields:
                 fields.append(field_id)
     return tuple(fields)
-
-
-def _condition_field_ids(node: ClassificationConditionNode) -> tuple[str, ...]:
-    """按策略声明顺序递归返回条件树叶子字段。"""
-    if isinstance(node, ClassificationCondition):
-        return (node.field,)
-    if not isinstance(node, ClassificationConditionGroup):
-        return ()
-    if node.all is not None:
-        children: Sequence[ClassificationConditionNode] = node.all
-    elif node.any is not None:
-        children = node.any
-    elif node.not_ is not None:
-        children = (node.not_,)
-    else:
-        children = ()
-    return tuple(
-        field_id
-        for child in children
-        for field_id in _condition_field_ids(child)
-    )
 
 
 def _provider_fields(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any, Optional
 
-from app.schemas.media import resolve_media_identity
+from app.application.server.payload import build_subscribe_payload
 
 
 class ServerReportService:
@@ -78,19 +78,7 @@ class ServerReportService:
 
     def build_subscribe_payload(self, item: Optional[dict]) -> Optional[dict]:
         """构造中心服务订阅统计载荷并移除本地运行字段。"""
-        if not isinstance(item, dict):
-            return None
-        media_source, media_id = resolve_media_identity(media=item)
-        if not media_source or not media_id:
-            return None
-        payload = {
-            key: value
-            for key, value in item.items()
-            if key in self.SUBSCRIBE_FIELDS
-        }
-        payload["media_source"] = str(media_source)
-        payload["media_id"] = media_id
-        return payload
+        return build_subscribe_payload(item, self.SUBSCRIBE_FIELDS)
 
     def build_plugin_payload(
             self,

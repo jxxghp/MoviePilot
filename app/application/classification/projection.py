@@ -16,6 +16,7 @@ from app.application.classification.migration import (
     LegacyDiagnosticPathPart,
     LegacyMediaKey,
 )
+from app.domain.classification.conditions import condition_field_ids
 from app.domain.classification.vocabulary import TMDB_GENRE_KEYS
 from app.schemas.category import (
     CategoryConfig,
@@ -473,7 +474,7 @@ def _controlled_tmdb_fields(
     field_ids: list[str] = []
     if isinstance(policy_or_field_defs, ClassificationPolicy):
         for rule in policy_or_field_defs.rules:
-            field_ids.extend(_condition_field_ids(rule.when))
+            field_ids.extend(condition_field_ids(rule.when))
     else:
         for definition in policy_or_field_defs:
             if definition.source_support.get(_TMDB_SOURCE) == "extension":
@@ -487,21 +488,6 @@ def _controlled_tmdb_fields(
         if _SAFE_FIELD_SEGMENT.fullmatch(field_name):
             _append_unique(fields, field_name)
     return tuple(fields)
-
-
-def _condition_field_ids(node: ClassificationConditionNode) -> list[str]:
-    """按条件树顺序提取全部叶子字段 ID。"""
-    if isinstance(node, ClassificationCondition):
-        return [node.field]
-    if node.all is not None:
-        children = node.all
-    elif node.any is not None:
-        children = node.any
-    elif node.not_ is not None:
-        children = [node.not_]
-    else:
-        children = []
-    return [field_id for child in children for field_id in _condition_field_ids(child)]
 
 
 def _project_legacy_tmdb_field(

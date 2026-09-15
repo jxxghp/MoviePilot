@@ -392,6 +392,7 @@ def test_domain_classification_is_a_pure_direct_import_package() -> None:
     package = APP_ROOT / "domain" / "classification"
     assert {path.name for path in package.glob("*.py")} == {
         "__init__.py",
+        "conditions.py",
         "evaluator.py",
         "facts.py",
         "fields.py",

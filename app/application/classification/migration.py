@@ -22,6 +22,7 @@ from app.domain.classification.vocabulary import (
 from app.domain.classification.vocabulary import (
     TMDB_GENRE_KEYS as _TMDB_GENRE_KEYS,
 )
+from app.domain.classification.conditions import condition_field_ids
 from app.schemas.category import (
     CategoryConfig,
     CategoryRule,
@@ -222,7 +223,7 @@ def legacy_extension_fields_from_policy(
     """按策略条件和别名重建可直接注册的 TMDB 旧比较扩展字段声明。"""
     context = _MigrationContext()
     for rule in policy.rules:
-        for field_id in _condition_field_ids(rule.when):
+        for field_id in condition_field_ids(rule.when):
             if not field_id.startswith(_EXTENSION_PREFIX):
                 continue
             field_name = field_id.removeprefix(_EXTENSION_PREFIX)
@@ -392,7 +393,7 @@ def _migrate_media_categories(
             if any(
                 field_id.startswith(_EXTENSION_PREFIX)
                 for node in nodes
-                for field_id in _condition_field_ids(node)
+                for field_id in condition_field_ids(node)
             )
             else []
         )
@@ -941,21 +942,6 @@ def _common_fallback_categories(
 def _error_count(diagnostics: Sequence[LegacyClassificationDiagnostic]) -> int:
     """返回当前迁移诊断中的错误数量。"""
     return sum(item.severity == "error" for item in diagnostics)
-
-
-def _condition_field_ids(node: ClassificationConditionNode) -> list[str]:
-    """按条件树顺序提取全部叶子字段 ID。"""
-    if isinstance(node, ClassificationCondition):
-        return [node.field]
-    if node.all is not None:
-        children = node.all
-    elif node.any is not None:
-        children = node.any
-    elif node.not_ is not None:
-        children = [node.not_]
-    else:
-        children = []
-    return [field_id for child in children for field_id in _condition_field_ids(child)]
 
 
 def _append_unique(values: list[str], value: str) -> None:

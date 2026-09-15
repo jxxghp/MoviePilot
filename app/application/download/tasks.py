@@ -3,6 +3,7 @@
 from typing import Any, Callable, List, Optional
 
 from app.application.directory import validate_download_save_path
+from app.application.download.validation import validate_torrent_hash
 from app.application.history import DownloadHistorySnapshot
 from app.schemas.transfer import DownloaderTorrent, DownloadTaskMedia
 from app.schemas.types import TorrentStatus
@@ -100,12 +101,6 @@ class DownloadTaskMutationService:
         self._update_torrent = update_torrent
 
     @staticmethod
-    def _validate_hash(hash_value: str) -> None:
-        """校验 BitTorrent v1 Hash，拒绝模糊任务定位。"""
-        if len(hash_value) != 40 or any(character not in "0123456789abcdefABCDEF" for character in hash_value):
-            raise ValueError("hash 格式无效")
-
-    @staticmethod
     def _normalize_list(values: Optional[list[str]]) -> Optional[list[str]]:
         """移除字符串列表中的空项。"""
         if values is None:
@@ -137,7 +132,7 @@ class DownloadTaskMutationService:
         seeding_time_limit: Optional[int] = None,
     ) -> dict[str, Any]:
         """校验并执行启停、标签、限速、Tracker 与保存位置修改。"""
-        self._validate_hash(hash_value)
+        validate_torrent_hash(hash_value)
         if action not in {None, "start", "stop"}:
             raise ValueError("action 只支持 start 或 stop")
         tags = self._normalize_list(tags)

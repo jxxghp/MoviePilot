@@ -6,6 +6,7 @@ from typing import Any
 
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper, validate_download_save_path
+from app.application.download.validation import validate_torrent_hash
 from app.domain.classification.validation import validate_classification_category_path
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -286,8 +287,7 @@ def _rename_qb_root(chain: Any, downloader: str, hash_value: str, old_name: str,
 
 def organize_existing_source(hash_value: str, request: Any, chain: Any, media_chain: Any) -> dict[str, Any]:
     """生成可重放的预览计划，确认后仅通过下载器修改任务路径。"""
-    if not re.fullmatch(r"[0-9a-fA-F]{40}", hash_value):
-        raise ValueError("hash 格式无效")
+    validate_torrent_hash(hash_value)
     history = chain.download_history_repository.get_by_hash(hash_value)
     if history is None:
         raise ValueError("未找到该任务的下载历史")

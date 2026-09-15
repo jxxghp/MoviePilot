@@ -13,6 +13,7 @@ from app.application.directory import (
     build_media_download_path,
     validate_download_save_path,
 )
+from app.application.download.validation import validate_torrent_hash
 from app.application.history import DownloadHistorySnapshot
 from app.domain.classification.validation import validate_classification_category_path
 from app.domain.context import MediaInfo, MusicInfo
@@ -161,14 +162,6 @@ class DownloadSourceClassificationService:
         self._update_torrent = update_torrent
         self._resolve_plan = resolve_plan
 
-    @staticmethod
-    def _validate_hash(hash_value: str) -> None:
-        """校验 BitTorrent v1 Hash，拒绝模糊任务定位。"""
-        if len(hash_value) != 40 or any(
-            character not in "0123456789abcdefABCDEF" for character in hash_value
-        ):
-            raise ValueError("hash 格式无效")
-
     def plan(
         self,
         *,
@@ -178,7 +171,7 @@ class DownloadSourceClassificationService:
         media_category: Optional[str] = None,
     ) -> dict[str, Any]:
         """生成分类计划，只有 execute 为真时才请求下载器移动。"""
-        self._validate_hash(hash_value)
+        validate_torrent_hash(hash_value)
         torrents = self._list_torrents(
             hashs=[hash_value],
             downloader=downloader,
