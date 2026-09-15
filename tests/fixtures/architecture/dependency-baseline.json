@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8732,
-  "edge_sha256": "c044691717ac1bed7bcad64560740bd78992e5330767d4dec27d7df346c1606e",
+  "edge_count": 8733,
+  "edge_sha256": "cd429302ed1a133cca47d34cf95a419474398422590d987e95f5a72a83cdaefd",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1822,6 +1822,7 @@
     "app.agent.tools.impl.api -> app.application.security",
     "app.agent.tools.impl.api -> app.application.security.auth",
     "app.agent.tools.impl.api -> app.schemas",
+    "app.agent.tools.impl.api -> app.schemas.common",
     "app.agent.tools.impl.api -> app.schemas.types",
     "app.agent.tools.impl.apply_patch -> app.agent",
     "app.agent.tools.impl.apply_patch -> app.agent.tools",
