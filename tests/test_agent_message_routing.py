@@ -3,7 +3,8 @@ from concurrent.futures import Future
 from dataclasses import replace
 from unittest.mock import AsyncMock, Mock, patch
 
-from app.agent.orchestrator import AgentManagerQueueFullError, MoviePilotAgent
+from app.agent.orchestrator import MoviePilotAgent
+from app.agent.session import AgentManagerQueueFullError
 from app.agent.tools.impl.ask_user_choice import (
     AskUserChoiceTool,
     UserChoiceOptionInput,
