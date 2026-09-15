@@ -6,9 +6,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
-HISTORY_APPLICATION_PATH = APP_ROOT / "application" / "history.py"
-HISTORY_CONTRACTS_APPLICATION_PATH = APP_ROOT / "application" / "history_contracts.py"
-HISTORY_RETRY_APPLICATION_PATH = APP_ROOT / "application" / "history_retry.py"
+HISTORY_APPLICATION_PATH = APP_ROOT / "application" / "history" / "__init__.py"
+HISTORY_CONTRACTS_APPLICATION_PATH = APP_ROOT / "application" / "history" / "contracts.py"
+HISTORY_RETRY_APPLICATION_PATH = APP_ROOT / "application" / "history" / "retry.py"
 QUERY_APPLICATION_PATH = APP_ROOT / "application" / "query.py"
 HISTORY_ADAPTER_PACKAGE = APP_ROOT / "db" / "adapters" / "history"
 CANONICAL_CONSUMER_PATHS = (
@@ -127,7 +127,7 @@ def test_transfer_history_contract_has_one_canonical_owner() -> None:
         filename=str(HISTORY_APPLICATION_PATH),
     )
     facade = importlib.import_module("app.application.history")
-    contracts = importlib.import_module("app.application.history_contracts")
+    contracts = importlib.import_module("app.application.history.contracts")
 
     assert {
         node.name
@@ -193,7 +193,7 @@ def test_transfer_history_retires_dynamic_writer_facade() -> None:
 
 
 def test_history_retry_policy_has_one_canonical_owner() -> None:
-    """失败重试与查重闸逻辑只能由独立模块实现，旧模块仅保留兼容导出。"""
+    """失败重试与查重闸逻辑只能由独立模块实现，包入口不再转发。"""
     retry_tree = ast.parse(
         HISTORY_RETRY_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
         filename=str(HISTORY_RETRY_APPLICATION_PATH),

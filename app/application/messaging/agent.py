@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
-from threading import Lock
 from typing import (
     Any,
     AsyncIterator,
@@ -36,23 +35,9 @@ from app.application.messaging.chat import (
     get_configured_agent_chat_persistence,
     get_configured_agent_chat_service,
 )
-from app.application.messaging.agent_interaction import (
-    AGENT_CHOICE_PREFIX,
-    LEGACY_AGENT_CHOICE_PREFIX,
-    AgentInteractionManager,
-    AgentInteractionOption,
-    PendingAgentInteraction,
-    agent_interaction_manager,
-    build_agent_choice_button_rows,
-    build_agent_choice_callback,
-    parse_agent_choice_callback,
-)
-from app.application.messaging.channel_admin import (
-    matches_channel_admin,
-    register_channel_admin_resolver,
-    resolve_config_principal_ids,
-)
+from app.application.messaging.interaction import agent as agent_interaction
 from app.application.messaging.router import has_pending_interaction
+from app.application.messaging.webagent import events as web_agent_events
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.runtime.tasks import get_task_registry
@@ -62,10 +47,6 @@ from app.schemas.types import NotificationChannel
 __all__ = ["dispatch_command"]
 
 
-_WEB_AGENT_EDIT_QUEUES: dict[str, list[Queue[dict[str, Any]]]] = {}
-_WEB_AGENT_EDIT_LOCK = Lock()
-_WEB_AGENT_MESSAGE_QUEUES: dict[str, list[Queue[Message]]] = {}
-_WEB_AGENT_MESSAGE_LOCK = Lock()
 _WEB_AGENT_BACKGROUND_TASKS: set[asyncio.Task[object]] = set()
 
 
@@ -101,272 +82,6 @@ async def wait_web_agent_background_tasks() -> None:
     tasks = tuple(_WEB_AGENT_BACKGROUND_TASKS)
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
-
-
-def normalize_web_agent_button_rows(buttons: Optional[list[list[dict[str, Any]]]]) -> list[list[dict[str, Any]]]:
-    """
-    将消息按钮转换为 WebAgent 前端可识别的按钮行。
-
-    :param buttons: 传统消息模块返回的按钮二维数组
-    :return: WebAgent 前端选项按钮二维数组
-    """
-    button_rows: list[list[dict[str, Any]]] = []
-    for row in buttons or []:
-        normalized_row = []
-        for button in row or []:
-            label = str(button.get("text") or button.get("label") or "").strip()
-            callback_data = str(button.get("callback_data") or "").strip()
-            if not label or not callback_data:
-                continue
-            normalized_button = {
-                "label": label,
-                "callback_data": callback_data,
-            }
-            if button.get("description"):
-                normalized_button["description"] = str(button.get("description"))
-            normalized_row.append(normalized_button)
-        if normalized_row:
-            button_rows.append(normalized_row)
-    return button_rows
-
-
-def _resolve_web_agent_choice_id(
-    message_id: Union[str, int],
-    button_rows: list[list[dict[str, Any]]],
-) -> str:
-    """
-    从按钮回调中提取稳定的 WebAgent 选项 ID。
-
-    :param message_id: 前端助手消息 ID
-    :param button_rows: 已规范化的按钮行
-    :return: 选项卡片 ID
-    """
-    for row in button_rows:
-        for button in row:
-            callback_data = str(button.get("callback_data") or "").strip()
-            if not callback_data:
-                continue
-            parts = callback_data.split(":")
-            if len(parts) >= 2 and parts[1]:
-                return parts[1]
-            return callback_data
-    return str(message_id)
-
-
-def build_web_agent_message_update_event(
-    *,
-    message_id: Union[str, int],
-    title: Optional[str],
-    text: str,
-    buttons: Optional[list[list[dict[str, Any]]]],
-) -> dict[str, Any]:
-    """
-    构造 WebAgent 原消息更新事件。
-
-    :param message_id: 前端助手消息 ID
-    :param title: 更新后的标题
-    :param text: 更新后的正文
-    :param buttons: 更新后的按钮
-    :return: 前端可应用到原消息的 SSE 事件
-    """
-    button_rows = normalize_web_agent_button_rows(buttons)
-    content_parts = [part for part in (title, text) if part]
-    target_message = {
-        "id": str(message_id),
-        "content": "" if button_rows else "\n\n".join(content_parts),
-        "choices": [],
-        "attachments": [],
-        "tools": [],
-        "status": "done",
-    }
-    if button_rows:
-        target_message["choices"].append(
-            {
-                "id": _resolve_web_agent_choice_id(message_id, button_rows),
-                "title": title,
-                "prompt": text or "",
-                "buttons": [button for row in button_rows for button in row],
-                "button_rows": button_rows,
-                "status": "pending",
-            }
-        )
-    return {
-        "type": "message_update",
-        "target_message": target_message,
-    }
-
-
-def extract_web_agent_message_from_event_data(data: dict[str, Any]) -> Optional[Message]:
-    """
-    从 NoticeMessage 事件数据中提取 WebAgent 通知。
-
-    :param data: NoticeMessage 事件数据，兼容扁平字段和 message 包装格式
-    :return: WebAgent 通知，不属于 WebAgent 或数据无效时返回 None
-    """
-    if not isinstance(data, dict):
-        return None
-
-    try:
-        message = data.get("message")
-        if isinstance(message, Message):
-            message = message
-        elif isinstance(message, dict):
-            message_data = copy.deepcopy(message)
-            message_data.pop("type", None)
-            message = Message(**message_data)
-        else:
-            message_data = copy.deepcopy(data)
-            message_data.pop("type", None)
-            message_data.pop("current_time", None)
-            message = Message(**message_data)
-    except Exception as err:
-        logger.debug(f"解析WebAgent通知事件失败: {err}")
-        return None
-
-    channel = message.channel
-    channel_value = channel.value if isinstance(channel, NotificationChannel) else channel
-    if channel_value != NotificationChannel.WebAgent.value:
-        return None
-    return message
-
-
-def is_web_agent_message_for_user(message: Message, user_id: str) -> bool:
-    """
-    判断 NoticeMessage 事件是否属于当前 WebAgent 用户。
-
-    :param message: NoticeMessage 中的通知消息
-    :param user_id: 当前登录用户 ID
-    :return: 可被本次 WebAgent 请求消费时返回 True
-    """
-    try:
-        target_user = message.userid
-        return target_user is None or str(target_user) == str(user_id)
-    except Exception:
-        return False
-
-
-def _get_web_agent_message_user_id(message: Message) -> Optional[str]:
-    """返回 WebAgent 通知的目标用户 ID，无目标时返回 None。"""
-    try:
-        channel = message.channel
-        channel_value = channel.value if isinstance(channel, NotificationChannel) else channel
-        if channel_value != NotificationChannel.WebAgent.value:
-            return None
-        user_id = message.userid
-        return str(user_id) if user_id is not None else None
-    except Exception:
-        return None
-
-
-def dispatch_web_agent_message_event(event: object) -> None:
-    """将 WebAgent NoticeMessage 分发给正在等待的请求队列。"""
-    event_data = getattr(event, "event_data", None)
-    data = event_data if isinstance(event_data, dict) else {}
-    message = extract_web_agent_message_from_event_data(data)
-    if not message:
-        return
-    with _WEB_AGENT_MESSAGE_LOCK:
-        user_id = _get_web_agent_message_user_id(message)
-        if user_id is None:
-            queues = [
-                message_queue for user_queues in _WEB_AGENT_MESSAGE_QUEUES.values() for message_queue in user_queues
-            ]
-        else:
-            queues = list(_WEB_AGENT_MESSAGE_QUEUES.get(user_id) or [])
-    for message_queue in queues:
-        message_queue.put(message)
-
-
-def attach_web_agent_message_queue(user_id: str, message_queue: Queue[Message]) -> None:
-    """为当前 WebAgent 请求挂载通知收集队列。"""
-    with _WEB_AGENT_MESSAGE_LOCK:
-        _WEB_AGENT_MESSAGE_QUEUES.setdefault(str(user_id), []).append(message_queue)
-
-
-def detach_web_agent_message_queue(user_id: str, message_queue: Queue[Message]) -> None:
-    """移除当前 WebAgent 请求的通知收集队列。"""
-    with _WEB_AGENT_MESSAGE_LOCK:
-        queues = _WEB_AGENT_MESSAGE_QUEUES.get(str(user_id))
-        if not queues:
-            return
-        _WEB_AGENT_MESSAGE_QUEUES[str(user_id)] = [item for item in queues if item is not message_queue]
-        if not _WEB_AGENT_MESSAGE_QUEUES[str(user_id)]:
-            _WEB_AGENT_MESSAGE_QUEUES.pop(str(user_id), None)
-
-
-def attach_web_agent_edit_queue(user_id: str, edit_queue: Queue[dict[str, Any]]) -> None:
-    """
-    为当前 WebAgent 请求挂载原消息编辑事件队列。
-
-    :param user_id: 当前用户 ID
-    :param edit_queue: 用于接收编辑事件的队列
-    """
-    with _WEB_AGENT_EDIT_LOCK:
-        _WEB_AGENT_EDIT_QUEUES.setdefault(str(user_id), []).append(edit_queue)
-
-
-def detach_web_agent_edit_queue(user_id: str, edit_queue: Queue[dict[str, Any]]) -> None:
-    """
-    移除当前 WebAgent 请求的原消息编辑事件队列。
-
-    :param user_id: 当前用户 ID
-    :param edit_queue: 需要移除的队列
-    """
-    with _WEB_AGENT_EDIT_LOCK:
-        queues = _WEB_AGENT_EDIT_QUEUES.get(str(user_id))
-        if not queues:
-            return
-        _WEB_AGENT_EDIT_QUEUES[str(user_id)] = [item for item in queues if item is not edit_queue]
-        if not _WEB_AGENT_EDIT_QUEUES[str(user_id)]:
-            _WEB_AGENT_EDIT_QUEUES.pop(str(user_id), None)
-
-
-def dispatch_web_agent_edit_event(
-    *,
-    user_id: str,
-    event: dict[str, Any],
-) -> bool:
-    """
-    将 WebAgent 原消息编辑事件分发给正在等待的请求队列。
-
-    :param user_id: 当前用户 ID
-    :param event: 前端可应用的 SSE 事件
-    :return: 是否存在接收本次编辑事件的请求队列
-    """
-    with _WEB_AGENT_EDIT_LOCK:
-        queues = list(_WEB_AGENT_EDIT_QUEUES.get(str(user_id)) or [])
-    for edit_queue in queues:
-        edit_queue.put(event)
-    return bool(queues)
-
-
-def edit_web_agent_message(
-    *,
-    user_id: str,
-    message_id: Union[str, int],
-    title: Optional[str],
-    text: str,
-    buttons: Optional[list[list[dict[str, Any]]]] = None,
-) -> bool:
-    """
-    原地更新 WebAgent 前端消息卡片。
-
-    :param user_id: 当前用户 ID
-    :param message_id: 前端助手消息 ID
-    :param title: 更新后的标题
-    :param text: 更新后的正文
-    :param buttons: 更新后的按钮
-    :return: 是否已投递编辑事件
-    """
-    if not user_id:
-        return False
-    event = build_web_agent_message_update_event(
-        message_id=message_id,
-        title=title,
-        text=text,
-        buttons=buttons,
-    )
-    return dispatch_web_agent_edit_event(user_id=user_id, event=event)
 
 
 WEB_AGENT_SESSION_PREFIX = "web-agent:"
@@ -1248,13 +963,13 @@ def build_web_agent_choice_event(message: Message) -> Optional[dict[str, Any]]:
     :param message: Agent 工具发出的按钮通知
     :return: 选择卡片事件，按钮为空时返回 None
     """
-    button_rows = normalize_web_agent_button_rows(message.buttons)
+    button_rows = web_agent_events.normalize_web_agent_button_rows(message.buttons)
     buttons = [button for row in button_rows for button in row]
     if not buttons:
         return None
 
     choice_id = None
-    parsed = parse_agent_choice_callback(buttons[0]["callback_data"])
+    parsed = agent_interaction.parse_agent_choice_callback(buttons[0]["callback_data"])
     if parsed:
         choice_id = parsed[0]
 
@@ -1278,12 +993,12 @@ def resolve_web_agent_choice_payload(callback_data: str, user_id: str) -> Option
     :param user_id: 当前登录用户 ID
     :return: 可返回给前端的数据，选择无效时返回 None
     """
-    parsed = parse_agent_choice_callback(callback_data)
+    parsed = agent_interaction.parse_agent_choice_callback(callback_data)
     if not parsed:
         return None
 
     request_id, option_index = parsed
-    resolved = agent_interaction_manager.resolve(
+    resolved = agent_interaction.agent_interaction_manager.resolve(
         request_id=request_id,
         option_index=option_index,
         user_id=str(user_id),
@@ -1292,7 +1007,7 @@ def resolve_web_agent_choice_payload(callback_data: str, user_id: str) -> Option
         return None
 
     request, option = resolved
-    buttons, button_rows = build_agent_choice_button_rows(request)
+    buttons, button_rows = agent_interaction.build_agent_choice_button_rows(request)
     selected_description = option.description or option.label
     return {
         "message": option.value,
@@ -1577,8 +1292,8 @@ async def collect_web_agent_traditional_events(
     edit_queue: Queue[dict[str, Any]] = Queue()
     user_id = str(current_user.id)
 
-    attach_web_agent_message_queue(user_id, message_queue)
-    attach_web_agent_edit_queue(user_id, edit_queue)
+    web_agent_events.attach_web_agent_message_queue(user_id, message_queue)
+    web_agent_events.attach_web_agent_edit_queue(user_id, edit_queue)
     try:
         await run_in_threadpool(
             _handle_web_agent_message,
@@ -1616,14 +1331,14 @@ async def collect_web_agent_traditional_events(
                     break
                 continue
 
-            if not is_web_agent_message_for_user(message, user_id):
+            if not web_agent_events.is_web_agent_message_for_user(message, user_id):
                 continue
             events.extend(await build_web_agent_message_events_async(message))
             idle_deadline = time.monotonic() + WEB_AGENT_TRADITIONAL_IDLE_TIMEOUT_SECONDS
         return events
     finally:
-        detach_web_agent_message_queue(user_id, message_queue)
-        detach_web_agent_edit_queue(user_id, edit_queue)
+        web_agent_events.detach_web_agent_message_queue(user_id, message_queue)
+        web_agent_events.detach_web_agent_edit_queue(user_id, edit_queue)
 
 
 def build_web_agent_traditional_callback_payload(
@@ -1819,7 +1534,7 @@ async def build_web_agent_stream(
                 }
             )
         )
-    from app.application.messaging.webagentstream import (
+    from app.application.messaging.webagent.stream import (
         WebAgentStreamDependencies,
         _build_steering_ack_stream,
         build_agent_web_agent_stream,

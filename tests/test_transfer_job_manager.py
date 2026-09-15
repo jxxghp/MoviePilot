@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from app.application.history import (
+from app.application.history.retry import (
     clear_transfer_failures,
     failed_retry_count,
     record_transfer_failure,

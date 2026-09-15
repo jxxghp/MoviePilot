@@ -7,10 +7,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 from app.adapters.system.fsproxy import fsproxy
 from app.application.directory import DirectoryHelper
 from app.application.history import (
+    get_transfer_history_repository,
+)
+from app.application.history.retry import (
     HistoryGateAction,
     describe_history_gate,
     evaluate_history_gate,
-    get_transfer_history_repository,
     is_skip_action,
     max_failed_retries,
     resolve_history,

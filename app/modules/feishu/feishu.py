@@ -51,7 +51,7 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import (
 )
 
 from app.adapters.network.http import RequestUtils
-from app.application.messaging.channel_admin import matches_channel_admin
+from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.ingress import submit_message_to_host
 from app.application.security.user import get_configured_user_channel_lookup
 from app.domain.context import Context, MediaInfo

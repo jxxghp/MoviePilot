@@ -15,6 +15,8 @@ from app.application.history import (
     TransferHistorySnapshot,
     TransferHistoryStatisticSnapshot,
     TransferHistoryWrite,
+)
+from app.application.history.retry import (
     failed_retry_count,
     max_failed_retries,
 )

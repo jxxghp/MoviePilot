@@ -20,16 +20,20 @@ from app.api.endpoints.agent import web_agent_stream
 from app.application.messaging import agent as agent_application
 from app.application.messaging.agent import (
     _WEB_AGENT_FILE_REGISTRY,
+    configure_web_agent_message_runtime,
+    reset_web_agent_message_runtime,
+    wait_web_agent_background_tasks,
+)
+from app.application.messaging.interaction.agent import (
     AgentInteractionOption,
     agent_interaction_manager,
+)
+from app.application.messaging.webagent.events import (
     attach_web_agent_message_queue,
     build_web_agent_message_update_event,
-    configure_web_agent_message_runtime,
     detach_web_agent_message_queue,
     dispatch_web_agent_message_event,
     extract_web_agent_message_from_event_data,
-    reset_web_agent_message_runtime,
-    wait_web_agent_background_tasks,
 )
 from app.application.messaging.agent import (
     WebAgentEventPublisher as _WebAgentEventPublisher,
@@ -81,7 +85,7 @@ from app.application.messaging.agent import (
 )
 from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
 from app.application.messaging.skill import skill_interaction_manager
-from app.application.messaging.webagentstream import (
+from app.application.messaging.webagent.stream import (
     _build_steering_ack_stream,
     _build_web_agent_output_callback,
     _build_web_agent_steering_callback,

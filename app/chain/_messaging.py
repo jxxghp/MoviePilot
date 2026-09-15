@@ -549,7 +549,9 @@ class NotificationMixin:
         """
         if channel == NotificationChannel.WebAgent:
             try:
-                from app.application.messaging.agent import edit_web_agent_message
+                from app.application.messaging.webagent.events import (
+                    edit_web_agent_message,
+                )
 
                 return edit_web_agent_message(
                     user_id=str((metadata or {}).get("userid") or ""),

@@ -19,7 +19,7 @@ from app.application.agent import (
     transcribe_audio,
 )
 from app.application.messaging import router as interaction_router
-from app.application.messaging.agent_interaction import (
+from app.application.messaging.interaction.agent import (
     agent_interaction_manager,
     parse_agent_choice_callback,
 )

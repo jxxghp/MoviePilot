@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Tuple, Union, cast
 
 from app.application.directory import DirectoryHelper
-from app.application.history import (
+from app.application.history.retry import (
     max_failed_retries,
 )
 from app.application.transfer.execution import (

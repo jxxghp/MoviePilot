@@ -23,10 +23,10 @@ from app.application.configuration import (
     reset_transfer_retry_config,
 )
 from app.application.messaging.agent import (
-    dispatch_web_agent_message_event,
     shutdown_web_agent_background_tasks,
     wait_web_agent_background_tasks,
 )
+from app.application.messaging.webagent.events import dispatch_web_agent_message_event
 from app.application.messaging.chat import (
     get_configured_agent_chat_persistence,
 )

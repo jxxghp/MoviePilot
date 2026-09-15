@@ -31,15 +31,13 @@ from app.api.response import (
 )
 from app.application import agent as agent_application
 from app.application.messaging import agent as web_agent_application
-from app.application.messaging.agent import (
-    parse_agent_choice_callback,
-)
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
     AgentChatService,
     get_configured_agent_chat_persistence,
     get_configured_agent_chat_service,
 )
+from app.application.messaging.interaction.agent import parse_agent_choice_callback
 from app.runtime.events import eventmanager
 from app.runtime.localization import LocaleHelper
 from app.runtime.log import logger

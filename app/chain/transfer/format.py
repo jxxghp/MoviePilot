@@ -7,7 +7,7 @@ from app.application.configuration import (
     get_configured_system_config,
 )
 from app.application.formatting import EpisodeFormatRuleHelper
-from app.application.history import max_failed_retries
+from app.application.history.retry import max_failed_retries
 from app.application.transfer.feedback import TransferFailureNotification, classify_transfer_failure
 from app.application.transfer.workflow import TransferTask
 from app.chain._contracts import TransferMixinHost

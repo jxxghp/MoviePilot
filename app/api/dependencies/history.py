@@ -11,8 +11,8 @@ from app.application.history import (
     HistoryQueryService,
     TransferHistoryLookupService,
     TransferHistoryMutationCommand,
-    clear_transfer_failures,
 )
+from app.application.history.retry import clear_transfer_failures
 from app.application.mediaserver import MediaServerQueryService
 from app.application.transfer.execution import TransferExecutionRepository
 from app.chain.storage import StorageChain

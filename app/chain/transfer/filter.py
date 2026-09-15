@@ -16,8 +16,8 @@ from app.application.history import (
     DownloadHistorySnapshot,
     TransferHistoryRepository,
     TransferHistorySnapshot,
-    resolve_history,
 )
+from app.application.history.retry import resolve_history
 from app.application.transfer.workflow import TransferTask
 from app.chain._contracts import TransferMixinHost
 from app.chain.media import MediaChain

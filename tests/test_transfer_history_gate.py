@@ -8,8 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.application import history as transfer_history_helper
-from app.application.history import (
+from app.application.history.retry import (
     HistoryGateAction,
     clear_transfer_failures,
     coerce_size,
@@ -23,6 +22,7 @@ from app.application.history import (
     record_transfer_failure,
     resolve_history,
 )
+from app.application.history import retry as transfer_history_helper
 from app.runtime.config import settings
 
 

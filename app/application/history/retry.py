@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from app.application.configuration import TransferRetryConfig, get_transfer_retry_config
-from app.application.history_contracts import (
+from app.application.history.contracts import (
     TransferHistoryQueryPort,
     TransferHistorySnapshot,
     get_transfer_history_repository,

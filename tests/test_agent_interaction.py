@@ -11,7 +11,7 @@ from app.agent.tools.impl.ask_user_choice import (
     UserChoiceOptionInput,
 )
 from app.agent.tools.impl.send_message import SendMessageTool
-from app.application.messaging.agent import (
+from app.application.messaging.interaction.agent import (
     AgentInteractionOption,
     agent_interaction_manager,
 )

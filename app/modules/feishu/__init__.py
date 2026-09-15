@@ -1,7 +1,7 @@
 from typing import Any, List, Optional, Tuple, Union
 
 from app.domain.context import Context, MediaInfo
-from app.application.messaging.channel_admin import (
+from app.application.messaging.channel.admin import (
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )

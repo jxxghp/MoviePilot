@@ -12,6 +12,8 @@ from app.api.endpoints.transfer import (
 )
 from app.application.history import (
     TransferHistoryWrite,
+)
+from app.application.history.retry import (
     clear_transfer_failures,
     failed_retry_count,
     max_failed_retries,

@@ -11,8 +11,10 @@ from unittest.mock import Mock
 
 from app import schemas
 from app.application.history import (
-    HistoryGateAction,
     TransferHistoryMutationCommand,
+)
+from app.application.history.retry import (
+    HistoryGateAction,
     clear_transfer_failures,
     evaluate_history_gate,
     failed_retry_count,

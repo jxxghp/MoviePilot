@@ -13,9 +13,8 @@ from app.application.history import (
     DownloadHistorySnapshot,
     TransferHistoryRepository,
     TransferHistorySnapshot,
-    clear_transfer_failures,
-    resolve_history,
 )
+from app.application.history.retry import clear_transfer_failures, resolve_history
 from app.application.transfer.execution import (
     TransferExecutionRepository,
 )

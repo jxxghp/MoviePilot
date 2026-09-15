@@ -12,7 +12,7 @@ from app.application.classification.reference import (
 from app.application.configuration import get_configured_system_config
 from app.application.directory import DirectoryHelper
 from app.application.formatting import FormatParser
-from app.application.history import (
+from app.application.history.retry import (
     describe_history_gate,
     evaluate_history_gate,
     is_skip_action,
