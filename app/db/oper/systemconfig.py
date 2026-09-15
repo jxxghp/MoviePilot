@@ -1,6 +1,5 @@
 import copy
 import json
-import logging
 import threading
 from collections.abc import Callable, Mapping
 from typing import Any, Optional, TypeVar, Union
@@ -11,10 +10,10 @@ from sqlalchemy.orm import Session
 from app.db.base import DbOper
 from app.db.models.systemconfig import SystemConfig
 from app.foundation.singleton import Singleton
+from app.runtime.log import logger
 from app.schemas.types import SystemConfigKey
 
 T = TypeVar("T")
-logger = logging.getLogger(__name__)
 
 
 class SystemConfigOper(DbOper, metaclass=Singleton):
