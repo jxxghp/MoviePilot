@@ -1,10 +1,10 @@
 """系统后台更新状态机测试。"""
 
-from contextlib import nullcontext
 import errno
 import json
 import threading
 import zipfile
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, call
