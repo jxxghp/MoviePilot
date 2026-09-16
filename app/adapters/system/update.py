@@ -235,12 +235,14 @@ class SystemUpdateManager(metaclass=SingletonClass):
         return next(item for item in state["updates"] if item["type"] == target)
 
     def _sync_aggregate(self, state: dict[str, Any]) -> dict[str, Any]:
-        """从两类明细重新计算旧版顶层字段和汇总进度。"""
+        """从两类明细重新计算旧版顶层字段、当前版本和汇总进度。"""
         application = self._get_item(state, _APPLICATION)
+        current_version = get_app_version()
+        application["current_version"] = current_version
         state.update(
             {
                 "state": application.get("state", "idle"),
-                "current_version": get_app_version(),
+                "current_version": current_version,
                 "version": application.get("version"),
                 "frontend_version": application.get("frontend_version"),
                 "release_name": application.get("release_name"),

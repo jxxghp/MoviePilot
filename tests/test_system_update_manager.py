@@ -153,6 +153,20 @@ def test_check_logs_when_application_is_current(monkeypatch, tmp_path):
     assert logs == ["MoviePilot 主程序已是最新版本：v3.0.0"]
 
 
+def test_status_refreshes_stale_application_version(monkeypatch, tmp_path):
+    """旧状态文件中的主程序版本应在读取时更新为当前运行版本。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.0")
+    manager._write_item("application", state="idle")
+
+    monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.3")
+    status = manager.get_status()
+    application = next(item for item in status.updates if item.type == "application")
+
+    assert status.current_version == "v3.0.3"
+    assert application.current_version == "v3.0.3"
+
+
 def test_public_download_request_omits_github_authorization(monkeypatch, tmp_path):
     """公开归档下载不得复用 GitHub API 的认证请求头。"""
     manager = _manager(monkeypatch, tmp_path)
