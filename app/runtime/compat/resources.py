@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import threading
 import tokenize
 from dataclasses import dataclass
@@ -38,7 +39,10 @@ RESOURCE_IMPORT_RULES: tuple[ResourceImportRule, ...] = (
 
 
 _scan_cache_lock = threading.RLock()
-_scan_cache: Dict[Path, Tuple[int, int, int, int, int, FrozenSet[str]]] = {}
+_scan_cache: Dict[
+    Path,
+    Tuple[int, int, int, int, int, bytes, FrozenSet[str]],
+] = {}
 
 
 class PluginResourceImportScanError(RuntimeError):
@@ -126,20 +130,25 @@ def _scan_source(plugin_id: str, path: Path) -> FrozenSet[str]:
     try:
         before_stat = path.stat()
         # 热加载工具可能保留 mtime，等长替换也不会改变 size；ctime 与 inode/device
-        # 一并参与身份判断，避免把已替换源码误认为旧缓存。
+        # 在部分文件系统上也可能不变，因此内容摘要必须参与身份判断。
+        with tokenize.open(path) as source_file:
+            source = source_file.read()
+        source_digest = hashlib.blake2b(
+            source.encode("utf-8"),
+            digest_size=16,
+        ).digest()
         cache_key = (
             before_stat.st_mtime_ns,
             before_stat.st_ctime_ns,
             before_stat.st_size,
             before_stat.st_dev,
             before_stat.st_ino,
+            source_digest,
         )
         with _scan_cache_lock:
             cached = _scan_cache.get(path)
-        if cached and cached[:5] == cache_key:
-            return cached[5]
-        with tokenize.open(path) as source_file:
-            source = source_file.read()
+        if cached and cached[:6] == cache_key:
+            return cached[6]
         tree = ast.parse(source, filename=str(path))
         after_stat = path.stat()
     except (OSError, SyntaxError, UnicodeError) as error:
@@ -152,6 +161,7 @@ def _scan_source(plugin_id: str, path: Path) -> FrozenSet[str]:
         after_stat.st_size,
         after_stat.st_dev,
         after_stat.st_ino,
+        source_digest,
     )
     if cache_key != after_key:
         raise PluginResourceImportScanError(
