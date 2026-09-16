@@ -250,7 +250,8 @@ class AgentRuntimeManager:
         self.memory_dir = self.agent_root_dir / MEMORY_DIR
         self.skills_dir = self.agent_root_dir / SKILLS_DIR
         self.jobs_dir = self.agent_root_dir / JOBS_DIR
-        self.activity_dir = self.agent_root_dir / ACTIVITY_DIR
+        # 活动记忆属于统一 memory 域；旧的 agent/activity 目录不再读取或迁移。
+        self.activity_dir = self.memory_dir / ACTIVITY_DIR
         self.subagents_dir = self.runtime_dir / SUBAGENTS_DIR
         self.bundled_defaults_dir = bundled_defaults_dir or (Path(__file__).parent / "defaults")
         self._cache_lock = threading.Lock()
@@ -880,8 +881,8 @@ class AgentRuntimeManager:
             "1. 核心系统提示词（程序内置，不可运行时覆盖）",
             "2. `personas/<active_persona>/PERSONA.md`",
             "3. `extra_context_files`",
-            "4. `memory/*.md`",
-            "5. `activity/*.md`",
+            "4. `memory/MEMORY.md`（默认注入）",
+            "5. `memory/<topic>.md` 与 `memory/activity/*.md`（通过 search_memory 按需检索）",
             "",
             "`memory` 中的长期偏好可以细化回复方式，但不应覆盖系统核心身份、目标和安全边界。",
         ]

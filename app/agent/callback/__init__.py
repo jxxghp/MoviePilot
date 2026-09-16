@@ -505,8 +505,8 @@ class StreamingHandler:
 
         if tool_name in {"read_skill", "skill"}:
             return "skill", tool_kwargs.get("name")
-        if tool_name == "query_activity_log":
-            return "activity_log", tool_kwargs.get("keyword") or tool_kwargs.get("date")
+        if tool_name == "search_memory":
+            return "memory", tool_kwargs.get("query") or tool_kwargs.get("category")
         if tool_name == "subagent_task":
             return "subagent", StreamingHandler._extract_subagent_targets(tool_kwargs)
         if tool_name == "task":
@@ -671,8 +671,8 @@ class StreamingHandler:
             return f"查询了 {count} 次数据"
         if category == "skill":
             return f"查询了 {count} 个技能说明"
-        if category == "activity_log":
-            return f"查询了 {count} 次活动日志"
+        if category == "memory":
+            return f"检索了 {count} 次记忆"
         if category == "action":
             return f"执行了 {count} 次操作"
         if category == "interaction":

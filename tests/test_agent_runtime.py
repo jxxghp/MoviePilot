@@ -101,6 +101,21 @@ class TestAgentRuntimeConfig(unittest.TestCase):
         self.assertFalse(obsolete_persona.exists())
         self.assertFalse((self.agent_root / "memory" / "USER_PREFERENCES.md").exists())
 
+    def test_activity_memory_uses_nested_memory_directory_without_migration(self):
+        """活动记忆使用新的统一目录，旧目录内容不迁移也不作为新目录内容。"""
+        old_activity = self.agent_root / "activity"
+        old_activity.mkdir(parents=True, exist_ok=True)
+        old_log = old_activity / "2026-06-18.md"
+        old_log.write_text("# 旧活动日志\n", encoding="utf-8")
+
+        manager = self._manager()
+        manager.ensure_layout()
+
+        self.assertEqual(manager.activity_dir, self.agent_root / "memory" / "activity")
+        self.assertTrue(manager.activity_dir.exists())
+        self.assertTrue(old_log.exists())
+        self.assertFalse((manager.activity_dir / old_log.name).exists())
+
     def test_render_prompt_sections_uses_active_persona(self):
         manager = self._manager()
         runtime_config = manager.load_runtime_config()

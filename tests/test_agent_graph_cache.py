@@ -482,11 +482,11 @@ async def test_graph_rejects_mcp_and_skill_name_collisions(
         args_schema={"type": "object", "properties": {}},
         _agent_tool_source="middleware:skills",
     )
-    activity_tool = SimpleNamespace(
-        name="query_activity_log",
-        description="activity log",
+    memory_tool = SimpleNamespace(
+        name="search_memory",
+        description="memory search",
         args_schema={"type": "object", "properties": {}},
-        _agent_tool_source="middleware:activity_log",
+        _agent_tool_source="middleware:memory",
     )
     subagent_task_tool = SimpleNamespace(
         name="task",
@@ -579,10 +579,6 @@ async def test_graph_rejects_mcp_and_skill_name_collisions(
             return_value=SimpleNamespace(name="skills", tools=[skill_tool]),
         ),
         patch(
-            "app.agent.orchestrator.ActivityLogMiddleware",
-            return_value=SimpleNamespace(name="activity", tools=[activity_tool]),
-        ),
-        patch(
             "app.agent.orchestrator.JobsMiddleware",
             return_value=SimpleNamespace(name="jobs"),
         ),
@@ -592,7 +588,7 @@ async def test_graph_rejects_mcp_and_skill_name_collisions(
         ),
         patch(
             "app.agent.orchestrator.MemoryMiddleware",
-            return_value=SimpleNamespace(name="memory"),
+            return_value=SimpleNamespace(name="memory", tools=[memory_tool]),
         ),
         patch(
             "app.agent.orchestrator.SummarizationMiddleware",

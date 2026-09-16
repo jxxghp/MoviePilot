@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import BaseModel
 
-from app.agent.middleware.activity import QueryActivityLogInput
+from app.agent.middleware.memory import SearchMemoryInput
 from app.agent.middleware.skills import SkillToolInput
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.factory import MoviePilotToolFactory
@@ -78,7 +78,7 @@ def test_agent_tool_schemas_do_not_expose_explanation_parameter() -> None:
     ]
     middleware_schemas = [
         SkillToolInput,
-        QueryActivityLogInput,
+        SearchMemoryInput,
     ]
 
     for tool_class in tool_classes:

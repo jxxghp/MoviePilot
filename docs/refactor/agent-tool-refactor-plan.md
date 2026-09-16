@@ -76,7 +76,7 @@
 - 宿主能力：execute_command, edit_file, apply_patch, write_file, read_file
 - 诊断能力：query_doctor_report
 
-此外，渠道工具、Skill 工具、活动日志、子 Agent 和插件/MCP 动态工具继续按运行时条件注入。
+此外，渠道工具、Skill 工具、统一记忆（含活动记录）、子 Agent 和插件/MCP 动态工具继续按运行时条件注入；活动记录不再维护独立的活动日志中间件。
 
 ### 3.4 最终目录规模
 

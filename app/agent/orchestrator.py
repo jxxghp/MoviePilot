@@ -28,7 +28,6 @@ from app.agent.llm.helper import LLMHelper
 from app.agent.llm.tools import ServerToolRegistry
 from app.agent.mcp import agent_mcp_manager
 from app.agent.memory import MemoryManager, memory_manager
-from app.agent.middleware.activity import ActivityLogMiddleware
 from app.agent.middleware.config import RuntimeConfigMiddleware
 from app.agent.middleware.invocation import InvocationMiddleware
 from app.agent.middleware.jobs import (
@@ -1868,14 +1867,16 @@ class MoviePilotAgent:
                 stream_handler=self.stream_handler,
             )
             skill_tools = list(getattr(skills_middleware, "tools", []) or [])
-            activity_log_middleware = None
-            activity_log_tools = []
-            if self.has_message_context:
-                activity_log_middleware = ActivityLogMiddleware(
-                    activity_dir=str(agent_runtime_manager.activity_dir),
-                    stream_handler=self.stream_handler,
-                )
-                activity_log_tools = list(getattr(activity_log_middleware, "tools", []) or [])
+            memory_middleware = MemoryMiddleware(
+                memory_dir=str(agent_runtime_manager.memory_dir),
+                activity_dir=(
+                    str(agent_runtime_manager.activity_dir)
+                    if self.has_message_context
+                    else None
+                ),
+                stream_handler=self.stream_handler,
+            )
+            memory_tools = list(getattr(memory_middleware, "tools", []) or [])
             policy_context = self._build_policy_context()
             subagent_middlewares, subagent_task_tools = create_subagent_middlewares(
                 model=non_streaming_model,
@@ -1891,7 +1892,7 @@ class MoviePilotAgent:
             invocation_repository = getattr(self._data, "invocations", None)
             invocation_middlewares = [InvocationMiddleware(policy_context, invocation_repository, tools)] if invocation_repository else []
             internal_tools = [
-                *skill_tools, *activity_log_tools, *subagent_task_tools, *plan_middleware.tools,
+                *skill_tools, *memory_tools, *subagent_task_tools, *plan_middleware.tools,
                 *output_middleware.tools,
                 *(tool for middleware in invocation_middlewares for tool in middleware.tools),
             ]
@@ -1953,10 +1954,8 @@ class MoviePilotAgent:
                 RuntimeConfigMiddleware(),
                 # 计划独立保存，最终请求压缩仍计入其系统上下文预算。
                 plan_middleware,
-                # 记忆管理
-                MemoryMiddleware(memory_dir=str(agent_runtime_manager.memory_dir)),
-                # 活动日志依赖记忆上下文，并应在最终请求压缩前完成读取与记录。
-                *([activity_log_middleware] if activity_log_middleware else []),
+                # 记忆、按需检索与活动记录统一由一个中间件管理。
+                memory_middleware,
                 # 错误工具调用修复
                 PatchToolCallsMiddleware(),
                 # 子代理委派
@@ -1989,7 +1988,7 @@ class MoviePilotAgent:
                 tools=[
                     *tools,
                     *skill_tools,
-                    *activity_log_tools,
+                    *memory_tools,
                     *server_tools,
                 ],
                 system_prompt=system_prompt,

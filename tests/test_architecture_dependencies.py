@@ -81,7 +81,6 @@ RETIRED_CANONICAL_FILES = (
     "app/runtime/native_dependencies.py",
     "app/agent/runtime_loader.py",
     "app/agent/llm/server_tools.py",
-    "app/agent/middleware/activity_log.py",
     "app/agent/middleware/patch_tool_calls.py",
     "app/agent/middleware/runtime_config.py",
     "app/agent/middleware/tool_selection.py",

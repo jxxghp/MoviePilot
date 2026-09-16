@@ -49,7 +49,6 @@ _META_NOISE_MODULES = frozenset({
     "callback",
     "prompt",
     "memory.py",
-    "activity_log.py",
     "message.py",
     "event.py",
     "chain",

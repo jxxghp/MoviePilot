@@ -97,11 +97,16 @@ class VisionMiddleware(AgentMiddleware):  # type: ignore[misc]
             return
         if pending:
             raise ValueError("工具回复尚未完整，不能发送图片观察")
-        output.append(HumanMessage(
+        output.append(VisionMiddleware._build_observation_message(observations))
+        observations.clear()
+
+    @staticmethod
+    def _build_observation_message(observations: list[dict[str, Any]]) -> HumanMessage:
+        """把工具文字与图片组装成模型可见的临时 HumanMessage。"""
+        return HumanMessage(
             content=list(observations),
             additional_kwargs={TOOL_OBSERVATION_MARKER: True},
-        ))
-        observations.clear()
+        )
 
     def project_request(self, request: ModelRequest, *, force_text: bool = False) -> ModelRequest:
         """构造独立出站副本；同一请求反复投影不会改变原图或累积临时用户消息。"""

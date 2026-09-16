@@ -8,7 +8,6 @@ from langchain_core.messages import ToolMessage
 from pydantic import BaseModel, Field
 
 import app.agent.orchestrator as agent_module
-from app.agent.middleware.activity import ActivityLogMiddleware
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.summarization import FinalRequestCompactionMiddleware
@@ -850,8 +849,8 @@ def test_main_agent_registers_policy_middleware_as_outermost() -> None:
     assert isinstance(captured["middleware"][0], AgentPolicyMiddleware)
 
 
-def test_main_agent_preserves_activity_log_middleware_order() -> None:
-    """策略层加入后，ActivityLog 仍应位于 Memory 后、摘要前。"""
+def test_main_agent_preserves_memory_middleware_order() -> None:
+    """策略层加入后，统一 MemoryMiddleware 仍位于摘要压缩之前。"""
     agent = agent_module.MoviePilotAgent(
         session_id="session-1",
         user_id="user-1",
@@ -882,9 +881,6 @@ def test_main_agent_preserves_activity_log_middleware_order() -> None:
     memory_index = next(
         index for index, middleware in enumerate(middlewares) if isinstance(middleware, MemoryMiddleware)
     )
-    activity_index = next(
-        index for index, middleware in enumerate(middlewares) if isinstance(middleware, ActivityLogMiddleware)
-    )
     compaction_index = next(
         index
         for index, middleware in enumerate(middlewares)
@@ -892,5 +888,4 @@ def test_main_agent_preserves_activity_log_middleware_order() -> None:
     )
 
     assert policy_index == 0
-    assert activity_index == memory_index + 1
-    assert compaction_index > activity_index
+    assert compaction_index > memory_index

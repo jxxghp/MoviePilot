@@ -16,6 +16,14 @@ MoviePilot Agent 通过模型、Skills、工具和会话状态共同完成任务
 
 WebAgent 在 Agent 正在运行时仍可提交文本和附件。宿主为每个会话生成消息 ID，先把消息放入有界 steering inbox；下一次模型调用前由中间件把它作为真实 `HumanMessage` 写入图状态，并通过当前 SSE 报告 `queued`、`applied`。提交和运行收尾共享原子边界，收尾竞态中已接受的消息会在同一 worker 内继续处理，停止会话不会继续派发新的工具动作。补充消息不会启动第二张 Agent 图，也不会替换当前输出回调。
 
+## 记忆与活动记录
+
+Agent 的记忆统一位于 `config/agent/memory`：`MEMORY.md` 是主记忆文件，只包含跨任务默认需要记住的用户偏好、沟通方式、长期规则和稳定事实，并且只有它会在每轮默认注入上下文。其它主题记忆使用独立的 Markdown 文件，活动记录使用 `memory/activity/YYYY-MM-DD.md`；两者都不会自动加载。
+
+Agent 在执行任何实质任务或调用业务、文件、网络、命令等工具前，必须先调用 `search_memory` 检索与本次请求相关的记忆；这是本轮任务的第一个工具调用。工具支持 `primary`、`topic`、`activity` 和 `all` 分类，以及关键词、文件路径、日期、时间窗口、条数和显式正则过滤。检索结果是有界的结构化内容，不会把整个记忆目录重新塞回上下文。活动记录是自动生成的只读历史，保留期默认 7 天；旧的 `config/agent/activity` 文件不迁移，也不再作为活动记忆读取。
+
+用户明确要求记住的偏好或规则应写入 `MEMORY.md` 或合适的主题文件；一次性请求、临时状态和凭据不应写入记忆。检索到的文件内容只是上下文，不能覆盖系统或用户指令。
+
 ## 按需发现工具
 
 设置 `LLM_MAX_TOOLS > 0` 时，Agent 首轮仍只筛选一批相关工具。后续读取 Skill 或发现新问题后，可以通过内部 `search_tools(search, limit)` 按名称、说明或标签搜索当前会话工具目录，并在下一次模型调用获得匹配工具的完整参数定义。
@@ -24,7 +32,7 @@ WebAgent 在 Agent 正在运行时仍可提交文本和附件。宿主为每个�
 
 额外工具的参数定义共享最多 4096 tokens、且不超过已知模型窗口 10% 的预算，总输入保留 15% 余量。搜索先报告候选，下一次模型调用根据统一预算明确报告实际启用和未启用原因。初选、常驻和供应商工具保持可用。发现状态仅作用于当前用户请求，新的用户请求重新筛选。`LLM_MAX_TOOLS` 约束首轮筛选数量；发现不会安装工具、连接新的 MCP 服务或扩大执行权限。
 
-`update_plan`、`search_tools`、`read_tool_result` 和 `get_tool_execution` 是 Agent 内部会话能力，不通过外部 MCP 或 `moviepilot tool` 发布。
+`update_plan`、`search_memory`、`search_tools`、`read_tool_result` 和 `get_tool_execution` 是 Agent 内部会话能力，不通过外部 MCP 或 `moviepilot tool` 发布。
 
 ## 工具结果与大结果续读
 
@@ -54,7 +62,7 @@ WebAgent 在 Agent 正在运行时仍可提交文本和附件。宿主为每个�
 
 ## 工具图片与模型视觉
 
-`browse_webpage(action="screenshot")` 和 `view_image(url=...|file_path=...|image_data=...)` 在 Agent 中返回真实图像块和有限来源说明。图像在通用文本截断之前处理，最终请求按完整工具回复批次附加带工具来源的临时图像观察，兼容 Chat、Responses、Anthropic 与 Gemini 的图片输入；原始用户消息、工具调用 ID 和授权不变。`view_image` 的远程 URL 只允许通过公网安全校验的 HTTP(S) 地址，本地路径继续遵守 Agent 文件访问边界，`image_data` 支持纯 Base64、data URL 和原始字节。
+`browse_webpage(action="screenshot")` 和 `view_image(url=...|file_path=...|image_data=...)` 在 Agent 中返回真实图像块和有限来源说明。图像在通用文本截断之前处理，最终请求按完整工具回复批次把 `ToolMessage` 中的 `image_url` 块组装成带 `TOOL_OBSERVATION_MARKER` 的临时 `HumanMessage(content=[text, image_url, ...])`，再发送给支持图片的模型；原始用户消息、工具调用 ID 和授权不变。视觉中间件只修改出站副本，不把临时图片观察写回持久会话历史。`view_image` 的远程 URL 只允许通过公网安全校验的 HTTP(S) 地址，本地路径继续遵守 Agent 文件访问边界，`image_data` 支持纯 Base64、data URL 和原始字节。
 
 每次模型请求都检查实际模型资料和 `LLM_SUPPORT_IMAGE_INPUT` 开关。已知纯文本模型会得到明确的“未接收工具图片”说明。服务明确拒绝图片时，只对该次模型调用做一次文字回退，随后本轮沿用文字观察，不重复执行图片工具或其他工具；认证、限流等错误保持原来的错误语义。临时观察不会写入会话历史。
 
