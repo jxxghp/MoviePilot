@@ -481,7 +481,7 @@ def test_uninstalled_unique_and_multiple_sources_are_distinct() -> None:
 
 
 def test_official_candidate_is_selectable_and_local_projection_hides_path() -> None:
-    """官方来源可正常选择，本地公共投影不能泄漏仓库路径或 metadata。"""
+    """官方来源可正常选择，本地公共投影不包含仓库路径。"""
     official = select_plugin_candidate(
         _inventory(
             MarketRead.present(
@@ -518,5 +518,5 @@ def test_official_candidate_is_selectable_and_local_projection_hides_path() -> N
     assert local.source_key is None
     assert local_result.candidate is local
     public = local_result.public_dict()
+    assert public["candidate"]["repo_url"] == "local://DemoPlugin?version=v3"
     assert "/private/secret/plugins" not in str(public)
-    assert "repo_url" not in public["candidate"]

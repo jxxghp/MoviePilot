@@ -2,14 +2,21 @@ import base64
 import re
 from typing import Annotated, Any, List, Union
 
-from fastapi import Body, Depends, File, HTTPException, UploadFile
+from fastapi import Body, Depends, File, HTTPException, Response, UploadFile
 
 from app.api.dependencies.auth import (
     get_current_active_superuser_async,
     get_current_active_user_async,
     get_user_service,
 )
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+    resolve_compatible_pagination,
+)
 from app.application.security.token import PasswordTooLongError, get_password_hash
 from app.application.security.user import (
     LastActiveSuperuserError,
@@ -46,15 +53,26 @@ def _prepare_password(user_info: dict[str, Any]) -> str | None:
     return None
 
 
-@router.get("/", summary="所有用户", response_model=List[_SchemaUser])
+@router.get(
+    "/",
+    summary="所有用户",
+    response_model=List[_SchemaUser],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
+)
 async def list_users(
+    response: Response = None,
     service: UserService = Depends(get_user_service),
     current_user: Any = Depends(get_current_active_superuser_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询用户列表
     """
-    return await service.list()
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await service.count())
+    return await service.list(page=page, count=count)
 
 
 @router.post("/", summary="新增用户", response_model=_SchemaResponse[None])

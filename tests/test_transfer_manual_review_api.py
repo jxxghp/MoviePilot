@@ -195,5 +195,5 @@ def test_manual_review_conflict_returns_http_409(monkeypatch) -> None:
         )
 
     assert error.value.status_code == 409
-    assert error.value.detail == "步骤已被判定"
+    assert error.value.detail == "整理任务状态已变化，请刷新后重试"
     assert _ManualReviewCommand.calls[0][1]["actor"] == "11"

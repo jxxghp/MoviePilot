@@ -1,9 +1,11 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from app.application.site.contract import SiteMutation, SitePriorityMutation
 from app.application.site.mutation import SiteMutationCommand
+from app.schemas.site import Site
 
 
 def _command(**overrides):
@@ -57,6 +59,20 @@ async def test_create_site_commits_before_updated_event():
 
 
 @pytest.mark.asyncio
+async def test_create_site_ignores_schema_identity_field():
+    """手动新增站点应忽略请求 Schema 自动补出的空主键。"""
+    command, dependencies = _command()
+
+    result = await command.create(
+        Site(url="https://demo.example/path").model_dump()
+    )
+
+    assert result.success is True
+    mutation = dependencies["repository"].stage_create.await_args.args[0]
+    assert "id" not in mutation.values
+
+
+@pytest.mark.asyncio
 async def test_update_site_returns_legacy_not_found_without_writes():
     """更新不存在站点时保持失败响应且不产生事务或事件。"""
     repository = Mock()
@@ -69,6 +85,44 @@ async def test_update_site_returns_legacy_not_found_without_writes():
     assert result.message == "站点不存在"
     dependencies["unit_of_work"].commit.assert_not_awaited()
     dependencies["publish_updated"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_set_cookie_updates_only_cookie_fields_after_commit():
+    """浏览器 Cookie 精细写入不得覆盖其他站点配置，并须先提交再发事件。"""
+    site = SimpleNamespace(
+        domain="demo.example",
+        name="Demo",
+        url="https://demo.example/",
+    )
+    calls = []
+    repository = Mock()
+    repository.get_by_id = AsyncMock(return_value=site)
+    repository.stage_update = AsyncMock()
+    command, dependencies = _command(
+        repository=repository,
+        unit_of_work=Mock(
+            commit=AsyncMock(side_effect=lambda: calls.append("commit")),
+            rollback=AsyncMock(),
+        ),
+        publish_updated=AsyncMock(side_effect=lambda _payload: calls.append("event")),
+    )
+
+    result = await command.set_cookie(7, "sid=browser", "Browser UA")
+
+    assert result.success is True
+    assert calls == ["commit", "event"]
+    mutation = repository.stage_update.await_args.args[1]
+    assert isinstance(mutation, SiteMutation)
+    assert mutation.values == {"cookie": "sid=browser", "ua": "Browser UA"}
+    dependencies["publish_updated"].assert_awaited_once_with(
+        {
+            "site_id": 7,
+            "domain": "demo.example",
+            "name": "Demo",
+            "site_url": "https://demo.example/",
+        }
+    )
 
 
 @pytest.mark.asyncio

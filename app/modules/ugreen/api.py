@@ -796,3 +796,299 @@ class Api:
             },
         )
         return result.data if result.success else None
+
+
+@dataclass(frozen=True)
+class UgreenMediaSession:
+    """绿联媒体库服务 Emby 兼容接口的登录会话。"""
+
+    token: str
+    user_id: str
+    server_id: Optional[str] = None
+    user: Optional[dict[str, Any]] = None
+
+
+class UgreenMediaApi:
+    """
+    绿联影视媒体库服务的 Emby 兼容 API 客户端。
+
+    媒体库服务只在 HTTPS 9443 端口开放，认证后使用 AccessToken 作为
+    `api_key` 访问用户媒体库接口，不复用 `/ugreen/v1` 的加密会话。
+    """
+
+    __slots__ = (
+        "_host",
+        "_request_utils",
+        "_token",
+        "_user_id",
+        "_server_id",
+        "_timeout",
+        "_verify_ssl",
+    )
+
+    def __init__(self, host: str, timeout: int = 20, verify_ssl: bool = True) -> None:
+        """
+        初始化媒体库服务 API 客户端。
+
+        :param host: 绿联媒体库服务地址
+        :param timeout: HTTP 请求超时时间
+        :param verify_ssl: 是否校验 HTTPS 证书
+        """
+        normalized_host = UrlUtils.standardize_base_url(host).rstrip("/")
+        parsed = urlsplit(normalized_host)
+        self._host = urlunsplit((parsed.scheme, parsed.netloc, "", "", "")).rstrip("/")
+        self._request_utils = RequestUtils(
+            use_session=True,
+            timeout=timeout,
+            verify=verify_ssl,
+        )
+        self._token: Optional[str] = None
+        self._user_id: Optional[str] = None
+        self._server_id: Optional[str] = None
+        self._timeout = timeout
+        self._verify_ssl = bool(verify_ssl)
+
+    @property
+    def host(self) -> str:
+        """获取规范化后的媒体库服务地址。"""
+        return self._host
+
+    @property
+    def token(self) -> Optional[str]:
+        """获取当前媒体库服务 AccessToken。"""
+        return self._token
+
+    @property
+    def user_id(self) -> Optional[str]:
+        """获取认证响应中的媒体库用户 ID。"""
+        return self._user_id
+
+    @property
+    def server_id(self) -> Optional[str]:
+        """获取认证响应中的媒体服务器 ID。"""
+        return self._server_id
+
+    def close(self) -> None:
+        """关闭媒体库服务的 HTTP 会话。"""
+        self._request_utils.close()
+
+    def _headers(self) -> dict[str, str]:
+        """构造 Emby 兼容接口所需的客户端请求头。"""
+        token = f', Token="{self._token}"' if self._token else ""
+        return {
+            "X-Emby-Authorization": (
+                'MediaBrowser Client="MoviePilot", Device="requests", '
+                f'DeviceId="moviepilot-ugreen", Version="1.0.0"{token}'
+            ),
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+    def _request(
+        self,
+        path: str,
+        method: str = "GET",
+        params: Optional[dict[str, Any]] = None,
+        data: Optional[dict[str, Any]] = None,
+        authenticated: bool = True,
+    ) -> Optional[Any]:
+        """
+        调用媒体库服务 Emby 兼容接口并解析 JSON 响应。
+
+        :param path: 接口相对路径
+        :param method: HTTP 方法
+        :param params: 查询参数
+        :param data: JSON 请求体
+        :param authenticated: 是否附加当前 AccessToken
+        :return: JSON 响应，连接失败或服务端拒绝时返回 None
+        """
+        request_params = dict(params or {})
+        if authenticated and self._token:
+            request_params["api_key"] = self._token
+        url = f"{self._host}/{path.strip('/')}"
+        try:
+            if method.upper() == "POST":
+                response = self._request_utils.post_res(
+                    url=url,
+                    headers=self._headers(),
+                    params=request_params,
+                    json=data,
+                    timeout=self._timeout,
+                    verify=self._verify_ssl,
+                )
+            else:
+                response = self._request_utils.get_res(
+                    url=url,
+                    headers=self._headers(),
+                    params=request_params,
+                    timeout=self._timeout,
+                    verify=self._verify_ssl,
+                )
+            status_code = getattr(response, "status_code", None)
+            if response is None or not 200 <= (status_code or 0) < 300:
+                logger.error(f"请求绿联媒体库接口失败：{url} HTTP {status_code or '无响应'}")
+                return None
+            return response.json()
+        except Exception as err:
+            logger.error(f"请求绿联媒体库接口失败：{url} {err}")
+            return None
+
+    def authenticate(self, username: str, password: str) -> Optional[UgreenMediaSession]:
+        """
+        使用媒体库账号登录 Emby 兼容接口。
+
+        :param username: 媒体库账号
+        :param password: 媒体库密码
+        :return: 登录会话，认证失败或缺少用户 ID 时返回 None
+        """
+        if not username or not password:
+            return None
+        payload = self._request(
+            "emby/Users/AuthenticateByName",
+            method="POST",
+            data={"Username": username, "Pw": password},
+            authenticated=False,
+        )
+        if not isinstance(payload, Mapping):
+            return None
+
+        token = str(payload.get("AccessToken") or "").strip()
+        user_data = payload.get("User")
+        user = dict(user_data) if isinstance(user_data, Mapping) else {}
+        user_id = str(user.get("Id") or payload.get("UserId") or payload.get("UserID") or "").strip()
+        if not token or not user_id:
+            logger.error("绿联媒体库服务认证失败：响应缺少 AccessToken 或用户 ID")
+            return None
+
+        self._token = token
+        self._user_id = user_id
+        server_id = str(payload.get("ServerId") or "").strip()
+        self._server_id = server_id or None
+        return UgreenMediaSession(
+            token=token,
+            user_id=user_id,
+            server_id=self._server_id,
+            user=user or None,
+        )
+
+    def current_user(self) -> Optional[dict[str, Any]]:
+        """获取当前媒体库账号的用户详情，用于检测 AccessToken 是否仍有效。"""
+        if not self._user_id:
+            return None
+        payload = self._request(f"emby/Users/{self._user_id}")
+        return dict(payload) if isinstance(payload, Mapping) else None
+
+    def views(self) -> Optional[list[dict[str, Any]]]:
+        """获取当前媒体库账号可见的媒体库视图。"""
+        if not self._user_id:
+            return None
+        payload = self._request(f"emby/Users/{self._user_id}/Views")
+        if not isinstance(payload, Mapping):
+            return None
+        items = payload.get("Items")
+        return [dict(item) for item in items if isinstance(item, Mapping)] if isinstance(items, list) else None
+
+    def items(
+        self,
+        parent_id: Optional[Union[str, int]] = None,
+        include_item_types: Optional[str] = None,
+        start_index: int = 0,
+        limit: Optional[int] = 100,
+        ids: Optional[str] = None,
+        search_term: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        fields: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        """
+        查询当前用户媒体库条目。
+
+        :param parent_id: 媒体库或父条目 ID
+        :param include_item_types: Emby 条目类型过滤器
+        :param start_index: 分页起始位置
+        :param limit: 最大返回数量，None 表示不传限制
+        :param ids: 按条目 ID 过滤，多个 ID 用逗号分隔
+        :param search_term: 搜索词
+        :param sort_by: 排序字段
+        :param sort_order: 排序方向
+        :param fields: 需要返回的字段
+        :return: Emby Items 响应
+        """
+        if not self._user_id:
+            return None
+        params: dict[str, Any] = {"Recursive": "true"}
+        if parent_id is not None:
+            params["ParentId"] = parent_id
+        if include_item_types:
+            params["IncludeItemTypes"] = include_item_types
+        if start_index:
+            params["StartIndex"] = start_index
+        if limit is not None:
+            params["Limit"] = limit
+        if ids:
+            params["Ids"] = ids
+        if search_term:
+            params["SearchTerm"] = search_term
+        if sort_by:
+            params["SortBy"] = sort_by
+        if sort_order:
+            params["SortOrder"] = sort_order
+        if fields:
+            params["Fields"] = fields
+        payload = self._request(f"emby/Users/{self._user_id}/Items", params=params)
+        return dict(payload) if isinstance(payload, Mapping) else None
+
+    def item(self, item_id: Union[str, int]) -> Optional[dict[str, Any]]:
+        """通过当前用户条目接口获取单个媒体条目详情。"""
+        if not self._user_id or not item_id:
+            return None
+        payload = self.items(ids=str(item_id), limit=1)
+        if not payload:
+            return None
+        items = payload.get("Items")
+        return dict(items[0]) if isinstance(items, list) and items else None
+
+    def counts(self) -> Optional[dict[str, Any]]:
+        """获取媒体库的电影、剧集、集数和音乐数量统计。"""
+        payload = self._request("emby/Items/Counts")
+        return dict(payload) if isinstance(payload, Mapping) else None
+
+    def resume(self, limit: int = 20) -> Optional[list[dict[str, Any]]]:
+        """获取当前媒体库账号的继续观看条目。"""
+        if not self._user_id:
+            return None
+        payload = self._request(
+            f"emby/Users/{self._user_id}/Items/Resume",
+            params={"Limit": limit, "MediaTypes": "Video"},
+        )
+        if not isinstance(payload, Mapping):
+            return None
+        items = payload.get("Items")
+        return [dict(item) for item in items if isinstance(item, Mapping)] if isinstance(items, list) else None
+
+    def episodes(
+        self, series_id: Union[str, int], season: Optional[int] = None
+    ) -> Optional[list[dict[str, Any]]]:
+        """
+        获取指定剧集的已入库集数。
+
+        :param series_id: 剧集条目 ID
+        :param season: 可选季号
+        :return: Emby Episodes 条目列表
+        """
+        if not series_id:
+            return None
+        params: dict[str, Any] = {"IsMissing": "false"}
+        if season is not None:
+            params["Season"] = season
+        payload = self._request(f"emby/Shows/{series_id}/Episodes", params=params)
+        if not isinstance(payload, Mapping):
+            return None
+        items = payload.get("Items")
+        return [dict(item) for item in items if isinstance(item, Mapping)] if isinstance(items, list) else None
+
+    def image_url(self, item_id: Union[str, int], image_type: str = "Primary") -> Optional[str]:
+        """生成当前媒体条目的 Emby 图片地址。"""
+        if not item_id or not self._token:
+            return None
+        return f"{self._host}/emby/Items/{item_id}/Images/{image_type}?api_key={self._token}"

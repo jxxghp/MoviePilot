@@ -26,6 +26,10 @@ from pydantic import Field
 import app.agent.orchestrator as agent_module
 from app.agent.memory import MemoryManager
 from app.agent.middleware.config import RuntimeConfigMiddleware
+from app.agent.middleware.invocation import GET_TOOL_EXECUTION_NAME, InvocationMiddleware
+from app.agent.middleware.output import READ_TOOL_RESULT_NAME, ToolOutputMiddleware
+from app.agent.middleware.plan import PLAN_TOOL_NAME, PlanMiddleware
+from app.agent.middleware.selection import TOOL_DISCOVERY_NAME, ToolSelectorMiddleware
 from app.agent.middleware.summarization import (
     ContextPreservingSummarizationMiddleware,
     ContextSummarizationError,
@@ -117,6 +121,7 @@ class _MetadataRecordingSummaryLLM(_SuccessfulSummaryLLM):
         self.configs.append(kwargs.get("config"))
         return AIMessage(content="保留旧事实的摘要")
 
+
 class _RecordingChatModel(FakeMessagesListChatModel):
     """记录主模型实际收到的最终请求。"""
 
@@ -146,11 +151,7 @@ class _DynamicSystemMiddleware(AgentMiddleware):
 
     async def awrap_model_call(self, request, handler):
         """在最终压缩器之前补充动态 system prompt。"""
-        return await handler(
-            request.override(
-                system_message=SystemMessage(content="动态系统约束 " * 250)
-            )
-        )
+        return await handler(request.override(system_message=SystemMessage(content="动态系统约束 " * 250)))
 
 
 def _final_request(*, messages, system_message=None, tools=None) -> ModelRequest:
@@ -188,10 +189,7 @@ def _real_compaction_graph(*, model, summarizer, tools=None, checkpointer=None):
 
 def _oversized_final_request_history() -> list[HumanMessage]:
     """生成历史本身未达阈值、叠加动态 system 后超阈值的消息。"""
-    return [
-        HumanMessage(content=(f"必须保留的历史事实 {index} " * 80))
-        for index in range(6)
-    ]
+    return [HumanMessage(content=(f"必须保留的历史事实 {index} " * 80)) for index in range(6)]
 
 
 class _FailingGraph:
@@ -199,9 +197,7 @@ class _FailingGraph:
 
     async def ainvoke(self, _payload, config=None):
         """在提交图状态前终止执行。"""
-        raise ContextSummarizationError(
-            "会话上下文压缩失败，原有上下文已保留，请稍后重试"
-        )
+        raise ContextSummarizationError("会话上下文压缩失败，原有上下文已保留，请稍后重试")
 
 
 def test_streaming_agent_uses_non_streaming_llm_for_summary():
@@ -217,57 +213,44 @@ def test_streaming_agent_uses_non_streaming_llm_for_summary():
         return object()
 
     with (
-        patch.object(
-            agent, "_initialize_llm", side_effect=[main_llm, non_streaming_llm]
-        ),
+        patch.object(agent, "_initialize_llm", side_effect=[main_llm, non_streaming_llm]),
         patch.object(agent, "_initialize_tools", return_value=[]),
-        patch.object(
-            agent_module.prompt_manager, "get_agent_prompt", return_value="prompt"
-        ),
-        patch.object(
-            agent_module, "create_subagent_middlewares", return_value=([], [])
-        ),
+        patch.object(agent_module.prompt_manager, "get_agent_prompt", return_value="prompt"),
+        patch.object(agent_module, "create_subagent_middlewares", return_value=([], [])),
         patch.object(agent_module, "create_agent", side_effect=_fake_create_agent),
         patch.object(agent_module.settings, "LLM_MAX_TOOLS", 0),
     ):
         asyncio.run(agent._create_agent(streaming=True))
 
     compaction_middleware = next(
-        middleware
-        for middleware in captured["middleware"]
-        if isinstance(middleware, FinalRequestCompactionMiddleware)
+        middleware for middleware in captured["middleware"] if isinstance(middleware, FinalRequestCompactionMiddleware)
     )
 
     assert captured["model"] is main_llm
     assert compaction_middleware.summarizer.model is non_streaming_llm
     assert not any(
-        isinstance(middleware, ContextPreservingSummarizationMiddleware)
-        for middleware in captured["middleware"]
+        isinstance(middleware, ContextPreservingSummarizationMiddleware) for middleware in captured["middleware"]
     )
 
 
-def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares():
-    """流式 Agent 的模型型中间件应使用非流式 LLM。"""
-    agent = agent_module.MoviePilotAgent(session_id="session-1", user_id="10001")
+@pytest.mark.parametrize("with_invocations", [False, True])
+def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares(with_invocations):
+    """流式图保持非流式筛选与压缩，并按持久端口正确装配内部常驻工具。"""
+    repository = object() if with_invocations else None
+    data = SimpleNamespace(invocations=repository) if with_invocations else None
+    agent = agent_module.MoviePilotAgent(session_id="session-1", user_id="10001", data=data)
     main_llm = _FakeLLM("main")
     non_streaming_llm = _FakeLLM("non-streaming")
     captured: dict = {}
 
-    class _FakeToolSelectorMiddleware:
-        """记录工具选择中间件初始化参数。"""
+    class _FakeToolSelectorMiddleware(ToolSelectorMiddleware):
+        """保留工具选择和发现目录，仅替换无需调用的测试模型。"""
 
-        def __init__(
-            self,
-            model,
-            max_tools,
-            always_include=None,
-            selection_tools=None,
-        ):
-            """保存测试断言需要的参数。"""
+        def __init__(self, **kwargs):
+            """通过真实构造函数校验启用发现后的工具与状态合同。"""
+            model = kwargs.pop("model")
+            super().__init__(model=None, **kwargs)
             self.model = model
-            self.max_tools = max_tools
-            self.always_include = always_include or []
-            self.selection_tools = selection_tools or []
 
     def _fake_create_agent(**kwargs):
         """捕获 create_agent 参数。"""
@@ -282,25 +265,19 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares():
             self.name = name
 
     fake_tools = [
-        _FakeTool("list_directory"),
+        _FakeTool("moviepilot_api"),
+        _FakeTool("agent_task"),
         _FakeTool("write_file"),
         _FakeTool("read_file"),
         _FakeTool("edit_file"),
         _FakeTool("execute_command"),
-        _FakeTool("search_media"),
     ]
 
     with (
-        patch.object(
-            agent, "_initialize_llm", side_effect=[main_llm, non_streaming_llm]
-        ),
+        patch.object(agent, "_initialize_llm", side_effect=[main_llm, non_streaming_llm]),
         patch.object(agent, "_initialize_tools", return_value=fake_tools),
-        patch.object(
-            agent_module.prompt_manager, "get_agent_prompt", return_value="prompt"
-        ),
-        patch.object(
-            agent_module, "create_subagent_middlewares", return_value=([], [])
-        ),
+        patch.object(agent_module.prompt_manager, "get_agent_prompt", return_value="prompt"),
+        patch.object(agent_module, "create_subagent_middlewares", return_value=([], [])),
         patch.object(
             agent_module,
             "ToolSelectorMiddleware",
@@ -312,26 +289,68 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares():
         asyncio.run(agent._create_agent(streaming=True))
 
     tool_selector_middleware = next(
-        middleware
-        for middleware in captured["middleware"]
-        if isinstance(middleware, _FakeToolSelectorMiddleware)
+        middleware for middleware in captured["middleware"] if isinstance(middleware, _FakeToolSelectorMiddleware)
     )
 
     assert tool_selector_middleware.model is non_streaming_llm
     assert tool_selector_middleware.max_tools == 3
     assert tool_selector_middleware.always_include == [
-        "list_directory",
+        "moviepilot_api",
         "write_file",
         "read_file",
         "edit_file",
         "execute_command",
-        "skill",
+        "agent_task",
+        "read_skill",
+        PLAN_TOOL_NAME,
+        READ_TOOL_RESULT_NAME,
+        *([GET_TOOL_EXECUTION_NAME] if with_invocations else []),
+        TOOL_DISCOVERY_NAME,
     ]
     assert tool_selector_middleware.selection_tools[: len(fake_tools)] == fake_tools
-    assert [
-        getattr(tool, "name", None)
-        for tool in tool_selector_middleware.selection_tools[len(fake_tools):]
-    ] == ["skill"]
+    assert [getattr(tool, "name", None) for tool in tool_selector_middleware.selection_tools[len(fake_tools) :]] == [
+        "read_skill", PLAN_TOOL_NAME, READ_TOOL_RESULT_NAME,
+        *([GET_TOOL_EXECUTION_NAME] if with_invocations else []), TOOL_DISCOVERY_NAME,
+    ]
+    middlewares = captured["middleware"]
+    plan_middleware = next(item for item in middlewares if isinstance(item, PlanMiddleware))
+    output_middleware = next(item for item in middlewares if isinstance(item, ToolOutputMiddleware))
+    invocation_middlewares = [item for item in middlewares if isinstance(item, InvocationMiddleware)]
+    compaction_middleware = next(item for item in middlewares if isinstance(item, FinalRequestCompactionMiddleware))
+    assert compaction_middleware.summarizer.model is non_streaming_llm
+    assert [item.name for item in middlewares] == [
+        "AgentPolicyMiddleware",
+        "ToolOutputMiddleware",
+        *(["InvocationMiddleware"] if with_invocations else []),
+        "SkillsMiddleware",
+        "JobsMiddleware",
+        "RuntimeConfigMiddleware",
+        "PlanMiddleware",
+        "MemoryMiddleware",
+        "PatchToolCallsMiddleware",
+        "_FakeToolSelectorMiddleware",
+        "FinalRequestCompactionMiddleware",
+        "VisionMiddleware",
+        "UsageMiddleware",
+    ]
+    policy_middleware = middlewares[0]
+    assert output_middleware.context is policy_middleware.context
+    assert bool(invocation_middlewares) is with_invocations
+    if with_invocations:
+        assert invocation_middlewares[0].repository is repository
+        assert invocation_middlewares[0].context is policy_middleware.context
+        assert invocation_middlewares[0]._guarded_tools == tuple(fake_tools)
+    else:
+        assert policy_middleware.catalog.resolve_unique(GET_TOOL_EXECUTION_NAME) is None
+    internal_tools = [
+        *plan_middleware.tools, *output_middleware.tools, *tool_selector_middleware.tools,
+        *(tool for middleware in invocation_middlewares for tool in middleware.tools),
+    ]
+    for internal_tool in internal_tools:
+        assert policy_middleware.catalog.resolve_unique(internal_tool.name).tool is internal_tool
+        assert internal_tool in tool_selector_middleware.selection_tools
+        assert internal_tool.name in tool_selector_middleware.always_include
+        assert internal_tool not in captured["tools"]
 
 
 def test_non_streaming_agent_reuses_main_llm_for_summary():
@@ -348,28 +367,21 @@ def test_non_streaming_agent_reuses_main_llm_for_summary():
     with (
         patch.object(agent, "_initialize_llm", return_value=main_llm),
         patch.object(agent, "_initialize_tools", return_value=[]),
-        patch.object(
-            agent_module.prompt_manager, "get_agent_prompt", return_value="prompt"
-        ),
-        patch.object(
-            agent_module, "create_subagent_middlewares", return_value=([], [])
-        ),
+        patch.object(agent_module.prompt_manager, "get_agent_prompt", return_value="prompt"),
+        patch.object(agent_module, "create_subagent_middlewares", return_value=([], [])),
         patch.object(agent_module, "create_agent", side_effect=_fake_create_agent),
         patch.object(agent_module.settings, "LLM_MAX_TOOLS", 0),
     ):
         asyncio.run(agent._create_agent(streaming=False))
 
     compaction_middleware = next(
-        middleware
-        for middleware in captured["middleware"]
-        if isinstance(middleware, FinalRequestCompactionMiddleware)
+        middleware for middleware in captured["middleware"] if isinstance(middleware, FinalRequestCompactionMiddleware)
     )
 
     assert captured["model"] is main_llm
     assert compaction_middleware.summarizer.model is main_llm
     assert not any(
-        isinstance(middleware, ContextPreservingSummarizationMiddleware)
-        for middleware in captured["middleware"]
+        isinstance(middleware, ContextPreservingSummarizationMiddleware) for middleware in captured["middleware"]
     )
 
 
@@ -387,27 +399,18 @@ def test_summary_failure_does_not_replace_existing_context():
     with (
         patch.object(agent, "_initialize_llm", return_value=failing_llm),
         patch.object(agent, "_initialize_tools", return_value=[]),
-        patch.object(
-            agent_module.prompt_manager, "get_agent_prompt", return_value="prompt"
-        ),
-        patch.object(
-            agent_module, "create_subagent_middlewares", return_value=([], [])
-        ),
+        patch.object(agent_module.prompt_manager, "get_agent_prompt", return_value="prompt"),
+        patch.object(agent_module, "create_subagent_middlewares", return_value=([], [])),
         patch.object(agent_module, "create_agent", side_effect=_fake_create_agent),
         patch.object(agent_module.settings, "LLM_MAX_TOOLS", 0),
     ):
         asyncio.run(agent._create_agent(streaming=False))
 
     compaction_middleware = next(
-        middleware
-        for middleware in captured["middleware"]
-        if isinstance(middleware, FinalRequestCompactionMiddleware)
+        middleware for middleware in captured["middleware"] if isinstance(middleware, FinalRequestCompactionMiddleware)
     )
     summary_middleware = compaction_middleware.summarizer
-    messages = [
-        HumanMessage(content=f"必须保留的旧上下文 {index} " * 200)
-        for index in range(160)
-    ]
+    messages = [HumanMessage(content=f"必须保留的旧上下文 {index} " * 200) for index in range(160)]
     assert summary_middleware.token_counter(messages) >= 64000 * 0.85
     cutoff_index = summary_middleware._determine_cutoff_index(messages)
     assert summary_middleware._trim_messages_for_summary(messages[:cutoff_index])
@@ -442,10 +445,7 @@ def test_final_request_compaction_includes_dynamic_system_and_tools():
         keep=("fraction", 0.10),
     )
     middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
-    messages = [
-        HumanMessage(content=f"必须保留的历史事实 {index} " * 120)
-        for index in range(6)
-    ]
+    messages = [HumanMessage(content=f"必须保留的历史事实 {index} " * 120) for index in range(6)]
     request = _final_request(
         messages=messages,
         system_message=SystemMessage(content="动态系统约束 " * 40),
@@ -479,6 +479,25 @@ def test_final_request_compaction_includes_dynamic_system_and_tools():
     assert result.command.update["messages"][-1].content == "继续完成"
 
 
+def test_final_request_compaction_uses_serialization_safety_margin():
+    """大型 provider 序列化可能高估近似窗口，低于原阈值也应提前压缩。"""
+    summarizer = ContextPreservingSummarizationMiddleware(
+        model=_SuccessfulSummaryLLM("summary"),
+        trigger=("fraction", 0.85),
+        keep=("fraction", 0.10),
+    )
+    middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
+
+    assert middleware._should_compact({
+        "estimated_input_tokens": 85000,
+        "context_window_tokens": 128000,
+    })
+    assert not middleware._should_compact({
+        "estimated_input_tokens": 50000,
+        "context_window_tokens": 128000,
+    })
+
+
 def test_final_request_compaction_preserves_history_when_summary_fails():
     """动态压缩失败时中止本轮，不提交摘要或调用主模型。"""
     summarizer = ContextPreservingSummarizationMiddleware(
@@ -487,10 +506,7 @@ def test_final_request_compaction_preserves_history_when_summary_fails():
         keep=("fraction", 0.10),
     )
     middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
-    messages = [
-        HumanMessage(content=f"必须保留的历史事实 {index} " * 120)
-        for index in range(6)
-    ]
+    messages = [HumanMessage(content=f"必须保留的历史事实 {index} " * 120) for index in range(6)]
     request = _final_request(
         messages=messages,
         system_message=SystemMessage(content="动态系统约束 " * 80),
@@ -520,11 +536,7 @@ def test_final_request_compaction_preserves_history_when_summary_fails():
 @pytest.mark.parametrize("failure", ["fixed-overhead", "long-summary"])
 def test_final_request_compaction_rejects_known_overflow_before_main_model(failure):
     """压缩后仍已知超窗时不得把请求发送给主模型。"""
-    summary_model = (
-        _LongSummaryLLM("summary")
-        if failure == "long-summary"
-        else _SuccessfulSummaryLLM("summary")
-    )
+    summary_model = _LongSummaryLLM("summary") if failure == "long-summary" else _SuccessfulSummaryLLM("summary")
     summarizer = ContextPreservingSummarizationMiddleware(
         model=summary_model,
         trigger=("fraction", 0.85),
@@ -534,11 +546,7 @@ def test_final_request_compaction_rejects_known_overflow_before_main_model(failu
     request = _final_request(
         messages=_oversized_final_request_history(),
         system_message=SystemMessage(
-            content=(
-                "不可缩减的系统约束 " * 1500
-                if failure == "fixed-overhead"
-                else "动态系统约束 " * 250
-            )
+            content=("不可缩减的系统约束 " * 1500 if failure == "fixed-overhead" else "动态系统约束 " * 250)
         ),
     )
     received = []
@@ -587,9 +595,7 @@ def test_overflow_with_small_history_compacts_to_hard_window():
         keep=("messages", 20),
     )
     middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
-    messages = [
-        HumanMessage(content=f"近期历史 {index} " * 5) for index in range(4)
-    ]
+    messages = [HumanMessage(content=f"近期历史 {index} " * 5) for index in range(4)]
     request = _final_request(
         messages=messages,
         system_message=SystemMessage(content="固定系统约束 " * 1150),
@@ -621,10 +627,7 @@ def test_compaction_uses_hard_window_when_soft_target_is_unreachable():
         keep=("messages", 20),
     )
     middleware = FinalRequestCompactionMiddleware(summarizer=summarizer)
-    messages = [
-        HumanMessage(content=f"需要择量保留的历史 {index} " * 20)
-        for index in range(24)
-    ]
+    messages = [HumanMessage(content=f"需要择量保留的历史 {index} " * 20) for index in range(24)]
     request = _final_request(
         messages=messages,
         system_message=SystemMessage(content="固定系统约束 " * 1100),
@@ -733,11 +736,14 @@ def test_forced_compaction_rejects_single_long_current_message():
         system_message=SystemMessage(content="固定系统约束 " * 100),
     )
     assert UsageMiddleware.estimate_request(request)["estimated_input_ratio"] > 1
-    assert summarizer.partition_for_token_limit(
-        [latest_message],
-        int(2048 * 0.10),
-        force=True,
-    ) is None
+    assert (
+        summarizer.partition_for_token_limit(
+            [latest_message],
+            int(2048 * 0.10),
+            force=True,
+        )
+        is None
+    )
     received = []
 
     async def _handler(compacted_request):
@@ -839,18 +845,14 @@ def test_real_agent_commits_final_request_compaction(execution):
             result = await graph.ainvoke({"messages": messages}, config=config)
             return result, (await graph.aget_state(config)).values
         final_state = None
-        async for state in graph.astream(
-            {"messages": messages}, config=config, stream_mode="values"
-        ):
+        async for state in graph.astream({"messages": messages}, config=config, stream_mode="values"):
             final_state = state
         return final_state, (await graph.aget_state(config)).values
 
     result, persisted = asyncio.run(_run())
 
     assert result is not None
-    assert [message.content for message in result["messages"]] == [
-        message.content for message in persisted["messages"]
-    ]
+    assert [message.content for message in result["messages"]] == [message.content for message in persisted["messages"]]
     assert summarizer.calls == 1
     assert len(model.seen_messages) == 1
     assert isinstance(model.seen_messages[0][0], SystemMessage)
@@ -874,13 +876,11 @@ def test_real_agent_does_not_compact_request_below_threshold():
 
     assert summarizer.calls == 0
     assert len(model.seen_messages[0]) == len(messages) + 1
-    assert [message.content for message in result["messages"][:-1]] == [
-        message.content for message in messages
-    ]
+    assert [message.content for message in result["messages"][:-1]] == [message.content for message in messages]
 
 
 def test_real_agent_executes_compacted_tool_call_once():
-    """压缩不得重试主模型或重复执行工具事务。"""
+    """压缩只执行一次工具事务，小工具结果也不得触发同轮二次压缩。"""
     calls = []
 
     @tool
@@ -894,9 +894,7 @@ def test_real_agent_executes_compacted_tool_call_once():
         responses=[
             AIMessage(
                 content="",
-                tool_calls=[
-                    {"name": "record_value", "args": {"value": "once"}, "id": "call-1"}
-                ],
+                tool_calls=[{"name": "record_value", "args": {"value": "once"}, "id": "call-1"}],
             ),
             AIMessage(content="工具完成"),
         ],
@@ -908,48 +906,7 @@ def test_real_agent_executes_compacted_tool_call_once():
         tools=[record_value],
     )
 
-    result = asyncio.run(
-        graph.ainvoke({"messages": _oversized_final_request_history()})
-    )
-
-    assert calls == ["once"]
-    assert summarizer.calls == 1
-    assert len(model.seen_messages) == 2
-    assert result["messages"][-1].content == "工具完成"
-
-
-def test_real_agent_does_not_recompact_small_tool_result_during_same_loop():
-    """小工具结果不会让同一轮请求重新压缩。"""
-    calls = []
-
-    @tool
-    def record_value(value: str) -> str:
-        """记录工具调用次数。"""
-        calls.append(value)
-        return value
-
-    summarizer = _CountingSummaryLLM("summary")
-    model = _RecordingChatModel(
-        responses=[
-            AIMessage(
-                content="",
-                tool_calls=[
-                    {"name": "record_value", "args": {"value": "once"}, "id": "call-1"}
-                ],
-            ),
-            AIMessage(content="工具完成"),
-        ],
-        profile={"max_input_tokens": 2048},
-    )
-    graph = _real_compaction_graph(
-        model=model,
-        summarizer=summarizer,
-        tools=[record_value],
-    )
-
-    result = asyncio.run(
-        graph.ainvoke({"messages": _oversized_final_request_history()})
-    )
+    result = asyncio.run(graph.ainvoke({"messages": _oversized_final_request_history()}))
 
     assert calls == ["once"]
     assert summarizer.calls == 1
@@ -984,9 +941,7 @@ def test_large_tool_result_allows_same_turn_recompaction():
         tools=[large_result],
     )
 
-    result = asyncio.run(
-        graph.ainvoke({"messages": _oversized_final_request_history()})
-    )
+    result = asyncio.run(graph.ainvoke({"messages": _oversized_final_request_history()}))
 
     assert calls == ["once"]
     assert summarizer.calls == 2
@@ -1057,11 +1012,7 @@ def test_real_agent_does_not_resummarize_existing_summary_only():
 def test_real_agent_failure_does_not_commit_compacted_history(failure):
     """摘要或主模型失败时，checkpoint 只保留原始历史。"""
     checkpointer = InMemorySaver()
-    summarizer = (
-        _FailingSummaryLLM("summary")
-        if failure == "summary"
-        else _CountingSummaryLLM("summary")
-    )
+    summarizer = _FailingSummaryLLM("summary") if failure == "summary" else _CountingSummaryLLM("summary")
     model = (
         _FailingMainModel(
             responses=[AIMessage(content="不会返回")],
@@ -1088,9 +1039,7 @@ def test_real_agent_failure_does_not_commit_compacted_history(failure):
 
     snapshot = asyncio.run(_run())
 
-    assert [message.content for message in snapshot.values["messages"]] == [
-        message.content for message in messages
-    ]
+    assert [message.content for message in snapshot.values["messages"]] == [message.content for message in messages]
     if failure == "summary":
         assert model.seen_messages == []
     else:
@@ -1112,10 +1061,7 @@ def test_history_triggered_compaction_waits_for_main_model_success():
         summarizer=summarizer,
         checkpointer=checkpointer,
     )
-    messages = [
-        HumanMessage(content=f"历史直接触发压缩 {index} " * 40)
-        for index in range(30)
-    ]
+    messages = [HumanMessage(content=f"历史直接触发压缩 {index} " * 40) for index in range(30)]
     summary_middleware = ContextPreservingSummarizationMiddleware(
         model=summarizer,
         trigger=("fraction", 0.85),
@@ -1131,9 +1077,7 @@ def test_history_triggered_compaction_waits_for_main_model_success():
 
     snapshot = asyncio.run(_run())
 
-    assert [message.content for message in snapshot.values["messages"]] == [
-        message.content for message in messages
-    ]
+    assert [message.content for message in snapshot.values["messages"]] == [message.content for message in messages]
     assert summarizer.calls >= 1
     assert len(model.seen_messages) == 1
 
@@ -1152,10 +1096,7 @@ def test_history_triggered_compaction_commits_after_main_model_success():
         summarizer=summarizer,
         checkpointer=checkpointer,
     )
-    messages = [
-        HumanMessage(content=f"历史直接触发压缩 {index} " * 40)
-        for index in range(30)
-    ]
+    messages = [HumanMessage(content=f"历史直接触发压缩 {index} " * 40) for index in range(30)]
     config = {"configurable": {"thread_id": "history-trigger-main-success"}}
 
     async def _run():
@@ -1194,10 +1135,48 @@ def test_unsummarizable_message_requires_new_context_instead_of_retry():
             middleware.before_model({"messages": messages}, None)
         errors.append(str(error.value))
 
-    assert errors == [
-        "会话历史中存在无法压缩的超长内容，原有上下文已保留，请新建或清空会话后继续"
-    ] * 2
+    assert errors == ["会话历史中存在无法压缩的超长内容，原有上下文已保留，请新建或清空会话后继续"] * 2
     assert all("稍后重试" not in error for error in errors)
+
+
+def test_summary_trim_falls_back_when_history_tail_has_no_human_message():
+    """工具结果尾部没有 HumanMessage 时也应保留可摘要的后缀。"""
+    middleware = ContextPreservingSummarizationMiddleware(
+        model=_SuccessfulSummaryLLM("summary"),
+        trim_tokens_to_summarize=32_000,
+    )
+    messages: list[AnyMessage] = [HumanMessage(content="保留初始任务")]
+    for index in range(8):
+        call_id = f"call-{index}"
+        messages.extend(
+            [
+                AIMessage(
+                    content=f"调用第 {index + 1} 页",
+                    tool_calls=[
+                        {
+                            "name": "subscription.list",
+                            "args": {"page": index + 1},
+                            "id": call_id,
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                ToolMessage(
+                    content="工具返回的历史噪声 " * 10_000,
+                    tool_call_id=call_id,
+                ),
+            ]
+        )
+
+    assert not super(
+        ContextPreservingSummarizationMiddleware, middleware
+    )._trim_messages_for_summary(messages)
+    trimmed_messages = middleware._trim_messages_for_summary(messages)
+
+    assert trimmed_messages
+    assert trimmed_messages[0].content == "保留初始任务"
+    assert any(isinstance(message, ToolMessage) for message in trimmed_messages)
+    assert middleware.token_counter(trimmed_messages) <= 32_000
 
 
 def test_summary_failure_preserves_database_history():
@@ -1220,23 +1199,17 @@ def test_summary_failure_preserves_database_history():
     agent._compiled_agent_bundle = object()
     agent._should_stream = lambda: False
     agent._create_agent = AsyncMock(return_value=_FailingGraph())
-    agent.stream_handler = SimpleNamespace(
-        stop_streaming=AsyncMock(return_value=(False, ""))
-    )
+    agent.stream_handler = SimpleNamespace(stop_streaming=AsyncMock(return_value=(False, "")))
     agent.send_agent_message = AsyncMock()
 
     with (
         patch("app.agent.orchestrator.eventmanager.send_event") as send_usage_event,
     ):
-        result, _ = asyncio.run(
-            agent._execute_agent(
-                [*restored_messages, HumanMessage(content="继续原来的任务")]
-            )
-        )
+        result, _ = asyncio.run(agent._execute_agent([*restored_messages, HumanMessage(content="继续原来的任务")]))
 
     isolated_memory.clear_memory(session_id, user_id)
     recovered_messages = isolated_memory.get_agent_messages(session_id, user_id)
-    assert result == "智能助手执行失败: 会话上下文压缩失败，原有上下文已保留，请稍后重试"
+    assert result == "智能助手执行失败，请稍后重试"
     assert agent._compiled_agent_bundle is None
     assert [message.content for message in recovered_messages] == ["数据库中的旧事实"]
     send_usage_event.assert_called_once()
@@ -1257,22 +1230,12 @@ def test_agent_uses_runtime_config_middleware_instead_of_hooks():
     with (
         patch.object(agent, "_initialize_llm", return_value=main_llm),
         patch.object(agent, "_initialize_tools", return_value=[]),
-        patch.object(
-            agent_module.prompt_manager, "get_agent_prompt", return_value="prompt"
-        ),
-        patch.object(
-            agent_module, "create_subagent_middlewares", return_value=([], [])
-        ),
+        patch.object(agent_module.prompt_manager, "get_agent_prompt", return_value="prompt"),
+        patch.object(agent_module, "create_subagent_middlewares", return_value=([], [])),
         patch.object(agent_module, "create_agent", side_effect=_fake_create_agent),
         patch.object(agent_module.settings, "LLM_MAX_TOOLS", 0),
     ):
         asyncio.run(agent._create_agent(streaming=False))
 
-    assert any(
-        isinstance(middleware, RuntimeConfigMiddleware)
-        for middleware in captured["middleware"]
-    )
-    assert not any(
-        type(middleware).__name__ == "AgentHooksMiddleware"
-        for middleware in captured["middleware"]
-    )
+    assert any(isinstance(middleware, RuntimeConfigMiddleware) for middleware in captured["middleware"])
+    assert not any(type(middleware).__name__ == "AgentHooksMiddleware" for middleware in captured["middleware"])

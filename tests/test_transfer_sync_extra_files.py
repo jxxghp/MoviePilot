@@ -242,12 +242,12 @@ def test_single_subtitle_transfer_reuses_same_name_video_episode(monkeypatch):
         ),
     )
     monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
-            get_parent_item=lambda fileitem: parent_fileitem,
-            list_files=lambda fileitem, recursion=False: [
-                main_fileitem,
-                subtitle_fileitem,
-            ],
-        ))
+        get_parent_item=lambda fileitem: parent_fileitem,
+        list_files=lambda fileitem, recursion=False: [
+            main_fileitem,
+            subtitle_fileitem,
+        ],
+    ))
     monkeypatch.setattr("app.chain.transfer.request.MetaInfoPath", fake_meta_info_path)
 
     state, errmsg = TransferChain.do_transfer(
@@ -335,9 +335,9 @@ def test_single_video_transfer_lists_parent_once_for_same_name_extra(monkeypatch
         ),
     )
     monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
-            get_parent_item=lambda fileitem: parent_fileitem,
-            list_files=fake_list_files,
-        ))
+        get_parent_item=lambda fileitem: parent_fileitem,
+        list_files=fake_list_files,
+    ))
     monkeypatch.setattr("app.chain.transfer.request.MetaInfoPath", lambda path, custom_words=None, **kwargs: FakeMeta(2))
 
     state, errmsg = TransferChain.do_transfer(
@@ -562,12 +562,12 @@ def test_single_matching_subtitle_uses_unmatched_video_only_as_context(monkeypat
         ),
     )
     monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
-            get_parent_item=lambda fileitem: parent_fileitem,
-            list_files=lambda fileitem, recursion=False: [
-                main_fileitem,
-                subtitle_fileitem,
-            ],
-        ))
+        get_parent_item=lambda fileitem: parent_fileitem,
+        list_files=lambda fileitem, recursion=False: [
+            main_fileitem,
+            subtitle_fileitem,
+        ],
+    ))
     monkeypatch.setattr("app.chain.transfer.request.MetaInfoPath", fake_meta_info_path)
 
     state, errmsg = TransferChain.do_transfer(
@@ -682,8 +682,8 @@ def test_cleanup_dest_fileitem_is_kept_when_episode_format_matches_nothing(monke
         ),
     )
     monkeypatch.setattr("app.chain.transfer.records.StorageChain", lambda: SimpleNamespace(
-            delete_media_file=lambda fileitem: delete_calls.append(fileitem.path) or True,
-        ))
+        delete_media_file=lambda fileitem: delete_calls.append(fileitem.path) or True,
+    ))
 
     state, errmsg = TransferChain.do_transfer(
         chain,

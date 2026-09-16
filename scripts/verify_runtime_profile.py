@@ -9,7 +9,6 @@ import shutil
 import subprocess
 import sys
 import sysconfig
-from importlib import import_module
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -82,7 +81,7 @@ def verify_platform_profile(
         expected_system: str,
         expected_machine: str,
 ) -> None:
-    """验证运行平台、解释器 ABI 和 Windows Docker 能力边界。"""
+    """验证运行平台和解释器 ABI。"""
     current_system = platform.system()
     current_machine = platform.machine()
     if current_system != expected_system:
@@ -97,37 +96,8 @@ def verify_platform_profile(
     if sys._is_gil_enabled() is expected_free_threaded:
         raise RuntimeError("解释器 GIL 状态与运行 profile 不匹配")
 
-    import_module("docker")
     if find_spec("pympler") is not None:
         raise RuntimeError("运行环境仍包含已移除的 Pympler")
-    if current_system != "Windows":
-        return
-
-    docker_transport = import_module("docker.transport")
-    win32_modules = ("pywintypes", "win32api", "win32file", "win32pipe")
-    installed_win32_modules = {
-        module_name for module_name in win32_modules if find_spec(module_name) is not None
-    }
-    if expected_free_threaded:
-        if installed_win32_modules:
-            raise RuntimeError(
-                "Windows free-threaded profile 意外安装 pywin32："
-                + ", ".join(sorted(installed_win32_modules))
-            )
-        if getattr(docker_transport, "NpipeHTTPAdapter", None) is not None:
-            raise RuntimeError("Windows free-threaded profile 意外启用了 Docker named-pipe 能力")
-        return
-
-    missing_modules = set(win32_modules) - installed_win32_modules
-    if missing_modules:
-        raise RuntimeError(
-            "Windows standard profile 缺少 pywin32 模块："
-            + ", ".join(sorted(missing_modules))
-        )
-    for module_name in win32_modules:
-        import_module(module_name)
-    if getattr(docker_transport, "NpipeHTTPAdapter", None) is None:
-        raise RuntimeError("Windows standard profile 缺少 Docker named-pipe 能力")
 
 
 def verify_application_lifecycle() -> None:

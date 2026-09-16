@@ -3,12 +3,14 @@
 import base64
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Set, Tuple, Union, cast
 from urllib.parse import urlencode, urljoin, urlparse
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import validate_download_save_path
+from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.download.ports import (
@@ -23,6 +25,7 @@ from app.domain.context import (
     MusicInfo,
     TorrentInfo,
 )
+from app.domain.meta.metabase import MetaBase
 from app.runtime.cache import FileCache
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
@@ -36,9 +39,24 @@ from app.schemas.types import (
 )
 
 
-class DownloadSubmissionOwner(_DownloadOwnerBase):
-    """种子获取与单任务提交 owner。"""
+@dataclass(frozen=True, slots=True)
+class _PreparedDownload:
+    """下载器调用前已经验证并规范化的本地提交事实。"""
 
+    torrent: TorrentInfo
+    media: Union[MediaInfo, MusicInfo]
+    meta: MetaBase
+    torrent_content: Union[str, bytes]
+    folder_name: str
+    file_list: list[str]
+    download_dir: Path
+    download_uri: str
+    download_episodes: Optional[str]
+    site_downloader: Optional[str]
+
+
+class _DownloadResourceOwner(_DownloadOwnerBase):
+    """种子获取、间接地址解析与资源下载事件 owner。"""
 
     @staticmethod
     def _normalize_indirect_download_url(url: str, base_url: Optional[str] = None) -> str:
@@ -258,6 +276,17 @@ class DownloadSubmissionOwner(_DownloadOwnerBase):
             logger.warn(str(err))
             return save_path, str(err)
 
+
+class DownloadSubmissionOwner(_DownloadResourceOwner):
+    """单任务下载准备、提交与结算 owner。"""
+
+    @staticmethod
+    def _subscription_download_cancelled(
+        governance: Optional[SubscriptionDownloadGovernance],
+    ) -> bool:
+        """在下载器副作用前读取订阅执行上下文的停止信号。"""
+        return bool(governance and governance.cancelled and governance.cancelled())
+
     def download_single(self, context: Context,
                         torrent_file: Optional[Path] = None,
                         torrent_content: Optional[Union[str, bytes]] = None,
@@ -270,7 +299,9 @@ class DownloadSubmissionOwner(_DownloadOwnerBase):
                         username: Optional[str] = None,
                         label: Optional[str] = None,
                         return_detail: bool = False,
-                        custom_words: Optional[str] = None) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
+                        custom_words: Optional[str] = None,
+                        governance: Optional[SubscriptionDownloadGovernance] = None,
+                        ) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
         """
         下载单个资源并发送结果通知。
 
@@ -290,181 +321,325 @@ class DownloadSubmissionOwner(_DownloadOwnerBase):
             label=label,
             return_detail=return_detail,
             custom_words=custom_words,
+            governance=governance,
         )
 
-    def _execute_download_single(self, context: Context,
-                        torrent_file: Optional[Path] = None,
-                        torrent_content: Optional[Union[str, bytes]] = None,
-                        episodes: Optional[Set[int]] = None,
-                        channel: Optional[NotificationChannel] = None,
-                        source: Optional[str] = None,
-                        downloader: Optional[str] = None,
-                        save_path: Optional[str] = None,
-                        userid: Union[str, int, None] = None,
-                        username: Optional[str] = None,
-                        label: Optional[str] = None,
-                        return_detail: bool = False,
-                        custom_words: Optional[str] = None) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
-        """
-        下载及发送通知
-        :param context: 资源上下文
-        :param torrent_file: 种子文件路径
-        :param torrent_content: 种子内容（磁力链或种子文件内容）
-        :param episodes: 需要下载的集数
-        :param channel: 通知渠道
-        :param source: 来源（消息通知、Subscribe、Manual等）
-        :param downloader: 下载器
-        :param save_path: 保存路径, 支持<storage>:<path>, 如rclone:/MP, smb:/server/share/Movies等
-        :param userid: 用户ID
-        :param username: 调用下载的用户名/插件名
-        :param label: 自定义标签
-        :param return_detail: 是否返回详细结果；False 时返回下载任务 hash 或 None，True 时返回 (hash, error_msg)
-        :param custom_words: 下载来源（如订阅）的完整自定义识别词文本，随下载记录存档，供整理时原样复现识别
-        :return: return_detail=False 时返回下载任务 hash 或 None；return_detail=True 时返回 (hash, error_msg)
-        """
-        _torrent = context.torrent_info
-        _media = context.media_info
-        _meta = context.meta_info
-        if _torrent is None or _media is None or _meta is None:
-            error_message = "下载上下文缺少媒体、元数据或种子信息"
-            return (None, error_message) if return_detail else None
-        _site_downloader = _torrent.site_downloader
+    def _execute_download_single(
+        self,
+        context: Context,
+        torrent_file: Optional[Path] = None,
+        torrent_content: Optional[Union[str, bytes]] = None,
+        episodes: Optional[Set[int]] = None,
+        channel: Optional[NotificationChannel] = None,
+        source: Optional[str] = None,
+        downloader: Optional[str] = None,
+        save_path: Optional[str] = None,
+        userid: Union[str, int, None] = None,
+        username: Optional[str] = None,
+        label: Optional[str] = None,
+        return_detail: bool = False,
+        custom_words: Optional[str] = None,
+        governance: Optional[SubscriptionDownloadGovernance] = None,
+    ) -> Union[Optional[str], Tuple[Optional[str], Optional[str]]]:
+        """准备下载事实，提交下载器并按订阅治理合同结算结果。"""
+        prepared, error_msg = self._prepare_download_single(
+            context=context,
+            torrent_file=torrent_file,
+            torrent_content=torrent_content,
+            episodes=episodes,
+            channel=channel,
+            source=source,
+            downloader=downloader,
+            save_path=save_path,
+            userid=userid,
+            username=username,
+        )
+        if prepared is None:
+            return (None, error_msg) if return_detail else None
+        download_hash, error_msg = self._submit_prepared_download(
+            prepared=prepared,
+            context=context,
+            episodes=episodes,
+            channel=channel,
+            source=source,
+            downloader=downloader,
+            userid=userid,
+            username=username,
+            label=label,
+            custom_words=custom_words,
+            governance=governance,
+        )
+        return (download_hash, error_msg) if return_detail else download_hash
 
-        # 下载目录和下载器分类依赖 TMDB 辅助分类，但媒体主身份保持不变。
-        supplemented_media = MediaChain().supplement_tmdb_info(_media, _meta)
+    def _prepare_download_single(
+        self,
+        *,
+        context: Context,
+        torrent_file: Optional[Path],
+        torrent_content: Optional[Union[str, bytes]],
+        episodes: Optional[Set[int]],
+        channel: Optional[NotificationChannel],
+        source: Optional[str],
+        downloader: Optional[str],
+        save_path: Optional[str],
+        userid: Union[str, int, None],
+        username: Optional[str],
+    ) -> tuple[Optional[_PreparedDownload], Optional[str]]:
+        """补全媒体、读取种子并解析出可信下载目录。"""
+        torrent, media, meta = context.torrent_info, context.media_info, context.meta_info
+        if torrent is None or media is None or meta is None:
+            return None, "下载上下文缺少媒体、元数据或种子信息"
+        site_downloader = torrent.site_downloader
+        supplemented_media = MediaChain().supplement_tmdb_info(media, meta)
         if not isinstance(supplemented_media, (MediaInfo, MusicInfo)):
-            error_message = "媒体信息补全失败"
-            return (None, error_message) if return_detail else None
-        _media = supplemented_media
-        context.media_info = _media
-
+            return None, "媒体信息补全失败"
+        media = supplemented_media
+        context.media_info = media
         save_path, event_error = self._apply_resource_download_event(
-            context, episodes, channel, source, downloader, save_path,
-            userid, username,
+            context, episodes, channel, source, downloader, save_path, userid, username
         )
         if event_error:
-            return (None, event_error) if return_detail else None
-
-        # 实际下载的集数
+            return None, event_error
         download_episodes = episode_rules.format_ranges(list(episodes)) if episodes else None
         if episodes is not None:
             context.selected_episodes = sorted(set(episodes))
-        elif _meta and _meta.episode_list:
-            context.selected_episodes = sorted(set(_meta.episode_list))
+        elif meta.episode_list:
+            context.selected_episodes = sorted(set(meta.episode_list))
         else:
             context.selected_episodes = []
-        _folder_name = ""
         if not torrent_file and not torrent_content:
-            # 下载种子文件，得到的可能是文件也可能是磁力链
-            torrent_content, _folder_name, _file_list = self.download_torrent(_torrent,
-                                                                              channel=channel,
-                                                                              source=source,
-                                                                              userid=userid)
+            torrent_content, _, _ = self.download_torrent(
+                torrent, channel=channel, source=source, userid=userid
+            )
         elif torrent_file:
-            if torrent_file.exists():
-                torrent_content = torrent_file.read_bytes()
-            else:
-                # 缓存处理器
-                cache_backend = FileCache()
-                # 读取缓存的种子文件
-                torrent_content = cache_backend.get(torrent_file.as_posix(), region="torrents")
-
+            torrent_content = (
+                torrent_file.read_bytes()
+                if torrent_file.exists()
+                else FileCache().get(torrent_file.as_posix(), region="torrents")
+            )
         if not torrent_content:
             self._record_download_failure(
                 context=context,
                 error_msg="下载种子内容为空",
-                downloader=downloader or _site_downloader,
+                downloader=downloader or site_downloader,
                 source=source,
                 episodes=episodes,
             )
-            return (None, "下载种子内容为空") if return_detail else None
-
-        # 获取种子文件的文件夹名和文件清单
-        _folder_name, _file_list = cast(
-            Any, TorrentHelper
-        )().get_fileinfo_from_torrent_content(torrent_content)
-
-        album_validation_error = self._validate_music_album_resource(context, _file_list)
-        if album_validation_error:
-            logger.info(f"{_torrent.title} {album_validation_error}，跳过该资源")
-            self._record_download_failure(
-                context=context,
-                error_msg=album_validation_error,
-                downloader=downloader or _site_downloader,
-                source=source,
-                episodes=episodes,
-            )
-            return (None, album_validation_error) if return_detail else None
-
+            return None, "下载种子内容为空"
+        folder_name, file_list = cast(Any, TorrentHelper)().get_fileinfo_from_torrent_content(
+            torrent_content
+        )
+        self._record_music_album_track_keys(context, file_list)
         storage, download_dir, error_msg = self._resolve_media_download_dir(
-            media_info=_media,
+            media_info=media,
             save_path=save_path,
         )
         if not download_dir or not storage:
             if error_msg == "未找到下载目录":
-                self.messagehelper.put(f"{_media.type.value} {_media.title_year} 未找到下载目录！",
-                                       title="下载失败", role="system")
-            return (None, error_msg or "未找到下载目录") if return_detail else None
-        file_uri = FileURI(storage=storage, path=download_dir.as_posix())
-        download_dir = Path(file_uri.uri)
+                self.messagehelper.put(
+                    f"{media.type.value} {media.title_year} 未找到下载目录！",
+                    title="下载失败",
+                    role="system",
+                )
+            return None, error_msg or "未找到下载目录"
+        download_uri = FileURI(storage=storage, path=download_dir.as_posix()).uri
+        return _PreparedDownload(
+            torrent=torrent,
+            media=media,
+            meta=meta,
+            torrent_content=torrent_content,
+            folder_name=folder_name,
+            file_list=file_list,
+            download_dir=Path(download_uri),
+            download_uri=download_uri,
+            download_episodes=download_episodes,
+            site_downloader=site_downloader,
+        ), None
 
-        # 添加下载
-        result: Optional[Tuple[Optional[str], Optional[str], Optional[str], str]] = self.download(content=torrent_content,
-                                                cookie=_torrent.site_cookie,
-                                                episodes=cast(Set[int], episodes),
-                                                download_dir=download_dir,
-                                                category=_media.category,
-                                                label=label,
-                                                downloader=downloader or _site_downloader)
-        if result:
-            _downloader, _hash, _layout, error_msg = result
-        else:
-            _downloader, _hash, _layout, error_msg = None, None, None, "未找到下载器"
-
-        if _hash:
-            self._settle_download_success(
+    def _submit_prepared_download(
+        self,
+        *,
+        prepared: _PreparedDownload,
+        context: Context,
+        episodes: Optional[Set[int]],
+        channel: Optional[NotificationChannel],
+        source: Optional[str],
+        downloader: Optional[str],
+        userid: Union[str, int, None],
+        username: Optional[str],
+        label: Optional[str],
+        custom_words: Optional[str],
+        governance: Optional[SubscriptionDownloadGovernance],
+    ) -> tuple[Optional[str], Optional[str]]:
+        """在可取消边界后调用下载器，并分派成功或拒绝结算。"""
+        if self._subscription_download_cancelled(governance):
+            return None, "订阅下载在提交前已取消"
+        if governance and governance.mark_started:
+            governance.mark_started()
+        result = self.download(
+            content=prepared.torrent_content,
+            cookie=prepared.torrent.site_cookie,
+            episodes=cast(Set[int], episodes),
+            download_dir=prepared.download_dir,
+            category=prepared.media.category,
+            label=label,
+            downloader=downloader or prepared.site_downloader,
+        )
+        actual_downloader, download_hash, layout, error_msg = (
+            result if result else (None, None, None, "未找到下载器")
+        )
+        if download_hash:
+            self._settle_accepted_download(
+                prepared=prepared,
                 context=context,
-                media=_media,
-                meta=_meta,
-                torrent=_torrent,
-                folder_name=_folder_name,
-                file_list=_file_list,
-                download_dir=download_dir,
-                layout=_layout,
-                downloader=_downloader,
-                download_hash=_hash,
-                download_episodes=download_episodes,
                 episodes=episodes,
                 channel=channel,
                 source=source,
                 userid=userid,
                 username=username,
-                torrent_content=torrent_content,
                 custom_words=custom_words,
+                actual_downloader=actual_downloader,
+                download_hash=download_hash,
+                layout=layout,
             )
         else:
-            # 下载失败
-            logger.error(f"{_media.title_year} 添加下载任务失败："
-                         f"{_torrent.title} - {_torrent.enclosure}，{error_msg}")
-            self._record_download_failure(
+            self._record_rejected_download(
+                prepared=prepared,
                 context=context,
-                error_msg=error_msg,
-                downloader=_downloader or downloader or _site_downloader,
-                source=source,
                 episodes=episodes,
+                channel=channel,
+                source=source,
+                downloader=downloader,
+                userid=userid,
+                actual_downloader=actual_downloader,
+                error_msg=error_msg,
             )
-            # 只发送给对应渠道和用户
-            self.post_message(Message(
+        return download_hash, error_msg
+
+    def _settle_accepted_download(
+        self,
+        *,
+        prepared: _PreparedDownload,
+        context: Context,
+        episodes: Optional[Set[int]],
+        channel: Optional[NotificationChannel],
+        source: Optional[str],
+        userid: Union[str, int, None],
+        username: Optional[str],
+        custom_words: Optional[str],
+        actual_downloader: Optional[str],
+        download_hash: str,
+        layout: Optional[str],
+    ) -> None:
+        """按普通下载合同结算下载器明确返回的成功结果。"""
+        # 下载器中已存在相同 Hash 时下载器会沿用原保存目录，须以实际目录记录
+        download_dir = self._resolve_actual_download_dir(
+            downloader=actual_downloader,
+            download_hash=download_hash,
+            fallback=prepared.download_dir,
+        )
+        self._settle_download_success(
+            context=context,
+            media=prepared.media,
+            meta=prepared.meta,
+            torrent=prepared.torrent,
+            folder_name=prepared.folder_name,
+            file_list=prepared.file_list,
+            download_dir=download_dir,
+            layout=layout,
+            downloader=actual_downloader,
+            download_hash=download_hash,
+            download_episodes=prepared.download_episodes,
+            episodes=episodes,
+            channel=channel,
+            source=source,
+            userid=userid,
+            username=username,
+            torrent_content=prepared.torrent_content,
+            custom_words=custom_words,
+        )
+
+    def _resolve_actual_download_dir(
+        self,
+        *,
+        downloader: Optional[str],
+        download_hash: str,
+        fallback: Path,
+    ) -> Path:
+        """
+        获取下载器中该任务的真实保存目录，作为下载历史与文件明细的落库路径。
+
+        下载器中已存在相同 Hash 的任务时（例如刷流插件先下载），下载器会沿用
+        其原有保存目录；此时按预期下载目录记录会得到磁盘上不存在的路径，后续
+        整理与手动整理都无法关联该文件。仅本地绝对路径需要回读，远程存储的
+        目录由对应存储协议自身管理，保持原值不变。
+        """
+        if not download_hash or not fallback.is_absolute():
+            return fallback
+        try:
+            torrents = self.list_torrents(hashs=[download_hash], downloader=downloader)
+        except Exception as err:
+            logger.debug(f"查询下载任务实际保存目录失败：{str(err)}")
+            return fallback
+        if not torrents:
+            return fallback
+        torrent = next(
+            (
+                item for item in torrents
+                if str(getattr(item, "hash", "")) == str(download_hash)
+            ),
+            torrents[0],
+        )
+        save_path = getattr(torrent, "save_path", None)
+        if not save_path:
+            return fallback
+        actual_dir = Path(str(save_path))
+        if not actual_dir.is_absolute():
+            return fallback
+        if actual_dir != fallback:
+            logger.warn(
+                f"下载器中已存在该任务，实际保存目录 {actual_dir.as_posix()} 与预期 "
+                f"{fallback.as_posix()} 不一致，按实际目录记录下载历史"
+            )
+        return actual_dir
+
+    def _record_rejected_download(
+        self,
+        *,
+        prepared: _PreparedDownload,
+        context: Context,
+        episodes: Optional[Set[int]],
+        channel: Optional[NotificationChannel],
+        source: Optional[str],
+        downloader: Optional[str],
+        userid: Union[str, int, None],
+        actual_downloader: Optional[str],
+        error_msg: str,
+    ) -> None:
+        """按普通失败合同记录下载器明确拒绝并通知原调用渠道。"""
+        logger.error(
+            f"{prepared.media.title_year} 添加下载任务失败："
+            f"{prepared.torrent.title} - {prepared.torrent.enclosure}，{error_msg}"
+        )
+        self._record_download_failure(
+            context=context,
+            error_msg=error_msg,
+            downloader=actual_downloader or downloader or prepared.site_downloader,
+            source=source,
+            episodes=episodes,
+        )
+        self.post_message(
+            Message(
                 channel=channel,
                 source=source if channel else None,
                 mtype=MessageType.Manual,
-                title="添加下载任务失败：%s %s"
-                      % (_media.title_year, _meta.season_episode),
-                text=f"站点：{_torrent.site_name}\n"
-                     f"种子名称：{_meta.org_string}\n"
-                     f"错误信息：{error_msg}",
-                image=_media.get_message_image(),
-                userid=userid))
-        if return_detail:
-            return _hash, error_msg
-        return _hash
+                title=f"添加下载任务失败：{prepared.media.title_year} {prepared.meta.season_episode}",
+                text=(
+                    f"站点：{prepared.torrent.site_name}\n"
+                    f"种子名称：{prepared.meta.org_string}\n"
+                    f"错误信息：{error_msg}"
+                ),
+                image=prepared.media.get_message_image(),
+                userid=userid,
+            )
+        )

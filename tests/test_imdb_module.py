@@ -169,6 +169,79 @@ def test_imdb_graphql_error_is_not_cached() -> None:
     assert api._request.post_json.call_count == 2
 
 
+def test_imdb_title_parser_accepts_null_optional_objects() -> None:
+    """GraphQL 可选对象为 null 时应保留可用详情并归一为空值。"""
+    detail = ImdbApi._parse_title(
+        {
+            "titles": [
+                {
+                    "id": "tt30836097",
+                    "titleType": {"id": "tvSeries"},
+                    "titleText": {"text": "19th Floor"},
+                    "originalTitleText": None,
+                    "releaseYear": None,
+                    "runtime": None,
+                    "titleGenres": None,
+                    "countriesOfOrigin": None,
+                    "spokenLanguages": None,
+                    "plot": None,
+                }
+            ]
+        }
+    )
+
+    assert detail is not None
+    assert detail.id == "tt30836097"
+    assert detail.primary_title == "19th Floor"
+    assert detail.original_title is None
+    assert detail.start_year is None
+    assert detail.runtime_seconds is None
+    assert detail.genres == []
+    assert detail.origin_countries == []
+    assert detail.spoken_languages == []
+    assert detail.plot is None
+
+
+def test_imdb_episode_parser_accepts_null_optional_objects() -> None:
+    """剧集 GraphQL 可选对象为 null 时应保留单集并归一为空值。"""
+    episodes, next_cursor = ImdbApi._parse_episode_page(
+        {
+            "titles": [
+                {
+                    "episodes": {
+                        "episodes": {
+                            "edges": [
+                                {
+                                    "node": {
+                                        "id": "tt-episode",
+                                        "titleText": None,
+                                        "series": None,
+                                        "runtime": None,
+                                        "plot": {"plotText": None},
+                                    }
+                                }
+                            ],
+                            "pageInfo": {
+                                "hasNextPage": False,
+                                "endCursor": None,
+                            },
+                        }
+                    }
+                }
+            ]
+        }
+    )
+
+    assert next_cursor is None
+    assert len(episodes) == 1
+    assert episodes[0].id == "tt-episode"
+    assert episodes[0].title is None
+    assert episodes[0].season is None
+    assert episodes[0].episode_number is None
+    assert episodes[0].runtime_seconds is None
+    assert episodes[0].plot is None
+
+
 def test_imdb_clear_cache_registers_async_cleanup_in_running_loop() -> None:
     """同步清缓存入口在异步宿主中应登记任务，并保留原同步调用约定。"""
 
@@ -396,6 +469,20 @@ def test_imdb_search_respects_source_and_returns_generic_identity(
     assert results[0].type == MediaType.TV
 
 
+def test_imdb_summary_keeps_unknown_adult_state_missing() -> None:
+    """IMDb 搜索摘要缺少成人标记时不能把未知值误写为否。"""
+    result = ImdbModule._to_media_info(
+        ImdbTitle(
+            id="tt0000001",
+            type="movie",
+            primaryTitle="Summary Movie",
+            startYear=2024,
+        )
+    )
+
+    assert result.adult is None
+
+
 def test_imdb_explicit_identity_recognition_enriches_media_info(
     imdb_module: ImdbModule,
 ) -> None:
@@ -417,7 +504,8 @@ def test_imdb_explicit_identity_recognition_enriches_media_info(
     assert result.season_years == {1: "2008"}
     assert result.number_of_episodes == 1
     assert result.runtime == 47
-    assert result.category == "欧美剧"
+    assert result.category == ""
+    assert result.library_category == ""
 
 
 def test_imdb_name_recognition_requires_imdb_selection(

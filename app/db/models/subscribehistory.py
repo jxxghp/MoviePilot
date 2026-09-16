@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Float, Index, Integer, String, or_, select
+from sqlalchemy import JSON, Float, Index, Integer, String, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -20,6 +20,8 @@ class SubscribeHistory(Base):
     year: Mapped[Optional[str]] = mapped_column(String)
     # 类型
     type: Mapped[Optional[str]] = mapped_column(String)
+    # 自定义定时搜索间隔（小时）；空值跟随系统
+    search_interval: Mapped[Optional[int]] = mapped_column(Integer)
     # 搜索关键字
     keyword: Mapped[Optional[str]] = mapped_column(String)
     media_source: Mapped[Optional[str]] = mapped_column(String, index=True)
@@ -92,8 +94,16 @@ class SubscribeHistory(Base):
     search_imdbid: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 自定义识别词
     custom_words: Mapped[Optional[str]] = mapped_column(String)
-    # 自定义媒体类别
+    # 实际媒体类别稳定标识
+    media_category_id: Mapped[Optional[str]] = mapped_column(String)
+    # 实际媒体类别兼容路径快照
     media_category: Mapped[Optional[str]] = mapped_column(String)
+    # 命中的分类规则标识
+    classification_rule_id: Mapped[Optional[str]] = mapped_column(String)
+    # 执行时分类策略版本
+    classification_policy_revision: Mapped[Optional[int]] = mapped_column(Integer)
+    # 最终分类来源
+    classification_source: Mapped[Optional[str]] = mapped_column(String)
     # 过滤规则组
     filter_groups: Mapped[Optional[Any]] = mapped_column(JSON, default=list)
     # 剧集组
@@ -152,6 +162,32 @@ class SubscribeHistory(Base):
             ).offset((page - 1) * count).limit(count)
         )
         return list(result.scalars().all())
+
+    @classmethod
+    async def async_count_by_type(cls, db: AsyncSession, mtype: str) -> int:
+        """统计指定媒体类型的订阅历史。"""
+        result = await db.execute(
+            select(func.count(cls.id)).where(cls.type == mtype)
+        )
+        return int(result.scalar() or 0)
+
+    @classmethod
+    async def async_count_by_type_and_username(
+        cls,
+        db: AsyncSession,
+        mtype: str,
+        username: str,
+    ) -> int:
+        """统计指定媒体类型和 owner 的订阅历史。"""
+        if not username:
+            return 0
+        result = await db.execute(
+            select(func.count(cls.id)).where(
+                cls.type == mtype,
+                cls.username == username,
+            )
+        )
+        return int(result.scalar() or 0)
 
     @classmethod
     def _identity_condition(

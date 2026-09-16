@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
-from app.application.messaging.agent import (
+from app.application.messaging.interaction.agent import (
     AgentInteractionOption,
     agent_interaction_manager,
     build_agent_choice_callback,

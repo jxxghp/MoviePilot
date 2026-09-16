@@ -2,14 +2,20 @@ from types import SimpleNamespace
 from typing import Optional
 from unittest.mock import patch
 
-from app.modules.ugreen.api import Api
+from app.modules.ugreen.api import Api, UgreenMediaApi
 
 
 class _FakeResponse:
-    def __init__(self, payload: dict, headers: Optional[dict] = None) -> None:
+    def __init__(
+        self,
+        payload: dict,
+        headers: Optional[dict] = None,
+        status_code: int = 200,
+    ) -> None:
         """初始化伪造 HTTP 响应"""
         self._payload = payload
         self.headers = headers or {}
+        self.status_code = status_code
 
     def json(self) -> dict:
         """返回伪造 JSON 响应体"""
@@ -197,3 +203,52 @@ def test_login_accepts_token_id_and_reuses_check_public_key() -> None:
     assert api.token == "token-id-value"
     assert api.static_token == "token-id-value"
     assert api.public_key == "BEGIN CHECK KEY"
+
+
+def test_media_api_authenticates_and_uses_user_scoped_items() -> None:
+    """媒体库服务应使用 AuthenticateByName，并通过用户接口携带 AccessToken。"""
+    api = UgreenMediaApi(host="https://nas.example:9443", verify_ssl=False)
+    fake_session = _FakeSession(
+        get_responses=[
+            _FakeResponse(
+                {
+                    "Items": [],
+                    "TotalRecordCount": 0,
+                }
+            )
+        ],
+        post_responses=[
+            _FakeResponse(
+                {
+                    "AccessToken": "media-token",
+                    "ServerId": "server-id",
+                    "User": {"Id": "user-id", "Name": "tester"},
+                }
+            )
+        ],
+    )
+    api._request_utils = fake_session
+
+    session = api.authenticate("tester", "pwd")
+    assert session is not None
+    assert session.token == "media-token"
+    assert session.user_id == "user-id"
+    assert session.server_id == "server-id"
+
+    result = api.items(parent_id="library-id", limit=0)
+    assert result == {"Items": [], "TotalRecordCount": 0}
+    assert fake_session.calls[0][1]["url"].endswith("/emby/Users/AuthenticateByName")
+    assert fake_session.calls[0][1]["json"] == {
+        "Username": "tester",
+        "Pw": "pwd",
+    }
+    assert "api_key" not in fake_session.calls[0][1]["params"]
+    assert fake_session.calls[1][1]["url"].endswith("/emby/Users/user-id/Items")
+    assert fake_session.calls[1][1]["params"] == {
+        "Recursive": "true",
+        "ParentId": "library-id",
+        "Limit": 0,
+        "api_key": "media-token",
+    }
+    assert 'Token="media-token"' in fake_session.calls[1][1]["headers"]["X-Emby-Authorization"]
+    assert fake_session.calls[1][1]["verify"] is False

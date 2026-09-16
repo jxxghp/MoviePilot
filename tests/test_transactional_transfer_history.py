@@ -47,7 +47,11 @@ def _history_write(
         dest_fileitem={"path": "/media/Typed Show (2026)/Season 01/Episode01.mkv"},
         mode="copy",
         type=MediaType.TV.value,
+        media_category_id="tv.episode",
         category="剧集",
+        classification_rule_id="rule.tv.episode",
+        classification_policy_revision=9,
+        classification_source="automatic",
         title="Typed Show",
         year="2026",
         media_source=MediaSource.TMDB,
@@ -88,6 +92,11 @@ def test_transactional_repository_projects_detached_snapshots(db) -> None:
     assert by_identity == created
     assert by_hash == [created]
     assert created.media_source == MediaSource.TMDB
+    assert created.media_category_id == "tv.episode"
+    assert created.category == "剧集"
+    assert created.classification_rule_id == "rule.tv.episode"
+    assert created.classification_policy_revision == 9
+    assert created.classification_source == "automatic"
     assert not hasattr(created, "_sa_instance_state")
 
     assert isinstance(created.src_fileitem, dict)
@@ -107,6 +116,16 @@ def test_transactional_repository_projects_detached_snapshots(db) -> None:
         "size": 1024,
         "nested": {"parts": [1, 2]},
     }
+
+
+def test_transactional_repository_does_not_project_failure_feedback_for_success(db) -> None:
+    """成功整理历史不得被投影成带失败阶段和恢复动作的记录。"""
+    repository = _repository()
+    created = repository.replace(_history_write())
+
+    assert created.status is True
+    assert created.failure_stage is None
+    assert created.recovery_action is None
 
 
 def test_transactional_repository_rolls_back_replace_on_commit_failure(
@@ -148,6 +167,27 @@ def test_transactional_repository_sync_mutations_use_committed_uow(db) -> None:
 
     repository.truncate()
     assert repository.get(second.id) is None
+
+
+def test_transactional_repository_persists_downloader_cleanup_failure(db) -> None:
+    """下载器清理失败应独立更新历史，并投影为可执行的清理阶段。"""
+    repository = _repository()
+    created = repository.replace(_history_write(src="/downloads/cleanup.mkv"))
+
+    repository.update_cleanup_status(
+        created.id,
+        "failed",
+        "qb 未能删除任务 hash-cleanup",
+    )
+
+    current = repository.get(created.id)
+    assert current is not None
+    assert current.status is True
+    assert current.cleanup_status == "failed"
+    assert current.cleanup_error == "qb 未能删除任务 hash-cleanup"
+    assert current.failure_stage == "downloader_cleanup"
+    assert current.recovery_action is not None
+    assert "下载器" in current.recovery_action
 
 
 def test_transactional_repository_preserves_durable_history(db) -> None:

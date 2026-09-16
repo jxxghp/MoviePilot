@@ -2,23 +2,84 @@
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union, cast
 
 from app.application.formatting import FormatParser
 from app.application.history import (
     DownloadHistoryQueryPort,
     DownloadHistorySnapshot,
 )
+from app.application.transfer.workflow import TransferTask
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfoPath
 from app.schemas.exception import OperationInterrupted
+from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
+    MUSIC_ENTITY_RECORDING,
+    MediaSource,
     MediaType,
 )
 from app.schemas.workflow import FileItem
+
+
+def preview_media_title(
+        mediainfo: Optional[Union[MediaInfo, MusicInfo]],
+) -> Optional[str]:
+    """音乐预览以专辑为批次标题，影视继续使用原有标题。"""
+    if isinstance(mediainfo, MusicInfo) and mediainfo.album:
+        return (
+            f"{mediainfo.album} ({mediainfo.year})"
+            if mediainfo.year
+            else mediainfo.album
+        )
+    return mediainfo.title_year if mediainfo else None
+
+
+def _should_discard_batch_recording_identity(
+        *,
+        multi_track_music_batch: bool,
+        manual: bool,
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+        mediainfo: Optional[MediaInfo | MusicInfo],
+        history_music_type: Optional[str],
+) -> bool:
+    """判断自动整专是否误带了共享单曲身份。"""
+    if not multi_track_music_batch or (manual and media_source and media_id):
+        return False
+    batch_music_type = getattr(mediainfo, "music_type", None)
+    return (
+        batch_music_type == MUSIC_ENTITY_RECORDING
+        or (not batch_music_type and history_music_type == MUSIC_ENTITY_RECORDING)
+    )
+
+
+def _should_discard_batch_music_identity(
+        *,
+        batch_mtype: Optional[MediaType],
+        manual: bool,
+        multi_track_music_batch: bool,
+        media_source: Optional[MediaSource],
+        media_id: Optional[str],
+        mediainfo: Optional[MediaInfo | MusicInfo],
+        history_music_type: Optional[str],
+) -> bool:
+    """仅音乐批次在未显式指定媒体时丢弃共享身份并重新识别内部作品。"""
+    if batch_mtype != MediaType.MUSIC:
+        return False
+    if manual and not (media_source and media_id):
+        return True
+    return _should_discard_batch_recording_identity(
+        multi_track_music_batch=multi_track_music_batch,
+        manual=manual,
+        media_source=media_source,
+        media_id=media_id,
+        mediainfo=mediainfo,
+        history_music_type=history_music_type,
+    )
 
 
 class _TransferCandidatePlanner:
@@ -80,6 +141,7 @@ class _TransferCandidatePlanner:
                 )
             return built_meta
         return self._apply_meta_overrides(built_meta, source_path)
+
     def _has_reliable_video_source(self) -> bool:
         """
         是否存在可靠的影视类型来源；存在时音频按附加音轨解析，
@@ -89,6 +151,7 @@ class _TransferCandidatePlanner:
             return self._batch_mtype != MediaType.MUSIC
         # 预载媒体信息为非音乐时，整批整理视为影视上下文
         return self._mediainfo is not None and not isinstance(self._mediainfo, MusicInfo)
+
     def _build_path_meta(
             self,
             source_path: Path,
@@ -114,6 +177,7 @@ class _TransferCandidatePlanner:
         if not path_meta:
             return None
         return self._apply_meta_overrides(path_meta, source_path)
+
     def _apply_meta_overrides(
             self,
             current_meta: MetaBase, source_path: Path
@@ -139,6 +203,7 @@ class _TransferCandidatePlanner:
                 current_meta.end_episode = end_ep
 
         return current_meta
+
     def _is_allowed_transfer_item(self, item: FileItem, _is_bluray_dir: bool) -> bool:
         """筛选单文件模式额外读取的字幕/音频，保持模板和屏蔽词语义。"""
         if self._continue_callback and not self._continue_callback():
@@ -146,11 +211,12 @@ class _TransferCandidatePlanner:
         if self._has_episode_format_template and self._formaterHandler and not self._formaterHandler.match(item.name):
             return False
         if any(
-            marker in item.path
-            for marker in ("/@Recycle/", "/#recycle/", "/.", "/@eaDir")
+                marker in item.path
+                for marker in ("/@Recycle/", "/#recycle/", "/.", "/@eaDir")
         ):
             return False
         return not self._chain._is_blocked_by_exclude_words(item.path, self._transfer_exclude_words)
+
     def _build_main_meta(
             self,
             main_fileitem: FileItem,
@@ -172,6 +238,7 @@ class _TransferCandidatePlanner:
             custom_word_list=self._chain._get_subscribe_custom_words(main_download_history),
             history_record=main_download_history,
         )
+
     def _append_item(
             self,
             planned_items: List[Tuple[FileItem, bool]],
@@ -188,6 +255,7 @@ class _TransferCandidatePlanner:
         planned_items.append((item, is_bluray_dir))
         seen_file_keys.add(file_key)
         return True
+
     def _build_directory_index(
             self,
             items: List[Tuple[FileItem, bool]]
@@ -213,6 +281,7 @@ class _TransferCandidatePlanner:
             ):
                 extra_items_by_dir.setdefault(dir_key, []).append((item, is_bluray_dir))
         return main_items_by_dir, extra_items_by_dir
+
     def _get_single_file_sibling_items(
             self,
             current_fileitem: FileItem,
@@ -246,6 +315,7 @@ class _TransferCandidatePlanner:
                 continue
             extra_items.append((item, False))
         return main_fileitems, extra_items
+
     def _plan_file_items(
             self,
             items: List[Tuple[FileItem, bool]]
@@ -263,13 +333,13 @@ class _TransferCandidatePlanner:
             (item, is_bluray_dir)
             for item, is_bluray_dir in items
             if item
-               and (
-                       is_bluray_dir
-                       or (
-                               item.type == "file"
-                               and self._chain._is_media_file(item, self._batch_mtype)
-                       )
-               )
+            and (
+                is_bluray_dir
+                or (
+                    item.type == "file"
+                    and self._chain._is_media_file(item, self._batch_mtype)
+                )
+            )
         ]
 
         single_file_mode = len(items) == 1 and self._fileitem.type == "file"
@@ -318,8 +388,8 @@ class _TransferCandidatePlanner:
                 item
                 for item in items
                 if not (
-                        self._batch_mtype == MediaType.MUSIC
-                        and self._chain._is_music_lyrics_file(item[0])
+                    self._batch_mtype == MediaType.MUSIC
+                    and self._chain._is_music_lyrics_file(item[0])
                 )
             ]
             return remaining, inherited_map
@@ -418,3 +488,146 @@ class _TransferCandidatePlanner:
             self._append_item(planned_items, seen_file_keys, item, is_bluray_dir)
 
         return planned_items, inherited_map
+
+
+def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) -> dict[str, Any]:
+    """按实际整理结果投影预览项，失败阶段与恢复动作保留原始裁决。"""
+    from app.application.transfer.feedback import classify_transfer_failure
+
+    item_meta = task.meta
+    item_media = task.mediainfo
+    feedback = classify_transfer_failure(
+        transferinfo.message,
+        overwrite_skipped=bool(transferinfo.overwrite_skipped),
+    )
+    return (
+        {
+            "source": task.fileitem.path,
+            "target": transferinfo.target_item.path if transferinfo.target_item else None,
+            "target_dir": transferinfo.target_diritem.path if transferinfo.target_diritem else None,
+            "success": transferinfo.success,
+            "message": transferinfo.message,
+            "failure_stage": (
+                transferinfo.failure_stage or feedback.stage.value
+                if not transferinfo.success
+                else None
+            ),
+            "recovery_action": (
+                transferinfo.recovery_action or feedback.action
+                if not transferinfo.success
+                else None
+            ),
+            "overwrite_skipped": bool(transferinfo.overwrite_skipped),
+            "type": item_media.type.value if item_media and item_media.type else None,
+            "title": preview_media_title(item_media),
+            "season": item_meta.begin_season if item_meta else None,
+            "episode": item_meta.begin_episode if item_meta else None,
+            "episode_end": item_meta.end_episode if item_meta else None,
+            "part": item_meta.part if item_meta else None,
+            "org_string": item_meta.org_string if item_meta else None,
+            "apply_words": item_meta.apply_words if item_meta else [],
+            "resource_team": item_meta.resource_team if item_meta else None,
+            "customization": item_meta.customization if item_meta else None,
+        }
+    )
+
+
+class _TransferSubmissionCollector:
+    """按当前请求收集真实阶段回执，不改变任务、重试或结算的所有权。"""
+
+    def __init__(self, enabled: bool = False, source: Optional[FileItem] = None) -> None:
+        """普通整理调用默认关闭回执，维持原有字符串返回契约。"""
+        self.enabled = enabled
+        self.source = source
+        self.items: list[dict[str, Any]] = []
+        self._skipped_history_count = 0
+        self._results: dict[int, TransferInfo] = {}
+        self._pending: dict[tuple[Optional[str], Optional[str]], FileItem] = {}
+
+    def expect(self, fileitems: list[tuple[FileItem, bool]]) -> None:
+        """保留候选快照，取消发生后仍能说明哪些文件没有被执行。"""
+        if self.enabled:
+            self._pending.update({(item.storage, item.path): item for item, _bluray in fileitems})
+
+    def record(
+            self, fileitem: FileItem,
+            state: Literal["accepted", "completed", "failed", "retry_wait", "skipped", "manual_review"],
+            message: Optional[str] = None,
+            *, target_dir: Optional[Path] = None,
+    ) -> None:
+        """在准入、历史跳过或重试决策发生时记录回执。"""
+        if not self.enabled:
+            return
+        self._pending.pop((fileitem.storage, fileitem.path), None)
+        self.items.append({
+            "source": fileitem.path, "state": state,
+            "success": state in {"accepted", "completed", "retry_wait"},
+            "message": message,
+            "target_dir": target_dir.as_posix() if target_dir else None,
+        })
+
+    def record_history_skip(self, fileitem: FileItem) -> None:
+        """逐项保留跳过回执，总提示只累计数量，避免大目录产生冗长的文件名列表。"""
+        self._skipped_history_count += 1
+        self.record(fileitem, "skipped", f"已跳过成功整理记录：{fileitem.name}")
+
+    def capture(self, task: TransferTask, transferinfo: TransferInfo) -> None:
+        """暂存执行结果，等终态原子结算确认后再公布 completed。"""
+        if self.enabled:
+            self._results[id(task)] = transferinfo
+
+    def execution(
+            self, task: TransferTask, success: bool, message: str,
+            *, durable_state: Optional[str],
+    ) -> None:
+        """只有已确认的终态可报告完成，未确认终态保留后台重试状态。"""
+        if not self.enabled:
+            return
+        info = self._results.pop(id(task), None)
+        state: Literal["accepted", "completed", "failed", "retry_wait", "skipped", "manual_review"] = "failed"
+        if task.terminal_settled:
+            state = "completed" if (info.success if info else success) else "failed"
+            if info and info.overwrite_skipped:
+                state = "skipped"
+        elif durable_state == "manual_review":
+            state = "manual_review"
+        elif durable_state in {"not_started", "running", "retry_wait", "settling"}:
+            state = "retry_wait"
+        elif durable_state == "unknown":
+            state = "accepted"
+            message = f"{message}；任务状态暂未确认，请刷新整理历史"
+        elif success:
+            state = "accepted"
+        if state == "completed" and not success:
+            message = "文件已完成整理，但后续处理失败，请检查整理日志，无需重复整理"
+        self.record(task.fileitem, state, message, target_dir=task.target_path)
+        if info:
+            projected = build_transfer_preview_item(task, info)
+            self.items[-1].update({key: projected[key] for key in (
+                "target", "target_dir", "failure_stage", "recovery_action", "overwrite_skipped",
+            )})
+        if state == "manual_review":
+            self.items[-1]["recovery_action"] = "打开整理队列，先完成人工复核，再决定是否重试"
+
+    def result(
+            self, success: bool, errors: list[str], *, preview: bool,
+            preview_items: list[dict[str, Any]],
+    ) -> tuple[bool, Union[str, dict[str, Any]]]:
+        """保持预览与旧调用返回值，同时让管理界面收到完整执行回执。"""
+        message = "、".join(errors[:2]) + (f"，等{len(errors)}个文件错误！" if len(errors) > 2 else "")
+        if self._skipped_history_count:
+            message = "；".join(filter(None, [f"已跳过 {self._skipped_history_count} 条成功整理记录", message]))
+        if preview:
+            return success, {
+                "summary": {
+                    "total": len(preview_items),
+                    "success": sum(bool(item.get("success")) for item in preview_items),
+                    "failed": sum(not item.get("success") for item in preview_items),
+                },
+                "items": preview_items, "message": message,
+            }
+        for pending in list(self._pending.values()):
+            self.record(pending, "skipped" if success else "failed", message or "本次整理未执行")
+        if self.enabled and not self.items and self.source:
+            self.record(self.source, "skipped" if success else "failed", message or "没有需要执行的整理任务")
+        return success, {"items": self.items, "message": message} if self.enabled else message

@@ -17,6 +17,7 @@ class SchedulerServices:
     sync_mediaserver: JobCallable
     check_subscribe: JobCallable
     search_subscribe: JobCallable
+    resume_subscribe_search: JobCallable
     refresh_subscribe: JobCallable
     follow_subscribe: JobCallable
     process_transfer: JobCallable
@@ -31,3 +32,4 @@ class SchedulerServices:
     process_workflow: JobCallable
     put_message: JobCallable
     post_message: Callable[[Message], Any]
+    clear_wallpaper_cache: Callable[[], None] | None = None

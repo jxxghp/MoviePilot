@@ -8,7 +8,7 @@ import pytest
 
 from app.application import directory as directory_module
 from app.application import rules as rules_module
-from app.application.transfer import workflow as workflow_module
+from app.application.transfer import jobs as jobs_module
 from app.startup.composition import domain as domain_composition
 
 
@@ -80,7 +80,7 @@ def test_job_task_size_only_reads_missing_local_size(monkeypatch) -> None:
     """目录大小端口只服务于未携带 size 的本地工作项。"""
     reader = MagicMock()
     reader.get_directory_size.return_value = 2048
-    monkeypatch.setattr(workflow_module, "_directory_size", reader)
+    monkeypatch.setattr(jobs_module, "_directory_size", reader)
 
     explicit = SimpleNamespace(
         fileitem=SimpleNamespace(size=1024, storage="local", path="/explicit"),
@@ -92,21 +92,21 @@ def test_job_task_size_only_reads_missing_local_size(monkeypatch) -> None:
         fileitem=SimpleNamespace(size=None, storage="local", path="/downloads"),
     )
 
-    assert workflow_module._job_task_size(explicit) == 1024
-    assert workflow_module._job_task_size(remote) == 0
-    assert workflow_module._job_task_size(local) == 2048
+    assert jobs_module._job_task_size(explicit) == 1024
+    assert jobs_module._job_task_size(remote) == 0
+    assert jobs_module._job_task_size(local) == 2048
     reader.get_directory_size.assert_called_once_with(Path("/downloads"))
 
 
 def test_job_task_size_requires_reader_for_missing_local_size(monkeypatch) -> None:
     """本地工作项缺失 size 且端口未装配时必须明确失败。"""
-    monkeypatch.setattr(workflow_module, "_directory_size", None)
+    monkeypatch.setattr(jobs_module, "_directory_size", None)
     local = SimpleNamespace(
         fileitem=SimpleNamespace(size=None, storage="local", path="/downloads"),
     )
 
     with pytest.raises(RuntimeError, match="本地目录大小能力尚未由启动组合根配置"):
-        workflow_module._job_task_size(local)
+        jobs_module._job_task_size(local)
 
 
 def test_domain_composition_injects_all_system_acceleration_ports(monkeypatch) -> None:

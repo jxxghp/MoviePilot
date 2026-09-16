@@ -58,7 +58,11 @@ def _history_write(
             "source": "subscribe",
             "nested": {"season": 1, "episodes": [1, 2]},
         },
+        media_category_id="tv.episode",
         media_category="剧集",
+        classification_rule_id="rule.tv.episode",
+        classification_policy_revision=9,
+        classification_source="automatic",
         episode_group="group-1",
         custom_words="S02 => S01",
     )
@@ -102,6 +106,11 @@ def test_transactional_repository_projects_detached_snapshots(db) -> None:
     assert by_hash.id == history_id
     assert by_hash.userid == "7"
     assert by_hash.media_source == MediaSource.TMDB
+    assert by_hash.media_category_id == "tv.episode"
+    assert by_hash.media_category == "剧集"
+    assert by_hash.classification_rule_id == "rule.tv.episode"
+    assert by_hash.classification_policy_revision == 9
+    assert by_hash.classification_source == "automatic"
     assert by_path == by_hash
     assert by_hashes == {"typed-history-hash": by_hash}
     assert by_identity == [by_hash]
@@ -157,11 +166,13 @@ def test_transactional_repository_rolls_back_history_and_files_on_commit_failure
 def test_transactional_repository_async_query_and_delete(db) -> None:
     """异步分页返回脱离 Session 的快照，删除由独立事务提交。"""
     repository = _repository()
+    baseline_count = asyncio.run(repository.async_count())
     history_id = repository.add(_history_write(download_hash="typed-async-hash"))
 
     async def exercise() -> list[DownloadHistorySnapshot]:
         """在同一事件循环中执行异步分页和删除。"""
         records = await repository.async_list_by_page(count=10)
+        assert await repository.async_count() == baseline_count + 1
         await repository.async_delete(history_id)
         return records
 
@@ -194,3 +205,27 @@ def test_session_repository_obeys_caller_transaction(db) -> None:
         repository.stage_delete_history(history.id)
         session.commit()
     assert _repository().get_by_hash("request-history-hash") is None
+
+
+def test_session_repository_counts_history_in_caller_async_session(db) -> None:
+    """请求级 adapter 在调用方 AsyncSession 内统计总数，与分页读取口径一致。"""
+    repository = _repository()
+    baseline_count = asyncio.run(repository.async_count())
+    history_id = repository.add(_history_write(download_hash="request-async-count-hash"))
+
+    async def exercise() -> tuple[int, list[DownloadHistorySnapshot]]:
+        """在同一请求 AsyncSession 内先统计总数再分页读取。"""
+        async with async_session_scope() as session:
+            session_repository = SessionDownloadHistoryRepository(session)
+            total = await session_repository.async_count()
+            records = await session_repository.async_list_by_page(count=10)
+            return total, records
+
+    total, records = asyncio.run(exercise())
+
+    assert total == baseline_count + 1
+    assert any(record.id == history_id for record in records)
+
+    with SessionFactory() as session:
+        with pytest.raises(RuntimeError):
+            asyncio.run(SessionDownloadHistoryRepository(session).async_count())

@@ -6,8 +6,8 @@ import pytest
 from app.domain.meta.metamusic import (
     MetaMusic,
     MusicNameContext,
-    MusicNameParseResult,
     MusicNameParser,
+    MusicNameParseResult,
     MusicNamePattern,
     MusicNameRegistry,
 )
@@ -325,7 +325,7 @@ def test_metainfo_path_uses_rust_once_and_keeps_python_directory_context(
             "[CD][FLAC+CUE+LOG+BK][KDSD-01049]",
             ["中恵光城"],
             "SELENiTE -Mitsuki Nakae Works Best Album",
-            None,
+            2022,
             "FLAC",
         ),
         (
@@ -568,6 +568,41 @@ def test_parse_album_dir_without_artist():
     assert info["artist"] is None
     assert info["album"] == "Random Access Memories"
     assert info["year"] == 2013
+
+
+def test_parse_album_dir_with_prefix_year_does_not_invent_artist():
+    """年份前缀目录不应把年份和专辑片段误判成艺人。"""
+    info = MetaMusic.parse_album_dir(
+        "2021-All Too Well (Sad Girl Autumn Version) - Recorded at Long Pond Studios [Explicit]"
+    )
+
+    assert info["artist"] is None
+    assert info["album"] == "All Too Well - Recorded at Long Pond Studios"
+    assert info["year"] == 2021
+
+
+def test_apply_path_context_keeps_artist_out_of_prefix_year_directory(tmp_path):
+    """有标签艺人的单曲不应继承年份前缀目录生成的伪专辑艺人。"""
+    album_dir = tmp_path / (
+        "2021-All Too Well (Sad Girl Autumn Version) - Recorded at Long Pond Studios [Explicit]"
+    )
+    album_dir.mkdir()
+    audio_file = album_dir / "Taylor Swift - All Too Well (Sad Girl Autumn Version).mp3"
+    audio_file.write_bytes(b"")
+    meta = MetaMusic(
+        org_string=audio_file.name,
+        title="All Too Well (Sad Girl Autumn Version)",
+        artists=["Taylor Swift"],
+        album="All Too Well (Sad Girl Autumn Version)",
+        track_number=1,
+        audio_format="MP3",
+    )
+
+    meta.apply_path_context(audio_file)
+
+    assert meta.artists == ["Taylor Swift"]
+    assert meta.album_artist is None
+    assert meta.year == 2021
 
 
 def test_apply_path_context_fills_wav_meta(tmp_path):
@@ -835,7 +870,7 @@ def test_apply_title_scene_dot_with_symbols():
 
 
 def test_apply_title_keeps_artist_abbreviation_dots():
-    """点分隔少于 3 处的艺术家缩写点号不应被归一。"""
+    """保留艺术家缩写点号，无音质标记的单词曲名也不能被当成发布组剔除。"""
     meta = parse_title("E.S.Posthumus - Maraboot")
 
     assert meta.artists == ["E.S.Posthumus"]
@@ -860,13 +895,6 @@ def test_apply_title_va_scene_prefix():
     assert meta.artists == ["Various Artists"]
     assert meta.title == "Once Upon a Time in Hollywood Original Motion Picture Soundtrack"
     assert meta.year == 2019
-
-
-def test_apply_title_keeps_single_word_title():
-    """无音质标记时「艺术家 - 单词曲名」的曲名不应被当发布组标签剔除。"""
-    meta = parse_title("E.S.Posthumus - Maraboot")
-
-    assert meta.title == "Maraboot"
 
 
 def test_apply_title_keeps_title_with_quality_tokens():

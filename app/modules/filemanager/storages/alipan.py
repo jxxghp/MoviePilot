@@ -43,9 +43,6 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
     # 基础url
     base_url = "https://openapi.alipan.com"
 
-    # 阿里云盘目录时间不随子文件变更而更新，默认关闭目录修改时间检查
-    snapshot_check_folder_modtime = get_runtime_setting('ALIPAN_SNAPSHOT_CHECK_FOLDER_MODTIME')
-
     # 文件块大小，默认10MB
     chunk_size = 10 * 1024 * 1024
 
@@ -58,6 +55,11 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
             verify=True,
         )
         self._init_session()
+
+    @property
+    def snapshot_check_folder_modtime(self) -> bool:
+        """读取当前 AliPan 目录时间检查开关，支持配置保存后立即生效。"""
+        return bool(get_runtime_setting('ALIPAN_SNAPSHOT_CHECK_FOLDER_MODTIME'))
 
     def _init_session(self):
         """

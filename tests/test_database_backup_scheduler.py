@@ -6,6 +6,8 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
+
 from app.application.configuration import SchedulerRuntimeConfig
 from app.scheduler import catalog as scheduler_catalog
 from app.scheduler import maintenance as scheduler_maintenance
@@ -57,6 +59,8 @@ def _config(**changes) -> SchedulerRuntimeConfig:
         ai_agent_job_interval=None,
         usage_statistic_share=False,
         site_link=None,
+        auto_update=False,
+        auto_update_resource=False,
     )
     return replace(config, **changes)
 
@@ -70,6 +74,44 @@ def test_database_backup_schedule_only_watches_job_shape() -> None:
         "DB_BACKUP_RETENTION_DAYS",
         "DB_BACKUP_MAX_COUNT",
     }) == {"DB_BACKUP_ENABLE", "DB_BACKUP_CRON"}
+
+
+def test_auto_update_setting_is_hot_reloadable() -> None:
+    """主程序或资源开关变更时均应触发 Scheduler 重建。"""
+    assert "MOVIEPILOT_AUTO_UPDATE" in Scheduler.CONFIG_WATCH
+    assert "AUTO_UPDATE_RESOURCE" in Scheduler.CONFIG_WATCH
+
+
+def test_wallpaper_settings_are_hot_reloadable() -> None:
+    """壁纸来源或地址变化时必须重建调度器并清理缓存。"""
+    assert Scheduler.CONFIG_WATCH.issuperset({
+        "WALLPAPER",
+        "WALLPAPER_IMAGE_URL",
+        "CUSTOMIZE_WALLPAPER_API_URL",
+    })
+
+
+@pytest.mark.parametrize("wallpaper", ["", "tmdb"])
+def test_wallpaper_schedule_follows_wallpaper_setting(monkeypatch, wallpaper) -> None:
+    """无壁纸时不注册缓存任务，启用来源后恢复注册。"""
+    scheduler = _scheduler()
+    scheduler._services = Mock()
+    background_scheduler = Mock()
+    monkeypatch.setattr(scheduler_catalog, "BackgroundScheduler", lambda **_kwargs: background_scheduler)
+    monkeypatch.setattr(scheduler_catalog, "get_plugin_manager", lambda: Mock())
+    monkeypatch.setattr(scheduler_catalog, "get_mediaserver_configs", lambda **_kwargs: [])
+    monkeypatch.setattr(scheduler, "init_workflow_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_agent_task_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_plugin_jobs", lambda: None)
+
+    scheduler._initialize_catalog(_config(wallpaper=wallpaper))
+
+    registered = wallpaper != ""
+    assert ("random_wallpager" in scheduler._jobs) is registered
+    assert any(
+        call.kwargs.get("id") == "random_wallpager"
+        for call in background_scheduler.add_job.call_args_list
+    ) is registered
 
 
 def test_disabled_database_backup_does_not_register_job() -> None:
@@ -102,6 +144,32 @@ def test_enabled_database_backup_registers_single_replaceable_job(monkeypatch) -
     assert scheduler._scheduler.jobs["database_backup"]["replace_existing"] is True
 
 
+@pytest.mark.parametrize("auto_update", [False, True])
+@pytest.mark.parametrize("auto_update_resource", [False, True])
+def test_auto_update_check_is_registered_only_when_enabled(
+    monkeypatch, auto_update, auto_update_resource
+) -> None:
+    """任一开关开启即注册检查任务，均关闭则不注册。"""
+    scheduler = _scheduler()
+    scheduler._services = Mock()
+    background_scheduler = Mock()
+    monkeypatch.setattr(scheduler_catalog, "BackgroundScheduler", lambda **_kwargs: background_scheduler)
+    monkeypatch.setattr(scheduler_catalog, "get_plugin_manager", lambda: Mock())
+    monkeypatch.setattr(scheduler_catalog, "get_mediaserver_configs", lambda **_kwargs: [])
+    monkeypatch.setattr(scheduler, "init_workflow_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_agent_task_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_plugin_jobs", lambda: None)
+
+    scheduler_catalog.SchedulerCatalogOwner._initialize_catalog(
+        scheduler, _config(auto_update=auto_update, auto_update_resource=auto_update_resource)
+    )
+    assert any(
+        call.kwargs.get("id") == "system_update_check"
+        for call in background_scheduler.add_job.call_args_list
+    ) is (auto_update or auto_update_resource)
+    assert ("system_update_check" in scheduler._jobs) is (auto_update or auto_update_resource)
+
+
 def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> None:
     governance = Mock()
     monkeypatch.setattr(scheduler_maintenance, "get_database_governance", lambda: governance)
@@ -110,6 +178,29 @@ def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> No
 
     assert result is governance.create_backup.return_value
     governance.create_backup.assert_called_once_with()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_subscription_search_scans_due_items_only_when_enabled(monkeypatch, enabled) -> None:
+    """系统开关控制到期扫描，五分钟扫描节奏与实际搜索间隔分别传递。"""
+    scheduler = _scheduler()
+    scheduler._services = Mock()
+    background_scheduler = Mock()
+    monkeypatch.setattr(scheduler_catalog, "BackgroundScheduler", lambda **_kwargs: background_scheduler)
+    monkeypatch.setattr(scheduler_catalog, "get_plugin_manager", lambda: Mock())
+    monkeypatch.setattr(scheduler_catalog, "get_mediaserver_configs", lambda **_kwargs: [])
+    monkeypatch.setattr(scheduler, "init_workflow_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_agent_task_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_plugin_jobs", lambda: None)
+
+    scheduler._initialize_catalog(_config(subscribe_search=enabled, subscribe_search_interval=48))
+
+    calls = [call for call in background_scheduler.add_job.call_args_list
+             if call.kwargs.get("id") == "subscribe_search"]
+    assert bool(calls) is enabled
+    if enabled:
+        assert calls[0].kwargs["minutes"] == 5
+        assert scheduler._jobs["subscribe_search"]["kwargs"]["scheduled_interval"] == 48
 
 
 def test_scheduler_database_dependencies_are_explicit_module_imports() -> None:

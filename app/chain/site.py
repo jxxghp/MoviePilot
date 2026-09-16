@@ -199,9 +199,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
             "zhuque.in": self.__zhuque_test,
             "m-team.io": self.__mteam_test,
             "m-team.cc": self.__mteam_test,
-            "ptlsp.com": self.__indexphp_test,
-            "1ptba.com": self.__indexphp_test,
-            "star-space.net": self.__indexphp_test,
             "yemapt.org": self.__yema_test,
             "hddolby.com": self.__hddolby_test,
             "rousi.pro": self.__rousi_test,
@@ -215,7 +212,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         :return: 用户数据
         """
         userdata: SiteUserData = self.run_module("refresh_userdata", site=site)
-        if userdata and site:
+        if userdata and userdata.userid and site:
             domain = site_rules.extract_domain(
                 str(site.get("domain") or site.get("url") or "")
             )
@@ -253,7 +250,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             self.post_message(Message(
                 mtype=MessageType.SiteMessage,
                 title=f"站点 {site.get('name')} 收到 "
-                      f"{userdata.message_unread} 条新消息，请登陆查看",
+                f"{userdata.message_unread} 条新消息，请登陆查看",
                 link=site.get("url")
             ))
             return
@@ -305,7 +302,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     },
                 )
             userdata = self.refresh_userdata(site)
-            if userdata:
+            if userdata and userdata.userid:
                 any_site_updated = True
                 result[site.get("name")] = userdata
             if progress_callback:
@@ -472,12 +469,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     return True, "连接成功"
                 return False, "Cookie已过期"
             return False, f"错误：{res.status_code} {res.reason}"
-
-    def __indexphp_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
-        """
-        判断站点是否已经登陆：ptlsp/1ptba
-        """
-        return self.__test(replace(site, url=f"{site.url}index.php"))
 
     def __hddolby_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
         """
@@ -692,7 +683,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
             logger.warning(f"站点 {domain} 已在黑名单中，不添加站点")
             return 0, 0, 0, False
         domain_url = self._cookiecloud_indexer_domain(indexer, domain)
-        proxy, response = self._cookiecloud_connect(domain_url, cookie, indexer)
+        login_url = site_rules.resolve_page_url(domain_url, indexer.get("login_path"))
+        proxy, response = self._cookiecloud_connect(login_url, cookie, indexer)
         if response is None:
             return 0, 0, 1, False
         if response.status_code not in [200, 500, 403]:
@@ -811,9 +803,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
                                                      ua=self.runtime_config.user_agent)
         if icon_url:
             repository.update_icon(name=icon_name,
-                                 domain=domain,
-                                 icon_url=icon_url,
-                                 icon_base64=icon_base64 or "")
+                                   domain=domain,
+                                   icon_url=icon_url,
+                                   icon_base64=icon_base64 or "")
             logger.info(f"缓存站点 {indexer.get('name')} 图标成功")
         else:
             logger.warn(f"缓存站点 {indexer.get('name')} 图标失败")
@@ -879,11 +871,19 @@ class SiteChain(InteractionChainMixin, ChainBase):
             # 开始记时
             start_time = datetime.now()
             # 特殊站点测试
-            if self.special_site_test.get(domain):
-                state, message = self.special_site_test[domain](site_info)
+            special_test = self.special_site_test.get(domain)
+            if special_test:
+                state, message = special_test(site_info)
             else:
-                # 通用站点测试
-                state, message = self.__test(site_info)
+                indexer = SitesHelper().get_indexer(domain) or {}
+                state, message = self.__test(
+                    replace(
+                        site_info,
+                        url=site_rules.resolve_page_url(
+                            site_info.url, indexer.get("login_path")
+                        ),
+                    )
+                )
             # 统计
             seconds = (datetime.now() - start_time).seconds
             if state:
@@ -1158,17 +1158,17 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     incUploads += upload
                     incDownloads += download
                     messages[upload + (rand / 1000)] = (
-                            f"【{site}】{updated_date}\n"
-                            + f"上传量：{size_tools.format_compact_size(upload)}\n"
-                            + f"下载量：{size_tools.format_compact_size(download)}\n"
-                            + "————————————"
+                        f"【{site}】{updated_date}\n"
+                        + f"上传量：{size_tools.format_compact_size(upload)}\n"
+                        + f"下载量：{size_tools.format_compact_size(download)}\n"
+                        + "————————————"
                     )
             if incDownloads or incUploads:
                 sorted_messages = [messages[key] for key in sorted(messages.keys(), reverse=True)]
                 sorted_messages.insert(0, f"【汇总】\n"
-                                          f"总上传：{size_tools.format_compact_size(incUploads)}\n"
-                                          f"总下载：{size_tools.format_compact_size(incDownloads)}\n"
-                                          f"————————————")
+                                       f"总上传：{size_tools.format_compact_size(incUploads)}\n"
+                                       f"总下载：{size_tools.format_compact_size(incDownloads)}\n"
+                                       f"————————————")
                 self.post_message(Message(
                     channel=channel,
                     source=source,

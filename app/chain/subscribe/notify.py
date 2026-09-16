@@ -10,6 +10,7 @@ from app.application.configuration import (
 from app.application.messaging.message import MessageTemplateHelper
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
+    subscription_added_event_key,
 )
 from app.chain.subscribe.context import _SubscribeCreateContext, _SubscribePostCommitContext
 from app.chain.subscribe.contract import _SubscribeOwnerBase
@@ -129,17 +130,30 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
             EventType.SubscribeAdded,
             {
                 "subscribe_id": subscribe_id,
-                "idempotency_key": (f"subscribe.added:{subscribe_id}:{context.media_source}:{context.media_id}:v1"),
+                "idempotency_key": subscription_added_event_key(
+                    subscribe_id,
+                    {
+                        "media_source": str(context.media_source) if context.media_source else None,
+                        "media_id": context.media_id,
+                    },
+                    occurrence_id=context.occurrence_id,
+                ),
                 "username": context.username,
                 "mediainfo": context.mediainfo.to_dict(),
             },
         )
         try:
+            self._SubscribeChain__queue_new_subscription_search(subscribe_id)
+        except Exception:
+            logger.warning("订阅已保存，但自动搜索暂时没有安排成功，系统会在下一次检查时重试")
+            logger.debug("安排订阅自动搜索失败", exc_info=True)
+        try:
             report_delivered = _subscription_share_snapshot().report_added(
                 self._SubscribeChain__subscribe_report_payload(context)
             )
-        except Exception as error:
-            logger.warning(f"订阅新增统计上报失败，将由后台重试：{error}")
+        except Exception:
+            logger.warning("订阅新增统计暂时没有上报成功，系统会在后台重试")
+            logger.debug("订阅新增统计上报失败", exc_info=True)
             return False
         if not report_delivered:
             logger.warning("订阅新增统计上报未确认，将由后台重试")
@@ -157,17 +171,30 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
             EventType.SubscribeAdded,
             {
                 "subscribe_id": subscribe_id,
-                "idempotency_key": (f"subscribe.added:{subscribe_id}:{context.media_source}:{context.media_id}:v1"),
+                "idempotency_key": subscription_added_event_key(
+                    subscribe_id,
+                    {
+                        "media_source": str(context.media_source) if context.media_source else None,
+                        "media_id": context.media_id,
+                    },
+                    occurrence_id=context.occurrence_id,
+                ),
                 "username": context.username,
                 "mediainfo": context.mediainfo.to_dict(),
             },
         )
         try:
+            await self._SubscribeChain__async_queue_new_subscription_search(subscribe_id)
+        except Exception:
+            logger.warning("订阅已保存，但自动搜索暂时没有安排成功，系统会在下一次检查时重试")
+            logger.debug("安排订阅自动搜索失败", exc_info=True)
+        try:
             report_delivered = await _subscription_share_snapshot().async_report_added(
                 self._SubscribeChain__subscribe_report_payload(context)
             )
-        except Exception as error:
-            logger.warning(f"订阅新增统计上报失败，将由后台重试：{error}")
+        except Exception:
+            logger.warning("订阅新增统计暂时没有上报成功，系统会在后台重试")
+            logger.debug("订阅新增统计上报失败", exc_info=True)
             return False
         if not report_delivered:
             logger.warning("订阅新增统计上报未确认，将由后台重试")

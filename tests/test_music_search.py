@@ -1,11 +1,93 @@
 import asyncio
 from dataclasses import replace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from app.chain.search import SearchChain
 from app.domain.context import MusicInfo, TorrentInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.types import MediaSource, MediaType
+
+
+@pytest.mark.parametrize("mode", ["sync", "async", "stream"])
+def test_music_search_keeps_searching_after_final_audio_filter(mode):
+    """首轮名称命中但音质不符时，三条入口均须继续查询艺术家组合词。"""
+    chain = SearchChain()
+    chain.runtime_config = replace(chain.runtime_config, search_multiple_name=False)
+    target = MusicInfo(music_type="album", title="Test Album", artists=["Test Artist"])
+    calls = []
+
+    def batch(**kwargs):
+        """首轮模拟有损音质，后续组合词返回无损资源。"""
+        calls.append(kwargs["keyword"])
+        codec = "MP3" if len(calls) == 1 else "FLAC"
+        return [TorrentInfo(title=f"Test Artist - Test Album {codec}", category=MediaType.MUSIC.value)]
+
+    async def stream(**kwargs):
+        """从同一站点样本生成进度事件。"""
+        yield {"items": batch(**kwargs), "stage": "searching", "value": 100}
+
+    async def async_batch(**kwargs):
+        """普通异步端口与流式端口读取相同站点样本。"""
+        return batch(**kwargs)
+
+    async def collect():
+        """调用对应异步入口并返回最终结果。"""
+        params = {"mediainfo": target, "rule_groups": [], "filter_params": {"audio_format": "FLAC"}}
+        if mode == "async":
+            return await chain._async_process_music(**params)
+        events = [event async for event in chain._async_process_music_stream(**params)]
+        assert events[-1]["candidate_items"] == 2
+        assert events[-1]["match_counts"]["filter_params"] == 1
+        return events[-1]["contexts"]
+
+    with (
+        patch.object(chain, "_SearchChain__search_all_sites", side_effect=batch),
+        patch.object(chain, "_SearchChain__async_search_all_sites", side_effect=async_batch),
+        patch.object(chain, "_SearchChain__async_search_all_sites_stream", side_effect=stream),
+        patch("app.chain.search.execution.time.sleep"),
+        patch("app.chain.search.execution.asyncio.sleep", new=AsyncMock()),
+    ):
+        results = chain._process_music(target, rule_groups=[], filter_params={"audio_format": "FLAC"}) \
+            if mode == "sync" else asyncio.run(collect())
+    assert calls == ["Test Album", "Test Artist Test Album"]
+    assert len(results) == 1
+    assert results[0].meta_info.audio_format == "FLAC"
+
+
+def test_music_manual_candidates_keep_resource_identity_separate():
+    """来源署名未经验证时只展示资源自身信息，不能回填成所选单曲。"""
+    chain = SearchChain()
+    target = MusicInfo(media_source="musicbrainz", media_id="target", title="晴天", artists=["周杰伦"])
+    torrent = TorrentInfo(title="Jay Chou - 晴天 FLAC", category=MediaType.MUSIC.value)
+    assert chain._build_music_contexts([torrent], target, rule_groups=[]) == []
+    candidate = chain._build_music_contexts([torrent], target, rule_groups=[], include_candidates=True)[0]
+    assert candidate.match_reason == "artist_unverified"
+    assert candidate.media_info is None
+    assert candidate.meta_info.artists == ["Jay Chou"]
+    assert candidate.meta_info.media_id is None
+    assert candidate.media_info_is_target is False
+
+
+def test_music_stream_counts_rejected_site_results():
+    """分类和名称不符仍属于站点原始候选，空态应能说明为何没有最终结果。"""
+    chain = SearchChain()
+    target = MusicInfo(title="One", artists=["U2"])
+
+    async def batches(**_kwargs):
+        """返回一条属于其他作品的候选。"""
+        yield {"items": [TorrentInfo(title="U2 - One Tree Hill", category=MediaType.MUSIC.value)]}
+
+    async def collect():
+        """使用显式关键词把样例限定为一次站点查询。"""
+        return [event async for event in chain._async_process_music_stream(target, keyword="One", rule_groups=[])]
+
+    with patch.object(chain, "_SearchChain__async_search_all_sites_stream", side_effect=batches):
+        events = asyncio.run(collect())
+    assert events[-1]["candidate_items"] == 1
+    assert events[-1]["total_items"] == 0
+    assert events[-1]["match_counts"] == {"title_mismatch": 1}
 
 
 def test_music_context_builder_keeps_only_music_category():
@@ -36,7 +118,7 @@ def test_music_context_builder_keeps_only_music_category():
         ),
     ]
 
-    with patch.object(chain, "filter_torrents", return_value=torrents[:1]):
+    with patch.object(chain, "filter_torrents", side_effect=lambda **kwargs: kwargs["torrent_list"][:1]):
         contexts = chain._build_music_contexts(
             torrents=torrents,
             mediainfo=music,
@@ -44,9 +126,11 @@ def test_music_context_builder_keeps_only_music_category():
         )
 
     assert len(contexts) == 1
-    assert contexts[0].media_info is music
+    assert contexts[0].media_info is not music
     assert isinstance(contexts[0].meta_info, MetaMusic)
-    assert contexts[0].meta_info.media_id == "recording-1"
+    assert contexts[0].meta_info.media_id is None
+    assert contexts[0].meta_info.title == "Get Lucky - Random Access Memories"
+    assert contexts[0].media_info.media_id == "recording-1"
     assert contexts[0].torrent_info.category == MediaType.MUSIC.value
 
 
@@ -75,7 +159,7 @@ def test_music_search_continues_after_unrelated_first_keyword_results():
             chain,
             "_SearchChain__search_all_sites",
             side_effect=[[unrelated], [matched]],
-    ) as search_sites, patch("app.chain.search.music.time.sleep"):
+    ) as search_sites, patch("app.chain.search.execution.time.sleep"):
         contexts = chain._process_music(music, rule_groups=[])
 
     assert search_sites.call_count == 2
@@ -104,7 +188,7 @@ def test_music_search_uses_simplified_keywords_before_original_traditional_keywo
             chain,
             "_SearchChain__search_all_sites",
             side_effect=[[], [matched]],
-    ) as search_sites, patch("app.chain.search.music.time.sleep"):
+    ) as search_sites, patch("app.chain.search.execution.time.sleep"):
         contexts = chain._process_music(music, rule_groups=[])
 
     assert [call.kwargs["keyword"] for call in search_sites.call_args_list] == [

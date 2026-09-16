@@ -1422,6 +1422,7 @@ class MediaInteractionChain(ChainBase):
                 priority=dir_info.priority,
                 media_type=dir_info.media_type,
                 media_category=dir_info.media_category,
+                media_category_id=dir_info.media_category_id,
             )
             for dir_info in dir_infos
             if cls._match_download_dir_media(dir_info, media_info)
@@ -1449,9 +1450,9 @@ class MediaInteractionChain(ChainBase):
         判断是否为自动匹配下载目录选项。
         """
         return (
-                download_dir.name == cls._auto_download_dir_name
-                and not download_dir.download_path
-                and not download_dir.save_path
+            download_dir.name == cls._auto_download_dir_name
+            and not download_dir.download_path
+            and not download_dir.save_path
         )
 
     @staticmethod
@@ -1462,22 +1463,7 @@ class MediaInteractionChain(ChainBase):
         """
         判断下载目录是否适用于当前媒体。
         """
-        if not media_info or not media_info.type:
-            return True
-
-        if dir_info.media_type:
-            media_type_values = (
-                {media_info.type.value, media_info.type.to_agent()}
-                if isinstance(media_info.type, MediaType)
-                else {str(media_info.type)}
-            )
-            if dir_info.media_type not in media_type_values:
-                return False
-
-        if dir_info.media_category and dir_info.media_category != media_info.category:
-            return False
-
-        return True
+        return DirectoryHelper().matches_media(dir_info, media_info)
 
     @staticmethod
     def _format_download_dir_label(download_dir: DownloadDirectory) -> str:
@@ -1543,8 +1529,8 @@ class MediaInteractionChain(ChainBase):
         return bool(
             auto_download_user
             and (
-                    auto_download_user == "all"
-                    or any(userid == user for user in auto_download_user.split(","))
+                auto_download_user == "all"
+                or any(userid == user for user in auto_download_user.split(","))
             )
         )
 

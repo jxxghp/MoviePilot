@@ -86,6 +86,10 @@ class CleanupRepository(Protocol):
         """删除早于截止时间且未被任务引用的 Agent 会话。"""
         ...
 
+    def delete_agent_invocations(self, db: Any, cutoff: str, limit: int) -> int:
+        """删除过期且没有所属会话的已确认提交或终态写工具回执。"""
+        ...
+
     def delete_agent_task_runs(self, db: Any, cutoff: str, limit: int) -> int:
         """删除早于截止时间且不再承担恢复语义的 Agent 运行历史。"""
         ...
@@ -289,11 +293,12 @@ class DataCleanupService:
             policy.agent_task_run_days,
             "%Y-%m-%d %H:%M:%S",
         )
-        outbox_completed_cutoff = self._outbox_cutoff(
+        agent_invocation_cutoff = self._utc_cutoff(started_at, policy.agent_chat_days)
+        outbox_completed_cutoff = self._utc_cutoff(
             started_at,
             policy.outbox_completed_days,
         )
-        outbox_dead_cutoff = self._outbox_cutoff(
+        outbox_dead_cutoff = self._utc_cutoff(
             started_at,
             policy.outbox_dead_days,
         )
@@ -361,6 +366,14 @@ class DataCleanupService:
                 ),
             ),
             CleanupPlan(
+                "agentinvocation",
+                policy.agent_chat_days,
+                agent_invocation_cutoff,
+                lambda db: self._repository.delete_agent_invocations(
+                    db, agent_invocation_cutoff, batch_size
+                ),
+            ),
+            CleanupPlan(
                 "agenttaskrun",
                 policy.agent_task_run_days,
                 agent_task_run_cutoff,
@@ -415,8 +428,8 @@ class DataCleanupService:
         return (started_at - timedelta(days=retention_days)).strftime(pattern)
 
     @staticmethod
-    def _outbox_cutoff(started_at: datetime, retention_days: int) -> str:
-        """按 Outbox 的 UTC ISO 格式生成可排序截止时间。"""
+    def _utc_cutoff(started_at: datetime, retention_days: int) -> str:
+        """按回执与 Outbox 的 UTC ISO 格式生成可排序截止时间。"""
         aware_started_at = (
             started_at.astimezone()
             if started_at.tzinfo is None

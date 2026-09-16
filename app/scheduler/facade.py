@@ -48,6 +48,11 @@ class Scheduler(
 
     CONFIG_WATCH = {
         "DEV",
+        "TZ",
+        # 壁纸来源或地址变化时重建任务并清理来源缓存。
+        "WALLPAPER",
+        "WALLPAPER_IMAGE_URL",
+        "CUSTOMIZE_WALLPAPER_API_URL",
         "COOKIECLOUD_INTERVAL",
         "MEDIASERVER_SYNC_INTERVAL",
         SystemConfigKey.MediaServers.value,
@@ -72,6 +77,8 @@ class Scheduler(
         "DB_BACKUP_ENABLE",
         "DB_BACKUP_CRON",
         "USAGE_STATISTIC_SHARE",
+        "MOVIEPILOT_AUTO_UPDATE",
+        "AUTO_UPDATE_RESOURCE",
     }
 
     def __init__(self) -> None:

@@ -14,10 +14,7 @@ from app.application.plugin.identity import (
     PluginPayloadSourceType,
     TrustedPluginSourceType,
 )
-from app.application.plugin.recovery import (
-    PluginInstallationRecoveryError,
-    PluginInstallationRecoveryService,
-)
+from app.application.plugin.recovery import PluginInstallationRecoveryService
 from app.application.plugin.transaction import (
     PluginInstallationPhase,
     PluginInstallationRecord,
@@ -170,8 +167,8 @@ async def test_prepared_delete_failure_keeps_replayable_journal() -> None:
         packages=packages,
     )
 
-    with pytest.raises(PluginInstallationRecoveryError, match="未提交安装恢复失败"):
-        await service.replay()
+    first = await service.replay()
+    assert first.failed == 1
     assert "txn-demo" in persistence.records
     packages.async_cleanup.assert_not_awaited()
 
@@ -184,23 +181,33 @@ async def test_prepared_delete_failure_keeps_replayable_journal() -> None:
 
 
 @pytest.mark.asyncio
-async def test_prepared_restore_failure_blocks_plugin_import() -> None:
-    """旧载荷无法恢复时必须保留 journal，并让启动阶段失败。"""
-    persistence = _Persistence([_record(phase=PluginInstallationPhase.PREPARED)])
+async def test_prepared_restore_failure_does_not_block_other_plugins() -> None:
+    """单个旧载荷无法恢复时保留 journal，但继续处理其他插件。"""
+    persistence = _Persistence(
+        [
+            _record(phase=PluginInstallationPhase.PREPARED, transaction_id="txn-bad"),
+            _record(phase=PluginInstallationPhase.PREPARED, transaction_id="txn-good"),
+        ]
+    )
     packages = _packages(
-        async_restore=AsyncMock(side_effect=RuntimeError("snapshot missing"))
+        async_restore=AsyncMock(
+            side_effect=[RuntimeError("snapshot missing"), None]
+        )
     )
     service = PluginInstallationRecoveryService(
         persistence=persistence,
         packages=packages,
     )
 
-    with pytest.raises(PluginInstallationRecoveryError, match="snapshot missing"):
-        await service.replay()
+    result = await service.replay()
 
-    assert "txn-demo" in persistence.records
-    assert persistence.delete_calls == []
-    packages.async_cleanup.assert_not_awaited()
+    assert result.restored == 1
+    assert result.failed == 1
+    assert set(persistence.records) == {"txn-bad"}
+    assert persistence.delete_calls == [
+        ("txn-good", PluginInstallationPhase.PREPARED)
+    ]
+    packages.async_cleanup.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -254,9 +261,9 @@ async def test_committed_fact_mismatch_blocks_plugin_import(
         packages=packages,
     )
 
-    with pytest.raises(PluginInstallationRecoveryError, match=message):
-        await service.replay()
+    result = await service.replay()
 
+    assert result.failed == 1
     assert "txn-demo" in persistence.records
     packages.async_finalize_persistent_backup.assert_not_awaited()
     packages.async_commit.assert_not_awaited()

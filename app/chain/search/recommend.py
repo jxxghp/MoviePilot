@@ -246,7 +246,7 @@ class SearchRecommendOwner(_SearchOwnerBase):
         for index in ai_indices:
             try:
                 value = int(index)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 continue
             if value in seen:
                 continue

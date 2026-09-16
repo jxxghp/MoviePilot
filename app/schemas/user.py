@@ -108,6 +108,10 @@ class AuthProviderRemote(BaseModel):
     id: str
     url: str
     name: str
+    # 分身所属源插件 ID；前端联邦加载器按它定位共享的前端产物，本体为空。
+    # 该字段必须在此声明：端点声明了 response_model，未声明的键会被 pydantic
+    # 静默丢弃，投影层写进去也到不了前端。
+    source_plugin_id: Optional[str] = None
 
 
 class AuthProviderInfo(BaseModel):

@@ -146,8 +146,125 @@ class SystemEnvironmentUpdateData(BaseModel):
     failed_updates: dict[str, tuple[Optional[bool], str]] = Field(default_factory=dict)
 
 
+class SystemSettingsUpdateRequest(BaseModel):  # type: ignore[misc]
+    """统一系统设置更新请求。"""
+
+    setting_key: str = Field(
+        description=(
+            "Exact setting key. Accepts a Settings field name, a SystemConfigKey value or enum name, "
+            "or an alias that resolves to one unique setting. Call config.system.get with group or "
+            "keyword first when the key is unknown."
+        )
+    )
+    value: Any = Field(
+        default=None,
+        description=(
+            "New value or list item. For replace, send the complete value. For merge_dict, send the "
+            "object fragment to merge. For upsert_list_item or remove_list_item, send one object or scalar item."
+        ),
+    )
+    operation: Literal[
+        "replace",
+        "merge_dict",
+        "upsert_list_item",
+        "remove_list_item",
+    ] = Field(
+        default="replace",
+        description=(
+            "replace overwrites the complete value; merge_dict shallow-merges an object; "
+            "upsert_list_item inserts or replaces one matched list item; remove_list_item removes one matched list item."
+        ),
+    )
+    remove_keys: list[str] = Field(
+        default_factory=list,
+        description="Object keys to remove after merge_dict applies the supplied value.",
+    )
+    match_field: Optional[str] = Field(
+        default=None,
+        description=(
+            "Object field used to match a list item. Downloaders, MediaServers, Notifications, Directories, "
+            "and Storages default to name; NotificationSwitchs defaults to type. Supply it for other object lists."
+        ),
+    )
+    match_value: Any = Field(
+        default=None,
+        description="Value compared against match_field. If omitted, use value[match_field]; scalar lists use value directly.",
+    )
+    expected_revision: Optional[str] = Field(
+        description=(
+            "Optional revision returned by config.system.describe or config.system.get for this exact setting. "
+            "When supplied, the update is rejected if another writer changed the setting after that read. "
+            "New Agent clients should always provide it."
+        ),
+        default=None,
+        min_length=1,
+        max_length=128,
+    )
+
+
+class CustomIdentifiersUpdateRequest(BaseModel):  # type: ignore[misc]
+    """完整替换自定义识别词的请求。"""
+
+    identifiers: list[str] = Field(
+        default_factory=list,
+        description="Complete ordered list of custom recognition identifier rules.",
+    )
+    expected_identifiers: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Previously read complete ordered list. When supplied, reject the replacement if the stored list has changed."
+        ),
+    )
+
+
+SystemUpdateType = Literal["application", "resources"]
+
+
+class SystemUpdateItemStatus(BaseModel):  # type: ignore[misc]
+    """单类升级的可恢复状态快照。"""
+
+    type: SystemUpdateType
+    state: Literal[
+        "idle",
+        "available",
+        "downloading",
+        "ready",
+        "installing",
+        "failed",
+    ] = "idle"
+    current_version: Optional[str] = None
+    version: Optional[str] = None
+    frontend_version: Optional[str] = None
+    current_auth_version: Optional[str] = None
+    auth_version: Optional[str] = None
+    current_indexer_version: Optional[str] = None
+    indexer_version: Optional[str] = None
+    release_name: Optional[str] = None
+    release_notes: Optional[str] = None
+    published_at: Optional[str] = None
+    checked_at: Optional[str] = None
+    downloaded_bytes: int = 0
+    total_bytes: int = 0
+    progress: int = 0
+    error: Optional[str] = None
+    can_update: bool = False
+    can_install: bool = False
+
+
+class SystemUpdateRequest(BaseModel):  # type: ignore[misc]
+    """主程序或站点资源升级动作的请求体。"""
+
+    target: SystemUpdateType = Field(
+        default="application",
+        description="升级目标：application 表示主程序，resources 表示认证和索引资源。",
+    )
+
+
 class SystemUpdateStatus(BaseModel):
-    """主程序后台更新的可恢复状态快照。"""
+    """主程序与站点资源后台更新的聚合状态快照。"""
+
+    auto_update: bool = Field(default=False, description="是否启用主程序自动检查及升级提醒")
+    auto_update_resource: bool = Field(default=True, description="是否启用站点资源自动检查及升级提醒")
 
     state: Literal[
         "idle",
@@ -170,6 +287,7 @@ class SystemUpdateStatus(BaseModel):
     error: Optional[str] = None
     can_update: bool = False
     can_install: bool = False
+    updates: list[SystemUpdateItemStatus] = Field(default_factory=list)
 
 
 class PluginMarketSyncData(BaseModel):
@@ -206,7 +324,7 @@ class NetTestTarget(BaseModel):
 
 
 class SystemModuleInfo(BaseModel):
-    """已加载系统模块摘要。"""
+    """当前配置下已启用系统模块摘要。"""
 
     id: str
     name: str
@@ -215,9 +333,49 @@ class SystemModuleInfo(BaseModel):
 
 
 class SystemModuleListData(BaseModel):
-    """已加载系统模块列表。"""
+    """当前配置下已启用系统模块列表。"""
 
     modules: list[SystemModuleInfo] = Field(default_factory=list)
+
+
+class SystemModuleSettingInfo(BaseModel):  # type: ignore[misc]
+    """可由用户统一开关的内置模块设置摘要。"""
+
+    id: str
+    name: str
+    name_i18n: str
+    name_key: str
+    description_i18n: str
+    description_key: str
+    enabled: bool
+
+
+class SystemModuleSettingListData(BaseModel):  # type: ignore[misc]
+    """可由用户统一开关的内置模块设置列表。"""
+
+    modules: list[SystemModuleSettingInfo] = Field(default_factory=list)
+
+
+class SystemModuleCatalogInfo(BaseModel):  # type: ignore[misc]
+    """前端服务选择器可消费的宿主模块目录项。"""
+
+    id: str
+    name: str
+    name_i18n: str
+    name_key: str
+    description_i18n: str
+    description_key: str
+    type: str
+    subtype: str
+    option_value: Optional[str] = None
+    enabled: bool = True
+    active: bool = False
+
+
+class SystemModuleCatalogListData(BaseModel):  # type: ignore[misc]
+    """宿主模块及其服务类型目录。"""
+
+    modules: list[SystemModuleCatalogInfo] = Field(default_factory=list)
 
 
 class DatabaseBackupArtifactData(BaseModel):  # type: ignore[misc]
@@ -253,6 +411,8 @@ class TransferDirectoryConf(BaseModel):
     media_type: Optional[str] = None
     # 适用媒体类别
     media_category: Optional[str] = None
+    # 适用媒体类别稳定 ID；media_category 在兼容期保存路径快照
+    media_category_id: Optional[str] = None
     # 下载类型子目录
     download_type_folder: Optional[bool] = False
     # 下载类别子目录

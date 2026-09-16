@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from app.application.history import (
+from app.application.history.retry import (
     clear_transfer_failures,
     record_transfer_failure,
 )
@@ -34,7 +34,7 @@ def _history(status: bool = True, size=None, src_fileitem=..., src=None, src_sto
     if src_fileitem is ...:
         src_fileitem = {"size": size}
     return SimpleNamespace(id=history_id, status=status, src_fileitem=src_fileitem,
-                            src=src, src_storage=src_storage)
+                           src=src, src_storage=src_storage)
 
 
 def _reset_failed_retries(src_path, storage=None):

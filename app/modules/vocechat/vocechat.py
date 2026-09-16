@@ -208,14 +208,14 @@ class VoceChat:
                 meta = MetaInfo(torrent.title, torrent.description)
                 link = torrent.page_url
                 title = f"{meta.season_episode} " \
-                        f"{meta.resource_term} " \
-                        f"{meta.video_term} " \
-                        f"{meta.release_group}"
+                    f"{meta.resource_term} " \
+                    f"{meta.video_term} " \
+                    f"{meta.release_group}"
                 title = re.sub(r"\s+", " ", title).strip()
                 free = torrent.volume_factor
                 seeder = f"{torrent.seeders}↑"
                 caption = f"{caption}\n{index}.【{site_name}】[{title}]({link}) " \
-                          f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}"
+                    f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}"
                 index += 1
 
             if link:
@@ -236,15 +236,26 @@ class VoceChat:
     def __send_request(self, userid: str, caption: str) -> bool:
         """
         向VoceChat发送报文
-        userid格式：UID#xxx / GID#xxx
+        userid格式：数字用户ID / UID#xxx / GID#xxx
         """
         if not self._client:
             return False
         if userid.startswith("GID#"):
             action = "send_to_group"
-        else:
+            idstr = userid[4:]
+        elif userid.startswith("UID#"):
             action = "send_to_user"
-        idstr = userid[4:]
+            idstr = userid[4:]
+        elif "#" not in userid:
+            action = "send_to_user"
+            idstr = userid
+        else:
+            logger.error(f"VoceChat消息接收对象格式错误：{userid}")
+            return False
+
+        if not idstr.isdigit():
+            logger.error(f"VoceChat消息接收对象ID无效：{userid}")
+            return False
 
         with lock:
             result = self._client.post_res(f"{self._host}api/bot/{action}/{idstr}", data=caption.encode("utf-8"))

@@ -1,11 +1,13 @@
 """持久整理步骤执行、探测与检查点推进。"""
 
+import time
+import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Tuple, Union, cast
 
 from app.application.directory import DirectoryHelper
-from app.application.history import (
+from app.application.history.retry import (
     max_failed_retries,
 )
 from app.application.transfer.execution import (
@@ -20,11 +22,15 @@ from app.application.transfer.execution import (
     TransferStepState,
 )
 from app.application.transfer.workflow import (
+    TransferAdmission,
+    TransferAdmissionConflictError,
+    TransferLeaseLostError,
     TransferTask,
 )
 from app.chain.media import MediaChain
 from app.chain.tmdb import TmdbChain
 from app.chain.transfer.contract import _TransferOwnerBase
+from app.chain.transfer.records import apply_download_history_classification
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
@@ -282,10 +288,126 @@ class _DurableTransferStepRunner:
         return snapshot.checkpoint
 
 
-
 class TransferExecutionOwner(_TransferOwnerBase):
-    """唯一持有整理计划的外部步骤执行与结果检查点。"""
+    """持有整理准入租约、外部步骤执行与结果检查点。"""
 
+    def _TransferChain__handle_transfer_execution_error(
+            self,
+            task: TransferTask,
+            error: Exception,
+            *,
+            preview: bool,
+    ) -> Tuple[bool, str]:
+        """收口整理执行异常；人工复核只告警并保留 durable 状态。"""
+        if isinstance(error, _TransferManualReviewRequired):
+            logger.warning(
+                f"{task.fileitem.name} 已转入人工复核，未自动重放；"
+                f"请打开整理队列查看详情，确认外部操作状态后再决定是否重试：{error}"
+            )
+            message = "整理任务已转入人工复核，请打开整理队列查看详情"
+        else:
+            logger.error(
+                f"{task.fileitem.name} 整理任务处理出现错误：{error} - {traceback.format_exc()}"
+            )
+            message = (
+                str(error) if isinstance(error, TransferAdmissionConflictError)
+                else "整理任务处理失败，请稍后重试"
+            )
+        if not preview:
+            self._TransferChain__fail_transfer_task(task, error)
+        return False, message
+
+    def _TransferChain__register_claimed_admission(
+            self,
+            admission: TransferAdmission,
+    ) -> None:
+        """把仓储 claim 加入续期集合，覆盖恢复构造阶段的同步 I/O。"""
+        if (
+                admission.lease_owner != self._worker_owner_id
+                or not admission.lease_token
+        ):
+            raise TransferLeaseLostError(
+                f"整理任务 claim 投影无效：{admission.task_id}"
+            )
+        with self._worker_state_lock:
+            self._owned_leases[admission.task_id] = (
+                admission.lease_token,
+                time.monotonic() + self._WORKER_LEASE_SECONDS,
+            )
+        self._TransferChain__ensure_lease_heartbeat_owner()
+
+    def _TransferChain__bind_claimed_admission(
+            self,
+            task: TransferTask,
+            admission: TransferAdmission,
+    ) -> None:
+        """校验仓储 claim 投影并把 token 私有绑定到执行任务。"""
+        if admission.task_id != task.admission_task_id:
+            raise TransferLeaseLostError(
+                f"整理任务 claim 投影无效：{admission.task_id}"
+            )
+        self._TransferChain__register_claimed_admission(admission)
+        assert admission.lease_owner is not None
+        assert admission.lease_token is not None
+        task.bind_execution_lease(
+            owner_id=admission.lease_owner,
+            lease_token=admission.lease_token,
+        )
+
+    def _TransferChain__claim_admitted_task(
+            self,
+            task: TransferTask,
+            task_id: str,
+    ) -> None:
+        """取得已准入任务的唯一租约，并绑定到内存任务。"""
+        claimed = cast(
+            Optional[TransferAdmission],
+            self._transfer_admissions.claim_task(
+                task_id=task_id,
+                owner_id=self._worker_owner_id,
+                lease_seconds=self._WORKER_LEASE_SECONDS,
+            ),
+        )
+        if claimed is None:
+            raise TransferLeaseLostError(f"整理任务已由其他 worker claim：{task_id}")
+        try:
+            self._TransferChain__bind_claimed_admission(task, claimed)
+        except Exception as err:
+            self._TransferChain__release_admission_claim(claimed, error=str(err))
+            raise
+
+    def _TransferChain__admit_transfer(self, task: TransferTask) -> TransferAdmission:
+        """持久化源文件并在内存入队前取得执行租约。"""
+        fileitem = task.fileitem if task else None
+        if not fileitem or not fileitem.storage or not fileitem.path:
+            raise ValueError("整理任务缺少源文件身份")
+        planning_input = task.planning_input or self._TransferChain__build_planning_input(task)
+        task.bind_planning_input(planning_input)
+        admission = cast(
+            TransferAdmission,
+            self._transfer_admissions.admit(
+                storage=fileitem.storage,
+                src_path=fileitem.path,
+                planning_input=planning_input,
+                replace_inactive=bool(task.manual),
+            ),
+        )
+        task.bind_admission_task_id(admission.task_id)
+        self._TransferChain__claim_admitted_task(task, admission.task_id)
+        return admission
+
+    def _TransferChain__claim_task_for_execution(self, task: TransferTask) -> None:
+        """校验队列任务既有租约，并为兼容旧队列项补取唯一租约。"""
+        if task.preview:
+            return
+        self._TransferChain__ensure_lease_runtime_state()
+        if task.lease_token:
+            self._TransferChain__assert_owned_lease(task)
+            return
+        if not task.admission_task_id:
+            self._TransferChain__admit_transfer(task)
+            return
+        self._TransferChain__claim_admitted_task(task, task.admission_task_id)
 
     def _TransferChain__handle_transfer(
             self, task: TransferTask, callback: Optional[Callable] = None
@@ -343,9 +465,7 @@ class TransferExecutionOwner(_TransferOwnerBase):
                         )
                         need_obtain_images = True
                         if mediainfo:
-                            # 更新自定义媒体类别
-                            if download_history.media_category:
-                                mediainfo.category = download_history.media_category
+                            mediainfo = apply_download_history_classification(mediainfo, download_history)
                     else:
                         if history_year_conflict:
                             logger.info(
@@ -360,8 +480,8 @@ class TransferExecutionOwner(_TransferOwnerBase):
                         mediainfo = MediaChain().recognize_by_meta(
                             task.meta, **recognize_kwargs
                         )
-                        if mediainfo and download_history.media_category:
-                            mediainfo.category = download_history.media_category
+                        if mediainfo:
+                            mediainfo = apply_download_history_classification(mediainfo, download_history)
                 else:
                     # 识别媒体信息
                     recognize_kwargs = {"obtain_images": True}

@@ -194,7 +194,7 @@ class Emby:
                     ),
                     image=image,
                     link=f'{self._playhost or self._host}web/index.html'
-                         f'#!/videos?{server_query}parentId={library.get("Id")}',
+                    f'#!/videos?{server_query}parentId={library.get("Id")}',
                     server_type="emby"
                 )
             )
@@ -250,10 +250,10 @@ class Emby:
         try:
             res = RequestUtils(headers={
                 'X-Emby-Authorization': f'MediaBrowser Client="MoviePilot", '
-                                        f'Device="requests", '
-                                        f'DeviceId="1", '
-                                        f'Version="1.0.0", '
-                                        f'Token="{self._apikey}"',
+                f'Device="requests", '
+                f'DeviceId="1", '
+                f'Version="1.0.0", '
+                f'Token="{self._apikey}"',
                 'Content-Type': 'application/json',
                 "Accept": "application/json"
             }).post_res(
@@ -1128,7 +1128,7 @@ class Emby:
             if not eventItem.percentage:
                 if message.get('PlaybackInfo', {}).get('PositionTicks') and message.get('Item', {}).get('RunTimeTicks'):
                     eventItem.percentage = message.get('PlaybackInfo', {}).get('PositionTicks') / \
-                                           message.get('Item', {}).get('RunTimeTicks') * 100
+                        message.get('Item', {}).get('RunTimeTicks') * 100
         if message.get('Session'):
             eventItem.ip = message.get('Session').get('RemoteEndPoint')
             eventItem.device_name = message.get('Session').get('DeviceName')
@@ -1201,7 +1201,7 @@ class Emby:
         server_id = server_id or self.serverid
         server_query = f"&serverId={server_id}" if server_id else ""
         return f"{self._playhost or self._host}web/index.html#!" \
-               f"/item?id={item_id}&context=home{server_query}"
+            f"/item?id={item_id}&context=home{server_query}"
 
     def get_backdrop_url(self, item_id: str, image_tag: str, remote: Optional[bool] = False) -> str:
         """
@@ -1219,7 +1219,7 @@ class Emby:
         else:
             host_url = self._host
         return f"{host_url}Items/{item_id}/" \
-               f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
+            f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
     def __get_local_image_by_id(self, item_id: str) -> str:
         """
@@ -1233,7 +1233,7 @@ class Emby:
         return "%sItems/%s/Images/Primary" % (self._host, item_id)
 
     def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[
-        List[_SchemaMediaServerPlayItem]]:
+            List[_SchemaMediaServerPlayItem]]:
         """
         获得继续观看
         """
@@ -1308,7 +1308,7 @@ class Emby:
         return None
 
     def get_latest(self, num: Optional[int] = 20, username: Optional[str] = None) -> Optional[
-        List[_SchemaMediaServerPlayItem]]:
+            List[_SchemaMediaServerPlayItem]]:
         """
         获得最近更新
         """

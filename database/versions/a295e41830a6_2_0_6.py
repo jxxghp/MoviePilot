@@ -32,10 +32,10 @@ def upgrade() -> None:
     _storages = row[0] if row else None
     if _storages and "alist" not in [storage["type"] for storage in _storages]:
         _storages.append({
-                "type": "alist",
-                "name": "AList",
-                "config": {}
-            })
+            "type": "alist",
+            "name": "AList",
+            "config": {}
+        })
         connection.execute(
             systemconfig.update().where(systemconfig.c.key == key).values(
                 value=_storages

@@ -8,7 +8,6 @@ from typing import Any, ContextManager, Protocol
 
 from app.schemas.types import SystemConfigKey
 
-
 PLUGIN_MUTATION_SYSTEM_CONFIG_KEYS = frozenset(
     {
         SystemConfigKey.UserInstalledPlugins,
@@ -30,6 +29,7 @@ class PluginRuntime(Protocol):
 
 
 PluginRuntimeProvider = Callable[[], PluginRuntime]
+ExistingPluginRuntimeProvider = Callable[[], PluginRuntime | None]
 
 
 def _unconfigured_runtime() -> PluginRuntime:
@@ -37,18 +37,34 @@ def _unconfigured_runtime() -> PluginRuntime:
     raise RuntimeError("插件运行时尚未由启动组合根装配")
 
 
+def _missing_existing_runtime() -> None:
+    """表示当前生命周期尚未物化插件运行时。"""
+    return None
+
+
 _runtime_provider: PluginRuntimeProvider = _unconfigured_runtime
+_existing_runtime_provider: ExistingPluginRuntimeProvider = _missing_existing_runtime
 
 
-def configure_plugin_runtime(provider: PluginRuntimeProvider) -> None:
-    """由启动组合根注册插件运行时实例提供器。"""
-    global _runtime_provider
+def configure_plugin_runtime(
+    provider: PluginRuntimeProvider,
+    *,
+    existing_provider: ExistingPluginRuntimeProvider | None = None,
+) -> None:
+    """由启动组合根注册插件运行时创建端口和无副作用探测端口。"""
+    global _runtime_provider, _existing_runtime_provider
     _runtime_provider = provider
+    _existing_runtime_provider = existing_provider or _missing_existing_runtime
 
 
 def get_plugin_manager() -> PluginRuntime:
     """返回当前组合根提供的插件运行时能力。"""
     return _runtime_provider()
+
+
+def get_existing_plugin_manager() -> PluginRuntime | None:
+    """返回已物化插件运行时；尚未创建时不触发隐式构造。"""
+    return _existing_runtime_provider()
 
 
 def plugin_system_config_mutation(

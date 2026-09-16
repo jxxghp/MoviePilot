@@ -1,5 +1,3 @@
-import hashlib
-import json
 import os
 import shlex
 import subprocess
@@ -42,18 +40,22 @@ def test_dockerfile_control_bundle_build_checks_fail_closed() -> None:
     assert "requirements.in" not in dockerfile
     assert "${VENV_PATH}/bin/pip" not in dockerfile
     assert "FROM prepare_payload AS prepare_control" in dockerfile
-    assert "-exec cp -f -t /bundle/control {} +" in dockerfile
-    assert "bash -n /bundle/entrypoint.sh" in dockerfile
     assert (
-        "COPY --from=prepare_control /bundle/control "
-        "/usr/local/lib/moviepilot/control" in dockerfile
+        "-exec cp -f -t /bundle/rootfs/usr/local/lib/moviepilot/control {} +"
+        in dockerfile
+    )
+    assert "bash -n /bundle/rootfs/entrypoint.sh" in dockerfile
+    assert (
+        "COPY --link --from=prepare_control /bundle/rootfs/ /" in dockerfile
     )
     assert 'ENTRYPOINT [ "/usr/bin/tini", "-g", "--", "/entrypoint.sh" ]' in dockerfile
     assert "CMD /usr/bin/curl -fsS" in dockerfile
     assert '"http://127.0.0.1:${PORT:-3001}/health/ready"' in dockerfile
     assert "system/global?token=moviepilot" not in dockerfile
     assert (
-        'for control_script in /bundle/control/*.sh; do bash -n "${control_script}" || exit 1; done'
+        "for control_script in "
+        '/bundle/rootfs/usr/local/lib/moviepilot/control/*.sh; do '
+        'bash -n "${control_script}" || exit 1; done'
         in dockerfile
     )
 
@@ -792,17 +794,27 @@ def test_updater_package_proxy_stays_command_scoped(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("mode", "install_result", "expected"),
-    (("false", "unused", "noop"), ("dev", "success", "updated"), ("dev", "failure", "failed")),
+    ("mode", "dev_update", "install_result", "expected"),
+    (
+        ("false", "false", "unused", "noop"),
+        ("true", "false", "unused", "noop"),
+        ("false", "true", "success", "updated"),
+        ("true", "True", "failure", "failed"),
+        ("dev", "", "success", "updated"),
+        ("dev", "false", "unused", "noop"),
+        ("release", "", "unused", "noop"),
+    ),
 )
 def test_updater_exposes_explicit_result(
-    tmp_path: Path, mode: str, install_result: str, expected: str
+    tmp_path: Path, mode: str, dev_update: str, install_result: str, expected: str
 ) -> None:
+    """Docker 由独立 Dev 开关决定启动更新，并兼容首次迁移的旧模式。"""
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
         MOVIEPILOT_AUTO_UPDATE="$2"
         INSTALL_RESULT="$3"
+        MOVIEPILOT_UPDATE_DEV="$4"
         PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
         source {UPDATER!s}
         INFO() {{ :; }}
@@ -823,7 +835,7 @@ def test_updater_exposes_explicit_result(
     )
 
     result = subprocess.run(
-        ["bash", "-c", script, "updater-test", str(tmp_path / "config"), mode, install_result],
+        ["bash", "-c", script, "updater-test", str(tmp_path / "config"), mode, install_result, dev_update],
         text=True,
         capture_output=True,
         check=True,
@@ -832,69 +844,23 @@ def test_updater_exposes_explicit_result(
     assert result.stdout == f"{expected}\n"
 
 
-def test_prepared_release_is_verified_and_installed_without_release_lookup(tmp_path: Path) -> None:
-    config_dir = tmp_path / "config"
-    update_root = config_dir / "temp" / "moviepilot-update"
-    update_root.mkdir(parents=True)
-    backend = update_root / "backend.zip"
-    frontend = update_root / "frontend.zip"
-    backend.write_bytes(b"backend-package")
-    frontend.write_bytes(b"frontend-package")
-    backend_sha256 = hashlib.sha256(backend.read_bytes()).hexdigest()
-    frontend_sha256 = hashlib.sha256(frontend.read_bytes()).hexdigest()
-    (update_root / "install.json").write_text(
-        json.dumps(
-            {
-                "version": "v3.1.0",
-                "frontend_version": "v3.1.0",
-                "backend_archive": str(backend),
-                "frontend_archive": str(frontend),
-                "backend_sha256": backend_sha256,
-                "frontend_sha256": frontend_sha256,
-            }
-        ),
-        encoding="utf-8",
-    )
-    release_probe = tmp_path / "release-probe"
-    script = textwrap.dedent(
-        f"""\
-        CONFIG_DIR="$1"
-        MOVIEPILOT_AUTO_UPDATE=release
-        PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
-        RELEASE_PROBE="$2"
-        source {UPDATER!s}
-        INFO() {{ :; }}
-        WARN() {{ :; }}
-        ERROR() {{ :; }}
-        test_connectivity_github() {{ touch "${{RELEASE_PROBE}}"; return 1; }}
-        install_backend_and_download_resources() {{
-            test "${{MOVIEPILOT_PREPARED_UPDATE}}" = true
-            test "$1" = tags/v3.1.0.zip
-            MOVIEPILOT_UPDATE_RESULT=updated
-        }}
-        run_moviepilot_update
-        printf '%s\n' "${{MOVIEPILOT_UPDATE_RESULT}}"
-        """
-    )
-
-    result = subprocess.run(
-        ["bash", "-c", script, "prepared-update-test", str(config_dir), str(release_probe)],
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-
-    assert result.stdout == "updated\n"
-    assert not release_probe.exists()
-    assert not (update_root / "install.json").exists()
-
-
 def test_release_mode_no_longer_checks_or_installs_during_restart(
     tmp_path: Path,
 ) -> None:
+    """非 Dev 模式不再由 update.sh 查版本或替换已下载程序。"""
+    updater = UPDATER.read_text(encoding="utf-8")
+    assert "install.json" not in updater
+    assert "MOVIEPILOT_PREPARED_UPDATE" not in updater
+    assert "apply_prepared" not in updater
+    for retired_function in (
+        "fetch_latest_v3_release",
+        "compare_versions",
+        "get_priority",
+    ):
+        assert f"function {retired_function}()" not in updater
+
     package_probe = tmp_path / "package-probe"
     curl_log = tmp_path / "curl.log"
-    comparison_log = tmp_path / "comparison.log"
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
@@ -902,28 +868,12 @@ def test_release_mode_no_longer_checks_or_installs_during_restart(
         PIP_PROXY= PROXY_HOST= GITHUB_PROXY= GITHUB_TOKEN=
         PACKAGE_PROBE="$2"
         CURL_LOG="$3"
-        COMPARISON_LOG="$4"
         source {UPDATER!s}
         INFO() {{ :; }}
         WARN() {{ :; }}
         ERROR() {{ :; }}
         test_connectivity_package() {{ touch "${{PACKAGE_PROBE}}"; return 0; }}
         test_connectivity_github() {{ CURL_OPTIONS=-sL; GITHUB_LOG=test; return 0; }}
-        compare_versions() {{ printf '%s|%s\n' "$1" "$2" > "${{COMPARISON_LOG}}"; return 1; }}
-        grep() {{
-            if [[ "$*" == *"/app/version.py"* ]]; then
-                printf '%s\n' "APP_VERSION = 'v3.0.0'"
-                return 0
-            fi
-            command grep "$@"
-        }}
-        sed() {{
-            if [[ "$*" == *"APP_VERSION"* ]]; then
-                printf '%s\n' 'v3.0.0'
-                return 0
-            fi
-            command sed "$@"
-        }}
         curl() {{
             printf '%s\n' "$*" >> "${{CURL_LOG}}"
             printf '%s\n' '[{{"tag_name":"v2.15.6"}},{{"tag_name":"v3.1.0-beta"}},{{"tag_name":"v3.1.0-rc"}},{{"tag_name":"v3.0.0"}}]'
@@ -942,7 +892,6 @@ def test_release_mode_no_longer_checks_or_installs_during_restart(
             str(tmp_path / "config"),
             str(package_probe),
             str(curl_log),
-            str(comparison_log),
         ],
         text=True,
         capture_output=True,
@@ -952,7 +901,63 @@ def test_release_mode_no_longer_checks_or_installs_during_restart(
     assert result.stdout == "noop\n"
     assert not package_probe.exists()
     assert not curl_log.exists()
-    assert not comparison_log.exists()
+
+
+def test_entrypoint_does_not_keep_retired_package_command_wrapper() -> None:
+    """依赖恢复统一走 updater 的受控路由后，不再保留旧代理包装器。"""
+    entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+
+    assert "function run_package_command()" not in entrypoint
+
+
+def test_entrypoint_delegates_restart_to_external_supervisor() -> None:
+    """容器入口使用内部 supervisor 托管前后端且不包含 Docker 控制面。"""
+    entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
+    supervisor = (ROOT / "docker" / "supervisord.conf").read_text(encoding="utf-8")
+
+    assert "docker_http_proxy" not in entrypoint
+    assert "/var/run/docker.sock" not in entrypoint
+    assert "docker_http_proxy" not in dockerfile
+    assert "/usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf" in entrypoint
+    assert "run_pending_dev_update_after_supervisor_shutdown" in entrypoint
+    assert "apply_pending_release_update_at_startup" in entrypoint
+    assert "-m app.cli apply-prepared-update" in entrypoint
+    assert "supervisor_exit_code=$?" in entrypoint
+    assert "supervisor" in dockerfile
+    assert "[program:moviepilot-nginx]" in supervisor
+    assert "[program:moviepilot-backend]" in supervisor
+    assert "[program:moviepilot-update-worker]" in supervisor
+    assert "user=root" in supervisor
+    assert "-name '*.sh' ! -name 'launcher.sh'" in dockerfile
+    assert supervisor.count("autorestart=true") == 2
+
+
+def test_release_update_worker_applies_before_supervisor_shutdown() -> None:
+    """Release worker 必须先调用后端安装器，再关闭 supervisor 触发入口重载。"""
+    worker = (ROOT / "docker" / "update-worker.sh").read_text(encoding="utf-8")
+
+    assert "-m app.cli apply-prepared-update" in worker
+    assert "supervisorctl -c \"${SUPERVISOR_CONFIG}\" shutdown" in worker
+    assert worker.index("apply-prepared-update") < worker.index("shutdown")
+
+
+def test_update_reexec_uses_stable_working_directory() -> None:
+    """更新替换 /app 后，入口重入和 worker 控制面调用必须离开旧工作目录。"""
+    entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    worker = (ROOT / "docker" / "update-worker.sh").read_text(encoding="utf-8")
+
+    reexec = entrypoint.split("function reexec_entrypoint()", 1)[1].split("}", 1)[0]
+    assert reexec.index("cd / || exit 1") < reexec.index("exec /entrypoint.sh")
+    assert entrypoint.count("exec /entrypoint.sh --post-update-reexec") == 1
+    assert entrypoint.count("reexec_entrypoint") == 5
+
+    supervisor_start = entrypoint.index("/usr/bin/supervisord -n")
+    assert entrypoint.rfind("cd / || exit 1", 0, supervisor_start) > entrypoint.rfind(
+        "cd /app || exit", 0, supervisor_start
+    )
+    worker_stable_cwd = worker.index("cd /", worker.index("apply-prepared-update"))
+    assert worker_stable_cwd < worker.index("supervisorctl")
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,8 @@
 from datetime import datetime
-from typing import Any, List, Mapping, Tuple, Optional
+from typing import Any, List, Mapping, Optional, Tuple
 
-from sqlalchemy import delete as sqlalchemy_delete, select
+from sqlalchemy import delete as sqlalchemy_delete
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -10,6 +11,7 @@ from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.models.siteuserdata import SiteUserData
+from app.db.oper.query import literal_contains
 
 
 async def _async_first(session: AsyncSession, statement: Any) -> Optional[Site]:
@@ -18,10 +20,81 @@ async def _async_first(session: AsyncSession, statement: Any) -> Optional[Site]:
     return result.scalars().first()
 
 
-async def _async_all(session: AsyncSession, statement: Any) -> list[Site]:
-    """执行异步站点查询并返回稳定列表。"""
+async def _async_all(session: AsyncSession, statement: Any) -> list[Any]:
+    """执行异步列表查询并返回稳定 ORM 行。"""
     result = await session.execute(statement)
     return list(result.scalars().all())
+
+
+async def _async_scalar(session: AsyncSession, statement: Any) -> int:
+    """执行异步计数语句并返回整数。"""
+    result = await session.execute(statement)
+    return int(result.scalar_one() or 0)
+
+
+def _apply_page(statement: Any, page: Optional[int], count: Optional[int]) -> Any:
+    """仅在分页窗口完整时向 SQL 语句追加 LIMIT/OFFSET。"""
+    if page is None or count is None:
+        return statement
+    return statement.offset((page - 1) * count).limit(count)
+
+
+def _site_conditions(
+    *,
+    is_active: Optional[bool] = None,
+    name: Optional[str] = None,
+    site_ids: Optional[list[int]] = None,
+    domains: Optional[list[str]] = None,
+) -> list[Any]:
+    """构造站点列表与计数共享的数据库筛选条件。"""
+    conditions: list[Any] = []
+    if is_active is not None:
+        conditions.append(Site.is_active.is_(is_active))
+    if name:
+        conditions.append(literal_contains(Site.name, name))
+    if site_ids is not None or domains is not None:
+        identity_conditions: list[Any] = []
+        if site_ids:
+            identity_conditions.append(Site.id.in_(site_ids))
+        if domains:
+            identity_conditions.append(Site.domain.in_(domains))
+        conditions.append(
+            or_(*identity_conditions) if identity_conditions else false()
+        )
+    return conditions
+
+
+def _userdata_conditions(
+    domain: str,
+    workdate: Optional[str],
+) -> list[Any]:
+    """构造站点用户数据列表与计数共享的筛选条件。"""
+    conditions = [SiteUserData.domain == domain]
+    if workdate:
+        conditions.append(SiteUserData.updated_day == workdate)
+    return conditions
+
+
+def _latest_userdata_subquery() -> Any:
+    """构造各站点最新有效数据日期的共享子查询。"""
+    return (
+        select(
+            SiteUserData.domain,
+            func.max(SiteUserData.updated_day).label("latest_update_day"),
+        )
+        .where(or_(SiteUserData.err_msg.is_(None), SiteUserData.err_msg == ""))
+        .group_by(SiteUserData.domain)
+        .subquery()
+    )
+
+
+def _latest_userdata_join(statement: Any, subquery: Any) -> Any:
+    """把最新用户数据日期子查询连接到目标查询语句。"""
+    return statement.join(
+        subquery,
+        (SiteUserData.domain == subquery.c.domain)
+        & (SiteUserData.updated_day == subquery.c.latest_update_day),
+    )
 
 
 class SiteOper(DbOper):
@@ -114,13 +187,51 @@ class SiteOper(DbOper):
             lambda session: _async_all(session, select(Site))
         )
 
-    async def async_list_order_by_pri(self) -> List[Site]:
-        """异步按优先级获取站点，供站点查询应用服务使用。"""
+    async def async_list_order_by_pri(
+        self,
+        *,
+        is_active: Optional[bool] = None,
+        name: Optional[str] = None,
+        site_ids: Optional[List[int]] = None,
+        domains: Optional[List[str]] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> List[Site]:
+        """按筛选、优先级和可选分页窗口异步获取站点。"""
+        statement = select(Site).where(
+            *_site_conditions(
+                is_active=is_active,
+                name=name,
+                site_ids=site_ids,
+                domains=domains,
+            )
+        ).order_by(Site.pri, Site.id)
         return await self._execute_async_query(
             lambda session: _async_all(
                 session,
-                select(Site).order_by(Site.pri),
+                _apply_page(statement, page, count),
             )
+        )
+
+    async def async_count_sites(
+        self,
+        *,
+        is_active: Optional[bool] = None,
+        name: Optional[str] = None,
+        site_ids: Optional[List[int]] = None,
+        domains: Optional[List[str]] = None,
+    ) -> int:
+        """按与站点列表一致的筛选条件异步统计数量。"""
+        statement = select(func.count()).select_from(Site).where(
+            *_site_conditions(
+                is_active=is_active,
+                name=name,
+                site_ids=site_ids,
+                domains=domains,
+            )
+        )
+        return await self._execute_async_query(
+            lambda session: _async_scalar(session, statement)
         )
 
     def list_order_by_pri(self) -> List[Site]:
@@ -317,23 +428,69 @@ class SiteOper(DbOper):
         )
 
     async def async_get_userdata_by_domain(
-        self, domain: str, workdate: Optional[str] = None
+        self,
+        domain: str,
+        workdate: Optional[str] = None,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> List[SiteUserData]:
-        """
-        异步获取站点用户数据。
-        """
+        """按可选分页窗口异步获取站点用户数据。"""
+        statement = select(SiteUserData).where(
+            *_userdata_conditions(domain, workdate)
+        ).order_by(
+            SiteUserData.updated_day.desc(),
+            SiteUserData.updated_time.desc(),
+            SiteUserData.id.desc(),
+        )
         return await self._execute_async_query(
-            lambda session: SiteUserData.async_get_by_domain(
+            lambda session: _async_all(
                 session,
-                domain=domain,
-                workdate=workdate,
+                _apply_page(statement, page, count),
             )
         )
 
-    async def async_get_userdata_latest(self) -> List[SiteUserData]:
-        """异步获取各站点最新用户数据。"""
+    async def async_count_userdata_by_domain(
+        self,
+        domain: str,
+        workdate: Optional[str] = None,
+    ) -> int:
+        """异步统计指定站点和日期的用户数据数量。"""
+        statement = select(func.count()).select_from(SiteUserData).where(
+            *_userdata_conditions(domain, workdate)
+        )
         return await self._execute_async_query(
-            lambda session: SiteUserData.async_get_latest(session)
+            lambda session: _async_scalar(session, statement)
+        )
+
+    async def async_get_userdata_latest(
+        self,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> List[SiteUserData]:
+        """按可选分页窗口异步获取各站点最新用户数据。"""
+        subquery = _latest_userdata_subquery()
+        statement = _latest_userdata_join(select(SiteUserData), subquery).order_by(
+            SiteUserData.updated_time.desc(),
+            SiteUserData.id.desc(),
+        )
+        return await self._execute_async_query(
+            lambda session: _async_all(
+                session,
+                _apply_page(statement, page, count),
+            )
+        )
+
+    async def async_count_userdata_latest(self) -> int:
+        """异步统计各站点最新用户数据查询的结果数量。"""
+        subquery = _latest_userdata_subquery()
+        statement = _latest_userdata_join(
+            select(func.count()).select_from(SiteUserData),
+            subquery,
+        )
+        return await self._execute_async_query(
+            lambda session: _async_scalar(session, statement)
         )
 
     async def async_get_icon_by_domain(self, domain: str) -> Optional[SiteIcon]:
@@ -351,9 +508,27 @@ class SiteOper(DbOper):
             lambda session: SiteStatistic.async_get_by_domain(session, domain)
         )
 
-    async def async_list_statistics(self) -> List[SiteStatistic]:
-        """异步获取所有站点统计。"""
-        return await self._execute_async_query(SiteStatistic.async_list)
+    async def async_list_statistics(
+        self,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> List[SiteStatistic]:
+        """按可选分页窗口异步获取站点统计。"""
+        statement = select(SiteStatistic).order_by(SiteStatistic.id)
+        return await self._execute_async_query(
+            lambda session: _async_all(
+                session,
+                _apply_page(statement, page, count),
+            )
+        )
+
+    async def async_count_statistics(self) -> int:
+        """异步统计站点健康统计记录数量。"""
+        statement = select(func.count()).select_from(SiteStatistic)
+        return await self._execute_async_query(
+            lambda session: _async_scalar(session, statement)
+        )
 
     def get_userdata_by_date(self, date: str) -> List[SiteUserData]:
         """

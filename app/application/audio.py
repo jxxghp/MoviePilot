@@ -3,8 +3,10 @@ from typing import Any, Optional, Union
 from uuid import UUID
 
 from mutagen import File as MutagenFile
+from mutagen.apev2 import APEBinaryValue
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, SYLT, USLT
+from mutagen.monkeysaudio import MonkeysAudio
 from mutagen.mp4 import MP4, MP4Cover
 
 from app.domain.context import MusicInfo, MusicLyrics
@@ -54,8 +56,12 @@ class AudioMetadataHelper:
             return None
 
         tags = audio.tags or {}
-        track_number, total_tracks = cls._number_pair(cls._first(tags, "tracknumber"))
-        disc_number, total_discs = cls._number_pair(cls._first(tags, "discnumber"))
+        track_number, total_tracks = cls._number_pair(
+            cls._first_of(tags, "tracknumber", "track")
+        )
+        disc_number, total_discs = cls._number_pair(
+            cls._first_of(tags, "discnumber", "disc")
+        )
         musicbrainz_id = cls._normalize_musicbrainz_id(
             cls._first_of(
                 tags,
@@ -69,8 +75,8 @@ class AudioMetadataHelper:
             title=cls._first(tags, "title"),
             artists=cls._values(tags, "artist"),
             album=cls._first(tags, "album"),
-            album_artist=cls._first(tags, "albumartist"),
-            year=cls._year(cls._first(tags, "date") or cls._first(tags, "originaldate")),
+            album_artist=cls._first_of(tags, "albumartist", "album artist"),
+            year=cls._year(cls._first_of(tags, "date", "year", "originaldate")),
             disc_number=disc_number,
             track_number=track_number,
             total_discs=total_discs,
@@ -269,8 +275,20 @@ class AudioMetadataHelper:
             cover_mime: str,
             overwrite: bool,
     ) -> None:
-        """为 MP3、FLAC 和 MP4/M4A 写入内嵌封面，其它格式保留标签写入结果。"""
+        """为 MP3、FLAC、MP4/M4A 和 APE 写入内嵌封面，其它格式保留标签写入结果。"""
         audio = MutagenFile(path)
+        if isinstance(audio, MonkeysAudio):
+            if audio.tags is None:
+                audio.add_tags()
+            cover_key = "Cover Art (Front)"
+            if cover_key in audio.tags and not overwrite:
+                return
+            cover_filename = "cover.png" if cover_mime == "image/png" else "cover.jpg"
+            audio.tags[cover_key] = APEBinaryValue(
+                cover_filename.encode("ascii") + b"\x00" + cover_data
+            )
+            audio.save()
+            return
         if isinstance(audio, FLAC):
             if audio.pictures and not overwrite:
                 return

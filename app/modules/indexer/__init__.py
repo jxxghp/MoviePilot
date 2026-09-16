@@ -2,8 +2,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
 from typing import Any, Callable, List, Mapping, Optional, Tuple, Union, cast
+from urllib.parse import urljoin
 
 from app.application.site.health import get_configured_site_health_service
+from app.application.site.observation import report_site_search_outcome
 from app.application.site.query import get_configured_site_query_service
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.domain import site as site_rules
@@ -11,7 +13,7 @@ from app.domain.context import Context, SubtitleInfo, TorrentInfo
 from app.foundation import text as text_tools
 from app.foundation.reflection import ModuleHelper
 from app.modules import _ModuleBase
-from app.modules.indexer.parser import SiteParserBase
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.modules.indexer.spider import SiteSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.hddolby import HddolbySpider
@@ -22,6 +24,7 @@ from app.modules.indexer.spider.tnode import TNodeSpider
 from app.modules.indexer.spider.torrentleech import TorrentLeech
 from app.modules.indexer.spider.yema import YemaSpider
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.media import resolve_media_identity
 from app.schemas.site import SiteUserData
 from app.schemas.types import MediaSource, MediaType, ModuleType, OtherModulesType
@@ -48,6 +51,16 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
     "RousiPro": ("keyword", "mtype", "cat", "page"),
 }
 
+_UNKNOWN_SEARCH_FAILURE_MESSAGE = "站点请求或页面解析失败"
+
+# NexusPHP、Gazelle 和 Unit3d 覆盖大多数站点，其余模型多为专站适配，
+# 不参与自动探测，避免对同一站点重复请求专用接口。
+_COMMON_SITE_USERDATA_FALLBACK_SCHEMAS = frozenset({
+    SiteSchema.Gazelle.value,
+    SiteSchema.NexusPhp.value,
+    SiteSchema.Unit3d.value,
+})
+
 
 @dataclass(frozen=True)
 class _IndexerSearchRequest:
@@ -64,6 +77,33 @@ class _IndexerSearchOutcome:
     error_flag: bool
     result: List[dict[str, Any]]
     seconds: int
+    error: Optional[Exception] = None
+
+
+def _classify_search_failure(error: Optional[Exception]) -> str:
+    """把索引器异常归一为站点预算可执行的冷却类别。"""
+    if error is None:
+        return "error"
+    status_code = getattr(error, "status_code", None)
+    text = f"{type(error).__name__}: {error}".lower()
+    if status_code == 429 or "429" in text or "rate limit" in text:
+        return "rate_limited"
+    if status_code == 403 or "403" in text or "forbidden" in text:
+        return "forbidden"
+    if any(token in text for token in ("未登录", "登录失效", "login", "cookie")):
+        return "login_invalid"
+    if isinstance(error, TimeoutError) or "timeout" in text or "timed out" in text or "超时" in text:
+        return "timeout"
+    return "error"
+
+
+def _search_failure_message(outcome: _IndexerSearchOutcome) -> Optional[str]:
+    """返回供站点预算持久化和任务聚合展示的失败原因。"""
+    if outcome.error is not None:
+        return str(outcome.error)
+    if outcome.error_flag:
+        return _UNKNOWN_SEARCH_FAILURE_MESSAGE
+    return None
 
 
 class IndexerModule(_ModuleBase):
@@ -359,12 +399,14 @@ class IndexerModule(_ModuleBase):
         start_time: datetime,
         error_flag: bool,
         result: List[dict[str, Any]],
+        error: Optional[Exception] = None,
     ) -> _IndexerSearchOutcome:
         """把同步、异步 I/O 结果整理为共用的搜索完成状态"""
         return _IndexerSearchOutcome(
             error_flag=error_flag,
             result=result,
             seconds=(datetime.now() - start_time).seconds,
+            error=error,
         )
 
     @staticmethod
@@ -403,21 +445,33 @@ class IndexerModule(_ModuleBase):
             page=page,
         )
         if not request:
+            report_site_search_outcome(attempted=False, outcome="skipped")
             return []
 
         # 开始搜索
+        error: Optional[Exception] = None
         try:
             error_flag, result = self.__execute_search(site, request)
         except Exception as err:
+            error = err
             self.__log_search_error(site, "torrents", err)
 
-        outcome = self.__create_search_outcome(start_time, error_flag, result)
+        outcome = self.__create_search_outcome(start_time, error_flag, result, error)
 
         # 统计索引情况
         self.__indexer_statistic(
             site=site,
             error_flag=outcome.error_flag,
             seconds=outcome.seconds,
+        )
+        report_site_search_outcome(
+            attempted=True,
+            outcome=(
+                _classify_search_failure(outcome.error)
+                if outcome.error_flag or outcome.error is not None
+                else "success"
+            ),
+            error=_search_failure_message(outcome),
         )
 
         # 返回结果
@@ -498,21 +552,33 @@ class IndexerModule(_ModuleBase):
             page=page,
         )
         if not request:
+            report_site_search_outcome(attempted=False, outcome="skipped")
             return []
 
         # 开始搜索
+        error: Optional[Exception] = None
         try:
             error_flag, result = await self.__async_execute_search(site, request)
         except Exception as err:
+            error = err
             self.__log_search_error(site, "torrents", err)
 
-        outcome = self.__create_search_outcome(start_time, error_flag, result)
+        outcome = self.__create_search_outcome(start_time, error_flag, result, error)
 
         # 统计索引情况
         await self.__async_indexer_statistic(
             site=site,
             error_flag=outcome.error_flag,
             seconds=outcome.seconds,
+        )
+        report_site_search_outcome(
+            attempted=True,
+            outcome=(
+                _classify_search_failure(outcome.error)
+                if outcome.error_flag or outcome.error is not None
+                else "success"
+            ),
+            error=_search_failure_message(outcome),
         )
 
         # 返回结果
@@ -674,13 +740,23 @@ class IndexerModule(_ModuleBase):
             schema_value = schema_value or site.get("schema")
             for site_schema in self._site_schemas:
                 if site_schema.schema and site_schema.schema.value == schema_value:
+                    site_url = site.get("url")
+                    userdata_path = str(site.get("userdata_path") or "").strip()
+                    if userdata_path and site_url:
+                        if userdata_path.startswith(("http://", "https://")):
+                            site_url = userdata_path
+                        else:
+                            site_url = urljoin(
+                                f"{str(site_url).rstrip('/')}/",
+                                userdata_path.lstrip("/"),
+                            )
                     return site_schema(
                         site_name=site.get("name"),
-                        url=site.get("url"),
+                        url=site_url,
                         site_cookie=site.get("cookie"),
                         apikey=site.get("apikey"),
                         token=site.get("token"),
-                        ua=site.get("ua"),
+                        ua=site.get("ua") or get_runtime_setting("USER_AGENT"),
                         proxy=site.get("proxy"),
                         api_url=site.get("api_url"))
             return None
@@ -702,7 +778,11 @@ class IndexerModule(_ModuleBase):
             if not site_obj.userid and not site.get("public"):
                 tried = {site.get("schema")}
                 for site_schema in self._site_schemas:
-                    if not site_schema.schema or site_schema.schema.value in tried:
+                    if (
+                        not site_schema.schema
+                        or site_schema.schema.value in tried
+                        or site_schema.schema.value not in _COMMON_SITE_USERDATA_FALLBACK_SCHEMAS
+                    ):
                         continue
                     tried.add(site_schema.schema.value)
                     logger.info(f"站点 {site.get('name')} schema {site.get('schema')} 解析失败, "
@@ -719,6 +799,8 @@ class IndexerModule(_ModuleBase):
                         site_obj = alt_obj
                         logger.info(f"站点 {site.get('name')} 改用 {site_schema.schema.value} 模型解析成功")
                         break
+            if not site_obj.userid and not site.get("public"):
+                site_obj.err_msg = site_obj.err_msg or "未获取到站点用户信息，请检查 Cookie 是否有效"
             return SiteUserData(
                 domain=site_rules.extract_domain(site.get("url")),
                 userid=site_obj.userid,

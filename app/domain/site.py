@@ -1,8 +1,10 @@
+from typing import Optional
+from urllib.parse import urljoin
+
 from lxml import etree
 
 from app.foundation.dom import DomUtils
 from app.foundation.url import split_netloc
-
 
 _SPECIAL_SITE_DOMAINS = (
     "u2.dmhy.org",
@@ -39,9 +41,18 @@ def extract_domain(url: str) -> str:
     return ".".join(labels[-2:])
 
 
+def resolve_page_url(site_url: str, page_path: Optional[str]) -> str:
+    """将站点资源声明的页面路径解析为绝对地址。"""
+    page_path = str(page_path or "").strip()
+    if not page_path:
+        return site_url
+    if page_path.startswith(("http://", "https://")):
+        return page_path
+    return urljoin(f"{str(site_url).rstrip('/')}/", page_path.lstrip("/"))
+
+
 class SiteUtils:
     """提供站点域名、Cookie 和访问参数处理能力。"""
-
 
     @classmethod
     def is_logged_in(cls, html_text: str) -> bool:

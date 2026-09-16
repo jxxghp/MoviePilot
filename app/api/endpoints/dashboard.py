@@ -8,7 +8,11 @@ from app.adapters.web.security.access import verify_apitoken
 from app.api.context import get_api_runtime_config, resolve_api_runtime_config
 from app.api.dependencies.auth import get_current_active_superuser
 from app.api.dependencies.history import get_dashboard_query_service
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.configuration import ApiRuntimeConfig
 from app.application.dashboard import DashboardQueryService
 from app.application.directory import DirectoryHelper
@@ -125,7 +129,7 @@ def storage2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
 
 
 @router.get("/processes", summary="进程信息", response_model=List[_SchemaProcessInfo])
-def processes(_: Any = Depends(get_current_active_superuser)) -> Any:
+def processes(_: Any = Depends(get_current_active_superuser), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询进程信息
     """
@@ -175,7 +179,7 @@ def downloader2(
 
 
 @router.get("/schedule", summary="后台服务", response_model=List[_SchemaScheduleInfo])
-async def schedule(_: Any = Depends(get_current_active_superuser)) -> Any:
+async def schedule(_: Any = Depends(get_current_active_superuser), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询后台服务信息
     """
@@ -206,7 +210,7 @@ async def schedule_progress(
     summary="后台服务（API_TOKEN）",
     response_model=List[_SchemaScheduleInfo],
 )
-async def schedule2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
+async def schedule2(_: Annotated[str, Depends(verify_apitoken)], page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询下载器信息 API_TOKEN认证（?token=xxx）
     """
@@ -237,6 +241,8 @@ async def transfer(
     days: Optional[int] = 7,
     service: DashboardQueryService = Depends(get_dashboard_query_service),
     _: Any = Depends(get_current_active_superuser),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询文件整理统计信息
@@ -285,7 +291,7 @@ def memory2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
 
 
 @router.get("/network", summary="获取当前网络流量", response_model=List[int])
-def network(_: Any = Depends(get_current_active_superuser)) -> Any:
+def network(_: Any = Depends(get_current_active_superuser), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     获取当前网络流量（上行和下行流量，单位：bytes/s）
     """
@@ -295,7 +301,7 @@ def network(_: Any = Depends(get_current_active_superuser)) -> Any:
 @router.get(
     "/network2", summary="获取当前网络流量（API_TOKEN）", response_model=List[int]
 )
-def network2(_: Annotated[str, Depends(verify_apitoken)]) -> Any:
+def network2(_: Annotated[str, Depends(verify_apitoken)], page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     获取当前网络流量 API_TOKEN认证（?token=xxx）
     """

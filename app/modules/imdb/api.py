@@ -415,27 +415,31 @@ class ImdbApi:
         item = cls._first_title(data)
         if not item:
             return None
-        genres = item.get("titleGenres", {}).get("genres") or []
-        countries = item.get("countriesOfOrigin", {}).get("countries") or []
-        languages = item.get("spokenLanguages", {}).get("spokenLanguages") or []
+        genres = (item.get("titleGenres") or {}).get("genres") or []
+        countries = (item.get("countriesOfOrigin") or {}).get("countries") or []
+        languages = (item.get("spokenLanguages") or {}).get("spokenLanguages") or []
         return cls._parse(
             ImdbTitle,
             {
                 "id": item.get("id"),
-                "type": item.get("titleType", {}).get("id"),
+                "type": (item.get("titleType") or {}).get("id"),
                 "isAdult": item.get("isAdult"),
-                "primaryTitle": item.get("titleText", {}).get("text"),
-                "originalTitle": item.get("originalTitleText", {}).get("text"),
+                "primaryTitle": (item.get("titleText") or {}).get("text"),
+                "originalTitle": (item.get("originalTitleText") or {}).get(
+                    "text"
+                ),
                 "primaryImage": item.get("primaryImage"),
-                "startYear": item.get("releaseYear", {}).get("year"),
-                "runtimeSeconds": item.get("runtime", {}).get("seconds"),
+                "startYear": (item.get("releaseYear") or {}).get("year"),
+                "runtimeSeconds": (item.get("runtime") or {}).get("seconds"),
                 "genres": [
-                    entry.get("genre", {}).get("text")
+                    (entry.get("genre") or {}).get("text")
                     for entry in genres
-                    if entry.get("genre", {}).get("text")
+                    if (entry.get("genre") or {}).get("text")
                 ],
                 "rating": item.get("ratingsSummary"),
-                "plot": item.get("plot", {}).get("plotText", {}).get("plainText"),
+                "plot": ((item.get("plot") or {}).get("plotText") or {}).get(
+                    "plainText"
+                ),
                 "originCountries": [
                     {"code": entry.get("id"), "name": entry.get("text")}
                     for entry in countries
@@ -513,23 +517,25 @@ class ImdbApi:
     ) -> tuple[list[ImdbEpisode], Optional[str]]:
         """解析一页 GraphQL 单集边及下一页游标。"""
         title = cls._first_title(data) or {}
-        connection = title.get("episodes", {}).get("episodes") or {}
+        connection = (title.get("episodes") or {}).get("episodes") or {}
         episodes: list[ImdbEpisode] = []
         for edge in connection.get("edges") or []:
             node = edge.get("node") or {}
-            episode_number = node.get("series", {}).get("episodeNumber") or {}
+            episode_number = (node.get("series") or {}).get("episodeNumber") or {}
             episode = cls._parse(
                 ImdbEpisode,
                 {
                     "id": node.get("id"),
-                    "title": node.get("titleText", {}).get("text"),
+                    "title": (node.get("titleText") or {}).get("text"),
                     "primaryImage": node.get("primaryImage"),
                     "season": str(episode_number.get("seasonNumber"))
                     if episode_number.get("seasonNumber") is not None
                     else None,
                     "episodeNumber": episode_number.get("episodeNumber"),
-                    "runtimeSeconds": node.get("runtime", {}).get("seconds"),
-                    "plot": node.get("plot", {}).get("plotText", {}).get("plainText"),
+                    "runtimeSeconds": (node.get("runtime") or {}).get("seconds"),
+                    "plot": ((node.get("plot") or {}).get("plotText") or {}).get(
+                        "plainText"
+                    ),
                     "rating": node.get("ratingsSummary"),
                     "releaseDate": node.get("releaseDate"),
                 },

@@ -3,22 +3,21 @@ import re
 import threading
 from typing import Any, Optional, Tuple
 
-from app.runtime.execution import run_in_threadpool
 from app.agent.policy.sanitizer import sanitize_for_host
 from app.chain.base import ChainBase
+from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.message import Message, MessageResponse
-from app.schemas.notification import ChannelCapabilityManager, ChannelCapability
-from app.schemas.types import NotificationChannel, MessageType
+from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
+from app.schemas.types import MessageType, NotificationChannel
 
 
 class _StreamChain(ChainBase):
     pass
 
 
-_PATCH_FILE_HEADER_PATTERN = re.compile(
-    r"\*\*\* (?:Add|Update|Delete) File:\s*(\S+)"
-)
+_PATCH_FILE_HEADER_PATTERN = re.compile(r"\*\*\* (?:Add|Update|Delete) File:\s*(\S+)")
 
 
 def _extract_first_patch_path(patch: Optional[str]) -> Optional[str]:
@@ -43,7 +42,7 @@ class StreamingHandler:
        - 后续有新内容时编辑同一条消息（通过 edit_message）
        - 当消息长度接近渠道限制时，冻结当前消息并发送新消息继续输出
     4. 工具调用时：
-       - 流式渠道：工具消息直接 emit() 追加到 buffer，与 Agent 文字合并为同一条流式消息
+       - 可编辑渠道：工具摘要实时写入 buffer；同一批次的后续调用会原地更新摘要块
        - 非流式渠道：调用 take() 取出已积累的文字，与工具消息合并独立发送
     5. Agent最终完成时调用 stop_streaming()：执行最后一次刷新，
        返回是否已通过流式发送完所有内容（调用方据此决定是否还需额外发送）
@@ -76,14 +75,17 @@ class StreamingHandler:
         self._original_chat_id: Optional[str] = None
         self._title: str = ""
         self._allow_dispatch_without_context = False
-        # 非啰嗦模式下的待输出工具统计，等下一段文本到来时再统一补一句摘要
+        # 非啰嗦模式下尚未写入展示的工具统计。
         self._pending_tool_stats: dict[str, dict[str, Any]] = {}
-        # 本轮已写入缓冲区的工具摘要行，供 Telegram 富文本渲染时做区分样式
+        # 当前正在实时更新的工具摘要块：(起始偏移, 完整块, 摘要行)。
+        # 正文到来后清空，使下一次工具调用开启新的统计批次。
+        self._live_tool_summary: Optional[tuple[int, str, str]] = None
+        # 当前实时摘要批次的累计统计，不能随着每次渲染摘要被消费掉。
+        self._live_tool_stats: dict[str, dict[str, Any]] = {}
+        # 本轮已写入缓冲区的工具展示行，供 Telegram 富文本渲染时做区分样式
         self._tool_summaries: set[str] = set()
 
-    def set_dispatch_policy(
-        self, allow_dispatch_without_context: bool = False
-    ) -> None:
+    def set_dispatch_policy(self, allow_dispatch_without_context: bool = False) -> None:
         """
         设置在缺少渠道上下文时是否仍允许向默认通知渠道分发消息。
         后台 DISPATCH 任务允许，CAPTURE_ONLY 必须禁止。
@@ -99,8 +101,16 @@ class StreamingHandler:
             emitted = token or ""
 
             if self._pending_tool_stats:
-                summary = self._consume_pending_tool_summary_locked()
+                if self._live_tool_summary:
+                    # 实时摘要已经直接更新了 buffer，正文只需继续追加，避免把
+                    # 本次替换后的摘要块再次拼接到缓冲区末尾。
+                    self._flush_live_tool_summary_locked()
+                    summary = ""
+                else:
+                    summary = self._consume_pending_tool_summary_locked()
                 if summary:
+                    self._live_tool_summary = None
+                    self._live_tool_stats = {}
                     if emitted:
                         emitted = f"{summary}{emitted.lstrip(chr(10))}"
                     else:
@@ -110,7 +120,67 @@ class StreamingHandler:
             if self._buffer.endswith("\n\n") and emitted.startswith("\n"):
                 emitted = emitted.lstrip("\n")
             self._buffer += emitted
+            if emitted:
+                self._live_tool_summary = None
+                self._live_tool_stats = {}
             return emitted
+
+    def emit_tool_message(self, message: str) -> str:
+        """
+        将啰嗦模式的逐条工具提示写入缓冲区，并登记为独立展示行。
+
+        Telegram Rich Markdown 依赖登记结果把工具提示渲染成引用块；
+        其他渠道仍消费相同的纯文本缓冲内容。
+        """
+        normalized_message = str(message or "").strip()
+        if not normalized_message:
+            return ""
+
+        tool_message = f"⚙️ => {normalized_message}"
+        with self._lock:
+            self._tool_summaries.update(
+                line for line in tool_message.splitlines() if line
+            )
+        return self.emit(f"\n\n{tool_message}\n\n")
+
+    def _is_verbose_mode(self) -> bool:
+        """判断当前是否启用逐条工具调用展示。"""
+        return bool(get_runtime_setting("AI_AGENT_VERBOSE"))
+
+    def report_tool_call(
+        self,
+        tool_name: str,
+        tool_message: Optional[str] = None,
+        tool_kwargs: Optional[dict[str, Any]] = None,
+    ) -> str:
+        """
+        按 Agent 详细模式逐条展示工具调用，或登记为延迟汇总。
+
+        中间件私有工具不经过 ``MoviePilotTool._arun``，必须通过本入口复用
+        相同的详细模式语义，避免无条件调用 ``record_tool_call`` 后只显示汇总。
+        """
+        safe_message = sanitize_for_host(tool_message) if tool_message else tool_message
+        if self._is_verbose_mode() and safe_message:
+            return self.emit_tool_message(str(safe_message))
+        self.record_tool_call(
+            tool_name=tool_name,
+            tool_message=str(safe_message) if safe_message else None,
+            tool_kwargs=tool_kwargs,
+        )
+        return ""
+
+    def tool_call_started(
+        self,
+        tool_name: str,
+        tool_message: Optional[str] = None,
+    ) -> str:
+        """为支持结构化生命周期的宿主预留工具调用 ID。"""
+        del tool_name, tool_message
+        return ""
+
+    def tool_call_finished(self, tool_id: str, status: str = "done") -> None:
+        """收口真实工具执行；普通通知渠道无需额外输出生命周期事件。"""
+        del tool_id, status
 
     async def take(self) -> str:
         """
@@ -125,10 +195,14 @@ class StreamingHandler:
 
         with self._lock:
             if not self._buffer:
+                self._live_tool_summary = None
+                self._live_tool_stats = {}
                 return ""
             message = self._buffer
             logger.info(f"Agent消息: {message}")
             self._buffer = ""
+            self._live_tool_summary = None
+            self._live_tool_stats = {}
             return message
 
     def clear(self):
@@ -142,6 +216,8 @@ class StreamingHandler:
             self._msg_start_offset = 0
             self._pending_tool_stats = {}
             self._tool_summaries = set()
+            self._live_tool_summary = None
+            self._live_tool_stats = {}
 
     def reset(self):
         """
@@ -157,6 +233,8 @@ class StreamingHandler:
             self._msg_start_offset = 0
             self._pending_tool_stats = {}
             self._tool_summaries = set()
+            self._live_tool_summary = None
+            self._live_tool_stats = {}
 
     async def start_streaming(
         self,
@@ -220,6 +298,8 @@ class StreamingHandler:
         self._msg_start_offset = 0
         self._pending_tool_stats = {}
         self._tool_summaries = set()
+        self._live_tool_summary = None
+        self._live_tool_stats = {}
 
         # 检查渠道是否支持消息编辑，不支持则仅收集 token 到 buffer，不实时推送
         if not self._can_stream():
@@ -229,9 +309,7 @@ class StreamingHandler:
         # 从渠道能力中获取单条消息最大长度
         try:
             channel_enum = NotificationChannel(self._channel)
-            self._max_message_length = ChannelCapabilityManager.get_max_message_length(
-                channel_enum
-            )
+            self._max_message_length = ChannelCapabilityManager.get_max_message_length(channel_enum)
         except (ValueError, KeyError):
             self._max_message_length = 0
 
@@ -276,12 +354,8 @@ class StreamingHandler:
         # 检查是否所有缓冲内容都已发送
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
-            current_msg_text = self._buffer[self._msg_start_offset:]
-            all_sent = (
-                self._message_response is not None
-                and self._sent_text
-                and current_msg_text == self._sent_text
-            )
+            current_msg_text = self._buffer[self._msg_start_offset :]
+            all_sent = self._message_response is not None and self._sent_text and current_msg_text == self._sent_text
             # 保留最终文本用于返回（返回完整 buffer 内容，包含所有分段消息）
             final_text = self._buffer if all_sent else ""
             # 重置状态
@@ -290,6 +364,8 @@ class StreamingHandler:
             self._msg_start_offset = 0
             self._pending_tool_stats = {}
             self._tool_summaries = set()
+            self._live_tool_summary = None
+            self._live_tool_stats = {}
             if all_sent:
                 # 所有内容已通过流式发送，清空缓冲区
                 self._buffer = ""
@@ -334,22 +410,30 @@ class StreamingHandler:
             for target_value in target_values:
                 bucket["targets"].add(str(target_value))
 
+        self._on_tool_stats_recorded()
+
+    def _on_tool_stats_recorded(self) -> None:
+        """工具统计新增后，在支持编辑的流式渠道中立即刷新当前摘要块。"""
+        if not self._streaming_enabled or not self._can_stream():
+            return
+        with self._lock:
+            self._flush_live_tool_summary_locked()
+
     @staticmethod
     def _extract_subagent_targets(tool_kwargs: dict[str, Any]) -> list[str]:
-        """提取子代理工具请求中的目标子代理类型。"""
+        """按实际委派条目数量生成通用子代理统计目标。"""
         tasks = tool_kwargs.get("tasks")
         if not isinstance(tasks, list):
-            subagent_type = tool_kwargs.get("subagent_type")
-            return [str(subagent_type)] if subagent_type else []
+            return ["general-purpose"] if tool_kwargs.get("description") else []
 
         targets = []
         for task in tasks:
             if isinstance(task, dict):
-                subagent_type = task.get("subagent_type")
+                description = task.get("description")
             else:
-                subagent_type = getattr(task, "subagent_type", None)
-            if subagent_type:
-                targets.append(str(subagent_type))
+                description = getattr(task, "description", None)
+            if description:
+                targets.append("general-purpose")
         return targets
 
     def flush_pending_tool_summary(self) -> str:
@@ -357,10 +441,57 @@ class StreamingHandler:
         将待输出的工具统计摘要补入缓冲区，并返回本次新增的摘要文本。
         """
         with self._lock:
+            if self._live_tool_summary and self._pending_tool_stats:
+                return self._flush_live_tool_summary_locked()
             summary = self._consume_pending_tool_summary_locked()
             if summary:
                 self._buffer += summary
+                self._live_tool_summary = None
+                self._live_tool_stats = {}
             return summary
+
+    def _flush_live_tool_summary_locked(self) -> str:
+        """在缓冲区末尾追加或原地替换当前工具批次摘要。"""
+        live_summary = self._live_tool_summary
+        visible_buffer = self._buffer
+        live_start = len(self._buffer)
+        old_summary = None
+
+        if live_summary and self._buffer[live_summary[0] :] == live_summary[1]:
+            live_start, _old_block, old_summary = live_summary
+            visible_buffer = self._buffer[:live_start]
+
+        if self._pending_tool_stats:
+            self._merge_tool_stats_locked(self._live_tool_stats, self._pending_tool_stats)
+            self._pending_tool_stats = {}
+        pending_summary = self._build_tool_summary_locked(self._live_tool_stats, visible_buffer)
+        if not pending_summary:
+            return ""
+
+        summary, summary_block = pending_summary
+        if old_summary:
+            self._tool_summaries.discard(old_summary)
+        self._tool_summaries.add(summary)
+        self._buffer = visible_buffer + summary_block
+        self._live_tool_summary = (len(visible_buffer), summary_block, summary)
+        return summary_block
+
+    @staticmethod
+    def _merge_tool_stats_locked(
+        accumulated_stats: dict[str, dict[str, Any]],
+        new_stats: dict[str, dict[str, Any]],
+    ) -> None:
+        """将新一轮工具统计并入当前实时摘要批次。"""
+        for category, bucket in new_stats.items():
+            accumulated_bucket = accumulated_stats.setdefault(
+                category,
+                {
+                    "count": 0,
+                    "targets": set(),
+                },
+            )
+            accumulated_bucket["count"] += bucket["count"]
+            accumulated_bucket["targets"].update(bucket["targets"])
 
     @staticmethod
     def _classify_tool_call(
@@ -372,28 +503,24 @@ class StreamingHandler:
         tool_message = (tool_message or "").strip()
         tool_message_lower = tool_message.lower()
 
-        if tool_name == "skill":
+        if tool_name in {"read_skill", "skill"}:
             return "skill", tool_kwargs.get("name")
         if tool_name == "query_activity_log":
             return "activity_log", tool_kwargs.get("keyword") or tool_kwargs.get("date")
         if tool_name == "subagent_task":
             return "subagent", StreamingHandler._extract_subagent_targets(tool_kwargs)
         if tool_name == "task":
-            return "subagent", tool_kwargs.get("subagent_type")
+            return "subagent", "general-purpose" if tool_kwargs.get("description") else None
         if tool_name == "read_file":
             return "file_read", tool_kwargs.get("file_path")
         if tool_name in {"write_file", "edit_file"}:
             return "file_write", tool_kwargs.get("file_path")
         if tool_name == "apply_patch":
             return "file_write", _extract_first_patch_path(tool_kwargs.get("patch"))
-        if tool_name in {"list_directory", "query_directory_settings"}:
-            return "directory", tool_kwargs.get("path")
         if tool_name == "browse_webpage":
             return (
                 "web_browse",
-                tool_kwargs.get("url")
-                or tool_kwargs.get("target_url")
-                or tool_kwargs.get("path"),
+                tool_kwargs.get("url") or tool_kwargs.get("target_url") or tool_kwargs.get("path"),
             )
         if tool_name == "execute_command":
             return (
@@ -402,22 +529,47 @@ class StreamingHandler:
             )
         if tool_name == "ask_user_choice":
             return "interaction", tool_kwargs.get("message")
-        if tool_name.startswith("search_") or tool_name in {"get_search_results"}:
+        if tool_name == "moviepilot_api":
+            operation_id = str(tool_kwargs.get("operation_id") or "")
+            if operation_id in {"storage.settings", "storage.list"}:
+                body = tool_kwargs.get("body")
+                target = body.get("path") if isinstance(body, dict) else None
+                return "directory", target
+            if operation_id in {
+                "media.search",
+                "media.person.search",
+                "search.torrents",
+                "search.results",
+                "recommendation.list",
+            }:
+                query = tool_kwargs.get("query")
+                target = query.get("title") if isinstance(query, dict) else None
+                return "search", target
+            if operation_id.endswith((".list", ".get", ".exists", ".history", ".detail")) or operation_id in {
+                "media.episode_schedule",
+                "plugin.data",
+                "filter.builtin",
+                "filter.custom",
+                "filter.groups",
+                "site.userdata",
+                "search.results",
+            }:
+                return "data_query", None
+            return "action", None
+        if tool_name == "agent_task":
+            return ("data_query", None) if tool_kwargs.get("action") == "list" else ("action", None)
+        if tool_name == "persona":
+            return ("data_query", None) if tool_kwargs.get("action") == "list" else ("action", None)
+        if tool_name.startswith("search_"):
             return (
                 "search",
-                tool_kwargs.get("query")
-                or tool_kwargs.get("title")
-                or tool_kwargs.get("keyword"),
+                tool_kwargs.get("query") or tool_kwargs.get("title") or tool_kwargs.get("keyword"),
             )
         if tool_name.startswith("query_") or tool_name.startswith("list_") or tool_name.startswith("get_"):
             return "data_query", None
         if tool_name.startswith(("add_", "update_", "delete_", "modify_", "run_")):
             return "action", None
         if tool_name in {
-            "recognize_media",
-            "scrape_metadata",
-            "transfer_file",
-            "test_site",
             "send_message",
             "send_local_file",
             "send_voice_message",
@@ -438,9 +590,7 @@ class StreamingHandler:
         if "搜索" in tool_message or "search" in tool_message_lower:
             return (
                 "search",
-                tool_kwargs.get("query")
-                or tool_kwargs.get("title")
-                or tool_kwargs.get("keyword"),
+                tool_kwargs.get("query") or tool_kwargs.get("title") or tool_kwargs.get("keyword"),
             )
         if "网页" in tool_message or "browser" in tool_message_lower or "webpage" in tool_message_lower:
             return "web_browse", tool_kwargs.get("url")
@@ -450,11 +600,36 @@ class StreamingHandler:
         return "tool", None
 
     def _consume_pending_tool_summary_locked(self) -> str:
-        if not self._pending_tool_stats:
+        pending_summary = self._build_pending_tool_summary_locked(self._buffer)
+        if not pending_summary:
             return ""
+        summary, summary_block = pending_summary
+        self._tool_summaries.add(summary)
+        return summary_block
+
+    def _build_pending_tool_summary_locked(
+        self,
+        visible_buffer: str,
+    ) -> Optional[tuple[str, str]]:
+        """消费待统计数据，并按给定可见文本计算摘要块的段落边界。"""
+        if not self._pending_tool_stats:
+            return None
+
+        pending_stats = self._pending_tool_stats
+        self._pending_tool_stats = {}
+        return self._build_tool_summary_locked(pending_stats, visible_buffer)
+
+    def _build_tool_summary_locked(
+        self,
+        tool_stats: dict[str, dict[str, Any]],
+        visible_buffer: str,
+    ) -> Optional[tuple[str, str]]:
+        """按给定工具统计和可见文本生成摘要行及其段落块。"""
+        if not tool_stats:
+            return None
 
         parts = []
-        for category, bucket in self._pending_tool_stats.items():
+        for category, bucket in tool_stats.items():
             value = bucket["count"]
             if category in {"file_read", "file_write", "directory", "web_browse", "skill"} and bucket["targets"]:
                 value = len(bucket["targets"])
@@ -462,20 +637,18 @@ class StreamingHandler:
             if part:
                 parts.append(part)
 
-        self._pending_tool_stats = {}
         if not parts:
-            return ""
+            return None
 
         summary = f"（{'，'.join(parts)}）"
-        self._tool_summaries.add(summary)
         # 摘要前始终保证一个空行，让工具执行信息与正文分属不同段落，
         # 避免 Markdown 富文本把单个换行折叠成同一段落内的软换行
-        visible_buffer = self._buffer.rstrip(" \t")
+        visible_buffer = visible_buffer.rstrip(" \t")
         trailing_newlines = len(visible_buffer) - len(visible_buffer.rstrip("\n"))
         prefix = ""
         if visible_buffer.strip():
             prefix = "\n" * max(2 - trailing_newlines, 0)
-        return f"{prefix}{summary}\n\n"
+        return summary, f"{prefix}{summary}\n\n"
 
     @staticmethod
     def _format_tool_stat(category: str, count: int) -> str:
@@ -516,9 +689,7 @@ class StreamingHandler:
             return False
         try:
             channel_enum = NotificationChannel(self._channel)
-            return ChannelCapabilityManager.supports_capability(
-                channel_enum, ChannelCapability.MESSAGE_EDITING
-            )
+            return ChannelCapabilityManager.supports_capability(channel_enum, ChannelCapability.MESSAGE_EDITING)
         except (ValueError, KeyError):
             return False
 
@@ -532,16 +703,17 @@ class StreamingHandler:
 
     def _quote_tool_summary_lines(self, text: str) -> str:
         """
-        将缓冲区中的工具摘要整行转换为 Markdown 引用块。
+        将缓冲区中的工具展示行转换为 Markdown 引用块。
 
         富文本会把普通段落间的空行折叠成紧凑排版，引用块作为独立 block 类型
         渲染，保证工具执行信息在 Telegram 上始终与正文有可辨识的视觉分隔。
+        匹配与登记均按 splitlines 识别换行，同时保留原换行符，兼容 CRLF 续行参数。
         """
         if not self._tool_summaries or not text:
             return text
-        return "\n".join(
-            f"> {line}" if line in self._tool_summaries else line
-            for line in text.split("\n")
+        return "".join(
+            f"> {line}" if line.splitlines()[0] in self._tool_summaries else line
+            for line in text.splitlines(keepends=True)
         )
 
     async def _flush_loop(self):
@@ -567,11 +739,7 @@ class StreamingHandler:
         否则最终刷新会误以为尚未发送过消息，从而再次发送一条新消息。
         """
         current_task = asyncio.current_task()
-        if (
-            self._flush_task
-            and not self._flush_task.done()
-            and self._flush_task is not current_task
-        ):
+        if self._flush_task and not self._flush_task.done() and self._flush_task is not current_task:
             try:
                 await self._flush_task
             except asyncio.CancelledError:
@@ -587,14 +755,11 @@ class StreamingHandler:
         """
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
-            current_text = self._buffer[self._msg_start_offset:]
+            current_text = self._buffer[self._msg_start_offset :]
             if not current_text or current_text == self._sent_text:
                 # 没有新内容需要刷新
                 return
-            if (
-                (not self._channel or not self._source)
-                and not self._allow_dispatch_without_context
-            ):
+            if (not self._channel or not self._source) and not self._allow_dispatch_without_context:
                 logger.debug("流式输出缺少渠道上下文，当前模式禁止外发消息")
                 return
 
@@ -623,28 +788,19 @@ class StreamingHandler:
                     self._message_response = response
                     with self._lock:
                         self._sent_text = current_text
-                    logger.debug(
-                        f"流式输出初始消息已发送: message_id={response.message_id}"
-                    )
+                    logger.debug(f"流式输出初始消息已发送: message_id={response.message_id}")
                 else:
-                    logger.debug(
-                        "流式输出初始消息发送失败或未返回message_id，降级为非流式输出"
-                    )
+                    logger.debug("流式输出初始消息发送失败或未返回message_id，降级为非流式输出")
                     self._streaming_enabled = False
             else:
                 # 检查当前消息内容是否超过长度限制
-                if (
-                    self._max_message_length
-                    and len(current_text) > self._max_message_length
-                ):
+                if self._max_message_length and len(current_text) > self._max_message_length:
                     # 消息过长，冻结当前消息（保持最后一次成功编辑的内容）
                     # 将 offset 移动到已发送文本之后，开启新消息
-                    logger.debug(
-                        f"流式消息长度 {len(current_text)} 超过限制 {self._max_message_length}，启用新消息"
-                    )
+                    logger.debug(f"流式消息长度 {len(current_text)} 超过限制 {self._max_message_length}，启用新消息")
                     with self._lock:
                         self._msg_start_offset += len(self._sent_text)
-                        current_text = self._buffer[self._msg_start_offset:]
+                        current_text = self._buffer[self._msg_start_offset :]
                     self._message_response = None
                     self._sent_text = ""
 
@@ -670,9 +826,7 @@ class StreamingHandler:
                             self._message_response = response
                             with self._lock:
                                 self._sent_text = current_text
-                            logger.debug(
-                                f"流式输出新消息已发送: message_id={response.message_id}"
-                            )
+                            logger.debug(f"流式输出新消息已发送: message_id={response.message_id}")
                         else:
                             logger.debug("流式输出新消息发送失败，降级为非流式输出")
                             self._streaming_enabled = False

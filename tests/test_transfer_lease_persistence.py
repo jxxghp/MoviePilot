@@ -1,6 +1,7 @@
 """整理恢复租约的原子 claim、续租和陈旧 token 防护测试。"""
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from threading import Barrier, Lock
 from typing import Any
@@ -12,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from app.application.transfer.workflow import (
     TRANSFER_ADMISSION_PLANNED,
     TransferAdmission,
+    TransferAdmissionConflictError,
     TransferAdmissionProjectionError,
     TransferLeaseLostError,
     TransferPlanCheckpoint,
@@ -803,3 +805,335 @@ def test_concurrent_claim_uses_rowcount_as_single_winner(
     winners = [result for result in results if result is not None]
     assert len(winners) == 1
     assert winners[0].attempt_count == 1
+
+
+def _manual_planning_input(path: str) -> TransferPlanningInput:
+    """构造与旧自动任务不同的手动目标与输入选项。"""
+    return replace(
+        _planning_input(path),
+        target_path="/library/reorganized",
+        options={"manual": True},
+    )
+
+
+def _replacement_snapshot(
+        repository: TransactionalTransferAdmissionRepository,
+) -> dict[str, list[dict[str, Any]]]:
+    """冻结临时库的任务、步骤与历史，断言拒绝或回滚未改变任何持久证据。"""
+    with repository._session_factory() as session:  # noqa: SLF001
+        return {
+            model.__tablename__: [
+                dict(row) for row in session.execute(
+                    text(f"SELECT * FROM {model.__tablename__} ORDER BY id")
+                ).mappings()
+            ]
+            for model in (TransferPending, TransferExecutionStep, TransferHistory)
+        }
+
+
+@pytest.mark.parametrize("planned", [False, True])
+def test_manual_admission_replaces_expired_unstarted_task_and_can_plan(
+        repository_factory,
+        lease_clock,
+        planned: bool,
+) -> None:
+    """旧自动任务未产生执行证据且租约过期时，手动重做须新建身份并完成重新规划。"""
+    repository = repository_factory()
+    path = "/downloads/manual-retry.mkv"
+    old = _admit(repository, path)
+    old_claim = repository.claim_task(
+        task_id=old.task_id, owner_id="old-worker", lease_seconds=60,
+    )
+    assert old_claim is not None
+    if planned:
+        repository.checkpoint_plan(
+            task_id=old.task_id,
+            lease_token=old_claim.lease_token,
+            input_fingerprint=old.input_fingerprint,
+            checkpoint=_checkpoint(old.planning_input),
+        )
+    lease_clock["now"] += timedelta(seconds=61)
+
+    fresh = repository.admit(
+        storage="local", src_path=path,
+        planning_input=_manual_planning_input(path), replace_inactive=True,
+    )
+
+    assert fresh.task_id != old.task_id
+    assert fresh.input_fingerprint != old.input_fingerprint
+    assert fresh.state == "accepted"
+    assert fresh.checkpoint is None
+    assert fresh.attempt_count == 0
+    fresh_claim = repository.claim_task(
+        task_id=fresh.task_id, owner_id="manual-worker", lease_seconds=60,
+    )
+    assert fresh_claim is not None
+    result = repository.checkpoint_plan(
+        task_id=fresh.task_id,
+        lease_token=fresh_claim.lease_token,
+        input_fingerprint=fresh.input_fingerprint,
+        checkpoint=_checkpoint(fresh.planning_input),
+    )
+    assert result.state == TRANSFER_ADMISSION_PLANNED
+    with pytest.raises(TransferLeaseLostError):
+        repository.record_planning_failure(
+            task_id=old.task_id, lease_token=old_claim.lease_token, error="stale worker",
+        )
+    assert [row["task_id"] for row in _replacement_snapshot(repository)["transferpending"]] == [
+        fresh.task_id,
+    ]
+
+
+def test_automatic_admission_keeps_identity_and_never_infers_manual_replacement(
+        repository_factory,
+) -> None:
+    """自动准入保持同输入幂等，规划 JSON 中的 manual 选项不能隐式授权替换。"""
+    repository = repository_factory()
+    path = "/downloads/automatic.mkv"
+    old = _admit(repository, path)
+    before = _replacement_snapshot(repository)
+
+    assert _admit(repository, path).task_id == old.task_id
+    with pytest.raises(TransferAdmissionConflictError, match="不同输入"):
+        repository.admit(
+            storage="local", src_path=path, planning_input=_manual_planning_input(path),
+        )
+    assert _replacement_snapshot(repository) == before
+
+
+def _seed_orphaned_execution(
+        repository: TransactionalTransferAdmissionRepository,
+        task_id: str,
+        *,
+        execution_state: str,
+        corrupt_json: bool,
+) -> None:
+    """构造无历史但含旧执行步骤、悬空回执和可选损坏 JSON 的失效任务。"""
+    with repository._session_factory() as session:  # noqa: SLF001
+        pending = TransferPending.get_by_task_id(session, task_id=task_id)
+        pending.execution_state = execution_state
+        pending.execution_payload = {"old": "result"}
+        pending.execution_fingerprint = "old-execution-fingerprint"
+        pending.execution_version = 99
+        pending.retry_generation = 2
+        pending.retry_count = 3
+        pending.settlement_revision = 4
+        pending.terminal_history_id = 123
+        pending.manual_review_revision = 1
+        session.add(TransferExecutionStep(
+            task_id=task_id, operation_id="orphaned-operation",
+            checkpoint_fingerprint="old-checkpoint", ordinal=0,
+            phase="transfer", kind="copy", state="unknown",
+            intent_version=99, intent_payload={"old": "intent"},
+            prepared_at="2026-08-27 10:00:00", updated_at="2026-08-27 10:00:00",
+        ))
+        session.commit()
+        if corrupt_json:
+            session.execute(text(
+                "UPDATE transferpending SET planning_input = '{', checkpoint_payload = '{', "
+                "execution_payload = '{' WHERE task_id = :task_id"
+            ), {"task_id": task_id})
+            session.execute(text(
+                "UPDATE transferexecutionstep SET intent_payload = '{' WHERE task_id = :task_id"
+            ), {"task_id": task_id})
+            session.commit()
+
+
+@pytest.mark.parametrize("evidence", ["active_lease", "terminal_history", "history_mapping"])
+@pytest.mark.parametrize("corrupt_json", [False, True])
+def test_manual_admission_preserves_active_or_history_bound_task_evidence(
+        repository_factory,
+        lease_clock,
+        evidence: str,
+        corrupt_json: bool,
+) -> None:
+    """即使旧 JSON 损坏，活动租约或真实历史绑定仍须阻止替换并保留全部证据。"""
+    repository = repository_factory()
+    path = "/downloads/protected.mkv"
+    old = _admit(repository, path)
+    if evidence == "active_lease":
+        assert repository.claim_task(
+            task_id=old.task_id, owner_id="active-worker", lease_seconds=60,
+        ) is not None
+    _seed_orphaned_execution(
+        repository, old.task_id, execution_state="broken-state", corrupt_json=corrupt_json,
+    )
+    with repository._session_factory() as session:  # noqa: SLF001
+        if evidence != "active_lease":
+            session.add(TransferHistory(
+                id=123,
+                transfer_task_id=old.task_id if evidence == "history_mapping" else None,
+                transfer_settlement_revision=1,
+                src=path, status=False,
+            ))
+        if evidence == "history_mapping":
+            session.execute(text(
+                "UPDATE transferpending SET terminal_history_id = NULL WHERE task_id = :task_id"
+            ), {"task_id": old.task_id})
+        session.commit()
+    before = _replacement_snapshot(repository)
+
+    with pytest.raises(TransferAdmissionConflictError, match="活动整理任务或关联整理历史"):
+        repository.admit(
+            storage="local", src_path=path,
+            planning_input=_manual_planning_input(path), replace_inactive=True,
+        )
+
+    assert _replacement_snapshot(repository) == before
+
+
+@pytest.mark.parametrize("execution_state", [
+    "not_started", "running", "retry_wait", "settling", "failed", "manual_review", "broken-state",
+])
+@pytest.mark.parametrize("corrupt_json", [False, True])
+def test_manual_admission_replaces_inactive_orphan_with_steps_and_damaged_payloads(
+        repository_factory,
+        lease_clock,
+        execution_state: str,
+        corrupt_json: bool,
+) -> None:
+    """显式手动重做可放弃无历史的失效旧执行及坏数据，新任务仍能领取并重新规划。"""
+    repository = repository_factory()
+    path = "/downloads/orphaned-execution.mkv"
+    old = _admit(repository, path)
+    old_claim = repository.claim_task(
+        task_id=old.task_id, owner_id="old-worker", lease_seconds=60,
+    )
+    assert old_claim is not None
+    _seed_orphaned_execution(
+        repository, old.task_id, execution_state=execution_state, corrupt_json=corrupt_json,
+    )
+    lease_clock["now"] += timedelta(seconds=61)
+
+    fresh = repository.admit(
+        storage="local", src_path=path,
+        planning_input=_manual_planning_input(path), replace_inactive=True,
+    )
+
+    assert fresh.task_id != old.task_id
+    assert fresh.planning_input == _manual_planning_input(path)
+    assert repository.heartbeat(
+        task_id=old.task_id, lease_token=old_claim.lease_token, lease_seconds=60,
+    ) is None
+    claimed = repository.claim_task(
+        task_id=fresh.task_id, owner_id="new-worker", lease_seconds=60,
+    )
+    assert claimed is not None
+    planned = repository.checkpoint_plan(
+        task_id=fresh.task_id, lease_token=claimed.lease_token,
+        input_fingerprint=fresh.input_fingerprint, checkpoint=_checkpoint(fresh.planning_input),
+    )
+    assert planned.state == TRANSFER_ADMISSION_PLANNED
+    snapshot = _replacement_snapshot(repository)
+    assert snapshot["transferexecutionstep"] == []
+    assert snapshot["transferhistory"] == []
+    assert [row["task_id"] for row in snapshot["transferpending"]] == [fresh.task_id]
+
+
+@pytest.mark.parametrize("state", ["provider_pending", "broken-planning-state"])
+def test_manual_admission_replaces_inactive_orphan_regardless_of_planning_state(
+        repository_factory,
+        state: str,
+) -> None:
+    """放弃无历史旧任务不依赖旧规划状态或检查点是否合法。"""
+    repository = repository_factory()
+    path = "/downloads/orphaned-plan.mkv"
+    old = _admit(repository, path)
+    with repository._session_factory() as session:  # noqa: SLF001
+        pending = TransferPending.get_by_task_id(session, task_id=old.task_id)
+        pending.state = state
+        session.commit()
+    fresh = repository.admit(
+        storage="local", src_path=path,
+        planning_input=_manual_planning_input(path), replace_inactive=True,
+    )
+    assert fresh.task_id != old.task_id
+    assert fresh.state == "accepted"
+
+
+@pytest.mark.parametrize("winner", ["claim", "heartbeat", "replacement", "history"])
+def test_manual_replacement_cas_preserves_concurrent_winner(
+        repository_factory,
+        lease_clock,
+        monkeypatch,
+        winner: str,
+) -> None:
+    """读取旧任务后竞争者先取得租约或新建身份时，旧 CAS 不得删除竞争胜者。"""
+    repository = repository_factory()
+    other_repository = repository_factory()
+    path = "/downloads/concurrent-replacement.mkv"
+    old = _admit(repository, path)
+    if winner == "heartbeat":
+        old_claim = repository.claim_task(
+            task_id=old.task_id, owner_id="renewing-worker", lease_seconds=60,
+        )
+        assert old_claim is not None
+        lease_clock["now"] += timedelta(seconds=30)
+    original_delete = TransferPendingOper.stage_delete_inactive_for_replacement
+    winner_snapshot = {}
+    winner_started = False
+
+    def concurrent_delete(oper, **kwargs) -> int:
+        """在旧身份已读取、CAS 尚未执行的窗口内，用独立 Session 提交竞争者。"""
+        nonlocal winner_started, winner_snapshot
+        if not winner_started:
+            winner_started = True
+            if winner == "claim":
+                assert other_repository.claim_task(
+                    task_id=old.task_id, owner_id="concurrent-worker", lease_seconds=60,
+                ) is not None
+            elif winner == "heartbeat":
+                assert other_repository.heartbeat(
+                    task_id=old.task_id, lease_token=old_claim.lease_token, lease_seconds=120,
+                ) is not None
+            elif winner == "history":
+                with other_repository._session_factory() as session:  # noqa: SLF001
+                    session.add(TransferHistory(
+                        transfer_task_id=old.task_id, transfer_settlement_revision=1,
+                        src=path, status=False,
+                    ))
+                    session.commit()
+            else:
+                other_repository.admit(
+                    storage="local", src_path=path,
+                    planning_input=_manual_planning_input(path), replace_inactive=True,
+                )
+            winner_snapshot = _replacement_snapshot(other_repository)
+        return original_delete(oper, **kwargs)
+
+    monkeypatch.setattr(
+        TransferPendingOper, "stage_delete_inactive_for_replacement", concurrent_delete,
+    )
+    with pytest.raises(TransferAdmissionConflictError, match="活动整理任务或关联整理历史"):
+        repository.admit(
+            storage="local", src_path=path,
+            planning_input=_manual_planning_input(path), replace_inactive=True,
+        )
+    assert winner_started is True
+    assert _replacement_snapshot(repository) == winner_snapshot
+
+
+def test_manual_replacement_rolls_back_old_task_if_new_admission_fails(
+        repository_factory,
+        monkeypatch,
+) -> None:
+    """新准入失败必须回滚同事务中的旧任务删除，避免手动重做丢失登记。"""
+    repository = repository_factory()
+    path = "/downloads/rollback-replacement.mkv"
+    old = _admit(repository, path)
+    _seed_orphaned_execution(
+        repository, old.task_id, execution_state="broken-state", corrupt_json=True,
+    )
+    before = _replacement_snapshot(repository)
+
+    def fail_admission(_oper, **_kwargs) -> None:
+        """模拟 CAS 删除成功后的新任务写入失败。"""
+        raise RuntimeError("new admission failed")
+
+    monkeypatch.setattr(TransferPendingOper, "stage_admit", fail_admission)
+    with pytest.raises(RuntimeError, match="new admission failed"):
+        repository.admit(
+            storage="local", src_path=path,
+            planning_input=_manual_planning_input(path), replace_inactive=True,
+        )
+    assert _replacement_snapshot(repository) == before

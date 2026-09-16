@@ -4,9 +4,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MP_API_SCRIPT = PROJECT_ROOT / "skills" / "moviepilot-api" / "scripts" / "mp-api.py"
 MP_DB_SCRIPT = PROJECT_ROOT / "skills" / "database-operation" / "scripts" / "mp-db.py"
 
 
@@ -17,36 +15,6 @@ def _load_script(path: Path, module_name: str) -> ModuleType:
     assert spec and spec.loader
     spec.loader.exec_module(module)
     return module
-
-
-def test_mp_api_uses_settings_without_prompt_token(monkeypatch, tmp_path) -> None:
-    """API 脚本应直接读取 settings，而不是要求提示词提供 token。"""
-    module = _load_script(MP_API_SCRIPT, "mp_api_script")
-    runtime_dir = tmp_path / "temp"
-    runtime_dir.mkdir()
-
-    class FakeSettings:
-        """提供 API 脚本本地配置所需字段。"""
-
-        TEMP_PATH = runtime_dir
-        HOST = "0.0.0.0"
-        PORT = 3001
-        API_TOKEN = "settings-token"
-
-    monkeypatch.setattr(module, "_ensure_project_import", lambda: None)
-    monkeypatch.setattr(module, "read_config", lambda: ("http://file-host", "file-token"))
-    monkeypatch.setattr(
-        "app.runtime.config.settings",
-        FakeSettings,
-        raising=False,
-    )
-    monkeypatch.delenv("MP_HOST", raising=False)
-    monkeypatch.delenv("MP_API_KEY", raising=False)
-
-    host, key = module.resolve_config()
-
-    assert host == "http://127.0.0.1:3001"
-    assert key == "settings-token"
 
 
 def test_mp_db_rejects_write_statement_without_write_flag() -> None:

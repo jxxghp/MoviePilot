@@ -8,9 +8,16 @@ from app.sdk.cache import Cache, cached
 from app.sdk.config import settings
 from app.sdk.events import Event, eventmanager
 from app.sdk.logging import logger
-from app.sdk.media import MediaInfo, MetaBase, MetaInfo, MetaMusic, NfoReader
+from app.sdk.media import (
+    MediaInfo,
+    MetaBase,
+    MetaInfo,
+    MetaMusic,
+    NfoReader,
+    set_custom_separator,
+)
 from app.sdk.network import RequestUtils, RssHelper, SitesHelper
-from app.sdk.plugins import ModuleManager, PluginManager
+from app.sdk.plugin import ModuleManager, PluginChain, PluginManager, _PluginBase
 from app.sdk.services import NotificationHelper
 from app.sdk.utilities import StringUtils as UtilityStringUtils
 from app.sdk.utilities import convert, decrypt, encrypt
@@ -22,6 +29,9 @@ PROJECT_ROOT = Path(__file__).parents[1]
 def test_sdk_exports_canonical_plugin_interfaces():
     """SDK 应复用 canonical 对象，不复制实现或制造第二套单例。"""
     from app.domain.context import MediaInfo as CanonicalMediaInfo
+    from app.domain.meta.customization import (
+        set_custom_separator as canonical_set_custom_separator,
+    )
     from app.domain.meta.metabase import MetaBase as CanonicalMetaBase
     from app.domain.meta.metamusic import MetaMusic as CanonicalMetaMusic
     from app.domain.metainfo import MetaInfo as CanonicalMetaInfo
@@ -51,6 +61,7 @@ def test_sdk_exports_canonical_plugin_interfaces():
     assert eventmanager is canonical_eventmanager
     assert logger is canonical_logger
     assert MediaInfo is CanonicalMediaInfo
+    assert set_custom_separator is canonical_set_custom_separator
     assert MetaBase is CanonicalMetaBase
     assert MetaInfo is CanonicalMetaInfo
     assert MetaMusic is CanonicalMetaMusic
@@ -78,6 +89,50 @@ def test_legacy_common_crypto_aliases_round_trip():
     passphrase = b"0123456789abcdef"
 
     assert legacy_decrypt(legacy_encrypt(message, passphrase), passphrase) == message
+
+
+def test_sdk_plugin_package_exports_contract_base_and_managers():
+    """插件 SDK 包根导出契约基类与管理器，并复用 canonical 身份。"""
+    from app.chain.base import ChainBase
+    from app.runtime.extensions.module.manager import (
+        ModuleManager as CanonicalModuleManager,
+    )
+    from app.runtime.extensions.plugin.manager import (
+        PluginManager as CanonicalPluginManager,
+    )
+    from app.sdk.plugin.base import PluginChain as CanonicalPluginChain
+    from app.sdk.plugin.base import _PluginBase as CanonicalPluginBase
+
+    assert _PluginBase is CanonicalPluginBase
+    assert PluginChain is CanonicalPluginChain
+    assert issubclass(PluginChain, ChainBase)
+    assert ModuleManager is CanonicalModuleManager
+    assert PluginManager is CanonicalPluginManager
+
+
+def test_sdk_plugin_contract_import_does_not_load_managers():
+    """仅导入契约基类不得连带拉起插件与模块管理器。"""
+    script = """
+import sys
+from app.sdk.plugin import _PluginBase
+
+assert _PluginBase is not None
+for name in (
+    "app.sdk.plugin.manager",
+    "app.runtime.extensions.plugin.manager",
+    "app.runtime.extensions.module.manager",
+):
+    assert name not in sys.modules, name
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_browser_sdk_import_is_provider_free():

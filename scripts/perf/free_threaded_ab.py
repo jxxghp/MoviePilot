@@ -79,7 +79,6 @@ LAB_ENVIRONMENT = {
     "DEBUG": "false",
     "MOVIEPILOT_SAFE_MODE": "false",
     "MOVIEPILOT_AUTO_UPDATE": "false",
-    "MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE": "false",
     "AUTO_UPDATE_RESOURCE": "false",
     "PLUGIN_MARKET": "",
     "PLUGIN_AUTO_RELOAD": "false",
@@ -923,7 +922,6 @@ def startup_sample(client, args: argparse.Namespace, image: str, variant: str, i
     try:
         volume = client.volumes.create(name=volume_name, labels=labels)
         environment = dict(LAB_ENVIRONMENT)
-        environment["MOVIEPILOT_BACKEND_READY_TIMEOUT"] = str(args.ready_timeout)
         container = client.containers.create(
             image,
             name=name,

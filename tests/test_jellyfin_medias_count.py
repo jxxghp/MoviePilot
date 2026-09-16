@@ -106,6 +106,38 @@ def test_medias_count_falls_back_without_user():
     assert args[0] == "http://media.local/Items/Counts"
 
 
+def test_medias_count_falls_back_when_collection_type_missing():
+    """媒体库缺少 CollectionType 时应回退到全局 Items/Counts 统计。"""
+    client = _make_client()
+    views = {
+        "Items": [{
+            "Id": "lib-mixed",
+            "TypeOptions": ["Series", "Season", "Episode", "Movie"],
+        }]
+    }
+    global_counts = {
+        "MovieCount": 8,
+        "SeriesCount": 3,
+        "EpisodeCount": 24,
+        "MusicAlbumCount": 11,
+    }
+
+    with patch("app.modules.jellyfin.jellyfin.RequestUtils") as request_utils_cls:
+        request_utils_cls.return_value.get_res.side_effect = _routed_get_res(
+            views, {}, global_counts=global_counts
+        )
+        stat = client.get_medias_count()
+
+    assert stat.movie_count == 8
+    assert stat.tv_count == 3
+    assert stat.episode_count == 24
+    assert stat.music_count == 11
+    assert [call.args[0] for call in request_utils_cls.return_value.get_res.call_args_list] == [
+        "http://media.local/Users/user-id/Views",
+        "http://media.local/Items/Counts",
+    ]
+
+
 def test_medias_count_falls_back_when_views_unavailable():
     """媒体库视图查询失败时应回退到全局 Items/Counts 统计。"""
     client = _make_client()

@@ -13,21 +13,33 @@ from app.runtime.capabilities.model import (
     SelectorSchema,
 )
 from app.runtime.capabilities.registry import CapabilityRegistry
-from app.runtime.settings import get_runtime_setting, has_runtime_setting
 from app.runtime.extensions.service import ServiceConfigHelper
+from app.runtime.settings import get_runtime_setting, has_runtime_setting
 from app.schemas.types import (
     DownloaderType,
     MediaRecognizeType,
     MediaServerType,
-    NotificationChannel,
     ModuleType,
+    NotificationChannel,
     OtherModulesType,
     StorageSchema,
     SystemConfigKey,
 )
 
-
 HOST_MODULE_KIND = "host_module"
+MODULE_ENABLE_SETTING = "MODULE_ENABLE"
+NON_SWITCHABLE_HOST_MODULE_IDS = frozenset(
+    {
+        "FileManagerModule",
+        "FilterModule",
+        "IndexerModule",
+        "MusicBrainzModule",
+        "PostgreSQLModule",
+        "RedisModule",
+        "SubtitleModule",
+        "TheMovieDbModule",
+    }
+)
 _SETTING_SELECTOR = "setting_truthy"
 _SERVICE_SELECTOR = "system_config_item"
 _MODULE_ROOT = Path(__file__).resolve().parents[3] / "modules"
@@ -163,6 +175,8 @@ def capture_host_module_config(
     """对本轮涉及的设置和服务配置各读取一次并冻结容器。"""
     setting_keys: set[str] = set()
     service_keys: set[str] = set()
+    if any(spec.activation is ActivationPolicy.BOOTSTRAP for spec in specs):
+        setting_keys.add(MODULE_ENABLE_SETTING)
     for spec in specs:
         selector = spec.selector
         if selector is None:
@@ -193,7 +207,12 @@ def should_run_host_module(
 ) -> bool:
     """依据有限 selector 语法判断能力是否应拥有运行资源。"""
     if spec.activation is ActivationPolicy.BOOTSTRAP:
-        return True
+        if spec.id in NON_SWITCHABLE_HOST_MODULE_IDS:
+            return True
+        module_settings = snapshot.settings.get(MODULE_ENABLE_SETTING, {})
+        if not isinstance(module_settings, Mapping):
+            return True
+        return module_settings.get(spec.id, True) is not False
     if spec.activation is ActivationPolicy.ON_FIRST_USE:
         return False
     selector = spec.selector
@@ -209,6 +228,31 @@ def should_run_host_module(
             for item in snapshot.services[config["key"]]
         )
     raise ValueError(f"未支持的 Host Module selector：{selector.kind}")
+
+
+def should_expose_host_module_option(
+    spec: CapabilitySpec,
+    snapshot: HostModuleConfigSnapshot,
+) -> bool:
+    """判断模块是否应作为前端服务类型选项暴露。
+
+    服务模块在尚未创建任何实例时仍需展示，才能允许用户新增首个实例；
+    已存在的服务配置全部关闭时则隐藏该类型，保持关闭模块后的选择器语义。
+    """
+    if spec.activation is not ActivationPolicy.WHEN_CONFIGURED:
+        return should_run_host_module(spec, snapshot)
+    selector = spec.selector
+    if selector is None or selector.kind != _SERVICE_SELECTOR:
+        return should_run_host_module(spec, snapshot)
+    config = selector.config
+    matching = [
+        item
+        for item in snapshot.services[config["key"]]
+        if getattr(item, config["match_field"]) == config["match_value"]
+    ]
+    return not matching or any(
+        bool(getattr(item, config["enabled_field"])) for item in matching
+    )
 
 
 class HostModuleAdapter:

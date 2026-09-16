@@ -7,9 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from app.agent.middleware.activity import (
-    ActivityLogMiddleware,
-    QUERY_ACTIVITY_LOG_TOOL_DESCRIPTION,
     QUERY_ACTIVITY_LOG_TOOL_NAME,
+    ActivityLogMiddleware,
     _summarize_with_llm,
     load_activity_log_index,
     query_activity_logs,
@@ -75,9 +74,7 @@ def test_activity_log_prompt_is_stable_and_excludes_log_index(tmp_path):
 
     modified = middleware.modify_request(request)
     system_text = str(modified.system_message.content)
-    stable_prompt = middleware._format_activity_log(
-        {"2099-12-31": "999 条活动记录"}
-    )
+    stable_prompt = middleware._format_activity_log({"2099-12-31": "999 条活动记录"})
 
     assert "1 条活动记录" not in system_text
     assert date_str not in system_text
@@ -104,6 +101,7 @@ def test_activity_log_abefore_agent_refreshes_existing_state(tmp_path):
 
 def test_activity_log_skips_trivial_greeting_without_llm(tmp_path):
     """无实际任务的寒暄不应调用 LLM，也不应写入活动日志。"""
+
     async def _run_test():
         middleware = ActivityLogMiddleware(activity_dir=str(tmp_path))
         summarize_mock = AsyncMock(return_value="不应写入")
@@ -138,9 +136,7 @@ def test_activity_log_skips_trivial_greeting_without_llm(tmp_path):
 
 def test_summarize_with_llm_ignores_skip_marker():
     """LLM 返回 SKIP 时应视为无需记录活动日志。"""
-    llm = SimpleNamespace(
-        ainvoke=AsyncMock(return_value=SimpleNamespace(content="SKIP"))
-    )
+    llm = SimpleNamespace(ainvoke=AsyncMock(return_value=SimpleNamespace(content="SKIP")))
 
     with patch(
         "app.agent.llm.LLMHelper.get_llm",
@@ -177,10 +173,7 @@ def test_summarize_with_llm_extracts_text_blocks():
 
 def test_activity_log_records_detailed_summary(tmp_path):
     """有实际工具动作的交互应写入较完整的活动摘要。"""
-    summary = (
-        "用户要求整理 `/downloads/Show`，助手调用 transfer_file 识别并转移剧集，"
-        "结果成功写入目标媒体库。"
-    )
+    summary = "用户要求整理 `/downloads/Show`，助手调用 transfer_file 识别并转移剧集，结果成功写入目标媒体库。"
 
     async def _run_test():
         middleware = ActivityLogMiddleware(activity_dir=str(tmp_path))
@@ -247,8 +240,8 @@ def test_activity_log_after_agent_does_not_wait_for_summary(tmp_path):
                             content="",
                             tool_calls=[
                                 {
-                                    "name": "query_download_tasks",
-                                    "args": {},
+                                    "name": "moviepilot_api",
+                                    "args": {"operation_id": "scheduler.list"},
                                     "id": "call_1",
                                 }
                             ],
@@ -266,9 +259,7 @@ def test_activity_log_after_agent_does_not_wait_for_summary(tmp_path):
             await _wait_activity_log_tasks(middleware)
             return called_before_wait, pending_before_wait, summarize_mock, append_mock
 
-    called_before_wait, pending_before_wait, summarize_mock, append_mock = asyncio.run(
-        _run_test()
-    )
+    called_before_wait, pending_before_wait, summarize_mock, append_mock = asyncio.run(_run_test())
 
     assert called_before_wait == 0
     assert pending_before_wait == 1
@@ -402,9 +393,7 @@ def test_activity_log_middleware_query_tool_returns_json_payload(tmp_path):
     middleware = ActivityLogMiddleware(activity_dir=str(tmp_path))
     tool = middleware.tools[0]
 
-    result = asyncio.run(
-        tool.ainvoke({"keyword": "整理", "date": "2026-06-18", "limit": 5})
-    )
+    result = asyncio.run(tool.ainvoke({"keyword": "整理", "date": "2026-06-18", "limit": 5}))
 
     payload = json.loads(result)
     assert payload["success"] is True
@@ -412,14 +401,14 @@ def test_activity_log_middleware_query_tool_returns_json_payload(tmp_path):
     assert payload["entries"][0]["summary"] == "帮用户整理了电影 A"
 
 
-def test_activity_log_tool_call_records_streaming_summary(tmp_path):
-    """query_activity_log 工具执行时应记录流式聚合摘要。"""
+def test_activity_log_tool_call_reports_streaming_execution(tmp_path):
+    """query_activity_log 工具执行时应使用统一的工具显示策略。"""
 
     async def _run_test():
         calls = []
         stream_handler = SimpleNamespace(
             is_streaming=True,
-            record_tool_call=lambda **kwargs: calls.append(kwargs),
+            report_tool_call=lambda **kwargs: calls.append(kwargs),
         )
         middleware = ActivityLogMiddleware(
             activity_dir=str(tmp_path),
@@ -448,7 +437,7 @@ def test_activity_log_tool_call_records_streaming_summary(tmp_path):
     assert calls == [
         {
             "tool_name": QUERY_ACTIVITY_LOG_TOOL_NAME,
-            "tool_message": QUERY_ACTIVITY_LOG_TOOL_DESCRIPTION,
+            "tool_message": '查询活动日志，主要参数：{"keyword": "整理", "date": "2026-06-18"}',
             "tool_kwargs": {
                 "keyword": "整理",
                 "date": "2026-06-18",
@@ -464,7 +453,7 @@ def test_activity_log_middleware_sanitizes_its_own_logs(tmp_path):
         secret_marker = "activity-secret-marker-6825"
         stream_handler = SimpleNamespace(
             is_streaming=True,
-            record_tool_call=MagicMock(),
+            report_tool_call=MagicMock(),
         )
         middleware = ActivityLogMiddleware(
             activity_dir=str(tmp_path),
@@ -508,9 +497,7 @@ def test_activity_log_provider_error_does_not_echo_secret(tmp_path):
         ),
         patch("app.agent.middleware.activity.logger", mock_logger),
     ):
-        result = asyncio.run(
-            middleware._tool_provider.query_activity_log(keyword="visible")
-        )
+        result = asyncio.run(middleware._tool_provider.query_activity_log(keyword="visible"))
 
     assert secret_marker not in result
     assert secret_marker not in str(mock_logger.method_calls)
@@ -521,7 +508,7 @@ def test_activity_log_provider_error_does_not_echo_secret(tmp_path):
 def test_factory_does_not_register_activity_log_tool():
     """活动日志查询工具应由中间件注册，不应进入全局工具工厂。"""
     with patch(
-            "app.agent.tools.factory._get_plugin_agent_tools",
+        "app.agent.tools.factory._get_plugin_agent_tools",
         return_value=[],
     ):
         tools = MoviePilotToolFactory.create_tools(

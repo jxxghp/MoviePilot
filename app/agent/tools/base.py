@@ -5,22 +5,24 @@ import threading
 from abc import ABCMeta, abstractmethod
 from concurrent.futures import Future as ConcurrentFuture
 from concurrent.futures import ThreadPoolExecutor
-from contextvars import Context, copy_context
+from contextvars import Context, ContextVar, copy_context
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, Protocol, Union, cast
 
 from langchain_core.tools import BaseTool
 from pydantic import PrivateAttr
 
 from app.agent.policy.sanitizer import (
+    stable_type_name,
     summarize_error,
     summarize_input,
     summarize_result,
 )
+from app.agent.tools.result import ToolExecutionError, inspect_tool_result
 from app.agent.tools.tags import ToolTag
 from app.application.agent import AgentDataContext
-from app.application.messaging.agent import matches_channel_admin
+from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.notification import get_notification_configs
 from app.chain.base import ChainBase
 from app.runtime.log import logger
@@ -53,6 +55,31 @@ else:
             """追加流式文本并返回实际追加内容。"""
             ...
 
+        def emit_tool_message(self, message: str) -> str:
+            """追加逐条工具提示并登记其展示语义。"""
+            ...
+
+        def report_tool_call(
+            self,
+            tool_name: str,
+            tool_message: Optional[str] = None,
+            tool_kwargs: Optional[dict[str, Any]] = None,
+        ) -> str:
+            """按详细模式逐条展示工具调用，或登记为延迟汇总。"""
+            ...
+
+        def tool_call_started(
+            self,
+            tool_name: str,
+            tool_message: Optional[str] = None,
+        ) -> str:
+            """登记真实工具开始执行并返回展示调用 ID。"""
+            ...
+
+        def tool_call_finished(self, tool_id: str, status: str = "done") -> None:
+            """登记真实工具执行结束。"""
+            ...
+
         async def take(self) -> str:
             """取出并清空当前缓冲内容。"""
             ...
@@ -67,7 +94,6 @@ else:
             ...
 
 
-
 def __getattr__(name: str) -> Any:
     """显式访问历史 StreamingHandler 符号时返回 canonical 实现。"""
     if name == "StreamingHandler":
@@ -78,6 +104,8 @@ def __getattr__(name: str) -> Any:
 
 
 class ToolChain(ChainBase):
+    """为工具提供宿主业务链入口。"""
+
     pass
 
 
@@ -101,6 +129,30 @@ def serialize_tool_result_for_agent(result: Any) -> str:
         return str(result)
 
 
+def normalize_tool_failure_for_agent(result: Any, *, tool_name: str) -> str | list[dict[str, Any]]:
+    """将旧工具返回的裸错误文本统一成模型可恢复的结构化失败回执。"""
+    if not isinstance(result, str):
+        return cast(str | list[dict[str, Any]], result)
+    text = result.strip()
+    if not text or text.startswith("{") or text.startswith("["):
+        return result
+    markers = ("错误", "操作失败", "浏览器操作失败", "工具执行异常")
+    if not text.startswith(markers):
+        return result
+    return json.dumps({
+        "success": False,
+        "execution_outcome": "failed",
+        "tool": tool_name,
+        "error": text,
+        "recovery": "根据错误信息修正输入或改用正确工具后重试；不要重复未确认的写入。",
+    }, ensure_ascii=False)
+
+
+TOOL_RESULT_RECORDER: ContextVar[Optional[Callable[[str, str], dict[str, Any]]]] = ContextVar(
+    "agent_tool_result_recorder", default=None,
+)
+
+
 def format_tool_result_for_agent(
     result: Any,
     *,
@@ -116,15 +168,28 @@ def format_tool_result_for_agent(
     if not max_chars or max_chars <= 0 or len(formatted_result) <= max_chars:
         return formatted_result
 
+    reference: dict[str, Any] = {}
+    recorder = TOOL_RESULT_RECORDER.get()
+    if recorder is not None:
+        reference = recorder(tool_name or "unknown", formatted_result)
+        if reference.get("result_id"):
+            max_chars = min(max_chars, 8192)
+    outcome = inspect_tool_result(result).value
+
     def _dump_preview(preview: str) -> str:
         """序列化截断结果，并让 returned_chars 与实际预览保持一致。"""
         payload = {
+            **reference,
+            **({"next_offset": len(preview)} if reference.get("result_id") else {}),
+            "execution_outcome": outcome,
             "tool_result_truncated": True,
             "tool_name": tool_name,
             "total_chars": len(formatted_result),
             "returned_chars": len(preview),
             "content_preview": preview,
             "message": (
+                "完整结果已在当前会话临时保存；使用 read_tool_result 的 result_id 和 next_offset 继续读取，无需重复执行原工具。"
+                if reference.get("result_id") else
                 f"工具返回内容超过 {max_chars} 字符，已截断为预览；"
                 "请使用更精确的筛选条件、分页参数或专用查询参数继续获取。"
             ),
@@ -405,9 +470,10 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         return sorted(explicit_tags | {ToolTag.AgentTool.value})
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
+        """拒绝同步执行，确保工具遵循异步超时与宿主策略边界。"""
         raise NotImplementedError("MoviePilotTool 只支持异步调用，请使用 _arun")
 
-    async def _arun(self, *args: Any, **kwargs: Any) -> str:
+    async def _arun(self, *args: Any, **kwargs: Any) -> Union[str, list[dict[str, Any]]]:
         """
         异步运行工具，负责：
         1. 在工具调用前将流式消息推送给用户
@@ -423,18 +489,22 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             # 不会产生工具消息或统计摘要；补一个换行分隔符，避免随后的失败说明
             # 与引导文本直接连在一起。
             self._ensure_tool_boundary_separator()
-            return permission_result
+            return json.dumps({"success": False, "error": permission_result}, ensure_ascii=False)
 
         # 获取工具执行提示消息
         tool_message = self.get_tool_message(**kwargs)
+        tool_call_id = ""
 
         # 发送工具执行过程消息（流式传输且非最后终结工具时）
         if self._stream_handler and self._stream_handler.is_streaming and not self.return_direct:
+            start_tool_call = getattr(self._stream_handler, "tool_call_started", None)
+            if callable(start_tool_call):
+                tool_call_id = str(start_tool_call(self.name, tool_message) or "")
             if get_runtime_setting('AI_AGENT_VERBOSE'):
                 if self._stream_handler.is_auto_flushing:
                     # 渠道支持编辑：工具消息追加到 buffer，由定时刷新推送
                     if tool_message:
-                        self._stream_handler.emit(f"\n\n⚙️ => {tool_message}\n\n")
+                        self._stream_handler.emit_tool_message(tool_message)
                 else:
                     allow_dispatch_without_context = self._agent_context.get(
                         "should_dispatch_reply", False
@@ -485,21 +555,40 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         # 执行具体工具逻辑
         try:
             result = await self.run_with_timeout(**kwargs)
-            
-            logger.info(
-                f"Agent工具 {self.name} 执行完成，"
-                f"结果摘要: {summarize_result(result)}"
+            formatted_result = normalize_tool_failure_for_agent(
+                self.format_agent_result(result, **kwargs), tool_name=self.name,
             )
-            
+
+            logger.info(
+                f"Agent工具 {self.name} 返回结果，状态: {inspect_tool_result(formatted_result).value}，"
+                f"结果摘要: {summarize_result(formatted_result)}"
+            )
+
+            if tool_call_id:
+                finish_tool_call = getattr(self._stream_handler, "tool_call_finished", None)
+                if callable(finish_tool_call):
+                    finish_tool_call(tool_call_id, "done")
         except ToolExecutionTimeoutError as e:
+            if tool_call_id:
+                finish_tool_call = getattr(self._stream_handler, "tool_call_finished", None)
+                if callable(finish_tool_call):
+                    finish_tool_call(tool_call_id, "error")
             error_message = summarize_error(e)
             logger.warning(error_message)
             raise
         except Exception as e:
-            error_message = f"工具执行异常: {summarize_error(e)}"
+            if tool_call_id:
+                finish_tool_call = getattr(self._stream_handler, "tool_call_finished", None)
+                if callable(finish_tool_call):
+                    finish_tool_call(tool_call_id, "error")
+            error_message = f"工具执行异常（{stable_type_name(e)}），请检查参数或查询当前状态后继续处理。"
             logger.error(f"Tool {self.name} execution failed: {summarize_error(e)}")
-            result = error_message
+            raise ToolExecutionError(error_message) from e
 
+        return formatted_result
+
+    def format_agent_result(self, result: Any, **tool_arguments: Any) -> Union[str, list[dict[str, Any]]]:
+        """Agent 专用输出入口；默认仍为有界文本，专用工具可覆写为真实多模态块。"""
         return format_tool_result_for_agent(
             result, tool_name=self.name, max_chars=self.result_max_chars
         )

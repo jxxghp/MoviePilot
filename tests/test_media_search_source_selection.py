@@ -5,10 +5,10 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from app.adapters.web.security.access import verify_token
 from app.api.endpoints import media as media_endpoints
 from app.api.endpoints.media import search
 from app.chain.base import ChainBase
-from app.adapters.web.security.access import verify_token
 from app.modules.douban import DoubanModule
 from app.modules.themoviedb import TheMovieDbModule
 from app.schemas.types import MediaSource, MediaType
@@ -19,6 +19,7 @@ from app.schemas.types import MediaSource, MediaType
     [
         ("collection", "async_search_collections", MediaSource.TMDB),
         ("person", "async_search_persons", MediaSource.Douban),
+        ("person", "async_search_persons", MediaSource.MusicBrainz),
     ],
 )
 def test_media_search_endpoint_forwards_source(
@@ -87,6 +88,7 @@ async def test_media_search_route_accepts_comma_separated_music_sources() -> Non
                     "title": "周杰伦",
                     "type": "music",
                     "count": 30,
+                    "music_type": "album",
                     "media_source": "musicbrainz,theaudiodb,doubanmusic",
                 },
             )
@@ -96,12 +98,69 @@ async def test_media_search_route_accepts_comma_separated_music_sources() -> Non
     chain.async_search_music.assert_awaited_once_with(
         query="周杰伦",
         limit=30,
+        music_types=("album",),
         media_source=(
             MediaSource.MusicBrainz,
             MediaSource.TheAudioDB,
             MediaSource.DoubanMusic,
         ),
     )
+
+
+@pytest.mark.anyio
+async def test_media_search_route_limits_untyped_music_search_to_recordings_and_albums() -> None:
+    """未指定音乐实体时，音乐搜索接口只应返回单曲和专辑候选。"""
+    chain = Mock()
+    chain.async_search_music = AsyncMock(return_value=[])
+    app = FastAPI()
+    app.include_router(media_endpoints.router, prefix="/api/v1/media")
+    app.dependency_overrides[verify_token] = lambda: Mock()
+
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.get(
+                "/api/v1/media/search",
+                params={"title": "周杰伦", "type": "music", "count": 30, "media_source": "musicbrainz"},
+            )
+
+    assert response.status_code == 200
+    chain.async_search_music.assert_awaited_once_with(
+        query="周杰伦",
+        limit=30,
+        music_types=("recording", "album"),
+        media_source=(MediaSource.MusicBrainz,),
+    )
+
+
+@pytest.mark.anyio
+async def test_person_search_keeps_musicbrainz_in_the_person_branch() -> None:
+    """演员/艺术家搜索选择 MusicBrainz 时不得被来源类型误分流到音乐列表。"""
+    chain = Mock()
+    chain.async_search_persons = AsyncMock(return_value=[])
+    chain.async_search_music = AsyncMock(return_value=[])
+    app = FastAPI()
+    app.include_router(media_endpoints.router, prefix="/api/v1/media")
+    app.dependency_overrides[verify_token] = lambda: Mock()
+
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.get(
+                "/api/v1/media/search",
+                params={"title": "周杰伦", "type": "person", "media_source": "musicbrainz"},
+            )
+
+    assert response.status_code == 200
+    chain.async_search_persons.assert_awaited_once_with(
+        name="周杰伦",
+        media_source=(MediaSource.MusicBrainz,),
+    )
+    chain.async_search_music.assert_not_awaited()
 
 
 @pytest.mark.anyio

@@ -367,11 +367,11 @@ def _load_transmission_module():
     assert module_spec and module_spec.loader
     with patch.dict(sys.modules, stub_modules):
         module_spec.loader.exec_module(module)
-    return module.TransmissionModule, TorrentStatus
+    return module.TransmissionModule, TorrentStatus, module
 
 
 DownloaderBase = _load_downloader_base()
-TransmissionModule, TransmissionTorrentStatus = _load_transmission_module()
+TransmissionModule, TransmissionTorrentStatus, transmission_module = _load_transmission_module()
 
 
 def _build_base(path_mapping):
@@ -489,6 +489,39 @@ def test_hash_lookup_return_moviepilot_accessible_path():
     assert torrents[0].path == Path("/media/video/downloads/movie/Movie")
     assert torrents[0].save_path == "/media/video/downloads/movie"
     assert torrents[0].content_path == "/media/video/downloads/movie/Movie"
+
+
+def test_list_torrents_normalizes_parsed_year_to_string(monkeypatch):
+    """种子名称解析出的整数年份应按下载任务契约转换为字符串。"""
+    server = MagicMock()
+    server.get_torrents.return_value = (
+        [
+            SimpleNamespace(
+                name="The.Fifth.Republic.2005.1080p.WEB-DL.HEVC.AAC",
+                download_dir="/mnt/raid5/home_lt999lt/video/downloads/movie",
+                hashString="hash-with-year",
+                total_size=1024,
+                labels=[],
+                progress=100,
+                status="seeding",
+            )
+        ],
+        False,
+    )
+    monkeypatch.setattr(
+        transmission_module,
+        "MetaInfo",
+        lambda _name: SimpleNamespace(
+            name="The Fifth Republic",
+            year=2005,
+            season_episode="",
+        ),
+    )
+    module = _build_transmission_module(server)
+
+    torrents = module.list_torrents(include_all_tags=True)
+
+    assert torrents[0].year == "2005"
 
 
 def test_list_torrents_ignores_missing_transmission_limit_fields():

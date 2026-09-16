@@ -1,15 +1,18 @@
+import threading
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 
 from app.application.subscription.contract import SubscriptionPatch, SubscriptionSnapshot
+from app.application.subscription.execution import SubscriptionExecutionAdmission, SubscriptionExecutionContext
 from app.application.subscription.mutation import SubscriptionMutation
-from app.chain.subscribe import SubscribeChain
+from app.application.subscription.query import subscription_search_due
 from app.chain.subscribe import search as subscribe_search
+from app.chain.subscribe.facade import SubscribeChain
 from app.schemas.types import MediaType
 
 
@@ -123,10 +126,41 @@ def test_new_subscribe_search_marks_state_after_attempt(monkeypatch) -> None:
         chain.search(state="N", manual=False)
 
     media_chain.recognize_media.assert_called_once()
-    assert len(_SubscribeOper.updates) == 1
-    subscribe_id, subscription_patch = _SubscribeOper.updates[0]
+    assert len(_SubscribeOper.updates) == 2
+    assert "last_search" in _SubscribeOper.updates[0][1].to_payload()
+    subscribe_id, subscription_patch = _SubscribeOper.updates[1]
     assert subscribe_id == 31
     assert subscription_patch == SubscriptionPatch({"state": "R"})
+
+
+@pytest.mark.parametrize("resuming_sites", [False, True])
+def test_site_resume_preserves_the_full_search_schedule(monkeypatch, resuming_sites) -> None:
+    """补查坏站点不推迟健康站点的新周期，完整搜索才更新周期起点。"""
+    now = datetime.now(timezone.utc)
+    subscribe = replace(
+        _new_subscribe(datetime.now() - timedelta(days=2)), state="R",
+        last_search=(now - timedelta(hours=25)).isoformat(timespec="seconds"),
+    )
+    admission = SubscriptionExecutionAdmission()
+    lease = admission.try_acquire(subscription_id=subscribe.id, operation="search", ttl_seconds=60)
+    context = SubscriptionExecutionContext(
+        lease=lease, admission=admission, resuming_sites=resuming_sites,
+    )
+    chain = object.__new__(SubscribeChain)
+    monkeypatch.setattr(subscribe_search, "prepare_search_target", Mock(return_value=None))
+    monkeypatch.setattr(subscribe_search, "MediaChain", Mock())
+    update = Mock(side_effect=lambda item, payload, **_kwargs: replace(item, **payload))
+    monkeypatch.setattr(chain, "_SubscribeChain__apply_subscribe_update", update)
+
+    result = chain._process_search_subscription(subscribe, Mock(), execution_context=context)
+
+    assert subscription_search_due(result, 24, now) is resuming_sites
+    if resuming_sites:
+        update.assert_not_called()
+        assert result.last_search == subscribe.last_search
+    else:
+        assert result.last_search != subscribe.last_search
+    assert admission.release(lease)
 
 
 def test_targeted_batch_searches_all_ids_without_state_scan(monkeypatch) -> None:
@@ -148,16 +182,22 @@ def test_targeted_batch_searches_all_ids_without_state_scan(monkeypatch) -> None
     with patch.object(subscribe_search, "MediaChain", return_value=media_chain):
         chain = object.__new__(SubscribeChain)
         chain.subscription_repository = subscribe_oper
+        monkeypatch.setattr(chain, "_SubscribeChain__apply_subscribe_update", lambda sub, *_args, **_kwargs: sub)
         chain.search(sids=(31, 32), state=None, manual=False)
 
-    assert [item.args for item in subscribe_oper.get.call_args_list] == [(31,), (32,)]
+    assert [item.args for item in subscribe_oper.get.call_args_list] == [
+        (31,),
+        (32,),
+        (31,),
+        (32,),
+    ]
     subscribe_oper.list.assert_not_called()
     assert media_chain.recognize_media.call_count == 2
 
 
 def test_subscribe_search_aborts_when_lock_times_out(monkeypatch) -> None:
     """订阅搜索锁超时后必须中止，不能在无锁状态下继续访问订阅。"""
-    monkeypatch.setattr(SubscribeChain, "_rlock", _TimedOutLock())
+    monkeypatch.setattr(SubscribeChain, "_search_queue_lock", _TimedOutLock())
     subscribe_oper = Mock()
     progress = Mock()
 
@@ -168,7 +208,7 @@ def test_subscribe_search_aborts_when_lock_times_out(monkeypatch) -> None:
     subscribe_oper.assert_not_called()
     progress.assert_called_once_with(
         value=100,
-        text="订阅搜索锁等待超时，已跳过本轮",
+        text="订阅搜索正在处理中，本次不再重复开始",
     )
 
 
@@ -176,7 +216,7 @@ def test_subscribe_search_releases_lock_when_repository_query_fails(monkeypatch)
     """取得搜索锁后即使订阅查询失败，也必须释放进程级互斥锁。"""
     lock = Mock()
     lock.acquire.return_value = True
-    monkeypatch.setattr(SubscribeChain, "_rlock", lock)
+    monkeypatch.setattr(SubscribeChain, "_search_queue_lock", lock)
     repository = Mock()
     repository.list.side_effect = RuntimeError("query failed")
     chain = object.__new__(SubscribeChain)
@@ -228,12 +268,48 @@ def test_subscribe_search_progress_preserves_public_callback_payload() -> None:
     ]
 
 
+def test_inline_search_conflict_does_not_report_false_completion(monkeypatch) -> None:
+    """兼容搜索遇到同订阅冲突时必须报告未执行，而不是成功完成。"""
+    subscribe = replace(
+        _new_subscribe(datetime.now() - timedelta(minutes=2)),
+        state="R",
+    )
+    repository = Mock()
+    repository.get.return_value = subscribe
+    progress = Mock()
+    chain = object.__new__(SubscribeChain)
+    chain.subscription_repository = repository
+    chain._search_queue_lock = threading.Lock()
+    chain._match_lock = threading.Lock()
+    chain._subscription_execution_admission = SubscriptionExecutionAdmission()
+    match_lease = chain._subscription_execution_admission.try_acquire(
+        subscription_id=subscribe.id,
+        operation="match",
+        ttl_seconds=60,
+    )
+    assert match_lease is not None
+
+    with patch.object(subscribe_search, "SearchChain", return_value=Mock()):
+        chain.search(
+            sid=subscribe.id,
+            state=None,
+            progress_callback=progress,
+        )
+
+    assert progress.call_args.kwargs == {
+        "value": 100,
+        "text": "搜索结束，部分订阅这次没有完成",
+        "data": {"total": 1, "finished": 0},
+    }
+    assert chain._subscription_execution_admission.release(match_lease) is True
+
+
 def test_subscribe_match_aborts_when_lock_times_out(monkeypatch) -> None:
     """订阅匹配锁超时后必须中止，不能绕过防重复下载边界。"""
-    monkeypatch.setattr(SubscribeChain, "_rlock", _TimedOutLock())
+    monkeypatch.setattr(SubscribeChain, "_match_lock", _TimedOutLock())
     progress = Mock()
 
     chain = object.__new__(SubscribeChain)
     chain.match({"example.org": []}, progress_callback=progress)
 
-    progress.assert_any_call(value=100, text="订阅匹配锁等待超时，已跳过本轮")
+    progress.assert_any_call(value=100, text="订阅资源检查正在进行，本次不再重复开始")

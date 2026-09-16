@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from typing import Any, List, Optional, cast
 
-from sqlalchemy import JSON, Boolean, Index, Integer, String, delete, func, or_, select, update
+from sqlalchemy import JSON, Boolean, Index, Integer, String, delete, false, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -44,8 +44,16 @@ class TransferHistory(Base):
     mode: Mapped[Optional[str]] = mapped_column(String)
     # 类型 电影/电视剧
     type: Mapped[Optional[str]] = mapped_column(String)
-    # 二级分类
+    # 实际媒体类别稳定标识
+    media_category_id: Mapped[Optional[str]] = mapped_column(String)
+    # 实际媒体类别兼容路径快照
     category: Mapped[Optional[str]] = mapped_column(String)
+    # 命中的分类规则标识
+    classification_rule_id: Mapped[Optional[str]] = mapped_column(String)
+    # 执行时分类策略版本
+    classification_policy_revision: Mapped[Optional[int]] = mapped_column(Integer)
+    # 最终分类来源
+    classification_source: Mapped[Optional[str]] = mapped_column(String)
     # 标题
     title: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 年份
@@ -81,6 +89,14 @@ class TransferHistory(Base):
     status: Mapped[Optional[bool]] = mapped_column(Boolean(), default=True)
     # 转移失败信息
     errmsg: Mapped[Optional[str]] = mapped_column(String)
+    # 连续失败次数和自动暂停状态，跨进程保留自动整理的终态
+    retry_count: Mapped[Optional[int]] = mapped_column(Integer)
+    auto_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    # 失败阶段、恢复动作和下载器清理状态，供历史页面给出可执行建议
+    failure_stage: Mapped[Optional[str]] = mapped_column(String)
+    recovery_action: Mapped[Optional[str]] = mapped_column(String)
+    cleanup_status: Mapped[Optional[str]] = mapped_column(String)
+    cleanup_error: Mapped[Optional[str]] = mapped_column(String)
     # 时间
     date: Mapped[Optional[str]] = mapped_column(String)
     # 文件清单，以JSON存储
@@ -104,6 +120,7 @@ class TransferHistory(Base):
     @classmethod
     def list_by_title(cls, db: Session, title: str, page: int = 1, count: int = 30,
                       status: Optional[bool] = None, wildcard: bool = False):
+        """按标题或路径分页查询整理历史。"""
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -130,6 +147,7 @@ class TransferHistory(Base):
     @classmethod
     async def async_list_by_title(cls, db: AsyncSession, title: str, page: int = 1, count: int = 30,
                                   status: Optional[bool] = None, wildcard: bool = False):
+        """异步按标题或路径分页查询整理历史。"""
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -156,6 +174,7 @@ class TransferHistory(Base):
 
     @classmethod
     def list_by_page(cls, db: Session, page: int = 1, count: int = 30, status: Optional[bool] = None):
+        """按时间倒序分页读取整理历史。"""
         statement = select(cls)
         if status is not None:
             statement = statement.where(cls.status == status)
@@ -170,6 +189,7 @@ class TransferHistory(Base):
     @classmethod
     async def async_list_by_page(cls, db: AsyncSession, page: int = 1, count: int = 30,
                                  status: Optional[bool] = None):
+        """异步按时间倒序分页读取整理历史。"""
         if status is not None:
             query = select(cls).filter(
                 cls.status == status
@@ -180,11 +200,11 @@ class TransferHistory(Base):
             query = select(cls).order_by(
                 cls.date.desc()
             )
-        
+
         # 当count为负数时，不限制页数查询所有
         if count >= 0:
             query = query.offset((page - 1) * count).limit(count)
-        
+
         result = await db.execute(query)
         return list(result.scalars().all())
 
@@ -231,6 +251,25 @@ class TransferHistory(Base):
             Optional["TransferHistory"],
             db.execute(
                 select(cls).where(cls.transfer_task_id == task_id)
+            ).scalars().first(),
+        )
+
+    @classmethod
+    async def async_get_by_transfer_task_id(
+            cls,
+            db: AsyncSession,
+            *,
+            task_id: str,
+    ) -> Optional["TransferHistory"]:
+        """异步按稳定整理任务标识读取终态结算历史。"""
+        if not task_id:
+            return None
+        return cast(
+            Optional["TransferHistory"],
+            (
+                await db.execute(
+                    select(cls).where(cls.transfer_task_id == task_id)
+                )
             ).scalars().first(),
         )
 
@@ -414,6 +453,7 @@ class TransferHistory(Base):
 
     @classmethod
     def list_by_hash(cls, db: Session, download_hash: str):
+        """查询同一下载任务的全部整理历史。"""
         return list(db.execute(
             select(cls).where(cls.download_hash == download_hash)
         ).scalars().all())
@@ -515,6 +555,7 @@ class TransferHistory(Base):
 
     @classmethod
     def count(cls, db: Session, status: Optional[bool] = None):
+        """统计指定状态的整理历史数量。"""
         statement = select(func.count(cls.id))
         if status is not None:
             statement = statement.where(cls.status == status)
@@ -522,6 +563,7 @@ class TransferHistory(Base):
 
     @classmethod
     async def async_count(cls, db: AsyncSession, status: Optional[bool] = None):
+        """异步统计指定状态的整理历史数量。"""
         if status is not None:
             result = await db.execute(
                 select(func.count(cls.id)).filter(cls.status == status)
@@ -534,6 +576,7 @@ class TransferHistory(Base):
 
     @classmethod
     def count_by_title(cls, db: Session, title: str, status: Optional[bool] = None, wildcard: bool = False):
+        """统计与标题或路径匹配的整理历史数量。"""
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -553,6 +596,7 @@ class TransferHistory(Base):
 
     @classmethod
     async def async_count_by_title(cls, db: AsyncSession, title: str, status: Optional[bool] = None, wildcard: bool = False):
+        """异步统计与标题或路径匹配的整理历史数量。"""
         if wildcard:
             text_filter = or_(
                 _text_like(cls.title, title, wildcard=True),
@@ -591,8 +635,8 @@ class TransferHistory(Base):
         elif mtype and season is not None and dest:
             # 类型 + 转移路径（媒体服务器 webhook 缺少远端身份场景）
             return list(db.execute(select(cls).where(cls.type == mtype,
-                                                cls.seasons == season,
-                                                cls.dest.like(f"{dest}%"))).scalars().all())
+                                                     cls.seasons == season,
+                                                     cls.dest.like(f"{dest}%"))).scalars().all())
         else:
             return []
         if season is not None and episode:
@@ -625,6 +669,55 @@ class TransferHistory(Base):
         """在调用方事务中暂存下载任务哈希更新。"""
         db.execute(
             update(cls).where(cls.id == historyid).values(download_hash=download_hash)
+        )
+
+    @classmethod
+    def update_cleanup_status(
+            cls,
+            db: Session,
+            historyid: int,
+            values: dict[str, Optional[str]],
+    ) -> None:
+        """暂存调用方已经投影完成的清理状态字段。"""
+        db.execute(
+            update(cls)
+            .where(cls.id == historyid)
+            .values(**values)
+        )
+
+    @classmethod
+    def detach_failed_transfer_task(
+            cls,
+            db: Session,
+            *,
+            history_id: int,
+            task_id: str,
+            settlement_revision: int,
+    ) -> int:
+        """
+        解除指定失败回执与 durable 任务的精确映射。
+
+        :param db: 数据库会话
+        :param history_id: 失败终态历史标识
+        :param task_id: 稳定任务标识
+        :param settlement_revision: 失败回执结算版本
+        :return: 更新的历史数
+        """
+        if history_id <= 0 or not task_id or settlement_revision <= 0:
+            return 0
+        return execute_dml(
+            db,
+            update(cls)
+            .where(
+                cls.id == history_id,
+                cls.transfer_task_id == task_id,
+                cls.transfer_settlement_revision == settlement_revision,
+            )
+            .values(
+                transfer_task_id=None,
+                transfer_settlement_revision=None,
+            ),
+            execution_options={"synchronize_session": False},
         )
 
     @classmethod

@@ -10,6 +10,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
+import app.db.uow as uow_module
 from app.application.plugin.declaration import PluginDeclaredMetadata
 from app.application.plugin.identity import (
     PluginBindingBasis,
@@ -22,9 +23,14 @@ from app.application.plugin.identity import (
     WritePluginIdentityCommand,
     plan_legacy_plugin_identity,
 )
-from app.db.adapters.pluginidentity import TransactionalPluginIdentityStore
+from app.db.adapters.pluginidentity import (
+    TransactionalPluginIdentityStore,
+    _to_model,
+)
+from app.db.adapters.transaction import TransactionalWriteRunner
 from app.db.models import load_all_models
 from app.db.models.pluginidentity import PluginIdentity as PluginIdentityModel
+from app.db.oper.pluginidentity import PluginIdentityOper
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 OFFICIAL_SOURCE = "github:jxxghp/moviepilot-plugins"
@@ -472,6 +478,40 @@ def test_legacy_unavailable_empty_or_ambiguous_market_stays_unbound(
     assert identity.trusted_source_type is TrustedPluginSourceType.UNKNOWN
     assert identity.trusted_source_key is None
     assert identity.binding_basis is PluginBindingBasis.LEGACY_UNBOUND
+
+
+def test_identity_oper_batch_read_survives_the_composition_root_session(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """无会话批量读必须在事务内取完行：会话关闭后再消费游标已经读不到数据。"""
+    engine = sa.create_engine(f"sqlite:///{tmp_path / 'plugin-identity.db'}")
+    PluginIdentityModel.__table__.create(engine)
+    factory = sessionmaker(bind=engine)
+    runner = TransactionalWriteRunner(
+        sync_session=factory,
+        async_session=Mock(name="async_session_factory"),
+    )
+    seeded = factory()
+    try:
+        seeded.add(_to_model(_identity("DemoPlugin")))
+        seeded.add(_to_model(_identity("OtherPlugin")))
+        seeded.commit()
+    finally:
+        seeded.close()
+    # 同步事务执行器是进程级状态，由 conftest 会话级装配，这里只能借 monkeypatch 临时
+    # 顶替并在用例结束后还原，直接 reset 会把后续用例的执行器一并抹掉
+    monkeypatch.setattr(uow_module, "_sync_transaction_runner", runner.sync)
+    try:
+        identities = PluginIdentityOper().list_by_plugin_ids(
+            ["demoplugin", "otherplugin"]
+        )
+
+        assert sorted(
+            identity.normalized_plugin_id for identity in identities
+        ) == ["demoplugin", "otherplugin"]
+    finally:
+        engine.dispose()
 
 
 def test_virtual_instance_does_not_create_independent_plugin_identity() -> None:

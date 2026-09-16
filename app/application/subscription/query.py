@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Optional
+from datetime import datetime, timedelta
+from typing import Any, Optional, cast
 
 from app.application.subscription.contract import (
     SubscriptionHistoryQueryPort,
@@ -15,6 +16,7 @@ from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.common import JsonData
 from app.schemas.media import resolve_media_identity
+from app.schemas.subscribe import compute_subscribe_completed_tracks
 from app.schemas.types import MediaSource, MediaType
 from app.schemas.workflow import Subscribe as SubscribeView
 
@@ -50,25 +52,56 @@ class SubscriptionQueryService:
         self._async_repository = async_repository
         self._history_repository = history_repository
 
+    @staticmethod
+    def _to_public_view(record: Any) -> SubscribeView:
+        """把活动订阅内部快照投影为公开 DTO，并派生专辑曲目进度。"""
+        payload = record.to_dict()
+        payload["completed_tracks"] = compute_subscribe_completed_tracks(record)
+        payload.pop("downloaded_tracks", None)
+        return cast(SubscribeView, SubscribeView.model_validate(payload))
+
     async def list_public(
         self,
         username: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> list[SubscribeView]:
-        """读取公开订阅列表并转换为稳定 DTO。"""
+        """按 owner 和可选数据库窗口读取公开订阅 DTO。"""
         if self._async_repository is None:
             raise RuntimeError("异步订阅查询端口未注册")
         if username:
-            records = await self._async_repository.async_list_by_username(username=username)
+            if page is None and count is None:
+                records = await self._async_repository.async_list_by_username(
+                    username=username
+                )
+            else:
+                records = await self._async_repository.async_list_by_username(
+                    username=username,
+                    page=page,
+                    count=count,
+                )
         else:
-            records = await self._async_repository.async_list()
-        return [SubscribeView.model_validate(record) for record in records]
+            if page is None and count is None:
+                records = await self._async_repository.async_list()
+            else:
+                records = await self._async_repository.async_list(
+                    page=page,
+                    count=count,
+                )
+        return [self._to_public_view(record) for record in records]
+
+    async def count_public(self, username: Optional[str] = None) -> int:
+        """按 owner 范围返回公开订阅精确总数。"""
+        if self._async_repository is None:
+            raise RuntimeError("异步订阅查询端口未注册")
+        return await self._async_repository.async_count(username=username)
 
     async def get_public(self, subscribe_id: int) -> Optional[SubscribeView]:
         """按 ID 读取订阅 DTO。"""
         if self._async_repository is None:
             raise RuntimeError("异步订阅查询端口未注册")
         record = await self._async_repository.async_get(subscribe_id)
-        return SubscribeView.model_validate(record) if record else None
+        return self._to_public_view(record) if record else None
 
     async def list_by_media_identity(
         self,
@@ -85,7 +118,34 @@ class SubscriptionQueryService:
             music_type=music_type,
         )
         return [
-            SubscribeView.model_validate(record) for record in records if self._matches_music_type(record, music_type)
+            self._to_public_view(record)
+            for record in records
+            if self._matches_music_type(record, music_type)
+        ]
+
+    async def list_by_video_metadata(
+        self,
+        *,
+        title: str,
+        year: str,
+        media_type: MediaType,
+        season: Optional[int] = None,
+    ) -> list[SubscribeView]:
+        """按影视类型、规范标题、年份和可选季号读取跨来源订阅。"""
+        if self._async_repository is None:
+            raise RuntimeError("异步订阅查询端口未注册")
+        if media_type not in (MediaType.MOVIE, MediaType.TV):
+            return []
+        records = await self._async_repository.async_list_by_title(
+            title=title,
+            season=season,
+        )
+        expected_year = str(year).strip()
+        return [
+            self._to_public_view(record)
+            for record in records
+            if record.type == media_type.value
+            and str(record.year or "").strip() == expected_year
         ]
 
     async def list_history(
@@ -114,12 +174,28 @@ class SubscriptionQueryService:
             )
         result = []
         for record in records:
-            item = SubscribeView.model_validate(record)
+            item = self._to_public_view(record)
             if item.type == MediaType.TV.value:
                 item.total_episode = 0
                 item.lack_episode = 0
             result.append(item)
         return result
+
+    async def count_history(
+        self,
+        mtype: str,
+        *,
+        username: Optional[str] = None,
+    ) -> int:
+        """按与历史列表相同的 owner 范围返回精确总数。"""
+        if self._history_repository is None:
+            raise RuntimeError("订阅历史查询端口未注册")
+        if username:
+            return await self._history_repository.async_count_by_type_and_username(
+                mtype,
+                username,
+            )
+        return await self._history_repository.async_count_by_type(mtype)
 
     @staticmethod
     def _matches_music_type(
@@ -214,3 +290,25 @@ class SubscriptionQueryService:
         return any(
             subscribe.type == MediaType.MUSIC.value for subscribe in self._repository.list(searchable_states) or []
         )
+
+
+def subscription_search_due(
+    subscribe: SubscriptionSnapshot,
+    default_interval: int,
+    now: datetime,
+) -> bool:
+    """按最近一次主动搜索计算定时搜索到期；旧记录以本地创建时间起算。"""
+    if subscribe.state not in {"R", "P"}:
+        return False
+    previous = subscribe.last_search or subscribe.date
+    if not previous:
+        return True
+    try:
+        started = datetime.fromisoformat(previous)
+    except ValueError:
+        return True
+    # 旧创建时间没有时区，保持其本地时间语义；新搜索时间始终携带 UTC 时区。
+    if started.tzinfo is None:
+        started = started.astimezone()
+    interval = subscribe.search_interval or default_interval
+    return now >= started + timedelta(hours=interval)

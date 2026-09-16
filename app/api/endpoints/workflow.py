@@ -1,6 +1,6 @@
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
-from fastapi import Depends
+from fastapi import Depends, Response
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.api.dependencies.auth import (
@@ -12,7 +12,14 @@ from app.api.dependencies.workflow import (
     get_workflow_mutation_command,
     get_workflow_query_service,
 )
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+    resolve_compatible_pagination,
+)
 from app.application.plugin.runtime import get_plugin_manager
 from app.application.workflow import (
     WorkflowDefinitionCommand,
@@ -21,6 +28,7 @@ from app.application.workflow import (
     get_workflow_manager,
 )
 from app.chain.workflow import WorkflowChain
+from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.types import EVENT_TYPE_NAMES, EventType
 from app.schemas.workflow import NameValueOption as _SchemaNameValueOption
@@ -31,15 +39,83 @@ from app.schemas.workflow import WorkflowShare as _SchemaWorkflowShare
 
 router = ResponseAPIRouter()
 
-@router.get("/", summary="所有工作流", response_model=List[_SchemaWorkflow])
+
+@router.get(
+    "/",
+    summary="所有工作流",
+    response_model=List[_SchemaWorkflow],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
+)
 async def list_workflows(
+    response: Response = None,
     query: WorkflowQueryService = Depends(get_workflow_query_service),
     _: Any = Depends(get_current_active_manage_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     获取工作流列表
     """
-    return await query.list()
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count())
+    return await query.list(page=page, count=count)
+
+
+@router.get(  # type: ignore[misc]
+    "/agent",
+    summary="查询 Agent 可用工作流",
+    response_model=List[_SchemaJsonObject],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
+)
+async def list_agent_workflows(
+    response: Response = None,
+    state: Literal["W", "R", "P", "S", "F", "all"] = "all",
+    name: Optional[str] = None,
+    trigger_type: Literal["timer", "event", "manual", "all"] = "all",
+    query: WorkflowQueryService = Depends(get_workflow_query_service),
+    _: Any = Depends(get_current_active_manage_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
+) -> List[dict[str, Any]]:
+    """按旧 Agent 过滤与字段投影返回工作流列表，避免输出完整动作上下文。"""
+    state_filter = None if state == "all" else state
+    trigger_filter = None if trigger_type == "all" else trigger_type
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(
+            await query.count(
+                state=state_filter,
+                name=name,
+                trigger_type=trigger_filter,
+            )
+        )
+    workflows = await query.list(
+        state=state_filter,
+        name=name,
+        trigger_type=trigger_filter,
+        page=page,
+        count=count,
+    )
+    results = []
+    for workflow in workflows:
+        normalized_trigger = workflow.trigger_type or "timer"
+        results.append(
+            {
+                "id": workflow.id,
+                "name": workflow.name,
+                "description": workflow.description,
+                "trigger_type": normalized_trigger,
+                "state": workflow.state,
+                "run_count": workflow.run_count,
+                "timer": workflow.timer,
+                "event_type": workflow.event_type,
+                "add_time": workflow.add_time,
+                "last_time": workflow.last_time,
+                "current_action": workflow.current_action,
+            }
+        )
+    return results
 
 
 @router.post("/", summary="创建工作流", response_model=_SchemaResponse[None])
@@ -61,7 +137,9 @@ async def create_workflow(
     response_model=List[_SchemaPluginWorkflowActionGroup],
 )
 def list_plugin_actions(
-    plugin_id: str = None, _: Any = Depends(get_current_active_manage_user)
+    plugin_id: str = None, _: Any = Depends(get_current_active_manage_user),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     获取所有动作
@@ -74,7 +152,7 @@ def list_plugin_actions(
     summary="所有动作",
     response_model=List[_SchemaWorkflowActionDefinition],
 )
-async def list_actions(_: Any = Depends(get_current_active_manage_user_async)) -> Any:
+async def list_actions(_: Any = Depends(get_current_active_manage_user_async), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     获取所有动作
     """
@@ -86,7 +164,7 @@ async def list_actions(_: Any = Depends(get_current_active_manage_user_async)) -
     summary="获取所有事件类型",
     response_model=List[_SchemaNameValueOption],
 )
-async def get_event_types(_: Any = Depends(get_current_active_manage_user_async)) -> Any:
+async def get_event_types(_: Any = Depends(get_current_active_manage_user_async), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     获取所有事件类型
     """
@@ -235,14 +313,17 @@ async def get_workflow(
 
 @router.put("/{workflow_id}", summary="更新工作流", response_model=_SchemaResponse[None])
 def update_workflow(
+    workflow_id: int,
     workflow: _SchemaWorkflow,
     command: WorkflowMutationCommand = Depends(get_workflow_mutation_command),
     _: Any = Depends(get_current_active_manage_user),
 ) -> Any:
     """
-    更新工作流
+    更新工作流，路径 ID 是本次更新的唯一目标。
     """
-    result = command.update(workflow.model_dump())
+    workflow_data = workflow.model_dump()
+    workflow_data["id"] = workflow_id
+    result = command.update(workflow_data)
     return _SchemaResponse(success=result.success, message=result.message)
 
 

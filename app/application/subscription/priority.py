@@ -32,7 +32,7 @@ def normalize_episode_priority(
     for episode, priority in episode_priority.items():
         try:
             normalized[str(int(episode))] = int(priority)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
     return normalized
 
@@ -98,7 +98,7 @@ def get_downloaded_best_version_episodes(
     for episode in subscribe.note or []:
         try:
             episode_number = int(episode)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
         if episode_number in target_episodes:
             downloaded.add(episode_number)
@@ -110,7 +110,7 @@ def get_downloaded_best_version_episodes(
                 episode_number = int(episode_key)
                 if episode_number in target_episodes:
                     downloaded.add(episode_number)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
     return sorted(downloaded)
 
@@ -191,7 +191,7 @@ def compute_lack_episode(
     for episode in subscribe.note or []:
         try:
             episode_number = int(episode)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
         if episode_number in target_episodes:
             downloaded.add(episode_number)
@@ -200,7 +200,7 @@ def compute_lack_episode(
             if float(priority) <= 0:
                 continue
             episode_number = int(episode_key)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
         if episode_number in target_episodes:
             downloaded.add(episode_number)
@@ -429,7 +429,7 @@ def get_downloaded_episodes(downloads: Optional[List[Context]]) -> List[int]:
         for episode in selected_episodes or []:
             try:
                 downloaded_episodes.add(int(episode))
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 continue
     return sorted(downloaded_episodes)
 
@@ -480,7 +480,7 @@ def get_best_version_interested_episodes(
     for episode in selected_episodes:
         try:
             episode_num = int(episode)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
         if episode_num not in target_episodes:
             continue
@@ -503,7 +503,7 @@ def prepare_best_version_tv_candidate(
     if is_full_best_version_enabled(subscribe):
         try:
             return int(priority or 0) > int(subscribe.current_priority or 0)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return False
 
     interested_episodes = get_best_version_interested_episodes(
@@ -566,7 +566,7 @@ def should_prefer_full_pack_for_episode_best_version(
 
     try:
         resource_priority = int(priority or 0)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         resource_priority = 0
 
     episode_priority = get_episode_priority(subscribe)

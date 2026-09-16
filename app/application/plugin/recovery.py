@@ -43,11 +43,12 @@ class PluginRecoveryPackagePort(PluginPackageTransactionPort, Protocol):
 
 @dataclass(frozen=True, slots=True)
 class PluginInstallationRecoveryResult:
-    """启动恢复批次的 PREPARED 回滚和 COMMITTED 收尾数量。"""
+    """启动恢复批次的成功、待清理和按插件隔离失败数量。"""
 
     restored: int = 0
     finalized: int = 0
     cleanup_pending: int = 0
+    failed: int = 0
 
 
 class PluginInstallationRecoveryService:
@@ -64,24 +65,35 @@ class PluginInstallationRecoveryService:
         self.__packages = packages
 
     async def replay(self) -> PluginInstallationRecoveryResult:
-        """按创建顺序恢复全部 journal；关键事实不一致时阻止插件启动。"""
+        """按创建顺序恢复 journal，隔离单个插件失败并保留其记录重试。"""
         restored = 0
         finalized = 0
         cleanup_pending = 0
+        failed = 0
         for record in await self.__persistence.list_installations():
-            checkpoint = self.__checkpoint(record)
-            if record.phase is PluginInstallationPhase.PREPARED:
-                await self.__restore_prepared(record, checkpoint)
-                restored += 1
-                continue
-            if await self.__finish_committed(record, checkpoint):
-                finalized += 1
-            else:
-                cleanup_pending += 1
+            try:
+                checkpoint = self.__checkpoint(record)
+                if record.phase is PluginInstallationPhase.PREPARED:
+                    await self.__restore_prepared(record, checkpoint)
+                    restored += 1
+                    continue
+                if await self.__finish_committed(record, checkpoint):
+                    finalized += 1
+                else:
+                    cleanup_pending += 1
+            except Exception as error:  # noqa: BLE001 - 单插件故障不得阻断宿主
+                failed += 1
+                logger.error(
+                    "插件 %s 的安装恢复失败，已跳过本条恢复并保留 journal 供重试：%s",
+                    record.plugin_id,
+                    error,
+                    exc_info=True,
+                )
         return PluginInstallationRecoveryResult(
             restored=restored,
             finalized=finalized,
             cleanup_pending=cleanup_pending,
+            failed=failed,
         )
 
     def __checkpoint(

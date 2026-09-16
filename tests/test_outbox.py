@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from threading import Barrier
 from unittest.mock import MagicMock
+from uuid import UUID
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -63,7 +64,10 @@ def test_subscription_and_outbox_intent_commit_together() -> None:
     assert result == (42, "ok")
     assert calls == ["subscription", "outbox", "outbox", "commit"]
     intent = outbox.stage.call_args_list[0].args[0]
-    assert intent.event_key == "subscribe.added:42:unknown:unknown:v1"
+    key_parts = intent.event_key.split(":")
+    assert key_parts[:4] == ["subscribe.added", "42", "unknown", "unknown"]
+    assert UUID(key_parts[4]).hex == key_parts[4]
+    assert key_parts[5] == "v1"
     assert intent.payload["subscribe_id"] == 42
     report_intent = outbox.stage.call_args_list[1].args[0]
     assert report_intent.topic == "subscribe.added.report"

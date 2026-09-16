@@ -1,9 +1,14 @@
+"""站点认证与索引资源的版本检查和离线下载适配器。"""
+
+from __future__ import annotations
+
+import hashlib
 import json
 import platform
 import sys
 import sysconfig
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.host import SystemUtils
@@ -34,14 +39,21 @@ def reset_resource_version_provider() -> None:
     _resource_version_provider = _unavailable_resource_versions
 
 
-class ResourceHelper:
-    """
-    检测和更新资源包
-    """
+def get_resource_versions() -> tuple[str, str]:
+    """读取当前进程已加载的认证资源版本和索引资源版本。"""
+    try:
+        return _resource_version_provider()
+    except Exception as error:  # noqa: BLE001  版本读取失败时不能阻断系统状态接口
+        logger.warning(f"读取站点资源版本失败：{error}")
+        return _unavailable_resource_versions()
 
-    _base_dir: Path = get_runtime_setting('ROOT_PATH')
+
+class ResourceHelper:
+    """检查站点资源版本，并把待更新文件下载到外部暂存目录。"""
+
+    _base_dir: Path = get_runtime_setting("ROOT_PATH")
     _resource_target = Path("app/application/site")
-    _version_flag = get_runtime_setting('RESOURCE_VERSION_FLAG')
+    _version_flag = get_runtime_setting("RESOURCE_VERSION_FLAG")
     _repo = (
         f"{get_runtime_setting('GITHUB_PROXY')}https://raw.githubusercontent.com/"
         f"jxxghp/MoviePilot-Resources/main/package.{_version_flag}.json"
@@ -56,8 +68,8 @@ class ResourceHelper:
         """返回访问 GitHub 资源时应使用的代理配置。"""
         return (
             None
-            if get_runtime_setting('GITHUB_PROXY')
-            else get_runtime_setting('PROXY')
+            if get_runtime_setting("GITHUB_PROXY")
+            else get_runtime_setting("PROXY")
         )
 
     @staticmethod
@@ -73,17 +85,17 @@ class ResourceHelper:
         machine = platform.machine().lower()
         if machine in {"arm64", "aarch64"}:
             return "aarch64"
-        elif machine in {"x86_64", "amd64"}:
+        if machine in {"x86_64", "amd64"}:
             return "x86_64"
         return machine
 
     @classmethod
     def _get_needed_files(cls) -> list[str]:
         """返回 V3 资源在当前平台需要下载的文件名。"""
-        python_version = ResourceHelper._get_python_version_tag()
+        python_version = cls._get_python_version_tag()
         python_ver = python_version.replace("cp", "")
         system = platform.system().lower()
-        machine = ResourceHelper._get_machine_tag()
+        machine = cls._get_machine_tag()
         files = [f"user.sites.{cls._version_flag}.bin"]
         if system == "linux":
             files.append(f"sites.cpython-{python_ver}-{machine}-linux-gnu.so")
@@ -97,10 +109,176 @@ class ResourceHelper:
         """读取 V3 资源清单。"""
         response = RequestUtils(
             proxies=self.proxies,
-            headers=get_runtime_setting('GITHUB_HEADERS'),
+            headers=get_runtime_setting("GITHUB_HEADERS"),
             timeout=10,
         ).get_res(self._repo)
         return response if response and response.status_code == 200 else None
+
+    def get_update_info(
+        self,
+        *,
+        auth_version: str | None = None,
+        indexer_version: str | None = None,
+    ) -> dict[str, Any] | None:
+        """读取当前平台的资源更新元数据，但不写入运行目录。
+
+        :param auth_version: 当前认证资源版本；省略时使用组合根注入值
+        :param indexer_version: 当前索引资源版本；省略时使用组合根注入值
+        :return: 有更新时返回资源版本和文件元数据，否则返回 None
+        """
+        if not get_runtime_setting("AUTO_UPDATE_RESOURCE") or SystemUtils.is_frozen():
+            return None
+        if auth_version is None or indexer_version is None:
+            configured_auth, configured_indexer = get_resource_versions()
+            auth_version = auth_version or configured_auth
+            indexer_version = indexer_version or configured_indexer
+
+        response = self._load_resource_info()
+        if response is None:
+            raise RuntimeError("无法连接资源包仓库")
+        try:
+            resource_info = json.loads(response.text)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("资源包仓库数据解析失败") from error
+
+        if not isinstance(resource_info, dict):
+            raise RuntimeError("资源包仓库数据格式异常")
+        resources = resource_info.get("resources") or {}
+        needed_files = self._get_needed_files()
+        selected: dict[str, dict[str, Any]] = {}
+        changed_types: set[str] = set()
+        target_versions = {"auth": auth_version, "indexer": indexer_version}
+
+        for resource_name in needed_files:
+            resource = resources.get(resource_name)
+            if not isinstance(resource, dict):
+                raise RuntimeError(f"资源包清单缺少当前平台文件：{resource_name}")
+            resource_type = resource.get("type")
+            update_type = "indexer" if resource_type == "sites" else resource_type
+            if update_type not in target_versions:
+                raise RuntimeError(f"资源包清单包含未知资源类型：{resource_name}")
+            declared_platform = resource.get("platform")
+            if declared_platform and declared_platform != SystemUtils.platform():
+                raise RuntimeError(f"资源包平台不匹配：{resource_name}")
+            if Path(str(resource.get("target") or "")) != self._resource_target:
+                raise RuntimeError(f"资源包目标目录不安全：{resource_name}")
+            version = str(resource.get("version") or "").strip()
+            if not version:
+                raise RuntimeError(f"资源包清单缺少版本号：{resource_name}")
+            local_version = str(target_versions[update_type] or "0")
+            if compare_version(version, ">", local_version) is True:
+                changed_types.add(update_type)
+            selected[resource_name] = {
+                "name": resource_name,
+                "type": update_type,
+                "version": version,
+                "target": str(self._resource_target),
+            }
+
+        if not changed_types:
+            logger.info("所有站点资源已最新，无需更新")
+            return None
+
+        logger.info(
+            "发现站点资源更新：认证=%s，索引=%s",
+            selected.get(needed_files[-1], {}).get("version"),
+            selected.get(needed_files[0], {}).get("version"),
+        )
+        auth_target = next(
+            (item["version"] for item in selected.values() if item["type"] == "auth"),
+            None,
+        )
+        indexer_target = next(
+            (item["version"] for item in selected.values() if item["type"] == "indexer"),
+            None,
+        )
+        return {
+            "package_version": str(resource_info.get("version") or ""),
+            "auth_version": auth_target if "auth" in changed_types else None,
+            "indexer_version": indexer_target if "indexer" in changed_types else None,
+            "files": list(selected.values()),
+        }
+
+    def get_download_files(self, update_info: dict[str, Any]) -> list[dict[str, Any]]:
+        """解析资源目录 API，补齐每个待下载文件的地址和大小。"""
+        response = RequestUtils(
+            proxies=get_runtime_setting("PROXY"),
+            headers=get_runtime_setting("GITHUB_HEADERS"),
+            timeout=30,
+        ).get_res(self._files_api)
+        if response is None or response.status_code != 200:
+            raise RuntimeError(
+                f"连接资源仓库失败：HTTP {getattr(response, 'status_code', '无响应')}"
+            )
+        files_by_name = {
+            item.get("name"): item
+            for item in response.json()
+            if isinstance(item, dict) and item.get("name")
+        }
+        download_files: list[dict[str, Any]] = []
+        for resource in update_info.get("files") or []:
+            name = str(resource.get("name") or "")
+            remote = files_by_name.get(name) or {}
+            if not remote.get("download_url"):
+                raise RuntimeError(f"资源仓库缺少下载地址：{name}")
+            download_files.append(
+                {
+                    **resource,
+                    "download_url": str(remote["download_url"]),
+                    "size": int(remote.get("size") or 0),
+                }
+            )
+        return download_files
+
+    def download_files(
+        self,
+        files: list[dict[str, Any]],
+        destination_dir: Path,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> list[dict[str, Any]]:
+        """把资源文件下载到暂存目录并返回带 SHA256 的安装清单。"""
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        prepared: list[dict[str, Any]] = []
+        for resource in files:
+            resource_name = str(resource.get("name") or "")
+            name = Path(resource_name)
+            if name.name != resource_name:
+                raise RuntimeError(f"资源文件名不安全：{resource_name}")
+            destination = destination_dir / name.name
+            temporary = destination.with_suffix(destination.suffix + ".part")
+            temporary.unlink(missing_ok=True)
+            current = 0
+            digest = hashlib.sha256()
+            with RequestUtils(
+                proxies=self.proxies,
+                headers=get_runtime_setting("GITHUB_HEADERS"),
+                timeout=180,
+            ).get_stream(self._proxied(str(resource["download_url"]))) as response:
+                if response is None or response.status_code != 200:
+                    raise RuntimeError(
+                        f"下载资源文件失败：{resource_name}，HTTP {getattr(response, 'status_code', '无响应')}"
+                    )
+                with temporary.open("wb") as output:
+                    for chunk in response.iter_content(chunk_size=256 * 1024):
+                        if not chunk:
+                            continue
+                        output.write(chunk)
+                        digest.update(chunk)
+                        current += len(chunk)
+                        if on_progress:
+                            on_progress(len(chunk), int(resource.get("size") or 0))
+            temporary.replace(destination)
+            prepared.append(
+                {
+                    "name": resource_name,
+                    "type": resource.get("type"),
+                    "version": resource.get("version"),
+                    "path": str(destination),
+                    "sha256": digest.hexdigest(),
+                    "target": resource.get("target"),
+                }
+            )
+        return prepared
 
     def check(
         self,
@@ -108,126 +286,18 @@ class ResourceHelper:
         auth_version: str | None = None,
         indexer_version: str | None = None,
     ) -> bool:
-        """
-        检测并安装当前平台的资源更新。
+        """检查是否存在资源更新，不在运行目录直接安装资源。"""
+        try:
+            return self.get_update_info(
+                auth_version=auth_version,
+                indexer_version=indexer_version,
+            ) is not None
+        except Exception as error:  # noqa: BLE001  定时检查失败必须保持静默
+            logger.warning(f"检查站点资源更新失败：{error}")
+            return False
 
-        :param auth_version: 当前已加载的站点认证资源版本；省略时使用组合根注入值
-        :param indexer_version: 当前已加载的站点索引资源版本；省略时使用组合根注入值
-        :return: 是否成功安装了需要由上层处理重启的新资源
-        """
-        if not get_runtime_setting('AUTO_UPDATE_RESOURCE'):
-            return False
-        if SystemUtils.is_frozen():
-            return False
-        if auth_version is None or indexer_version is None:
-            configured_auth_version, configured_indexer_version = (
-                _resource_version_provider()
-            )
-            auth_version = auth_version or configured_auth_version
-            indexer_version = indexer_version or configured_indexer_version
-        logger.info("开始检测资源包版本...")
-        res = self._load_resource_info()
-        if res:
-            try:
-                resource_info = json.loads(res.text)
-                online_version = resource_info.get("version")
-                if online_version:
-                    logger.info(f"最新资源包版本：v{online_version}")
-                    # 需要更新的资源包
-                    need_updates = {}
-                    # 资源明细
-                    resources: dict = resource_info.get("resources") or {}
-                    for rname, resource in resources.items():
-                        rtype = resource.get("type")
-                        platform = resource.get("platform")
-                        declared_target = Path(str(resource.get("target") or ""))
-                        version = resource.get("version")
-                        # 判断平台
-                        if platform and platform != SystemUtils.platform():
-                            continue
-                        # 判断版本号
-                        if rtype == "auth":
-                            # 站点认证资源
-                            local_version = auth_version
-                        elif rtype == "sites":
-                            # 站点索引资源
-                            local_version = indexer_version
-                        else:
-                            continue
-                        if compare_version(version, ">", local_version):
-                            logger.info(f"{rname} 资源包有更新，最新版本：v{version}")
-                        else:
-                            continue
-                        # 需要安装
-                        if declared_target != self._resource_target:
-                            logger.warning(
-                                "忽略资源 %s 的非 canonical 目标目录：%s",
-                                rname,
-                                declared_target,
-                            )
-                            continue
-                        need_updates[rname] = self._resource_target
-                    if need_updates:
-                        # 下载文件信息列表
-                        r = RequestUtils(
-                            proxies=get_runtime_setting('PROXY'),
-                            headers=get_runtime_setting('GITHUB_HEADERS'),
-                            timeout=30,
-                        ).get_res(self._files_api)
-                        if r and not r.ok:
-                            logger.error(
-                                f"连接仓库失败：{r.status_code} - {r.reason}"
-                            )
-                            return False
-                        elif not r:
-                            logger.error("连接仓库失败")
-                            return False
-                        files_info = r.json()
-                        # 下载资源文件
-                        needed_files = self._get_needed_files()
-                        logger.info(f"需要下载的资源文件：{needed_files}")
-                        success = True
-                        for item in files_info:
-                            file_name = item.get("name")
-                            if file_name not in needed_files:
-                                continue
-                            save_path = need_updates.get(file_name)
-                            if not save_path:
-                                continue
-                            if item.get("download_url"):
-                                logger.info(f"开始更新资源文件：{file_name} ...")
-                                download_url = (
-                                    f"{get_runtime_setting('GITHUB_PROXY')}{item.get('download_url')}"
-                                )
-                                res = RequestUtils(
-                                    proxies=self.proxies,
-                                    headers=get_runtime_setting('GITHUB_HEADERS'),
-                                    timeout=180,
-                                ).get_res(download_url)
-                                if not res:
-                                    logger.error(f"文件 {file_name} 下载失败！")
-                                    success = False
-                                    break
-                                elif res.status_code != 200:
-                                    logger.error(
-                                        f"下载文件 {file_name} 失败：{res.status_code} - {res.reason}"
-                                    )
-                                    success = False
-                                    break
-                                file_path = self._base_dir / save_path / file_name
-                                if not file_path.parent.exists():
-                                    file_path.parent.mkdir(parents=True, exist_ok=True)
-                                file_path.write_bytes(res.content)
-                        if success:
-                            logger.info("资源包更新完成，等待启动层处理后续重启")
-                            return True
-                        else:
-                            logger.warning("资源包更新失败，跳过升级！")
-                    else:
-                        logger.info("所有资源已最新，无需更新")
-            except json.JSONDecodeError:
-                logger.error("资源包仓库数据解析失败！")
-                return False
-        else:
-            logger.warning("无法连接资源包仓库！")
-        return False
+    @staticmethod
+    def _proxied(url: str) -> str:
+        """为资源直链添加 GitHub 代理前缀。"""
+        proxy = str(get_runtime_setting("GITHUB_PROXY") or "").strip()
+        return f"{proxy}{url}" if proxy else url

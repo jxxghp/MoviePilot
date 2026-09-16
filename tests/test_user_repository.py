@@ -97,6 +97,25 @@ def _insert_user(sync_factory, **overrides) -> int:
         return user.id
 
 
+@pytest.mark.asyncio
+async def test_user_repository_paginates_and_counts_in_database(tmp_path) -> None:
+    """用户列表应按主键稳定分页，并以独立 COUNT 返回完整总数。"""
+    async with _user_write_context(tmp_path / "pagination.db") as (session, _):
+        users = [
+            User(name=f"page-user-{index}", email=f"{index}@example.com")
+            for index in range(1, 4)
+        ]
+        session.add_all(users)
+        await session.commit()
+        repository = SqlAlchemyUserRepository(session)
+
+        page = await repository.async_list(page=2, count=1)
+
+        assert await repository.async_count() == 3
+        assert [item.id for item in page] == [users[1].id]
+        assert users[0].id < users[1].id < users[2].id
+
+
 @asynccontextmanager
 async def _user_write_context(database_path):
     """创建包含用户聚合表的异步请求会话。"""
@@ -139,6 +158,21 @@ async def test_user_snapshots_are_detached_and_deeply_frozen(user_repository) ->
         public.settings["telegram_userid"] = "changed"  # type: ignore[index]
     with pytest.raises(TypeError):
         public.permissions["features"]["search"] = False  # type: ignore[index]
+
+
+def test_user_repository_selects_first_active_superuser(user_repository) -> None:
+    """升级绑定只能选择启用管理员，并按主键保持确定顺序。"""
+    repository, sync_factory = user_repository
+    _insert_user(sync_factory, name="disabled-admin", is_active=False)
+    expected_id = _insert_user(sync_factory, name="first-admin")
+    _insert_user(sync_factory, name="second-admin")
+    _insert_user(sync_factory, name="member", is_superuser=False)
+
+    selected = repository.get_active_superuser()
+
+    assert selected is not None
+    assert selected.id == expected_id
+    assert selected.name == "first-admin"
 
 
 def test_auxiliary_create_commits_before_return(user_repository) -> None:

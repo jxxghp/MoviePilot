@@ -10,7 +10,6 @@ from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.impl.mcp import (
     McpExternalTool,
     create_external_mcp_tools,
-    select_legacy_mcp_tools,
 )
 from app.schemas.agent import AgentMcpServerConfig
 
@@ -90,9 +89,7 @@ async def test_stdio_mcp_server_lists_tools(tmp_path):
 @pytest.mark.anyio
 async def test_stdio_mcp_session_waits_for_stderr_reader_shutdown() -> None:
     """stdio MCP 会话退出时必须等待 stderr reader 真正完成。"""
-    session = _StdioMcpSession(
-        AgentMcpServerConfig(id="fake", name="Fake MCP", transport="stdio")
-    )
+    session = _StdioMcpSession(AgentMcpServerConfig(id="fake", name="Fake MCP", transport="stdio"))
     started = asyncio.Event()
     cancelled = asyncio.Event()
 
@@ -130,10 +127,13 @@ async def test_enabled_specs_preserve_cross_server_name_collisions() -> None:
             input_schema={"type": "object", "properties": {}},
         )
 
-    with patch.object(manager, "get_servers", return_value=[first, second]), patch.object(
-        manager,
-        "list_server_tools",
-        new=AsyncMock(side_effect=lambda server: [_spec(server)]),
+    with (
+        patch.object(manager, "get_servers", return_value=[first, second]),
+        patch.object(
+            manager,
+            "list_server_tools",
+            new=AsyncMock(side_effect=lambda server: [_spec(server)]),
+        ),
     ):
         specs = await manager.list_enabled_tool_specs()
 
@@ -141,8 +141,8 @@ async def test_enabled_specs_preserve_cross_server_name_collisions() -> None:
 
 
 @pytest.mark.anyio
-async def test_mcp_catalog_uses_server_id_and_legacy_execution_keeps_first() -> None:
-    """目录应区分同显示名服务器，普通执行仍保留首个同名工具。"""
+async def test_mcp_catalog_uses_server_id_for_collision_audit() -> None:
+    """目录应区分同显示名服务器并保留冲突审计证据。"""
     first_server = AgentMcpServerConfig(
         id="one",
         name="Shared Name",
@@ -181,7 +181,6 @@ async def test_mcp_catalog_uses_server_id_and_legacy_execution_keeps_first() -> 
         "mcp:two",
     ]
     assert len({entry.identity for entry in catalog.collisions["shared_echo"]}) == 2
-    assert select_legacy_mcp_tools(tools) == [tools[0]]
 
 
 @pytest.mark.anyio

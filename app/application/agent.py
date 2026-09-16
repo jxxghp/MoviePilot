@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from app.application.agenttask import AgentTaskRepository
 from app.application.history import DownloadHistoryRepository, TransferHistoryRepository
+from app.application.invocation import InvocationRepository
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
     AgentChatService,
@@ -54,6 +55,7 @@ class AgentDataContext:
     transfer_execution: TransferExecutionRepository
     download_history: DownloadHistoryRepository
     plugin_data: PluginDataQueryRepository
+    invocations: InvocationRepository | None = None
 
 
 Provider = Callable[[], Any]

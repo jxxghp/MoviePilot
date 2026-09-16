@@ -2,7 +2,7 @@ import datetime
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
 from urllib.parse import unquote
 
 from torrentool.api import Torrent
@@ -65,6 +65,7 @@ def _require_torrent_port() -> TorrentHttpPort:
         raise RuntimeError("种子下载端口尚未由启动组合根装配")
     return _torrent_http_port
 
+
 # 站点首页、RSS 与音乐独立缓存的稳定键名；迁移脚本也复用这一事实来源。
 _TORRENT_CACHE_KEYS = (
     "__torrents_cache__",
@@ -116,6 +117,19 @@ def _parse_filter_size_range(size_range: str) -> Tuple[str, float, Optional[floa
     if size_range.startswith("<"):
         return "lte", 0, float(size_range[1:].strip()) * _SIZE_UNIT
     return "unknown", 0, None
+
+
+def _cache_valid_torrent_content(
+        parser: Callable[[Union[str, bytes]], Tuple[str, List[str]]],
+        cache_backend: Any,
+        cache_path: Path,
+        content: bytes,
+) -> Tuple[str, List[str]]:
+    """解析合法种子并缓存原始二进制内容。"""
+    folder_name, file_list = parser(content)
+    if file_list:
+        cache_backend.set(cache_path.as_posix(), content, region="torrents")
+    return folder_name, file_list
 
 
 class TorrentHelper:
@@ -186,6 +200,13 @@ class TorrentHelper:
             if req.content.startswith(b"magnet:"):
                 # 磁力链接
                 return cache_path, req.text, "", [], "获取到磁力链接"
+            # 优先按原始二进制解析，避免合法 torrent 被误判为首次下载 HTML。
+            folder_name, file_list = _cache_valid_torrent_content(
+                self.get_fileinfo_from_torrent_content, cache_backend, cache_path, req.content
+            )
+            if file_list:
+                # 成功拿到种子数据
+                return cache_path, req.content, folder_name, file_list, ""
             if "下载种子文件".encode("utf-8") in req.content:
                 # 首次下载提示页面
                 skip_flag = False
@@ -223,24 +244,17 @@ class TorrentHelper:
                     logger.warn(f"触发了站点首次种子下载，尝试自动跳过时出现错误：{str(err)}")
                 if not skip_flag:
                     return cache_path, None, "", [], "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"
+            # 首次下载提示页面完成后，重新按原始二进制解析 POST 响应。
             assert req is not None
-            # 种子内容
             if req.content:
-                # 检查是不是种子文件，如果不是仍然抛出异常
-                try:
-                    # 获取种子目录和文件清单
-                    folder_name, file_list = self.get_fileinfo_from_torrent_content(req.content)
-                    if file_list:
-                        # 保存到缓存
-                        cache_backend.set(cache_path.as_posix(), req.content, region="torrents")
+                folder_name, file_list = _cache_valid_torrent_content(
+                    self.get_fileinfo_from_torrent_content, cache_backend, cache_path, req.content
+                )
+                if file_list:
                     # 成功拿到种子数据
                     return cache_path, req.content, folder_name, file_list, ""
-                except Exception as err:
-                    logger.error(f"种子文件解析失败：{str(err)}")
-                # 种子数据仍然错误
-                return cache_path, None, "", [], "种子数据有误，请确认链接是否正确"
-            # 返回失败
-            return cache_path, None, "", [], ""
+            # 解析失败时终止，避免把 HTML 继续下沉到下载器或缓存。
+            return cache_path, None, "", [], "种子数据有误，请确认链接是否正确"
         elif req is None:
             return cache_path, None, "", [], "无法打开链接"
         elif req.status_code == 429:
@@ -365,7 +379,7 @@ class TorrentHelper:
             _torrent = _context.torrent_info
             _media = _context.media_info
             # 标题
-            _title = str(_media.title).ljust(200, ' ')
+            _title = str(_media.title if _media else _meta.name).ljust(200, ' ')
             # 站点优先级
             _site_order = str(999 - (_torrent.site_order or 0)).rjust(3, '0')
             # 站点上传量
@@ -485,16 +499,16 @@ class TorrentHelper:
             return True
         # 要匹配的媒体标题、原标题
         media_titles = {
-                           text_tools.normalize_upper(mediainfo.title),
-                           text_tools.normalize_upper(mediainfo.original_title)
-                       } - {""}
+            text_tools.normalize_upper(mediainfo.title),
+            text_tools.normalize_upper(mediainfo.original_title)
+        } - {""}
         # 要匹配的媒体别名、译名
         media_names = {text_tools.normalize_upper(name) for name in mediainfo.names if name}
         # 识别的种子中英文名
         meta_names = {
-                         text_tools.normalize_upper(torrent_meta.cn_name),
-                         text_tools.normalize_upper(torrent_meta.en_name)
-                     } - {""}
+            text_tools.normalize_upper(torrent_meta.cn_name),
+            text_tools.normalize_upper(torrent_meta.en_name)
+        } - {""}
         # 比对种子识别类型
         if torrent_meta.type == MediaType.TV and mediainfo.type != MediaType.TV:
             logger.debug(f'{torrent.site_name} - {torrent.title} 种子标题类型为 {torrent_meta.type.value}，'

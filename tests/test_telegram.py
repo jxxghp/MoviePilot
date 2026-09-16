@@ -104,6 +104,7 @@ def test_telegram_parser_preserves_reply_to_message_id():
     assert message.chat_id == "10001"
     assert message.reply_to_message_id == 99
 
+
 def test_send_msg_with_longtext(telegram):
     """测试发送长消息"""
     result = telegram.send_msg(
@@ -140,6 +141,7 @@ def test_send_medias_msg_success(telegram):
 
     assert result
 
+
 def test_send_medias_msg_without_vote_average(telegram):
     """测试发送无评分的媒体列表消息"""
     # 创建模拟的媒体信息列表（无评分）
@@ -157,6 +159,7 @@ def test_send_medias_msg_without_vote_average(telegram):
     )
 
     assert result
+
 
 def test_send_medias_msg_with_link_and_buttons(telegram):
     """测试发送带链接和按钮的媒体列表消息"""
@@ -182,7 +185,6 @@ def test_send_medias_msg_with_link_and_buttons(telegram):
     )
 
     assert result
-
 
 
 def test_send_torrents_msg_success(telegram):
@@ -219,6 +221,7 @@ def test_send_torrents_msg_success(telegram):
     )
 
     assert result
+
 
 def test_send_torrents_msg_with_link_and_buttons(telegram):
     """测试发送带链接和按钮的种子列表消息"""
@@ -260,6 +263,7 @@ def test_send_torrents_msg_with_link_and_buttons(telegram):
 
     assert result
 
+
 def test_send_msg_with_buttons_and_link(telegram):
     """测试发送带按钮和链接的消息"""
     buttons = [[
@@ -275,6 +279,7 @@ def test_send_msg_with_buttons_and_link(telegram):
 
     # 验证返回值：send_msg 失败时返回 {"success": False}（非空字典），故显式断言 success
     assert result and result.get("success")
+
 
 def test_send_msg_with_url_buttons(telegram):
     """测试发送带URL按钮的消息"""

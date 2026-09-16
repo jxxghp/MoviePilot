@@ -21,7 +21,6 @@ from app.schemas.types import (
 class DownloadTaskOwner(_DownloadOwnerBase):
     """下载器任务查询和控制 owner。"""
 
-
     def remote_downloading(
         self,
         channel: NotificationChannel,
@@ -116,7 +115,7 @@ class DownloadTaskOwner(_DownloadOwnerBase):
             # 发出下载任务删除事件，如需处理辅种，可监听该事件
             self.eventmanager.send_event(EventType.DownloadDeleted, {
                 "hash": hash_str,
-                    "torrents": [torrent.model_dump() for torrent in torrents]
+                "torrents": [torrent.model_dump() for torrent in torrents]
             })
         else:
             logger.info(f"没有在下载器中查询到 {hash_str} 对应的下载任务")

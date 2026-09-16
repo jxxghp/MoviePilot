@@ -1,12 +1,13 @@
 """多来源音乐目录搜索应用服务。"""
 
 import asyncio
+from itertools import zip_longest
 from typing import Any, Callable, Iterable, Optional
 
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.media import normalize_media_source
-from app.schemas.types import MediaSource, MediaSourceSelection
+from app.schemas.types import MediaSource, MediaSourceSelection, MusicEntityType
 
 
 class MusicCatalogService:
@@ -77,41 +78,52 @@ class MusicCatalogService:
 
     def search(
         self,
-        query: str,
+        query: str | MetaMusic,
         limit: int = 20,
         media_source: Optional[MediaSourceSelection] = None,
+        music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
         """顺序搜索一个或多个音乐来源，隔离单一来源失败。"""
-        meta = MetaMusic.parse_query(query)
+        meta = query if isinstance(query, MetaMusic) else MetaMusic.parse_query(query)
+        normalized_music_types = tuple(music_types) if music_types is not None else None
         candidates = []
         for source in self.search_sources(media_source):
             chain = self._source_resolver(source)
             if not chain:
                 continue
             try:
-                candidates.extend(chain.search_music(meta, limit=limit))
+                search_options: dict[str, Any] = {"limit": limit}
+                if normalized_music_types is not None:
+                    search_options["music_types"] = normalized_music_types
+                candidates.append(chain.search_music(meta, **search_options))
             except Exception as error:
                 self._warning(f"音乐来源 {source} 搜索失败：{str(error)}")
-        return self.normalize_candidates(candidates, limit=limit)
+        return self.merge_sources(candidates, limit=limit)
 
     async def async_search(
         self,
-        query: str,
+        query: str | MetaMusic,
         limit: int = 20,
         media_source: Optional[MediaSourceSelection] = None,
+        music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
         """并行搜索一个或多个音乐来源，隔离单一来源失败。"""
-        meta = MetaMusic.parse_query(query)
+        meta = query if isinstance(query, MetaMusic) else MetaMusic.parse_query(query)
+        normalized_music_types = tuple(music_types) if music_types is not None else None
         searches = []
         for source in self.search_sources(media_source):
             chain = self._source_resolver(source)
             if chain:
-                searches.append(self._async_search_source(chain, source, meta, limit))
+                searches.append(self._async_search_source(chain, source, meta, limit, normalized_music_types))
         source_results = await asyncio.gather(*searches) if searches else []
-        return self.normalize_candidates(
-            [candidate for results in source_results for candidate in results],
-            limit=limit,
-        )
+        return self.merge_sources(source_results, limit=limit)
+
+    @classmethod
+    def merge_sources(cls, groups: list[list[MusicInfo]], limit: int) -> list[MusicInfo]:
+        """先按来源独立去重再轮询合并，避免首个来源占满全局条数上限。"""
+        normalized = [cls.normalize_candidates(group) for group in groups]
+        candidates = [item for row in zip_longest(*normalized) for item in row if item is not None]
+        return cls.normalize_candidates(candidates, limit=limit)
 
     async def _async_search_source(
         self,
@@ -119,10 +131,14 @@ class MusicCatalogService:
         source: MediaSource,
         meta: MetaMusic,
         limit: int,
+        music_types: Optional[Iterable[MusicEntityType]],
     ) -> list[MusicInfo]:
         """异步搜索单个来源，并把异常降级为空候选。"""
         try:
-            return await chain.async_search_music(meta, limit=limit)
+            search_options: dict[str, Any] = {"limit": limit}
+            if music_types is not None:
+                search_options["music_types"] = music_types
+            return await chain.async_search_music(meta, **search_options)
         except Exception as error:
             self._warning(f"音乐来源 {source} 搜索失败：{str(error)}")
             return []

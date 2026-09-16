@@ -3,7 +3,11 @@ from typing import Any, List, Optional
 from fastapi import Depends
 
 from app.adapters.web.security.access import verify_token
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.chain.bangumi import BangumiChain
 from app.chain.douban import DoubanChain
 from app.chain.tmdb import TmdbChain
@@ -22,7 +26,7 @@ router = ResponseAPIRouter()
     summary="获取探索数据源",
     response_model=List[_SchemaDiscoverMediaSource],
 )
-def source(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+def source(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     获取探索数据源
     """

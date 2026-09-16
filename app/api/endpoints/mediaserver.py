@@ -4,7 +4,12 @@ from fastapi import Depends, HTTPException, status
 
 from app.adapters.web.security.access import verify_token
 from app.api.dependencies.history import get_mediaserver_query_service
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_PAGINATION_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.configuration import get_configured_system_config
 from app.application.mediaserver import (
     MediaServerQueryService,
@@ -149,9 +154,12 @@ def exists(
     "/notexists",
     summary="查询媒体库缺失信息（媒体服务器）",
     response_model=List[_SchemaNotExistMediaInfo],
+    openapi_extra={COLLECTION_PAGINATION_OPENAPI_KEY: True},
 )
 def not_exists(
-    media_in: _SchemaMediaInfo, _: _SchemaTokenPayload = Depends(verify_token)
+    media_in: _SchemaMediaInfo, _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     根据媒体信息查询缺失电影/剧集
@@ -230,6 +238,8 @@ def library(
     server: str,
     hidden: Optional[bool] = False,
     userinfo: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     获取媒体服务器媒体库列表
@@ -248,7 +258,7 @@ def library(
     summary="查询可用媒体服务器",
     response_model=List[_SchemaServiceClientInfo],
 )
-async def clients(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def clients(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询可用媒体服务器
     """

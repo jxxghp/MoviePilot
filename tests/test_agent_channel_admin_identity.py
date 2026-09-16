@@ -4,7 +4,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from app.application.messaging.agent import matches_channel_admin, resolve_config_principal_ids
+from app.application.messaging.channel.admin import (
+    matches_channel_admin,
+    resolve_config_principal_ids,
+)
 from app.modules.discord import DiscordModule
 from app.modules.feishu.feishu import Feishu
 from app.modules.qqbot.module import QQBotModule

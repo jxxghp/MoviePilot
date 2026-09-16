@@ -64,7 +64,7 @@ def test_set_env_accepts_supported_deepseek_builtin_web_search() -> None:
         "update_settings",
         return_value={key: (True, None) for key in env},
     ) as update_settings, patch(
-        "app.startup.composition.system.eventmanager.async_send_event"
+        "app.startup.composition.system.eventmanager.async_send_event_strict"
     ):
         response = asyncio.run(
             system_endpoint.set_env_setting(env=env, _=object(), runtime=_runtime())

@@ -1,7 +1,7 @@
 from typing import Annotated, Any, List, Optional
 
 import cn2an
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request, Response
 
 from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.web.security.access import (
@@ -11,7 +11,7 @@ from app.adapters.web.security.access import (
 )
 from app.api.context import (
     get_background_task_registry,
-    get_subscription_repository,
+    get_sync_subscription_repository,
     resolve_background_task_registry,
 )
 from app.api.dependencies.auth import (
@@ -21,17 +21,33 @@ from app.api.dependencies.auth import (
 from app.api.dependencies.subscription import (
     get_delete_subscribe_command,
     get_delete_subscriptions_by_identity_command,
-    get_search_subscriptions_command,
+    get_subscription_execution_status_service,
     get_subscription_mutation_service,
     get_subscription_query_service,
 )
+from app.api.endpoints.submaintenance import (
+    check_subscribes,
+    refresh_subscribes,
+    reset_subscribes,
+    search_subscribe,
+    search_subscribes,
+)
+from app.api.endpoints.submaintenance import (
+    router as subscribe_maintenance_router,
+)
 from app.api.principal import ApiPrincipal
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+    resolve_compatible_pagination,
+)
 from app.application.configuration import (
     get_api_runtime_config_snapshot,
     get_configured_system_config,
 )
-from app.application.scheduling import get_scheduler
 from app.application.subscription.contract import SubscriptionQueryPort
 from app.application.subscription.delete import (
     DeleteSubscribeCommand,
@@ -45,14 +61,12 @@ from app.application.subscription.mutation import (
     SubscriptionMutationService,
 )
 from app.application.subscription.query import SubscriptionQueryService
-from app.application.subscription.search import (
-    SearchSubscriptionsCommand,
-    SubscribeSearchActor,
-)
+from app.application.subscription.status import SubscriptionExecutionStatusService
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.execution import run_in_threadpool
+from app.runtime.log import logger
 from app.runtime.tasks import TaskRegistry
 from app.schemas.common import IdData as _SchemaIdData
 from app.schemas.media import normalize_media_source, resolve_media_identity
@@ -61,6 +75,7 @@ from app.schemas.subscribe import SubscrbieInfo as _SchemaSubscrbieInfo
 from app.schemas.subscribe import SubscribeDeletionResult as _SchemaSubscribeDeletionResult
 from app.schemas.subscribe import SubscribeShare as _SchemaSubscribeShare
 from app.schemas.subscribe import SubscribeShareStatistics as _SchemaSubscribeShareStatistics
+from app.schemas.subscribe import SubscriptionExecutionStatus as _SchemaSubscriptionExecutionStatus
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -73,6 +88,37 @@ from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 from app.schemas.workflow import Subscribe as _SchemaSubscribe
 
 router = ResponseAPIRouter()
+router.routes.extend(subscribe_maintenance_router.routes)
+
+__all__ = [
+    "check_subscribes",
+    "refresh_subscribes",
+    "reset_subscribes",
+    "search_subscribe",
+    "search_subscribes",
+]
+
+
+def _public_subscription_message(message: Optional[object]) -> str:
+    """延迟加载订阅错误转换器，避免启动阶段增加宿主模块。"""
+    from app.runtime.errors import public_error_message
+
+    return public_error_message(message, context="subscription")
+
+
+async def _attach_execution_status(
+    subscribes: list[_SchemaSubscribe],
+    status_service: object,
+) -> list[_SchemaSubscribe]:
+    """批量附加当前执行状态，保持无执行记录时的旧响应形状。"""
+    loader = getattr(status_service, "for_subscriptions", None)
+    if not callable(loader):
+        return subscribes
+    statuses = await loader(tuple(item.id for item in subscribes if item.id is not None))
+    for subscribe in subscribes:
+        if subscribe.id is not None and (status := statuses.get(subscribe.id)) is not None:
+            subscribe.execution_status = _SchemaSubscriptionExecutionStatus.model_validate(status)
+    return subscribes
 
 
 def start_subscribe_add(
@@ -105,9 +151,7 @@ def build_subscribe_event_payload(subscribe: Any) -> dict:
     return subscribe.to_dict()
 
 
-def can_access_subscribe(
-    subscribe: Any, current_user: ApiPrincipal
-) -> bool:
+def can_access_subscribe(subscribe: Any, current_user: ApiPrincipal) -> bool:
     """
     判断当前用户是否可访问订阅及其历史记录。
 
@@ -122,9 +166,7 @@ def can_access_subscribe(
     return bool(username) and username == current_user.name
 
 
-def select_accessible_subscribe(
-    subscribes: List[Any], current_user: ApiPrincipal
-) -> Any:
+def select_accessible_subscribe(subscribes: List[Any], current_user: ApiPrincipal) -> Any:
     """
     从候选订阅中选择当前用户可访问的第一条记录。
     """
@@ -135,41 +177,63 @@ def select_accessible_subscribe(
 
 
 def matches_subscribe_music_type(
-        subscribe: Any,
-        music_type: Optional[str],
+    subscribe: Any,
+    music_type: Optional[str],
 ) -> bool:
     """匹配订阅音乐实体，并把迁移前未标注类型的历史记录兼容为单曲。"""
     if not music_type:
         return True
     subscribe_music_type = getattr(subscribe, "music_type", None)
-    return subscribe_music_type == music_type \
-        or (music_type == MUSIC_ENTITY_RECORDING and subscribe_music_type is None)
+    return subscribe_music_type == music_type or (music_type == MUSIC_ENTITY_RECORDING and subscribe_music_type is None)
 
 
-@router.get("/", summary="查询所有订阅", response_model=List[_SchemaSubscribe])
+@router.get(
+    "/",
+    summary="查询所有订阅",
+    response_model=List[_SchemaSubscribe],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
+)
 async def read_subscribes(
+    response: Response = None,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
+    status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询所有订阅
     """
-    if not current_user.is_superuser:
-        return await query.list_public(current_user.name)
-    return await query.list_public()
+    username = None if current_user.is_superuser else current_user.name
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_public(username))
+    subscribes = await query.list_public(username, page=page, count=count)
+    return await _attach_execution_status(subscribes, status_service)
 
 
 @router.get(
-    "/list", summary="查询所有订阅（API_TOKEN）", response_model=List[_SchemaSubscribe]
+    "/list",
+    summary="查询所有订阅（API_TOKEN）",
+    response_model=List[_SchemaSubscribe],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def list_subscribes(
+    response: Response = None,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
+    status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
     _: Annotated[str, Depends(verify_apitoken)] = None,
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询所有订阅 API_TOKEN认证（?token=xxx）
     """
-    return await query.list_public()
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_public())
+    subscribes = await query.list_public(page=page, count=count)
+    return await _attach_execution_status(subscribes, status_service)
 
 
 @router.post(
@@ -191,11 +255,7 @@ async def create_subscribe(
     else:
         mtype = None
     # 非 TMDB 来源的标题可能自带季标记，入库前统一拆分。
-    if (
-            mtype != MediaType.MUSIC
-            and normalize_media_source(subscribe_in.media_source)
-            not in (None, MediaSource.TMDB)
-    ):
+    if mtype != MediaType.MUSIC and normalize_media_source(subscribe_in.media_source) not in (None, MediaSource.TMDB):
         meta = MetaInfo(subscribe_in.name)
         subscribe_in.name = meta.name
         if subscribe_in.season is None:
@@ -203,9 +263,7 @@ async def create_subscribe(
     # 空标题由订阅识别链按显式媒体身份补全，但调用契约始终使用字符串。
     title = subscribe_in.name or ""
     subscribe_dict = subscribe_in.to_public_write_payload()
-    identity_fields = {"media_source", "media_id"}.intersection(
-        subscribe_in.model_fields_set
-    )
+    identity_fields = {"media_source", "media_id"}.intersection(subscribe_in.model_fields_set)
     if identity_fields:
         media_source, media_id = resolve_media_identity(
             media_source=subscribe_in.media_source,
@@ -231,7 +289,11 @@ async def create_subscribe(
         owner_scope=not current_user.is_superuser,
         **subscribe_dict,
     )
-    return _SchemaResponse(success=bool(sid), message=message, data={"id": sid})
+    return _SchemaResponse(
+        success=bool(sid),
+        message=(_public_subscription_message(message) if message else ""),
+        data={"id": sid},
+    )
 
 
 @router.put("/", summary="更新订阅", response_model=_SchemaResponse[None])
@@ -252,9 +314,7 @@ async def update_subscribe(
     if not subscribe:
         return _SchemaResponse(success=False, message="订阅不存在")
     subscribe_dict = subscribe_in.to_public_write_payload(exclude_unset=True)
-    identity_fields = {"media_source", "media_id"}.intersection(
-        subscribe_in.model_fields_set
-    )
+    identity_fields = {"media_source", "media_id"}.intersection(subscribe_in.model_fields_set)
     if identity_fields:
         media_source, media_id = resolve_media_identity(
             media_source=subscribe_in.media_source,
@@ -277,13 +337,21 @@ async def update_subscribe(
         # 音乐实体与曲目总数来自识别链，编辑接口不得把专辑改成单曲而提前完成订阅。
         subscribe_dict["type"] = subscribe.type
         subscribe_dict["music_type"] = subscribe.music_type
-        subscribe_dict["total_tracks"] = subscribe.total_tracks \
-            if subscribe.music_type == MUSIC_ENTITY_ALBUM else None
+        subscribe_dict["total_tracks"] = subscribe.total_tracks if subscribe.music_type == MUSIC_ENTITY_ALBUM else None
+        if identity_fields and subscribe.music_type == MUSIC_ENTITY_ALBUM:
+            old_identity = resolve_media_identity(media=subscribe)
+            new_identity = resolve_media_identity(
+                media_source=subscribe_dict.get("media_source"),
+                media_id=subscribe_dict.get("media_id"),
+            )
+            if old_identity != new_identity:
+                # 媒体身份变化后，旧专辑的音轨事实不能迁移到新专辑。
+                subscribe_dict["downloaded_tracks"] = []
     total_episode_updated = "total_episode" in subscribe_in.model_fields_set
     if (
-            total_episode_updated
-            and subscribe_in.total_episode
-            and subscribe_in.total_episode > (subscribe.total_episode or 0)
+        total_episode_updated
+        and subscribe_in.total_episode
+        and subscribe_in.total_episode > (subscribe.total_episode or 0)
     ):
         # 扩大目标范围时，新增加的集数尚无下载事实，应同步计入缺失集数。
         subscribe_dict["lack_episode"] = (subscribe.lack_episode or 0) + (
@@ -293,12 +361,19 @@ async def update_subscribe(
     if total_episode_updated and subscribe_in.total_episode != subscribe.total_episode:
         subscribe_dict["manual_total_episode"] = 1
     # 更新到数据库
-    change = await mutation.update(
-        subscribe_in.id,
-        subscribe_dict,
-        actor,
-        existing=subscribe,
-    )
+    try:
+        change = await mutation.update(
+            subscribe_in.id,
+            subscribe_dict,
+            actor,
+            existing=subscribe,
+        )
+    except ValueError as error:
+        logger.error(f"订阅分类设置无效：{error}", exc_info=True)
+        return _SchemaResponse(
+            success=False,
+            message="订阅分类设置无效，请重新选择分类后重试",
+        )
     if not change:
         return _SchemaResponse(success=False, message="订阅不存在")
     return _SchemaResponse(success=True)
@@ -333,103 +408,38 @@ async def subscribe_media_identity(
     media_source: MediaSource,
     season: Optional[int] = None,
     title: Optional[str] = None,
+    year: Optional[str] = None,
+    mtype: Optional[MediaType] = None,
     music_type: Optional[str] = None,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
     """
-    根据媒体来源和原生 ID 查询订阅。
+    根据媒体身份查询订阅，视频身份未命中时按类型、标题和年份回退。
     """
+    metadata = MetaInfo(title) if title else None
+    normalized_title = metadata.name if metadata else None
+    if season is None and metadata:
+        season = metadata.begin_season
     subscribes = await query.list_by_media_identity(media_source, media_id, music_type)
     if season is not None:
         subscribes = [subscribe for subscribe in subscribes if subscribe.season == season]
     result = select_accessible_subscribe(subscribes, current_user)
-    return result if result else _SchemaSubscribe()
-
-
-@router.get("/refresh", summary="刷新订阅", response_model=_SchemaResponse[None])
-def refresh_subscribes(
-    current_user: ApiPrincipal = Depends(get_current_active_user),
-) -> Any:
-    """
-    刷新所有订阅
-    """
-    if not current_user.is_superuser:
-        return _SchemaResponse(success=False, message="订阅不存在")
-    get_scheduler().start("subscribe_refresh")
-    return _SchemaResponse(success=True)
-
-
-@router.get("/reset/{subid}", summary="重置订阅", response_model=_SchemaResponse[None])
-async def reset_subscribes(
-    subid: int,
-    mutation: SubscriptionMutationService = Depends(get_subscription_mutation_service),
-    current_user: ApiPrincipal = Depends(get_current_active_user_async),
-) -> Any:
-    """
-    重置订阅
-    """
-    actor = SubscriptionActor(
-        name=current_user.name,
-        is_superuser=current_user.is_superuser,
-    )
-    change = await mutation.reset(subid, actor)
-    if change:
-        return _SchemaResponse(success=True)
-    return _SchemaResponse(success=False, message="订阅不存在")
-
-
-@router.get("/check", summary="刷新订阅 TMDB 信息", response_model=_SchemaResponse[None])
-def check_subscribes(
-    current_user: ApiPrincipal = Depends(get_current_active_user),
-) -> Any:
-    """
-    刷新订阅 TMDB 信息
-    """
-    if not current_user.is_superuser:
-        return _SchemaResponse(success=False, message="订阅不存在")
-    get_scheduler().start("subscribe_tmdb")
-    return _SchemaResponse(success=True)
-
-
-@router.get("/search", summary="搜索所有订阅", response_model=_SchemaResponse[None])
-async def search_subscribes(
-    command: SearchSubscriptionsCommand = Depends(get_search_subscriptions_command),
-    current_user: ApiPrincipal = Depends(get_current_active_user_async),
-) -> Any:
-    """
-    搜索所有订阅
-    """
-    await command.execute(
-        SubscribeSearchActor(
-            username=current_user.name,
-            is_superuser=current_user.is_superuser,
+    if (
+        not result
+        and media_source != MediaSource.TMDB
+        and mtype in (MediaType.MOVIE, MediaType.TV)
+        and normalized_title
+        and year
+    ):
+        subscribes = await query.list_by_video_metadata(
+            title=normalized_title,
+            year=year,
+            media_type=mtype,
+            season=season,
         )
-    )
-    return _SchemaResponse(success=True)
-
-
-@router.get(
-    "/search/{subscribe_id}", summary="搜索订阅", response_model=_SchemaResponse[None]
-)
-async def search_subscribe(
-    subscribe_id: int,
-    command: SearchSubscriptionsCommand = Depends(get_search_subscriptions_command),
-    current_user: ApiPrincipal = Depends(get_current_active_user_async),
-) -> Any:
-    """
-    根据订阅编号搜索订阅
-    """
-    found = await command.execute(
-        SubscribeSearchActor(
-            username=current_user.name,
-            is_superuser=current_user.is_superuser,
-        ),
-        subscribe_id=subscribe_id,
-    )
-    if not found:
-        return _SchemaResponse(success=False, message="订阅不存在")
-    return _SchemaResponse(success=True)
+        result = select_accessible_subscribe(subscribes, current_user)
+    return result if result else _SchemaSubscribe()
 
 
 @router.delete("/media/{media_id}", summary="删除订阅", response_model=_SchemaResponse[None])
@@ -438,9 +448,7 @@ async def delete_subscribe_by_media_identity(
     media_source: MediaSource,
     season: Optional[int] = None,
     music_type: Optional[str] = None,
-    command: DeleteSubscriptionsByIdentityCommand = Depends(
-        get_delete_subscriptions_by_identity_command
-    ),
+    command: DeleteSubscriptionsByIdentityCommand = Depends(get_delete_subscriptions_by_identity_command),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
     """
@@ -459,9 +467,7 @@ async def delete_subscribe_by_media_identity(
     return _SchemaResponse(success=True)
 
 
-@router.post(
-    "/seerr", summary="OverSeerr/JellySeerr通知订阅", response_model=_SchemaResponse[None]
-)
+@router.post("/seerr", summary="OverSeerr/JellySeerr通知订阅", response_model=_SchemaResponse[None])
 async def seerr_subscribe(
     request: Request,
     task_registry: Annotated[TaskRegistry, Depends(get_background_task_registry)],
@@ -487,11 +493,7 @@ async def seerr_subscribe(
     if notification_type not in ["MEDIA_APPROVED", "MEDIA_AUTO_APPROVED"]:
         return _SchemaResponse(success=False, message="不支持的通知类型")
     subject = req_json.get("subject")
-    media_type = (
-        MediaType.MOVIE
-        if req_json.get("media", {}).get("media_type") == "movie"
-        else MediaType.TV
-    )
+    media_type = MediaType.MOVIE if req_json.get("media", {}).get("media_type") == "movie" else MediaType.TV
     tmdbId = req_json.get("media", {}).get("tmdbId")
     if not media_type or not tmdbId or not subject:
         return _SchemaResponse(success=False, message="请求参数不正确")
@@ -514,11 +516,7 @@ async def seerr_subscribe(
         seasons = []
         for extra in req_json.get("extra", []):
             if extra.get("name") == "Requested Seasons":
-                seasons = [
-                    int(str(sea).strip())
-                    for sea in extra.get("value").split(", ")
-                    if str(sea).isdigit()
-                ]
+                seasons = [int(str(sea).strip()) for sea in extra.get("value").split(", ") if str(sea).isdigit()]
                 break
         for season in seasons:
             resolve_background_task_registry(task_registry).create_sync(
@@ -537,7 +535,10 @@ async def seerr_subscribe(
 
 
 @router.get(
-    "/history/{mtype}", summary="查询订阅历史", response_model=List[_SchemaSubscribe]
+    "/history/{mtype}",
+    summary="查询订阅历史",
+    response_model=List[_SchemaSubscribe],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def subscribe_history(
     mtype: str,
@@ -545,16 +546,21 @@ async def subscribe_history(
     count: Optional[int] = 30,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
+    response: Response = None,
 ) -> Any:
     """
     查询电影、电视剧或音乐订阅历史
     """
-    return await query.list_history(
+    username = None if current_user.is_superuser else current_user.name
+    results = await query.list_history(
         mtype,
         page=page,
         count=count,
-        username=None if current_user.is_superuser else current_user.name,
+        username=username,
     )
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_history(mtype, username=username))
+    return results
 
 
 @router.delete(
@@ -645,19 +651,30 @@ async def popular_subscribes(
 
 
 @router.get(
-    "/user/{username}", summary="用户订阅", response_model=List[_SchemaSubscribe]
+    "/user/{username}",
+    summary="用户订阅",
+    response_model=List[_SchemaSubscribe],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def user_subscribes(
     username: str,
+    response: Response = None,
     query: SubscriptionQueryService = Depends(get_subscription_query_service),
+    status_service: SubscriptionExecutionStatusService = Depends(get_subscription_execution_status_service),
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询用户订阅
     """
     if not current_user.is_superuser and username != current_user.name:
         return []
-    return await query.list_public(username)
+    page, count = resolve_compatible_pagination(page, count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_public(username))
+    subscribes = await query.list_public(username, page=page, count=count)
+    return await _attach_execution_status(subscribes, status_service)
 
 
 @router.get(
@@ -667,7 +684,7 @@ async def user_subscribes(
 )
 def subscribe_files(
     subscribe_id: int,
-    repository: SubscriptionQueryPort = Depends(get_subscription_repository),
+    repository: SubscriptionQueryPort = Depends(get_sync_subscription_repository),
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
     """
@@ -705,18 +722,22 @@ async def subscribe_share(
         share_comment=sub.share_comment,
         share_user=sub.share_user,
     )
-    return _SchemaResponse(success=state, message=errmsg)
+    return _SchemaResponse(
+        success=state,
+        message=(_public_subscription_message(errmsg) if errmsg else ""),
+    )
 
 
 @router.delete("/share/{share_id}", summary="删除分享", response_model=_SchemaResponse[None])
-async def subscribe_share_delete(
-    share_id: int, _: _SchemaTokenPayload = Depends(verify_token)
-) -> Any:
+async def subscribe_share_delete(share_id: int, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     删除分享
     """
     state, errmsg = await MoviePilotServerHelper.async_share_delete(share_id=share_id)
-    return _SchemaResponse(success=state, message=errmsg)
+    return _SchemaResponse(
+        success=state,
+        message=(_public_subscription_message(errmsg) if errmsg else ""),
+    )
 
 
 @router.post("/fork", summary="复用订阅", response_model=_SchemaResponse[None])
@@ -732,16 +753,16 @@ async def subscribe_fork(
     for key in list(sub_dict.keys()):
         if not hasattr(_SchemaSubscribe(), key):
             sub_dict.pop(key)
-    result = await create_subscribe(
-        subscribe_in=_SchemaSubscribe(**sub_dict), current_user=current_user
-    )
+    result = await create_subscribe(subscribe_in=_SchemaSubscribe(**sub_dict), current_user=current_user)
     if result.success:
         await MoviePilotServerHelper.async_sub_fork(share_id=sub.id)
     return result
 
 
 @router.get("/follow", summary="查询已Follow的订阅分享人", response_model=List[str])
-async def followed_subscribers(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def followed_subscribers(
+    _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None
+) -> Any:
     """
     查询已Follow的订阅分享人
     """
@@ -749,42 +770,30 @@ async def followed_subscribers(_: _SchemaTokenPayload = Depends(verify_token)) -
 
 
 @router.post("/follow", summary="Follow订阅分享人", response_model=_SchemaResponse[None])
-async def follow_subscriber(
-    share_uid: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)
-) -> Any:
+async def follow_subscriber(share_uid: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     Follow订阅分享人
     """
     subscribers = get_configured_system_config().get(SystemConfigKey.FollowSubscribers) or []
     if share_uid and share_uid not in subscribers:
         subscribers.append(share_uid)
-        await get_configured_system_config().async_set(
-            SystemConfigKey.FollowSubscribers, subscribers
-        )
+        await get_configured_system_config().async_set(SystemConfigKey.FollowSubscribers, subscribers)
     return _SchemaResponse(success=True)
 
 
-@router.delete(
-    "/follow", summary="取消Follow订阅分享人", response_model=_SchemaResponse[None]
-)
-async def unfollow_subscriber(
-    share_uid: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)
-) -> Any:
+@router.delete("/follow", summary="取消Follow订阅分享人", response_model=_SchemaResponse[None])
+async def unfollow_subscriber(share_uid: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token)) -> Any:
     """
     取消Follow订阅分享人
     """
     subscribers = get_configured_system_config().get(SystemConfigKey.FollowSubscribers) or []
     if share_uid and share_uid in subscribers:
         subscribers.remove(share_uid)
-        await get_configured_system_config().async_set(
-            SystemConfigKey.FollowSubscribers, subscribers
-        )
+        await get_configured_system_config().async_set(SystemConfigKey.FollowSubscribers, subscribers)
     return _SchemaResponse(success=True)
 
 
-@router.get(
-    "/shares", summary="查询分享的订阅", response_model=List[_SchemaSubscribeShare]
-)
+@router.get("/shares", summary="查询分享的订阅", response_model=List[_SchemaSubscribeShare])
 async def subscribe_shares(
     name: Optional[str] = None,
     page: Optional[int] = 1,
@@ -816,6 +825,8 @@ async def subscribe_shares(
 )
 async def subscribe_share_statistics(
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     查询订阅分享统计
@@ -836,11 +847,7 @@ async def read_subscribe(
     if not subscribe_id:
         return _SchemaSubscribe()
     subscribe = await query.get_public(subscribe_id)
-    return (
-        subscribe
-        if subscribe and can_access_subscribe(subscribe, current_user)
-        else _SchemaSubscribe()
-    )
+    return subscribe if subscribe and can_access_subscribe(subscribe, current_user) else _SchemaSubscribe()
 
 
 @router.delete(

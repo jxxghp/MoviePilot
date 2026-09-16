@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.foundation.singleton import Singleton
-from app.sdk.plugins import PluginManager
+from app.sdk.plugin import PluginManager
 
 
 @pytest.fixture

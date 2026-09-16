@@ -128,10 +128,14 @@ class _MessageIngressAdapter:
         url: str,
         payload: Mapping[str, Any],
         *,
+        headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
         """同步投递消息，关闭响应后返回状态码。"""
-        response = RequestUtils(timeout=timeout).post_res(  # type: ignore[arg-type]
+        response = RequestUtils(
+            timeout=timeout,  # type: ignore[arg-type]
+            headers=dict(headers),
+        ).post_res(
             url,
             json=dict(payload),
         )
@@ -150,11 +154,13 @@ class _MessageIngressAdapter:
         url: str,
         payload: Mapping[str, Any],
         *,
+        headers: Mapping[str, str],
         timeout: float,
     ) -> Optional[int]:
         """异步投递消息，关闭响应后返回状态码。"""
         response = await AsyncRequestUtils(
-            timeout=timeout  # type: ignore[arg-type]
+            timeout=timeout,  # type: ignore[arg-type]
+            headers=dict(headers),
         ).post_res(
             url,
             json=dict(payload),
@@ -277,7 +283,14 @@ class _ScrapingHttpAdapter:
         timeout: int,
     ) -> Optional[ScrapingResponsePort]:
         """读取需要完整载荷的音乐封面响应。"""
-        options: dict[str, Any] = {"proxies": proxies, "ua": ua, "timeout": timeout}
+        options: dict[str, Any] = {
+            "proxies": proxies,
+            "ua": ua,
+            "timeout": timeout,
+            "referer": (
+                "https://movie.douban.com/" if "doubanio.com" in url else None
+            ),
+        }
         response = RequestUtils(**options).get_res(url)
         return cast(Optional[ScrapingResponsePort], response)
 
@@ -289,7 +302,13 @@ class _ScrapingHttpAdapter:
         ua: str,
     ) -> ScrapingStreamResponsePort:
         """打开由刮削链上下文关闭的流式图片响应。"""
-        options: dict[str, Any] = {"proxies": proxies, "ua": ua}
+        options: dict[str, Any] = {
+            "proxies": proxies,
+            "ua": ua,
+            "referer": (
+                "https://movie.douban.com/" if "doubanio.com" in url else None
+            ),
+        }
         response = RequestUtils(**options).get_stream(url=url)
         return cast(ScrapingStreamResponsePort, response)
 
@@ -375,6 +394,11 @@ def reset_chain_network_composition() -> None:
 def configure_doh_composition() -> None:
     """由组合根物化进程唯一的 DoH 技术 Adapter。"""
     DohHelper()
+
+
+def get_existing_doh_composition() -> object | None:
+    """返回已由组合根物化的 DoH Adapter，不触发资源创建。"""
+    return cast(Optional[DohHelper], DohHelper.get_existing_instance())
 
 
 def stop_doh_composition() -> bool:

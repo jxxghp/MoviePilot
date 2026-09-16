@@ -6,6 +6,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, TypeAlias
+from urllib.parse import quote
 
 from app.application.plugin.identity import (
     PluginIdentity,
@@ -20,6 +21,15 @@ from app.application.plugin.identity import (
 from app.foundation.version import compare_version
 
 PLUGIN_GENERATIONS = ("v1", "v2", "v3")
+LOCAL_PLUGIN_SOURCE_PREFIX = "local://"
+
+
+def _build_public_local_source(plugin_id: str, package_generation: str) -> str:
+    """生成不携带宿主路径的本地候选标识。"""
+    source = f"{LOCAL_PLUGIN_SOURCE_PREFIX}{quote(plugin_id, safe='')}"
+    if package_generation != "v1":
+        source += f"?version={quote(package_generation, safe='')}"
+    return source
 
 
 class MarketReadStatus(StrEnum):
@@ -28,6 +38,7 @@ class MarketReadStatus(StrEnum):
     PRESENT = "present"
     ABSENT = "absent"
     FAILED = "failed"
+
 
 class PluginSelectionStatus(StrEnum):
     """插件候选选择的可观察结果。"""
@@ -88,6 +99,7 @@ class PluginMarketCandidate:
             "plugin_version": self.plugin_version,
         }
 
+
 @dataclass(frozen=True, slots=True)
 class PluginLocalCandidate:
     """一个本地插件载荷候选，与在线来源身份保持独立。"""
@@ -126,13 +138,19 @@ class PluginLocalCandidate:
         return None
 
     def public_dict(self) -> dict[str, Any]:
-        """生成本地候选的公共投影，永不暴露仓库路径或原始 metadata。"""
+        """生成不包含本地仓库路径的公共候选投影。"""
+        public_repo_url = _build_public_local_source(
+            self.plugin_id,
+            self.package_generation,
+        )
         return {
             "plugin_id": self.plugin_id,
             "source_type": PluginPayloadSourceType.LOCAL.value,
+            "repo_url": public_repo_url,
             "package_generation": self.package_generation,
             "plugin_version": self.plugin_version,
         }
+
 
 @dataclass(frozen=True, slots=True)
 class MarketRead:
@@ -447,6 +465,7 @@ class CandidateInventory:
             "complete": self.complete,
         }
 
+
 @dataclass(frozen=True, slots=True)
 class PluginSelection:
     """候选选择结果，冲突和不完整状态均不降级为静默空值。"""
@@ -485,6 +504,7 @@ class PluginSelection:
         if self.candidate is not None:
             result["candidate"] = self.candidate.public_dict()
         return result
+
 
 Candidate: TypeAlias = PluginMarketCandidate | PluginLocalCandidate
 

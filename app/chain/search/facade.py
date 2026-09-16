@@ -1,8 +1,13 @@
 """搜索处理链稳定 Facade。"""
 
+import threading
 from collections.abc import AsyncIterator, Callable
 from typing import Any, Optional, TypeVar, cast
 
+from app.application.subscription.sitebudget import (
+    SubscriptionSiteBudget,
+    SubscriptionSiteBudgetDeferral,
+)
 from app.chain.base import ChainBase
 from app.chain.search.cache import SearchCacheOwner
 from app.chain.search.media import SearchMediaOwner
@@ -15,7 +20,7 @@ from app.chain.search.result import SearchResultOwner
 from app.chain.search.site import SearchSiteOwner
 from app.chain.search.subtitle import SearchSubtitleOwner
 from app.chain.search.title import SearchTitleOwner
-from app.domain.context import Context, MediaInfo, SubtitleInfo
+from app.domain.context import Context, MediaInfo, MusicInfo, SubtitleInfo
 from app.runtime.events import Event, eventmanager
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import EventType, MediaSource, MediaType
@@ -40,6 +45,57 @@ class SearchChain(ChainBase):
     _SEARCH_PARAMS_CACHE_KEY = "__search_params__"
     _AI_INDICES_CACHE_KEY = "__ai_recommend_indices__"
 
+    def configure_subscription_site_budget(
+        self,
+        budget: Optional[SubscriptionSiteBudget],
+    ) -> None:
+        """仅为订阅搜索启用或清除站点预算，不影响其它搜索入口。"""
+        self._subscription_site_budget = budget
+        self._subscription_site_budget_failures: list[str] = []
+        self._subscription_site_budget_deferrals: list[SubscriptionSiteBudgetDeferral] = []
+        self._subscription_site_budget_failure_lock = threading.Lock()
+
+    def record_subscription_site_budget_failure(self, error: str) -> None:
+        """线程安全地记录一个站点执行失败，供订阅任务判断轮次终态。"""
+        lock = getattr(self, "_subscription_site_budget_failure_lock", None)
+        if lock is None:
+            return
+        with lock:
+            self._subscription_site_budget_failures.append(error)
+
+    def consume_subscription_site_budget_failures(self, *, has_results: bool = False) -> tuple[str, ...]:
+        """仅在没有成功搜索源时返回并清空本轮站点聚合失败。"""
+        lock = getattr(self, "_subscription_site_budget_failure_lock", None)
+        if lock is None:
+            return ()
+        with lock:
+            failures = tuple(self._subscription_site_budget_failures)
+            self._subscription_site_budget_failures.clear()
+        budget = getattr(self, "_subscription_site_budget", None)
+        has_successful_site = isinstance(budget, SubscriptionSiteBudget) and budget.has_successful_site()
+        return () if has_results or has_successful_site else failures
+
+    def record_subscription_site_budget_deferred(
+        self,
+        deferral: SubscriptionSiteBudgetDeferral,
+    ) -> None:
+        """线程安全地记录临时站点冲突，供订阅任务重新入队。"""
+        lock = getattr(self, "_subscription_site_budget_failure_lock", None)
+        if lock is None:
+            return
+        with lock:
+            self._subscription_site_budget_deferrals.append(deferral)
+
+    def consume_subscription_site_budget_deferrals(self) -> tuple[SubscriptionSiteBudgetDeferral, ...]:
+        """读取并清空当前订阅搜索积累的站点预算延后事实。"""
+        lock = getattr(self, "_subscription_site_budget_failure_lock", None)
+        if lock is None:
+            return ()
+        with lock:
+            deferrals = tuple(self._subscription_site_budget_deferrals)
+            self._subscription_site_budget_deferrals.clear()
+        return deferrals
+
     # owner descriptor 经类访问后被 mypy 视为普通 Callable；运行时仍需取回原始
     # classmethod 函数，才能保持 SearchChain 的直接 MRO 与既有绑定语义。
     music_site_keywords = classmethod(  # type: ignore[var-annotated]
@@ -56,6 +112,7 @@ class SearchChain(ChainBase):
     )
     _should_continue_search_pages = SearchPaginationOwner._should_continue_search_pages
     _should_continue_subtitle_search_pages = staticmethod(SearchPaginationOwner._should_continue_subtitle_search_pages)
+
     @property
     def is_ai_recommend_enabled(self) -> bool:
         """经推荐 owner 的原始描述符读取启用状态，避免 Facade 属性递归。"""
@@ -67,6 +124,7 @@ class SearchChain(ChainBase):
 
     _calculate_recommend_request_hash = staticmethod(SearchRecommendOwner._calculate_recommend_request_hash)
     _build_ai_recommend_status = SearchRecommendOwner._build_ai_recommend_status
+
     def get_current_recommend_status_only(self) -> dict[str, Any]:
         """返回当前推荐状态，不改变推荐请求代际。"""
         return SearchRecommendOwner.get_current_recommend_status_only(
@@ -101,6 +159,7 @@ class SearchChain(ChainBase):
     _async_save_subtitles = SearchCacheOwner._async_save_subtitles
     save_last_search_params = SearchCacheOwner.save_last_search_params
     async_save_last_search_params = SearchCacheOwner.async_save_last_search_params
+
     def last_search_params(self) -> Optional[dict[str, str]]:
         """返回最近一次搜索参数。"""
         return SearchCacheOwner.last_search_params(cast(SearchCacheOwner, self))
@@ -114,6 +173,7 @@ class SearchChain(ChainBase):
     _extract_recommend_items = staticmethod(SearchRecommendOwner._extract_recommend_items)
     _restore_original_indices = staticmethod(SearchRecommendOwner._restore_original_indices)
     _invoke_recommend_llm = staticmethod(SearchRecommendOwner._invoke_recommend_llm)
+
     def start_recommend_task(
         self,
         filtered_indices: Optional[list[int]],
@@ -128,29 +188,8 @@ class SearchChain(ChainBase):
             results=results,
         )
 
-    def search_by_id(
-        self,
-        media_source: MediaSource,
-        media_id: str,
-        mtype: Optional[MediaType] = None,
-        area: Optional[str] = "title",
-        season: Optional[int] = None,
-        sites: Optional[list[int]] = None,
-        cache_local: bool = False,
-        music_type: Optional[str] = None,
-    ) -> list[Context]:
-        """通过稳定 Facade 执行同步精确媒体搜索。"""
-        return SearchMediaOwner.search_by_id(
-            cast(SearchMediaOwner, self),
-            media_source=media_source,
-            media_id=media_id,
-            mtype=mtype,
-            area=area,
-            season=season,
-            sites=sites,
-            cache_local=cache_local,
-            music_type=music_type,
-        )
+    # 复用 owner 的方法描述符和完整运行时签名，避免重复维护身份搜索参数。
+    search_by_id = cast(Callable[..., list[Context]], SearchMediaOwner.search_by_id)
 
     def search_by_title(
         self,
@@ -278,6 +317,7 @@ class SearchChain(ChainBase):
         sites: Optional[list[int]] = None,
         cache_local: bool = False,
         music_type: Optional[str] = None,
+        include_candidates: bool = False,
     ) -> list[Context]:
         """通过稳定 Facade 执行异步精确媒体搜索。"""
         return await SearchMediaOwner.async_search_by_id(
@@ -290,6 +330,7 @@ class SearchChain(ChainBase):
             sites=sites,
             cache_local=cache_local,
             music_type=music_type,
+            include_candidates=include_candidates,
         )
 
     async def async_search_by_title(
@@ -334,6 +375,7 @@ class SearchChain(ChainBase):
             yield event
     _build_title_search_meta = staticmethod(SearchTitleOwner._build_title_search_meta)
     _filter_title_search_torrents = SearchTitleOwner._filter_title_search_torrents
+
     async def async_search_by_id_stream(
         self,
         media_source: MediaSource,
@@ -344,6 +386,7 @@ class SearchChain(ChainBase):
         sites: Optional[list[int]] = None,
         cache_local: bool = False,
         music_type: Optional[str] = None,
+        include_candidates: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
         """通过稳定 Facade 流式执行精确媒体搜索。"""
         async for event in SearchMediaOwner.async_search_by_id_stream(
@@ -356,6 +399,7 @@ class SearchChain(ChainBase):
             sites=sites,
             cache_local=cache_local,
             music_type=music_type,
+            include_candidates=include_candidates,
         ):
             yield event
     _prepare_params = staticmethod(SearchPlanOwner._prepare_params)
@@ -370,7 +414,7 @@ class SearchChain(ChainBase):
 
     def process(
         self,
-        mediainfo: MediaInfo,
+        mediainfo: MediaInfo | MusicInfo,
         keyword: Optional[str] = None,
         no_exists: Optional[dict[str, dict[int, NotExistMediaInfo]]] = None,
         sites: Optional[list[int]] = None,
@@ -378,6 +422,8 @@ class SearchChain(ChainBase):
         area: Optional[str] = "title",
         custom_words: Optional[list[str]] = None,
         filter_params: Optional[dict[str, str]] = None,
+        include_candidates: bool = False,
+        candidate_filter: Optional[Callable[[list[Context]], list[Context]]] = None,
     ) -> list[Context]:
         """通过稳定 Facade 调用精确媒体搜索 owner，保留公开类型合同。"""
         return SearchMediaOwner.process(
@@ -390,11 +436,13 @@ class SearchChain(ChainBase):
             area=area,
             custom_words=custom_words,
             filter_params=filter_params,
+            include_candidates=include_candidates,
+            candidate_filter=candidate_filter,
         )
 
     async def async_process(
         self,
-        mediainfo: MediaInfo,
+        mediainfo: MediaInfo | MusicInfo,
         keyword: Optional[str] = None,
         no_exists: Optional[dict[str, dict[int, NotExistMediaInfo]]] = None,
         sites: Optional[list[int]] = None,
@@ -402,6 +450,8 @@ class SearchChain(ChainBase):
         area: Optional[str] = "title",
         custom_words: Optional[list[str]] = None,
         filter_params: Optional[dict[str, str]] = None,
+        include_candidates: bool = False,
+        candidate_filter: Optional[Callable[[list[Context]], list[Context]]] = None,
     ) -> list[Context]:
         """通过稳定 Facade 执行异步媒体搜索编排。"""
         return await SearchMediaOwner.async_process(
@@ -414,11 +464,13 @@ class SearchChain(ChainBase):
             area=area,
             custom_words=custom_words,
             filter_params=filter_params,
+            include_candidates=include_candidates,
+            candidate_filter=candidate_filter,
         )
 
     async def async_process_stream(
         self,
-        mediainfo: MediaInfo,
+        mediainfo: MediaInfo | MusicInfo,
         keyword: Optional[str] = None,
         no_exists: Optional[dict[str, dict[int, NotExistMediaInfo]]] = None,
         sites: Optional[list[int]] = None,
@@ -426,6 +478,8 @@ class SearchChain(ChainBase):
         area: Optional[str] = "title",
         custom_words: Optional[list[str]] = None,
         filter_params: Optional[dict[str, str]] = None,
+        include_candidates: bool = False,
+        candidate_filter: Optional[Callable[[list[Context]], list[Context]]] = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """通过稳定 Facade 流式执行媒体搜索编排。"""
         async for event in SearchMediaOwner.async_process_stream(
@@ -438,6 +492,8 @@ class SearchChain(ChainBase):
             area=area,
             custom_words=custom_words,
             filter_params=filter_params,
+            include_candidates=include_candidates,
+            candidate_filter=candidate_filter,
         ):
             yield event
     _build_subtitle_season_episodes = staticmethod(SearchSubtitleOwner._build_subtitle_season_episodes)
@@ -456,6 +512,7 @@ class SearchChain(ChainBase):
     _async_indexers = SearchProviderOwner._async_indexers
     _torrent_keyword = staticmethod(SearchProviderOwner._torrent_keyword)
     _torrent_type = staticmethod(SearchProviderOwner._torrent_type)
+    _search_site_torrents_with_budget = SearchProviderOwner._search_site_torrents_with_budget
     _iter_provider_batches = SearchProviderOwner._iter_provider_batches
     _iter_provider_events = SearchProviderOwner._iter_provider_events
     _iter_torrent_events = SearchProviderOwner._iter_torrent_events

@@ -1,7 +1,8 @@
+import asyncio
 from contextlib import contextmanager
 from dataclasses import fields
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -11,8 +12,14 @@ from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
 )
+from app.application.subscription.execution import (
+    SubscriptionExecutionAdmission,
+    SubscriptionExecutionContext,
+)
 from app.application.subscription.mutation import SubscriptionMutation
-from app.chain.subscribe import SubscribeChain
+from app.application.subscription.sitebudget import SubscriptionSearchCancelled
+from app.chain.search import SearchChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_ARTIST,
@@ -22,6 +29,7 @@ from app.domain.context import (
     TorrentInfo,
 )
 from app.domain.meta.metamusic import MetaMusic
+from app.schemas.category import ClassificationSelection
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -37,6 +45,14 @@ def _music_info() -> MusicInfo:
     )
 
 
+def _search_chain_for_torrents(contexts: list[Context]) -> SearchChain:
+    """只替换站点 I/O，保留真实共用搜索、解析、过滤和匹配流程。"""
+    chain = SearchChain()
+    chain._SearchChain__search_all_sites = Mock(return_value=[context.torrent_info for context in contexts])
+    chain.process = Mock(wraps=chain.process)
+    return chain
+
+
 def _subscribe(**overrides) -> SimpleNamespace:
     """构造不依赖数据库的音乐订阅对象。"""
     values = dict(
@@ -45,11 +61,13 @@ def _subscribe(**overrides) -> SimpleNamespace:
         year="2003",
         type=MediaType.MUSIC.value,
         keyword=None,
+        search_imdbid=False,
         media_source="musicbrainz",
         media_id="recording-1",
         mediaid=None,
         music_type="recording",
         total_tracks=None,
+        downloaded_tracks=None,
         season=None,
         episode_group=None,
         tmdbid=None,
@@ -94,6 +112,19 @@ def _subscribe(**overrides) -> SimpleNamespace:
     return subscribe
 
 
+def _music_recognition_chain(
+        recognized: MusicInfo | None = None,
+) -> Mock:
+    """构造同时支持同步、异步识别与分类收口的媒体链替身。"""
+    media_chain = Mock()
+    media_chain.recognize_media.return_value = recognized
+    media_chain.async_recognize_media = AsyncMock(return_value=recognized)
+    media_chain._finalize_recognition_result.side_effect = (
+        lambda mediainfo, **_kwargs: mediainfo
+    )
+    return media_chain
+
+
 def _configure_subscription_write(chain, repository) -> None:
     """为音乐测试链注入显式同步修改作用域。"""
     chain.subscription_repository = repository
@@ -118,6 +149,23 @@ def _configure_subscription_write(chain, repository) -> None:
         yield SimpleNamespace(update=update)
 
     chain.sync_subscription_mutation_scope = mutation_scope
+
+
+def _execution_context(*, cancelled=None) -> SubscriptionExecutionContext:
+    """构造音乐订阅使用的独立执行上下文。"""
+    admission = SubscriptionExecutionAdmission()
+    lease = admission.try_acquire(
+        subscription_id=7,
+        operation="search",
+        ttl_seconds=60,
+    )
+    assert lease is not None
+    return SubscriptionExecutionContext(
+        lease=lease,
+        admission=admission,
+        task_id="music-task-7",
+        cancel_requested=cancelled,
+    )
 
 
 def test_build_subscribe_meta_returns_music_meta():
@@ -159,10 +207,9 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
             category=MediaType.MUSIC.value,
         )
     )
-    search_chain = Mock()
-    search_chain.search_by_title.side_effect = [[context], []]
+    search_chain = _search_chain_for_torrents([context])
     download_chain = Mock()
-    download_chain.batch_download.return_value = ([context], None)
+    download_chain.batch_download.side_effect = lambda **kwargs: (kwargs["contexts"], None)
     chain = SubscribeChain()
     chain.finish_subscribe_or_not = Mock()
     chain.check_and_handle_existing_media = Mock(return_value=(False, {}))
@@ -172,22 +219,134 @@ def test_music_subscribe_reuses_search_download_and_finish_flow():
     chain.subscription_repository = subscribe_oper
 
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=target), \
-            patch("app.chain._music.SearchChain", return_value=search_chain), \
+            patch("app.chain.subscribe.search.SearchChain", return_value=search_chain), \
             patch("app.chain._music.DownloadChain", return_value=download_chain):
         chain._search_music_subscribe(subscribe)
 
-    search_chain.search_by_title.assert_any_call(
-        title="周杰伦 晴天", sites=[], mtype=MediaType.MUSIC, rule_groups=[]
-    )
+    search_chain.process.assert_called_once()
+    assert search_chain.process.call_args.kwargs["keyword"] == "周杰伦 晴天"
+    assert search_chain.process.call_args.kwargs["sites"] == []
     download_chain.batch_download.assert_called_once()
     matched_context = download_chain.batch_download.call_args.kwargs["contexts"][0]
     assert matched_context is not context
-    assert matched_context.media_info is target
+    assert matched_context.media_info.media_id == target.media_id
     assert isinstance(matched_context.meta_info, MetaMusic)
     assert matched_context.meta_info.org_string == "周杰伦 - 晴天 FLAC"
     assert matched_context.meta_info.audio_format == "FLAC"
     assert matched_context.meta_info.audio_lossless is True
     chain.finish_subscribe_or_not.assert_called_once()
+
+
+def test_music_search_honours_cancel_before_external_work():
+    """音乐搜索在安全边界收到取消后不得继续访问站点。"""
+    subscribe = _subscribe()
+    chain = SubscribeChain()
+    execution_context = _execution_context(cancelled=lambda: True)
+
+    with patch("app.chain.subscribe.search.SearchChain") as search_chain, \
+            pytest.raises(SubscriptionSearchCancelled):
+        chain._search_music_subscribe(
+            subscribe,
+            execution_context=execution_context,
+        )
+
+    search_chain.assert_not_called()
+
+
+def test_music_best_version_filters_before_stopping_keyword_search():
+    """首关键词只有当前音质时，应继续换词直到找到满足洗版条件的资源。"""
+    subscribe = _subscribe(best_version=1, current_priority=90)
+    target = _music_info()
+    chain = SubscribeChain()
+    chain.subscription_repository = Mock()
+    chain.subscription_repository.get.return_value = subscribe
+    search_chain = SearchChain()
+    calls = []
+
+    def search(**kwargs):
+        """首轮为 CD 音质，组合词返回更高音质。"""
+        calls.append(kwargs["keyword"])
+        quality = "16bit 44.1kHz" if len(calls) == 1 else "24bit 96kHz"
+        return [TorrentInfo(title=f"周杰伦 - 晴天 FLAC {quality}", category=MediaType.MUSIC.value)]
+
+    search_chain._SearchChain__search_all_sites = Mock(side_effect=search)
+    with (
+        patch.object(chain, "_prepare_music_subscribe", return_value=(subscribe, target, MetaMusic.from_music_info(target))),
+        patch.object(chain, "_download_music_subscribe") as download,
+        patch("app.chain.search.execution.time.sleep"),
+        patch.object(search_chain, "consume_subscription_site_budget_failures", wraps=search_chain.consume_subscription_site_budget_failures) as budget,
+    ):
+        chain._process_search_subscription(subscribe, search_chain)
+    assert calls == ["晴天", "周杰伦 晴天"]
+    budget.assert_called_once_with(has_results=True)
+    download.assert_called_once()
+    contexts = download.call_args.args[2]
+    assert len(contexts) == 1
+    assert contexts[0].meta_info.bit_depth == 24
+    assert contexts[0].torrent_info.pri_order > 90
+
+
+def test_music_download_marks_shared_execution_context_before_side_effect():
+    """音乐下载必须把取消和副作用边界传入统一下载治理。"""
+    cancelled = [False]
+    subscribe = _subscribe()
+    target = _music_info()
+    downloaded = Context(
+        torrent_info=TorrentInfo(
+            title="周杰伦 - 晴天 FLAC",
+            category=MediaType.MUSIC.value,
+        ),
+        meta_info=MetaMusic.from_music_info(target),
+        media_info=target,
+    )
+    execution_context = _execution_context(cancelled=lambda: cancelled[0])
+    download_chain = Mock()
+
+    def batch_download(**kwargs):
+        """模拟下载器边界内开始提交后才收到取消。"""
+        governance = kwargs["governance"]
+        assert governance.cancelled() is False
+        governance.mark_started()
+        cancelled[0] = True
+        return [downloaded], None
+
+    download_chain.batch_download.side_effect = batch_download
+    repository = Mock()
+    repository.get.return_value = subscribe
+    chain = SubscribeChain()
+    chain.subscription_repository = repository
+    chain.finish_subscribe_or_not = Mock()
+
+    with patch("app.chain._music.DownloadChain", return_value=download_chain):
+        chain._download_music_subscribe(
+            subscribe,
+            target,
+            [downloaded],
+            execution_context=execution_context,
+        )
+
+    assert execution_context.download_started is True
+    chain.finish_subscribe_or_not.assert_called_once()
+
+
+def test_music_download_rechecks_paused_state_before_submission():
+    """候选准备后暂停的音乐订阅不得进入下载器。"""
+    subscribe = _subscribe()
+    paused = _subscribe(state="S")
+    repository = Mock()
+    repository.get.return_value = paused
+    chain = SubscribeChain()
+    chain.subscription_repository = repository
+
+    with patch("app.chain._music.DownloadChain") as download_chain:
+        chain._download_music_subscribe(
+            subscribe,
+            _music_info(),
+            [Context()],
+            execution_context=_execution_context(),
+        )
+
+    download_chain.assert_not_called()
 
 
 def test_music_subscribe_filters_declared_bitrate_and_format():
@@ -274,6 +433,7 @@ def test_music_best_version_persists_downloaded_rule_priority():
     download_chain.batch_download.return_value = ([downloaded], None)
     subscribe_oper = Mock()
     updated = _subscribe(best_version=1, current_priority=100)
+    subscribe_oper.get.return_value = subscribe
     subscribe_oper.update.return_value = updated
     chain = SubscribeChain()
     chain.finish_subscribe_or_not = Mock()
@@ -349,8 +509,45 @@ def test_music_subscribe_matches_artist_from_resource_description():
     assert len(matched) == 1
 
 
-def test_album_best_version_requires_confirmed_full_coverage():
-    """最高优先级的非完整专辑不得写入洗版基线或完成订阅。"""
+def test_music_rss_applies_subscription_words_without_mutating_cache():
+    """RSS 与主动搜索使用同一订阅识别词，并保持缓存中的资源原文独立。"""
+    subscribe = _subscribe(custom_words="错误曲名 => 晴天")
+    torrent = TorrentInfo(title="周杰伦 - 错误曲名 FLAC", category=MediaType.MUSIC.value)
+    original_meta = MetaMusic.parse_resource(torrent.title)
+    context = Context(torrent_info=torrent, meta_info=original_meta)
+    chain = SubscribeChain()
+    chain.filter_torrents = Mock(side_effect=lambda **kwargs: kwargs["torrent_list"])
+
+    matched = chain._filter_music_subscribe_contexts(subscribe, _music_info(), [context])
+
+    assert len(matched) == 1
+    assert matched[0].meta_info.title == "晴天"
+    assert matched[0].meta_info.apply_words == ["错误曲名 => 晴天"]
+    assert matched[0].meta_info is not original_meta
+    assert context.meta_info.title == "错误曲名"
+    assert context.torrent_info.title == "周杰伦 - 错误曲名 FLAC"
+
+
+@pytest.mark.parametrize("album_target", [False, True])
+def test_music_rss_rejects_subtitle_version_or_partial_album(album_target):
+    """RSS 不能把副标题现场版或单曲所属专辑当作可自动下载的目标。"""
+    target = _music_info()
+    if album_target:
+        target.music_type = MUSIC_ENTITY_ALBUM
+        target.title = target.album
+    context = Context(torrent_info=TorrentInfo(
+        title="周杰伦 - 晴天 FLAC",
+        description="专辑：叶惠美" if album_target else "版本：Live",
+        category=MediaType.MUSIC.value,
+    ))
+    chain = SubscribeChain()
+    chain.filter_torrents = Mock(side_effect=lambda **kwargs: kwargs["torrent_list"])
+
+    assert chain._filter_music_subscribe_contexts(_subscribe(), target, [context]) == []
+
+
+def test_album_best_version_waits_for_accumulated_full_coverage():
+    """专辑洗版在累计曲目达到总数前不更新质量基线，达到后才允许更新。"""
     subscribe = _subscribe(
         name="叶惠美",
         music_type=MUSIC_ENTITY_ALBUM,
@@ -376,7 +573,7 @@ def test_album_best_version_requires_confirmed_full_coverage():
         ),
         meta_info=meta,
         media_info=album,
-        confirmed_full_coverage=False,
+        music_track_keys=["[1,1]"],
     )
     download_chain = Mock()
     download_chain.batch_download.return_value = ([downloaded], None)
@@ -385,13 +582,41 @@ def test_album_best_version_requires_confirmed_full_coverage():
     chain = SubscribeChain()
     _configure_subscription_write(chain, subscribe_oper)
 
-    with patch("app.chain._music.DownloadChain", return_value=download_chain), \
-            patch.object(chain, "_SubscribeChain__finish_subscribe") as finish:
+    chain.finish_subscribe_or_not = Mock()
+    with patch("app.chain._music.DownloadChain", return_value=download_chain):
         chain._download_music_subscribe(subscribe, album, [downloaded])
 
     subscribe_oper.update.assert_not_called()
     assert subscribe.current_priority == 90
-    finish.assert_not_called()
+    chain.finish_subscribe_or_not.assert_called_once()
+
+    full_subscribe = _subscribe(
+        name="叶惠美",
+        music_type=MUSIC_ENTITY_ALBUM,
+        total_tracks=11,
+        downloaded_tracks=[f"[{index},1]" for index in range(1, 11)],
+        best_version=1,
+        current_priority=90,
+    )
+    updated = _subscribe(
+        name="叶惠美",
+        music_type=MUSIC_ENTITY_ALBUM,
+        total_tracks=11,
+        downloaded_tracks=full_subscribe.downloaded_tracks,
+        best_version=1,
+        current_priority=100,
+    )
+    subscribe_oper.reset_mock()
+    subscribe_oper.get.return_value = full_subscribe
+    subscribe_oper.update.return_value = updated
+    chain.finish_subscribe_or_not.reset_mock()
+    downloaded.music_track_keys = ["[11,1]"]
+
+    with patch("app.chain._music.DownloadChain", return_value=download_chain):
+        chain._download_music_subscribe(full_subscribe, album, [downloaded])
+
+    subscribe_oper.update.assert_called_once()
+    assert subscribe_oper.update.call_args.args[1].to_payload()["current_priority"] == 100
 
 
 def test_music_subscribe_ignores_non_music_category():
@@ -403,13 +628,13 @@ def test_music_subscribe_ignores_non_music_category():
             category=MediaType.MOVIE.value,
         )
     )
-    search_chain = Mock()
-    search_chain.search_by_title.return_value = [context]
+    search_chain = _search_chain_for_torrents([context])
     chain = SubscribeChain()
     chain.check_and_handle_existing_media = Mock(return_value=(False, {}))
 
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=_music_info()), \
-            patch("app.chain._music.SearchChain", return_value=search_chain), \
+            patch("app.chain.subscribe.search.SearchChain", return_value=search_chain), \
+            patch("app.chain.search.execution.time.sleep"), \
             patch("app.chain._music.DownloadChain") as download_chain:
         chain._search_music_subscribe(subscribe)
 
@@ -425,14 +650,14 @@ def test_music_subscribe_ignores_unrelated_music_title():
             category=MediaType.MUSIC.value,
         )
     )
-    search_chain = Mock()
-    search_chain.search_by_title.return_value = [context]
+    search_chain = _search_chain_for_torrents([context])
 
     chain = SubscribeChain()
     chain.check_and_handle_existing_media = Mock(return_value=(False, {}))
 
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=_music_info()), \
-            patch("app.chain._music.SearchChain", return_value=search_chain), \
+            patch("app.chain.subscribe.search.SearchChain", return_value=search_chain), \
+            patch("app.chain.search.execution.time.sleep"), \
             patch("app.chain._music.DownloadChain") as download_chain:
         chain._search_music_subscribe(subscribe)
 
@@ -446,7 +671,7 @@ def test_music_subscribe_skips_search_when_target_is_already_in_library():
     chain.check_and_handle_existing_media = Mock(return_value=(True, {}))
 
     with patch.object(SubscribeChain, "_recognize_music_subscribe", return_value=_music_info()), \
-            patch("app.chain._music.SearchChain") as search_chain, \
+            patch("app.chain.subscribe.search.SearchChain") as search_chain, \
             patch("app.chain._music.DownloadChain") as download_chain:
         chain._search_music_subscribe(subscribe)
 
@@ -507,9 +732,9 @@ def test_album_subscription_uses_persisted_snapshot_when_remote_detail_is_unavai
         music_type=MUSIC_ENTITY_ALBUM,
         total_tracks=11,
         description="周杰伦 · Album · 2003-07-31",
+        media_category=" 音乐 / 华语 // 专辑 ",
     )
-    media_chain = Mock()
-    media_chain.recognize_media.return_value = None
+    media_chain = _music_recognition_chain()
 
     with patch("app.chain._music.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
@@ -518,18 +743,65 @@ def test_album_subscription_uses_persisted_snapshot_when_remote_detail_is_unavai
     assert restored.album == "叶惠美"
     assert restored.artists == ["周杰伦"]
     assert restored.total_tracks == 11
+    finalize_call = media_chain._finalize_recognition_result.call_args
+    assert finalize_call.args == (restored,)
+    assert finalize_call.kwargs["effective_override"] == ClassificationSelection(
+        category_path=["音乐", "华语", "专辑"],
+        source="subscription",
+    )
+
+
+def test_music_subscription_remote_result_uses_manual_category_override() -> None:
+    """远端音乐详情应在订阅边界应用去空段后的手工分类覆盖。"""
+    subscribe = _subscribe(media_category=" 音乐 / 华语 // 流行 ")
+    remote = _music_info()
+    media_chain = _music_recognition_chain(remote)
+
+    with patch("app.chain._music.MediaChain", return_value=media_chain):
+        restored = SubscribeChain._recognize_music_subscribe(subscribe)
+
+    assert restored is remote
+    finalize_call = media_chain._finalize_recognition_result.call_args
+    assert finalize_call.args == (remote,)
+    assert finalize_call.kwargs["effective_override"] == ClassificationSelection(
+        category_path=["音乐", "华语", "流行"],
+        source="subscription",
+    )
+
+
+def test_music_subscription_without_manual_category_keeps_automatic_classification() -> None:
+    """空白手工分类应传入 None，使最终分类服务继续执行自动规则。"""
+    subscribe = _subscribe(media_category=" / / ")
+    remote = _music_info()
+    automatic = _music_info()
+    automatic.set_library_category("音乐/自动")
+    media_chain = _music_recognition_chain(remote)
+    media_chain._finalize_recognition_result.side_effect = None
+    media_chain._finalize_recognition_result.return_value = automatic
+
+    with patch("app.chain._music.MediaChain", return_value=media_chain):
+        restored = SubscribeChain._recognize_music_subscribe(subscribe)
+
+    assert restored is automatic
+    assert restored.library_category == "音乐/自动"
+    finalize_call = media_chain._finalize_recognition_result.call_args
+    assert finalize_call.args == (remote,)
+    assert finalize_call.kwargs["effective_override"] is None
 
 
 def test_legacy_music_identity_failure_does_not_guess_entity_from_title():
     """旧订阅有标准 ID 却无实体类型时，识别失败后应保留订阅而不是误选标题搜索首项。"""
     subscribe = _subscribe(music_type=None)
-    media_chain = Mock()
-    media_chain.recognize_media.return_value = None
+    media_chain = _music_recognition_chain()
 
     with patch("app.chain._music.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
 
     assert restored is None
+    media_chain._finalize_recognition_result.assert_called_once_with(
+        None,
+        effective_override=None,
+    )
 
 
 def test_album_subscription_without_remote_id_uses_persisted_entity_snapshot():
@@ -542,12 +814,17 @@ def test_album_subscription_without_remote_id_uses_persisted_entity_snapshot():
         total_tracks=11,
     )
 
-    with patch("app.chain._music.MediaChain") as media_chain:
+    media_chain = _music_recognition_chain()
+    with patch("app.chain._music.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
 
     assert restored.music_type == MUSIC_ENTITY_ALBUM
     assert restored.total_tracks == 11
-    media_chain.assert_not_called()
+    media_chain.recognize_media.assert_not_called()
+    media_chain._finalize_recognition_result.assert_called_once_with(
+        restored,
+        effective_override=None,
+    )
 
 
 def test_legacy_music_without_identity_uses_recording_recognition_boundary():
@@ -558,8 +835,7 @@ def test_legacy_music_without_identity_uses_recording_recognition_boundary():
         music_type=None,
     )
     recording = _music_info()
-    media_chain = Mock()
-    media_chain.recognize_media.return_value = recording
+    media_chain = _music_recognition_chain(recording)
 
     with patch("app.chain._music.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
@@ -581,13 +857,16 @@ def test_legacy_music_subscription_rejects_artist_recognition_result():
         title="周杰伦",
         artists=["周杰伦"],
     )
-    media_chain = Mock()
-    media_chain.recognize_media.return_value = artist
+    media_chain = _music_recognition_chain(artist)
 
     with patch("app.chain._music.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
 
     assert restored is None
+    media_chain._finalize_recognition_result.assert_called_once_with(
+        None,
+        effective_override=None,
+    )
 
 
 def test_album_subscription_preserves_track_count_snapshot_when_remote_omits_it():
@@ -607,8 +886,7 @@ def test_album_subscription_preserves_track_count_snapshot_when_remote_omits_it(
         artists=["周杰伦"],
         total_tracks=None,
     )
-    media_chain = Mock()
-    media_chain.recognize_media.return_value = remote
+    media_chain = _music_recognition_chain(remote)
 
     with patch("app.chain._music.MediaChain", return_value=media_chain):
         restored = SubscribeChain._recognize_music_subscribe(subscribe)
@@ -618,9 +896,57 @@ def test_album_subscription_preserves_track_count_snapshot_when_remote_omits_it(
     assert remote.total_tracks is None
 
 
-def test_album_subscription_finishes_only_after_confirmed_full_pack():
-    """专辑与电视剧全集相同，必须确认整专覆盖；单曲仍在任一成功下载后完成。"""
-    album_subscribe = _subscribe(music_type=MUSIC_ENTITY_ALBUM, total_tracks=11)
+def test_async_music_subscription_remote_result_uses_manual_category_override() -> None:
+    """异步远端识别结果应使用与同步路径一致的订阅分类覆盖。"""
+    subscribe = _subscribe(media_category=" 音乐 / 欧美 / 摇滚 ")
+    remote = _music_info()
+    media_chain = _music_recognition_chain(remote)
+
+    with patch("app.chain._music.MediaChain", return_value=media_chain):
+        restored = asyncio.run(
+            SubscribeChain._async_recognize_music_subscribe(subscribe)
+        )
+
+    assert restored is remote
+    media_chain.async_recognize_media.assert_awaited_once()
+    finalize_call = media_chain._finalize_recognition_result.call_args
+    assert finalize_call.args == (remote,)
+    assert finalize_call.kwargs["effective_override"] == ClassificationSelection(
+        category_path=["音乐", "欧美", "摇滚"],
+        source="subscription",
+    )
+
+
+def test_async_music_subscription_fallback_snapshot_is_finalized() -> None:
+    """异步远端失败后的持久化快照也必须经过同一最终分类入口。"""
+    subscribe = _subscribe(
+        name="叶惠美",
+        music_type=MUSIC_ENTITY_ALBUM,
+        total_tracks=11,
+        media_category=None,
+    )
+    media_chain = _music_recognition_chain()
+
+    with patch("app.chain._music.MediaChain", return_value=media_chain):
+        restored = asyncio.run(
+            SubscribeChain._async_recognize_music_subscribe(subscribe)
+        )
+
+    assert restored.music_type == MUSIC_ENTITY_ALBUM
+    assert restored.total_tracks == 11
+    media_chain._finalize_recognition_result.assert_called_once_with(
+        restored,
+        effective_override=None,
+    )
+
+
+def test_album_subscription_finishes_only_after_accumulated_tracks():
+    """专辑按跨资源累计的独立曲目数完成，单曲仍在任一成功下载后完成。"""
+    album_subscribe = _subscribe(
+        music_type=MUSIC_ENTITY_ALBUM,
+        total_tracks=11,
+        downloaded_tracks=[f"[{index},1]" for index in range(1, 12)],
+    )
     album = MusicInfo(
         music_type=MUSIC_ENTITY_ALBUM,
         title="叶惠美",
@@ -631,18 +957,64 @@ def test_album_subscription_finishes_only_after_confirmed_full_pack():
     assert SubscribeChain._is_music_download_complete(
         album_subscribe,
         album,
-        [Context(confirmed_full_coverage=False)],
-    ) is False
-    assert SubscribeChain._is_music_download_complete(
-        album_subscribe,
-        album,
-        [Context(confirmed_full_coverage=True)],
+        [],
     ) is True
+    assert SubscribeChain._is_music_download_complete(
+        _subscribe(
+            music_type=MUSIC_ENTITY_ALBUM,
+            total_tracks=11,
+            downloaded_tracks=["[1,1]"],
+        ),
+        album,
+        [Context(music_track_keys=["[1,2]"])],
+    ) is False
     assert SubscribeChain._is_music_download_complete(
         _subscribe(),
         _music_info(),
         [Context()],
     ) is True
+
+
+def test_album_download_facts_accumulate_and_finish_at_total_tracks():
+    """专辑下载事实跨轮次合并去重，达到总曲目数后才触发完成。"""
+    album_subscribe = _subscribe(
+        name="叶惠美",
+        media_id="release-group-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        total_tracks=3,
+        downloaded_tracks=["[1,1]"],
+    )
+    album = MusicInfo(
+        media_source="musicbrainz",
+        media_id="release-group-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="叶惠美",
+        album="叶惠美",
+        total_tracks=3,
+    )
+    download = Context(
+        torrent_info=TorrentInfo(title="叶惠美 FLAC", category=MediaType.MUSIC.value),
+        meta_info=MetaMusic.from_music_info(album),
+        media_info=album,
+        music_track_keys=["[1,2]", "[1,2]", "[1,3]"],
+    )
+    subscribe_oper = Mock()
+    chain = SubscribeChain()
+    _configure_subscription_write(chain, subscribe_oper)
+
+    with patch.object(SubscribeChain, "_SubscribeChain__finish_subscribe") as finish:
+        chain.finish_subscribe_or_not(
+            subscribe=album_subscribe,
+            meta=MetaMusic.from_music_info(album),
+            mediainfo=album,
+            downloads=[download],
+        )
+
+    payload = subscribe_oper.update.call_args.args[1].to_payload()
+    assert payload["downloaded_tracks"] == ["[1,1]", "[1,2]", "[1,3]"]
+    finish.assert_called_once()
+    completed = finish.call_args.kwargs["subscribe"]
+    assert completed.downloaded_tracks == ["[1,1]", "[1,2]", "[1,3]"]
 
 
 def test_music_subscribe_target_validation_enforces_entity_semantics():
@@ -899,7 +1271,7 @@ def test_follow_preserves_album_entity_and_track_count():
             patch(
                 "app.startup.composition.chain.MoviePilotServerHelper.get_subscribe_shares",
                 return_value=[share],
-            ), \
+    ), \
             patch("app.chain.subscribe.query.MetaInfo") as video_meta, \
             patch.object(SubscribeChain, "add", return_value=(1, "")) as add:
         chain.follow(repository=subscribe_oper)

@@ -211,15 +211,6 @@
       },
       {
         "classification": "approved_exception",
-        "reason_code": "daemon_control_plane",
-        "owner": "$source",
-        "reason": "runtime state 连接配置指定的 Docker daemon 控制面，并由该进程能力 owner 收口。",
-        "facts": [
-          {"source": "app.runtime.state", "target": "docker", "kind": "network_sdk", "fingerprint": "20a91ec521f7dfe6a0153dfd8ea49c4bac7f0a16b55f1c0655dfb33f54a01215"}
-        ]
-      },
-      {
-        "classification": "approved_exception",
         "reason_code": "test_network_guard",
         "owner": "$source",
         "reason": "测试守卫包装 getaddrinfo 以拒绝真实外联，不执行新的 DNS 解析策略。",

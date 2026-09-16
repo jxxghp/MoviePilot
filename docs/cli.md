@@ -108,6 +108,19 @@ moviepilot tool list
 moviepilot tool show <tool_name>
 ```
 
+工具目录使用最终统一模式：MoviePilot 业务能力通过 `moviepilot_api` 的固定
+`operation_id` 调用，不再列出或接受 `query_schedulers`、`run_scheduler` 等旧业务
+工具名。对象、数组和布尔参数使用 JSON：
+
+```shell
+moviepilot tool show moviepilot_api
+moviepilot tool run moviepilot_api operation_id=scheduler.list
+moviepilot tool run moviepilot_api operation_id=scheduler.run 'query={"job_id":"site-sync"}'
+```
+
+下载器和媒体服务器的 provider 原生高级能力不注册成永久工具；内置 Agent 按需
+加载 `downloader-operation` 或 `mediaserver-operation` Skill，并调用各自固定脚本。
+
 ## 完整命令清单
 
 ```text
@@ -380,7 +393,7 @@ moviepilot version
 
 - `start` 会先启动后端，再启动前端
 - `start --safe` 会以安全模式启动后端，本次启动跳过插件、调度器、监控、命令和工作流等后台扩展能力，不修改用户配置
-- `MOVIEPILOT_AUTO_UPDATE` 默认关闭；仅 `dev` 保留启动前跟踪当前 v3 开发分支的行为，更新失败只告警，不阻断当前启动
+- `MOVIEPILOT_AUTO_UPDATE` 为布尔开关，默认 `false`；只有 `true` 启用后台 Release 检查和版本提醒，保存后定时服务热更新。`AUTO_UPDATE_RESOURCE` 独立控制站点资源检查和提醒；任一开关开启即启用检测服务，且只检查对应目标，两者均关闭才移除服务。`MOVIEPILOT_UPDATE_DEV` 为独立布尔开关，默认 `false`；设为 `true` 时在每次启动/重启前跟踪当前 v3 开发分支，更新失败只告警，不阻断当前启动。旧 `dev/release` 值统一转换为 `MOVIEPILOT_AUTO_UPDATE=true`；旧 `dev` 在未显式配置新开关时迁移为 `MOVIEPILOT_UPDATE_DEV=true`
 - Release 更新由后台每 6 小时检查 GitHub Release；管理员确认后先静默下载安装包并显示进度，下载完成后再次确认重启，启动阶段只安装已下载且通过 SHA-256 校验的包
 - 页面中的“稍后”会在当前浏览器暂停提醒 24 小时，“忽略此版本”只屏蔽当前版本；出现更高版本时会重新提示
 - 通过系统内置的重启入口触发重启时，本地 CLI 安装模式也会复用同一套前后端进程管理完成重启
@@ -451,10 +464,12 @@ moviepilot config set NGINX_PORT 3000
 moviepilot config set API_TOKEN your-token-here
 moviepilot config set ACOUSTID_API_KEY your-acoustid-client-key
 moviepilot config set LRCLIB_BASE_URL https://lrclib.net
+moviepilot config set AMLL_BASE_URL https://api.amll.dev
 moviepilot config set LYRICS_BATCH_TIMEOUT 120
 moviepilot config set LYRICS_PROVIDER_RETRY_MAX_WAIT 5
-moviepilot config set MUSIXMATCH_API_KEY your-authorized-api-key
 moviepilot config set MUSIC_METADATA_TO_SIMPLIFIED true
+moviepilot config set MUSIC_RELEASE_REGION_PRIORITY CN,TW,HK
+moviepilot config set MUSIC_RELEASE_SCRIPT_PRIORITY Hans,Hant,Latn
 ```
 
 查看所有可配置项：
@@ -474,8 +489,10 @@ moviepilot config describe API_TOKEN --show-secrets
 - `config keys` 显示配置项名称、类型和默认值
 - `ACOUSTID_API_KEY` 内置可用默认值，也可在前端“高级设置 - 媒体”或配置命令中覆盖；本地安装需要系统可执行路径中存在 Chromaprint `fpcalc`，官方 Docker 镜像已内置
 - `LRCLIB_BASE_URL` 默认使用官方实例，也可指向兼容 LRCLIB API 的自建实例；`LYRICS_BATCH_TIMEOUT` 限制单次专辑刮削的在线歌词总预算，`LYRICS_PROVIDER_RETRY_MAX_WAIT` 决定长 `Retry-After` 进入来源冷却而非阻塞批次
-- `THEAUDIODB_API_KEY` 用于音乐元数据及纯文本歌词兜底，默认 `123` 为官方公开 V1 Key；`MUSIXMATCH_API_KEY` 留空时不加载 Musixmatch，配置后只调用官方或 `MUSIXMATCH_BASE_URL` 指定的授权代理，使用者必须遵守对应账户的歌词存储和展示授权
+- `AMLL_BASE_URL` 默认使用无需 API Key 的 AMLL TTML API，也可指向兼容原生接口的自建实例。来源优先按 ISRC 查询，再严格核对歌曲、艺术家及已有专辑信息；下载的 TTML 主唱时间轴转换为 Lyricsfile 和 LRC，限流时短暂冷却并让其他歌词来源继续处理
+- `THEAUDIODB_API_KEY` 用于音乐元数据及纯文本歌词兜底，默认 `123` 为官方公开 V1 Key；额外歌词来源可通过插件提供，接入方式见[歌词插件开发说明](https://github.com/jxxghp/MoviePilot-Plugins/blob/main/docs/faq/21-register-lyrics-provider.md)
 - `MUSIC_METADATA_TO_SIMPLIFIED` 默认开启；开启后会将识别结果中的曲名、艺术家、专辑和分类等标准音乐元数据转换为简体中文，不转换歌词与来源原始响应
+- `MUSIC_RELEASE_REGION_PRIORITY` 与 `MUSIC_RELEASE_SCRIPT_PRIORITY` 分别使用逗号分隔的 ISO 3166-1 地区代码和 ISO 15924 文字代码；仅在 MusicBrainz 候选结构同样可信时作为发行版本排序依据，最多使用前三项
 - `config describe` 显示单个配置项的类型、默认值和当前值
 
 ## 数据库备份命令
@@ -512,6 +529,8 @@ docker compose start <service>
 说明：
 
 - SQLite 使用在线备份 API，PostgreSQL 使用镜像内置的 `pg_dump` custom format
+- SQLite 插件自有数据库会在创建宿主备份时同步备份到 `database_backup/plugins/<插件ID>/`，文件名格式为 `<插件ID>_<插件版本>_sqlite_<时间>.db`
+- PostgreSQL 插件自有数据库使用独立 schema；插件建库会校验当前账号的 schema 使用和建表权限，权限不足时插件不会进入运行态
 - 源码部署使用 PostgreSQL 时，宿主机需安装 `pg_dump` 和 `pg_restore` 并加入 `PATH`；Docker 镜像已内置
 - 默认目录为配置目录下的 `database_backup/`，可通过 `DB_BACKUP_PATH` 调整
 - 备份、列举和校验可独立通过 CLI 执行
@@ -528,26 +547,30 @@ moviepilot tool list
 查看单个工具的参数说明：
 
 ```shell
-moviepilot tool show query_schedulers
-moviepilot tool show search_torrents
+moviepilot tool show moviepilot_api
+moviepilot tool show agent_task
 ```
 
 运行工具：
 
 ```shell
-moviepilot tool run query_schedulers
-moviepilot tool run search_torrents media_type=movie media_source=themoviedb media_id=12345
+moviepilot tool run moviepilot_api operation_id=scheduler.list
+moviepilot tool run moviepilot_api operation_id=media.search 'query={"title":"流浪地球","type":"media"}'
 ```
 
 说明：
 
 - `tool list` 用于动态发现当前服务可调用的工具
 - `tool show` 会输出参数名、类型和描述
-- `tool run` 参数格式固定为 `key=value`
-- 涉及精确媒体身份的通用工具统一使用 `media_source` + `media_id`；内置来源使用工具 Schema 中的 `MediaSource` 常量，插件可以注册符合 Schema 格式的扩展来源，两个字段必须成对传递并复用搜索结果。TMDB 等单数据源专属工具按各自 Schema 保留原生 ID 参数
-- `read_file`、`write_file`、`edit_file` 和 `execute_command`
+- `tool run` 参数格式固定为 `key=value`；对象、数组、布尔值和 `null` 使用合法 JSON
+- MoviePilot 业务能力统一通过 `moviepilot_api` 的固定 `operation_id` 调用；不接受任意 URL、method、认证头或 Token，也不兼容旧业务工具名
+- 涉及精确媒体身份的 operation 统一使用 `media_source` + `media_id`，两个字段必须成对传递并复用搜索结果
+- `read_skill`、`read_file`、`write_file`、`edit_file` 和 `execute_command`
   属于内置 Agent 的本地敏感能力，不通过 MCP/`moviepilot tool` 暴露；插件开发时
   由 Agent 按当前用户权限直接调用这些工具。
+- `read_skill` 会一次性返回最多 512 KiB 的 `SKILL.md` 和技能目录内其它文件的完整相对路径列表，
+  不应用普通工具结果的 64 KiB 全局大小裁剪；超出时会明确标记截断，Agent 不应再用
+  `read_file` 读取或绕过 `SKILL.md` 限制。
 - `read_file` 单次最多返回 50KB 文件内容；超出时会截断并提示 Agent 使用
   `start_line`、`end_line` 指定更小的行号范围继续读取。
 

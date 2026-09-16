@@ -181,6 +181,26 @@ class SubscribeHistoryOper(DbOper):
             )
         )
 
+    async def async_count_by_type(self, mtype: str) -> int:
+        """异步统计指定媒体类型的订阅历史。"""
+        return await self._execute_async_query(
+            lambda session: SubscribeHistory.async_count_by_type(session, mtype)
+        )
+
+    async def async_count_by_type_and_username(
+        self,
+        mtype: str,
+        username: str,
+    ) -> int:
+        """异步统计指定媒体类型和 owner 的订阅历史。"""
+        return await self._execute_async_query(
+            lambda session: SubscribeHistory.async_count_by_type_and_username(
+                session,
+                mtype,
+                username,
+            )
+        )
+
     async def async_get(self, history_id: int) -> Optional[SubscribeHistory]:
         """异步按 ID 查询订阅历史。"""
 

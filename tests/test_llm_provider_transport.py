@@ -136,8 +136,10 @@ def test_google_model_client_uses_adapter_args_and_closes_both_clients(
     client = captured["client"]
     http_options = captured["http_options"]
     assert result[0]["id"] == "gemini-test"
+    assert http_options.timeout == 15_000
     assert http_options.client_args["trust_env"] is False
     assert http_options.async_client_args["trust_env"] is False
+    assert "timeout" not in http_options.async_client_args
     assert any(
         key in http_options.async_client_args for key in ("proxy", "proxies")
     )

@@ -8,11 +8,18 @@ from jinja2 import Template
 
 from app.adapters.system.host import SystemUtils
 from app.application.audio import AudioMetadataHelper
+from app.application.classification.reference import (
+    append_classification_category_path,
+    category_path_below_media_type,
+    classification_media_type,
+    ensure_path_within_root,
+)
 from app.application.directory import DirectoryHelper
 from app.application.messaging.message import TemplateHelper
 from app.application.transfer.execution import (
     TransferOperationObservation,
     TransferOperationObservationState,
+    TransferPlanningRejectedError,
     TransferStepResult,
     TransferStepRunner,
 )
@@ -380,7 +387,7 @@ class TransHandler:
                         preview=preview,
                         skip_reason="未识别到文件集数，识别为特典/附加视频文件",
                     )
-                raise ValueError("未识别到文件集数")
+                raise TransferPlanningRejectedError("未识别到文件集数")
             planning_meta.end_season = None
             if planning_meta.total_season:
                 planning_meta.total_season = 1
@@ -787,20 +794,25 @@ class TransHandler:
             cls,
             *,
             step_runner: Optional[TransferStepRunner],
-            fileitem: FileItem,
+            source_fileitem: dict[str, Any],
             target_storage: str,
             source_oper: StorageBase,
             target_oper: StorageBase,
             target_file: Path,
             transfer_type: str,
     ) -> tuple[Optional[FileItem], str]:
-        """执行稳定传输步骤，并把跨存储 move 拆为落地与源删除。"""
+        """按冻结叶节点执行传输，并把跨存储 move 拆为落地与源删除。
+
+        意图直接消费原始快照，避免旧快照补默认字段或适配器更新运行期文件信息
+        导致步骤身份漂移；每个外部操作单独恢复文件对象。
+        """
+        fileitem = FileItem(**source_fileitem)
         cross_storage_move = (
             transfer_type == "move" and fileitem.storage != target_storage
         )
         materialize_type = "copy" if cross_storage_move else transfer_type
         intent_payload = {
-            "source": fileitem.model_dump(mode="json"),
+            "source": source_fileitem,
             "target_storage": target_storage,
             "target_path": target_file.as_posix(),
             "transfer_type": materialize_type,
@@ -846,7 +858,7 @@ class TransHandler:
 
         def execute_source_delete() -> TransferStepResult:
             """在目标已落地后单独删除跨存储 move 的源文件。"""
-            if not source_oper.delete(fileitem):
+            if not source_oper.delete(FileItem(**source_fileitem)):
                 raise RuntimeError(f"{fileitem.path} 源文件删除失败")
             return TransferStepResult(payload={
                 "source_path": fileitem.path,
@@ -858,7 +870,7 @@ class TransHandler:
             phase="transfer",
             kind="delete_move_source",
             payload={
-                "source": fileitem.model_dump(mode="json"),
+                "source": source_fileitem,
                 "target_storage": target_storage,
                 "target_path": target_file.as_posix(),
             },
@@ -991,6 +1003,7 @@ class TransHandler:
             *,
             step_runner: Optional[TransferStepRunner],
             fileitem: FileItem,
+            source_fileitem: dict[str, Any],
             meta: MetaBase,
             mediainfo: MediaInfo | MusicInfo,
             target_oper: StorageBase,
@@ -1000,7 +1013,7 @@ class TransHandler:
             overwrite_mode: Optional[str],
             need_notify: bool,
     ) -> tuple[bool, bool, Optional[TransferInfo]]:
-        """冻结覆盖策略判定，避免目标变化后重启得到不同步骤序列。"""
+        """以原始源快照冻结覆盖判定，避免模型补字段改变旧任务的步骤身份。"""
         def execute() -> TransferStepResult:
             """执行一次覆盖策略判定并冻结完整裁决。"""
             over_flag, delete_versions, failure = self.__resolve_overwrite(
@@ -1025,7 +1038,7 @@ class TransHandler:
             phase="decision",
             kind="resolve_overwrite",
             payload={
-                "source": fileitem.model_dump(mode="json"),
+                "source": source_fileitem,
                 "target_storage": target_storage,
                 "target_path": target_file.as_posix(),
                 "transfer_type": transfer_type,
@@ -1094,8 +1107,13 @@ class TransHandler:
         observe_cleanup_before_transfer: Optional[Callable[[], bool]] = None,
         step_runner: Optional[TransferStepRunner] = None,
     ) -> TransferInfo:
-        """只消费冻结目标和有序操作，并在执行期处理覆盖与插件拦截。"""
+        """只消费冻结目标和有序操作，并在执行期处理覆盖与插件拦截。
+
+        持久步骤意图中的源文件必须使用规划输入快照；目录执行时可能重新统计
+        STREAM 大小，但这类运行期投影不属于步骤身份。
+        """
         fileitem = FileItem(**checkpoint.planning_input.source_fileitem)
+        frozen_source_payload = checkpoint.planning_input.source_fileitem
         target_storage = checkpoint.target_storage
         target_path = Path(checkpoint.final_target_path)
         transfer_type = checkpoint.resolved_transfer_type
@@ -1155,7 +1173,7 @@ class TransHandler:
             allowed, reason = self.__intercept_with_step(
                 step_runner=step_runner,
                 payload={
-                    "source": fileitem.model_dump(mode="json"),
+                    "source": frozen_source_payload,
                     "target_storage": target_storage,
                     "target_path": target_path.as_posix(),
                     "transfer_type": transfer_type,
@@ -1212,7 +1230,7 @@ class TransHandler:
                 source_item = FileItem(**planned_item.source_fileitem)
                 new_item, error = self.__execute_transfer_with_steps(
                     step_runner=step_runner,
-                    fileitem=source_item,
+                    source_fileitem=planned_item.source_fileitem,
                     target_storage=planned_item.target_storage,
                     source_oper=source_oper,
                     target_oper=target_oper,
@@ -1271,6 +1289,7 @@ class TransHandler:
         over_flag, delete_versions, overwrite_failure = self.__resolve_overwrite_with_step(
             step_runner=step_runner,
             fileitem=fileitem,
+            source_fileitem=frozen_source_payload,
             meta=meta,
             mediainfo=mediainfo,
             target_oper=target_oper,
@@ -1285,7 +1304,7 @@ class TransHandler:
         allowed, reason = self.__intercept_with_step(
             step_runner=step_runner,
             payload={
-                "source": fileitem.model_dump(mode="json"),
+                "source": frozen_source_payload,
                 "target_storage": target_storage,
                 "target_path": target_file.as_posix(),
                 "transfer_type": transfer_type,
@@ -1363,7 +1382,7 @@ class TransHandler:
                 )
             new_item, error = self.__execute_transfer_with_steps(
                 step_runner=step_runner,
-                fileitem=fileitem,
+                source_fileitem=planned_item.source_fileitem,
                 target_storage=target_storage,
                 source_oper=source_oper,
                 target_oper=target_oper,
@@ -1749,8 +1768,19 @@ class TransHandler:
         """
         if need_type_folder and mediainfo.type:
             target_path = target_path / mediainfo.type.value
-        if need_category_folder and mediainfo.category:
-            target_path = target_path / mediainfo.category
+        if need_category_folder:
+            category_path = DirectoryHelper().resolve_media_category(mediainfo).path
+            if category_path:
+                category_path = category_path_below_media_type(
+                    category_path,
+                    mediainfo.type,
+                    type_folder_enabled=bool(need_type_folder),
+                )
+            if category_path:
+                target_path = append_classification_category_path(
+                    target_path,
+                    category_path,
+                )
         return target_path
 
     @staticmethod
@@ -1776,19 +1806,31 @@ class TransHandler:
             library_dir = Path(target_dir.library_path) / mediainfo.type.value
         elif target_dir.media_type and need_type_folder:
             # 一级手动分类
-            library_dir = Path(target_dir.library_path) / target_dir.media_type
+            type_folder = (
+                classification_media_type(target_dir.media_type)
+                or target_dir.media_type
+            )
+            library_dir = Path(target_dir.library_path) / type_folder
         else:
             library_dir = Path(target_dir.library_path)
-        if (
-            not target_dir.media_category
-            and need_category_folder
-            and mediainfo.category
-        ):
-            # 二级自动分类
-            library_dir = library_dir / mediainfo.category
-        elif target_dir.media_category and need_category_folder:
-            # 二级手动分类
-            library_dir = library_dir / target_dir.media_category
+        if need_category_folder:
+            helper = DirectoryHelper()
+            category_path = helper.category_path_for_directory(
+                target_dir,
+                mediainfo,
+            )
+            if category_path:
+                category_path = category_path_below_media_type(
+                    category_path,
+                    target_dir.media_type or mediainfo.type,
+                    type_folder_enabled=bool(need_type_folder),
+                )
+            if category_path:
+                # 固定 ID 使用当前策略路径，旧配置和人工覆盖使用安全路径快照。
+                library_dir = append_classification_category_path(
+                    library_dir,
+                    category_path,
+                )
 
         return library_dir
 
@@ -1812,6 +1854,12 @@ class TransHandler:
             file_extension=file_ext,
             episodes_info=episodes_info,
         )
+        category_resolution = DirectoryHelper().resolve_media_category(mediainfo)
+        if category_resolution.state == "invalid_path":
+            raise ValueError(
+                category_resolution.message or "媒体分类目录路径无效"
+            )
+        naming_context["category"] = "/".join(category_resolution.path)
         # 重命名格式是独立的用户配置契约，继续只暴露各数据源原有 ID 变量。
         naming_context.pop("media_source", None)
         naming_context.pop("media_id", None)
@@ -2015,6 +2063,6 @@ class TransHandler:
 
         # 目的路径
         if path:
-            return path / render_str
+            return ensure_path_within_root(path, path / render_str)
         else:
             return Path(render_str)

@@ -129,7 +129,7 @@ class Unit3dSiteUserInfo(SiteParserBase):
         self.download = size_tools.parse_size(download_match.group(1).strip()) if download_match else 0
         ratio_match = re.search(r"分享率[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+)", html_text)
         self.ratio = text_tools.parse_float(ratio_match.group(1)) if (
-                ratio_match and ratio_match.group(1).strip()) else 0.0
+            ratio_match and ratio_match.group(1).strip()) else 0.0
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
         return None

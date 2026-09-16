@@ -561,7 +561,7 @@ class SystemUtils:
                             if entry.is_file(follow_symlinks=False):
                                 entry_path = Path(entry.path)
                                 if (pattern.match(entry.name) and
-                                    (min_filesize <= 0 or entry.stat().st_size >= min_filesize * 1024 * 1024)):
+                                        (min_filesize <= 0 or entry.stat().st_size >= min_filesize * 1024 * 1024)):
                                     files.append(entry_path)
                             elif entry.is_dir() and is_recursive:
                                 _scan_directory(Path(entry.path), is_recursive)
@@ -688,7 +688,7 @@ class SystemUtils:
                             if entry.is_file(follow_symlinks=False):
                                 # 检查文件是否符合条件
                                 if (pattern.match(entry.name) and
-                                    (min_filesize <= 0 or entry.stat().st_size >= min_filesize * 1024 * 1024)):
+                                        (min_filesize <= 0 or entry.stat().st_size >= min_filesize * 1024 * 1024)):
                                     return True
                             elif entry.is_dir() and is_recursive:
                                 # 递归搜索子目录
@@ -1108,9 +1108,9 @@ class SystemUtils:
                 if result.returncode == 0:
                     output = result.stdout.lower()
                     return (
-                            'nfs' in output
-                            or 'smbfs' in output
-                            or (include_local_fuse and 'fuse' in output)
+                        'nfs' in output
+                        or 'smbfs' in output
+                        or (include_local_fuse and 'fuse' in output)
                     )
             elif system == 'Windows':
                 # Windows 检查网络驱动器

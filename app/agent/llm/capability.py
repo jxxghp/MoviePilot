@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from app.application.notification import get_notification_configs
-from app.runtime.settings import get_runtime_setting
-
-from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
+from app.agent.shell import agent_text_subprocess_kwargs
+from app.application.notification import get_notification_configs
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 
 class AgentCapabilityProvider(ABC):
@@ -286,7 +286,13 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
                 "wav",
                 str(output_path),
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+                **agent_text_subprocess_kwargs(),
+            )
             if result.returncode != 0 or not output_path.exists():
                 logger.warning(
                     "%s STT 音频转 WAV 失败: returncode=%s, stderr=%s",
@@ -354,7 +360,13 @@ class OpenAIChatAudioProvider(AudioCapabilityProvider):
             "libopus",
             str(output_path),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            **agent_text_subprocess_kwargs(),
+        )
         if result.returncode != 0 or not output_path.exists():
             logger.warning(
                 "%s TTS 音频转 Opus 失败，将使用 WAV 原文件: returncode=%s, stderr=%s",

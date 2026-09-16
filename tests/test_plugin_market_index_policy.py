@@ -1,19 +1,84 @@
 """插件市场索引同步与异步策略一致性测试。"""
 
+import asyncio
 import json
+import threading
 from contextlib import asynccontextmanager, contextmanager
 
 import pytest
 
+from app.adapters.external.plugin import client as plugin_client_module
 from app.adapters.external.plugin.client import (
     PLUGIN_INDEX_MAX_BYTES,
     PLUGIN_INDEX_MAX_ENTRIES,
+    PLUGIN_INDEX_REQUEST_TIMEOUT,
     PluginMarketClient,
     PluginMarketTransport,
+    _format_request_error,
 )
+from app.domain.plugin import split_plugin_market_repo_urls
 
 SYNC_INDEX_REQUEST = "_PluginMarketTransport__request_plugin_index_with_fallback"
 ASYNC_INDEX_REQUEST = "_PluginMarketTransport__async_request_plugin_index_with_fallback"
+
+
+def test_plugin_index_request_timeout_is_bounded() -> None:
+    """插件索引故障应在有限时间内返回，不能沿用一分钟等待。"""
+    assert PLUGIN_INDEX_REQUEST_TIMEOUT == 15
+
+
+def test_plugin_market_repo_config_is_normalized_once() -> None:
+    """市场配置的空白、尾斜杠和重复仓库不能制造重复读取任务。"""
+    assert split_plugin_market_repo_urls(
+        " https://github.com/Example/Plugins.git/ ,"
+        "https://github.com/example/plugins,"
+        "https://github.com/other/plugins/ "
+    ) == [
+        "https://github.com/Example/Plugins",
+        "https://github.com/other/plugins",
+    ]
+
+
+def test_github_request_strategies_do_not_retry_direct_when_proxy_is_configured(
+    monkeypatch,
+) -> None:
+    """显式代理失败后不得绕过同一出口策略再等待一次直连超时。"""
+    settings = {
+        "GITHUB_PROXY": None,
+        "PROXY_HOST": "http://proxy:7891",
+        "PROXY": {"http": "http://proxy:7891", "https": "http://proxy:7891"},
+    }
+    monkeypatch.setattr(
+        "app.adapters.external.plugin.client.get_runtime_setting",
+        lambda key: settings.get(key),
+    )
+
+    strategies = PluginMarketTransport._build_github_request_strategies(
+        url="https://raw.githubusercontent.com/example/repo/main/package.v3.json",
+    )
+
+    assert [name for name, _url, _params in strategies] == ["代理"]
+
+
+def test_github_request_strategies_use_direct_without_configured_proxy(
+    monkeypatch,
+) -> None:
+    """未配置代理时仍保留直连出口。"""
+    monkeypatch.setattr(
+        "app.adapters.external.plugin.client.get_runtime_setting",
+        lambda _key: None,
+    )
+
+    strategies = PluginMarketTransport._build_github_request_strategies(
+        url="https://raw.githubusercontent.com/example/repo/main/package.v3.json",
+    )
+
+    assert [name for name, _url, _params in strategies] == ["直连"]
+
+
+def test_request_error_formatter_keeps_type_for_blank_exception() -> None:
+    """无消息异常也必须给运行日志留下可诊断类型。"""
+    assert _format_request_error(TimeoutError()) == "TimeoutError"
 
 
 class _SyncStreamResponse:
@@ -625,6 +690,90 @@ async def test_async_plugin_index_result_preserves_absent_state(monkeypatch) -> 
     )
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_async_plugin_index_requests_are_single_flight(monkeypatch) -> None:
+    """同一仓库和代际的并发索引读取只能产生一次出站请求。"""
+    helper = PluginMarketTransport()
+    repo_url = "https://github.com/single-flight-owner/single-flight-repo"
+    started = asyncio.Event()
+    release = asyncio.Event()
+    requests = 0
+
+    async def request(_url: str, *, headers: dict):
+        nonlocal requests
+        requests += 1
+        started.set()
+        await release.wait()
+        return 200, '{"DemoPlugin": {"version": "1.2.3"}}'
+
+    monkeypatch.setattr(helper, ASYNC_INDEX_REQUEST, request)
+    await helper.async_get_plugin_index_result.cache_clear()
+
+    first = asyncio.create_task(
+        helper.async_get_plugin_index_result(repo_url, "v3")
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+    second = asyncio.create_task(
+        helper.async_get_plugin_index_result(
+            "https://github.com/single-flight-owner/single-flight-repo/",
+            "v3",
+        )
+    )
+    await asyncio.sleep(0)
+    release.set()
+
+    assert await asyncio.gather(first, second) == [
+        {"DemoPlugin": {"version": "1.2.3"}},
+        {"DemoPlugin": {"version": "1.2.3"}},
+    ]
+    assert requests == 1
+
+
+@pytest.mark.asyncio
+async def test_async_plugin_index_requests_share_process_gate(monkeypatch) -> None:
+    """不同目录刷新入口也必须受同一个进程级索引请求闸门约束。"""
+    helper = PluginMarketTransport()
+    monkeypatch.setattr(
+        plugin_client_module,
+        "_PLUGIN_INDEX_FETCH_GATE",
+        threading.BoundedSemaphore(2),
+    )
+    active = 0
+    peak = 0
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def request(_url: str, *, headers: dict):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        if active == 2:
+            started.set()
+        await release.wait()
+        active -= 1
+        return 200, '{"DemoPlugin": {"version": "1.2.3"}}'
+
+    monkeypatch.setattr(helper, ASYNC_INDEX_REQUEST, request)
+    await helper.async_get_plugin_index_result.cache_clear()
+    tasks = [
+        asyncio.create_task(
+            helper.async_get_plugin_index_result(
+                f"https://github.com/process-gate-owner/repository-{index}",
+                "v3",
+            )
+        )
+        for index in range(4)
+    ]
+
+    await asyncio.wait_for(started.wait(), timeout=1)
+    assert active == 2
+    release.set()
+    results = await asyncio.gather(*tasks)
+
+    assert peak == 2
+    assert len(results) == 4
 
 
 def test_plugin_index_result_propagates_adapter_exception(monkeypatch) -> None:

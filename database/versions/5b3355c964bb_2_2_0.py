@@ -99,7 +99,7 @@ def convert_to_identity(connection, table_name):
             FROM "{table_name}"
         """))
         next_value = result.fetchone()[0]
-        
+
         # 直接修改列属性，添加Identity，保持其他约束不变
         # 这种方式不会删除主键约束和索引
         connection.execute(sa.text(f"""

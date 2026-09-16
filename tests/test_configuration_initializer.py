@@ -102,6 +102,9 @@ async def test_runtime_settings_service_uses_legacy_settings_from_startup_root(
         def load_snapshot(self):
             """模拟系统配置快照加载。"""
 
+        def publish_many(self, _values):
+            """模拟事务提交后的系统配置快照发布。"""
+
     class _UserConfig:
         """提供无需数据库的用户配置快照桩。"""
 
@@ -142,6 +145,9 @@ async def test_configuration_services_publish_after_both_snapshots_load(
         def load_snapshot(self):
             """登记系统快照已加载。"""
             events.append("load-system")
+
+        def publish_many(self, _values):
+            """模拟事务提交后的系统配置快照发布。"""
 
     class _UserConfig:
         """记录用户配置快照加载顺序。"""
@@ -237,7 +243,7 @@ async def test_configuration_load_failure_does_not_publish_partial_service(
 def test_publish_configuration_reuses_composed_runtime_and_settings(monkeypatch) -> None:
     """正式运行时与兼容入口必须共享同一组配置对象。"""
     events = {}
-    system_service = object()
+    system_service = SimpleNamespace(configure_change_publisher=MagicMock())
     user_service = object()
     runtime = object()
     settings_service = SimpleNamespace(update=lambda key, value: (key, value))
@@ -289,6 +295,8 @@ def test_publish_configuration_reuses_composed_runtime_and_settings(monkeypatch)
     configuration_composition.publish_configuration(composition, legacy_settings)
 
     assert events["system"] is system_service
+    system_service.configure_change_publisher.assert_called_once()
+    assert callable(system_service.configure_change_publisher.call_args.args[0])
     assert events["user"] is user_service
     assert events["runtime"] is runtime
     assert events["settings"] is settings_service
@@ -512,7 +520,7 @@ async def test_startup_failure_revokes_published_database_services(monkeypatch) 
     from app.application.workflow import get_configured_workflow_query
 
     configuration = SimpleNamespace(
-        system_service=object(),
+        system_service=SimpleNamespace(configure_change_publisher=MagicMock()),
         user_service=object(),
         runtime=object(),
         settings=SimpleNamespace(update=lambda _key, _value: (True, "")),

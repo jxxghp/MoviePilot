@@ -1,17 +1,21 @@
+from datetime import datetime as _datetime
 from enum import Enum as _Enum
 from typing import Annotated as _Annotated
 from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import AfterValidator as _AfterValidator
-from pydantic import BaseModel, Field, RootModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
+from pydantic import BeforeValidator as _BeforeValidator
 from pydantic import PrivateAttr as _PrivateAttr
+from pydantic import computed_field as _computed_field
 
 from app.schemas.common import JsonData
 
 
 class PluginRuntimeStatus(str, _Enum):
-    """插件从源码准备到运行激活的六类状态。"""
+    """插件从来源同步、依赖准备到运行激活的状态。"""
 
+    SYNC_FAILED = "sync_failed"
     SOURCE_MISSING = "source_missing"
     DEPENDENCY_PENDING = "dependency_pending"
     READY = "ready"
@@ -31,17 +35,22 @@ class PluginSourceBindingStatus(str, _Enum):
 class PluginUpdateCandidate(BaseModel):  # type: ignore[misc]
     """插件市场为已安装插件选择的当前更新候选。"""
 
-    source_type: Literal["official", "third_party"] = Field(
-        description="候选仓库是官方来源还是第三方来源"
-    )
+    source_type: Literal["official", "third_party"] = Field(description="候选仓库是官方来源还是第三方来源")
     source_key: str = Field(description="候选仓库的规范来源键")
     repo_url: str = Field(description="候选仓库的公开 GitHub 地址")
     version: str = Field(description="候选仓库当前可安装版本")
     is_bound: bool = Field(description="候选仓库是否为插件当前已绑定仓库")
 
 
-def _validate_plugin_id(value: str) -> str:
-    """限制插件实例标识为可安全用作 Python 类名和路由段的格式。"""
+def validate_plugin_id(value: str) -> str:
+    """限制插件实例标识为可安全用作 Python 类名和路由段的格式。
+
+    公开可调用：凡是把实例 ID 拼进文件系统路径、模块名或路由段的入口都应当先过这道
+    校验，而不是各自另写一套字符白名单——多套规则之间迟早出现缝隙。
+    :param value: 待校验的插件实例 ID
+    :return: 原样返回的合法 ID
+    :raise ValueError: ID 为空、不以字母开头、含字母数字以外的字符或超长
+    """
     if not value or not value[0].isalpha() or not value.isalnum():
         raise ValueError("插件 ID 必须以字母开头且只能包含字母和数字")
     if len(value) > 128:
@@ -49,26 +58,109 @@ def _validate_plugin_id(value: str) -> str:
     return value
 
 
-_PluginId = _Annotated[str, _AfterValidator(_validate_plugin_id)]
+_PluginId = _Annotated[str, _AfterValidator(validate_plugin_id)]
 
 
 class PluginInstance(BaseModel):
     """持久化一个共享源码插件的独立运行实例。"""
 
-    instance_id: _PluginId = Field(
-        description="运行实例 ID，也是配置、数据和路由命名空间"
-    )
+    instance_id: _PluginId = Field(description="运行实例 ID，也是配置、数据和路由命名空间")
     source_plugin_id: _PluginId = Field(description="提供代码与前端资源的源插件 ID")
     plugin_name: Optional[str] = Field(default=None, description="实例展示名称")
     plugin_desc: Optional[str] = Field(default=None, description="实例展示描述")
     plugin_icon: Optional[str] = Field(default=None, description="实例展示图标")
-    mode: Literal["virtual"] = Field(default="virtual", description="实例实现模式")
+    is_default_target: bool = Field(
+        default=False,
+        description="该实例是否为所属源插件的默认调用目标",
+    )
+    # 默认为真而库列默认为假：这个模型是运行时描述，被构造出来就是要拿去装载的；
+    # 库列默认为假则是为了让「只写了配置」这类隐式建出的行不因此变成可装载
+    is_enabled: bool = Field(
+        default=True,
+        description="这份配置是否应当被实例化并启动；置假即停用，配置与展示信息留存待再次启用",
+    )
+
+    @property
+    def is_host(self) -> bool:
+        """该实例是否为源插件本体自身，而非共享其源码的分身。"""
+        return self.instance_id == self.source_plugin_id
+
+    @_computed_field(  # type: ignore[prop-decorator, misc]
+        description="实例实现模式：virtual 为共享源码的分身，host 为源插件本体自身",
+    )
+    @property
+    def mode(self) -> Literal["virtual", "host"]:
+        """由一对身份 ID 派生实例角色，而非另存一份可能失步的副本。"""
+        return "host" if self.is_host else "virtual"
+
+
+class PluginInstanceEnabledRequest(BaseModel):  # type: ignore[misc]
+    """启用或停用一个插件实例的请求参数。"""
+
+    enabled: bool = Field(
+        description="目标启用状态；置假即停用，业务参数与展示信息原样留存等待再次启用"
+    )
+
+
+class PluginInstancePurgeRequest(BaseModel):  # type: ignore[misc]
+    """彻底清理一个插件实例时选定的删除范围。
+
+    各项默认为假：清理不可逆，漏选一项只是少删了东西，多选一项则可能毁掉用户特意
+    保留的数据，因而由调用方逐项明确给出，服务端不替它补默认值。
+    """
+
+    config: bool = Field(default=False, description="是否删除该实例的业务参数")
+    plugin_data: bool = Field(default=False, description="是否删除该实例在插件数据表中的行")
+    own_database: bool = Field(default=False, description="是否销毁该实例的自有数据库")
+    data_directory: bool = Field(
+        default=False,
+        description="是否删除该实例在插件数据目录下的整个目录；选中时自有数据库必然一并销毁",
+    )
+
+
+class PluginInstancePurgeOutcome(BaseModel):  # type: ignore[misc]
+    """彻底清理的执行结果。"""
+
+    purged: List[str] = Field(default_factory=list, description="实际清掉的范围标识")
+    instance_removed: bool = Field(
+        default=False,
+        description="实例行是否随之删除；分身会删，本体保留——它还承载着该插件的展示与启用状态",
+    )
+
+
+class PluginInstanceLogLevel(BaseModel):  # type: ignore[misc]
+    """单个实例的日志等级设置与生效结果。"""
+
+    instance_id: str = Field(description="实例 ID")
+    configured_level: Optional[str] = Field(default=None, description="该实例设置的日志等级覆盖，None 表示未设置或已过期")
+    expires_at: Optional[_datetime] = Field(default=None, description="日志等级覆盖的失效时间，None 表示不过期")
+    effective_level: str = Field(description="按过期回落判定后实际生效的日志等级")
+
+
+class PluginInstanceLogLevelOverview(BaseModel):  # type: ignore[misc]
+    """插件全部实例（含本体）的日志等级设置总览。"""
+
+    plugin_id: str = Field(description="插件 ID")
+    instances: List[PluginInstanceLogLevel] = Field(
+        default_factory=list, description="该插件全部实例的日志等级设置，首项固定是本体自身"
+    )
+
+
+class PluginInstanceLogLevelUpdateRequest(BaseModel):  # type: ignore[misc]
+    """设置实例日志等级覆盖的请求参数。"""
+
+    level: str = Field(description="目标日志等级，如 DEBUG、INFO、WARNING、ERROR、CRITICAL")
+    expires_at: Optional[_datetime] = Field(
+        default=None,
+        description="覆盖失效时间，None 表示不过期；不带时区时按 UTC 解读",
+    )
 
 
 class Plugin(BaseModel):
     """
     插件信息
     """
+
     _package_version: Optional[str] = _PrivateAttr(default=None)
 
     id: str = None
@@ -132,6 +224,12 @@ class Plugin(BaseModel):
     is_instance: Optional[bool] = False
     # 实例实现模式；存量物理分身为空
     instance_mode: Optional[str] = None
+    # 该实例是否为所属源插件的默认调用目标
+    is_default_target: Optional[bool] = False
+    # 该实例是否应当被实例化并启动；与 state 不同，后者说的是此刻在不在跑
+    is_enabled: Optional[bool] = True
+    # 该实例当前生效的日志等级覆盖；未设置覆盖或覆盖已过期回落全局等级时为空
+    log_level_effective: Optional[str] = None
 
     @property
     def package_version(self) -> Optional[str]:
@@ -157,22 +255,105 @@ class PluginRuntimeSummary(BaseModel):
     )
 
 
+class PluginRuntimeCommandCapability(BaseModel):  # type: ignore[misc]
+    """插件运行时注册命令的安全只读投影。"""
+
+    cmd: str = Field(description="命令标识")
+    desc: Optional[str] = Field(default=None, description="命令说明")
+    plugin_id: Optional[str] = Field(default=None, description="注册命令的插件 ID")
+
+
+class PluginRuntimeActionCapability(BaseModel):  # type: ignore[misc]
+    """插件运行时注册动作的安全只读投影。"""
+
+    id: str = Field(description="动作标识")
+    name: Optional[str] = Field(default=None, description="动作名称")
+
+
+class PluginRuntimeActionGroup(BaseModel):  # type: ignore[misc]
+    """按插件归组的运行时动作投影。"""
+
+    plugin_id: Optional[str] = Field(default=None, description="注册动作的插件 ID")
+    plugin_name: Optional[str] = Field(default=None, description="插件名称")
+    actions: List[PluginRuntimeActionCapability] = Field(default_factory=list)
+
+
+class PluginRuntimeServiceCapability(BaseModel):  # type: ignore[misc]
+    """插件定时服务的安全只读投影。"""
+
+    id: str = Field(description="服务标识")
+    name: Optional[str] = Field(default=None, description="服务名称")
+    trigger: Optional[str] = Field(default=None, description="定时触发器说明")
+
+
+class PluginRuntimeCapabilities(BaseModel):  # type: ignore[misc]
+    """插件命令、动作和定时服务的公共安全能力快照。"""
+
+    commands: List[PluginRuntimeCommandCapability] = Field(default_factory=list)
+    actions: List[PluginRuntimeActionGroup] = Field(default_factory=list)
+    services: List[PluginRuntimeServiceCapability] = Field(default_factory=list)
+
+
+class PluginDataKeySummary(BaseModel):  # type: ignore[misc]
+    """单个插件持久化键的不含值诊断摘要。"""
+
+    key: str = Field(description="持久化数据键")
+    value_type: Literal["null", "boolean", "number", "string", "array", "object", "unknown"] = Field(
+        description="值的 JSON 类型"
+    )
+    serialized_chars: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="JSON 紧凑序列化字符数；异常值为空",
+    )
+    sensitive: bool = Field(description="键名是否符合凭据字段规则")
+
+
+class PluginDataSummary(BaseModel):  # type: ignore[misc]
+    """插件持久化数据的不含原值诊断摘要。"""
+
+    plugin_id: str = Field(description="插件 ID")
+    plugin_name: Optional[str] = Field(default=None, description="插件名称")
+    plugin_version: Optional[str] = Field(default=None, description="插件版本")
+    state: Optional[bool] = Field(default=None, description="插件是否启用")
+    count: int = Field(ge=0, description="持久化数据项总数")
+    total_chars: int = Field(ge=0, description="所有可序列化值的字符数总和")
+    keys: List[PluginDataKeySummary] = Field(default_factory=list, description="有界键摘要")
+    keys_truncated: bool = Field(description="是否还有未返回的键摘要")
+
+
 class PluginInstallOutcome(BaseModel):
     """插件载荷写入成功后的前端反馈依据。"""
 
-    restart_required: bool = Field(
-        description="本次依赖更新是否需要重启 MoviePilot 才能完成"
-    )
+    restart_required: bool = Field(description="本次依赖更新是否需要重启 MoviePilot 才能完成")
+
+
+def _blank_clone_suffix_to_none(value: object) -> object:
+    """把「没填后缀」的三种写法归一成同一个值。
+
+    前端的后缀输入框留空时可能整个字段不带、带 null，也可能带一个空串或只有空白；
+    三者表达的都是「由服务端挑一个」。不归一的话空串会撞上格式校验，用户看到的是
+    一条与他的操作对不上的格式错误，而不是自动分配。
+    """
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    return value
+
+
+_CloneSuffix = _Annotated[Optional[str], _BeforeValidator(_blank_clone_suffix_to_none)]
 
 
 class PluginCloneRequest(BaseModel):
     """创建虚拟插件分身的请求参数。"""
 
-    suffix: str = Field(
-        min_length=1,
+    # 格式与长度在这一层判定：非法后缀拼出的实例 ID 用不了 Python 类名与路由段，
+    # 等落库之后再报错意味着已经写进一行、还要靠回滚把它擦掉
+    suffix: _CloneSuffix = Field(
+        default=None,
         max_length=20,
         pattern=r"^[A-Za-z0-9]+$",
-        description="追加到当前插件 ID 后的 ASCII 字母或数字后缀",
+        description="追加到当前插件 ID 后的 ASCII 字母或数字后缀；留空时由服务端自动分配",
     )
     name: str = Field(default="", description="分身展示名称")
     description: str = Field(default="", description="分身展示描述")
@@ -181,6 +362,34 @@ class PluginCloneRequest(BaseModel):
         default=None,
         description="兼容旧客户端保留，虚拟分身始终跟随源插件版本",
     )
+    restore_previous: bool = Field(
+        default=True,
+        description="该后缀名下留有一个已停用的分身时是否沿用它的业务参数，为假时按源插件模板重建",
+    )
+
+
+class PluginCloneOutcome(BaseModel):  # type: ignore[misc]
+    """一次分身创建或恢复的结果。
+
+    实例 ID 必须回传：后缀可以由服务端自动分配，调用方因此再也算不出它，而后续要
+    拿它去打开配置、刷新列表或跳转。
+    """
+
+    instance_id: str = Field(description="新建或恢复出来的分身实例 ID")
+
+
+class PluginRestorableInstance(BaseModel):  # type: ignore[misc]
+    """一个已停用、其设置仍留存可被恢复的分身实例。
+
+    在册启用的分身不在此列：它们的配置正在被使用，拿来「恢复」没有意义，摆进选择器
+    只会让用户误以为能把一个活着的实例再创建一遍。
+    """
+
+    instance_id: str = Field(description="分身实例 ID")
+    suffix: str = Field(description="该实例相对源插件 ID 的后缀")
+    plugin_name: Optional[str] = Field(default=None, description="停用前登记的展示名称")
+    plugin_desc: Optional[str] = Field(default=None, description="停用前登记的展示描述")
+    has_config: bool = Field(default=False, description="是否留有业务参数")
 
 
 class PluginSourceIdentity(BaseModel):  # type: ignore[misc]
@@ -204,20 +413,16 @@ class PluginSourceIdentity(BaseModel):  # type: ignore[misc]
 class PluginSourceCandidate(BaseModel):  # type: ignore[misc]
     """一个可供管理员识别的脱敏插件来源候选。"""
 
-    source_type: Literal["official", "third_party", "local"] = Field(
-        description="来源类型；本地候选不公开路径"
-    )
+    source_type: Literal["official", "third_party", "local"] = Field(description="来源类型")
     source_key: Optional[str] = Field(
         default=None,
         description="规范化在线来源键；本地候选为空",
     )
     repo_url: Optional[str] = Field(
         default=None,
-        description="可明确选择的在线仓库地址；本地候选为空",
+        description="可明确选择的在线仓库地址或本地仓库标识",
     )
-    package_generation: Literal["v1", "v2", "v3"] = Field(
-        description="当前运行时会采用的插件包代际"
-    )
+    package_generation: Literal["v1", "v2", "v3"] = Field(description="当前运行时会采用的插件包代际")
     plugin_version: Optional[str] = Field(
         default=None,
         description="该来源当前可安装的插件版本",
@@ -228,12 +433,10 @@ class PluginSourceOptions(BaseModel):  # type: ignore[misc]
     """来源选择界面所需的当前身份、候选和准入状态。"""
 
     plugin_id: str = Field(description="物理插件 ID")
-    inventory_complete: bool = Field(
-        description="本轮配置市场是否全部得到确定读取结果"
+    inventory_complete: bool = Field(description="本轮配置市场是否全部得到确定读取结果")
+    selection_status: Literal["selected", "unavailable", "conflict", "incomplete"] = Field(
+        description="未指定新来源时的当前准入状态"
     )
-    selection_status: Literal[
-        "selected", "unavailable", "conflict", "incomplete"
-    ] = Field(description="未指定新来源时的当前准入状态")
     selection_reason: str = Field(description="当前准入状态的人类可读原因")
     identity: Optional[PluginSourceIdentity] = Field(
         default=None,
@@ -299,6 +502,7 @@ class PluginDashboard(Plugin):
     """
     插件仪表盘
     """
+
     id: Optional[str] = None
     # 名称
     name: Optional[str] = None
@@ -318,6 +522,7 @@ class PluginSidebarNavItem(BaseModel):
     """
     插件侧栏导航项（前端全页路由）
     """
+
     plugin_id: str = Field(description="插件 ID")
     nav_key: str = Field(description="导航键，对应 URL 段")
     title: str = Field(description="侧栏标题")
@@ -358,6 +563,7 @@ class PluginRatingMap(RootModel[Dict[str, PluginRating]]):
 
 class PluginMemoryInfo(BaseModel):
     """插件内存信息"""
+
     plugin_id: str = Field(description="插件ID")
     plugin_name: str = Field(description="插件名称")
     plugin_version: str = Field(description="插件版本")
@@ -405,23 +611,71 @@ class PluginFolderConfigData(BaseModel):
     """新版插件文件夹配置（对象格式，含展示配置与插件列表）。"""
 
     # 文件夹内插件 ID 列表
-    plugins: List[str] = Field(default_factory=list)
+    plugins: List[str] = Field(
+        default_factory=list,
+        description="Ordered installed plugin IDs assigned to this folder.",
+    )
     # 文件夹排序值
-    order: Optional[int] = None
+    order: Optional[int] = Field(default=None, description="Folder display-order value.")
     # 文件夹图标
-    icon: Optional[str] = None
+    icon: Optional[str] = Field(default=None, description="Optional folder icon name.")
     # 文件夹颜色
-    color: Optional[str] = None
+    color: Optional[str] = Field(default=None, description="Optional folder foreground color.")
     # 文件夹渐变
-    gradient: Optional[str] = None
+    gradient: Optional[str] = Field(default=None, description="Optional folder gradient definition.")
     # 文件夹背景
-    background: Optional[str] = None
+    background: Optional[str] = Field(default=None, description="Optional folder background color or style.")
     # 是否显示图标（前端字段为驼峰命名）
-    show_icon: Optional[bool] = Field(default=None, alias="showIcon")
+    show_icon: Optional[bool] = Field(
+        default=None,
+        alias="showIcon",
+        description="Whether the frontend should display the folder icon.",
+    )
 
 
 class PluginFoldersData(RootModel[Dict[str, Union[List[str], PluginFolderConfigData]]]):
     """插件文件夹与插件配置映射，兼容旧版数组格式与新版对象格式。"""
+
+
+class PluginFolderUpdateRequest(BaseModel):  # type: ignore[misc]
+    """插件文件夹名称和展示字段的增量更新请求。"""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    new_name: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="Optional replacement folder name.",
+    )
+    icon: Optional[str] = Field(default=None, description="Optional folder icon name.")
+    color: Optional[str] = Field(
+        default=None,
+        description="Optional folder foreground color.",
+    )
+    gradient: Optional[str] = Field(
+        default=None,
+        description="Optional folder gradient definition.",
+    )
+    background: Optional[str] = Field(
+        default=None,
+        description="Optional folder background color or style.",
+    )
+    show_icon: Optional[bool] = Field(
+        default=None,
+        alias="showIcon",
+        description="Whether the frontend should display the folder icon.",
+    )
+
+
+class PluginFolderPluginsUpdateRequest(BaseModel):  # type: ignore[misc]
+    """插件文件夹成员顺序的条件替换请求。"""
+
+    plugins: List[str] = Field(description="Ordered installed plugin IDs assigned to this folder.")
+    expected_plugins: Optional[List[str]] = Field(
+        default=None,
+        description="Last observed ordered plugin IDs used to reject stale replacements.",
+    )
 
 
 class PluginDashboardMetaItem(BaseModel):

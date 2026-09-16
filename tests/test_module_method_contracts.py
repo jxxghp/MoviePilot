@@ -15,9 +15,7 @@ from app.runtime.extensions.module.contracts import (
     list_explicit_module_contracts,
 )
 
-RUNTIME_BASELINE = (
-    Path(__file__).parent / "fixtures" / "architecture" / "runtime-contract-baseline.json"
-)
+RUNTIME_BASELINE = Path(__file__).parent / "fixtures" / "architecture" / "runtime-contract-baseline.json"
 
 
 def test_all_scanned_host_module_methods_have_explicit_v2_contracts() -> None:
@@ -82,6 +80,7 @@ def test_contract_v2_freezes_every_observed_host_method() -> None:
 
 def test_signature_diagnostics_do_not_reject_legacy_callable() -> None:
     """无法检查的旧插件 callable 只产生诊断，仍由 dispatcher 决定是否执行。"""
+
     class _OpaqueCallable:
         """模拟 inspect 无法解析签名的第三方 callable。"""
 
@@ -94,25 +93,23 @@ def test_signature_diagnostics_do_not_reject_legacy_callable() -> None:
             """保留可调用行为。"""
             return "ok"
 
-    assert diagnose_module_callable("recognize_media", _OpaqueCallable()) == (
-        "signature-unavailable",
-    )
+    assert diagnose_module_callable("recognize_media", _OpaqueCallable()) == ("signature-unavailable",)
     assert _OpaqueCallable()() == "ok"
 
 
 def test_signature_diagnostics_report_missing_contract_parameters() -> None:
     """显式 Contract 应能指出 provider 遗漏的宿主调用参数。"""
+
     def incomplete_storage_provider(fileitem):
         """模拟仍未接受 recursion 参数的旧存储 provider。"""
         return [fileitem]
 
-    assert diagnose_module_callable(
-        "list_files", incomplete_storage_provider
-    ) == ("missing-parameter:recursion",)
+    assert diagnose_module_callable("list_files", incomplete_storage_provider) == ("missing-parameter:recursion",)
 
 
 def test_signature_diagnostics_accept_keyword_compatibility_provider() -> None:
     """带 **kwargs 的第三方 provider 继续兼容逐步扩展的输入契约。"""
+
     def compatible_provider(**kwargs):
         """模拟通过关键字参数保持前向兼容的第三方 provider。"""
         return kwargs
@@ -125,13 +122,9 @@ def test_result_diagnostics_check_only_enabled_basic_shapes() -> None:
     assert get_module_method_contract("list_files").result_shape is ModuleResultShape.LIST
     assert diagnose_module_result("list_files", [object()]) == ()
     assert diagnose_module_result("list_files", None) == ()
-    assert diagnose_module_result("list_files", "legacy-value") == (
-        "unexpected-result:list:str",
-    )
+    assert diagnose_module_result("list_files", "legacy-value") == ("unexpected-result:list:str",)
     assert diagnose_module_result("mediaserver_play_url", "https://example.test") == ()
-    assert diagnose_module_result("mediaserver_play_url", 7) == (
-        "unexpected-result:string:int",
-    )
+    assert diagnose_module_result("mediaserver_play_url", 7) == ("unexpected-result:string:int",)
 
 
 def test_message_attachment_contracts_use_messaging_family() -> None:
@@ -241,12 +234,9 @@ def test_storage_value_contracts_use_explicit_provider_semantics() -> None:
 
 
 def test_lookup_contracts_separate_value_routes_from_list_aggregation() -> None:
-    """分类、站点、元数据、认证与 TVDB 查询应声明真实的值或列表语义。"""
+    """站点、元数据、认证与 TVDB 查询应声明真实的值或列表语义。"""
     list_methods = {"site_subtitle_links", "search_tvdb"}
     value_methods = {
-        "media_category",
-        "load_category_config",
-        "save_category_config",
         "get_search_page_size",
         "refresh_userdata",
         "metadata_img",
@@ -266,6 +256,17 @@ def test_lookup_contracts_separate_value_routes_from_list_aggregation() -> None:
         contract = get_module_method_contract(method)
         assert contract.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
         assert contract.result_contract
+
+
+def test_legacy_category_module_methods_are_not_public_contracts() -> None:
+    """旧 YAML 分类读写和求值方法不得继续成为宿主模块协议。"""
+    contracts = list_explicit_module_contracts()
+
+    assert {
+        "media_category",
+        "load_category_config",
+        "save_category_config",
+    }.isdisjoint(contracts)
 
 
 def test_recognition_match_and_cache_contracts_share_sync_async_semantics() -> None:
@@ -294,6 +295,19 @@ def test_media_auxiliary_contract_merges_every_enabled_provider() -> None:
     assert contract.result_shape is ModuleResultShape.LIST
     assert contract.plugin_short_circuit is False
     assert contract.required_parameters == ("mediainfo", "media_source", "metainfo")
+
+
+def test_classification_enrichment_contract_is_sync_fan_out() -> None:
+    """缺失事实 provider 使用同步方法，由专用服务负责并发和结果隔离。"""
+    contract = get_module_method_contract("get_media_classification_facts")
+
+    assert contract.family == "media-classification"
+    assert contract.aggregation is ModuleResultAggregation.FAN_OUT
+    assert contract.result_shape is ModuleResultShape.MAPPING
+    assert contract.required_parameters == ("request",)
+    assert contract.supports_sync is True
+    assert contract.supports_async is False
+    assert contract.plugin_short_circuit is False
 
 
 def test_torrent_filter_contract_preserves_original_argument_list_merge() -> None:
@@ -391,14 +405,9 @@ def test_sync_and_async_media_capabilities_share_contracts() -> None:
         ("search_medias", "async_search_medias"),
         ("obtain_images", "async_obtain_images"),
     ):
-        assert get_module_method_contract(sync_method) is get_module_method_contract(
-            async_method
-        )
+        assert get_module_method_contract(sync_method) is get_module_method_contract(async_method)
 
-    assert (
-        get_module_method_contract("obtain_images").aggregation
-        is ModuleResultAggregation.PIPELINE_RELAY
-    )
+    assert get_module_method_contract("obtain_images").aggregation is ModuleResultAggregation.PIPELINE_RELAY
 
 
 def test_sync_and_async_discovery_lists_share_contracts() -> None:
@@ -552,26 +561,22 @@ def test_music_capabilities_distinguish_lists_values_and_async_aliases() -> None
         assert contract.aggregation is ModuleResultAggregation.ORDERED_LIST_MERGE
         assert contract.result_shape is ModuleResultShape.LIST
     for method in value_methods:
-        assert (
-            get_module_method_contract(method).aggregation
-            is ModuleResultAggregation.FIRST_NON_EMPTY
-        )
+        assert get_module_method_contract(method).aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
     for sync_method in ("identify_music_by_fingerprint", "match_music_album"):
-        assert get_module_method_contract(sync_method) is get_module_method_contract(
-            f"async_{sync_method}"
-        )
+        assert get_module_method_contract(sync_method) is get_module_method_contract(f"async_{sync_method}")
 
 
 def test_attachment_result_diagnostics_distinguish_bytes_and_strings() -> None:
     """附件契约应区分二进制内容和可展示字符串，偏差仍仅供诊断。"""
     assert diagnose_module_result("download_qq_file_bytes", b"content") == ()
-    assert diagnose_module_result("download_qq_file_bytes", "content") == (
-        "unexpected-result:bytes:str",
+    assert diagnose_module_result("download_qq_file_bytes", "content") == ("unexpected-result:bytes:str",)
+    assert (
+        diagnose_module_result(
+            "download_wechat_image_to_data_url",
+            "data:image/png;base64,AA==",
+        )
+        == ()
     )
-    assert diagnose_module_result(
-        "download_wechat_image_to_data_url",
-        "data:image/png;base64,AA==",
-    ) == ()
 
 
 def test_unknown_plugin_result_keeps_unchecked_legacy_compatibility() -> None:

@@ -182,19 +182,19 @@ class RousiSiteUserInfo(SiteParserBase):
         """
         解析所有未读消息标题和内容
         Rousi.pro API v1 暂未提供消息相关接口，暂时以网页接口实现
-        
+
         :return:
         """
         if not self.token:
             logger.warn(f"{self._site_name} 站点未配置 Authorization 请求头，跳过消息解析")
             return
-        
+
         headers = {
             "User-Agent": self._ua,
             "Accept": "application/json, text/plain, */*",
             "Authorization": self.token if self.token.startswith("Bearer ") else f"Bearer {self.token}"
         }
-        
+
         def __get_message_list(page: int):
             params = {
                 "page": page,
@@ -216,7 +216,7 @@ class RousiSiteUserInfo(SiteParserBase):
                     "total_pages": 0
                 }
             return res.json().get("data")
-        
+
         # 分页获取所有未读消息
         page = 0
         res = __get_message_list(page)
@@ -227,7 +227,7 @@ class RousiSiteUserInfo(SiteParserBase):
             res = __get_message_list(page)
             messages.extend(res.get("messages", []))
             page += 1
-        
+
         self.message_unread = len(messages)
         for messsage in messages:
             head = messsage.get("title")
@@ -235,7 +235,7 @@ class RousiSiteUserInfo(SiteParserBase):
             content = messsage.get("content")
             logger.debug(f"{self._site_name} 标题 {head} 时间 {date} 内容 {content}")
             self.message_unread_contents.append((head, date, content))
-            
+
         # 更新消息为已读
         RequestUtils(
             headers=headers,

@@ -1,10 +1,17 @@
 """主程序运行依赖的轻量可用性探针。"""
 
 import argparse
+import os
+import shutil
 from importlib import import_module
 import sys
 import sysconfig
 import warnings
+
+if os.name == "nt":
+    psql_exe = shutil.which("psql")
+    if psql_exe:
+        getattr(os, "add_dll_directory")(os.path.dirname(psql_exe))
 
 
 CORE_MODULES = (

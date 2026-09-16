@@ -147,6 +147,9 @@ def test_clear_cache_is_manual_only(monkeypatch):
     assert "clear_cache" not in scheduled_job_ids
     assert "clear_cache" in scheduler._jobs
     assert scheduler._jobs["clear_cache"]["manual"] is True
+    assert scheduler._jobs["outbox_dispatch"]["name"] == "重试未完成的后台处理"
+    outbox_job = next(job for job in background_scheduler.jobs if job["id"] == "outbox_dispatch")
+    assert outbox_job["name"] == "重试未完成的后台处理"
     assert background_scheduler.started is True
 
 

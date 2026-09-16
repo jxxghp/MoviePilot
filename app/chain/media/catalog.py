@@ -1,7 +1,7 @@
 """音乐来源、目录搜索与详情路由 owner。"""
 
 from copy import deepcopy
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, cast
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.music.catalog import MusicCatalogService
@@ -19,8 +19,11 @@ from app.foundation.text import convert as zhconv_convert
 from app.runtime.log import logger
 from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
     MediaSource,
     MediaSourceSelection,
+    MediaType,
+    MusicEntityType,
 )
 
 
@@ -98,22 +101,46 @@ class MediaCatalogOwner(_MediaOwnerBase):
         query: str,
         limit: int = 20,
         media_source: Optional[MediaSourceSelection] = None,
+        music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
         """按一个或多个音乐来源搜索候选，未指定时使用 MusicBrainz。"""
-        return self._music_catalog().search(query, limit, media_source)
+        if music_types is not None:
+            return self._music_catalog().search(
+                MetaMusic.parse_query(query),
+                limit=limit,
+                media_source=media_source,
+                music_types=music_types,
+            )
+        _meta, results = self.search(
+            query,
+            limit=limit,
+            media_source=media_source,
+            mtype=MediaType.MUSIC,
+        )
+        return cast(list[MusicInfo], results)
 
     async def async_search_music(
         self,
         query: str,
         limit: int = 20,
         media_source: Optional[MediaSourceSelection] = None,
+        music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
         """并行搜索一个或多个音乐来源，单一来源失败不影响其它结果。"""
-        return await self._music_catalog().async_search(
+        if music_types is not None:
+            return await self._music_catalog().async_search(
+                MetaMusic.parse_query(query),
+                limit=limit,
+                media_source=media_source,
+                music_types=music_types,
+            )
+        _meta, results = await self.async_search(
             query,
-            limit,
-            media_source,
+            limit=limit,
+            media_source=media_source,
+            mtype=MediaType.MUSIC,
         )
+        return cast(list[MusicInfo], results)
 
     @classmethod
     def _validate_music_result(
@@ -160,6 +187,22 @@ class MediaCatalogOwner(_MediaOwnerBase):
         if not updates:
             return info
         simplified = deepcopy(info)
+        for field_name, alias_field in (
+            ("title", "title_aliases"),
+            ("album", "album_aliases"),
+            ("artists", "artist_aliases"),
+            ("album_artist", "artist_aliases"),
+            ("names", "title_aliases"),
+        ):
+            if field_name not in updates:
+                continue
+            if field_name in ("album_artist", "names") and info.music_type != MUSIC_ENTITY_ALBUM:
+                continue
+            original = getattr(info, field_name)
+            originals = original if isinstance(original, list) else [original]
+            setattr(simplified, alias_field, list(dict.fromkeys([
+                *(getattr(simplified, alias_field, None) or []), *originals,
+            ])))
         for field_name, value in updates.items():
             setattr(simplified, field_name, value)
         return simplified
@@ -197,7 +240,16 @@ class MediaCatalogOwner(_MediaOwnerBase):
             cache=cache,
             music_type=music_type,
         )
-        return self._validate_music_result(result, source, normalized_id, music_type)
+        validated = self._validate_music_result(
+            result,
+            source,
+            normalized_id,
+            music_type,
+        )
+        return cast(
+            Optional[MusicInfo],
+            self._finalize_recognition_result(validated),
+        )
 
     async def async_recognize_music_from_source(
         self,
@@ -221,31 +273,62 @@ class MediaCatalogOwner(_MediaOwnerBase):
             cache=cache,
             music_type=music_type,
         )
-        return self._validate_music_result(result, source, normalized_id, music_type)
+        validated = self._validate_music_result(
+            result,
+            source,
+            normalized_id,
+            music_type,
+        )
+        return cast(
+            Optional[MusicInfo],
+            await self._async_finalize_recognition_result(validated),
+        )
 
     def get_music_album(
         self,
         media_source: MediaSource,
         media_id: str,
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按音乐来源和原生 ID 同步获取专辑详情。"""
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return None
         chain = self._music_source_chain(source)
-        return chain.get_music_album(normalized_id) if chain else None
+        preference_kwargs = {}
+        if music_release_regions is not None:
+            preference_kwargs["music_release_regions"] = music_release_regions
+        if music_release_scripts is not None:
+            preference_kwargs["music_release_scripts"] = music_release_scripts
+        result = chain.get_music_album(normalized_id, **preference_kwargs) if chain else None
+        return cast(
+            Optional[MusicAlbumInfo],
+            self._finalize_recognition_result(result),
+        )
 
     async def async_get_music_album(
         self,
         media_source: MediaSource,
         media_id: str,
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按音乐来源和原生 ID 异步获取专辑详情。"""
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return None
         chain = self._music_source_chain(source)
-        return await chain.async_get_music_album(normalized_id) if chain else None
+        preference_kwargs = {}
+        if music_release_regions is not None:
+            preference_kwargs["music_release_regions"] = music_release_regions
+        if music_release_scripts is not None:
+            preference_kwargs["music_release_scripts"] = music_release_scripts
+        result = await chain.async_get_music_album(normalized_id, **preference_kwargs) if chain else None
+        return cast(
+            Optional[MusicAlbumInfo],
+            await self._async_finalize_recognition_result(result),
+        )
 
     async def async_get_music_album_related(
         self,
@@ -277,7 +360,11 @@ class MediaCatalogOwner(_MediaOwnerBase):
         chain = self._music_source_chain(source)
         if not chain or not hasattr(chain, "async_get_music_artist"):
             return None
-        return await chain.async_get_music_artist(normalized_id)
+        result = await chain.async_get_music_artist(normalized_id)
+        return cast(
+            Optional[MusicArtistInfo],
+            await self._async_finalize_recognition_result(result),
+        )
 
     async def async_get_music_artist_albums(
         self,

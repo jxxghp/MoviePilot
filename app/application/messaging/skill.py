@@ -1,12 +1,12 @@
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
+from datetime import datetime
+from typing import Any, Callable, List, Optional, Protocol, Tuple, Union
 
 from app.application.messaging.interaction import (
     MessageGateway,
+    _ExpiringUserInteractionStore,
     build_navigation_buttons,
     page_items,
     supports_interaction_buttons,
@@ -92,35 +92,14 @@ class PendingSkillInteraction:
     created_at: datetime = field(default_factory=datetime.now)
 
 
-class SkillInteractionManager:
+class SkillInteractionManager(
+        _ExpiringUserInteractionStore[PendingSkillInteraction]
+):
     """
     管理用户当前的技能交互状态。
 
     每个用户同一时间只保留一个有效会话，避免旧按钮继续生效。
     """
-
-    _ttl = timedelta(hours=24)
-
-    def __init__(self):
-        """初始化按请求和用户索引的技能交互会话表。"""
-        self._by_id: Dict[str, PendingSkillInteraction] = {}
-        self._by_user: Dict[str, str] = {}
-        self._lock = Lock()
-
-    def _cleanup_locked(self):
-        """
-        清理超时会话，避免按钮回调无限积累。
-        """
-        expire_before = datetime.now() - self._ttl
-        expired = [
-            request_id
-            for request_id, request in self._by_id.items()
-            if request.created_at < expire_before
-        ]
-        for request_id in expired:
-            request = self._by_id.pop(request_id, None)
-            if request:
-                self._by_user.pop(str(request.user_id), None)
 
     def create_or_replace(
             self,
@@ -135,9 +114,6 @@ class SkillInteractionManager:
         with self._lock:
             self._cleanup_locked()
             user_key = str(user_id)
-            old_request_id = self._by_user.get(user_key)
-            if old_request_id:
-                self._by_id.pop(old_request_id, None)
             request_id = uuid.uuid4().hex[:12]
             request = PendingSkillInteraction(
                 request_id=request_id,
@@ -146,52 +122,8 @@ class SkillInteractionManager:
                 source=source,
                 username=username,
             )
-            self._by_id[request_id] = request
-            self._by_user[user_key] = request_id
+            self._replace_locked(request)
             return request
-
-    def get_by_user(
-            self, user_id: Union[str, int]
-    ) -> Optional[PendingSkillInteraction]:
-        """
-        按用户获取当前有效会话，供纯文本回复路由使用。
-        """
-        with self._lock:
-            self._cleanup_locked()
-            request_id = self._by_user.get(str(user_id))
-            if not request_id:
-                return None
-            return self._by_id.get(request_id)
-
-    def get_by_id(
-            self, request_id: str, user_id: Union[str, int]
-    ) -> Optional[PendingSkillInteraction]:
-        """
-        按请求 ID 获取会话，并校验会话归属用户。
-        """
-        with self._lock:
-            self._cleanup_locked()
-            request = self._by_id.get(request_id)
-            if not request or str(request.user_id) != str(user_id):
-                return None
-            return request
-
-    def remove(self, request_id: str) -> None:
-        """
-        主动结束会话，释放用户和请求 ID 的双向索引。
-        """
-        with self._lock:
-            request = self._by_id.pop(request_id, None)
-            if request:
-                self._by_user.pop(str(request.user_id), None)
-
-    def clear(self):
-        """
-        清空所有会话，主要用于测试场景。
-        """
-        with self._lock:
-            self._by_id.clear()
-            self._by_user.clear()
 
 
 skill_interaction_manager = SkillInteractionManager()

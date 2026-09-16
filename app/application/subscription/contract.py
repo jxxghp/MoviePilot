@@ -6,6 +6,7 @@ import builtins
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, fields
 from typing import NoReturn, Optional, Protocol, cast
+from uuid import uuid4
 
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -20,10 +21,13 @@ _SUBSCRIPTION_FIELDS = frozenset(
         "year",
         "type",
         "keyword",
+        "search_interval",
+        "last_search",
         "media_source",
         "media_id",
         "music_type",
         "total_tracks",
+        "downloaded_tracks",
         "season",
         "poster",
         "backdrop",
@@ -62,20 +66,31 @@ _SUBSCRIPTION_FIELDS = frozenset(
         "search_imdbid",
         "manual_total_episode",
         "custom_words",
+        "media_category_id",
         "media_category",
         "filter_groups",
         "episode_group",
     }
 )
 
-_SUBSCRIPTION_HISTORY_FIELDS = _SUBSCRIPTION_FIELDS - {
+_CLASSIFICATION_HISTORY_FIELDS = frozenset(
+    {
+        "classification_rule_id",
+        "classification_policy_revision",
+        "classification_source",
+    }
+)
+
+_SUBSCRIPTION_HISTORY_FIELDS = (_SUBSCRIPTION_FIELDS - {
     "lack_episode",
     "note",
+    "downloaded_tracks",
     "state",
     "last_update",
+    "last_search",
     "downloader",
     "manual_total_episode",
-}
+}) | _CLASSIFICATION_HISTORY_FIELDS
 
 
 class _FrozenJsonDict(dict[str, JsonData]):
@@ -143,10 +158,13 @@ class SubscriptionSnapshot:
     year: Optional[str] = None
     type: Optional[str] = None
     keyword: Optional[str] = None
+    search_interval: Optional[int] = None
     media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
     music_type: Optional[str] = None
     total_tracks: Optional[int] = None
+    # 专辑已接受资源中可识别音轨的稳定键；只存在于活动订阅，完成后不写入历史。
+    downloaded_tracks: Optional[builtins.list[str]] = None
     season: Optional[int] = None
     poster: Optional[str] = None
     backdrop: Optional[str] = None
@@ -169,6 +187,7 @@ class SubscriptionSnapshot:
     note: Optional[builtins.list[int]] = None
     state: str = "N"
     last_update: Optional[str] = None
+    last_search: Optional[str] = None
     date: Optional[str] = None
     username: Optional[str] = None
     sites: Optional[builtins.list[int]] = None
@@ -185,13 +204,14 @@ class SubscriptionSnapshot:
     search_imdbid: Optional[int] = None
     manual_total_episode: Optional[int] = None
     custom_words: Optional[str] = None
+    media_category_id: Optional[str] = None
     media_category: Optional[str] = None
     filter_groups: Optional[builtins.list[str]] = None
     episode_group: Optional[str] = None
 
     def __post_init__(self) -> None:
         """冻结订阅中的全部 JSON 列。"""
-        for name in ("note", "sites", "episode_priority", "filter_groups"):
+        for name in ("note", "downloaded_tracks", "sites", "episode_priority", "filter_groups"):
             object.__setattr__(self, name, _freeze_json(getattr(self, name)))
 
     def to_dict(self) -> dict[str, JsonData]:
@@ -208,6 +228,7 @@ class SubscriptionHistorySnapshot:
     year: Optional[str] = None
     type: Optional[str] = None
     keyword: Optional[str] = None
+    search_interval: Optional[int] = None
     media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
     music_type: Optional[str] = None
@@ -244,7 +265,11 @@ class SubscriptionHistorySnapshot:
     save_path: Optional[str] = None
     search_imdbid: Optional[int] = None
     custom_words: Optional[str] = None
+    media_category_id: Optional[str] = None
     media_category: Optional[str] = None
+    classification_rule_id: Optional[str] = None
+    classification_policy_revision: Optional[int] = None
+    classification_source: Optional[str] = None
     filter_groups: Optional[builtins.list[str]] = None
     episode_group: Optional[str] = None
 
@@ -360,6 +385,51 @@ AfterCommitEffect = Callable[[int], bool | None]
 AsyncAfterCommitEffect = Callable[[int], Awaitable[bool | None]]
 
 
+def subscription_added_event_key(
+    subscribe_id: int,
+    payload: Mapping[str, JsonData],
+    *,
+    occurrence_id: Optional[str] = None,
+) -> str:
+    """由订阅 ID、媒体身份与本次创建事实构造可重试且不复用的幂等键。"""
+    resolved_occurrence_id = occurrence_id or uuid4().hex
+    return (
+        f"subscribe.added:{subscribe_id}:"
+        f"{payload.get('media_source') or 'unknown'}:"
+        f"{payload.get('media_id') or 'unknown'}:{resolved_occurrence_id}:v1"
+    )
+
+
+def subscription_added_report_key(
+    subscribe_id: int,
+    payload: Mapping[str, JsonData],
+    *,
+    occurrence_id: Optional[str] = None,
+) -> str:
+    """返回与新增事件身份一致但可独立重试的统计幂等键。"""
+    event_key = subscription_added_event_key(
+        subscribe_id,
+        payload,
+        occurrence_id=occurrence_id,
+    )
+    return f"{event_key}:report"
+
+
+def subscription_added_notification_key(
+    subscribe_id: int,
+    payload: Mapping[str, JsonData],
+    *,
+    occurrence_id: Optional[str] = None,
+) -> str:
+    """构造订阅新增通知的稳定幂等键。"""
+    event_key = subscription_added_event_key(
+        subscribe_id,
+        payload,
+        occurrence_id=occurrence_id,
+    )
+    return f"{event_key}:notification"
+
+
 class SubscriptionQueryPort(Protocol):
     """Chain、Workflow、Agent 和 Application 共用的订阅查询端口。"""
 
@@ -383,8 +453,13 @@ class SubscriptionQueryPort(Protocol):
         """异步按主键读取订阅快照。"""
         ...
 
-    async def async_list(self, state: Optional[str] = None) -> builtins.list[SubscriptionSnapshot]:
-        """异步按可选状态读取订阅快照。"""
+    async def async_list(
+        self,
+        state: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> builtins.list[SubscriptionSnapshot]:
+        """异步按可选状态和窗口读取订阅快照。"""
         ...
 
     async def async_list_by_username(
@@ -392,8 +467,19 @@ class SubscriptionQueryPort(Protocol):
         username: str,
         state: Optional[str] = None,
         mtype: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按用户、状态和类型读取订阅快照。"""
+        """异步按用户、状态、类型和窗口读取订阅快照。"""
+        ...
+
+    async def async_count(
+        self,
+        state: Optional[str] = None,
+        username: Optional[str] = None,
+        mtype: Optional[str] = None,
+    ) -> int:
+        """按与公开列表相同的筛选范围返回订阅总数。"""
         ...
 
     async def async_list_by_media_identity(
@@ -444,6 +530,18 @@ class SubscriptionHistoryQueryPort(Protocol):
         """异步按类型和用户分页读取订阅历史快照。"""
         ...
 
+    async def async_count_by_type(self, mtype: str) -> int:
+        """异步统计指定媒体类型的订阅历史。"""
+        ...
+
+    async def async_count_by_type_and_username(
+        self,
+        mtype: str,
+        username: str,
+    ) -> int:
+        """异步统计指定媒体类型和用户的订阅历史。"""
+        ...
+
 
 class SubscriptionWritePort(Protocol):
     """独立短事务订阅新增端口。"""
@@ -455,8 +553,9 @@ class SubscriptionWritePort(Protocol):
         username: Optional[str] = None,
         after_commit: Optional[AfterCommitEffect] = None,
         notification: Optional[Mapping[str, JsonData]] = None,
+        occurrence_id: Optional[str] = None,
     ) -> tuple[int, str]:
-        """在独立同步事务中新增订阅。"""
+        """在独立同步事务中新增订阅；occurrence_id 标识本次创建事实。"""
         ...
 
     async def async_add(
@@ -466,9 +565,11 @@ class SubscriptionWritePort(Protocol):
         username: Optional[str] = None,
         after_commit: Optional[AsyncAfterCommitEffect] = None,
         notification: Optional[Mapping[str, JsonData]] = None,
+        occurrence_id: Optional[str] = None,
     ) -> tuple[int, str]:
-        """在独立异步事务中新增订阅。"""
+        """在独立异步事务中新增订阅；occurrence_id 标识本次创建事实。"""
         ...
+
 
 class SubscriptionStagingPort(Protocol):
     """复用调用方 Session 且不自行提交的订阅写端口。"""
@@ -506,8 +607,13 @@ class SubscriptionStagingPort(Protocol):
         """异步按媒体身份读取删除候选快照。"""
         ...
 
-    async def list_search_ids(self, username: str, state: str) -> builtins.list[int]:
-        """异步读取用户可搜索订阅主键。"""
+    async def list_search_ids(
+        self,
+        username: Optional[str],
+        state: str,
+        mtype: Optional[str] = None,
+    ) -> builtins.list[int]:
+        """异步读取用户或管理员指定媒体类型范围内可搜索的订阅主键。"""
         ...
 
     async def stage_delete(self, subscribe_id: int) -> None:

@@ -1,13 +1,13 @@
 import asyncio
 import base64
 import json
-from unittest.mock import patch
+from unittest.mock import call, patch
 
+from app.adapters.external.ocr import OcrHelper
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.recognize_captcha import RecognizeCaptchaTool
 from app.agent.tools.manager import MoviePilotToolsManager
-from app.adapters.external.ocr import OcrHelper
 
 
 class _FakeResponse:
@@ -63,14 +63,15 @@ def test_mcp_tool_manager_exposes_recognize_captcha_schema():
     schema = tool_definitions[0].input_schema
 
     assert [item.name for item in tool_definitions] == ["recognize_captcha"]
-    assert "image_url" in schema["required"]
+    assert "image_url" not in schema.get("required", [])
+    assert "image_data" in schema["properties"]
     assert "cookie" in schema["properties"]
     assert "user_agent" in schema["properties"]
     assert "allow_private_network" in schema["properties"]
 
 
-def test_ocr_helper_extracts_data_url_base64_without_downloading_image():
-    """data:image 地址应直接提取 base64 内容并提交给 OCR 服务。"""
+def test_ocr_helper_extracts_data_url_as_raw_image_without_downloading_image():
+    """data:image 地址应解码为原始字节并提交给 OCR 二进制接口。"""
     image_b64 = base64.b64encode(b"captcha-image").decode()
     image_url = f"data:image/png;base64,{image_b64}"
 
@@ -84,9 +85,7 @@ def test_ocr_helper_extracts_data_url_base64_without_downloading_image():
     assert result == "a8k2"
     request_utils.return_value.get_res.assert_not_called()
     request_utils.return_value.post_res.assert_called_once()
-    assert request_utils.return_value.post_res.call_args.kwargs["json"] == {
-        "base64_img": image_b64
-    }
+    assert request_utils.return_value.post_res.call_args.kwargs["data"] == b"captcha-image"
 
 
 def test_ocr_helper_accepts_injected_runtime_base_url():
@@ -94,6 +93,7 @@ def test_ocr_helper_accepts_injected_runtime_base_url():
     helper = OcrHelper(ocr_base_url="https://ocr.example.test/")
 
     assert helper._ocr_b64_url == "https://ocr.example.test/captcha/base64"
+    assert helper._ocr_image_url == "https://ocr.example.test/captcha/image"
 
 
 def test_ocr_helper_normalizes_data_url_base64_padding():
@@ -109,9 +109,68 @@ def test_ocr_helper_normalizes_data_url_base64_padding():
 
     assert result == "z9k2"
     request_utils.return_value.get_res.assert_not_called()
-    assert request_utils.return_value.post_res.call_args.kwargs["json"] == {
-        "base64_img": "YWJjZA=="
-    }
+    assert request_utils.return_value.post_res.call_args.kwargs["data"] == b"abcd"
+
+
+def test_ocr_helper_downloads_http_image_and_posts_raw_bytes():
+    """HTTP 图片地址应由 Agent 端下载后以原始字节提交给 OCR。"""
+    image_url = "https://example.com/captcha.png"
+
+    with patch("app.adapters.external.ocr.RequestUtils") as request_utils:
+        request_utils.return_value.get_res.return_value = _FakeResponse(
+            content=b"captcha-image"
+        )
+        request_utils.return_value.post_res.return_value = _FakeResponse(
+            payload={"result": "z9k2"}
+        )
+
+        result = OcrHelper().get_captcha_text(
+            image_url=image_url,
+            cookie="sid=abc",
+            ua="MoviePilotTest/1.0",
+        )
+
+    assert result == "z9k2"
+    assert request_utils.call_args_list == [
+        call(ua="MoviePilotTest/1.0", cookies="sid=abc"),
+        call(content_type="application/octet-stream"),
+    ]
+    request_utils.return_value.get_res.assert_called_once_with(image_url)
+    request_utils.return_value.post_res.assert_called_once_with(
+        url="https://movie-pilot.org/captcha/image",
+        data=b"captcha-image",
+    )
+
+
+def test_ocr_helper_accepts_raw_image_data_without_base64_encoding():
+    """直接图片字节应使用二进制 OCR 接口。"""
+    with patch("app.adapters.external.ocr.RequestUtils") as request_utils:
+        request_utils.return_value.post_res.return_value = _FakeResponse(
+            payload={"result": "z9k2"}
+        )
+
+        result = OcrHelper().get_captcha_text(image_data=b"captcha-image")
+
+    assert result == "z9k2"
+    assert request_utils.return_value.post_res.call_args.kwargs["data"] == b"captcha-image"
+    assert "json" not in request_utils.return_value.post_res.call_args.kwargs
+
+
+def test_ocr_helper_prefers_raw_image_data_when_both_sources_are_given():
+    """同时提供地址和原始图片时应避免二次下载并保持原始字节优先。"""
+    with patch("app.adapters.external.ocr.RequestUtils") as request_utils:
+        request_utils.return_value.post_res.return_value = _FakeResponse(
+            payload={"result": "z9k2"}
+        )
+
+        result = OcrHelper().get_captcha_text(
+            image_url="https://example.com/captcha.png",
+            image_data=b"captcha-image",
+        )
+
+    assert result == "z9k2"
+    request_utils.return_value.get_res.assert_not_called()
+    assert request_utils.return_value.post_res.call_args.kwargs["data"] == b"captcha-image"
 
 
 def test_recognize_captcha_tool_formats_data_url_for_log():
@@ -154,6 +213,28 @@ def test_recognize_captcha_tool_returns_captcha_text_from_ocr_helper():
         image_url="https://example.com/captcha.png",
         cookie="sid=abc",
         ua="MoviePilotTest/1.0",
+    )
+
+
+def test_recognize_captcha_tool_passes_raw_image_data_to_ocr():
+    """验证码工具收到原始图片时不得先转成 Base64 或发起二次下载。"""
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+
+    async def _run_tool():
+        """执行一次带原始图片字节的工具调用。"""
+        with patch(
+            "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+            return_value="x7p9",
+        ) as recognize_mock:
+            result = await tool.run(image_data=b"captcha-image")
+            return result, recognize_mock
+
+    result, recognize_mock = asyncio.run(_run_tool())
+    assert json.loads(result)["captcha_text"] == "x7p9"
+    recognize_mock.assert_called_once_with(
+        image_data=b"captcha-image",
+        cookie=None,
+        ua=None,
     )
 
 

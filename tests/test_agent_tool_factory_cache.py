@@ -12,8 +12,8 @@ from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.ask_user_choice import AskUserChoiceInput, AskUserChoiceTool
 from app.agent.tools.impl.send_local_file import SendLocalFileTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
-from app.runtime.extensions.plugin.manager import PluginManager
 from app.foundation.singleton import Singleton
+from app.runtime.extensions.plugin.manager import PluginManager
 
 
 class DemoAgentTool(MoviePilotTool):
@@ -103,9 +103,7 @@ def test_ask_user_choice_option_schema_does_not_expose_description() -> None:
 def test_plugin_agent_tools_are_cached(plugin_manager: PluginManager) -> None:
     """插件智能体工具注册表应缓存，避免同一轮启动反复询问插件实例。"""
     calls: list[int] = []
-    plugin_manager.running_plugins["DemoPlugin"] = _build_plugin(
-        [DemoAgentTool], calls=calls
-    )
+    plugin_manager.running_plugins["DemoPlugin"] = _build_plugin([DemoAgentTool], calls=calls)
 
     first_result = plugin_manager.get_plugin_agent_tools()
     second_result = plugin_manager.get_plugin_agent_tools()
@@ -152,6 +150,7 @@ def test_plugin_agent_tools_revision_churn_is_bounded(
     plugin_manager: PluginManager,
 ) -> None:
     """插件状态持续变化时注册表构造必须有界失败，不能卡住调用线程。"""
+
     def _changing_tools() -> list[type[MoviePilotTool]]:
         plugin_manager.clear_plugin_agent_tools_cache()
         return [DemoAgentTool]
@@ -171,9 +170,7 @@ def test_factory_reuses_plugin_registry_but_creates_new_tool_instances(
 ) -> None:
     """工具工厂可复用插件注册表缓存，但每次请求仍需创建新的工具实例。"""
     calls: list[int] = []
-    plugin_manager.running_plugins["DemoPlugin"] = _build_plugin(
-        [DemoAgentTool], calls=calls
-    )
+    plugin_manager.running_plugins["DemoPlugin"] = _build_plugin([DemoAgentTool], calls=calls)
 
     first_tools = MoviePilotToolFactory.create_tools(
         session_id="session-1",
@@ -197,9 +194,7 @@ def test_factory_suppresses_plugin_message_tools_for_subagents(
     plugin_manager: PluginManager,
 ) -> None:
     """子代理静默工具列表不应包含会直接向用户发消息的插件工具。"""
-    plugin_manager.running_plugins["DemoPlugin"] = _build_plugin(
-        [DemoAgentTool, DemoMessageAgentTool]
-    )
+    plugin_manager.running_plugins["DemoPlugin"] = _build_plugin([DemoAgentTool, DemoMessageAgentTool])
 
     tools = MoviePilotToolFactory.create_tools(
         session_id="session-1",
@@ -212,10 +207,10 @@ def test_factory_suppresses_plugin_message_tools_for_subagents(
     assert "demo_message_agent_tool" not in tool_names
 
 
-def test_factory_catalog_records_two_plugin_duplicate_names(
+def test_factory_catalog_rejects_two_plugin_duplicate_names(
     plugin_manager: PluginManager,
 ) -> None:
-    """两个插件声明同名工具时，目录必须保留两个插件身份。"""
+    """两个插件声明同名工具时，正式目录必须拒绝 first-wins。"""
     plugin_manager.running_plugins["PluginOne"] = _build_plugin([DemoAgentTool])
     plugin_manager.running_plugins["PluginTwo"] = _build_plugin([DemoAgentTool])
 
@@ -224,11 +219,8 @@ def test_factory_catalog_records_two_plugin_duplicate_names(
         "_get_builtin_tool_classes",
         return_value=[],
     ):
-        catalog = MoviePilotToolFactory.create_catalog(
-            session_id="session-1",
-            user_id="10001",
-        )
-
-    assert [
-        entry.source for entry in catalog.collisions["demo_agent_tool"]
-    ] == ["plugin:PluginOne", "plugin:PluginTwo"]
+        with pytest.raises(RuntimeError, match="TOOL_IDENTITY_AMBIGUOUS"):
+            MoviePilotToolFactory.create_catalog(
+                session_id="session-1",
+                user_id="10001",
+            )

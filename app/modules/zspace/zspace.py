@@ -265,7 +265,7 @@ class ZSpace:
                     item_count=self.get_items_count(library.get("Id")),
                     image=image,
                     link=f'{self._playhost or self._host}web/index.html'
-                         f'#!/videos?serverId={self.serverid}&parentId={library.get("Id")}',
+                    f'#!/videos?serverId={self.serverid}&parentId={library.get("Id")}',
                     server_type="zspace"
                 )
             )
@@ -1000,7 +1000,7 @@ class ZSpace:
             if not event_item.percentage:
                 if message.get('PlaybackInfo', {}).get('PositionTicks') and message.get('Item', {}).get('RunTimeTicks'):
                     event_item.percentage = message.get('PlaybackInfo', {}).get('PositionTicks') / \
-                                            message.get('Item', {}).get('RunTimeTicks') * 100
+                        message.get('Item', {}).get('RunTimeTicks') * 100
         if message.get('Session'):
             event_item.ip = message.get('Session').get('RemoteEndPoint')
             event_item.device_name = message.get('Session').get('DeviceName')
@@ -1068,7 +1068,7 @@ class ZSpace:
         :param item_id: 媒体的ID
         """
         return f"{self._playhost or self._host}web/index.html#!" \
-               f"/item?id={item_id}&context=home&serverId={self.serverid}"
+            f"/item?id={item_id}&context=home&serverId={self.serverid}"
 
     def get_backdrop_url(self, item_id: str, image_tag: str, remote: Optional[bool] = False) -> str:
         """
@@ -1086,7 +1086,7 @@ class ZSpace:
         else:
             host_url = self._host
         return f"{host_url}emby/Items/{item_id}/" \
-               f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
+            f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
     def __get_local_image_by_id(self, item_id: str) -> str:
         """
@@ -1098,7 +1098,7 @@ class ZSpace:
         return f"{self._host}emby/Items/{item_id}/Images/Primary?api_key={self._apikey}"
 
     def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[
-        List[_SchemaMediaServerPlayItem]]:
+            List[_SchemaMediaServerPlayItem]]:
         """
         获得继续观看
         """
@@ -1168,7 +1168,7 @@ class ZSpace:
         return None
 
     def get_latest(self, num: Optional[int] = 20, username: Optional[str] = None) -> Optional[
-        List[_SchemaMediaServerPlayItem]]:
+            List[_SchemaMediaServerPlayItem]]:
         """
         获得最近更新。
 

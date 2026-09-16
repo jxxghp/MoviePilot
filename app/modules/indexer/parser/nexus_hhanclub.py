@@ -35,7 +35,7 @@ class NexusHhanclubSiteUserInfo(NexusPhpSiteUserInfo):
             # 优先使用页面上的分享率
             calc_ratio = 0.0 if self.download <= 0.0 else round(self.upload / self.download, 3)
             self.ratio = text_tools.parse_float(ratio_match.group(1)) if (
-                    ratio_match and ratio_match.group(1).strip()) else calc_ratio
+                ratio_match and ratio_match.group(1).strip()) else calc_ratio
         finally:
             if html is not None:
                 del html

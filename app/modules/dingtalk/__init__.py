@@ -44,6 +44,12 @@ class DingTalkModule(_MessageChannelModuleBase[DingTalk]):
         """钉钉启用状态由通知渠道配置统一管理。"""
         return None
 
+    def _commands_enabled(self, config: Optional[dict[str, object]]) -> bool:
+        """
+        钉钉自定义机器人没有命令注册或删除 API，跳过基类命令处理。
+        """
+        return False
+
     def post_message(self, message: Message, **kwargs) -> None:
         """向所有匹配消息范围的钉钉配置发送普通通知。"""
         for conf in self.get_configs().values():

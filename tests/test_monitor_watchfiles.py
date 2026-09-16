@@ -22,6 +22,7 @@ class CallbackRecorder:
         初始化事件记录列表。
         """
         self.events = []
+        self.stability_events = []
 
     def event_handler(self, event, text: str, event_path: str, file_size: int = None):
         """
@@ -32,6 +33,14 @@ class CallbackRecorder:
         :param file_size: 文件大小
         """
         self.events.append((event, text, event_path, file_size))
+
+    def event_unstable(self, event_path: Path):
+        """记录文件长时间未稳定告警。"""
+        self.stability_events.append(("unstable", event_path.as_posix()))
+
+    def event_stable(self, event_path: Path):
+        """记录文件恢复稳定通知。"""
+        self.stability_events.append(("stable", event_path.as_posix()))
 
 
 def _build_monitor_with_dispatcher(handle_file: MagicMock = None):
@@ -100,6 +109,59 @@ def test_handle_changes_dispatches_added_and_modified_files(tmp_path):
         callback.events[1][2],
         callback.events[1][3],
     )
+
+
+def test_running_watcher_waits_for_file_stability_before_dispatch(tmp_path):
+    """
+    实际监控线程收到新增事件时，应等待文件大小和 mtime 连续稳定后再整理。
+    """
+    movie_file = tmp_path / "movie.mkv"
+    movie_file.write_bytes(b"part")
+    callback = CallbackRecorder()
+    watcher = LocalDirectoryWatcher(tmp_path, callback=callback, force_polling=True)
+    # 直接调用内部循环时没有真实线程，用替身模拟运行中的监控线程，覆盖稳定性分支。
+    watcher.is_alive = MagicMock(return_value=True)
+
+    watcher._handle_changes({(Change.added, movie_file.as_posix())})
+    assert callback.events == []
+    assert movie_file.as_posix() in watcher._pending_stability
+
+    watcher._pending_stability[movie_file.as_posix()]["due"] = 0
+    watcher._process_pending_stability()
+    assert callback.events == []
+
+    watcher._pending_stability[movie_file.as_posix()]["due"] = 0
+    watcher._process_pending_stability()
+    assert len(callback.events) == 1
+    assert callback.events[0][2] == movie_file.as_posix()
+    assert callback.events[0][3] == 4
+
+
+def test_running_watcher_reports_long_unstable_file_and_recovery(tmp_path, monkeypatch):
+    """文件长时间写入应告警一次，并在稳定后发送恢复状态再继续整理。"""
+    movie_file = tmp_path / "long-writing.mkv"
+    movie_file.write_bytes(b"part")
+    callback = CallbackRecorder()
+    watcher = LocalDirectoryWatcher(tmp_path, callback=callback, force_polling=True)
+    watcher.is_alive = MagicMock(return_value=True)
+
+    watcher._handle_changes({(Change.added, movie_file.as_posix())})
+    pending = watcher._pending_stability[movie_file.as_posix()]
+    # 固定单调时钟，避免新启动的 CI 机器尚未运行到告警阈值。
+    monkeypatch.setattr("app.monitor.watcher.time.monotonic", lambda: 1000.0)
+    pending["first_seen"] = 1000.0 - watcher.FILE_STABILITY_WARNING_SECONDS
+    pending["due"] = 0
+    watcher._process_pending_stability()
+    assert callback.stability_events == [("unstable", movie_file.as_posix())]
+
+    watcher._pending_stability[movie_file.as_posix()]["due"] = 0
+    watcher._process_pending_stability()
+
+    assert callback.stability_events == [
+        ("unstable", movie_file.as_posix()),
+        ("stable", movie_file.as_posix()),
+    ]
+    assert len(callback.events) == 1
 
 
 def test_handle_changes_skips_missing_paths(tmp_path):

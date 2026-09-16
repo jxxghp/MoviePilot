@@ -46,10 +46,12 @@ class DatabaseGovernance:
         health: DatabaseHealthService,
         cleanup: DataCleanupService,
         backup: DatabaseBackupService,
+        plugin_backup: Callable[[], None] | None = None,
     ) -> None:
         self._health = health
         self._cleanup = cleanup
         self._backup = backup
+        self._plugin_backup = plugin_backup
 
     def test(self) -> Optional[str]:
         """探测当前活动数据库。"""
@@ -68,8 +70,11 @@ class DatabaseGovernance:
         )
 
     def create_backup(self) -> BackupArtifact:
-        """创建一个当前活动数据库的一致备份。"""
-        return self._backup.create()
+        """创建宿主数据库备份，并在可用时创建插件 SQLite 备份。"""
+        artifact = self._backup.create()
+        if self._plugin_backup is not None:
+            self._plugin_backup()
+        return artifact
 
     def list_backups(self) -> tuple[BackupArtifact, ...]:
         """列出受管数据库备份文件。"""

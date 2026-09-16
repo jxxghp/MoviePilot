@@ -167,7 +167,7 @@ class Plex:
                     item_count=self.get_items_count(library.key),
                     image_list=image_list,
                     link=f"{self._playhost or self._host}web/index.html#!/media/{self._plex.machineIdentifier}"
-                         f"/com.plexapp.plugins.library?source={library.key}&X-Plex-Token={self._token}",
+                    f"/com.plexapp.plugins.library?source={library.key}&X-Plex-Token={self._token}",
                     server_type='plex'
                 )
             )
@@ -352,6 +352,9 @@ class Plex:
         season_episodes = {}
         for episode in episodes:
             if season is not None and episode.seasonNumber != int(season):
+                continue
+            # Plex 空条目可能缺少季集号，不能传入后续季集模型校验。
+            if episode.seasonNumber is None or episode.index is None:
                 continue
             if episode.seasonNumber not in season_episodes:
                 season_episodes[episode.seasonNumber] = []

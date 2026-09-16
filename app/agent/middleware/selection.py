@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, replace
 import json
+import re
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any, NotRequired
 
@@ -19,14 +20,20 @@ from langchain.agents.middleware.tool_selection import (
     DEFAULT_SYSTEM_PROMPT,
     LLMToolSelectorMiddleware,
 )
+from langchain.tools import ToolRuntime
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, StructuredTool, create_schema_from_function
 from langgraph.runtime import Runtime
+from langgraph.types import Command, Overwrite
+from pydantic import Field
 from typing_extensions import TypedDict  # noqa
 
 from app.agent.llm.helper import LLMHelper
+from app.agent.middleware.usage import UsageMiddleware
+from app.agent.middleware.utils import append_to_system_message
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 
@@ -34,6 +41,43 @@ MIN_SELECTED_TOOL_COUNT = 4
 RECENT_SELECTION_CONTEXT_MESSAGE_LIMIT = 6
 RECENT_SELECTION_CONTEXT_MAX_CHARS = 6000
 RECENT_SELECTION_CONTEXT_TRUNCATION_PREFIX = "..."
+TOOL_DISCOVERY_NAME = "search_tools"
+TOOL_DISCOVERY_MAX_RESULTS = 8
+TOOL_DISCOVERY_DESCRIPTION_CHARS = 400
+TOOL_DISCOVERY_MAX_TAGS = 6
+TOOL_DISCOVERY_TAG_CHARS = 48
+TOOL_DISCOVERY_WINDOW_SIZE = 16
+TOOL_DISCOVERY_SCHEMA_TOKENS = 4096
+TOOL_DISCOVERY_SCHEMA_WINDOW_FRACTION = 0.10
+TOOL_DISCOVERY_INPUT_FRACTION = 0.85
+TOOL_DISCOVERY_STOP_WORDS = frozenset({
+    "the", "a", "an", "and", "or", "for", "to", "of", "in", "on", "with",
+    "please", "find", "show", "help", "me", "my", "tool", "tools",
+})
+TOOL_DISCOVERY_ALIASES = {
+    ToolTag.Media.value: ("media", "movie", "movies", "tv", "电影", "电视剧", "剧集"),
+    ToolTag.Resource.value: ("resource", "torrent", "种子", "资源"),
+    ToolTag.Site.value: ("site", "sites", "tracker", "站点"),
+    ToolTag.Subscription.value: ("subscription", "subscriptions", "subscribe", "订阅", "追剧"),
+    ToolTag.Download.value: ("download", "downloads", "downloader", "下载"),
+    ToolTag.Library.value: ("library", "mediaserver", "媒体库", "媒体服务器"),
+    ToolTag.Transfer.value: ("transfer", "organize", "整理", "转移"),
+    ToolTag.System.value: ("system", "系统"),
+    ToolTag.Settings.value: ("settings", "configuration", "配置", "设置"),
+    ToolTag.Plugin.value: ("plugin", "plugins", "插件"),
+    ToolTag.Workflow.value: ("workflow", "workflows", "工作流"),
+    ToolTag.Scheduler.value: ("scheduler", "schedule", "定时", "调度"),
+    ToolTag.AgentTask.value: ("agent_task", "智能体任务", "后台任务"),
+    ToolTag.File.value: ("file", "files", "文件"),
+    ToolTag.Directory.value: ("directory", "directories", "folder", "folders", "目录", "文件夹"),
+    ToolTag.Web.value: ("web", "internet", "网页", "互联网"),
+    ToolTag.Command.value: ("command", "shell", "命令", "终端"),
+    ToolTag.FilterRule.value: ("filter", "过滤", "筛选规则"),
+    ToolTag.Persona.value: ("persona", "人格"),
+    ToolTag.Recommendation.value: ("recommendation", "recommend", "推荐"),
+    ToolTag.Metadata.value: ("metadata", "scrape", "元数据", "刮削"),
+    ToolTag.Skill.value: ("skill", "skills", "技能"),
+}
 TOOL_GROUP_EXCLUDED_TAGS = frozenset(
     {
         ToolTag.AgentTool.value,
@@ -55,17 +99,26 @@ MoviePilot tool-chain hints:
 """
 
 
+def _merge_discovered_tool_names(current: list[str], added: list[str]) -> list[str]:
+    """按图更新顺序合并最近发现窗口，重复发现刷新优先级且窗口外能力自动淘汰。"""
+    latest = list(dict.fromkeys(added))
+    return [*[name for name in current if name not in latest], *latest][-TOOL_DISCOVERY_WINDOW_SIZE:]
+
+
 class ToolSelectionState(AgentState):
     """工具筛选中间件私有状态。"""
 
     selected_tool_names: NotRequired[Annotated[list[str] | None, PrivateStateAttr]]
     """当前这条用户请求首轮筛选得到的工具名列表。"""
+    discovered_tool_names: Annotated[list[str], PrivateStateAttr, _merge_discovered_tool_names]
+    """图归并器初始化的工具增量；新用户请求开始时清空。"""
 
 
 class ToolSelectionStateUpdate(TypedDict):
     """工具筛选中间件状态更新项。"""
 
     selected_tool_names: list[str] | None
+    discovered_tool_names: NotRequired[Overwrite]
 
 
 @dataclass(frozen=True)
@@ -92,7 +145,7 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
     的每次“模型回合”前都重新筛选一次工具。对于会多轮调用工具的复杂任务，
     这会重复消耗一次额外的 LLM 调用。这里改成：
     - `abefore_agent()`：在本轮 Agent 执行开始时筛选一次；
-    - `awrap_model_call()`：从 `request.state` 读取首轮筛选结果并复用。
+    - `awrap_model_call()`：复用首轮结果，合入本轮按需发现的额外工具。
     """
 
     state_schema = ToolSelectionState
@@ -104,14 +157,212 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             selection_tools: list[Any] | None = None,
             max_tools: int | None = None,
             always_include: list[str] | None = None,
+            enable_discovery: bool = False,
     ) -> None:
+        """配置首轮筛选与按需发现，新增能力受最近窗口和额外参数预算约束。"""
         super().__init__(
             model=model,
             system_prompt=self._append_tool_selection_hint(system_prompt),
             max_tools=max_tools,
             always_include=always_include,
         )
-        self.selection_tools = selection_tools or []
+        self.selection_tools = list(selection_tools or [])
+        self.always_include: list[str] = list(always_include or [])
+        self.tools = [self._build_discovery_tool()] if enable_discovery else []
+        if self.tools:
+            self.selection_tools.extend(self.tools)
+            self.always_include = [*self.always_include, TOOL_DISCOVERY_NAME]
+
+    def _build_discovery_tool(self) -> StructuredTool:
+        """注册仅供当前 Agent 使用的发现工具，保持目录身份与模型参数可序列化。"""
+        tool = StructuredTool.from_function(
+            coroutine=self._asearch_tools,
+            name=TOOL_DISCOVERY_NAME,
+            description=(
+                "Find and enable tools missing from the current tool list. Search by exact tool name "
+                "or Chinese/English capability keywords. Matches are candidates for the next model call, "
+                "subject to the latest 16 discoveries and an additional schema/context budget. "
+                "The next model call includes an authoritative availability notice with reasons. "
+                "Use when the task changes or a skill references an unavailable tool. "
+                "This searches only the current authorized catalog; no match enables nothing."
+            ),
+            args_schema=create_schema_from_function(
+                TOOL_DISCOVERY_NAME, self._asearch_tools, filter_args=["runtime"],
+            ),
+            tags=[ToolTag.AgentTool.value, ToolTag.Read.value],
+        )
+        object.__setattr__(tool, "_agent_tool_source", "middleware:selection")
+        return tool
+
+    @staticmethod
+    def _matches_discovery_term(term: str, text: str) -> bool:
+        """中文短语允许句内匹配，英文使用完整单词避免把子串误认成能力。"""
+        if re.search(r"[\u4e00-\u9fff]", term):
+            return term in text
+        return bool(re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", text))
+
+    @classmethod
+    def _discovery_score(cls, tool: BaseTool, search: str, keywords: list[str], capabilities: set[str]) -> int:
+        """按工具名、能力标签和说明排序，优先保留精确名称命中的能力。"""
+        name = tool.name.casefold()
+        description = str(tool.description or "").casefold()
+        tool_tags = cls._normalize_tool_tags(tool)
+        tags = " ".join(tool_tags).casefold()
+        if search == name:
+            return 10000
+        return 100 * len(capabilities.intersection(tool_tags)) + sum(
+            10 * cls._matches_discovery_term(keyword, name)
+            + 5 * cls._matches_discovery_term(keyword, tags)
+            + cls._matches_discovery_term(keyword, description)
+            for keyword in keywords
+        )
+
+    def _find_discovery_tools(self, search: str, limit: int) -> list[BaseTool]:
+        """只在当前授权目录内离线匹配关键词，空白或无关查询不会展开全量工具。"""
+        query = search.strip().casefold()
+        keywords = [word for word in dict.fromkeys(re.findall(r"[^\W_]+", query)) if word not in TOOL_DISCOVERY_STOP_WORDS]
+        if not keywords:
+            return []
+        capabilities = {
+            tag for tag, aliases in TOOL_DISCOVERY_ALIASES.items()
+            if any(self._matches_discovery_term(alias, query) for alias in aliases)
+        }
+        ranked_tools = [
+            (self._discovery_score(tool, query, keywords, capabilities), tool)
+            for tool in self.selection_tools
+            if not isinstance(tool, dict) and tool.name != TOOL_DISCOVERY_NAME
+        ]
+        ranked_tools.sort(key=lambda item: (-item[0], item[1].name))
+        return [tool for score, tool in ranked_tools if score > 0][:limit]
+
+    async def _asearch_tools(
+            self,
+            search: Annotated[str, Field(
+                min_length=1, max_length=160,
+                description="Tool name or concise keywords matching descriptions or capability tags.",
+            )],
+            runtime: ToolRuntime,
+            limit: Annotated[int, Field(
+                ge=1, le=TOOL_DISCOVERY_MAX_RESULTS,
+                description="Maximum number of matching tools to enable for subsequent model calls.",
+            )] = 5,
+    ) -> Command:
+        """返回有界工具目录并以图状态增量启用结果，不修改共享中间件实例。"""
+        matched_tools = self._find_discovery_tools(search, limit)
+        baseline_names = set(self.always_include) | set(getattr(runtime, "state", {}).get("selected_tool_names") or [])
+        catalog = [
+            {
+                "name": tool.name,
+                "description": str(tool.description or "")[:TOOL_DISCOVERY_DESCRIPTION_CHARS],
+                "tags": [
+                    tag[:TOOL_DISCOVERY_TAG_CHARS]
+                    for tag in self._normalize_tool_tags(tool)[:TOOL_DISCOVERY_MAX_TAGS]
+                ],
+                "status": "already_selected" if tool.name in baseline_names else "pending_budget_check",
+            }
+            for tool in matched_tools
+        ]
+        payload = {
+            "tools": catalog,
+            "message": (
+                "Candidates registered. The next model call reports which tools fit the recent discovery window "
+                "and schema/context budget. Earlier discoveries may be evicted; search an exact name to refresh it."
+                if matched_tools else "No matching tools. Try a precise tool name or different keywords."
+            ),
+        }
+        return Command(update={
+            "discovered_tool_names": [tool.name for tool in reversed(matched_tools) if tool.name not in baseline_names],
+            "messages": [ToolMessage(
+                content=json.dumps(payload, ensure_ascii=False),
+                tool_call_id=runtime.tool_call_id,
+                name=TOOL_DISCOVERY_NAME,
+            )],
+        })
+
+    def _selection_state_update(self, selected_tool_names: list[str] | None) -> ToolSelectionStateUpdate:
+        """写入首轮筛选结果并清空前一用户请求的工具发现状态。"""
+        update = ToolSelectionStateUpdate(selected_tool_names=selected_tool_names)
+        if self.tools:
+            update["discovered_tool_names"] = Overwrite([])
+        return update
+
+    @staticmethod
+    def _discovery_availability_notice(statuses: dict[str, str]) -> str:
+        """给模型提供当前绑定结果，覆盖发现工具此前返回的候选状态。"""
+        return (
+            "<tool_discovery_availability>\n"
+            "Authoritative availability for this model call (supersedes pending search_tools results):\n"
+            f"{json.dumps(statuses, ensure_ascii=False)}\n"
+            f"Only the latest {TOOL_DISCOVERY_WINDOW_SIZE} discovered tools are candidates. "
+            "Older discoveries are evicted unless initially selected or mandatory. Search an exact name to refresh it. "
+            "Only enabled/already_selected tools are available; budget-disabled tools may fit after context shrinks.\n"
+            "</tool_discovery_availability>"
+        )
+
+    def _discovery_budget(self, request: ModelRequest, statuses: dict[str, str]) -> tuple[int, int]:
+        """复用最终请求估算器，为额外工具预留上下文余量并限制结构化参数总成本。"""
+        budget_request = request.override(system_message=append_to_system_message(
+            request.system_message, self._discovery_availability_notice(statuses),
+        ))
+        budget = UsageMiddleware.estimate_request(budget_request)
+        schema_budget = TOOL_DISCOVERY_SCHEMA_TOKENS
+        context_budget = schema_budget
+        context_window = budget.get("context_window_tokens")
+        if isinstance(context_window, int) and context_window > 0:
+            schema_budget = min(schema_budget, int(context_window * TOOL_DISCOVERY_SCHEMA_WINDOW_FRACTION))
+            context_budget = max(0, int(context_window * TOOL_DISCOVERY_INPUT_FRACTION) - budget["estimated_input_tokens"])
+        return schema_budget, context_budget
+
+    def _budget_discovery_tools(self, request: ModelRequest, candidates: list[BaseTool], statuses: dict[str, str]) -> list[str]:
+        """按最近发现优先接纳可容纳的工具，估算失败时只禁用额外发现能力。"""
+        try:
+            schema_budget, context_budget = self._discovery_budget(request, statuses)
+        except Exception as error:
+            logger.warning(f"工具发现预算估算失败，保留首轮工具: {type(error).__name__}")
+            statuses.update({tool.name: "budget_estimate_unavailable" for tool in candidates})
+            return []
+        enabled = []
+        for tool in candidates:
+            try:
+                cost = count_tokens_approximately([], tools=[tool], use_usage_metadata_scaling=False)
+            except Exception as error:
+                logger.warning(f"工具参数预算无法估算: {tool.name}, {type(error).__name__}")
+                statuses[tool.name] = "budget_estimate_unavailable"
+                continue
+            if cost > schema_budget:
+                statuses[tool.name] = "schema_budget_exceeded"
+                continue
+            if cost > context_budget:
+                statuses[tool.name] = "context_budget_exceeded"
+                continue
+            statuses[tool.name] = "enabled"
+            enabled.append(tool.name)
+            schema_budget -= cost
+            context_budget -= cost
+        return enabled
+
+    def _bind_discovery_tools(self, request: ModelRequest, selected_tool_names: list[str]) -> ModelRequest:
+        """从当前请求精确工具实例中绑定预算内发现项，并保留初选、强制和供应商工具。"""
+        baseline_names = list(dict.fromkeys([*selected_tool_names, *self.always_include]))
+        discovered_names = list(reversed(request.state.get("discovered_tool_names", [])[-TOOL_DISCOVERY_WINDOW_SIZE:]))
+        baseline = self._apply_selected_tools(request, baseline_names)
+        if not discovered_names:
+            return baseline
+        current_tools = {tool.name: tool for tool in request.tools if not isinstance(tool, dict)}
+        statuses = {
+            name: "already_selected" if name in baseline_names and name in current_tools else "unavailable_in_current_catalog"
+            for name in discovered_names
+        }
+        candidates = [current_tools[name] for name in discovered_names if name not in baseline_names and name in current_tools]
+        # 先按最长预算拒绝文案估算提示成本，实际启用文案只会缩短。
+        statuses.update({tool.name: "budget_estimate_unavailable" for tool in candidates})
+        enabled = self._budget_discovery_tools(baseline, candidates, statuses)
+        bound = self._apply_selected_tools(request, list(dict.fromkeys([
+            *selected_tool_names, *enabled, *self.always_include,
+        ])))
+        return bound.override(system_message=append_to_system_message(
+            request.system_message, self._discovery_availability_notice(statuses),
+        ))
 
     @classmethod
     def _render_recent_conversation_context(
@@ -519,7 +770,7 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
         """
         将已筛选出的工具集应用到当前模型请求。
 
-        这里只复用首次筛选出的客户端工具名；provider-specific 的 dict 工具仍然
+        这里复用首轮筛选及本轮发现的客户端工具名；provider-specific 的 dict 工具仍然
         原样保留，避免破坏 LangChain/provider 自身的工具绑定约定。
         """
         current_tools_by_name = {
@@ -608,7 +859,7 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
                     detail=detail,
                 )
             )
-            return ToolSelectionStateUpdate(selected_tool_names=None)
+            return self._selection_state_update(selected_tool_names=None)
 
         selection_request = ModelRequest(
             model=self.model,
@@ -620,7 +871,7 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
         attempt = await self._aselect_request_once_with_status(selection_request)
         self._log_selection_attempt(attempt)
         selected_tool_names = attempt.selected_tool_names
-        return ToolSelectionStateUpdate(selected_tool_names=selected_tool_names)
+        return self._selection_state_update(selected_tool_names=selected_tool_names)
 
     async def awrap_model_call(
             self,
@@ -630,7 +881,7 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             ],
     ) -> ModelResponse[ResponseT]:
         """
-        从 state 中读取首次筛选结果，并应用到每次模型回合。
+        复用首轮筛选并合入本轮按需发现结果，无需追加工具筛选模型调用。
         """
         selected_tool_names = request.state.get("selected_tool_names")  # noqa
 
@@ -648,6 +899,6 @@ class ToolSelectorMiddleware(LLMToolSelectorMiddleware):
             request.state["selected_tool_names"] = selected_tool_names  # noqa
 
         if selected_tool_names is not None:
-            request = self._apply_selected_tools(request, selected_tool_names)
+            request = self._bind_discovery_tools(request, selected_tool_names)
 
         return await handler(request)

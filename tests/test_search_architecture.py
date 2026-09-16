@@ -19,6 +19,7 @@ EXPECTED_SEARCH_MODULES = {
     "__init__.py",
     "cache.py",
     "contract.py",
+    "execution.py",
     "facade.py",
     "media.py",
     "music.py",

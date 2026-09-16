@@ -22,14 +22,18 @@ class Subscribe(Base):
     year: Mapped[Optional[str]] = mapped_column(String)
     # 类型
     type: Mapped[Optional[str]] = mapped_column(String)
+    # 自定义定时搜索间隔（小时）；空值跟随系统
+    search_interval: Mapped[Optional[int]] = mapped_column(Integer)
     # 搜索关键字
     keyword: Mapped[Optional[str]] = mapped_column(String)
     media_source: Mapped[Optional[str]] = mapped_column(String, index=True)
     media_id: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 音乐实体类型：recording 单曲、album 专辑
     music_type: Mapped[Optional[str]] = mapped_column(String)
-    # 专辑预期总曲目数，供整专资源完整性判断
+    # 专辑预期总曲目数，作为分批下载完成判定的分母
     total_tracks: Mapped[Optional[int]] = mapped_column(Integer)
+    # 已接受资源中可识别音轨的稳定键集合，供专辑订阅跨轮次累计进度
+    downloaded_tracks: Mapped[Optional[Any]] = mapped_column(JSON)
     # 季号
     season: Mapped[Optional[int]] = mapped_column(Integer)
     # 海报
@@ -72,6 +76,8 @@ class Subscribe(Base):
     note: Mapped[Optional[Any]] = mapped_column(JSON)
     # 状态：N-新建 R-订阅中 P-待定 S-暂停
     state: Mapped[str] = mapped_column(String, nullable=False, index=True, default="N")
+    # 最近一次主动搜索开始时间，使用带时区的 UTC 时间
+    last_search: Mapped[Optional[str]] = mapped_column(String)
     # 最后更新时间
     last_update: Mapped[Optional[str]] = mapped_column(String)
     # 创建时间
@@ -106,7 +112,9 @@ class Subscribe(Base):
     manual_total_episode: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     # 自定义识别词
     custom_words: Mapped[Optional[str]] = mapped_column(String)
-    # 自定义媒体类别
+    # 自定义媒体类别稳定标识
+    media_category_id: Mapped[Optional[str]] = mapped_column(String)
+    # 自定义媒体类别兼容路径快照
     media_category: Mapped[Optional[str]] = mapped_column(String)
     # 过滤规则组
     filter_groups: Mapped[Optional[Any]] = mapped_column(JSON, default=list)

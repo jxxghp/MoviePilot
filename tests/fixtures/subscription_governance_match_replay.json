@@ -1,0 +1,20 @@
+[
+  {
+    "name": "stable_12_episodes",
+    "initial_total_episode": 12,
+    "initial_lack_episode": 0,
+    "fresh_total_episode": 12,
+    "expected_total_episode": 12,
+    "expected_lack_episode": 0,
+    "expected_completed": true
+  },
+  {
+    "name": "expanded_to_13_episodes",
+    "initial_total_episode": 12,
+    "initial_lack_episode": 0,
+    "fresh_total_episode": 13,
+    "expected_total_episode": 13,
+    "expected_lack_episode": 1,
+    "expected_completed": false
+  }
+]

@@ -260,7 +260,7 @@ class PassKeyHelper:
     ) -> Tuple[str, str]:
         """
         生成注册选项
-        
+
         :param user_id: 用户ID
         :param username: 用户名
         :param display_name: 显示名称
@@ -318,7 +318,7 @@ class PassKeyHelper:
     ) -> Tuple[str, str, int, Optional[str]]:
         """
         验证注册响应
-        
+
         :param credential: 客户端返回的凭证
         :param expected_challenge: 期望的challenge
         :param expected_origin: 期望的源地址
@@ -374,7 +374,7 @@ class PassKeyHelper:
     ) -> Tuple[str, str]:
         """
         生成认证选项
-        
+
         :param existing_credentials: 已存在的凭证列表（用于限制可用凭证）
         :param user_verification: 用户验证要求，如果不指定则从配置中读取
         :return: (options_json, challenge)
@@ -417,7 +417,7 @@ class PassKeyHelper:
     ) -> Tuple[bool, int]:
         """
         验证认证响应
-        
+
         :param credential: 客户端返回的凭证
         :param expected_challenge: 期望的challenge
         :param credential_public_key: 凭证公钥
@@ -460,8 +460,16 @@ class PasskeyRepository(Protocol):
     def list(self) -> list[Any]:
         """列出全部启用凭证。"""
 
-    def list_by_user_id(self, user_id: int) -> List[Any]:
-        """列出指定用户凭证。"""
+    def list_by_user_id(
+        self,
+        user_id: int,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> List[Any]:
+        """按可选窗口列出指定用户凭证。"""
+
+    def count_by_user_id(self, user_id: int) -> int:
+        """返回指定用户启用凭证总数。"""
 
     def get_by_credential_id(self, credential_id: str) -> Optional[Any]:
         """按凭证 ID 查找凭证。"""
@@ -492,9 +500,20 @@ class PasskeyService:
         """列出全部启用凭证。"""
         return self._repository.list()
 
-    def list_by_user_id(self, user_id: int) -> List[Any]:
-        """列出指定用户凭证。"""
-        return self._repository.list_by_user_id(user_id)
+    def list_by_user_id(
+        self,
+        user_id: int,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> List[Any]:
+        """按可选数据库窗口列出指定用户凭证。"""
+        if page is None and count is None:
+            return self._repository.list_by_user_id(user_id)
+        return self._repository.list_by_user_id(user_id, page=page, count=count)
+
+    def count_by_user_id(self, user_id: int) -> int:
+        """返回指定用户启用凭证精确总数。"""
+        return self._repository.count_by_user_id(user_id)
 
     def get_by_credential_id(self, credential_id: str) -> Optional[Any]:
         """按凭证 ID 查找凭证。"""

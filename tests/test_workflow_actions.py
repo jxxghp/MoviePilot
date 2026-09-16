@@ -249,3 +249,79 @@ def test_workflow_manager_list_actions_exposes_contract():
     assert isinstance(actions[0]["data"], dict)
     assert actions[0]["contract"]["outputs"][0]["name"] == "torrents"
     assert actions[0]["contract"]["condition_fields"][0]["label"] == "资源"
+
+
+def test_add_download_only_lack_handles_schema_metainfo(monkeypatch):
+    """添加下载动作开启仅下载缺失资源时应支持 Schema MetaInfo 的 season_list 属性并正确过滤已存在剧集。"""
+    import app.workflow.actions.add_download as add_download_module
+    from app.schemas.context import (
+        Context as SchemaContext,
+    )
+    from app.schemas.context import (
+        MediaInfo as SchemaMediaInfo,
+    )
+    from app.schemas.context import (
+        MetaInfo as SchemaMetaInfo,
+    )
+    from app.schemas.context import (
+        TorrentInfo as SchemaTorrentInfo,
+    )
+    from app.schemas.types import MediaType
+    from app.workflow.actions.add_download import AddDownloadAction
+
+    downloaded = []
+
+    class FakeDownloadChain:
+        def media_exists(self, mediainfo):
+            # 模拟媒体库已存在第 1 季的第 1、2 集
+            return SimpleNamespace(seasons={1: [1, 2]})
+
+        def download_single(self, context=None, **kwargs):
+            downloaded.append(context.torrent_info.title)
+            return f"hash-{context.torrent_info.title}"
+
+    monkeypatch.setattr(add_download_module, "DownloadChain", FakeDownloadChain)
+    monkeypatch.setattr(add_download_module.runtime_stop_state, "is_workflow_stopped", lambda _wid: False)
+
+    action = AddDownloadAction("test-add-download")
+    action.check_cache = lambda _wid, _key: False
+    action.save_cache = lambda _wid, _key: None
+    action.job_done = lambda *_args, **_kwargs: None
+
+    # 1. 第 1 季第 1 集（已存在，跳过）
+    t1 = SchemaContext(
+        meta_info=SchemaMetaInfo(title="Show S01E01", type="电视剧", begin_season=1, episode_list=[1]),
+        media_info=SchemaMediaInfo(title="Show", type=MediaType.TV),
+        torrent_info=SchemaTorrentInfo(title="Show S01E01", site=1),
+    )
+    # 2. 第 1 季第 3 集（缺失，应下载）
+    t2 = SchemaContext(
+        meta_info=SchemaMetaInfo(title="Show S01E03", type="电视剧", begin_season=1, episode_list=[3]),
+        media_info=SchemaMediaInfo(title="Show", type=MediaType.TV),
+        torrent_info=SchemaTorrentInfo(title="Show S01E03", site=1),
+    )
+    # 3. 多季资源（有多季，跳过）
+    t3 = SchemaContext(
+        meta_info=SchemaMetaInfo(title="Show S01-S02", type="电视剧", begin_season=1, end_season=2, episode_list=[1]),
+        media_info=SchemaMediaInfo(title="Show", type=MediaType.TV),
+        torrent_info=SchemaTorrentInfo(title="Show S01-S02", site=1),
+    )
+    # 4. 未显式标季但为电视剧（begin_season=None，默认归入第 1 季；第 1 集已存在，跳过）
+    t4 = SchemaContext(
+        meta_info=SchemaMetaInfo(title="Show Ep01", type="电视剧", begin_season=None, episode_list=[1]),
+        media_info=SchemaMediaInfo(title="Show", type=MediaType.TV),
+        torrent_info=SchemaTorrentInfo(title="Show Ep01", site=1),
+    )
+    # 5. 未显式标季但为电视剧（begin_season=None，默认归入第 1 季；第 4 集缺失，应下载）
+    t5 = SchemaContext(
+        meta_info=SchemaMetaInfo(title="Show Ep04", type="电视剧", begin_season=None, episode_list=[4]),
+        media_info=SchemaMediaInfo(title="Show", type=MediaType.TV),
+        torrent_info=SchemaTorrentInfo(title="Show Ep04", site=1),
+    )
+
+    context = ActionContext(torrents=[t1, t2, t3, t4, t5])
+    result = action.execute(workflow_id=1, params={"only_lack": True}, context=context)
+
+    assert downloaded == ["Show S01E03", "Show Ep04"]
+    assert len(result.downloads) == 2
+    assert [d.download_id for d in result.downloads] == ["hash-Show S01E03", "hash-Show Ep04"]

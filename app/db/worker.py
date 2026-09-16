@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextvars import copy_context
 from dataclasses import dataclass
-from typing import Callable, TypeVar
+from typing import Callable, TypeVar, cast
 
+from app.runtime.observability import record_metric
 from app.schemas.exception import (
     DatabaseWorkerClosedError,
     DatabaseWorkerOverloadedError,
 )
-from app.runtime.observability import record_metric
-
 
 T = TypeVar("T")
 
@@ -99,7 +99,7 @@ class DatabaseWorker:
             )
 
     async def run(self, operation: Callable[[], T]) -> T:
-        """执行短事务，取消时仍等待已开始的事务取得最终结果。"""
+        """执行短事务；结果发布和取消返回均晚于容量回收，取消仍等待已开始事务收口。"""
         loop = asyncio.get_running_loop()
         executor = self._executor
         if executor is None or self._loop is not loop or self._closing:
@@ -124,7 +124,8 @@ class DatabaseWorker:
             self._record_depth()
             raise
 
-        wrapped = asyncio.wrap_future(future, loop=loop)
+        # 不能直接 wrap native Future：其结果转发可能先于完成记账，晚注册回调还会立即执行。
+        wrapped: asyncio.Future[object] = loop.create_future()
         with self._state_lock:
             self._futures[future] = (wrapped, item)
         future.add_done_callback(
@@ -133,10 +134,10 @@ class DatabaseWorker:
         self._record_depth()
 
         try:
-            return await asyncio.shield(wrapped)
+            return cast(T, await asyncio.shield(wrapped))
         except asyncio.CancelledError:
-            if not future.cancel():
-                await self._wait_until_done(wrapped)
+            future.cancel()
+            await self._wait_until_done(wrapped)
             if wrapped.done() and not wrapped.cancelled():
                 wrapped.exception()
             raise
@@ -181,19 +182,14 @@ class DatabaseWorker:
             pass
 
     def _complete(self, future: Future[object], item: _WorkItem) -> None:
-        """释放 admission，并记录任务的最终结果。"""
+        """先释放 admission，再发布最终结果；同一事件循环回调保证调用方观察顺序。"""
         with self._state_lock:
-            self._futures.pop(future, None)
+            wrapped, _ = self._futures.pop(future)
             if future.running() or future.done() and not future.cancelled():
                 self._running -= 1
             else:
                 self._queued -= 1
-        outcome = "cancelled" if future.cancelled() else "success"
-        if not future.cancelled():
-            try:
-                future.result()
-            except BaseException:
-                outcome = "error"
+        outcome = self._publish_result(future, wrapped)
         started_at = item.started_at or item.submitted_at
         record_metric(
             "db.worker.duration",
@@ -201,6 +197,27 @@ class DatabaseWorker:
             outcome=outcome,
         )
         self._record_depth()
+
+    @staticmethod
+    def _publish_result(future: Future[object], wrapped: asyncio.Future[object]) -> str:
+        """保留原 wrap_future 的取消和异常翻译合同，不调用 asyncio 私有实现。"""
+        if future.cancelled():
+            wrapped.cancel()
+            return "cancelled"
+        try:
+            result = future.result()
+        except BaseException as error:
+            exception_types: dict[type[BaseException], type[BaseException]] = {
+                concurrent.futures.CancelledError: asyncio.CancelledError,
+                concurrent.futures.InvalidStateError: asyncio.InvalidStateError,
+            }
+            exception_type = exception_types.get(type(error))
+            if exception_type is not None:
+                error = exception_type(*error.args).with_traceback(error.__traceback__)
+            wrapped.set_exception(error)
+            return "error"
+        wrapped.set_result(result)
+        return "success"
 
     async def _wait_until_done(
         self,

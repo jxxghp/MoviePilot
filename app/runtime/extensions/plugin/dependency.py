@@ -35,12 +35,14 @@ class PluginDependencyService:
         *,
         system: Callable[[], PluginSystemServices],
         instances: Optional[Callable[[], dict[str, PluginInstance]]] = None,
+        loadable_hosts: Optional[Callable[[], set[str]]] = None,
         registry: Optional[PluginRegistry] = None,
         log: Any,
     ) -> None:
-        """保存插件系统、虚拟实例和运行状态端口。"""
+        """保存插件系统、应装载实例、应装载本体和运行状态端口。"""
         self._system = system
         self._instances = instances or (lambda: {})
+        self._loadable_hosts = loadable_hosts
         self._registry = registry
         self._logger = log
 
@@ -95,10 +97,25 @@ class PluginDependencyService:
         return self._complete_missing_install(missing, success, started_at)
 
     def classify_plugins(self) -> PluginDependencyClassification:
-        """分类物理插件，并把源码结论映射到全部虚拟实例。"""
+        """分类应当装载的物理插件，并把源码结论映射到应当装载的虚拟实例。
+
+        物理插件那一层按安装清单划分，而安装清单只回答「包在不在磁盘上」；分类结果
+        随后会被逐个 ``start()``，因此这里必须先按启用位过滤掉停用的本体，否则停用
+        的插件会在开机与配置热重载时被重新拉起来，启用位形同虚设。三个桶一起过滤：
+        停用的插件既不该被装载，也不该为它安装缺失依赖。
+        """
         ready, missing_dependencies, missing_source = (
             self._system().dependency.classify_plugins()
         )
+        loadable = self._loadable_hosts() if self._loadable_hosts is not None else None
+        if loadable is not None:
+            ready = [plugin_id for plugin_id in ready if plugin_id in loadable]
+            missing_dependencies = [
+                plugin_id for plugin_id in missing_dependencies if plugin_id in loadable
+            ]
+            missing_source = [
+                plugin_id for plugin_id in missing_source if plugin_id in loadable
+            ]
         ready = list(ready)
         missing_dependencies = list(missing_dependencies)
         missing_source = list(missing_source)

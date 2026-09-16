@@ -16,6 +16,11 @@ from app.application.history import (
     TransferHistoryStatisticSnapshot,
     TransferHistoryWrite,
 )
+from app.application.history.retry import (
+    failed_retry_count,
+    max_failed_retries,
+)
+from app.application.transfer.feedback import cleanup_update_fields
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.schemas.media import normalize_media_source
@@ -35,6 +40,61 @@ def project_transfer_history(record: object) -> TransferHistorySnapshot:
     if not media_source or not media_id or media_id == "0":
         media_source = None
         media_id = None
+    source_payload = getattr(record, "src_fileitem", None)
+    source_size = source_payload.get("size") if isinstance(source_payload, dict) else None
+    source_modify_time = (
+        source_payload.get("modify_time") if isinstance(source_payload, dict) else None
+    )
+    source_fileid = source_payload.get("fileid") if isinstance(source_payload, dict) else None
+    persisted_retry_count = getattr(record, "retry_count", None)
+    try:
+        parsed_persisted_retry_count = (
+            max(int(persisted_retry_count), 0)
+            if persisted_retry_count is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        parsed_persisted_retry_count = None
+    status = bool(getattr(record, "status", False))
+    retry_count = (
+        parsed_persisted_retry_count
+        if parsed_persisted_retry_count is not None
+        else (
+            failed_retry_count(
+                getattr(record, "src", None),
+                getattr(record, "src_storage", None),
+                file_size=source_size,
+                file_modify_time=source_modify_time,
+                fileid=source_fileid,
+            )
+            if not status
+            else 0
+        )
+    )
+    retry_exhausted = bool(getattr(record, "auto_paused", False)) or (
+        retry_count >= max_failed_retries() if retry_count else False
+    )
+    failure_stage = getattr(record, "failure_stage", None)
+    recovery_action = getattr(record, "recovery_action", None)
+    cleanup_status = getattr(record, "cleanup_status", None)
+    if cleanup_status == "failed":
+        # 入库成功但下载器清理失败是独立终态，不能被 errmsg 为空时的默认
+        # transfer 阶段覆盖，否则历史页会给出错误的排障方向。
+        from app.application.transfer.feedback import classify_transfer_failure
+
+        cleanup_feedback = classify_transfer_failure("下载器清理失败")
+        failure_stage = failure_stage or cleanup_feedback.stage.value
+        recovery_action = recovery_action or cleanup_feedback.action
+    elif not status and (not failure_stage or not recovery_action):
+        from app.application.transfer.feedback import classify_transfer_failure
+
+        feedback = classify_transfer_failure(getattr(record, "errmsg", None))
+        failure_stage = failure_stage or feedback.stage.value
+        recovery_action = recovery_action or feedback.action
+    elif status:
+        # 成功记录的失败字段不能被历史投影中的默认反馈重新带出，避免误导前端。
+        failure_stage = None
+        recovery_action = None
     return TransferHistorySnapshot(
         id=history_id,
         transfer_task_id=getattr(record, "transfer_task_id", None),
@@ -51,7 +111,15 @@ def project_transfer_history(record: object) -> TransferHistorySnapshot:
         dest_fileitem=deepcopy(getattr(record, "dest_fileitem", None)),
         mode=getattr(record, "mode", None),
         type=getattr(record, "type", None),
+        media_category_id=getattr(record, "media_category_id", None),
         category=getattr(record, "category", None),
+        classification_rule_id=getattr(record, "classification_rule_id", None),
+        classification_policy_revision=getattr(
+            record,
+            "classification_policy_revision",
+            None,
+        ),
+        classification_source=getattr(record, "classification_source", None),
         title=getattr(record, "title", None),
         year=getattr(record, "year", None),
         media_source=media_source,
@@ -68,8 +136,15 @@ def project_transfer_history(record: object) -> TransferHistorySnapshot:
         image=getattr(record, "image", None),
         downloader=getattr(record, "downloader", None),
         download_hash=getattr(record, "download_hash", None),
-        status=bool(getattr(record, "status", False)),
+        status=status,
         errmsg=getattr(record, "errmsg", None),
+        failure_stage=failure_stage,
+        recovery_action=recovery_action,
+        retry_count=retry_count,
+        retry_exhausted=retry_exhausted,
+        auto_paused=bool(getattr(record, "auto_paused", False)) or retry_exhausted,
+        cleanup_status=cleanup_status,
+        cleanup_error=getattr(record, "cleanup_error", None),
         date=getattr(record, "date", None),
         files=deepcopy(getattr(record, "files", None)),
         episode_group=getattr(record, "episode_group", None),
@@ -178,6 +253,18 @@ class TransactionalTransferHistoryRepository:
                 else None
             )
         )
+
+    async def async_get_by_transfer_task_id(
+        self,
+        *,
+        task_id: str,
+    ) -> Optional[TransferHistorySnapshot]:
+        """异步按 durable 整理任务标识返回终态历史快照。"""
+        async with self._async_session() as session:
+            record = await TransferHistoryOper(session).async_get_by_transfer_task_id(
+                task_id=task_id
+            )
+            return project_transfer_history(record) if record is not None else None
 
     def get_by_media_identity(
         self,
@@ -372,6 +459,20 @@ class TransactionalTransferHistoryRepository:
             )
         )
 
+    def update_cleanup_status(
+            self,
+            history_id: int,
+            status: str,
+            error: Optional[str] = None,
+    ) -> None:
+        """在独立事务中记录媒体入库后的下载器清理结果。"""
+        self._write(
+            lambda repository: repository.stage_update_cleanup_status(
+                history_id,
+                cleanup_update_fields(status, error),
+            )
+        )
+
 
 class SessionTransferHistoryRepository:
     """把 API 请求持有的同步 Session 适配为整理历史查询和暂存端口。"""
@@ -399,3 +500,15 @@ class SessionTransferHistoryRepository:
     def stage_truncate(self) -> None:
         """在请求 Session 内暂存全部旧整理历史删除。"""
         TransferHistoryOper(self._session).stage_truncate()
+
+    def stage_update_cleanup_status(
+        self,
+        history_id: int,
+        cleanup_status: str,
+        cleanup_error: Optional[str] = None,
+    ) -> None:
+        """在请求 Session 内暂存下载器清理状态更新。"""
+        TransferHistoryOper(self._session).stage_update_cleanup_status(
+            history_id,
+            cleanup_update_fields(cleanup_status, cleanup_error),
+        )

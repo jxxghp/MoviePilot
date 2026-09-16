@@ -1,9 +1,14 @@
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
-from app.application.transfer.workflow import TransferPlanCheckpoint, TransferPlanningInput
+from app.application.transfer.workflow import (
+    TransferPlanCheckpoint,
+    TransferPlanItem,
+    TransferPlanningInput,
+)
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.modules.filemanager import transhandler as transhandler_module
@@ -575,3 +580,70 @@ def test_directory_intercept_preserves_legacy_payload(monkeypatch):
     assert payload.options is None
     assert "meta" not in payload.model_fields_set
     assert "options" not in payload.model_fields_set
+
+
+def test_directory_intercept_step_uses_frozen_source_after_size_projection():
+    """目录执行期修正根目录大小时，持久拦截意图仍使用冻结源快照。"""
+    root = FileItem(
+        storage="alist",
+        path="/downloads/disc",
+        name="disc",
+        type="dir",
+    )
+    stream = FileItem(
+        storage="alist",
+        path="/downloads/disc/BDMV/STREAM/00001.m2ts",
+        name="00001.m2ts",
+        type="file",
+        extension="m2ts",
+        size=123,
+    )
+    planning_input = TransferPlanningInput(
+        source_fileitem=root.model_dump(mode="json"),
+        target_storage="alist",
+        target_path="/library",
+        requested_transfer_type="copy",
+        need_rename=False,
+    )
+    checkpoint = TransferPlanCheckpoint(
+        planning_input=planning_input,
+        target_storage="alist",
+        root_target_path="/library/disc",
+        final_target_path="/library/disc",
+        resolved_transfer_type="copy",
+        items=(TransferPlanItem(
+            sequence=0,
+            source_fileitem=stream.model_dump(mode="json"),
+            target_storage="alist",
+            target_path="/library/disc/BDMV/STREAM/00001.m2ts",
+        ),),
+        need_rename=False,
+        overwrite_mode="never",
+    )
+    runner = Mock()
+    steps = []
+
+    def run_step(*, phase, kind, payload, execute, observe):
+        """模拟 durable runner，并记录其接受的冻结步骤意图。"""
+        steps.append((phase, kind, payload))
+        return execute()
+
+    runner.run.side_effect = run_step
+    storage = RecordingStorage([])
+
+    result = TransHandler().execute_transfer_plan(
+        checkpoint,
+        meta=_build_media()[0],
+        mediainfo=_build_media()[1],
+        source_oper=storage,
+        target_oper=storage,
+        step_runner=runner,
+    )
+
+    assert result.success is True
+    intercept = next(
+        payload
+        for _phase, kind, payload in steps
+        if kind == "plugin_transfer_intercept"
+    )
+    assert intercept["source"] == planning_input.source_fileitem

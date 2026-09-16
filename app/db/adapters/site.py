@@ -247,17 +247,51 @@ class TransactionalSiteRepository:
 
         return await self._async_read(operation)
 
-    async def async_list_order_by_pri(self) -> builtins.list[SiteSnapshot]:
-        """异步按优先级读取站点快照。"""
+    async def async_list_order_by_pri(
+        self,
+        *,
+        is_active: Optional[bool] = None,
+        name: Optional[str] = None,
+        site_ids: Optional[builtins.list[int]] = None,
+        domains: Optional[builtins.list[str]] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> builtins.list[SiteSnapshot]:
+        """按筛选、优先级和可选分页窗口异步读取站点快照。"""
 
         async def operation(
             repository: SiteOper,
         ) -> builtins.list[SiteSnapshot]:
-            """读取并在当前异步 Session 中投影排序后的站点。"""
-            records = await repository.async_list_order_by_pri()
+            """读取并在当前异步 Session 中投影筛选后的站点。"""
+            records = await repository.async_list_order_by_pri(
+                is_active=is_active,
+                name=name,
+                site_ids=site_ids,
+                domains=domains,
+                page=page,
+                count=count,
+            )
             return [_project_site(item) for item in records]
 
         return await self._async_read(operation)
+
+    async def async_count_sites(
+        self,
+        *,
+        is_active: Optional[bool] = None,
+        name: Optional[str] = None,
+        site_ids: Optional[builtins.list[int]] = None,
+        domains: Optional[builtins.list[str]] = None,
+    ) -> int:
+        """按与站点列表一致的筛选条件异步统计数量。"""
+        return await self._async_read(
+            lambda repository: repository.async_count_sites(
+                is_active=is_active,
+                name=name,
+                site_ids=site_ids,
+                domains=domains,
+            )
+        )
 
     async def async_list_active(self) -> builtins.list[SiteSnapshot]:
         """异步读取已启用站点快照。"""
@@ -275,8 +309,11 @@ class TransactionalSiteRepository:
         self,
         domain: str,
         workdate: Optional[str] = None,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SiteUserDataSnapshot]:
-        """异步读取指定域名和日期的用户数据快照。"""
+        """按可选分页窗口异步读取指定域名和日期的用户数据快照。"""
 
         async def operation(
             repository: SiteOper,
@@ -285,24 +322,51 @@ class TransactionalSiteRepository:
             records = await repository.async_get_userdata_by_domain(
                 domain,
                 workdate,
+                page=page,
+                count=count,
             )
             return [_project_userdata(item) for item in records]
 
         return await self._async_read(operation)
 
+    async def async_count_userdata_by_domain(
+        self,
+        domain: str,
+        workdate: Optional[str] = None,
+    ) -> int:
+        """异步统计指定域名和日期的用户数据数量。"""
+        return await self._async_read(
+            lambda repository: repository.async_count_userdata_by_domain(
+                domain,
+                workdate,
+            )
+        )
+
     async def async_get_userdata_latest(
         self,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SiteUserDataSnapshot]:
-        """异步读取各站点最新用户数据快照。"""
+        """按可选分页窗口异步读取各站点最新用户数据快照。"""
 
         async def operation(
             repository: SiteOper,
         ) -> builtins.list[SiteUserDataSnapshot]:
             """读取并在当前异步 Session 中投影最新用户数据。"""
-            records = await repository.async_get_userdata_latest()
+            records = await repository.async_get_userdata_latest(
+                page=page,
+                count=count,
+            )
             return [_project_userdata(item) for item in records]
 
         return await self._async_read(operation)
+
+    async def async_count_userdata_latest(self) -> int:
+        """异步统计各站点最新用户数据查询的结果数量。"""
+        return await self._async_read(
+            lambda repository: repository.async_count_userdata_latest()
+        )
 
     async def async_get_icon_by_domain(
         self,
@@ -334,17 +398,29 @@ class TransactionalSiteRepository:
 
     async def async_list_statistics(
         self,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SiteStatisticSnapshot]:
-        """异步读取全部站点健康统计快照。"""
+        """按可选分页窗口异步读取站点健康统计快照。"""
 
         async def operation(
             repository: SiteOper,
         ) -> builtins.list[SiteStatisticSnapshot]:
             """读取并在当前异步 Session 中投影全部统计。"""
-            records = await repository.async_list_statistics()
+            records = await repository.async_list_statistics(
+                page=page,
+                count=count,
+            )
             return [_project_statistic(item) for item in records]
 
         return await self._async_read(operation)
+
+    async def async_count_statistics(self) -> int:
+        """异步统计站点健康统计记录数量。"""
+        return await self._async_read(
+            lambda repository: repository.async_count_statistics()
+        )
 
     def add(self, mutation: SiteMutation) -> SiteWriteResult:
         """在独立同步事务中新增站点。"""
@@ -486,10 +562,42 @@ class SessionSiteRepository:
         records = await self._repository.async_list()
         return [_project_site(item) for item in records]
 
-    async def async_list_order_by_pri(self) -> builtins.list[SiteSnapshot]:
-        """在请求 Session 中按优先级读取站点快照。"""
-        records = await self._repository.async_list_order_by_pri()
+    async def async_list_order_by_pri(
+        self,
+        *,
+        is_active: Optional[bool] = None,
+        name: Optional[str] = None,
+        site_ids: Optional[builtins.list[int]] = None,
+        domains: Optional[builtins.list[str]] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> builtins.list[SiteSnapshot]:
+        """在请求 Session 中按筛选、优先级和分页窗口读取站点。"""
+        records = await self._repository.async_list_order_by_pri(
+            is_active=is_active,
+            name=name,
+            site_ids=site_ids,
+            domains=domains,
+            page=page,
+            count=count,
+        )
         return [_project_site(item) for item in records]
+
+    async def async_count_sites(
+        self,
+        *,
+        is_active: Optional[bool] = None,
+        name: Optional[str] = None,
+        site_ids: Optional[builtins.list[int]] = None,
+        domains: Optional[builtins.list[str]] = None,
+    ) -> int:
+        """在请求 Session 中按列表筛选统计站点数量。"""
+        return await self._repository.async_count_sites(
+            is_active=is_active,
+            name=name,
+            site_ids=site_ids,
+            domains=domains,
+        )
 
     async def async_list_active(self) -> builtins.list[SiteSnapshot]:
         """在请求 Session 中读取已启用站点快照。"""
@@ -500,20 +608,46 @@ class SessionSiteRepository:
         self,
         domain: str,
         workdate: Optional[str] = None,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SiteUserDataSnapshot]:
-        """在请求 Session 中读取指定站点用户数据快照。"""
+        """在请求 Session 中按可选分页窗口读取站点用户数据快照。"""
         records = await self._repository.async_get_userdata_by_domain(
             domain,
             workdate,
+            page=page,
+            count=count,
         )
         return [_project_userdata(item) for item in records]
 
+    async def async_count_userdata_by_domain(
+        self,
+        domain: str,
+        workdate: Optional[str] = None,
+    ) -> int:
+        """在请求 Session 中统计指定站点和日期的用户数据数量。"""
+        return await self._repository.async_count_userdata_by_domain(
+            domain,
+            workdate,
+        )
+
     async def async_get_userdata_latest(
         self,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SiteUserDataSnapshot]:
-        """在请求 Session 中读取各站点最新用户数据快照。"""
-        records = await self._repository.async_get_userdata_latest()
+        """在请求 Session 中按可选分页窗口读取最新用户数据快照。"""
+        records = await self._repository.async_get_userdata_latest(
+            page=page,
+            count=count,
+        )
         return [_project_userdata(item) for item in records]
+
+    async def async_count_userdata_latest(self) -> int:
+        """在请求 Session 中统计各站点最新用户数据结果数量。"""
+        return await self._repository.async_count_userdata_latest()
 
     async def async_get_icon_by_domain(
         self,
@@ -533,10 +667,20 @@ class SessionSiteRepository:
 
     async def async_list_statistics(
         self,
+        *,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SiteStatisticSnapshot]:
-        """在请求 Session 中读取全部站点统计快照。"""
-        records = await self._repository.async_list_statistics()
+        """在请求 Session 中按可选分页窗口读取站点统计快照。"""
+        records = await self._repository.async_list_statistics(
+            page=page,
+            count=count,
+        )
         return [_project_statistic(item) for item in records]
+
+    async def async_count_statistics(self) -> int:
+        """在请求 Session 中统计站点健康统计记录数量。"""
+        return await self._repository.async_count_statistics()
 
     async def stage_create(self, mutation: SiteMutation) -> None:
         """在请求事务中暂存新增站点。"""

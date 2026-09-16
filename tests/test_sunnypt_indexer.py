@@ -38,7 +38,6 @@ class _FakeResponse:
         """模拟释放短生命周期响应。"""
 
 
-
 @pytest.fixture(autouse=True)
 def clear_sunnypt_category_cache():
     """在用例前后清理 SunnyPT 分类缓存，避免进程级状态互相污染。"""
@@ -474,11 +473,11 @@ def test_indirect_download_does_not_log_or_cache_temporary_url(monkeypatch):
         fake_post_res,
     )
     monkeypatch.setattr(
-            "app.chain.download.submission.TorrentHelper.download_torrent",
+        "app.chain.download.submission.TorrentHelper.download_torrent",
         fake_download_torrent,
     )
     monkeypatch.setattr(
-            "app.chain.download.submission.logger",
+        "app.chain.download.submission.logger",
         SimpleNamespace(info=capture_log, error=capture_log),
     )
     enclosure = SunnyPTSpider(_build_indexer())._build_download_url(123)

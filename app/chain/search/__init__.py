@@ -1,7 +1,10 @@
 """搜索 Chain 的惰性稳定公开入口。"""
 
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.chain.search.facade import SearchChain
 
 _EXPORTS = {
     "SearchChain": ("app.chain.search.facade", "SearchChain"),

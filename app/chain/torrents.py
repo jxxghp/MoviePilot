@@ -1,19 +1,20 @@
-import copy
 import re
 import traceback
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union, cast
 
 from app.application.configuration import get_configured_system_config
 from app.application.rss import RssHelper
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.application.subscription.candidates import CandidateIndex
 from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.media import MediaChain
 from app.domain import site as site_rules
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
+from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.foundation import text as text_tools
+from app.foundation.url import UrlUtils
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.media import resolve_media_identity
@@ -162,195 +163,89 @@ class TorrentsChain(ChainBase):
         主程序只提供缓存读取与轻量候选筛选，不在这里判断站点证据能否扩展
         订阅目标或放行完成；标题兜底候选会显式标记为低置信来源。
         """
-        results: List[Context] = []
-        for contexts in (self.get_torrents(stype=stype) or {}).values():
-            for context in contexts or []:
-                if not context:
-                    continue
-                copied = copy.deepcopy(context)
-                if self._context_matches_subscribe(copied, subscribe):
-                    results.append(copied)
-                    continue
-                if allow_title_match and self._context_title_matches_subscribe(copied, subscribe):
-                    self._mark_title_match_candidate(copied, subscribe)
-                    results.append(copied)
-        return results
+        candidates = {
+            domain: [context for context in contexts or [] if context]
+            for domain, contexts in (self.get_torrents(stype=stype) or {}).items()
+        }
+        return CandidateIndex(candidates).select_cache_candidates(
+            subscribe,
+            allow_title_match=allow_title_match,
+        )
 
     @classmethod
     def _context_matches_subscribe(cls, context: Context, subscribe) -> bool:
         """
         严格身份匹配：候选自身识别出的媒体 ID 命中订阅，且季信息不排除订阅季。
         """
-        if not cls._context_media_type_matches(context, subscribe):
-            return False
-        if not cls._context_season_matches_subscribe(context, subscribe):
-            return False
-
-        subscribe_identity = resolve_media_identity(media=subscribe)
-        context_identities = cls._context_media_identities(context)
-
-        return bool(all(subscribe_identity) and subscribe_identity in context_identities)
+        return CandidateIndex.strict_matches(context, subscribe)
 
     @classmethod
     def _context_title_matches_subscribe(cls, context: Context, subscribe) -> bool:
         """
         标题兜底只服务诊断：仅允许身份缺失候选按标题命中，显式冲突 ID 不兜底。
         """
-        if cls._context_has_media_identity(context):
-            return False
-        if not cls._context_media_type_matches(context, subscribe):
-            return False
-        if not cls._context_season_matches_subscribe(context, subscribe):
-            return False
-
-        subscribe_title = cls._normalize_title(getattr(subscribe, "name", None))
-        if not subscribe_title:
-            return False
-
-        meta_info = getattr(context, "meta_info", None)
-        torrent_info = getattr(context, "torrent_info", None)
-        candidate_titles = [
-            getattr(torrent_info, "title", None),
-            getattr(meta_info, "title", None),
-            getattr(meta_info, "name", None),
-        ]
-        return any(
-            subscribe_title in candidate_title
-            for candidate_title in (cls._normalize_title(title) for title in candidate_titles)
-            if candidate_title
-        )
+        return CandidateIndex.title_matches(context, subscribe)
 
     @staticmethod
     def _mark_title_match_candidate(context: Context, subscribe) -> None:
         """
         标记标题兜底候选，避免下游把目标媒体回填误认为候选自身识别结果。
         """
-        context.match_source = "title"
-        context.candidate_recognized = False
-        context.media_info_is_target = True
-        context.media_info = MediaInfo(
-            type=getattr(subscribe, "type", None),
-            title=getattr(subscribe, "name", None),
-            media_source=getattr(subscribe, "media_source", None),
-            media_id=getattr(subscribe, "media_id", None),
-            season=getattr(subscribe, "season", None),
-        )
+        CandidateIndex.mark_title_candidate(context, subscribe)
 
     @classmethod
     def _context_media_type_matches(cls, context: Context, subscribe) -> bool:
         """
         类型已知且冲突时拒绝；缺失类型不作为缓存候选过滤条件。
         """
-        subscribe_type = cls._normalize_media_type(getattr(subscribe, "type", None))
-        media_info = getattr(context, "media_info", None)
-        meta_info = getattr(context, "meta_info", None)
-        context_types = {
-            cls._normalize_media_type(value)
-            for value in (
-                getattr(media_info, "type", None),
-                getattr(meta_info, "type", None),
-            )
-        }
-        context_types.discard(None)
-        return not subscribe_type or not context_types or all(
-            context_type == subscribe_type for context_type in context_types
-        )
+        return CandidateIndex.media_type_matches(context, subscribe)
 
     @classmethod
     def _context_season_matches_subscribe(cls, context: Context, subscribe) -> bool:
         """
         资源季信息只要明确排除订阅季就拒绝；跨季覆盖目标季留给插件诊断。
         """
-        target_season = cls._normalize_int(getattr(subscribe, "season", None))
-        if target_season is None:
-            return True
-
-        meta_info = getattr(context, "meta_info", None)
-        explicit_meta_seasons = cls._context_meta_seasons(meta_info)
-        if explicit_meta_seasons:
-            return target_season in explicit_meta_seasons
-
-        media_info = getattr(context, "media_info", None)
-        media_season = cls._normalize_int(getattr(media_info, "season", None))
-        return media_season is None or target_season == media_season
+        return CandidateIndex.season_matches(context, subscribe)
 
     @classmethod
     def _context_meta_seasons(cls, meta_info) -> set[int]:
         """
         提取标题解析出的显式季范围；多季包以该范围为准。
         """
-        meta_fields = vars(meta_info) if meta_info else {}
-        if "season_list" in meta_fields:
-            season_list = {
-                season
-                for season in (
-                    cls._normalize_int(item)
-                    for item in (meta_fields.get("season_list") or [])
-                )
-                if season is not None
-            }
-            if season_list:
-                return season_list
-        begin_season = cls._normalize_int(getattr(meta_info, "begin_season", None))
-        end_season = cls._normalize_int(getattr(meta_info, "end_season", None))
-        if begin_season is not None and end_season is not None:
-            start, end = sorted((begin_season, end_season))
-            return set(range(start, end + 1))
-        if begin_season is not None:
-            return {begin_season}
-        if end_season is not None:
-            return {end_season}
-        return set()
+        return CandidateIndex.meta_seasons(meta_info)
 
     @staticmethod
     def _context_has_media_identity(context: Context) -> bool:
         """
         判断候选是否已经带有明确媒体 ID。
         """
-        return bool(TorrentsChain._context_media_identities(context))
+        return bool(CandidateIndex.context_identities(context))
 
     @staticmethod
     def _context_media_identities(context: Context) -> set[tuple[str, str]]:
         """提取候选媒体信息与标题标签中的通用媒体身份。"""
-        identities = {
-            resolve_media_identity(media=getattr(context, "media_info", None)),
-            resolve_media_identity(media=getattr(context, "meta_info", None)),
-        }
-        return {
-            (str(source), media_id)
-            for source, media_id in identities
-            if source and media_id
-        }
+        return CandidateIndex.context_identities(context)
 
     @staticmethod
     def _normalize_int(value) -> Optional[int]:
         """
         将季号等动态字段转为 int，无法解析时视为缺失。
         """
-        if value is None:
-            return None
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
+        return CandidateIndex.normalize_int(value)
 
     @staticmethod
     def _normalize_media_type(value) -> Optional[str]:
         """
         统一 MediaType 枚举与字符串形态。
         """
-        if isinstance(value, MediaType):
-            value = value.value
-        if value == MediaType.UNKNOWN.value:
-            return None
-        return value
+        return CandidateIndex.normalize_media_type(value)
 
     @staticmethod
     def _normalize_title(value) -> str:
         """
         归一标题用于低置信标题兜底匹配。
         """
-        return (text_tools.normalize_upper(value or "") or "").strip()
+        return CandidateIndex.normalize_title(value)
 
     def clear_torrents(self):
         """
@@ -424,11 +319,12 @@ class TorrentsChain(ChainBase):
         if not site:
             logger.error(f'站点 {domain} 不存在！')
             return []
-        if not site.get("rss"):
-            logger.error(f'站点 {domain} 未配置RSS地址！')
+        rss_url = UrlUtils.normalize_http_url(site.get("rss"))
+        if rss_url is None:
+            logger.warning(f'站点 {domain} RSS地址无效，跳过获取')
             return []
         # 解析RSS
-        rss_items = RssHelper().parse(site.get("rss"), True if site.get("proxy") else False,
+        rss_items = RssHelper().parse(rss_url, True if site.get("proxy") else False,
                                       timeout=int(site.get("timeout") or 30),
                                       ua=site.get("ua") if site.get("ua") else None)
         if rss_items is None:
@@ -598,27 +494,31 @@ class TorrentsChain(ChainBase):
     def _build_refresh_context(self, torrent: TorrentInfo, stype: str) -> Context:
         """识别单个种子并构造缓存上下文。"""
         logger.info(f'处理资源：{torrent.title} ...')
+        meta: MetaBase
+        mediainfo: MediaInfo | MusicInfo
         if torrent.category == MediaType.MUSIC.value:
-            meta = MetaMusic.parse_query(torrent.title)
-            mediainfo = MusicInfo(
-                title=meta.title,
-                artists=list(meta.artists),
-                album=meta.album,
-                year=meta.year,
-                names=[meta.title] if meta.title else [],
-            )
+            meta = MetaInfo(title=torrent.title, subtitle=torrent.description, mtype=MediaType.MUSIC)
+            mediainfo = MusicInfo.from_meta(cast(MetaMusic, meta))
             candidate_recognized = False
             match_source = "unknown"
         else:
-            meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
-            if torrent.title != meta.org_string:
-                logger.info(f'种子名称应用识别词后发生改变：{torrent.title} => {meta.org_string}')
-            if meta.type != MediaType.TV and torrent.category == MediaType.TV.value:
-                meta.type = MediaType.TV
-            mediainfo = MediaChain().recognize_by_meta(meta, obtain_images=False) or MediaInfo()
-            mediainfo.clear()
-            candidate_recognized = bool(mediainfo and all(resolve_media_identity(media=mediainfo)))
-            match_source = self._get_media_id_match_source(mediainfo)
+            video_meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
+            if torrent.title != video_meta.org_string:
+                logger.info(
+                    f'种子名称应用识别词后发生改变：{torrent.title} => {video_meta.org_string}'
+                )
+            if video_meta.type != MediaType.TV and torrent.category == MediaType.TV.value:
+                video_meta.type = MediaType.TV
+            video_mediainfo = (
+                MediaChain().recognize_by_meta(video_meta, obtain_images=False) or MediaInfo()
+            )
+            video_mediainfo.clear()
+            candidate_recognized = bool(
+                video_mediainfo and all(resolve_media_identity(media=video_mediainfo))
+            )
+            match_source = self._get_media_id_match_source(video_mediainfo)
+            meta = video_meta
+            mediainfo = video_mediainfo
         context = Context(
             meta_info=meta,
             media_info=mediainfo,
@@ -640,13 +540,13 @@ class TorrentsChain(ChainBase):
             include_music: bool = False,
     ) -> Dict[str, List[Context]]:
         """
-        刷新站点最新资源，识别并缓存起来
+        刷新站点最新资源并返回本轮可匹配的完整候选缓存。
+
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         :param sites: 强制指定站点ID列表，为空则读取设置的订阅站点
         :param progress_callback: 资源刷新进度更新回调
         :param include_music: 是否额外抓取站点的音乐专用浏览入口，服务音乐订阅
         """
-
         # 刷新类型
         if not stype:
             stype = self.runtime_config.subscribe_mode
@@ -727,12 +627,10 @@ class TorrentsChain(ChainBase):
                 data={"total": total_indexers, "finished": total_indexers},
             )
 
-        # 订阅匹配需要完整候选，音乐独立缓存在返回值中按站点合并
-        for _domain, _contexts in music_cache.items():
-            if _contexts:
-                torrents_cache.setdefault(_domain, []).extend(_contexts)
-
-        return torrents_cache
+        return self._merge_torrent_caches(
+            {domain: list(contexts) for domain, contexts in torrents_cache.items()},
+            music_cache,
+        )
 
     @staticmethod
     def _ensure_context_compatibility(torrents_cache: Dict[str, List[Context]], stype: Optional[str] = None):
@@ -803,13 +701,13 @@ class TorrentsChain(ChainBase):
                     # 发送消息
                     self.post_message(
                         Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                     link=self.runtime_config.site_url)
+                                link=self.runtime_config.site_url)
                     )
             else:
                 self.post_message(
                     Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                 link=self.runtime_config.site_url))
+                            link=self.runtime_config.site_url))
         except Exception as e:
             logger.error(f"站点 {domain} RSS链接自动获取失败：{str(e)} - {traceback.format_exc()}")
             self.post_message(Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
-                                           link=self.runtime_config.site_url))
+                                      link=self.runtime_config.site_url))

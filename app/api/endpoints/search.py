@@ -8,7 +8,11 @@ from fastapi import Body, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from app.adapters.web.security.access import verify_resource_token, verify_token
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.security.url import SecurityUtils
 from app.chain.search.facade import SearchChain
 from app.domain.context import Context
@@ -323,7 +327,11 @@ async def _stream_search_events(request: Request, event_source: AsyncIterator[di
         termination_reason = "error"
         logger.error(f"渐进式搜索出错：{err}", exc_info=True)
         payload = _sse_event(
-            {"type": "error", "success": False, "message": str(err)},
+            {
+                "type": "error",
+                "success": False,
+                "message": "搜索失败，请稍后重试",
+            },
             locale=locale,
         )
         event_count += 1
@@ -340,7 +348,7 @@ async def _stream_search_events(request: Request, event_source: AsyncIterator[di
 
 
 @router.get("/last", summary="查询搜索结果", response_model=List[_SchemaContext])
-async def search_latest(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def search_latest(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询搜索结果
     """
@@ -397,6 +405,7 @@ async def search_by_id_stream(
     season: Optional[str] = None,
     sites: Optional[str] = None,
     music_type: Optional[str] = None,
+    include_candidates: bool = False,
     _: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
@@ -418,6 +427,8 @@ async def search_by_id_stream(
         if not search_params:
             yield {"type": "error", "success": False, "message": message}
             return
+        if include_candidates:
+            search_params["include_candidates"] = True
         torrents = SearchChain().async_search_by_id_stream(
             **search_params,
             mtype=media_type,
@@ -449,7 +460,10 @@ async def search_by_id(
     season: Optional[str] = None,
     sites: Optional[str] = None,
     music_type: Optional[str] = None,
+    include_candidates: bool = False,
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     根据媒体来源和原生 ID 精确搜索站点资源。
@@ -464,6 +478,8 @@ async def search_by_id(
     )
     if not search_params:
         return _SchemaResponse(success=False, message=message)
+    if include_candidates:
+        search_params["include_candidates"] = True
     torrents = await SearchChain().async_search_by_id(
         **search_params,
         mtype=media_type,
@@ -724,6 +740,8 @@ async def search_subtitle_by_id(
     episode: Optional[str] = None,
     sites: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     根据媒体来源和原生 ID 精确搜索站点字幕资源。

@@ -1,3 +1,4 @@
+from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -5,6 +6,7 @@ from app.chain.media import MediaChain
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+from app.schemas.category import ClassificationSelection
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -28,6 +30,28 @@ class _FakeTmdbModule:
         if kwargs.get("media_source") != MediaSource.TMDB:
             return []
         return [self.result]
+
+
+class _RecordingClassificationService:
+    """记录附加信息收口参数，并返回隔离的分类结果副本。"""
+
+    def __init__(self) -> None:
+        """初始化收口调用记录。"""
+        self.calls: list[tuple[MediaInfo, bool]] = []
+
+    def finalize(
+        self,
+        media: MediaInfo,
+        *,
+        effective_override: ClassificationSelection | None = None,
+        refresh: bool = False,
+    ) -> MediaInfo:
+        """记录强制刷新语义并模拟执行器写入新分类。"""
+        del effective_override
+        self.calls.append((media, refresh))
+        finalized = deepcopy(media)
+        finalized.set_library_category("补充后分类")
+        return finalized
 
 
 def _make_chain(tmdb_media: MediaInfo) -> MediaChain:
@@ -79,7 +103,8 @@ def test_supplement_tmdb_keeps_primary_source_identity() -> None:
     assert result.title == "原识别标题"
     assert result.tmdb_id == 12345
     assert result.genre_ids == [16, 18]
-    assert result.category == "日本动画"
+    assert result.category == ""
+    assert result.library_category == ""
 
 
 def test_supplement_tmdb_does_not_override_custom_category() -> None:
@@ -130,8 +155,8 @@ def test_tmdb_supplement_uses_current_season_year_and_keeps_season_zero() -> Non
     assert tmdb_meta.year == "2024"
 
 
-def test_multi_source_auxiliary_merges_aliases_but_only_tmdb_special_fields() -> None:
-    """多来源只合并标题候选，分类、风格和外部 ID 必须由 TMDB 独占。"""
+def test_multi_source_auxiliary_merges_aliases_without_source_category_side_effects() -> None:
+    """多来源只合并标题候选和 TMDB 兼容字段，目录分类留给统一收口。"""
     primary = MediaInfo(
         media_source=MediaSource.Douban,
         media_id="1",
@@ -172,7 +197,8 @@ def test_multi_source_auxiliary_merges_aliases_but_only_tmdb_special_fields() ->
         "Sousou no Frieren",
         "Frieren: Beyond Journey's End",
     ]
-    assert result.category == "日本动画"
+    assert result.category == ""
+    assert result.library_category == ""
     assert result.genre_ids == [16, 18]
     assert result.imdb_id == "tt22248376"
     assert result.tvdb_id == 424536
@@ -202,3 +228,37 @@ def test_supplement_media_info_uses_configured_source_union() -> None:
         media_source=(MediaSource.Douban, MediaSource.TMDB, MediaSource.AniList),
         metainfo=None,
     )
+
+
+def test_supplement_media_info_forces_classification_refresh() -> None:
+    """附加来源改变标准事实后必须强制刷新同 revision 分类结果。"""
+    primary = MediaInfo(
+        media_source=MediaSource.AniList,
+        media_id="42",
+        type=MediaType.MOVIE,
+        title="测试动画",
+    )
+    tmdb = MediaInfo(
+        tmdb_info={
+            "id": 42,
+            "media_type": "movie",
+            "genre_ids": [16],
+            "production_countries": [{"iso_3166_1": "JP"}],
+        }
+    )
+    chain = _make_chain(tmdb)
+    classifier = _RecordingClassificationService()
+    chain.classification_service = classifier
+
+    result = chain.supplement_media_info(
+        primary,
+        media_source=MediaSource.TMDB,
+    )
+
+    assert result is not primary
+    assert result.library_category == "补充后分类"
+    assert len(classifier.calls) == 1
+    supplemented, refresh = classifier.calls[0]
+    assert refresh is True
+    assert supplemented.tmdb_id == 42
+    assert supplemented.genre_ids == [16]

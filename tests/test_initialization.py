@@ -13,9 +13,9 @@ from app.schemas.initialization import InitializationRequest
 class _FakeRuntimeSettings:
     """记录首次初始化对部署设置的更新与回滚。"""
 
-    def __init__(self) -> None:
+    def __init__(self, superuser: str = "") -> None:
         """初始化空设置快照。"""
-        self.values = {"SUPERUSER": "", "API_TOKEN": None}
+        self.values = {"SUPERUSER": superuser, "API_TOKEN": None}
         self.updates: list[tuple[str, object]] = []
 
     def get(self, key: str, default=None):
@@ -48,10 +48,10 @@ class _FakeUserService:
         return SimpleNamespace(id=1)
 
 
-def _payload() -> InitializationRequest:
+def _payload(username: str = "admin") -> InitializationRequest:
     """构造有效初始化请求。"""
     return InitializationRequest(
-        username="admin",
+        username=username,
         password="Admin123!",
         confirm_password="Admin123!",
         api_key="a" * 32,
@@ -59,14 +59,27 @@ def _payload() -> InitializationRequest:
 
 
 def test_initialization_status_reports_existing_users():
-    """状态接口只暴露是否已有用户，不暴露用户名或 API Key。"""
+    """已有用户时状态接口不返回配置用户名或 API Key。"""
     service = _FakeUserService(initialized=True)
 
     response = asyncio.run(login_endpoint.get_initialization_status(service))
 
     assert response.success is True
     assert response.data.initialized is True
+    assert response.data.configured_username is None
     assert not hasattr(response.data, "api_key")
+
+
+def test_initialization_status_reports_configured_username_before_setup(monkeypatch):
+    """未初始化且已配置 SUPERUSER 时，状态接口应返回固定用户名供页面锁定。"""
+    service = _FakeUserService()
+    settings = _FakeRuntimeSettings(superuser="configured-admin")
+    monkeypatch.setattr(login_endpoint, "get_runtime_settings", lambda: settings)
+
+    response = asyncio.run(login_endpoint.get_initialization_status(service))
+
+    assert response.data.initialized is False
+    assert response.data.configured_username == "configured-admin"
 
 
 def test_initialize_instance_updates_settings_and_creates_superuser(monkeypatch):
@@ -82,6 +95,40 @@ def test_initialize_instance_updates_settings_and_creates_superuser(monkeypatch)
     assert settings.updates == [("SUPERUSER", "admin"), ("API_TOKEN", "a" * 32)]
     assert service.created[0]["hashed_password"] == "hashed:Admin123!"
     assert service.created[0]["is_superuser"] is True
+
+
+def test_initialize_instance_uses_preconfigured_superuser(monkeypatch):
+    """部署已配置 SUPERUSER 时，初始化应使用该用户名且不尝试覆盖配置。"""
+    service = _FakeUserService()
+    settings = _FakeRuntimeSettings(superuser="configured-admin")
+    monkeypatch.setattr(login_endpoint, "get_runtime_settings", lambda: settings)
+    monkeypatch.setattr(login_endpoint, "get_password_hash", lambda password: "hashed:" + password)
+
+    response = asyncio.run(
+        login_endpoint.initialize_instance(
+            _payload("configured-admin"),
+            service,
+        )
+    )
+
+    assert response.success is True
+    assert settings.updates == [("API_TOKEN", "a" * 32)]
+    assert service.created[0]["name"] == "configured-admin"
+
+
+def test_initialize_instance_rejects_preconfigured_superuser_mismatch(monkeypatch):
+    """初始化请求用户名与部署固定值不一致时，必须在创建用户前拒绝。"""
+    service = _FakeUserService()
+    settings = _FakeRuntimeSettings(superuser="configured-admin")
+    monkeypatch.setattr(login_endpoint, "get_runtime_settings", lambda: settings)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(login_endpoint.initialize_instance(_payload(), service))
+
+    assert error.value.status_code == 400
+    assert error.value.detail == "SUPERUSER 已由配置文件或环境变量固定，初始化用户名不能修改"
+    assert settings.updates == []
+    assert service.created == []
 
 
 def test_initialize_instance_rejects_second_claim(monkeypatch):

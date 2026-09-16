@@ -1,13 +1,14 @@
 """MediaChain owner 的静态组合合同。"""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar, Optional, Protocol, TypeVar, Union
 
 from app.chain.base import ChainBase
 from app.chain.media.cache import AlbumDirectoryCache
-from app.domain.context import MediaInfo, MusicInfo
+from app.domain.context import MediaInfo, MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
+from app.schemas.category import ClassificationSelection
 from app.schemas.types import (
     ChainEventType,
     MediaSource,
@@ -17,6 +18,13 @@ from app.schemas.types import (
 
 _RecognitionCallback = Callable[[], Optional[MediaInfo]]
 _AsyncRecognitionCallback = Callable[[], Awaitable[Optional[MediaInfo]]]
+_ClassificationSubjectT = TypeVar(
+    "_ClassificationSubjectT",
+    MediaInfo,
+    MusicInfo,
+    MusicAlbumInfo,
+    MusicArtistInfo,
+)
 _RecognitionPredicate = Callable[[Optional[MediaInfo]], bool]
 _MediaPayload = dict[str, Any]
 
@@ -42,6 +50,7 @@ class _ProjectionEventManagerPort(Protocol):
 
 
 if TYPE_CHECKING:
+    from app.application.music.catalog import MusicCatalogService
 
     class _MediaOwnerBase:
         """声明各媒体 owner 组合后可依赖的精确静态合同。"""
@@ -70,6 +79,26 @@ if TYPE_CHECKING:
             **kwargs: Any,
         ) -> Any:
             """通过运行时分发器异步调用模块能力。"""
+            ...
+
+        def _finalize_recognition_result(
+            self,
+            mediainfo: Optional[_ClassificationSubjectT],
+            *,
+            effective_override: ClassificationSelection | None = None,
+            refresh: bool = False,
+        ) -> Optional[_ClassificationSubjectT]:
+            """通过注入的应用服务分类一个完整识别结果。"""
+            ...
+
+        async def _async_finalize_recognition_result(
+            self,
+            mediainfo: Optional[_ClassificationSubjectT],
+            *,
+            effective_override: ClassificationSelection | None = None,
+            refresh: bool = False,
+        ) -> Optional[_ClassificationSubjectT]:
+            """通过注入的应用服务异步补充并分类完整识别结果。"""
             ...
 
         def recognize_media(
@@ -138,13 +167,27 @@ if TYPE_CHECKING:
         def recognize_music_album_directory(
             self,
             path: Union[str, Path],
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
         ) -> dict[str, MusicInfo]:
             """同步识别音乐专辑目录。"""
+            ...
+
+        @classmethod
+        def _album_track_map(
+            cls,
+            files: list[Path],
+            metas: list[MetaMusic],
+            album: MusicAlbumInfo,
+        ) -> dict[str, MusicInfo]:
+            """将专辑级分类上下文传递给对位曲目。"""
             ...
 
         async def async_recognize_music_album_directory(
             self,
             path: Union[str, Path],
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
         ) -> dict[str, MusicInfo]:
             """异步识别音乐专辑目录。"""
             ...
@@ -238,6 +281,20 @@ if TYPE_CHECKING:
             media_source: Optional[MediaSourceSelection] = None,
         ) -> Optional[list[MediaInfo]]:
             """同步搜索媒体候选。"""
+            ...
+
+        def _music_catalog(self) -> MusicCatalogService:
+            """提供音乐来源 ABI 的目录适配器。"""
+            ...
+
+        def search(self, title: str, media_source: Optional[MediaSourceSelection] = None,
+                   mtype: Optional[MediaType] = None, limit: int = 20) -> tuple[Optional[MetaBase], list[MediaInfo] | list[MusicInfo]]:
+            """通过共用入口搜索所有媒体类型。"""
+            ...
+
+        async def async_search(self, title: str, media_source: Optional[MediaSourceSelection] = None,
+                               mtype: Optional[MediaType] = None, limit: int = 20) -> tuple[Optional[MetaBase], list[MediaInfo] | list[MusicInfo]]:
+            """通过共用入口异步搜索所有媒体类型。"""
             ...
 
         async def async_search_medias(

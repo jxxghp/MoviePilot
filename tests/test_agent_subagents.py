@@ -9,9 +9,9 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 import app.agent.middleware.subagents as subagent_module
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.subagents import (
-    MoviePilotSubAgentMiddleware,
     SUBAGENT_CONTROL_TOOL_NAME,
     SUBAGENT_TASK_TOOL_NAME,
+    MoviePilotSubAgentMiddleware,
     SubAgentTaskControlMiddleware,
     create_subagent_middlewares,
 )
@@ -41,16 +41,15 @@ def test_create_subagent_middlewares_registers_task_tool():
         SUBAGENT_TASK_TOOL_NAME,
         SUBAGENT_CONTROL_TOOL_NAME,
     ]
-    assert "media-researcher" in task_tools[0].description
-    assert "moviepilot-explorer" in task_tools[0].description
-    assert "system-diagnostician" in task_tools[0].description
+    assert "general-purpose" in task_tools[0].description
+    assert task_tools[0].description.count("Available subagents:") == 1
     assert "action=start" in task_tools[1].description
     assert "action=wait" in task_tools[1].description
     assert "action=pipeline" in task_tools[1].description
 
 
-def test_subagent_tools_are_selected_by_tags():
-    """子代理应根据工具标签筛选工具，而不是依赖工具名名单。"""
+def test_general_subagent_tools_are_selected_by_tags():
+    """通用子代理应根据只读标签筛选工具，而不是依赖工具名名单。"""
     model = FakeListChatModel(responses=["ok"])
     tools = [
         SimpleNamespace(
@@ -79,9 +78,12 @@ def test_subagent_tools_are_selected_by_tags():
     )
 
     with patch.object(subagent_module, "create_agent", side_effect=_fake_create_agent):
-        middleware._get_agent("media-researcher")
+        middleware._get_agent("general-purpose")
 
-    assert [tool.name for tool in captured["tools"]] == ["custom_media_lookup"]
+    assert [tool.name for tool in captured["tools"]] == [
+        "custom_media_lookup",
+        "custom_site_lookup",
+    ]
 
 
 def test_subagent_graph_registers_policy_middleware_as_outermost():
@@ -118,8 +120,8 @@ def test_subagent_graph_registers_policy_middleware_as_outermost():
     assert captured["middleware"][0].context.origin is ToolOrigin.SUBAGENT
 
 
-def test_moviepilot_explorer_selects_code_and_settings_tools():
-    """MoviePilot 探索子代理应能读取代码、目录、设置和命令诊断工具。"""
+def test_general_subagent_selects_code_and_settings_tools():
+    """通用子代理应能读取代码、目录、设置和命令诊断工具。"""
     model = FakeListChatModel(responses=["ok"])
     tools = [
         SimpleNamespace(
@@ -156,7 +158,7 @@ def test_moviepilot_explorer_selects_code_and_settings_tools():
     )
 
     with patch.object(subagent_module, "create_agent", side_effect=_fake_create_agent):
-        middleware._get_agent("moviepilot-explorer")
+        middleware._get_agent("general-purpose")
 
     assert [tool.name for tool in captured["tools"]] == [
         "custom_code_reader",
@@ -182,14 +184,14 @@ def test_builtin_tools_declare_tags_in_implementation():
     assert missing_tools == []
 
 
-def test_task_tool_call_records_streaming_summary():
-    """task 子代理工具执行时应记录流式聚合摘要。"""
+def test_task_tool_call_reports_streaming_execution():
+    """task 子代理工具执行时应使用统一的工具显示策略。"""
 
     async def _run_test():
         calls = []
         stream_handler = SimpleNamespace(
             is_streaming=True,
-            record_tool_call=lambda **kwargs: calls.append(kwargs),
+            report_tool_call=lambda **kwargs: calls.append(kwargs),
         )
         middleware = MoviePilotSubAgentMiddleware(
             model=FakeListChatModel(responses=["ok"]),
@@ -202,7 +204,6 @@ def test_task_tool_call_records_streaming_summary():
             tool_call={
                 "args": {
                     "description": "检查媒体信息",
-                    "subagent_type": "media-researcher",
                 }
             },
         )
@@ -219,10 +220,9 @@ def test_task_tool_call_records_streaming_summary():
     assert calls == [
         {
             "tool_name": SUBAGENT_TASK_TOOL_NAME,
-            "tool_message": "Subagent invoked",
+            "tool_message": "调用子代理：general-purpose",
             "tool_kwargs": {
                 "description": "检查媒体信息",
-                "subagent_type": "media-researcher",
             },
         }
     ]
@@ -235,7 +235,7 @@ def test_task_middleware_sanitizes_its_own_logs():
         secret_marker = "subagent-secret-marker-7316"
         stream_handler = SimpleNamespace(
             is_streaming=True,
-            record_tool_call=MagicMock(),
+            report_tool_call=MagicMock(),
         )
         middleware = MoviePilotSubAgentMiddleware(
             model=FakeListChatModel(responses=["ok"]),
@@ -248,7 +248,6 @@ def test_task_middleware_sanitizes_its_own_logs():
             tool_call={
                 "args": {
                     "description": f"password={secret_marker}",
-                    "subagent_type": "media-researcher",
                 }
             },
         )
@@ -273,14 +272,14 @@ def test_task_middleware_sanitizes_its_own_logs():
     assert "***" in str(mock_logger.method_calls)
 
 
-def test_control_tool_call_records_streaming_summary():
-    """subagent_task 子代理工具执行时应记录流式聚合摘要。"""
+def test_control_tool_call_reports_streaming_execution():
+    """subagent_task 子代理工具执行时应使用统一的工具显示策略。"""
 
     async def _run_test():
         calls = []
         stream_handler = SimpleNamespace(
             is_streaming=True,
-            record_tool_call=lambda **kwargs: calls.append(kwargs),
+            report_tool_call=lambda **kwargs: calls.append(kwargs),
         )
         middleware = SubAgentTaskControlMiddleware(
             model=FakeListChatModel(responses=["ok"]),
@@ -294,8 +293,8 @@ def test_control_tool_call_records_streaming_summary():
                 "args": {
                     "action": "start",
                     "tasks": [
-                        {"subagent_type": "media-researcher"},
-                        {"subagent_type": "download-diagnostician"},
+                        {"description": "检查媒体库"},
+                        {"description": "检查下载器"},
                     ],
                 }
             },
@@ -313,12 +312,12 @@ def test_control_tool_call_records_streaming_summary():
     assert calls == [
         {
             "tool_name": SUBAGENT_CONTROL_TOOL_NAME,
-            "tool_message": "Subagent invoked",
+            "tool_message": "管理子代理任务：action=start",
             "tool_kwargs": {
                 "action": "start",
                 "tasks": [
-                    {"subagent_type": "media-researcher"},
-                    {"subagent_type": "download-diagnostician"},
+                            {"description": "检查媒体库"},
+                            {"description": "检查下载器"},
                 ],
             },
         }
@@ -339,7 +338,7 @@ def test_control_tool_starts_tasks_concurrently_and_waits():
         both_started = asyncio.Event()
         allow_finish = asyncio.Event()
 
-        async def _fake_run_task(self, *, description, subagent_type, task_id=None):
+        async def _fake_run_task(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
             running_descriptions.append(description)
             if len(running_descriptions) == 2:
                 both_started.set()
@@ -355,14 +354,8 @@ def test_control_tool_starts_tasks_concurrently_and_waits():
                 await middleware._control_task(
                     action="start",
                     tasks=[
-                        {
-                            "description": "检查媒体库",
-                            "subagent_type": "media-researcher",
-                        },
-                        {
-                            "description": "检查下载器",
-                            "subagent_type": "download-diagnostician",
-                        },
+                        {"description": "检查媒体库"},
+                        {"description": "检查下载器"},
                     ],
                 )
             )
@@ -386,11 +379,47 @@ def test_control_tool_starts_tasks_concurrently_and_waits():
             "completed",
             "completed",
         ]
-        assert "media-researcher:检查媒体库" in wait_payload["tasks"][0]["result"]
-        assert (
-            "download-diagnostician:检查下载器"
-            in wait_payload["tasks"][1]["result"]
+        assert "general-purpose:检查媒体库" in wait_payload["tasks"][0]["result"]
+        assert "general-purpose:检查下载器" in wait_payload["tasks"][1]["result"]
+
+    asyncio.run(_run_test())
+
+
+def test_control_tool_updates_task_with_same_id_after_bounded_cancel():
+    """update 应取消旧任务、复用 task_id 并把新描述交给子代理。"""
+
+    async def _run_test():
+        model = FakeListChatModel(responses=["ok"])
+        middleware = SubAgentTaskControlMiddleware(
+            model=model,
+            profiles=subagent_module._builtin_subagent_profiles(),
+            tools=[],
         )
+        calls = []
+        release = asyncio.Event()
+
+        async def _fake_run_task(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
+            calls.append(description)
+            if description == "旧任务":
+                await release.wait()
+            return f"完成:{description}"
+
+        with patch.object(subagent_module._SubAgentAgentProvider, "run_task", new=_fake_run_task):
+            started = json.loads(await middleware._control_task(action="start", description="旧任务"))
+            task_id = started["tasks"][0]["task_id"]
+            await asyncio.sleep(0)
+            updated = json.loads(await middleware._control_task(
+                action="update", task_id=task_id, description="更新后的任务",
+            ))
+            release.set()
+            await middleware._wait_records(
+                records=[middleware._tasks[task_id]], wait_mode="all", timeout_ms=1000,
+            )
+
+        assert updated["success"] is True
+        assert updated["task_id"] == task_id
+        assert updated["tasks"][0]["description"] == "更新后的任务"
+        assert calls == ["旧任务", "更新后的任务"]
 
     asyncio.run(_run_test())
 
@@ -407,7 +436,7 @@ def test_control_tool_pipeline_passes_previous_results_to_next_step():
         )
         calls = []
 
-        async def _fake_run_task(self, *, description, subagent_type, task_id=None):
+        async def _fake_run_task(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
             calls.append(
                 {
                     "description": description,
@@ -426,18 +455,9 @@ def test_control_tool_pipeline_passes_previous_results_to_next_step():
                 await middleware._control_task(
                     action="pipeline",
                     tasks=[
-                        {
-                            "description": "识别媒体",
-                            "subagent_type": "media-researcher",
-                        },
-                        {
-                            "description": "检查下载",
-                            "subagent_type": "download-diagnostician",
-                        },
-                        {
-                            "description": "汇总结论",
-                            "subagent_type": "general-purpose",
-                        },
+                        {"description": "识别媒体"},
+                        {"description": "检查下载"},
+                        {"description": "汇总结论"},
                     ],
                     timeout_ms=1000,
                 )
@@ -445,8 +465,8 @@ def test_control_tool_pipeline_passes_previous_results_to_next_step():
 
         assert payload["success"]
         assert [call["subagent_type"] for call in calls] == [
-            "media-researcher",
-            "download-diagnostician",
+            "general-purpose",
+            "general-purpose",
             "general-purpose",
         ]
         assert calls[0]["description"] == "识别媒体"
@@ -480,9 +500,9 @@ def test_control_tool_pipeline_stops_after_failed_step():
         calls = []
         secret_marker = "subagent-runtime-secret-9042"
 
-        async def _fake_run_task(self, *, description, subagent_type, task_id=None):
+        async def _fake_run_task(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
             calls.append(subagent_type)
-            if subagent_type == "download-diagnostician":
+            if len(calls) == 2:
                 raise RuntimeError(
                     f"下载器不可用 DATABASE_PASSWORD={secret_marker}"
                 )
@@ -497,18 +517,9 @@ def test_control_tool_pipeline_stops_after_failed_step():
                 await middleware._control_task(
                     action="pipeline",
                     tasks=[
-                        {
-                            "description": "识别媒体",
-                            "subagent_type": "media-researcher",
-                        },
-                        {
-                            "description": "检查下载",
-                            "subagent_type": "download-diagnostician",
-                        },
-                        {
-                            "description": "汇总结论",
-                            "subagent_type": "general-purpose",
-                        },
+                        {"description": "识别媒体"},
+                        {"description": "检查下载"},
+                        {"description": "汇总结论"},
                     ],
                     timeout_ms=1000,
                 )
@@ -516,7 +527,7 @@ def test_control_tool_pipeline_stops_after_failed_step():
 
         assert not payload["success"]
         assert "第 2 个管道子代理任务执行失败" in payload["error"]
-        assert calls == ["media-researcher", "download-diagnostician"]
+        assert calls == ["general-purpose", "general-purpose"]
         assert [task["status"] for task in payload["tasks"]] == [
             "completed",
             "failed",
@@ -543,7 +554,7 @@ def test_control_tool_pipeline_timeout_is_bounded_when_task_ignores_cancel():
         release = asyncio.Event()
         cancelled = asyncio.Event()
 
-        async def _ignore_cancel(self, *, description, subagent_type, task_id=None):
+        async def _ignore_cancel(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
             try:
                 await asyncio.Future()
             except asyncio.CancelledError:
@@ -567,6 +578,8 @@ def test_control_tool_pipeline_timeout_is_bounded_when_task_ignores_cancel():
 
         assert payload["success"] is False
         assert "等待超时" in payload["error"]
+        assert payload["execution_outcome"] == "failed"
+        assert "修正任务描述" in payload["recovery"]
         assert payload["tasks"][0]["status"] == "running"
         assert cancelled.is_set()
 
@@ -591,7 +604,7 @@ def test_after_agent_cancels_unfinished_tasks():
         )
         task_started = asyncio.Event()
 
-        async def _fake_run_task(self, *, description, subagent_type, task_id=None):
+        async def _fake_run_task(self, *, description, subagent_type, task_id=None, terminal_sessions=None):
             task_started.set()
             await asyncio.Event().wait()
 
@@ -604,7 +617,6 @@ def test_after_agent_cancels_unfinished_tasks():
                 await middleware._control_task(
                     action="start",
                     description="长时间诊断",
-                    subagent_type="system-diagnostician",
                 )
             )
             await asyncio.wait_for(task_started.wait(), timeout=1)

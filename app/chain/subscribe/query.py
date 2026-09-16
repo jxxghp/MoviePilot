@@ -30,11 +30,20 @@ from app.schemas.subscribe import Subscribe as _SchemaSubscribe
 from app.schemas.subscribe import SubscribeDownloadFileInfo as _SchemaSubscribeDownloadFileInfo
 from app.schemas.subscribe import SubscribeEpisodeInfo as _SchemaSubscribeEpisodeInfo
 from app.schemas.subscribe import SubscribeLibraryFileInfo as _SchemaSubscribeLibraryFileInfo
+from app.schemas.subscribe import compute_subscribe_completed_tracks
 from app.schemas.types import (
     MediaSource,
     MediaType,
     SystemConfigKey,
 )
+
+
+def _public_subscribe_view(subscribe: SubscriptionSnapshot) -> _SchemaSubscribe:
+    """将订阅内部快照投影为公开 DTO，并隐藏活动音轨事实。"""
+    payload = subscribe.to_dict()
+    payload["completed_tracks"] = compute_subscribe_completed_tracks(subscribe)
+    payload.pop("downloaded_tracks", None)
+    return _SchemaSubscribe(**payload)
 
 
 class SubscribeQueryOwner(_SubscribeOwnerBase):
@@ -62,9 +71,12 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         # 如果交集为空，返回默认站点
         return intersection_sites if intersection_sites else default_sites
 
-    def get_subscribed_sites(self) -> Optional[List[int]]:
+    def get_subscribed_sites(self, mtype: Optional[str] = None) -> Optional[List[int]]:
         """
-        获取订阅中涉及的所有站点清单（节约资源）
+        获取指定媒体类型订阅涉及的站点清单（节约资源）
+        未指定媒体类型时保持原有全量订阅行为；指定类型却没有可搜索订阅时返回 None，
+        避免调用方把空站点误解为“搜索所有站点”。
+        :param mtype: 可选媒体类型
         :return: 返回[]代表所有站点命中，返回None代表没有订阅
         """
         ret_sites = []
@@ -72,19 +84,28 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         if not subscribes:
             # 没有订阅
             return None
+        has_searchable_subscription = False
         # 刷新订阅选中的Rss站点
         for subscribe in subscribes:
+            if mtype is not None and subscribe.type != mtype:
+                continue
             # 刷新选中的站点
             if subscribe.state in self.get_states_for_search("R"):
+                has_searchable_subscription = True
                 ret_sites.extend(self.get_sub_sites(subscribe))
         # 去重
         if ret_sites:
             ret_sites = list(set(ret_sites))
 
+        if mtype is not None and not has_searchable_subscription:
+            return None
+
         return ret_sites
 
-    def has_music_subscribe(self) -> bool:
-        """判断是否存在可搜索状态的音乐订阅，用于决定是否额外刷新站点音乐入口。"""
+    def has_music_subscribe(self, mtype: Optional[str] = None) -> bool:
+        """判断指定范围内是否存在音乐订阅，用于决定是否额外刷新站点音乐入口。"""
+        if mtype is not None and mtype != MediaType.MUSIC.value:
+            return False
         return cast(bool, self._subscription_query().has_music(self.get_states_for_search("R")))
 
     def get_subscribe_by_source(self, source: str) -> Optional[SubscriptionSnapshot]:
@@ -191,6 +212,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                     save_path=subscribe_in.save_path,
                     search_imdbid=subscribe_in.search_imdbid,
                     custom_words=subscribe_in.custom_words,
+                    media_category_id=subscribe_in.media_category_id,
                     media_category=subscribe_in.media_category,
                     filter_groups=subscribe_in.filter_groups,
                     exist_ok=True,
@@ -387,7 +409,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         self._append_subscribe_media_servers(subscribe, mediainfo, episodes)
 
         # 更新订阅信息
-        subscribe_info.subscribe = _SchemaSubscribe(**subscribe.to_dict())
+        subscribe_info.subscribe = _public_subscribe_view(subscribe)
         subscribe_info.episodes = episodes
         return subscribe_info
 

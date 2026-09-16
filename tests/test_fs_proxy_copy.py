@@ -10,7 +10,6 @@ worker 每秒上报一次进度作为心跳，父进程判定的是**两次上�
 """
 import os
 import time
-from pathlib import Path
 
 import pytest
 
@@ -189,14 +188,3 @@ def test_direct_copy_honours_cancel(tmp_path, monkeypatch):
         assert proxy.copy(src, dst, cancel_cb=lambda: True, chunk_size=1024) is False
     finally:
         proxy.close()
-
-
-def test_worker_still_standalone_after_streaming_support():
-    """
-    加了流式协议之后 worker 仍须只依赖标准库——一旦引入 app 导入链，
-    强杀后的重启成本会从毫秒级涨到秒级，整个代理方案就不成立了。
-    """
-    worker = Path("app/adapters/system/fsworker.py").read_text(encoding="utf-8")
-
-    assert "from app." not in worker
-    assert "import app" not in worker

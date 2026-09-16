@@ -1,10 +1,11 @@
 """SearchChain owner 的静态组合合同。"""
 
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from app.chain.base import ChainBase
 
 if TYPE_CHECKING:
+    from app.domain.context import Context
 
     class _SearchOwnerBase(ChainBase):
         """向类型检查器声明稳定 Facade 上的跨 owner 能力。"""
@@ -53,7 +54,7 @@ if TYPE_CHECKING:
         _normalize_ai_indices: Callable[..., Any]
         _normalize_music_match_text: Callable[..., Any]
         _normalize_search_params: Callable[..., Any]
-        _parse_result: Callable[..., Any]
+        _parse_result: Callable[..., list[Context]]
         _parse_subtitle_result: Callable[..., Any]
         _prepare_params: Callable[..., Any]
         _process_music: Callable[..., Any]
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
         _restore_original_indices: Callable[..., Any]
         _save_results: Callable[..., Any]
         _search_all_sites: Callable[..., Any]
+        _search_site_torrents_with_budget: Callable[..., Any]
         _search_state: Callable[..., Any]
         _select_indexers: Callable[..., Any]
         _selected_site_ids: Callable[..., Any]
@@ -76,7 +78,7 @@ if TYPE_CHECKING:
         async_last_search_params: Callable[..., Any]
         async_last_search_results: Callable[..., Any]
         async_last_subtitle_search_results: Callable[..., Any]
-        async_process: Callable[..., Any]
+        async_process: Callable[..., Awaitable[list[Context]]]
         async_process_stream: Callable[..., Any]
         async_save_last_search_params: Callable[..., Any]
         async_search_by_id: Callable[..., Any]
@@ -95,7 +97,11 @@ if TYPE_CHECKING:
         last_search_results: Callable[..., Any]
         matches_music_resource: Callable[..., Any]
         music_site_keywords: Callable[..., Any]
-        process: Callable[..., Any]
+        process: Callable[..., list[Context]]
+        record_subscription_site_budget_failure: Callable[..., Any]
+        consume_subscription_site_budget_failures: Callable[..., Any]
+        record_subscription_site_budget_deferred: Callable[..., Any]
+        consume_subscription_site_budget_deferrals: Callable[..., Any]
         save_last_search_params: Callable[..., Any]
         search_by_id: Callable[..., Any]
         search_by_title: Callable[..., Any]

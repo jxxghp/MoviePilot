@@ -2,8 +2,8 @@ import unittest
 from unittest.mock import patch
 
 from app.api.endpoints import download as download_endpoint
-from app.schemas.token import TokenPayload
 from app.schemas.system import TransferDirectoryConf
+from app.schemas.token import TokenPayload
 
 
 class DownloadPathsEndpointTest(unittest.TestCase):
@@ -26,6 +26,7 @@ class DownloadPathsEndpointTest(unittest.TestCase):
                 download_path="/media/anime",
                 media_type="tv",
                 media_category="动漫",
+                media_category_id="tv.anime",
             ),
         ]
 
@@ -48,6 +49,7 @@ class DownloadPathsEndpointTest(unittest.TestCase):
         self.assertEqual(ret[1].priority, 2)
         self.assertEqual(ret[1].media_type, "tv")
         self.assertEqual(ret[1].media_category, "动漫")
+        self.assertEqual(ret[1].media_category_id, "tv.anime")
 
     def test_paths_returns_empty_list_when_unconfigured(self):
         """未配置目录时接口应返回空列表。"""

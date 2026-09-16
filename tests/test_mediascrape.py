@@ -395,6 +395,7 @@ class TestMediaScrapingImages(unittest.TestCase):
         parent_item = schemas.FileItem(path="/movies/Avatar", name="Avatar", type="dir", storage="local")
         targets = [(parent_item, Path("/movies/Avatar/backdrop.jpg"))]
         # backdrop is OVERWRITE but fanart (also BACKDROP type) is SKIP
+
         def option_side_effect(item_type, metadata_type):
             if metadata_type == ScrapingMetadata.BACKDROP:
                 return ScrapingOption("movie", "backdrop", ScrapingPolicy.SKIP)

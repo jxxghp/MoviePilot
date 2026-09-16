@@ -3,7 +3,7 @@ from urllib.parse import quote, unquote
 from typing import Optional, Union, List, Tuple, Any, Dict
 
 from app.domain.context import Context, MediaInfo
-from app.application.messaging.agent import (
+from app.application.messaging.channel.admin import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
@@ -178,12 +178,12 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
                     f"audios={len(audio_refs) if audio_refs else 0}, files={len(files) if files else 0}"
                 )
                 return IncomingMessage(channel=NotificationChannel.VoceChat, source=client_config.name,
-                                      userid=userid, username=userid,
-                                      is_channel_admin=matches_channel_admin(
-                                          NotificationChannel.VoceChat, client_config.config,
-                                          from_uid, actor_userid,
-                                      ), text=text or "",
-                                      images=images, audio_refs=audio_refs, files=files)
+                                       userid=userid, username=userid,
+                                       is_channel_admin=matches_channel_admin(
+                                           NotificationChannel.VoceChat, client_config.config,
+                                           from_uid, actor_userid,
+                                       ), text=text or "",
+                                       images=images, audio_refs=audio_refs, files=files)
         except Exception as err:
             logger.error(f"VoceChat消息处理发生错误：{str(err)}")
         return None

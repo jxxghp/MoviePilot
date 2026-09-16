@@ -2,6 +2,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from mutagen.apev2 import APEBinaryValue
+from mutagen.monkeysaudio import MonkeysAudio
+
 from app.chain.media import MediaChain
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import (
@@ -182,6 +185,32 @@ def test_read_audio_tags_ignores_invalid_musicbrainz_id(monkeypatch):
     assert meta.media_id is None
 
 
+def test_read_audio_tags_accepts_conventional_apev2_names(monkeypatch):
+    """APE 常见字段名应映射为标准专辑、曲序、碟号和年份。"""
+    audio = SimpleNamespace(
+        tags={
+            "title": ["天下太平"],
+            "artist": ["陈奕迅", "张学友"],
+            "album": ["Solidays"],
+            "album artist": ["陈奕迅"],
+            "track": ["12/14"],
+            "disc": ["1/2"],
+            "year": ["2008"],
+        },
+        info=SimpleNamespace(length=252),
+    )
+    monkeypatch.setattr("app.application.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+
+    meta = AudioMetadataHelper.read_tags(Path("/music/天下太平.ape"))
+
+    assert meta.album_artist == "陈奕迅"
+    assert meta.track_number == 12
+    assert meta.total_tracks == 14
+    assert meta.disc_number == 1
+    assert meta.total_discs == 2
+    assert meta.year == 2008
+
+
 def test_remote_path_meta_parses_track_prefix_once(tmp_path):
     """远程或尚未落盘的音频路径应先剥离曲序，不能把 08 误识别成艺术家。"""
     audio_path = tmp_path / "Daft Punk - Random Access Memories (2013)" / "08 - Get Lucky.flac"
@@ -358,3 +387,59 @@ def test_write_audio_metadata_can_embed_cover_without_rewriting_tags(monkeypatch
         cover_mime="image/jpeg",
         overwrite=False,
     )
+
+
+def test_write_audio_metadata_embeds_apev2_front_cover(monkeypatch):
+    """APE 封面应按 APEv2 约定写入文件名、空字节和图片数据。"""
+    class FakeMonkeysAudio(MonkeysAudio):
+        """记录 Monkey's Audio 封面写入结果。"""
+
+        def __init__(self):
+            self.tags = {}
+            self.saved = False
+
+        def save(self, *_args, **_kwargs):
+            self.saved = True
+
+    audio = FakeMonkeysAudio()
+    monkeypatch.setattr("app.application.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+
+    AudioMetadataHelper._write_cover(
+        path=Path("/music/track.ape"),
+        cover_data=b"jpeg-data",
+        cover_mime="image/jpeg",
+        overwrite=True,
+    )
+
+    cover = audio.tags["Cover Art (Front)"]
+    assert isinstance(cover, APEBinaryValue)
+    assert bytes(cover) == b"cover.jpg\x00jpeg-data"
+    assert audio.saved is True
+
+
+def test_write_audio_metadata_preserves_existing_apev2_cover(monkeypatch):
+    """关闭覆盖时应保留已有 APEv2 正面封面。"""
+    class FakeMonkeysAudio(MonkeysAudio):
+        """记录 Monkey's Audio 封面覆盖行为。"""
+
+        def __init__(self):
+            self.tags = {
+                "Cover Art (Front)": APEBinaryValue(b"old.jpg\x00old-data")
+            }
+            self.saved = False
+
+        def save(self, *_args, **_kwargs):
+            self.saved = True
+
+    audio = FakeMonkeysAudio()
+    monkeypatch.setattr("app.application.audio.MutagenFile", lambda *_args, **_kwargs: audio)
+
+    AudioMetadataHelper._write_cover(
+        path=Path("/music/track.ape"),
+        cover_data=b"new-data",
+        cover_mime="image/jpeg",
+        overwrite=False,
+    )
+
+    assert bytes(audio.tags["Cover Art (Front)"]) == b"old.jpg\x00old-data"
+    assert audio.saved is False

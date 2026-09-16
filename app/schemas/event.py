@@ -8,6 +8,7 @@ from typing import Union as _Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic import BeforeValidator as _BeforeValidator
 
+from app.schemas.category import ClassificationFieldDefinition
 from app.schemas.common import JsonData
 from app.schemas.context import Context as _ContextSnapshotBase
 from app.schemas.context import MediaInfo as _MediaInfoSnapshot
@@ -303,20 +304,26 @@ class ConfigChangeEventData(BaseEventData):
     @classmethod
     def convert_to_set(cls, v):
         """将输入的 str、list、dict.keys() 等转为 set"""
+        def normalize(item: Any) -> str:
+            """把枚举键转换为其持久化值，其余键保持字符串兼容。"""
+            return str(item.value) if isinstance(item, _Enum) else str(item)
+
         if v is None:
             return set()
         elif isinstance(v, str):
             return {v}
+        elif isinstance(v, _Enum):
+            return {normalize(v)}
         elif isinstance(v, dict):
-            return set(str(k) for k in v.keys())
+            return {normalize(k) for k in v.keys()}
         elif isinstance(v, (list, tuple)):
-            return set(str(item) for item in v)
+            return {normalize(item) for item in v}
         elif isinstance(v, set):
-            return set(str(item) for item in v)
+            return {normalize(item) for item in v}
         elif isinstance(v, Iterable):
-            return set(str(item) for item in v)
+            return {normalize(item) for item in v}
         else:
-            return {str(v)}
+            return {normalize(v)}
 
 
 class ChainEventData(BaseEventData):
@@ -893,29 +900,16 @@ class DiscoverMediaSource(BaseModel):
         if media_source and not mediaid_prefix:
             normalized["mediaid_prefix"] = str(media_source)
         elif mediaid_prefix and not media_source:
-            normalized["media_source"] = cls._media_source_from_prefix(
-                str(mediaid_prefix)
-            )
+            normalized["media_source"] = MediaSource(str(mediaid_prefix))
         return normalized
-
-    @staticmethod
-    def _media_source_from_prefix(mediaid_prefix: str) -> MediaSource:
-        """将旧插件前缀映射为内置或插件扩展媒体来源。"""
-        aliases = {
-            "mangguo": MediaSource.MangoTV,
-            "tencentvideo": MediaSource.TencentVideo,
-        }
-        if mediaid_prefix in aliases:
-            return aliases[mediaid_prefix]
-        return MediaSource(mediaid_prefix)
 
 
 class MediaSourceInfo(BaseModel):
     """
     媒体数据源注册描述。
 
-    插件通过该描述声明来源的展示名称和支持的媒体类型；识别、搜索和刮削的
-    实际实现仍由插件模块方法提供，宿主只负责把来源传递到统一媒体链路。
+    插件通过该描述声明来源的展示名称、支持的媒体类型和可选受控分类字段；
+    识别、搜索和刮削的实际实现仍由插件模块方法提供，宿主负责验证声明和事实。
     """
 
     name: str = Field(..., description="数据源展示名称")
@@ -923,6 +917,10 @@ class MediaSourceInfo(BaseModel):
     media_types: List[MediaType] = Field(
         default_factory=lambda: [MediaType.MOVIE, MediaType.TV],
         description="支持的媒体类型",
+    )
+    classification_fields: List[ClassificationFieldDefinition] = Field(
+        default_factory=list,
+        description="来源声明的受控扩展分类字段；旧插件省略时保持无扩展字段",
     )
 
 

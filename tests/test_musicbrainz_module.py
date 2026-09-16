@@ -1,7 +1,65 @@
-from app.runtime.config import settings
-from app.domain.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicInfo
+import asyncio
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+from app.domain.context import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MusicArtistInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.modules.musicbrainz import MusicBrainzModule
+from app.runtime.config import settings
+from app.schemas.types import MediaSource
+
+
+def test_recording_search_uses_phrase_before_character_fallback(monkeypatch):
+    """完整中文名称命中时不应再执行逐字 OR 查询。"""
+    module = MusicBrainzModule()
+    queries = []
+
+    def request(_path, params):
+        """模拟完整名称检索返回同名录音。"""
+        queries.append(params["query"])
+        return {"recordings": [{"id": "recording", "title": "晴天"}]}
+
+    monkeypatch.setattr(module, "_request_json", request)
+    assert module._search_recordings(MetaMusic(title="晴天"), 30)[0].title == "晴天"
+    assert queries == ['recording:"晴天"']
+
+
+def test_recording_search_keeps_character_query_as_last_resort(monkeypatch):
+    """完整短语无结果后保留旧的宽召回能力，不能先用单字占满结果窗口。"""
+    module = MusicBrainzModule()
+    queries = []
+
+    def request(_path, params):
+        """首轮无结果，仅在末级检索式返回候选。"""
+        queries.append(params["query"])
+        return {"recordings": [] if len(queries) == 1 else [{"id": "recording", "title": "晴天"}]}
+
+    monkeypatch.setattr(module, "_request_json", request)
+    assert module._search_recordings(MetaMusic(title="晴天"), 30)
+    assert queries == ['recording:"晴天"', 'recording:("晴" OR "天")']
+
+
+def test_artist_alias_lookup_verifies_identity_in_both_io_modes(monkeypatch):
+    """同步和异步别名补充必须校验精确艺术家 ID，拒绝其它艺人的响应。"""
+    module = MusicBrainzModule()
+    artist_id = "a223958d-5c56-4b2c-a30a-87e357bc121b"
+    payload = {"id": artist_id, "name": "周杰倫", "aliases": [{"name": "Jay Chou"}]}
+    monkeypatch.setattr(module, "_request_json", lambda *_args, **_kwargs: payload)
+    monkeypatch.setattr(module, "_async_request_json", AsyncMock(return_value=payload))
+    expected = ["周杰倫", "Jay Chou"]
+    assert module._lookup_artist_aliases([artist_id], []) == expected
+    assert asyncio.run(module._async_lookup_artist_aliases([artist_id], [])) == expected
+    assert module._artist_alias_values(payload, "other-artist") == []
+
+
+def test_metadata_ranking_prefers_complete_name_over_partial_character_hit():
+    """宽召回之后也应按完整标题与署名排序，避免单字相关候选压过准确目标。"""
+    exact = MusicInfo(title="晴天", artists=["周杰倫"])
+    unrelated = MusicInfo(title="天", artists=["Other Artist"])
+    assert MusicBrainzModule._rank_search_candidates(
+        MetaMusic(title="周杰伦 晴天"), [unrelated, exact],
+    )[0] is exact
 
 
 def test_musicbrainz_cover_domains_are_allowed_by_image_proxy():
@@ -35,8 +93,8 @@ def test_build_query_strips_audio_quality_tokens():
         )
     )
 
-    # CJK 短语在 Lucene 索引中是单一词元，检索式拆为逐字 OR，OR 组带括号避免 AND 优先级歧义
-    assert query == 'recording:("永" OR "远" OR "是" OR "朋" OR "友") AND artist:"毛阿敏"'
+    # 完整名称的繁简短语组优先，不把长标题拆成单字 OR。
+    assert query == 'recording:("永远是朋友" OR "永遠是朋友") AND artist:"毛阿敏"'
 
 
 def test_select_candidate_matches_traditional_chinese_title():
@@ -54,6 +112,124 @@ def test_select_candidate_matches_traditional_chinese_title():
     selected = MusicBrainzModule._select_candidate(meta, candidates, media_source="musicbrainz")
 
     assert selected is candidates[0]
+
+
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+def test_recognition_accepts_trusted_title_and_artist_aliases(music_type):
+    """目录已经返回的同实体别名也必须用于身份确认，不能仅用于搜索展示排序。"""
+    meta = MetaMusic(title="Fine Day", artists=["Jay Chou"])
+    candidate = MusicInfo(media_source="musicbrainz", media_id="candidate", music_type=music_type,
+                          title="晴天", title_aliases=["Fine Day"], artists=["周杰倫"], artist_aliases=["Jay Chou"])
+    if music_type == "album":
+        assert MusicBrainzModule._select_album_candidate(meta, [candidate]) is candidate
+    else:
+        assert MusicBrainzModule._select_candidate(meta, [candidate], "musicbrainz") is candidate
+
+
+@pytest.mark.parametrize("artist", ["AC/DC", "Earth, Wind & Fire", "Beyoncé"])
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+def test_recognition_preserves_compound_and_accented_artist_names(artist, music_type):
+    """复合艺名的解析拆段和拉丁变音符差异不应导致身份确认漏配。"""
+    meta = MetaMusic.parse_query(f"{artist.replace('é', 'e')} - Example Work FLAC")
+    candidate = MusicInfo(media_source="musicbrainz", media_id="candidate", music_type=music_type,
+                          title="Example Work", artists=[artist])
+    if music_type == "album":
+        assert MusicBrainzModule._select_album_candidate(meta, [candidate]) is candidate
+    else:
+        assert MusicBrainzModule._select_candidate(meta, [candidate], "musicbrainz") is candidate
+
+
+@pytest.mark.parametrize("candidate_title", ["One Tree Hill", "One - Tree Hill", "One (Other Song)"])
+def test_recording_recognition_rejects_partial_title_identity(candidate_title):
+    """单曲确认与资源匹配一样要求作品名称边界，不能借首词或任意括号剥离误配。"""
+    meta = MetaMusic(title="One", artists=["U2"])
+    candidate = MusicInfo(media_source="musicbrainz", media_id="other", title=candidate_title, artists=["U2"])
+    assert MusicBrainzModule._select_candidate(meta, [candidate], "musicbrainz") is None
+
+
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+@pytest.mark.parametrize("input_version,candidate_version", [(None, "Live"), ("Live", None), ("Live", "Remix")])
+def test_recognition_rejects_conflicting_recording_versions(music_type, input_version, candidate_version):
+    """同名同艺人的不同录音版本仍是不同目标，不能以普通标题分数自动确认。"""
+    meta = MetaMusic(title="Example Work", artists=["Artist"], version=input_version)
+    candidate = MusicInfo(media_source="musicbrainz", media_id="candidate", music_type=music_type,
+                          title="Example Work", artists=["Artist"], version=candidate_version)
+    if music_type == "album":
+        assert MusicBrainzModule._select_album_candidate(meta, [candidate]) is None
+    else:
+        assert MusicBrainzModule._select_candidate(meta, [candidate], "musicbrainz") is None
+
+
+def test_recording_recognition_keeps_isrc_identity_priority():
+    """来源返回相同 ISRC 时保留显式录音身份优先级，不被不完整标题和署名阻断。"""
+    meta = MetaMusic(title="Unverified", artists=["Unknown"], isrc="USABC2600001")
+    candidate = MusicInfo(media_source="musicbrainz", media_id="recording", title="Real Title",
+                          artists=["Artist"], version="Live", isrc="USABC2600001")
+    misleading = MusicInfo(media_source="musicbrainz", media_id="other", title="Unverified", artists=["Unknown"])
+    assert MusicBrainzModule._select_candidate(meta, [misleading, candidate], "musicbrainz") is candidate
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+@pytest.mark.parametrize("has_match", [False, True])
+def test_recognition_continues_queries_after_rejected_candidates(monkeypatch, async_mode, music_type, has_match):
+    """与资源搜索一致，原始候选不能确认身份时继续后续检索式，而非提前宣告无匹配。"""
+    module = MusicBrainzModule()
+    module.cache = None
+    meta = MetaMusic(title="Example Work", artists=["Artist"])
+    queries = []
+
+    def request(_path, params):
+        """前一检索式仅有无关作品，下一检索式返回同名同署名实体。"""
+        queries.append(params["query"])
+        title = "Example Work" if has_match and len(queries) > 1 else "Other Work"
+        items_key = "recordings" if music_type == "recording" else "release-groups"
+        return {items_key: [{"id": "matched", "title": title, "artist-credit": [{"artist": {"name": "Artist"}}]}]}
+
+    monkeypatch.setattr(module, "_recording_queries", lambda _meta: ["first", "second", "third"])
+    monkeypatch.setattr(module, "_album_queries", lambda _meta: ["first", "second", "third"])
+    monkeypatch.setattr(module, "_request_json", request)
+    monkeypatch.setattr(module, "_async_request_json", AsyncMock(side_effect=request))
+    if async_mode:
+        result = asyncio.run(module.async_recognize_media(meta=meta, music_type=music_type, cache=False))
+    else:
+        result = module.recognize_media(meta=meta, music_type=music_type, cache=False)
+    if has_match:
+        assert result and result.media_id == "matched"
+    else:
+        assert not result or result.media_id is None
+    assert queries == (["first", "second"] if has_match else ["first", "second", "third"])
+
+
+@pytest.mark.parametrize("async_mode", [False, True])
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+def test_catalog_browsing_keeps_unconfirmed_candidates(monkeypatch, async_mode, music_type):
+    """手动目录浏览仍展示来源原始候选，自动确认的严格规则不能抹掉浏览结果。"""
+    module = MusicBrainzModule()
+    meta = MetaMusic(title="Example Work", artists=["Artist"])
+    key = "recordings" if music_type == "recording" else "release-groups"
+    payload = {key: [{"id": "related", "title": "Other Work"}]}
+    sync_request = Mock(return_value=payload)
+    async_request = AsyncMock(return_value=payload)
+    monkeypatch.setattr(module, "_request_json", sync_request)
+    monkeypatch.setattr(module, "_async_request_json", async_request)
+    if music_type == "recording":
+        result = asyncio.run(module._async_search_recordings(meta, 10)) if async_mode else module._search_recordings(meta, 10)
+    else:
+        result = asyncio.run(module._async_search_albums(meta, 10)) if async_mode else module._search_albums(meta, 10)
+    assert [item.media_id for item in result] == ["related"]
+    assert sync_request.call_count == (0 if async_mode else 1)
+    assert async_request.await_count == (1 if async_mode else 0)
+
+
+def test_album_secondary_type_is_version_evidence():
+    """专辑来源通过 secondary_types 声明现场版时，与标题和独立版本字段同样参与确认。"""
+    candidate = MusicInfo(media_source="musicbrainz", media_id="live-album", music_type="album",
+                          title="Example Work", artists=["Artist"], secondary_types=["Live"])
+    meta = MetaMusic(title="Example Work", artists=["Artist"])
+    assert MusicBrainzModule._select_album_candidate(meta, [candidate]) is None
+    meta.version = "Live"
+    assert MusicBrainzModule._select_album_candidate(meta, [candidate]) is candidate
 
 
 def test_recording_to_info_maps_musicbrainz_payload():
@@ -113,6 +289,36 @@ def test_search_music_normalizes_candidates(monkeypatch):
     assert results[0].title == "晴天"
 
 
+def test_search_persons_returns_musicbrainz_artist_infos_in_async_and_sync_modes(monkeypatch):
+    """人物搜索新增 MusicBrainz 来源时应保留标准艺术家字段，并支持两种 IO 模式。"""
+    module = MusicBrainzModule()
+    payload = {
+        "artists": [
+            {
+                "id": "artist-1",
+                "name": "周杰伦",
+                "sort-name": "Zhou, Jay",
+                "type": "Person",
+                "life-span": {"begin": "1979-01-18"},
+            }
+        ]
+    }
+    monkeypatch.setattr(module, "_request_json", lambda *_args, **_kwargs: payload)
+    monkeypatch.setattr(module, "_async_request_json", AsyncMock(return_value=payload))
+
+    sync_results = module.search_persons("周杰伦", media_source=MediaSource.MusicBrainz)
+    async_results = asyncio.run(
+        module.async_search_persons("周杰伦", media_source=MediaSource.MusicBrainz)
+    )
+    skipped = module.search_persons("周杰伦", media_source=MediaSource.TMDB)
+
+    assert isinstance(sync_results[0], MusicArtistInfo)
+    assert sync_results[0].music_type == "artist"
+    assert sync_results[0].media_id == "artist-1"
+    assert async_results[0].name == "周杰伦"
+    assert skipped is None
+
+
 def test_search_music_interleaves_recordings_albums_and_artists(monkeypatch):
     """全局音乐搜索应交错返回三类实体，避免单曲结果挤掉整专和艺术家入口。"""
     module = MusicBrainzModule()
@@ -166,8 +372,76 @@ def test_search_music_interleaves_recordings_albums_and_artists(monkeypatch):
     assert results[1].album == "叶惠美"
     assert results[2].title == "周杰伦"
     assert results[2].artists == []
-    assert requested[1][1]["query"] == 'releasegroup:("晴" OR "天") AND artist:"周杰伦"'
-    assert requested[2][1]["query"] == 'artist:("周" OR "杰" OR "伦")'
+    assert requested[1][1]["query"] == 'releasegroup:"晴天" AND artist:("周杰伦" OR "周杰倫")'
+    assert requested[2][1]["query"] == 'artist:("周杰伦" OR "周杰倫")'
+
+
+def test_search_music_limits_album_selector_to_release_groups_and_ranks_identity(monkeypatch):
+    """专辑选择器只应请求 Release Group，并把艺人、年份与主类型匹配的录音室专辑排在前面。"""
+    module = MusicBrainzModule()
+    requested = []
+
+    def fake_request(path, params=None):
+        requested.append((path, params))
+        return {
+            "release-groups": [
+                {
+                    "id": "live-single",
+                    "title": "Hotel California",
+                    "primary-type": "Single",
+                    "secondary-types": ["Live"],
+                    "artist-credit": [{"artist": {"id": "eagles", "name": "Eagles"}}],
+                },
+                {
+                    "id": "cover-album",
+                    "title": "Hotel California",
+                    "first-release-date": "2004",
+                    "primary-type": "Album",
+                    "artist-credit": [{"artist": {"id": "cover", "name": "Banda Dos"}}],
+                },
+                {
+                    "id": "studio-album",
+                    "title": "Hotel California",
+                    "first-release-date": "1976-12-08",
+                    "primary-type": "Album",
+                    "artist-credit": [{"artist": {"id": "eagles", "name": "Eagles"}}],
+                },
+            ]
+        }
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+
+    results = module.search_music(
+        MetaMusic(title="Hotel California", artists=["Eagles"], year=1976),
+        limit=20,
+        music_types=("album",),
+    )
+
+    assert [item.music_type for item in results] == ["album", "album", "album"]
+    assert results[0].media_id == "studio-album"
+    assert [path for path, _params in requested] == ["/release-group"]
+    assert requested[0][1]["limit"] == 100
+
+
+def test_search_music_limits_recording_selector_to_recordings(monkeypatch):
+    """单曲选择器不应额外请求发行组或艺术家。"""
+    module = MusicBrainzModule()
+    requested_paths = []
+
+    def fake_request(path, params=None):
+        requested_paths.append(path)
+        return {"recordings": [{"id": "recording-1", "title": "Hotel California"}]}
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+
+    results = module.search_music(
+        MetaMusic(title="Hotel California"),
+        limit=20,
+        music_types=("recording",),
+    )
+
+    assert [item.media_id for item in results] == ["recording-1"]
+    assert requested_paths == ["/recording"]
 
 
 def test_file_recognition_searches_recordings_only(monkeypatch):
@@ -374,7 +648,8 @@ def test_music_album_builds_tracks_and_release_variants(monkeypatch):
     album = module.music_album("musicbrainz", "release-group-1")
 
     assert album is not None
-    assert album.category == "Album / Live"
+    assert album.metadata_category == "Album / Live"
+    assert album.category == ""
     assert album.rating == 8.5
     assert album.genres[:2] == ["rock", "art rock"]
     assert [track.media_id for track in album.tracks] == ["recording-1", "recording-2"]
@@ -659,19 +934,20 @@ def test_recording_queries_ladder_relaxes_to_bare_title_last():
         MetaMusic(title="晴天 (电影版)", artists=["周杰伦"])
     )
 
-    full = '("晴" OR "天") OR ("电" OR "影" OR "版")'
-    assert queries[0] == f'recording:({full}) AND artist:"周杰伦"'
-    assert queries[1] == f'recording:({full})'
-    assert queries[2] == 'recording:("晴" OR "天") AND artist:"周杰伦"'
-    # 署名变体兜底放在最后，由候选挑选的艺术家要求收紧
+    full = '("晴天 (电影版)" OR "晴天 (電影版)")'
+    assert queries[0] == f'recording:{full} AND artist:("周杰伦" OR "周杰倫")'
+    assert queries[1] == f'recording:{full}'
+    assert queries[2] == 'recording:"晴天" AND artist:("周杰伦" OR "周杰倫")'
+    # 全名查询之后才逐字兜底，避免单字噪声抢占召回窗口。
     assert queries[-1] == 'recording:("晴" OR "天")'
 
 
-def test_query_phrase_latin_unchanged_and_cjk_char_or():
-    """拉丁文本保持短语检索，CJK 文本拆为逐字 OR，混合文本按词元拆分。"""
+def test_query_phrase_prefers_complete_names_with_explicit_loose_fallback():
+    """所有文字优先完整短语，CJK 只有显式末级兜底才拆为逐字 OR。"""
     assert MusicBrainzModule._query_phrase("Fearless") == '"Fearless"'
-    assert MusicBrainzModule._query_phrase("晴天") == '("晴" OR "天")'
-    assert MusicBrainzModule._query_phrase("好歌茹芸 Vol. 3") == (
+    assert MusicBrainzModule._query_phrase("晴天") == '"晴天"'
+    assert MusicBrainzModule._query_phrase("好歌茹芸 Vol. 3") == '"好歌茹芸 Vol. 3"'
+    assert MusicBrainzModule._query_phrase("好歌茹芸 Vol. 3", loose=True) == (
         '(("好" OR "歌" OR "茹" OR "芸") OR "Vol." OR "3")'
     )
     assert MusicBrainzModule._query_phrase("") is None
@@ -691,6 +967,52 @@ def test_strip_artist_prefix_removes_signature_prefix():
     # 剥离后无剩余时保留原标题，短标题不受影响
     assert MusicBrainzModule._strip_artist_prefix("许茹芸", ["许茹芸"]) == "许茹芸"
     assert MusicBrainzModule._strip_artist_prefix("晴天", ["周杰伦"]) == "晴天"
+
+
+@pytest.mark.parametrize("artist,title", [("Lee", "Leeway"), ("Élan", "Élansong"), ("Мир", "Мирный")])
+def test_artist_prefix_cleanup_keeps_whole_words(artist, title):
+    """候选确认和后续检索式都不能从实际曲名的单词内部剥离艺术家。"""
+    assert MusicBrainzModule._strip_artist_prefix(title, [artist]) == title
+    meta = MetaMusic(title=title, artists=[artist])
+    candidate = MusicInfo(media_source="musicbrainz", media_id="correct", title=title, artists=[artist])
+    assert MusicBrainzModule._select_candidate(meta, [candidate], "musicbrainz") is candidate
+
+
+def test_recording_queries_do_not_shorten_title_words():
+    """首轮精确查询之后也必须保留完整曲名，不能换成错误的缩短词。"""
+    queries = MusicBrainzModule._recording_queries(MetaMusic(title="Leeway", artists=["Lee"]))
+    assert queries == ['recording:"Leeway" AND artist:"Lee"', 'recording:"Leeway"']
+
+
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+def test_exact_title_precedes_derived_artist_signature(music_type):
+    """曲名确实包含艺名时，完整名称命中优先于去署名后的回退名称。"""
+    meta = MetaMusic(title="Lee Loves You", artists=["Lee"])
+    shortened = MusicInfo(media_source="musicbrainz", media_id="short", title="Loves You",
+                          music_type=music_type, artists=["Lee"])
+    original = MusicInfo(media_source="musicbrainz", media_id="original", title="Lee Loves You",
+                         music_type=music_type, artists=["Lee"])
+    if music_type == "recording":
+        meta.album = shortened.album = "Example Collection"
+        meta.year = shortened.year = 2001
+    if music_type == "album":
+        assert MusicBrainzModule._select_album_candidate(meta, [shortened, original]) is original
+    else:
+        assert MusicBrainzModule._select_candidate(meta, [shortened, original], "musicbrainz") is original
+
+
+@pytest.mark.parametrize("music_type", ["recording", "album"])
+def test_rejected_exact_title_does_not_hide_valid_signature_fallback(music_type):
+    """完整名称优先不能放过署名不符的候选，仍应采用有效的去署名回退。"""
+    meta = MetaMusic(title="Lee Loves You", artists=["Lee"])
+    invalid = MusicInfo(media_source="musicbrainz", media_id="wrong", music_type=music_type,
+                        title=meta.title, artists=["Other Artist"])
+    valid = MusicInfo(media_source="musicbrainz", media_id="right", music_type=music_type,
+                      title="Loves You", artists=["Lee"])
+    if music_type == "album":
+        assert MusicBrainzModule._select_album_candidate(meta, [invalid, valid]) is valid
+    else:
+        assert MusicBrainzModule._select_candidate(meta, [invalid, valid], "musicbrainz") is valid
 
 
 def test_select_album_candidate_matches_lead_token_structure():
@@ -848,6 +1170,28 @@ def test_select_candidate_rejects_wrong_artist_same_title():
     assert MusicBrainzModule._select_candidate(meta, [wrong_artist], media_source="musicbrainz") is None
 
 
+def test_select_candidate_rejects_wrong_release_year_and_album():
+    """曲名和艺人相同也不能把有明确专辑证据的原版投影到其他发行版。"""
+    meta = MetaMusic(
+        title="Sparks Fly",
+        artists=["Taylor Swift"],
+        album="Speak Now",
+        year=2010,
+    )
+    wrong_release = MusicInfo(
+        media_source="musicbrainz",
+        media_id="recording-wrong-release",
+        title="Sparks Fly",
+        artists=["Taylor Swift"],
+        album="Now That's What I Call Music",
+        year=2025,
+    )
+
+    assert MusicBrainzModule._select_candidate(
+        meta, [wrong_release], media_source="musicbrainz"
+    ) is None
+
+
 def test_select_candidate_rejects_artist_only_match():
     """CJK 逐字 OR 检索召回宽，标题未命中的候选不能仅凭艺术家署名被采信。"""
     meta = MetaMusic(title="茹此精彩十三首", artists=["许茹芸"])
@@ -909,7 +1253,7 @@ def test_select_album_candidate_matches_colon_subtitle():
 
 
 def test_select_album_candidate_matches_head_title():
-    """条目「曲名-歌手《巡演名》」连字符前置命名应与资源曲名弱匹配命中。"""
+    """说明性专辑标题可弱匹配，但仍须具有相同现场版本证据。"""
     meta = MetaMusic(title="为你盛开", artists=["许巍"])
     album = MusicInfo(
         media_source="musicbrainz",
@@ -919,6 +1263,8 @@ def test_select_album_candidate_matches_head_title():
         artists=["许巍"],
     )
 
+    assert MusicBrainzModule._select_album_candidate(meta, [album]) is None
+    meta.version = "现场"
     matched = MusicBrainzModule._select_album_candidate(meta, [album])
 
     assert matched is not None

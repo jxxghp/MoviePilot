@@ -1,21 +1,20 @@
 import json
 import re
-from threading import Lock
 from pathlib import Path
+from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from slack_sdk import WebClient
 
-from app.runtime.settings import get_runtime_setting
-
-from app.application.messaging.ingress import forward_message_to_host
-from app.domain.context import MediaInfo, Context
-from app.domain.metainfo import MetaInfo
-from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
+from app.application.messaging.ingress import forward_message_to_host
+from app.domain.context import Context, MediaInfo
+from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 
 lock = Lock()
 
@@ -303,75 +302,79 @@ class Slack:
                 # 消息广播
                 channel = self.__find_public_channel()
             # 消息文本
-            message_text = ""
+            message_text = f"{title}\n{text or ''}"
             # 结构体
             blocks = []
-            if not image:
-                message_text = f"{title}\n{text or ''}"
-            else:
+            if image:
                 # 消息图片
-                if image:
-                    # 拼装消息内容
-                    blocks.append({"type": "section", "text": {
+                blocks.append({"type": "section", "text": {
+                    "type": "mrkdwn",
+                    "text": f"*{title}*\n{text or ''}"
+                }, 'accessory': {
+                    "type": "image",
+                    "image_url": f"{image}",
+                    "alt_text": f"{title}"
+                }})
+            elif buttons or link:
+                blocks.append({
+                    "type": "section",
+                    "text": {
                         "type": "mrkdwn",
-                        "text": f"*{title}*\n{text or ''}"
-                    }, 'accessory': {
-                        "type": "image",
-                        "image_url": f"{image}",
-                        "alt_text": f"{title}"
-                    }})
-                # 自定义按钮
-                if buttons:
-                    for button_row in buttons:
-                        elements = []
-                        for button in button_row:
-                            if "url" in button:
-                                # URL按钮
-                                elements.append({
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": button["text"],
-                                        "emoji": True
-                                    },
-                                    "url": button["url"],
-                                    "action_id": f"actionId-url-{button.get('text', 'url')}-{len(elements)}"
-                                })
-                            else:
-                                # 回调按钮
-                                elements.append({
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": button["text"],
-                                        "emoji": True
-                                    },
-                                    "value": button["callback_data"],
-                                    "action_id": f"actionId-{button['callback_data']}"
-                                })
-                        if elements:
-                            blocks.append({
-                                "type": "actions",
-                                "elements": elements
-                            })
-                elif link:
-                    # 默认链接按钮
-                    blocks.append({
-                        "type": "actions",
-                        "elements": [
-                            {
+                        "text": f"*{title}*\n{text or ''}",
+                    },
+                })
+            # 自定义按钮
+            if buttons:
+                for button_row in buttons:
+                    elements = []
+                    for button in button_row:
+                        if "url" in button:
+                            # URL按钮
+                            elements.append({
                                 "type": "button",
                                 "text": {
                                     "type": "plain_text",
-                                    "text": "查看详情",
+                                    "text": button["text"],
                                     "emoji": True
                                 },
-                                "value": "click_me_url",
-                                "url": f"{link}",
-                                "action_id": "actionId-url"
-                            }
-                        ]
-                    })
+                                "url": button["url"],
+                                "action_id": f"actionId-url-{button.get('text', 'url')}-{len(elements)}"
+                            })
+                        else:
+                            # 回调按钮
+                            elements.append({
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": button["text"],
+                                    "emoji": True
+                                },
+                                "value": button["callback_data"],
+                                "action_id": f"actionId-{button['callback_data']}"
+                            })
+                    if elements:
+                        blocks.append({
+                            "type": "actions",
+                            "elements": elements
+                        })
+            elif link:
+                # 默认链接按钮
+                blocks.append({
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "查看详情",
+                                "emoji": True
+                            },
+                            "value": "click_me_url",
+                            "url": f"{link}",
+                            "action_id": "actionId-url"
+                        }
+                    ]
+                })
 
             # 判断是编辑消息还是发送新消息
             if original_message_id and original_chat_id:
@@ -517,13 +520,13 @@ class Slack:
                         if media.get_poster_image():
                             if media.vote_star:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                       f"\n类型：{media.type.value}" \
-                                       f"\n{media.vote_star}" \
-                                       f"\n{media.get_overview_string(50)}"
+                                    f"\n类型：{media.type.value}" \
+                                    f"\n{media.vote_star}" \
+                                    f"\n{media.get_overview_string(50)}"
                             else:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                       f"\n类型：{media.type.value}" \
-                                       f"\n{media.get_overview_string(50)}"
+                                    f"\n类型：{media.type.value}" \
+                                    f"\n{media.get_overview_string(50)}"
                             blocks.append(
                                 {
                                     "type": "section",
@@ -577,13 +580,13 @@ class Slack:
                         if media.get_poster_image():
                             if media.vote_star:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                       f"\n类型：{media.type.value}" \
-                                       f"\n{media.vote_star}" \
-                                       f"\n{media.get_overview_string(50)}"
+                                    f"\n类型：{media.type.value}" \
+                                    f"\n{media.vote_star}" \
+                                    f"\n{media.get_overview_string(50)}"
                             else:
                                 text = f"{index}. *<{media.detail_link}|{media.title_year}>*" \
-                                       f"\n类型：{media.type.value}" \
-                                       f"\n{media.get_overview_string(50)}"
+                                    f"\n类型：{media.type.value}" \
+                                    f"\n{media.get_overview_string(50)}"
                             blocks.append(
                                 {
                                     "type": "section",
@@ -684,16 +687,16 @@ class Slack:
                     meta = MetaInfo(torrent.title, torrent.description)
                     link = torrent.page_url
                     title_text = f"{meta.season_episode} " \
-                                 f"{meta.resource_term} " \
-                                 f"{meta.video_term} " \
-                                 f"{meta.release_group}"
+                        f"{meta.resource_term} " \
+                        f"{meta.video_term} " \
+                        f"{meta.release_group}"
                     title_text = re.sub(r"\s+", " ", title_text).strip()
                     free = torrent.volume_factor
                     seeder = f"{torrent.seeders}↑"
                     description = torrent.description
                     text = f"{index}. 【{site_name}】<{link}|{title_text}> " \
-                           f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}\n" \
-                           f"{description}"
+                        f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}\n" \
+                        f"{description}"
                     blocks.append(
                         {
                             "type": "section",
@@ -744,16 +747,16 @@ class Slack:
                     meta = MetaInfo(torrent.title, torrent.description)
                     link = torrent.page_url
                     title_text = f"{meta.season_episode} " \
-                                 f"{meta.resource_term} " \
-                                 f"{meta.video_term} " \
-                                 f"{meta.release_group}"
+                        f"{meta.resource_term} " \
+                        f"{meta.video_term} " \
+                        f"{meta.release_group}"
                     title_text = re.sub(r"\s+", " ", title_text).strip()
                     free = torrent.volume_factor
                     seeder = f"{torrent.seeders}↑"
                     description = torrent.description
                     text = f"{index}. 【{site_name}】<{link}|{title_text}> " \
-                           f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}\n" \
-                           f"{description}"
+                        f"{size_tools.format_compact_size(torrent.size)} {free} {seeder}\n" \
+                        f"{description}"
                     blocks.append(
                         {
                             "type": "section",

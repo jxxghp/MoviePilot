@@ -7,12 +7,12 @@ from unittest.mock import patch
 import pytest
 
 from app.agent.tools.base import MoviePilotTool
+from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.manager import MoviePilotToolsManager
-from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.api.endpoints import mcp
-from app.runtime.extensions.plugin.manager import PluginManager
 from app.foundation.singleton import Singleton
+from app.runtime.extensions.plugin.manager import PluginManager
 
 
 class DemoPluginTool(MoviePilotTool):
@@ -56,7 +56,7 @@ def test_mcp_refreshes_tools_after_plugin_lifecycle_change(
         MoviePilotToolFactory,
         "_get_builtin_tool_classes",
         return_value=[],
-    ):
+    ), patch.object(MoviePilotToolFactory, "EXTERNAL_SERVICE_TOOL_CLASSES", ()):
         tool_manager = MoviePilotToolsManager(
             session_id="mcp-plugin-test",
             user_id="api_user",
@@ -79,9 +79,7 @@ def test_mcp_refreshes_tools_after_plugin_lifecycle_change(
                 }
             )
         )
-        assert call_result == {
-            "content": [{"type": "text", "text": "plugin-ok"}]
-        }
+        assert call_result == {"content": [{"type": "text", "text": "plugin-ok"}]}
 
         plugin_manager.running_plugins.pop("DemoPlugin")
         plugin_manager.clear_plugin_agent_tools_cache()
@@ -99,8 +97,8 @@ def test_mcp_refreshes_tools_after_plugin_lifecycle_change(
         assert "未找到" in missing_payload["error"]
 
 
-def test_direct_manager_preserves_legacy_lookup_and_exposes_strict_resolution() -> None:
-    """普通 direct 调用保留 first-wins，严格调用可拒绝同名身份。"""
+def test_direct_manager_rejects_ambiguous_tool_identity() -> None:
+    """HTTP/MCP direct 调用不得保留 first-wins 执行路径。"""
     first = DemoPluginTool(session_id="session", user_id="user")
     second = DemoPluginTool(session_id="session", user_id="user")
     manager = MoviePilotToolsManager(session_id="session", user_id="user")
@@ -111,9 +109,34 @@ def test_direct_manager_preserves_legacy_lookup_and_exposes_strict_resolution() 
         factory_revision=MoviePilotToolFactory.catalog_factory_revision(),
     )
 
-    assert manager.get_tool("demo_plugin_tool") is first
+    with pytest.raises(RuntimeError, match="TOOL_IDENTITY_AMBIGUOUS"):
+        manager.list_tools()
+    with pytest.raises(RuntimeError, match="TOOL_IDENTITY_AMBIGUOUS"):
+        manager.get_tool("demo_plugin_tool")
     with pytest.raises(RuntimeError, match="TOOL_IDENTITY_AMBIGUOUS"):
         manager.get_strict_tool("demo_plugin_tool")
+    with pytest.raises(RuntimeError, match="TOOL_IDENTITY_AMBIGUOUS"):
+        asyncio.run(manager.call_tool("demo_plugin_tool", {}))
 
-    result = asyncio.run(manager.call_tool("demo_plugin_tool", {}))
-    assert result == "plugin-ok"
+
+def test_read_skill_is_hidden_from_mcp_calls() -> None:
+    """read_skill 只属于内置 Agent，中间件工具不得通过 MCP 直接调用。"""
+    builtin_names = {
+        MoviePilotToolFactory._tool_class_name(tool_class)
+        for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES
+    }
+
+    assert "read_skill" in mcp.MCP_HIDDEN_TOOLS
+    assert "read_skill" not in builtin_names
+
+    result = asyncio.run(
+        mcp.handle_tools_call(
+            {
+                "name": "read_skill",
+                "arguments": {"name": "moviepilot-api"},
+            }
+        )
+    )
+
+    assert result["isError"] is True
+    assert "未找到" in result["content"][0]["text"]

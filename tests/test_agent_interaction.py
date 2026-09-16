@@ -11,11 +11,11 @@ from app.agent.tools.impl.ask_user_choice import (
     UserChoiceOptionInput,
 )
 from app.agent.tools.impl.send_message import SendMessageTool
-from app.application.messaging.agent import (
+from app.application.messaging.interaction import InteractionContext
+from app.application.messaging.interaction.agent import (
     AgentInteractionOption,
     agent_interaction_manager,
 )
-from app.application.messaging.interaction import InteractionContext
 from app.chain.message import MessageChain
 from app.runtime.config import settings
 from app.runtime.loop import main_loop_registry

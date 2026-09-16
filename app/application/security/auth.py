@@ -154,6 +154,9 @@ class AuthUserRepository(Protocol):
     def get_by_id(self, user_id: int) -> Optional[AuthUser]:
         """按 ID 查询用户。"""
 
+    def get_active_superuser(self) -> Optional[AuthUser]:
+        """返回按稳定顺序选出的启用超级管理员。"""
+
 
 class AuthPasskeyRepository(Protocol):
     """认证提供方查询端口。"""
@@ -195,7 +198,9 @@ class AuthService:
 
     def build_superuser_token_payload(self) -> _SchemaTokenPayload:
         """从持久化用户和站点认证状态构造超级用户令牌载荷。"""
-        configured_name = get_chain_runtime_config_snapshot().superuser
+        configured_name = str(
+            get_chain_runtime_config_snapshot().superuser or ""
+        ).strip()
         if (
             self._superuser_binding_id is not None
             and configured_name == self._superuser_binding_name
@@ -203,12 +208,22 @@ class AuthService:
             # 配置保存用户名；持久化 ID 保证管理员改名不会让管理员级集成失效。
             user = self._users.get_by_id(self._superuser_binding_id)
         else:
-            user = self._users.get_by_name(configured_name)
+            user = (
+                self._users.get_by_name(configured_name)
+                if configured_name
+                else self._users.get_active_superuser()
+            )
             if user:
                 self._superuser_binding_name = configured_name
                 self._superuser_binding_id = user.id
         if not user or not user.is_active or not user.is_superuser:
-            raise PermissionError("用户权限不足")
+            if not configured_name:
+                raise PermissionError(
+                    "未配置 SUPERUSER，且数据库中没有可用超级管理员"
+                )
+            raise PermissionError(
+                "SUPERUSER 对应用户不存在、未启用或非超级管理员"
+            )
         return _SchemaTokenPayload(
             sub=user.id,
             username=user.name,

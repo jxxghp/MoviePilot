@@ -304,7 +304,12 @@ def test_dispatcher_drops_pending_after_max_attempts(monkeypatch):
     历史查询持续失败达到上限后应放弃重试，避免队列无限累积。
     """
     from app.monitor.dispatcher import TransferDispatcher
-    dispatcher = TransferDispatcher(all_exts=[".mkv"], cache={})
+    abandoned = MagicMock()
+    dispatcher = TransferDispatcher(
+        all_exts=[".mkv"],
+        cache={},
+        retry_abandoned_callback=abandoned,
+    )
     event_path = Path("/downloads/movie.mkv")
     monkeypatch.setattr(dispatcher, "_should_skip_by_history", MagicMock(return_value=None))
 
@@ -317,6 +322,32 @@ def test_dispatcher_drops_pending_after_max_attempts(monkeypatch):
     dispatcher.retry_pending()
 
     assert dispatcher._pending_retries == {}
+    abandoned.assert_called_once_with(
+        "local",
+        event_path,
+        f"整理历史查询失败连续失败 {TransferDispatcher.MAX_RETRY_ATTEMPTS} 次",
+    )
+
+
+def test_dispatcher_reports_retry_queue_capacity_drop():
+    """待重试队列已满时必须通知用户被丢弃的具体文件和恢复原因。"""
+    from app.monitor.dispatcher import TransferDispatcher
+
+    abandoned = MagicMock()
+    dispatcher = TransferDispatcher(
+        all_exts=[".mkv"],
+        cache={},
+        retry_abandoned_callback=abandoned,
+    )
+    dispatcher.MAX_PENDING_RETRIES = 1
+    dispatcher._register_pending("local", Path("/downloads/first.mkv"))
+    dispatcher._register_pending("local", Path("/downloads/dropped.mkv"))
+
+    abandoned.assert_called_once_with(
+        "local",
+        Path("/downloads/dropped.mkv"),
+        "整理重试队列已达到 1 条上限",
+    )
 
 
 def test_monitor_watches_mode_env_keys_for_hot_reload():

@@ -1,11 +1,14 @@
-from typing import Annotated, Optional, Dict, List, Union, Any
+from typing import Annotated, Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Discriminator, Field, RootModel, Tag
+from pydantic import BaseModel, Discriminator, Field, PrivateAttr, RootModel, Tag, model_validator
 
+from app.schemas.category import ClassificationFactValue, ClassificationResult
 from app.schemas.common import JsonData
-from app.schemas.music import MusicInfo, MusicMeta
 from app.schemas.media import OptionalMediaIdentityMixin
+from app.schemas.music import MusicArtistInfo as _MusicArtistInfo
+from app.schemas.music import MusicInfo, MusicMeta
 from app.schemas.types import MediaSource
+from app.schemas.types import MediaType as _MediaType
 
 
 class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
@@ -72,6 +75,60 @@ class MetaInfo(OptionalMediaIdentityMixin, BaseModel):
     media_source: Optional[MediaSource] = None
     # 显式媒体数据源原生ID
     media_id: Optional[str] = None
+
+    _season_list_override: Optional[List[int]] = PrivateAttr(default=None)
+
+    @property
+    def season_list(self) -> List[int]:
+        """返回识别的季数字列表。"""
+        if self._season_list_override is not None:
+            return self._season_list_override
+        if self.begin_season is None:
+            if self.type in (_MediaType.TV, _MediaType.TV.value):
+                return [1]
+            return []
+        if self.end_season is not None:
+            return list(range(self.begin_season, self.end_season + 1))
+        return [self.begin_season]
+
+    @season_list.setter
+    def season_list(self, value: Optional[List[int]]) -> None:
+        """兼容旧链路对季列表的显式覆盖。"""
+        self._season_list_override = list(value) if value is not None else None
+
+    @property
+    def season(self) -> str:
+        """返回开始季、结束季字符串，确定是剧集没有季的返回S01。"""
+        if self.begin_season is not None:
+            return "S%s" % str(self.begin_season).rjust(2, "0") \
+                if self.end_season is None \
+                else "S%s-S%s" % \
+                     (str(self.begin_season).rjust(2, "0"),
+                      str(self.end_season).rjust(2, "0"))
+        if self.type in (_MediaType.TV, _MediaType.TV.value):
+            return "S01"
+        return ""
+
+    @property
+    def season_seq(self) -> str:
+        """返回 begin_season 的数字，电视剧没有季的返回1。"""
+        if self.begin_season is not None:
+            return str(self.begin_season)
+        if self.type in (_MediaType.TV, _MediaType.TV.value):
+            return "1"
+        return ""
+
+    @property
+    def episode(self) -> str:
+        """返回开始集、结束集字符串。"""
+        if self.begin_episode is not None:
+            return "E%s" % str(self.begin_episode).rjust(2, "0") \
+                if self.end_episode is None \
+                else "E%s-E%s" % \
+                     (
+                         str(self.begin_episode).rjust(2, "0"),
+                         str(self.end_episode).rjust(2, "0"))
+        return ""
 
 
 class MediaImageSet(BaseModel):
@@ -265,7 +322,15 @@ class MediaInfo(OptionalMediaIdentityMixin, BaseModel):
     vote_average: Optional[float] = 0.0
     # 描述
     overview: Optional[str] = None
-    # 二级分类
+    # 媒体库目录分类；category 是过渡期兼容字段
+    library_category: Optional[str] = ""
+    # 来源提供的描述性分类，不参与目录选择
+    metadata_category: Optional[str] = ""
+    # 本次分类使用的推荐、生效结果和策略快照
+    classification: Optional[ClassificationResult] = None
+    # 插件来源提交的受控扩展分类事实，键使用完整 extensions.<source>.* 字段 ID
+    classification_facts: Dict[str, ClassificationFactValue] = Field(default_factory=dict)
+    # 二级分类兼容字段，始终映射到 library_category
     category: Optional[str] = ""
     # 季季集清单
     seasons: Optional[Dict[int, list[int]]] = Field(default_factory=dict)
@@ -341,6 +406,20 @@ class MediaInfo(OptionalMediaIdentityMixin, BaseModel):
     douban_info: Optional[dict[str, JsonData]] = None
     bangumi_info: Optional[dict[str, JsonData]] = None
     anilist_info: Optional[dict[str, JsonData]] = None
+
+    @model_validator(mode="before")  # type: ignore[misc]
+    @classmethod
+    def _normalize_category_compatibility(cls, value: Any) -> Any:
+        """把旧影视 category 输入归一为媒体库分类，并保持兼容字段双写。"""
+        if not isinstance(value, dict):
+            return value
+        payload = dict(value)
+        library_category = payload.get("library_category")
+        if library_category is None or library_category == "":
+            library_category = payload.get("category") or ""
+        payload["library_category"] = library_category
+        payload["category"] = library_category
+        return payload
 
 
 class TorrentInfo(OptionalMediaIdentityMixin, BaseModel):
@@ -476,8 +555,12 @@ class Context(BaseModel):
     candidate_recognized: Optional[bool] = False
     # 当前 media_info 是否为目标媒体回填
     media_info_is_target: Optional[bool] = False
+    match_status: Optional[str] = None
+    match_reason: Optional[str] = None
     # 下载层确认候选资源覆盖完整目标范围，供订阅事实写入判断整包资源
     confirmed_full_coverage: Optional[bool] = False
+    # 下载层从种子文件清单提取的稳定音轨键，供专辑订阅跨轮次累计下载进度
+    music_track_keys: Optional[List[str]] = None
 
 
 class MediaPerson(BaseModel):
@@ -516,8 +599,8 @@ class MediaPerson(BaseModel):
     relation: Optional[str] = None
 
 
-def _media_search_result_kind(value: Any) -> str:
-    """按稳定字段区分音乐、人物与影视/合集搜索结果。"""
+def _media_result_kind(value: Any) -> str:
+    """按稳定字段区分音乐、人物与影视/合集结果。"""
     if isinstance(value, BaseModel):
         value = value.model_dump()
     if isinstance(value, dict):
@@ -528,8 +611,34 @@ def _media_search_result_kind(value: Any) -> str:
     return "media"
 
 
+def _media_search_result_kind(value: Any) -> str:
+    """按搜索结果的稳定字段区分音乐艺术家、音乐、影视人物与媒体。"""
+    if isinstance(value, BaseModel):
+        value = value.model_dump()
+    if isinstance(value, dict):
+        # 旧音乐搜索仍可能以 MusicInfo(title) 表示艺术家；canonical MusicArtistInfo
+        # 带有 name 字段，只有这种结果进入人物/艺术家响应分支。
+        if value.get("music_type") == "artist" and "name" in value:
+            return "music_artist"
+        if value.get("type") == "音乐" or "music_type" in value:
+            return "music"
+        if "source" in value and "media_source" not in value:
+            return "person"
+    return "media"
+
+
+MediaDetailResult = Annotated[
+    Union[
+        Annotated[MusicInfo, Tag("music")],
+        Annotated[MediaInfo, Tag("media")],
+    ],
+    Discriminator(_media_result_kind),
+]
+
+
 MediaSearchResult = Annotated[
     Union[
+        Annotated[_MusicArtistInfo, Tag("music_artist")],
         Annotated[MusicInfo, Tag("music")],
         Annotated[MediaPerson, Tag("person")],
         Annotated[MediaInfo, Tag("media")],
@@ -539,4 +648,4 @@ MediaSearchResult = Annotated[
 
 
 class MediaSearchResults(RootModel[List[MediaSearchResult]]):
-    """媒体、音乐、合集与人物的统一搜索结果列表。"""
+    """媒体、音乐、合集、影视人物与音乐艺术家的统一搜索结果列表。"""

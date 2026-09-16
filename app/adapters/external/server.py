@@ -54,6 +54,8 @@ def reset_server_application_services() -> None:
 class MoviePilotServerHelper:
     """
     MoviePilot 服务端请求辅助工具。
+
+    中心服务请求统一使用 HTTP/1.1，用于对照验证间歇性请求失败是否与 HTTP/2 链路有关。
     """
 
     USER_UID_HEADER = "X-MoviePilot-User-Uid"
@@ -2012,6 +2014,7 @@ class MoviePilotServerHelper:
         异步发送服务端 GET 请求，默认携带安装用户 ID。
         """
         return await AsyncRequestUtils(
+            http2=False,
             proxies=get_runtime_setting('PROXY'),
             timeout=timeout,
             headers=cls.build_headers(url) if include_user_uid else {},
@@ -2034,6 +2037,7 @@ class MoviePilotServerHelper:
         异步发送携带安装用户 ID 的服务端 JSON POST 请求。
         """
         return await AsyncRequestUtils(
+            http2=False,
             proxies=get_runtime_setting('PROXY'),
             timeout=timeout,
             headers=cls.build_headers(url, content_type="application/json"),
@@ -2056,6 +2060,7 @@ class MoviePilotServerHelper:
         异步发送携带安装用户 ID 的服务端 DELETE 请求。
         """
         return await AsyncRequestUtils(
+            http2=False,
             proxies=get_runtime_setting('PROXY'),
             timeout=timeout,
             headers=cls.build_headers(url),

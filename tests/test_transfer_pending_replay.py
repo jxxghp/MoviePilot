@@ -25,7 +25,7 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
     TransferTask,
 )
-from app.chain.transfer import TransferChain
+from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
 from app.schemas.file import FileItem
 
 
@@ -45,6 +45,7 @@ def _build_chain(admissions) -> TransferChain:
     chain._owned_leases = {}
     chain._queued_lease_tokens = set()
     chain._worker_state_lock = threading.RLock()
+    chain._worker_lifecycle_lock = threading.RLock()
     chain._closing = False
     chain._recovery_wakeup_event = threading.Event()
     chain._replay_stop_event = threading.Event()
@@ -119,17 +120,19 @@ def _task(path: str, storage: str = "local") -> TransferTask:
 
 def test_admit_transfer_records_storage_and_path():
     """
-    入队时必须落盘登记「存储 + 源路径」这一最小事实。
+    入队时必须落盘登记源身份并在返回前取得执行租约。
     """
     admissions = MagicMock()
     admissions.admit.return_value = _admission(
         "/mnt/cd2/downloads/Movie.2024.mkv"
     )
-    chain = _build_chain(admissions)
-
-    result = chain._TransferChain__admit_transfer(
-        _task("/mnt/cd2/downloads/Movie.2024.mkv")
+    admissions.claim_task.return_value = _admission(
+        "/mnt/cd2/downloads/Movie.2024.mkv"
     )
+    chain = _build_chain(admissions)
+    task = _task("/mnt/cd2/downloads/Movie.2024.mkv")
+
+    result = chain._TransferChain__admit_transfer(task)
 
     call = admissions.admit.call_args.kwargs
     assert call["storage"] == "local"
@@ -137,6 +140,12 @@ def test_admit_transfer_records_storage_and_path():
     assert isinstance(call["planning_input"], TransferPlanningInput)
     assert call["planning_input"].source_fileitem["path"] == call["src_path"]
     assert result.task_id == "task-1"
+    assert task.lease_token == "lease-task-1"
+    admissions.claim_task.assert_called_once_with(
+        task_id="task-1",
+        owner_id="test-owner",
+        lease_seconds=120,
+    )
 
 
 def test_terminal_without_settlement_releases_claim_and_keeps_pending():
@@ -495,6 +504,8 @@ def test_replay_releases_claim_when_jobview_rejects_recovered_task(
     admissions.claim_recoverable.return_value = [admission]
     admissions.release_claim.return_value = True
     chain = _build_chain(admissions)
+    warning = MagicMock()
+    monkeypatch.setattr("app.chain.transfer.queue.logger.warning", warning)
     monkeypatch.setattr(
         chain,
         "_TransferChain__queue_planned_replay",
@@ -507,6 +518,9 @@ def test_replay_releases_claim_when_jobview_rejects_recovered_task(
         task_id="task-1",
         lease_token="lease-task-1",
         error="恢复任务未进入内存队列",
+    )
+    warning.assert_called_once_with(
+        "待整理文件回放未入队：claim 1 个，原因见前序日志与 transferpending.last_error",
     )
     assert chain._owned_leases == {}
 
@@ -540,3 +554,158 @@ def test_claimed_enqueue_failure_never_uses_unfenced_error_writer() -> None:
         error="queue closed",
     )
     assert chain._owned_leases == {}
+
+
+@pytest.mark.parametrize("state", ["waiting", "running", "failed", "completed"])
+@pytest.mark.parametrize("active", [False, True])
+def test_manual_restart_replaces_only_finished_inactive_jobview(state, active):
+    """手动重做清理批次残留终态，仍在执行或等待的同源任务必须保留。"""
+    import queue
+
+    from app.application.transfer.workflow import JobManager
+    from tests.test_transfer_job_manager import make_task
+
+    chain = _build_chain(MagicMock())
+    chain._queue = queue.Queue()
+    chain.jobview = JobManager()
+    chain._register_scrape_batch_task = MagicMock()
+    previous = make_task(1)
+    sibling = make_task(2)
+    assert chain.jobview.add_task(previous, state=state)
+    assert chain.jobview.add_task(sibling)
+    if active:
+        chain.jobview.start_execution(previous)
+    restart = make_task(1)
+    restart.manual = True
+    admission = _admission(restart.fileitem.path)
+    restart.bind_planning_input(admission.planning_input)
+    chain._transfer_admissions.admit.return_value = admission
+    chain._transfer_admissions.claim_task.return_value = admission
+
+    accepted = chain.put_to_queue(restart)
+
+    assert accepted is (state in {"failed", "completed"} and not active)
+    assert chain._queue.qsize() == int(accepted)
+    assert chain.jobview.total() == 2
+    if accepted:
+        assert chain._transfer_admissions.admit.call_args.kwargs["replace_inactive"] is True
+        assert chain.jobview.pending_total() == 2
+        chain._queue.get_nowait()
+        chain._finish_queue_item(restart)
+    else:
+        chain._transfer_admissions.admit.assert_not_called()
+
+
+@pytest.mark.parametrize("state", ["waiting", "running", "failed", "completed"])
+def test_recovery_requeues_orphaned_jobview_without_losing_group(state):
+    """残留视图没有真实执行者时必须恢复入队，并保留同组其他文件。"""
+    import queue
+
+    from app.application.transfer.workflow import JobManager
+    from tests.test_transfer_job_manager import make_task
+
+    chain = _build_chain(MagicMock())
+    chain._queue = queue.Queue()
+    chain.jobview = JobManager()
+    chain._register_scrape_batch_task = MagicMock()
+    old_task = make_task(1)
+    sibling = make_task(2)
+    assert chain.jobview.add_task(old_task, state=state)
+    assert chain.jobview.add_task(sibling)
+    recovered = make_task(1)
+    recovered.bind_admission_task_id("task-1")
+    recovered.bind_execution_lease(owner_id="test-owner", lease_token="lease-task-1")
+    chain._owned_leases["task-1"] = ("lease-task-1", time.monotonic() + 60)
+
+    assert chain.put_to_queue(recovered)
+    assert chain._queue.qsize() == 1
+    assert chain._queue.get_nowait().task is recovered
+    assert chain.jobview.pending_total() == 2
+    chain._transfer_admissions.release_claim.assert_not_called()
+    assert chain._TransferChain__is_claimed_task_enqueued("task-1", "lease-task-1")
+
+
+@pytest.mark.parametrize("running", [False, True])
+def test_recovery_reuses_real_task_without_second_enqueue(running):
+    """相同租约的真实任务已排队或被 worker 取走时，回放应幂等成功。"""
+    import queue
+
+    from app.application.transfer.workflow import JobManager
+    from tests.test_transfer_job_manager import make_task
+
+    chain = _build_chain(MagicMock())
+    chain._queue = queue.Queue()
+    chain.jobview = JobManager()
+    chain._register_scrape_batch_task = MagicMock()
+    task = make_task(1)
+    task.bind_admission_task_id("task-1")
+    task.bind_execution_lease(owner_id="test-owner", lease_token="lease-task-1")
+    chain._owned_leases["task-1"] = ("lease-task-1", time.monotonic() + 60)
+    assert chain.put_to_queue(task)
+    if running:
+        chain._queue.get_nowait()
+        chain._queued_lease_tokens.clear()
+    duplicate = task.model_copy(deep=True)
+    duplicate.fileitem.path += "/"
+
+    assert chain.put_to_queue(duplicate)
+    assert chain._queue.qsize() == (0 if running else 1)
+    chain._register_scrape_batch_task.assert_called_once_with(task)
+    chain._transfer_admissions.release_claim.assert_not_called()
+    if not running:
+        chain._queue.get_nowait()
+    chain._finish_queue_item(task)
+    assert not chain._resident_tasks
+    assert chain._queue.unfinished_tasks == 0
+
+
+def test_recovery_does_not_reuse_a_different_execution_lease():
+    """不能把旧执行者当作新租约已入队，也不能覆盖仍持有的真实任务。"""
+    import queue
+
+    from app.application.transfer.workflow import JobManager
+    from tests.test_transfer_job_manager import make_task
+
+    chain = _build_chain(MagicMock())
+    chain._queue = queue.Queue()
+    chain.jobview = JobManager()
+    chain._register_scrape_batch_task = MagicMock()
+    old = make_task(1)
+    old.bind_admission_task_id("task-1")
+    old.bind_execution_lease(owner_id="test-owner", lease_token="old")
+    chain._owned_leases["task-1"] = ("old", time.monotonic() + 60)
+    assert chain.put_to_queue(old)
+    recovered = make_task(1)
+    recovered.bind_admission_task_id("task-1")
+    recovered.bind_execution_lease(owner_id="test-owner", lease_token="new")
+    chain._owned_leases["task-1"] = ("new", time.monotonic() + 60)
+
+    assert chain.put_to_queue(recovered) is False
+    assert chain._queue.qsize() == 1
+    assert chain._queue.get_nowait().task is old
+
+
+def test_normal_enqueue_is_visible_to_recovery_without_readmission():
+    """普通准入任务也登记真实队列凭证，恢复同一租约不再次准入或入队。"""
+    import queue
+
+    from app.application.transfer.workflow import JobManager
+    from tests.test_transfer_job_manager import make_task
+
+    admissions = MagicMock()
+    chain = _build_chain(admissions)
+    chain._queue = queue.Queue()
+    chain.jobview = JobManager()
+    chain._register_scrape_batch_task = MagicMock()
+    task = make_task(1)
+    admission = _admission(task.fileitem.path)
+    admissions.admit.return_value = admission
+    admissions.claim_task.return_value = admission
+    task.bind_planning_input(admission.planning_input)
+
+    assert chain.put_to_queue(task)
+    assert chain.put_to_queue(task.model_copy())
+    assert chain._queue.qsize() == 1
+    admissions.admit.assert_called_once()
+    admissions.claim_task.assert_called_once()
+    chain._register_scrape_batch_task.assert_called_once()

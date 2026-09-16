@@ -8,7 +8,7 @@ import pytest
 
 from app.application.transfer.workflow import TransferTask
 from app.chain.base import ChainBase
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.file import FileItem
@@ -125,6 +125,8 @@ def test_transfer_chain_do_transfer_keeps_legacy_signature():
         ("cleanup_dest_fileitem", None),
         ("continue_callback", None),
         ("reorganize", False),
+        ("music_release_regions", None),
+        ("music_release_scripts", None),
     )
 
 
@@ -205,7 +207,7 @@ def test_chain_base_plan_transfer_keeps_internal_dto_type_only():
     """规划入口运行时只做内部调度，不要求导入或重复导出 DTO。"""
     chain = object.__new__(ChainBase)
     checkpoint = Mock(name="checkpoint")
-    chain.run_module = Mock(return_value=checkpoint)
+    chain.run_module_strict = Mock(return_value=checkpoint)
     meta = Mock(name="meta")
     mediainfo = Mock(name="mediainfo")
 
@@ -216,7 +218,7 @@ def test_chain_base_plan_transfer_keeps_internal_dto_type_only():
     )
 
     assert returned is checkpoint
-    chain.run_module.assert_called_once_with(
+    chain.run_module_strict.assert_called_once_with(
         "plan_transfer",
         fileitem=_fileitem(),
         meta=meta,

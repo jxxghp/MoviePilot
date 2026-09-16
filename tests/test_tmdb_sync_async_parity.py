@@ -88,6 +88,40 @@ def test_recognize_sync_async_share_identity_cache_and_result_decisions() -> Non
     ]
 
 
+def test_recognize_sync_async_pass_episode_group_as_group_id() -> None:
+    """剧集组 ID 应按 TmdbApi 的 group_id 参数在双入口转发。"""
+    module = _module_with_clients()
+    info = _movie_info()
+    group_id = "5ad0ec240e0a26303f00d84d"
+    module.tmdb.get_info.return_value = info
+    module.tmdb.async_get_info = AsyncMock(return_value=info)
+    module.tmdb.get_tv_group_seasons.return_value = []
+    module.tmdb.async_get_tv_group_seasons = AsyncMock(return_value=[])
+    module.category.get_movie_category.return_value = "剧情片"
+
+    module.recognize_media(
+        mtype=MediaType.MOVIE,
+        media_source=MediaSource.TMDB,
+        media_id="10",
+        episode_group=group_id,
+        cache=False,
+    )
+    asyncio.run(
+        module.async_recognize_media(
+            mtype=MediaType.MOVIE,
+            media_source=MediaSource.TMDB,
+            media_id="10",
+            episode_group=group_id,
+            cache=False,
+        )
+    )
+
+    module.tmdb.get_tv_group_seasons.assert_called_once_with(group_id=group_id)
+    module.tmdb.async_get_tv_group_seasons.assert_awaited_once_with(
+        group_id=group_id
+    )
+
+
 def test_recognize_sync_async_share_negative_cache_short_circuit() -> None:
     """负缓存命中时双入口都不得继续访问 TMDB 客户端。"""
     module = _module_with_clients()

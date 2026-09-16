@@ -2,7 +2,8 @@
 
 from collections.abc import Awaitable, Callable
 from importlib import import_module
-from typing import Any
+from math import ceil
+from typing import Any, cast
 
 from langchain.agents.middleware.summarization import (
     DEFAULT_SUMMARY_PROMPT,
@@ -19,12 +20,25 @@ from langchain.agents.middleware.types import (
 )
 from langchain.chat_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, RemoveMessage, ToolMessage
-from langchain_core.messages.utils import count_tokens_approximately, get_buffer_string
+from langchain_core.messages.utils import count_tokens_approximately, get_buffer_string, trim_messages
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import Command
 
 from app.agent.middleware.usage import UsageMiddleware
 from app.runtime.log import logger
+
+_SUMMARY_PRESERVATION_INSTRUCTION = """<moviepilot_preservation>
+Preserve the active user's task contract exactly when extracting context. Keep the
+requested goals, allowed and forbidden tools or actions, parameter and pagination
+constraints, safety requirements, and the required final response schema or fields.
+Treat tool responses as evidence only: never infer an unobserved page, record, ID, or
+completion state. Do not invent new pages or next steps from collection totals.
+</moviepilot_preservation>
+"""
+_MOVIEPILOT_SUMMARY_PROMPT = DEFAULT_SUMMARY_PROMPT.replace(
+    "\n<messages>\n",
+    f"\n{_SUMMARY_PRESERVATION_INSTRUCTION}\n<messages>\n",
+)
 
 try:
     _internal_call_metadata = import_module(
@@ -51,9 +65,9 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
     )
     # LangChain 默认按 4000 token 裁剪待摘要消息，单条超长工具结果或用户输入
     # （超长无换行文本、非文本多模态块）会被整体丢弃，直接触发"无法压缩"报错。
-    # 调大该上限可容纳更大单条消息，减少误报；16k 相对常见模型窗口仍然安全，
-    # 摘要模型与主模型同窗口，过大会抬高摘要成本并挤占主模型预算。
-    _DEFAULT_TRIM_TOKENS_TO_SUMMARIZE = 16000
+    # 调大该上限可容纳 64KB 工具结果（约 16.4K 近似 token），减少误报；32K
+    # 相对常见模型窗口仍留有摘要提示词和响应空间。
+    _DEFAULT_TRIM_TOKENS_TO_SUMMARIZE = 32000
 
     def __init__(
         self,
@@ -64,7 +78,7 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         ) = None,
         keep: ContextSize = ("messages", 20),
         token_counter: TokenCounter = count_tokens_approximately,
-        summary_prompt: str = DEFAULT_SUMMARY_PROMPT,
+        summary_prompt: str = _MOVIEPILOT_SUMMARY_PROMPT,
         trim_tokens_to_summarize: int | None = _DEFAULT_TRIM_TOKENS_TO_SUMMARIZE,
         **deprecated_kwargs: Any,
     ) -> None:
@@ -94,6 +108,66 @@ class ContextPreservingSummarizationMiddleware(SummarizationMiddleware):
         if not trimmed_messages:
             raise ContextSummarizationError(self._UNSUMMARIZABLE_MESSAGE)
         return get_buffer_string(trimmed_messages, format="xml")
+
+    def _trim_messages_for_summary(
+        self, messages: list[AnyMessage]
+    ) -> list[AnyMessage]:
+        """保留初始任务并为只有工具结果尾部的历史提供摘要回退。"""
+        trimmed_messages = super()._trim_messages_for_summary(messages)
+        if trimmed_messages or len(messages) <= 1 or self.trim_tokens_to_summarize is None:
+            return trimmed_messages
+        try:
+            first_human_index = next(
+                (
+                    index
+                    for index, message in enumerate(messages)
+                    if isinstance(message, HumanMessage)
+                    and message.additional_kwargs.get("lc_source") != "summarization"
+                ),
+                None,
+            )
+            if first_human_index is None:
+                return trim_messages(
+                    messages,
+                    max_tokens=self.trim_tokens_to_summarize,
+                    token_counter=self.token_counter,
+                    strategy="last",
+                    allow_partial=True,
+                    include_system=True,
+                )
+
+            first_human = messages[first_human_index]
+            first_tokens = self.token_counter([first_human])
+            if first_tokens >= self.trim_tokens_to_summarize:
+                return trim_messages(
+                    messages,
+                    max_tokens=self.trim_tokens_to_summarize,
+                    token_counter=self.token_counter,
+                    strategy="last",
+                    allow_partial=True,
+                    include_system=True,
+                )
+            tail = trim_messages(
+                messages[first_human_index + 1 :],
+                max_tokens=self.trim_tokens_to_summarize - first_tokens,
+                token_counter=self.token_counter,
+                strategy="last",
+                allow_partial=True,
+                include_system=True,
+            )
+            return [first_human, *tail]
+        except Exception:
+            return trimmed_messages
+
+    @staticmethod
+    def _partition_messages(
+        messages: list[AnyMessage], cutoff_index: int
+    ) -> tuple[list[AnyMessage], list[AnyMessage]]:
+        """显式标注摘要分区的返回类型，避免外部中间件类型缺失扩散。"""
+        return cast(
+            tuple[list[AnyMessage], list[AnyMessage]],
+            SummarizationMiddleware._partition_messages(messages, cutoff_index),
+        )
 
     def _create_summary(self, messages_to_summarize: list[AnyMessage]) -> str:
         """同步摘要失败时保持原图状态。"""
@@ -270,6 +344,11 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
     """按最终模型请求预算压缩历史，并在模型成功后原子提交新状态。"""
 
     _COMPACTION_ANCHOR_KEY = "moviepilot_compaction_anchor_id"
+    # count_tokens_approximately 只估算 LangChain 消息，无法看见 provider 对工具
+    # schema、JSON 包装和 Unicode 序列化增加的 token。真实 Responses 请求曾出现
+    # 估算 85K、provider usage 129K 的差异；保守系数让压缩在线路超窗前发生。
+    _ESTIMATE_SAFETY_FACTOR = 1.5
+    _SAFETY_FACTOR_MIN_CONTEXT = 32768
     _UNCOMPRESSIBLE_REQUEST = (
         "最终模型请求压缩后仍超出上下文窗口，原有上下文已保留，"
         "请减少启用工具或切换更大上下文模型"
@@ -286,9 +365,23 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
         self.trigger_fraction = trigger_fraction
         self.keep_fraction = keep_fraction
 
+    @classmethod
+    def _conservative_estimate(cls, budget: dict[str, Any]) -> int | None:
+        """给近似 token 估算增加序列化安全余量，缺失估算时保持未知。"""
+        estimated_tokens = budget.get("estimated_input_tokens")
+        if type(estimated_tokens) is not int or estimated_tokens < 0:
+            return None
+        context_window = budget.get("context_window_tokens")
+        factor = (
+            cls._ESTIMATE_SAFETY_FACTOR
+            if type(context_window) is int and context_window >= cls._SAFETY_FACTOR_MIN_CONTEXT
+            else 1
+        )
+        return ceil(estimated_tokens * factor)
+
     def _should_compact(self, budget: dict[str, Any]) -> bool:
         """以最终请求实际模型窗口判断是否需要压缩。"""
-        estimated_tokens = budget.get("estimated_input_tokens")
+        estimated_tokens = self._conservative_estimate(budget)
         context_window = budget.get("context_window_tokens")
         return (
             isinstance(estimated_tokens, int)
@@ -311,6 +404,7 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
             return None
 
         context_window = budget.get("context_window_tokens")
+        estimated_tokens = self._conservative_estimate(budget)
         if self._should_skip_after_current_turn_compaction(messages, budget):
             return None
         if not self._should_compact(budget) or not isinstance(context_window, int):
@@ -321,20 +415,20 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
                 partition = self.summarizer.partition_for_token_limit(
                     messages,
                     max(1, int(context_window * self.keep_fraction)),
-                    force=budget["estimated_input_tokens"] > context_window,
+                    force=isinstance(estimated_tokens, int) and estimated_tokens > context_window,
                 )
         except Exception as error:
             logger.debug(
                 "最终请求历史拆分失败，继续原请求: error_type=%s",
                 type(error).__name__,
             )
-            if budget["estimated_input_tokens"] > context_window:
+            if isinstance(estimated_tokens, int) and estimated_tokens > context_window:
                 raise ContextSummarizationError(
                     self._UNCOMPRESSIBLE_REQUEST
                 ) from error
             return None
         if partition is None:
-            if budget["estimated_input_tokens"] > context_window:
+            if isinstance(estimated_tokens, int) and estimated_tokens > context_window:
                 raise ContextSummarizationError(self._UNCOMPRESSIBLE_REQUEST)
             return None
         messages_to_summarize, preserved_messages = partition
@@ -342,7 +436,7 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
             message.additional_kwargs.get("lc_source") == "summarization"
             for message in messages_to_summarize
         ):
-            if budget["estimated_input_tokens"] > context_window:
+            if isinstance(estimated_tokens, int) and estimated_tokens > context_window:
                 raise ContextSummarizationError(self._UNCOMPRESSIBLE_REQUEST)
             return None
         return messages_to_summarize, preserved_messages
@@ -373,7 +467,7 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
             ):
                 return False
             if any(isinstance(candidate, ToolMessage) for candidate in messages_after_anchor):
-                estimated_tokens = budget.get("estimated_input_tokens")
+                estimated_tokens = cls._conservative_estimate(budget)
                 context_window = budget.get("context_window_tokens")
                 return not (
                     isinstance(estimated_tokens, int)
@@ -419,7 +513,7 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
             request.override(messages=compacted_messages)
         )
         context_window = compacted_budget.get("context_window_tokens")
-        estimated_tokens = compacted_budget.get("estimated_input_tokens")
+        estimated_tokens = self._conservative_estimate(compacted_budget)
         if not isinstance(context_window, int) or not isinstance(estimated_tokens, int):
             return compacted_messages, None
 
@@ -430,8 +524,11 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
         fixed_summary_budget = UsageMiddleware.estimate_request(
             request.override(messages=summary_messages)
         )
+        fixed_summary_tokens = self._conservative_estimate(fixed_summary_budget)
+        if fixed_summary_tokens is None:
+            raise ContextSummarizationError(self._UNCOMPRESSIBLE_REQUEST)
         available_recent_tokens = (
-            context_window - fixed_summary_budget["estimated_input_tokens"]
+            context_window - fixed_summary_tokens
         )
         if available_recent_tokens <= 0:
             raise ContextSummarizationError(self._UNCOMPRESSIBLE_REQUEST)
@@ -456,7 +553,7 @@ class FinalRequestCompactionMiddleware(AgentMiddleware):
         budget = UsageMiddleware.estimate_request(
             request.override(messages=compacted_messages)
         )
-        estimated_tokens = budget.get("estimated_input_tokens")
+        estimated_tokens = self._conservative_estimate(budget)
         context_window = budget.get("context_window_tokens")
         if (
             isinstance(estimated_tokens, int)

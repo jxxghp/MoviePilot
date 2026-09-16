@@ -24,3 +24,20 @@ class StorageLoginStatusData(BaseModel):
 
     status: int | str = Field(description="授权状态")
     tip: str = Field(description="状态提示")
+
+
+class StorageOption(BaseModel):  # type: ignore[misc]
+    """前端选择控件可安全消费的存储摘要。"""
+
+    name: str = Field(description="存储显示名称")
+    type: str = Field(description="存储类型标识")
+
+
+class StorageCatalogOption(BaseModel):  # type: ignore[misc]
+    """前端新增存储和路径选择器可消费的存储类型目录项。"""
+
+    type: str = Field(description="存储类型标识")
+    name: str = Field(description="存储原始显示名称")
+    name_i18n: str = Field(description="按请求语言返回的显示名称")
+    icon: str = Field(description="Vuetify 存储图标")
+    remote: bool = Field(description="是否为远程存储")

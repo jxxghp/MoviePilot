@@ -7,12 +7,14 @@ This document is the project command reference, not an exhaustive shell allowlis
 ## Development Environment Setup
 
 ```bash
-# Create the locked development/test environment
+# Create the locked development/test environment (standalone checkout)
 uv sync --locked
 
 # Create a runtime-only environment
 uv sync --locked --no-dev --no-install-project
 ```
+
+Shared workspaces may map the environment to an explicit absolute path as documented in `docs/development-setup.md`. Choose the environment before running these commands; a runtime environment and an isolated test environment need not be the same directory.
 
 ---
 
@@ -55,9 +57,8 @@ uv run --locked --no-sync pytest tests/test_xxx.py::test_function_name
 ```
 
 **Rules:**
-- Run at minimum the tests directly related to the change.
-- If the change affects common modules, startup flow, CLI, or agent runtime behavior, expand the scope to the full test suite.
-- If the task only changes documentation, state explicitly that tests were not run. Do not claim checks that were not executed.
+- Contributor preparation runs related tests and expands to the full suite for the shared-impact triggers in `docs/testing.md`. Maintainer execution arrangements follow `AGENTS.md`.
+- For documentation tasks, report actual text/structure checks and documentation contract tests separately from unrun product tests. Do not claim checks that were not executed.
 
 ---
 
@@ -73,7 +74,7 @@ uv run --locked --no-sync pylint app/chain/download.py
 
 **Rules:**
 - After Python code changes, ensure no new error-level issues are introduced.
-- Warning-level issues in new code should be minimized but are not an absolute gate.
+- Use the changed-file selection and preparation arrangement in `AGENTS.md`; the workflow's configured changed-file result is the gate, while the full application report is advisory for ordinary scoped changes.
 
 ---
 
@@ -177,7 +178,7 @@ moviepilot update all --ref latest --frontend-version latest
 moviepilot update all --skip-resources
 ```
 
-`MOVIEPILOT_AUTO_UPDATE` defaults to `false`. Setting it to `dev` retains branch-tracking updates during `start/restart`; stable Release updates use the authenticated background check/download/install API flow and do not use this setting.
+`MOVIEPILOT_AUTO_UPDATE` is a boolean (default `false`): `true` enables the background Release check and version reminders, and `false` disables application checks and reminders. `AUTO_UPDATE_RESOURCE` independently enables resource checks and reminders; the scheduled service exists when either switch is enabled and checks only enabled targets. The scheduler hot-reloads this switch. `MOVIEPILOT_UPDATE_DEV` is an independent boolean (default `false`) that enables development-branch updates during `start/restart`. Legacy `dev`/`release` values of `MOVIEPILOT_AUTO_UPDATE` normalize to `true`; legacy `dev` also preserves Dev tracking when the new switch is not explicitly configured.
 
 ---
 
@@ -216,12 +217,12 @@ moviepilot config describe API_TOKEN --show-secrets
 moviepilot tool list
 
 # Show tool parameters
-moviepilot tool show query_schedulers
-moviepilot tool show search_torrents
+moviepilot tool show moviepilot_api
+moviepilot tool show agent_task
 
 # Run a tool directly
-moviepilot tool run query_schedulers
-moviepilot tool run search_torrents media_type=movie media_source=themoviedb media_id=12345
+moviepilot tool run moviepilot_api operation_id=scheduler.list
+moviepilot tool run moviepilot_api operation_id=media.search 'query={"title":"流浪地球","type":"media"}'
 
 # List scheduled tasks
 moviepilot scheduler list
@@ -230,9 +231,12 @@ moviepilot scheduler list
 moviepilot scheduler run subscribe_refresh
 ```
 
-**Media identity rule:** Generic media tools use the complete `media_source` +
-`media_id` pair returned by media search. Built-in sources use `MediaSource`
-constants; plugins may register a schema-valid extension identifier. A
+**Tool catalog rule:** MoviePilot business operations use `moviepilot_api` with a
+fixed `operation_id`; old business tool names are not registered. Structured
+`query`, `body`, arrays, and booleans are passed as JSON values in `key=value`
+arguments. Media operations use the complete `media_source` + `media_id` pair
+returned by media search. Built-in sources use `MediaSource` constants; plugins
+may register a schema-valid extension identifier. A
 source-owned tool such as `query_episode_schedule` may retain its native ID
 parameter because its schema and implementation are single-source.
 

@@ -378,34 +378,6 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return next((item.url for item in images if item.url), None)
 
     @classmethod
-    def _category(cls, title: ImdbTitle, mtype: MediaType) -> str:
-        """按 IMDb 类型、风格、国家和语言生成 MoviePilot 二级分类。"""
-        genres = {genre.casefold() for genre in title.genres}
-        countries = {item.code for item in title.origin_countries if item.code}
-        languages = {item.code for item in title.spoken_languages if item.code}
-        if mtype == MediaType.MOVIE:
-            if "animation" in genres:
-                return "动画电影"
-            if languages.intersection({"zho", "cmn", "yue", "nan"}):
-                return "华语电影"
-            return "外语电影"
-        if "animation" in genres and countries.intersection({"CN", "TW", "HK"}):
-            return "国漫"
-        if "animation" in genres and "JP" in countries:
-            return "日番"
-        if "documentary" in genres:
-            return "纪录片"
-        if genres.intersection({"reality-tv", "game-show"}):
-            return "综艺"
-        if countries.intersection({"CN", "TW", "HK"}):
-            return "国产剧"
-        if countries.intersection({"JP", "KP", "KR", "TH", "IN", "SG"}):
-            return "日韩剧"
-        if countries.intersection({"US", "FR", "GB", "DE", "ES", "IT", "NL", "PT", "RU", "UK"}):
-            return "欧美剧"
-        return "未分类"
-
-    @classmethod
     def _to_media_info(
         cls,
         title: ImdbTitle,
@@ -445,7 +417,9 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         media_info.names = names
         media_info.year = str(title.start_year) if title.start_year else ""
         media_info.overview = title.plot or ""
-        media_info.adult = bool(title.is_adult)
+        media_info.adult = (
+            title.is_adult if isinstance(title.is_adult, bool) else None
+        )
         media_info.poster_path = title.primary_image.url if title.primary_image else None
         media_info.backdrop_path = cls._backdrop_url(images)
         media_info.genres = [
@@ -533,7 +507,6 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if media_type == MediaType.TV:
             media_info.number_of_seasons = len(season_info)
             media_info.number_of_episodes = len(episodes)
-        media_info.set_category(cls._category(title, media_type))
         return media_info
 
     @classmethod

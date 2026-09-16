@@ -302,6 +302,7 @@ def _command(
     command = PluginInstallCommand(
         persistence=persistence,
         installed_plugins_reader=lambda: installed or [],
+        loadable_marker=lambda _plugin_id: calls.append("mark_loadable"),
         plugin_ids_provider=lambda: plugin_ids or [],
         packages=packages,
         install_reporter=reporter or default_reporter,
@@ -413,6 +414,8 @@ async def test_success_commits_journal_before_report_and_cleans_package_snapshot
         "package",
         "receipt",
         "journal_target",
+        # 本体的装载判据在实例表的启用位上；这一步缺了，插件装完当次能跑，重启即消失
+        "mark_loadable",
         "stage_backup",
         "activate_backup",
         "target_reload",

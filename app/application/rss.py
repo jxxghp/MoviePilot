@@ -6,6 +6,7 @@ import dateutil.parser
 from lxml import etree
 
 from app.application.configuration import get_chain_runtime_config_snapshot
+from app.foundation.url import UrlUtils
 from app.runtime.log import logger
 
 
@@ -332,6 +333,9 @@ class RssHelper:
     def parse(self, url, proxy: bool = False,
               timeout: Optional[int] = 15, headers: dict = None, ua: str = None) -> Union[List[dict], None, bool]:
         """解析 RSS 地址并保留插件兼容的返回约定。"""
+        url = UrlUtils.normalize_http_url(url)
+        if url is None:
+            return False
         return self._parse_impl(url, proxy=proxy, timeout=timeout, headers=headers, ua=ua)
 
     def _parse_impl(self, url, proxy: bool = False,
@@ -348,9 +352,6 @@ class RssHelper:
         """
         # 开始处理
         ret_array: list = []
-        if not url:
-            return False
-
         http_port, _, _ = _require_rss_ports()
 
         try:

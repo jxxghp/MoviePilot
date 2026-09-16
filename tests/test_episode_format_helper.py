@@ -1,11 +1,13 @@
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
-from app.chain.transfer import TransferChain
 from app.application.formatting import EpisodeFormatRuleHelper, FormatParser, _AutoRecommendSample
-from app.schemas import EpisodeFormatRule, FileItem
+from app.chain.transfer.facade import TransferChain
+from app.schemas.file import FileItem
+from app.schemas.transfer import EpisodeFormatRule
 
 
 def _make_file(name: str, size: int = 150 * 1024 * 1024) -> FileItem:
@@ -30,6 +32,48 @@ def _patch_media_exts(monkeypatch):
             audio_extensions=(".flac", ".mp3", ".mka"),
         ),
     )
+
+
+@pytest.mark.parametrize(
+    ("offset", "expected"),
+    [("-1", 2), ("EP*2-1", 5), ("EP+EP-1", 5)],
+)
+def test_format_parser_applies_safe_episode_offset(offset: str, expected: int):
+    """剧集偏移仅计算白名单算术表达式，并保留现有偏移语义。"""
+    parser = FormatParser(eformat="", offset=offset)
+    file_meta = SimpleNamespace(begin_episode=3, end_episode=3)
+
+    assert parser.split_episode("", file_meta) == (expected, expected, None)
+
+
+def test_format_parser_applies_safe_episode_offset_to_template_episode():
+    """带定位模板时也应使用白名单计算集数偏移。"""
+    parser = FormatParser(eformat="Show - {ep}.mkv", offset="EP*2-1")
+    file_meta = SimpleNamespace(begin_episode=None, end_episode=None)
+
+    assert parser.split_episode("Show - 03.mkv", file_meta) == (5, None, None)
+
+
+def test_format_parser_applies_safe_episode_offset_to_explicit_range():
+    """显式集数区间的起止集数都应使用安全偏移计算。"""
+    parser = FormatParser(eformat="", details="03-04", offset="EP+1")
+    file_meta = SimpleNamespace(begin_episode=None, end_episode=None)
+
+    assert parser.split_episode("", file_meta) == (4, 5, None)
+
+
+def test_format_parser_rejects_code_execution_in_episode_offset():
+    """剧集偏移中的函数调用必须被拒绝，不能执行系统命令。"""
+    parser = FormatParser(
+        eformat="",
+        offset="EP+__import__('os').system('touch /tmp/moviepilot-format-parser-rce')*0",
+    )
+    file_meta = SimpleNamespace(begin_episode=1, end_episode=1)
+
+    with patch("os.system") as system_call, pytest.raises(ValueError):
+        parser.split_episode("", file_meta)
+
+    system_call.assert_not_called()
 
 
 def test_rule_recommend_supports_range_episode_validation():

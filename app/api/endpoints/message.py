@@ -123,7 +123,7 @@ async def user_message(
     _: _SchemaTokenPayload = Depends(verify_apitoken),
 ):
     """
-    用户消息响应，配置请求中需要添加参数：token=API_TOKEN&source=消息配置名
+    用户消息响应；推荐通过 X-API-KEY 请求头传递 API_TOKEN，查询参数 token 仅保留兼容。
     """
     body = await request.body()
     form = await request.form()
@@ -294,8 +294,8 @@ def wechat_verify(
             return PlainTextResponse(sEchoStr)
         return "微信验证失败"
     except Exception as err:
-        logger.error(f"微信请求验证失败: {str(err)}")
-        return str(err)
+        logger.error(f"微信请求验证失败: {str(err)}", exc_info=True)
+        return "消息验证失败，请稍后重试"
 
 
 def vocechat_verify() -> Any:
@@ -374,7 +374,13 @@ def send_notification(
     """
     from pywebpush import WebPushException, webpush
 
-    for sub in webpush_registry.list():
+    subscriptions = webpush_registry.list()
+    if not subscriptions:
+        return _SchemaResponse(success=True, message="没有可发送的浏览器通知")
+
+    success_count = 0
+    failure_count = 0
+    for sub in subscriptions:
         try:
             webpush(
                 subscription_info=sub,
@@ -383,9 +389,30 @@ def send_notification(
                 vapid_claims={"sub": get_api_runtime_config_snapshot().vapid_subject},
                 **webpush_options_for_endpoint(sub.get("endpoint")),
             )
+            success_count += 1
         except WebPushException as err:
             logger.error(f"WebPush发送失败: {str(err)}")
             if is_webpush_subscription_gone(err) and webpush_registry.remove(sub):
                 logger.info(f"已移除失效WebPush订阅: {sub.get('endpoint')}")
-            continue
-    return _SchemaResponse(success=True)
+            failure_count += 1
+        except Exception as err:
+            logger.error(f"WebPush发送失败: {str(err)}", exc_info=True)
+            failure_count += 1
+
+    if not failure_count:
+        return _SchemaResponse(
+            success=True,
+            message=f"消息已发送到 {success_count} 个设备",
+        )
+    if success_count:
+        return _SchemaResponse(
+            success=True,
+            message=(
+                f"消息已发送到 {success_count} 个设备，"
+                f"{failure_count} 个设备发送失败"
+            ),
+        )
+    return _SchemaResponse(
+        success=False,
+        message="消息发送失败，请检查浏览器通知权限后重试",
+    )

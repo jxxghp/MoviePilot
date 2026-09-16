@@ -60,6 +60,33 @@ class TransferPendingOper(DbOper):
             )
         )
 
+    def stage_delete_inactive_for_replacement(
+            self,
+            *,
+            task_id: str,
+            storage: str,
+            src_path: str,
+            now_time: str,
+    ) -> int:
+        """在调用方准入事务中 CAS 删除无有效租约且无真实历史绑定的旧任务。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.delete_inactive_for_replacement(
+                session,
+                task_id=task_id,
+                storage=storage,
+                src_path=src_path,
+                now_time=now_time,
+            )
+        )
+
+    def get_task_id_by_identity(self, *, storage: str, src_path: str) -> Optional[str]:
+        """只读稳定任务身份，避免损坏规划 JSON 阻断用户显式重做。"""
+        return self._execute_sync_query(
+            lambda session: TransferPending.get_task_id_by_identity(
+                session, storage=storage, src_path=src_path,
+            )
+        )
+
     def get_by_task_id(self, *, task_id: str) -> Optional[TransferPending]:
         """
         使用当前会话按稳定任务标识查询接纳记录。
@@ -518,6 +545,23 @@ class TransferPendingOper(DbOper):
                 error=error,
                 now_utc=now_utc,
                 updated_at=updated_at,
+            )
+        )
+
+    def stage_delete_terminal_failure(
+            self,
+            *,
+            task_id: str,
+            history_id: int,
+            settlement_revision: int,
+    ) -> int:
+        """暂存与指定失败回执精确匹配的无租约 pending 删除。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.delete_terminal_failure(
+                session,
+                task_id=task_id,
+                history_id=history_id,
+                settlement_revision=settlement_revision,
             )
         )
 

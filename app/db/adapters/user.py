@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from typing import Any, Optional, cast
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -69,15 +69,41 @@ class SqlAlchemyUserRepository(UserRepository):
         model = self._oper.get_by_id(user_id)
         return _to_snapshot(model) if model else None
 
+    def get_active_superuser(self) -> Optional[UserSnapshot]:
+        """按主键顺序返回首个启用的超级管理员快照。"""
+        session = cast(Session, self._session)
+        model = session.execute(
+            select(User)
+            .where(User.is_active.is_(True), User.is_superuser.is_(True))
+            .order_by(User.id)
+            .limit(1)
+        ).scalars().first()
+        return _to_snapshot(model) if model else None
+
     async def async_has_users(self) -> bool:
         """使用最小列查询判断数据库中是否已有用户。"""
         session = self._require_async_session()
         result = await session.execute(select(User.id).limit(1))
         return result.scalar_one_or_none() is not None
 
-    async def async_list(self) -> list[UserSnapshot]:
-        """在异步请求会话中读取全部冻结用户快照。"""
-        return [_to_snapshot(model) for model in await self._oper.async_list()]
+    async def async_list(
+        self,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> list[UserSnapshot]:
+        """在异步请求会话中按可选窗口读取冻结用户快照。"""
+        session = self._require_async_session()
+        statement = select(User).order_by(User.id)
+        if page is not None and count is not None:
+            statement = statement.offset((page - 1) * count).limit(count)
+        result = await session.execute(statement)
+        return [_to_snapshot(model) for model in result.scalars().all()]
+
+    async def async_count(self) -> int:
+        """在异步请求会话中返回用户精确总数。"""
+        session = self._require_async_session()
+        result = await session.execute(select(func.count()).select_from(User))
+        return int(result.scalar_one())
 
     async def async_get_by_name(self, name: str) -> Optional[UserSnapshot]:
         """在异步请求会话中按用户名读取冻结快照。"""
@@ -88,6 +114,14 @@ class SqlAlchemyUserRepository(UserRepository):
         """在异步请求会话中按 ID 读取冻结快照。"""
         model = await self._oper.async_get_by_id(user_id)
         return _to_snapshot(model) if model else None
+
+    async def async_get_auth_by_id(
+        self,
+        user_id: int,
+    ) -> Optional[UserAuthSnapshot]:
+        """在异步请求会话中按 ID 读取密码校验所需的认证快照。"""
+        model = await self._oper.async_get_by_id(user_id)
+        return _to_auth_snapshot(model) if model else None
 
     async def async_create(
         self,
@@ -209,6 +243,11 @@ class TransactionalUserRepository(ChainUserRepository):
         """按 ID 读取公开用户快照。"""
         with self._sync_session() as session:
             return SqlAlchemyUserRepository(session).get_by_id(user_id)
+
+    def get_active_superuser(self) -> Optional[UserSnapshot]:
+        """在独立会话中返回首个启用的超级管理员快照。"""
+        with self._sync_session() as session:
+            return SqlAlchemyUserRepository(session).get_active_superuser()
 
     def get_auth_by_name(self, name: str) -> Optional[UserAuthSnapshot]:
         """按用户名读取认证凭据快照。"""

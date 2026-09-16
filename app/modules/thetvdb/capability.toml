@@ -12,4 +12,4 @@ priority = 4
 
 [activation]
 policy = "bootstrap"
-watch = []
+watch = ["PROXY_HOST", "TVDB_V4_API_KEY", "TVDB_V4_API_PIN"]

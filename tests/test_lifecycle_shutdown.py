@@ -880,6 +880,7 @@ def test_lifespan_warms_engines_before_any_initializer(monkeypatch):
         "init_routers",
         lambda _app, _api_prefix: calls.append("init_routers"),
     )
+
     async def _init_modules():
         """init_modules 在 v3 是协程，桩也必须可 await。"""
         calls.append("init_modules")
@@ -1652,6 +1653,7 @@ def test_shared_http_close_waits_for_real_lru_eviction(monkeypatch):
 
     monkeypatch.setattr(http_utils, "_MAX_SHARED_TRANSPORTS_PER_LOOP", 1)
     monkeypatch.setattr(http_utils.httpx2, "AsyncHTTPTransport", FakeTransport)
+
     async def run_test():
         transport_kwargs = {
             "proxy": None,
@@ -1702,6 +1704,7 @@ def test_shared_http_close_waits_for_real_lru_eviction(monkeypatch):
             await http_utils.aclose_shared_async_transports()
 
     asyncio.run(run_test())
+
 
 def test_shared_http_close_ignores_eviction_from_other_loop():
     """当前事件循环关闭不能等待其他循环持有的淘汰任务"""

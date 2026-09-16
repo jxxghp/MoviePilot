@@ -1,4 +1,4 @@
-"""对 Application 与 Domain 维护不可退化且及时固化的行覆盖率低水位。"""
+"""检查 Application 与 Domain 是否达到固定 80% 行覆盖率基线。"""
 
 from __future__ import annotations
 
@@ -15,6 +15,11 @@ DEFAULT_BASELINE = PROJECT_ROOT / "tests/fixtures/architecture/coverage-baseline
 PACKAGE_PREFIXES = {
     "application": "app/application/",
     "domain": "app/domain/",
+}
+FIXED_COVERAGE_PERCENT = 80.0
+FIXED_BASELINE = {
+    name: {"statements": 100, "covered_lines": 80, "percent": FIXED_COVERAGE_PERCENT}
+    for name in PACKAGE_PREFIXES
 }
 LEGACY_ZERO_BASELINE = {
     name: {"statements": 0, "covered_lines": 0, "percent": 0.0}
@@ -143,40 +148,28 @@ def classify_coverage(
     baseline: dict[str, dict[str, int | float]],
     current: dict[str, dict[str, int | float]],
 ) -> tuple[list[str], list[str]]:
-    """把覆盖率差异分为不可写入的回退和可固化的新低水位。"""
+    """按固定 80% 基线判断治理包是否回退。"""
+    del baseline
     regressions: list[str] = []
-    stale: list[str] = []
     for name in PACKAGE_PREFIXES:
-        expected_values = baseline.get(name, {})
         actual_values = current[name]
-        expected = float(expected_values.get("percent", 0.0))
         actual = float(actual_values["percent"])
-        expected_statements = int(expected_values.get("statements", 0))
-        expected_covered = int(expected_values.get("covered_lines", 0))
         actual_statements = int(actual_values["statements"])
         actual_covered = int(actual_values["covered_lines"])
-        if (
-            expected_statements > 0
-            and actual_covered * expected_statements
-            < expected_covered * actual_statements
-        ):
+        if actual_covered * 100 < FIXED_COVERAGE_PERCENT * actual_statements:
             regressions.append(
-                f"{name}: 行覆盖率下降 {expected:.2f}%->{actual:.2f}%"
+                f"{name}: 行覆盖率低于固定基线 {FIXED_COVERAGE_PERCENT:.2f}%->{actual:.2f}%"
             )
-        elif actual_values != expected_values:
-            stale.append(
-                f"{name}: 覆盖率低水位未固化 {expected:.2f}%->{actual:.2f}%"
-            )
-    return regressions, stale
+    return regressions, []
 
 
 def compare_coverage(
     baseline: dict[str, dict[str, int | float]],
     current: dict[str, dict[str, int | float]],
 ) -> list[str]:
-    """返回覆盖率回退和尚未固化的新低水位。"""
-    regressions, stale = classify_coverage(baseline, current)
-    return [*regressions, *stale]
+    """返回低于固定 80% 基线的治理包。"""
+    regressions, _ = classify_coverage(baseline, current)
+    return regressions
 
 
 def main() -> int:
@@ -211,15 +204,15 @@ def main() -> int:
                 return 1
     else:
         baseline = {}
-    regressions, stale = classify_coverage(baseline, current)
+    regressions, _ = classify_coverage(baseline, current)
     if args.write:
-        if baseline_exists and regressions:
+        if regressions:
             print("\n".join(regressions))
-            print("拒绝写入：当前结果包含覆盖率回退，--write 只能固化持平或提升后的低水位。")
+            print("拒绝写入：当前结果低于固定 80% 基线。")
             return 1
         args.baseline.parent.mkdir(parents=True, exist_ok=True)
         args.baseline.write_text(
-            json.dumps(current, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            json.dumps(FIXED_BASELINE, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         display_path = (
@@ -229,18 +222,15 @@ def main() -> int:
         )
         print(f"已写入 {display_path}")
         return 0
-    problems = [*regressions, *stale]
+    problems = regressions
     if problems:
         print("\n".join(problems))
-        if regressions:
-            print("先消除覆盖率回退；存在下降时禁止用 --write 覆盖基线。")
-        else:
-            print("提示：当前只有覆盖率持平快照变化或提升，可用 --write 固化新的低水位。")
+        print("先补充测试或修复逻辑，使 Application 与 Domain 均达到固定 80% 基线。")
         return 1
     summary = ", ".join(
         f"{name}={values['percent']:.2f}%" for name, values in current.items()
     )
-    print(f"覆盖率 ratchet 通过（低水位已同步：{summary}）")
+    print(f"覆盖率 ratchet 通过（固定 80% 基线：{summary}）")
     return 0
 
 

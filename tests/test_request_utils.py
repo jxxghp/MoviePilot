@@ -1,7 +1,7 @@
 import requests
 
 from app.adapters.network import http as http_module
-from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils, cookie_parse
 
 
 class _FakeSession:
@@ -195,3 +195,34 @@ def test_request_utils_normalizes_per_request_cookie_string(monkeypatch) -> None
 
     assert result is response
     assert prepared_requests[0].headers["Cookie"] == "sid=1; token=two"
+
+
+def test_cookie_parse_preserves_percent_encoded_signature_values(monkeypatch) -> None:
+    """Cookie 签名中的百分号编码必须按浏览器原值发送，不能被 URL 解码破坏。"""
+    raw_cookie = "session=abc%2Fdef%2Bghi%3D%3D; userid=123"
+    parsed_cookie = cookie_parse(raw_cookie)
+    browser_cookies = cookie_parse(raw_cookie, array=True)
+    response = _make_response()
+    session = requests.Session()
+    prepared_requests = []
+
+    def fake_send(request, **_kwargs):
+        prepared_requests.append(request)
+        return response
+
+    monkeypatch.setattr(session, "send", fake_send)
+
+    result = RequestUtils(session=session, cookies=raw_cookie).get_res(
+        "https://example.com/data"
+    )
+
+    assert result is response
+    assert parsed_cookie == {
+        "session": "abc%2Fdef%2Bghi%3D%3D",
+        "userid": "123",
+    }
+    assert browser_cookies == [
+        {"name": "session", "value": "abc%2Fdef%2Bghi%3D%3D"},
+        {"name": "userid", "value": "123"},
+    ]
+    assert prepared_requests[0].headers["Cookie"] == raw_cookie

@@ -4,9 +4,12 @@ from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, cast
 from uuid import uuid4
 
+from app.application.classification.reference import (
+    normalize_classification_reference_payload,
+)
 from app.application.outbox import (
     SUBSCRIBE_MODIFIED_TOPIC,
     AsyncOutboxDispatchStore,
@@ -28,9 +31,22 @@ from app.application.subscription.contract import (
 from app.application.subscription.delete import AsyncUnitOfWork
 from app.schemas.common import JsonData
 from app.schemas.event import SubscribeModifiedEventData
+from app.schemas.types import MUSIC_ENTITY_ALBUM
 
 SubscribeModifiedPublisher = Callable[[dict[str, JsonData]], Awaitable[None]]
 SyncSubscribeModifiedPublisher = Callable[[dict[str, JsonData]], None]
+
+
+def _normalized_subscription_patch(
+    subscribe: SubscriptionSnapshot,
+    payload: dict[str, JsonData],
+) -> SubscriptionPatch:
+    """按订阅媒体类型规范化人工分类稳定引用并构造写入补丁。"""
+    normalized = normalize_classification_reference_payload(
+        payload,
+        media_type=subscribe.type,
+    )
+    return SubscriptionPatch(cast(dict[str, JsonData], normalized))
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +94,7 @@ def _reset_payload(subscribe: SubscriptionSnapshot) -> dict[str, JsonData]:
     """构造同步与异步重置共享的订阅字段补丁。"""
     return {
         "note": [],
+        "downloaded_tracks": [] if subscribe.music_type == MUSIC_ENTITY_ALBUM else None,
         "lack_episode": subscribe.total_episode,
         "current_priority": None,
         "current_audio_format": None,
@@ -135,7 +152,7 @@ class SyncSubscriptionMutationService:
         try:
             updated = self._repository.stage_update(
                 subscribe_id,
-                SubscriptionPatch(payload),
+                _normalized_subscription_patch(subscribe, payload),
             )
             if not updated:
                 self._unit_of_work.rollback()
@@ -252,7 +269,7 @@ class SubscriptionMutationService:
         try:
             updated = await self._repository.async_stage_update(
                 subscribe_id,
-                SubscriptionPatch(payload),
+                _normalized_subscription_patch(subscribe, payload),
             )
             if not updated:
                 await self._unit_of_work.rollback()

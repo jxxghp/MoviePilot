@@ -1,11 +1,14 @@
 """整理历史类型化边界与适配器布局门禁。"""
 
 import ast
+import importlib
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
-HISTORY_APPLICATION_PATH = APP_ROOT / "application" / "history.py"
+HISTORY_APPLICATION_PATH = APP_ROOT / "application" / "history" / "__init__.py"
+HISTORY_CONTRACTS_APPLICATION_PATH = APP_ROOT / "application" / "history" / "contracts.py"
+HISTORY_RETRY_APPLICATION_PATH = APP_ROOT / "application" / "history" / "retry.py"
 QUERY_APPLICATION_PATH = APP_ROOT / "application" / "query.py"
 HISTORY_ADAPTER_PACKAGE = APP_ROOT / "db" / "adapters" / "history"
 CANONICAL_CONSUMER_PATHS = (
@@ -59,8 +62,8 @@ def _is_frozen_slotted_dataclass(node: ast.ClassDef) -> bool:
 def test_transfer_history_contract_is_typed_and_frozen() -> None:
     """整理历史必须使用冻结 DTO 和明确 Query/Write/Repository 端口。"""
     tree = ast.parse(
-        HISTORY_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
-        filename=str(HISTORY_APPLICATION_PATH),
+        HISTORY_CONTRACTS_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
+        filename=str(HISTORY_CONTRACTS_APPLICATION_PATH),
     )
     classes = {
         node.name: node
@@ -104,6 +107,35 @@ def test_transfer_history_contract_is_typed_and_frozen() -> None:
                     violations.append(f"{class_name}:{node.lineno}:{node.name}")
 
     assert violations == []
+
+
+def test_transfer_history_contract_has_one_canonical_owner() -> None:
+    """整理历史契约只能在独立模块定义，旧入口必须保留对象级兼容导出。"""
+    contract_names = {
+        "TransferHistorySnapshot",
+        "TransferHistoryWrite",
+        "TransferHistoryStatisticSnapshot",
+        "TransferHistoryMonthlyStatistics",
+        "TransferHistoryQueryPort",
+        "TransferHistoryWritePort",
+        "TransferHistoryReplacePort",
+        "TransferHistoryStagingPort",
+        "TransferHistoryRepository",
+    }
+    history_tree = ast.parse(
+        HISTORY_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
+        filename=str(HISTORY_APPLICATION_PATH),
+    )
+    facade = importlib.import_module("app.application.history")
+    contracts = importlib.import_module("app.application.history.contracts")
+
+    assert {
+        node.name
+        for node in history_tree.body
+        if isinstance(node, ast.ClassDef) and node.name in contract_names
+    } == set()
+    for name in contract_names:
+        assert getattr(facade, name) is getattr(contracts, name)
 
 
 def test_history_query_port_returns_explicit_snapshots() -> None:
@@ -158,6 +190,57 @@ def test_transfer_history_retires_dynamic_writer_facade() -> None:
             violations.append(f"attribute:add_force:{node.lineno}")
 
     assert violations == []
+
+
+def test_history_retry_policy_has_one_canonical_owner() -> None:
+    """失败重试与查重闸逻辑只能由独立模块实现，包入口不再转发。"""
+    retry_tree = ast.parse(
+        HISTORY_RETRY_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
+        filename=str(HISTORY_RETRY_APPLICATION_PATH),
+    )
+    history_tree = ast.parse(
+        HISTORY_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
+        filename=str(HISTORY_APPLICATION_PATH),
+    )
+    expected_class = "HistoryGateAction"
+    expected_functions = {
+        "is_skip_action",
+        "max_failed_retries",
+        "failed_retry_key",
+        "file_fingerprint",
+        "failed_retry_count",
+        "record_transfer_failure",
+        "clear_transfer_failures",
+        "resolve_history",
+        "evaluate_history_gate",
+        "describe_history_gate",
+        "next_failed_retry_count",
+    }
+    retry_classes = {
+        node.name
+        for node in retry_tree.body
+        if isinstance(node, ast.ClassDef)
+    }
+    retry_functions = {
+        node.name
+        for node in retry_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    history_classes = {
+        node.name
+        for node in history_tree.body
+        if isinstance(node, ast.ClassDef)
+    }
+    history_functions = {
+        node.name
+        for node in history_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    assert expected_class in retry_classes
+    assert expected_functions <= retry_functions
+    assert expected_class not in history_classes
+    assert expected_functions.isdisjoint(history_functions)
 
 
 def test_canonical_consumers_do_not_import_raw_transfer_history_persistence() -> None:

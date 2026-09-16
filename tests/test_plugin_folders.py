@@ -1,5 +1,5 @@
 import asyncio
-from contextlib import contextmanager, nullcontext
+from contextlib import nullcontext
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -150,15 +150,103 @@ def test_folder_mutations_report_duplicate_and_missing_names():
     write.assert_not_awaited()
 
 
+def test_incremental_folder_updates_preserve_metadata_and_use_latest_snapshot():
+    """增量更新应在原子端口提供的最新快照上保留展示字段和其他文件夹。"""
+    state = {
+        "folders": {
+            "常用": {"plugins": ["DemoPlugin"], "color": "#00ff00", "order": 2},
+            "稍后": ["OtherPlugin"],
+        }
+    }
+
+    async def update(change):
+        """模拟配置原子端口发布 mutation 返回的新快照。"""
+        result, value = change(state["folders"])
+        state["folders"] = value
+        return result
+
+    service = folders.PluginFolderService(
+        read=lambda: state["folders"],
+        write=AsyncMock(),
+        write_sync=MagicMock(),
+        mutation=lambda _operation: nullcontext(),
+        update=update,
+    )
+
+    appearance = asyncio.run(
+        service.update_folder("常用", changes={"icon": "mdi-folder-star"})
+    )
+    members = asyncio.run(
+        service.update_plugins(
+            "常用",
+            ["DemoPlugin", "ThirdPlugin"],
+            ["DemoPlugin"],
+        )
+    )
+    moved = asyncio.run(service.assign_plugin("稍后", "DemoPlugin"))
+    removed = asyncio.run(service.remove_plugin_from_folder("稍后", "OtherPlugin"))
+    renamed = asyncio.run(service.update_folder("常用", new_name="工具"))
+
+    assert all(result.success for result in (appearance, members, moved, removed, renamed))
+    assert list(state["folders"]) == ["工具", "稍后"]
+    assert state["folders"]["工具"] == {
+        "plugins": ["ThirdPlugin"],
+        "color": "#00ff00",
+        "icon": "mdi-folder-star",
+        "order": 2,
+    }
+    assert state["folders"]["稍后"] == ["DemoPlugin"]
+
+
+def test_folder_member_replacement_rejects_stale_snapshot_without_losing_config():
+    """成员顺序条件不匹配时应保留当前成员和文件夹展示配置。"""
+    state = {
+        "folders": {
+            "常用": {"plugins": ["CurrentPlugin"], "color": "#00ff00"},
+        }
+    }
+
+    async def update(change):
+        """模拟即使业务拒绝也发布同值的底层原子配置端口。"""
+        result, value = change(state["folders"])
+        state["folders"] = value
+        return result
+
+    service = folders.PluginFolderService(
+        read=lambda: state["folders"],
+        write=AsyncMock(),
+        write_sync=MagicMock(),
+        mutation=lambda _operation: nullcontext(),
+        update=update,
+    )
+
+    result = asyncio.run(
+        service.update_plugins(
+            "常用",
+            ["ReplacementPlugin"],
+            ["StalePlugin"],
+        )
+    )
+
+    assert result == folders.PluginFolderResult(
+        False,
+        "插件文件夹已被其他请求修改，请重新读取后再试",
+    )
+    assert state["folders"]["常用"] == {
+        "plugins": ["CurrentPlugin"],
+        "color": "#00ff00",
+    }
+
+
 def test_folder_mutation_rejection_is_returned_without_accessing_storage():
     """运行时封口时应直接返回拒绝结果，不得继续访问配置存储。"""
     read = MagicMock()
 
-    @contextmanager
     def reject(operation):
         """模拟插件运行时拒绝新的可变事务。"""
-        raise PluginMutationRejectedError(operation)
-        yield
+        manager = MagicMock()
+        manager.__enter__.side_effect = PluginMutationRejectedError(operation)
+        return manager
 
     service = folders.PluginFolderService(
         read=read,
@@ -176,11 +264,11 @@ def test_folder_mutation_rejection_is_returned_without_accessing_storage():
 
 def test_all_folder_write_commands_map_runtime_sealing_to_results():
     """保存、创建和删除入口都应把运行时封口映射为稳定失败结果。"""
-    @contextmanager
     def reject(operation):
         """模拟每个写命令在进入配置存储前被运行时拒绝。"""
-        raise PluginMutationRejectedError(operation)
-        yield
+        manager = MagicMock()
+        manager.__enter__.side_effect = PluginMutationRejectedError(operation)
+        return manager
 
     service = folders.PluginFolderService(
         read=MagicMock(),

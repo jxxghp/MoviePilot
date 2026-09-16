@@ -1,9 +1,9 @@
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 from app.chain.base import ChainBase
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.schemas.types import MediaSource, MediaType
+from app.schemas.types import MediaSource, MediaType, MusicEntityType
 
 
 class MusicMetadataSourceChain(ChainBase):
@@ -11,25 +11,35 @@ class MusicMetadataSourceChain(ChainBase):
 
     source: MediaSource
 
-    def search_music(self, meta: MetaMusic, limit: int = 20) -> list[MusicInfo]:
+    def search_music(
+            self,
+            meta: MetaMusic,
+            limit: int = 20,
+            music_types: Optional[Iterable[MusicEntityType]] = None,
+    ) -> list[MusicInfo]:
         """按音乐元数据搜索当前来源候选。"""
-        result = self.run_module(
-            "search_music",
-            meta=meta,
-            limit=limit,
-            media_source=self.source,
-        )
-        return self._music_infos(result, limit=limit)
+        kwargs: dict[str, Any] = {"meta": meta, "limit": limit, "media_source": self.source}
+        if self.source == MediaSource.MusicBrainz and music_types is not None:
+            kwargs["music_types"] = music_types
+        result = self.run_module("search_music", **kwargs)
+        infos = self._music_infos(result, limit=limit)
+        selected_types = set(music_types or [])
+        return [info for info in infos if info.music_type in selected_types] if selected_types else infos
 
-    async def async_search_music(self, meta: MetaMusic, limit: int = 20) -> list[MusicInfo]:
+    async def async_search_music(
+            self,
+            meta: MetaMusic,
+            limit: int = 20,
+            music_types: Optional[Iterable[MusicEntityType]] = None,
+    ) -> list[MusicInfo]:
         """异步按音乐元数据搜索当前来源候选。"""
-        result = await self.async_run_module(
-            "search_music",
-            meta=meta,
-            limit=limit,
-            media_source=self.source,
-        )
-        return self._music_infos(result, limit=limit)
+        kwargs: dict[str, Any] = {"meta": meta, "limit": limit, "media_source": self.source}
+        if self.source == MediaSource.MusicBrainz and music_types is not None:
+            kwargs["music_types"] = music_types
+        result = await self.async_run_module("search_music", **kwargs)
+        infos = self._music_infos(result, limit=limit)
+        selected_types = set(music_types or [])
+        return [info for info in infos if info.music_type in selected_types] if selected_types else infos
 
     def recognize_music(
             self,
@@ -71,27 +81,51 @@ class MusicMetadataSourceChain(ChainBase):
         )
         return self._music_info(result, media_id=normalized_id)
 
-    def get_music_album(self, media_id: str) -> Optional[MusicAlbumInfo]:
+    def get_music_album(
+        self,
+        media_id: str,
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
+    ) -> Optional[MusicAlbumInfo]:
         """按当前来源原生 ID 获取专辑详情。"""
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return None
+        preference_kwargs = {}
+        if self.source == MediaSource.MusicBrainz:
+            if music_release_regions is not None:
+                preference_kwargs["music_release_regions"] = music_release_regions
+            if music_release_scripts is not None:
+                preference_kwargs["music_release_scripts"] = music_release_scripts
         result = self.run_module(
             "music_album",
             media_source=self.source,
             media_id=normalized_id,
+            **preference_kwargs,
         )
         return self._music_album(result, media_id=normalized_id)
 
-    async def async_get_music_album(self, media_id: str) -> Optional[MusicAlbumInfo]:
+    async def async_get_music_album(
+        self,
+        media_id: str,
+        music_release_regions: Optional[list[str]] = None,
+        music_release_scripts: Optional[list[str]] = None,
+    ) -> Optional[MusicAlbumInfo]:
         """异步按当前来源原生 ID 获取专辑详情。"""
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return None
+        preference_kwargs = {}
+        if self.source == MediaSource.MusicBrainz:
+            if music_release_regions is not None:
+                preference_kwargs["music_release_regions"] = music_release_regions
+            if music_release_scripts is not None:
+                preference_kwargs["music_release_scripts"] = music_release_scripts
         result = await self.async_run_module(
             "music_album",
             media_source=self.source,
             media_id=normalized_id,
+            **preference_kwargs,
         )
         return self._music_album(result, media_id=normalized_id)
 
@@ -263,6 +297,8 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             meta: MetaMusic,
             tracks: list[MetaMusic],
             limit: int = 5,
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按目录元数据与曲目证据匹配 MusicBrainz 发行版本。"""
         result = self.run_module(
@@ -270,6 +306,8 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             meta=meta,
             tracks=tracks,
             limit=limit,
+            music_release_regions=music_release_regions,
+            music_release_scripts=music_release_scripts,
         )
         return self._music_album(result)
 
@@ -278,6 +316,8 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             meta: MetaMusic,
             tracks: list[MetaMusic],
             limit: int = 5,
+            music_release_regions: Optional[list[str]] = None,
+            music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """异步按目录元数据与曲目证据匹配 MusicBrainz 发行版本。"""
         result = await self.async_run_module(
@@ -285,6 +325,8 @@ class MusicBrainzChain(MusicMetadataSourceChain):
             meta=meta,
             tracks=tracks,
             limit=limit,
+            music_release_regions=music_release_regions,
+            music_release_scripts=music_release_scripts,
         )
         return self._music_album(result)
 

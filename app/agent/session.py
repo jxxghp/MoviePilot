@@ -1,13 +1,15 @@
 """Agent 会话队列、worker 与资源状态的唯一 owner。"""
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable, Dict, List, Optional, cast
 
 from app.agent.contracts import ReplyMode
 from app.agent.memory import MemoryManager, memory_manager
 from app.agent.orchestrator import MoviePilotAgent, _SessionUsageSnapshot
+from app.agent.steering import SteeringInbox, SteeringMessage, SteeringStatusCallback
+from app.agent.terminal.ownership import TerminalScope, close_terminal_scope
 from app.application.agent import AgentDataContext
 from app.chain.agent import AgentChain
 from app.runtime.execution import run_in_threadpool
@@ -56,12 +58,12 @@ async def _async_start_processing_status(
             return cast(
                 Optional[dict[str, Any]],
                 AgentChain().start_message_processing_status(
-                channel=NotificationChannel(task.channel),
-                source=task.source,
-                userid=task.user_id,
-                message_id=task.original_message_id,
-                chat_id=task.original_chat_id,
-                text=task.message,
+                    channel=NotificationChannel(task.channel),
+                    source=task.source,
+                    userid=task.user_id,
+                    message_id=task.original_message_id,
+                    chat_id=task.original_chat_id,
+                    text=task.message,
                 ),
             )
         except Exception as err:
@@ -81,7 +83,6 @@ async def _async_finish_processing_status(
     if not status:
         return
     await run_in_threadpool(_finish_processing_status, status, user_id)
-
 
 
 @dataclass
@@ -106,12 +107,26 @@ class _MessageTask:
     reply_mode: ReplyMode = ReplyMode.DISPATCH
     allow_message_tools: bool = True
     output_callback: Optional[Callable[[str], None]] = None
+    tool_event_callback: Optional[Callable[[dict[str, Any]], None]] = None
     protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None
     message_callback: Optional[Callable[[Any], Awaitable[None] | None]] = None
     agent_factory: Optional[Callable[..., MoviePilotAgent]] = None
     agent_setup: Optional[Callable[[MoviePilotAgent], None]] = None
     completion_future: Optional[asyncio.Future[str]] = None
     enqueued_at: Optional[float] = None
+    scheduled_run_id: Optional[str] = None
+    steering_status_callback: Optional[SteeringStatusCallback] = None
+    steering_inbox: Optional[SteeringInbox] = field(default=None, init=False, repr=False)
+    terminal_scope: Optional[TerminalScope] = field(default=None, init=False)
+    agent: Optional[MoviePilotAgent] = field(default=None, init=False, repr=False)
+    terminal_released: bool = field(default=False, init=False)
+
+    def __post_init__(self) -> None:
+        """由队列宿主使用持久化运行 ID 装配身份，不向模型暴露可写归属字段。"""
+        if self.scheduled_run_id is not None:
+            self.terminal_scope = TerminalScope(
+                user_id=self.user_id, task_id=self.scheduled_run_id, kind="scheduled"
+            )
 
 
 class AgentManagerUnavailableError(RuntimeError):
@@ -126,6 +141,7 @@ class AgentManagerQueueFullError(RuntimeError):
     code = "agent_manager_queue_full"
 
     def __init__(self, session_id: str, limit: int) -> None:
+        """保存拒绝的会话及容量，供入站边界返回排队失败。"""
         self.session_id = session_id
         self.limit = limit
         super().__init__(
@@ -165,6 +181,8 @@ class AgentSessionOwner:
         self._session_shutdown_pending: Dict[str, asyncio.Task[None]] = {}
         self._session_cleanup_pending: set[str] = set()
         self._session_deferred_cleanup_tasks: Dict[str, asyncio.Task[None]] = {}
+        self._session_active_tasks: Dict[str, _MessageTask] = {}
+        self._session_steering_inboxes: Dict[str, SteeringInbox] = {}
         self._session_cancel_requested: set[str] = set()
         self._close_finalizer_task: Optional[asyncio.Task[None]] = None
         self._closed = False
@@ -205,9 +223,12 @@ class AgentSessionOwner:
             pending_shutdown and not pending_shutdown.done()
         )
         status["is_processing"] = (
-                session_id in self._session_workers
-                and not self._session_workers[session_id].done()
+            session_id in self._session_workers
+            and not self._session_workers[session_id].done()
         )
+        inbox = self._session_steering_inboxes.get(session_id)
+        status["steering_pending"] = inbox.pending_count if inbox else 0
+        status["steering_active"] = bool(inbox and inbox.running)
         return status
 
     def matches_secret_confirmation(
@@ -278,11 +299,14 @@ class AgentSessionOwner:
             reply_mode: ReplyMode = ReplyMode.DISPATCH,
             allow_message_tools: bool = True,
             output_callback: Optional[Callable[[str], None]] = None,
+            tool_event_callback: Optional[Callable[[dict[str, Any]], None]] = None,
             protected_output_callback: Optional[Callable[[str], Optional[bool]]] = None,
             message_callback: Optional[Callable[[Any], Awaitable[None] | None]] = None,
+            steering_status_callback: Optional[SteeringStatusCallback] = None,
             agent_factory: Optional[Callable[..., MoviePilotAgent]] = None,
             agent_setup: Optional[Callable[[MoviePilotAgent], None]] = None,
             wait_for_completion: bool = False,
+            scheduled_run_id: Optional[str] = None,
     ) -> str:
         """
         处理用户消息：将消息放入会话队列，按顺序依次处理。
@@ -307,11 +331,14 @@ class AgentSessionOwner:
             reply_mode=reply_mode,
             allow_message_tools=allow_message_tools,
             output_callback=output_callback,
+            tool_event_callback=tool_event_callback,
             protected_output_callback=protected_output_callback,
             message_callback=message_callback,
+            steering_status_callback=steering_status_callback,
             agent_factory=agent_factory,
             agent_setup=agent_setup,
             completion_future=completion_future,
+            scheduled_run_id=scheduled_run_id,
         )
         async with self._lifecycle_lock:
             if not self._accepting_tasks:
@@ -376,8 +403,49 @@ class AgentSessionOwner:
                 )
 
         if completion_future:
-            return await completion_future
+            try:
+                return await completion_future
+            except asyncio.CancelledError:
+                # 取消等待不能留下仍可执行命令的定时任务；对话 worker 可能仍在收尾。
+                await self._close_scheduled_task_scope(task)
+                raise
         return ""
+
+    async def submit_steering_message(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        message: str,
+        images: Optional[List[str]] = None,
+        files: Optional[List[dict[str, Any]]] = None,
+    ) -> Optional[SteeringMessage]:
+        """把运行中补充消息提交到当前 Agent；没有活动运行时返回 None 让入口走普通轮次。"""
+        async with self._lifecycle_lock:
+            task = self._session_active_tasks.get(session_id)
+            inbox = self._session_steering_inboxes.get(session_id)
+            if task is None or task.user_id != str(user_id) or inbox is None:
+                return None
+        return await inbox.enqueue(
+            user_id=str(user_id),
+            text=message,
+            images=images,
+            files=files,
+        )
+
+    @staticmethod
+    async def _close_scheduled_task_scope(task: _MessageTask) -> bool:
+        """取消等待与 worker 收尾共用任务归属，失败时保留已装配 Agent 的重试记录。"""
+        if task.terminal_scope is None or task.terminal_released:
+            return True
+        task.terminal_scope.seal()
+        if task.agent is not None:
+            released = await task.agent.release_terminal_scope(task.terminal_scope)
+        else:
+            released = await close_terminal_scope(task.terminal_scope)
+        if released:
+            task.terminal_released = True
+        return released
 
     async def _session_worker(self, session_id: str) -> None:
         """
@@ -405,6 +473,10 @@ class AgentSessionOwner:
                 task_type = _agent_task_metric_type(task.source, task.channel)
                 active_metric_recorded = False
                 try:
+                    if task.terminal_scope is not None and task.terminal_scope.closed:
+                        if task.completion_future and not task.completion_future.done():
+                            task.completion_future.cancel()
+                        continue
                     if task.enqueued_at is not None:
                         queue_wait_ms = max(
                             0.0,
@@ -419,6 +491,7 @@ class AgentSessionOwner:
                             3,
                         )
                     await self._start_task_processing_status(task)
+                    self._session_active_tasks[session_id] = task
                     record_metric(
                         "agent.active_tasks",
                         1,
@@ -426,6 +499,8 @@ class AgentSessionOwner:
                     )
                     active_metric_recorded = True
                     result = await self._process_message_internal(task)
+                    if not await self._close_scheduled_task_scope(task):
+                        raise AgentManagerUnavailableError("Agent 定时任务仍有终端在停止")
                     if task.completion_future and not task.completion_future.done():
                         if (
                                 not self._accepting_tasks
@@ -454,8 +529,13 @@ class AgentSessionOwner:
                             -1,
                             task_type=task_type,
                         )
-                    await self._finish_task_processing_status(task)
-                    queue.task_done()
+                    try:
+                        await self._close_scheduled_task_scope(task)
+                    finally:
+                        if self._session_active_tasks.get(session_id) is task:
+                            self._session_active_tasks.pop(session_id, None)
+                        await self._finish_task_processing_status(task)
+                        queue.task_done()
                 if session_id in self._session_cancel_requested:
                     break
 
@@ -485,6 +565,8 @@ class AgentSessionOwner:
                 task = queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
+            if task.terminal_scope is not None:
+                task.terminal_scope.seal()
             if task.completion_future and not task.completion_future.done():
                 if error is None:
                     task.completion_future.cancel()
@@ -517,15 +599,21 @@ class AgentSessionOwner:
         existing_agent = self.active_agents.get(session_id)
         if (
                 existing_agent
-                and task.agent_factory
-                and isinstance(task.agent_factory, type)
-                and not isinstance(existing_agent, task.agent_factory)
+                and (
+                    existing_agent.user_id != task.user_id
+                    or (
+                        task.agent_factory
+                        and isinstance(task.agent_factory, type)
+                        and not isinstance(existing_agent, task.agent_factory)
+                    )
+                )
         ):
             if await existing_agent.cleanup() is False:
                 raise AgentManagerUnavailableError(
-                    f"Agent 会话 {session_id} 仍有子代理任务在停止"
+                    f"Agent 会话 {session_id} 仍有子代理或终端在停止"
                 )
             self.active_agents.pop(session_id, None)
+            self._session_steering_inboxes.pop(session_id, None)
 
         if session_id not in self.active_agents:
             logger.info(
@@ -563,13 +651,14 @@ class AgentSessionOwner:
                     "output_callback": task.output_callback,
                     "protected_output_callback": task.protected_output_callback,
                 }
+                if task.tool_event_callback is not None:
+                    agent_kwargs["tool_event_callback"] = task.tool_event_callback
                 if task.message_callback is not None:
                     agent_kwargs["message_callback"] = task.message_callback
                 agent = task.agent_factory(**agent_kwargs)
             self.active_agents[session_id] = agent
         else:
             agent = self.active_agents[session_id]
-            agent.user_id = task.user_id
             # 每条队列任务都携带完整消息上下文，None 也必须覆盖，避免后台任务
             # 复用会话 Agent 时继续沿用上一条入站消息的渠道。
             agent.channel = task.channel
@@ -584,10 +673,23 @@ class AgentSessionOwner:
                 agent.set_output_callback(task.output_callback)
             else:
                 agent.output_callback = task.output_callback
+            if hasattr(agent, "set_tool_event_callback"):
+                agent.set_tool_event_callback(task.tool_event_callback)
             agent.set_protected_output_callback(task.protected_output_callback)
             if task.message_callback is not None and hasattr(agent, "set_message_callback"):
                 agent.set_message_callback(task.message_callback)
 
+        task.agent = agent
+        inbox = self._session_steering_inboxes.get(session_id)
+        if inbox is None:
+            inbox = SteeringInbox(session_id, str(task.user_id))
+            self._session_steering_inboxes[session_id] = inbox
+        task.steering_inbox = inbox
+        configure_inbox = getattr(agent, "configure_steering_inbox", None)
+        if callable(configure_inbox):
+            configure_inbox(inbox)
+        else:
+            setattr(agent, "steering_inbox", inbox)
         if task.agent_setup is not None:
             task.agent_setup(agent)
 
@@ -597,13 +699,60 @@ class AgentSessionOwner:
         }
         if task.has_audio_input:
             process_kwargs["has_audio_input"] = True
-        return await agent.process(task.message, **process_kwargs)
+        if task.terminal_scope is not None:
+            process_kwargs["terminal_scope"] = task.terminal_scope
+        await inbox.begin_run(task.steering_status_callback)
+        try:
+            result = await agent.process(task.message, **process_kwargs)
+            # 模型最终回合返回后仍可能有一条已入 inbox 的消息；在同一 worker
+            # 内继续处理，避免 WebAgent 已经 ACK 的补充消息变成无展示的后台轮次。
+            while True:
+                pending = await inbox.consume()
+                if not pending:
+                    break
+                for message in pending:
+                    result = await agent.process(
+                        message.text,
+                        images=list(message.images) or None,
+                        files=list(message.files) or None,
+                        has_audio_input=any(
+                            str(file.get("mime_type") or "").startswith("audio/")
+                            for file in message.files
+                        ),
+                        terminal_scope=task.terminal_scope,
+                    )
+            # consume 与 finish_run 之间仍有一个极窄的入队窗口；已接受的消息
+            # 也在当前 worker 内执行，且先发布 applied 以完成前端展示收口。
+            pending = await inbox.finish_run()
+            if pending:
+                callback = task.steering_status_callback
+                for message in pending:
+                    if callback is not None:
+                        try:
+                            callback(message, "applied")
+                        except Exception:
+                            pass
+                    result = await agent.process(
+                        message.text,
+                        images=list(message.images) or None,
+                        files=list(message.files) or None,
+                        has_audio_input=any(
+                            str(file.get("mime_type") or "").startswith("audio/")
+                            for file in message.files
+                        ),
+                        terminal_scope=task.terminal_scope,
+                    )
+            return result
+        except BaseException:
+            await inbox.finish_run()
+            raise
 
     async def stop_current_task(self, session_id: str) -> bool:
         """
         应急停止当前正在执行的Agent推理任务，但保留会话和记忆。
         与 clear_session 不同，此方法不会销毁Agent实例或清除记忆，
-        用户可以在停止后继续对话。
+        用户可以在停止后继续对话；已交付的交互对话后台终端保持运行，
+        后续对话仍可读取或显式终止。定时运行的独立终端随该运行收尾。
         """
         async with self._lifecycle_lock:
             return await self._stop_current_task_locked(session_id)
@@ -719,6 +868,7 @@ class AgentSessionOwner:
                 )
                 return
             del self.active_agents[session_id]
+            self._session_steering_inboxes.pop(session_id, None)
             self._memory.clear_memory(session_id, user_id)
             logger.info(f"会话 {session_id} 的记忆已清空")
 
@@ -788,6 +938,7 @@ class AgentSessionOwner:
                     )
                     return
                 self.active_agents.pop(session_id, None)
+                self._session_steering_inboxes.pop(session_id, None)
                 self._memory.clear_memory(session_id, user_id)
                 logger.info(f"会话 {session_id} 的记忆已清空")
 

@@ -91,6 +91,7 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
         "CACHE_REDIS_MAXMEMORY",
         "CACHE_REDIS_MAX_CONNECTIONS",
         "CACHE_REDIS_POOL_TIMEOUT",
+        "BIG_MEMORY_MODE",
     }
 
     def __init__(self):
@@ -370,6 +371,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         "CACHE_REDIS_MAXMEMORY",
         "CACHE_REDIS_MAX_CONNECTIONS",
         "CACHE_REDIS_POOL_TIMEOUT",
+        "BIG_MEMORY_MODE",
     }
 
     def __init__(self):

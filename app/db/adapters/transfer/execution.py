@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session, load_only
 
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
@@ -18,6 +20,7 @@ from app.application.transfer.execution import (
     TransferExecutionSnapshot,
     TransferExecutionState,
     TransferExecutionStep,
+    TransferFailureDiscardResult,
     TransferManualReviewDecision,
     TransferManualReviewPage,
     TransferManualReviewResult,
@@ -33,6 +36,8 @@ from app.application.transfer.execution import (
 from app.application.transfer.workflow import (
     TRANSFER_ADMISSION_PLANNED,
     TRANSFER_ADMISSION_PROVIDER_PENDING,
+    TRANSFER_PLAN_CHECKPOINT_LEGACY_VERSION,
+    TRANSFER_PLAN_CHECKPOINT_VERSION,
     TransferPlanCheckpoint,
     TransferProviderInvocationSnapshot,
     TransferProviderReference,
@@ -42,6 +47,7 @@ from app.db.models.transferexecutionstep import (
 )
 from app.db.models.transferpending import TransferPending
 from app.db.oper.transferexecutionstep import TransferExecutionStepOper
+from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.oper.transferpending import TransferPendingOper
 from app.db.uow import SqlAlchemyUnitOfWork
 
@@ -65,11 +71,15 @@ class TransactionalTransferExecutionRepository:
             self,
             session_factory: Callable[[], Session],
             *,
+            async_session: Optional[
+                Callable[[], AbstractAsyncContextManager[AsyncSession]]
+            ] = None,
             local_clock: Callable[[], datetime] = _local_now,
             lease_clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         """保存 Session 工厂及可测试时钟，不持有跨外部 I/O 事务。"""
         self._session_factory = session_factory
+        self._async_session = async_session
         self._local_clock = local_clock
         self._lease_clock = lease_clock
 
@@ -94,7 +104,7 @@ class TransactionalTransferExecutionRepository:
     def _project_step(step: TransferExecutionStepModel) -> TransferExecutionStep:
         """在 Session 有效期内冻结 ORM 步骤为 Application DTO。"""
         if (step.result_version is None) != (step.result_payload is None):
-            raise TransferExecutionConflictError("整理步骤结果版本与 payload 不完整")
+            raise TransferExecutionConflictError("整理步骤记录不完整，请重新识别文件后再整理")
         result = (
             TransferStepResult(
                 version=step.result_version,
@@ -144,7 +154,7 @@ class TransactionalTransferExecutionRepository:
             and pending.execution_fingerprint is not None
         )
         if has_checkpoint_column != has_checkpoint_identity:
-            raise TransferExecutionConflictError("整理执行检查点列不完整")
+            raise TransferExecutionConflictError("整理任务记录不完整，请重新识别文件后再整理")
         checkpoint = None
         if pending.execution_payload is not None:
             checkpoint = TransferExecutionCheckpoint.from_payload(
@@ -152,7 +162,7 @@ class TransactionalTransferExecutionRepository:
                 fingerprint=pending.execution_fingerprint or "",
             )
             if checkpoint.version != pending.execution_version:
-                raise TransferExecutionConflictError("整理执行检查点列版本不一致")
+                raise TransferExecutionConflictError("整理任务记录版本不一致，请重新识别文件后再整理")
         return TransferExecutionSnapshot(
             task_id=pending.task_id,
             state=TransferExecutionState(pending.execution_state),
@@ -197,9 +207,9 @@ class TransactionalTransferExecutionRepository:
                 and step.updated_at == pending.reviewed_at
             ]
         else:
-            raise TransferExecutionConflictError("整理任务不属于公开人工复核状态")
+            raise TransferExecutionConflictError("该整理任务当前不需要人工复核")
         if not candidates:
-            raise TransferExecutionConflictError("人工复核任务缺少对应步骤证据")
+            raise TransferExecutionConflictError("人工复核信息不完整，请重新打开整理记录")
         step = max(candidates, key=lambda item: (item.ordinal, item.id))
         evidence = dict(step.result_payload) if step.result_payload is not None else None
         return TransferManualReviewTaskView(
@@ -246,32 +256,32 @@ class TransactionalTransferExecutionRepository:
             TRANSFER_ADMISSION_PLANNED,
             TRANSFER_ADMISSION_PROVIDER_PENDING,
         }:
-            raise TransferExecutionConflictError("整理任务尚未进入可执行规划状态")
+            raise TransferExecutionConflictError("整理任务尚未准备完成，请稍后再试")
         if (
                 pending.checkpoint_version is None
                 or pending.checkpoint_payload is None
                 or pending.planned_at is None
         ):
-            raise TransferExecutionConflictError("整理任务缺少完整计划检查点")
+            raise TransferExecutionConflictError("整理任务记录不完整，请重新识别文件后再整理")
         try:
             checkpoint = TransferPlanCheckpoint.from_payload(
                 pending.checkpoint_payload
             )
         except (TypeError, ValueError) as error:
             raise TransferExecutionConflictError(
-                "整理任务计划检查点无法恢复"
+                "整理任务记录已损坏，请重新识别文件后再整理"
             ) from error
         if pending.checkpoint_version != checkpoint.schema_version:
-            raise TransferExecutionConflictError("整理任务计划检查点版本不一致")
+            raise TransferExecutionConflictError("整理任务记录版本不一致，请重新识别文件后再整理")
         if checkpoint.planning_input.fingerprint != pending.input_fingerprint:
-            raise TransferExecutionConflictError("整理任务计划与准入输入指纹不一致")
+            raise TransferExecutionConflictError("整理任务状态已发生变化，请刷新整理历史后再试")
         expected_state = (
             TRANSFER_ADMISSION_PROVIDER_PENDING
             if checkpoint.is_provider_pending
             else TRANSFER_ADMISSION_PLANNED
         )
         if pending.state != expected_state:
-            raise TransferExecutionConflictError("整理任务计划类型与准入状态不一致")
+            raise TransferExecutionConflictError("整理任务状态已发生变化，请刷新整理历史后再试")
         return checkpoint, checkpoint.fingerprint
 
     @staticmethod
@@ -306,25 +316,33 @@ class TransactionalTransferExecutionRepository:
             )
             if invocation.fileitem != checkpoint.planning_input.source_fileitem:
                 return None
-            predecessor = TransferPlanCheckpoint(
-                planning_input=checkpoint.planning_input,
-                target_storage="",
-                root_target_path="",
-                final_target_path="",
-                resolved_transfer_type="",
-                items=(),
-                resolved_meta=invocation.meta,
-                resolved_meta_kind=invocation.meta_kind,
-                resolved_mediainfo=invocation.mediainfo,
-                resolved_mediainfo_kind=invocation.mediainfo_kind,
-                resolved_episodes_info=invocation.episodes_info,
-                legacy_transfer_providers=providers,
-                provider_invocation=invocation,
-                preview=invocation.preview,
-            )
+            for schema_version in (
+                TRANSFER_PLAN_CHECKPOINT_VERSION,
+                TRANSFER_PLAN_CHECKPOINT_LEGACY_VERSION,
+            ):
+                predecessor = TransferPlanCheckpoint(
+                    planning_input=checkpoint.planning_input,
+                    target_storage="",
+                    root_target_path="",
+                    final_target_path="",
+                    resolved_transfer_type="",
+                    items=(),
+                    classification_snapshot=checkpoint.classification_snapshot,
+                    resolved_meta=invocation.meta,
+                    resolved_meta_kind=invocation.meta_kind,
+                    resolved_mediainfo=invocation.mediainfo,
+                    resolved_mediainfo_kind=invocation.mediainfo_kind,
+                    resolved_episodes_info=invocation.episodes_info,
+                    legacy_transfer_providers=providers,
+                    provider_invocation=invocation,
+                    preview=invocation.preview,
+                    schema_version=schema_version,
+                )
+                if predecessor.fingerprint == step.checkpoint_fingerprint:
+                    return predecessor
         except (TypeError, ValueError):
             return None
-        return predecessor
+        return None
 
     @staticmethod
     def _intent_belongs_to_checkpoint(
@@ -465,10 +483,10 @@ class TransactionalTransferExecutionRepository:
     ) -> None:
         """验证全部持久步骤属于冻结计划演进且身份与全局顺序未被篡改。"""
         if tuple(step.ordinal for step in steps) != tuple(range(len(steps))):
-            raise TransferExecutionConflictError("整理步骤全局序号不连续")
+            raise TransferExecutionConflictError("整理任务正在被其他操作处理，请稍后再试")
         for index, step in enumerate(steps):
             if step.task_id != task_id:
-                raise TransferExecutionConflictError("整理步骤绑定了错误任务")
+                raise TransferExecutionConflictError("整理任务状态已发生变化，请刷新整理历史后再试")
             step_checkpoint = checkpoint
             if step.checkpoint_fingerprint != checkpoint_fingerprint:
                 predecessor = cls._provider_predecessor_checkpoint(
@@ -480,7 +498,7 @@ class TransactionalTransferExecutionRepository:
                         or step.checkpoint_fingerprint != predecessor.fingerprint
                 ):
                     raise TransferExecutionConflictError(
-                        "整理步骤不属于当前冻结计划或合法 provider 前驱计划"
+                        "整理任务记录已失效，请重新识别文件后再整理"
                     )
                 step_checkpoint = predecessor
             if not cls._intent_belongs_to_checkpoint(
@@ -491,7 +509,7 @@ class TransactionalTransferExecutionRepository:
                     previous_steps=steps[:index],
             ):
                 raise TransferExecutionConflictError(
-                    "整理步骤类型或参数不能由冻结计划导出"
+                    "整理任务记录已失效，请重新识别文件后再整理"
                 )
             expected_operation_id = build_transfer_operation_id(
                 task_id=task_id,
@@ -502,7 +520,7 @@ class TransactionalTransferExecutionRepository:
                 intent_payload=step.intent_payload,
             )
             if step.operation_id != expected_operation_id:
-                raise TransferExecutionConflictError("整理步骤 operation ID 与冻结意图不一致")
+                raise TransferExecutionConflictError("整理任务记录已失效，请重新识别文件后再整理")
 
     @classmethod
     def _validate_new_intent(
@@ -522,7 +540,7 @@ class TransactionalTransferExecutionRepository:
             steps=steps,
         )
         if intent.checkpoint_fingerprint != checkpoint_fingerprint:
-            raise TransferExecutionConflictError("整理步骤意图未绑定当前冻结计划指纹")
+            raise TransferExecutionConflictError("整理任务记录已失效，请重新识别文件后再整理")
         if not cls._intent_belongs_to_checkpoint(
                 checkpoint,
                 phase=intent.phase,
@@ -531,7 +549,7 @@ class TransactionalTransferExecutionRepository:
                 previous_steps=steps,
         ):
             raise TransferExecutionConflictError(
-                "整理步骤意图类型或参数不能由冻结计划导出"
+                "整理任务记录已失效，请重新识别文件后再整理"
             )
         expected_operation_id = build_transfer_operation_id(
             task_id=task_id,
@@ -542,7 +560,7 @@ class TransactionalTransferExecutionRepository:
             intent_payload=intent.payload,
         )
         if intent.operation_id != expected_operation_id:
-            raise TransferExecutionConflictError("整理步骤意图 operation ID 不可信")
+            raise TransferExecutionConflictError("整理任务记录已失效，请重新识别文件后再整理")
         existing = next(
             (step for step in steps if step.operation_id == intent.operation_id),
             None,
@@ -550,11 +568,11 @@ class TransactionalTransferExecutionRepository:
         if existing is not None:
             if not cls._intent_matches(existing, task_id=task_id, intent=intent):
                 raise TransferExecutionConflictError(
-                    "稳定 operation ID 已绑定不同步骤意图"
+                    "整理任务正在被其他操作处理，请稍后再试"
                 )
             return
         if intent.ordinal != len(steps):
-            raise TransferExecutionConflictError("整理步骤意图必须按全局序号连续追加")
+            raise TransferExecutionConflictError("整理任务记录已失效，请重新识别文件后再整理")
 
     @staticmethod
     def _require_active_lease(
@@ -609,6 +627,33 @@ class TransactionalTransferExecutionRepository:
             if pending is None:
                 return None
             steps = TransferExecutionStepOper(session).list_by_task_id(task_id=task_id)
+            return self._project_snapshot(pending, steps)
+
+    async def async_get_snapshot(
+            self,
+            *,
+            task_id: str,
+    ) -> Optional[TransferExecutionSnapshot]:
+        """使用异步只读短 Session 获取任务执行快照。"""
+        if self._async_session is None:
+            raise RuntimeError("整理执行仓储未配置异步 Session 工厂")
+        async with self._async_session() as session:
+            pending = (
+                await session.scalars(
+                    select(TransferPending).where(TransferPending.task_id == task_id)
+                )
+            ).first()
+            if pending is None:
+                return None
+            steps = list(
+                (
+                    await session.scalars(
+                        select(TransferExecutionStepModel)
+                        .where(TransferExecutionStepModel.task_id == task_id)
+                        .order_by(TransferExecutionStepModel.ordinal.asc())
+                    )
+                ).all()
+            )
             return self._project_snapshot(pending, steps)
 
     def list_manual_reviews(
@@ -747,7 +792,7 @@ class TransactionalTransferExecutionRepository:
                     session.flush()
                 elif not self._intent_matches(step, task_id=task_id, intent=intent):
                     raise TransferExecutionConflictError(
-                        "稳定 operation ID 已绑定不同步骤意图"
+                        "整理任务正在被其他操作处理，请稍后再试"
                     )
                 projected = self._project_step(step)
                 transaction.commit()
@@ -755,7 +800,7 @@ class TransactionalTransferExecutionRepository:
             except IntegrityError as error:
                 self._rollback(transaction)
                 raise TransferExecutionConflictError(
-                    "整理步骤 operation ID 或全局序号发生并发冲突"
+                    "整理任务正在被其他操作处理，请稍后再试"
                 ) from error
             except Exception:
                 self._rollback(transaction)
@@ -793,7 +838,7 @@ class TransactionalTransferExecutionRepository:
                 session.expire_all()
                 step = oper.get_by_operation_id(operation_id=operation_id)
                 if step is None:
-                    raise TransferExecutionConflictError("整理步骤开始后无法回读")
+                    raise TransferExecutionConflictError("整理任务执行状态暂时无法确认，请刷新整理历史后再试")
                 projected = self._project_step(step)
                 transaction.commit()
                 return projected
@@ -838,7 +883,7 @@ class TransactionalTransferExecutionRepository:
                 session.expire_all()
                 step = oper.get_by_operation_id(operation_id=operation_id)
                 if step is None:
-                    raise TransferExecutionConflictError("整理步骤重启后无法回读")
+                    raise TransferExecutionConflictError("整理任务执行状态暂时无法确认，请刷新整理历史后再试")
                 projected = self._project_step(step)
                 transaction.commit()
                 return projected
@@ -879,7 +924,7 @@ class TransactionalTransferExecutionRepository:
                 )
                 if operation_id not in {step.operation_id for step in steps}:
                     raise TransferExecutionConflictError(
-                        "待恢复步骤不属于冻结计划"
+                        "整理任务记录已失效，请重新识别文件后再整理"
                     )
                 pending_updated = pending_oper.stage_execution_running(
                     task_id=task_id,
@@ -915,7 +960,7 @@ class TransactionalTransferExecutionRepository:
                 session.expire_all()
                 step = oper.get_by_operation_id(operation_id=operation_id)
                 if step is None:
-                    raise TransferExecutionConflictError("恢复重试后无法回读整理步骤")
+                    raise TransferExecutionConflictError("整理任务执行状态暂时无法确认，请刷新整理历史后再试")
                 projected = self._project_step(step)
                 transaction.commit()
                 return projected
@@ -958,7 +1003,7 @@ class TransactionalTransferExecutionRepository:
                 session.expire_all()
                 step = oper.get_by_operation_id(operation_id=operation_id)
                 if step is None:
-                    raise TransferExecutionConflictError("整理步骤完成后无法回读")
+                    raise TransferExecutionConflictError("整理任务执行状态暂时无法确认，请刷新整理历史后再试")
                 projected = self._project_step(step)
                 transaction.commit()
                 return projected
@@ -1022,7 +1067,7 @@ class TransactionalTransferExecutionRepository:
                 session.expire_all()
                 pending = pending_oper.get_by_task_id(task_id=task_id)
                 if pending is None:
-                    raise TransferExecutionConflictError("重试任务无法回读")
+                    raise TransferExecutionConflictError("整理任务执行状态暂时无法确认，请刷新整理历史后再试")
                 snapshot = self._project_snapshot(
                     pending,
                     step_oper.list_by_task_id(task_id=task_id),
@@ -1110,7 +1155,7 @@ class TransactionalTransferExecutionRepository:
                 session.expire_all()
                 pending = pending_oper.get_by_task_id(task_id=task_id)
                 if pending is None:
-                    raise TransferExecutionConflictError("失败结算任务无法回读")
+                    raise TransferExecutionConflictError("整理失败状态暂时无法确认，请刷新整理历史后再试")
                 snapshot = self._project_snapshot(pending, steps)
                 transaction.commit()
                 return snapshot
@@ -1133,26 +1178,33 @@ class TransactionalTransferExecutionRepository:
                 oper = TransferPendingOper(session)
                 pending = oper.get_by_task_id(task_id=task_id)
                 if pending is None:
-                    raise TransferExecutionConflictError("未找到可重试的整理任务")
+                    raise TransferExecutionConflictError("这条整理任务已不存在或已经处理完成")
                 state = TransferExecutionState(pending.execution_state)
                 if state is TransferExecutionState.RETRY_WAIT:
                     return TransferRetryRequestResult(
                         accepted=True,
                         state=state,
                         retry_generation=pending.retry_generation,
-                        message="整理任务已在等待重试",
+                        message="整理任务已在等待重新处理",
                     )
                 if state is not TransferExecutionState.FAILED:
                     message = (
-                        "人工复核任务必须先完成专门判定"
+                        "这条整理任务需要先完成人工确认，再重试"
                         if state is TransferExecutionState.MANUAL_REVIEW
-                        else "整理任务当前状态不接受用户重试"
+                        else "这条整理任务当前无法重试，请刷新后再试"
                     )
                     return TransferRetryRequestResult(
                         accepted=False,
                         state=state,
                         retry_generation=pending.retry_generation,
                         message=message,
+                    )
+                if not self._clear_inactive_claim(session, pending=pending, now_utc=retry_due_at):
+                    return TransferRetryRequestResult(
+                        accepted=False,
+                        state=state,
+                        retry_generation=pending.retry_generation,
+                        message="整理任务正在处理中或状态已变化，请刷新后重试",
                     )
                 updated = oper.stage_request_execution_retry(
                     task_id=task_id,
@@ -1165,37 +1217,240 @@ class TransactionalTransferExecutionRepository:
                     session.expire_all()
                     pending = oper.get_by_task_id(task_id=task_id)
                     if pending is None:
-                        raise TransferExecutionConflictError("重试请求竞争后任务已不存在")
+                        raise TransferExecutionConflictError("这条整理任务已被其他操作处理，请刷新整理历史确认最新状态")
                     state = TransferExecutionState(pending.execution_state)
                     if state is TransferExecutionState.RETRY_WAIT:
                         return TransferRetryRequestResult(
                             accepted=True,
                             state=state,
                             retry_generation=pending.retry_generation,
-                            message="整理任务已由并发请求登记重试",
+                            message="整理任务已提交重试，请勿重复操作",
                         )
                     return TransferRetryRequestResult(
                         accepted=False,
                         state=state,
                         retry_generation=pending.retry_generation,
-                        message="整理任务状态已变化，未登记重试",
+                        message="整理任务状态已变化，请刷新后重试",
                     )
                 session.flush()
                 session.expire_all()
                 pending = oper.get_by_task_id(task_id=task_id)
                 if pending is None:
-                    raise TransferExecutionConflictError("登记重试后任务无法回读")
+                    raise TransferExecutionConflictError("整理重试状态暂时无法确认，请刷新整理历史后再试")
                 result = TransferRetryRequestResult(
                     accepted=True,
                     state=TransferExecutionState.RETRY_WAIT,
                     retry_generation=pending.retry_generation,
-                    message="整理任务已登记重试",
+                    message="已提交重新整理，后台将自动处理",
                 )
                 transaction.commit()
                 return result
             except Exception:
                 self._rollback(transaction)
                 raise
+
+    def discard_corrupt_task(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            error: str,
+    ) -> bool:
+        """在当前有效租约下清理损坏 pending、步骤及历史任务映射。"""
+        if not task_id or not lease_token or not error:
+            return False
+        now_utc, updated_at = self._times()
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                pending = TransferPendingOper(session).get_by_task_id(task_id=task_id)
+                self._require_active_lease(pending, lease_token=lease_token, now_utc=now_utc)
+                history = TransferHistoryOper(session).get_by_transfer_task_id(task_id=task_id)
+                if history is not None:
+                    history.transfer_task_id = None
+                    history.transfer_settlement_revision = None
+                TransferExecutionStepOper(session).stage_delete_task(task_id=task_id)
+                deleted = session.query(TransferPending).filter(
+                    TransferPending.task_id == task_id,
+                    TransferPending.lease_token == lease_token,
+                ).delete(synchronize_session=False)
+                if deleted != 1:
+                    raise TransferExecutionConflictError("损坏整理任务清理未完成，请刷新后重试")
+                transaction.commit()
+                return True
+            except Exception:
+                self._rollback(transaction)
+                raise
+
+    def discard_corrupt_by_history(
+            self,
+            *,
+            task_id: str,
+            history_id: int,
+    ) -> TransferFailureDiscardResult:
+        """在无活动租约时删除损坏任务、步骤并解除历史绑定。"""
+        now_utc, _updated_at = self._times()
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                history_oper = TransferHistoryOper(session)
+                # 放弃旧任务只读取身份与状态，损坏 JSON 不能挡住显式重新规划。
+                pending = session.scalar(select(TransferPending).where(
+                    TransferPending.task_id == task_id,
+                ).options(load_only(TransferPending.task_id, TransferPending.execution_state)))
+                history = history_oper.get(history_id)
+                if pending is None:
+                    return TransferFailureDiscardResult(True, None, "整理任务已被清理")
+                # 显式放弃必须能处理损坏的状态字段，仍由原始状态和租约 CAS 保护。
+                try:
+                    state: Optional[TransferExecutionState] = TransferExecutionState(pending.execution_state)
+                except ValueError:
+                    state = None
+                if history is None or history.transfer_task_id != task_id:
+                    return TransferFailureDiscardResult(False, state, "整理历史与任务绑定已变化，请刷新后重试")
+                if not self._clear_inactive_claim(session, pending=pending, now_utc=now_utc):
+                    return TransferFailureDiscardResult(False, state, "整理任务正在处理中或状态已变化，暂时无法放弃")
+                history.transfer_task_id = None
+                history.transfer_settlement_revision = None
+                TransferExecutionStepOper(session).stage_delete_task(task_id=task_id)
+                session.delete(pending)
+                transaction.commit()
+                return TransferFailureDiscardResult(True, state, "已放弃损坏整理任务")
+            except Exception:
+                self._rollback(transaction)
+                raise
+
+    def discard_failed(
+            self,
+            *,
+            task_id: str,
+            history_id: int,
+            settlement_revision: int,
+    ) -> TransferFailureDiscardResult:
+        """原子删除指定 FAILED pending、步骤证据并解除历史回执映射。"""
+        now_utc, _updated_at = self._times()
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                pending_oper = TransferPendingOper(session)
+                history_oper = TransferHistoryOper(session)
+                pending = pending_oper.get_by_task_id(task_id=task_id)
+                if pending is None:
+                    history = history_oper.get(history_id)
+                    if history is None or history.transfer_task_id is None:
+                        return TransferFailureDiscardResult(
+                            discarded=True,
+                            state=None,
+                            message="整理任务已被其他操作放弃",
+                        )
+                    return TransferFailureDiscardResult(
+                        discarded=False,
+                        state=None,
+                        message="没有找到对应的整理任务，请刷新后重试",
+                    )
+
+                state = TransferExecutionState(pending.execution_state)
+                if state is not TransferExecutionState.FAILED:
+                    message = (
+                        "这条整理任务需要先完成人工确认，再重试"
+                        if state is TransferExecutionState.MANUAL_REVIEW
+                        else "这条整理任务当前无法放弃，请刷新后重试"
+                    )
+                    return TransferFailureDiscardResult(
+                        discarded=False,
+                        state=state,
+                        message=message,
+                    )
+                if (
+                        pending.terminal_history_id != history_id
+                        or pending.settlement_revision != settlement_revision
+                ):
+                    return TransferFailureDiscardResult(
+                        discarded=False,
+                        state=state,
+                        message="整理任务状态已变化，请刷新后重试",
+                    )
+                if not self._clear_inactive_claim(session, pending=pending, now_utc=now_utc):
+                    return TransferFailureDiscardResult(
+                        discarded=False,
+                        state=state,
+                        message="整理任务正在处理中或状态已变化，暂时无法放弃，请稍后重试",
+                    )
+
+                deleted = pending_oper.stage_delete_terminal_failure(
+                    task_id=task_id,
+                    history_id=history_id,
+                    settlement_revision=settlement_revision,
+                )
+                if deleted != 1:
+                    session.expire_all()
+                    pending = pending_oper.get_by_task_id(task_id=task_id)
+                    history = history_oper.get(history_id)
+                    if pending is None and (
+                            history is None or history.transfer_task_id is None
+                    ):
+                        return TransferFailureDiscardResult(
+                            discarded=True,
+                            state=None,
+                            message="整理任务已被其他操作放弃",
+                        )
+                    return TransferFailureDiscardResult(
+                        discarded=False,
+                        state=(
+                            TransferExecutionState(pending.execution_state)
+                            if pending is not None
+                            else None
+                        ),
+                        message="整理任务状态已变化，请刷新后重试",
+                    )
+
+                # PostgreSQL/启用外键的 SQLite 会级联删除；显式清理兼容独立测试库。
+                TransferExecutionStepOper(session).stage_delete_task(task_id=task_id)
+                detached = history_oper.stage_detach_failed_transfer_task(
+                    history_id=history_id,
+                    task_id=task_id,
+                    settlement_revision=settlement_revision,
+                )
+                if detached != 1:
+                    raise TransferExecutionConflictError(
+                        "整理失败记录清理未完成，请刷新整理历史后再试"
+                    )
+                transaction.commit()
+                return TransferFailureDiscardResult(
+                    discarded=True,
+                    state=TransferExecutionState.FAILED,
+                    message="已放弃这条失败的整理任务",
+                )
+            except Exception:
+                self._rollback(transaction)
+                raise
+
+    @staticmethod
+    def _clear_inactive_claim(
+            session: Session,
+            *,
+            pending: TransferPending,
+            now_utc: str,
+    ) -> bool:
+        """以状态和期限 CAS 取得用户恢复权，持有行写锁直到重试或清理提交。"""
+        updated = session.query(TransferPending).filter(
+            TransferPending.task_id == pending.task_id,
+            TransferPending.execution_state == pending.execution_state,
+            or_(
+                TransferPending.lease_token.is_(None),
+                TransferPending.lease_expires_at.is_(None),
+                TransferPending.lease_expires_at <= now_utc,
+            ),
+        ).update(
+            {
+                "lease_owner": None,
+                "lease_token": None,
+                "lease_expires_at": None,
+                "heartbeat_at": None,
+            },
+            synchronize_session=False,
+        )
+        return bool(updated == 1)
 
     def resolve_manual_review(
             self,
@@ -1210,7 +1465,7 @@ class TransactionalTransferExecutionRepository:
         """在无 lease 短事务中原子提交步骤与 pending 的人工判定。"""
         if decision is TransferManualReviewDecision.FAILED:
             raise TransferExecutionConflictError(
-                "人工失败终态尚不能绕过 lease durable 结算"
+                "该整理任务需要通过正常流程完成结算，请重新整理"
             )
         if decision is TransferManualReviewDecision.APPLIED and result is None:
             raise ValueError("人工判定已发生时必须提供结果证据")
@@ -1232,7 +1487,7 @@ class TransactionalTransferExecutionRepository:
                         and step.kind == _LEGACY_REVIEW_STEP_KIND
                 ):
                     raise TransferExecutionConflictError(
-                        "升级遗留步骤没有足够证据证明外部操作已发生；"
+                        "这条整理步骤无法确认是否已经执行，请人工确认文件状态后再继续；"
                         "请先人工回滚，或确认未发生后选择 NOT_APPLIED"
                     )
                 step_updated = step_oper.stage_resolve_manual_review(
@@ -1246,7 +1501,7 @@ class TransactionalTransferExecutionRepository:
                 )
                 if step_updated != 1:
                     raise TransferExecutionConflictError(
-                        "步骤已不处于可判定的无租约人工复核态"
+                        "该步骤当前无法进行人工确认，请刷新整理历史后再试"
                     )
                 pending_oper = TransferPendingOper(session)
                 pending_updated = pending_oper.stage_resolve_manual_review(
@@ -1259,14 +1514,14 @@ class TransactionalTransferExecutionRepository:
                 )
                 if pending_updated != 1:
                     raise TransferExecutionConflictError(
-                        "任务已不处于可判定的无租约人工复核态"
+                        "该整理任务当前无法进行人工确认，请刷新整理历史后再试"
                     )
                 session.flush()
                 session.expire_all()
                 pending = pending_oper.get_by_task_id(task_id=task_id)
                 step = step_oper.get_by_operation_id(operation_id=operation_id)
                 if pending is None or step is None:
-                    raise TransferExecutionConflictError("人工判定提交后无法回读")
+                    raise TransferExecutionConflictError("人工确认结果暂时无法保存，请刷新整理历史后再试")
                 resolved = TransferManualReviewResult(
                     task_id=task_id,
                     operation_id=operation_id,
@@ -1335,7 +1590,7 @@ class TransactionalTransferExecutionRepository:
                 session.expire_all()
                 pending = pending_oper.get_by_task_id(task_id=task_id)
                 if pending is None:
-                    raise TransferExecutionConflictError("人工复核任务无法回读")
+                    raise TransferExecutionConflictError("人工复核状态暂时无法确认，请刷新整理历史后再试")
                 snapshot = self._project_snapshot(
                     pending,
                     step_oper.list_by_task_id(task_id=task_id),
@@ -1379,11 +1634,11 @@ class TransactionalTransferExecutionRepository:
                 step_ids = tuple(step.operation_id for step in steps)
                 if step_ids != checkpoint.operation_ids:
                     raise TransferExecutionConflictError(
-                        "执行检查点引用的步骤顺序与持久步骤不一致"
+                        "整理任务状态已发生变化，请刷新整理历史后再试"
                     )
                 if any(step.state != TransferStepState.SUCCEEDED.value for step in steps):
                     raise TransferExecutionConflictError(
-                        "存在未成功步骤，不能提交执行检查点"
+                        "整理任务仍有步骤未完成，请先完成前置步骤"
                     )
                 running = pending_oper.stage_execution_running(
                     task_id=task_id,
@@ -1421,7 +1676,7 @@ class TransactionalTransferExecutionRepository:
                 session.expire_all()
                 pending = pending_oper.get_by_task_id(task_id=task_id)
                 if pending is None:
-                    raise TransferExecutionConflictError("执行检查点任务无法回读")
+                    raise TransferExecutionConflictError("整理任务执行状态暂时无法确认，请刷新整理历史后再试")
                 snapshot = self._project_snapshot(pending, steps)
                 transaction.commit()
                 return snapshot

@@ -132,7 +132,7 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
         """
         try:
             parameters = inspect.signature(func).parameters
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return False
         return "progress_callback" in parameters
 

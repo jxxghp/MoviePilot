@@ -51,6 +51,21 @@
       "reason": "工具包根只负责稳定 Tool 类型的延迟解析。"
     },
     {
+      "mode": "public_facade",
+      "path": "app/application/settings/__init__.py",
+      "reason": "设置包根通过显式懒加载清单保留 app.application.settings 的兼容导入路径，并隔离服务实现与合同模块。"
+    },
+    {
+      "mode": "implementation",
+      "path": "app/application/history/__init__.py",
+      "reason": "历史包根集中声明历史用例的公开合同，具体 DTO、Port 和 mutation 实现在单词命名子模块中。"
+    },
+    {
+      "mode": "implementation",
+      "path": "app/application/messaging/interaction/__init__.py",
+      "reason": "交互包根拥有通用会话状态存储和上下文合同，Agent 选择实现位于 agent.py。"
+    },
+    {
       "mode": "implementation",
       "path": "app/db/models/__init__.py",
       "reason": "load_all_models 是数据库组合根显式加载全部 ORM 映射的唯一入口。"

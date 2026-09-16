@@ -9,21 +9,18 @@ import pytest
 
 from app import schemas
 from app.agent.contracts import ReplyMode
+
+# pylint: disable=no-name-in-module  # 旧公开入口由 runtime compat 惰性注入，Pylint 无法静态解析。
 from app.agent.orchestrator import agent_manager
+from app.agent.session import AgentSessionOwner
+from app.agent.steering import SteeringMessage
 from app.agent.web import _get_web_agent_type
 from app.api.endpoints import agent as agent_endpoint
 from app.api.endpoints.agent import web_agent_stream
 from app.application.messaging import agent as agent_application
 from app.application.messaging.agent import (
     _WEB_AGENT_FILE_REGISTRY,
-    AgentInteractionOption,
-    agent_interaction_manager,
-    attach_web_agent_message_queue,
-    build_web_agent_message_update_event,
     configure_web_agent_message_runtime,
-    detach_web_agent_message_queue,
-    dispatch_web_agent_message_event,
-    extract_web_agent_message_from_event_data,
     reset_web_agent_message_runtime,
     wait_web_agent_background_tasks,
 )
@@ -76,7 +73,24 @@ from app.application.messaging.agent import (
     transcribe_web_agent_audio_files as _transcribe_web_agent_audio_files,
 )
 from app.application.messaging.chat import AgentChatService, configure_agent_chat_service
+from app.application.messaging.interaction.agent import (
+    AgentInteractionOption,
+    agent_interaction_manager,
+)
 from app.application.messaging.skill import skill_interaction_manager
+from app.application.messaging.webagent.events import (
+    attach_web_agent_message_queue,
+    build_web_agent_message_update_event,
+    detach_web_agent_message_queue,
+    dispatch_web_agent_message_event,
+    extract_web_agent_message_from_event_data,
+)
+from app.application.messaging.webagent.stream import (
+    _build_steering_ack_stream,
+    _build_web_agent_output_callback,
+    _build_web_agent_steering_callback,
+    _build_web_agent_tool_event_callback,
+)
 from app.chain.message import MessageChain
 from app.db.oper.agentchat import AgentChatOper
 from app.runtime.events import Event
@@ -134,6 +148,97 @@ def test_web_agent_non_transport_helpers_are_application_owned():
 
     assert all(hasattr(agent_application, name) for name in ownership)
     assert all(not hasattr(agent_endpoint, name) for name in ownership)
+
+
+@pytest.mark.asyncio
+async def test_steering_ack_stream_reports_a_queued_message_without_an_assistant_bubble():
+    """运行中补充消息只返回短确认流，主 Agent 的展示气泡由原流继续持有。"""
+    message = SteeringMessage.create(session_id="session", user_id="user", text="补充要求")
+    events = [event async for event in _build_steering_ack_stream(session_id="session", message=message)]
+
+    assert events == [
+        {"type": "start", "session_id": "session"},
+        {
+            "type": "steering",
+            "status": "queued",
+            "message_id": message.message_id,
+            "content": "补充要求",
+        },
+        {"type": "done"},
+    ]
+
+
+def test_web_agent_steering_uses_current_assistant_identity_when_segments_are_equal():
+    """展示内容相同的助手段也必须把 steering 插入到当前对象之后。"""
+    assistant_before = {
+        "id": "assistant-same",
+        "role": "assistant",
+        "content": "",
+        "status": "streaming",
+    }
+    assistant_current = dict(assistant_before)
+    display_messages = [assistant_before, assistant_current]
+    published = []
+
+    def build_display_message(*, role, status="done", **_kwargs):
+        """构造最小展示消息，保持测试只验证时间线定位。"""
+        return {"id": f"{role}-{len(published)}", "role": role, "status": status, "content": ""}
+
+    callback = _build_web_agent_steering_callback(
+        display_messages=display_messages,
+        assistant_message_ref={"message": assistant_current},
+        event_publisher=type("Publisher", (), {"publish": published.append})(),
+        build_display_message=build_display_message,
+        build_input_attachments=lambda **_kwargs: [],
+    )
+    message = SteeringMessage.create(session_id="session", user_id="user", text="插入当前段之后")
+
+    callback(message, "applied")
+
+    assert display_messages[0] is assistant_before
+    assert display_messages[1] is assistant_current
+    assert display_messages[1]["status"] == "done"
+    assert display_messages[2]["role"] == "user"
+    assert display_messages[3]["role"] == "assistant"
+    assert published and published[0]["assistant_message_id"] == "assistant-same"
+
+
+def test_web_agent_stream_events_keep_their_assistant_segment_identity():
+    """迟到的文本和工具事件必须携带产生它们的助手段 ID。"""
+    published = []
+    applied = []
+    assistant_message_ref = {"message": {"id": "assistant-before"}}
+
+    output_callback = _build_web_agent_output_callback(
+        assistant_message_ref=assistant_message_ref,
+        event_publisher=type("Publisher", (), {"publish": published.append})(),
+        split_output=lambda delta: [{"type": "delta", "content": delta}],
+        apply_display_event=lambda event, _message: applied.append(event),
+    )
+    tool_event_callback = _build_web_agent_tool_event_callback(
+        assistant_message_ref=assistant_message_ref,
+        event_publisher=type("Publisher", (), {"publish": published.append})(),
+        apply_display_event=lambda event, _message: applied.append(event),
+    )
+
+    output_callback("前段")
+    tool_event_callback({"type": "tool", "tool_id": "tool-before", "status": "running"})
+    assistant_message_ref["message"] = {"id": "assistant-after"}
+    output_callback("后段")
+    tool_event_callback({"type": "tool", "tool_id": "tool-after", "status": "running"})
+
+    assert [event["assistant_message_id"] for event in applied] == [
+        "assistant-before",
+        "assistant-before",
+        "assistant-after",
+        "assistant-after",
+    ]
+    assert [event["assistant_message_id"] for event in published] == [
+        "assistant-before",
+        "assistant-before",
+        "assistant-after",
+        "assistant-after",
+    ]
 
 
 def test_split_web_agent_output_extracts_verbose_tool_message():
@@ -305,6 +410,63 @@ def test_apply_web_agent_display_event_updates_snapshot():
     assert message["attachments"] == [{"kind": "file", "url": "message/agent/file/a"}]
 
 
+def test_apply_web_agent_display_event_tracks_parallel_tool_lifecycle_by_id():
+    """并行工具必须按稳定调用 ID 独立收口，不能由后一条开始事件覆盖前一条状态。"""
+    message = {
+        "id": "assistant-1",
+        "role": "assistant",
+        "content": "",
+        "createdAt": 1,
+        "status": "streaming",
+        "tools": [],
+        "segments": [],
+        "attachments": [],
+        "choices": [],
+    }
+
+    _apply_web_agent_display_event(
+        {
+            "type": "tool",
+            "tool_id": "tool-a",
+            "tool_name": "search",
+            "message": "搜索媒体",
+            "status": "running",
+        },
+        message,
+    )
+    _apply_web_agent_display_event(
+        {
+            "type": "tool",
+            "tool_id": "tool-b",
+            "tool_name": "download",
+            "message": "检查下载器",
+            "status": "running",
+        },
+        message,
+    )
+    _apply_web_agent_display_event(
+        {"type": "tool", "tool_id": "tool-a", "status": "done"},
+        message,
+    )
+
+    assert [(tool["id"], tool["status"]) for tool in message["tools"]] == [
+        ("tool-a", "done"),
+        ("tool-b", "running"),
+    ]
+    assert message["segments"] == [
+        {"type": "tool", "toolIndex": 0},
+        {"type": "tool", "toolIndex": 1},
+    ]
+
+    _apply_web_agent_display_event(
+        {"type": "tool", "tool_id": "tool-b", "status": "error"},
+        message,
+    )
+    _apply_web_agent_display_event({"type": "done"}, message)
+
+    assert [tool["status"] for tool in message["tools"]] == ["done", "error"]
+
+
 def test_agent_chat_display_schema_preserves_ordered_segments():
     """前端回传会话快照时应保留文字和工具的有序片段。"""
     payload = schemas.AgentChatDisplaySaveRequest(
@@ -321,6 +483,7 @@ def test_agent_chat_display_schema_preserves_ordered_segments():
                     {"type": "tool", "toolIndex": 0},
                     {"type": "text", "content": "检查完成"},
                 ],
+                "steering_message_id": "steering-1",
             }
         ]
     )
@@ -330,6 +493,7 @@ def test_agent_chat_display_schema_preserves_ordered_segments():
         {"type": "tool", "content": "", "toolIndex": 0},
         {"type": "text", "content": "检查完成", "toolIndex": None},
     ]
+    assert payload.messages[0].steering_message_id == "steering-1"
 
 
 def test_build_web_agent_input_attachments_marks_kinds():
@@ -558,10 +722,36 @@ def test_web_agent_tool_summary_is_emitted_before_following_text():
         output_callback=outputs.append,
     )
 
-    agent.stream_handler.record_tool_call("query_download_tasks")
+    agent.stream_handler.record_tool_call(
+        "moviepilot_api",
+        tool_kwargs={"operation_id": "scheduler.list"},
+    )
     agent._handle_stream_text("查询完成。")
 
     assert outputs == ["（查询了 1 次数据）\n\n", "查询完成。"]
+
+
+def test_web_agent_middleware_tool_emits_detail_in_verbose_mode():
+    """中间件私有工具在啰嗦模式下应立即输出逐条工具明细。"""
+    outputs = []
+    agent = _get_web_agent_type()(
+        session_id="web-agent:middleware-tool-detail",
+        user_id="7",
+        channel=NotificationChannel.WebAgent.value,
+        source="web-agent",
+        username="admin",
+        replay_mode=ReplyMode.CAPTURE_ONLY,
+        output_callback=outputs.append,
+    )
+
+    with patch("app.agent.callback.get_runtime_setting", return_value=True):
+        agent.stream_handler.report_tool_call(
+            "read_skill",
+            tool_message="读取技能说明：moviepilot-api",
+            tool_kwargs={"name": "moviepilot-api"},
+        )
+
+    assert outputs == ["\n\n⚙️ => 读取技能说明：moviepilot-api\n\n"]
 
 
 def test_web_agent_channel_supports_streaming_and_attachments():
@@ -1183,6 +1373,177 @@ def test_web_agent_stream_binds_session_to_agent_manager():
         worker = agent_manager._session_workers.pop(session_id, None)
         if worker:
             worker.cancel()
+
+
+def test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream():
+    """第一条 WebAgent 流运行时的第二条请求应在真实应用点切分助手回合。"""
+    first_payload = schemas.AgentWebChatRequest(
+        text="开始长任务",
+        session_id="mid-run-steering",
+        echo_user=True,
+    )
+    second_payload = schemas.AgentWebChatRequest(
+        text="补充：只保留最终结果",
+        session_id="mid-run-steering",
+        echo_user=True,
+    )
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    user = SimpleNamespace(id=1, name="admin", is_superuser=True)
+    session_id = "web-agent:mid-run-steering"
+
+    async def scenario():
+        """并发消费两条 HTTP 流，检查排队和应用的先后顺序。"""
+        owner = AgentSessionOwner()
+        owner._accepting_tasks = True
+        started = asyncio.Event()
+        release = asyncio.Event()
+        instances = []
+
+        class BlockingWebAgent:
+            """阻塞首轮推理并记录后续 steering 消息的测试 Agent。"""
+
+            def __init__(self, **kwargs):
+                """保存会话回调并登记实例数量。"""
+                self.__dict__.update(kwargs)
+                self.processed = []
+                instances.append(self)
+
+            def set_output_callback(self, output_callback):
+                """更新当前助手流的文本回调。"""
+                self.output_callback = output_callback
+
+            def set_protected_output_callback(self, protected_output_callback):
+                """更新当前助手流的敏感结果回调。"""
+                self.protected_output_callback = protected_output_callback
+
+            def set_message_callback(self, message_callback):
+                """更新当前助手流的主动消息回调。"""
+                self.message_callback = message_callback
+
+            async def process(self, message, **_kwargs):
+                """首轮保持运行，后续回合输出补充消息已生效。"""
+                self.processed.append(message)
+                if message == "开始长任务":
+                    if callable(self.tool_event_callback):
+                        self.tool_event_callback(
+                            {
+                                "type": "tool",
+                                "status": "running",
+                                "tool_id": "tool-steering-boundary",
+                                "tool_name": "search",
+                                "message": "检查任务状态",
+                            }
+                        )
+                    self.output_callback("首轮处理中")
+                    if callable(self.tool_event_callback):
+                        self.tool_event_callback(
+                            {
+                                "type": "tool",
+                                "status": "done",
+                                "tool_id": "tool-steering-boundary",
+                            }
+                        )
+                    started.set()
+                    await release.wait()
+                else:
+                    self.output_callback("补充已应用")
+                return message
+
+            async def cleanup(self):
+                """模拟 Agent 资源清理。"""
+                return True
+
+        async def collect(iterator, initial=None):
+            """收集 SSE 文本，支持保留已读取的首个事件。"""
+            chunks = list(initial or [])
+            async for chunk in iterator:
+                chunks.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk)
+            return chunks
+
+        try:
+            with (
+                patch(
+                    "app.application.messaging.agent.get_api_runtime_config_snapshot",
+                    return_value=SimpleNamespace(ai_agent_enable=True),
+                ),
+                patch(
+                    "app.application.messaging.agent.is_web_agent_traditional_message",
+                    return_value=False,
+                ),
+                patch(
+                    "app.application.messaging.agent.has_web_agent_traditional_interaction",
+                    return_value=False,
+                ),
+                patch(
+                    "app.application.messaging.agent.build_web_agent_session_id_async",
+                    return_value=session_id,
+                ),
+                patch(
+                    "app.application.agent.get_running_agent_manager",
+                    return_value=owner,
+                ),
+                patch(
+                    "app.application.agent.get_web_agent_type",
+                    return_value=BlockingWebAgent,
+                ),
+                patch(
+                    "app.application.messaging.agent.save_web_agent_display_snapshot",
+                    new_callable=AsyncMock,
+                ) as save_snapshot,
+            ):
+                first_response = await web_agent_stream(first_payload, request, user)
+                first_iterator = first_response.body_iterator
+                first_start = await first_iterator.__anext__()
+                await asyncio.wait_for(started.wait(), timeout=1)
+
+                second_response = await web_agent_stream(second_payload, request, user)
+                second_body = "".join(await collect(second_response.body_iterator))
+                assert '"status": "queued"' in second_body
+
+                release.set()
+                first_body = "".join(await collect(first_iterator, [first_start]))
+                await wait_web_agent_background_tasks()
+
+                return (
+                    first_body,
+                    second_body,
+                    instances,
+                    save_snapshot,
+                )
+        finally:
+            worker = owner._session_workers.pop(session_id, None)
+            if worker:
+                worker.cancel()
+                await asyncio.gather(worker, return_exceptions=True)
+            owner._session_queues.pop(session_id, None)
+            owner._session_active_tasks.pop(session_id, None)
+            owner._session_steering_inboxes.pop(session_id, None)
+            owner.active_agents.clear()
+
+    first_body, second_body, instances, save_snapshot = asyncio.run(scenario())
+
+    assert '"status": "queued"' in second_body
+    assert '"status": "applied"' in first_body
+    assert '"assistant_message_id":' in first_body
+    assert first_body.count('data: {"type": "start"') == 1
+    assert first_body.count('data: {"type": "done"') == 1
+    assert len(instances) == 1
+    assert instances[0].processed == ["开始长任务", "补充：只保留最终结果"]
+    messages = save_snapshot.await_args.kwargs["messages"]
+    assert [message["role"] for message in messages] == ["user", "assistant", "user", "assistant"]
+    assert messages[2]["steering_message_id"]
+    assert messages[1]["status"] == "done"
+    assert messages[3]["status"] == "done"
+    assert messages[1]["content"] == "首轮处理中"
+    assert messages[3]["content"] == "补充已应用"
+    assert messages[1]["tools"] == [
+        {
+            "id": "tool-steering-boundary",
+            "tool_name": "search",
+            "message": "检查任务状态",
+            "status": "done",
+        }
+    ]
 
 
 def test_web_agent_stream_emits_secret_result_only_as_protected_event():

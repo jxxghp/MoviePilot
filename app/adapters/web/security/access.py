@@ -113,9 +113,10 @@ def _decode_token(token: str | None, purpose: str) -> TokenPayload:
 
 def _get_api_token(
     token_query: Annotated[str | None, Security(api_token_query)] = None,
+    key_header: Annotated[str | None, Security(api_key_header)] = None,
 ) -> str | None:
-    """从 URL 查询参数读取兼容 API Token。"""
-    return token_query
+    """优先从请求头、其次从查询参数读取兼容 API Token。"""
+    return key_header or token_query
 
 
 def _get_api_key(
@@ -314,7 +315,7 @@ def _verify_key(key: str | None, expected_key: str, key_type: str) -> str:
 def verify_apitoken(
     token: Annotated[str | None, Security(_get_api_token)],
 ) -> str:
-    """校验 URL 查询参数中的兼容 API Token。"""
+    """校验请求头或 URL 查询参数中的兼容 API Token。"""
     value = _verify_key(token, get_runtime_setting("API_TOKEN"), "token")
     validate_api_credential_identity()
     return value

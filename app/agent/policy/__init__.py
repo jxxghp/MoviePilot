@@ -3,7 +3,6 @@
 from importlib import import_module
 from typing import Any
 
-
 _EXPORT_MODULES = {
     "ActionEffect": "app.agent.policy.contracts",
     "ActionPolicy": "app.agent.policy.contracts",
@@ -23,11 +22,20 @@ _EXPORT_MODULES = {
     "ToolOrigin": "app.agent.policy.contracts",
     "ToolPolicyContext": "app.agent.policy.contracts",
     "ToolRevision": "app.agent.policy.contracts",
+    "ApiOperationRoute": "app.agent.policy.api",
+    "ApiOperationSpec": "app.agent.policy.api",
+    "API_OPERATION_BY_ID": "app.agent.policy.api",
+    "API_OPERATION_ROUTES": "app.agent.policy.api",
+    "API_OPERATION_SPECS": "app.agent.policy.api",
+    "list_api_operation_ids": "app.agent.policy.api",
+    "resolve_api_operation": "app.agent.policy.api",
+    "resolve_api_route": "app.agent.policy.api",
     "AgentToolPolicyOrchestrator": "app.agent.policy.orchestrator",
     "DEFAULT_TOOL_POLICY_ORCHESTRATOR": "app.agent.policy.orchestrator",
     "call_policy_hook": "app.agent.policy.orchestrator",
     "DEFAULT_TOOL_POLICY_REGISTRY": "app.agent.policy.registry",
     "ToolPolicyRegistry": "app.agent.policy.registry",
+    "requests_system_setting_secrets": "app.agent.policy.registry",
     "REDACTED_VALUE": "app.agent.policy.sanitizer",
     "sanitize_for_host": "app.agent.policy.sanitizer",
     "stable_type_name": "app.agent.policy.sanitizer",

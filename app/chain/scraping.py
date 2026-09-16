@@ -33,6 +33,7 @@ from app.runtime.cache import cached
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -45,8 +46,6 @@ from app.schemas.types import (
     ScrapingTarget,
     SystemConfigKey,
 )
-from app.schemas.workflow import FileItem
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 
 class ScrapingResponsePort(Protocol):
@@ -132,6 +131,7 @@ def _scraping_http_snapshot() -> ScrapingHttpPort:
         raise RuntimeError("刮削 HTTP 端口尚未由启动组合根装配")
     return http
 
+
 scraping_lock = Lock()
 
 current_umask = os.umask(0)
@@ -144,6 +144,7 @@ class _MusicScrapeFileResult:
 
     metadata_success: bool = True
     lyrics_status: str = "disabled"
+
 
 class ScrapingOption:
     """刮削选项"""
@@ -192,6 +193,7 @@ class ScrapingOption:
     def is_upgrade(self) -> bool:
         """是否只在歌词等产物质量更高时替换。"""
         return self.policy == ScrapingPolicy.UPGRADE
+
 
 class ScrapingConfig:
     """媒体刮削配置"""
@@ -466,8 +468,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                     # 电影文件NFO: 放在电影文件同级目录，名称与电影文件主体一致，后缀.nfo
                     final_filename = f"{target_dir_path.stem}.nfo"
                     target_dir_item = (
-                            parent_fileitem
-                            or self.storagechain.get_parent_item(current_fileitem)
+                        parent_fileitem
+                        or self.storagechain.get_parent_item(current_fileitem)
                     )
                     if not target_dir_item:
                         logger.error(
@@ -657,7 +659,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             mediainfo: MediaInfo,
             season: Optional[int] = None,
             episode: Optional[int] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, str]]:
         """
         获取图片名称和url，合并所有模块的结果。
         优先使用高优先级模块的图片，低优先级模块补充缺失的图片类型。
@@ -691,23 +693,16 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
 
     @eventmanager.register(EventType.MetadataScrape)
     def scrape_metadata_event(self, event: Event):
-        """
-        监控手动刮削事件
-        """
+        """监控手动刮削事件"""
         if not event:
             return
         event_data = event.event_data or {}
-        # 媒体根目录
-        fileitem: FileItem = event_data.get("fileitem")
-        # 媒体文件列表
+        # 读取事件载荷
+        fileitem: _SchemaFileItem = event_data.get("fileitem")
         file_list: List[str] = list(dict.fromkeys(event_data.get("file_list") or []))
-        # 媒体元数据
         meta: MetaBase = event_data.get("meta")
-        # 媒体信息
         mediainfo: MediaInfo = event_data.get("mediainfo")
-        # 是否覆盖
         overwrite = event_data.get("overwrite", False)
-        # 检查媒体根目录
         if not fileitem:
             return
 
@@ -725,9 +720,9 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                         Path(context.get("path")).as_posix(): context.get("mediainfo")
                         for context in event_data.get("file_contexts") or []
                         if (
-                                isinstance(context, dict)
-                                and context.get("path")
-                                and isinstance(context.get("mediainfo"), MusicInfo)
+                            isinstance(context, dict)
+                            and context.get("path")
+                            and isinstance(context.get("mediainfo"), MusicInfo)
                         )
                     }
                 _, message = self.scrape_metadata(
@@ -768,18 +763,14 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             overwrite=overwrite,
                         )
                     else:
-                        # 1. 收集fileitem和file_list中每个文件之间所有子目录
                         all_dirs: set[Path] = set()
                         root_path = Path(fileitem.path)
 
                         logger.debug(f"开始收集目录，根目录：{root_path}")
-                        # 收集根目录
                         all_dirs.add(root_path)
 
-                        # 收集所有目录（包括所有层级）
                         for sub_file in file_list:
                             sub_path = Path(sub_file)
-                            # 收集从根目录到文件的所有父目录
                             current_path = sub_path.parent
                             while (
                                     current_path != root_path
@@ -787,6 +778,17 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
                             ):
                                 all_dirs.add(current_path)
                                 current_path = current_path.parent
+
+                        if (
+                                getattr(mediainfo, "type", None) == MediaType.TV
+                                and root_path.parent != root_path
+                                and (
+                                    root_path.name in self.runtime_config.season_zero_names
+                                    or MetaInfo(root_path.name).begin_season is not None
+                                )
+                        ):
+                            # 整理事件可能以季目录为根，补回剧集根目录才能触发电视剧分支。
+                            all_dirs.add(root_path.parent)
 
                         logger.debug(f"共收集到 {len(all_dirs)} 个目录")
 
@@ -1467,8 +1469,8 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         merged.album_artist = album.album_artist or album.artist or local_meta.album_artist
         merged.year = album.year or local_meta.year
         merged.total_tracks = album.total_tracks or local_meta.total_tracks
-        merged.media_source = album.media_source or local_meta.media_source
-        merged.media_id = album.media_id or local_meta.media_id
+        # MetaMusic 的身份代表音轨；保留已有单曲 ID，不能用专辑 ID 补位，
+        # 否则会误写 musicbrainz_trackid，使下次拿 release-group 查询 recording。
         return merged
 
     @classmethod

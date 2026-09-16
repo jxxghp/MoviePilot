@@ -176,16 +176,36 @@ def test_plugin_manager_legacy_and_sdk_paths_share_canonical_identity() -> None:
     """V2 旧路径与 V3 SDK 必须复用同一个 PluginManager 身份及已验证成员。"""
     canonical = importlib.import_module("app.runtime.extensions.plugin.manager")
     legacy = importlib.import_module("app.core.plugin")
-    sdk = importlib.import_module("app.sdk.plugins")
+    sdk = importlib.import_module("app.sdk.plugin.manager")
 
     assert MODULE_ALIASES["app.core.plugin"].target == canonical.__name__
-    assert MODULE_ALIASES["app.core.plugin"].replacement == "app.sdk.plugins"
+    assert MODULE_ALIASES["app.core.plugin"].replacement == "app.sdk.plugin.manager"
     assert legacy is canonical
     assert legacy.PluginManager is canonical.PluginManager
     assert sdk.PluginManager is canonical.PluginManager
     assert AUDITED_PLUGIN_MANAGER_MEMBERS <= set(dir(canonical.PluginManager))
     assert sdk.__all__ == ["ModuleManager", "PluginManager"]
     assert not hasattr(sdk, "PluginHelper")
+
+
+def test_plugin_namespace_root_only_documents_the_install_directory() -> None:
+    """插件安装命名空间包根只保留说明，契约基类由 SDK 拥有。"""
+    tree = _parse(APP_ROOT / "plugins" / "__init__.py")
+
+    assert _is_documentation_only_root(tree)
+    assert _public_names(tree) == set()
+
+
+def test_plugin_contract_base_depends_on_canonical_modules_only() -> None:
+    """插件契约基类直接依赖 canonical 模块，宿主源码不消费幻影旧路径。"""
+    tree = _parse(APP_ROOT / "sdk" / "plugin" / "base.py")
+    legacy = {
+        module
+        for module in _module_imports(tree)
+        if module == "app.log" or module.startswith(("app.core.", "app.helper.", "app.utils."))
+    }
+
+    assert legacy == set()
 
 
 def test_plugin_helper_stays_on_exact_legacy_adapter_route() -> None:

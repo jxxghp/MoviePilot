@@ -16,6 +16,8 @@ from app.chain.recommend import RecommendChain
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.schemas.music import MusicAlbumInfo as _SchemaMusicAlbumInfo
 from app.schemas.music import MusicArtistInfo as _SchemaMusicArtistInfo
+from app.schemas.music import MusicLibraryStatus as _SchemaMusicLibraryStatus
+from app.schemas.music import MusicLibraryStatusRequest as _SchemaMusicLibraryStatusRequest
 from app.schemas.music import MusicRecognitionCacheData as _SchemaMusicRecognitionCacheData
 from app.schemas.music import MusicRecognizeRequest as _SchemaMusicRecognizeRequest
 from app.schemas.response import Response as _SchemaResponse
@@ -281,6 +283,37 @@ async def music_artist_albums(
         album_type=album_type,
     )
     return [_serialize_music(info) for info in results]
+
+
+@router.post(  # type: ignore[misc]
+    "/library/status",
+    summary="批量查询音乐专辑入库状态",
+    response_model=list[_SchemaMusicLibraryStatus],
+)
+def music_library_status(
+        request: _SchemaMusicLibraryStatusRequest,
+        _: _SchemaTokenPayload = Depends(verify_token),
+) -> list[_SchemaMusicLibraryStatus]:
+    """按稳定音乐身份批量判断专辑是否已入库。"""
+    statuses: list[_SchemaMusicLibraryStatus] = []
+    media_chain = MediaChain()
+    for item in request.items:
+        info = MusicInfo.from_dict(item.model_dump())  # type: ignore[misc]
+        # 艺术家作品列表来自 Release Group，本身不包含曲数。此查询的语义
+        # 是“已存在/已入库”，无曲数时一首匹配曲目即足以阻止重复下载。
+        expected_tracks = info.total_tracks or 1
+        info.total_tracks = expected_tracks
+        exists = media_chain.media_exists(mediainfo=info) is not None  # type: ignore[arg-type]
+        assert item.media_source is not None
+        assert item.media_id is not None
+        statuses.append(
+            _SchemaMusicLibraryStatus(
+                media_source=item.media_source,
+                media_id=item.media_id,
+                exists=exists,
+            )
+        )
+    return statuses
 
 
 @router.get(

@@ -35,6 +35,7 @@ from app.application.outbox import (
     DOWNLOAD_MODULE_TOPIC,
     DOWNLOAD_NOTIFICATION_TOPIC,
     DOWNLOAD_SUBTITLE_TOPIC,
+    PostCommitEffectError,
 )
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
@@ -252,6 +253,8 @@ def test_durable_snapshots_are_json_and_restore_plugin_runtime_objects():
         context=context,
         download_dir=Path("/downloads"),
         torrent_content=b"torrent-bytes",
+        download_hash="hash-1",
+        downloader="qb",
     )
     restored_processing = restore_download_processing(processing_snapshot)
     restored_transfer = restore_transfer_result(transfer_snapshot)
@@ -260,6 +263,8 @@ def test_durable_snapshots_are_json_and_restore_plugin_runtime_objects():
     assert isinstance(restored_processing.context, Context)
     assert restored_processing.download_dir == Path("/downloads")
     assert restored_processing.torrent_content == b"torrent-bytes"
+    assert restored_processing.download_hash == "hash-1"
+    assert restored_processing.downloader == "qb"
     assert isinstance(restored_transfer["fileitem"], FileItem)
     assert type(restored_transfer["meta"]) is type(meta)
     assert isinstance(restored_transfer["mediainfo"], MediaInfo)
@@ -561,7 +566,7 @@ def test_transfer_event_failure_leaves_committed_intent_pending():
         """模拟插件事件总线在业务提交后失败。"""
         raise RuntimeError("event failed")
 
-    with pytest.raises(RuntimeError, match="event failed"):
+    with pytest.raises(PostCommitEffectError, match="提交后的相关处理未完成") as error:
         writer.transfer_result(
             topic="transfer.completed",
             stage_history=stage_history,
@@ -576,6 +581,8 @@ def test_transfer_event_failure_leaves_committed_intent_pending():
             },
             publish=fail_publish,
         )
+    assert len(error.value.errors) == 1
+    assert str(error.value.errors[0]) == "event failed"
 
     with factory() as session:
         history = session.execute(select(TransferHistory)).scalar_one()
@@ -1059,6 +1066,7 @@ def test_receipt_replay_survives_real_history_command_cleanup(cleanup):
         command = TransferHistoryMutationCommand(
             repository=TransferHistoryOper(session),
             download_repository=Mock(),
+            transfer_execution_repository=Mock(),
             unit_of_work=SqlAlchemyUnitOfWork(session),
             file_item_factory=Mock(),
             delete_media_file=Mock(return_value=True),

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
+from starlette.responses import Response
 
 from app.api.endpoints.subscribe import create_subscribe
 from app.application.outbox import ClaimedOutboxMessage
@@ -597,6 +598,88 @@ class TestSubscribeEndpoint:
         assert result.id is None
         repository.async_list_by_title.assert_not_awaited()
 
+    def test_subscribe_media_identity_falls_back_to_video_metadata(self):
+        """豆瓣身份未命中时，电影应按类型、标题和年份匹配已有订阅。"""
+        from app.api.endpoints.subscribe import subscribe_media_identity
+
+        other_year = _EndpointSubscribe(
+            id=31,
+            username="alice",
+            name="跨来源电影",
+            year="2024",
+            type=MediaType.MOVIE.value,
+            media_source=MediaSource.TMDB,
+            media_id="tmdb-2024",
+        )
+        matched = _EndpointSubscribe(
+            id=32,
+            username="alice",
+            name="跨来源电影",
+            year="2025",
+            type=MediaType.MOVIE.value,
+            media_source=MediaSource.TMDB,
+            media_id="tmdb-2025",
+        )
+        inaccessible_exact = _EndpointSubscribe(
+            id=30,
+            username="bob",
+            name="跨来源电影",
+            year="2025",
+            type=MediaType.MOVIE.value,
+            media_source=MediaSource.Douban,
+            media_id="douban-2025",
+        )
+        repository = _SubscriptionRepositoryFake(inaccessible_exact, other_year, matched)
+
+        result = asyncio.run(
+            subscribe_media_identity(
+                media_id="douban-2025",
+                media_source=MediaSource.Douban,
+                title="跨来源电影",
+                year="2025",
+                mtype=MediaType.MOVIE,
+                query=_subscription_query(repository),
+                current_user=_EndpointUser(name="alice", is_superuser=False),
+            )
+        )
+
+        assert result.id == 32
+        repository.async_list_by_title.assert_awaited_once_with(
+            title="跨来源电影",
+            season=None,
+        )
+
+    def test_subscribe_media_identity_keeps_tmdb_lookup_strict(self):
+        """TMDB 身份可用时不得退化为同名年份查询。"""
+        from app.api.endpoints.subscribe import subscribe_media_identity
+
+        repository = _SubscriptionRepositoryFake(
+            _EndpointSubscribe(
+                id=33,
+                username="alice",
+                name="同名电影",
+                year="2025",
+                type=MediaType.MOVIE.value,
+                media_source=MediaSource.Douban,
+                media_id="douban-same-title",
+            )
+        )
+
+        result = asyncio.run(
+            subscribe_media_identity(
+                media_id="missing-tmdb",
+                media_source=MediaSource.TMDB,
+                title="同名电影",
+                year="2025",
+                mtype=MediaType.MOVIE,
+                query=_subscription_query(repository),
+                current_user=_EndpointUser(name="alice", is_superuser=False),
+            )
+        )
+
+        assert result.id is None
+        repository.async_list_by_title.assert_not_awaited()
+
     def test_delete_subscribe_by_media_identity_deletes_owner_candidate(self):
         """
         按媒体删除端点应把媒体身份和当前用户交给应用命令。
@@ -652,8 +735,19 @@ class TestSubscribeEndpoint:
         普通用户批量搜索把用户身份交给应用命令。
         """
         from app.api.endpoints.subscribe import search_subscribes
+        from app.application.subscription.search import SubscriptionSearchSubmission
 
-        command = SimpleNamespace(execute=AsyncMock(return_value=True))
+        command = SimpleNamespace(
+            execute=AsyncMock(
+                return_value=SubscriptionSearchSubmission(
+                    batch_ids=("batch-1",),
+                    target_count=2,
+                    queued_count=1,
+                    ongoing_count=1,
+                    single=False,
+                )
+            )
+        )
         response = asyncio.run(
             search_subscribes(
                 command=command,
@@ -662,6 +756,8 @@ class TestSubscribeEndpoint:
         )
 
         assert response.success
+        assert response.message == "已安排 1 个订阅搜索，另有 1 个正在处理中"
+        assert response.data.queued_count == 1
         command.execute.assert_awaited_once()
         actor = command.execute.await_args.args[0]
         assert actor.username == "alice"
@@ -685,6 +781,25 @@ class TestSubscribeEndpoint:
 
         assert result.episodes == {}
         subscribe_chain.return_value.subscribe_files_info.assert_not_called()
+
+    def test_subscribe_files_uses_sync_query_repository(self):
+        """文件统计使用绑定同步 Session 的查询仓储读取稳定快照。"""
+        from app.api.endpoints.subscribe import subscribe_files
+
+        own = _EndpointSubscribe(id=21, username="alice", name="自己的订阅")
+        repository = _SubscriptionRepositoryFake(own)
+        expected = SimpleNamespace(episodes={1: SimpleNamespace()})
+
+        with patch("app.api.endpoints.subscribe.SubscribeChain") as subscribe_chain:
+            subscribe_chain.return_value.subscribe_files_info.return_value = expected
+            result = subscribe_files(
+                subscribe_id=21,
+                repository=repository,
+                current_user=_EndpointUser(name="alice", is_superuser=False),
+            )
+
+        assert result is expected
+        subscribe_chain.return_value.subscribe_files_info.assert_called_once_with(own)
 
     def test_user_subscribes_hides_other_user_list(self):
         """
@@ -762,18 +877,25 @@ class TestSubscribeEndpoint:
                 count=2,
                 query=_subscription_query(repository, history_repository),
                 current_user=_EndpointUser(name="alice", is_superuser=False),
+                response=(regular_response := Response()),
             )
         )
         assert [history.id for history in regular_result] == [8]
+        assert regular_response.headers["X-Total-Count"] == "1"
         history_repository.async_list_by_type_and_username.assert_awaited_once_with(
             MediaType.MOVIE.value,
             "alice",
             1,
             2,
         )
+        history_repository.async_count_by_type_and_username.assert_awaited_once_with(
+            MediaType.MOVIE.value,
+            "alice",
+        )
         history_repository.async_list_by_type.assert_not_awaited()
 
         history_repository.async_list_by_type_and_username.reset_mock()
+        history_repository.async_count_by_type_and_username.reset_mock()
         history_repository.async_list_by_type.reset_mock()
         superuser_result = asyncio.run(
             subscribe_history(
@@ -782,14 +904,17 @@ class TestSubscribeEndpoint:
                 count=3,
                 query=_subscription_query(repository, history_repository),
                 current_user=_EndpointUser(name="admin", is_superuser=True),
+                response=(superuser_response := Response()),
             )
         )
         assert [history.id for history in superuser_result] == [8, 9, 10]
+        assert superuser_response.headers["X-Total-Count"] == "3"
         history_repository.async_list_by_type.assert_awaited_once_with(
             MediaType.MOVIE.value,
             1,
             3,
         )
+        history_repository.async_count_by_type.assert_awaited_once_with(MediaType.MOVIE.value)
         history_repository.async_list_by_type_and_username.assert_not_awaited()
 
     def test_delete_subscribe_history_rejects_other_user(self):
@@ -827,7 +952,7 @@ class TestSubscribeEndpoint:
         superuser = _EndpointUser(name="admin", is_superuser=True)
 
         for endpoint in [refresh_subscribes, check_subscribes]:
-            with patch("app.api.endpoints.subscribe.get_scheduler") as scheduler:
+            with patch("app.api.endpoints.submaintenance.get_scheduler") as scheduler:
                 response = endpoint(current_user=regular_user)
 
             assert not response.success
@@ -838,7 +963,7 @@ class TestSubscribeEndpoint:
             (refresh_subscribes, "subscribe_refresh"),
             (check_subscribes, "subscribe_tmdb"),
         ]:
-            with patch("app.api.endpoints.subscribe.get_scheduler") as scheduler:
+            with patch("app.api.endpoints.submaintenance.get_scheduler") as scheduler:
                 response = endpoint(current_user=superuser)
 
             assert response.success
@@ -894,6 +1019,7 @@ class TestSubscribeEndpoint:
             total_episode=10,
             lack_episode=3,
             note=[1, 2, 3],
+            completed_tracks=3,
             state="S",
             last_update="2026-07-20 12:00:00",
             username="forged-user",
@@ -925,6 +1051,7 @@ class TestSubscribeEndpoint:
             "episode_priority",
             "date",
             "completed_episode",
+            "completed_tracks",
         ):
             assert field not in payload
 
@@ -1357,6 +1484,8 @@ class _SubscriptionHistoryRepositoryFake:
         self.async_get = AsyncMock(side_effect=self._async_get)
         self.async_list_by_type = AsyncMock(side_effect=self._async_list_by_type)
         self.async_list_by_type_and_username = AsyncMock(side_effect=self._async_list_by_type_and_username)
+        self.async_count_by_type = AsyncMock(side_effect=self._async_count_by_type)
+        self.async_count_by_type_and_username = AsyncMock(side_effect=self._async_count_by_type_and_username)
         self.stage_delete = AsyncMock(side_effect=self._stage_delete)
 
     async def _async_get(self, history_id: int) -> SubscriptionHistorySnapshot | None:
@@ -1385,6 +1514,18 @@ class _SubscriptionHistoryRepositoryFake:
         rows = [row for row in self.rows.values() if row.type == mtype and row.username == username]
         start = (page - 1) * count
         return rows[start : start + count]
+
+    async def _async_count_by_type(self, mtype: str) -> int:
+        """异步统计指定类型的历史快照。"""
+        return sum(row.type == mtype for row in self.rows.values())
+
+    async def _async_count_by_type_and_username(
+        self,
+        mtype: str,
+        username: str,
+    ) -> int:
+        """异步统计指定类型和 owner 的历史快照。"""
+        return sum(row.type == mtype and row.username == username for row in self.rows.values())
 
     async def _stage_delete(self, history_id: int) -> None:
         """暂存删除等价为从内存集合移除历史快照。"""

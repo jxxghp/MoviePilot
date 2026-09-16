@@ -28,15 +28,6 @@ MEDIA_SOURCE_ALIASES = {
     "audio_db": MediaSource.TheAudioDB,
     "doubanmusic": MediaSource.DoubanMusic,
     "douban_music": MediaSource.DoubanMusic,
-    "bilibili": MediaSource.Bilibili,
-    "mangguodiscover": MediaSource.MangoTV,
-    "mango_tv": MediaSource.MangoTV,
-    "migu": MediaSource.MiguVideo,
-    "migu_video": MediaSource.MiguVideo,
-    "tencentvideodiscover": MediaSource.TencentVideo,
-    "tencent_video": MediaSource.TencentVideo,
-    "iqiyi": MediaSource.Iqiyi,
-    "iqiyidiscover": MediaSource.Iqiyi,
 }
 
 MEDIA_SOURCE_PREFIXES = {
@@ -49,11 +40,6 @@ MEDIA_SOURCE_PREFIXES = {
     MediaSource.MusicBrainz: "musicbrainz",
     MediaSource.TheAudioDB: "theaudiodb",
     MediaSource.DoubanMusic: "doubanmusic",
-    MediaSource.Bilibili: "bilibili",
-    MediaSource.MangoTV: "mangguodiscover",
-    MediaSource.MiguVideo: "migu",
-    MediaSource.TencentVideo: "tencentvideodiscover",
-    MediaSource.Iqiyi: "iqiyidiscover",
 }
 
 

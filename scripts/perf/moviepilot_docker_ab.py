@@ -106,8 +106,9 @@ FROM ${MP_SUBSTRATE} AS frozen
 
 RUN set -eux; \
     mkdir -p /frozen/plugins /frozen/site; \
-    cp -a /app/app/plugins/. /frozen/plugins/; \
-    test -f /frozen/plugins/__init__.py; \
+    find /app/app/plugins -mindepth 1 -maxdepth 1 ! -name '__init__.py' \
+      -exec cp -a '{}' /frozen/plugins/ \;; \
+    test -f /app/app/plugins/__init__.py; \
     rm -rf /frozen/plugins/__pycache__; \
     find /app/app/application/site -maxdepth 1 -type f \
       \( -name 'sites.*.so' -o -name 'user.sites.v3.bin' \) \
@@ -588,8 +589,6 @@ def fixed_environment(args: argparse.Namespace, instrument: bool) -> dict[str, s
         "DEBUG": "false",
         "MOVIEPILOT_SAFE_MODE": "false",
         "MOVIEPILOT_AUTO_UPDATE": "false",
-        "MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE": "false",
-        "MOVIEPILOT_BACKEND_READY_TIMEOUT": str(args.ready_timeout),
         "AUTO_UPDATE_RESOURCE": "false",
         "PLUGIN_MARKET": "",
         "PLUGIN_AUTO_RELOAD": "false",

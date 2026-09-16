@@ -44,16 +44,16 @@ def upgrade() -> None:
         ]
 
     _add_columns("subscribe", [*subscribe_filter_columns(),
-                                sa.Column("current_audio_format", sa.String(), nullable=True),
-                                sa.Column("current_bitrate", sa.Integer(), nullable=True),
-                                sa.Column("current_bit_depth", sa.Integer(), nullable=True),
-                                sa.Column("current_sample_rate", sa.Integer(), nullable=True)])
+                               sa.Column("current_audio_format", sa.String(), nullable=True),
+                               sa.Column("current_bitrate", sa.Integer(), nullable=True),
+                               sa.Column("current_bit_depth", sa.Integer(), nullable=True),
+                               sa.Column("current_sample_rate", sa.Integer(), nullable=True)])
     _add_columns("subscribehistory", [*subscribe_filter_columns(),
-                                       sa.Column("current_priority", sa.Integer(), nullable=True),
-                                       sa.Column("current_audio_format", sa.String(), nullable=True),
-                                       sa.Column("current_bitrate", sa.Integer(), nullable=True),
-                                       sa.Column("current_bit_depth", sa.Integer(), nullable=True),
-                                       sa.Column("current_sample_rate", sa.Integer(), nullable=True)])
+                                      sa.Column("current_priority", sa.Integer(), nullable=True),
+                                      sa.Column("current_audio_format", sa.String(), nullable=True),
+                                      sa.Column("current_bitrate", sa.Integer(), nullable=True),
+                                      sa.Column("current_bit_depth", sa.Integer(), nullable=True),
+                                      sa.Column("current_sample_rate", sa.Integer(), nullable=True)])
     _add_columns("transferhistory", [
         sa.Column("audio_format", sa.String(), nullable=True),
         sa.Column("audio_lossless", sa.Boolean(), nullable=True),

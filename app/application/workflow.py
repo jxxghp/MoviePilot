@@ -140,8 +140,26 @@ class WorkflowQueryRepository(Protocol):
         """读取启用的事件工作流快照。"""
         ...
 
-    async def async_list(self) -> List[WorkflowSnapshot]:
-        """异步读取全部工作流快照。"""
+    async def async_list(
+        self,
+        *,
+        state: Optional[str] = None,
+        name: Optional[str] = None,
+        trigger_type: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> List[WorkflowSnapshot]:
+        """按可选筛选与分页窗口异步读取工作流快照。"""
+        ...
+
+    async def async_count(
+        self,
+        *,
+        state: Optional[str] = None,
+        name: Optional[str] = None,
+        trigger_type: Optional[str] = None,
+    ) -> int:
+        """按与列表一致的筛选条件统计工作流数量。"""
         ...
 
     async def async_get(self, workflow_id: int) -> Optional[WorkflowSnapshot]:
@@ -168,9 +186,42 @@ class WorkflowQueryService:
         """保存可返回脱离会话快照的查询端口。"""
         self._repository = repository
 
-    async def list(self) -> List[WorkflowSnapshot]:
-        """返回全部工作流快照。"""
-        return await self._repository.async_list()
+    async def list(
+        self,
+        *,
+        state: Optional[str] = None,
+        name: Optional[str] = None,
+        trigger_type: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> List[WorkflowSnapshot]:
+        """按可选筛选与分页窗口返回工作流快照。"""
+        if all(
+            value is None
+            for value in (state, name, trigger_type, page, count)
+        ):
+            return await self._repository.async_list()
+        return await self._repository.async_list(
+            state=state,
+            name=name,
+            trigger_type=trigger_type,
+            page=page,
+            count=count,
+        )
+
+    async def count(
+        self,
+        *,
+        state: Optional[str] = None,
+        name: Optional[str] = None,
+        trigger_type: Optional[str] = None,
+    ) -> int:
+        """按与列表一致的筛选条件返回工作流总数。"""
+        return await self._repository.async_count(
+            state=state,
+            name=name,
+            trigger_type=trigger_type,
+        )
 
     async def get(self, workflow_id: int) -> Optional[WorkflowSnapshot]:
         """返回指定工作流快照。"""

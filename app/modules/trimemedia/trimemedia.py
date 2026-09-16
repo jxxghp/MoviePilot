@@ -18,6 +18,8 @@ from app.foundation.url import UrlUtils
 
 
 class TrimeMedia:
+    """飞牛影视媒体服务器客户端。"""
+
     _username: Optional[str] = None
     _password: Optional[str] = None
     _access_code: Optional[str] = None
@@ -672,6 +674,8 @@ class TrimeMedia:
         for item in items:
             if len(backdrops) == num:
                 break
+            if item.type not in (fnapi.Type.MOVIE, fnapi.Type.TV):
+                continue
             if self.__is_library_blocked(item.ancestor_guid):
                 continue
             if (item_details := self._api.item(item.guid)) is None:

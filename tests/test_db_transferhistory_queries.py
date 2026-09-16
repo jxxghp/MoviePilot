@@ -423,7 +423,7 @@ def test_count_and_count_by_title_match_async_twins(db):
     assert TransferHistory.count(db.session, status=True) == \
         db.run_async_session(
             lambda session: TransferHistory.async_count(session, status=True)
-        )
+    )
     assert TransferHistory.count_by_title(db.session, "CountMe") == 2
     assert TransferHistory.count_by_title(db.session, "CountMe", status=False) == 1
     assert TransferHistory.count_by_title(db.session, "CountMe") == \
@@ -431,7 +431,7 @@ def test_count_and_count_by_title_match_async_twins(db):
             lambda session: TransferHistory.async_count_by_title(
                 session, title="CountMe"
             )
-        )
+    )
 
 
 def test_statistic_groups_by_day_within_the_window(db):

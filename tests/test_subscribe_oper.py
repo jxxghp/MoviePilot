@@ -186,7 +186,7 @@ def test_add_rejects_incomplete_media_identity(identity):
     ):
         result = _add(mediainfo=_media(None), season=1)
 
-    assert result == (0, "媒体身份不完整")
+    assert result == (0, "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试")
     # 守卫必须在查询与建模之前短路，而不是先写进去再补救
     subscribe_model.exists.assert_not_called()
     subscribe_model.assert_not_called()
@@ -203,7 +203,7 @@ def test_async_add_rejects_incomplete_media_identity(identity):
 
         result = asyncio.run(_async_add(mediainfo=_media(None), season=1))
 
-    assert result == (0, "媒体身份不完整")
+    assert result == (0, "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试")
     subscribe_model.async_exists.assert_not_awaited()
     subscribe_model.assert_not_called()
 
@@ -571,7 +571,7 @@ def test_subscribe_exists_distinguishes_music_entities_with_same_source_id(db):
 
 def test_subscribe_chain_exists_forwards_episode_group():
     """订阅前置存在性检查必须查询当前剧集组，不能退回主季范围。"""
-    from app.chain.subscribe import SubscribeChain
+    from app.chain.subscribe.facade import SubscribeChain
 
     media = _media("eg-1")
     meta = SimpleNamespace(begin_season=1)

@@ -733,6 +733,7 @@ def test_download_removes_temporary_tag_from_existing_torrent():
 def test_delete_torrents_tag_uses_supported_qbittorrent_api_arguments():
     """删除标签时应分别调用任务移除接口和全局标签删除接口。"""
     fake_client = MagicMock()
+    fake_client.torrents_info.return_value = [{"hash": "abc123", "tags": "moviepilot-tag"}]
     downloader = Qbittorrent.__new__(Qbittorrent)
     downloader.qbc = fake_client
 
@@ -741,6 +742,45 @@ def test_delete_torrents_tag_uses_supported_qbittorrent_api_arguments():
         torrent_hashes="abc123",
         tags="tmp-tag-01",
     )
+    fake_client.torrents_info.assert_called_once_with(torrent_hashes="abc123")
+    fake_client.torrents_delete_tags.assert_called_once_with(tags="tmp-tag-01")
+
+
+def test_delete_torrents_tag_retries_until_new_torrent_tag_is_removed():
+    """新添加任务尚未可见或标签状态滞后时应重试并验证删除结果。"""
+    fake_client = MagicMock()
+    fake_client.torrents_info.side_effect = [
+        [],
+        [{"hash": "abc123", "tags": "moviepilot-tag,tmp-tag-01"}],
+        [{"hash": "abc123", "tags": "moviepilot-tag"}],
+    ]
+    downloader = Qbittorrent.__new__(Qbittorrent)
+    downloader.qbc = fake_client
+
+    with patch.object(qbittorrent_module.time, "sleep") as sleep:
+        cleaned = downloader.delete_torrents_tag("abc123", "tmp-tag-01")
+
+    assert cleaned
+    assert fake_client.torrents_remove_tags.call_count == 3
+    assert fake_client.torrents_info.call_count == 3
+    assert sleep.call_args_list == [call(1), call(1)]
+    fake_client.torrents_delete_tags.assert_called_once_with(tags="tmp-tag-01")
+
+
+def test_delete_torrents_tag_reports_unverified_cleanup():
+    """重试后仍无法读取目标任务时不得把标签清理误报为成功。"""
+    fake_client = MagicMock()
+    fake_client.torrents_info.return_value = []
+    downloader = Qbittorrent.__new__(Qbittorrent)
+    downloader.qbc = fake_client
+
+    with patch.object(qbittorrent_module.time, "sleep") as sleep:
+        cleaned = downloader.delete_torrents_tag("abc123", "tmp-tag-01")
+
+    assert not cleaned
+    assert fake_client.torrents_remove_tags.call_count == 10
+    assert fake_client.torrents_info.call_count == 10
+    assert sleep.call_count == 9
     fake_client.torrents_delete_tags.assert_called_once_with(tags="tmp-tag-01")
 
 

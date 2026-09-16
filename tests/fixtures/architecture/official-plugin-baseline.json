@@ -2654,9 +2654,22 @@
         "response_model": null
       }
     ],
+    "plugins.v3/emailmsg/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "send_custom_notification",
+        "endpoint_return": "schemas.Response",
+        "methods": [
+          "POST"
+        ],
+        "path": "/send",
+        "response_class": null,
+        "response_model": null
+      }
+    ],
     "plugins.v3/episodegroupmeta/__init__.py": [
       {
-        "auth": null,
+        "auth": "'bear'",
         "endpoint": "delete_media_database",
         "endpoint_return": "schemas.Response",
         "methods": [
@@ -2664,10 +2677,10 @@
         ],
         "path": "/delete_media_database",
         "response_class": null,
-        "response_model": null
+        "response_model": "schemas.Response[None]"
       },
       {
-        "auth": null,
+        "auth": "'bear'",
         "endpoint": "go_start_rt",
         "endpoint_return": "schemas.Response",
         "methods": [
@@ -2675,7 +2688,7 @@
         ],
         "path": "/start_rt",
         "response_class": null,
-        "response_model": null
+        "response_model": "schemas.Response[None]"
       }
     ],
     "plugins.v3/imdbsource/__init__.py": [
@@ -2724,6 +2737,19 @@
         "response_model": "schemas.Response[List[schemas.MediaInfo]]"
       }
     ],
+    "plugins.v3/iqiyidiscover/__init__.py": [
+      {
+        "auth": null,
+        "endpoint": "iqiyi_discover",
+        "endpoint_return": "Response[List[schemas.MediaInfo]]",
+        "methods": [
+          "GET"
+        ],
+        "path": "/iqiyi_discover",
+        "response_class": null,
+        "response_model": "schemas.Response[List[schemas.MediaInfo]]"
+      }
+    ],
     "plugins.v3/lunatvsource/__init__.py": [
       {
         "auth": "'bear'",
@@ -2766,6 +2792,28 @@
           "GET"
         ],
         "path": "/sources",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_source_refresh",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "POST"
+        ],
+        "path": "/sources/refresh",
+        "response_class": null,
+        "response_model": null
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "api_source_state",
+        "endpoint_return": "Dict[str, Any]",
+        "methods": [
+          "POST"
+        ],
+        "path": "/sources/state",
         "response_class": null,
         "response_model": null
       },
@@ -2849,6 +2897,30 @@
         "path": "/tvdb_discover",
         "response_class": null,
         "response_model": "schemas.Response[List[schemas.MediaInfo]]"
+      }
+    ],
+    "plugins.v3/tvfirstwatch/__init__.py": [
+      {
+        "auth": "'bear'",
+        "endpoint": "_clear_history",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/clear_history",
+        "response_class": null,
+        "response_model": "ClearHistoryResponse"
+      },
+      {
+        "auth": "'bear'",
+        "endpoint": "_storage_status",
+        "endpoint_return": "dict",
+        "methods": [
+          "GET"
+        ],
+        "path": "/storage_status",
+        "response_class": null,
+        "response_model": "StorageStatusResponse"
       }
     ],
     "plugins/cloudflarespeedtest/__init__.py": [
@@ -2998,8 +3070,8 @@
       ]
     },
     "app.core.event.eventmanager.register": {
-      "call_count": 79,
-      "file_count": 56,
+      "call_count": 78,
+      "file_count": 55,
       "files": [
         "plugins.v2/agenttokens/__init__.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
@@ -3040,7 +3112,6 @@
         "plugins.v2/wxpusher/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
         "plugins/customhosts/__init__.py",
@@ -3107,20 +3178,6 @@
         "plugins.v2/qbuploadlimiter/__init__.py"
       ]
     },
-    "app.db.models.user.User.get": {
-      "call_count": 2,
-      "file_count": 1,
-      "files": [
-        "plugins.v2/oidcauth/__init__.py"
-      ]
-    },
-    "app.db.models.user.User.get_by_name": {
-      "call_count": 1,
-      "file_count": 1,
-      "files": [
-        "plugins.v2/oidcauth/__init__.py"
-      ]
-    },
     "app.helper.directory.DirectoryHelper.get_media_root_path": {
       "call_count": 1,
       "file_count": 1,
@@ -3174,8 +3231,8 @@
       ]
     },
     "app.log.logger.debug": {
-      "call_count": 205,
-      "file_count": 41,
+      "call_count": 203,
+      "file_count": 40,
       "files": [
         "plugins.v2/autoclean/__init__.py",
         "plugins.v2/autosignin/__init__.py",
@@ -3213,7 +3270,6 @@
         "plugins.v2/wechatclawbot/__init__.py",
         "plugins.v2/wechatclawbot/ilink/client.py",
         "plugins.v3/chatgpt/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/downloadingmsg/__init__.py",
         "plugins/linkmonitor/__init__.py",
         "plugins/removelink/__init__.py",
@@ -3221,8 +3277,8 @@
       ]
     },
     "app.log.logger.error": {
-      "call_count": 612,
-      "file_count": 111,
+      "call_count": 601,
+      "file_count": 110,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/feishu_channel.py",
@@ -3309,7 +3365,6 @@
         "plugins.v2/wechatclawbot/ilink/client.py",
         "plugins.v2/wxpusher/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
@@ -3338,8 +3393,8 @@
       ]
     },
     "app.log.logger.info": {
-      "call_count": 853,
-      "file_count": 113,
+      "call_count": 805,
+      "file_count": 112,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/feishu_channel.py",
@@ -3427,7 +3482,6 @@
         "plugins.v2/wxpusher/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
@@ -3457,8 +3511,8 @@
       ]
     },
     "app.log.logger.warn": {
-      "call_count": 205,
-      "file_count": 50,
+      "call_count": 198,
+      "file_count": 49,
       "files": [
         "plugins.v2/autoauction/__init__.py",
         "plugins.v2/autoclean/__init__.py",
@@ -3491,7 +3545,6 @@
         "plugins.v2/torrenttransfer/__init__.py",
         "plugins.v2/wxpusher/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
@@ -3513,8 +3566,8 @@
       ]
     },
     "app.log.logger.warning": {
-      "call_count": 230,
-      "file_count": 50,
+      "call_count": 228,
+      "file_count": 49,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/feishu_channel.py",
@@ -3563,7 +3616,6 @@
         "plugins.v2/wechatclawbot/ilink/client.py",
         "plugins.v3/chatgpt/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/gotifymsg/__init__.py",
         "plugins/iyuumsg/__init__.py"
       ]
@@ -3649,28 +3701,33 @@
       ]
     },
     "app.sdk.config.settings.SECURITY_IMAGE_DOMAINS.append": {
-      "call_count": 2,
-      "file_count": 1,
+      "call_count": 3,
+      "file_count": 2,
       "files": [
-        "plugins.v3/imdbsource/__init__.py"
+        "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py"
       ]
     },
     "app.sdk.events.eventmanager.register": {
-      "call_count": 19,
-      "file_count": 12,
+      "call_count": 23,
+      "file_count": 16,
       "files": [
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.events.eventmanager.send_event": {
@@ -3681,10 +3738,11 @@
       ]
     },
     "app.sdk.logging.logger.debug": {
-      "call_count": 93,
-      "file_count": 9,
+      "call_count": 97,
+      "file_count": 11,
       "files": [
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
@@ -3692,93 +3750,110 @@
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
-        "plugins.v3/personmeta/__init__.py"
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.logging.logger.error": {
-      "call_count": 131,
-      "file_count": 19,
+      "call_count": 156,
+      "file_count": 24,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/imdbsource/officialapi.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.logging.logger.info": {
-      "call_count": 156,
-      "file_count": 18,
+      "call_count": 226,
+      "file_count": 23,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
-        "plugins.v3/rsssubscribe/__init__.py"
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.logging.logger.warn": {
-      "call_count": 49,
-      "file_count": 13,
+      "call_count": 61,
+      "file_count": 16,
       "files": [
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py"
       ]
     },
     "app.sdk.logging.logger.warning": {
-      "call_count": 48,
-      "file_count": 12,
+      "call_count": 61,
+      "file_count": 15,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/agentresourceofficer/services/hdhive_browser.py",
         "plugins.v3/agentresourceofficer/services/quark_transfer.py",
         "plugins.v3/animeupscale/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/imdbsource/imdbapi.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
-        "plugins.v3/personmeta/__init__.py"
+        "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.network.WebUtils.get_location": {
@@ -3786,6 +3861,20 @@
       "file_count": 1,
       "files": [
         "plugins.v3/mediaservermsg/__init__.py"
+      ]
+    },
+    "app.sdk.services.ServiceConfigHelper.get_notification_switch": {
+      "call_count": 1,
+      "file_count": 1,
+      "files": [
+        "plugins.v3/emailmsg/__init__.py"
+      ]
+    },
+    "app.sdk.services.SystemHelper.restart": {
+      "call_count": 1,
+      "file_count": 1,
+      "files": [
+        "plugins.v3/moviepilotupdatenotify/__init__.py"
       ]
     },
     "app.sdk.utilities.CryptoJsUtils.decrypt": {
@@ -3843,6 +3932,13 @@
       "file_count": 1,
       "files": [
         "plugins.v3/brushflow/__init__.py"
+      ]
+    },
+    "app.sdk.utilities.SystemUtils.copy": {
+      "call_count": 1,
+      "file_count": 1,
+      "files": [
+        "plugins.v3/autosubv2/__init__.py"
       ]
     },
     "app.sdk.utilities.SystemUtils.list_files": {
@@ -3988,7 +4084,7 @@
       ]
     },
     "app.utils.string.StringUtils.str_filesize": {
-      "call_count": 31,
+      "call_count": 20,
       "file_count": 7,
       "files": [
         "plugins.v2/brushflow/__init__.py",
@@ -4036,10 +4132,9 @@
       ]
     },
     "app.utils.system.SystemUtils.copy": {
-      "call_count": 2,
-      "file_count": 2,
+      "call_count": 1,
+      "file_count": 1,
       "files": [
-        "plugins/autosubv2/__init__.py",
         "plugins/linkmonitor/__init__.py"
       ]
     },
@@ -4188,7 +4283,7 @@
       ]
     },
     "app.chain.download.DownloadChain": {
-      "file_count": 12,
+      "file_count": 14,
       "files": [
         "plugins.v2/doubanrank/__init__.py",
         "plugins.v2/doubansync/__init__.py",
@@ -4198,9 +4293,11 @@
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/downloadingmsg/__init__.py"
       ]
     },
@@ -4291,9 +4388,10 @@
       ]
     },
     "app.chain.system.SystemChain": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
-        "plugins.v2/moviepilotupdatenotify/__init__.py"
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py"
       ]
     },
     "app.chain.tmdb.TmdbChain": {
@@ -4328,18 +4426,6 @@
         "plugins.v2/wechatclawbot/__init__.py"
       ]
     },
-    "app.core.auth.create_plugin_auth_ticket": {
-      "file_count": 1,
-      "files": [
-        "plugins.v2/oidcauth/__init__.py"
-      ]
-    },
-    "app.core.auth_bridge.create_plugin_auth_ticket": {
-      "file_count": 1,
-      "files": [
-        "plugins.v2/oidcauth/__init__.py"
-      ]
-    },
     "app.core.cache.Cache": {
       "file_count": 1,
       "files": [
@@ -4368,7 +4454,7 @@
       ]
     },
     "app.core.config.settings": {
-      "file_count": 85,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
@@ -4444,7 +4530,6 @@
         "plugins.v2/updatewechatip/__init__.py",
         "plugins.v2/wechatclawbot/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/categoryeditor/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
@@ -4468,7 +4553,7 @@
       ]
     },
     "app.core.context.MediaInfo": {
-      "file_count": 15,
+      "file_count": 14,
       "files": [
         "plugins.v2/blurayremux/__init__.py",
         "plugins.v2/brushflow/__init__.py",
@@ -4483,8 +4568,7 @@
         "plugins.v2/multiclass/__init__.py",
         "plugins.v2/playletcategory/__init__.py",
         "plugins.v2/rsssubscribe/__init__.py",
-        "plugins.v2/tvfirstwatch/__init__.py",
-        "plugins/autosubv2/__init__.py"
+        "plugins.v2/tvfirstwatch/__init__.py"
       ]
     },
     "app.core.context.TorrentInfo": {
@@ -4495,7 +4579,7 @@
       ]
     },
     "app.core.event.Event": {
-      "file_count": 49,
+      "file_count": 48,
       "files": [
         "plugins.v2/agenttokens/__init__.py",
         "plugins.v2/autosignin/__init__.py",
@@ -4532,7 +4616,6 @@
         "plugins.v2/wxpusher/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
         "plugins/dingdingmsg/__init__.py",
@@ -4555,7 +4638,7 @@
       ]
     },
     "app.core.event.eventmanager": {
-      "file_count": 61,
+      "file_count": 60,
       "files": [
         "plugins.v2/agenttokens/__init__.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
@@ -4600,7 +4683,6 @@
         "plugins.v2/wxpusher/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
         "plugins/customhosts/__init__.py",
@@ -4718,12 +4800,6 @@
         "plugins.v2/wechatclawbot/__init__.py"
       ]
     },
-    "app.db.models.PluginData": {
-      "file_count": 1,
-      "files": [
-        "plugins.v3/episodegroupmeta/__init__.py"
-      ]
-    },
     "app.db.models.TransferHistory": {
       "file_count": 2,
       "files": [
@@ -4736,7 +4812,7 @@
       "files": [
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/downloadsitetag/__init__.py",
-        "plugins.v3/downloadsitetag/__init__.py"
+        "plugins.v3/lunatvsource/__init__.py"
       ]
     },
     "app.db.models.siteuserdata.SiteUserData": {
@@ -4757,12 +4833,6 @@
       "file_count": 1,
       "files": [
         "plugins.v2/qbuploadlimiter/__init__.py"
-      ]
-    },
-    "app.db.models.user.User": {
-      "file_count": 1,
-      "files": [
-        "plugins.v2/oidcauth/__init__.py"
       ]
     },
     "app.db.oper.downloadhistory.DownloadHistoryOper": {
@@ -4803,9 +4873,10 @@
       ]
     },
     "app.db.oper.user.UserOper": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
-        "plugins.v3/doubansync/__init__.py"
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/emailmsg/__init__.py"
       ]
     },
     "app.db.plugindata_oper.PluginDataOper": {
@@ -4858,9 +4929,10 @@
       ]
     },
     "app.db.user_oper.UserOper": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
-        "plugins.v2/doubansync/__init__.py"
+        "plugins.v2/doubansync/__init__.py",
+        "plugins.v2/oidcauth/__init__.py"
       ]
     },
     "app.db.user_oper.get_current_active_superuser": {
@@ -5039,7 +5111,7 @@
       ]
     },
     "app.log.logger": {
-      "file_count": 129,
+      "file_count": 128,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/feishu_channel.py",
@@ -5142,7 +5214,6 @@
         "plugins.v2/wxpusher/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
@@ -5212,10 +5283,9 @@
       ]
     },
     "app.modules.themoviedb.CategoryHelper": {
-      "file_count": 3,
+      "file_count": 2,
       "files": [
         "plugins.v2/mediaservermsg/__init__.py",
-        "plugins.v3/mediaservermsg/__init__.py",
         "plugins/categoryeditor/__init__.py"
       ]
     },
@@ -5253,7 +5323,7 @@
       ]
     },
     "app.plugins._PluginBase": {
-      "file_count": 118,
+      "file_count": 122,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -5323,6 +5393,7 @@
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
@@ -5330,20 +5401,23 @@
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/categoryeditor/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
@@ -5519,12 +5593,13 @@
       ]
     },
     "app.schemas.DiscoverSourceEventData": {
-      "file_count": 5,
+      "file_count": 6,
       "files": [
         "plugins.v2/imdbsource/__init__.py",
         "plugins.v2/iqiyidiscover/__init__.py",
         "plugins.v2/tvdbdiscover/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py"
       ]
     },
@@ -5618,7 +5693,7 @@
       ]
     },
     "app.schemas.NotificationType": {
-      "file_count": 24,
+      "file_count": 25,
       "files": [
         "plugins.v2/autoclean/__init__.py",
         "plugins.v2/brushflow/__init__.py",
@@ -5639,6 +5714,7 @@
         "plugins.v3/autoclean/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins/downloadingmsg/__init__.py",
         "plugins/ipdetect/__init__.py",
         "plugins/linkmonitor/__init__.py",
@@ -5661,9 +5737,10 @@
       ]
     },
     "app.schemas.Response": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
-        "plugins.v2/lexiannot/__init__.py"
+        "plugins.v2/lexiannot/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py"
       ]
     },
     "app.schemas.ServiceInfo": {
@@ -5719,7 +5796,7 @@
         "plugins.v2/lexiannot/__init__.py",
         "plugins.v2/mediaserverrefresh/__init__.py",
         "plugins.v2/playletcategory/__init__.py",
-        "plugins/autosubv2/__init__.py"
+        "plugins.v3/autosubv2/__init__.py"
       ]
     },
     "app.schemas.TransferInterceptEventData": {
@@ -5773,7 +5850,7 @@
       ]
     },
     "app.schemas.types.ChainEventType": {
-      "file_count": 16,
+      "file_count": 17,
       "files": [
         "plugins.v2/agenttokens/__init__.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
@@ -5788,13 +5865,14 @@
         "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py"
       ]
     },
     "app.schemas.types.EventType": {
-      "file_count": 67,
+      "file_count": 69,
       "files": [
         "plugins.v2/agenttokens/__init__.py",
         "plugins.v2/autoauction/__init__.py",
@@ -5832,19 +5910,21 @@
         "plugins.v2/wechatclawbot/__init__.py",
         "plugins.v2/wxpusher/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
         "plugins/customhosts/__init__.py",
@@ -5873,7 +5953,7 @@
       ]
     },
     "app.schemas.types.MediaSource": {
-      "file_count": 16,
+      "file_count": 17,
       "files": [
         "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
         "plugins.v3/bangumicoll/__init__.py",
@@ -5885,6 +5965,7 @@
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
@@ -5894,7 +5975,7 @@
       ]
     },
     "app.schemas.types.MediaType": {
-      "file_count": 30,
+      "file_count": 31,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/airecognizerenhancer/__init__.py",
@@ -5925,7 +6006,8 @@
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
-        "plugins.v3/rsssubscribe/__init__.py"
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.schemas.types.MessageChannel": {
@@ -5938,7 +6020,7 @@
       ]
     },
     "app.schemas.types.NotificationType": {
-      "file_count": 32,
+      "file_count": 33,
       "files": [
         "plugins.v2/autoauction/__init__.py",
         "plugins.v2/autosignin/__init__.py",
@@ -5955,10 +6037,11 @@
         "plugins.v2/tobypasstrackers/__init__.py",
         "plugins.v2/traktcleaner/__init__.py",
         "plugins.v2/wxpusher/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
         "plugins/dingdingmsg/__init__.py",
@@ -6017,43 +6100,57 @@
         "plugins.v3/mediaservermsg/__init__.py"
       ]
     },
+    "app.sdk.classification.classify_media": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/mediaservermsg/__init__.py"
+      ]
+    },
     "app.sdk.config.settings": {
-      "file_count": 23,
+      "file_count": 28,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
         "plugins.v3/agentresourceofficer/services/p115_transfer.py",
         "plugins.v3/agentresourceofficer/services/quark_transfer.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/courseorganizer/providers.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/ai.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.events.Event": {
-      "file_count": 12,
+      "file_count": 15,
       "files": [
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
@@ -6063,26 +6160,30 @@
       ]
     },
     "app.sdk.events.eventmanager": {
-      "file_count": 14,
+      "file_count": 18,
       "files": [
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.logging.logger": {
-      "file_count": 25,
+      "file_count": 30,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/feishu_channel.py",
@@ -6090,37 +6191,44 @@
         "plugins.v3/agentresourceofficer/services/quark_transfer.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/imdbsource/officialapi.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.media.Context": {
-      "file_count": 2,
+      "file_count": 3,
       "files": [
         "plugins.v3/downloadsitetag/__init__.py",
-        "plugins.v3/rsssubscribe/__init__.py"
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.media.MediaInfo": {
-      "file_count": 8,
+      "file_count": 11,
       "files": [
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
@@ -6128,7 +6236,9 @@
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
-        "plugins.v3/rsssubscribe/__init__.py"
+        "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.media.MetaBase": {
@@ -6142,7 +6252,7 @@
       ]
     },
     "app.sdk.media.MetaInfo": {
-      "file_count": 8,
+      "file_count": 9,
       "files": [
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
@@ -6151,7 +6261,8 @@
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
-        "plugins.v3/rsssubscribe/__init__.py"
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.media.MetaInfoPath": {
@@ -6168,10 +6279,11 @@
       ]
     },
     "app.sdk.media.TorrentInfo": {
-      "file_count": 2,
+      "file_count": 3,
       "files": [
         "plugins.v3/lunatvsource/__init__.py",
-        "plugins.v3/rsssubscribe/__init__.py"
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.media.build_media_key": {
@@ -6182,9 +6294,10 @@
       ]
     },
     "app.sdk.media.normalize_media_source": {
-      "file_count": 5,
+      "file_count": 6,
       "files": [
         "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
@@ -6221,7 +6334,7 @@
       ]
     },
     "app.sdk.network.RequestUtils": {
-      "file_count": 12,
+      "file_count": 14,
       "files": [
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
@@ -6232,7 +6345,9 @@
         "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/imdbsource/officialapi.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py"
       ]
@@ -6280,6 +6395,18 @@
         "plugins.v3/personmeta/__init__.py"
       ]
     },
+    "app.sdk.services.ServiceConfigHelper": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/emailmsg/__init__.py"
+      ]
+    },
+    "app.sdk.services.SystemHelper": {
+      "file_count": 1,
+      "files": [
+        "plugins.v3/moviepilotupdatenotify/__init__.py"
+      ]
+    },
     "app.sdk.utilities.CryptoJsUtils": {
       "file_count": 1,
       "files": [
@@ -6302,8 +6429,9 @@
       ]
     },
     "app.sdk.utilities.SystemUtils": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/libraryscraper/__init__.py"
       ]
     },
@@ -6493,14 +6621,13 @@
       ]
     },
     "app.utils.system.SystemUtils": {
-      "file_count": 9,
+      "file_count": 8,
       "files": [
         "plugins.v2/chinesesubfinder/__init__.py",
         "plugins.v2/ffmpegthumb/__init__.py",
         "plugins.v2/ffmpegthumb/ffmpeg_helper.py",
         "plugins.v2/libraryscraper/__init__.py",
         "plugins.v2/playletcategory/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
         "plugins/customhosts/__init__.py",
         "plugins/linkmonitor/__init__.py"
@@ -6535,7 +6662,7 @@
       ]
     },
     "get_api": {
-      "file_count": 118,
+      "file_count": 122,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -6605,6 +6732,7 @@
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
@@ -6612,20 +6740,23 @@
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/categoryeditor/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
@@ -6662,7 +6793,7 @@
       "files": []
     },
     "get_command": {
-      "file_count": 116,
+      "file_count": 120,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -6730,6 +6861,7 @@
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
@@ -6737,20 +6869,23 @@
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/categoryeditor/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
@@ -6801,7 +6936,7 @@
       ]
     },
     "get_form": {
-      "file_count": 118,
+      "file_count": 122,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -6871,6 +7006,7 @@
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
@@ -6878,20 +7014,23 @@
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/categoryeditor/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
@@ -6935,7 +7074,7 @@
       ]
     },
     "get_page": {
-      "file_count": 118,
+      "file_count": 122,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -7005,6 +7144,7 @@
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
@@ -7012,20 +7152,23 @@
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/categoryeditor/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
@@ -7077,7 +7220,7 @@
       ]
     },
     "get_service": {
-      "file_count": 57,
+      "file_count": 59,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/autoauction/__init__.py",
@@ -7126,9 +7269,11 @@
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
         "plugins/downloadingmsg/__init__.py",
         "plugins/ipdetect/__init__.py",
@@ -7143,7 +7288,7 @@
       "files": []
     },
     "get_state": {
-      "file_count": 120,
+      "file_count": 124,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -7214,6 +7359,7 @@
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
@@ -7222,20 +7368,23 @@
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/categoryeditor/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
@@ -7268,7 +7417,7 @@
       ]
     },
     "init_plugin": {
-      "file_count": 118,
+      "file_count": 122,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -7338,6 +7487,7 @@
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
@@ -7345,20 +7495,23 @@
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/categoryeditor/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
@@ -7391,7 +7544,7 @@
       ]
     },
     "stop_service": {
-      "file_count": 118,
+      "file_count": 122,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -7461,6 +7614,7 @@
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
@@ -7468,20 +7622,23 @@
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/categoryeditor/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
@@ -7596,7 +7753,7 @@
       ]
     },
     "app.chain.download": {
-      "file_count": 14,
+      "file_count": 16,
       "files": [
         "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/doubanrank/__init__.py",
@@ -7608,9 +7765,11 @@
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/downloadingmsg/__init__.py"
       ]
     },
@@ -7708,9 +7867,10 @@
       ]
     },
     "app.chain.system": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
-        "plugins.v2/moviepilotupdatenotify/__init__.py"
+        "plugins.v2/moviepilotupdatenotify/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py"
       ]
     },
     "app.chain.tmdb": {
@@ -7746,18 +7906,6 @@
         "plugins.v2/wechatclawbot/__init__.py"
       ]
     },
-    "app.core.auth": {
-      "file_count": 1,
-      "files": [
-        "plugins.v2/oidcauth/__init__.py"
-      ]
-    },
-    "app.core.auth_bridge": {
-      "file_count": 1,
-      "files": [
-        "plugins.v2/oidcauth/__init__.py"
-      ]
-    },
     "app.core.cache": {
       "file_count": 10,
       "files": [
@@ -7774,7 +7922,7 @@
       ]
     },
     "app.core.config": {
-      "file_count": 85,
+      "file_count": 84,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/services/hdhive_openapi.py",
@@ -7850,7 +7998,6 @@
         "plugins.v2/updatewechatip/__init__.py",
         "plugins.v2/wechatclawbot/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/categoryeditor/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
@@ -7864,7 +8011,7 @@
       ]
     },
     "app.core.context": {
-      "file_count": 18,
+      "file_count": 17,
       "files": [
         "plugins.v2/blurayremux/__init__.py",
         "plugins.v2/brushflow/__init__.py",
@@ -7882,12 +8029,11 @@
         "plugins.v2/playletcategory/__init__.py",
         "plugins.v2/promotiontag/__init__.py",
         "plugins.v2/rsssubscribe/__init__.py",
-        "plugins.v2/tvfirstwatch/__init__.py",
-        "plugins/autosubv2/__init__.py"
+        "plugins.v2/tvfirstwatch/__init__.py"
       ]
     },
     "app.core.event": {
-      "file_count": 64,
+      "file_count": 63,
       "files": [
         "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -7934,7 +8080,6 @@
         "plugins.v2/wxpusher/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
         "plugins/customhosts/__init__.py",
@@ -8036,10 +8181,9 @@
       ]
     },
     "app.db.models": {
-      "file_count": 3,
+      "file_count": 2,
       "files": [
         "plugins.v2/historytov2/__init__.py",
-        "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py"
       ]
     },
@@ -8050,7 +8194,7 @@
         "plugins.v2/dailysummary/__init__.py",
         "plugins.v2/downloadsitetag/__init__.py",
         "plugins.v3/agentresourceofficer/feishu_channel.py",
-        "plugins.v3/downloadsitetag/__init__.py"
+        "plugins.v3/lunatvsource/__init__.py"
       ]
     },
     "app.db.models.siteuserdata": {
@@ -8073,12 +8217,6 @@
         "plugins.v2/agentresourceofficer/feishu_channel.py",
         "plugins.v2/qbuploadlimiter/__init__.py",
         "plugins.v3/agentresourceofficer/feishu_channel.py"
-      ]
-    },
-    "app.db.models.user": {
-      "file_count": 1,
-      "files": [
-        "plugins.v2/oidcauth/__init__.py"
       ]
     },
     "app.db.oper.downloadhistory": {
@@ -8123,9 +8261,10 @@
       ]
     },
     "app.db.oper.user": {
-      "file_count": 1,
+      "file_count": 2,
       "files": [
-        "plugins.v3/doubansync/__init__.py"
+        "plugins.v3/doubansync/__init__.py",
+        "plugins.v3/emailmsg/__init__.py"
       ]
     },
     "app.db.plugindata_oper": {
@@ -8348,7 +8487,7 @@
       ]
     },
     "app.log": {
-      "file_count": 129,
+      "file_count": 128,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/feishu_channel.py",
@@ -8451,7 +8590,6 @@
         "plugins.v2/wxpusher/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
@@ -8521,11 +8659,10 @@
       ]
     },
     "app.modules.themoviedb": {
-      "file_count": 4,
+      "file_count": 3,
       "files": [
         "plugins.v2/mediaservermsg/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
-        "plugins.v3/mediaservermsg/__init__.py",
         "plugins/categoryeditor/__init__.py"
       ]
     },
@@ -8557,7 +8694,7 @@
       ]
     },
     "app.plugins": {
-      "file_count": 118,
+      "file_count": 122,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agenttokens/__init__.py",
@@ -8627,6 +8764,7 @@
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
@@ -8634,20 +8772,23 @@
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/categoryeditor/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
@@ -8789,7 +8930,7 @@
       ]
     },
     "app.schemas": {
-      "file_count": 57,
+      "file_count": 59,
       "files": [
         "plugins.v2/autoclean/__init__.py",
         "plugins.v2/blurayremux/__init__.py",
@@ -8830,19 +8971,21 @@
         "plugins.v2/tvdbdiscover/__init__.py",
         "plugins.v2/wechatclawbot/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/schema/imdbapi.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/downloadingmsg/__init__.py",
         "plugins/ipdetect/__init__.py",
         "plugins/linkmonitor/__init__.py",
@@ -8869,7 +9012,7 @@
       ]
     },
     "app.schemas.types": {
-      "file_count": 96,
+      "file_count": 99,
       "files": [
         "plugins.v2/agentresourceofficer/__init__.py",
         "plugins.v2/agentresourceofficer/feishu_channel.py",
@@ -8927,6 +9070,7 @@
         "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/chatgpt/__init__.py",
@@ -8934,10 +9078,12 @@
         "plugins.v3/courseorganizer/providers.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
@@ -8945,8 +9091,8 @@
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py",
         "plugins/apprisemsg/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/barkmsg/__init__.py",
         "plugins/cleaninvalidplugin/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
@@ -8986,56 +9132,72 @@
         "plugins.v3/mediaservermsg/__init__.py"
       ]
     },
+    "app.sdk.classification": {
+      "file_count": 2,
+      "files": [
+        "plugins.v3/lunatvsource/classification.py",
+        "plugins.v3/mediaservermsg/__init__.py"
+      ]
+    },
     "app.sdk.config": {
-      "file_count": 23,
+      "file_count": 28,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/services/hdhive_openapi.py",
         "plugins.v3/agentresourceofficer/services/p115_transfer.py",
         "plugins.v3/agentresourceofficer/services/quark_transfer.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/courseorganizer/providers.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
         "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/lunatvsource/ai.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.events": {
-      "file_count": 15,
+      "file_count": 19,
       "files": [
         "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/imdbsource/__init__.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/lunatvsource/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.logging": {
-      "file_count": 25,
+      "file_count": 30,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/feishu_channel.py",
@@ -9043,31 +9205,37 @@
         "plugins.v3/agentresourceofficer/services/quark_transfer.py",
         "plugins.v3/animeupscale/__init__.py",
         "plugins.v3/autoclean/__init__.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/courseorganizer/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/doubansync/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/historytov2/__init__.py",
         "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/imdbsource/officialapi.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/libraryscraper/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediainforenameenhancer/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
-        "plugins.v3/tvdbdiscover/__init__.py"
+        "plugins.v3/tvdbdiscover/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.media": {
-      "file_count": 17,
+      "file_count": 19,
       "files": [
         "plugins.v3/agentresourceofficer/feishu_channel.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/bangumicoll/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
@@ -9083,11 +9251,12 @@
         "plugins.v3/mediaservermsg/__init__.py",
         "plugins.v3/neodbsync/__init__.py",
         "plugins.v3/personmeta/__init__.py",
-        "plugins.v3/rsssubscribe/__init__.py"
+        "plugins.v3/rsssubscribe/__init__.py",
+        "plugins.v3/tvfirstwatch/__init__.py"
       ]
     },
     "app.sdk.network": {
-      "file_count": 17,
+      "file_count": 19,
       "files": [
         "plugins.v3/agentresourceofficer/feishu_channel.py",
         "plugins.v3/animeupscale/__init__.py",
@@ -9101,8 +9270,10 @@
         "plugins.v3/imdbsource/imdbapi.py",
         "plugins.v3/imdbsource/imdbhelper.py",
         "plugins.v3/imdbsource/officialapi.py",
+        "plugins.v3/iqiyidiscover/__init__.py",
         "plugins.v3/maoyanrank/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/personmeta/__init__.py",
         "plugins.v3/rsssubscribe/__init__.py",
         "plugins.v3/tvdbdiscover/__init__.py"
@@ -9118,20 +9289,23 @@
       ]
     },
     "app.sdk.services": {
-      "file_count": 5,
+      "file_count": 7,
       "files": [
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
+        "plugins.v3/emailmsg/__init__.py",
         "plugins.v3/episodegroupmeta/__init__.py",
         "plugins.v3/mediaservermsg/__init__.py",
+        "plugins.v3/moviepilotupdatenotify/__init__.py",
         "plugins.v3/personmeta/__init__.py"
       ]
     },
     "app.sdk.utilities": {
-      "file_count": 11,
+      "file_count": 12,
       "files": [
         "plugins.v3/agentresourceofficer/__init__.py",
         "plugins.v3/agentresourceofficer/feishu_channel.py",
+        "plugins.v3/autosubv2/__init__.py",
         "plugins.v3/brushflow/__init__.py",
         "plugins.v3/doubanrank/__init__.py",
         "plugins.v3/downloadsitetag/__init__.py",
@@ -9306,14 +9480,13 @@
       ]
     },
     "app.utils.system": {
-      "file_count": 9,
+      "file_count": 8,
       "files": [
         "plugins.v2/chinesesubfinder/__init__.py",
         "plugins.v2/ffmpegthumb/__init__.py",
         "plugins.v2/ffmpegthumb/ffmpeg_helper.py",
         "plugins.v2/libraryscraper/__init__.py",
         "plugins.v2/playletcategory/__init__.py",
-        "plugins/autosubv2/__init__.py",
         "plugins/cloudflarespeedtest/__init__.py",
         "plugins/customhosts/__init__.py",
         "plugins/linkmonitor/__init__.py"
@@ -9335,15 +9508,14 @@
     }
   },
   "provenance": {
-    "head": "161fce34caa31deb7d82dd50a31f217d5e6784c2",
-    "python_file_count": 285,
-    "source_sha256": "f24ed7f9eaf12202793db173edb91d337cc85fa170ef0374fd5324c01fcbfc1d"
+    "head": "abd88236d84a305f99d41960b44d3c16d02d5e93",
+    "python_file_count": 290,
+    "source_sha256": "5c7c1aa58cc0cff5685ca062974756bbbd95b12f4e5b7ce5adb7d00c2a7a53c2"
   },
   "schema_version": 4,
   "scope": {
     "default_plugins": [
       "AppriseMsg",
-      "AutoSubv2",
       "BarkMsg",
       "CategoryEditor",
       "CleanInvalidPlugin",

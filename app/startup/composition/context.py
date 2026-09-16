@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from app.application.agent import AgentDataContext
+from app.application.classification.execution import ClassificationExecutionPort
+from app.application.classification.runtime import ClassificationRuntime
 from app.application.configuration import RuntimeConfiguration, RuntimeSettingsService
 from app.application.history import (
     TransferHistoryMutationRepository,
@@ -97,6 +99,14 @@ class SubscriptionBatchWriterFactory(Protocol):
         dispatch_store: AsyncOutboxDispatchStore,
     ) -> SubscriptionBatchWritePort:
         """组合共享 Session、UoW 与 outbox 并返回批量写端口。"""
+        ...
+
+
+class SubscriptionExecutionStatusRepositoryFactory(Protocol):
+    """由请求会话构造订阅执行状态读取仓储的工厂。"""
+
+    def __call__(self, session: object) -> object:
+        """绑定请求会话并返回执行状态读取端口。"""
         ...
 
 
@@ -230,6 +240,8 @@ class SubscriptionRuntime:
     rule_group_mutation_scope: Callable[[], AbstractContextManager[SyncRuleGroupMutationService]]
     async_rule_group_mutation_scope: Callable[[], AbstractAsyncContextManager[AsyncRuleGroupMutationService]]
     site_reference_mutation_scope: Callable[[], AbstractContextManager[SyncSiteReferenceMutationService]]
+    execution_status_repository: SubscriptionExecutionStatusRepositoryFactory | None = None
+    search_repository: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,6 +257,8 @@ class HostRuntime:
     site: SiteRuntime
     subscription: SubscriptionRuntime
     workflow: WorkflowRuntime
+    classification: ClassificationRuntime
+    classification_execution: ClassificationExecutionPort
     system: SystemService
     configuration: RuntimeConfiguration
     settings: RuntimeSettingsService

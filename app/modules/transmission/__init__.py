@@ -271,7 +271,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                 hash=torrent_data.hashString,
                 title=torrent_data.name,
                 name=meta.name,
-                year=meta.year,
+                year=str(meta.year) if meta.year is not None else None,
                 season_episode=meta.season_episode,
                 path=Path(self.normalize_return_path(torrent_path, downloader_name)),
                 save_path=self.normalize_return_path(
@@ -404,7 +404,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         return server.delete_torrents(delete_file=delete_file, ids=hashs)
 
     def set_torrents_tag(self, hashs: Union[str, list], tags: list,
-                        downloader: Optional[str] = None) -> Optional[bool]:
+                         downloader: Optional[str] = None) -> Optional[bool]:
         """
         设置种子标签
         :param hashs:  种子Hash

@@ -63,9 +63,14 @@ class DownloadProcessingOwner(_DownloadOwnerBase):
             context: Context,
             download_dir: Path,
             torrent_content: Union[str, bytes],
+            download_hash: Optional[str] = None,
+            downloader: Optional[str] = None,
     ) -> None:
         """
-        后台执行下载成功后的附加处理，避免站点字幕下载阻塞添加下载响应。
+        后台执行下载成功后的附加处理，并传递下载器身份以解析实际内容路径。
+
+        TempPath 下载器会在完成前把内容放在不同于 save_path 的目录中；
+        字幕处理需要该身份才能把字幕写入当前内容目录，随下载器迁移一起移动。
         """
 
         def _run_download_added() -> None:
@@ -79,6 +84,8 @@ class DownloadProcessingOwner(_DownloadOwnerBase):
                     context=context,
                     download_dir=download_dir,
                     torrent_content=torrent_content,
+                    download_hash=download_hash,
+                    downloader=downloader,
                 )
             except Exception as e:
                 logger.error(f"执行下载成功后处理失败：{str(e)}")

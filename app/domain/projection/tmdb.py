@@ -118,10 +118,11 @@ def project(
     builder = ProjectionBuilder(current)
     media_type = _media_type(info)
     media_id = str(info.get("id")) if info.get("id") is not None else None
-    builder.set("media_source", MediaSource.TMDB)
+    # 辅助 TMDB 详情可能合并到豆瓣/Bangumi 主对象，不能覆盖其稳定身份。
+    builder.set_missing("media_source", MediaSource.TMDB)
     builder.set("tmdb_info", info)
-    builder.set("type", media_type)
-    builder.set("media_id", media_id)
+    builder.set_missing("type", media_type)
+    builder.set_missing("media_id", media_id)
     builder.set("tmdb_id", info.get("id"))
     if not media_id:
         return builder.build()
@@ -135,6 +136,7 @@ def project(
     builder.set("vote_average", round(float(vote_average), 1) if vote_average else 0)
     builder.set("overview", info.get("overview"))
     builder.set("genre_ids", info.get("genre_ids") or [])
+    builder.set("adult", info.get("adult"))
     for name in ("original_language", "en_title", "hk_title", "tw_title", "sg_title"):
         builder.set(name, info.get(name))
 

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper, execute_dml
@@ -17,15 +17,33 @@ from app.db.models.passkey import (
 class PassKeyOper(DbOper):
     """封装 PassKey 查询和维护，避免 API 层直接引用模型静态方法。"""
 
-    def list_by_user_id(self, user_id: int) -> list[PassKey]:
-        """读取用户启用的 PassKey。"""
+    def list_by_user_id(
+        self,
+        user_id: int,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
+    ) -> list[PassKey]:
+        """按可选窗口读取用户启用的 PassKey。"""
         def query(session: Session) -> list[PassKey]:
             """在调用方会话中读取用户启用的 PassKey。"""
-            return list(session.execute(
-                _get_by_user_id_statement(PassKey, user_id)
-            ).scalars().all())
+            statement = _get_by_user_id_statement(PassKey, user_id).order_by(PassKey.id)
+            if page is not None and count is not None:
+                statement = statement.offset((page - 1) * count).limit(count)
+            return list(session.execute(statement).scalars().all())
 
         return self._execute_sync_query(query)
+
+    def count_by_user_id(self, user_id: int) -> int:
+        """返回用户启用 PassKey 的精确总数。"""
+        return int(
+            self._execute_sync_query(
+                lambda session: session.execute(
+                    select(func.count())
+                    .select_from(PassKey)
+                    .where(PassKey.user_id == user_id, PassKey.is_active.is_(True))
+                ).scalar_one()
+            )
+        )
 
     def list(self) -> list[PassKey]:
         """读取全部 PassKey，用于判断系统是否已配置通行密钥。"""

@@ -10,8 +10,7 @@ from typing import Any
 
 from pydantic import AliasChoices, AliasPath, BaseModel, ValidationError
 
-from app.agent.policy.secrets import is_secret_setting_key
-
+from app.application.security.secrets import is_secret_setting_key
 
 REDACTED_VALUE = "***"
 _MAX_DEPTH = 8
@@ -32,6 +31,7 @@ _SECRET_KEYS = {
     "private_key",
     "pwd",
     "refresh_token",
+    "screenshot_base64",
     "secret",
     "secret_access_key",
     "token",
@@ -58,9 +58,7 @@ _SECRET_CONTAINER_SUFFIXES = (
     "credential",
     "credentials",
 )
-_SECRET_CONTAINER_ENDINGS = tuple(
-    f"_{suffix}" for suffix in _SECRET_CONTAINER_SUFFIXES
-)
+_SECRET_CONTAINER_ENDINGS = tuple(f"_{suffix}" for suffix in _SECRET_CONTAINER_SUFFIXES)
 _COMPACT_SECRET_CONTAINERS = frozenset(("oauth", "oauth2"))
 _SECRET_IDENTITY_FIELDS = frozenset(
     {
@@ -88,14 +86,15 @@ _SECRET_IDENTITY_VALUE_FIELDS = frozenset(
     }
 )
 _BEARER_PATTERN = re.compile(r"(?i)(\bbearer\s+)[^\s,;]+")
-_BASIC_AUTH_PATTERN = re.compile(
-    r"(?i)(\bbasic\s+)([A-Za-z0-9+/]+={0,2})(?![A-Za-z0-9+/=])"
-)
+_BASIC_AUTH_PATTERN = re.compile(r"(?i)(\bbasic\s+)([A-Za-z0-9+/]+={0,2})(?![A-Za-z0-9+/=])")
 _SENSITIVE_HEADER_PATTERN = re.compile(
     r"(?i)(\b(?:authorization|proxy-authorization|cookie|set-cookie|"
     r"x-api-key|api[_-]?key|api[_-]?token)\s*[:=]\s*)[^\r\n]+"
 )
 _OPENAI_KEY_PATTERN = re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b")
+_IMAGE_DATA_URL_PATTERN = re.compile(r"(?i)data:image/[a-z0-9.+-]+(?:;[^,\s\"'<>]*)?,[^\s\"'<>]+")
+_IMAGE_PAYLOAD_FIELDS = frozenset({"base64", "data", "url", "image_url", "source", "image", "file_id"})
+_IMAGE_METADATA_FIELDS = ("type", "mime_type", "media_type", "width", "height", "detail")
 _PRIVATE_KEY_PATTERN = re.compile(
     r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----",
     re.DOTALL,
@@ -129,9 +128,7 @@ def _is_secret_key(key: Any) -> bool:
     compact = normalized.replace("_", "")
     if compact in _COMPACT_SECRET_CONTAINERS:
         return True
-    if normalized in _SECRET_CONTAINER_SUFFIXES or normalized.endswith(
-        _SECRET_CONTAINER_ENDINGS
-    ):
+    if normalized in _SECRET_CONTAINER_SUFFIXES or normalized.endswith(_SECRET_CONTAINER_ENDINGS):
         return True
     return compact.endswith(_COMPACT_SECRET_SUFFIXES)
 
@@ -141,9 +138,7 @@ def _mapping_has_secret_identity(
 ) -> bool:
     """判断同一结构是否声明了凭据设置身份，不把语义传播到嵌套对象。"""
     return any(
-        _normalize_key(key_text) in _SECRET_IDENTITY_FIELDS
-        and type(item) is str
-        and is_secret_setting_key(item)
+        _normalize_key(key_text) in _SECRET_IDENTITY_FIELDS and type(item) is str and is_secret_setting_key(item)
         for key_text, _output_key, _secret_key, item in entries
     )
 
@@ -164,7 +159,7 @@ def _advance_quote_context(
         if active_quote:
             if char == active_quote:
                 active_quote = ""
-        elif char in ("\"", "'"):
+        elif char in ('"', "'"):
             active_quote = char
         cursor += 1
     return active_quote
@@ -190,7 +185,7 @@ def _quote_wrapper_at(value: str, start: int) -> tuple[str, int, int]:
     quote_at = start
     while quote_at < len(value) and value[quote_at] == "\\":
         quote_at += 1
-    if quote_at >= len(value) or value[quote_at] not in ("\"", "'"):
+    if quote_at >= len(value) or value[quote_at] not in ('"', "'"):
         return "", quote_at - start, quote_at
     return value[quote_at], quote_at - start, quote_at + 1
 
@@ -212,9 +207,7 @@ def _quote_wrapper_end(
                 cursor < len(value)
                 and value[cursor] == quote
                 and cursor - slash_start >= slash_count
-                and (cursor - slash_start - slash_count)
-                % (2 * (slash_count + 1))
-                == 0
+                and (cursor - slash_start - slash_count) % (2 * (slash_count + 1)) == 0
             ):
                 return cursor + 1
             if cursor < len(value):
@@ -249,7 +242,7 @@ def _unquoted_assignment_value_end(
 
             slash_count = slash_end - cursor
             next_char = value[slash_end]
-            if next_char in ("\"", "'"):
+            if next_char in ('"', "'"):
                 cursor = _quote_wrapper_end(
                     value,
                     slash_end + 1,
@@ -263,7 +256,7 @@ def _unquoted_assignment_value_end(
                 continue
             cursor = slash_end + 1 if slash_count % 2 else slash_end
             continue
-        if char in ("\"", "'"):
+        if char in ('"', "'"):
             cursor = _quote_wrapper_end(
                 value,
                 cursor + 1,
@@ -295,9 +288,7 @@ def _find_assignment_header(
     cursor = search_from
     while cursor < len(value):
         match_start = cursor
-        if match_start > 0 and value[match_start - 1].isascii() and value[
-            match_start - 1
-        ].isalnum():
+        if match_start > 0 and value[match_start - 1].isascii() and value[match_start - 1].isalnum():
             cursor += 1
             continue
 
@@ -310,26 +301,19 @@ def _find_assignment_header(
         else:
             while key_start < len(value) and value[key_start] in (" ", "\t"):
                 key_start += 1
-        if key_start >= len(value) or not _is_assignment_key_start(
-            value[key_start]
-        ):
+        if key_start >= len(value) or not _is_assignment_key_start(value[key_start]):
             cursor += 1
             continue
 
         key_end = key_start + 1
-        key_char_predicate = (
-            _is_quoted_assignment_key_char if quote else _is_assignment_key_char
-        )
+        key_char_predicate = _is_quoted_assignment_key_char if quote else _is_assignment_key_char
         while key_end < len(value) and key_char_predicate(value[key_end]):
             key_end += 1
 
         header_end = key_end
         if quote:
             closing_quote_at = header_end
-            while (
-                closing_quote_at < len(value)
-                and value[closing_quote_at] == "\\"
-            ):
+            while closing_quote_at < len(value) and value[closing_quote_at] == "\\":
                 closing_quote_at += 1
             if (
                 closing_quote_at >= len(value)
@@ -405,8 +389,7 @@ def _sanitize_assignments(
             active_quote,
         )
         secret_value = _is_secret_key(key) or (
-            redact_identity_values
-            and _normalize_key(key) in _SECRET_IDENTITY_VALUE_FIELDS
+            redact_identity_values and _normalize_key(key) in _SECRET_IDENTITY_VALUE_FIELDS
         )
         if secret_value:
             fragments.append(value[emitted_until:match_start])
@@ -468,11 +451,7 @@ def _uri_authority_start(value: str, scheme_end: int) -> int | None:
 
 def _starts_uri_scheme(value: str, start: int) -> bool:
     """判断指定位置是否以完整的 URI scheme 与 authority 开始。"""
-    if (
-        start >= len(value)
-        or not value[start].isascii()
-        or not value[start].isalpha()
-    ):
+    if start >= len(value) or not value[start].isascii() or not value[start].isalpha():
         return False
     scheme_end = start + 1
     while scheme_end < len(value) and _is_uri_scheme_char(value[scheme_end]):
@@ -513,9 +492,7 @@ def _sanitize_uri_userinfo(value: str, *, truncated: bool = False) -> str:
                 break
             if char == "@":
                 seen_userinfo = True
-            elif char in (",", ";", "|") and (
-                seen_userinfo or _starts_uri_scheme(value, authority_end + 1)
-            ):
+            elif char in (",", ";", "|") and (seen_userinfo or _starts_uri_scheme(value, authority_end + 1)):
                 break
             authority_end += 1
         if truncated and authority_end == len(value):
@@ -563,11 +540,12 @@ def _redact_basic_auth(
 
 
 def _sanitize_text(value: str, *, truncated_input: bool = False) -> str:
-    """清理非结构化文本中的常见凭据表达。"""
+    """清理非结构化文本中的常见凭据和图像数据 URL。"""
     truncated = truncated_input or len(value) > _MAX_TEXT_CHARS
     bounded_value = value[:_MAX_TEXT_CHARS]
     truncated_json = truncated and bounded_value.lstrip().startswith(("{", "["))
-    sanitized = _PRIVATE_KEY_PATTERN.sub(REDACTED_VALUE, bounded_value)
+    sanitized = _IMAGE_DATA_URL_PATTERN.sub(REDACTED_VALUE, bounded_value)
+    sanitized = _PRIVATE_KEY_PATTERN.sub(REDACTED_VALUE, sanitized)
     sanitized = _PRIVATE_KEY_OPEN_PATTERN.sub(REDACTED_VALUE, sanitized)
     sanitized = _SENSITIVE_HEADER_PATTERN.sub(r"\1***", sanitized)
     sanitized = _BEARER_PATTERN.sub(r"\1***", sanitized)
@@ -607,9 +585,7 @@ def _named_tuple_fields(value: Any) -> tuple[str, ...] | None:
         field_names = type.__getattribute__(value_type, "_fields")
     except Exception:
         return None
-    if type(field_names) is not tuple or tuple.__len__(field_names) != tuple.__len__(
-        value
-    ):
+    if type(field_names) is not tuple or tuple.__len__(field_names) != tuple.__len__(value):
         return None
     bounded_names = field_names[:_MAX_ITEMS]
     if not all(type(field_name) is str for field_name in bounded_names):
@@ -653,11 +629,7 @@ def _is_dataclass_type(value_type: type) -> bool:
     """绕过自定义 metaclass 协议检查 dataclass 类型标记。"""
     try:
         mro = type.__getattribute__(value_type, "__mro__")
-        return any(
-            "__dataclass_fields__"
-            in type.__getattribute__(candidate, "__dict__")
-            for candidate in mro
-        )
+        return any("__dataclass_fields__" in type.__getattribute__(candidate, "__dict__") for candidate in mro)
     except Exception:
         return False
 
@@ -719,9 +691,7 @@ def _pydantic_field_is_secret(field_name: str, field_info: Any) -> bool:
     alias_budget = [_MAX_ITEMS]
     for alias in aliases:
         alias_names = _pydantic_alias_names(alias, _budget=alias_budget)
-        if alias_names is None or any(
-            _is_secret_key(alias_name) for alias_name in alias_names
-        ):
+        if alias_names is None or any(_is_secret_key(alias_name) for alias_name in alias_names):
             return True
     return False
 
@@ -743,6 +713,27 @@ def _consume_work_item(budget: list[int]) -> bool:
     return True
 
 
+def _image_log_projection(value: Any) -> Any:
+    """在日志遍历前去掉已声明图像块的像素载荷，保留类型、尺寸和文本元信息。"""
+    if type(value) is not dict or type(value.get("type")) is not str:
+        return value
+    if value["type"] not in ("image", "image_url", "input_image"):
+        return value
+    sanitized = {}
+    for index, (key, item) in enumerate(value.items()):
+        if index >= _MAX_ITEMS:
+            sanitized["<truncated>"] = "more items"
+            break
+        if type(key) is str and key in _IMAGE_PAYLOAD_FIELDS:
+            if type(item) is dict:
+                item = {name: item[name] for name in _IMAGE_METADATA_FIELDS if name in item}
+                item["data"] = REDACTED_VALUE
+            else:
+                item = REDACTED_VALUE
+        sanitized[key] = item
+    return sanitized
+
+
 def sanitize_for_host(
     value: Any,
     *,
@@ -757,6 +748,7 @@ def sanitize_for_host(
             return "<work-limit>"
         if _depth >= _MAX_DEPTH:
             return "<max-depth>"
+        value = _image_log_projection(value)
         value_type = type(value)
         if value is None or value_type in (bool, int, float):
             return value
@@ -891,9 +883,7 @@ def sanitize_for_host(
             named_tuple_fields = _named_tuple_fields(value)
             if named_tuple_fields is not None:
                 sanitized = {}
-                for index, field_name in enumerate(
-                    named_tuple_fields[:_MAX_ITEMS]
-                ):
+                for index, field_name in enumerate(named_tuple_fields[:_MAX_ITEMS]):
                     if not _consume_work_item(budget):
                         sanitized["<work-limit>"] = "more fields"
                         break
@@ -921,9 +911,7 @@ def sanitize_for_host(
                 for index in range(_MAX_ITEMS + 1):
                     if not _consume_work_item(budget):
                         identity_scan_complete = False
-                        entries.append(
-                            ("<work-limit>", "<work-limit>", False, "more items")
-                        )
+                        entries.append(("<work-limit>", "<work-limit>", False, "more items"))
                         break
                     try:
                         key, item = next(items)
@@ -931,9 +919,7 @@ def sanitize_for_host(
                         break
                     if index >= _MAX_ITEMS:
                         identity_scan_complete = False
-                        entries.append(
-                            ("<truncated>", "<truncated>", False, "more items")
-                        )
+                        entries.append(("<truncated>", "<truncated>", False, "more items"))
                         break
                     try:
                         key_snapshot = _bounded_mapping_key_text(key)
@@ -954,14 +940,8 @@ def sanitize_for_host(
 
                 secret_identity = _mapping_has_secret_identity(entries)
                 for key_text, output_key, secret_key, item in entries:
-                    identity_value_field = (
-                        _normalize_key(key_text)
-                        in _SECRET_IDENTITY_VALUE_FIELDS
-                    )
-                    contextual_secret = (
-                        identity_value_field
-                        and (secret_identity or not identity_scan_complete)
-                    )
+                    identity_value_field = _normalize_key(key_text) in _SECRET_IDENTITY_VALUE_FIELDS
+                    contextual_secret = identity_value_field and (secret_identity or not identity_scan_complete)
                     sanitized[output_key] = (
                         REDACTED_VALUE
                         if secret_key or contextual_secret
@@ -990,11 +970,11 @@ def sanitize_for_host(
                         break
                     sanitized_items.append(
                         sanitize_for_host(
-                        item,
-                        _depth=_depth + 1,
-                        _seen=seen,
-                        _budget=budget,
-                    )
+                            item,
+                            _depth=_depth + 1,
+                            _seen=seen,
+                            _budget=budget,
+                        )
                     )
                 return sanitized_items
 
@@ -1024,7 +1004,7 @@ def _bounded_summary(value: Any, *, max_chars: int) -> str:
     suffix = "..."
     if max_chars <= len(suffix):
         return suffix[:max_chars]
-    return f"{text[:max_chars - len(suffix)]}{suffix}"
+    return f"{text[: max_chars - len(suffix)]}{suffix}"
 
 
 def summarize_input(value: Any, *, max_chars: int = 500) -> str:

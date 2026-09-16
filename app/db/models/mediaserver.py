@@ -142,6 +142,6 @@ class MediaServerItem(Base):
                                                          cls.year == str(year)))
         else:
             result = await db.execute(select(cls).filter(cls.title == title,
-                                                     cls.item_type == mtype,
-                                                     cls.year == str(year)))
+                                                         cls.item_type == mtype,
+                                                         cls.year == str(year)))
         return result.scalars().first()

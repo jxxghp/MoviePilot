@@ -3,8 +3,8 @@
 
 用途：
 1. fetch  - 用生产数据库中的站点 Cookie 抓取多个站点音乐分区种子标题
-2. test   - 对标题批量执行音乐识别链路（与识别测试页相同），输出 CSV 报告与命中率汇总
-3. 抓取结果落盘后可离线重跑 test，用于优化识别程序前后对比
+2. test   - 复用生产 MusicBrainz 识别入口，输出 CSV 报告与候选命中率汇总
+3. 抓取结果落盘后可复用资源数据重测；识别仍会访问 MusicBrainz
 
 约束：
 - 生产库仅以只读 URI 模式打开，不做任何写入
@@ -19,18 +19,21 @@
 
 import argparse
 import csv
+import os
 import sqlite3
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
 
 # 保证从仓库根目录外执行时也能导入 app 包
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 # 生产数据库（site 表中的站点 Cookie）与站点索引配置源文件目录
-DB_PATH = Path.home() / "Documents" / "MoviePilot" / "user.db"
+DB_PATH = Path.home() / "Documents" / "moviepilot" / "user.db"
 INDEXER_DIR = Path.home() / "MPProjects" / "MoviePilot-Build" / "sites" / "private"
 
 TITLES_FILE = ROOT / "config" / "temp" / "music_batch_titles.txt"
@@ -62,6 +65,8 @@ SITES = [
 
 def load_site_credentials(domains: list[str]) -> dict[str, dict]:
     """只读打开生产库，按域名批量取出站点 Cookie 与 UA。"""
+    from app.domain.site import extract_domain
+
     if not DB_PATH.exists():
         sys.exit(f"生产数据库不存在：{DB_PATH}")
     credentials: dict[str, dict] = {}
@@ -69,10 +74,10 @@ def load_site_credentials(domains: list[str]) -> dict[str, dict]:
     try:
         for domain in domains:
             row = con.execute(
-                "SELECT cookie, ua FROM site WHERE domain = ?", (domain,)
+                "SELECT cookie, ua, proxy FROM site WHERE domain = ?", (extract_domain(domain),)
             ).fetchone()
             if row and row[0]:
-                credentials[domain] = {"cookie": row[0], "ua": row[1] or None}
+                credentials[domain] = {"cookie": row[0], "ua": row[1] or None, "proxy": bool(row[2])}
     finally:
         con.close()
     return credentials
@@ -87,25 +92,26 @@ def build_indexer(site: dict, credential: dict) -> dict:
     with open(INDEXER_DIR / site["yml"], "r", encoding="utf-8") as f:
         indexer = yaml.safe_load(f)
     indexer["cookie"] = credential["cookie"]
+    indexer["proxy"] = credential["proxy"]
     if credential["ua"]:
         indexer["ua"] = credential["ua"]
     indexer["browse"] = {"path": site["browse"]}
     return indexer
 
 
-def fetch_site_titles(site: dict, indexer: dict, max_pages: int) -> list[str]:
+def fetch_site_titles(site: dict, indexer: dict, max_pages: int) -> list[tuple[str, str]]:
     """翻页抓取单个站点音乐分区种子标题，按标题去重并保留出现顺序。"""
     from app.modules.indexer.spider import SiteSpider
     from app.schemas.types import MediaType
 
-    titles: list[str] = []
+    titles: list[tuple[str, str]] = []
     seen: set[str] = set()
     for page in range(max_pages):
         spider = SiteSpider(indexer=indexer, mtype=MediaType.MUSIC, page=page)
         torrents = spider.get_torrents()
         if spider.is_error:
-            print(f"  [{site['name']}] 第 {page} 页请求失败（Cookie 可能失效或站点不可达），跳过该站点")
-            return []
+            print(f"  [{site['name']}] 第 {page} 页请求失败，保留已有样本并停止翻页")
+            break
         if not torrents:
             break
         for torrent in torrents:
@@ -113,15 +119,15 @@ def fetch_site_titles(site: dict, indexer: dict, max_pages: int) -> list[str]:
             if not title or title in seen:
                 continue
             seen.add(title)
-            titles.append(title)
+            titles.append((title, torrent.get("description") or ""))
         if len(titles) >= site["limit"]:
             break
     print(f"  [{site['name']}] 获取 {len(titles)} 条")
     return titles[:site["limit"]]
 
 
-def fetch_titles(site_keys: list[str], max_pages: int) -> list[tuple[str, str]]:
-    """按配置抓取多个站点音乐分区标题，返回 (站点名, 标题) 列表。"""
+def fetch_titles(site_keys: list[str], max_pages: int) -> list[tuple[str, str, str]]:
+    """按配置抓取多个站点音乐分区标题，返回 (站点名, 标题, 副标题) 列表。"""
     sites = [site for site in SITES if not site_keys or site["key"] in site_keys]
     unknown = set(site_keys) - {site["key"] for site in sites}
     if unknown:
@@ -129,84 +135,66 @@ def fetch_titles(site_keys: list[str], max_pages: int) -> list[tuple[str, str]]:
     domains = []
     for site in sites:
         with open(INDEXER_DIR / site["yml"], "r", encoding="utf-8") as f:
-            domain = (yaml.safe_load(f).get("domain") or "").replace("https://", "").replace("http://", "").rstrip("/")
+            domain = urlsplit(yaml.safe_load(f).get("domain") or "").hostname or ""
         site["domain"] = domain
         domains.append(domain)
     credentials = load_site_credentials(domains)
 
-    results: list[tuple[str, str]] = []
+    results: list[tuple[str, str, str]] = []
     for site in sites:
         credential = credentials.get(site["domain"])
         if not credential:
             print(f"  [{site['name']}] 未配置 Cookie，跳过")
             continue
         indexer = build_indexer(site, credential)
-        for title in fetch_site_titles(site, indexer, max_pages):
-            results.append((site["name"], title))
+        for title, description in fetch_site_titles(site, indexer, max_pages):
+            results.append((site["name"], title, description))
     return results
 
 
-def recognize_one(module, title: str) -> dict:
-    """对单条标题执行与识别测试页相同的解析+识别链路，并给出失败归因。"""
+def recognize_one(module, title: str, description: str = "", music_type: str | None = None) -> dict:
+    """复用生产模块的完整识别入口；没有远端 ID 的展示兜底不能计为命中。"""
     from app.domain.meta.metamusic import MetaMusic
+    from app.schemas.types import MediaSource, MediaType
 
-    row = {"title": title}
+    row = {"title": title, "description": description, "requested_music_type": music_type or ""}
     try:
-        meta = MetaMusic.parse_query(title)
+        meta = MetaMusic.parse_resource(title, description)
         row.update({
             "parsed_title": meta.title,
             "parsed_artists": " / ".join(meta.artists or []),
+            "parsed_album": meta.album or "",
             "parsed_format": meta.audio_format or "",
         })
-        # 拆开检索与候选挑选两步，便于区分零命中与比对失配
-        candidates = module._search_recordings(meta, limit=10)
-        matched = module._select_candidate(meta, candidates, source="musicbrainz")
-        hit_label = "命中"
-        albums: list = []
-        # 与正式链路一致：专辑挑选要求艺术家命中，无艺术家线索时跳过专辑回退检索
-        if not matched and meta.artists:
-            albums = module._search_albums(meta, limit=10)
-            matched = module._select_album_candidate(meta, albums)
-            hit_label = "命中(专辑)"
-        if matched:
+        matched = module.recognize_media(
+            meta=meta, mtype=MediaType.MUSIC,
+            media_source=MediaSource.MusicBrainz, music_type=music_type, cache=False,
+        )
+        if matched and matched.media_id:
             row.update({
-                "status": hit_label,
+                "status": "命中",
                 "matched_title": matched.title,
                 "matched_artists": " / ".join(matched.artists or []),
                 "matched_album": matched.album or "",
                 "matched_year": matched.year or "",
+                "matched_music_type": matched.music_type,
                 "media_id": matched.media_id,
             })
-        elif candidates:
-            # 有候选但全部比对失配，列出最接近的候选方便归因
-            top = candidates[0]
-            row.update({
-                "status": "候选比对失配",
-                "matched_title": f"{top.title} | {' / '.join(top.artists or [])}",
-            })
-        elif albums:
-            row.update({
-                "status": "专辑候选失配",
-                "matched_title": f"{albums[0].title} | {' / '.join(albums[0].artists or [])}",
-            })
-        elif not meta.title:
-            row.update({"status": "解析失败"})
         else:
-            row.update({"status": "检索零命中"})
-    except Exception as err:  # pylint: disable=broad-except
-        row.update({"status": "异常", "matched_title": str(err)[:200]})
+            row["status"] = "未命中" if meta.title else "解析失败"
+    except Exception as err:  # pylint: disable=broad-exception-caught
+        row.update({"status": "异常", "matched_title": type(err).__name__})
     return row
 
 
-def run_batch(entries: list[tuple[str, str]]) -> list[dict]:
+def run_batch(entries: list[tuple[str, str, str]], music_type: str | None = None) -> list[dict]:
     """批量执行识别并写出 CSV 报告，打印命中率汇总。"""
     from app.modules.musicbrainz import MusicBrainzModule
 
     module = MusicBrainzModule()
-    module.init_module()
     rows = []
-    for index, (site_name, title) in enumerate(entries, 1):
-        row = recognize_one(module, title)
+    for index, (site_name, title, description) in enumerate(entries, 1):
+        row = recognize_one(module, title, description, music_type)
         row["site"] = site_name
         rows.append(row)
         if index % 20 == 0 or index == len(entries):
@@ -214,8 +202,9 @@ def run_batch(entries: list[tuple[str, str]]) -> list[dict]:
 
     REPORT_FILE.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
-        "site", "title", "status", "parsed_title", "parsed_artists", "parsed_format",
-        "matched_title", "matched_artists", "matched_album", "matched_year", "media_id",
+        "site", "title", "description", "requested_music_type", "status",
+        "parsed_title", "parsed_artists", "parsed_album", "parsed_format",
+        "matched_title", "matched_artists", "matched_album", "matched_year", "matched_music_type", "media_id",
     ]
     with open(REPORT_FILE, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
@@ -239,44 +228,49 @@ def run_batch(entries: list[tuple[str, str]]) -> list[dict]:
     return rows
 
 
-def read_titles_file() -> list[tuple[str, str]]:
-    """读取落盘标题，兼容旧版纯标题格式（无站点前缀记为「憨憨」）。"""
-    entries: list[tuple[str, str]] = []
-    for line in TITLES_FILE.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if "\t" in line:
-            site_name, title = line.split("\t", 1)
-        else:
-            site_name, title = "憨憨", line
-        entries.append((site_name, title))
+def read_titles_file() -> list[tuple[str, str, str]]:
+    """读取 TSV 主副标题，兼容历史二列 TSV 和纯标题文件。"""
+    entries: list[tuple[str, str, str]] = []
+    with TITLES_FILE.open(encoding="utf-8", newline="") as stream:
+        for fields in csv.reader(stream, delimiter="\t"):
+            if not fields or not any(fields):
+                continue
+            if len(fields) == 1:
+                entries.append(("憨憨", fields[0], ""))
+            else:
+                entries.append((fields[0], fields[1], fields[2] if len(fields) > 2 else ""))
     return entries
 
 
 def main() -> None:
+    """在独立配置目录执行采样或重测，禁止识别缓存写入生产配置。"""
     parser = argparse.ArgumentParser(description="多站点音乐种子批量识别测试")
     parser.add_argument("--fetch", action="store_true", help="重新抓取种子标题（默认复用已保存列表）")
     parser.add_argument("--sites", default="", help="指定站点 key 逗号分隔，缺省抓取全部配置站点")
     parser.add_argument("--pages", type=int, default=3, help="每站最大翻页数")
+    parser.add_argument("--fetch-only", action="store_true", help="只采样，不请求音乐元数据")
+    parser.add_argument("--limit", type=int, default=0, help="最多识别多少条，0 表示全部")
+    parser.add_argument("--music-type", choices=("recording", "album"), help="限定单曲或专辑，避免混合命中掩盖实体错误")
     args = parser.parse_args()
+    if args.pages < 1 or args.limit < 0:
+        parser.error("pages 必须大于 0，limit 不能小于 0")
+    os.environ["CONFIG_DIR"] = str(ROOT / "config" / "temp" / "music-batch-runtime")
 
-    if args.fetch or not TITLES_FILE.exists():
+    if args.fetch or args.fetch_only or not TITLES_FILE.exists():
         site_keys = [key.strip() for key in args.sites.split(",") if key.strip()]
         entries = fetch_titles(site_keys, max_pages=args.pages)
         if not entries:
             sys.exit("未抓取到任何种子标题")
         TITLES_FILE.parent.mkdir(parents=True, exist_ok=True)
-        TITLES_FILE.write_text(
-            "\n".join(f"{site_name}\t{title}" for site_name, title in entries),
-            encoding="utf-8",
-        )
+        with TITLES_FILE.open("w", encoding="utf-8", newline="") as stream:
+            csv.writer(stream, delimiter="\t").writerows(entries)
         print(f"已保存 {len(entries)} 条标题到 {TITLES_FILE}")
     else:
         entries = read_titles_file()
         print(f"复用已保存的 {len(entries)} 条标题")
 
-    run_batch(entries)
+    if not args.fetch_only:
+        run_batch(entries[:args.limit] if args.limit else entries, args.music_type)
 
 
 if __name__ == "__main__":

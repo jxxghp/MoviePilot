@@ -5,6 +5,7 @@ from typing import cast
 
 from fastapi import Depends, Request
 
+from app.application.classification.runtime import ClassificationRuntime
 from app.application.configuration import (
     ApiRuntimeConfig,
     get_api_runtime_config_snapshot,
@@ -13,6 +14,7 @@ from app.application.messaging.chat import AsyncAgentChatRepository, AsyncUnitOf
 from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
 from app.application.subscription.contract import (
     SubscriptionHistoryStagingPort,
+    SubscriptionQueryPort,
     SubscriptionStagingPort,
 )
 from app.runtime.tasks import TaskRegistry, get_task_registry
@@ -36,6 +38,13 @@ def get_background_task_registry(
 ) -> TaskRegistry:
     """返回当前 lifespan 统一管理的后台任务登记器。"""
     return runtime.tasks
+
+
+def get_classification_runtime(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> ClassificationRuntime:
+    """从完整宿主运行时收窄到媒体分类策略能力。"""
+    return runtime.classification
 
 
 def get_background_task_registry_compat(request: Request) -> TaskRegistry:
@@ -134,6 +143,14 @@ def get_subscription_repository(
 ) -> SubscriptionStagingPort:
     """构造绑定当前请求会话的订阅仓储。"""
     return runtime.repository(session)
+
+
+def get_sync_subscription_repository(
+    session: object = Depends(get_sync_session),
+    runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
+) -> SubscriptionQueryPort:
+    """构造绑定当前请求同步 Session 的订阅查询仓储。"""
+    return cast(SubscriptionQueryPort, runtime.repository(session))
 
 
 def get_subscription_history_repository(

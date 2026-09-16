@@ -5,6 +5,7 @@ import posixpath
 import threading
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import (
     Any,
@@ -16,6 +17,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
 
 from watchfiles import watch
@@ -25,6 +27,7 @@ from app.foundation.singleton import Singleton
 from app.runtime.events import EventHandlerBinding, eventmanager
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.access import PluginAccessPolicy
+from app.runtime.extensions.plugin.datadir import remove_plugin_data_directory
 from app.runtime.extensions.plugin.dependency import (
     PluginDependencyClassification,
     PluginDependencyInstallResult,
@@ -34,11 +37,13 @@ from app.runtime.extensions.plugin.monitor import PluginChangeMonitor
 from app.runtime.extensions.plugin.projection import PluginProjection
 from app.runtime.extensions.plugin.runtime import PluginRuntime
 from app.runtime.extensions.plugin.tools import PluginToolCatalog
+from app.runtime.log import clear_plugin_instance_log_level as clear_instance_log_level_override
 from app.runtime.log import logger
 from app.runtime.observability import observe_compat_facade
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
+from app.schemas.category import ClassificationFactValue, ClassificationFieldDefinition
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import Plugin as _SchemaPlugin
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
@@ -166,7 +171,13 @@ def _resolve_plugin_handler_instance(
     owner_class: Type[Any],
 ) -> Optional[EventHandlerBinding]:
     """通过当前插件管理器单例解析实例，避免事件总线持有过期对象。"""
-    return PluginManager().resolve_event_handler_instance(owner_class)
+    manager = cast(
+        Optional["PluginManager"],
+        PluginManager.get_existing_instance(),
+    )
+    if manager is None:
+        return None
+    return manager.resolve_event_handler_instance(owner_class)
 
 
 @observe_compat_facade("PluginManager")
@@ -210,11 +221,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_metadata = self._plugin_runtime.metadata
         self._plugin_sync = self._plugin_runtime.sync
         self._plugin_clone = self._plugin_runtime.clone
+        self._plugin_log_level = self._plugin_runtime.log_level
+        self._plugin_default_target = self._plugin_runtime.default_target
+        self._plugin_classification = self._plugin_runtime.classification
         # 事件总线只通过通用解析器访问运行中的插件实例。
         eventmanager.register_handler_instance_resolver(
             "plugins",
             _resolve_plugin_handler_instance,
         )
+
     def resolve_event_handler_instance(
             self,
             owner_class: Type[Any],
@@ -222,7 +237,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """为插件声明的事件方法解析当前运行实例。"""
         plugin_id = owner_class.__name__
         # 旧测试与部分扩展会替换私有映射来构造隔离运行态，解析器继续尊重该接缝。
-        if plugin_id not in self._plugins:
+        if self._plugins.get(plugin_id) is not owner_class:
             return None
         plugin = self._running_plugins.get(plugin_id)
         owner_name = plugin_id
@@ -761,13 +776,64 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return self._plugin_instance_store.for_source(plugin_id)
 
     def delete_plugin_instance(self, plugin_id: str) -> bool:
-        """删除虚拟实例描述；调用方仍负责停止实例和清理业务数据。"""
+        """删除虚拟实例描述；调用方仍负责停止实例和清理业务数据。
+
+        同时清掉该实例的进程内日志等级覆盖：覆盖表按实例 ID 常驻进程，只删库里那
+        一行的话，同一进程内用相同后缀重建的分身会继承上一个分身的等级——界面显示
+        「跟随全局」，实际仍按旧等级输出，直到重启才恢复。
+        """
         try:
             with self.mutation("删除插件实例描述"):
-                return self._plugin_instance_store.delete(plugin_id)
+                deleted = self._plugin_instance_store.delete(plugin_id)
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return False
+        clear_instance_log_level_override(plugin_id)
+        return deleted
+
+    def delete_plugin_data_rows(self, instance_id: str) -> None:
+        """只删该实例在插件数据表里的行，不碰它的自有数据库。
+
+        与 :meth:`delete_plugin_data` 的区别正在于此：那个方法把数据表与自有库捆在
+        一起删，而彻底清理要让用户逐项勾选，两者必须拆开。
+        """
+        self._plugin_config_store.delete_data_rows(instance_id)
+
+    def destroy_plugin_own_database(self, instance_id: str) -> None:
+        """销毁该实例的自有数据库并释放句柄。"""
+        self._plugin_config_store.destroy_database(instance_id)
+
+    def delete_plugin_data_directory(self, instance_id: str) -> bool:
+        """删除该实例在插件数据目录下的整个目录，返回删除前它是否存在。
+
+        这个目录此前没有任何代码清理过：插件把落盘文件写在这里，卸载与重置都只动
+        数据库，目录会一直留着，重建同名实例时静默继承上一轮的文件。
+
+        :param instance_id: 实例 ID
+        :return: 删除前该目录是否存在
+        :raise ValueError: 标识越界，或目标目录解析后不在插件数据根之内
+        """
+        return remove_plugin_data_directory(instance_id)
+
+    def purge_plugin_instance(self, instance_id: str) -> bool:
+        """彻底删除一个分身实例的行连同其配置，返回删除前它是否存在。
+
+        调用方需自行持有 ``mutation`` 上下文；彻底清理的各个步骤必须落在同一个
+        lease 内，否则停机封口可能卡在两步之间，留下删了一半的实例。
+
+        本体的行删不掉：底层读取口只认分身，本体传进来一律返回未删除。这是有意的，
+        本体那一行还承载着该插件的启用状态与展示覆盖，删掉等于把装着的插件静默停用。
+
+        同时清掉该实例的进程内日志等级覆盖：覆盖表按实例 ID 常驻进程，只删库里那一
+        行的话，同一进程内用相同 ID 重建的分身会继承上一个分身的等级。
+        """
+        deleted = self._plugin_instance_store.delete(instance_id)
+        clear_instance_log_level_override(instance_id)
+        return deleted
+
+    def is_plugin_clone(self, instance_id: str) -> bool:
+        """判断该实例 ID 是否为分身而非源插件本体。"""
+        return self._plugin_instance_store.get(instance_id) is not None
 
     def save_plugin_config(self, pid: str, conf: dict, force: bool = False) -> bool:
         """
@@ -896,6 +962,20 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def get_media_sources(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """获取运行中插件声明的媒体数据源。"""
         return self._plugin_projection().media_sources(pid)
+
+    def get_classification_fields(
+        self,
+        pid: Optional[str] = None,
+    ) -> tuple[ClassificationFieldDefinition, ...]:
+        """获取当前启用插件声明的扩展分类字段快照。"""
+        return self._plugin_classification.fields(pid)
+
+    def get_classification_facts(
+        self,
+        media: Any,
+    ) -> dict[str, dict[str, ClassificationFactValue]]:
+        """校验媒体识别结果携带的插件扩展事实并返回分类器输入。"""
+        return self._plugin_classification.facts(media)
 
     def get_plugin_actions(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -1202,17 +1282,19 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return PluginAccessPolicy.private_key(plugin_id)
 
-    def clone_plugin(self, plugin_id: str, suffix: str, name: str, description: str,
-                     version: str = None, icon: str = None) -> Tuple[bool, str]:
+    def clone_plugin(self, plugin_id: str, suffix: Optional[str], name: str, description: str,
+                     version: str = None, icon: str = None,
+                     restore_previous: bool = True) -> Tuple[bool, str]:
         """
         创建插件分身
         :param plugin_id: 原插件ID
-        :param suffix: 分身后缀
+        :param suffix: 分身后缀；留空时由运行时自动分配最小可用序号
         :param name: 分身名称
         :param description: 分身描述
-        :param version: 自定义版本号
+        :param version: 自定义版本号，分身始终跟随源插件版本，仅为旧客户端保留
         :param icon: 自定义图标URL
-        :return: (是否成功, 错误信息)
+        :param restore_previous: 同后缀名下留有已停用的分身时是否沿用它的业务参数
+        :return: (是否成功, 成功时为分身实例ID／失败时为可读原因)
         """
         try:
             with self.mutation("创建插件分身"):
@@ -1223,73 +1305,158 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                     description=description,
                     version=version,
                     icon=icon,
+                    restore_previous=restore_previous,
                 )
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
             return False, str(error)
 
-    def _modify_plugin_files(self, plugin_dir: Path, original_id: str, suffix: str,
-                             name: str, description: str, version: str = None,
-                             icon: str = None) -> Tuple[bool, str]:
-        """
-        兼容旧内部调用，将分身文件改写委托给包适配器。
-        :param plugin_dir: 插件目录
-        :param original_id: 原插件ID
-        :param suffix: 分身后缀
-        :param name: 分身名称
-        :param description: 分身描述
-        :param version: 自定义版本号
-        :param icon: 自定义图标URL
-        :return: (是否成功, 错误信息)
-        """
-        original_plugin_class = self._plugins.get(original_id)
-        if not original_plugin_class:
-            return False, f"无法获取原插件类 {original_id}"
-        return self._plugin_runtime.system().modify_plugin_files(
-            plugin_dir=plugin_dir,
-            original_class_name=original_plugin_class.__name__,
-            suffix=suffix,
-            name=name,
-            description=description,
-            version=version,
-            icon=icon,
-        )
+    def get_restorable_plugin_instances(self, plugin_id: str) -> List[Dict[str, Any]]:
+        """列出该插件名下已停用、设置仍留存可恢复的分身。
 
-    @staticmethod
-    def _modify_python_file(file_path: Path, original_class_name: str,
-                            clone_class_name: str, name: str, description: str,
-                            version: str = None, icon: str = None) -> Tuple[bool, str]:
-        """
-        兼容旧内部调用，将 Python 文件改写委托给包适配器。
-        """
-        return PluginManager()._plugin_runtime.system().modify_python_file(
-            file_path=file_path,
-            original_class_name=original_class_name,
-            clone_class_name=clone_class_name,
-            name=name,
-            description=description,
-            version=version,
-            icon=icon,
-        )
+        停用只把启用位置假，业务参数与展示信息都还在那一行上；用户在创建分身时挑一个
+        拿回来，比按后缀去猜哪个留有残留可靠得多。启用中的分身不在此列——它们的配置
+        正被使用，摆进恢复选择器只会让人误以为能把一个活着的实例再建一遍。
 
-    def _modify_federation_files(self, dist_dir: Path, original_class_name: str,
-                                 clone_class_name: str) -> Tuple[bool, str]:
+        :param plugin_id: 源插件ID
+        :return: 每个可恢复分身的实例ID、后缀、展示信息与是否留有业务参数
         """
-        兼容旧内部调用，将联邦文件改写委托给包适配器。
-        """
-        return self._plugin_runtime.system().modify_federation_files(
-            dist_dir=dist_dir,
-            original_class_name=original_class_name,
-            clone_class_name=clone_class_name,
-        )
+        prefix_length = len(plugin_id)
+        results: List[Dict[str, Any]] = []
+        for instance in self._plugin_instance_store.for_source(plugin_id):
+            if instance.is_enabled:
+                continue
+            instance_id = instance.instance_id
+            results.append({
+                "instance_id": instance_id,
+                # 分身ID由源插件ID直接拼后缀而成，去掉前缀即还原用户当初填的后缀
+                "suffix": (
+                    instance_id[prefix_length:]
+                    if instance_id.startswith(plugin_id)
+                    else instance_id
+                ),
+                "plugin_name": instance.plugin_name,
+                "plugin_desc": instance.plugin_desc,
+                "has_config": self._plugin_config_store.has_config(instance_id),
+            })
+        return results
 
-    @staticmethod
-    def _rename_federation_assets(dist_dir: Path, original_class_name: str, clone_class_name: str):
+    def get_plugin_instance_log_levels(self, plugin_id: str) -> List[Dict[str, Any]]:
         """
-        兼容旧内部调用，将资源重命名委托给包适配器。
+        查询插件全部实例（含本体）当前的日志等级设置
+        :param plugin_id: 插件ID
+        :return: 每个实例的等级设置条目列表，首项固定是本体自身
+        :raise LookupError: 插件不存在，或 plugin_id 实为某个分身自身的实例ID
         """
-        PluginManager()._plugin_runtime.system().rename_federation_assets(
-            dist_dir,
-            original_class_name,
-            clone_class_name,
-        )
+        return self._plugin_log_level.list_levels(plugin_id)
+
+    def set_plugin_instance_log_level(
+        self,
+        plugin_id: str,
+        instance_id: str,
+        level: str,
+        expires_at: Optional[datetime] = None,
+    ) -> None:
+        """
+        设置指定实例的日志等级覆盖，运行期立即生效并落盘
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :param level: 目标日志等级
+        :param expires_at: 覆盖失效时间，为空表示不过期
+        :raise LookupError: 插件不存在，或实例不存在／不归属该插件
+        :raise ValueError: level 不是受支持的等级名
+        """
+        self._plugin_log_level.set_level(plugin_id, instance_id, level, expires_at)
+
+    def clear_plugin_instance_log_level(self, plugin_id: str, instance_id: str) -> None:
+        """
+        清除指定实例的日志等级覆盖，立即回落全局等级，重复清除保持幂等
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :raise LookupError: 插件不存在，或实例不存在／不归属该插件
+        """
+        self._plugin_log_level.clear_level(plugin_id, instance_id)
+
+    def mark_plugin_loadable(self, plugin_id: str) -> None:
+        """
+        把源插件本体登记为应当装载，用于安装收尾
+
+        本体的装载判据在实例表的启用位上，安装清单只回答「包在不在磁盘上」。安装
+        完成时不登记这一行，插件靠定向重载当次能跑起来，重启后却不会再被加载。
+        :param plugin_id: 插件ID
+        """
+        self._plugin_instance_store.enable_host(plugin_id)
+
+    def disable_plugin_host(self, plugin_id: str) -> bool:
+        """
+        卸载收尾：停用源插件本体但保留其业务参数
+
+        业务参数是用户的数据，重装同名插件后应当还在；默认目标置位与日志等级覆盖
+        只对在册实例有意义，随停用一并清除，不会被下一次重装静默继承。
+        :param plugin_id: 插件ID
+        :return: 停用前它是否存在且处于启用状态
+        """
+        changed = self._plugin_instance_store.disable_host(plugin_id)
+        clear_instance_log_level_override(plugin_id)
+        return changed
+
+    def set_plugin_instance_enabled(self, instance_id: str, enabled: bool) -> bool:
+        """
+        启用或停用一个实例，本体与分身走同一个入口
+
+        启用位是「这份配置是否应当被实例化并启动」的唯一判据，本体与分身因而可以
+        共用一个开关：调用方只给实例ID，由本方法按它是分身还是本体分发。
+
+        停用不删任何设置：业务参数与展示信息原样留在那一行，再次启用即恢复；删行
+        才是彻底清理，不从这里走。
+        :param instance_id: 实例ID，等于插件ID时表示本体自身
+        :param enabled: 目标启用状态
+        :return: 该实例存在且状态确实发生了变化
+        :raise PluginMutationRejectedError: 当前处于停机准入窗口
+        """
+        store = self._plugin_instance_store
+        is_clone = store.get(instance_id) is not None
+        with self.mutation(f"{'启用' if enabled else '停用'}插件实例 {instance_id}"):
+            if is_clone:
+                changed = store.enable(instance_id) if enabled else store.disable(instance_id)
+            elif enabled:
+                changed = store.enable_host(instance_id)
+            else:
+                changed = store.disable_host(instance_id)
+        if not changed:
+            return False
+        if enabled:
+            self.reload_plugin(instance_id)
+        else:
+            # 停用要把运行态一并摘掉，否则这一轮进程里它还在跑，重启才真的停下来
+            self.remove_plugin(instance_id)
+            clear_instance_log_level_override(instance_id)
+        return True
+
+    def resolve_plugin_call_target(self, plugin_id: str) -> str:
+        """
+        确定按插件ID发起、未指定实例的调用应当落到哪个实例
+        :param plugin_id: 插件ID，也可以是调用方已经明确知道的具体实例ID
+        :return: 应当使用的实例ID
+        :raise LookupError: 该插件已有分身但未设置默认调用目标，或默认调用目标已停用
+        """
+        return self._plugin_default_target.resolve(plugin_id)
+
+    def set_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> bool:
+        """
+        设置指定插件实例为默认调用目标，并清除同插件的旧默认
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :return: 目标实例存在时为True，指定的非本体实例不归属该插件时为False
+        :raise LookupError: 插件不存在，或 plugin_id 实为某个分身自身的实例ID
+        """
+        return self._plugin_default_target.set_target(plugin_id, instance_id)
+
+    def clear_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> None:
+        """
+        清除指定插件实例的默认调用目标置位，仅当当前置位的正是该实例时才动作
+        :param plugin_id: 插件ID
+        :param instance_id: 实例ID
+        :raise LookupError: 插件不存在，或 plugin_id 实为某个分身自身的实例ID
+        """
+        self._plugin_default_target.clear_target(plugin_id, instance_id)

@@ -27,7 +27,12 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.db.base import Base, execute_dml, get_id_column
 
 _TRANSFER_EXECUTION_STEP = table("transferexecutionstep", column("task_id"))
-_TRANSFER_HISTORY = table("transferhistory", column("transfer_task_id"))
+_TRANSFER_HISTORY = table(
+    "transferhistory",
+    column("id"),
+    column("transfer_task_id"),
+    column("transfer_settlement_revision"),
+)
 
 
 class TransferPending(Base):
@@ -241,6 +246,15 @@ class TransferPending(Base):
             Optional["TransferPending"],
             db.execute(select(cls).where(cls.task_id == task_id)).scalars().first(),
         )
+
+    @classmethod
+    def get_task_id_by_identity(
+            cls, db: Session, *, storage: str, src_path: str,
+    ) -> Optional[str]:
+        """仅查询源文件的稳定身份，使显式重做不依赖损坏规划 JSON 的反序列化。"""
+        return cast(Optional[str], db.scalar(select(cls.task_id).where(
+            cls.storage == storage, cls.src_path == src_path,
+        )))
 
     @classmethod
     def list_claimable_candidates(
@@ -738,6 +752,49 @@ class TransferPending(Base):
         )
 
     @classmethod
+    def delete_terminal_failure(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            history_id: int,
+            settlement_revision: int,
+    ) -> int:
+        """
+        仅删除仍与指定失败历史精确绑定的无租约终态任务。
+
+        历史存在性子查询把用户看到的失败回执纳入同一个 CAS，避免陈旧页面误删
+        已重试、已人工判定或已产生新结算版本的任务。
+        :param db: 数据库会话
+        :param task_id: 稳定任务标识
+        :param history_id: 失败终态历史标识
+        :param settlement_revision: 失败回执结算版本
+        :return: 删除的任务数，1 表示成功取得放弃权
+        """
+        if not task_id or history_id <= 0 or settlement_revision <= 0:
+            return 0
+        return execute_dml(
+            db,
+            delete(cls).where(
+                cls.task_id == task_id,
+                cls.execution_state == "failed",
+                cls.terminal_history_id == history_id,
+                cls.settlement_revision == settlement_revision,
+                cls.lease_owner.is_(None),
+                cls.lease_token.is_(None),
+                exists(
+                    select(_TRANSFER_HISTORY.c.id).where(
+                        _TRANSFER_HISTORY.c.id == history_id,
+                        _TRANSFER_HISTORY.c.transfer_task_id == cls.task_id,
+                        _TRANSFER_HISTORY.c.transfer_settlement_revision
+                        == cls.settlement_revision,
+                    )
+                ),
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
     def delete_terminal_success(
             cls,
             db: Session,
@@ -942,6 +999,46 @@ class TransferPending(Base):
                 ~exists(
                     select(_TRANSFER_HISTORY.c.transfer_task_id).where(
                         _TRANSFER_HISTORY.c.transfer_task_id == cls.task_id
+                    )
+                ),
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
+    def delete_inactive_for_replacement(
+            cls,
+            db: Session,
+            *,
+            task_id: str,
+            storage: str,
+            src_path: str,
+            now_time: str,
+    ) -> int:
+        """仅为显式重做删除无有效租约且无真实历史绑定的旧任务。
+
+        旧规划或执行状态可能损坏，放弃权只由稳定身份、当前租约和实际历史决定；
+        悬空历史标识不能永久阻挡重做。步骤由调用方在同一事务中清理。
+        """
+        if not all((task_id, storage, src_path, now_time)):
+            return 0
+        return execute_dml(
+            db,
+            delete(cls).where(
+                cls.task_id == task_id,
+                cls.storage == storage,
+                cls.src_path == src_path,
+                or_(
+                    cls.lease_token.is_(None),
+                    cls.lease_expires_at.is_(None),
+                    cls.lease_expires_at <= now_time,
+                ),
+                ~exists(
+                    select(_TRANSFER_HISTORY.c.id).where(
+                        or_(
+                            _TRANSFER_HISTORY.c.transfer_task_id == cls.task_id,
+                            _TRANSFER_HISTORY.c.id == cls.terminal_history_id,
+                        )
                     )
                 ),
             ),

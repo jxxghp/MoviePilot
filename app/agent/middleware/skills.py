@@ -3,8 +3,7 @@ import re
 import shutil
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Annotated, Any, List, Optional
-from typing import NotRequired, TypedDict
+from typing import Annotated, Any, List, NotRequired, Optional, TypedDict
 
 import yaml  # noqa
 from anyio import Path as AsyncPath
@@ -14,10 +13,11 @@ from langchain.agents.middleware.types import (
     ContextT,
     ModelRequest,
     ModelResponse,
+    PrivateStateAttr,  # noqa
     ResponseT,
     ToolCallRequest,
 )
-from langchain.agents.middleware.types import PrivateStateAttr  # noqa
+from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from langgraph.runtime import Runtime
@@ -25,17 +25,18 @@ from pydantic import BaseModel, Field
 
 from app.agent.middleware.utils import append_to_system_message
 from app.agent.policy.sanitizer import sanitize_for_host, summarize_error
+from app.agent.skills.metadata import MAX_SKILL_CONTENT_BYTES, SkillMetadata, parse_skill_metadata
 from app.agent.tools.tags import ToolTag
-from app.agent.skills.metadata import (
-    MAX_SKILL_FILE_SIZE,
-    SkillMetadata,
-    parse_skill_metadata,
-)
 from app.runtime.log import logger
 
-# 模型返回上限独立于领域层的磁盘读取上限，避免异常内容撑爆上下文。
-MAX_SKILL_RESULT_CHARS = 64 * 1024
-SKILL_CONTENT_TRUNCATION_SUFFIX = "\n...(Skill 内容已截断)"
+SKILL_CONTENT_TRUNCATION_MESSAGE = (
+    "SKILL.md exceeds 512 KiB; content contains only the first 512 KiB. "
+    "Do not use read_file to bypass this limit."
+)
+SUPPORTING_FILE_TRUNCATION_MESSAGE = (
+    "The requested supporting skill file exceeds 512 KiB; content contains only the first 512 KiB. "
+    "Do not use read_file to bypass this limit."
+)
 
 
 class SkillsState(AgentState):
@@ -58,6 +59,13 @@ class SkillToolInput(BaseModel):
     name: str = Field(
         ...,
         description="Skill name or id from the available skills list.",
+    )
+    file: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional supporting file path relative to the Skill directory. "
+            "Use this field with read_skill instead of read_file for a listed Skill document."
+        ),
     )
 
 
@@ -94,17 +102,9 @@ async def _alist_skills(source_path: AsyncPath) -> list[SkillMetadata]:
     for skill_path in skill_dirs:
         skill_md_path = skill_path / "SKILL.md"
 
-        stat = await skill_md_path.stat()
-        if stat.st_size > MAX_SKILL_FILE_SIZE:
-            logger.warning(
-                "Skipping %s: file too large (%d bytes)",
-                skill_md_path,
-                stat.st_size,
-            )
-            continue
-        skill_content = (await skill_md_path.read_bytes()).decode(
-            "utf-8", errors="replace"
-        )
+        async with await skill_md_path.open("rb") as handle:
+            raw_content = await handle.read(MAX_SKILL_CONTENT_BYTES)
+        skill_content = raw_content.decode("utf-8", errors="replace")
 
         # 解析元数据
         skill_metadata = parse_skill_metadata(
@@ -123,11 +123,7 @@ def _list_skills(source_path: Path) -> list[SkillMetadata]:
     if not source_path.exists():
         return []
 
-    skill_dirs = [
-        path
-        for path in source_path.iterdir()
-        if path.is_dir() and (path / "SKILL.md").is_file()
-    ]
+    skill_dirs = [path for path in source_path.iterdir() if path.is_dir() and (path / "SKILL.md").is_file()]
     if not skill_dirs:
         return []
 
@@ -136,16 +132,9 @@ def _list_skills(source_path: Path) -> list[SkillMetadata]:
     skills: list[SkillMetadata] = []
     for skill_path in skill_dirs:
         skill_md_path = skill_path / "SKILL.md"
-        if skill_md_path.stat().st_size > MAX_SKILL_FILE_SIZE:
-            logger.warning(
-                "Skipping %s: file too large (%d bytes)",
-                skill_md_path,
-                skill_md_path.stat().st_size,
-            )
-            continue
-        skill_content = skill_md_path.read_bytes().decode(
-            "utf-8", errors="replace"
-        )
+        with skill_md_path.open("rb") as handle:
+            raw_content = handle.read(MAX_SKILL_CONTENT_BYTES)
+        skill_content = raw_content.decode("utf-8", errors="replace")
         skill_metadata = parse_skill_metadata(
             content=skill_content,
             skill_path=str(skill_md_path),
@@ -164,24 +153,27 @@ You have access to a skills library for specialized MoviePilot workflows.
 
 {skills_list}
 
-When the user's request matches a skill description, call the `skill` tool with that skill name before taking task actions. Follow the loaded SKILL.md instructions, and load referenced supporting files only when needed. Do not create or rewrite skills unless the user explicitly asks for skill authoring.
+When the user's request matches a skill description, call the `read_skill` tool with that skill name before taking task actions. Always use `read_skill`, never `read_file`, to load SKILL.md or a listed supporting Skill document. The first call returns up to 512 KiB of SKILL.md plus the relative paths of supporting files; load a needed supporting file by calling `read_skill` again with the same name and its relative `file` path. If a Skill document is truncated, do not use `read_file` to bypass the limit. Do not create or rewrite skills unless the user explicitly asks for skill authoring.
 </skills_system>
 """
 
-SKILL_TOOL_NAME = "skill"
-SKILL_TOOL_DESCRIPTION = """Loads the full instructions for a MoviePilot skill by name or id.
+SKILL_TOOL_NAME = "read_skill"
+MOVIEPILOT_API_SKILL_NAME = "moviepilot-api"
+SKILL_TOOL_DESCRIPTION = """Reads a MoviePilot skill by name or id.
 
 Available skills:
+Use the optional `file` argument to load a listed supporting Skill document through this tool.
 {skills_catalog}
 
-Call this tool when the user's task matches one of the available skills. The tool returns the SKILL.md content and metadata so you can follow the skill's instructions. Do not use this for simple tasks that do not need a skill.
+Call this tool when the user's task matches one of the available skills. Without `file`, it returns up to 512 KiB of SKILL.md content, metadata, and every supporting file path relative to the Skill directory. Set `file` to one listed relative path to load that supporting Skill document in the same authorized tool. If the content is truncated, do not use read_file to bypass this limit. Always use this tool instead of read_file for SKILL.md or listed supporting Skill documents. Do not use this for simple tasks that do not need a skill.
 """
 
 
 def _extract_version(skill_md: Path) -> int:
     """从 SKILL.md 文件中快速提取 version 字段，无法提取时返回 0。"""
     try:
-        content = skill_md.read_text(encoding="utf-8", errors="replace")
+        with skill_md.open("rb") as handle:
+            content = handle.read(MAX_SKILL_CONTENT_BYTES).decode("utf-8", errors="replace")
     except Exception as err:
         logger.debug(f"读取技能版本失败: {summarize_error(err)}")
         return 0
@@ -237,9 +229,7 @@ def _sync_bundled_skills(bundled_dir: Path, target_dir: Path) -> None:
             # 目标不存在，直接复制
             try:
                 shutil.copytree(str(skill_src), str(skill_dst))
-                logger.info(
-                    "已自动复制内置技能 '%s' -> '%s'", skill_src.name, skill_dst
-                )
+                logger.info("已自动复制内置技能 '%s' -> '%s'", skill_src.name, skill_dst)
             except Exception as e:
                 logger.warning(
                     "复制内置技能 '%s' 失败: %s",
@@ -285,6 +275,31 @@ class _SkillToolProvider:
     def __init__(self, *, sources: list[str]) -> None:
         """初始化 Skill 工具数据源。"""
         self._sources = sources
+        self._allowed_api_operations: set[str] = set()
+        self._api_scope_declared = False
+
+    @property
+    def api_scope_declared(self) -> bool:
+        """返回当前会话是否加载过声明 API 操作范围的 Skill。"""
+        return self._api_scope_declared
+
+    def reset_api_scope(self) -> None:
+        """在新一轮 Agent 执行前清除上轮 Skill 的 API 操作范围。"""
+        self._allowed_api_operations.clear()
+        self._api_scope_declared = False
+
+    def is_api_operation_allowed(self, operation_id: str) -> bool:
+        """判断 operation ID 是否位于当前已加载 Skill 的联合授权范围。"""
+        return operation_id in self._allowed_api_operations
+
+    async def ensure_api_operation_allowed(self, operation_id: str) -> bool:
+        """在 API 网关首次调用时自动加载内置网关 Skill 并校验操作范围。"""
+        if not operation_id:
+            return False
+        if self.is_api_operation_allowed(operation_id):
+            return True
+        await self.load_skill(MOVIEPILOT_API_SKILL_NAME)
+        return self.is_api_operation_allowed(operation_id)
 
     @staticmethod
     def _normalize_name(value: object) -> str:
@@ -299,10 +314,7 @@ class _SkillToolProvider:
             skill.get("id"),
             skill.get("name"),
         ]
-        return any(
-            cls._normalize_name(candidate) == normalized_query
-            for candidate in candidates
-        )
+        return any(cls._normalize_name(candidate) == normalized_query for candidate in candidates)
 
     async def _find_skill(self, name: str) -> Optional[SkillMetadata]:
         """从中间件配置的 skills 目录中查找指定技能。"""
@@ -321,56 +333,44 @@ class _SkillToolProvider:
 
     @staticmethod
     async def _read_skill_content(skill_path: str) -> tuple[str, bool]:
-        """读取技能文件内容，并在超出上限时返回截断标记。"""
+        """读取最多 512 KiB 技能主体，并报告内容是否截断。"""
         path = AsyncPath(skill_path)
-        stat = await path.stat()
-        truncated = stat.st_size > MAX_SKILL_FILE_SIZE
         async with await path.open("rb") as handle:
-            raw_content = await handle.read(MAX_SKILL_FILE_SIZE)
-        return raw_content.decode("utf-8", errors="replace"), truncated
+            raw_content = await handle.read(MAX_SKILL_CONTENT_BYTES + 1)
+        truncated = len(raw_content) > MAX_SKILL_CONTENT_BYTES
+        bounded_content = raw_content[:MAX_SKILL_CONTENT_BYTES]
+        decode_errors = "ignore" if truncated else "replace"
+        return bounded_content.decode("utf-8", errors=decode_errors), truncated
+
+    @classmethod
+    async def _read_supporting_file(cls, skill_path: str, relative_path: str) -> tuple[str, bool]:
+        """读取 Skill 目录中已列出的辅助文档，避免绕过 Skill 权限边界。"""
+        supporting_files = await cls._list_supporting_files(skill_path)
+        if relative_path not in supporting_files:
+            raise ValueError(f"Skill supporting file is not listed: {relative_path}")
+
+        candidate = AsyncPath(str(Path(skill_path).parent / relative_path))
+        if await candidate.is_symlink() or not await candidate.is_file():
+            raise ValueError(f"Skill supporting file is unavailable: {relative_path}")
+        return await cls._read_skill_content(str(candidate))
 
     @staticmethod
-    def _serialize_skill_payload(payload: dict[str, Any]) -> str:
-        """序列化 Skill 返回值，并严格限制最终进入模型的字符数。"""
-        serialized = json.dumps(payload, ensure_ascii=False, indent=2)
-        if len(serialized) <= MAX_SKILL_RESULT_CHARS:
-            return serialized
+    async def _list_supporting_files(skill_path: str) -> list[str]:
+        """列出技能目录内除 SKILL.md 外的全部普通文件相对路径。"""
+        skill_file = AsyncPath(skill_path)
+        skill_root = skill_file.parent
+        root_path = Path(str(skill_root))
+        supporting_files = []
+        async for path in skill_root.rglob("*", recurse_symlinks=False):
+            if await path.is_symlink() or not await path.is_file():
+                continue
+            relative_path = Path(str(path)).relative_to(root_path).as_posix()
+            if relative_path != "SKILL.md":
+                supporting_files.append(relative_path)
+        return sorted(supporting_files, key=str.casefold)
 
-        original_content = str(payload.get("content") or "")
-        truncated_payload = dict(payload)
-        truncated_payload["truncated"] = True
-        low = 0
-        high = len(original_content)
-        best_result = json.dumps(
-            {
-                **truncated_payload,
-                "content": SKILL_CONTENT_TRUNCATION_SUFFIX.strip(),
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-        while low <= high:
-            middle = (low + high) // 2
-            candidate = json.dumps(
-                {
-                    **truncated_payload,
-                    "content": (
-                        original_content[:middle]
-                        + SKILL_CONTENT_TRUNCATION_SUFFIX
-                    ),
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-            if len(candidate) <= MAX_SKILL_RESULT_CHARS:
-                best_result = candidate
-                low = middle + 1
-            else:
-                high = middle - 1
-        return best_result
-
-    async def load_skill(self, name: str) -> str:
-        """加载指定 Skill 的完整说明并返回 JSON 字符串。"""
+    async def load_skill(self, name: str, file: Optional[str] = None) -> str:
+        """加载指定 Skill 主体或一个已列出的辅助文档并返回 JSON 字符串。"""
         logger.info(f"加载 Skill: name={sanitize_for_host(name)}")
         try:
             skill = await self._find_skill(name)
@@ -383,8 +383,18 @@ class _SkillToolProvider:
                     ensure_ascii=False,
                 )
 
-            content, truncated = await self._read_skill_content(skill["path"])
-            return self._serialize_skill_payload(
+            supporting_files = await self._list_supporting_files(skill["path"])
+            if file is None:
+                content, truncated = await self._read_skill_content(skill["path"])
+                truncation_message = SKILL_CONTENT_TRUNCATION_MESSAGE if truncated else None
+            else:
+                content, truncated = await self._read_supporting_file(skill["path"], file)
+                truncation_message = SUPPORTING_FILE_TRUNCATION_MESSAGE if truncated else None
+            declared_operations = skill.get("allowed_api_operations", [])
+            if declared_operations:
+                self._api_scope_declared = True
+                self._allowed_api_operations.update(declared_operations)
+            return json.dumps(
                 {
                     "success": True,
                     "skill": {
@@ -393,10 +403,17 @@ class _SkillToolProvider:
                         "description": skill.get("description"),
                         "path": skill.get("path"),
                         "allowed_tools": skill.get("allowed_tools", []),
+                        "allowed_api_operations": declared_operations,
                     },
                     "content": content,
+                    "loaded_file": file,
+                    "content_limit_bytes": MAX_SKILL_CONTENT_BYTES,
+                    "supporting_files": supporting_files,
                     "truncated": truncated,
-                }
+                    "truncation_message": truncation_message,
+                },
+                ensure_ascii=False,
+                indent=2,
             )
         except Exception as err:
             error_summary = summarize_error(err)
@@ -414,10 +431,7 @@ def _format_skill_tool_catalog(skills: list[SkillMetadata]) -> str:
     """渲染 Skill 工具描述中的可用技能目录。"""
     if not skills:
         return "(No skills are currently available.)"
-    return "\n".join(
-        f"- {skill['id']}: {skill['name']} - {skill['description']}"
-        for skill in skills
-    )
+    return "\n".join(f"- {skill['id']}: {skill['name']} - {skill['description']}" for skill in skills)
 
 
 class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # noqa
@@ -446,21 +460,21 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
             项目内置技能目录路径。若提供，在首次加载前会将其中不存在于
             sources 首个目录的技能自动复制过去。
         stream_handler : Optional[Any]
-            流式输出处理器，用于记录 skill 工具调用摘要。
+            流式输出处理器，用于记录 read_skill 工具调用摘要。
         """
         self.sources = sources
         self.bundled_skills_dir = bundled_skills_dir
         self.stream_handler = stream_handler
         self.system_prompt_template = SKILLS_SYSTEM_PROMPT
         self._skill_provider = _SkillToolProvider(sources=sources)
+        # read_skill 保持为中间件私有 StructuredTool：不注册到 MoviePilotToolFactory，
+        # 因而不会进入 HTTP/MCP 工具目录，也不会经过 MoviePilotTool 的 64 KiB 结果裁剪。
         self.tools = [
             StructuredTool.from_function(
                 coroutine=self._skill_provider.load_skill,
                 name=SKILL_TOOL_NAME,
                 description=SKILL_TOOL_DESCRIPTION.format(
-                    skills_catalog=_format_skill_tool_catalog(
-                        self._load_skills_metadata()
-                    )
+                    skills_catalog=_format_skill_tool_catalog(self._load_skills_metadata())
                 ),
                 args_schema=SkillToolInput,
                 tags=[ToolTag.Read, ToolTag.Skill],
@@ -487,15 +501,11 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
                 all_skills[skill["name"]] = skill
         return list(all_skills.values())
 
-    def _refresh_skill_tool_description(
-        self, skills: list[SkillMetadata]
-    ) -> None:
-        """刷新 skill 工具描述中的可用技能目录。"""
+    def _refresh_skill_tool_description(self, skills: list[SkillMetadata]) -> None:
+        """刷新 read_skill 工具描述中的可用技能目录。"""
         if not self.tools:
             return
-        self.tools[0].description = SKILL_TOOL_DESCRIPTION.format(
-            skills_catalog=_format_skill_tool_catalog(skills)
-        )
+        self.tools[0].description = SKILL_TOOL_DESCRIPTION.format(skills_catalog=_format_skill_tool_catalog(skills))
 
     @staticmethod
     def _format_skills_list(skills: list[SkillMetadata]) -> str:
@@ -512,6 +522,8 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
             lines.append(desc_line)
             if skill["allowed_tools"]:
                 lines.append(f"  -> Allowed tools: {', '.join(skill['allowed_tools'])}")
+            if skill["allowed_api_operations"]:
+                lines.append(f"  -> Allowed API operations: {', '.join(skill['allowed_api_operations'])}")
 
         return "\n".join(lines)
 
@@ -524,9 +536,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
             skills_list=skills_list,
         )
 
-        new_system_message = append_to_system_message(
-            request.system_message, skills_section
-        )
+        new_system_message = append_to_system_message(request.system_message, skills_section)
 
         return request.override(system_message=new_system_message)
 
@@ -538,6 +548,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         首次加载时，会先将内置技能同步到用户目录（如不存在）。
         """
         self._sync_bundled_skills()
+        self._skill_provider.reset_api_scope()
 
         all_skills: dict[str, SkillMetadata] = {}
 
@@ -558,9 +569,7 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
     async def awrap_model_call(
         self,
         request: ModelRequest[ContextT],
-        handler: Callable[
-            [ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]
-        ],
+        handler: Callable[[ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]],
     ) -> ModelResponse[ResponseT]:
         """在模型调用时注入技能文档。"""
         modified_request = self.modify_request(request)
@@ -571,35 +580,69 @@ class SkillsMiddleware(AgentMiddleware[SkillsState, ContextT, ResponseT]):  # no
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """在 skill 工具执行时记录聚合摘要。"""
+        """在 read_skill 工具执行时输出当前模式对应的执行信息。"""
         tool = request.tool
         tool_name = getattr(tool, "name", None)
-        if tool_name != SKILL_TOOL_NAME:
-            return await handler(request)
-
         tool_call = request.tool_call or {}
         tool_args = tool_call.get("args") or {}
         if not isinstance(tool_args, dict):
             tool_args = {}
+
+        if tool_name == "moviepilot_api":
+            operation_id = str(tool_args.get("operation_id") or "")
+            if not await self._skill_provider.ensure_api_operation_allowed(operation_id):
+                logger.warning(f"Skill API 操作范围拒绝调用: operation={sanitize_for_host(operation_id)}")
+                return ToolMessage(
+                    content=json.dumps(
+                        {
+                            "success": False,
+                            "error": "skill_operation_denied",
+                            "message": (
+                                "当前已加载 Skill 未授权该 MoviePilot API 操作，"
+                                "请先加载声明了该 operation 的领域 Skill。"
+                            ),
+                        },
+                        ensure_ascii=False,
+                    ),
+                    tool_call_id=str(tool_call.get("id") or ""),
+                    name="moviepilot_api",
+                )
+
+        if tool_name != SKILL_TOOL_NAME:
+            return await handler(request)
+
         logged_args = sanitize_for_host(tool_args)
         if not isinstance(logged_args, dict):
             logged_args = {}
-        logger.info(
-            f"开始执行 Skill 工具: name={logged_args.get('name') or '-'}"
-        )
+        logger.info(f"开始执行 Skill 工具: name={logged_args.get('name') or '-'}")
+        tool_call_id = ""
         if self.stream_handler and getattr(self.stream_handler, "is_streaming", False):
-            self.stream_handler.record_tool_call(
+            tool_call_id = self.stream_handler.report_tool_call(
                 tool_name=SKILL_TOOL_NAME,
-                tool_message="Skill loaded",
+                tool_message=f"读取技能说明：{logged_args.get('name') or '-'}",
                 tool_kwargs=tool_args,
             )
         try:
             result = await handler(request)
         except Exception as err:
+            if tool_call_id:
+                finish_tool_call = getattr(self.stream_handler, "tool_call_finished", None)
+                if callable(finish_tool_call):
+                    finish_tool_call(tool_call_id, "error")
             logger.error(f"Skill 工具执行失败: error={summarize_error(err)}")
             raise
+        if tool_call_id:
+            finish_tool_call = getattr(self.stream_handler, "tool_call_finished", None)
+            if callable(finish_tool_call):
+                finish_tool_call(tool_call_id, "done")
         logger.info("Skill 工具执行完成")
         return result
 
 
-__all__ = ["SKILL_TOOL_NAME", "SkillMetadata", "SkillsMiddleware"]
+__all__ = [
+    "MAX_SKILL_CONTENT_BYTES",
+    "MOVIEPILOT_API_SKILL_NAME",
+    "SKILL_TOOL_NAME",
+    "SkillMetadata",
+    "SkillsMiddleware",
+]

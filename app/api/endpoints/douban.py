@@ -3,7 +3,11 @@ from typing import Any, List, Optional, Sequence
 from fastapi import Depends
 
 from app.adapters.web.security.access import verify_token
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.chain.douban import DoubanChain
 from app.domain.context import MediaInfo
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
@@ -59,7 +63,9 @@ async def douban_person_credits(
     response_model=List[_SchemaMediaPerson],
 )
 async def douban_credits(
-    doubanid: str, type_name: str, _: _SchemaTokenPayload = Depends(verify_token)
+    doubanid: str, type_name: str, _: _SchemaTokenPayload = Depends(verify_token),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """
     根据豆瓣ID查询演员阵容，type_name: 电影/电视剧

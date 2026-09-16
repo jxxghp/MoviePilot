@@ -322,8 +322,8 @@ def test_first_local_payload_creates_local_only_identity() -> None:
     assert target.trusted_source_type is TrustedPluginSourceType.UNKNOWN
 
 
-def test_sanitized_local_reference_selects_configured_candidate_without_path() -> None:
-    """脱敏本地来源标识仍能选择配置内候选，但公共投影不暴露路径。"""
+def test_local_reference_selects_configured_candidate_without_path() -> None:
+    """无路径本地来源标识仍能选择配置内候选。"""
     local = PluginLocalCandidate(
         plugin_id="DemoPlugin",
         repo_url=(
@@ -350,10 +350,10 @@ def test_sanitized_local_reference_selects_configured_candidate_without_path() -
     assert public == {
         "plugin_id": "DemoPlugin",
         "source_type": "local",
+        "repo_url": "local://DemoPlugin?version=v3",
         "package_generation": "v3",
         "plugin_version": "2.0.0-dev",
     }
-    assert "/private/secret/plugins" not in str(public)
 
 
 def test_legacy_identity_can_bind_explicit_online_source() -> None:

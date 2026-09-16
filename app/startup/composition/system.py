@@ -35,15 +35,24 @@ from app.application.system import (
     SystemService,
     SystemUpdatePort,
 )
+from app.domain.metainfo import clear_rust_parse_options_cache
 from app.runtime.events import eventmanager
 from app.runtime.state import SystemHelper
 from app.runtime.stop import runtime_stop_state
 from app.schemas.event import ConfigChangeEventData
-from app.schemas.system import SystemUpdateStatus
-from app.schemas.types import EventType
+from app.schemas.system import SystemUpdateStatus, SystemUpdateType
+from app.schemas.types import EventType, SystemConfigKey
 
 _LOG_DOWNLOAD_LIMIT = 10
 _LOG_DOWNLOAD_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_RUST_METAINFO_OPTION_SETTING_KEYS = frozenset({
+    SystemConfigKey.CustomIdentifiers.value,
+    SystemConfigKey.CustomReleaseGroups.value,
+    SystemConfigKey.Customization.value,
+    "RMT_MEDIAEXT",
+    "RMT_SUBEXT",
+    "RMT_AUDIOEXT",
+})
 
 
 class _FileLogAdapter(SystemLogPort):
@@ -112,15 +121,27 @@ class _FileLogAdapter(SystemLogPort):
         async with aiofiles.open(path, mode="r", encoding="utf-8", errors="replace") as file:
             await file.seek(0, 2)
             previous_size = (await asyncio.to_thread(path.stat)).st_size
+            pending = ""
             while not runtime_stop_state.is_system_stopped:
                 if await disconnected():
                     break
                 current_size = (await asyncio.to_thread(path.stat)).st_size
+                if current_size < previous_size:
+                    await file.seek(0)
+                    previous_size = 0
+                    pending = ""
                 if current_size > previous_size:
-                    line = (await file.readline()).strip()
-                    if line:
-                        yield line
+                    pending += await file.read()
                     previous_size = current_size
+                    fragments = pending.splitlines(keepends=True)
+                    if fragments and not fragments[-1].endswith(("\n", "\r")):
+                        pending = fragments.pop()
+                    else:
+                        pending = ""
+                    for fragment in fragments:
+                        line = fragment.strip()
+                        if line:
+                            yield line
                 else:
                     await asyncio.sleep(0.5)
 
@@ -181,10 +202,14 @@ class _ConfigurationEventAdapter(ConfigurationEventPort):
     """把已提交设置变更发布到宿主事件总线。"""
 
     async def publish(self, key: Any, value: Any = None) -> None:
-        """发布兼容 ConfigChanged 事件。"""
-        await eventmanager.async_send_event(
+        """同步失效派生缓存并等待全部配置重载处理器完成。"""
+        payload = ConfigChangeEventData(key=key, value=value, change_type="update")
+        if payload.key.intersection(_RUST_METAINFO_OPTION_SETTING_KEYS):
+            # 必须在写入入口返回前失效缓存，避免下一次识别读取旧配置。
+            clear_rust_parse_options_cache()
+        await eventmanager.async_send_event_strict(
             etype=EventType.ConfigChanged,
-            data=ConfigChangeEventData(key=key, value=value, change_type="update"),
+            data=payload,
         )
 
 
@@ -264,13 +289,13 @@ class _SystemUpdateAdapter(SystemUpdatePort):
         """立即检查更新。"""
         return system_update_manager.check()
 
-    def download(self) -> SystemUpdateStatus:
-        """启动后台下载。"""
-        return system_update_manager.start_download()
+    def download(self, target: SystemUpdateType = "application") -> SystemUpdateStatus:
+        """启动指定升级类型的后台下载。"""
+        return system_update_manager.start_download(target)
 
-    def prepare_install(self) -> tuple[bool, str]:
-        """确认安装准备。"""
-        return system_update_manager.request_install()
+    def prepare_install(self, target: SystemUpdateType = "application") -> tuple[bool, str]:
+        """确认指定升级类型的安装准备。"""
+        return system_update_manager.request_install(target)
 
     def cancel_install(self, message: str) -> None:
         """撤销失败的安装请求。"""

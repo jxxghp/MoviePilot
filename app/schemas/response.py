@@ -4,7 +4,6 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.runtime.localization import LocaleHelper
 
-
 DataT = TypeVar("DataT")
 
 
@@ -26,10 +25,15 @@ class Response(BaseModel, Generic[DataT]):
     @field_validator("message", mode="before")
     @classmethod
     def localize_message(cls, value: Any) -> str:
-        """按当前请求语言直接本地化消息文本，并将空消息归一为空字符串。"""
+        """先移除内部实现术语，再按当前请求语言本地化消息文本。"""
         if value is None:
             return ""
-        message = str(value)
+        raw_message = str(value)
+        if not raw_message.strip():
+            return ""
+        from app.runtime.errors import public_error_message
+
+        message = public_error_message(raw_message)
         if not message:
             return ""
         return LocaleHelper.translate_text(

@@ -1,22 +1,23 @@
+import copy
 import importlib
 import importlib.util
-from pathlib import Path
 import sys
+import uuid
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
-import uuid
 
+import pytest
+import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-import pytest
 from alembic.util import CommandError
 from fastapi import FastAPI
-import sqlalchemy as sa
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     Integer,
-    JSON,
     MetaData,
     String,
     Table,
@@ -27,16 +28,58 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine.url import make_url
 
+from app.application.classification.configuration import (
+    build_default_classification_policy,
+)
+from app.db.models.systemconfig import SystemConfig
+from app.db.oper.systemconfig import SystemConfigOper
+from app.runtime.health import get_application_health
+from app.schemas.category import ClassificationCategory, ClassificationPolicyState
+from app.startup import lifecycle
 from app.startup.composition import database as startup_database
 from app.startup.initializers import database as db_init
-from app.startup import lifecycle
-from app.runtime.health import get_application_health
-from app.db.models.systemconfig import SystemConfig
-
 
 LOCAL_SETUP_PATH = (
     Path(__file__).resolve().parents[1] / "scripts" / "local_setup.py"
 )
+_CLASSIFICATION_CONFIG_KEYS = (
+    "MediaClassificationPolicy",
+    "Directories",
+)
+
+
+@pytest.fixture
+def isolated_classification_config(db):
+    """隔离离线配置用例使用的策略和目录键，并恢复共享测试库快照。"""
+    db.watermark(SystemConfig)
+    snapshots = [
+        (row.id, row.key, copy.deepcopy(row.value))
+        for row in db.session.execute(
+            sa.select(SystemConfig).where(
+                SystemConfig.key.in_(_CLASSIFICATION_CONFIG_KEYS)
+            )
+        ).scalars()
+    ]
+    db.session.execute(
+        sa.delete(SystemConfig).where(
+            SystemConfig.key.in_(_CLASSIFICATION_CONFIG_KEYS)
+        )
+    )
+    db.session.commit()
+    SystemConfigOper().load_snapshot(db.session)
+    try:
+        yield
+    finally:
+        db.session.rollback()
+        db.session.execute(
+            sa.delete(SystemConfig).where(
+                SystemConfig.key.in_(_CLASSIFICATION_CONFIG_KEYS)
+            )
+        )
+        for row_id, key, value in snapshots:
+            db.session.add(SystemConfig(id=row_id, key=key, value=value))
+        db.session.commit()
+        SystemConfigOper().load_snapshot(db.session)
 
 
 def _load_local_setup_module():
@@ -803,3 +846,101 @@ def test_local_setup_apply_config_registers_offline_transaction_runner(
     )
     assert persisted is not None
     assert persisted.value[0]["name"] == "offline-config"
+
+
+def test_local_setup_apply_config_refreshes_stable_category_snapshot(
+    monkeypatch,
+    tmp_path: Path,
+    db,
+    isolated_classification_config,
+) -> None:
+    """离线 apply-config 应按活动策略保存稳定 ID 和当前分类路径快照。"""
+    db.watermark(SystemConfig)
+    policy = build_default_classification_policy()
+    policy.categories.append(
+        ClassificationCategory(
+            id="tv.anime.jp",
+            media_type="电视剧",
+            name="日番",
+            path=["动漫", "日番"],
+        )
+    )
+    db.add(
+        SystemConfig(
+            key="MediaClassificationPolicy",
+            value=ClassificationPolicyState(
+                active=policy.model_copy(update={"revision": 1}),
+            ).model_dump(mode="json"),
+        )
+    )
+    module = _load_local_setup_module()
+    monkeypatch.setattr(db_init, "prepare_database", lambda **_kwargs: None)
+    monkeypatch.setattr(module, "_ensure_superuser_account_inner", lambda: None)
+
+    module._apply_local_system_config_inner(
+        {
+            "directories": [
+                {
+                    "name": "anime",
+                    "download_path": str(tmp_path / "downloads"),
+                    "media_type": "tv",
+                    "media_category_id": "tv.anime.jp",
+                    "media_category": "旧动漫/日番",
+                }
+            ]
+        }
+    )
+
+    persisted = SystemConfig.get_by_key(db.session, "Directories")
+    assert persisted is not None
+    assert persisted.value[0]["media_type"] == "电视剧"
+    assert persisted.value[0]["media_category_id"] == "tv.anime.jp"
+    assert persisted.value[0]["media_category"] == "动漫/日番"
+
+
+def test_local_setup_apply_config_rejects_invalid_stable_category_without_overwrite(
+    monkeypatch,
+    tmp_path: Path,
+    db,
+    isolated_classification_config,
+) -> None:
+    """离线目录分类 ID 无效时不得覆盖已持久化的目录配置。"""
+    db.watermark(SystemConfig)
+    policy = build_default_classification_policy().model_copy(
+        update={"revision": 1}
+    )
+    db.add(
+        SystemConfig(
+            key="MediaClassificationPolicy",
+            value=ClassificationPolicyState(active=policy).model_dump(mode="json"),
+        )
+    )
+    db.add(
+        SystemConfig(
+            key="Directories",
+            value=[{"name": "existing", "download_path": "/existing"}],
+        )
+    )
+    module = _load_local_setup_module()
+    monkeypatch.setattr(db_init, "prepare_database", lambda **_kwargs: None)
+    monkeypatch.setattr(module, "_ensure_superuser_account_inner", lambda: None)
+
+    with pytest.raises(ValueError, match="分类 ID 无效"):
+        module._apply_local_system_config_inner(
+            {
+                "directories": [
+                    {
+                        "name": "invalid",
+                        "download_path": str(tmp_path / "downloads"),
+                        "media_type": "tv",
+                        "media_category_id": "tv.deleted",
+                    }
+                ]
+            }
+        )
+
+    persisted = SystemConfig.get_by_key(db.session, "Directories")
+    assert persisted is not None
+    assert persisted.value == [
+        {"name": "existing", "download_path": "/existing"}
+    ]

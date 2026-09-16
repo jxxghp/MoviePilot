@@ -1,11 +1,16 @@
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app import schemas
+from app.api.endpoints import media as media_endpoint
 from app.api.endpoints import mediaserver as mediaserver_endpoint
 from app.api.response import ResponseAPIRouter
 from app.domain.context import MediaInfo as CoreMediaInfo
+from app.domain.context import MusicArtistInfo as CoreMusicArtistInfo
+from app.domain.context import MusicInfo as CoreMusicInfo
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -55,6 +60,68 @@ async def test_media_search_response_preserves_core_collection_fields() -> None:
     assert "douban_info" in result
     assert "bangumi_info" in result
     assert "anilist_info" in result
+
+
+@pytest.mark.asyncio
+async def test_media_search_response_preserves_music_artist_result_shape() -> None:
+    """统一搜索响应应把 MusicBrainz 艺术家解析为艺术家模型而非普通音乐条目。"""
+    artist = CoreMusicArtistInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="artist-1",
+        name="示例艺术家",
+        artist_type="Person",
+    )
+    router = ResponseAPIRouter()
+
+    @router.get("/media/search", response_model=schemas.MediaSearchResults)
+    def search_media() -> list[dict]:
+        """返回代表性的 MusicBrainz 艺术家搜索结果。"""
+        return [artist.to_dict()]
+
+    app = FastAPI()
+    app.include_router(router)
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/media/search")
+
+    assert response.status_code == 200
+    result = response.json()["data"][0]
+    assert result["music_type"] == "artist"
+    assert result["media_source"] == MediaSource.MusicBrainz.value
+    assert result["artist_type"] == "Person"
+
+
+@pytest.mark.asyncio
+async def test_media_search_response_keeps_legacy_music_artist_shape() -> None:
+    """显式音乐艺术家选择的旧 MusicInfo 结果仍应保持音乐条目兼容字段。"""
+    music = CoreMusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="artist-1",
+        music_type="artist",
+        title="兼容艺术家",
+    )
+    router = ResponseAPIRouter()
+
+    @router.get("/media/search", response_model=schemas.MediaSearchResults)
+    def search_media() -> list[dict]:
+        """返回显式音乐实体选择的旧艺术家结果。"""
+        return [music.to_dict()]
+
+    app = FastAPI()
+    app.include_router(router)
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/media/search")
+
+    assert response.status_code == 200
+    result = response.json()["data"][0]
+    assert result["music_type"] == "artist"
+    assert result["title"] == "兼容艺术家"
+    assert "name" not in result
 
 
 @pytest.mark.asyncio
@@ -122,6 +189,43 @@ async def test_douban_media_response_filters_unknown_season_years() -> None:
 
 
 @pytest.mark.asyncio
+async def test_media_detail_response_accepts_music_numeric_year(monkeypatch) -> None:
+    """通用详情接口应按音乐模型序列化 MusicBrainz 的整数年份。"""
+    media_id = "b79e2ffd-7e44-4dbf-91f9-167c05d1fc91"
+    music = CoreMusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id=media_id,
+        title="示例单曲",
+        artists=["示例歌手"],
+        album="示例专辑",
+        year=2004,
+    )
+    media_chain = Mock()
+    media_chain.async_recognize_media = AsyncMock(return_value=music)
+    media_chain.async_obtain_images = AsyncMock(return_value=None)
+    monkeypatch.setattr(media_endpoint, "MediaChain", Mock(return_value=media_chain))
+
+    app = FastAPI()
+    app.dependency_overrides[media_endpoint.verify_token] = lambda: None
+    app.include_router(media_endpoint.router, prefix="/api/v1/media")
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(
+            f"/api/v1/media/{media_id}",
+            params={"media_source": "musicbrainz", "type_name": "音乐"},
+        )
+
+    assert response.status_code == 200
+    result = response.json()["data"]
+    assert result["type"] == MediaType.MUSIC.value
+    assert result["music_type"] == "recording"
+    assert result["artists"] == ["示例歌手"]
+    assert result["year"] == 2004
+
+
+@pytest.mark.asyncio
 async def test_media_response_accepts_legacy_source_key() -> None:
     """媒体身份重构前缓存的旧格式条目（source + media_id）应被归一化并正常响应。"""
     router = ResponseAPIRouter()
@@ -178,3 +282,32 @@ async def test_media_exists_not_found_is_a_successful_query() -> None:
 
     assert response.success is True
     assert response.data == {"item": {}}
+
+
+@pytest.mark.asyncio
+async def test_media_exists_normalizes_chinese_season_suffix_before_query() -> None:
+    """豆瓣标题带第 x 季时，应拆成基础标题和季号再查询媒体库。"""
+    service = Mock()
+    service.find_item_id = AsyncMock(return_value="tv-item-2")
+
+    response = await mediaserver_endpoint.exists_local(
+        title="跨来源剧集第二季",
+        year="2023",
+        mtype="电视剧",
+        media_source=MediaSource.Douban,
+        media_id="douban-tv-2",
+        season=None,
+        service=service,
+        _=None,
+    )
+
+    assert response.success is True
+    assert response.data == {"item": {"id": "tv-item-2"}}
+    service.find_item_id.assert_awaited_once_with(
+        title="跨来源剧集",
+        year="2023",
+        mtype="电视剧",
+        media_source=MediaSource.Douban,
+        media_id="douban-tv-2",
+        season=2,
+    )

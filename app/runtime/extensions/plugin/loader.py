@@ -268,11 +268,37 @@ class PluginLoader:
         if spec and getattr(spec, "name", None) == source_name:
             spec.name = instance_name
         for value in vars(module).values():
-            if getattr(value, "__module__", None) == source_name:
-                try:
-                    value.__module__ = instance_name
-                except (AttributeError, TypeError):
-                    continue
+            if getattr(value, "__module__", None) != source_name:
+                continue
+            try:
+                value.__module__ = instance_name
+            except (AttributeError, TypeError):
+                continue
+            if isinstance(value, type):
+                PluginLoader._retarget_member_identity(
+                    value, source_name, instance_name
+                )
+
+    @staticmethod
+    def _retarget_member_identity(
+        owner: type,
+        source_name: str,
+        instance_name: str,
+    ) -> None:
+        """把类体内定义的函数一并改到实例模块名下。
+
+        事件处理器的注册键取自函数所在模块名，而类体内的函数是类的属性、不是模块
+        的属性，只遍历模块顶层碰不到它们。漏改会让实例与源插件本体注册到同一个
+        handler 键上：后注册的覆盖先注册的，实例收不到事件，停本体会把实例一起停掉。
+        """
+        for member in vars(owner).values():
+            target = getattr(member, "__func__", member)
+            if getattr(target, "__module__", None) != source_name:
+                continue
+            try:
+                target.__module__ = instance_name
+            except (AttributeError, TypeError):
+                continue
 
     @staticmethod
     def _adapt_instance_class(candidate: Any, instance: PluginInstance) -> None:

@@ -28,7 +28,6 @@ dependencies = [
     "dateparser~=1.4.0",
     "ddgs~=9.14.4",
     "discord.py==2.7.1",
-    "docker~=7.1.0",
     "fast-bencode~=1.1.8",
     "fastapi~=0.141.1",
     "google-genai~=2.8.0",
@@ -46,7 +45,7 @@ dependencies = [
     "langgraph~=1.2.11",
     "langgraph-checkpoint~=4.2.0",
     "lark-oapi~=1.6.8",
-    "moviepilot-rust~=0.3.3",
+    "moviepilot-rust~=0.3.5",
     "mutagen~=1.47.0",
     "openai~=2.41.1",
     "orjson==3.12.0",
@@ -102,6 +101,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "cython~=3.2.5",
+    "docker~=7.1.0",
     "mypy~=1.18.2",
     "pylint~=4.0.6",
     "pytest~=9.0.3",

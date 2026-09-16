@@ -5,9 +5,9 @@ from typing import Any
 
 from . import _identity  # noqa: F401  注册全局媒体身份写入不变量
 
-
 _MODEL_EXPORTS = {
     "AgentChat": ("app.db.models.agentchat", "AgentChat"),
+    "AgentInvocation": ("app.db.models.agentinvocation", "AgentInvocation"),
     "AgentTask": ("app.db.models.agenttask", "AgentTask"),
     "AgentTaskRun": ("app.db.models.agenttaskrun", "AgentTaskRun"),
     "DownloadFailure": ("app.db.models.downloadfailure", "DownloadFailure"),
@@ -22,6 +22,10 @@ _MODEL_EXPORTS = {
         "app.db.models.plugininstallation",
         "PluginInstallation",
     ),
+    "PluginInstance": (
+        "app.db.models.plugininstance",
+        "PluginInstance",
+    ),
     "PluginIdentity": (
         "app.db.models.pluginidentity",
         "PluginIdentity",
@@ -34,6 +38,18 @@ _MODEL_EXPORTS = {
     "SubscribeHistory": (
         "app.db.models.subscribehistory",
         "SubscribeHistory",
+    ),
+    "SubscriptionSearchBatch": (
+        "app.db.models.subscriptionsearch",
+        "SubscriptionSearchBatch",
+    ),
+    "SubscriptionSearchTask": (
+        "app.db.models.subscriptionsearch",
+        "SubscriptionSearchTask",
+    ),
+    "SubscriptionSiteBudget": (
+        "app.db.models.subscriptionsearch",
+        "SubscriptionSiteBudget",
     ),
     "SystemConfig": ("app.db.models.systemconfig", "SystemConfig"),
     "TransferHistory": ("app.db.models.transferhistory", "TransferHistory"),

@@ -42,7 +42,8 @@ def _route_contract(route: APIRoute) -> tuple[Any, ...]:
             (
                 dependency.dependency,
                 dependency.use_cache,
-                tuple(dependency.scopes or ()),
+                tuple(getattr(dependency, "scopes", ()) or ()),
+                getattr(dependency, "scope", None),
             )
             for dependency in route.dependencies
         ),
@@ -159,6 +160,15 @@ def test_compatibility_api_router_keeps_public_contract():
         )
     }
     assert expected_paths <= paths
+
+
+def test_split_endpoint_routes_are_flattened_into_parent_routers():
+    """拆分端点合并后父路由只应暴露可执行路由，避免测试和工具遇到包装节点。"""
+    from app.api.endpoints import plugin, subscribe, system
+
+    for endpoint in (plugin, subscribe, system):
+        assert endpoint.router.routes
+        assert all(isinstance(route, APIRoute) for route in endpoint.router.routes)
 
 
 def test_init_routers_accepts_composition_root_api_prefix():

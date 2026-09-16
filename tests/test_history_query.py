@@ -4,7 +4,9 @@ from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock
 
 import pytest
+from starlette.responses import Response
 
+from app.api.endpoints.history import download_history
 from app.application.history import HistoryQueryService
 from app.schemas.history import DownloadHistory, TransferHistory
 
@@ -39,6 +41,29 @@ async def test_list_download_returns_schema_dtos() -> None:
     assert records == [DownloadHistory(id=7, title="Movie")]
     assert records[0] is not raw_record
     download_repository.async_list_by_page.assert_awaited_once_with(2, 10)
+
+
+@pytest.mark.asyncio
+async def test_download_history_reports_exact_total_without_changing_list() -> None:
+    """下载历史 API 应通过响应头报告精确总数并保持原列表返回。"""
+    service, download_repository, _ = _make_service()
+    download_repository.async_list_by_page.return_value = [
+        SimpleNamespace(id=7, title="Movie")
+    ]
+    download_repository.async_count.return_value = 12
+    response = Response()
+
+    records = await download_history(
+        page=2,
+        count=10,
+        query=service,
+        _=SimpleNamespace(),
+        response=response,
+    )
+
+    assert records == [DownloadHistory(id=7, title="Movie")]
+    assert response.headers["X-Total-Count"] == "12"
+    download_repository.async_count.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio

@@ -9,19 +9,18 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import urlparse
 
+from app.application.classification.contract import ClassificationPolicyStateCorruptError
 from app.application.configuration import RuntimeSettingsService, SystemConfigService
 from app.runtime.scheduling import TimerUtils
 from app.schemas.common import JsonData
 from app.schemas.exception import PluginMutationRejectedError
-from app.schemas.system import SystemUpdateStatus
+from app.schemas.system import SystemUpdateStatus, SystemUpdateType
 from app.schemas.types import SystemConfigKey
 
 if TYPE_CHECKING:
     from app.application.rules import AsyncRuleGroupMutationService
 
-PLUGIN_MARKET_WIKI_URL = (
-    "https://raw.githubusercontent.com/jxxghp/MoviePilot-Wiki/main/plugin.md"
-)
+PLUGIN_MARKET_WIKI_URL = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Wiki/main/plugin.md"
 _DATABASE_BACKUP_SETTING_KEYS = {
     "DB_BACKUP_ENABLE",
     "DB_BACKUP_CRON",
@@ -94,7 +93,7 @@ class ConfigurationEventPort(Protocol):
     """发布系统配置变更事实的端口。"""
 
     async def publish(self, key: Any, value: JsonData = None) -> None:
-        """发布一个已经持久化完成的配置变更。"""
+        """发布已持久化的配置变更，并在返回前完成同步重载处理器。"""
         ...
 
 
@@ -153,12 +152,12 @@ class SystemUpdatePort(Protocol):
         """立即检查正式版本更新。"""
         ...
 
-    def download(self) -> SystemUpdateStatus:
-        """启动后台下载并返回当前状态。"""
+    def download(self, target: SystemUpdateType = "application") -> SystemUpdateStatus:
+        """启动指定升级类型的后台下载并返回当前状态。"""
         ...
 
-    def prepare_install(self) -> tuple[bool, str]:
-        """确认消费已校验更新包。"""
+    def prepare_install(self, target: SystemUpdateType = "application") -> tuple[bool, str]:
+        """确认消费指定升级类型的已校验制品。"""
         ...
 
     def cancel_install(self, message: str) -> None:
@@ -209,6 +208,14 @@ class SystemService:
         self._plugin_mutation = plugin_mutation
         self._rule_group_mutation = rule_group_mutation
 
+    async def publish_config_changed(
+        self,
+        key: Any,
+        value: JsonData = None,
+    ) -> None:
+        """发布一项已经持久化完成的系统配置变更。"""
+        await self._events.publish(key, value)
+
     async def read_log(self, logfile: str) -> str:
         """读取日志并按旧接口语义倒序返回。"""
         text = await self._logs.read(logfile)
@@ -228,7 +235,7 @@ class SystemService:
         return await self._logs.collect(name)
 
     async def update_environment(self, env: dict[str, Any]) -> SystemOperationResult:
-        """校验并原子执行一批可变部署设置更新。"""
+        """校验并执行一批可变部署设置更新。"""
         validation_error = self._llm.validate(env, self.settings)
         if validation_error:
             return SystemOperationResult(False, validation_error)
@@ -239,6 +246,9 @@ class SystemService:
         success_updates = {key: value for key, value in result.items() if value[0]}
         failed_updates = {key: value for key, value in result.items() if value[0] is False}
         if failed_updates:
+            if success_updates:
+                # update_many 已经逐项提交，部分失败不能吞掉已成功配置的实时重载。
+                await self._events.publish(success_updates.keys())
             return SystemOperationResult(
                 False,
                 ", ".join(value[1] for value in failed_updates.values()),
@@ -261,9 +271,7 @@ class SystemService:
         if fetched.status_code is None:
             return SystemOperationResult(False, "无法访问 Wiki 插件仓库清单")
         if fetched.status_code != 200:
-            return SystemOperationResult(
-                False, f"访问 Wiki 插件仓库清单失败，状态码：{fetched.status_code}"
-            )
+            return SystemOperationResult(False, f"访问 Wiki 插件仓库清单失败，状态码：{fetched.status_code}")
         if not fetched.repos:
             return SystemOperationResult(False, "未在 Wiki 中识别到插件仓库地址")
         local_repos = self._split_repos(self.settings.get("PLUGIN_MARKET", ""))
@@ -314,12 +322,26 @@ class SystemService:
                     event_value = definitions
                     success = True
                 else:
-                    success = await self._system_config.async_set(key, value)
+                    write_result = (
+                        await self._system_config.async_set_with_normalized_value(
+                            key,
+                            value,
+                        )
+                    )
+                    success = write_result.changed
+                    event_value = write_result.normalized_value
                 if success:
                     await self._events.publish(key, event_value)
                 # None 表示值未变化，仍是成功完成；只有明确 False 才代表持久化失败。
-                return SystemOperationResult(success is not False)
-        except PluginMutationRejectedError as error:
+                return SystemOperationResult(
+                    success is not False,
+                    data=event_value if key == SystemConfigKey.Directories.value else None,
+                )
+        except (
+            ClassificationPolicyStateCorruptError,
+            PluginMutationRejectedError,
+            ValueError,
+        ) as error:
             return SystemOperationResult(False, str(error))
 
     async def user_global(self) -> dict[str, Any]:
@@ -348,9 +370,7 @@ class SystemService:
     def upgrade(self, mode: str | None) -> SystemOperationResult:
         """仅保留兼容的开发分支更新入口。"""
         if str(mode or "").strip().lower() != "dev":
-            return SystemOperationResult(
-                False, "Release 更新请使用 /system/update/check、download 和 install 接口"
-            )
+            return SystemOperationResult(False, "Release 更新请使用 /system/update/check、download 和 install 接口")
         if not self._control.can_restart():
             return SystemOperationResult(False, "当前运行环境不支持升级操作！")
         success, message = self._control.upgrade_dev()
@@ -364,18 +384,18 @@ class SystemService:
         """立即检查正式版本更新。"""
         return self._updates.check()
 
-    def download_update(self) -> SystemOperationResult:
-        """校验环境并启动后台更新下载。"""
+    def download_update(self, target: SystemUpdateType = "application") -> SystemOperationResult:
+        """校验环境并启动指定升级类型的后台下载。"""
         if not self._control.can_restart():
             return SystemOperationResult(False, "当前运行环境不支持升级操作！")
-        status = self._updates.download()
+        status = self._updates.download(target)
         return SystemOperationResult(status.state != "failed", status.error, status)
 
-    def install_update(self) -> SystemOperationResult:
-        """确认更新包并在重启失败时回滚安装请求。"""
+    def install_update(self, target: SystemUpdateType = "application") -> SystemOperationResult:
+        """确认指定制品并安排 Docker worker 在受管重启前完成替换。"""
         if not self._control.can_restart():
             return SystemOperationResult(False, "当前运行环境不支持升级操作！")
-        prepared, message = self._updates.prepare_install()
+        prepared, message = self._updates.prepare_install(target)
         if not prepared:
             return SystemOperationResult(False, message)
         success, restart_message = self._control.restart()
@@ -391,9 +411,7 @@ class SystemService:
         cron = str(env.get("DB_BACKUP_CRON", self.settings.get("DB_BACKUP_CRON")) or "").strip()
         if cron:
             try:
-                TimerUtils.normalize_schedule_trigger(
-                    "cron", cron, self.settings.get("TZ")
-                )
+                TimerUtils.normalize_schedule_trigger("cron", cron, self.settings.get("TZ"))
             except (TypeError, ValueError):
                 return "数据库备份周期格式不正确"
         backup_path = env.get("DB_BACKUP_PATH", self.settings.get("DB_BACKUP_PATH"))

@@ -8,6 +8,10 @@ from app.agent.contracts import ReplyMode
 from app.agent.manager import AgentManager
 from app.agent.memory import memory_manager
 from app.agent.middleware.activity import QUERY_ACTIVITY_LOG_TOOL_NAME
+from app.agent.middleware.invocation import GET_TOOL_EXECUTION_NAME, InvocationMiddleware
+from app.agent.middleware.output import READ_TOOL_RESULT_NAME, ToolOutputMiddleware
+from app.agent.middleware.plan import PLAN_TOOL_NAME, PlanMiddleware
+from app.agent.middleware.selection import TOOL_DISCOVERY_NAME, ToolSelectorMiddleware
 from app.agent.middleware.skills import SKILL_TOOL_NAME
 from app.agent.middleware.subagents import (
     SUBAGENT_CONTROL_TOOL_NAME,
@@ -80,29 +84,45 @@ def _fake_activity_log_middleware(tool=None):
     return SimpleNamespace(name="activity", tools=[] if tool is None else [tool])
 
 
+def _capture_tool_selector(captured, **kwargs):
+    """保留真实发现工具与筛选合同，只替换无需执行的测试模型实例。"""
+    selector_options = {**kwargs, "model": None}
+    selector = ToolSelectorMiddleware(**selector_options)
+    selector.model = kwargs["model"]
+    captured.update(
+        selector=selector,
+        selection_tools=selector.selection_tools,
+        always_include=selector.always_include,
+        enable_discovery=kwargs["enable_discovery"],
+    )
+    return selector
+
+
+def _assert_internal_tool_registration(created, captured):
+    """核实内部计划、续读和发现工具的目录身份、常驻筛选及外层顺序。"""
+    middlewares = created["middleware"]
+    plan = next(item for item in middlewares if isinstance(item, PlanMiddleware))
+    output = next(item for item in middlewares if isinstance(item, ToolOutputMiddleware))
+    selector = captured["selector"]
+    policy = middlewares[0]
+    assert policy.name == "AgentPolicyMiddleware"
+    assert middlewares[1] is output
+    assert not any(isinstance(item, InvocationMiddleware) for item in middlewares)
+    assert policy.catalog.resolve_unique(GET_TOOL_EXECUTION_NAME) is None
+    assert captured["enable_discovery"] is True
+    assert {PLAN_TOOL_NAME, READ_TOOL_RESULT_NAME, TOOL_DISCOVERY_NAME} <= set(selector.always_include)
+    for tool in [*plan.tools, *output.tools, *selector.tools]:
+        assert policy.catalog.resolve_unique(tool.name).tool is tool
+        assert tool in selector.selection_tools
+    assert middlewares.index(plan) < middlewares.index(selector)
+    assert middlewares.index(selector) == len(middlewares) - 4
+    assert middlewares[-3].name == "FinalRequestCompactionMiddleware"
+    assert middlewares[-2].name == "VisionMiddleware"
+    assert middlewares[-1] == "usage"
+
+
 class TestAgentBackgroundOutput:
-    async def test_background_non_streaming_does_not_send_by_default(self):
-        agent = MoviePilotAgent(session_id="bg-test", user_id="system")
-        agent.channel = None
-        agent.source = None
-        agent.reply_mode = ReplyMode.CAPTURE_ONLY
-        agent._tool_context = {"user_reply_sent": False}
-        agent._streamed_output = ""
-        agent.stream_handler = SimpleNamespace(
-            stop_streaming=AsyncMock(return_value=(False, ""))
-        )
-        agent._should_stream = lambda: False
-        agent._create_agent = AsyncMock(
-            return_value=_FakeAgent([AIMessage(content="后台结果")])
-        )
-        agent.send_agent_message = AsyncMock()
-
-        with patch.object(memory_manager, "save_agent_messages") as save_messages:
-            await agent._execute_agent([])
-
-        agent.send_agent_message.assert_not_awaited()
-        save_messages.assert_not_called()
-        assert agent._streamed_output == "后台结果"
+    """验证后台任务的回复策略、流式结束行为和工具装配。"""
 
     async def test_non_streaming_image_unsupported_error_sends_friendly_notice(self):
         agent = MoviePilotAgent(session_id="image-test", user_id="user-1")
@@ -200,15 +220,11 @@ class TestAgentBackgroundOutput:
 
         result, _ = await agent._execute_agent([HumanMessage(content="测试超时")])
 
-        expected = (
-            "智能助手执行失败: No streaming chunk received for 120.0s "
-            "(model=mimo-v2.5-pro, chunks_received=1)."
-        )
+        expected = "智能助手执行失败，请稍后重试"
         assert result == expected
         agent.send_agent_message.assert_awaited_once_with(expected, title="")
         sent_message = agent.send_agent_message.await_args.args[0]
-        assert "No streaming chunk received for 120.0s" in sent_message
-        assert "Tune or disable" not in sent_message
+        assert "No streaming chunk received for 120.0s" not in sent_message
         assert agent._streamed_output == expected
 
     async def test_streaming_success_stops_streaming_once(self):
@@ -326,6 +342,7 @@ class TestAgentBackgroundOutput:
         assert agent._streamed_output == "后台结果"
 
     async def test_background_non_streaming_captures_without_sending_when_capture_only(self):
+        """显式捕获模式保留最终结果，但不发送消息或保存渠道历史。"""
         agent = MoviePilotAgent(session_id="bg-test", user_id="system")
         agent.channel = None
         agent.source = None
@@ -405,6 +422,7 @@ class TestAgentBackgroundOutput:
         )
 
     async def test_create_agent_excludes_activity_log_for_heartbeat_session(self):
+        """心跳任务保留计划上下文，但不注入渠道活动日志。"""
         agent = MoviePilotAgent(
             session_id=f"{HEARTBEAT_SESSION_PREFIX}test__",
             user_id="system",
@@ -441,18 +459,21 @@ class TestAgentBackgroundOutput:
             created = await agent._create_agent(streaming=False)
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
-                "AgentPolicyMiddleware",
-                "skills",
-                "jobs",
-                "runtime",
-                "memory",
-                "patch",
-                "FinalRequestCompactionMiddleware",
-                "usage",
+            "AgentPolicyMiddleware",
+            "ToolOutputMiddleware",
+            "skills",
+            "jobs",
+            "runtime",
+            "PlanMiddleware",
+            "memory",
+            "patch",
+            "FinalRequestCompactionMiddleware",
+            "VisionMiddleware",
+            "usage",
         ]
 
     async def test_create_agent_registers_skill_tool_from_middleware(self):
-        """SkillsMiddleware 暴露的 skill 工具应进入 Agent 工具和筛选候选。"""
+        """SkillsMiddleware 暴露的 read_skill 应进入 Agent 工具和筛选候选。"""
         captured = {}
         skill_tool = SimpleNamespace(name=SKILL_TOOL_NAME)
         agent = MoviePilotAgent(session_id="normal-session", user_id="system")
@@ -460,9 +481,8 @@ class TestAgentBackgroundOutput:
         agent._initialize_subagent_tools = lambda: []
 
         def _tool_selector(**kwargs):
-            captured["selection_tools"] = kwargs["selection_tools"]
-            captured["always_include"] = kwargs["always_include"]
-            return "selector"
+            """记录技能能力进入真实筛选目录后的参数。"""
+            return _capture_tool_selector(captured, **kwargs)
 
         with (
             patch.object(settings, "LLM_MAX_TOOLS", 5),
@@ -505,6 +525,7 @@ class TestAgentBackgroundOutput:
         assert skill_tool in created["tools"]
         assert skill_tool in captured["selection_tools"]
         assert SKILL_TOOL_NAME in captured["always_include"]
+        _assert_internal_tool_registration(created, captured)
 
     async def test_create_agent_excludes_activity_log_without_message_context(self):
         """无渠道信息的后台捕获任务不应注入活动日志。"""
@@ -554,14 +575,17 @@ class TestAgentBackgroundOutput:
             created = await agent._create_agent(streaming=False)
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
-                "AgentPolicyMiddleware",
-                "skills",
-                "jobs",
-                "runtime",
-                "memory",
-                "patch",
-                "FinalRequestCompactionMiddleware",
-                "usage",
+            "AgentPolicyMiddleware",
+            "ToolOutputMiddleware",
+            "skills",
+            "jobs",
+            "runtime",
+            "PlanMiddleware",
+            "memory",
+            "patch",
+            "FinalRequestCompactionMiddleware",
+            "VisionMiddleware",
+            "usage",
         ]
 
     def test_message_tool_is_not_always_included_by_tool_selector(self):
@@ -598,9 +622,8 @@ class TestAgentBackgroundOutput:
         agent._initialize_subagent_tools = lambda: []
 
         def _tool_selector(**kwargs):
-            captured["selection_tools"] = kwargs["selection_tools"]
-            captured["always_include"] = kwargs["always_include"]
-            return "selector"
+            """记录活动日志能力进入真实筛选目录后的参数。"""
+            return _capture_tool_selector(captured, **kwargs)
 
         with (
             patch.object(settings, "LLM_MAX_TOOLS", 5),
@@ -645,6 +668,7 @@ class TestAgentBackgroundOutput:
         assert activity_tool in created["tools"]
         assert activity_tool in captured["selection_tools"]
         assert QUERY_ACTIVITY_LOG_TOOL_NAME in captured["always_include"]
+        _assert_internal_tool_registration(created, captured)
 
     async def test_create_agent_always_includes_subagent_tools(self):
         """工具筛选开启时应保留同步和异步子代理入口。"""
@@ -654,8 +678,8 @@ class TestAgentBackgroundOutput:
         agent._initialize_subagent_tools = lambda: []
 
         def _tool_selector(**kwargs):
-            captured["always_include"] = kwargs["always_include"]
-            return "selector"
+            """记录子代理能力进入真实筛选目录后的参数。"""
+            return _capture_tool_selector(captured, **kwargs)
 
         with (
             patch.object(settings, "LLM_MAX_TOOLS", 5),
@@ -702,12 +726,14 @@ class TestAgentBackgroundOutput:
             patch("app.agent.orchestrator.InMemorySaver", return_value="checkpointer"),
             patch("app.agent.orchestrator.create_agent", side_effect=lambda **kwargs: kwargs),
         ):
-            await agent._create_agent(streaming=False)
+            created = await agent._create_agent(streaming=False)
 
         assert SUBAGENT_TASK_TOOL_NAME in captured["always_include"]
         assert SUBAGENT_CONTROL_TOOL_NAME in captured["always_include"]
+        _assert_internal_tool_registration(created, captured)
 
     async def test_create_agent_keeps_activity_log_for_normal_session(self):
+        """普通渠道会话在计划和记忆上下文后保留活动日志。"""
         agent = MoviePilotAgent(
             session_id="normal-session",
             user_id="system",
@@ -755,15 +781,18 @@ class TestAgentBackgroundOutput:
             created = await agent._create_agent(streaming=False)
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
-                "AgentPolicyMiddleware",
-                "skills",
-                "jobs",
-                "runtime",
-                "memory",
-                "activity",
-                "patch",
-                "FinalRequestCompactionMiddleware",
-                "usage",
+            "AgentPolicyMiddleware",
+            "ToolOutputMiddleware",
+            "skills",
+            "jobs",
+            "runtime",
+            "PlanMiddleware",
+            "memory",
+            "activity",
+            "patch",
+            "FinalRequestCompactionMiddleware",
+            "VisionMiddleware",
+            "usage",
         ]
 
     async def test_run_background_prompt_forces_disable_message_tools_when_capture_only(self):

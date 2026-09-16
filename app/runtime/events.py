@@ -7,7 +7,7 @@ import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass
 from queue import Empty, PriorityQueue
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, Union
 
 from app.foundation.singleton import Singleton
 from app.runtime.correlation import get_correlation_id
@@ -123,22 +123,22 @@ class EventManager(metaclass=Singleton):
     EventManager 负责管理和调度广播事件和链式事件，包括订阅、发送和处理事件
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化订阅表、处理队列、解析器和消费者状态。"""
         # 动态线程池，用于消费事件
         self.__executor = ThreadHelper()
         # 用于保存启动的事件消费者线程
-        self.__consumer_threads = []
+        self.__consumer_threads: List[threading.Thread] = []
         # 优先级队列
-        self.__event_queue = PriorityQueue()
+        self.__event_queue: PriorityQueue[Any] = PriorityQueue()
         # 广播事件的订阅者
         self.__broadcast_subscribers: Dict[EventType, Dict[str, Callable]] = {}
         # 链式事件的订阅者
         self.__chain_subscribers: Dict[ChainEventType, Dict[str, tuple[int, Callable]]] = {}
         # 禁用的事件处理器集合
-        self.__disabled_handlers = set()
+        self.__disabled_handlers: Set[str] = set()
         # 禁用的事件处理器类集合
-        self.__disabled_classes = set()
+        self.__disabled_classes: Set[str] = set()
         # 线程锁
         self.__lock = threading.Lock()
         # 退出事件
@@ -560,6 +560,20 @@ class EventManager(metaclass=Singleton):
             event,
             self.__wait_strict_async_handler,
         )
+        return event
+
+    async def async_send_event_strict(
+        self,
+        etype: EventType,
+        data: Optional[Union[dict[str, object], ChainEventData]] = None,
+        priority: Optional[int] = DEFAULT_EVENT_PRIORITY,
+    ) -> Event:
+        """异步发送广播事件并等待全部处理器完成，保证配置写入返回时已完成重载。"""
+        event = Event(etype, data, priority)
+        with self.__lifecycle_lock:
+            if self.__lifecycle_state != "running":
+                raise RuntimeError(f"事件处理处于 {self.__lifecycle_state} 状态")
+        await self.__dispatcher.dispatch_broadcast_async_strict(event)
         return event
 
     @staticmethod

@@ -17,6 +17,7 @@ class UserConfigOper(DbOper, metaclass=Singleton):
     """
     用户配置管理
     """
+
     def __init__(self) -> None:
         """初始化空快照，数据库加载由启动组合根显式执行。"""
         super().__init__()

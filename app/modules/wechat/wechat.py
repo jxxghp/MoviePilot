@@ -559,13 +559,13 @@ class WeChat:
                 meta = MetaInfo(title=torrent.title, subtitle=torrent.description)
                 mediainfo = context.media_info
                 torrent_title = f"{index}.【{torrent.site_name}】" \
-                                f"{meta.season_episode} " \
-                                f"{meta.resource_term} " \
-                                f"{meta.video_term} " \
-                                f"{meta.release_group} " \
-                                f"{size_tools.format_compact_size(torrent.size)} " \
-                                f"{torrent.volume_factor} " \
-                                f"{torrent.seeders}↑"
+                    f"{meta.season_episode} " \
+                    f"{meta.resource_term} " \
+                    f"{meta.video_term} " \
+                    f"{meta.release_group} " \
+                    f"{size_tools.format_compact_size(torrent.size)} " \
+                    f"{torrent.volume_factor} " \
+                    f"{torrent.seeders}↑"
                 torrent_title = re.sub(r"\s+", " ", torrent_title).strip()
                 articles.append({
                     "title": torrent_title,

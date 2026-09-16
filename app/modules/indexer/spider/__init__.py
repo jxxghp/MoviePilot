@@ -1,24 +1,22 @@
 import datetime
 import re
 import traceback
-from typing import Any, Optional
-from typing import List
-from urllib.parse import quote, urlparse, parse_qs
+from typing import Any, List, Optional
+from urllib.parse import parse_qs, quote, urlparse
 
 from jinja2 import Template
 from pyquery import PyQuery
 
-from app.runtime.execution import run_in_threadpool
-from app.runtime.settings import get_runtime_setting
-
-from app.runtime.log import logger
-from app.schemas.types import MediaType
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.adapters.system import rust as rust_accel
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import url as url_tools
 from app.foundation.url import UrlUtils
+from app.runtime.execution import run_in_threadpool
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
 
 
 def select_media_categories(category: Optional[dict], mtype: Optional[MediaType]) -> list[dict]:
@@ -79,7 +77,7 @@ class SiteSpider:
     @property
     def __dir__(self):
         """拒绝外部列举 Spider 的受保护属性。"""
-        raise AttributeError(f"Cannot read protected attribute!")
+        raise AttributeError("Cannot read protected attribute!")
 
     def __init__(self,
                  indexer: dict,
@@ -810,17 +808,28 @@ class SiteSpider:
             resolved_type = self.site_media_type
         self.torrents_info['category'] = resolved_type.value
 
-    def __apply_requested_result_media_type(self, torrents: Optional[List[dict]]) -> List[dict]:
+    def __apply_result_media_type(self, torrents: Optional[List[dict]]) -> List[dict]:
         """
-        为已由站点查询条件约束类型的结果补充统一媒体类型。
+        为解析结果补充统一媒体类型。
 
-        仅在站点配置显式声明 result_media_type=requested 时生效，避免把普通混合搜索结果误分类。
+        显式请求类型始终覆盖结果；纯媒体站点在分类缺失或未知时兜底，
+        保持 Python 与 Rust 两条解析路径的分类行为一致。
         """
         results = torrents or []
-        if not self.requested_result_media_type:
+        if self.requested_result_media_type:
+            for torrent in results:
+                torrent["category"] = self.requested_result_media_type.value
+            return results
+        if not self.site_media_type:
             return results
         for torrent in results:
-            torrent["category"] = self.requested_result_media_type.value
+            if torrent.get("category") in (
+                    None,
+                    "",
+                    MediaType.UNKNOWN,
+                    MediaType.UNKNOWN.value,
+            ):
+                torrent["category"] = self.site_media_type.value
         return results
 
     def __get_subtitle_field(self, torrent: Any, field_name: str):
@@ -1117,7 +1126,7 @@ class SiteSpider:
                 result_num=self.result_num
             )
             if rust_torrents is not None:
-                return self.__apply_requested_result_media_type(rust_torrents)
+                return self.__apply_result_media_type(rust_torrents)
 
         # 清空旧结果
         self.torrents_info_array = []
@@ -1148,7 +1157,7 @@ class SiteSpider:
                     torrent_query.clear()
                     del torrent_query
             # 返回数组的副本，防止被后续清理操作影响
-            return self.__apply_requested_result_media_type(self.torrents_info_array.copy())
+            return self.__apply_result_media_type(self.torrents_info_array.copy())
         except Exception as err:
             self.is_error = True
             logger.warn(f"错误：{self.indexername} {str(err)}")

@@ -320,6 +320,7 @@ def test_add_persists_album_entity_and_track_count(db, is_async):
     assert row.type == MediaType.MUSIC.value
     assert row.music_type == "album"
     assert row.total_tracks == 11
+    assert row.downloaded_tracks == []
 
 
 @_BOTH_PATHS
@@ -338,6 +339,7 @@ def test_add_drops_track_count_for_single_recording(db, is_async):
     row = _row(db, sid)
     assert row.music_type == "recording"
     assert row.total_tracks is None
+    assert row.downloaded_tracks is None
 
 
 @_BOTH_PATHS

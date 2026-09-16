@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Optional, Protocol, cast
+from typing import Any, Optional, Protocol, TypeVar, cast
 
 from app.application.database import AsyncDatabaseExecutor
 from app.schemas.common import JsonData
 from app.schemas.types import MediaType, SystemConfigKey
+
+SystemConfigValueNormalizer = Callable[[Any, Any], Any]
+"""系统配置值在进入持久化端口前使用的规范化函数。"""
+
+SystemConfigChangePublisher = Callable[[Any, Any], Awaitable[None]]
+"""系统配置提交成功后的运行时变更发布函数。"""
+
+T = TypeVar("T")
 
 
 class SystemConfigReader(Protocol):
@@ -31,6 +39,13 @@ class SystemConfigWriter(Protocol):
 
     def increment(self, key: SystemConfigKey, step: int = 1) -> int:
         """原子递增整数配置并返回递增后的值。"""
+
+    def update_atomically(
+        self,
+        key: Any,
+        mutation: Callable[[Any, Any], tuple[T, Any]],
+    ) -> T:
+        """在持久化写锁内读取旧值、提交新值并返回业务结果。"""
 
 
 class ConfigurationRepository(SystemConfigReader, SystemConfigWriter, Protocol):
@@ -99,6 +114,14 @@ class TokenRuntimeConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class SystemConfigWriteResult:
+    """系统配置一次写入的变更状态和实际规范化值。"""
+
+    changed: bool | None
+    normalized_value: Any
+
+
+@dataclass(frozen=True, slots=True)
 class ApiRuntimeConfig:
     """单次 API 请求使用的宿主配置快照。"""
 
@@ -158,6 +181,14 @@ class SchedulerRuntimeConfig:
     ai_agent_job_interval: Any
     usage_statistic_share: bool
     site_link: str | None
+    auto_update: bool = False
+    auto_update_resource: bool = True
+    wallpaper: str = ""
+
+    @property
+    def update_check_enabled(self) -> bool:
+        """主程序或资源任一检查开启时保留共享的定时检测服务。"""
+        return self.auto_update or self.auto_update_resource
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +225,8 @@ class ChainRuntimeConfig:
     download_subtitle: bool = True
     lyrics_batch_timeout: int = 120
     music_metadata_to_simplified: bool = True
+    music_release_region_priority: tuple[str, ...] = ()
+    music_release_script_priority: tuple[str, ...] = ()
     recognize_plugin_first: bool = False
     ai_agent_enable: bool = False
     ai_agent_global: bool = False
@@ -238,7 +271,7 @@ class ChainRuntimeConfig:
     television_rename_format: str = ""
     music_rename_format: str = ""
     tmdb_image_domain: str = "image.tmdb.org"
-    wallpaper: str = "bing"
+    wallpaper: str = ""
     wallpaper_image_url: Optional[str] = None
     customize_wallpaper_api_url: Optional[str] = None
     security_image_suffixes: tuple[str, ...] = ()
@@ -320,8 +353,10 @@ class SystemConfigService:
         reader: SystemConfigReader | None = None,
         writer: SystemConfigWriter | None = None,
         async_executor: AsyncDatabaseExecutor | None = None,
+        value_normalizer: SystemConfigValueNormalizer | None = None,
+        change_publisher: SystemConfigChangePublisher | None = None,
     ) -> None:
-        """注入读写端口及可选的异步事务执行能力。"""
+        """注入读写端口、异步事务执行能力、规范化边界和变更发布端口。"""
         resolved_reader = reader or repository
         resolved_writer = writer or repository
         if resolved_reader is None or resolved_writer is None:
@@ -329,6 +364,25 @@ class SystemConfigService:
         self._reader = resolved_reader
         self._writer = resolved_writer
         self._async_executor = async_executor
+        self._value_normalizer = value_normalizer
+        self._change_publisher = change_publisher
+
+    def configure_change_publisher(
+        self,
+        publisher: SystemConfigChangePublisher | None,
+    ) -> None:
+        """登记或清除异步配置变更发布器，供组合根绑定宿主事件总线。"""
+        self._change_publisher = publisher
+
+    async def _publish_async_change(
+        self,
+        key: Any,
+        value: Any,
+        changed: bool | None,
+    ) -> None:
+        """仅在异步写入确实改变持久化值后发布运行时变更。"""
+        if changed is True and self._change_publisher is not None:
+            await self._change_publisher(key, value)
 
     def get(self, key: Any = None) -> Any:
         """读取配置。"""
@@ -336,18 +390,73 @@ class SystemConfigService:
 
     def set(self, key: Any, value: Any) -> bool | None:
         """写入配置。"""
-        return self._writer.set(key, value)
+        return self.set_with_normalized_value(key, value).changed
+
+    def set_with_normalized_value(
+        self,
+        key: Any,
+        value: Any,
+    ) -> SystemConfigWriteResult:
+        """规范化一次后同步写入，并返回实际交给持久化端口的值。"""
+        normalized_value = self.normalize_value(key, value)
+        return SystemConfigWriteResult(
+            changed=self._writer.set(key, normalized_value),
+            normalized_value=normalized_value,
+        )
+
+    def normalize_value(self, key: Any, value: Any) -> Any:
+        """在写入和配置事件发布前返回同一份规范化配置值。"""
+        if self._value_normalizer is None:
+            return value
+        return self._value_normalizer(key, value)
 
     def increment(self, key: SystemConfigKey, step: int = 1) -> int:
         """原子递增整数系统配置，保持计数更新由持久化端口负责。"""
         return self._writer.increment(key, step)
 
     async def async_set(self, key: Any, value: Any) -> bool | None:
-        """异步写入配置，并等待数据库提交或回滚完成。"""
+        """异步写入配置，并在返回前等待已登记的运行时重载完成。"""
+        result = await self.async_set_with_normalized_value(key, value)
+        await self._publish_async_change(key, result.normalized_value, result.changed)
+        return result.changed
+
+    async def async_set_with_normalized_value(
+        self,
+        key: Any,
+        value: Any,
+    ) -> SystemConfigWriteResult:
+        """规范化一次后异步写入，并返回配置事件应发布的同一值。"""
         if self._async_executor is None:
             raise RuntimeError("系统配置异步数据库执行端口尚未配置")
-        result = await self._async_executor.run(partial(self._writer.set, key, value))
-        return cast(bool | None, result)
+        normalized_value = self.normalize_value(key, value)
+        result = await self._async_executor.run(
+            partial(self._writer.set, key, normalized_value)
+        )
+        return SystemConfigWriteResult(
+            changed=cast(bool | None, result),
+            normalized_value=normalized_value,
+        )
+
+    async def async_update_atomically(
+        self,
+        key: Any,
+        mutation: Callable[[Any], tuple[T, Any]],
+    ) -> T:
+        """在线程化短事务内原子读取旧值、规范化并写入新值。"""
+        if self._async_executor is None:
+            raise RuntimeError("系统配置异步数据库执行端口尚未配置")
+
+        def apply(_session: Any, current: Any) -> tuple[T, Any]:
+            """把不暴露数据库会话的应用层 mutation 适配到底层原子仓储。"""
+            result, value = mutation(current)
+            return result, self.normalize_value(key, value)
+
+        return cast(
+            T,
+            await self._async_executor.run(
+                partial(self._writer.update_atomically, key, apply)
+            ),
+        )
 
     async def async_delete(self, key: Any) -> Any:
         """异步删除配置，并等待数据库提交或回滚完成。"""

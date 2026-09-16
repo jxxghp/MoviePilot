@@ -1,6 +1,6 @@
 ---
 name: publish-moviepilot-plugin
-version: 2
+version: 3
 description: >-
   Use this skill when the user asks to publish, upload, sync, pull, push, diff,
   or maintain a MoviePilot local plugin in a GitHub repository. Covers using the
@@ -12,7 +12,8 @@ description: >-
   repository when no target repository is available.
   Also use for Chinese requests mentioning 插件发布, 插件维护, 推送插件到 GitHub,
   从 GitHub 拉取插件, 同步本地插件仓库, 增量发布插件, 插件仓库维护.
-allowed-tools: list_directory read_file write_file edit_file apply_patch execute_command query_system_settings update_system_settings
+allowed-tools: read_file write_file edit_file apply_patch execute_command moviepilot_api
+allowed-api-operations: config.system.get config.system.update
 ---
 
 # Publish MoviePilot Plugin

@@ -319,6 +319,22 @@ def test_store_round_trips_plugin_level_journal(installation_store) -> None:
     assert restored == record
 
 
+def test_store_lists_journal_by_case_insensitive_plugin_id(
+    installation_store,
+) -> None:
+    """按 plugin_id 列 journal 必须与创建时的同一物理插件判据一致。"""
+    _, _, store = installation_store
+    record = _store_record(transaction_id="install-case", plugin_id="DemoPlugin")
+    store.create(record)
+
+    assert [item.transaction_id for item in store.list(plugin_id="demoplugin")] == [
+        "install-case"
+    ]
+    assert [item.transaction_id for item in store.list(plugin_id="DEMOPLUGIN")] == [
+        "install-case"
+    ]
+
+
 @pytest.mark.parametrize(
     "phase",
     [PluginInstallationPhase.PREPARED, PluginInstallationPhase.COMMITTED],

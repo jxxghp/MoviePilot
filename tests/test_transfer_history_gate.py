@@ -1,5 +1,5 @@
 """
-覆盖 app/application/history.py 的整理历史查重闸。
+覆盖 app/application/history/ 的整理历史查重闸。
 
 监控分发（app/monitor/dispatcher.py）与整理链计划整理 owner（app/chain/transfer/plan.py）
 共用这套判定，本文件只测判定本身的真值表与查询辅助函数，不涉及调用方。
@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.application import history as transfer_history_helper
-from app.application.history import (
+from app.application.history import retry as transfer_history_helper
+from app.application.history.retry import (
     HistoryGateAction,
     clear_transfer_failures,
     coerce_size,
@@ -19,6 +19,7 @@ from app.application.history import (
     history_src_size,
     is_skip_action,
     max_failed_retries,
+    next_failed_retry_count,
     record_transfer_failure,
     resolve_history,
 )
@@ -26,8 +27,8 @@ from app.runtime.config import settings
 
 
 def make_history(status: bool, size=1024, has_src_fileitem: bool = True,
-                  history_id: int = 1, src_fileitem_override=None,
-                  src=None, src_storage=None, modify_time=None, fileid=None):
+                 history_id: int = 1, src_fileitem_override=None,
+                 src=None, src_storage=None, modify_time=None, fileid=None):
     """构造用于查重闸判定的整理记录替身。"""
     if src_fileitem_override is not None:
         src_fileitem = src_fileitem_override
@@ -40,7 +41,7 @@ def make_history(status: bool, size=1024, has_src_fileitem: bool = True,
     else:
         src_fileitem = None
     return SimpleNamespace(id=history_id, status=status, src_fileitem=src_fileitem,
-                            src=src, src_storage=src_storage)
+                           src=src, src_storage=src_storage)
 
 
 def _reset_failed_retries(src_path, storage=None):
@@ -186,6 +187,48 @@ def test_evaluate_history_gate_explicit_retry_count_overrides_realtime_lookup(mo
         assert action == HistoryGateAction.PASS_FAILED
     finally:
         _reset_failed_retries(src_path, "local")
+
+
+def test_next_failed_retry_count_continues_persisted_budget_after_restart(monkeypatch):
+    """进程缓存清空后，同一文件版本应继续数据库中的失败次数。"""
+    monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 3)
+    src_path = "/downloads/gate-test-persisted-retry.mkv"
+    _reset_failed_retries(src_path, "local")
+    history = make_history(
+        status=False,
+        size=1024,
+        src=src_path,
+        src_storage="local",
+    )
+    history.retry_count = 2
+
+    assert next_failed_retry_count(
+        history,
+        src_path=src_path,
+        storage="local",
+        file_size=1024,
+    ) == 3
+
+
+def test_next_failed_retry_count_resets_for_changed_file_version(monkeypatch):
+    """同一路径文件指纹变化后，应获得新的失败重试预算。"""
+    monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 3)
+    src_path = "/downloads/gate-test-persisted-new-version.mkv"
+    _reset_failed_retries(src_path, "local")
+    history = make_history(
+        status=False,
+        size=1024,
+        src=src_path,
+        src_storage="local",
+    )
+    history.retry_count = 3
+
+    assert next_failed_retry_count(
+        history,
+        src_path=src_path,
+        storage="local",
+        file_size=2048,
+    ) == 1
 
 
 def test_failed_history_new_size_passes_and_resets_retry_budget(monkeypatch):
@@ -510,7 +553,7 @@ def test_describe_history_gate_reports_failed_status_with_retry_progress(monkeyp
         record_transfer_failure(src_path, "local")
         record_transfer_failure(src_path, "local")
         history = make_history(status=False, size=1024, history_id=5,
-                                src=src_path, src_storage="local")
+                               src=src_path, src_storage="local")
 
         description = describe_history_gate(history, file_size=1024)
 

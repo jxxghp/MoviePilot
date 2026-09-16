@@ -3,7 +3,6 @@ import subprocess
 import textwrap
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -540,59 +539,6 @@ def test_site_resource_permissions_are_repaired_even_when_owner_matches(tmp_path
     assert not any(line.startswith("-R ") and f"{tmp_path}/public" in line for line in lines)
 
 
-def test_backend_ready_log_uses_configured_ports(tmp_path: Path) -> None:
-    curl_log = tmp_path / "curl.log"
-    output = _run_entrypoint_case(
-        tmp_path,
-        """
-        INFO() { printf '[INFO] %s\\n' "$1"; }
-        curl() {
-          printf '%s\\n' "$*" > "${CURL_LOG}"
-          return 0
-        }
-        PORT=4321 NGINX_PORT=8765 wait_backend_ready 1 2 "$$"
-        """,
-        env={"CURL_LOG": str(curl_log)},
-    )
-
-    assert curl_log.read_text(encoding="utf-8") == (
-        "-fsS --max-time 2 http://127.0.0.1:4321/health/ready\n"
-    )
-    assert "MoviePilot Web 已可访问" in output
-    assert "后端就绪耗时" in output
-    assert "后端端口 4321" in output
-    assert "前端端口 8765" in output
-
-
-def test_backend_ready_timeout_falls_back_to_default_for_invalid_value(tmp_path: Path) -> None:
-    output = _run_entrypoint_case(
-        tmp_path,
-        """
-        WARN() { printf '[WARN] %s\\n' "$1"; }
-        curl() { return 1; }
-        MOVIEPILOT_BACKEND_READY_TIMEOUT=invalid wait_backend_ready 1 2 999999 || true
-        """,
-    )
-
-    assert "MOVIEPILOT_BACKEND_READY_TIMEOUT=invalid 无效，使用默认 300 秒" in output
-    assert "后端服务启动完成探测已停止：后端进程已退出" in output
-
-
-def test_backend_ready_timeout_accepts_leading_zero_decimal(tmp_path: Path) -> None:
-    output = _run_entrypoint_case(
-        tmp_path,
-        """
-        INFO() { printf '[INFO] %s\\n' "$1"; }
-        WARN() { printf '[WARN] %s\\n' "$1"; }
-        curl() { return 0; }
-        MOVIEPILOT_BACKEND_READY_TIMEOUT=08 wait_backend_ready 1 2 "$$"
-        """,
-    )
-
-    assert "MOVIEPILOT_BACKEND_READY_TIMEOUT=08 无效" not in output
-    assert "MoviePilot Web 已可访问" in output
-
-
 def test_backend_dependency_recovery_uses_runtime_profile_sync(tmp_path: Path) -> None:
     """启动自愈必须复用按当前解释器选择依赖组的同步入口。"""
     venv_bin = tmp_path / "venv" / "bin"
@@ -633,14 +579,21 @@ def test_backend_dependency_recovery_uses_runtime_profile_sync(tmp_path: Path) -
     assert marker.exists()
 
 
-def test_backend_failure_keepalive_contract_is_explicit() -> None:
-    """后端异常默认保活诊断，显式关闭后才退出容器。"""
-    content = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
-    function = content.split(
-        "function diagnostic_keepalive() {", 1
-    )[1].split("\n}", 1)[0]
+def test_supervisor_manages_backend_and_nginx() -> None:
+    """后端异常恢复和应用重启都由容器内 supervisor 托管。"""
+    entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    supervisor = (ROOT / "docker" / "supervisord.conf").read_text(encoding="utf-8")
 
-    assert 'MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE:-true' in function
-    assert 'if [ "${keepalive}" = "false" ]' in function
-    assert 'graceful_exit "$exit_code" "python_exit"' in function
-    assert "容器将保持运行以便执行 moviepilot doctor" in function
+    assert "supervisord -n" in entrypoint
+    assert "[program:moviepilot-nginx]" in supervisor
+    assert "[program:moviepilot-backend]" in supervisor
+    assert "[program:moviepilot-update-worker]" in supervisor
+    assert "command=/bin/bash /usr/local/lib/moviepilot/control/update-worker.sh" in supervisor
+    assert "user=root" in supervisor
+    assert "file=/run/moviepilot/supervisor.sock" in supervisor
+    assert "chmod=0770" in supervisor
+    assert "chown=root:moviepilot" in supervisor
+    assert "username=moviepilot" in supervisor
+    assert supervisor.count("password=%(ENV_MOVIEPILOT_SUPERVISOR_PASSWORD)s") == 2
+    assert "openssl rand -hex 32" in entrypoint
+    assert supervisor.count("autorestart=true") == 2

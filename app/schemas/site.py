@@ -1,9 +1,8 @@
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
 
-from pydantic import BaseModel, Field, ConfigDict, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from app.schemas.common import JsonData
-
 
 SiteUnreadMessage = Union[
     tuple[Optional[str], Optional[str], Optional[str]],
@@ -59,6 +58,13 @@ class Site(BaseModel):
     downloader: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SitePriorityUpdate(BaseModel):  # type: ignore[misc]
+    """站点批量优先级更新项。"""
+
+    id: int = Field(..., description="Persistent site ID returned by site.list.")
+    pri: int = Field(..., description="Replacement site search priority value.")
 
 
 class SiteStatistic(BaseModel):
@@ -144,6 +150,13 @@ class SiteCookieUpdate(BaseModel):
     username: str = Field(..., description="站点登录用户名")
     password: str = Field(..., description="站点登录密码")
     code: Optional[str] = Field(None, description="二步验证码或密钥")
+
+
+class SiteCookieSet(BaseModel):  # type: ignore[misc]
+    """直接保存浏览器登录后取得的站点 Cookie 与 User-Agent。"""
+
+    cookie: str = Field(..., description="Site authentication Cookie header obtained from a trusted browser session.")
+    ua: Optional[str] = Field(None, description="User-Agent associated with the authenticated browser session.")
 
 
 class SiteCategory(BaseModel):

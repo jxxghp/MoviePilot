@@ -1,6 +1,5 @@
 from types import SimpleNamespace
 
-
 from app.api.endpoints.transfer import (
     manual_transfer,
     match_manual_transfer_target_path,
@@ -45,6 +44,42 @@ def test_manual_music_transfer_forwards_entity_namespace(monkeypatch):
 
     assert response.success is True
     assert captured["music_type"] == "album"
+
+
+def test_manual_transfer_failure_returns_path_stage_and_recovery_action(monkeypatch):
+    """文件管理器手动整理失败时，应直接返回源路径、失败阶段和恢复动作。"""
+
+    class FakeTransferChain:
+        """模拟目标存储写入失败的整理链。"""
+
+        @staticmethod
+        def manual_transfer(**_kwargs):
+            """返回稳定的目标写入失败原因。"""
+            return False, "目标路径不可写"
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+    source = "/downloads/manual-failed.mkv"
+
+    response = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitem=FileItem(
+                storage="local",
+                path=source,
+                name="manual-failed.mkv",
+                type="file",
+            ),
+            target_path="/media/movies",
+        ),
+        background=False,
+        history_query=SimpleNamespace(get=lambda _history_id: None),
+        _="token",
+    )
+
+    assert response.success is False
+    assert f"源文件：{source}" in response.message
+    assert "目标路径：/media/movies" in response.message
+    assert "失败阶段：目标存储访问" in response.message
+    assert "下一步：检查目标存储连接" in response.message
 
 
 def test_manual_music_directory_defaults_to_album_namespace(monkeypatch):
@@ -427,6 +462,183 @@ def test_manual_transfer_preview_multi_select_collects_failures(monkeypatch):
     assert resp.data["summary"] == {"total": 2, "success": 1, "failed": 1}
     assert [item["source"] for item in resp.data["items"]] == file_paths
     assert resp.data["items"][1]["success"] is False
+
+
+def test_manual_transfer_music_files_share_one_album_batch(monkeypatch):
+    """多选音轨应一次进入整理链，避免按单曲丢失专辑分类上下文。"""
+    selected_fileitems = [
+        {
+            "storage": "local",
+            "path": f"/downloads/七里香/{index:02d}.flac",
+            "name": f"{index:02d}.flac",
+            "extension": "flac",
+            "type": "file",
+        }
+        for index in (1, 2)
+    ]
+    captured = []
+
+    class FakeTransferChain:
+        def manual_transfer(self, **kwargs):
+            captured.append(kwargs)
+            return True, {
+                "summary": {"total": 2, "success": 2, "failed": 0},
+                "items": [
+                    {
+                        "source": item.path,
+                        "target": f"/library/Album/周杰伦/七里香/{item.name}",
+                        "target_dir": "/library/Album/周杰伦/七里香",
+                        "success": True,
+                        "message": "",
+                        "type": "音乐",
+                        "title": "七里香 (2004)",
+                    }
+                    for item in kwargs["selected_fileitems"]
+                ],
+                "message": "",
+            }
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+    monkeypatch.setattr(
+        "app.api.endpoints.transfer.get_api_runtime_config_snapshot",
+        lambda: SimpleNamespace(audio_extensions=(".flac",)),
+    )
+
+    resp = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitems=selected_fileitems,
+            preview=True,
+            type_name="自动",
+        ),
+        background=False,
+        history_query=SimpleNamespace(get=lambda _history_id: None),
+        _="token",
+    )
+
+    assert resp.success is True
+    assert resp.data["summary"] == {"total": 2, "success": 2, "failed": 0}
+    assert len(captured) == 1
+    assert captured[0]["mtype"].value == "音乐"
+    assert captured[0]["music_type"] == "album"
+    assert [item.path for item in captured[0]["selected_fileitems"]] == [
+        item["path"] for item in selected_fileitems
+    ]
+
+
+def test_manual_transfer_music_batch_ignores_non_disc_alternate_directory(monkeypatch):
+    """根目录已有完整专辑时，不得把“附加原版”等任意子目录当成第二张碟。"""
+    selected_fileitems = [
+        {
+            "storage": "local",
+            "path": path,
+            "name": path.rsplit("/", 1)[-1],
+            "extension": "flac",
+            "type": "file",
+        }
+        for path in (
+            "/downloads/七里香/01.flac",
+            "/downloads/七里香/02.flac",
+            "/downloads/七里香/附加原版/01.flac",
+            "/downloads/七里香/附加原版/02.flac",
+        )
+    ]
+    captured = []
+
+    class FakeTransferChain:
+        def manual_transfer(self, **kwargs):
+            captured.append(kwargs)
+            return True, {
+                "summary": {"total": 2, "success": 2, "failed": 0},
+                "items": [],
+                "message": "",
+            }
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+    monkeypatch.setattr(
+        "app.api.endpoints.transfer.get_api_runtime_config_snapshot",
+        lambda: SimpleNamespace(audio_extensions=(".flac",)),
+    )
+
+    response = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitems=selected_fileitems,
+            preview=True,
+            type_name="自动",
+        ),
+        background=False,
+        history_query=SimpleNamespace(get=lambda _history_id: None),
+        _="token",
+    )
+
+    assert response.success is True
+    assert len(captured) == 1
+    assert [item.path for item in captured[0]["selected_fileitems"]] == [
+        "/downloads/七里香/01.flac",
+        "/downloads/七里香/02.flac",
+    ]
+
+
+def test_manual_transfer_history_ids_share_one_music_album_batch(monkeypatch):
+    """多选整理历史应先还原文件集合，再以一个专辑批次进入整理链。"""
+    paths = (
+        "/downloads/七里香/01.flac",
+        "/downloads/七里香/02.flac",
+        "/downloads/七里香/附加原版/01.flac",
+        "/downloads/七里香/附加原版/02.flac",
+    )
+    histories = {
+        index: SimpleNamespace(
+            status=1,
+            mode="copy",
+            src_fileitem={
+                "storage": "local",
+                "path": path,
+                "name": path.rsplit("/", 1)[-1],
+                "extension": "flac",
+                "type": "file",
+            },
+            dest_fileitem=None,
+        )
+        for index, path in enumerate(paths, start=41)
+    }
+    captured = []
+
+    class FakeTransferChain:
+        def manual_transfer(self, **kwargs):
+            captured.append(kwargs)
+            selected = kwargs["selected_fileitems"]
+            return True, {
+                "summary": {"total": len(selected), "success": len(selected), "failed": 0},
+                "items": [],
+                "message": "",
+            }
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+    monkeypatch.setattr(
+        "app.api.endpoints.transfer.get_api_runtime_config_snapshot",
+        lambda: SimpleNamespace(audio_extensions=(".flac",)),
+    )
+
+    response = manual_transfer(
+        transer_item=ManualTransferItem(
+            logids=list(histories),
+            preview=True,
+            reorganize=True,
+            type_name="自动",
+        ),
+        background=False,
+        history_query=SimpleNamespace(get=histories.get),
+        _="token",
+    )
+
+    assert response.success is True
+    assert len(captured) == 1
+    assert captured[0]["mtype"].value == "音乐"
+    assert captured[0]["music_type"] == "album"
+    assert [item.path for item in captured[0]["selected_fileitems"]] == [
+        "/downloads/七里香/01.flac",
+        "/downloads/七里香/02.flac",
+    ]
 
 
 def test_match_manual_transfer_target_path_returns_directory_match(monkeypatch):

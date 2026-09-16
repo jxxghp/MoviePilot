@@ -5,13 +5,28 @@ ConfigReloadMixin 动态生成的事件处理器，必须能被事件总线解�
 """
 
 import inspect
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
+from app.adapters.network.doh import DohHelper
+from app.chain.scraping import ScrapingChain
+from app.chain.transfer.facade import TransferChain
+from app.foundation.singleton import Singleton, SingletonClass
+from app.monitor.monitor import Monitor
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.reload import ConfigReloadMixin
-from app.schemas import ConfigChangeEventData
+from app.runtime.state import SystemHelper
+from app.scheduler.facade import Scheduler
+from app.schemas.event import ConfigChangeEventData
 from app.schemas.types import EventType
+from app.startup.initializers.modules import (
+    configure_config_reload_event_handler_resolver,
+    configure_host_event_handler_resolver,
+    get_config_reload_handler_providers,
+)
 
 
 class _ReloadRecorder(ConfigReloadMixin):
@@ -65,6 +80,12 @@ def recorder(request, monkeypatch):
 def _build_event(keys):
     """构造携带指定配置键的 ConfigChanged 事件。"""
     return Event(EventType.ConfigChanged, ConfigChangeEventData(key=set(keys)))
+
+
+def _configure_lifespan_resolvers() -> None:
+    """按启动组合顺序登记宿主和配置 owner resolver。"""
+    configure_host_event_handler_resolver()
+    configure_config_reload_event_handler_resolver()
 
 
 async def _dispatch(instance, event):
@@ -146,3 +167,268 @@ def test_externally_managed_reload_class_does_not_register_listener(monkeypatch)
 
     assert registrations == []
     assert "handle_config_changed" not in _ExternallyManagedReloadRecorder.__dict__
+
+
+def test_config_reload_owner_is_skipped_without_lifecycle_resolver(monkeypatch):
+    """非模块配置 owner 缺少 resolver 时不得被事件总线临时构造。"""
+    helper = object.__new__(DohHelper)
+    reload_config = Mock()
+    helper.on_config_changed = reload_config
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__handler_instance_resolvers",
+        {},
+    )
+
+    eventmanager._EventManager__invoke_handler_by_type_sync(
+        DohHelper.handle_config_changed,
+        _build_event({"DOH_ENABLE"}),
+    )
+
+    reload_config.assert_not_called()
+    assert (
+        "app.adapters.network.doh.DohHelper.handle_config_changed"
+        in eventmanager.unresolved_handler_bindings()
+    )
+
+
+def test_host_config_reload_resolver_binds_current_doh_owner(monkeypatch):
+    """DoH 配置事件必须绑定到已由组合根物化的当前 Adapter。"""
+    helper = object.__new__(DohHelper)
+    reload_config = Mock()
+    helper.on_config_changed = reload_config
+    singleton_key = (DohHelper, (), frozenset())
+    monkeypatch.setitem(Singleton._instances, singleton_key, helper)
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__handler_instance_resolvers",
+        {},
+    )
+    _configure_lifespan_resolvers()
+
+    eventmanager._EventManager__invoke_handler_by_type_sync(
+        DohHelper.handle_config_changed,
+        _build_event({"DOH_ENABLE"}),
+    )
+
+    reload_config.assert_called_once_with()
+
+    eventmanager._EventManager__invoke_handler_by_type_sync(
+        DohHelper.handle_config_changed,
+        _build_event({"OTHER_KEY"}),
+    )
+
+    reload_config.assert_called_once_with()
+
+
+def test_host_resolver_binds_current_scraping_owner(monkeypatch):
+    """宿主 resolver 必须把同步重载处理器绑定到当前 Chain 单例。"""
+    chain = object.__new__(ScrapingChain)
+    reload_config = Mock()
+    chain.on_config_changed = reload_config
+    singleton_key = (ScrapingChain, (), frozenset())
+    monkeypatch.setitem(Singleton._instances, singleton_key, chain)
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__handler_instance_resolvers",
+        {},
+    )
+    configure_host_event_handler_resolver()
+
+    eventmanager._EventManager__invoke_handler_by_type_sync(
+        ScrapingChain.handle_config_changed,
+        _build_event({"ScrapingSwitchs"}),
+    )
+
+    reload_config.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_host_resolver_binds_current_scheduler_owner(monkeypatch):
+    """宿主 resolver 必须把异步重载处理器绑定到当前 Scheduler 单例。"""
+    scheduler = object.__new__(Scheduler)
+    reload_config = AsyncMock()
+    scheduler.on_config_changed = reload_config
+    monkeypatch.setitem(SingletonClass._instances, Scheduler, scheduler)
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__handler_instance_resolvers",
+        {},
+    )
+    configure_host_event_handler_resolver()
+
+    await eventmanager._EventManager__invoke_handler_by_type_async(
+        Scheduler.handle_config_changed,
+        _build_event({"DEV"}),
+    )
+
+    reload_config.assert_awaited_once_with()
+
+
+def test_config_reload_resolver_reads_latest_singleton_owner(monkeypatch):
+    """resolver 每次读取当前单例，不能保留已经换代的 Redis 实例。"""
+    first = object.__new__(RedisHelper)
+    first_reload = Mock()
+    first.on_config_changed = first_reload
+    second = object.__new__(RedisHelper)
+    second_reload = Mock()
+    second.on_config_changed = second_reload
+    singleton_key = (RedisHelper, (), frozenset())
+    monkeypatch.setitem(Singleton._instances, singleton_key, first)
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__handler_instance_resolvers",
+        {},
+    )
+    _configure_lifespan_resolvers()
+
+    eventmanager._EventManager__invoke_handler_by_type_sync(
+        RedisHelper.handle_config_changed,
+        _build_event({"CACHE_BACKEND_URL"}),
+    )
+    monkeypatch.setitem(Singleton._instances, singleton_key, second)
+    eventmanager._EventManager__invoke_handler_by_type_sync(
+        RedisHelper.handle_config_changed,
+        _build_event({"CACHE_BACKEND_URL"}),
+    )
+
+    first_reload.assert_called_once_with()
+    second_reload.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_config_reload_resolver_invokes_current_async_redis_owner(monkeypatch):
+    """异步配置处理器必须绑定当前 Redis owner，并保留键筛选。"""
+    helper = object.__new__(AsyncRedisHelper)
+    reload_config = AsyncMock()
+    helper.on_config_changed = reload_config
+    singleton_key = (AsyncRedisHelper, (), frozenset())
+    monkeypatch.setitem(Singleton._instances, singleton_key, helper)
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__handler_instance_resolvers",
+        {},
+    )
+    _configure_lifespan_resolvers()
+
+    await eventmanager._EventManager__invoke_handler_by_type_async(
+        AsyncRedisHelper.handle_config_changed,
+        _build_event({"CACHE_REDIS_MAX_CONNECTIONS"}),
+    )
+    await eventmanager._EventManager__invoke_handler_by_type_async(
+        AsyncRedisHelper.handle_config_changed,
+        _build_event({"OTHER_KEY"}),
+    )
+
+    reload_config.assert_awaited_once_with()
+
+
+def test_config_reload_resolver_does_not_materialize_lazy_transfer_owner(
+    monkeypatch,
+):
+    """尚未创建的整理链只声明跳过，配置事件不得启动线程资源。"""
+    singleton_key = (TransferChain, (), frozenset())
+    monkeypatch.delitem(Singleton._instances, singleton_key, raising=False)
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__handler_instance_resolvers",
+        {},
+    )
+    _configure_lifespan_resolvers()
+
+    eventmanager._EventManager__invoke_handler_by_type_sync(
+        TransferChain.handle_config_changed,
+        _build_event({"TRANSFER_THREADS"}),
+    )
+
+    assert TransferChain.get_existing_instance() is None
+
+
+def test_plugin_manager_falls_through_plugin_resolver_to_current_owner(
+    monkeypatch,
+):
+    """resolver 先注册时也应在插件 Runtime 创建后接管当前管理器。"""
+    singleton_key = (PluginManager, (), frozenset())
+    monkeypatch.delitem(Singleton._instances, singleton_key, raising=False)
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__handler_instance_resolvers",
+        {},
+    )
+    configure_config_reload_event_handler_resolver()
+
+    manager = object.__new__(PluginManager)
+    reload_config = Mock()
+    manager.on_config_changed = reload_config
+    monkeypatch.setitem(Singleton._instances, singleton_key, manager)
+    plugin_resolver = Mock(return_value=None)
+    eventmanager.register_handler_instance_resolver(
+        "plugins",
+        plugin_resolver,
+    )
+
+    eventmanager._EventManager__invoke_handler_by_type_sync(
+        PluginManager.handle_config_changed,
+        _build_event({"PLUGIN_AUTO_RELOAD"}),
+    )
+
+    plugin_resolver.assert_not_called()
+    reload_config.assert_called_once_with()
+
+
+def test_config_reload_resolver_registration_replaces_same_name(monkeypatch):
+    """重复装配只替换当前 lifespan resolver，不累积并行绑定。"""
+    monkeypatch.setattr(
+        eventmanager,
+        "_EventManager__handler_instance_resolvers",
+        {},
+    )
+
+    configure_config_reload_event_handler_resolver()
+    first = eventmanager._EventManager__handler_instance_resolvers[
+        "config_reload"
+    ]
+    configure_config_reload_event_handler_resolver()
+
+    assert set(eventmanager._EventManager__handler_instance_resolvers) == {
+        "config_reload"
+    }
+    assert (
+        eventmanager._EventManager__handler_instance_resolvers[
+            "config_reload"
+        ]
+        is not first
+    )
+
+
+@pytest.mark.parametrize(
+    ("owner_class", "registry", "singleton_key"),
+    [
+        (
+            PluginManager,
+            Singleton._instances,
+            (PluginManager, (), frozenset()),
+        ),
+        (Monitor, SingletonClass._instances, Monitor),
+    ],
+)
+def test_config_reload_provider_returns_lifecycle_owned_instance(
+    monkeypatch,
+    owner_class,
+    registry,
+    singleton_key,
+):
+    """管理器和监控器必须从各自生命周期注册表读取当前实例。"""
+    instance = object.__new__(owner_class)
+    monkeypatch.setitem(registry, singleton_key, instance)
+
+    providers = get_config_reload_handler_providers()
+
+    assert providers[owner_class]() is instance
+
+
+def test_system_reload_provider_keeps_one_lifespan_instance() -> None:
+    """无资源的系统配置处理器也由 resolver 闭包保持稳定 owner 身份。"""
+    provider = get_config_reload_handler_providers()[SystemHelper]
+
+    assert provider() is provider()

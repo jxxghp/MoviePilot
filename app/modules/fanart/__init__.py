@@ -2,15 +2,14 @@ import asyncio
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
-from app.runtime.cache import cached
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.context import MediaInfo
-from app.runtime.settings import get_runtime_setting
-
-from app.runtime.log import logger
-from app.runtime.tasks import get_task_registry
 from app.modules import _ModuleBase
+from app.runtime.cache import cached
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.runtime.tasks import get_task_registry
 from app.schemas.types import MediaType, ModuleType, OtherModulesType
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 
 
 class FanartModule(_ModuleBase):
@@ -307,22 +306,12 @@ class FanartModule(_ModuleBase):
     }
     """
 
-    # 代理
-    _proxies: dict = get_runtime_setting('PROXY')
-
-    # Fanart Api
-    _movie_url: str = (
-        f"https://webservice.fanart.tv/v3/movies/%s?api_key={get_runtime_setting('FANART_API_KEY')}"
-    )
-    _tv_url: str = (
-        f"https://webservice.fanart.tv/v3/tv/%s?api_key={get_runtime_setting('FANART_API_KEY')}"
-    )
-
     def init_module(self) -> None:
-        pass
+        """初始化 Fanart 模块并清理旧配置 generation 的请求缓存。"""
+        self.clear_cache()
 
     def stop(self):
-        pass
+        """停止 Fanart 模块；请求资源由每次调用按当前配置创建。"""
 
     def test(self) -> Tuple[bool, str]:
         """
@@ -336,7 +325,8 @@ class FanartModule(_ModuleBase):
         return False, "fanart网络连接失败"
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        return "FANART_API_KEY", True
+        """由 Fanart 总开关控制模块是否参与宿主运行时。"""
+        return "FANART_ENABLE", True
 
     @staticmethod
     def get_name() -> str:
@@ -587,7 +577,7 @@ class FanartModule(_ModuleBase):
     ) -> Optional[dict]:
         image_url = cls.__fanart_url(media_type=media_type, queryid=queryid)
         try:
-            ret = RequestUtils(proxies=cls._proxies, timeout=10).get_res(
+            ret = RequestUtils(proxies=get_runtime_setting("PROXY"), timeout=10).get_res(
                 image_url, raise_exception=True
             )
             if ret:
@@ -606,7 +596,9 @@ class FanartModule(_ModuleBase):
     ) -> Optional[dict]:
         image_url = cls.__fanart_url(media_type=media_type, queryid=queryid)
         try:
-            ret = await AsyncRequestUtils(proxies=cls._proxies, timeout=10).get_json(
+            ret = await AsyncRequestUtils(
+                proxies=get_runtime_setting("PROXY"), timeout=10
+            ).get_json(
                 image_url
             )
             if ret:
@@ -622,9 +614,10 @@ class FanartModule(_ModuleBase):
         """
         生成 Fanart 请求地址
         """
+        api_key = get_runtime_setting("FANART_API_KEY")
         if media_type == MediaType.MOVIE:
-            return cls._movie_url % queryid
-        return cls._tv_url % queryid
+            return f"https://webservice.fanart.tv/v3/movies/{queryid}?api_key={api_key}"
+        return f"https://webservice.fanart.tv/v3/tv/{queryid}?api_key={api_key}"
 
     def clear_cache(self) -> None:
         """清理同步缓存，并由宿主登记运行中事件循环的异步清理。"""

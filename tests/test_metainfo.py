@@ -74,6 +74,7 @@ def test_emby_format_ids():
             1399,
         ),
         ("/movies/Avatar (2009) {tmdb-19995}/Avatar.2009.1080p.mkv", 19995),
+        ("/movies/狩猎 (2022) (tmdb-727340)/狩猎.mkv", 727340),
     ]
 
     for path_str, expected_media_id in test_paths:
@@ -210,7 +211,7 @@ def test_torrent_title_match_ignores_question_mark_variants():
         season_years={},
     )
     torrent_meta = SimpleNamespace(
-                                        cn_name=None,
+        cn_name=None,
         en_name="Otaku ni Yasashii Gal wa Inai",
         type=MediaType.TV,
         year=None,
@@ -220,7 +221,7 @@ def test_torrent_title_match_ignores_question_mark_variants():
         site_name="MiKan",
         title="[今晚月色真美][Otaku ni Yasashii Gal wa Inai!?][12][1080P]",
         category=MediaType.TV.value,
-                description=None,
+        description=None,
     )
 
     assert TorrentHelper.match_torrent(
@@ -341,6 +342,17 @@ def test_metainfo_routes_audio_filename_to_music():
     assert meta.season is None
     assert meta.episode is None
     assert meta.apply_words == []
+
+
+def test_metainfo_routes_ape_filename_to_music():
+    """Monkey's Audio 文件应使用默认音频扩展配置进入音乐识别分支。"""
+    meta = MetaInfo("陈奕迅 - 天下太平.ape")
+
+    assert isinstance(meta, MetaMusic)
+    assert meta.type == MediaType.MUSIC
+    assert meta.title == "天下太平"
+    assert meta.artists == ["陈奕迅"]
+    assert meta.audio_format == "APE"
 
 
 def test_metainfo_routes_audio_path_to_music_without_parent_merge():
@@ -675,6 +687,15 @@ def test_emby_tmdbid_overrides_braced_metainfo_tmdbid():
     assert metainfo["media_id"] == "222"
     assert "tmdbid" not in metainfo
     assert "[tmdbid=222]" not in title
+
+
+def test_parenthesized_tmdb_id_is_extracted_from_title():
+    """测试圆括号 TMDB 标签可从标题中提取并移除。"""
+    title, metainfo = find_metainfo("狩猎 (2022) (tmdb-727340)")
+
+    assert title.strip() == "狩猎 (2022)"
+    assert metainfo["media_source"] == MediaSource.TMDB
+    assert metainfo["media_id"] == "727340"
 
 
 def test_custom_identifier_uses_source_specific_id_and_returns_unified_identity():

@@ -70,7 +70,15 @@ def _project_history(record: object) -> DownloadHistorySnapshot:
         channel=getattr(record, "channel", None),
         date=getattr(record, "date", None),
         note=deepcopy(getattr(record, "note", None)),
+        media_category_id=getattr(record, "media_category_id", None),
         media_category=getattr(record, "media_category", None),
+        classification_rule_id=getattr(record, "classification_rule_id", None),
+        classification_policy_revision=getattr(
+            record,
+            "classification_policy_revision",
+            None,
+        ),
+        classification_source=getattr(record, "classification_source", None),
         episode_group=getattr(record, "episode_group", None),
         custom_words=getattr(record, "custom_words", None),
     )
@@ -219,6 +227,11 @@ class TransactionalDownloadHistoryRepository:
             )
             return [_project_history(record) for record in records]
 
+    async def async_count(self) -> int:
+        """在独立异步 Session 内统计下载历史总数。"""
+        async with self._async_session() as session:
+            return await DownloadHistoryOper(session).async_count()
+
     def add(
         self,
         history: DownloadHistoryWrite,
@@ -273,6 +286,12 @@ class SessionDownloadHistoryRepository:
             count,
         )
         return [_project_history(record) for record in records]
+
+    async def async_count(self) -> int:
+        """在请求异步 Session 内统计下载历史总数。"""
+        if not isinstance(self._session, AsyncSession):
+            raise RuntimeError("下载历史异步统计需要 AsyncSession")
+        return await DownloadHistoryOper(self._session).async_count()
 
     def stage_delete_history(self, history_id: int) -> None:
         """在请求同步 Session 内暂存下载历史删除。"""

@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, Union, cast
+from typing import Any, Iterable, List, Optional, Tuple, Union, cast
 
 import cn2an
 
@@ -14,6 +14,7 @@ from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
+from app.domain.music import music_artist_matches, music_title_matches, music_version_matches
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
 from app.modules._base.media import MediaAuxiliaryProviderMixin
@@ -34,6 +35,7 @@ from app.schemas.types import (
     MediaSourceSelection,
     MediaType,
     ModuleType,
+    MusicEntityType,
 )
 
 
@@ -153,8 +155,10 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             meta: MetaMusic,
             limit: int = 20,
             media_source: Optional[MediaSourceSelection] = None,
+            music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> Optional[List[MusicInfo]]:
-        """按请求来源搜索豆瓣音乐专辑，并转换为统一音乐候选。"""
+        """按请求来源搜索豆瓣音乐专辑，并兼容统一音乐搜索的实体过滤参数。"""
+        del music_types
         if not is_media_source_selected(media_source, self._music_source):
             return None
         keyword = meta.album or meta.title
@@ -294,7 +298,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             direct_result = self._direct_music_candidate(plan, candidate)
             if direct_result is not None:
                 return direct_result
-            if meta.album and meta.title:
+            if plan.music_type != MUSIC_ENTITY_ALBUM and meta.album and meta.title:
                 info = self.doubanapi.music_detail(subject_id=str(candidate.media_id))
                 album = self._douban_music_to_album(info) if info else None
                 matched_track = self._select_douban_music_track(meta, album)
@@ -331,7 +335,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             direct_result = self._direct_music_candidate(plan, candidate)
             if direct_result is not None:
                 return direct_result
-            if meta.album and meta.title:
+            if plan.music_type != MUSIC_ENTITY_ALBUM and meta.album and meta.title:
                 info = await self.doubanapi.async_music_detail(
                     subject_id=str(candidate.media_id)
                 )
@@ -408,20 +412,17 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             meta: MetaMusic,
             candidates: List[MusicInfo],
     ) -> List[MusicInfo]:
-        """按专辑标题和可用艺术家线索过滤豆瓣音乐候选。"""
+        """按专辑名称与专辑署名筛选父级候选，录音版本留待实际目标确认。"""
         expected_title = meta.album or meta.title
+        expected_artists = [meta.album_artist] if meta.album_artist else meta.artists
         return [
             candidate
             for candidate in candidates
-            if cls._same_music_text(expected_title, candidate.title)
+            if music_title_matches(candidate, expected_title, preserve_editions=True)
             and (
-                not meta.artists
+                not expected_artists
                 or not candidate.artists
-                or any(
-                    cls._same_music_text(expected, actual)
-                    for expected in meta.artists
-                    for actual in candidate.artists
-                )
+                or music_artist_matches(candidate, expected_artists)
             )
         ]
 
@@ -432,13 +433,12 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     ) -> Optional[MusicInfo]:
         """决定候选可直接返回，还是必须继续读取专辑曲目。"""
         meta = plan.require_meta()
-        if plan.music_type == MUSIC_ENTITY_ALBUM:
-            return candidate
-        if meta.album and meta.title:
+        if plan.music_type != MUSIC_ENTITY_ALBUM and (
+            (meta.album and meta.title) or plan.music_type == MUSIC_ENTITY_RECORDING
+        ):
             return None
-        if plan.music_type == MUSIC_ENTITY_RECORDING:
-            return None
-        return candidate
+        album_meta = MetaMusic(title=meta.album or meta.title, version=meta.version)
+        return candidate if music_version_matches(candidate, album_meta) else None
 
     @classmethod
     def _select_douban_music_track(
@@ -451,16 +451,12 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return None
         candidates = [
             track for track in album.tracks
-            if cls._same_music_text(meta.title, track.title)
+            if music_title_matches(track, meta.title, preserve_editions=True) and music_version_matches(track, meta)
         ]
         if meta.artists:
             candidates = [
                 track for track in candidates
-                if any(
-                    cls._same_music_text(expected, actual)
-                    for expected in meta.artists
-                    for actual in track.artists
-                )
+                if music_artist_matches(track, meta.artists)
             ]
         if not candidates:
             return None
@@ -650,13 +646,18 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                 album_artist=album.artist or None,
                 album_id=album.media_id,
                 album_type=album.album_type,
+                secondary_types=list(album.secondary_types),
                 year=album.year,
                 release_date=album.release_date,
                 disc_number=disc_number,
                 track_number=track_number,
                 duration=duration,
                 cover_url=cover_url,
+                metadata_category=album.metadata_category,
                 genres=list(album.genres),
+                tags=list(album.tags),
+                artist_country=album.artist_country,
+                release_status=album.release_status,
                 names=[title],
                 detail_link=album.detail_link,
                 raw_data=raw_data,
@@ -779,11 +780,6 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """从豆瓣年份或日期文本中提取四位年份。"""
         text = cls._douban_music_text(value)
         return int(text[:4]) if text and text[:4].isdigit() else None
-
-    @staticmethod
-    def _same_music_text(left: Optional[str], right: Optional[str]) -> bool:
-        """使用音乐元数据紧凑文本规则比较豆瓣候选。"""
-        return bool(left and right and MetaMusic.compact_text(left) == MetaMusic.compact_text(right))
 
     @staticmethod
     def _prepare_search_names(meta: MetaBase) -> List[str]:

@@ -6,6 +6,12 @@ import threading
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from app.agent.terminal.ownership import (
+    TerminalScope,
+    bind_terminal_scope,
+    close_terminal_scope,
+    current_terminal_scope,
+)
 from app.runtime.log import logger
 
 if TYPE_CHECKING:
@@ -21,6 +27,7 @@ class ToolDefinition:
     """
 
     def __init__(self, name: str, description: str, input_schema: Dict[str, Any]):
+        """保存严格工具目录对外展示的名称、说明和参数合同。"""
         self.name = name
         self.description = description
         self.input_schema = input_schema
@@ -34,7 +41,7 @@ class MoviePilotToolsManager:
     def __init__(
         self,
         user_id: str = "api_user",
-        session_id: str = uuid.uuid4(),
+        session_id: Optional[str] = None,
         is_admin: bool = True,
         policy_orchestrator: Optional[AgentToolPolicyOrchestrator] = None,
         data: Optional[AgentDataContext] = None,
@@ -47,7 +54,8 @@ class MoviePilotToolsManager:
             session_id: 会话ID
         """
         self.user_id = user_id
-        self.session_id = session_id
+        self.session_id = session_id if session_id is not None else uuid.uuid4().hex
+        self._terminal_scope = TerminalScope(user_id=user_id, task_id=self.session_id, kind="operator")
         self.is_admin = is_admin
         self.policy_orchestrator = policy_orchestrator
         self._data = data
@@ -108,6 +116,7 @@ class MoviePilotToolsManager:
                 username="API Client",
                 stream_handler=None,
                 agent_context={"is_admin": self.is_admin},
+                include_external_service_tools=True,
                 data=self._data,
             )
             self.catalog = catalog
@@ -123,9 +132,13 @@ class MoviePilotToolsManager:
             self._plugin_agent_tools_revision = -1
             self._catalog_materialized = False
             self._catalog_managed_by_factory = False
+            from app.agent.tools.catalog import ToolCatalogError
+
+            if isinstance(e, ToolCatalogError):
+                raise
 
     def _load_tools(self) -> None:
-        """兼容显式刷新入口，并保证外部调用仍原子发布完整目录。"""
+        """显式刷新工具目录，并保证外部调用原子发布完整快照。"""
         with self._tools_lock:
             self._load_tools_locked()
 
@@ -151,16 +164,10 @@ class MoviePilotToolsManager:
         from app.application.plugin.runtime import get_plugin_manager
 
         plugin_manager = get_plugin_manager()
-        if (
-            self._plugin_agent_tools_revision
-            == plugin_manager.get_plugin_agent_tools_revision()
-        ):
+        if self._plugin_agent_tools_revision == plugin_manager.get_plugin_agent_tools_revision():
             return
         with self._tools_lock:
-            if (
-                self._plugin_agent_tools_revision
-                == plugin_manager.get_plugin_agent_tools_revision()
-            ):
+            if self._plugin_agent_tools_revision == plugin_manager.get_plugin_agent_tools_revision():
                 return
             self._load_tools_locked()
 
@@ -207,19 +214,23 @@ class MoviePilotToolsManager:
         """
         self._ensure_tools_current()
         with self._tools_lock:
-            tools = list(self.tools)
+            catalog = self._get_strict_catalog_locked()
+            tools = catalog.tools if catalog is not None else []
         tools_list = []
         for tool in tools:
             if getattr(tool, "_require_admin", False) and not self.is_admin:
                 continue
-            # 获取工具的输入参数模型
-            args_schema = getattr(tool, "args_schema", None)
-            if args_schema:
-                # 将Pydantic模型转换为JSON Schema
-                input_schema = self._convert_to_json_schema(args_schema)
+            # MCP-only 复杂工具可以保留 oneOf、嵌套对象和跨字段约束；普通工具
+            # 继续沿用兼容投影，避免一次性改变已有外部合同。
+            schema_factory = getattr(tool, "get_mcp_input_schema", None)
+            if callable(schema_factory):
+                input_schema = schema_factory()
             else:
-                # 如果没有args_schema，使用基本信息
-                input_schema = {"type": "object", "properties": {}, "required": []}
+                args_schema = getattr(tool, "args_schema", None)
+                if args_schema:
+                    input_schema = self._convert_to_json_schema(args_schema)
+                else:
+                    input_schema = {"type": "object", "properties": {}, "required": []}
 
             tools_list.append(
                 ToolDefinition(
@@ -232,41 +243,31 @@ class MoviePilotToolsManager:
         return tools_list
 
     def get_tool(self, tool_name: str) -> Optional[Any]:
-        """
-        获取指定工具实例
-
-        Args:
-            tool_name: 工具名称
-
-        Returns:
-            工具实例，如果未找到返回None
-        """
-        self._ensure_tools_current()
-        with self._tools_lock:
-            return next(
-                (tool for tool in self.tools if tool.name == tool_name),
-                None,
-            )
+        """按唯一身份获取工具；同名冲突时稳定失败。"""
+        return self.get_strict_tool(tool_name)
 
     def get_strict_tool(self, tool_name: str) -> Optional[Any]:
         """按当前目录唯一身份解析严格调用，重名时稳定失败。"""
         self._ensure_tools_current()
         with self._tools_lock:
-            if self.catalog is None or [
-                id(tool) for tool in self.catalog.tools
-            ] != [id(tool) for tool in self.tools]:
-                from app.agent.loader import get_tool_factory
-                from app.agent.tools.catalog import ToolCatalogSnapshot
-
-                self.catalog = ToolCatalogSnapshot.from_tools(
-                    self.tools,
-                    plugin_revision=self._plugin_agent_tools_revision,
-                    factory_revision=get_tool_factory().catalog_factory_revision(),
-                )
-            if self.catalog is None:
+            catalog = self._get_strict_catalog_locked()
+            if catalog is None:
                 return None
-            entry = self.catalog.resolve_unique(tool_name)
+            entry = catalog.resolve_unique(tool_name)
             return entry.tool if entry else None
+
+    def _get_strict_catalog_locked(self) -> Optional[ToolCatalogSnapshot]:
+        """在 manager 锁内建立并校验唯一、可执行的当前工具目录。"""
+        if self.catalog is None or [id(tool) for tool in self.catalog.tools] != [id(tool) for tool in self.tools]:
+            from app.agent.loader import get_tool_factory
+            from app.agent.tools.catalog import ToolCatalogSnapshot
+
+            self.catalog = ToolCatalogSnapshot.from_tools(
+                self.tools,
+                plugin_revision=self._plugin_agent_tools_revision,
+                factory_revision=get_tool_factory().catalog_factory_revision(),
+            )
+        return self.catalog.require_unique() if self.catalog is not None else None
 
     @staticmethod
     def _resolve_field_schema(field_info: Dict[str, Any]) -> Dict[str, Any]:
@@ -333,9 +334,7 @@ class MoviePilotToolsManager:
         ]
 
     @staticmethod
-    def _normalize_arguments(
-        tool_instance: Any, arguments: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _normalize_arguments(tool_instance: Any, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         根据工具的参数schema规范化参数类型
 
@@ -373,15 +372,11 @@ class MoviePilotToolsManager:
             # 数组类型：将字符串解析为列表
             if field_type == "array" and isinstance(value, str):
                 item_type = field_info.get("items", {}).get("type", "string")
-                normalized[key] = MoviePilotToolsManager._parse_array_string(
-                    value, key, item_type
-                )
+                normalized[key] = MoviePilotToolsManager._parse_array_string(value, key, item_type)
                 continue
 
             # 根据类型进行转换
-            normalized[key] = MoviePilotToolsManager._normalize_scalar_value(
-                field_type, value, key
-            )
+            normalized[key] = MoviePilotToolsManager._normalize_scalar_value(field_type, value, key)
 
         return normalized
 
@@ -403,12 +398,14 @@ class MoviePilotToolsManager:
         Returns:
             工具执行结果（字符串）
         """
-        tool_instance = self.get_tool(tool_name)
+        tool_instance = self.get_strict_tool(tool_name)
 
         if not tool_instance:
-            error_msg = json.dumps(
-                {"error": f"工具 '{tool_name}' 未找到"}, ensure_ascii=False
-            )
+            error_msg = json.dumps({
+                "error": f"工具 '{tool_name}' 未找到",
+                "execution_outcome": "failed",
+                "recovery": "先读取当前工具目录并选择已公开的工具名称，不要重复调用不存在的工具。",
+            }, ensure_ascii=False)
             return error_msg
 
         from app.agent.policy.orchestrator import call_policy_hook
@@ -422,7 +419,11 @@ class MoviePilotToolsManager:
         try:
             permission_error = self._check_tool_permission(tool_instance)
             if permission_error:
-                return json.dumps({"error": permission_error}, ensure_ascii=False)
+                return json.dumps({
+                    "error": permission_error,
+                    "execution_outcome": "failed",
+                    "recovery": "当前身份无权执行该工具；改用允许的只读工具或请求具备权限的用户确认。",
+                }, ensure_ascii=False)
 
             # 规范化参数类型
             normalized_arguments = self._normalize_arguments(tool_instance, arguments)
@@ -438,7 +439,9 @@ class MoviePilotToolsManager:
 
             # 调用工具的run方法。HTTP/MCP 工具调用不会经过 BaseTool._arun，
             # 因此这里也必须复用同一套返回值格式化和兜底截断逻辑。
-            result = await tool_instance.run_with_timeout(**normalized_arguments)
+            # 嵌套宿主调用保留任务身份；独立内部入口使用该管理器的专属作用域。
+            with bind_terminal_scope(current_terminal_scope() or self._terminal_scope):
+                result = await tool_instance.run_with_timeout(**normalized_arguments)
             str_result = format_tool_result_for_agent(
                 result,
                 tool_name=tool_name,
@@ -449,12 +452,17 @@ class MoviePilotToolsManager:
                 call_policy_hook("cancel", policy_orchestrator.fail, observation, e)
             raise
         except ToolExecutionTimeoutError as e:
+            receipt = None
             if observation is not None and policy_orchestrator is not None:
-                call_policy_hook("fail", policy_orchestrator.fail, observation, e)
+                receipt = call_policy_hook("fail", policy_orchestrator.fail, observation, e)
             error_summary = self._summarize_error(e)
             logger.warning(error_summary)
             return format_tool_result_for_agent(
-                error_summary,
+                {
+                    "error": error_summary,
+                    "execution_outcome": receipt.outcome.value if receipt else "unknown",
+                    "recovery": "工具结果未知时先核验实际状态，不要直接重复可能产生副作用的调用。",
+                },
                 tool_name=tool_name,
                 max_chars=getattr(tool_instance, "result_max_chars", None),
             )
@@ -464,7 +472,11 @@ class MoviePilotToolsManager:
             error_summary = self._summarize_error(e)
             logger.error(f"调用工具 {tool_name} 时发生错误: {error_summary}")
             error_msg = json.dumps(
-                {"error": f"调用工具 '{tool_name}' 时发生错误: {error_summary}"},
+                {
+                    "error": f"调用工具 '{tool_name}' 时发生错误: {error_summary}",
+                    "execution_outcome": "failed",
+                    "recovery": "根据错误信息修正输入或改用正确工具后重试；不要重复提交未确认的写入。",
+                },
                 ensure_ascii=False,
             )
             return error_msg
@@ -473,9 +485,13 @@ class MoviePilotToolsManager:
                 "finish",
                 policy_orchestrator.finish,
                 observation,
-                str_result,
+                result,
             )
         return str_result
+
+    async def close(self) -> bool:
+        """封闭本内部调用方的终端作用域，真实进程未收敛时允许调用方重试。"""
+        return await close_terminal_scope(self._terminal_scope)
 
     @staticmethod
     def _convert_to_json_schema(args_schema: Any) -> Dict[str, Any]:
@@ -497,9 +513,7 @@ class MoviePilotToolsManager:
 
         if "properties" in schema:
             for field_name, field_info in schema["properties"].items():
-                resolved_field_info = MoviePilotToolsManager._resolve_field_schema(
-                    field_info
-                )
+                resolved_field_info = MoviePilotToolsManager._resolve_field_schema(field_info)
                 # 转换字段类型
                 field_type = resolved_field_info.get("type", "string")
                 field_description = resolved_field_info.get("description", "")

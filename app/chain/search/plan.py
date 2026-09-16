@@ -1,13 +1,15 @@
 """搜索身份、关键词和缺集计划 owner。"""
 
 from copy import deepcopy
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, cast
 
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
 )
 from app.chain.search.contract import _SearchOwnerBase
-from app.domain.context import MediaInfo
+from app.chain.search.music import SearchMusicOwner
+from app.domain.context import MediaInfo, MusicInfo
+from app.domain.metainfo import MetaInfo
 from app.schemas.media import build_media_key, resolve_media_identity
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import (
@@ -17,6 +19,12 @@ from app.schemas.types import (
 MissingMediaMap = Dict[str, Dict[int, NotExistMediaInfo]]
 SeasonEpisodes = Dict[int, List[int]]
 RecognitionArgs = Dict[str, Optional[Union[MediaSource, str]]]
+
+
+def _limit_search_names(keywords: List[str], explicit_keyword: Optional[str]) -> List[str]:
+    """统一遵守用户设置的名称查询上限，显式关键词不受名称展开策略影响。"""
+    max_names = get_chain_runtime_config_snapshot().max_search_name_limit
+    return keywords[:max_names] if max_names and not explicit_keyword else keywords
 
 
 class SearchPlanOwner(_SearchOwnerBase):
@@ -40,19 +48,36 @@ class SearchPlanOwner(_SearchOwnerBase):
         }
 
     @staticmethod
-    def _copy_media_input(mediainfo: MediaInfo) -> MediaInfo:
+    def _copy_media_input(mediainfo: MediaInfo | MusicInfo) -> MediaInfo | MusicInfo:
         """复制调用方媒体快照，避免搜索归一化污染共享领域对象。"""
         return deepcopy(mediainfo)
 
     @staticmethod
+    def _prepare_media_input(mediainfo: MediaInfo | MusicInfo) -> MediaInfo | MusicInfo:
+        """只规范化影视输入的标题和季号，音乐保留其实体字段及原始名称。"""
+        if not isinstance(mediainfo, MusicInfo) and not mediainfo.tmdb_id:
+            meta = MetaInfo(title=mediainfo.title)
+            mediainfo.title = meta.name
+            mediainfo.season = cast(int, meta.begin_season)
+        return mediainfo
+
+    @staticmethod
+    def _needs_media_details(mediainfo: MediaInfo | MusicInfo) -> bool:
+        """音乐已有主名称即可匹配，影视别名为空时仍保留既有详情补全策略。"""
+        return not mediainfo.names and not (isinstance(mediainfo, MusicInfo) and mediainfo.title)
+
+    @staticmethod
     def _prepare_params(
-        mediainfo: MediaInfo,
+        mediainfo: MediaInfo | MusicInfo,
         keyword: Optional[str] = None,
         no_exists: Optional[MissingMediaMap] = None,
+        include_candidates: bool = False,
     ) -> Tuple[Optional[SeasonEpisodes], List[str]]:
         """
         准备搜索参数
         """
+        if isinstance(mediainfo, MusicInfo):
+            return None, _limit_search_names(SearchMusicOwner._music_keywords(mediainfo, keyword, include_candidates), keyword)
         # 缺失的季集
         media_source, media_id = resolve_media_identity(media=mediainfo)
         mediakey = build_media_key(media_source, media_id)
@@ -87,9 +112,4 @@ class SearchPlanOwner(_SearchOwnerBase):
                     ]
                 )
             )
-            # 限制搜索关键词数量
-            max_names = get_chain_runtime_config_snapshot().max_search_name_limit
-            if max_names:
-                keywords = keywords[:max_names]
-
-        return season_episodes, keywords
+        return season_episodes, _limit_search_names(keywords, keyword)

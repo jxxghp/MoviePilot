@@ -25,4 +25,5 @@ def __dir__() -> list[str]:
     """让惰性公开对象继续支持交互式发现。"""
     return sorted(set(globals()) | set(_EXPORT_MODULES))
 
+
 __all__ = ["DirectoryChangeEvent", "LocalDirectoryWatcher", "Monitor"]

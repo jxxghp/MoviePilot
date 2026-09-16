@@ -1,6 +1,7 @@
 """Chain 运行上下文注入和无参兼容 provider 测试。"""
 
 import sys
+from dataclasses import replace
 from types import ModuleType
 from unittest.mock import Mock, call
 
@@ -46,6 +47,7 @@ def _context() -> ChainRuntimeContext:
         user_repository=Mock(),
         configuration=ChainRuntimeConfig(media_extensions=(".mkv",)),
         durable_event_writer=Mock(),
+        system_service=Mock(),
     )
 
 
@@ -60,6 +62,7 @@ def test_chain_accepts_explicit_runtime_context() -> None:
     assert chain.eventmanager is context.event_manager
     assert chain.messagehelper is context.message_helper
     assert chain.durable_event_writer is context.durable_event_writer
+    assert chain.system_service is context.system_service
     context.message_queue.bind.assert_called_once_with(chain.run_module)
 
 
@@ -119,6 +122,33 @@ def test_chain_keeps_explicit_typed_repositories() -> None:
     assert chain.user_repository is context.user_repository
 
 
+def test_chain_runtime_config_provider_refreshes_compatibility_singleton() -> None:
+    """兼容单例 Chain 应在配置保存后读取新的运行时配置。"""
+    context = _context()
+    state = {"configuration": context.configuration}
+    context = replace(
+        context,
+        configuration_provider=lambda: state["configuration"],
+    )
+
+    chain = ChainBase(context)
+    assert chain.runtime_config.media_extensions == (".mkv",)
+
+    state["configuration"] = replace(
+        context.configuration,
+        media_extensions=(".mp4",),
+    )
+    assert chain.runtime_config.media_extensions == (".mp4",)
+
+    pinned = replace(chain.runtime_config, media_extensions=(".avi",))
+    chain.runtime_config = pinned
+    state["configuration"] = replace(
+        context.configuration,
+        media_extensions=(".mov",),
+    )
+    assert chain.runtime_config.media_extensions == (".avi",)
+
+
 def test_chain_composition_registers_lazy_compatibility_provider(monkeypatch) -> None:
     """组合 API 只登记 provider，首次无参 Chain 请求时才构造完整上下文。"""
     from app.startup.composition import chain as chain_composition
@@ -140,6 +170,8 @@ def test_chain_composition_registers_lazy_compatibility_provider(monkeypatch) ->
         "dependencies": runtime_dependencies,
         "system_config": Mock(),
         "configuration": Mock(),
+        "classification_service": Mock(),
+        "system_service": Mock(),
     }
     monkeypatch.setattr(chain_composition, "build_chain_runtime_context", builder)
     monkeypatch.setattr(

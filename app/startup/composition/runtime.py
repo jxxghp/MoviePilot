@@ -48,7 +48,10 @@ from app.startup.composition.context import (
 )
 
 if TYPE_CHECKING:
+    from app.application.classification.execution import ClassificationExecutionPort
+    from app.application.classification.runtime import ClassificationRuntime
     from app.application.messaging.message import MessageHelper, MessageQueueManager
+    from app.application.subscription.execution import SubscriptionSearchRepository
     from app.startup.composition.agent import AgentComposition
     from app.startup.composition.configuration import ConfigurationComposition
     from app.startup.composition.database import DatabaseComposition
@@ -67,6 +70,7 @@ class RuntimeDependencies:
     transfer_execution: TransferExecutionRepository
     message_helper: MessageHelper
     message_queue: MessageQueueManager
+    subscription_search: SubscriptionSearchRepository | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +81,8 @@ class RuntimeInputs:
     database: DatabaseComposition
     agent: AgentComposition
     authentication: SecurityComposition
+    classification: ClassificationRuntime
+    classification_execution: ClassificationExecutionPort
     dependencies: RuntimeDependencies
     tasks: TaskRegistry
 
@@ -103,6 +109,7 @@ def compose_runtime_dependencies() -> RuntimeDependencies:
         TransactionalSubscriptionHistoryRepository,
         TransactionalSubscriptionRepository,
     )
+    from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
     from app.db.adapters.transfer.execution import (
         TransactionalTransferExecutionRepository,
     )
@@ -129,9 +136,16 @@ def compose_runtime_dependencies() -> RuntimeDependencies:
         subscription_history=TransactionalSubscriptionHistoryRepository(
             async_session=async_session_scope,
         ),
-        transfer_execution=TransactionalTransferExecutionRepository(SessionFactory),
+        transfer_execution=TransactionalTransferExecutionRepository(
+            SessionFactory,
+            async_session=async_session_scope,
+        ),
         message_helper=message_helper_factory(),
         message_queue=MessageQueueManager(auto_start=False),
+        subscription_search=TransactionalSubscriptionSearchRepository(
+            SessionFactory,
+            async_session_scope,
+        ),
     )
 
 
@@ -148,6 +162,9 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
     from app.db.adapters.subscription import (
         SessionSubscriptionHistoryRepository,
         SessionSubscriptionRepository,
+    )
+    from app.db.adapters.subscriptionstatus import (
+        SessionSubscriptionExecutionStatusRepository,
     )
     from app.db.oper.mediaserver import MediaServerOper
     from app.db.oper.message import MessageOper
@@ -210,6 +227,8 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
             async_session=get_async_db,
             repository=SessionSubscriptionRepository,
             history_repository=SessionSubscriptionHistoryRepository,
+            execution_status_repository=SessionSubscriptionExecutionStatusRepository,
+            search_repository=dependencies.subscription_search,
             transaction=SqlAlchemyAsyncUnitOfWork,
             outbox=SqlAlchemyAsyncOutboxStager,
             dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(async_session_scope),
@@ -229,6 +248,8 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
             repository=cast(RepositoryFactory, WorkflowOper),
             system_config=lambda: configuration.system_service,
         ),
+        classification=inputs.classification,
+        classification_execution=inputs.classification_execution,
         system=compose_system_service(
             settings=configuration.settings,
             system_config=configuration.system_service,

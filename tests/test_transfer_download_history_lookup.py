@@ -1,18 +1,18 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 
 
 class FakeDownloadHistoryOper:
     """提供下载历史回查测试所需的内存桩。"""
 
     def __init__(
-            self,
-            histories_by_hash=None,
-            histories_by_path=None,
-            files_by_fullpath=None,
-            files_by_savepath=None,
+        self,
+        histories_by_hash=None,
+        histories_by_path=None,
+        files_by_fullpath=None,
+        files_by_savepath=None,
     ):
         """初始化各查询维度的测试数据。"""
         self.histories_by_hash = histories_by_hash or {}
@@ -118,9 +118,7 @@ def test_resolve_download_history_skips_ambiguous_savepath_hashes():
 def test_resolve_download_history_stops_at_shared_download_root_path(monkeypatch):
     """共享下载根目录上的路径历史不应污染同级文件。"""
     oper = FakeDownloadHistoryOper(
-        histories_by_path={
-            "/downloads": SimpleNamespace(download_hash="hash1", downloader="qb")
-        }
+        histories_by_path={"/downloads": SimpleNamespace(download_hash="hash1", downloader="qb")}
     )
     monkeypatch.setattr(
         "app.chain.transfer.workflow.DirectoryHelper.get_download_dirs",
@@ -194,11 +192,7 @@ def test_resolve_download_history_accepts_shared_root_savepath_for_exact_file(mo
 def test_resolve_download_history_stops_at_type_category_download_root(monkeypatch):
     """按类型和类别生成的共享目录不应回查该目录自身的历史。"""
     oper = FakeDownloadHistoryOper(
-        histories_by_path={
-            "/downloads/电视剧/动漫": SimpleNamespace(
-                download_hash="hash1", downloader="qb"
-            )
-        }
+        histories_by_path={"/downloads/电视剧/动漫": SimpleNamespace(download_hash="hash1", downloader="qb")}
     )
     monkeypatch.setattr(
         "app.chain.transfer.workflow.DirectoryHelper.get_download_dirs",
@@ -210,8 +204,8 @@ def test_resolve_download_history_stops_at_type_category_download_root(monkeypat
         ],
     )
     monkeypatch.setattr(
-        "app.chain.transfer.workflow.MediaChain.media_category",
-        lambda _: {"电影": [], "电视剧": ["动漫"]},
+        "app.chain.transfer.workflow.DirectoryHelper.classification_category_paths",
+        lambda _, media_type=None: (("电视剧", "动漫"),),
     )
 
     history = _make_chain()._resolve_download_history(
@@ -229,13 +223,11 @@ def test_get_shared_download_roots_includes_nested_category(monkeypatch):
         lambda _: [_download_dir(download_category_folder=True)],
     )
     monkeypatch.setattr(
-        "app.chain.transfer.workflow.MediaChain.media_category",
-        lambda _: {"电影": [], "电视剧": ["动漫/日本/季度新番"]},
+        "app.chain.transfer.workflow.DirectoryHelper.classification_category_paths",
+        lambda _, media_type=None: (("动漫", "日本", "季度新番"),),
     )
 
-    roots = TransferChain._get_shared_download_roots(
-        Path("/downloads/动漫/日本/季度新番/Show.S01E01.mkv")
-    )
+    roots = TransferChain._get_shared_download_roots(Path("/downloads/动漫/日本/季度新番/Show.S01E01.mkv"))
 
     assert roots == {
         "/downloads",
@@ -252,13 +244,11 @@ def test_get_shared_download_roots_excludes_torrent_subdirectory(monkeypatch):
         lambda _: [_download_dir(download_category_folder=True)],
     )
     monkeypatch.setattr(
-        "app.chain.transfer.workflow.MediaChain.media_category",
-        lambda _: {"电影": [], "电视剧": ["动漫/日本番剧"]},
+        "app.chain.transfer.workflow.DirectoryHelper.classification_category_paths",
+        lambda _, media_type=None: (("动漫", "日本番剧"),),
     )
 
-    roots = TransferChain._get_shared_download_roots(
-        Path("/downloads/动漫/日本番剧/Torrent.Name/Show.S01E01.mkv")
-    )
+    roots = TransferChain._get_shared_download_roots(Path("/downloads/动漫/日本番剧/Torrent.Name/Show.S01E01.mkv"))
 
     assert "/downloads/动漫/日本番剧" in roots
     assert "/downloads/动漫/日本番剧/Torrent.Name" not in roots
@@ -271,13 +261,11 @@ def test_get_shared_download_roots_keeps_first_level_without_category_config(mon
         lambda _: [_download_dir(download_category_folder=True)],
     )
     monkeypatch.setattr(
-        "app.chain.transfer.workflow.MediaChain.media_category",
-        lambda _: None,
+        "app.chain.transfer.workflow.DirectoryHelper.classification_category_paths",
+        lambda _, media_type=None: (),
     )
 
-    roots = TransferChain._get_shared_download_roots(
-        Path("/downloads/动漫/Torrent.Name/Show.S01E01.mkv")
-    )
+    roots = TransferChain._get_shared_download_roots(Path("/downloads/动漫/Torrent.Name/Show.S01E01.mkv"))
 
     assert roots == {"/downloads", "/downloads/动漫"}
 
@@ -285,19 +273,15 @@ def test_get_shared_download_roots_keeps_first_level_without_category_config(mon
 def test_resolve_download_history_stops_at_nested_category_root(monkeypatch):
     """多级分类叶子目录中的其它任务历史不应污染当前文件。"""
     oper = FakeDownloadHistoryOper(
-        histories_by_path={
-            "/downloads/动漫/日本番剧": SimpleNamespace(
-                download_hash="other-hash", downloader="qb"
-            )
-        }
+        histories_by_path={"/downloads/动漫/日本番剧": SimpleNamespace(download_hash="other-hash", downloader="qb")}
     )
     monkeypatch.setattr(
         "app.chain.transfer.workflow.DirectoryHelper.get_download_dirs",
         lambda _: [_download_dir(download_category_folder=True)],
     )
     monkeypatch.setattr(
-        "app.chain.transfer.workflow.MediaChain.media_category",
-        lambda _: {"电影": [], "电视剧": ["动漫/日本番剧"]},
+        "app.chain.transfer.workflow.DirectoryHelper.classification_category_paths",
+        lambda _, media_type=None: (("动漫", "日本番剧"),),
     )
 
     history = _make_chain()._resolve_download_history(

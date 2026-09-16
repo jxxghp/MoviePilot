@@ -11,10 +11,11 @@ from app.application.subscription.contract import (
     subscribe_media_key,
     subscribe_media_keys,
 )
+from app.application.subscription.facts import FreshFactLease
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
-from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.identity import subscribe_recognize_kwargs
+from app.chain.subscribe.metadata import SubscribeMetadataOwner
 from app.chain.tmdb import TmdbChain
 from app.chain.torrents import TorrentsChain
 from app.domain.context import (
@@ -25,27 +26,31 @@ from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.event import SubscribeEpisodesRefreshEventData
-from app.schemas.media import resolve_media_identity
 from app.schemas.mediaserver import NotExistMediaInfo as _SchemaNotExistMediaInfo
 from app.schemas.types import (
-    MUSIC_ENTITY_ALBUM,
     ChainEventType,
     MediaSource,
     MediaType,
 )
 
 
-class SubscribeRefreshOwner(_SubscribeOwnerBase):
+class SubscribeRefreshOwner(SubscribeMetadataOwner):
     """订阅元数据、进度与剧集范围刷新，作为 SubscribeChain 的单一职责实现 owner。"""
 
-    def refresh(self, progress_callback: Optional[Callable[..., None]] = None) -> None:
+    def refresh(
+        self,
+        progress_callback: Optional[Callable[..., None]] = None,
+        *,
+        mtype: Optional[str] = None,
+    ) -> None:
         """
-        订阅刷新
+        刷新指定媒体类型的订阅
 
         :param progress_callback: 定时服务进度更新回调
+        :param mtype: 可选媒体类型，省略时刷新所有类型
         """
         # 触发刷新站点资源，从缓存中匹配订阅
-        sites = self.get_subscribed_sites()
+        sites = self.get_subscribed_sites(mtype)
         if sites is None:
             if progress_callback:
                 progress_callback(value=100, text="没有订阅需要刷新")
@@ -77,28 +82,41 @@ class SubscribeRefreshOwner(_SubscribeOwnerBase):
                     data=data,
                 )
 
-        torrents = TorrentsChain().refresh(
+        torrents_chain = TorrentsChain()
+        candidates = torrents_chain.refresh(
             sites=sites,
             progress_callback=_update_refresh_progress if progress_callback else None,
             # 存在音乐订阅时额外抓取站点音乐专用入口，音乐不一定在默认种子首页
-            include_music=self.has_music_subscribe(),
+            include_music=self.has_music_subscribe(mtype),
         )
         self.match(
-            torrents,
+            candidates,
             progress_callback=_update_match_progress if progress_callback else None,
+            mtype=mtype,
         )
         if progress_callback:
             progress_callback(value=100, text="订阅刷新完成")
 
-    def check(self, progress_callback: Optional[Callable[..., None]] = None) -> None:
+    def check(
+        self,
+        progress_callback: Optional[Callable[..., None]] = None,
+        reconcile_completion: bool = False,
+        *,
+        mtype: Optional[str] = None,
+    ) -> None:
         """
         定时检查订阅，更新订阅信息
 
         :param progress_callback: 定时服务进度更新回调
+        :param reconcile_completion: 是否复用本次新鲜媒体事实执行独立完成对账
+        :param mtype: 可选媒体类型，省略时检查所有类型
         """
         # 查询所有订阅
         repository = self.subscription_repository
         subscribes = repository.list()
+        if mtype is not None:
+            subscribes = [subscribe for subscribe in subscribes if subscribe.type == mtype]
+        fresh_fact_lease = FreshFactLease()
         total_num = len(subscribes)
         if progress_callback:
             progress_callback(
@@ -121,105 +139,15 @@ class SubscribeRefreshOwner(_SubscribeOwnerBase):
                         "current": subscribe.id,
                     },
                 )
-            try:
-                meta = build_subscribe_meta(subscribe)
-            except ValueError:
-                logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
-                continue
-            # 识别媒体信息
-            if meta.type == MediaType.MUSIC:
-                mediainfo = self._recognize_music_subscribe(subscribe)
-            else:
-                mediainfo: MediaInfo = MediaChain().recognize_media(
-                    meta=meta,
-                    mtype=meta.type,
-                    **subscribe_recognize_kwargs(subscribe),
-                    episode_group=subscribe.episode_group,
-                    cache=False,
-                )
-            if not mediainfo:
-                logger.warn(
-                    f"未识别到媒体信息，标题：{subscribe.name}，"
-                    f"媒体来源：{subscribe.media_source}，媒体 ID：{subscribe.media_id}"
-                )
-                continue
-            # 对于电视剧，获取当前季的总集数
-            episodes = (mediainfo.seasons.get(subscribe.season) or []) if meta.type == MediaType.TV else []
-            progress_update = {}
-            if subscribe.type == MediaType.TV.value and not subscribe.manual_total_episode and len(episodes):
-                current_total_episode = len(episodes)
-                # 外部事件只能向上覆盖主程序本次识别到的 TMDB 当前季总集数，已有订阅按最终 total 跟随持久化。
-                total_episode = self._SubscribeChain__apply_episodes_refresh(
-                    current_total_episode,
-                    season=subscribe.season,
-                    mediainfo=mediainfo,
-                    media_source=subscribe.media_source,
-                    media_id=subscribe.media_id,
-                    subscribe_id=subscribe.id,
-                    scene="refresh",
-                )
-                old_total_episode = subscribe.total_episode or 0
-                if total_episode and total_episode < old_total_episode:
-                    total_episode = self._SubscribeChain__resolve_total_episode_decrease(
-                        subscribe=subscribe,
-                        candidate_total=total_episode,
-                        meta=meta,
-                        mediainfo=mediainfo,
-                        mediakey=subscribe_media_key(subscribe),
-                    )
-                if total_episode and total_episode != old_total_episode:
-                    progress_update = self._SubscribeChain__prepare_total_episode_change_fields(
-                        subscribe=subscribe,
-                        total_episode=total_episode,
-                        old_total_episode=old_total_episode,
-                    )
-                else:
-                    total_episode = subscribe.total_episode
-                    progress_update = {"lack_episode": subscribe.lack_episode}
-                    if subscribe.best_version and subscribe.type == MediaType.TV.value:
-                        progress_update = self._SubscribeChain__prepare_subscribe_progress_fields(
-                            subscribe=subscribe, no_exists={}
-                        )
-                logger.info(
-                    f"订阅 {subscribe.name} 总集数变化，更新总集数为{total_episode}，"
-                    f"缺失集数为{progress_update.get('lack_episode', subscribe.lack_episode)} ..."
-                )
-            else:
-                total_episode = subscribe.total_episode
-                progress_update = {"lack_episode": subscribe.lack_episode}
-                if subscribe.best_version and subscribe.type == MediaType.TV.value:
-                    progress_update = self._SubscribeChain__prepare_subscribe_progress_fields(
-                        subscribe=subscribe, no_exists={}
-                    )
-            # 更新TMDB信息
-            update_data = {
-                "name": mediainfo.title,
-                "year": str(mediainfo.year) if mediainfo.year is not None else None,
-                "vote": mediainfo.vote_average,
-                "poster": mediainfo.get_poster_image(),
-                "backdrop": mediainfo.get_backdrop_image(),
-                "description": mediainfo.overview,
-                "media_source": resolve_media_identity(media=mediainfo)[0],
-                "media_id": resolve_media_identity(media=mediainfo)[1],
-                "total_episode": total_episode,
-            }
-            if meta.type == MediaType.MUSIC:
-                music_type = getattr(mediainfo, "music_type", None)
-                update_data.update(
-                    {
-                        "music_type": music_type,
-                        "total_tracks": getattr(mediainfo, "total_tracks", None)
-                        if music_type == MUSIC_ENTITY_ALBUM
-                        else None,
-                    }
-                )
-            update_data.update(progress_update)
-            subscribe = self._SubscribeChain__apply_subscribe_update(
+            updated_subscribe = self._check_subscription(
                 subscribe,
-                update_data,
-                scene="metadata_refresh",
+                fresh_fact_lease,
+                reconcile_completion=reconcile_completion,
+                media_chain_factory=MediaChain,
             )
-            logger.info(f"{subscribe.name} 订阅元数据更新完成")
+            if updated_subscribe is None:
+                continue
+            logger.info(f"{updated_subscribe.name} 订阅元数据更新完成")
             if progress_callback:
                 progress_callback(
                     value=index / total_num * 100 if total_num else 100,
@@ -228,6 +156,19 @@ class SubscribeRefreshOwner(_SubscribeOwnerBase):
                 )
         if progress_callback:
             progress_callback(value=100, text="订阅元数据更新完成")
+
+    def check_and_reconcile(
+        self,
+        progress_callback: Optional[Callable[..., None]] = None,
+        *,
+        mtype: Optional[str] = None,
+    ) -> None:
+        """刷新指定媒体类型的元数据，并复用同一轮新鲜事实执行完成对账。"""
+        return self.check(
+            progress_callback=progress_callback,
+            reconcile_completion=True,
+            mtype=mtype,
+        )
 
     async def cache_calendar(
         self,
@@ -723,7 +664,7 @@ class SubscribeRefreshOwner(_SubscribeOwnerBase):
         for episode in episodes or []:
             try:
                 episode_number = int(episode)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 ignored.append({"episode": episode, "reason": "invalid"})
                 continue
             if episode_number not in target_episodes:

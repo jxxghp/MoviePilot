@@ -1,9 +1,11 @@
 """下载候选规范化、排序和媒体选择 owner。"""
 
+import json
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Tuple, Union, cast
 
 from app.application.configuration import get_chain_runtime_config_snapshot
+from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.download.failures import (
     DownloadFailureSnapshot,
 )
@@ -33,51 +35,48 @@ def _new_torrent_helper() -> TorrentHelper:
     return factory()
 
 
+def _confirmed_batch_contexts(contexts: List[Context]) -> List[Context]:
+    """排除待人工确认的资源，覆盖原始候选及插件替换候选两个入口。"""
+    confirmed = [context for context in contexts if getattr(context, "match_status", None) in (None, "exact")]
+    if len(confirmed) != len(contexts):
+        logger.warning(f"跳过 {len(contexts) - len(confirmed)} 个待人工确认的资源，不参与自动批量下载")
+    return confirmed
+
+
 class DownloadSelectionOwner(_DownloadOwnerBase):
     """下载候选规范化、排序和媒体选择 owner。"""
 
-
     @classmethod
-    def _validate_music_album_resource(
+    def _record_music_album_track_keys(
             cls,
             context: Context,
             file_list: Optional[List[str]],
-    ) -> Optional[str]:
-        """校验专辑种子是否包含预期数量的独立音轨，并标记已确认的整专覆盖。"""
+    ) -> None:
+        """记录种子中可识别的音轨键，允许专辑订阅跨多次资源下载累计完成。"""
         media = context.media_info
         if (
                 not media
                 or media.type != MediaType.MUSIC
                 or getattr(media, "music_type", None) != MUSIC_ENTITY_ALBUM
         ):
-            return None
+            return
 
-        context.confirmed_full_coverage = False
-        try:
-            expected_tracks = int(getattr(media, "total_tracks", None) or 0)
-        except (TypeError, ValueError):
-            expected_tracks = 0
-        if expected_tracks <= 0:
-            return "专辑资源无法校验：专辑总曲目数未知"
-        if not file_list:
-            return "专辑资源无法校验：种子未提供文件清单，不能确认整专曲目"
-
-        track_identities = {
-            identity
-            for file in file_list
-            if Path(str(file)).suffix.lower()
-            in get_chain_runtime_config_snapshot().audio_extensions
-            and (identity := cls._music_resource_track_identity(file))
+        audio_extensions = get_chain_runtime_config_snapshot().audio_extensions
+        track_keys = {
+            track_key
+            for file in file_list or []
+            if Path(str(file)).suffix.lower() in audio_extensions
+            and (track_key := cls._music_resource_track_key(file))
         }
-        actual_tracks = len(track_identities)
-        if actual_tracks < expected_tracks:
-            return (
-                f"专辑资源不完整：专辑共 {expected_tracks} 首，"
-                f"种子仅包含 {actual_tracks} 个独立音频文件"
-            )
+        context.music_track_keys = sorted(track_keys) or None
 
-        context.confirmed_full_coverage = True
-        return None
+    @staticmethod
+    def _music_resource_track_key(file: str) -> Optional[str]:
+        """把音轨身份编码成跨下载资源稳定保存的 JSON 键。"""
+        identity = DownloadSelectionOwner._music_resource_track_identity(file)
+        if identity is None:
+            return None
+        return json.dumps(identity, ensure_ascii=False, separators=(",", ":"))
 
     @staticmethod
     def _music_resource_track_identity(file: str) -> Optional[Tuple[int, Union[int, str]]]:
@@ -119,6 +118,9 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
 
         :return: 排序后的上下文和本轮失败冷却记录；资源选择事件仍可替换上下文列表
         """
+        contexts = _confirmed_batch_contexts(contexts)
+        if not contexts:
+            return [], {}
         logger.debug(f"Initial contexts: {len(contexts)} items, Downloader: {downloader}")
         event_data = ResourceSelectionEventData(
             contexts=contexts,
@@ -134,7 +136,7 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
                     f"items (source: {event_data.source})"
                 )
                 contexts = event_data.updated_contexts
-        contexts = _new_torrent_helper().sort_torrents(contexts)
+        contexts = _new_torrent_helper().sort_torrents(_confirmed_batch_contexts(contexts))
         active_failures: Dict[str, Optional[DownloadFailureSnapshot]] = {
             fingerprint: failure
             for fingerprint, failure in self._active_download_failure_fingerprints(
@@ -156,6 +158,7 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
         username: Optional[str],
         downloader: Optional[str],
         custom_words: Optional[str],
+        governance: Optional[SubscriptionDownloadGovernance],
     ) -> None:
         """
         处理电影与音乐的直接候选下载。
@@ -201,6 +204,7 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
                 username=username,
                 downloader=downloader,
                 custom_words=custom_words,
+                governance=governance,
             ):
                 logger.info(f"{context.torrent_info.title} 添加下载成功")
                 downloaded_list.append(context)

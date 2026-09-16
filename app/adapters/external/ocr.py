@@ -1,4 +1,5 @@
 import base64
+import binascii
 from typing import Optional
 
 from app.adapters.network.http import RequestUtils
@@ -14,7 +15,9 @@ class OcrHelper:
         """初始化 OCR 服务地址，优先使用组合根设置快照。"""
         if ocr_base_url is None:
             ocr_base_url = get_runtime_setting('OCR_HOST')
-        self._ocr_b64_url = f"{str(ocr_base_url).rstrip('/')}/captcha/base64"
+        base_url = str(ocr_base_url).rstrip('/')
+        self._ocr_b64_url = f"{base_url}/captcha/base64"
+        self._ocr_image_url = f"{base_url}/captcha/image"
 
     def get_captcha_text(
             self,
@@ -22,33 +25,48 @@ class OcrHelper:
             image_b64: Optional[str] = None,
             cookie: Optional[str] = None,
             ua: Optional[str] = None,
+            image_data: Optional[bytes] = None,
     ) -> str:
         """
-        根据图片地址，获取验证码图片，并识别内容
+        获取验证码图片并识别内容，优先使用原始图片字节接口。
         :param image_url: 图片地址
         :param image_b64: 图片base64，跳过图片地址下载
         :param cookie: 下载图片使用的cookie
         :param ua: 下载图片使用的ua
+        :param image_data: 已取得的原始图片字节，跳过下载和 Base64 编码
         :return: 验证码识别结果，失败时返回空字符串
         """
-        image_b64 = self._normalize_image_base64(image_b64)
-        if image_url:
+        raw_image = image_data or b""
+        if not raw_image and image_url:
             data_url_b64 = self._extract_data_url_base64(image_url)
             if data_url_b64:
-                image_b64 = self._normalize_image_base64(data_url_b64)
+                try:
+                    raw_image = base64.b64decode(
+                        self._normalize_image_base64(data_url_b64),
+                        validate=True,
+                    )
+                except (ValueError, binascii.Error):
+                    return ""
             else:
                 ret = RequestUtils(ua=ua,
                                    cookies=cookie).get_res(image_url)
                 if ret is not None:
-                    image_bin = ret.content
-                    if not image_bin:
+                    raw_image = ret.content or b""
+                    if not raw_image:
                         return ""
-                    image_b64 = base64.b64encode(image_bin).decode()
-        if not image_b64:
-            return ""
-        ret = RequestUtils(content_type="application/json").post_res(
-            url=self._ocr_b64_url,
-            json={"base64_img": image_b64})
+        if raw_image:
+            ret = RequestUtils(content_type="application/octet-stream").post_res(
+                url=self._ocr_image_url,
+                data=raw_image,
+            )
+        else:
+            image_b64 = self._normalize_image_base64(image_b64)
+            if not image_b64:
+                return ""
+            ret = RequestUtils(content_type="application/json").post_res(
+                url=self._ocr_b64_url,
+                json={"base64_img": image_b64},
+            )
         if ret:
             return ret.json().get("result") or ""
         return ""

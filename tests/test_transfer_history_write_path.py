@@ -9,7 +9,7 @@
 因此这里断言的是「落库后每个字段的实际值」，不是「调用了什么」。
 
 它们与同一张表的读侧规则（查重闸，见 test_transfer_history_gate.py）同住
-app/application/history.py；此前长在 TransferHistoryOper 上，故本文件旧名为
+app/application/history/；此前长在 TransferHistoryOper 上，故本文件旧名为
 test_db_transferhistory_write_path.py。
 """
 import pytest
@@ -21,6 +21,7 @@ from app.db.models.transferhistory import TransferHistory
 from app.db.session import SessionFactory, async_session_scope
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
+from app.schemas.category import ClassificationResult, ClassificationSelection
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -100,6 +101,59 @@ def test_add_success_maps_every_field_onto_the_row(db):
     assert (row.downloader, row.download_hash) == ("qbittorrent", "hash-ok")
     assert row.files == ["/downloads/片名.S01E02.2026.mkv"]
     assert row.errmsg is None
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_identified_transfer_history_persists_effective_classification(
+    db,
+    failed: bool,
+) -> None:
+    """整理成功和已识别失败都必须保存最终分类的完整执行快照。"""
+    oper = _repository()
+    media = _mediainfo(category="不得作为真值")
+    media.classification = ClassificationResult(
+        recommended=ClassificationSelection(
+            category_id="tv.auto",
+            category_path=["自动"],
+            rule_id="rule.auto",
+            source="automatic",
+        ),
+        effective=ClassificationSelection(
+            category_id="tv.manual",
+            category_path=["剧集", "收藏"],
+            source="subscription",
+        ),
+        policy_revision=13,
+        state="complete",
+    )
+    media.set_library_category("剧集/收藏")
+    source = f"/downloads/classification-{'fail' if failed else 'success'}.mkv"
+
+    if failed:
+        add_transfer_fail(
+            transfer_history_oper=oper,
+            fileitem=_fileitem(source),
+            mode="copy",
+            meta=MetaInfo("classification.mkv"),
+            mediainfo=media,
+            transferinfo=_transferinfo(message="失败"),
+        )
+    else:
+        add_transfer_success(
+            transfer_history_oper=oper,
+            fileitem=_fileitem(source),
+            mode="copy",
+            meta=MetaInfo("classification.mkv"),
+            mediainfo=media,
+            transferinfo=_transferinfo(),
+        )
+
+    row = oper.get_by_src(source)
+    assert row.media_category_id == "tv.manual"
+    assert row.category == "剧集/收藏"
+    assert row.classification_rule_id is None
+    assert row.classification_policy_revision == 13
+    assert row.classification_source == "subscription"
 
 
 def test_add_success_persists_both_file_items(db):
@@ -208,6 +262,31 @@ def test_add_fail_records_the_transfer_error_message(db):
     assert row.status is False
     assert row.errmsg == "目标路径不可写"
     assert row.title == "识别标题"
+
+
+def test_add_fail_persists_feedback_stage_and_retry_state(db):
+    """
+    失败历史要同时保存阶段、恢复动作和跨重启可用的重试状态。
+    """
+    oper = _repository()
+
+    add_transfer_fail(
+        transfer_history_oper=oper,
+        fileitem=_fileitem("/downloads/feedback.mkv"),
+        mode="move",
+        meta=MetaInfo("feedback.mkv"),
+        mediainfo=_mediainfo(),
+        transferinfo=_transferinfo(message="目标路径不可写"),
+        retry_count=3,
+        auto_paused=True,
+    )
+
+    row = oper.get_by_src("/downloads/feedback.mkv")
+    assert row.failure_stage == "destination_access"
+    assert "目标存储" in (row.recovery_action or "")
+    assert row.retry_count == 3
+    assert row.auto_paused is True
+    assert row.retry_exhausted is True
 
 
 def test_add_fail_uses_a_default_message_when_none_given(db):

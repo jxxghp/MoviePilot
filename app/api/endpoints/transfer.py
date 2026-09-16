@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Annotated, Any, List, Literal, Optional, cast
 
@@ -6,7 +7,15 @@ from fastapi import Depends, HTTPException, Query, status
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.dependencies.auth import get_current_active_manage_user
 from app.api.dependencies.history import get_transfer_execution_repository, get_transfer_history_lookup_service
-from app.api.response import ResponseAPIRouter
+from app.api.endpoints.transferhistory import (
+    restore_manual_transfer_history_batch,
+    restore_manual_transfer_history_metadata,
+)
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.directory import DirectoryHelper
 from app.application.history import TransferHistoryLookupService
@@ -33,6 +42,8 @@ from app.schemas.transfer import EpisodeFormatRecommendData as _SchemaEpisodeFor
 from app.schemas.transfer import EpisodeFormatRecommendItem, ManualTransferItem
 from app.schemas.transfer import ManualTransferHistoryInfo as _SchemaManualTransferHistoryInfo
 from app.schemas.transfer import ManualTransferResultData as _SchemaManualTransferResultData
+from app.schemas.transfer import ManualTransferSubmissionData as _SchemaManualTransferSubmissionData
+from app.schemas.transfer import ManualTransferSubmissionItem as _SchemaManualTransferSubmissionItem
 from app.schemas.transfer import ManualTransferTargetPath as _SchemaManualTransferTargetPath
 from app.schemas.transfer import TransferJob as _SchemaTransferJob
 from app.schemas.transfer import TransferManualReviewData as _SchemaTransferManualReviewData
@@ -44,6 +55,192 @@ from app.schemas.workflow import FileItem
 from app.schemas.workflow import FileItem as _SchemaFileItem
 
 router = ResponseAPIRouter()
+
+
+def _public_transfer_message(message: Optional[object]) -> Optional[str]:
+    """把整理链返回的错误转换为前端可直接展示的文案。"""
+    if message is None or not str(message).strip():
+        return None
+    from app.runtime.errors import public_error_message
+
+    return public_error_message(message, context="transfer")
+
+
+def _public_transfer_result(data: dict[str, Any]) -> dict[str, Any]:
+    """裁剪整理结果中的错误字段，保留预览数据的原有结构。"""
+    from app.application.transfer.feedback import classify_transfer_failure
+
+    result = dict(data)
+    if result.get("message"):
+        result["message"] = _public_transfer_message(result["message"])
+    items = result.get("items")
+    if isinstance(items, list):
+        public_items = []
+        for item in items:
+            if not isinstance(item, dict):
+                public_items.append(item)
+                continue
+            public_item = {
+                **item,
+                "message": _public_transfer_message(item.get("message")),
+            }
+            if public_item.get("success") is False:
+                feedback = classify_transfer_failure(
+                    public_item.get("message"),
+                    overwrite_skipped=bool(public_item.get("overwrite_skipped")),
+                )
+                public_item["failure_stage"] = public_item.get("failure_stage") or feedback.stage.value
+                public_item["recovery_action"] = public_item.get("recovery_action") or feedback.action
+            public_items.append(public_item)
+        result["items"] = public_items
+    return result
+
+
+def _build_failure_preview_item(file_item: FileItem, message: Optional[str]) -> dict:
+    """构造手动整理预览失败项。"""
+    from app.application.transfer.feedback import classify_transfer_failure
+
+    feedback = classify_transfer_failure(message)
+    return {
+        "source": file_item.path if file_item else None,
+        "target": None,
+        "target_dir": None,
+        "success": False,
+        "message": _public_transfer_message(message),
+        "failure_stage": feedback.stage.value,
+        "recovery_action": feedback.action,
+        "overwrite_skipped": False,
+        "type": None,
+        "title": None,
+        "season": None,
+        "episode": None,
+        "episode_end": None,
+        "part": None,
+        "org_string": None,
+        "apply_words": [],
+        "resource_team": None,
+        "customization": None,
+    }
+
+
+def _format_manual_transfer_failure(
+    *,
+    message: Optional[object],
+    source_path: Optional[str],
+    target_path: Optional[str] = None,
+) -> str:
+    """把手动整理失败转换为包含路径、阶段和下一步动作的用户提示。"""
+    from app.application.transfer.feedback import format_transfer_failure_message
+
+    public_message = _public_transfer_message(message) or "整理失败"
+    return format_transfer_failure_message(
+        public_message,
+        source_path=source_path,
+        target_path=target_path,
+    )
+
+
+def _merge_transfer_messages(messages: List[str]) -> str:
+    """合并手动整理批量预览提示信息，并统一转换错误文案。"""
+    valid_messages = [
+        public_message
+        for msg in messages
+        if msg
+        for public_message in [_public_transfer_message(msg)]
+        if public_message
+    ]
+    if not valid_messages:
+        return ""
+    return "、".join(valid_messages[:2]) + (
+        f"，等{len(valid_messages)}条消息" if len(valid_messages) > 2 else ""
+    )
+
+
+def _manual_submission_items(
+    fileitem: FileItem, success: bool, result: object, target_path: Optional[Path],
+) -> list[_SchemaManualTransferSubmissionItem]:
+    """映射真实执行回执，旧返回值最多确认接收，不能推断入库完成。"""
+    if isinstance(result, dict):
+        items = _public_transfer_result(result).get("items")
+        if isinstance(items, list):
+            return [_SchemaManualTransferSubmissionItem.model_validate(item) for item in items]
+    message = _public_transfer_message(result)
+    data = _public_transfer_result({"items": [{
+        "source": fileitem.path, "success": success,
+        "state": "accepted" if success else "failed", "message": message,
+        "target_dir": target_path.as_posix() if target_path else None,
+    }]})
+    return [_SchemaManualTransferSubmissionItem.model_validate(item) for item in data["items"]]
+
+
+def _manual_submission_response(
+    success: bool, items: list[_SchemaManualTransferSubmissionItem],
+) -> Any:
+    """保留部分成功文件，并继续为旧客户端提供包含失败路径的总提示。"""
+    errors = [
+        _format_manual_transfer_failure(
+            message=item.message, source_path=item.source,
+            target_path=item.target or item.target_dir,
+        )
+        for item in items if item.state in {"failed", "retry_wait", "manual_review"} and item.message
+    ]
+    message = _merge_transfer_messages(errors or [item.message for item in items if item.message and not success])
+    return _SchemaResponse(
+        success=success, message=message,
+        data=_SchemaManualTransferSubmissionData(items=items, message=message),
+    )
+
+
+def _is_music_file_batch(fileitems: List[FileItem]) -> bool:
+    """判断显式选中项是否为可按专辑识别的多音轨批次。"""
+    if len(fileitems) < 2 or any(fileitem.type != "file" for fileitem in fileitems):
+        return False
+    audio_extensions = set(get_api_runtime_config_snapshot().audio_extensions)
+    return all(
+        Path(fileitem.path or fileitem.name or "").suffix.lower() in audio_extensions
+        for fileitem in fileitems
+    )
+
+
+def _selected_music_fileitems(
+    fileitems: List[FileItem],
+    *,
+    explicitly_selected: bool,
+    media_type: Optional[MediaType],
+) -> Optional[List[FileItem]]:
+    """返回需要共享专辑上下文的显式多选音轨。"""
+    if not explicitly_selected or media_type not in (None, MediaType.MUSIC):
+        return None
+    if not _is_music_file_batch(fileitems):
+        return None
+    paths = [Path(fileitem.path) for fileitem in fileitems if fileitem.path]
+    parent_counts: dict[Path, int] = {}
+    for path in paths:
+        parent_counts[path.parent] = parent_counts.get(path.parent, 0) + 1
+    album_roots = [
+        parent
+        for parent in parent_counts
+        if all(path.parent == parent or parent in path.parents for path in paths)
+    ]
+    if not album_roots:
+        return fileitems
+    album_root = max(album_roots, key=lambda path: len(path.parts))
+    filtered = []
+    for fileitem, path in zip(fileitems, paths):
+        if path.parent == album_root:
+            filtered.append(fileitem)
+            continue
+        relative_parent = path.parent.relative_to(album_root)
+        first_directory = relative_parent.parts[0] if relative_parent.parts else ""
+        if re.fullmatch(r"(?:cd|disc|disk)\s*\d{1,2}", first_directory.strip(), re.IGNORECASE):
+            filtered.append(fileitem)
+    if filtered and len(filtered) < len(fileitems):
+        logger.info(
+            "音乐专辑批次忽略 %s 个非碟片子目录中的重复或附加音频",
+            len(fileitems) - len(filtered),
+        )
+        return filtered
+    return fileitems
 
 
 def _manual_review_actor(current_user: object) -> str:
@@ -76,7 +273,7 @@ def _manual_review_task_data(
                 "kind": task.step.kind,
                 "intent": task.step.intent,
                 "evidence": task.step.evidence,
-                "error": task.step.error,
+                "error": _public_transfer_message(task.step.error),
             },
             "review_revision": task.review_revision,
         }),
@@ -170,9 +367,10 @@ def resolve_transfer_manual_review(
             result=result,
         )
     except TransferExecutionConflictError as error:
+        logger.warning(f"整理人工复核请求冲突：{error}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=str(error),
+            detail="整理任务状态已变化，请刷新后重试",
         ) from error
     return _SchemaResponse(
         success=True,
@@ -234,7 +432,7 @@ def query_name(
 
 
 @router.get("/queue", summary="查询整理队列", response_model=List[_SchemaTransferJob])
-async def query_queue(_: _SchemaTokenPayload = Depends(verify_token)) -> Any:
+async def query_queue(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
     查询整理队列
     :param _: Token校验
@@ -447,7 +645,7 @@ def query_manual_transfer_history(
 @router.post(
     "/manual",
     summary="手动转移",
-    response_model=_SchemaResponse[_SchemaManualTransferResultData],
+    response_model=_SchemaResponse[_SchemaManualTransferSubmissionData | _SchemaManualTransferResultData],
 )
 def manual_transfer(
     transer_item: ManualTransferItem,
@@ -465,10 +663,50 @@ def manual_transfer(
     :param history_query: 整理历史投影服务
     :param _: Token校验
     """
+    return _route_manual_transfer(
+        transer_item=transer_item,
+        background=background,
+        history_query=history_query,
+    )
+
+
+def _route_manual_transfer(
+    transer_item: ManualTransferItem,
+    background: Optional[bool],
+    history_query: TransferHistoryLookupService,
+) -> Any:
+    """执行历史恢复、批量预览与 TransferChain 兼容编排。"""
+    if not transer_item.logids:
+        return _execute_manual_transfer(
+            transer_item=transer_item,
+            background=background,
+            history_query=history_query,
+        )
+
+    (
+        src_fileitems,
+        force,
+        downloader,
+        download_hash,
+        history_error,
+    ) = restore_manual_transfer_history_batch(
+        transer_item=transer_item,
+        history_query=history_query,
+    )
+    if history_error or not src_fileitems:
+        return _SchemaResponse(
+            success=False,
+            message=history_error or "缺少参数",
+        )
+    transer_item.fileitems = src_fileitems
+    transer_item.logids = None
     return _execute_manual_transfer(
         transer_item=transer_item,
         background=background,
         history_query=history_query,
+        force=force,
+        downloader=downloader,
+        download_hash=download_hash,
     )
 
 
@@ -476,11 +714,11 @@ def _execute_manual_transfer(
     transer_item: ManualTransferItem,
     background: Optional[bool],
     history_query: TransferHistoryLookupService,
+    force: bool = False,
+    downloader: Optional[str] = None,
+    download_hash: Optional[str] = None,
 ) -> Any:
-    """执行历史恢复、批量预览与 TransferChain 兼容编排。"""
-    force = False
-    downloader = None
-    download_hash = None
+    """执行已还原源文件项的手动整理兼容编排。"""
     src_fileitems: List[FileItem] = []
     cleanup_dest_fileitem: Optional[FileItem] = None
     target_path = Path(transer_item.target_path) if transer_item.target_path else None
@@ -491,8 +729,8 @@ def _execute_manual_transfer(
             return _SchemaResponse(
                 success=False, message=f"整理记录不存在，ID：{transer_item.logid}"
             )
-        # 强制转移
-        force = True
+        # 失败历史必须经过整理链的重试/重整判定，不能绕过旧任务直接重新准入。
+        force = bool(history.status)
         # 下载器与 Hash 是同一组下载上下文，重新识别时由当前文件路径重新匹配。
         downloader = history.downloader if transer_item.from_history else None
         download_hash = history.download_hash if transer_item.from_history else None
@@ -511,40 +749,7 @@ def _execute_manual_transfer(
 
         # 从历史数据获取信息
         if transer_item.from_history:
-            transer_item.type_name = (
-                history.type if history.type else transer_item.type_name
-            )
-            transer_item.media_source = (
-                history.media_source or transer_item.media_source
-            )
-            transer_item.media_id = (
-                history.media_id or transer_item.media_id
-            )
-            transer_item.music_type = (
-                getattr(history, "music_type", None) or transer_item.music_type
-            )
-            transer_item.season = (
-                int(str(history.seasons).replace("S", ""))
-                if history.seasons
-                else transer_item.season
-            )
-            transer_item.episode_group = (
-                history.episode_group or transer_item.episode_group
-            )
-            if history.episodes:
-                if "-" in str(history.episodes):
-                    # E01-E03多集合并
-                    episode_start, episode_end = str(history.episodes).split("-")
-                    episode_list: list[int] = []
-                    for i in range(
-                        int(episode_start.replace("E", "")),
-                        int(episode_end.replace("E", "")) + 1,
-                    ):
-                        episode_list.append(i)
-                    transer_item.episode_detail = ",".join(str(e) for e in episode_list)
-                else:
-                    # E01单集
-                    transer_item.episode_detail = str(history.episodes).replace("E", "")
+            restore_manual_transfer_history_metadata(transer_item, history)
 
     elif transer_item.fileitems:
         src_fileitems = [fileitem for fileitem in transer_item.fileitems if fileitem]
@@ -553,19 +758,7 @@ def _execute_manual_transfer(
     else:
         return _SchemaResponse(success=False, message="缺少参数")
 
-    dedup_fileitems: List[FileItem] = []
-    seen_paths = set()
-    for current_fileitem in src_fileitems:
-        storage = current_fileitem.storage or "local"
-        path = current_fileitem.path
-        if not path:
-            continue
-        key = (storage, path)
-        if key in seen_paths:
-            continue
-        seen_paths.add(key)
-        dedup_fileitems.append(current_fileitem)
-    src_fileitems = dedup_fileitems
+    src_fileitems = _deduplicate_fileitems(src_fileitems)
     if not src_fileitems:
         return _SchemaResponse(success=False, message="缺少参数")
 
@@ -603,44 +796,17 @@ def _execute_manual_transfer(
             part=transer_item.episode_part,
             offset=transer_item.episode_offset,
         )
-    explicit_selected_files = bool(transer_item.fileitems)
-
-    def _build_failure_preview_item(file_item: FileItem, message: str) -> dict:
-        """
-        构造手动整理预览失败项。
-        """
-        return {
-            "source": file_item.path if file_item else None,
-            "target": None,
-            "target_dir": None,
-            "success": False,
-            "message": message,
-            "type": None,
-            "title": None,
-            "season": None,
-            "episode": None,
-            "episode_end": None,
-            "part": None,
-            "org_string": None,
-            "apply_words": [],
-            "resource_team": None,
-            "customization": None,
-        }
-
-    def _merge_messages(messages: List[str]) -> str:
-        """
-        合并手动整理批量预览提示信息。
-        """
-        valid_messages = [msg for msg in messages if msg]
-        if not valid_messages:
-            return ""
-        return "、".join(valid_messages[:2]) + (
-            f"，等{len(valid_messages)}条消息" if len(valid_messages) > 2 else ""
-        )
+    explicit_selected_files = bool(transer_item.fileitems or transer_item.logids)
+    selected_music_fileitems = _selected_music_fileitems(
+        src_fileitems, explicitly_selected=explicit_selected_files, media_type=mtype
+    )
+    mtype = MediaType.MUSIC if selected_music_fileitems is not None else mtype
+    explicit_selected_files = explicit_selected_files and selected_music_fileitems is None
 
     # 前端显式传入文件列表时，按选中的文件逐个处理，避免将目录整体展开。
     if explicit_selected_files:
         preview_items: List[dict] = []
+        submission_items: list[_SchemaManualTransferSubmissionItem] = []
         error_messages: List[str] = []
         all_success = True
         for src_fileitem in src_fileitems:
@@ -651,6 +817,8 @@ def _execute_manual_transfer(
                 media_source=transer_item.media_source,
                 media_id=transer_item.media_id,
                 music_type=_resolve_music_type(src_fileitem),
+                music_release_regions=transer_item.music_release_regions,
+                music_release_scripts=transer_item.music_release_scripts,
                 mtype=mtype,
                 season=transer_item.season,
                 episode_group=transer_item.episode_group,
@@ -666,29 +834,35 @@ def _execute_manual_transfer(
                 download_hash=download_hash,
                 preview=transer_item.preview,
                 reorganize=transer_item.reorganize,
+                skip_success=transer_item.skip_success,
                 sync_extra_files=False,
                 cleanup_dest_fileitem=cleanup_dest_fileitem,
+                report_results=not transer_item.preview,
             )
             if transer_item.preview:
                 if isinstance(errormsg, dict):
-                    preview_items.extend(errormsg.get("items") or [])
+                    preview_items.extend(
+                        _public_transfer_result(errormsg).get("items") or []
+                    )
                     if errormsg.get("message"):
                         error_messages.append(errormsg.get("message"))
                     if not state:
                         all_success = False
                 else:
                     if errormsg:
-                        error_messages.append(str(errormsg))
+                        public_message = _public_transfer_message(errormsg)
+                        if public_message:
+                            error_messages.append(public_message)
                     preview_items.append(
-                        _build_failure_preview_item(src_fileitem, str(errormsg))
+                        _build_failure_preview_item(
+                            src_fileitem,
+                            _public_transfer_message(errormsg),
+                        )
                     )
                     all_success = False
-            elif not state:
-                all_success = False
-                if isinstance(errormsg, list):
-                    error_messages.extend([str(msg) for msg in errormsg if msg])
-                elif errormsg:
-                    error_messages.append(str(errormsg))
+            else:
+                all_success = all_success and state
+                submission_items.extend(_manual_submission_items(src_fileitem, state, errormsg, target_path))
 
         if transer_item.preview:
             merged_preview_items: List[dict] = []
@@ -698,8 +872,12 @@ def _execute_manual_transfer(
                 if source in seen_sources:
                     continue
                 seen_sources.add(source)
-                merged_preview_items.append(preview_item)
-            merged_message = _merge_messages(error_messages)
+                merged_preview_items.append(
+                    _public_transfer_result(preview_item)
+                    if isinstance(preview_item, dict)
+                    else preview_item
+                )
+            merged_message = _merge_transfer_messages(error_messages)
             preview_data = {
                 "summary": {
                     "total": len(merged_preview_items),
@@ -719,12 +897,7 @@ def _execute_manual_transfer(
                 data=preview_data,
             )
 
-        if not all_success:
-            return _SchemaResponse(
-                success=False,
-                message=_merge_messages(error_messages),
-            )
-        return _SchemaResponse(success=True)
+        return _manual_submission_response(all_success, submission_items)
 
     src_fileitem = src_fileitems[0]
     # 开始转移
@@ -734,7 +907,13 @@ def _execute_manual_transfer(
         target_path=target_path,
         media_source=transer_item.media_source,
         media_id=transer_item.media_id,
-        music_type=_resolve_music_type(src_fileitem),
+        music_type=(
+            MUSIC_ENTITY_ALBUM
+            if selected_music_fileitems is not None
+            else _resolve_music_type(src_fileitem)
+        ),
+        music_release_regions=transer_item.music_release_regions,
+        music_release_scripts=transer_item.music_release_scripts,
         mtype=mtype,
         season=transer_item.season,
         episode_group=transer_item.episode_group,
@@ -750,24 +929,24 @@ def _execute_manual_transfer(
         download_hash=download_hash,
         preview=transer_item.preview,
         reorganize=transer_item.reorganize,
-        sync_extra_files=True,
+        skip_success=transer_item.skip_success,
+        sync_extra_files=selected_music_fileitems is None,
         cleanup_dest_fileitem=cleanup_dest_fileitem,
+        selected_fileitems=selected_music_fileitems,
+        report_results=not transer_item.preview,
     )
-    # 失败
-    if not state:
-        if isinstance(errormsg, list):
-            errormsg = f"整理完成，{len(errormsg)} 个文件转移失败！"
-        if isinstance(errormsg, dict):
-            return _SchemaResponse(
-                success=True,
-                message=errormsg.get("message"),
-                data=errormsg,
-            )
-        return _SchemaResponse(success=False, message=errormsg)
-    # 成功
-    if transer_item.preview:
+    if not transer_item.preview:
+        return _manual_submission_response(state, _manual_submission_items(src_fileitem, state, errormsg, target_path))
+    # 预览失败仍返回完整预览列表，实际提交的总状态已在上方独立处理。
+    if isinstance(errormsg, dict):
+        public_result = _public_transfer_result(errormsg)
+        return _SchemaResponse(success=True, message=public_result.get("message"), data=public_result)
+    if state:
         return _SchemaResponse(success=True, data=errormsg or {})
-    return _SchemaResponse(success=True)
+    return _SchemaResponse(success=False, message=_format_manual_transfer_failure(
+        message=errormsg, source_path=src_fileitem.path,
+        target_path=target_path.as_posix() if target_path else None,
+    ))
 
 
 @router.post(
@@ -792,7 +971,10 @@ def recommend_episode_format(
     )
     if not state:
         logger.warn(f"推荐集数定位模板失败：{target_path} - {errmsg}")
-        return _SchemaResponse(success=False, message=errmsg)
+        return _SchemaResponse(
+            success=False,
+            message=_public_transfer_message(errmsg),
+        )
     logger.info(
         f"推荐集数定位模板成功：{target_path} - 规则 {data.get('rule_name') if data else None}"
     )

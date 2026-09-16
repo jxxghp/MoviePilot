@@ -1,5 +1,8 @@
 """站点与插件资源 provider fan-out owner。"""
 
+import asyncio
+import threading
+import time
 from concurrent.futures import FIRST_COMPLETED, Future, wait
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -7,7 +10,16 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, Iterator, List, Optional
 
 from app.application.configuration import get_configured_system_config
+from app.application.site.observation import (
+    capture_site_search_observation,
+    report_site_search_outcome,
+)
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.application.subscription.sitebudget import (
+    SubscriptionSiteBudget,
+    SubscriptionSiteBudgetDeferral,
+    SubscriptionSiteBudgetUnavailable,
+)
 from app.chain.search.contract import _SearchOwnerBase
 from app.domain.context import MediaInfo, SubtitleInfo, TorrentInfo
 from app.runtime.log import logger
@@ -18,6 +30,104 @@ from app.schemas.types import MediaType, ProgressKey, SystemConfigKey
 
 SiteIndexer = Dict[str, Any]
 SyncPending = dict[Future[Any], tuple[SiteIndexer, int, int]]
+
+_site_request_schedule_lock = threading.Lock()
+_site_next_request_at: Dict[str, float] = {}
+
+
+def _site_duration_key(site: SiteIndexer) -> str:
+    """返回站点耗时统计使用的稳定键。"""
+    site_id = site.get("id")
+    return str(site_id if site_id is not None else site.get("domain") or site.get("name") or "未知站点")
+
+
+def _site_duration_label(site: SiteIndexer) -> str:
+    """返回站点耗时日志中的可读名称。"""
+    return str(site.get("name") or site.get("domain") or site.get("id") or "未知站点")
+
+
+def _format_site_durations(durations: Dict[str, tuple[str, float]]) -> str:
+    """格式化各站点耗时，并标出本轮最慢站点。"""
+    if not durations:
+        return ""
+    ordered = sorted(durations.values(), key=lambda item: item[1], reverse=True)
+    details = "，".join(f"{name}：{seconds:.2f} 秒" for name, seconds in ordered)
+    slowest_name, slowest_seconds = ordered[0]
+    return f"；各站点耗时：{details}；最慢站点：{slowest_name}（{slowest_seconds:.2f} 秒）"
+
+
+def _site_request_interval(site: SiteIndexer) -> float:
+    """读取站点管理中已有的单次访问间隔配置。"""
+    try:
+        return max(0.0, float(site.get("limit_seconds") or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _reserve_site_request(site: SiteIndexer) -> float:
+    """按站点原子预约请求起始时间，避免并发搜索绕过同一流控窗口。"""
+    interval = _site_request_interval(site)
+    if interval <= 0:
+        return 0.0
+    site_key = str(site.get("id") or site.get("domain") or site.get("url") or site.get("name"))
+    now = time.monotonic()
+    with _site_request_schedule_lock:
+        request_at = max(now, _site_next_request_at.get(site_key, now))
+        _site_next_request_at[site_key] = request_at + interval
+    return max(0.0, request_at - now)
+
+
+def _wait_for_site_request(site: SiteIndexer) -> None:
+    """同步等待当前站点预约时间，不阻塞其他站点的线程任务。"""
+    delay = _reserve_site_request(site)
+    if delay > 0:
+        logger.debug(f"{site.get('name')} 站点流控等待 {delay:.1f} 秒 ...")
+        time.sleep(delay)
+
+
+async def _async_wait_for_site_request(site: SiteIndexer) -> None:
+    """异步等待当前站点预约时间，让其他站点继续并发搜索。"""
+    delay = _reserve_site_request(site)
+    if delay > 0:
+        logger.debug(f"{site.get('name')} 站点流控等待 {delay:.1f} 秒 ...")
+        await asyncio.sleep(delay)
+
+
+def _search_site_page(
+    owner: "_SearchProviderSyncOwner",
+    *,
+    site: SiteIndexer,
+    keyword: str,
+    media_type: Optional[MediaType],
+    page: int,
+) -> List[TorrentInfo]:
+    """等待站点预约后执行一页同步搜索，避免增加 owner 的复杂度。"""
+    _wait_for_site_request(site)
+    return owner.search_site_torrents(
+        site=site,
+        keyword=keyword,
+        mtype=media_type,
+        page=page,
+    )
+
+
+def _timed_sync_site_page(
+    owner: "_SearchProviderSyncOwner",
+    *,
+    site: SiteIndexer,
+    keyword: str,
+    mtype: Optional[MediaType],
+    page: int,
+) -> tuple[List[TorrentInfo], float]:
+    """执行同步站点搜索并返回本页耗时，不包含线程池排队时间。"""
+    started_at = time.perf_counter()
+    result = owner._search_site_torrents_with_budget(
+        site=site,
+        keyword=keyword,
+        mtype=mtype,
+        page=page,
+    )
+    return result, time.perf_counter() - started_at
 
 
 @dataclass(frozen=True)
@@ -31,10 +141,11 @@ class ProviderBatch:
     total: int
     total_items: int
     continued: bool
+    elapsed: float
 
 
-class SearchProviderOwner(_SearchOwnerBase):
-    """站点与插件资源 provider fan-out owner。"""
+class _SearchProviderSyncOwner(_SearchOwnerBase):
+    """同步站点 provider 选择、预算与 fan-out owner。"""
 
     @staticmethod
     def _selected_site_ids(sites: Optional[List[int]]) -> List[int]:
@@ -86,14 +197,14 @@ class SearchProviderOwner(_SearchOwnerBase):
 
     @staticmethod
     def _torrent_keyword(
-        keyword: str,
+        keyword: Optional[str],
         mediainfo: Optional[MediaInfo],
         area: Optional[str],
     ) -> str:
-        """投影站点实际请求关键字，IMDb 搜索只在计划边界转换一次。"""
+        """投影站点实际请求关键字，缺少 IMDb ID 时回退媒体标题。"""
         if area == "imdbid" and mediainfo:
-            return mediainfo.imdb_id or keyword
-        return keyword
+            return mediainfo.imdb_id or keyword or mediainfo.title or ""
+        return keyword or ""
 
     @staticmethod
     def _torrent_type(
@@ -116,13 +227,88 @@ class SearchProviderOwner(_SearchOwnerBase):
         """向进程共享线程 owner 提交一页，并登记该站点的续页位置。"""
         page_number = search_pages[page_index]
         future = ThreadHelper().submit(
-            self.search_site_torrents,
+            _timed_sync_site_page,
+            self,
             site=site,
             keyword=search_keyword,
             mtype=media_type,
             page=page_number,
         )
         pending[future] = (site, page_index, page_number)
+
+    def _search_site_torrents_with_budget(
+        self,
+        *,
+        site: SiteIndexer,
+        keyword: str,
+        mtype: Optional[MediaType],
+        page: int,
+    ) -> List[TorrentInfo]:
+        """在订阅专属站点预算内执行一页同步搜索。"""
+        budget = getattr(self, "_subscription_site_budget", None)
+        site_id = site.get("id")
+        if not isinstance(budget, SubscriptionSiteBudget) or not isinstance(site_id, int):
+            return _search_site_page(
+                self,
+                site=site,
+                keyword=keyword,
+                media_type=mtype,
+                page=page,
+            )
+        try:
+            claim = budget.acquire(site_id)
+        except SubscriptionSiteBudgetUnavailable as error:
+            self.record_subscription_site_budget_deferred(
+                SubscriptionSiteBudgetDeferral(
+                    site_id=error.site_id,
+                    retry_at=error.retry_at,
+                    wait_reason=error.wait_reason,
+                )
+            )
+            logger.debug(str(error))
+            return []
+        with capture_site_search_observation() as observation:
+            try:
+                result = _search_site_page(
+                    self,
+                    site=site,
+                    keyword=keyword,
+                    media_type=mtype,
+                    page=page,
+                )
+            except Exception as error:
+                budget.record_request(site_id, 0)
+                report_site_search_outcome(
+                    attempted=True,
+                    outcome="error",
+                    error=str(error),
+                )
+                raise
+            else:
+                budget.record_request(site_id, len(result or []))
+                if observation.attempted:
+                    if observation.outcome == "success":
+                        budget.record_success(site_id)
+                    elif observation.outcome != "skipped":
+                        failure = observation.error or observation.outcome
+                        message = f"站点 {site.get('name') or site_id} 搜索失败：{failure}"
+                        self.record_subscription_site_budget_failure(message)
+                        logger.warning(message)
+                return result
+            finally:
+                try:
+                    released = budget.finish(claim, observation)
+                    if not released:
+                        logger.error(
+                            f"订阅站点预算释放失败: site_id={site_id} "
+                            f"site={site.get('name') or '-'}"
+                        )
+                except Exception as error:  # noqa: BLE001
+                    budget.record_release_failure()
+                    logger.error(
+                        f"站点 {site.get('name') or site_id} 搜索预算收口失败：{str(error)}",
+                        exc_info=True,
+                    )
 
     def _submit_next_sync_site(
         self,
@@ -159,7 +345,7 @@ class SearchProviderOwner(_SearchOwnerBase):
         media_type: Optional[MediaType],
         results: List[TorrentInfo],
         progress: ProgressHelper,
-    ) -> None:
+    ) -> Dict[str, tuple[str, float]]:
         """在共享线程池中按站点串行翻页，并把结果合并到调用方集合。"""
         total_num = len(indexer_sites) * len(search_pages)
         pending: SyncPending = {}
@@ -169,6 +355,7 @@ class SearchProviderOwner(_SearchOwnerBase):
             self.runtime_config.search_threadpool_size or len(indexer_sites),
         )
         finish_count = 0
+        site_durations: Dict[str, tuple[str, float]] = {}
 
         for _ in range(max_workers):
             SearchProviderOwner._submit_next_sync_site(
@@ -189,7 +376,14 @@ class SearchProviderOwner(_SearchOwnerBase):
                 )
                 for future in done:
                     site, page_index, page_number = pending.pop(future)
-                    page_results = future.result() or []
+                    page_results, elapsed = future.result()
+                    page_results = page_results or []
+                    duration_key = _site_duration_key(site)
+                    previous = site_durations.get(duration_key)
+                    site_durations[duration_key] = (
+                        _site_duration_label(site),
+                        (previous[1] if previous else 0.0) + elapsed,
+                    )
                     finish_count += 1
                     results.extend(page_results)
                     continued = self._should_continue_search_pages(
@@ -217,7 +411,7 @@ class SearchProviderOwner(_SearchOwnerBase):
                             search_keyword=search_keyword,
                             media_type=media_type,
                         )
-                    logger.info(f"站点搜索进度：{finish_count} / {total_num}")
+                    logger.debug(f"站点搜索进度：{finish_count} / {total_num}")
                     progress.update(
                         value=finish_count / total_num * 100,
                         text=(f"正在搜索{keyword or ''}，已完成 {finish_count} / {total_num} 个请求 ..."),
@@ -225,6 +419,7 @@ class SearchProviderOwner(_SearchOwnerBase):
         finally:
             for future in pending:
                 future.cancel()
+        return site_durations
 
     def _search_all_sites(
         self,
@@ -235,11 +430,17 @@ class SearchProviderOwner(_SearchOwnerBase):
         area: Optional[str] = "title",
         mtype: Optional[MediaType] = None,
     ) -> Optional[List[TorrentInfo]]:
-        """通过共享线程 owner 按站点顺序翻页并汇总同步 provider 结果。"""
+        """共享线程按站点翻页；恢复搜索仅查询待完成且仍启用的站点。"""
         indexer_sites = self._sync_indexers(sites)
         media_type = self._torrent_type(mediainfo, mtype)
-        plugin_results = self.search_plugin_torrents(
-            keyword=keyword,
+        search_keyword = self._torrent_keyword(keyword, mediainfo, area)
+        budget = getattr(self, "_subscription_site_budget", None)
+        pending_site_ids = budget.pending_site_ids if isinstance(budget, SubscriptionSiteBudget) else None
+        # 已完成的站点和插件源不再重复查询；仍按当前启用配置过滤被移除的站点。
+        if pending_site_ids is not None:
+            indexer_sites = [site for site in indexer_sites if site.get("id") in pending_site_ids]
+        plugin_results = [] if pending_site_ids is not None else self.search_plugin_torrents(
+            keyword=search_keyword,
             mtype=media_type,
             page=page,
         )
@@ -251,7 +452,6 @@ class SearchProviderOwner(_SearchOwnerBase):
         start_time = datetime.now()
         search_pages = self._build_search_pages(page)
         results = list(plugin_results)
-        search_keyword = self._torrent_keyword(keyword, mediainfo, area)
 
         progress.start()
         try:
@@ -259,7 +459,7 @@ class SearchProviderOwner(_SearchOwnerBase):
                 value=0,
                 text=(f"开始搜索，共 {len(indexer_sites)} 个站点，{len(search_pages)} 页 ..."),
             )
-            SearchProviderOwner._collect_sync_site_results(
+            site_durations = SearchProviderOwner._collect_sync_site_results(
                 self,
                 keyword=keyword,
                 indexer_sites=indexer_sites,
@@ -275,10 +475,22 @@ class SearchProviderOwner(_SearchOwnerBase):
                 value=100,
                 text=(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {elapsed} 秒"),
             )
-            logger.info(f"站点搜索完成，有效资源数：{len(results)}，总耗时 {elapsed} 秒")
+            log = (
+                logger.debug
+                if isinstance(getattr(self, "_subscription_site_budget", None), SubscriptionSiteBudget)
+                else logger.info
+            )
+            log(
+                f"站点搜索完成，有效资源数：{len(results)}，总耗时 {elapsed} 秒"
+                f"{_format_site_durations(site_durations)}"
+            )
             return results
         finally:
             progress.end()
+
+
+class SearchProviderOwner(_SearchProviderSyncOwner):
+    """异步站点与插件资源 provider fan-out owner。"""
 
     async def _iter_provider_batches(
         self,
@@ -305,7 +517,7 @@ class SearchProviderOwner(_SearchOwnerBase):
             task_owner=task_owner,
         )
         async with aclosing(page_iterator):
-            async for site, page_number, page_results, continued in page_iterator:
+            async for site, page_number, page_results, continued, elapsed in page_iterator:
                 finish_count += 1
                 total_items += len(page_results)
                 yield ProviderBatch(
@@ -316,6 +528,7 @@ class SearchProviderOwner(_SearchOwnerBase):
                     total=total,
                     total_items=total_items,
                     continued=continued,
+                    elapsed=elapsed,
                 )
 
     @staticmethod
@@ -420,7 +633,7 @@ class SearchProviderOwner(_SearchOwnerBase):
             logger.debug(f"{batch.site.get('name')} {label}第 {batch.page} 页返回 {len(batch.items)} 条，停止继续翻页")
         progress_value = batch.finished / batch.total * 100
         progress_text = f"正在搜索{label}{keyword or ''}，已完成 {batch.finished} / {batch.total} 个请求 ..."
-        logger.info(f"站点{label}搜索进度：{batch.finished} / {batch.total}")
+        logger.debug(f"站点{label}搜索进度：{batch.finished} / {batch.total}")
         await progress.update(value=progress_value, text=progress_text)
         return {
             "type": "append",
@@ -463,6 +676,7 @@ class SearchProviderOwner(_SearchOwnerBase):
 
         started_at = datetime.now()
         last_total_items = len(initial_items)
+        site_durations: Dict[str, tuple[str, float]] = {}
         # 既有流式协议约定插件资源先于站点进度发布；列表入口也消费同一事件流。
         if initial_items:
             yield SearchProviderOwner._plugin_event(
@@ -494,6 +708,12 @@ class SearchProviderOwner(_SearchOwnerBase):
             async with aclosing(batches):
                 async for batch in batches:
                     last_total_items = batch.total_items
+                    duration_key = _site_duration_key(batch.site)
+                    previous = site_durations.get(duration_key)
+                    site_durations[duration_key] = (
+                        _site_duration_label(batch.site),
+                        (previous[1] if previous else 0.0) + batch.elapsed,
+                    )
                     yield await SearchProviderOwner._batch_event(
                         batch=batch,
                         keyword=keyword,
@@ -506,7 +726,7 @@ class SearchProviderOwner(_SearchOwnerBase):
                 f"站点{label}搜索完成，有效{'字幕' if subtitle else '资源'}数：{last_total_items}，总耗时 {elapsed} 秒"
             )
             await progress.update(value=100, text=done_text)
-            logger.info(done_text)
+            logger.info(f"{done_text}{_format_site_durations(site_durations)}")
         finally:
             await progress.end()
 
@@ -523,19 +743,20 @@ class SearchProviderOwner(_SearchOwnerBase):
         """构造种子 provider 的 canonical 事件流。"""
         indexer_sites = await self._async_indexers(sites)
         media_type = self._torrent_type(mediainfo, mtype)
+        search_keyword = self._torrent_keyword(keyword, mediainfo, area)
         plugin_results = await self.async_search_plugin_torrents(
-            keyword=keyword,
+            keyword=search_keyword,
             mtype=media_type,
             page=page,
         )
         search_pages = self._build_search_pages(page)
-        search_keyword = self._torrent_keyword(keyword, mediainfo, area)
 
         async def search_site_page(
             site: SiteIndexer,
             page_number: int,
         ) -> List[TorrentInfo]:
             """在统一分页器调度下请求一页站点资源。"""
+            await _async_wait_for_site_request(site)
             return await self.async_search_site_torrents(
                 site=site,
                 keyword=search_keyword,

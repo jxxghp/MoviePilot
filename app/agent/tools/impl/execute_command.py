@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import codecs
 import json
 import os
 import signal
@@ -14,17 +15,19 @@ from typing import Any, Literal, Optional, TextIO, Type
 
 from pydantic import BaseModel, Field
 
-from app.agent.tools.impl._command_safety import validate_command_safety
-from app.agent.tools.base import MoviePilotTool
-from app.agent.tools.tags import ToolTag
-from app.agent.tools.impl._terminal_session import (
-    TERMINAL_DEFAULT_READ_BYTES,
-    TERMINAL_MAX_READ_BYTES,
+from app.agent.shell import build_agent_subprocess_env, resolve_agent_cwd, resolve_agent_shell
+from app.agent.terminal.manager import (
     TERMINAL_WAIT_DEFAULT_MS,
+    TERMINAL_YIELD_DEFAULT_MS,
     get_terminal_session_manager,
 )
+from app.agent.terminal.output import TERMINAL_DEFAULT_READ_BYTES, TERMINAL_MAX_READ_BYTES, TerminalOutputError
+from app.agent.terminal.ownership import TerminalAccessError, TerminalScope, require_terminal_scope
+from app.agent.tools.base import DEFAULT_TOOL_RESULT_MAX_CHARS, MoviePilotTool
+from app.agent.tools.impl._command_safety import validate_command_safety
+from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
-
+from app.runtime.settings import get_runtime_setting
 
 DEFAULT_TIMEOUT_SECONDS = 60
 MAX_TIMEOUT_SECONDS = 300
@@ -56,7 +59,7 @@ class _CommandOutput:
         """按 UTF-8 字节数截断文本，避免截断后出现非法字符。"""
         if byte_limit <= 0:
             return ""
-        return text.encode("utf-8")[:byte_limit].decode("utf-8", errors="replace")
+        return text.encode("utf-8")[:byte_limit].decode("utf-8", errors="ignore")
 
     def _write_chunk(self, stream_name: str, text: str) -> None:
         """把输出分片按 stdout/stderr 分段写入临时文件。"""
@@ -196,11 +199,12 @@ class _CommandOutput:
 class ExecuteCommandInput(BaseModel):
     """执行 Shell 命令工具的输入参数模型。"""
 
-    action: Optional[Literal["start", "read", "wait", "write", "kill", "run"]] = Field(
+    action: Optional[Literal["start", "read", "wait", "write", "interrupt", "kill", "run"]] = Field(
         "start",
         description=(
             "Command action. start launches a managed background session and returns "
-            "session_id. read/wait/write/kill operate on that session. run executes "
+            "session_id. read/wait/write/interrupt/kill operate on that session. interrupt sends one "
+            "interrupt without escalating to a forced kill; kill terminates the session. run executes "
             "once and waits until completion or timeout."
         ),
     )
@@ -214,35 +218,68 @@ class ExecuteCommandInput(BaseModel):
     )
     input_text: Optional[str] = Field(
         None,
-        description="Text to send to stdin for action=write. Use \\u0003 for Ctrl+C.",
+        description=(
+            "Text to send to stdin for action=write. In pipe mode, \\u0003/\\u0004 are ordinary bytes. "
+            "In PTY mode their Ctrl+C/EOF behavior depends on terminal settings. Use action=interrupt for a signal."
+        ),
+    )
+    close_stdin: Optional[bool] = Field(
+        False, strict=True,
+        description=(
+            "For action=write in pipe mode, send optional final input then close stdin so the command receives EOF. "
+            "Output stays readable. Empty input alone does not send EOF. PTY half-close is not supported."
+        ),
     )
     signal_name: Optional[str] = Field(
         "TERM",
-        description="Signal for action=kill, such as TERM, INT, KILL, or 15.",
+        description="Signal for action=kill, such as TERM, INT, KILL, or 15. Invalid or unsupported signals are rejected.",
     )
     cwd: Optional[str] = Field(
         None,
-        description="Working directory for action=start or action=run.",
+        description="Launch directory for start/run. Omitted or relative paths use the MoviePilot root directory; ~ is expanded.",
+    )
+    shell: Optional[str] = Field(
+        None,
+        description="Shell executable for start/run. All pipe and PTY launches use the same selection policy and report the selected shell.",
+    )
+    login: Optional[bool] = Field(
+        None, strict=True,
+        description=(
+            "For start/run, explicitly enable or disable login-shell startup where supported. "
+            "POSIX defaults to non-login; Windows preserves its configured shell defaults. "
+            "Login startup files can change environment and directory."
+        ),
     )
     env: Optional[dict[str, Any]] = Field(
         None,
-        description="Additional environment variables for action=start.",
+        description="Additional environment variables for action=start or action=run.",
     )
     use_pty: Optional[bool] = Field(
         True,
         description="Use a pseudo terminal for action=start when supported.",
     )
     since_seq: Optional[int] = Field(
-        None,
-        description="For action=read/wait, return output chunks after this seq.",
+        None, ge=0, strict=True,
+        description="For read/wait/write/interrupt/kill, last fully delivered output seq. Resume with output_until_seq, never last_seq.",
+    )
+    since_offset: Optional[int] = Field(
+        None, ge=0, strict=True,
+        description=(
+            "UTF-8 byte offset within the chunk after since_seq. Pass 0 to enable partial-chunk paging; "
+            "resume using output_until_seq and output_until_offset together. Omit for legacy whole-chunk reads."
+        ),
     )
     max_bytes: Optional[int] = Field(
         TERMINAL_DEFAULT_READ_BYTES,
-        description="For action=read/wait, maximum output bytes to return.",
+        description="For start/read/wait/write/interrupt/kill, maximum output bytes to return.",
     )
     timeout_ms: Optional[int] = Field(
         TERMINAL_WAIT_DEFAULT_MS,
-        description="For action=wait, maximum segmented wait time in milliseconds.",
+        description="For action=wait, wait for unread output or output completion; 0 returns immediately without stopping the process.",
+    )
+    yield_time_ms: Optional[int] = Field(
+        TERMINAL_YIELD_DEFAULT_MS, ge=0, strict=True,
+        description="For action=start, first-output wait budget in milliseconds (default 250, capped at 10000); 0 returns immediately.",
     )
     timeout: Optional[int] = Field(
         60,
@@ -268,11 +305,16 @@ class ExecuteCommandTool(MoviePilotTool):
     ]
     description: str = (
         "Start and manage shell commands on the server. By default action=start "
-        "launches a background session and immediately returns session_id/status/"
-        "last_seq/output_until_seq. Call the same tool with action=read, wait, "
-        "write, or kill to poll output, wait in short segments, send stdin, or "
-        "terminate it. Use action=run only when a one-shot bounded command result "
-        "is preferred."
+        "launches a background session, waits briefly for initial output, then returns its session_id and output cursor. "
+        "Continue with both output_until_seq and output_until_offset; last_seq is not a consumed cursor. "
+        "Call the same tool with action=read, wait, "
+        "write, interrupt, or kill to poll output, wait in short segments, send stdin, "
+        "send one interrupt, or terminate it. write(close_stdin=true) sends EOF in pipe mode after optional final input; "
+        "PTY input and output cannot be half-closed. start/run share cwd, shell and login selection. "
+        "Use action=run only when a one-shot bounded command result "
+        "is preferred. run returns JSON with exit_code, timed_out, execution_outcome, "
+        "output preview and optional output_file. Only a normal zero exit is success; "
+        "a timeout does not undo any side effects."
     )
     args_schema: Type[BaseModel] = ExecuteCommandInput
     require_admin: bool = True
@@ -290,7 +332,11 @@ class ExecuteCommandTool(MoviePilotTool):
         if action == "wait":
             return f"等待命令会话: {session_id or ''}"
         if action == "write":
+            if kwargs.get("close_stdin"):
+                return f"关闭命令输入: {session_id or ''}"
             return f"写入命令输入: {session_id or ''}"
+        if action == "interrupt":
+            return f"中断命令会话: {session_id or ''}"
         if action == "kill":
             return f"终止命令会话: {session_id or ''}"
         return f"处理命令会话: {session_id or command or ''}"
@@ -356,12 +402,14 @@ class ExecuteCommandTool(MoviePilotTool):
         stream_name: str,
         output: _CommandOutput,
     ) -> None:
-        """按块读取一次性命令输出，保留 32KB 头尾预览。"""
+        """每个流增量解码 UTF-8，跨读取边界的字符不能被提前替换。"""
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         while True:
             chunk = await stream.read(READ_CHUNK_SIZE)
             if not chunk:
+                output.append(stream_name, decoder.decode(b"", final=True))
                 break
-            output.append(stream_name, chunk.decode("utf-8", errors="replace"))
+            output.append(stream_name, decoder.decode(chunk))
 
     @staticmethod
     def _terminate_process(process: Any, sig: int) -> None:
@@ -427,9 +475,17 @@ class ExecuteCommandTool(MoviePilotTool):
         timeout: int,
         timed_out: bool,
         timeout_note: Optional[str],
+        cwd: Optional[str] = None,
+        shell: Optional[str] = None,
+        login: bool = False,
+        scope_cancelled: bool = False,
     ) -> str:
-        """格式化 action=run 的兼容文本结果。"""
-        if timed_out:
+        """分开返回机器可判定的执行状态与有界输出，不能靠完成提示推断成功。"""
+        if scope_cancelled:
+            result = "命令因任务作用域关闭而取消，未确认业务动作是否完成"
+        elif exit_code is None:
+            result = "无法确认命令进程已结束，请先核对实际状态"
+        elif timed_out:
             result = f"命令执行超时 (限制: {timeout}秒，已终止进程)"
         else:
             result = f"命令执行完成 (退出码: {exit_code})"
@@ -437,7 +493,7 @@ class ExecuteCommandTool(MoviePilotTool):
         if timeout_note:
             result += f"\n\n提示:\n{timeout_note}"
         if output.temp_file_path:
-            file_note = "截至命令终止前的完整输出" if timed_out else "完整输出"
+            file_note = "截至返回时已捕获的输出" if exit_code is None else ("截至命令终止前的完整输出" if timed_out else "完整输出")
             result += (
                 "\n\n提示:\n"
                 f"命令输出超过 {MAX_OUTPUT_PREVIEW_BYTES // 1024}KB，"
@@ -445,13 +501,29 @@ class ExecuteCommandTool(MoviePilotTool):
                 f"{file_note}已写入临时文件: {output.temp_file_path}\n"
                 "如需完整内容，请继续读取该文件。"
             )
-        if output.combined_preview:
-            result += f"\n\n命令输出预览:\n{output.combined_preview}"
         if output.preview_truncated:
             result += "\n\n...(仅展示前后各 16KB 内容)"
         if not output.combined_preview:
             result += "\n\n(无输出内容)"
-        return result
+        succeeded = exit_code == 0 and not timed_out and not scope_cancelled
+        outcome = "failed" if scope_cancelled else (
+            "unknown" if exit_code is None else ("succeeded" if succeeded else "failed")
+        )
+        recovery = (
+            "命令结果未知；先用 action=read 或 action=wait 核对会话状态，不要直接重复可能产生副作用的命令。"
+            if outcome == "unknown" else
+            "检查 output 和 exit_code，修正命令或参数后再重试；不要把命令输出中的完成文字当作成功证据。"
+        )
+        return ExecuteCommandTool._dump({
+            "action": "run", "success": succeeded, "execution_outcome": outcome,
+            "status": "cancelled" if scope_cancelled else (
+                "unknown" if exit_code is None else ("timed_out" if timed_out else "exited")
+            ),
+            "exit_code": exit_code, "timed_out": timed_out, "timeout": timeout,
+            "cwd": cwd, "shell": shell, "login": login, "stdin_closed": True,
+            "output_truncated": output.preview_truncated, "output_file": output.temp_file_path,
+            "output": output.combined_preview, "message": result, "recovery": recovery,
+        })
 
     async def _run_once(
         self,
@@ -459,16 +531,78 @@ class ExecuteCommandTool(MoviePilotTool):
         command: str,
         timeout: Optional[int],
         cwd: Optional[str] = None,
+        env: Optional[dict[str, Any]] = None,
+        shell: Optional[str] = None,
+        login: Optional[bool] = None,
         confirm_dangerous: bool = False,
     ) -> str:
-        """按旧模式一次性执行命令，等待完成或超时后返回文本结果。"""
+        """一次性执行命令并返回结构化终态；退出路径都必须释放读取任务和归档句柄。"""
         self._validate_command(command, confirmed=confirm_dangerous)
-        normalized_timeout, timeout_note = self._normalize_timeout(timeout)
+        scope = require_terminal_scope()
+        scope.begin_run()
+        try:
+            return await self._run_once_with_scope(
+                scope=scope, command=command, timeout=timeout, cwd=cwd, env=env,
+                shell=shell, login=login, confirm_dangerous=confirm_dangerous,
+            )
+        finally:
+            scope.finish_run()
 
-        async with _command_semaphore:
-            process = await asyncio.create_subprocess_shell(
-                command,
-                cwd=cwd,
+    @staticmethod
+    async def _acquire_command_slot(scope: TerminalScope) -> None:
+        """并发槽等待期间响应作用域封口，禁止取消后迟到启动一次性进程。"""
+        acquire_task = asyncio.create_task(_command_semaphore.acquire())
+        closed_task = asyncio.create_task(scope.changed.wait())
+        acquired = False
+        released = False
+        try:
+            done, _ = await asyncio.wait(
+                {acquire_task, closed_task}, return_when=asyncio.FIRST_COMPLETED,
+            )
+            if closed_task in done and acquire_task not in done:
+                acquire_task.cancel()
+                await asyncio.gather(acquire_task, return_exceptions=True)
+                raise TerminalAccessError()
+            await acquire_task
+            acquired = True
+            if scope.closed:
+                _command_semaphore.release()
+                released = True
+                acquired = False
+                raise TerminalAccessError()
+        finally:
+            if not acquire_task.done():
+                acquire_task.cancel()
+            await asyncio.gather(acquire_task, return_exceptions=True)
+            if acquire_task.done() and not acquire_task.cancelled() and not acquired and not released:
+                _command_semaphore.release()
+            if not closed_task.done():
+                closed_task.cancel()
+            await asyncio.gather(closed_task, return_exceptions=True)
+
+    async def _run_once_with_scope(
+        self,
+        *,
+        scope: TerminalScope,
+        command: str,
+        timeout: Optional[int],
+        cwd: Optional[str] = None,
+        env: Optional[dict[str, Any]] = None,
+        shell: Optional[str] = None,
+        login: Optional[bool] = None,
+        confirm_dangerous: bool = False,
+    ) -> str:
+        """在已登记作用域下运行一次命令，并对封口和进程收尾保持可观察。"""
+        normalized_timeout, timeout_note = self._normalize_timeout(timeout)
+        normalized_cwd = resolve_agent_cwd(cwd, root_path=get_runtime_setting("ROOT_PATH"))
+        normalized_env = build_agent_subprocess_env(env)
+        shell_policy = resolve_agent_shell(executable=shell, login=login, environment=normalized_env, cwd=normalized_cwd)
+
+        await self._acquire_command_slot(scope)
+        try:
+            require_terminal_scope()
+            process = await asyncio.create_subprocess_exec(
+                *shell_policy.build_argv(command), cwd=normalized_cwd, env=normalized_env,
                 **self._subprocess_kwargs(),
             )
             output = _CommandOutput(preview_limit_bytes=MAX_OUTPUT_PREVIEW_BYTES)
@@ -479,29 +613,45 @@ class ExecuteCommandTool(MoviePilotTool):
             ]
 
             timed_out = False
+            scope_cancelled = False
+            scope_task = asyncio.create_task(scope.changed.wait())
             try:
-                await asyncio.wait_for(
-                    asyncio.shield(wait_task), timeout=normalized_timeout
+                done, _ = await asyncio.wait(
+                    {wait_task, scope_task}, timeout=normalized_timeout,
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
-            except asyncio.TimeoutError:
-                timed_out = True
-                await self._cleanup_process(process, wait_task)
+                # The scope can be sealed in the same event-loop turn after
+                # ``wait_task`` wins. Recheck the authoritative owner state so
+                # a run that crossed the cancellation boundary never reports
+                # an unqualified success.
+                scope_cancelled = scope_task in done or scope.closed
+                if wait_task not in done:
+                    timed_out = not scope_cancelled
+                    await self._cleanup_process(process, wait_task)
             except asyncio.CancelledError:
                 await self._cleanup_process(process, wait_task)
                 raise
 
-            try:
-                await self._finish_reader_tasks(reader_tasks)
             finally:
-                output.close()
+                if not scope_task.done():
+                    scope_task.cancel()
+                await asyncio.gather(scope_task, return_exceptions=True)
+                try:
+                    await self._finish_reader_tasks(reader_tasks)
+                finally:
+                    output.close()
 
-        return self._format_run_result(
-            exit_code=process.returncode,
-            output=output,
-            timeout=normalized_timeout,
-            timed_out=timed_out,
-            timeout_note=timeout_note,
-        )
+            return self._format_run_result(
+                exit_code=process.returncode,
+                output=output,
+                timeout=normalized_timeout,
+                timed_out=timed_out,
+                scope_cancelled=scope_cancelled,
+                timeout_note=timeout_note,
+                cwd=normalized_cwd, shell=shell_policy.executable, login=shell_policy.login,
+            )
+        finally:
+            _command_semaphore.release()
 
     async def run(
         self,
@@ -509,18 +659,23 @@ class ExecuteCommandTool(MoviePilotTool):
         command: Optional[str] = None,
         session_id: Optional[str] = None,
         input_text: Optional[str] = None,
+        close_stdin: Optional[bool] = False,
         signal_name: Optional[str] = "TERM",
         cwd: Optional[str] = None,
         env: Optional[dict[str, Any]] = None,
+        shell: Optional[str] = None,
+        login: Optional[bool] = None,
         use_pty: Optional[bool] = True,
         since_seq: Optional[int] = None,
+        since_offset: Optional[int] = None,
         max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
         timeout_ms: Optional[int] = TERMINAL_WAIT_DEFAULT_MS,
+        yield_time_ms: Optional[int] = TERMINAL_YIELD_DEFAULT_MS,
         timeout: Optional[int] = 60,
         confirm_dangerous: Optional[bool] = False,
         **kwargs,
     ) -> str:
-        """执行命令动作：默认后台启动，也支持读取、等待、写入、终止和一次性执行。"""
+        """按同一启动策略执行命令，区分写入/EOF、一次中断与会话终止。"""
         normalized_action = (action or "start").strip().lower()
         logger.info(
             f"执行工具: {self.name}, action={normalized_action}, "
@@ -528,7 +683,11 @@ class ExecuteCommandTool(MoviePilotTool):
         )
 
         try:
+            require_terminal_scope()
             terminal_session_manager = get_terminal_session_manager()
+            output_budget = DEFAULT_TOOL_RESULT_MAX_CHARS
+            if self.result_max_chars and self.result_max_chars > 0:
+                output_budget = min(self.result_max_chars, output_budget)
             if normalized_action == "start":
                 start_command = self._require_command(command)
                 self._validate_command(
@@ -539,8 +698,14 @@ class ExecuteCommandTool(MoviePilotTool):
                     command=start_command,
                     cwd=cwd,
                     env=env,
+                    shell=shell,
+                    login=login,
                     use_pty=use_pty,
                     confirm_dangerous=bool(confirm_dangerous),
+                    yield_time_ms=yield_time_ms,
+                    since_offset=since_offset,
+                    max_bytes=max_bytes,
+                    max_output_chars=output_budget,
                 )
                 return self._dump(payload)
 
@@ -548,7 +713,9 @@ class ExecuteCommandTool(MoviePilotTool):
                 payload = await terminal_session_manager.read(
                     session_id=self._require_session_id(session_id),
                     since_seq=since_seq,
+                    since_offset=since_offset,
                     max_bytes=max_bytes,
+                    max_output_chars=output_budget,
                 )
                 return self._dump(payload)
 
@@ -557,7 +724,9 @@ class ExecuteCommandTool(MoviePilotTool):
                     session_id=self._require_session_id(session_id),
                     timeout_ms=timeout_ms,
                     since_seq=since_seq,
+                    since_offset=since_offset,
                     max_bytes=max_bytes,
+                    max_output_chars=output_budget,
                 )
                 return self._dump(payload)
 
@@ -565,6 +734,21 @@ class ExecuteCommandTool(MoviePilotTool):
                 payload = await terminal_session_manager.write(
                     session_id=self._require_session_id(session_id),
                     input_text=input_text or "",
+                    close_stdin=False if close_stdin is None else close_stdin,
+                    since_seq=since_seq,
+                    since_offset=since_offset,
+                    max_bytes=max_bytes,
+                    max_output_chars=output_budget,
+                )
+                return self._dump(payload)
+
+            if normalized_action == "interrupt":
+                payload = await terminal_session_manager.interrupt(
+                    session_id=self._require_session_id(session_id),
+                    since_seq=since_seq,
+                    since_offset=since_offset,
+                    max_bytes=max_bytes,
+                    max_output_chars=output_budget,
                 )
                 return self._dump(payload)
 
@@ -572,6 +756,10 @@ class ExecuteCommandTool(MoviePilotTool):
                 payload = await terminal_session_manager.kill(
                     session_id=self._require_session_id(session_id),
                     sig=signal_name,
+                    since_seq=since_seq,
+                    since_offset=since_offset,
+                    max_bytes=max_bytes,
+                    max_output_chars=output_budget,
                 )
                 return self._dump(payload)
 
@@ -580,10 +768,28 @@ class ExecuteCommandTool(MoviePilotTool):
                     command=self._require_command(command),
                     timeout=timeout,
                     cwd=cwd,
+                    env=env,
+                    shell=shell,
+                    login=login,
                     confirm_dangerous=bool(confirm_dangerous),
                 )
 
             raise ValueError(f"不支持的 action: {action}")
+        except TerminalAccessError as err:
+            return self._dump({
+                "error": str(err), "status": "error", "action": normalized_action,
+                "success": False, "execution_outcome": "failed", "code": "terminal_access_denied",
+                "recovery": "当前任务没有该终端作用域权限；使用当前任务创建的 session_id，或重新启动受控会话。",
+            })
+        except TerminalOutputError as err:
+            return self._dump({
+                "error": str(err), "status": "error", "action": normalized_action,
+                "success": False, "execution_outcome": "failed",
+                "code": err.code, "minimum_read_bytes": err.minimum_read_bytes,
+                "recovery": "按 minimum_read_bytes 调整读取游标和页大小后重试，不要重新启动命令。",
+            })
         except Exception as err:
             logger.error(f"执行命令 action 失败: {err}", exc_info=True)
-            return self._dump({"error": str(err), "status": "error", "action": normalized_action})
+            return self._dump({"error": str(err), "status": "error", "action": normalized_action,
+                               "success": False, "execution_outcome": "failed",
+                               "recovery": "修正 action、session_id 或参数后重试；不要重复启动未确认是否结束的命令。"})

@@ -1,6 +1,7 @@
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import field_validator as _field_validator
 
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
@@ -54,8 +55,16 @@ class DownloadHistory(OptionalMediaIdentityMixin, BaseModel):
     date: Optional[str] = None
     # 备注
     note: Optional[JsonData] = None
-    # 自定义媒体类别
+    # 实际媒体类别稳定标识
+    media_category_id: Optional[str] = None
+    # 实际媒体类别兼容路径快照
     media_category: Optional[str] = None
+    # 命中的分类规则标识
+    classification_rule_id: Optional[str] = None
+    # 执行时分类策略版本
+    classification_policy_revision: Optional[int] = None
+    # 最终分类来源
+    classification_source: Optional[str] = None
     # 自定义剧集组
     episode_group: Optional[str] = None
 
@@ -87,8 +96,16 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
     mode: Optional[str] = None
     # 类型：电影、电视剧、音乐
     type: Optional[str] = None
-    # 二级分类
+    # 实际媒体类别稳定标识
+    media_category_id: Optional[str] = None
+    # 实际媒体类别兼容路径快照
     category: Optional[str] = None
+    # 命中的分类规则标识
+    classification_rule_id: Optional[str] = None
+    # 执行时分类策略版本
+    classification_policy_revision: Optional[int] = None
+    # 最终分类来源
+    classification_source: Optional[str] = None
     # 标题
     title: Optional[str] = None
     # 年份
@@ -125,6 +142,15 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
     status: bool = True
     # 失败原因
     errmsg: Optional[str] = None
+    # 从失败原因和失败计数派生的用户可操作状态。
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    retry_count: Optional[int] = None
+    retry_exhausted: bool = False
+    auto_paused: bool = False
+    # 下载器清理独立于媒体入库结果。
+    cleanup_status: Optional[str] = None
+    cleanup_error: Optional[str] = None
     # 日期
     date: Optional[str] = None
     # 文件清单
@@ -132,11 +158,28 @@ class TransferHistory(OptionalMediaIdentityMixin, BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    # Pydantic 的动态装饰器类型会被存量 mypy 配置解析为 Any，公开 schema 仍需保留该校验。
+    @_field_validator("errmsg", mode="before")  # type: ignore[misc]
+    @classmethod
+    def _sanitize_error_message(cls, value: object) -> Optional[str]:
+        """历史接口只返回可理解的整理失败原因，数据库原文仍用于诊断。"""
+        if value is None or not str(value).strip():
+            return None
+        from app.runtime.errors import public_error_message
+
+        return public_error_message(value, context="transfer")
+
 
 class BatchTransferHistoryRedoRequest(BaseModel):
     """批量重新整理历史请求。"""
 
     history_ids: list[int] = Field(default_factory=list)
+
+
+class TransferHistoryDiscardResult(BaseModel):  # type: ignore[misc]
+    """损坏整理任务清理结果，标识保留供后续操作的历史记录。"""
+
+    history_id: int = Field(description="保留的整理历史记录 ID")
 
 
 class TransferHistoryPage(BaseModel):

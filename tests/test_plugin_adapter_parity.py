@@ -127,7 +127,7 @@ async def test_plugin_package_sync_async_preflight_failures_are_identical(
             {"version": "1.2.3", "release": True},
             None,
             [],
-            ["release", "remove", "filelist"],
+            ["release", "filelist"],
         ),
         (
             {"version": "1.2.3", "release": True},
@@ -139,6 +139,7 @@ async def test_plugin_package_sync_async_preflight_failures_are_identical(
 )
 async def test_plugin_package_sync_async_execute_same_selected_strategy(
     monkeypatch,
+    tmp_path: Path,
     metadata: dict,
     release_version: str | None,
     release_items: list[dict],
@@ -198,10 +199,10 @@ async def test_plugin_package_sync_async_execute_same_selected_strategy(
         async_calls.append("remove")
 
     def install_flow(_pid, _force, prepare, _repo_url, _before):
-        return prepare()
+        return prepare(tmp_path / "staging")
 
     async def async_install_flow(_pid, _force, prepare, _repo_url, _before):
-        return await prepare()
+        return await prepare(tmp_path / "staging")
 
     monkeypatch.setattr(manager, "async_get_plugin_package_version", selected_version)
     monkeypatch.setattr(manager, "async_get_plugin_release_versions", releases)

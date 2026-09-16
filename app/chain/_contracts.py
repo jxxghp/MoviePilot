@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from app.application.classification.execution import ClassificationExecutionPort
     from app.application.history import TransferHistoryRepository
     from app.application.transfer.execution import TransferExecutionRepository
 
@@ -16,6 +17,7 @@ class ChainRuntimeMixinHost(Protocol):
     eventmanager: Any
     messageoper: Any
     messagequeue: Any
+    classification_service: ClassificationExecutionPort | None
 
     def run_module(self, method: str, **kwargs: Any) -> Any:
         """调用同步模块能力。"""
@@ -65,6 +67,14 @@ class MusicSubscribeMixinHost(Protocol):
     def finish_subscribe_or_not(self, *args: Any, **kwargs: Any) -> Any: ...
 
     def get_subscribe_source_keyword(self, subscribe: Any) -> str: ...
+
+    def _SubscribeChain__candidate_contract_changed(
+        self,
+        prepared: Any,
+        current: Any,
+    ) -> bool:
+        """判断准备候选期间订阅身份或过滤合同是否已经变化。"""
+        ...
 
 
 class InteractionMixinHost(Protocol):

@@ -7,8 +7,8 @@ from queue import PriorityQueue
 
 import pytest
 
-from app.runtime.config import global_vars
 from app.runtime import events as events_module
+from app.runtime.config import global_vars
 from app.runtime.events import Event, eventmanager
 from app.schemas.types import ChainEventType, EventType
 
@@ -51,6 +51,14 @@ class _DaemonThreadExecutor:
 
         threading.Thread(target=run, daemon=True).start()
         return handle
+
+
+class _UnboundHandler:
+    """未创建的宿主 owner，用于验证配置重载的惰性绑定语义。"""
+
+    async def handle(self, _event):
+        """不应在 owner 尚未激活时执行。"""
+        raise AssertionError("未激活 owner 不应收到严格配置事件")
 
 
 @pytest.fixture
@@ -192,6 +200,44 @@ def test_strict_broadcast_waits_and_propagates_handler_failure(
 
     assert calls == ["config.changed:v1"]
     assert isolated_eventmanager._EventManager__event_queue.empty()
+
+
+@pytest.mark.anyio
+async def test_async_strict_broadcast_waits_for_async_handler(isolated_eventmanager):
+    """异步严格广播必须在调用方返回前等待异步 handler 完成。"""
+    isolated_eventmanager._EventManager__lifecycle_state = "running"
+    calls = []
+
+    async def handler(_event):
+        """模拟需要让出事件循环的配置重载。"""
+        calls.append("start")
+        await asyncio.sleep(0)
+        calls.append("done")
+
+    isolated_eventmanager.add_event_listener(EventType.ConfigChanged, handler)
+
+    await isolated_eventmanager.async_send_event_strict(
+        EventType.ConfigChanged,
+        {"key": "AI_AGENT_ENABLE"},
+    )
+
+    assert calls == ["start", "done"]
+    assert isolated_eventmanager._EventManager__event_queue.empty()
+
+
+@pytest.mark.anyio
+async def test_async_strict_broadcast_skips_unbound_optional_owner(isolated_eventmanager):
+    """严格配置广播应跳过尚未创建的可选 owner，而不是阻断配置保存。"""
+    isolated_eventmanager._EventManager__lifecycle_state = "running"
+    isolated_eventmanager.add_event_listener(
+        EventType.ConfigChanged,
+        _UnboundHandler.handle,
+    )
+
+    await isolated_eventmanager.async_send_event_strict(
+        EventType.ConfigChanged,
+        {"key": "CACHE_BACKEND_URL"},
+    )
 
 
 def test_sync_chain_dispatch_uses_subscription_snapshot(isolated_eventmanager):
@@ -767,3 +813,46 @@ async def test_async_broadcast_submission_is_registered_before_stop_snapshot(
 
     await isolated_eventmanager.stop_async()
     assert isolated_eventmanager._EventManager__async_handles == {}
+
+
+@pytest.mark.parametrize("event_type", [EventType.TransferFailed, EventType.SubtitleTransferFailed,
+                                        EventType.AudioTransferFailed])
+def test_outbox_retries_strict_failure_without_repeating_system_alert(
+        isolated_eventmanager, monkeypatch, event_type):
+    """真实失败 handler 仍重试至死信，相同事件的系统错误提示只发送一次。"""
+    from unittest.mock import Mock
+
+    from app.application.outbox import ClaimedOutboxMessage, OutboxDispatcher
+    from app.runtime.event.errors import EventErrorPolicy
+    from app.startup.composition import outbox
+
+    isolated_eventmanager._EventManager__lifecycle_state = "running"
+    notify, emit = Mock(), Mock()
+    monkeypatch.setattr(isolated_eventmanager, "_EventManager__error_policy",
+                        EventErrorPolicy(notifier=lambda: notify, emit_system_error=emit))
+    monkeypatch.setattr(outbox, "EventManager", lambda: isolated_eventmanager)
+    attempts = []
+
+    def failed_handler(event):
+        """模拟稳定重现的插件处理器故障。"""
+        attempts.append(event.event_data["idempotency_key"])
+        raise RuntimeError("broken transfer consumer")
+
+    isolated_eventmanager.add_event_listener(event_type, failed_handler)
+    store = Mock()
+    event_key = f"{event_type.value}:task-1:1"
+    store.claim.side_effect = [
+        ClaimedOutboxMessage(1, event_key, event_type.value,
+                             {"idempotency_key": event_key,
+                              "transferinfo": {"success": False, "message": "failed"}}, 1, attempt)
+        for attempt in range(1, 6)
+    ] + [None]
+    dispatcher = OutboxDispatcher(store, outbox.build_outbox_handlers())
+    for _ in range(5):
+        assert dispatcher.dispatch_one()
+    assert not dispatcher.dispatch_one()
+    assert attempts == [event_key] * 5
+    assert [call.kwargs["dead"] for call in store.retry.call_args_list] == [False] * 4 + [True]
+    store.complete.assert_not_called()
+    notify.assert_called_once()
+    emit.assert_called_once()

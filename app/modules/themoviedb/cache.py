@@ -29,6 +29,7 @@ class TmdbCache(metaclass=WeakSingleton):
         "type": MediaType
     }
     """
+
     def __init__(self):
         """初始化 TMDB 识别缓存并恢复未过期的持久化数据。"""
         self.maxsize = get_runtime_setting('CONF').tmdb

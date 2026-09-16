@@ -1,9 +1,12 @@
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
 from jinja2 import Template
 
+from app.application.history import DownloadHistorySnapshot
 from app.application.messaging.message import TemplateHelper
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
@@ -11,7 +14,7 @@ from app.application.transfer.execution import (
 )
 from app.application.transfer.workflow import JobManager, TransferTask
 from app.chain.media import MediaChain
-from app.chain.transfer import TransferChain
+from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.config import settings
@@ -100,17 +103,17 @@ def test_music_rename_context_contains_audio_fields():
     assert context["fileExt"] == ".flac"
 
 
-def test_music_rename_prefers_track_meta_over_album_media():
-    """专辑整理时应使用每个文件的曲名和曲序，不能把专辑名写成所有目标文件名。"""
+def test_music_rename_uses_album_identity_and_track_meta():
+    """专辑整理应采用所选专辑身份，同时保留每个文件的曲名和曲序。"""
     meta = MetaMusic(
         org_string="10. 明天晴天.m4a",
         title="明天晴天",
         artists=["孙燕姿"],
-        album="完美的一天",
-        album_artist="孙燕姿",
-        year=2005,
+        album="错误专辑·全精选集",
+        album_artist="错误艺术家（资源发布者）",
+        year=1999,
         track_number=10,
-        total_tracks=11,
+        total_tracks=99,
     )
     album = MusicInfo(
         media_source="musicbrainz",
@@ -134,6 +137,9 @@ def test_music_rename_prefers_track_meta_over_album_media():
 
     assert context["title"] == "明天晴天"
     assert context["track"] == "10"
+    assert context["album"] == "完美的一天"
+    assert context["album_artist"] == "孙燕姿"
+    assert context["year"] == 2005
     assert rendered == "孙燕姿/完美的一天 (2005)/10 - 明天晴天.m4a"
 
 
@@ -247,6 +253,51 @@ def test_restore_music_context_from_download_history():
     assert restored_info.album == "Random Access Memories"
 
 
+@pytest.mark.parametrize("file_album", ["Local Album", None])
+def test_restore_music_context_discards_shared_recording_identity(tmp_path, monkeypatch, file_album):
+    """多音轨批次不得把下载记录中的单曲身份恢复到每个音频文件。"""
+    meta, info = _music_context()
+    history = DownloadHistorySnapshot(
+        id=1,
+        path=tmp_path.as_posix(),
+        type=MediaType.MUSIC.value,
+        title="Random Access Memories",
+        note={
+            "music": {
+                "version": 1,
+                "meta": meta.to_dict(),
+                "media": info.to_dict(),
+            }
+        },
+    )
+    audio_file = tmp_path / "01 - Give Life Back to Music.flac"
+    audio_file.write_bytes(b"fake-flac")
+    file_meta = MetaMusic(
+        org_string=audio_file.name,
+        title="Give Life Back to Music",
+        artists=["Daft Punk"],
+        album=file_album,
+        album_artist="Daft Punk" if file_album else None,
+        year=2020 if file_album else None,
+        track_number=1,
+    )
+    monkeypatch.setattr(MediaChain, "read_path_meta", Mock(return_value=file_meta))
+
+    restored_meta, restored_info = TransferChain._restore_music_download_context(
+        history,
+        audio_file,
+        discard_recording_identity=True,
+    )
+
+    assert restored_meta is not None
+    assert restored_meta.title == "Give Life Back to Music"
+    assert restored_meta.album == file_meta.album
+    assert restored_meta.year == file_meta.year
+    assert restored_meta.media_source is None
+    assert restored_meta.media_id is None
+    assert restored_info is None
+
+
 def test_download_history_music_type_falls_back_to_versioned_note():
     """旧下载记录缺少独立字段时应从版本化备注恢复实体类型。"""
     history = SimpleNamespace(
@@ -262,7 +313,10 @@ def test_download_history_music_type_falls_back_to_versioned_note():
     assert TransferChain._download_history_music_type(history) == "album"
 
 
-def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_path, monkeypatch):
+@pytest.mark.parametrize("resource_meta_only", [False, True])
+def test_restore_album_context_keeps_album_identity_and_track_specific_tags(
+        tmp_path, monkeypatch, resource_meta_only,
+):
     """整专整理应保留选中的专辑身份，同时使用每个文件自己的曲名、艺术家和曲序。"""
     album = MusicInfo(
         media_source="musicbrainz",
@@ -275,7 +329,10 @@ def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_
         year=2003,
         total_tracks=11,
     )
-    meta = MetaMusic.from_music_info(album)
+    meta = (
+        MetaMusic.parse_resource("周杰伦 - 叶惠美 FLAC")
+        if resource_meta_only else MetaMusic.from_music_info(album)
+    )
     history = SimpleNamespace(note={
         "music": {
             "version": 1,
@@ -303,7 +360,9 @@ def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_
         ),
     )
 
-    restored_meta, restored_info = TransferChain._restore_music_download_context(history, audio_file)
+    restored_meta, restored_info = TransferChain._restore_music_download_context(
+        history, audio_file, discard_recording_identity=True,
+    )
 
     assert restored_meta.title == "晴天"
     assert restored_meta.track_number == 3
@@ -313,6 +372,109 @@ def test_restore_album_context_keeps_album_identity_and_track_specific_tags(tmp_
     assert restored_meta.total_tracks == 11
     assert restored_info.music_type == "album"
     assert restored_info.media_id == "release-group-1"
+
+
+def test_manual_batch_can_discard_saved_album_identity(tmp_path, monkeypatch):
+    """手动批次关闭历史复用时应丢弃旧专辑身份，仅保留当前文件标签。"""
+    album = MusicInfo(
+        media_source="musicbrainz",
+        media_id="stale-release-group",
+        music_type="album",
+        title="旧专辑",
+        artists=["旧艺人"],
+        album="旧专辑",
+        album_artist="旧艺人",
+        year=1999,
+        category="",
+    )
+    history = SimpleNamespace(note={
+        "music": {
+            "version": 1,
+            "meta": MetaMusic.from_music_info(album).to_dict(),
+            "media": album.to_dict(),
+        }
+    })
+    audio_file = tmp_path / "01 - 我的地盘.flac"
+    audio_file.write_bytes(b"fake-flac")
+    file_meta = MetaMusic(
+        org_string=audio_file.name,
+        title="我的地盘",
+        artists=["周杰伦"],
+        album="七里香",
+        album_artist="周杰伦",
+        year=2004,
+        track_number=1,
+        total_tracks=10,
+    )
+    monkeypatch.setattr(MediaChain, "read_path_meta", Mock(return_value=file_meta))
+
+    restored_meta, restored_info = TransferChain._restore_music_download_context(
+        history,
+        audio_file,
+        discard_saved_identity=True,
+    )
+
+    assert restored_meta.title == "我的地盘"
+    assert restored_meta.album == "七里香"
+    assert restored_meta.media_source is None
+    assert restored_meta.media_id is None
+    assert restored_info is None
+
+
+@pytest.mark.parametrize("field_source", ["selected", "resource", "file"])
+def test_restore_music_context_only_fills_missing_selected_fields(monkeypatch, field_source):
+    """已选语义字段仅补缺，不覆盖种子证据、文件标签或注入目标音质。"""
+    saved_meta, info = _music_context()
+    info.disc_number = 1
+    info.version = "Studio"
+    info.isrc = "USQX91300108"
+    info.audio_format = "MP3"
+    info.bit_depth = 16
+    if field_source == "selected":
+        saved_meta = MetaMusic()
+    else:
+        saved_meta.album = "Resource Album"
+        saved_meta.album_artist = "Resource Artist"
+        saved_meta.year = 2014
+        saved_meta.total_tracks = 15
+        saved_meta.disc_number = 2
+        saved_meta.version = "Live"
+        saved_meta.isrc = "USQX91400108"
+    note = {"music": {"version": 1, "meta": saved_meta.to_dict(), "media": info.to_dict()}}
+    original_note = deepcopy(note)
+    file_meta = MetaMusic(title="File Title")
+    if field_source == "file":
+        file_meta.artists = ["File Artist"]
+        file_meta.album = "File Album"
+        file_meta.album_artist = "File Album Artist"
+        file_meta.year = 2020
+        file_meta.total_tracks = 20
+        file_meta.disc_number = 3
+        file_meta.track_number = 10
+        file_meta.version = "Remix"
+        file_meta.isrc = "USQX92000108"
+    monkeypatch.setattr(MediaChain, "read_path_meta", Mock(return_value=file_meta))
+
+    restored_meta, restored_info = TransferChain._restore_music_download_context(
+        SimpleNamespace(note=note), Path("/downloads/03 - File Title.flac"),
+    )
+
+    expected = {"selected": info, "resource": saved_meta, "file": file_meta}[field_source]
+    for field_name in (
+            "artists", "album", "album_artist", "year", "total_tracks",
+            "disc_number", "track_number", "version", "isrc",
+    ):
+        assert getattr(restored_meta, field_name) == getattr(expected, field_name)
+        assert getattr(restored_info, field_name) == getattr(expected, field_name)
+    assert restored_meta.title == "File Title"
+    assert restored_info.music_type == "recording"
+    assert restored_info.media_source == info.media_source
+    assert restored_info.media_id == info.media_id
+    assert restored_meta.audio_format is None
+    assert restored_meta.bit_depth is None
+    assert note == original_note
+    restored_meta.artists.append("Another Artist")
+    assert file_meta.artists == (["File Artist"] if field_source == "file" else [])
 
 
 def test_restore_music_context_uses_file_title_over_subscription_title(tmp_path, monkeypatch):
@@ -671,6 +833,287 @@ def test_automatic_audio_transfer_runs_music_recognition(tmp_path, monkeypatch):
     assert isinstance(recognize.call_args.args[0], MetaMusic)
     assert recognize.call_args.kwargs["mtype"] == MediaType.MUSIC
     assert preview["items"][0]["type"] == MediaType.MUSIC.value
+
+
+def test_automatic_multi_track_recording_context_rematches_album(tmp_path, monkeypatch):
+    """自动整专不得复用下载时误选的单曲身份，应按目录恢复各音轨身份。"""
+    source_dir = tmp_path / "徐良 情话"
+    source_dir.mkdir()
+    audio_paths = [
+        source_dir / "01 - 女骑士.flac",
+        source_dir / "02 - 悲伤的李白.flac",
+    ]
+    for audio_path in audio_paths:
+        audio_path.write_bytes(b"fake-flac")
+    source_items = [
+        FileItem(
+            storage="local",
+            path=audio_path.as_posix(),
+            name=audio_path.name,
+            basename=audio_path.stem,
+            type="file",
+            extension="flac",
+            size=audio_path.stat().st_size,
+        )
+        for audio_path in audio_paths
+    ]
+    source_item = FileItem(
+        storage="local",
+        path=source_dir.as_posix(),
+        name=source_dir.name,
+        type="dir",
+    )
+    saved_recording = MusicInfo(
+        media_source="musicbrainz",
+        media_id="wrong-recording",
+        music_type="recording",
+        title="情话",
+        artists=["徐良", "孙羽幽"],
+        album="北京巷弄",
+        album_artist="徐良",
+        year=2013,
+        cover_url="https://example.com/wrong-cover.jpg",
+    )
+    saved_meta = MetaMusic.from_music_info(saved_recording)
+    history = DownloadHistorySnapshot(
+        id=1,
+        path=source_dir.as_posix(),
+        type=MediaType.MUSIC.value,
+        title="情话",
+        note={
+            "music": {
+                "version": 1,
+                "meta": saved_meta.to_dict(),
+                "media": saved_recording.to_dict(),
+            }
+        },
+        music_type="recording",
+        downloader="qbittorrent",
+        download_hash="hash-1",
+    )
+    file_metas = {
+        audio_paths[0]: MetaMusic(
+            org_string=audio_paths[0].name,
+            title="女骑士",
+            artists=["徐良"],
+            album="情话",
+            album_artist="徐良",
+            year=2013,
+            track_number=1,
+            total_tracks=12,
+        ),
+        audio_paths[1]: MetaMusic(
+            org_string=audio_paths[1].name,
+            title="悲伤的李白",
+            artists=["徐良"],
+            album="情话",
+            album_artist="徐良",
+            year=2013,
+            track_number=2,
+            total_tracks=12,
+        ),
+    }
+    matched_tracks = {
+        str(path.resolve()): MusicInfo(
+            media_source="musicbrainz",
+            media_id=f"recording-{index}",
+            music_type="recording",
+            title=file_metas[path].title,
+            artists=["徐良"],
+            album="情话",
+            album_artist="徐良",
+            album_id="correct-release-group",
+            year=2013,
+            track_number=index,
+            total_tracks=12,
+            cover_url="https://example.com/correct-cover.jpg",
+        )
+        for index, path in enumerate(audio_paths, start=1)
+    }
+    chain = TransferChain()
+    monkeypatch.setattr(
+        chain,
+        "_TransferChain__get_trans_fileitems",
+        Mock(return_value=[(item, False) for item in source_items]),
+    )
+    monkeypatch.setattr(chain, "_resolve_download_history", Mock(return_value=history))
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        Mock(side_effect=lambda path: file_metas[Path(path)]),
+    )
+    album_match = Mock(return_value=matched_tracks)
+    monkeypatch.setattr(MediaChain, "recognize_music_album_directory", album_match)
+    captured_tasks = []
+
+    def execute(task, **_kwargs):
+        captured_tasks.append(task)
+        target_dir = tmp_path / "library" / "徐良" / "情话 (2013)"
+        target_item = target_dir / task.fileitem.name
+        return TransferInfo(
+            success=True,
+            fileitem=task.fileitem,
+            target_item=FileItem(storage="local", path=target_item.as_posix(), type="file"),
+            target_diritem=FileItem(storage="local", path=target_dir.as_posix(), type="dir"),
+        )
+
+    monkeypatch.setattr(chain, "_plan_checkpoint_and_execute", execute)
+
+    state, preview = chain.do_transfer(
+        fileitem=source_item,
+        mediainfo=saved_recording,
+        mtype=MediaType.MUSIC,
+        target_directory=TransferDirectoryConf(
+            library_path=(tmp_path / "library").as_posix(),
+            library_storage="local",
+        ),
+        force=True,
+        preview=True,
+    )
+
+    assert state is True
+    assert preview["summary"] == {"total": 2, "success": 2, "failed": 0}
+    assert [task.mediainfo.media_id for task in captured_tasks] == [
+        "recording-1",
+        "recording-2",
+    ]
+    assert {task.mediainfo.album_id for task in captured_tasks} == {"correct-release-group"}
+    assert {task.mediainfo.cover_url for task in captured_tasks} == {
+        "https://example.com/correct-cover.jpg"
+    }
+    assert album_match.call_count == 2
+
+
+def test_manual_history_batch_rematches_album_and_groups_preview(tmp_path, monkeypatch):
+    """手动多选历史不复用身份时应重识别整专，并以专辑标题汇总预览。"""
+    source_dir = tmp_path / "未分类" / "周杰伦 - 七里香 (2004) [FLAC]"
+    source_dir.mkdir(parents=True)
+    audio_paths = [
+        source_dir / "01 - 我的地盘.flac",
+        source_dir / "02 - 七里香.flac",
+    ]
+    for audio_path in audio_paths:
+        audio_path.write_bytes(b"fake-flac")
+    source_items = [
+        FileItem(
+            storage="local",
+            path=audio_path.as_posix(),
+            name=audio_path.name,
+            basename=audio_path.stem,
+            type="file",
+            extension="flac",
+            size=audio_path.stat().st_size,
+        )
+        for audio_path in audio_paths
+    ]
+    source_item = source_items[0]
+    stale_album = MusicInfo(
+        media_source="musicbrainz",
+        media_id="stale-release-group",
+        music_type="album",
+        title="七里香",
+        artists=["周杰伦"],
+        album="七里香",
+        album_artist="周杰伦",
+        year=2004,
+        category="",
+    )
+    history = DownloadHistorySnapshot(
+        id=1,
+        path=source_dir.as_posix(),
+        type=MediaType.MUSIC.value,
+        title="七里香",
+        note={
+            "music": {
+                "version": 1,
+                "meta": MetaMusic.from_music_info(stale_album).to_dict(),
+                "media": stale_album.to_dict(),
+            }
+        },
+        music_type="album",
+        downloader="qbittorrent",
+        download_hash="hash-1",
+    )
+    file_metas = {
+        path: MetaMusic(
+            org_string=path.name,
+            title=title,
+            artists=["周杰伦"],
+            album="七里香",
+            album_artist="周杰伦",
+            year=2004,
+            track_number=index,
+            total_tracks=10,
+        )
+        for index, (path, title) in enumerate(
+            zip(audio_paths, ("我的地盘", "七里香")), start=1
+        )
+    }
+    matched_tracks = {
+        str(path.resolve()): MusicInfo(
+            media_source="musicbrainz",
+            media_id=f"recording-{index}",
+            music_type="recording",
+            title=file_metas[path].title,
+            artists=["周杰伦"],
+            album="七里香",
+            album_artist="周杰伦",
+            album_id="correct-release-group",
+            album_type="Album",
+            year=2004,
+            track_number=index,
+            total_tracks=10,
+            library_category="Album",
+        )
+        for index, path in enumerate(audio_paths, start=1)
+    }
+    chain = TransferChain()
+    monkeypatch.setattr(chain, "_resolve_download_history", Mock(return_value=history))
+    monkeypatch.setattr(
+        MediaChain,
+        "read_path_meta",
+        Mock(side_effect=lambda path: file_metas[Path(path)]),
+    )
+    album_match = Mock(return_value=matched_tracks)
+    monkeypatch.setattr(MediaChain, "recognize_music_album_directory", album_match)
+    captured_tasks = []
+
+    def execute(task, **_kwargs):
+        captured_tasks.append(task)
+        target_dir = tmp_path / "library" / "Album" / "周杰伦" / "七里香 (2004)"
+        target_item = target_dir / task.fileitem.name
+        return TransferInfo(
+            success=True,
+            fileitem=task.fileitem,
+            target_item=FileItem(storage="local", path=target_item.as_posix(), type="file"),
+            target_diritem=FileItem(storage="local", path=target_dir.as_posix(), type="dir"),
+        )
+
+    monkeypatch.setattr(chain, "_plan_checkpoint_and_execute", execute)
+
+    state, preview = chain._execute_transfer(
+        fileitem=source_item,
+        mtype=MediaType.MUSIC,
+        target_directory=TransferDirectoryConf(
+            library_path=(tmp_path / "library").as_posix(),
+            library_storage="local",
+            library_category_folder=True,
+        ),
+        selected_fileitems=source_items,
+        manual=True,
+        force=True,
+        preview=True,
+    )
+
+    assert state is True
+    assert preview["summary"] == {"total": 2, "success": 2, "failed": 0}
+    assert {item["title"] for item in preview["items"]} == {"七里香 (2004)"}
+    assert [task.mediainfo.media_id for task in captured_tasks] == [
+        "recording-1",
+        "recording-2",
+    ]
+    assert {task.mediainfo.library_category for task in captured_tasks} == {"Album"}
+    assert album_match.call_count == 2
 
 
 def test_explicit_music_batch_excludes_video_from_mixed_directory(tmp_path, monkeypatch):

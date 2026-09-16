@@ -8,6 +8,7 @@ from app.application.chain.events import (
     snapshot_download_notification,
     snapshot_download_processing,
 )
+from app.application.classification.reference import effective_classification_snapshot
 from app.application.history import DownloadFileWrite, DownloadHistoryWrite
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain.context import (
@@ -28,7 +29,6 @@ from app.schemas.types import (
 
 class DownloadHistoryOwner(_DownloadOwnerBase):
     """下载历史原子写入与持久化结算 owner。"""
-
 
     @staticmethod
     def _build_download_note(
@@ -85,10 +85,13 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             download_path = download_dir / Path(file_list[0]).stem if file_list else download_dir
         save_path = download_dir if layout == "NoSubfolder" or not folder_name else download_path
         media_source, media_id = resolve_media_identity(media=media)
+        classification = effective_classification_snapshot(media)
         files_to_add: list[DownloadFileWrite] = []
+        custom_word_list = custom_words.splitlines() if custom_words else []
         for file in file_list:
             if episodes:
-                file_meta = MetaInfo(Path(file).stem)
+                # 与订阅选集使用相同识别词，避免偏移前的文件集数被目标集数过滤。
+                file_meta = MetaInfo(Path(file).stem, custom_words=custom_word_list)
                 if not file_meta.begin_episode or file_meta.begin_episode not in episodes:
                     continue
             if not Path(file).suffix or Path(file).suffix.lower() not in self.runtime_config.media_extensions:
@@ -124,7 +127,11 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             username=username,
             channel=channel.value if channel else None,
             date=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-            media_category=media.category,
+            media_category_id=classification.category_id,
+            media_category=classification.path,
+            classification_rule_id=classification.rule_id,
+            classification_policy_revision=classification.policy_revision,
+            classification_source=classification.source,
             episode_group=media.episode_group,
             note=self._build_download_note(
                 source,
@@ -154,6 +161,8 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             context=context,
             download_dir=download_dir,
             torrent_content=torrent_content,
+            download_hash=download_hash,
+            downloader=downloader,
         )
 
         durable_event_writer = getattr(self, "durable_event_writer", None)
@@ -174,5 +183,7 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             context=context,
             download_dir=download_dir,
             torrent_content=torrent_content,
+            download_hash=download_hash,
+            downloader=downloader,
         )
         self.eventmanager.send_event(EventType.DownloadAdded, event_payload)

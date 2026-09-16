@@ -53,9 +53,8 @@ def _request_durable_transfer_retry(
             task_id,
             error,
         )
-        return False, str(error)
+        return False, "整理任务暂时无法重试，请稍后重试"
     return result.accepted, result.message
-
 
 
 class FailedRetryMixin(_TransferOwnerBase):
@@ -79,6 +78,10 @@ class FailedRetryMixin(_TransferOwnerBase):
             [
                 {"text": "重试", "callback_data": f"transfer_retry_{history_id}"},
                 {
+                    "text": "重新生成计划",
+                    "callback_data": f"transfer_regenerate_{history_id}",
+                },
+                {
                     "text": "智能助手接管",
                     "callback_data": f"transfer_ai_retry_{history_id}",
                 },
@@ -100,6 +103,7 @@ class FailedRetryMixin(_TransferOwnerBase):
         """
         for prefix, action in (
                 ("transfer_retry_", "retry"),
+                ("transfer_regenerate_", "regenerate"),
                 ("transfer_ai_retry_", "ai_retry"),
         ):
             if callback_data.startswith(prefix):
@@ -125,7 +129,7 @@ class FailedRetryMixin(_TransferOwnerBase):
             return False
 
         action, history_id = callback
-        if action == "retry":
+        if action in {"retry", "regenerate"}:
             self._retry_transfer_history(
                 history_id=history_id,
                 channel=channel,
@@ -154,6 +158,8 @@ class FailedRetryMixin(_TransferOwnerBase):
         """
         立即重新整理一条失败的整理记录。
         """
+        from app.runtime.errors import public_error_message
+
         self.post_message(
             Message(
                 channel=channel,
@@ -167,13 +173,14 @@ class FailedRetryMixin(_TransferOwnerBase):
 
         state, errmsg = self.redo_transfer_history(history_id)
         if state:
+            public_message = public_error_message(errmsg, context="transfer") if errmsg else ""
             self.post_message(
                 Message(
                     channel=channel,
                     source=source,
                     userid=userid,
                     username=username,
-                    title=errmsg or f"整理记录 #{history_id} 已重新整理",
+                    title=public_message or f"整理记录 #{history_id} 已重新整理",
                     link=self.runtime_config.history_url,
                     save_history=False,
                 )
@@ -187,7 +194,7 @@ class FailedRetryMixin(_TransferOwnerBase):
                 userid=userid,
                 username=username,
                 title="重新整理失败",
-                text=errmsg,
+                text=public_error_message(errmsg, context="transfer"),
                 link=self.runtime_config.history_url,
                 save_history=False,
             )
@@ -204,6 +211,7 @@ class FailedRetryMixin(_TransferOwnerBase):
         """
         由智能助手接管一条失败的整理记录。
         """
+        from app.runtime.errors import public_error_message
 
         history = self.transfer_history_repository.get(history_id)
         if not history:
@@ -229,18 +237,15 @@ class FailedRetryMixin(_TransferOwnerBase):
         )
         if durable_retry is not None:
             accepted, message = durable_retry
+            public_message = public_error_message(message, context="transfer")
             self.post_message(
                 Message(
                     channel=channel,
                     source=source,
                     userid=userid,
                     username=username,
-                    title=(
-                        message
-                        if accepted
-                        else "重新整理失败"
-                    ),
-                    text=None if accepted else message,
+                    title=public_message if accepted else "重新整理失败",
+                    text=None if accepted else public_message,
                     link=self.runtime_config.history_url,
                     save_history=False,
                 )
@@ -300,12 +305,13 @@ class FailedRetryMixin(_TransferOwnerBase):
                         username=username,
                         title="智能助手整理完成",
                         text=final_output.strip()
-                             or f"整理记录 #{history_id} 已由智能助手处理完成。",
+                        or f"整理记录 #{history_id} 已由智能助手处理完成。",
                         link=self.runtime_config.history_url,
                         save_history=False,
                     )
                 )
             except Exception as e:
+                logger.error(f"智能助手重新整理失败：{e}", exc_info=True)
                 await self.async_post_message(
                     Message(
                         channel=channel,
@@ -313,7 +319,7 @@ class FailedRetryMixin(_TransferOwnerBase):
                         userid=userid,
                         username=username,
                         title="智能助手整理失败",
-                        text=str(e),
+                        text="智能助手整理失败，请稍后重试",
                         link=self.runtime_config.history_url,
                         save_history=False,
                     )
@@ -362,22 +368,24 @@ class FailedRetryMixin(_TransferOwnerBase):
         if not history:
             logger.error(f"整理记录不存在，ID：{logid}")
             return False, "整理记录不存在"
-        durable_retry = _request_durable_transfer_retry(
-            history,
-            requested_by="history_redo",
-            repository=self.transfer_execution_repository,
-        )
-        if durable_retry is not None:
-            return durable_retry
+        # 显式媒体身份代表用户要求重新规划；普通 /redo 才复用原 durable 计划。
+        explicit_identity = media_source is not None or media_id is not None
+        if explicit_identity and (not media_source or not media_id):
+            return False, "媒体重新识别需要同时提供 media_source 和 media_id"
+        if not explicit_identity:
+            durable_retry = _request_durable_transfer_retry(
+                history,
+                requested_by="history_redo",
+                repository=self.transfer_execution_repository,
+            )
+            if durable_retry is not None:
+                return durable_retry
         # 按源目录路径重新整理
         src_path = Path(history.src)
         if not src_path.exists():
             return False, f"源目录不存在：{src_path}"
         # 查询媒体信息
-        explicit_identity = media_source is not None or media_id is not None
-        if explicit_identity and (not media_source or not media_id):
-            return False, "媒体重新识别需要同时提供 media_source 和 media_id"
-        if mtype and media_source and media_id:
+        if explicit_identity:
             mediainfo = MediaChain().recognize_media(
                 mtype=mtype,
                 media_source=media_source,
@@ -424,16 +432,20 @@ class FailedRetryMixin(_TransferOwnerBase):
             mediainfo = recognize_context.media_info if recognize_context else None
         # 音乐专辑目录允许无预识别信息，由整理链按音频后缀逐文件解析识别
         if not mediainfo and not (mtype == MediaType.MUSIC and src_path.is_dir()):
-            return False, (
-                f"未识别到媒体信息，类型：{mtype.value if mtype else None}，"
-                f"media_source：{media_source}，media_id：{media_id}"
-            )
+            return False, "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试"
         # 重新执行整理
         if mediainfo:
             logger.info(f"{src_path.name} 识别为：{mediainfo.title_year}")
 
         # 删除旧的已整理文件
-        if history.dest_fileitem:
+        if getattr(history, "transfer_task_id", None):
+            state, errmsg = self._delete_manual_transfer_history(
+                history=history,
+                transfer_history_oper=self.transfer_history_repository,
+            )
+            if not state:
+                return False, errmsg
+        elif history.dest_fileitem:
             if not isinstance(history.dest_fileitem, dict):
                 return False, "目标文件历史数据无效"
             # 解析目标文件对象
@@ -448,6 +460,8 @@ class FailedRetryMixin(_TransferOwnerBase):
                 fileitem=FileItem(**history.src_fileitem),
                 mediainfo=mediainfo,
                 mtype=mtype,
+                media_source=media_source,
+                media_id=media_id,
                 download_hash=history.download_hash,
                 force=True,
                 background=False,

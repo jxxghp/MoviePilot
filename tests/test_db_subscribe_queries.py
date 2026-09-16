@@ -14,6 +14,7 @@ from app.db import base as db_base
 from app.db.models import subscribe as subscribe_module
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
+from app.db.oper.subscribe import SubscribeOper
 from app.db.session import async_session_scope
 from app.schemas.types import MediaSource, MediaType
 
@@ -76,6 +77,34 @@ def test_exists_matches_async_twin(db):
     assert sync_found.id == async_found.id
 
 
+def test_subscribe_oper_filters_paginates_and_counts_in_database(db):
+    """订阅 owner 与状态筛选必须先进入 SQL，再按同一条件计数和分页。"""
+    first = db.add(_sub("分页一", media_id="page-1", username="alice", state="N"))
+    second = db.add(_sub("分页二", media_id="page-2", username="alice", state="N"))
+    db.add(
+        _sub("其他用户", media_id="page-3", username="bob", state="N"),
+        _sub("其他状态", media_id="page-4", username="alice", state="R"),
+    )
+
+    async def query(session):
+        """在同一异步会话中执行订阅计数和第二页查询。"""
+        oper = SubscribeOper(session)
+        total = await oper.async_count(state="N", username="alice")
+        rows = await oper.async_list_by_username(
+            "alice",
+            state="N",
+            page=2,
+            count=1,
+        )
+        return total, [item.id for item in rows]
+
+    total, ids = db.run_async_session(query)
+
+    assert total == 2
+    assert ids == [second.id]
+    assert first.id < second.id
+
+
 def test_history_queries_reuse_explicit_sessions(db, monkeypatch):
     """订阅历史同步/异步查询必须复用调用方会话。"""
     row = db.add(_history("显式历史", media_id="8501"))
@@ -109,6 +138,20 @@ def test_history_queries_reuse_explicit_sessions(db, monkeypatch):
             assert await SubscribeHistory.async_list_by_type_and_username(
                 session, MediaType.TV.value, "alice", page=1, count=10
             )
+            assert await SubscribeHistory.async_count_by_type(
+                session,
+                MediaType.TV.value,
+            ) == 1
+            assert await SubscribeHistory.async_count_by_type_and_username(
+                session,
+                MediaType.TV.value,
+                "alice",
+            ) == 1
+            assert await SubscribeHistory.async_count_by_type_and_username(
+                session,
+                MediaType.TV.value,
+                "bob",
+            ) == 0
             assert await SubscribeHistory.async_exists(
                 session, MediaSource.TMDB, "8501", season=1
             ) is not None

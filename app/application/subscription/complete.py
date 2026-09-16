@@ -6,7 +6,9 @@ from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import uuid4
 
+from app.application.classification.reference import EffectiveClassificationSnapshot
 from app.application.outbox import (
     SUBSCRIBE_COMPLETED_TOPIC,
     OutboxDispatchStore,
@@ -52,18 +54,42 @@ class CompleteSubscriptionCommand:
         notify: CompletionEffect,
         report: CompletionReporter,
         notification: Mapping[str, JsonData] | None = None,
+        classification_snapshot: EffectiveClassificationSnapshot | None = None,
     ) -> None:
         """在同一事务中写历史、删订阅并暂存完成事件、通知与统计意图。"""
         info = dict(subscribe_info)
-        event_key = completion_event_key(subscribe_id, info)
+        if classification_snapshot is not None:
+            info.update(
+                {
+                    "media_category_id": classification_snapshot.category_id,
+                    "media_category": classification_snapshot.path,
+                    "classification_rule_id": classification_snapshot.rule_id,
+                    "classification_policy_revision": classification_snapshot.policy_revision,
+                    "classification_source": classification_snapshot.source,
+                }
+            )
+        occurrence_id = uuid4().hex
+        event_key = completion_event_key(
+            subscribe_id,
+            info,
+            occurrence_id=occurrence_id,
+        )
         event_payload: dict[str, JsonData] = {
             "subscribe_id": subscribe_id,
             "subscribe_info": info,
             "mediainfo": dict(mediainfo),
             "idempotency_key": event_key,
         }
-        report_key = completion_report_key(subscribe_id, info)
-        notification_key = completion_notification_key(subscribe_id, info)
+        report_key = completion_report_key(
+            subscribe_id,
+            info,
+            occurrence_id=occurrence_id,
+        )
+        notification_key = completion_notification_key(
+            subscribe_id,
+            info,
+            occurrence_id=occurrence_id,
+        )
         report_info = _completion_report_payload(info, report_key)
         report_payload: dict[str, JsonData] = {"subscribe_info": report_info}
         try:
@@ -145,29 +171,46 @@ class CompleteSubscriptionCommand:
 def completion_event_key(
     subscribe_id: int,
     subscribe_info: Mapping[str, JsonData],
+    *,
+    occurrence_id: Optional[str] = None,
 ) -> str:
-    """构造跨重试稳定的订阅完成事件幂等键。"""
+    """由订阅身份和本次完成事实构造跨重试稳定且不复用的幂等键。"""
+    resolved_occurrence_id = occurrence_id or uuid4().hex
     return (
         f"subscribe.complete:{subscribe_id}:"
         f"{subscribe_info.get('media_source') or 'unknown'}:"
-        f"{subscribe_info.get('media_id') or 'unknown'}:v1"
+        f"{subscribe_info.get('media_id') or 'unknown'}:{resolved_occurrence_id}:v1"
     )
 
 
 def completion_report_key(
     subscribe_id: int,
     subscribe_info: Mapping[str, JsonData],
+    *,
+    occurrence_id: Optional[str] = None,
 ) -> str:
     """构造可独立重试的订阅完成统计幂等键。"""
-    return f"{completion_event_key(subscribe_id, subscribe_info)}:report"
+    event_key = completion_event_key(
+        subscribe_id,
+        subscribe_info,
+        occurrence_id=occurrence_id,
+    )
+    return f"{event_key}:report"
 
 
 def completion_notification_key(
     subscribe_id: int,
     subscribe_info: Mapping[str, JsonData],
+    *,
+    occurrence_id: Optional[str] = None,
 ) -> str:
     """构造订阅完成通知的稳定幂等键，避免恢复时重复生成不同消息。"""
-    return f"{completion_event_key(subscribe_id, subscribe_info)}:notification"
+    event_key = completion_event_key(
+        subscribe_id,
+        subscribe_info,
+        occurrence_id=occurrence_id,
+    )
+    return f"{event_key}:notification"
 
 
 def _completion_report_payload(

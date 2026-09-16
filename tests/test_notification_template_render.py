@@ -215,8 +215,8 @@ def test_v3_migration_overwrites_templates_once(monkeypatch) -> None:
     V3 大版本迁移应无条件覆盖用户旧通知模板配置，并写入全部 4 类模板。
     """
     migration_path = (
-            Path(__file__).resolve().parent.parent
-            / "database" / "versions" / "4dadad1d161a_3_0_0.py"
+        Path(__file__).resolve().parent.parent
+        / "database" / "versions" / "4dadad1d161a_3_0_0.py"
     )
     spec = importlib.util.spec_from_file_location("v3_migration", migration_path)
     migration = importlib.util.module_from_spec(spec)

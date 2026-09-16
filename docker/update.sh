@@ -31,26 +31,6 @@ PUBLIC_DIR=/public
 UPDATE_PENDING_FILE="${CONFIG_DIR}/temp/__update_pending__"
 UPDATE_PREVIOUS_APP="${APP_DIR}.__update_previous__"
 UPDATE_PREVIOUS_PUBLIC="${PUBLIC_DIR}.__update_previous__"
-PREPARED_UPDATE_ROOT="${CONFIG_DIR}/temp/moviepilot-update"
-PREPARED_UPDATE_MANIFEST="${PREPARED_UPDATE_ROOT}/install.json"
-PREPARED_UPDATE_STATE="${PREPARED_UPDATE_ROOT}/state.json"
-
-function mark_prepared_update_failed() {
-    local message="$1"
-    local temporary_state="${PREPARED_UPDATE_STATE}.tmp.$$"
-    mkdir -p "${PREPARED_UPDATE_ROOT}"
-    if [ -f "${PREPARED_UPDATE_STATE}" ]; then
-        jq --arg error "${message}" \
-            '.state = "failed" | .error = $error | .can_update = true | .can_install = false' \
-            "${PREPARED_UPDATE_STATE}" > "${temporary_state}"
-    else
-        jq -n --arg error "${message}" \
-            '{state: "failed", error: $error, can_update: true, can_install: false}' \
-            > "${temporary_state}"
-    fi
-    mv -f "${temporary_state}" "${PREPARED_UPDATE_STATE}"
-    rm -f "${PREPARED_UPDATE_MANIFEST}"
-}
 
 function apply_package_cache_env() {
     PACKAGE_CACHE_ROOT="${PACKAGE_CACHE_ROOT:-${CONFIG_DIR}/.cache}"
@@ -343,17 +323,22 @@ function stage_runtime_payload() {
     [ -f "${stage_app}/uv.lock" ] || return 1
     [ -f "${TMP_PATH}/dist/index.html" ] || return 1
 
+    if [ -e "${stage_plugin_dir}" ] && [ ! -d "${stage_plugin_dir}" ]; then
+        ERROR "插件运行目录不是目录"
+        return 1
+    fi
+    mkdir -p "${stage_plugin_dir}" || return 1
+    # 新版后端归档提供宿主兼容入口；仅迁移旧目录中的插件内容，避免旧版入口覆盖它。
+    if ! find "${stage_plugin_dir}" -mindepth 1 -maxdepth 1 \
+        ! -name "__init__.py" -exec rm -rf -- {} \;; then
+        return 1
+    fi
     if [ -d "${APP_DIR}/app/plugins" ]; then
-        rm -rf "${stage_plugin_dir}" || return 1
-        mkdir -p "${stage_plugin_dir}" || return 1
-        if ! cp -a "${APP_DIR}/app/plugins/." "${stage_plugin_dir}/"; then
+        if ! find "${APP_DIR}/app/plugins" -mindepth 1 -maxdepth 1 \
+            ! -name "__init__.py" -exec cp -a {} "${stage_plugin_dir}/" \;; then
             return 1
         fi
-    else
-        mkdir -p "${stage_plugin_dir}" || return 1
     fi
-    # 保留 app.plugins 兼容入口；V1/V2 插件仍从这里导入 _PluginBase。
-    # 删除后 app.plugins 会退化为 namespace package，旧插件会在启动时全部导入失败。
     if [ ! -f "${stage_plugin_dir}/__init__.py" ]; then
         ERROR "插件运行目录缺少 app.plugins 兼容入口"
         return 1
@@ -406,15 +391,7 @@ function swap_staged_payload() {
 # 下载程序资源，$1: 后端版本路径
 function install_backend_and_download_resources() {
     # 更新后端程序
-    if [ "${MOVIEPILOT_PREPARED_UPDATE:-false}" = "true" ]; then
-        if ! busybox unzip -q "${PREPARED_BACKEND_ARCHIVE}" -d "${TMP_PATH}"; then
-            ERROR "已准备的后端更新包解压失败"
-            return 1
-        fi
-        if [ -e "${TMP_PATH}"/MoviePilot-* ]; then
-            mv "${TMP_PATH}"/MoviePilot-* "${TMP_PATH}/App" || return 1
-        fi
-    elif ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"; then
+    if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"; then
         WARN "后端程序下载失败，继续使用旧的程序来启动..."
         return 1
     fi
@@ -435,10 +412,7 @@ function install_backend_and_download_resources() {
     fi
     
     # 如果是"heads/v3.zip"，则查找v3开头的最新版本号
-    if [ "${MOVIEPILOT_PREPARED_UPDATE:-false}" = "true" ]; then
-        frontend_version="${PREPARED_FRONTEND_VERSION}"
-        INFO "已准备的前端版本号：${frontend_version}"
-    elif [[ "${1}" == "heads/v3.zip" ]]; then
+    if [[ "${1}" == "heads/v3.zip" ]]; then
         INFO "→ 正在获取前端最新版本号..."
         # 获取所有发布的版本列表，并筛选出以v3开头的版本号
         releases=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases" ${CURL_HEADERS} | jq -r '.[].tag_name' | grep "^v3\.")
@@ -461,12 +435,7 @@ function install_backend_and_download_resources() {
         INFO "前端版本号：${frontend_version}"
     fi
     # 更新前端程序
-    if [ "${MOVIEPILOT_PREPARED_UPDATE:-false}" = "true" ]; then
-        if ! busybox unzip -q "${PREPARED_FRONTEND_ARCHIVE}" -d "${TMP_PATH}"; then
-            ERROR "已准备的前端更新包解压失败"
-            return 1
-        fi
-    elif ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"; then
+    if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"; then
         WARN "前端程序下载失败，继续使用旧的程序来启动..."
         return 1
     fi
@@ -630,164 +599,39 @@ function configure_package_route() {
     done
 }
 
-function fetch_latest_v3_release() {
-    local response
-    local releases
-    local latest_release
-
-    response=$(curl ${CURL_OPTIONS} --compressed --fail --connect-timeout 5 --max-time 15 \
-        "https://api.github.com/repos/jxxghp/MoviePilot/releases" \
-        ${CURL_HEADERS}) || return 1
-    releases=$(printf '%s\n' "${response}" | jq -r '.[].tag_name') || return 1
-    latest_release=$(printf '%s\n' "${releases}" | grep "^v3\." | sort -V | tail -n 1)
-    [[ -n "${latest_release}" ]] || return 1
-    printf '%s\n' "${latest_release}"
-}
-
-# 版本号比较
-function compare_versions() {
-    local v1="$1"
-    local v2="$2"
-    # 去掉开头的 v 或 V
-    v1="${v1#[vV]}"
-    v2="${v2#[vV]}"
-    local current_ver_parts=()
-    local release_ver_parts=()
-    IFS='.-' read -ra current_ver_parts <<< "$v1"
-    IFS='.-' read -ra release_ver_parts <<< "$v2"
-    local i
-    local current_ver
-    local release_ver
-
-    for ((i = 0; i < ${#current_ver_parts[@]} || i < ${#release_ver_parts[@]}; i++)); do
-        # 版本号不足位补 0
-        local current_ver_part="${current_ver_parts[i]:-0}"
-        local release_ver_part="${release_ver_parts[i]:-0}"
-        current_ver=$(get_priority "$current_ver_part")
-        release_ver=$(get_priority "$release_ver_part")
-
-        # 任意一个为-5，不在合法版本号内，无法比较
-        if (( current_ver == -5 || release_ver == -5 )); then
-            ERROR "存在不合法版本号，无法判断，跳过更新步骤..."
-            return 1
-        else
-            if (( current_ver > release_ver )); then
-                WARN "当前版本高于远程版本，跳过更新步骤..."
-                return 1
-            elif (( current_ver < release_ver )); then
-                INFO "发现新版本，开始自动升级..."
-                if install_backend_and_download_resources "tags/$2.zip"; then
-                    return 0
-                fi
-                MOVIEPILOT_UPDATE_RESULT="failed"
-                return 1
-            else
-                continue
-            fi
-        fi
-    done
-    WARN "当前版本已是最新版本，跳过更新步骤..."
-}
-
-# 优先级转换
-function get_priority() {
-    local version="$1"
-    if [[ $version =~ ^[0-9]+$ ]]; then
-        echo $version
-    else
-        case $version in
-            "stable")
-                echo -1
-                ;;
-            "rc")
-                echo -2
-                ;;
-            "beta")
-                echo -3
-                ;;
-            "alpha")
-                echo -4
-                ;;
-            # 非数字的不合法版本号
-            *)
-                echo -5
-                ;;
-        esac
-    fi
-}
-
 function run_moviepilot_update() {
-MOVIEPILOT_UPDATE_RESULT="noop"
-if [ -f "${PREPARED_UPDATE_MANIFEST}" ]; then
-    PREPARED_BACKEND_ARCHIVE=$(jq -r '.backend_archive // empty' "${PREPARED_UPDATE_MANIFEST}")
-    PREPARED_FRONTEND_ARCHIVE=$(jq -r '.frontend_archive // empty' "${PREPARED_UPDATE_MANIFEST}")
-    PREPARED_BACKEND_SHA256=$(jq -r '.backend_sha256 // empty' "${PREPARED_UPDATE_MANIFEST}")
-    PREPARED_FRONTEND_SHA256=$(jq -r '.frontend_sha256 // empty' "${PREPARED_UPDATE_MANIFEST}")
-    PREPARED_VERSION=$(jq -r '.version // empty' "${PREPARED_UPDATE_MANIFEST}")
-    PREPARED_FRONTEND_VERSION=$(jq -r '.frontend_version // empty' "${PREPARED_UPDATE_MANIFEST}")
-    if [ ! -f "${PREPARED_BACKEND_ARCHIVE}" ] || [ ! -f "${PREPARED_FRONTEND_ARCHIVE}" ] \
-        || [ "$(sha256sum "${PREPARED_BACKEND_ARCHIVE}" | awk '{print $1}')" != "${PREPARED_BACKEND_SHA256}" ] \
-        || [ "$(sha256sum "${PREPARED_FRONTEND_ARCHIVE}" | awk '{print $1}')" != "${PREPARED_FRONTEND_SHA256}" ]; then
-        ERROR "已准备的更新包校验失败，拒绝安装"
-        mark_prepared_update_failed "已准备的更新包校验失败"
-        MOVIEPILOT_UPDATE_RESULT="failed"
-        return 1
+    # 新 Dev 开关独立于自动检查；仅在未配置新开关时兼容首次启动的旧 dev 值。
+    MOVIEPILOT_UPDATE_RESULT="noop"
+    local dev_update="${MOVIEPILOT_UPDATE_DEV:-}"
+    if [ -z "${dev_update}" ] && [[ "${MOVIEPILOT_AUTO_UPDATE:-}" == [Dd][Ee][Vv] ]]; then
+        dev_update="true"
     fi
-    MOVIEPILOT_PREPARED_UPDATE="true"
-    TMP_PATH=$(mktemp -d)
-    if [ ! -d "${TMP_PATH}" ]; then
-        # 如果自动生成 tmp 文件夹失败则手动指定，避免出现数据丢失等情况
-        TMP_PATH=/tmp/mp_update_path
-        if [ -d /tmp/mp_update_path ]; then
-            rm -rf /tmp/mp_update_path
+    if [[ "${dev_update}" == [Tt][Rr][Uu][Ee] ]]; then
+        TMP_PATH=$(mktemp -d)
+        if [ ! -d "${TMP_PATH}" ]; then
+            TMP_PATH=/tmp/mp_update_path
+            rm -rf "${TMP_PATH}"
+            mkdir -p "${TMP_PATH}"
         fi
-        mkdir -p /tmp/mp_update_path
-    fi
-    CURL_OPTIONS="-sL"
-    if [ -n "${PROXY_HOST}" ]; then
-        CURL_OPTIONS="-sL -x ${PROXY_HOST}"
-    fi
-    if [ -n "${GITHUB_TOKEN}" ]; then
-        CURL_HEADERS="--oauth2-bearer ${GITHUB_TOKEN}"
-    else
-        CURL_HEADERS=""
-    fi
-    INFO "安装已下载并校验的 MoviePilot ${PREPARED_VERSION} 更新包"
-    if install_backend_and_download_resources "tags/${PREPARED_VERSION}.zip"; then
-        rm -f "${PREPARED_UPDATE_MANIFEST}"
-    else
-        mark_prepared_update_failed "已下载的 Release 更新安装失败"
-        MOVIEPILOT_UPDATE_RESULT="failed"
-    fi
-    if [ -d "${TMP_PATH}" ]; then
-        rm -rf "${TMP_PATH}"
-    fi
-elif [ "${MOVIEPILOT_AUTO_UPDATE}" = "dev" ]; then
-    TMP_PATH=$(mktemp -d)
-    if [ ! -d "${TMP_PATH}" ]; then
-        TMP_PATH=/tmp/mp_update_path
-        rm -rf "${TMP_PATH}"
-        mkdir -p "${TMP_PATH}"
-    fi
-    retries=0
-    while true; do
-        if test_connectivity_github ${retries}; then
-            break
+        retries=0
+        while true; do
+            if test_connectivity_github "${retries}"; then
+                break
+            fi
+            retries=$((retries + 1))
+        done
+        INFO "Github：${GITHUB_LOG}"
+        if [ -n "${GITHUB_TOKEN}" ]; then
+            CURL_HEADERS="--oauth2-bearer ${GITHUB_TOKEN}"
+        else
+            CURL_HEADERS=""
         fi
-        retries=$((retries + 1))
-    done
-    INFO "Github：${GITHUB_LOG}"
-    if [ -n "${GITHUB_TOKEN}" ]; then
-        CURL_HEADERS="--oauth2-bearer ${GITHUB_TOKEN}"
+        INFO "Dev 更新模式"
+        if ! install_backend_and_download_resources "heads/v3.zip"; then
+            MOVIEPILOT_UPDATE_RESULT="failed"
+        fi
+        rm -rf "${TMP_PATH}"
     else
-        CURL_HEADERS=""
+        INFO "没有待安装 Dev 更新，按当前版本启动"
     fi
-    INFO "Dev 更新模式"
-    if ! install_backend_and_download_resources "heads/v3.zip"; then
-        MOVIEPILOT_UPDATE_RESULT="failed"
-    fi
-    rm -rf "${TMP_PATH}"
-else
-    INFO "没有待安装更新，按当前版本启动"
-fi
 }

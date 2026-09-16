@@ -40,8 +40,6 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
 
         mediainfo.tmdb_id = tmdb_media.tmdb_id
         mediainfo.tmdb_info = tmdb_media.tmdb_info or mediainfo.tmdb_info
-        if not mediainfo.category:
-            mediainfo.category = tmdb_media.category
         if not mediainfo.genre_ids:
             mediainfo.genre_ids = list(tmdb_media.genre_ids or [])
         for field in ("imdb_id", "tvdb_id", "tvdb_slug", "collection_id"):
@@ -147,10 +145,14 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
         except Exception as err:
             logger.warning(f"{mediainfo.title_year} 获取媒体附加信息失败：{err}")
             return mediainfo
-        return self._merge_media_auxiliary(
+        supplemented = self._merge_media_auxiliary(
             mediainfo,
             auxiliary_medias,
             selected_sources,
+        )
+        return self._finalize_recognition_result(
+            supplemented,
+            refresh=True,
         )
 
     async def async_supplement_media_info(
@@ -176,10 +178,14 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
         except Exception as err:
             logger.warning(f"{mediainfo.title_year} 异步获取媒体附加信息失败：{err}")
             return mediainfo
-        return self._merge_media_auxiliary(
+        supplemented = self._merge_media_auxiliary(
             mediainfo,
             auxiliary_medias,
             selected_sources,
+        )
+        return await self._async_finalize_recognition_result(
+            supplemented,
+            refresh=True,
         )
 
     def supplement_tmdb_info(

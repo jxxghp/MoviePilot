@@ -20,7 +20,6 @@ from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 
 
-
 class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
     """rTorrent 下载器模块，负责任务添加、标签和文件状态转换。"""
 

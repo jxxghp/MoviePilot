@@ -3,7 +3,7 @@ import time
 from collections.abc import Coroutine
 from typing import Any, Callable, List, Optional
 
-from fastapi import Depends
+from fastapi import Depends, Response
 
 from app.adapters.web.security.access import verify_token
 from app.agent.contracts import ReplyMode
@@ -27,19 +27,26 @@ from app.api.dependencies.history import (
     get_transfer_execution_repository,
     get_transfer_history_mutation_command,
 )
-from app.api.response import ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    ResponseAPIRouter,
+)
 from app.application.agent import get_running_agent_manager
 from app.application.configuration import ApiRuntimeConfig
 from app.application.history import (
     DownloadHistoryMutationCommand,
     HistoryQueryService,
     TransferHistoryMutationCommand,
+    get_transfer_history_repository,
 )
 from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionRepository,
+    TransferExecutionState,
     TransferRetryRequestResult,
 )
+from app.application.transfer.recovery import TransferRecoveryCommand
 from app.runtime.log import logger
 from app.runtime.loop import main_loop_registry
 from app.runtime.progress import AsyncProgressHelper
@@ -50,6 +57,7 @@ from app.schemas.history import BatchTransferHistoryRedoRequest as _SchemaBatchT
 from app.schemas.history import DownloadHistory as _SchemaDownloadHistory
 from app.schemas.history import TransferHistory as _SchemaTransferHistory
 from app.schemas.history import TransferHistoryDeleteResult as _SchemaTransferHistoryDeleteResult
+from app.schemas.history import TransferHistoryDiscardResult as _SchemaTransferHistoryDiscardResult
 from app.schemas.history import TransferHistoryPage as _SchemaTransferHistoryPage
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -84,9 +92,11 @@ def _request_durable_transfer_retry(
 def _format_retry_rejections(
     rejections: list[tuple[int, TransferRetryRequestResult]],
 ) -> str:
-    """把批量 durable 重试拒绝原因格式化为可审计的接口提示。"""
+    """把批量整理重试拒绝原因格式化为前端可直接理解的提示。"""
+    from app.runtime.errors import public_error_message
+
     return "；".join(
-        f"#{history_id} [{result.state.value}]: {result.message}"
+        f"第 {history_id} 条：{public_error_message(result.message, context='transfer')}"
         for history_id, result in rejections
     )
 
@@ -131,9 +141,9 @@ def _durable_retry_messages(
     """构造 durable 批量登记结果消息，供纯 durable 和混合请求复用。"""
     messages: list[str] = []
     if accepted_count:
-        messages.append(f"已登记 {accepted_count} 个持久整理任务重试")
+        messages.append(f"已提交 {accepted_count} 个整理任务，后台将自动处理")
     if rejections:
-        messages.append("以下任务未登记重试：" + _format_retry_rejections(rejections))
+        messages.append("以下整理记录未能提交重试：" + _format_retry_rejections(rejections))
     return messages
 
 
@@ -142,6 +152,8 @@ async def _complete_durable_retry_batch(
     histories: list[_SchemaTransferHistory],
     messages: list[str],
     rejections: list[tuple[int, TransferRetryRequestResult]],
+    execution_repository: TransferExecutionRepository | None = None,
+    task_registry: TaskRegistry | None = None,
 ) -> Any:
     """完成纯 durable 批量响应；存在拒绝时不伪造成功进度。"""
     message = "；".join(messages)
@@ -153,6 +165,9 @@ async def _complete_durable_retry_batch(
         progress_key=progress_key,
         text=message,
         history_ids=history_ids,
+        task_ids=[history.transfer_task_id for history in histories if history.transfer_task_id],
+        execution_repository=execution_repository,
+        task_registry=task_registry,
     )
     return _SchemaResponse(
         success=True,
@@ -166,19 +181,133 @@ async def _complete_durable_retry_progress(
     progress_key: str,
     text: str,
     history_ids: list[int],
+    task_ids: list[str] | None = None,
+    execution_repository: TransferExecutionRepository | None = None,
+    task_registry: TaskRegistry | None = None,
 ) -> None:
-    """写入可被现有 SSE 客户端立即消费的 durable 重试完成进度。"""
+    """写入 durable 重试进度，并在提供任务依赖时等待真实终态再收口。"""
     progress = AsyncProgressHelper(progress_key)
     await progress.start()
-    await progress.end(
-        text=text,
+    if not execution_repository or not task_ids or not task_registry:
+        await progress.end(
+            text=text,
+            data={
+                "history_ids": history_ids,
+                "success": True,
+                "completed": True,
+                "message": text,
+            },
+        )
+        return
+
+    await progress.update(
+        text="已提交重新整理，等待后台任务处理",
         data={
             "history_ids": history_ids,
             "success": True,
-            "completed": True,
+            "completed": False,
             "message": text,
+            "state": TransferExecutionState.RETRY_WAIT.value,
         },
     )
+
+    async def watcher() -> None:
+        """轮询 durable 任务和历史回执，直到成功、失败或人工复核终态。"""
+        pending_task_ids = set(task_ids)
+        task_history_ids = dict(zip(task_ids, history_ids))
+        terminal: dict[str, dict[str, object]] = {}
+        missed_snapshots: dict[str, int] = {}
+        max_polls = 60 * 30
+        for _ in range(max_polls):
+            for task_id in tuple(pending_task_ids):
+                try:
+                    snapshot = await execution_repository.async_get_snapshot(
+                        task_id=task_id
+                    )
+                except Exception as error:
+                    logger.warning("读取 durable 重试状态失败：%s - %s", task_id, error)
+                    continue
+
+                if snapshot is None:
+                    missed_snapshots[task_id] = missed_snapshots.get(task_id, 0) + 1
+                    if missed_snapshots[task_id] < 2:
+                        continue
+                    history_repository = get_transfer_history_repository()
+                    history = await history_repository.async_get_by_transfer_task_id(
+                        task_id=task_id,
+                    )
+                    terminal[task_id] = {
+                        "task_id": task_id,
+                        "history_id": task_history_ids.get(task_id),
+                        "state": "completed" if history and history.status else "failed",
+                        "success": bool(history and history.status),
+                        "error": None if history and history.status else "后台任务已结束，但未写入成功历史",
+                    }
+                    pending_task_ids.remove(task_id)
+                    continue
+
+                missed_snapshots[task_id] = 0
+                if snapshot.state is TransferExecutionState.FAILED:
+                    terminal[task_id] = {
+                        "task_id": task_id,
+                        "history_id": task_history_ids.get(task_id),
+                        "state": snapshot.state.value,
+                        "success": False,
+                        "error": snapshot.last_error or "整理任务已达到失败终态，请处理失败记录",
+                    }
+                    pending_task_ids.remove(task_id)
+                elif snapshot.state is TransferExecutionState.MANUAL_REVIEW:
+                    terminal[task_id] = {
+                        "task_id": task_id,
+                        "history_id": task_history_ids.get(task_id),
+                        "state": snapshot.state.value,
+                        "success": False,
+                        "error": snapshot.last_error or "整理任务需要人工复核后才能继续",
+                    }
+                    pending_task_ids.remove(task_id)
+
+            completed_count = len(terminal)
+            if not pending_task_ids:
+                success = all(bool(item["success"]) for item in terminal.values())
+                errors = [str(item["error"]) for item in terminal.values() if item["error"]]
+                final_text = "后台重新整理完成" if success else "后台重新整理未全部成功，请按失败记录中的动作处理"
+                await progress.end(
+                    text=final_text,
+                    data={
+                        "history_ids": history_ids,
+                        "success": success,
+                        "completed": True,
+                        "message": final_text,
+                        "states": list(terminal.values()),
+                        "error": "；".join(errors) if errors else None,
+                    },
+                )
+                return
+
+            await progress.update(
+                text=f"后台正在重新整理（已完成 {completed_count}/{len(task_ids)}）",
+                data={
+                    "history_ids": history_ids,
+                    "success": True,
+                    "completed": False,
+                    "state": TransferExecutionState.RETRY_WAIT.value,
+                    "states": list(terminal.values()),
+                },
+            )
+            await asyncio.sleep(1)
+
+        await progress.end(
+            text="后台整理仍未结束，请刷新整理历史查看最新状态",
+            data={
+                "history_ids": history_ids,
+                "success": False,
+                "completed": True,
+                "message": "后台整理仍未结束，请刷新整理历史查看最新状态",
+                "error": "后台整理状态等待超时",
+            },
+        )
+
+    task_registry.create(watcher(), owner="api.history.durable_retry.progress")
 
 
 def _build_progress_output_callback(
@@ -216,6 +345,7 @@ def _start_ai_redo_task(
     )
 
     async def runner():
+        """执行已登记的后台整理重试并更新进度，保证异常也能收口。"""
         try:
             await progress.start()
             await progress.update(
@@ -238,13 +368,14 @@ def _start_ai_redo_task(
                 data={"history_id": history_id, "success": True, "completed": True},
             )
         except Exception as e:
+            logger.error(f"智能助手后台整理失败：{e}", exc_info=True)
             await progress.update(
-                text=f"智能助手整理失败：{str(e)}",
+                text="智能助手整理失败，请稍后重试",
                 data={
                     "history_id": history_id,
                     "success": False,
                     "completed": True,
-                    "error": str(e),
+                    "error": "智能助手整理失败，请稍后重试",
                 },
             )
         finally:
@@ -273,6 +404,7 @@ def _start_batch_ai_redo_task(
     )
 
     async def runner():
+        """执行已登记的后台整理重试并更新进度，保证异常也能收口。"""
         try:
             await progress.start()
             await progress.update(
@@ -295,13 +427,14 @@ def _start_batch_ai_redo_task(
                 data={"history_ids": history_ids, "success": True, "completed": True},
             )
         except Exception as e:
+            logger.error(f"智能助手后台批量整理失败：{e}", exc_info=True)
             await progress.update(
-                text=f"智能助手批量整理失败：{str(e)}",
+                text="智能助手批量整理失败，请稍后重试",
                 data={
                     "history_ids": history_ids,
                     "success": False,
                     "completed": True,
-                    "error": str(e),
+                    "error": "智能助手批量整理失败，请稍后重试",
                 },
             )
         finally:
@@ -326,9 +459,7 @@ def _submit_legacy_batch_ai_redo(
         progress_key=progress_key,
         task_registry=task_registry,
     )
-    message = "；".join(
-        [*messages, f"已提交 {len(histories)} 条旧历史给智能助手处理"]
-    )
+    message = "；".join([*messages, f"已提交 {len(histories)} 条旧历史给智能助手处理"])
     return _SchemaResponse(
         success=True,
         message=message,
@@ -343,17 +474,22 @@ def _submit_legacy_batch_ai_redo(
     "/download",
     summary="查询下载历史记录",
     response_model=List[_SchemaDownloadHistory],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 async def download_history(
     page: Optional[int] = 1,
     count: Optional[int] = 30,
     query: HistoryQueryService = Depends(get_history_query_service),
     _: _SchemaTokenPayload = Depends(verify_token),
+    response: Response = None,
 ) -> Any:
     """
     按下载时间倒序查询下载历史记录
     """
-    return await query.list_download(page=page, count=count)
+    results = await query.list_download(page=page, count=count)
+    if response is not None:
+        response.headers[COLLECTION_TOTAL_HEADER] = str(await query.count_download())
+    return results
 
 
 @router.delete(
@@ -363,9 +499,7 @@ async def download_history(
 )
 def delete_download_history(
     history_in: _SchemaDownloadHistory,
-    command: DownloadHistoryMutationCommand = Depends(
-        get_download_history_mutation_command
-    ),
+    command: DownloadHistoryMutationCommand = Depends(get_download_history_mutation_command),
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
@@ -400,6 +534,27 @@ async def transfer_history(
     return _SchemaResponse(success=True, data=result)
 
 
+def _clear_transfer_history(
+    command: TransferHistoryMutationCommand,
+) -> _SchemaResponse[None]:
+    """执行旧整理历史清理，并统一构造兼容响应。"""
+    result = command.truncate()
+    return _SchemaResponse(success=result.success, message=result.message)
+
+
+@router.delete(  # type: ignore[misc]
+    "/transfer/all",
+    summary="清空旧整理记录",
+    response_model=_SchemaResponse[None],
+)
+def clear_transfer_history(
+    command: TransferHistoryMutationCommand = Depends(get_transfer_history_mutation_command),
+    _: object = Depends(get_current_active_superuser),
+) -> Any:
+    """清空没有持久任务回执的旧整理记录，不删除任何文件。"""
+    return _clear_transfer_history(command)
+
+
 @router.delete(
     "/transfer",
     summary="删除整理记录",
@@ -409,9 +564,7 @@ def delete_transfer_history(
     history_in: _SchemaTransferHistory,
     deletesrc: Optional[bool] = False,
     deletedest: Optional[bool] = False,
-    command: TransferHistoryMutationCommand = Depends(
-        get_transfer_history_mutation_command
-    ),
+    command: TransferHistoryMutationCommand = Depends(get_transfer_history_mutation_command),
     _: object = Depends(get_current_active_manage_user),
 ) -> Any:
     """
@@ -429,6 +582,60 @@ def delete_transfer_history(
     )
 
 
+# FastAPI 装饰器在当前 mypy 配置下无类型；数据仍由显式响应模型和命令契约约束。
+@router.post(  # type: ignore[misc]
+    "/transfer/{history_id}/cleanup-resolved",
+    summary="确认下载器清理已完成",
+    response_model=_SchemaResponse[None],
+)
+def resolve_transfer_cleanup(
+    history_id: int,
+    command: TransferHistoryMutationCommand = Depends(get_transfer_history_mutation_command),
+    _: object = Depends(get_current_active_manage_user),
+) -> Any:
+    """确认用户已在下载器中人工完成清理，并关闭该历史的清理失败提示。"""
+    result = command.resolve_cleanup(history_id)
+    return _SchemaResponse(success=result.success, message=result.message)
+
+
+async def _get_discard_transfer_history(
+    history_id: int,
+    query: HistoryQueryService = Depends(get_history_query_service),
+) -> Optional[_SchemaTransferHistory]:
+    """异步加载历史 DTO，随后由 FastAPI 工作线程执行同步原子清理。"""
+    return await query.get_transfer(history_id)
+
+
+# FastAPI 装饰器在当前 mypy 配置下视为无类型，响应仍由具体 Pydantic 模型约束。
+@router.post(  # type: ignore[misc]
+    "/transfer/{history_id}/discard-corrupt",
+    summary="放弃损坏的整理任务",
+    response_model=_SchemaResponse[_SchemaTransferHistoryDiscardResult],
+)
+def discard_corrupt_transfer_history(
+    history_id: int,
+    history: Optional[_SchemaTransferHistory] = Depends(_get_discard_transfer_history),
+    execution_repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
+    _: object = Depends(get_current_active_manage_user),
+) -> Any:
+    """清理无活动租约的损坏 durable 任务，保留历史供重新生成计划。"""
+    if not history:
+        return _SchemaResponse(success=False, message="整理记录不存在")
+    if not history.transfer_task_id:
+        return _SchemaResponse(
+            success=True, message="整理任务已清理",
+            data=_SchemaTransferHistoryDiscardResult(history_id=history_id),
+        )
+    result = TransferRecoveryCommand(execution_repository).discard_corrupt_by_history(
+        task_id=history.transfer_task_id,
+        history_id=history_id,
+    )
+    return _SchemaResponse(
+        success=result.discarded, message=result.message,
+        data=_SchemaTransferHistoryDiscardResult(history_id=history_id),
+    )
+
+
 @router.post(
     "/transfer/{history_id}/ai-redo",
     summary="智能助手重新整理",
@@ -440,13 +647,13 @@ async def ai_redo_transfer_history(
     runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
     _: object = Depends(get_current_active_manage_user),
     task_registry: TaskRegistry = Depends(get_background_task_registry),
-    execution_repository: TransferExecutionRepository = Depends(
-        get_transfer_execution_repository
-    ),
+    execution_repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
 ) -> Any:
     """
     手动触发单条历史记录的 AI 重新整理，并返回进度键。
     """
+    from app.runtime.errors import public_error_message
+
     runtime_config = resolve_api_runtime_config(runtime_config)
     history = await query.get_transfer(history_id)
     if not history:
@@ -461,16 +668,21 @@ async def ai_redo_transfer_history(
             repository=execution_repository,
         )
         if not retry.accepted:
-            return _SchemaResponse(success=False, message=retry.message)
+            retry_message = public_error_message(retry.message, context="transfer")
+            return _SchemaResponse(success=False, message=retry_message)
+        retry_message = public_error_message(retry.message, context="transfer")
         progress_key = f"transfer_retry_{history_id}_{int(time.time() * 1000)}"
         await _complete_durable_retry_progress(
             progress_key=progress_key,
-            text=retry.message,
+            text=retry_message,
             history_ids=[history.id],
+            task_ids=[history.transfer_task_id] if history.transfer_task_id else [],
+            execution_repository=execution_repository,
+            task_registry=task_registry,
         )
         return _SchemaResponse(
             success=True,
-            message=retry.message,
+            message=retry_message,
             data={"progress_key": progress_key},
         )
 
@@ -500,9 +712,7 @@ async def batch_ai_redo_transfer_history(
     runtime_config: ApiRuntimeConfig = Depends(get_api_runtime_config),
     _: object = Depends(get_current_active_manage_user),
     task_registry: TaskRegistry = Depends(get_background_task_registry),
-    execution_repository: TransferExecutionRepository = Depends(
-        get_transfer_execution_repository
-    ),
+    execution_repository: TransferExecutionRepository = Depends(get_transfer_execution_repository),
 ) -> Any:
     """
     手动触发多条历史记录的 AI 批量重新整理，并返回进度键。
@@ -517,8 +727,7 @@ async def batch_ai_redo_transfer_history(
     if missing_ids:
         return _SchemaResponse(
             success=False,
-            message="整理记录不存在: "
-            + ", ".join(str(history_id) for history_id in missing_ids),
+            message="整理记录不存在: " + ", ".join(str(history_id) for history_id in missing_ids),
         )
 
     durable_histories, legacy_histories = _partition_durable_histories(histories)
@@ -536,21 +745,19 @@ async def batch_ai_redo_transfer_history(
             histories=durable_histories,
             messages=response_message_parts,
             rejections=rejections,
+            execution_repository=execution_repository,
+            task_registry=task_registry,
         )
 
     if rejections:
-        response_message_parts.append(
-            f"{len(legacy_histories)} 条旧历史未提交：批量请求包含被拒绝的持久任务"
-        )
+        response_message_parts.append(f"{len(legacy_histories)} 条旧历史未提交：批量请求包含被拒绝的持久任务")
         return _SchemaResponse(
             success=False,
             message="；".join(response_message_parts),
         )
 
     if not runtime_config.ai_agent_enable:
-        response_message_parts.append(
-            f"{len(legacy_histories)} 条旧历史未处理：MoviePilot智能助手未启用"
-        )
+        response_message_parts.append(f"{len(legacy_histories)} 条旧历史未处理：MoviePilot智能助手未启用")
         return _SchemaResponse(
             success=False,
             message="；".join(response_message_parts),
@@ -568,15 +775,12 @@ async def batch_ai_redo_transfer_history(
     "/empty/transfer",
     summary="清空整理记录",
     response_model=_SchemaResponse[None],
+    include_in_schema=False,
+    deprecated=True,
 )
 def empty_transfer_history(
-    command: TransferHistoryMutationCommand = Depends(
-        get_transfer_history_mutation_command
-    ),
+    command: TransferHistoryMutationCommand = Depends(get_transfer_history_mutation_command),
     _: object = Depends(get_current_active_superuser),
 ) -> Any:
-    """
-    清空整理记录
-    """
-    result = command.truncate()
-    return _SchemaResponse(success=result.success, message=result.message)
+    """兼容旧客户端的清空入口；新调用应使用 DELETE /transfer/all。"""
+    return _clear_transfer_history(command)

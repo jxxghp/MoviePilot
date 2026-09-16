@@ -78,9 +78,6 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.modules.zspace.zspace", "requests"),
         ("app.startup.lifecycle", "urllib3"),
     },
-    "daemon_control_plane": {
-        ("app.runtime.state", "docker"),
-    },
     "test_network_guard": {
         ("app.testing.network", "socket.getaddrinfo"),
     },
@@ -141,7 +138,6 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.webpush", "pywebpush"): "389c73b06150e3d5bcaf31f35a25178873d2ed38ef9a28354cb9bab691eeab76",
     ("app.modules.wechat.wechatbot", "websocket"): "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
     ("app.modules.zspace.zspace", "requests"): "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51",
-    ("app.runtime.state", "docker"): "20a91ec521f7dfe6a0153dfd8ea49c4bac7f0a16b55f1c0655dfb33f54a01215",
     ("app.startup.lifecycle", "urllib3"): "cb6f0a314aeb1e2d3e76c240aa20460ac0c36d9f5c18c1a6ea3170f64dd3366b",
     ("app.testing.network", "socket.getaddrinfo"): "ebf33718b54c81e1f575401da4a0bef5aa0e1ddc284e201f557897feeca71c6d",
 }

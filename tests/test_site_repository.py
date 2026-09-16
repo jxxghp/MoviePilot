@@ -9,6 +9,7 @@ from app.application.site.contract import (
     SiteStatisticSnapshot,
     SiteUserDataSnapshot,
 )
+from app.application.site.query import SiteQueryService
 from app.db.adapters.site import SessionSiteRepository, TransactionalSiteRepository
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
@@ -87,6 +88,18 @@ async def test_transactional_repository_projects_related_snapshots(db) -> None:
     assert icon is not None and icon.domain == "related-site.example"
     assert isinstance(statistic, SiteStatisticSnapshot)
     assert statistic.note == {"2026-08-28 10:00:00": 3}
+
+
+def test_userdata_default_seeding_info_is_compatible_with_sync_query_dto(db) -> None:
+    """省略做种明细时，查询 DTO 应收到空列表而不是 JSON 对象。"""
+    db.watermark(SiteUserData)
+    domain = "default-seeding-info.example"
+    db.add(SiteUserData(domain=domain, name="默认做种明细站点", err_msg=""))
+
+    result = SiteQueryService(_transactional_repository()).userdata_latest_sync()
+
+    userdata = next(item for item in result if item.domain == domain)
+    assert userdata.seeding_info == []
 
 
 @pytest.mark.asyncio

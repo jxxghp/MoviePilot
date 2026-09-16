@@ -225,7 +225,7 @@ class MetaAnime(MetaBase):
             fps_value = None
             if re_res.group(1):  # FPS格式
                 fps_value = re_res.group(1)
-                    
+
             if fps_value and fps_value.isdigit():
                 # 只存储纯数值
                 self.fps = int(fps_value)

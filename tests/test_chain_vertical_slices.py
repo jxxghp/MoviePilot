@@ -51,8 +51,10 @@ from app.chain.transfer.facade import TransferChain
             MediaChain,
             {
                 "normalize_music_candidates": "MusicCatalogService",
-                "search_music": "_music_catalog",
-                "async_search_music": "_music_catalog",
+                "search": "_music_catalog",
+                "async_search": "_music_catalog",
+                "search_music": "self.search",
+                "async_search_music": "self.async_search",
             },
         ),
         (

@@ -160,7 +160,7 @@ def test_anthropic_stream_rejects_shutdown_race_and_cleans_request_session() -> 
     async def scenario() -> str:
         response = await anthropic.messages(
             payload,
-                x_api_key=_API_TOKEN,
+            x_api_key=_API_TOKEN,
         )
         return await _collect(response)
 

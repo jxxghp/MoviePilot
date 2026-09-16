@@ -110,6 +110,12 @@ class Command(metaclass=Singleton):
                 "category": "管理",
                 "data": {},
             },
+            "/update": {
+                "func": SystemChain().remote_update,
+                "description": "检查更新",
+                "category": "管理",
+                "data": {},
+            },
             "/version": {
                 "func": SystemChain().version,
                 "description": "当前版本",

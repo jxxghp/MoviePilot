@@ -19,11 +19,12 @@ from app.application.transfer.execution import (
     TransferExecutionSnapshot,
     TransferExecutionState,
     TransferExecutionStep,
+    TransferPlanningRejectedError,
     TransferSettlementResult,
     TransferStepState,
 )
 from app.application.transfer.workflow import TransferTask
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
@@ -387,6 +388,24 @@ def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
 
     chain.run_module = Mock(side_effect=run_module)
     return chain
+
+
+def test_durable_host_execution_propagates_module_errors_to_transfer_boundary():
+    """持久执行通过 dispatcher 的异常传播开关，避免先被系统错误处理器吞掉。"""
+    chain = _chain()
+    chain.run_module.side_effect = RuntimeError("manual review")
+
+    with pytest.raises(RuntimeError, match="manual review"):
+        chain._TransferChain__execute_host_transfer_plan(
+            _task(),
+            _checkpoint(),
+            source_oper=None,
+            target_oper=None,
+            step_runner=Mock(),
+        )
+
+    call = chain.run_module.call_args
+    assert call.kwargs["raise_exception"] is True
 
 
 def _replay_chain(repository) -> TransferChain:
@@ -1342,6 +1361,63 @@ def test_checkpoint_commit_failure_blocks_executor_and_keeps_accepted():
         "task-accepted"
     )
     assert "commit failed" in repository.record_planning_failure.call_args.kwargs["error"]
+
+
+def test_host_planning_value_error_commits_rejection_instead_of_retrying():
+    """确定性的宿主规划错误必须形成失败终态，不能留在 accepted 周期回放。"""
+    repository = Mock()
+    task = _task()
+    planning_input = _planning_input()
+    task.bind_admission_task_id("task-planning-rejection")
+    _bind_planning_input(task, planning_input)
+    repository.checkpoint_plan.side_effect = lambda **kwargs: _planned_admission(
+        task,
+        kwargs["checkpoint"],
+    )
+    chain = _chain(repository=repository)
+    chain.plan_transfer.side_effect = TransferPlanningRejectedError(
+        "未识别到文件集数"
+    )
+
+    result = chain._plan_checkpoint_and_execute(task)
+
+    assert result.success is False
+    assert result.message == "未识别到文件集数"
+    assert task.plan_checkpoint is not None
+    assert task.plan_checkpoint.rejection_error == "未识别到文件集数"
+    assert task.plan_checkpoint.items == ()
+    assert task.execution_checkpoint is not None
+    repository.record_planning_failure.assert_not_called()
+
+
+def test_missing_library_directory_commits_rejection_without_file_execution():
+    """真实目录匹配失败应提交业务拒绝检查点，无文件副作用或异常重试。"""
+    repository = Mock()
+    task = _task()
+    task.target_path = None
+    task.mediainfo = MediaInfo(title="Movie", year="2026")
+    task.bind_admission_task_id("task-missing-library")
+    _bind_planning_input(task, replace(
+        _planning_input(), target_directory=None, target_path=None,
+    ))
+    repository.checkpoint_plan.side_effect = lambda **kwargs: _planned_admission(
+        task, kwargs["checkpoint"],
+    )
+    chain = _chain(repository=repository)
+    module = object.__new__(FileManagerModule)
+    chain.plan_transfer.side_effect = module.plan_transfer
+
+    with patch("app.modules.filemanager.module.Path.exists", return_value=True):
+        result = chain._plan_checkpoint_and_execute(task)
+
+    assert result.success is False
+    assert result.message == "未找到有效的媒体库目录"
+    assert task.plan_checkpoint.rejection_error == result.message
+    assert task.plan_checkpoint.items == ()
+    assert task.execution_checkpoint is not None
+    repository.checkpoint_plan.assert_called_once()
+    repository.record_planning_failure.assert_not_called()
+    chain.execute_transfer_plan.assert_not_called()
 
 
 def test_post_commit_crash_replays_frozen_plan_without_replanning():

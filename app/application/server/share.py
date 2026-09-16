@@ -7,8 +7,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
 
+from app.application.server.payload import build_subscribe_payload
 from app.application.workflow import WorkflowSnapshot
-from app.schemas.media import resolve_media_identity
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,7 +28,8 @@ class ServerSharingService:
         "year", "type", "keyword", "media_source", "media_id", "music_type",
         "total_tracks", "season", "poster", "backdrop", "vote", "description",
         "genre_ids", "include", "exclude", "quality", "resolution", "effect",
-        "total_episode", "custom_words", "media_category", "episode_group",
+        "total_episode", "custom_words", "media_category_id", "media_category",
+        "episode_group",
         "date",
     })
 
@@ -66,19 +67,7 @@ class ServerSharingService:
 
     def build_subscribe_payload(self, item: Optional[dict]) -> Optional[dict]:
         """构造订阅分享载荷并隔离本地字段和旧专用 ID。"""
-        if not isinstance(item, dict):
-            return None
-        media_source, media_id = resolve_media_identity(media=item)
-        if not media_source or not media_id:
-            return None
-        payload = {
-            key: value
-            for key, value in item.items()
-            if key in self.SUBSCRIBE_FIELDS
-        }
-        payload["media_source"] = str(media_source)
-        payload["media_id"] = media_id
-        return payload
+        return build_subscribe_payload(item, self.SUBSCRIBE_FIELDS)
 
     @staticmethod
     def prepare_workflow(workflow: WorkflowSnapshot) -> dict:

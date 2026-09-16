@@ -146,6 +146,12 @@ class TransferInfo(BaseModel):
     # 是否因覆盖模式判定「不覆盖」而放弃整理。
     # 这是一次正常的策略裁决而非整理故障，调用方据此决定是否写失败历史与推送失败通知
     overwrite_skipped: Optional[bool] = False
+    # 失败所在阶段和建议动作，供通知、历史和前端统一展示。
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    # 清理下载器任务的结果；整理成功但清理失败时保留独立状态。
+    cleanup_status: Optional[str] = None
+    cleanup_error: Optional[str] = None
 
     def to_dict(self):
         """
@@ -276,6 +282,10 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     media_id: Optional[str] = None
     # 音乐实体类型
     music_type: Optional[MusicTargetEntityType] = None
+    # 本次手动整理的 MusicBrainz 发行地区优先级；空值继承系统设置
+    music_release_regions: Optional[List[str]] = Field(default=None, max_length=3)
+    # 本次手动整理的 MusicBrainz 文字字形优先级；空值继承系统设置
+    music_release_scripts: Optional[List[str]] = Field(default=None, max_length=3)
     # 类型
     type_name: Optional[str] = None
     # 季号
@@ -306,6 +316,27 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     preview: Optional[bool] = False
     # 重新整理，清理命中的成功历史及其旧目标
     reorganize: Optional[bool] = False
+    # 跳过成功历史，优先于重新整理；预览与执行使用相同过滤范围
+    skip_success: bool = False
+
+    @model_validator(mode="after")  # type: ignore[misc]
+    def normalize_music_release_preferences(self) -> "ManualTransferItem":
+        """规范手动发行偏好并拒绝重复或非法 ISO 代码。"""
+        if self.music_release_regions is not None:
+            regions = [str(value).strip().upper() for value in self.music_release_regions]
+            if any(len(value) != 2 or not value.isascii() or not value.isalpha() for value in regions):
+                raise ValueError("音乐发行地区必须使用两位代码")
+            if len(set(regions)) != len(regions):
+                raise ValueError("音乐发行地区优先级不能重复")
+            self.music_release_regions = regions
+        if self.music_release_scripts is not None:
+            scripts = [str(value).strip().title() for value in self.music_release_scripts]
+            if any(len(value) != 4 or not value.isascii() or not value.isalpha() for value in scripts):
+                raise ValueError("音乐文字字形必须使用四位 ISO 15924 代码")
+            if len(set(scripts)) != len(scripts):
+                raise ValueError("音乐文字字形优先级不能重复")
+            self.music_release_scripts = scripts
+        return self
 
 
 class ManualTransferHistoryInfo(BaseModel):
@@ -354,6 +385,10 @@ class ManualTransferPreviewItem(BaseModel):
     target_dir: Optional[str] = None
     success: bool = False
     message: Optional[str] = None
+    # 失败阶段、建议动作和覆盖策略裁决，供前端直接给出下一步处理方式。
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    overwrite_skipped: bool = False
     type: Optional[str] = None
     title: Optional[str] = None
     season: Optional[int] = None
@@ -367,10 +402,33 @@ class ManualTransferPreviewItem(BaseModel):
 
 
 class ManualTransferResultData(BaseModel):
-    """手动整理预览或执行结果数据。"""
+    """手动整理预览数据，不表示执行或入库已完成。"""
 
     summary: Optional[ManualTransferPreviewSummary] = None
     items: list[ManualTransferPreviewItem] = Field(default_factory=list)
+    message: Optional[str] = None
+
+
+# 现有 mypy 配置把 Pydantic 基类视为 Any，公开字段仍由显式模型校验。
+class ManualTransferSubmissionItem(BaseModel):  # type: ignore[misc]
+    """实际提交的逐文件回执，接收和等待重试均不表示已入库。"""
+
+    state: Literal["accepted", "completed", "failed", "retry_wait", "skipped", "manual_review"]
+    source: Optional[str] = None
+    target: Optional[str] = None
+    target_dir: Optional[str] = None
+    # 表示本次操作被接收或完成；实际入库只以 completed 为准。
+    success: bool = False
+    message: Optional[str] = None
+    failure_stage: Optional[str] = None
+    recovery_action: Optional[str] = None
+    overwrite_skipped: bool = False
+
+
+class ManualTransferSubmissionData(BaseModel):  # type: ignore[misc]
+    """实际提交结果，即使批次失败也保留已接收、完成和跳过的文件。"""
+
+    items: list[ManualTransferSubmissionItem] = Field(default_factory=list)
     message: Optional[str] = None
 
 

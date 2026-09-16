@@ -65,6 +65,7 @@
   "app/adapters/system/plugin/package.py:app.runtime.execution.run_in_threadpool_to_completion": {
     "owners": {
       "PluginPackageManager.__async_install_dependencies_if_required": 1,
+      "PluginPackageManager.__async_swap_staged_plugin_content": 1,
       "PluginPackageManager.async_activate_persistent_backup": 1,
       "PluginPackageManager.async_checkpoint": 1,
       "PluginPackageManager.async_cleanup": 1,
@@ -135,7 +136,8 @@
   "app/agent/middleware/subagents.py:asyncio.create_task": {
     "owners": {
       "SubAgentTaskControlMiddleware._run_pipeline": 1,
-      "SubAgentTaskControlMiddleware._start_tasks": 1
+      "SubAgentTaskControlMiddleware._start_tasks": 1,
+      "SubAgentTaskControlMiddleware._update_record": 1
     },
     "target": "asyncio.create_task"
   },
@@ -160,30 +162,37 @@
     },
     "target": "asyncio.create_task"
   },
+  "app/agent/terminal/manager.py:asyncio.create_task": {
+    "owners": {
+      "_TerminalSessionManager._start_pipe_session": 3,
+      "_TerminalSessionManager._start_pty_session": 2,
+      "_TerminalSessionManager._wait_for_change": 1,
+      "_TerminalSessionManager.start": 2
+    },
+    "target": "asyncio.create_task"
+  },
+  "app/agent/terminal/manager.py:asyncio.to_thread": {
+    "owners": {
+      "_TerminalSessionManager._wait_pty_process": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/agent/terminal/ownership.py:asyncio.to_thread": {
+    "owners": {
+      "close_terminal_scope": 1
+    },
+    "target": "asyncio.to_thread"
+  },
   "app/agent/tools/base.py:concurrent.futures.ThreadPoolExecutor": {
     "owners": {
       "_submit_blocking_call": 1
     },
     "target": "concurrent.futures.ThreadPoolExecutor"
   },
-  "app/agent/tools/impl/_terminal_session.py:asyncio.create_task": {
-    "owners": {
-      "_TerminalSessionManager._start_pipe_session": 3,
-      "_TerminalSessionManager._start_pty_session": 2,
-      "_TerminalSessionManager.start": 1
-    },
-    "target": "asyncio.create_task"
-  },
-  "app/agent/tools/impl/_terminal_session.py:asyncio.to_thread": {
-    "owners": {
-      "_TerminalSessionManager._wait_pty_process": 1,
-      "_TerminalSessionManager.write": 1
-    },
-    "target": "asyncio.to_thread"
-  },
   "app/agent/tools/impl/execute_command.py:asyncio.create_task": {
     "owners": {
-      "ExecuteCommandTool._run_once": 3
+      "ExecuteCommandTool._acquire_command_slot": 2,
+      "ExecuteCommandTool._run_once_with_scope": 4
     },
     "target": "asyncio.create_task"
   },
@@ -336,17 +345,9 @@
     },
     "target": "app.runtime.execution.run_in_threadpool"
   },
-  "app/chain/search/media.py:app.runtime.execution.run_in_threadpool": {
+  "app/chain/search/execution.py:app.runtime.execution.run_in_threadpool": {
     "owners": {
-      "SearchMediaOwner._run_media_process_async": 1,
-      "SearchMediaOwner.async_process_stream": 1
-    },
-    "target": "app.runtime.execution.run_in_threadpool"
-  },
-  "app/chain/search/music.py:app.runtime.execution.run_in_threadpool": {
-    "owners": {
-      "SearchMusicOwner._async_process_music": 1,
-      "SearchMusicOwner._async_process_music_stream": 1
+      "SearchExecutionOwner.events": 2
     },
     "target": "app.runtime.execution.run_in_threadpool"
   },
@@ -596,11 +597,11 @@
     },
     "target": "asyncio.to_thread"
   },
-  "app/runtime/state.py:threading.Thread": {
+  "app/runtime/state.py:threading.Timer": {
     "owners": {
-      "SystemHelper._start_graceful_shutdown_monitor": 1
+      "SystemHelper._schedule_supervisor_command": 1
     },
-    "target": "threading.Thread"
+    "target": "threading.Timer"
   },
   "app/runtime/tasks.py:asyncio.create_task": {
     "owners": {

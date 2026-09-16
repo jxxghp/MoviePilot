@@ -5,7 +5,7 @@
 长在 SubscribeOper.add 上，但取标题、选海报尺寸、判音乐实体、决定哪几个字段构成一条
 订阅的身份，都是订阅业务的规则而非数据访问——Oper 只该收敛查询，领域对象不该出现在
 它的入参里。搬上来之后 SubscribeOper 收到的是纯粹的持久化字典，与
-app/application/history.py 里整理历史的写入路径同构。
+app/application/history/ 里整理历史的写入路径同构。
 
 留在 Oper 的是列类型强转与建库时间戳：那几步是为 PostgreSQL 的严格类型检查和订阅表
 自己的列类型而存在的，跟着列走比跟着调用方走更不容易漂。
@@ -16,10 +16,14 @@ app/application/history.py 里整理历史的写入路径同构。
 """
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional, Protocol, Tuple
+from typing import Optional, Protocol, Tuple, cast
+from uuid import uuid4
 
+from app.application.classification.reference import (
+    normalize_classification_reference_payload,
+)
 from app.application.outbox import SUBSCRIBE_ADDED_TOPIC, OutboxIntent
 from app.application.subscription.contract import (
     AfterCommitEffect,
@@ -29,6 +33,9 @@ from app.application.subscription.contract import (
     SubscriptionStagingPort,
     SubscriptionWritePort,
     SubscriptionWriteResult,
+    subscription_added_event_key,
+    subscription_added_notification_key,
+    subscription_added_report_key,
 )
 from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.common import JsonData
@@ -37,7 +44,7 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
 
 # 身份不完整时的固定返回。身份不全的订阅写进去就是一条永远匹配不上资源的僵尸订阅，
 # 而后续按身份去重也会失效，所以必须在查询与建模之前短路
-INCOMPLETE_IDENTITY = (0, "媒体身份不完整")
+INCOMPLETE_IDENTITY = (0, "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试")
 
 
 class SubscriptionOutboxStager(Protocol):
@@ -99,6 +106,7 @@ class CreateSubscriptionCommand:
         username: Optional[str] = None,
         after_commit: Optional[AfterCommitEffect] = None,
         notification: Mapping[str, JsonData] | None = None,
+        occurrence_id: Optional[str] = None,
     ) -> Tuple[int, str]:
         """执行同步新增；事务失败回滚，提交后副作用失败不反向回滚。"""
         try:
@@ -111,6 +119,7 @@ class CreateSubscriptionCommand:
                         payload.to_payload(),
                         username,
                         notification,
+                        occurrence_id=occurrence_id,
                     ):
                         self._outbox.stage(intent, now)
                 self._unit_of_work.commit()
@@ -143,6 +152,7 @@ class AsyncCreateSubscriptionCommand:
         username: Optional[str] = None,
         after_commit: Optional[AsyncAfterCommitEffect] = None,
         notification: Mapping[str, JsonData] | None = None,
+        occurrence_id: Optional[str] = None,
     ) -> Tuple[int, str]:
         """执行异步新增；事务失败回滚，提交后副作用失败不反向回滚。"""
         try:
@@ -159,6 +169,7 @@ class AsyncCreateSubscriptionCommand:
                         payload.to_payload(),
                         username,
                         notification,
+                        occurrence_id=occurrence_id,
                     ):
                         await self._outbox.stage(intent, now)
                 await self._unit_of_work.commit()
@@ -179,6 +190,7 @@ class SubscriptionCreateRequest:
     username: Optional[str] = None
     notification: Mapping[str, JsonData] | None = None
     after_commit: Optional[AsyncAfterCommitEffect] = None
+    occurrence_id: str = field(default_factory=lambda: uuid4().hex)
 
 
 SubscriptionBatchAfterCommitEffect = Callable[
@@ -245,6 +257,7 @@ class AsyncCreateSubscriptionBatchCommand:
                     request.payload.to_payload(),
                     request.username,
                     request.notification,
+                    occurrence_id=request.occurrence_id,
                 ):
                     await self._outbox.stage(intent, now)
             if created_requests:
@@ -264,9 +277,16 @@ def _subscribe_added_intents(
     payload: Mapping[str, JsonData],
     username: str | None,
     notification: Mapping[str, JsonData] | None = None,
+    *,
+    occurrence_id: Optional[str] = None,
 ) -> tuple[OutboxIntent, ...]:
     """构造订阅新增事件、通知与外部统计的同事务 durable intents。"""
-    event_key = subscription_added_event_key(subscribe_id, payload)
+    resolved_occurrence_id = occurrence_id or uuid4().hex
+    event_key = subscription_added_event_key(
+        subscribe_id,
+        payload,
+        occurrence_id=resolved_occurrence_id,
+    )
     event_payload = {
         "subscribe_id": subscribe_id,
         "idempotency_key": event_key,
@@ -283,12 +303,17 @@ def _subscribe_added_intents(
     if notification:
         intents.append(
             OutboxIntent(
-                event_key=subscription_added_notification_key(subscribe_id, payload),
+                event_key=subscription_added_notification_key(
+                    subscribe_id,
+                    payload,
+                    occurrence_id=resolved_occurrence_id,
+                ),
                 topic="subscribe.added.notification",
                 payload={
                     "idempotency_key": subscription_added_notification_key(
                         subscribe_id,
                         payload,
+                        occurrence_id=resolved_occurrence_id,
                     ),
                     "message": dict(notification),
                 },
@@ -296,7 +321,11 @@ def _subscribe_added_intents(
         )
     intents.append(
         OutboxIntent(
-            event_key=subscription_added_report_key(subscribe_id, payload),
+            event_key=subscription_added_report_key(
+                subscribe_id,
+                payload,
+                occurrence_id=resolved_occurrence_id,
+            ),
             topic="subscribe.added.report",
             payload={
                 "subscribe_info": {
@@ -304,40 +333,13 @@ def _subscribe_added_intents(
                     "idempotency_key": subscription_added_report_key(
                         subscribe_id,
                         payload,
+                        occurrence_id=resolved_occurrence_id,
                     ),
                 }
             },
         )
     )
     return tuple(intents)
-
-
-def subscription_added_event_key(
-    subscribe_id: int,
-    payload: Mapping[str, JsonData],
-) -> str:
-    """由订阅 ID 与媒体身份构造重试期间稳定、重建后不碰撞的幂等键。"""
-    return (
-        f"subscribe.added:{subscribe_id}:"
-        f"{payload.get('media_source') or 'unknown'}:"
-        f"{payload.get('media_id') or 'unknown'}:v1"
-    )
-
-
-def subscription_added_report_key(
-    subscribe_id: int,
-    payload: Mapping[str, JsonData],
-) -> str:
-    """返回与新增事件身份一致但可独立重试的统计幂等键。"""
-    return f"{subscription_added_event_key(subscribe_id, payload)}:report"
-
-
-def subscription_added_notification_key(
-    subscribe_id: int,
-    payload: Mapping[str, JsonData],
-) -> str:
-    """构造订阅新增通知的稳定幂等键。"""
-    return f"{subscription_added_event_key(subscribe_id, payload)}:notification"
 
 
 def _music_entity(mediainfo: MediaInfo | MusicInfo) -> Optional[str]:
@@ -382,7 +384,13 @@ def _translate(
         season=kwargs.get("season") if isinstance(kwargs.get("season"), int) else None,
         episode_group=mediainfo.episode_group,
     )
-    payload = dict(kwargs)
+    payload = cast(
+        dict[str, JsonData],
+        normalize_classification_reference_payload(
+            kwargs,
+            media_type=mediainfo.type,
+        ),
+    )
     payload.update(
         {
             "name": mediainfo.title,
@@ -396,6 +404,8 @@ def _translate(
             "vote": mediainfo.vote_average,
             "description": mediainfo.overview,
             "music_type": music_type,
+            # 专辑进度从空集合开始累计；单曲不使用专辑曲目事实。
+            "downloaded_tracks": [] if music_type == MUSIC_ENTITY_ALBUM else None,
             # 整专完成判定拿 total_tracks 当分母，单曲带着专辑的曲目数会永远判不到完成
             "total_tracks": getattr(mediainfo, "total_tracks", None) if music_type == MUSIC_ENTITY_ALBUM else None,
         }
@@ -407,6 +417,7 @@ def build_subscription_create_request(
     mediainfo: MediaInfo | MusicInfo,
     notification: Mapping[str, JsonData] | None = None,
     after_commit: Optional[AsyncAfterCommitEffect] = None,
+    occurrence_id: Optional[str] = None,
     **kwargs: JsonData,
 ) -> Optional[SubscriptionCreateRequest]:
     """把统一订阅字段映射冻结为一条可参与原子批量写入的请求。"""
@@ -420,6 +431,7 @@ def build_subscription_create_request(
         username=username,
         notification=notification,
         after_commit=after_commit,
+        occurrence_id=occurrence_id or uuid4().hex,
     )
 
 
@@ -428,6 +440,7 @@ def add_subscribe(
     subscribe_oper: SubscriptionWritePort,
     after_commit: Optional[AfterCommitEffect] = None,
     notification: Mapping[str, JsonData] | None = None,
+    occurrence_id: Optional[str] = None,
     **kwargs: JsonData,
 ) -> Tuple[int, str]:
     """
@@ -436,6 +449,7 @@ def add_subscribe(
     :param mediainfo: 识别结果
     :param subscribe_oper: 调用方显式注入的订阅写入端口
     :param after_commit: 提交后副作用编排；返回 False 表示统计 intent 等待重试
+    :param occurrence_id: 本次订阅创建事实的唯一标识，用于避免数据库主键复用造成键冲突
     :param kwargs: 订阅设置；owner_scope 为真时按用户名限定查重范围
     :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
     """
@@ -443,11 +457,12 @@ def add_subscribe(
     if translated is None:
         return INCOMPLETE_IDENTITY
     identity, payload, username = translated
-    if after_commit is None:
+    if occurrence_id is None:
         return subscribe_oper.add(
             identity=identity,
             payload=payload,
             username=username,
+            after_commit=after_commit,
             notification=notification,
         )
     return subscribe_oper.add(
@@ -456,6 +471,7 @@ def add_subscribe(
         username=username,
         after_commit=after_commit,
         notification=notification,
+        occurrence_id=occurrence_id,
     )
 
 
@@ -464,6 +480,7 @@ async def async_add_subscribe(
     subscribe_oper: SubscriptionWritePort,
     after_commit: Optional[AsyncAfterCommitEffect] = None,
     notification: Mapping[str, JsonData] | None = None,
+    occurrence_id: Optional[str] = None,
     **kwargs: JsonData,
 ) -> Tuple[int, str]:
     """
@@ -472,6 +489,7 @@ async def async_add_subscribe(
     :param mediainfo: 识别结果
     :param subscribe_oper: 调用方显式注入的订阅写入端口
     :param after_commit: 异步提交后副作用编排；返回 False 表示统计 intent 等待重试
+    :param occurrence_id: 本次订阅创建事实的唯一标识，用于避免数据库主键复用造成键冲突
     :param kwargs: 订阅设置；owner_scope 为真时按用户名限定查重范围
     :return: (订阅 ID, 结果说明)；ID 为 0 表示未新增
     """
@@ -479,11 +497,12 @@ async def async_add_subscribe(
     if translated is None:
         return INCOMPLETE_IDENTITY
     identity, payload, username = translated
-    if after_commit is None:
+    if occurrence_id is None:
         return await subscribe_oper.async_add(
             identity=identity,
             payload=payload,
             username=username,
+            after_commit=after_commit,
             notification=notification,
         )
     return await subscribe_oper.async_add(
@@ -492,6 +511,7 @@ async def async_add_subscribe(
         username=username,
         after_commit=after_commit,
         notification=notification,
+        occurrence_id=occurrence_id,
     )
 
 

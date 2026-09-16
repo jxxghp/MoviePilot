@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import FrozenInstanceError
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -119,6 +119,80 @@ def test_system_config_service_forwards_atomic_increment() -> None:
     assert service.increment(SystemConfigKey.MediaRecognizeShareCount) == 3
 
     writer.increment.assert_called_once_with(SystemConfigKey.MediaRecognizeShareCount, 1)
+
+
+def test_system_config_service_runs_atomic_mutation_through_database_executor() -> None:
+    """条件写入应在持久化原子回调内读取旧值并规范化最终值。"""
+    reader = MagicMock()
+    writer = MagicMock()
+    committed_values = []
+
+    def update_atomically(key, mutation):
+        """模拟仓储在写锁内向应用 mutation 提供当前值。"""
+        result, value = mutation(object(), ["old"])
+        committed_values.append((key, value))
+        return result
+
+    writer.update_atomically.side_effect = update_atomically
+    service = SystemConfigService(
+        reader=reader,
+        writer=writer,
+        async_executor=_InlineDatabaseExecutor(),
+        value_normalizer=lambda _key, value: [*value, "normalized"],
+    )
+
+    result = asyncio.run(
+        service.async_update_atomically(
+            "demo",
+            lambda current: ("updated", [*current, "new"]),
+        )
+    )
+
+    assert result == "updated"
+    assert committed_values == [("demo", ["old", "new", "normalized"])]
+
+
+def test_system_config_service_normalizes_sync_and_async_writes() -> None:
+    """同步和异步配置写入必须共用组合根注入的值规范化边界。"""
+    reader = MagicMock()
+    writer = MagicMock()
+    writer.set.return_value = True
+    normalizer = MagicMock(side_effect=lambda key, value: {"key": str(key), "value": value})
+    service = SystemConfigService(
+        reader=reader,
+        writer=writer,
+        async_executor=_InlineDatabaseExecutor(),
+        value_normalizer=normalizer,
+    )
+
+    assert service.set("demo", 1) is True
+    assert asyncio.run(service.async_set("demo", 2)) is True
+    assert writer.set.call_args_list == [
+        (("demo", {"key": "demo", "value": 1}), {}),
+        (("demo", {"key": "demo", "value": 2}), {}),
+    ]
+    assert normalizer.call_count == 2
+
+
+def test_system_config_service_async_write_waits_for_runtime_reload() -> None:
+    """直接异步写入系统配置时也必须等待统一运行时重载端口。"""
+    reader = MagicMock()
+    writer = MagicMock()
+    writer.set.return_value = True
+    publisher = AsyncMock()
+    service = SystemConfigService(
+        reader=reader,
+        writer=writer,
+        async_executor=_InlineDatabaseExecutor(),
+        change_publisher=publisher,
+    )
+
+    assert asyncio.run(service.async_set(SystemConfigKey.Notifications, [{"name": "demo"}])) is True
+
+    publisher.assert_awaited_once_with(
+        SystemConfigKey.Notifications,
+        [{"name": "demo"}],
+    )
 
 
 def test_user_configuration_service_supports_sync_and_async_writes() -> None:

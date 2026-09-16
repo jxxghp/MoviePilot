@@ -32,6 +32,16 @@ def _make_chain() -> SearchChain:
     return chain
 
 
+def test_format_site_durations_orders_sites_and_marks_slowest() -> None:
+    """站点耗时日志应按耗时倒序，并明确标出最慢站点。"""
+    formatted = search_module._format_site_durations({
+        "1": ("站点一", 1.2),
+        "2": ("站点二", 3.4),
+    })
+
+    assert formatted == "；各站点耗时：站点二：3.40 秒，站点一：1.20 秒；最慢站点：站点二（3.40 秒）"
+
+
 @pytest.mark.asyncio
 async def test_site_page_iterator_cancels_and_waits_pending_requests() -> None:
     """调用方提前关闭迭代器时，统一编排器必须收口其他站点请求。"""
@@ -61,7 +71,9 @@ async def test_site_page_iterator_cancels_and_waits_pending_requests() -> None:
         task_owner="test.search.site_page",
     )
 
-    assert await anext(iterator) == ({"id": 1}, 0, ["ready"], False)
+    result = await anext(iterator)
+    assert result[:4] == ({"id": 1}, 0, ["ready"], False)
+    assert result[4] >= 0
     await blocked_started.wait()
     await iterator.aclose()
 

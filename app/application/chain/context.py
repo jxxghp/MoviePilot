@@ -12,6 +12,7 @@ from app.application.configuration import ChainRuntimeConfig
 from app.runtime.stop import StopState, runtime_stop_state
 
 if TYPE_CHECKING:
+    from app.application.classification.execution import ClassificationExecutionPort
     from app.application.download.failures import DownloadFailureRepository
     from app.application.history import (
         DownloadHistoryRepository,
@@ -29,10 +30,12 @@ if TYPE_CHECKING:
         DeleteSubscribeScope,
         SyncDeleteSubscribeScope,
     )
+    from app.application.subscription.execution import SubscriptionSearchRepository
     from app.application.subscription.mutation import (
         SubscriptionMutationScope,
         SyncSubscriptionMutationScope,
     )
+    from app.application.system import SystemService
     from app.application.transfer.execution import TransferExecutionRepository
     from app.application.transfer.workflow import TransferAdmissionRepository
 
@@ -74,12 +77,16 @@ class ChainRuntimeContext:
     media_server_repository: MediaServerRepository
     download_failure_repository: DownloadFailureRepository
     user_repository: ChainUserRepository
+    classification_service: Optional[ClassificationExecutionPort] = None
+    subscription_search_repository: Optional[SubscriptionSearchRepository] = None
     legacy_transfer_command: Optional[LegacyTransferCommand] = None
     durable_event_writer: Optional[ChainDurableEventWriter] = None
     configuration: ChainRuntimeConfig = field(
         default_factory=lambda: ChainRuntimeConfig(media_extensions=())
     )
+    configuration_provider: Optional[Callable[[], ChainRuntimeConfig]] = None
     stop_state: StopState = field(default_factory=lambda: runtime_stop_state)
+    system_service: Optional[SystemService] = None
 
 
 def _unconfigured_chain_runtime_context() -> ChainRuntimeContext:

@@ -12,6 +12,7 @@ from app.adapters.web.security.access import (
 from app.application.configuration import get_configured_system_config
 from app.application.security.auth import (
     AuthService,
+    AuthUserRepository,
     build_superuser_token_payload,
     configure_auth_service,
     reset_auth_service,
@@ -30,6 +31,8 @@ from app.db.adapters.user import SqlAlchemyUserRepository
 from app.db.oper.passkey import PassKeyOper
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.cache import TTLCache
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting, update_runtime_setting
 from app.startup.composition.context import (
     RepositoryFactory,
     StandaloneRepositoryFactory,
@@ -48,8 +51,27 @@ class SecurityComposition:
     passkey: StandaloneRepositoryFactory
 
 
+def _backfill_superuser_setting(users: AuthUserRepository) -> None:
+    """用现有数据库管理员补全 V2 升级后缺失的 SUPERUSER。"""
+    if str(get_runtime_setting("SUPERUSER") or "").strip():
+        return
+    user = users.get_active_superuser()
+    if user is None:
+        return
+    success, message = update_runtime_setting("SUPERUSER", user.name)
+    if success is False:
+        logger.warning(
+            f"检测到数据库超级管理员 {user.name}，但自动补全 SUPERUSER 失败："
+            f"{message or '未知错误'}"
+        )
+        return
+    logger.info(f"已根据数据库超级管理员自动补全 SUPERUSER：{user.name}")
+
+
 def configure_security_services() -> SecurityComposition:
     """构造并登记认证、用户查询和 PassKey 服务。"""
+    users = build_transactional_user_repository()
+    _backfill_superuser_setting(users)
     configure_user_lookups(
         by_id=lambda user_id: build_transactional_user_repository().get_by_id(user_id),
         by_name=lambda username: build_transactional_user_repository().get_by_name(username),
@@ -57,7 +79,7 @@ def configure_security_services() -> SecurityComposition:
     )
     configure_auth_service(
         AuthService(
-            users=build_transactional_user_repository(),
+            users=users,
             config=get_configured_system_config(),
             passkeys=PassKeyOper(),
         )

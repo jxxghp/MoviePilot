@@ -152,14 +152,14 @@
         "introduced": "v3.0.0",
         "is_package": false,
         "owner": "runtime",
-        "replacement": "app.sdk.plugins",
+        "replacement": "app.sdk.plugin.manager",
         "target": "app.runtime.extensions.module.manager"
       },
       "app.core.plugin": {
         "introduced": "v3.0.0",
         "is_package": false,
         "owner": "runtime",
-        "replacement": "app.sdk.plugins",
+        "replacement": "app.sdk.plugin.manager",
         "target": "app.runtime.extensions.plugin.manager"
       },
       "app.core.security": {
@@ -616,6 +616,13 @@
         "owner": "runtime",
         "replacement": "app.runtime.resources",
         "target": "app.runtime.resources"
+      },
+      "app.sdk.plugins": {
+        "introduced": "v3.0.0",
+        "is_package": false,
+        "owner": "sdk",
+        "replacement": "app.sdk.plugin.manager",
+        "target": "app.sdk.plugin.manager"
       },
       "app.utils.coalesce": {
         "introduced": "v3.0.0",
@@ -1084,6 +1091,18 @@
           "replacement": "app.schemas.media.resolve_media_identity",
           "target_module": "app.schemas.media",
           "target_name": "resolve_media_identity"
+        }
+      },
+      "app.plugins": {
+        "PluginChian": {
+          "replacement": "app.sdk.plugin.PluginChain",
+          "target_module": "app.sdk.plugin.base",
+          "target_name": "PluginChain"
+        },
+        "_PluginBase": {
+          "replacement": "app.sdk.plugin._PluginBase",
+          "target_module": "app.sdk.plugin.base",
+          "target_name": "_PluginBase"
         }
       },
       "app.schemas": {
@@ -1669,7 +1688,7 @@
       "ChainEventType.ResourceDownload": {
         "consumer_fingerprints": [],
         "producer_fingerprints": [
-          "aac2e9ac03b43fd89c42f3efba186365152568edc05881f24204a88fbd74bdbf"
+          "26b919353eed404b502c7fdf899981f372b9a25ca75a90ba205f61c5ff90c41a"
         ]
       },
       "ChainEventType.ResourceSelection": {
@@ -1752,7 +1771,6 @@
           "64006f45841531463b1489576e1aee24ae1b50a2509a9773bc2149415f2c7d18"
         ],
         "producer_fingerprints": [
-          "10f78c4b6c0daa39dfd425d5b1f58f0c3be5ed2e2c92c5fe88e73ae78ffae6f7",
           "f022ca0218b956cfd193695721ddc60343030bf15baa2d7bb0a2e9ccacce6bba"
         ]
       },
@@ -1764,9 +1782,7 @@
           "c53927bd5752ec004ac403f6dc07fca7b253f0db152fc773643972d7c3bf5d34"
         ],
         "producer_fingerprints": [
-          "36d3234c5f3cd7317c34d6ee71bc065946ea0e981dd2377589f73e54ebaf8703",
-          "5fe23577466054d66cb12b34d4df8834f8933596be0cbc84e4cbfc22694b3c03",
-          "cdf41d4446e65b14d457621594f04b3e6bfce252e7701cb4be862b2259e97700"
+          "10cb1814f97ef9511346d9b79e13255d603f1d7f63fdc3126138d07d74eb8881"
         ]
       },
       "EventType.DownloadAdded": {
@@ -1868,7 +1884,6 @@
         ],
         "producer_fingerprints": [
           "7ccc7af8b1102056372e6450bf3ee6f9067aa984e3e655fd5061d16eec327097",
-          "91ddcfd5135b306415aa58956f7d25c8e9d98811bee06128d341bd6a711a05c8",
           "9ca1f49946d2bcfdf0bbb3559e1a129ee1506ceb7773a0efcd374784df99474f"
         ]
       },
@@ -1963,11 +1978,11 @@
         ]
       }
     },
-    "fact_count": 107,
+    "fact_count": 103,
     "invalid_consumer_count": 0,
     "invalid_producer_count": 0,
-    "producer_call_count": 90,
-    "producer_event_reference_count": 91,
+    "producer_call_count": 86,
+    "producer_event_reference_count": 87,
     "producers": [
       {
         "caller": "app.agent.orchestrator",
@@ -1991,54 +2006,6 @@
         "invalid": false,
         "method": "send_event",
         "qualname": "MoviePilotAgent._send_agent_tokens_usage_event",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.agent.tools.impl._filter_rule_utils",
-        "dynamic": false,
-        "events": [
-          "EventType.ConfigChanged"
-        ],
-        "fingerprint": "5fe23577466054d66cb12b34d4df8834f8933596be0cbc84e4cbfc22694b3c03",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "publish_rule_config_changed",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.agent.tools.impl.run_slash_command",
-        "dynamic": false,
-        "events": [
-          "EventType.CommandExcute"
-        ],
-        "fingerprint": "10f78c4b6c0daa39dfd425d5b1f58f0c3be5ed2e2c92c5fe88e73ae78ffae6f7",
-        "invalid": false,
-        "method": "send_event",
-        "qualname": "RunSlashCommandTool.run",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.agent.tools.impl.update_site",
-        "dynamic": false,
-        "events": [
-          "EventType.SiteUpdated"
-        ],
-        "fingerprint": "91ddcfd5135b306415aa58956f7d25c8e9d98811bee06128d341bd6a711a05c8",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "UpdateSiteTool.run",
-        "receiver_kind": "canonical_singleton"
-      },
-      {
-        "caller": "app.agent.tools.impl.update_system_settings",
-        "dynamic": false,
-        "events": [
-          "EventType.ConfigChanged"
-        ],
-        "fingerprint": "cdf41d4446e65b14d457621594f04b3e6bfce252e7701cb4be862b2259e97700",
-        "invalid": false,
-        "method": "async_send_event",
-        "qualname": "UpdateSystemSettingsTool.run",
         "receiver_kind": "canonical_singleton"
       },
       {
@@ -2289,10 +2256,10 @@
         "events": [
           "ChainEventType.ResourceDownload"
         ],
-        "fingerprint": "aac2e9ac03b43fd89c42f3efba186365152568edc05881f24204a88fbd74bdbf",
+        "fingerprint": "26b919353eed404b502c7fdf899981f372b9a25ca75a90ba205f61c5ff90c41a",
         "invalid": false,
         "method": "send_event",
-        "qualname": "DownloadSubmissionOwner._apply_resource_download_event",
+        "qualname": "_DownloadResourceOwner._apply_resource_download_event",
         "receiver_kind": "canonical_singleton"
       },
       {
@@ -3007,9 +2974,9 @@
         "events": [
           "EventType.ConfigChanged"
         ],
-        "fingerprint": "36d3234c5f3cd7317c34d6ee71bc065946ea0e981dd2377589f73e54ebaf8703",
+        "fingerprint": "10cb1814f97ef9511346d9b79e13255d603f1d7f63fdc3126138d07d74eb8881",
         "invalid": false,
-        "method": "async_send_event",
+        "method": "async_send_event_strict",
         "qualname": "_ConfigurationEventAdapter.publish",
         "receiver_kind": "canonical_singleton"
       },
@@ -3051,7 +3018,7 @@
       }
     ],
     "static_consumer_count": 16,
-    "static_producer_call_count": 89
+    "static_producer_call_count": 85
   },
   "event_specs": {
     "ChainEventType.AgentLLMProvider": {
@@ -4723,7 +4690,7 @@
         "media_source",
         "name"
       ],
-      "result_contract": "list[MediaPerson]",
+      "result_contract": "list[MediaPerson | MusicArtistInfo]",
       "result_shape": "list",
       "supports_async": true,
       "supports_sync": true,
@@ -5989,6 +5956,24 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "get_media_classification_facts": {
+      "aggregation": "fan_out",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "media-classification",
+      "input_contract": "ClassificationEnrichmentRequest",
+      "plugin_short_circuit": false,
+      "public_to_plugins": true,
+      "required_parameters": [
+        "request"
+      ],
+      "result_contract": "ClassificationEnrichmentResponse | None",
+      "result_shape": "mapping",
+      "supports_async": false,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "get_parent_item": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -6103,22 +6088,6 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
-    "load_category_config": {
-      "aggregation": "first_non_empty",
-      "error_policy": "isolate_provider",
-      "execution": "sync_or_async",
-      "family": "category",
-      "input_contract": "CategoryConfigReadRequest",
-      "plugin_short_circuit": true,
-      "public_to_plugins": true,
-      "required_parameters": [],
-      "result_contract": "CategoryConfig | None",
-      "result_shape": "any",
-      "supports_async": true,
-      "supports_sync": true,
-      "timeout_policy": "caller_budget",
-      "version": 1
-    },
     "mark_message_processing_finished": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -6223,22 +6192,6 @@
         "year"
       ],
       "result_contract": "dict[str, Any] | None",
-      "result_shape": "mapping",
-      "supports_async": true,
-      "supports_sync": true,
-      "timeout_policy": "caller_budget",
-      "version": 1
-    },
-    "media_category": {
-      "aggregation": "first_non_empty",
-      "error_policy": "isolate_provider",
-      "execution": "sync_or_async",
-      "family": "media-recognition",
-      "input_contract": "MediaCategoryRequest",
-      "plugin_short_circuit": true,
-      "public_to_plugins": true,
-      "required_parameters": [],
-      "result_contract": "dict[str, list] | None",
       "result_shape": "mapping",
       "supports_async": true,
       "supports_sync": true,
@@ -7103,24 +7056,6 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
-    "save_category_config": {
-      "aggregation": "first_non_empty",
-      "error_policy": "isolate_provider",
-      "execution": "sync_or_async",
-      "family": "category",
-      "input_contract": "CategoryConfigWriteRequest",
-      "plugin_short_circuit": true,
-      "public_to_plugins": true,
-      "required_parameters": [
-        "config"
-      ],
-      "result_contract": "bool | None",
-      "result_shape": "boolean",
-      "supports_async": true,
-      "supports_sync": true,
-      "timeout_policy": "caller_budget",
-      "version": 1
-    },
     "scheduler_job": {
       "aggregation": "fan_out",
       "error_policy": "isolate_provider",
@@ -7207,7 +7142,7 @@
         "media_source",
         "name"
       ],
-      "result_contract": "list[MediaPerson]",
+      "result_contract": "list[MediaPerson | MusicArtistInfo]",
       "result_shape": "list",
       "supports_async": true,
       "supports_sync": true,
@@ -8046,10 +7981,10 @@
     }
   },
   "run_module": {
-    "call_count": 266,
+    "call_count": 262,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 215,
+    "method_count": 211,
     "methods": {
       "anilist_credits": [
         {
@@ -8957,13 +8892,6 @@
           "mode": "sync"
         }
       ],
-      "load_category_config": [
-        {
-          "caller": "app.chain.base",
-          "count": 1,
-          "mode": "sync"
-        }
-      ],
       "mark_message_processing_finished": [
         {
           "caller": "app.chain._messaging",
@@ -8993,13 +8921,6 @@
         }
       ],
       "match_tmdbinfo": [
-        {
-          "caller": "app.chain.base",
-          "count": 1,
-          "mode": "sync"
-        }
-      ],
-      "media_category": [
         {
           "caller": "app.chain.base",
           "count": 1,
@@ -9301,13 +9222,6 @@
           "mode": "sync"
         }
       ],
-      "plan_transfer": [
-        {
-          "caller": "app.chain.base",
-          "count": 1,
-          "mode": "sync"
-        }
-      ],
       "recognize_media": [
         {
           "caller": "app.chain._recognition",
@@ -9363,13 +9277,6 @@
       "rename_file": [
         {
           "caller": "app.chain.storage",
-          "count": 1,
-          "mode": "sync"
-        }
-      ],
-      "save_category_config": [
-        {
-          "caller": "app.chain.base",
           "count": 1,
           "mode": "sync"
         }
@@ -9846,6 +9753,48 @@
         "target": "app.chain.base.ChainBase"
       }
     ],
+    "app.sdk.classification": [
+      {
+        "kind": "import",
+        "name": "ClassificationEnrichmentMatch",
+        "target": "app.schemas.category.ClassificationEnrichmentMatch"
+      },
+      {
+        "kind": "import",
+        "name": "ClassificationEnrichmentRequest",
+        "target": "app.schemas.category.ClassificationEnrichmentRequest"
+      },
+      {
+        "kind": "import",
+        "name": "ClassificationEnrichmentResponse",
+        "target": "app.schemas.category.ClassificationEnrichmentResponse"
+      },
+      {
+        "kind": "import",
+        "name": "ClassificationFactValue",
+        "target": "app.schemas.category.ClassificationFactValue"
+      },
+      {
+        "kind": "import",
+        "name": "ClassificationFieldDefinition",
+        "target": "app.schemas.category.ClassificationFieldDefinition"
+      },
+      {
+        "kind": "alias",
+        "name": "MEDIA_SOURCE_CLASSIFICATION_PROTOCOL_VERSION",
+        "target": "2"
+      },
+      {
+        "kind": "import",
+        "name": "MediaSourceInfo",
+        "target": "app.schemas.event.MediaSourceInfo"
+      },
+      {
+        "kind": "FunctionDef",
+        "name": "classify_media",
+        "target": ""
+      }
+    ],
     "app.sdk.config": [
       {
         "kind": "import",
@@ -9870,6 +9819,11 @@
         "target": "app.application.backup.BackupVerification"
       },
       {
+        "kind": "import",
+        "name": "PluginDatabaseHandle",
+        "target": "app.db.plugin.container.PluginDatabaseHandle"
+      },
+      {
         "kind": "FunctionDef",
         "name": "create_backup",
         "target": ""
@@ -9878,6 +9832,11 @@
         "kind": "FunctionDef",
         "name": "list_backups",
         "target": ""
+      },
+      {
+        "kind": "import",
+        "name": "plugin_declarative_base",
+        "target": "app.db.plugin.base.plugin_declarative_base"
       },
       {
         "kind": "FunctionDef",
@@ -10062,6 +10021,16 @@
       },
       {
         "kind": "import",
+        "name": "MusicInfo",
+        "target": "app.domain.context.MusicInfo"
+      },
+      {
+        "kind": "import",
+        "name": "MusicLyrics",
+        "target": "app.domain.context.MusicLyrics"
+      },
+      {
+        "kind": "import",
         "name": "MusicNameContext",
         "target": "app.domain.meta.metamusic.MusicNameContext"
       },
@@ -10164,6 +10133,11 @@
         "kind": "import",
         "name": "resolve_media_identity",
         "target": "app.schemas.media.resolve_media_identity"
+      },
+      {
+        "kind": "import",
+        "name": "set_custom_separator",
+        "target": "app.domain.meta.customization.set_custom_separator"
       }
     ],
     "app.sdk.network": [
@@ -10211,18 +10185,6 @@
         "kind": "import",
         "name": "WebUtils",
         "target": "app.adapters.external.location.WebUtils"
-      }
-    ],
-    "app.sdk.plugins": [
-      {
-        "kind": "import",
-        "name": "ModuleManager",
-        "target": "app.runtime.extensions.module.manager.ModuleManager"
-      },
-      {
-        "kind": "import",
-        "name": "PluginManager",
-        "target": "app.runtime.extensions.plugin.manager.PluginManager"
       }
     ],
     "app.sdk.queries": [

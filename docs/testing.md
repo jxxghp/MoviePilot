@@ -10,19 +10,43 @@ pytest 是唯一运行入口。`tests/conftest.py` 在收集前完成隔离引�
 uv run --locked --no-sync pytest tests                              # 串行全量
 uv run --locked --no-sync pytest tests/test_xxx.py                  # 单文件
 uv run --locked --no-sync pytest tests/test_xxx.py::SomeTest::test_y   # 单用例
-uv run --locked --no-sync python tests/run.py                       # 默认按文件连续切成 4 片并行跑全量
+uv run --locked --no-sync python tests/run.py                       # 默认按文件预计耗时均衡为 4 片并行跑全量
 uv run --locked --no-sync python tests/run.py --serial              # 串行全量，便于调试或生成覆盖率
 uv run --locked --no-sync python tests/run.py --shard 1/4           # 只跑指定分片，供 CI 复用
 ```
 
 `tests/run.py` 的 runner 参数只有 `--serial` 和 `--shard N/TOTAL`；其余参数保持原顺序
-透传给 pytest，例如 `python tests/run.py -q --maxfail=1`。文件先按字典序排序，再以
-`ceil(文件数 / 分片数)` 的大小连续切片，确保本地与 CI 执行相同的文件集合和顺序。
+透传给 pytest，例如 `python tests/run.py -q --maxfail=1`。分片使用受版本控制的
+`tests/fixtures/durations.json` 慢文件耗时估算：按耗时降序，逐个分给预计总耗时最短的分片；
+耗时相同时按路径、分片编号决定归属，片内仍按路径排序。新增或未记录文件使用 1 秒权重，
+不依赖本机缓存，确保同一代码版本在本地与 CI 的文件集合和顺序一致。
+耗时数据来自成功 Ubuntu/Python 3.14 Coverage 日志的逐文件进度时间戳（含续行），
+只记录至少 3 秒的文件并向上取整；后续发现慢文件偏移时可依据成功 CI 日志更新。
+这些估算仅用于调度，不构成性能或覆盖率基线。
 
 - 不再使用 `python -m unittest discover`：它不导入 `tests` 包、收不到纯函数用例，且绕过 `conftest.py` 的隔离。
 - 不再依赖 `python tests/test_xxx.py` 直跑：所有 `if __name__ == "__main__": unittest.main()` 尾巴已移除。
 - **复现 CI 用干净环境**：使用 `uv sync --locked` 从 `uv.lock` 创建环境，再以
   `uv run --locked --no-sync` 运行测试，避免本地额外包、未锁定解析结果或编译产物掩盖问题。
+
+共享工作区的 `.venv-test` 与上述 `uv` 命令映射见 [开发环境设置](development-setup.md)；
+`--no-sync` 不会验证已安装依赖是否匹配锁文件。
+
+## 验证范围与维护者安排
+
+Contributor 默认在提交前运行受影响测试与适用本地检查。依赖或锁文件、共享测试脚手架、数据库、
+启动路径、跨模块生命周期、兼容层、大范围行为改动或维护者明确要求时，运行完整
+`uv run --locked --no-sync python tests/run.py`。纯文档及其契约测试采用文本、结构、链接和
+focused 测试验证，不要求启动产品全套测试。
+
+已确认的维护者可按 `AGENTS.md` 明确调整验证范围、时机及交付顺序，复用仍有效的源码、锁文件、
+脚手架和环境证据，也可先保存本地 anchor 再补检查。记录依据、未验证项和后续安排；HEAD 变化
+本身不要求本地全量重跑，但实际变化使哪些证据失效，就重跑哪些检查。这不改变 GitHub Actions
+按精确 merge tree/base 复用的实现合同，也不取消测试隔离或下述 TestCase 整文件迁移要求。
+
+改动涉及的行为必须有可信验证。失败须判断是否由本次改动造成、加重或重新触达；无关失败用当前
+目标 base 复现或其他充分证据说明，并按 `docs/rules/12-collaboration-and-distribution.md`
+的已记录维护者决定处置。已预授权的同一范围无需逐次重问，缺少证据时保留未知，不伪报通过。
 
 ## 隔离模型（`tests/conftest.py`）
 
@@ -123,6 +147,17 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 | `setUpClass` / `tearDownClass` | `@pytest.fixture(scope="class")` 或模块级 fixture |
 | `@unittest.skipIf(c, r)` | `@pytest.mark.skipif(c, reason=r)` |
 
+## 存量测试清理
+
+删除测试需要明确指出保留的等价覆盖，不能只依据文件年代、执行耗时、名称相似或覆盖率百分比。
+
+- **可删除的重复**：被测入口、输入、fixture、参数化和执行前状态一致，且保留用例包含全部断言。完全相同的执行体可保留一份；同输入的断言子集可并入更完整用例的说明。
+- **不能自动删除的相似用例**：同步与异步入口、冷启动与重复重置、过期清理前后、迁移前后、不同平台或可选依赖条件，均可能拥有独立行为。
+- **没有直接 `assert` 不等于空测试**：`pytest.raises`、辅助断言、迁移 round-trip、导入兼容和“不抛异常”都是有效契约；只有名称或注释声称存在的覆盖则需要进一步核实。
+- **删除后验证**：运行受影响文件，核对保留用例及生产代码行/分支覆盖；跨领域清理再运行 `python tests/run.py`。不降低覆盖率基线、不新增 skip、不削弱架构或兼容门禁。
+
+首轮扫描范围、删除映射和保留理由见 [后端测试清理审计](testing-cleanup.md)。
+
 ## 排查测试问题
 
 - **收集报错（collection error）**：多为 import 期副作用或顶层桩污染。优先改成真实 import（conftest 已隔离临时库，真实 `settings`/helper 可加载）+ 方法内 patch，而不是靠事后还原（收集期污染发生在 import 那一刻，事后还原太晚）。
@@ -145,9 +180,12 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 
 ## CI 与 PR
 
-- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境。独立 `architecture` job 先运行宿主依赖、运行契约和基线 CLI 快速门禁；全量测试再通过 `tests/run.py --shard N/TOTAL` 稳定分到 4 个 pytest job。每个分片都有独立进程和临时 `CONFIG_DIR`，不共用 SQLite 或进程级状态。Coverage 另以 8 个并行分片采集数据，由单一报告 job 合并后检查低水位。
+- **合并检查复用**：单测/架构与 Pylint 工作流各自保留 PR、push 和手动入口。PR 完整通过全部门禁后，末尾 `CI proof (<github.sha>)` job 记录实际验证的模拟合并提交。合并 push 只在同一工作流的最新 PR 运行完整成功、证明成功、代码树完全相同、模拟合并父提交分别等于 push 前的目标分支和 PR head 时跳过重复门禁。直接 push、强制 push、基线变化、旧工作流缺少证明、失败/未完成运行或 API 异常都执行全量；不依赖提交消息，也不把 PR 的 head SHA 当作测试的合并 SHA。标准 merge/squash/rebase 仅在上述证据一致时复用。GitHub 构建与发布工作流保持独立。
+- **去重脚本验证**：`node --test .github/scripts/reuse.test.mjs` 离线覆盖成功复用及保守回退，两个检查工作流均在判定前执行。复用 job 仅持有 contents/actions/pull-requests 读取权限；没有修改分支保护设置。
+
+- **门禁**：`.github/workflows/test.yml` 在指向 `v3` 的 `pull_request` / `push` 及手动触发时，从 `uv.lock` 同步环境。独立 `architecture` job 先运行宿主依赖、运行契约和基线 CLI 快速门禁；全量测试通过 `coverage run --parallel-mode tests/run.py --shard N/8` 分到 8 个 job，一次执行同时验证单测并采集覆盖率。每个分片都有独立进程和临时 `CONFIG_DIR`，不共用 SQLite 或进程级状态，由单一报告 job 合并后检查 Application 与 Domain 的固定 80% 基线。
 - **跨仓观察**：`.github/workflows/architecture-observe.yml` 每周或手工检出官方插件仓最新 `main`，使用 `--check-plugins` 比较公开导入、Hook 和动态 API 契约。它只上传 `official-plugin-architecture-report.json`，不会自动刷新 fixture；语义变化必须人工审查后显式执行 `--write-plugins`。
 - **静态检查**：`.github/workflows/pylint.yml` 对指向 `v3` 的 PR、推送和手工触发运行 Pylint。PR/推送改动到的 Python 文件是硬门禁；`app/` 全量扫描保留为建议性 JSON 构建工件，存量告警不会掩盖或阻塞本次增量治理。
-- **PR 本地验证**：提交前运行受影响测试和适用的静态检查。涉及依赖或锁文件、共享测试基建、数据库、启动链、跨模块生命周期、兼容层或大范围行为变化时，运行 `uv run --locked --no-sync python tests/run.py` 完成本地全量；需要断点、输出顺序或测试污染诊断时使用 `--serial`。所有测试都应确认受影响路径通过且 socket 探针无真实出站，验证说明准确标注执行范围。若存在无关失败，必须在当前 `upstream/v3` 基线上独立复现并在 PR 中如实说明；不得静默扩大当前 PR 去修复基线问题。纯文档变更执行适用的文本、结构和 diff 检查，CI 继续运行全量门禁。
-- **覆盖率门禁**：`Coverage Shard` jobs 会在 `v3` 的 PR、push 和手工触发中通过 `tests/run.py --shard N/8` 并行采集覆盖率数据，`Coverage Report` 再合并全部分片并只读检查 Application 与 Domain 的 Ubuntu/Python 3.14 canonical 低水位，同时上传 JSON / XML 工件。覆盖率下降会阻塞，提升或等比例快照变化也必须显式刷新 fixture；macOS 本地报告只用于诊断，不直接作为可提交基线。
+- **PR 本地验证**：按上文「验证范围与维护者安排」选择 contributor 默认检查或已记录的维护者安排，统一处理证据复用与失败归属；需要断点、输出顺序或测试污染诊断时使用 `--serial`。确认受影响路径与零真实出站，准确标注验证范围；本地执行安排不改变 CI 的全量验证与复用合同。
+- **覆盖率门禁**：`Unit Tests with Coverage` jobs 会在 `v3` 的 PR、push 和手工触发中通过 `tests/run.py --shard N/8` 并行采集覆盖率数据，`Coverage Report` 再合并全部分片并只读检查 Application 与 Domain 是否达到 Ubuntu/Python 3.14 canonical 的固定 80% 行覆盖率基线，同时上传 JSON / XML 工件。低于 80% 会阻塞；达到或超过 80% 不要求同步运行时语句计数。macOS 本地报告只用于诊断，不直接作为可提交基线。
 - 复现 CI 使用 `uv sync --locked`；主程序运行依赖位于 `[project].dependencies`，pytest 与覆盖率工具位于默认 `dev` 依赖组。

@@ -7,7 +7,7 @@
 import copy
 from typing import Dict, List, Optional, Tuple, Union
 
-from app.application.messaging.agent import (
+from app.application.messaging.channel.admin import (
     matches_channel_admin,
     resolve_config_principal_ids,
 )

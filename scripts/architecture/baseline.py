@@ -620,6 +620,8 @@ def collect_transaction_debt_baseline() -> dict[str, Any]:
             "calls": oper_session_factories,
         },
     }
+
+
 def _collect_run_module_locations() -> tuple[
     dict[str, list[dict[str, Any]]],
     list[dict[str, Any]],

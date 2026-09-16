@@ -131,7 +131,7 @@ def test_plugin_runtime_services_publish_application_runtime(monkeypatch) -> Non
     monkeypatch.setattr(
         plugins_initializer,
         "configure_plugin_runtime",
-        lambda _provider: order.append("provider"),
+        lambda _provider, **_kwargs: order.append("provider"),
     )
 
     plugins_initializer.configure_plugin_runtime_services()

@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from app.application.transfer.workflow import JobManager, TransferTask
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.domain.meta.metabase import MetaBase
 from app.runtime.config import settings
 from app.schemas.file import FileItem
@@ -155,8 +156,10 @@ def test_mark_short_circuits_downloader_query_when_jobview_not_done():
     assert queries == []
 
 
-def test_mark_skips_tag_when_torrent_not_found():
-    """下载器中查不到种子时不打标签，留待定时轮询兜底。"""
+def test_mark_skips_tag_when_torrent_not_found(monkeypatch):
+    """查不到种子时不打标签，并告警提供下载器与 hash 供排查关联。"""
+    warning = MagicMock()
+    monkeypatch.setattr("app.chain.transfer.settlement.logger.warning", warning)
     chain = _make_chain()
     completed = []
     chain.transfer_completed = lambda **kwargs: completed.append(kwargs)
@@ -166,6 +169,11 @@ def test_mark_skips_tag_when_torrent_not_found():
     _mark(chain, "hash1", "qbittorrent")
 
     assert completed == []
+    warning.assert_called_once()
+    message = warning.call_args.args[0]
+    assert "qbittorrent" in message
+    assert "hash1" in message
+    assert "未查询到种子" in message
 
 
 def test_mark_skips_tag_when_list_torrents_raises():
@@ -175,6 +183,7 @@ def test_mark_skips_tag_when_list_torrents_raises():
     chain.transfer_completed = lambda **kwargs: completed.append(kwargs)
 
     def _raise(**_kwargs):
+        """模拟下载器查询失败。"""
         raise RuntimeError("downloader unreachable")
 
     chain.list_torrents = _raise

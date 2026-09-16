@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -110,7 +110,7 @@ class MediaServerOper(DbOper):
 
     def exists(self, **kwargs) -> Optional[MediaServerItem]:
         """
-        判断媒体服务器数据是否存在
+        判断媒体服务器数据是否存在，来源身份未命中时按标题信息跨来源回退。
         """
         if kwargs.get("media_source") and kwargs.get("media_id"):
             item = self._execute_sync_query(
@@ -121,6 +121,16 @@ class MediaServerOper(DbOper):
                     mtype=kwargs.get("mtype"),
                 )
             )
+            if not item and kwargs.get("title"):
+                # 媒体库只保存一个主来源，非主来源卡片需要标题信息兜底。
+                item = self._execute_sync_query(
+                    lambda session: MediaServerItem.exists_by_title(
+                        session,
+                        title=cast(str, kwargs.get("title")),
+                        mtype=cast(str, kwargs.get("mtype")),
+                        year=cast(str, kwargs.get("year")),
+                    )
+                )
         elif kwargs.get("title"):
             # 按标题、类型、年份查
             item = self._execute_sync_query(
@@ -144,7 +154,7 @@ class MediaServerOper(DbOper):
 
     async def async_exists(self, **kwargs) -> Optional[MediaServerItem]:
         """
-        异步判断媒体服务器数据是否存在
+        异步判断媒体服务器数据是否存在，来源身份未命中时按标题信息跨来源回退。
         """
         if kwargs.get("media_source") and kwargs.get("media_id"):
             item = await self._execute_async_query(
@@ -155,6 +165,16 @@ class MediaServerOper(DbOper):
                     mtype=kwargs.get("mtype"),
                 )
             )
+            if not item and kwargs.get("title"):
+                # 与同步入口保持一致：跨来源卡片按标题信息回退匹配媒体库条目。
+                item = await self._execute_async_query(
+                    lambda session: MediaServerItem.async_exists_by_title(
+                        session,
+                        title=cast(str, kwargs.get("title")),
+                        mtype=cast(str, kwargs.get("mtype")),
+                        year=cast(str, kwargs.get("year")),
+                    )
+                )
         elif kwargs.get("title"):
             # 按标题、类型、年份查
             item = await self._execute_async_query(

@@ -184,6 +184,10 @@ class WallpaperHelper(metaclass=Singleton):
     壁纸帮助类
     """
 
+    def clear_cache(self) -> None:
+        """清除全部壁纸来源缓存，使壁纸配置变更即时生效。"""
+        _clear_wallpaper_caches()
+
     def get_wallpaper(self) -> Optional[str]:
         """
         获取登录页面壁纸
@@ -461,11 +465,11 @@ class ImageHelper(metaclass=Singleton):
         return (response.content, mime_type) if mime_type else None
 
     def fetch_image(
-        self,
-        url: str,
-        proxy: Optional[bool] = None,
-        use_cache: bool = True,
-        cookies: Optional[str | dict] = None) -> Optional[bytes]:
+            self,
+            url: str,
+            proxy: Optional[bool] = None,
+            use_cache: bool = True,
+            cookies: Optional[str | dict] = None) -> Optional[bytes]:
         """
         获取图片（同步版本）
         """
@@ -514,11 +518,11 @@ class ImageHelper(metaclass=Singleton):
         return result
 
     async def async_fetch_image(
-        self,
-        url: str,
-        proxy: Optional[bool] = None,
-        use_cache: bool = True,
-        cookies: Optional[str | dict] = None) -> Optional[bytes]:
+            self,
+            url: str,
+            proxy: Optional[bool] = None,
+            use_cache: bool = True,
+            cookies: Optional[str | dict] = None) -> Optional[bytes]:
         """
         获取图片（异步版本）
         """

@@ -12,7 +12,7 @@ import websocket
 from Crypto.Cipher import AES
 
 from app.adapters.network.http import RequestUtils
-from app.application.messaging.agent import matches_channel_admin
+from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.ingress import submit_message_to_host
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo

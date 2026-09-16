@@ -165,7 +165,7 @@ class TemplateContextBuilder:
 
         会读取 ``context`` 中由 ``_add_episode_details`` 先填好的 ``season`` /
         ``year`` / ``title_year`` 占位，保证电视剧场景下季/年优先沿用 meta 解析值；
-        音乐场景保留文件标签解析出的曲目级字段，仅用识别结果补齐专辑级字段；
+        音乐场景保留曲目级标签；已识别专辑实体时以所选数据源覆盖专辑级字段；
         通知场景（``aggregate_music_album=True``）下整专批量以专辑为标题主体。
         """
         if not mediainfo:
@@ -173,15 +173,14 @@ class TemplateContextBuilder:
         if isinstance(mediainfo, MusicInfo):
             # 专辑实体批量下载/入库只发一条通知：标题取专辑名、不展示单曲
             # 序号；重命名等逐文件场景保持 False，继续使用文件自己的曲名和曲序。
-            is_album_context = (
-                    aggregate_music_album
-                    and mediainfo.music_type == MUSIC_ENTITY_ALBUM
-            )
+            is_album_entity = mediainfo.music_type == MUSIC_ENTITY_ALBUM
+            is_album_context = aggregate_music_album and is_album_entity
+            has_album_identity = bool(is_album_entity and mediainfo.media_source and mediainfo.media_id)
             # 专辑场景以识别结果的专辑名为标题；整专年份以识别结果为准，
             # 逐文件场景沿用 meta 解析年份，保证文件级年份优先。
             year = (
                 mediainfo.year
-                if (is_album_context and mediainfo.year)
+                if (has_album_identity and mediainfo.year)
                 else (context.get("year") or mediainfo.year)
             )
             if is_album_context and mediainfo.album:
@@ -196,13 +195,14 @@ class TemplateContextBuilder:
             artist = context.get("artist") or cls.__convert_invalid_characters(mediainfo.artist)
             # 标签/目录名自带的尾部年份会被重命名模板的 `({{year}})` 再次追加，
             # 统一剥离避免生成 "专辑 (2018) (2018)" 这类重复年份目录（issue #6355）
+            album_value = mediainfo.album or mediainfo.title if has_album_identity else context.get("album") or mediainfo.album
             album = cls.__strip_album_trailing_year(
-                context.get("album") or cls.__convert_invalid_characters(mediainfo.album),
+                cls.__convert_invalid_characters(album_value),
                 year,
             )
-            album_artist = context.get("album_artist") or cls.__convert_invalid_characters(
-                mediainfo.album_artist
-            )
+            album_artist_value = mediainfo.album_artist or mediainfo.artist \
+                if has_album_identity else context.get("album_artist") or mediainfo.album_artist
+            album_artist = cls.__convert_invalid_characters(album_artist_value)
             disc_number = context.get("disc_number") or mediainfo.disc_number
             track_number = (
                 None
@@ -1194,9 +1194,9 @@ class MessageHelper(metaclass=Singleton):
     消息队列管理器，负责系统和插件实时消息的 SSE 推送
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化系统消息队列和通知去重缓存。"""
-        self.sys_queue = queue.Queue()
+        self.sys_queue: queue.Queue[str] = queue.Queue()
         self._recent_notification_keys = TTLCache(region="message:notification", maxsize=500, ttl=60)
 
     def close(self) -> None:

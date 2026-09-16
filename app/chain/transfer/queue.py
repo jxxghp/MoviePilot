@@ -7,7 +7,7 @@ import time
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from pydantic_core import to_jsonable_python
 
@@ -36,6 +36,7 @@ from app.application.transfer.workflow import (
 )
 from app.chain.media import MediaChain
 from app.chain.transfer.contract import _TransferOwnerBase
+from app.chain.transfer.records import apply_download_history_classification
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
@@ -55,6 +56,7 @@ downloader_lock = threading.Lock()
 
 _WORKER_RESTART_TIMEOUT_SECONDS = 30.0
 _WORKER_CLOSE_TIMEOUT_SECONDS = 30.0
+_QUEUE_ADMISSION_LOCK_WAIT_SECONDS = 0.1
 
 
 class TransferQueueOwner(_TransferOwnerBase):
@@ -64,21 +66,12 @@ class TransferQueueOwner(_TransferOwnerBase):
     _WORKER_CLOSE_TIMEOUT_SECONDS = _WORKER_CLOSE_TIMEOUT_SECONDS
 
     def __init__(
-        self,
-        runtime_context: Optional[ChainRuntimeContext] = None,
+            self,
+            runtime_context: Optional[ChainRuntimeContext] = None,
     ) -> None:
         """初始化文件整理处理链。"""
         super().__init__(runtime_context=runtime_context)
-        # 主要媒体文件后缀
-        self._media_exts = self.runtime_config.video_extensions
-        # 字幕文件后缀
-        self._subtitle_exts = self.runtime_config.subtitle_extensions
-        # 音频文件后缀
-        self._audio_exts = self.runtime_config.audio_extensions
-        # 可处理的文件后缀（视频文件、字幕、音频文件和音乐歌词）
-        self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts + (
-            ".lrc", ".txt", ".yaml",
-        )
+        self._refresh_file_extensions()
         # 待整理任务队列
         self._queue = queue.Queue()
         # 文件整理线程
@@ -113,6 +106,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         self._worker_owner_id = uuid.uuid4().hex
         self._owned_leases: Dict[str, Tuple[str, float]] = {}
         self._queued_lease_tokens: set[Tuple[str, str]] = set()
+        self._resident_tasks: Dict[Tuple[str, str], TransferTask] = {}
         self._replay_thread: Optional[threading.Thread] = None
         self._replay_stop_event = threading.Event()
         self._recovery_wakeup_event = threading.Event()
@@ -125,6 +119,15 @@ class TransferQueueOwner(_TransferOwnerBase):
         self._total_num = 0
         # 启动整理任务
         self._TransferChain__init()
+
+    def _refresh_file_extensions(self) -> None:
+        """按最新运行配置更新整理允许的媒体、字幕和音频后缀。"""
+        self._media_exts = self.runtime_config.video_extensions
+        self._subtitle_exts = self.runtime_config.subtitle_extensions
+        self._audio_exts = self.runtime_config.audio_extensions
+        self._allowed_exts = self._media_exts + self._audio_exts + self._subtitle_exts + (
+            ".lrc", ".txt", ".yaml",
+        )
 
     def _TransferChain__init(self) -> bool:
         """启动一代文件整理线程，并返回是否成功取得 worker 所有权。"""
@@ -329,6 +332,7 @@ class TransferQueueOwner(_TransferOwnerBase):
             if self._closing:
                 logger.info("文件整理链正在关闭，忽略 worker 配置热更新")
                 return
+            self._refresh_file_extensions()
             if not self._TransferChain__stop(
                     timeout_seconds=self._WORKER_RESTART_TIMEOUT_SECONDS
             ):
@@ -355,25 +359,33 @@ class TransferQueueOwner(_TransferOwnerBase):
 
     def put_to_queue(self, task: TransferTask) -> bool:
         """
-        添加到待整理队列
+        串行准入并入队，数据库等待不占用心跳所需的状态锁。
         :param task: 任务信息
-        :return: True表示任务已添加，False表示链已关闭或任务无效/重复
+        :return: 新任务入队或相同恢复租约已被接收时返回 True；关闭、无效或冲突返回 False
         :raises Exception: 持久准入、批次登记或内存入队失败
         """
-        with self._worker_state_lock:
-            if self._closing:
-                logger.warning("文件整理链已关闭，拒绝新的队列任务")
-                return False
-            if isinstance(task.lease_token, str) and task.lease_token:
-                return self._TransferChain__enqueue_claimed_task(task)
-            return self._transfer_queue_service().put(task, self._TransferChain__default_callback)
+        self._TransferChain__ensure_lease_runtime_state()
+        # 关闭会持生命周期锁等待 worker/replay，等待入队锁时必须能响应关闭。
+        while not self._closing:
+            if not self._worker_lifecycle_lock.acquire(timeout=_QUEUE_ADMISSION_LOCK_WAIT_SECONDS):
+                continue
+            try:
+                if self._closing:
+                    break
+                if isinstance(task.lease_token, str) and task.lease_token:
+                    return self._TransferChain__enqueue_claimed_task(task)
+                return self._transfer_queue_service().put(task, self._TransferChain__default_callback)
+            finally:
+                self._worker_lifecycle_lock.release()
+        logger.warning("文件整理链已关闭，拒绝新的队列任务")
+        return False
 
     def _transfer_queue_service(self) -> TransferQueueService:
         """构建保持旧队列对象和私有兼容接缝的应用服务。"""
         return TransferQueueService(
             register_task=self._TransferChain__put_to_jobview,
             admit_task=self._TransferChain__admit_transfer,
-            enqueue=self._queue.put,
+            enqueue=self._enqueue_transfer_task,
             before_enqueue=self._register_scrape_batch_task,
             enqueue_failed=self._TransferChain__record_enqueue_failure,
             remove_task=self.jobview.remove_task,
@@ -444,6 +456,8 @@ class TransferQueueOwner(_TransferOwnerBase):
             self._owned_leases = {}
         if not hasattr(self, "_queued_lease_tokens"):
             self._queued_lease_tokens = set()
+        if not hasattr(self, "_resident_tasks"):
+            self._resident_tasks = {}
         if not hasattr(self, "_recovery_wakeup_event"):
             self._recovery_wakeup_event = threading.Event()
         if not hasattr(self, "_lease_heartbeat_thread"):
@@ -531,45 +545,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                         time.monotonic() + self._WORKER_LEASE_SECONDS,
                     )
 
-    def _TransferChain__bind_claimed_admission(
-            self,
-            task: TransferTask,
-            admission: TransferAdmission,
-    ) -> None:
-        """校验仓储 claim 投影并把 token 私有绑定到执行任务。"""
-        if (
-                admission.task_id != task.admission_task_id
-        ):
-            raise TransferLeaseLostError(
-                f"整理任务 claim 投影无效：{admission.task_id}"
-            )
-        self._TransferChain__register_claimed_admission(admission)
-        assert admission.lease_owner is not None
-        assert admission.lease_token is not None
-        task.bind_execution_lease(
-            owner_id=admission.lease_owner,
-            lease_token=admission.lease_token,
-        )
-
-    def _TransferChain__register_claimed_admission(
-            self,
-            admission: TransferAdmission,
-    ) -> None:
-        """把仓储 claim 加入续期集合，覆盖恢复构造阶段可能发生的同步 I/O。"""
-        if (
-                admission.lease_owner != self._worker_owner_id
-                or not admission.lease_token
-        ):
-            raise TransferLeaseLostError(
-                f"整理任务 claim 投影无效：{admission.task_id}"
-            )
-        with self._worker_state_lock:
-            self._owned_leases[admission.task_id] = (
-                admission.lease_token,
-                time.monotonic() + self._WORKER_LEASE_SECONDS,
-            )
-        self._TransferChain__ensure_lease_heartbeat_owner()
-
     def _TransferChain__forget_owned_lease(self, task_id: str, lease_token: str) -> None:
         """仅在 token 仍匹配时移除本进程租约镜像，避免删掉新接管记录。"""
         with self._worker_state_lock:
@@ -579,9 +554,12 @@ class TransferQueueOwner(_TransferOwnerBase):
             self._queued_lease_tokens.discard((task_id, lease_token))
 
     def _TransferChain__is_claimed_task_enqueued(self, task_id: str, lease_token: str) -> bool:
-        """返回指定 claim 是否已经成功进入普通 worker 队列。"""
+        """返回 claim 是否已被队列接收，包含刚被 worker 取走但尚未完成的任务。"""
         with self._worker_state_lock:
-            return (task_id, lease_token) in self._queued_lease_tokens
+            return (task_id, lease_token) in self._queued_lease_tokens or any(
+                (task.admission_task_id, task.lease_token) == (task_id, lease_token)
+                for task in getattr(self, "_resident_tasks", {}).values()
+            )
 
     def _TransferChain__owns_lease(self, task_id: str, lease_token: Optional[str]) -> bool:
         """返回本地续期镜像是否仍持有指定 token。"""
@@ -613,35 +591,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                 if current and current[0] == lease_token:
                     self._owned_leases.pop(task_id, None)
                 raise TransferLeaseLostError(f"整理任务租约已经失效：{task_id}")
-
-    def _TransferChain__claim_task_for_execution(self, task: TransferTask) -> None:
-        """让普通队列任务在业务执行前取得唯一租约，恢复任务复用既有 token。"""
-        if task.preview:
-            return
-        self._TransferChain__ensure_lease_runtime_state()
-        if task.lease_token:
-            self._TransferChain__assert_owned_lease(task)
-            return
-        if not task.admission_task_id:
-            admitted = self._TransferChain__admit_transfer(task)
-            task.bind_admission_task_id(admitted.task_id)
-        task_id = task.admission_task_id
-        if task_id is None:
-            raise TransferLeaseLostError("整理任务准入后仍缺少 durable 身份")
-        claimed = self._transfer_admissions.claim_task(
-            task_id=task_id,
-            owner_id=self._worker_owner_id,
-            lease_seconds=self._WORKER_LEASE_SECONDS,
-        )
-        if claimed is None:
-            raise TransferLeaseLostError(
-                f"整理任务已由其他 worker claim：{task_id}"
-            )
-        try:
-            self._TransferChain__bind_claimed_admission(task, claimed)
-        except Exception as err:
-            self._TransferChain__release_admission_claim(claimed, error=str(err))
-            raise
 
     def _TransferChain__release_task_claim(
             self,
@@ -724,20 +673,53 @@ class TransferQueueOwner(_TransferOwnerBase):
         release_thread.start()
         return release_thread
 
+    @staticmethod
+    def _resident_task_key(task: TransferTask) -> Tuple[str, str]:
+        """真实队列凭证使用存储与路径，不依赖媒体识别分组或视图状态。"""
+        assert task.fileitem is not None
+        assert task.fileitem.path
+        path = Path(str(task.fileitem.path).replace("\\", "/")).as_posix().rstrip("/") or "/"
+        return task.fileitem.storage or "local", path
+
+    def _enqueue_transfer_task(self, item: TransferQueue) -> None:
+        """入队成功后登记真实任务及其租约，登记持续到 worker 完成该队列项。"""
+        task = item.task
+        assert task is not None
+        key = self._resident_task_key(task)
+        with self._worker_state_lock:
+            self._queue.put(item)
+            self._resident_tasks[key] = task
+            if task.admission_task_id and task.lease_token:
+                self._queued_lease_tokens.add((task.admission_task_id, task.lease_token))
+
+    def _finish_queue_item(self, task: TransferTask) -> None:
+        """仅移除当前队列项的执行登记，避免旧 worker 清掉同源新任务。"""
+        with self._worker_state_lock:
+            residents = getattr(self, "_resident_tasks", {})
+            key = self._resident_task_key(task)
+            if residents.get(key) is task:
+                residents.pop(key)
+            if task.admission_task_id and task.lease_token:
+                self._queued_lease_tokens.discard((task.admission_task_id, task.lease_token))
+        self._queue.task_done()
+
     def _TransferChain__enqueue_claimed_task(self, task: TransferTask) -> bool:
-        """把已 claim 的恢复任务送入普通队列，禁止再次准入或二次 claim。"""
+        """复用持有相同租约的真实队列任务；残留视图必须重新入队才能算恢复。"""
         self._TransferChain__assert_owned_lease(task)
+        with self._worker_state_lock:
+            resident = self._resident_tasks.get(self._resident_task_key(task))
+        if resident is not None:
+            return (resident.admission_task_id, resident.lease_token) == (
+                task.admission_task_id, task.lease_token
+            )
         if not self._TransferChain__put_to_jobview(task):
-            return False
+            # 作业组未完成时会保留单个文件的旧终态；视图不等于真实队列。
+            self.jobview.remove_task(task.fileitem)
+            if not self._TransferChain__put_to_jobview(task):
+                return False
         try:
             self._register_scrape_batch_task(task)
-            assert task.admission_task_id is not None
-            assert task.lease_token is not None
-            with self._worker_state_lock:
-                self._queued_lease_tokens.add(
-                    (task.admission_task_id, task.lease_token)
-                )
-            self._queue.put(
+            self._enqueue_transfer_task(
                 TransferQueue(task=task, callback=self._TransferChain__default_callback)
             )
         except Exception as err:
@@ -865,8 +847,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                             admission,
                             execution_checkpoint=(
                                 execution_snapshot.checkpoint
-                                if execution_snapshot.state
-                                is TransferExecutionState.SETTLING
+                                if execution_snapshot.state is TransferExecutionState.SETTLING
                                 else None
                             ),
                     ):
@@ -918,7 +899,18 @@ class TransferQueueOwner(_TransferOwnerBase):
                 replayed,
             )
         else:
+            self._TransferChain__log_replay_summary(replayed, len(pendings))
+
+    @staticmethod
+    def _TransferChain__log_replay_summary(replayed: int, claimed: int) -> None:
+        """按实际入队结果记录恢复汇总，避免零任务仍输出成功标记。"""
+        if replayed:
             logger.info(f"✓ 待整理文件回放完成，{replayed} 个文件已重新送入整理链")
+            return
+        logger.warning(
+            f"待整理文件回放未入队：claim {claimed} 个，"
+            "原因见前序日志与 transferpending.last_error"
+        )
 
     def _TransferChain__execution_replay_snapshot(
             self,
@@ -934,13 +926,13 @@ class TransferQueueOwner(_TransferOwnerBase):
             raise RuntimeError("整理恢复缺少 execution repository")
         snapshot = repository.get_snapshot(task_id=admission.task_id)
         if snapshot is None:
-            raise TransferExecutionConflictError("整理恢复任务缺少执行状态投影")
+            raise TransferExecutionConflictError("整理恢复状态不完整，请重新识别文件后再整理")
         if (
                 snapshot.state is TransferExecutionState.SETTLING
                 and snapshot.checkpoint is None
         ):
             raise TransferExecutionConflictError(
-                "settling 整理任务缺少可重放终态检查点"
+                "整理任务记录不完整，请重新识别文件后再整理"
             )
         return snapshot
 
@@ -1175,22 +1167,6 @@ class TransferQueueOwner(_TransferOwnerBase):
         })
         return fileitem, False
 
-    def _TransferChain__admit_transfer(self, task: TransferTask) -> TransferAdmission:
-        """在内存入队前持久化源文件并返回稳定任务身份。"""
-        fileitem = task.fileitem if task else None
-        if not fileitem or not fileitem.storage or not fileitem.path:
-            raise ValueError("整理任务缺少源文件身份")
-        planning_input = task.planning_input or self._TransferChain__build_planning_input(task)
-        task.bind_planning_input(planning_input)
-        return cast(
-            TransferAdmission,
-            self._transfer_admissions.admit(
-                storage=fileitem.storage,
-                src_path=fileitem.path,
-                planning_input=planning_input,
-            ),
-        )
-
     @staticmethod
     def _TransferChain__json_snapshot(value: Any) -> Any:
         """把受控领域对象投影为可持久化 JSON 值。"""
@@ -1226,9 +1202,9 @@ class TransferQueueOwner(_TransferOwnerBase):
         添加到作业视图
         :return: True表示任务已添加，False表示任务无效或已存在（重复）
         """
+        if task and task.manual:
+            self.jobview.remove_task(task.fileitem, finished_only=True)
         return bool(self.jobview.add_task(task))
-
-
 
     def remove_from_queue(self, fileitem: FileItem):
         """
@@ -1241,7 +1217,6 @@ class TransferQueueOwner(_TransferOwnerBase):
         marker = getattr(self.jobview, "start_execution", None)
         if marker:
             marker(task)
-
 
     def _TransferChain__expire_stale_transfer_tasks(self) -> None:
         """清理外部接管后失去状态心跳的运行中整理任务。"""
@@ -1257,7 +1232,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                 f"整理任务 {fileitem.path} 已连续 {inactive_seconds // 60} 分钟无状态心跳，"
                 "已标记失败并从整理队列视图清理"
             )
-
 
     def _TransferChain__settle_transfer_progress_if_idle(self) -> None:
         """在没有 active 或未结算真实任务时结束进度并重置本批计数。"""
@@ -1291,6 +1265,14 @@ class TransferQueueOwner(_TransferOwnerBase):
             logger.info(__end_msg)
             self._progress.update(value=100, text=__end_msg)
             self._progress.end()
+
+    def _finish_unclaimed_queue_task(self, task: TransferTask) -> None:
+        """收口未取得租约的队列项，避免 waiting 残影持续阻挡手动重整。"""
+        self.jobview.fail_unfinished_task(task)
+        self.jobview.try_remove_job(task)
+        self._finish_scrape_batch_task(task)
+        self._finish_queue_item(task)
+        self._TransferChain__settle_transfer_progress_if_idle()
 
     def _TransferChain__start_transfer(self, stop_event: threading.Event) -> None:
         """
@@ -1334,19 +1316,13 @@ class TransferQueueOwner(_TransferOwnerBase):
                 except TransferLeaseLostError as err:
                     logger.info(f"跳过未取得执行租约的整理任务：{err}")
                     self._TransferChain__release_task_claim(task, error=str(err))
-                    self.jobview.try_remove_job(task)
-                    self._finish_scrape_batch_task(task)
-                    self._queue.task_done()
-                    self._TransferChain__settle_transfer_progress_if_idle()
+                    self._finish_unclaimed_queue_task(task)
                     continue
                 except Exception as err:
                     logger.error(
                         f"整理任务 claim 失败，保留 durable admission：{err}"
                     )
-                    self.jobview.try_remove_job(task)
-                    self._finish_scrape_batch_task(task)
-                    self._queue.task_done()
-                    self._TransferChain__settle_transfer_progress_if_idle()
+                    self._finish_unclaimed_queue_task(task)
                     self._TransferChain__ensure_recovery_scheduler(immediate=False)
                     continue
 
@@ -1434,13 +1410,14 @@ class TransferQueueOwner(_TransferOwnerBase):
                             else 100,
                             text=__process_msg,
                         )
-                except Exception as e:
+                except Exception as error:
                     if terminal_settlement is not None:
                         terminal = True
-                    logger.error(
-                        f"{fileitem.name} 整理任务处理出现错误：{e} - {traceback.format_exc()}"
+                    state, err_msg = self._TransferChain__handle_transfer_execution_error(
+                        task,
+                        error,
+                        preview=bool(task.preview),
                     )
-                    self._TransferChain__fail_transfer_task(task)
                     with task_lock:
                         self._processed_num += 1
                         self._fail_num += 1
@@ -1457,7 +1434,7 @@ class TransferQueueOwner(_TransferOwnerBase):
                             f"整理任务终态结算异常：{task.admission_task_id} - {err}"
                         )
                     finally:
-                        self._queue.task_done()
+                        self._finish_queue_item(task)
                         with task_lock:
                             # 减少运行中的任务数
                             self._active_tasks -= 1
@@ -1472,8 +1449,6 @@ class TransferQueueOwner(_TransferOwnerBase):
                 continue
             except Exception as e:
                 logger.error(f"整理队列处理出现错误：{e} - {traceback.format_exc()}")
-
-
 
     def get_queue_tasks(self) -> List[TransferJob]:
         """
@@ -1509,12 +1484,12 @@ class TransferQueueOwner(_TransferOwnerBase):
             if torrents_list := self.list_torrents(status=TorrentStatus.TRANSFER):
                 seen = set()
                 existing_hashes = self.jobview.get_all_torrent_hashes()
+                # 排除多下载器返回的重复种子
                 torrents = [
                     torrent
                     for torrent in torrents_list
                     if (h := torrent.hash) not in existing_hashes
-                       # 排除多下载器返回的重复种子
-                       and (h not in seen and (seen.add(h) or True))
+                    and (h not in seen and (seen.add(h) or True))
                 ]
             else:
                 torrents = []
@@ -1540,9 +1515,9 @@ class TransferQueueOwner(_TransferOwnerBase):
                         break
                     if progress_callback:
                         torrent_name = (
-                                getattr(torrent, "title", None)
-                                or getattr(torrent, "name", None)
-                                or torrent.hash
+                            getattr(torrent, "title", None)
+                            or getattr(torrent, "name", None)
+                            or torrent.hash
                         )
                         progress_callback(
                             value=(index - 1) / total_num * 100,
@@ -1601,9 +1576,10 @@ class TransferQueueOwner(_TransferOwnerBase):
                         if mediainfo:
                             # 补充图片
                             self.obtain_images(mediainfo)
-                            # 更新自定义媒体类别
-                            if downloadhis.media_category:
-                                mediainfo.category = downloadhis.media_category
+                            mediainfo = apply_download_history_classification(
+                                mediainfo,
+                                downloadhis,
+                            )
 
                     else:
                         # 非MoviePilot下载的任务，按文件识别

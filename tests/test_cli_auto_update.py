@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import importlib.util
 import hashlib
+import importlib.util
 import json
 import sys
 import tempfile
@@ -10,6 +10,7 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "app" / "cli.py"
 
@@ -21,6 +22,7 @@ class _DummySystemHelper:
 
 
 def load_cli_module():
+    """隔离加载 CLI，使用真实布尔配置形状验证启动更新决策。"""
     with tempfile.TemporaryDirectory() as temp_dir:
         root = Path(temp_dir)
         settings = SimpleNamespace(
@@ -36,7 +38,8 @@ def load_cli_module():
             PROXY_HOST="",
             PIP_PROXY="",
             GITHUB_TOKEN="",
-            MOVIEPILOT_AUTO_UPDATE="false",
+            MOVIEPILOT_AUTO_UPDATE=False,
+            MOVIEPILOT_UPDATE_DEV=False,
             PROXY={},
             REPO_GITHUB_HEADERS=lambda _repo: {},
         )
@@ -96,13 +99,24 @@ def test_resolve_auto_update_targets_keeps_dev_branch_tracking():
 
 
 def test_one_shot_dev_update_overrides_disabled_default():
+    """一次性手动更新不受两个自动开关关闭的影响。"""
     module = load_cli_module()
-    module.settings.MOVIEPILOT_AUTO_UPDATE = "false"
+    module.settings.MOVIEPILOT_AUTO_UPDATE = False
 
     with patch.object(
         module.SystemHelper, "consume_one_shot_dev_update", return_value=True
     ):
         assert module._auto_update_mode() == "dev"
+
+
+@pytest.mark.parametrize("auto_update", [True, False])
+@pytest.mark.parametrize("update_dev", [True, False])
+def test_dev_tracking_is_independent_of_automatic_checks(auto_update, update_dev):
+    """检查开关不触发启动更新，Dev 开关单独选择开发分支。"""
+    module = load_cli_module()
+    module.settings.MOVIEPILOT_AUTO_UPDATE = auto_update
+    module.settings.MOVIEPILOT_UPDATE_DEV = update_dev
+    assert module._auto_update_mode() == ("dev" if update_dev else "false")
 
 
 def test_release_mode_does_not_update_during_start():
@@ -248,3 +262,80 @@ def test_best_effort_auto_update_derives_tool_cache_from_existing_root():
     env = run_mock.call_args.kwargs["env"]
     assert env["PACKAGE_CACHE_ROOT"] == str(package_cache_root)
     assert env["UV_CACHE_DIR"] == str(package_cache_root / "uv")
+
+
+def _prepared_resource_files(module):
+    resource_dir = module.PREPARED_UPDATE_ROOT / "resources"
+    resource_dir.mkdir(parents=True, exist_ok=True)
+    resources = []
+    for name, content in (
+        ("user.sites.v3.bin", b"index"),
+        ("sites.cpython-test.so", b"auth"),
+    ):
+        path = resource_dir / name
+        path.write_bytes(content)
+        resources.append(
+            {
+                "name": name,
+                "path": str(path),
+                "sha256": hashlib.sha256(content).hexdigest(),
+            }
+        )
+    return resources
+
+
+def test_prepared_resource_update_uses_offline_resource_install_only():
+    module = load_cli_module()
+    module.PREPARED_UPDATE_ROOT.mkdir(parents=True, exist_ok=True)
+    module.PREPARED_UPDATE_MANIFEST.write_text(
+        json.dumps({"targets": ["resources"], "resource_files": _prepared_resource_files(module)}),
+        encoding="utf-8",
+    )
+    run_result = SimpleNamespace(returncode=0, stdout="ok")
+
+    with patch.object(module.subprocess, "run", return_value=run_result) as run_mock, patch.object(
+        module.click, "echo"
+    ):
+        assert module._apply_prepared_release_update() is True
+
+    assert len(run_mock.call_args_list) == 1
+    command = run_mock.call_args.args[0]
+    assert command[1:4] == [str(module._repo_root() / "scripts" / "local_setup.py"), "install-resources", "--resource-dir"]
+    assert "update" not in command
+    assert not module.PREPARED_UPDATE_MANIFEST.exists()
+
+
+def test_prepared_application_and_resources_install_in_order():
+    module = load_cli_module()
+    module.PREPARED_UPDATE_ROOT.mkdir(parents=True, exist_ok=True)
+    backend = module.PREPARED_UPDATE_ROOT / "backend.zip"
+    frontend = module.PREPARED_UPDATE_ROOT / "frontend.zip"
+    backend.write_bytes(b"backend")
+    frontend.write_bytes(b"frontend")
+    module.PREPARED_UPDATE_MANIFEST.write_text(
+        json.dumps(
+            {
+                "targets": ["application", "resources"],
+                "version": "v3.1.0",
+                "frontend_version": "v3.1.0",
+                "backend_archive": str(backend),
+                "frontend_archive": str(frontend),
+                "backend_sha256": hashlib.sha256(backend.read_bytes()).hexdigest(),
+                "frontend_sha256": hashlib.sha256(frontend.read_bytes()).hexdigest(),
+                "resource_files": _prepared_resource_files(module),
+            }
+        ),
+        encoding="utf-8",
+    )
+    run_result = SimpleNamespace(returncode=0, stdout="ok")
+
+    with patch.object(module.subprocess, "run", return_value=run_result) as run_mock, patch.object(
+        module.click, "echo"
+    ):
+        assert module._apply_prepared_release_update() is True
+
+    commands = [call.args[0] for call in run_mock.call_args_list]
+    assert len(commands) == 2
+    assert "update" in commands[0]
+    assert "install-resources" in commands[1]
+    assert not module.PREPARED_UPDATE_MANIFEST.exists()

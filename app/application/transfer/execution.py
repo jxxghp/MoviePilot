@@ -80,6 +80,10 @@ class TransferExecutionLeaseLostError(TransferExecutionError):
     """表示持久化写入时任务租约已失效或已被其他 worker 接管。"""
 
 
+class TransferPlanningRejectedError(ValueError):
+    """规划输入缺少业务必需信息且继续自动重试不会改变结果。"""
+
+
 def _canonical_json(payload: Mapping[str, Any]) -> str:
     """生成稳定操作身份使用的规范 JSON。"""
     return json.dumps(
@@ -436,6 +440,15 @@ class TransferRetryRequestResult:
 
 
 @dataclass(frozen=True, slots=True)
+class TransferFailureDiscardResult:
+    """描述终态失败任务是否已解除历史绑定并删除执行证据。"""
+
+    discarded: bool
+    state: Optional[TransferExecutionState]
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
 class TransferManualReviewResult:
     """描述一次已持久审计的人工判定及后续调度状态。"""
 
@@ -492,6 +505,13 @@ class TransferExecutionRepository(Protocol):
 
     def get_snapshot(self, *, task_id: str) -> Optional[TransferExecutionSnapshot]:
         """读取任务执行快照。"""
+
+    async def async_get_snapshot(
+            self,
+            *,
+            task_id: str,
+    ) -> Optional[TransferExecutionSnapshot]:
+        """异步读取任务执行快照，供事件循环内状态观察使用。"""
 
     def list_manual_reviews(
             self,
@@ -595,6 +615,32 @@ class TransferExecutionRepository(Protocol):
     ) -> TransferRetryRequestResult:
         """仅把 FAILED 终态转入到期可 claim 的 retry_wait。"""
 
+    def discard_corrupt_task(
+            self,
+            *,
+            task_id: str,
+            lease_token: str,
+            error: str,
+    ) -> bool:
+        """在当前租约下原子清除无法继续执行的损坏任务及其恢复证据。"""
+
+    def discard_corrupt_by_history(
+            self,
+            *,
+            task_id: str,
+            history_id: int,
+    ) -> TransferFailureDiscardResult:
+        """清理无活动租约的损坏任务，并解除对应历史绑定。"""
+
+    def discard_failed(
+            self,
+            *,
+            task_id: str,
+            history_id: int,
+            settlement_revision: int,
+    ) -> TransferFailureDiscardResult:
+        """仅放弃与指定失败回执完全匹配的无租约 FAILED 任务。"""
+
     def resolve_manual_review(
             self,
             *,
@@ -627,6 +673,7 @@ class TransferExecutionRepository(Protocol):
             checkpoint: TransferExecutionCheckpoint,
     ) -> TransferExecutionSnapshot:
         """确认所有引用步骤成功后提交聚合执行检查点。"""
+
 
 class TransferStepRunner(Protocol):
     """定义文件执行方可注入的单步骤持久执行边界。"""
@@ -916,6 +963,7 @@ class TransferManualReviewQuery:
             self._validate_state(result.state)
         return result
 
+
 __all__ = [
     "TRANSFER_EXECUTION_VERSION",
     "TRANSFER_STEP_INTENT_VERSION",
@@ -924,6 +972,7 @@ __all__ = [
     "TransferExecutionCommand",
     "TransferExecutionConflictError",
     "TransferExecutionError",
+    "TransferFailureDiscardResult",
     "TransferExecutionLeaseLostError",
     "TransferOperationObservation",
     "TransferOperationObservationState",

@@ -154,7 +154,7 @@ class TNodeSpider(metaclass=SingletonClass):
             timeout=self._timeout
         ).post_res(url=self._searchurl, json=params)
         return self.__process_response(res)
-        
+
     async def async_search(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
         异步搜索

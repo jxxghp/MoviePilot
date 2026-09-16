@@ -4,11 +4,9 @@ from typing import TypedDict
 
 import yaml
 
-
 logger = logging.getLogger(__name__)
 
-# 磁盘读取上限属于 Skill 文档格式约束，市场扫描和 Agent 加载必须共用。
-MAX_SKILL_FILE_SIZE = 1 * 1024 * 1024
+MAX_SKILL_CONTENT_BYTES = 512 * 1024
 MAX_SKILL_NAME_LENGTH = 64
 MAX_SKILL_DESCRIPTION_LENGTH = 1024
 MAX_SKILL_COMPATIBILITY_LENGTH = 500
@@ -26,6 +24,7 @@ class SkillMetadata(TypedDict):
     compatibility: str | None
     metadata: dict[str, str]
     allowed_tools: list[str]
+    allowed_api_operations: list[str]
 
 
 def _validate_metadata(raw: object, skill_path: str) -> dict[str, str]:
@@ -47,12 +46,6 @@ def parse_skill_metadata(  # noqa: C901
     skill_id: str,
 ) -> SkillMetadata | None:
     """解析并校验一个 SKILL.md 的 YAML 前言。"""
-    if len(content) > MAX_SKILL_FILE_SIZE:
-        logger.warning(
-            "Skipping %s: content too large (%d bytes)", skill_path, len(content)
-        )
-        return None
-
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
     if not match:
         logger.warning("Skipping %s: no valid YAML frontmatter found", skill_path)
@@ -70,9 +63,7 @@ def parse_skill_metadata(  # noqa: C901
     name = str(frontmatter_data.get("name", "")).strip()
     description = str(frontmatter_data.get("description", "")).strip()
     if not name or not description:
-        logger.warning(
-            "Skipping %s: missing required 'name' or 'description'", skill_path
-        )
+        logger.warning("Skipping %s: missing required 'name' or 'description'", skill_path)
         return None
     if len(description) > MAX_SKILL_DESCRIPTION_LENGTH:
         logger.warning(
@@ -84,11 +75,7 @@ def parse_skill_metadata(  # noqa: C901
 
     raw_tools = frontmatter_data.get("allowed-tools")
     if isinstance(raw_tools, str):
-        allowed_tools = [
-            tool.strip(",")
-            for tool in raw_tools.split()
-            if tool.strip(",")
-        ]
+        allowed_tools = [tool.strip(",") for tool in raw_tools.split() if tool.strip(",")]
     else:
         if raw_tools is not None:
             logger.warning(
@@ -97,6 +84,20 @@ def parse_skill_metadata(  # noqa: C901
                 type(raw_tools).__name__,
             )
         allowed_tools = []
+
+    raw_api_operations = frontmatter_data.get("allowed-api-operations")
+    if isinstance(raw_api_operations, str):
+        allowed_api_operations = [
+            operation.strip(",") for operation in raw_api_operations.split() if operation.strip(",")
+        ]
+    else:
+        if raw_api_operations is not None:
+            logger.warning(
+                "Ignoring non-string 'allowed-api-operations' in %s (got %s)",
+                skill_path,
+                type(raw_api_operations).__name__,
+            )
+        allowed_api_operations = []
 
     compatibility = str(frontmatter_data.get("compatibility", "")).strip() or None
     if compatibility and len(compatibility) > MAX_SKILL_COMPATIBILITY_LENGTH:
@@ -129,4 +130,5 @@ def parse_skill_metadata(  # noqa: C901
         license=str(frontmatter_data.get("license", "")).strip() or None,
         compatibility=compatibility,
         allowed_tools=allowed_tools,
+        allowed_api_operations=allowed_api_operations,
     )

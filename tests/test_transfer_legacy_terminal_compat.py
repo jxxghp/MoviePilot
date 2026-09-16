@@ -9,7 +9,7 @@ from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferSettlementResult,
 )
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.file import FileItem
@@ -212,7 +212,8 @@ def test_legacy_settlement_double_failure_releases_claim_without_deleting_eviden
     returned = _invoke(chain, _fileitem())
 
     assert returned.success is False
-    assert "writer unavailable" in (returned.message or "")
+    assert returned.message == "整理结果确认失败，后台将自动重试"
+    assert "writer unavailable" not in (returned.message or "")
     assert executed == ["source-v1"]
     assert chain.durable_event_writer.transfer_result.call_count == 2
     chain._transfer_admissions.release_claim.assert_called_once_with(

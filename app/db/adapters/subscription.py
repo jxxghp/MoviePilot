@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime, timedelta, timezone
 from typing import Optional, TypeVar, cast
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +35,9 @@ from app.application.subscription.contract import (
     SubscriptionSnapshot,
     SubscriptionStagingPort,
     SubscriptionWriteResult,
+    subscription_added_event_key,
+    subscription_added_notification_key,
+    subscription_added_report_key,
 )
 from app.application.subscription.write import (
     AsyncCreateSubscriptionBatchCommand,
@@ -42,9 +46,6 @@ from app.application.subscription.write import (
     AsyncUnitOfWork,
     CreateSubscriptionCommand,
     SubscriptionCreateRequest,
-    subscription_added_event_key,
-    subscription_added_notification_key,
-    subscription_added_report_key,
 )
 from app.db.adapters.outbox import (
     SqlAlchemyAsyncOutboxDispatchStore,
@@ -76,10 +77,12 @@ def _project_subscription(record: Subscribe) -> SubscriptionSnapshot:
         year=record.year,
         type=record.type,
         keyword=record.keyword,
+        search_interval=record.search_interval,
         media_source=_media_source(record.media_source),
         media_id=record.media_id,
         music_type=record.music_type,
         total_tracks=record.total_tracks,
+        downloaded_tracks=cast(Optional[builtins.list[str]], record.downloaded_tracks),
         season=record.season,
         poster=record.poster,
         backdrop=record.backdrop,
@@ -102,6 +105,7 @@ def _project_subscription(record: Subscribe) -> SubscriptionSnapshot:
         note=cast(Optional[builtins.list[int]], record.note),
         state=record.state,
         last_update=record.last_update,
+        last_search=record.last_search,
         date=record.date,
         username=record.username,
         sites=cast(Optional[builtins.list[int]], record.sites),
@@ -118,6 +122,7 @@ def _project_subscription(record: Subscribe) -> SubscriptionSnapshot:
         search_imdbid=record.search_imdbid,
         manual_total_episode=record.manual_total_episode,
         custom_words=record.custom_words,
+        media_category_id=record.media_category_id,
         media_category=record.media_category,
         filter_groups=cast(Optional[builtins.list[str]], record.filter_groups),
         episode_group=record.episode_group,
@@ -132,6 +137,7 @@ def _project_history(record: SubscribeHistory) -> SubscriptionHistorySnapshot:
         year=record.year,
         type=record.type,
         keyword=record.keyword,
+        search_interval=record.search_interval,
         media_source=_media_source(record.media_source),
         media_id=record.media_id,
         music_type=record.music_type,
@@ -168,7 +174,11 @@ def _project_history(record: SubscribeHistory) -> SubscriptionHistorySnapshot:
         save_path=record.save_path,
         search_imdbid=record.search_imdbid,
         custom_words=record.custom_words,
+        media_category_id=record.media_category_id,
         media_category=record.media_category,
+        classification_rule_id=record.classification_rule_id,
+        classification_policy_revision=record.classification_policy_revision,
+        classification_source=record.classification_source,
         filter_groups=cast(Optional[builtins.list[str]], record.filter_groups),
         episode_group=record.episode_group,
     )
@@ -196,8 +206,10 @@ class _TransactionalSubscriptionWriter:
         username: str | None = None,
         after_commit: TypedAfterCommitEffect | None = None,
         notification: Mapping[str, JsonData] | None = None,
+        occurrence_id: str | None = None,
     ) -> tuple[int, str]:
         """在独占同步会话内执行一次完整订阅新增事务。"""
+        resolved_occurrence_id = occurrence_id or uuid4().hex
         write_payload = payload.to_payload()
         notification_payload = dict(notification) if notification else None
         session = self._sync_session()
@@ -219,6 +231,7 @@ class _TransactionalSubscriptionWriter:
                         write_payload,
                         notification_payload,
                         lambda: after_commit(subscribe_id),
+                        occurrence_id=resolved_occurrence_id,
                     )
 
             return command.execute(
@@ -227,6 +240,7 @@ class _TransactionalSubscriptionWriter:
                 username,
                 delivered,
                 notification_payload,
+                occurrence_id=resolved_occurrence_id,
             )
         finally:
             session.close()
@@ -238,8 +252,10 @@ class _TransactionalSubscriptionWriter:
         username: str | None = None,
         after_commit: TypedAsyncAfterCommitEffect | None = None,
         notification: Mapping[str, JsonData] | None = None,
+        occurrence_id: str | None = None,
     ) -> tuple[int, str]:
         """在独占异步会话作用域内执行一次完整订阅新增事务。"""
+        resolved_occurrence_id = occurrence_id or uuid4().hex
         write_payload = payload.to_payload()
         notification_payload = dict(notification) if notification else None
         async with self._async_session() as session:
@@ -260,6 +276,7 @@ class _TransactionalSubscriptionWriter:
                         write_payload,
                         notification_payload,
                         lambda: after_commit(subscribe_id),
+                        occurrence_id=resolved_occurrence_id,
                     )
 
             return await command.execute(
@@ -268,6 +285,7 @@ class _TransactionalSubscriptionWriter:
                 username,
                 delivered,
                 notification_payload,
+                occurrence_id=resolved_occurrence_id,
             )
 
 
@@ -355,18 +373,20 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
 
         return await self._async_read(operation)
 
-
     async def async_list(
         self,
         state: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按可选状态读取订阅快照。"""
+        """异步按可选状态和窗口读取订阅快照。"""
 
         async def operation(
             repository: SubscribeOper,
         ) -> builtins.list[SubscriptionSnapshot]:
             """读取并在当前 Session 中投影订阅列表。"""
-            return [_project_subscription(record) for record in await repository.async_list(state)]
+            records = await repository.async_list(state, page=page, count=count)
+            return [_project_subscription(record) for record in records]
 
         return await self._async_read(operation)
 
@@ -375,17 +395,40 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
         username: str,
         state: Optional[str] = None,
         mtype: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按用户、状态和类型读取订阅快照。"""
+        """异步按用户、状态、类型和窗口读取订阅快照。"""
 
         async def operation(
             repository: SubscribeOper,
         ) -> builtins.list[SubscriptionSnapshot]:
             """读取并在当前 Session 中投影用户订阅。"""
-            records = await repository.async_list_by_username(username, state, mtype)
+            records = await repository.async_list_by_username(
+                username,
+                state,
+                mtype,
+                page=page,
+                count=count,
+            )
             return [_project_subscription(record) for record in records]
 
         return await self._async_read(operation)
+
+    async def async_count(
+        self,
+        state: Optional[str] = None,
+        username: Optional[str] = None,
+        mtype: Optional[str] = None,
+    ) -> int:
+        """按公开列表筛选范围返回订阅精确总数。"""
+        return await self._async_read(
+            lambda repository: repository.async_count(
+                state=state,
+                username=username,
+                mtype=mtype,
+            )
+        )
 
     async def async_list_by_media_identity(
         self,
@@ -419,6 +462,7 @@ class TransactionalSubscriptionRepository(_TransactionalSubscriptionWriter):
             return [_project_subscription(record) for record in records]
 
         return await self._async_read(operation)
+
 
 class TransactionalSubscriptionHistoryRepository:
     """以独立短 AsyncSession 实现 Agent 等后台入口的订阅历史查询。"""
@@ -470,6 +514,22 @@ class TransactionalSubscriptionHistoryRepository:
                 count,
             )
             return [_project_history(record) for record in records]
+
+    async def async_count_by_type(self, mtype: str) -> int:
+        """在短 Session 内统计指定媒体类型的历史数量。"""
+        async with self._async_session() as session:
+            return await SubscribeHistoryOper(session).async_count_by_type(mtype)
+
+    async def async_count_by_type_and_username(
+        self,
+        mtype: str,
+        username: str,
+    ) -> int:
+        """在短 Session 内统计指定媒体类型和 owner 的历史数量。"""
+        async with self._async_session() as session:
+            return await SubscribeHistoryOper(
+                session
+            ).async_count_by_type_and_username(mtype, username)
 
 
 class SessionSubscriptionRepository:
@@ -541,6 +601,16 @@ class SessionSubscriptionRepository:
         """同步按可选状态读取订阅快照。"""
         return [_project_subscription(record) for record in self._sync_repository().list(state)]
 
+    def list_by_media_identity(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        music_type: Optional[str] = None,
+    ) -> builtins.list[SubscriptionSnapshot]:
+        """同步按规范媒体身份读取订阅快照。"""
+        records = self._sync_repository().list_by_media_identity(media_source, media_id, music_type)
+        return [_project_subscription(record) for record in records]
+
     async def async_get(self, subscribe_id: int) -> Optional[SubscriptionSnapshot]:
         """异步按主键读取订阅快照。"""
         record = await self._async_repository().async_get(subscribe_id)
@@ -549,9 +619,15 @@ class SessionSubscriptionRepository:
     async def async_list(
         self,
         state: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按可选状态读取订阅快照。"""
-        records = await self._async_repository().async_list(state)
+        """异步按可选状态和窗口读取订阅快照。"""
+        records = await self._async_repository().async_list(
+            state,
+            page=page,
+            count=count,
+        )
         return [_project_subscription(record) for record in records]
 
     def list_for_reference_rewrite(self) -> builtins.list[SubscriptionSnapshot]:
@@ -581,10 +657,31 @@ class SessionSubscriptionRepository:
         username: str,
         state: Optional[str] = None,
         mtype: Optional[str] = None,
+        page: Optional[int] = None,
+        count: Optional[int] = None,
     ) -> builtins.list[SubscriptionSnapshot]:
-        """异步按用户、状态和类型读取订阅快照。"""
-        records = await self._async_repository().async_list_by_username(username, state, mtype)
+        """异步按用户、状态、类型和窗口读取订阅快照。"""
+        records = await self._async_repository().async_list_by_username(
+            username,
+            state,
+            mtype,
+            page=page,
+            count=count,
+        )
         return [_project_subscription(record) for record in records]
+
+    async def async_count(
+        self,
+        state: Optional[str] = None,
+        username: Optional[str] = None,
+        mtype: Optional[str] = None,
+    ) -> int:
+        """按公开列表筛选范围返回订阅精确总数。"""
+        return await self._async_repository().async_count(
+            state=state,
+            username=username,
+            mtype=mtype,
+        )
 
     async def async_list_by_media_identity(
         self,
@@ -686,9 +783,23 @@ class SessionSubscriptionRepository:
                 candidates.append(candidate)
         return candidates
 
-    async def list_search_ids(self, username: str, state: str) -> builtins.list[int]:
-        """异步读取用户指定状态下的订阅主键。"""
-        return [snapshot.id for snapshot in await self.async_list_by_username(username, state)]
+    async def list_search_ids(
+        self,
+        username: Optional[str],
+        state: str,
+        mtype: Optional[str] = None,
+    ) -> builtins.list[int]:
+        """异步读取用户或管理员指定媒体类型范围内的订阅主键。"""
+        snapshots = (
+            await self.async_list_by_username(username, state, mtype=mtype)
+            if username is not None
+            else await self.async_list(state)
+        )
+        return [
+            snapshot.id
+            for snapshot in snapshots
+            if snapshot.id and (mtype is None or snapshot.type == mtype)
+        ]
 
     async def stage_delete(self, subscribe_id: int) -> None:
         """异步暂存删除订阅。"""
@@ -740,6 +851,21 @@ class SessionSubscriptionHistoryRepository:
         """异步按类型和用户分页读取订阅历史快照。"""
         records = await self._repository.async_list_by_type_and_username(mtype, username, page, count)
         return [_project_history(record) for record in records]
+
+    async def async_count_by_type(self, mtype: str) -> int:
+        """在请求 Session 中统计指定媒体类型的订阅历史。"""
+        return await self._repository.async_count_by_type(mtype)
+
+    async def async_count_by_type_and_username(
+        self,
+        mtype: str,
+        username: str,
+    ) -> int:
+        """在请求 Session 中统计指定类型和用户的订阅历史。"""
+        return await self._repository.async_count_by_type_and_username(
+            mtype,
+            username,
+        )
 
     async def stage_delete(self, history_id: int) -> None:
         """异步暂存删除订阅历史。"""
@@ -794,6 +920,7 @@ class SessionSubscriptionBatchWriter:
                 payload,
                 notification,
                 invoke,
+                occurrence_id=request.occurrence_id,
             )
 
         return await self._command.execute(requests, after_commit=settle)
@@ -803,12 +930,31 @@ def _added_effect_keys(
     subscribe_id: int,
     payload: dict[str, JsonData],
     notification: Optional[dict[str, JsonData]],
+    occurrence_id: str,
 ) -> tuple[str, ...]:
     """返回组合回调实际包含的独立 durable effect 键。"""
-    keys = [subscription_added_event_key(subscribe_id, payload)]
+    keys = [
+        subscription_added_event_key(
+            subscribe_id,
+            payload,
+            occurrence_id=occurrence_id,
+        )
+    ]
     if notification:
-        keys.append(subscription_added_notification_key(subscribe_id, payload))
-    keys.append(subscription_added_report_key(subscribe_id, payload))
+        keys.append(
+            subscription_added_notification_key(
+                subscribe_id,
+                payload,
+                occurrence_id=occurrence_id,
+            )
+        )
+    keys.append(
+        subscription_added_report_key(
+            subscribe_id,
+            payload,
+            occurrence_id=occurrence_id,
+        )
+    )
     return tuple(keys)
 
 
@@ -845,12 +991,14 @@ def _deliver_added_effects(
     payload: dict[str, JsonData],
     notification: Optional[dict[str, JsonData]],
     effect: Callable[[], Optional[bool]],
+    *,
+    occurrence_id: str,
 ) -> None:
     """认领组合回调并按事件、通知、统计的确认结果分别结算。"""
     now = datetime.now(timezone.utc)
     claimed = _claim_added_effects(
         store,
-        _added_effect_keys(subscribe_id, payload, notification),
+        _added_effect_keys(subscribe_id, payload, notification, occurrence_id),
         now,
     )
     if claimed is None:
@@ -917,12 +1065,14 @@ async def _deliver_added_effects_async(
     payload: dict[str, JsonData],
     notification: Optional[dict[str, JsonData]],
     effect: Callable[[], Awaitable[bool | None]],
+    *,
+    occurrence_id: str,
 ) -> None:
     """异步认领组合回调并按各 intent 的确认结果分别结算。"""
     now = datetime.now(timezone.utc)
     claimed = await _claim_added_effects_async(
         store,
-        _added_effect_keys(subscribe_id, payload, notification),
+        _added_effect_keys(subscribe_id, payload, notification, occurrence_id),
         now,
     )
     if claimed is None:

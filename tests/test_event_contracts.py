@@ -27,7 +27,7 @@ from app.schemas.event import (
 )
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
-from app.schemas.types import ChainEventType, EventType, MediaType
+from app.schemas.types import ChainEventType, EventType, MediaType, SystemConfigKey
 
 
 def test_every_event_enum_has_complete_contract() -> None:
@@ -68,6 +68,13 @@ def test_typed_payload_is_validated_without_changing_public_shape() -> None:
 
     assert event.event_data is payload
     assert isinstance(event.event_data, dict)
+
+
+def test_config_change_payload_normalizes_system_config_enum_key() -> None:
+    """SystemConfigKey 事件键必须使用持久化值，才能命中运行期 watch。"""
+    payload = ConfigChangeEventData(key=SystemConfigKey.CustomIdentifiers)
+
+    assert payload.key == {SystemConfigKey.CustomIdentifiers.value}
 
 
 def test_invalid_typed_payload_is_diagnostic_only() -> None:

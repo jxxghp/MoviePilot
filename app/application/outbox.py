@@ -209,7 +209,7 @@ class PostCommitEffectError(RuntimeError):
         """保存结构化完成状态及逐项原始异常。"""
         self.result = result
         self.errors = errors
-        super().__init__(str(errors[0]) if errors else "提交后效果执行失败")
+        super().__init__("提交后的相关处理未完成，系统将自动重试")
 
 
 def deliver_outbox_effect(
@@ -422,6 +422,7 @@ class OutboxDispatcher:
     def close(self) -> None:
         """释放 dispatcher 工厂创建的短生命周期持久化资源。"""
         self._close()
+
 
 _configured_dispatcher: Optional[Callable[[], OutboxDispatcher]] = None
 

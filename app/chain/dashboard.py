@@ -9,6 +9,7 @@ class DashboardChain(ChainBase):
     """
     各类仪表板统计处理链
     """
+
     def media_statistic(self, server: Optional[str] = None) -> Optional[List[_SchemaStatistic]]:
         """
         媒体数量统计

@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -309,3 +309,42 @@ def test_authentication_finish_does_not_issue_token_when_sign_count_write_fails(
     )
     auth_service.build_token_response.assert_not_called()
     set_cookie.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_passkey_delete_verifies_password_without_public_password_field():
+    """删除 PassKey 应通过认证服务校验密码，而不是读取公开用户快照字段。"""
+    data = mfa_endpoint.PassKeyDeleteRequest(passkey_id=10, password="password")
+    current_user = SimpleNamespace(id=7, name="user")
+    passkey_service = SimpleNamespace(delete_by_id=Mock(return_value=True))
+    user_service = SimpleNamespace(verify_password=AsyncMock(return_value=True))
+
+    result = await mfa_endpoint.passkey_delete(
+        data=data,
+        current_user=current_user,
+        service=passkey_service,
+        user_service=user_service,
+    )
+
+    assert result.success is True
+    user_service.verify_password.assert_awaited_once_with(7, "password")
+    passkey_service.delete_by_id.assert_called_once_with(10, 7)
+
+
+@pytest.mark.asyncio
+async def test_passkey_delete_rejects_invalid_password_before_deletion():
+    """密码错误时不得删除 PassKey。"""
+    data = mfa_endpoint.PassKeyDeleteRequest(passkey_id=10, password="wrong")
+    passkey_service = SimpleNamespace(delete_by_id=Mock())
+    user_service = SimpleNamespace(verify_password=AsyncMock(return_value=False))
+
+    result = await mfa_endpoint.passkey_delete(
+        data=data,
+        current_user=SimpleNamespace(id=7, name="user"),
+        service=passkey_service,
+        user_service=user_service,
+    )
+
+    assert result.success is False
+    assert result.message == "密码错误"
+    passkey_service.delete_by_id.assert_not_called()

@@ -149,6 +149,7 @@ class SiteMutationCommand:
         if await self._repository.async_get_by_domain(domain):
             return SiteMutationResult(False, f"{domain} 站点己存在")
 
+        values.pop("id", None)
         values.update(
             {
                 "domain": domain,
@@ -186,6 +187,31 @@ class SiteMutationCommand:
                 "domain": normalized_domain,
                 "name": values.get("name"),
                 "site_url": normalized_url,
+            }
+        )
+        return SiteMutationResult(True)
+
+    async def set_cookie(
+        self,
+        site_id: int,
+        cookie: str,
+        ua: Optional[str] = None,
+    ) -> SiteMutationResult:
+        """仅更新站点 Cookie 与可选 User-Agent，并发布站点更新事件。"""
+        site_info = await self._repository.get_by_id(site_id)
+        if site_info is None:
+            return SiteMutationResult(False, "站点不存在")
+        values: dict[str, JsonData] = {"cookie": cookie}
+        if ua is not None:
+            values["ua"] = ua
+        await self._repository.stage_update(site_id, SiteMutation(values))
+        await self._commit()
+        await self._publish_updated(
+            {
+                "site_id": site_id,
+                "domain": site_info.domain,
+                "name": site_info.name,
+                "site_url": site_info.url,
             }
         )
         return SiteMutationResult(True)

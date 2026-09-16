@@ -14,9 +14,11 @@ import pytest
 from app.adapters.network.browser import (
     BrowserSessionHelper,
     PlaywrightHelper,
+    _BrowserSessionState,
     launch_browser_context,
     launch_browser_context_async,
 )
+from app.agent.terminal.ownership import TerminalScope, close_terminal_scope
 from app.agent.tools.impl.browse_webpage import BrowserAction, BrowseWebpageTool
 from app.runtime.correlation import correlation_scope, get_correlation_id
 
@@ -143,8 +145,13 @@ class _FakePage:
 class _FakeContext:
     """模拟 CloakBrowser 上下文。"""
 
-    def __init__(self, pages: Optional[list[_FakePage]] = None) -> None:
+    def __init__(
+        self,
+        pages: Optional[list[_FakePage]] = None,
+        cookies: Optional[list[dict]] = None,
+    ) -> None:
         self.pages = pages or [_FakePage()]
+        self.cookie_values = cookies or []
         self.closed = False
         self.close_thread_id = None
 
@@ -155,8 +162,8 @@ class _FakeContext:
         return _FakePage("extra")
 
     def cookies(self) -> list[dict]:
-        """返回空 Cookie 列表。"""
-        return []
+        """返回预设 Cookie 列表。"""
+        return list(self.cookie_values)
 
     def close(self) -> None:
         """记录上下文关闭状态。"""
@@ -417,6 +424,54 @@ def test_browser_session_helper_closes_session_on_worker_thread():
     assert context.close_thread_id == session_thread_id
 
 
+def test_browser_session_helper_isolates_owner_and_closes_owner_sessions():
+    """相同模型 session_key 在不同宿主作用域下不能串用，owner 收口会关闭上下文。"""
+    first_page = _FakePage("first")
+    second_page = _FakePage("second")
+    contexts = [_FakeContext([first_page]), _FakeContext([second_page])]
+    helper = BrowserSessionHelper()
+    first_owner = TerminalScope("alice", "task-one", "conversation")
+    second_owner = TerminalScope("alice", "task-two", "conversation")
+
+    with patch.object(BrowserSessionHelper, "_launch_context", side_effect=contexts):
+        assert helper.with_session("shared", lambda session: session.owner, owner=first_owner) is first_owner
+        with pytest.raises(PermissionError):
+            helper.with_session("shared", lambda _session: None, owner=second_owner)
+        assert BrowserSessionHelper.close_owner(first_owner)
+
+    assert first_page.closed and first_page.page_id == "first"
+    assert contexts[0].closed
+    with patch.object(BrowserSessionHelper, "_launch_context", return_value=contexts[1]):
+        assert helper.with_session("shared", lambda session: session.owner, owner=second_owner) is second_owner
+    assert BrowserSessionHelper.close_owner(second_owner)
+    assert second_page.closed and contexts[1].closed
+
+
+def test_browser_session_helper_rejects_closed_owner_before_context_creation():
+    """作用域封口后不得重新创建或复用浏览器上下文。"""
+    owner = TerminalScope("alice", "closed-browser-task", "conversation")
+    owner.seal()
+    with patch.object(BrowserSessionHelper, "_launch_context") as launch_context:
+        with pytest.raises(PermissionError, match="所属任务已停止"):
+            BrowserSessionHelper().with_session(
+                "closed", lambda _session: None, owner=owner
+            )
+    launch_context.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_close_terminal_scope_closes_browser_owner_without_blocking_event_loop():
+    """通用作用域收口应回收其浏览器上下文，且通过线程避免阻塞事件循环。"""
+    page = _FakePage("owned")
+    context = _FakeContext([page])
+    helper = BrowserSessionHelper()
+    owner = TerminalScope("alice", "browser-task", "conversation")
+    with patch.object(BrowserSessionHelper, "_launch_context", return_value=context):
+        helper.with_session("owned", lambda session: session.active_page, owner=owner)
+        assert await close_terminal_scope(owner)
+    assert page.closed and context.closed
+
+
 def test_browse_webpage_returns_snapshot_with_refs_after_goto():
     """goto 后应返回包含可交互元素 ref 的页面快照。"""
     page = _FakePage()
@@ -445,6 +500,15 @@ def test_browse_webpage_returns_snapshot_with_refs_after_goto():
     assert payload["interactive_elements"][0]["ref"] == "e1"
 
 
+def test_snapshot_clears_previous_refs_before_assigning_new_refs() -> None:
+    """新快照应清理旧 ref，避免动态页面把过期引用映射到新元素。"""
+    page = MagicMock()
+    page.evaluate.return_value = [{"ref": "e1", "tag": "button"}]
+    assert BrowserSessionHelper._extract_interactive_elements(page, max_elements=5)
+    script = page.evaluate.call_args.args[0]
+    assert "removeAttribute('data-moviepilot-agent-ref')" in script
+
+
 def test_browse_webpage_click_ref_uses_snapshot_selector():
     """click_ref 应将 ref 转换为快照注入的稳定选择器。"""
     page = _FakePage()
@@ -471,3 +535,106 @@ def test_browse_webpage_click_ref_uses_snapshot_selector():
     payload = json.loads(result)
     assert payload["success"] is True
     assert page.clicks == ['[data-moviepilot-agent-ref="e1"]']
+
+
+def test_close_tab_before_active_page_keeps_active_index() -> None:
+    """关闭活动页之前的标签页不能把活动页错误地指向下一页。"""
+    first_page = _FakePage("first")
+    pages = [first_page, _FakePage("active"), _FakePage("last")]
+    context = _FakeContext(pages)
+    session = _BrowserSessionState("close-index", context, pages, active_index=1)
+    tabs = BrowserSessionHelper.close_tab(session, 0)
+    assert session.active_index == 0
+    assert session.active_page.page_id == "active"
+    assert tabs[0]["active"] is True
+    assert first_page.closed is True
+
+
+def test_close_tab_failure_is_reported_as_unknown_state() -> None:
+    """关闭动作异常时实际状态可能已发生，必须要求先核验而非盲目重试。"""
+    page = _FakePage("close-error")
+    page.close = MagicMock(side_effect=RuntimeError("provider failure"))
+    context = _FakeContext([page, _FakePage("remaining")])
+    session = _BrowserSessionState("close-error", context, context.pages, active_index=0)
+    tool = BrowseWebpageTool(session_id="session-1", user_id="10001")
+
+    with patch.object(
+        BrowserSessionHelper,
+        "with_session",
+        side_effect=lambda callback, **_kwargs: callback(session),
+    ):
+        result = tool._execute_browser_action(
+            browser_action=BrowserAction.CLOSE_TAB, url=None, selector=None, ref=None, value=None,
+            script=None, content_type="text", timeout=3, cookies=None, user_agent=None,
+            session_key="close-error", tab_index=0, allow_private_network=False,
+        )
+    payload = json.loads(result)
+    assert payload["execution_outcome"] == "unknown"
+    assert "list_tabs" in payload["recovery"]
+
+
+def test_click_redirect_to_private_url_is_unknown_and_requires_recheck() -> None:
+    """点击后的私网重定向不能被当作成功，且不能诱导重复点击。"""
+    page = _FakePage("redirect")
+
+    def redirect(_selector: str, *_args, **_kwargs) -> None:
+        """模拟点击后跳转到未授权的私网地址。"""
+        page.url = "http://127.0.0.1:1234/private"
+
+    page.click = redirect
+    context = _FakeContext([page])
+    session = _BrowserSessionState("redirect", context, context.pages, active_index=0)
+    tool = BrowseWebpageTool(session_id="session-1", user_id="10001")
+    with patch.object(
+        BrowserSessionHelper,
+        "with_session",
+        side_effect=lambda callback, **_kwargs: callback(session),
+    ):
+        result = tool._execute_browser_action(
+            browser_action=BrowserAction.CLICK, url=None, selector="#go", ref=None, value=None,
+            script=None, content_type="text", timeout=3, cookies=None, user_agent=None,
+            session_key="redirect", tab_index=None, allow_private_network=False,
+        )
+    payload = json.loads(result)
+    assert payload["execution_outcome"] == "unknown"
+    assert "snapshot" in payload["recovery"]
+
+
+def test_browse_webpage_get_cookies_returns_current_domain_cookie_and_ua():
+    """管理员 Cookie 动作应只返回当前页面域名的会话字段。"""
+    page = _FakePage()
+    page.url = "https://tracker.example/path"
+    context = _FakeContext(
+        [page],
+        cookies=[
+            {"name": "sid", "value": "browser", "domain": "tracker.example"},
+            {"name": "other", "value": "hidden", "domain": "other.example"},
+        ],
+    )
+    session = type(
+        "Session",
+        (),
+        {"context": context, "active_page": page, "cookies": "seed=1", "user_agent": "UA"},
+    )()
+
+    payload = json.loads(BrowseWebpageTool._action_get_cookies(session, page))
+
+    assert payload["success"] is True
+    assert payload["cookie"] == "seed=1; sid=browser"
+    assert {item["name"] for item in payload["cookies"]} == {"seed", "sid"}
+    assert payload["user_agent"] == "UA"
+
+
+@pytest.mark.asyncio
+async def test_browse_webpage_get_cookies_is_admin_only(monkeypatch: pytest.MonkeyPatch):
+    """普通调用方不得通过浏览器动作读取认证 Cookie。"""
+    tool = BrowseWebpageTool(session_id="session-1", user_id="10001")
+    monkeypatch.setattr(
+        BrowseWebpageTool,
+        "is_admin_user",
+        AsyncMock(return_value=False),
+    )
+
+    result = await tool.run(action="get_cookies")
+
+    assert "仅允许管理员" in result

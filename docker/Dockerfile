@@ -6,7 +6,8 @@ ARG MOVIEPILOT_PYTHON_VERSION="3.14.7"
 FROM ghcr.io/astral-sh/uv:latest AS uv
 
 
-FROM rclone/rclone:1.75.0@sha256:b06aed988cf5967de7c25be5925240983981c757f4ed1ac9d2fa659d51d60548 AS rclone
+# rclone v1.75.0 包含受 CVE-2026-46603 影响的 x/image v0.44.0，临时固定已修复的官方 Beta 摘要。
+FROM rclone/rclone:beta@sha256:d6f5448594ecefefcf09cfeaf85cb7a21a866328032576ce2c1813e7b59c66dc AS rclone
 
 
 FROM mwader/static-ffmpeg:8.1.1@sha256:735f84b905e00d5c618b667f0b053f83b1096f5fc404c607e6134bf2275a0e0a AS ffmpeg
@@ -89,8 +90,10 @@ RUN apt-get update \
     nano \
     unar \
     openssl \
+    supervisor \
     postgresql-client-18 \
     libchromaprint-tools \
+    libevent-2.1-7t64 \
     libjemalloc2 \
     && dpkg-reconfigure --frontend noninteractive tzdata \
     && ln -s /usr/lib/*-linux-gnu/libjemalloc.so.2 /usr/local/lib/libjemalloc.so \
@@ -268,27 +271,31 @@ FROM prepare_payload AS prepare_control
 WORKDIR /control
 
 COPY docker/ ./
-RUN mkdir -p /bundle/control /bundle/nginx /bundle/bin \
-    && find . -maxdepth 1 -type f -name '*.sh' ! -name 'launcher.sh' -exec cp -f -t /bundle/control {} + \
-    && cp -f launcher.sh /bundle/entrypoint.sh \
-    && cp -f nginx.common.conf /bundle/nginx/common.conf \
-    && cp -f nginx.template.conf /bundle/nginx/nginx.template.conf \
-    && cp -f docker_http_proxy.conf /bundle/nginx/docker_http_proxy.conf \
-    && printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'cd /app' 'exec "${VENV_PATH:-/opt/venv}/bin/python3" -m app.cli "$@"' > /bundle/bin/moviepilot \
-    && bash -n /bundle/entrypoint.sh \
-    && for control_script in /bundle/control/*.sh; do bash -n "${control_script}" || exit 1; done \
-    && chmod 755 /bundle/entrypoint.sh /bundle/bin/moviepilot \
-    && chmod 500 /bundle/control/*.sh
+RUN mkdir -p \
+    /bundle/rootfs/etc/nginx \
+    /bundle/rootfs/usr/local/bin \
+    /bundle/rootfs/usr/local/lib/moviepilot/control \
+    && find . -maxdepth 1 -type f -name '*.sh' ! -name 'launcher.sh' \
+    -exec cp -f -t /bundle/rootfs/usr/local/lib/moviepilot/control {} + \
+    && cp -f launcher.sh /bundle/rootfs/entrypoint.sh \
+    && cp -f nginx.common.conf /bundle/rootfs/etc/nginx/common.conf \
+    && cp -f nginx.template.conf /bundle/rootfs/etc/nginx/nginx.template.conf \
+    && mkdir -p /bundle/rootfs/etc/supervisor \
+    && cp -f supervisord.conf /bundle/rootfs/etc/supervisor/supervisord.conf \
+    && printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'cd /app' 'exec "${VENV_PATH:-/opt/venv}/bin/python3" -m app.cli "$@"' > /bundle/rootfs/usr/local/bin/moviepilot \
+    && bash -n /bundle/rootfs/entrypoint.sh \
+    && for control_script in /bundle/rootfs/usr/local/lib/moviepilot/control/*.sh; do bash -n "${control_script}" || exit 1; done \
+    && chmod 755 /bundle/rootfs/entrypoint.sh /bundle/rootfs/usr/local/bin/moviepilot \
+    && chmod 500 /bundle/rootfs/usr/local/lib/moviepilot/control/*.sh
 
 # final 阶段: 安装运行时依赖和配置最终镜像
 FROM prepare_package AS final
 
 ENV LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
-    MOVIEPILOT_DOCKER_KEEPALIVE_ON_FAILURE="true"
+    MOVIEPILOT_DOCKER_SUPERVISOR="true"
 
 # 引入支持 amr 编码的静态 ffmpeg
-COPY --from=ffmpeg /ffmpeg /usr/local/bin/
-COPY --from=ffmpeg /ffprobe /usr/local/bin/
+COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
 COPY --from=rclone /usr/local/bin/rclone /usr/bin/rclone
 
 # python 环境
@@ -298,6 +305,16 @@ COPY --from=uv /uv /usr/local/bin/uv
 
 # 浏览器运行依赖
 RUN playwright install-deps chromium \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    gzip \
+    libde265-0 \
+    libpcre2-8-0 \
+    libsqlite3-0 \
+    nginx \
+    nginx-common \
+    xserver-common \
+    xvfb \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf \
@@ -306,12 +323,7 @@ RUN playwright install-deps chromium \
     /var/tmp/*
 
 # 准备容器控制面和运行目录
-COPY --from=prepare_control /bundle/entrypoint.sh /entrypoint.sh
-COPY --from=prepare_control /bundle/control /usr/local/lib/moviepilot/control
-COPY --from=prepare_control /bundle/nginx/common.conf /etc/nginx/common.conf
-COPY --from=prepare_control /bundle/nginx/nginx.template.conf /etc/nginx/nginx.template.conf
-COPY --from=prepare_control /bundle/nginx/docker_http_proxy.conf /etc/nginx/docker_http_proxy.conf
-COPY --from=prepare_control /bundle/bin/moviepilot /usr/local/bin/moviepilot
+COPY --link --from=prepare_control /bundle/rootfs/ /
 
 RUN mkdir -p ${HOME} \
     && groupadd -r moviepilot -g 918 \

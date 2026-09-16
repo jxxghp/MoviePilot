@@ -262,11 +262,12 @@ class ListenBrainzModule(_ModuleBase):
             album_artist=artist_name or None,
             album_id=str(media_id),
             album_type=primary_type,
+            secondary_types=[secondary_type] if secondary_type else [],
             year=cls._year(release_date),
             release_date=release_date,
             cover_url=cls._release_cover(release.get("caa_release_mbid"))
             or cls._release_group_cover(media_id),
-            category=" / ".join(part for part in category_parts if part),
+            metadata_category=" / ".join(part for part in category_parts if part),
             genres=[str(tag) for tag in release.get("release_tags") or [] if tag],
             names=[str(title)],
             detail_link=f"{cls._album_detail_url}/{media_id}",

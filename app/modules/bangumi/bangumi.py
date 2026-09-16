@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional, cast
+from urllib.parse import urlsplit
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.runtime.cache import cached
@@ -33,8 +34,23 @@ class BangumiApi:
     }
     _base_url = "https://api.bgm.tv/"
 
-    def __init__(self) -> None:
-        """初始化同步与异步 Bangumi 请求客户端。"""
+    def __init__(
+            self,
+            base_url: Optional[str] = None,
+    ) -> None:
+        """初始化同步与异步 Bangumi 请求客户端及其代理地址快照。"""
+        configured_base_url = (
+            base_url if base_url is not None else (
+                get_runtime_setting("BANGUMI_API_DOMAIN", "")
+                if get_runtime_setting("BANGUMI_PROXY_ENABLE", False)
+                else ""
+            )
+        )
+        self._base_url = self._normalize_base_url(
+            configured_base_url,
+            default=self.__class__._base_url,
+        )
+        self._cache_token = self._base_url
         self._req = RequestUtils(
             ua=get_runtime_setting('NORMAL_USER_AGENT'),
             proxies=get_runtime_setting('PROXY'),
@@ -45,16 +61,44 @@ class BangumiApi:
             proxies=get_runtime_setting('PROXY'),
         )
 
-    @classmethod
+    @property
+    def base_url(self) -> str:
+        """返回当前客户端使用的 Bangumi 数据请求地址。"""
+        return self._base_url
+
+    @staticmethod
+    def _normalize_base_url(value: Any, default: str) -> str:
+        """归一化 Bangumi 数据地址，兼容域名、完整 URL 和代理路径。"""
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return default
+        candidate = (
+            raw_value
+            if "://" in raw_value
+            else f"https://{raw_value}"
+        )
+        try:
+            parsed = urlsplit(candidate)
+        except ValueError:
+            return default
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.query
+            or parsed.fragment
+        ):
+            return default
+        return f"{candidate.rstrip('/')}/"
+
     def _request_plan(
-            cls,
+            self,
             path: str,
             key: Optional[str] = None,
             **params: Any,
     ) -> _BangumiRequestPlan:
         """构造同步与异步请求共同使用的不可变调用计划。"""
         return _BangumiRequestPlan(
-            url=f"{cls._base_url}{path}",
+            url=f"{self._base_url}{path}",
             params=dict(params),
             key=key,
         )
@@ -72,8 +116,7 @@ class BangumiApi:
             return payload.get(key) if isinstance(payload, dict) else None
         return payload
 
-    @classmethod
-    def _decode_response(cls, response: Any, key: Optional[str]) -> Any:
+    def _decode_response(self, response: Any, key: Optional[str]) -> Any:
         """解析 HTTP 响应，并把格式错误统一映射为空结果。"""
         if response is None:
             return None
@@ -82,29 +125,69 @@ class BangumiApi:
         except (TypeError, ValueError) as err:
             logger.warning(f"Bangumi 响应解析失败：{str(err)}")
             return None
-        return cls._project_response(response.status_code, payload, key)
+        return self._project_response(response.status_code, payload, key)
 
-    @cached(
+    @cached(  # type: ignore[misc]  # 缓存装饰器的运行时签名由宿主统一维护
         maxsize=get_runtime_setting('CONF').bangumi,
         ttl=get_runtime_setting('CONF').meta,
         shared_key="get",
     )
-    def __invoke(self, url, key=None, **kwargs):
-        """执行同步 HTTP 请求，业务计划与响应规则由共享 helper 决定。"""
+    def _cached_invoke(
+            self,
+            url: str,
+            key: Optional[str] = None,
+            _cache_token: str = "",
+            **kwargs: Any,
+    ) -> Any:
+        """执行带配置身份的同步 HTTP 请求，并复用统一响应解码。"""
         plan = self._request_plan(url, key=key, **kwargs)
         response = self._req.get_res(url=plan.url, params=plan.params)
         return self._decode_response(response, plan.key)
 
-    @cached(
+    def __invoke(
+            self,
+            url: str,
+            key: Optional[str] = None,
+            **kwargs: Any,
+    ) -> Any:
+        """执行同步 Bangumi 请求，并把当前代理配置纳入缓存键。"""
+        return self._cached_invoke(
+            url,
+            key=key,
+            _cache_token=self._cache_token,
+            **kwargs,
+        )
+
+    @cached(  # type: ignore[misc]  # 缓存装饰器的运行时签名由宿主统一维护
         maxsize=get_runtime_setting('CONF').bangumi,
         ttl=get_runtime_setting('CONF').meta,
         shared_key="get",
     )
-    async def __async_invoke(self, url, key=None, **kwargs):
-        """执行异步 HTTP 请求，业务计划与响应规则由共享 helper 决定。"""
+    async def _cached_async_invoke(
+            self,
+            url: str,
+            key: Optional[str] = None,
+            _cache_token: str = "",
+            **kwargs: Any,
+    ) -> Any:
+        """执行带配置身份的异步 HTTP 请求，并复用统一响应解码。"""
         plan = self._request_plan(url, key=key, **kwargs)
         response = await self._async_req.get_res(url=plan.url, params=plan.params)
         return self._decode_response(response, plan.key)
+
+    async def __async_invoke(
+            self,
+            url: str,
+            key: Optional[str] = None,
+            **kwargs: Any,
+    ) -> Any:
+        """执行异步 Bangumi 请求，并把当前代理配置纳入缓存键。"""
+        return await self._cached_async_invoke(
+            url,
+            key=key,
+            _cache_token=self._cache_token,
+            **kwargs,
+        )
 
     @staticmethod
     def _dated_params(**params: Any) -> dict[str, Any]:
@@ -273,7 +356,7 @@ class BangumiApi:
 
     def clear_cache(self) -> None:
         """清除 Bangumi 请求缓存。"""
-        self.__invoke.cache_clear()
+        self._cached_invoke.cache_clear()
 
     def close(self) -> None:
         """关闭 Bangumi 同步会话。"""

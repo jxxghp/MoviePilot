@@ -4,6 +4,7 @@ from datetime import datetime
 
 import pytest
 
+from app.application.classification.reference import EffectiveClassificationSnapshot
 from app.application.outbox import ClaimedOutboxMessage
 from app.application.subscription.complete import CompleteSubscriptionCommand
 from app.application.subscription.contract import SubscriptionHistoryPatch
@@ -193,6 +194,39 @@ def test_completion_report_failure_returns_success_and_keeps_intent_pending():
     ]
 
 
+def test_completion_history_uses_actual_effective_classification_snapshot() -> None:
+    """完成历史必须记录本次执行结果，而不是活动订阅创建时的旧路径。"""
+    calls = []
+    command, notify, report = _command(calls)
+
+    command.execute(
+        7,
+        {
+            "id": 7,
+            "name": "Test",
+            "media_category_id": "movie.stale",
+            "media_category": "旧路径",
+        },
+        {"title": "Test"},
+        notify=notify,
+        report=report,
+        classification_snapshot=EffectiveClassificationSnapshot(
+            category_id="movie.actual",
+            category_path=("电影", "剧情"),
+            rule_id="rule.drama",
+            policy_revision=11,
+            source="automatic",
+        ),
+    )
+
+    history = next(call[1] for call in calls if call[0] == "history")
+    assert history["media_category_id"] == "movie.actual"
+    assert history["media_category"] == "电影/剧情"
+    assert history["classification_rule_id"] == "rule.drama"
+    assert history["classification_policy_revision"] == 11
+    assert history["classification_source"] == "automatic"
+
+
 def test_completion_report_error_returns_success_and_keeps_intent_pending():
     """统计上报抛出异常也不得覆盖已经成功提交的完成结果。"""
     calls = []
@@ -254,6 +288,33 @@ def test_completion_success_closes_event_then_report_intent():
     ]
     assert calls[7][1]["idempotency_key"] == calls[2][1].event_key
     assert calls[10][1]["idempotency_key"] == calls[3][1].event_key
+
+
+def test_completion_keys_distinguish_reused_subscribe_id() -> None:
+    """同一订阅主键被复用时，完成事件与旧 Outbox 历史保持不同。"""
+    first_calls: list[tuple] = []
+    first_command, first_notify, first_report = _command(first_calls)
+    first_command.execute(
+        7,
+        {"id": 7, "media_source": "tmdb", "media_id": "123", "season": 2},
+        {"title": "Test"},
+        notify=first_notify,
+        report=first_report,
+    )
+
+    second_calls: list[tuple] = []
+    second_command, second_notify, second_report = _command(second_calls)
+    second_command.execute(
+        7,
+        {"id": 7, "media_source": "tmdb", "media_id": "123", "season": 2},
+        {"title": "Test"},
+        notify=second_notify,
+        report=second_report,
+    )
+
+    first_event = next(call[1] for call in first_calls if call[0] == "stage")
+    second_event = next(call[1] for call in second_calls if call[0] == "stage")
+    assert first_event.event_key != second_event.event_key
 
 
 def test_completion_stages_and_closes_notification_snapshot() -> None:

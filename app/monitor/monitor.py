@@ -1,5 +1,5 @@
-import time
 import threading
+import time
 import traceback
 from functools import partial
 from pathlib import Path
@@ -8,20 +8,20 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from app.adapters.system.host import SystemUtils
 from app.application.directory import DirectoryHelper
 from app.application.messaging.message import MessageHelper
-from app.runtime.log import logger
+from app.foundation.singleton import SingletonClass
 from app.monitor.dispatcher import TransferDispatcher
 from app.monitor.poller import RemotePoller
 from app.monitor.recovery import RecoveryExecutor, RecoveryState, probe_path
 from app.monitor.snapshot import SnapshotStore
 from app.monitor.syslimits import decide_monitor_mode, get_system_optimization_tips
 from app.monitor.watcher import LocalDirectoryWatcher
-from app.schemas.types import SystemConfigKey
+from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
-from app.foundation.singleton import SingletonClass
-from app.adapters.system.host import SystemUtils
 from app.runtime.settings import get_runtime_setting
+from app.schemas.types import SystemConfigKey
 
 
 class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
@@ -97,7 +97,9 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         # 定时服务
         self._scheduler = None
         # 整理分发器
-        self._dispatcher = TransferDispatcher()
+        self._dispatcher = TransferDispatcher(
+            retry_abandoned_callback=self.__dispatcher_retry_abandoned,
+        )
         # 快照存储
         self._store = SnapshotStore()
         # 远程轮询监控
@@ -869,6 +871,18 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         MessageHelper().put(message, title="目录监控")
 
     @staticmethod
+    def __dispatcher_retry_abandoned(storage: str, event_path: Path, reason: str) -> None:
+        """把目录事件最终放弃转换为包含恢复入口的用户消息。"""
+        MessageHelper().put(
+            (
+                f"文件：{event_path}\n存储：{storage}\n原因：{reason}\n"
+                "当前状态：已停止自动重试。请修复挂载、数据库或文件访问问题后，"
+                "从文件管理中手动整理该文件，或重新保存目录监控配置触发补偿扫描。"
+            ),
+            title="目录监控已暂停单个文件",
+        )
+
+    @staticmethod
     def __poller_alert(storage: str, message: str) -> None:
         """
         远程轮询监控告警回调，复用消息渠道推送。
@@ -960,6 +974,25 @@ class Monitor(ConfigReloadMixin, metaclass=SingletonClass):
         if not self._dispatcher.is_transfer_candidate_path(event_path):
             return
         self._dispatcher.register_unreadable(storage="local", event_path=event_path)
+
+    def event_unstable(self, event_path: Path) -> None:
+        """提示监控文件长时间仍在变化，自动整理会继续等待稳定。"""
+        self.__send_alert(
+            Path(event_path),
+            (
+                f"目录监控文件长时间未稳定: {event_path}\n"
+                "文件可能仍在下载或被其他程序写入，自动整理会继续等待；"
+                "若文件实际已完成，请检查下载器状态、文件锁和挂载连接。"
+            ),
+            stage="file_unstable",
+        )
+
+    def event_stable(self, event_path: Path) -> None:
+        """文件重新达到稳定阈值后清除告警，并提示自动整理已经恢复。"""
+        self.__clear_alert(
+            Path(event_path),
+            f"目录监控文件已稳定，正在恢复自动整理: {event_path}",
+        )
 
     def stop(self, timeout: float = RELOAD_STOP_TIMEOUT) -> bool:
         """在共享预算内临时停止全部监控 owner，供配置热重载使用。"""

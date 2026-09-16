@@ -41,4 +41,9 @@ def get_plugin_config_command() -> PluginConfigCommand:
         publish_reset=publish_reset,
         refresh_registrations=refresh_registrations,
         mutation=manager.mutation,
+        delete_plugin_data_rows=manager.delete_plugin_data_rows,
+        destroy_own_database=manager.destroy_plugin_own_database,
+        delete_data_directory=manager.delete_plugin_data_directory,
+        purge_instance=manager.purge_plugin_instance,
+        is_clone=manager.is_plugin_clone,
     )

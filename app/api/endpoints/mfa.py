@@ -16,7 +16,15 @@ from app.api.dependencies.auth import (
     get_user_service,
 )
 from app.api.principal import ApiPrincipal
-from app.api.response import RAW_RESPONSE_OPENAPI_KEY, ResponseAPIRouter
+from app.api.response import (
+    COLLECTION_TOTAL_HEADER,
+    COLLECTION_TOTAL_OPENAPI_KEY,
+    RAW_RESPONSE_OPENAPI_KEY,
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+    resolve_compatible_pagination,
+)
 from app.application.security.auth import get_configured_auth_service
 from app.application.security.otp import OtpUtils
 from app.application.security.passkey import (
@@ -26,7 +34,6 @@ from app.application.security.passkey import (
     PassKeyRegistrationVerificationError,
     PasskeyService,
 )
-from app.application.security.token import verify_password
 from app.application.security.user import (
     UserService,
     get_configured_user_id_lookup,
@@ -177,7 +184,7 @@ async def otp_disable(
 ) -> Any:
     """关闭当前用户的 OTP 验证功能"""
     # 验证密码
-    if not verify_password(data.password, str(current_user.hashed_password)):
+    if not await service.verify_password(current_user.id, data.password):
         return _SchemaResponse(success=False, message="密码错误")
     await service.update_otp(current_user.name, False, "")
     return _SchemaResponse(success=True)
@@ -449,14 +456,23 @@ def passkey_authenticate_finish(
     "/passkey/list",
     summary="获取当前用户的 PassKey 列表",
     response_model=_SchemaResponse[list[_SchemaPasskeyInfo]],
+    openapi_extra={COLLECTION_TOTAL_OPENAPI_KEY: True},
 )
 def passkey_list(
     current_user: Annotated[ApiPrincipal, Depends(get_current_active_user)],
+    response: Response = None,
     service: PasskeyService = Depends(get_passkey_service),
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
 ) -> Any:
     """获取当前用户的所有 PassKey"""
     try:
-        passkeys = service.list_by_user_id(current_user.id)
+        page, count = resolve_compatible_pagination(page, count)
+        passkeys = service.list_by_user_id(current_user.id, page=page, count=count)
+        if response is not None:
+            response.headers[COLLECTION_TOTAL_HEADER] = str(
+                service.count_by_user_id(current_user.id)
+            )
 
         key_list = (
             [
@@ -491,13 +507,12 @@ async def passkey_delete(
     data: PassKeyDeleteRequest,
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
     service: PasskeyService = Depends(get_passkey_service),
+    user_service: UserService = Depends(get_user_service),
 ) -> Any:
     """删除指定的 PassKey"""
     try:
         # 验证密码
-        if not verify_password(
-            data.password, str(current_user.hashed_password)
-        ):
+        if not await user_service.verify_password(current_user.id, data.password):
             return _SchemaResponse(success=False, message="密码错误")
 
         success = service.delete_by_id(data.passkey_id, current_user.id)

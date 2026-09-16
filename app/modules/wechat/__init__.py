@@ -5,7 +5,7 @@ from typing import Optional, Union, List, Tuple, Any, Dict
 from urllib.parse import quote
 
 from app.domain.context import Context, MediaInfo
-from app.application.messaging.agent import (
+from app.application.messaging.channel.admin import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
@@ -230,13 +230,13 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
             if content or images or audio_refs or files:
                 # 处理消息内容
                 return IncomingMessage(channel=NotificationChannel.Wechat, source=client_config.name,
-                                      userid=user_id, username=user_id,
-                                      is_channel_admin=matches_channel_admin(
-                                          NotificationChannel.Wechat,
-                                          client_config.config,
-                                          user_id,
-                                      ), text=content or "",
-                                      images=images, audio_refs=audio_refs, files=files)
+                                       userid=user_id, username=user_id,
+                                       is_channel_admin=matches_channel_admin(
+                                           NotificationChannel.Wechat,
+                                           client_config.config,
+                                           user_id,
+                                       ), text=content or "",
+                                       images=images, audio_refs=audio_refs, files=files)
         except Exception as err:
             logger.error(f"微信消息处理发生错误：{str(err)}")
         return None

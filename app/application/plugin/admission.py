@@ -20,7 +20,10 @@ from app.application.plugin.source import (
     PluginSelectionStatus,
     select_plugin_candidate,
 )
-from app.domain.plugin import parse_local_plugin_reference
+from app.domain.plugin import (
+    parse_local_plugin_generation,
+    parse_local_plugin_reference,
+)
 
 
 class PluginSourceAdmissionError(RuntimeError):
@@ -147,10 +150,14 @@ def admit_plugin_install(
             available_local_candidates = inventory.local_candidates_for(
                 request.plugin_id
             )
+            requested_generation = parse_local_plugin_generation(
+                request.requested_repo_url
+            )
             exact_candidates = tuple(
                 candidate
                 for candidate in available_local_candidates
-                if candidate.repo_url == request.requested_repo_url
+                if requested_generation is None
+                or candidate.package_generation == requested_generation
             )
             local_candidates = exact_candidates or available_local_candidates
             if not local_candidates:

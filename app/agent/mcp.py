@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import os
 import re
 import uuid
 from dataclasses import dataclass
 from typing import Any, Optional
 from urllib.parse import urljoin
 
+from app.adapters.network.http import AsyncRequestUtils
+from app.agent.shell import build_agent_subprocess_env
 from app.application.configuration import get_configured_system_config
 from app.runtime.log import logger
 from app.schemas.agent import (
@@ -20,7 +21,6 @@ from app.schemas.agent import (
     AgentMcpServerToolInfo,
 )
 from app.schemas.types import SystemConfigKey
-from app.adapters.network.http import AsyncRequestUtils
 
 MCP_PROTOCOL_VERSION = "2025-11-25"
 MCP_CLIENT_NAME = "MoviePilot Agent"
@@ -202,8 +202,7 @@ class _StdioMcpSession:
         """启动 stdio MCP 子进程。"""
         if not self.server.command:
             raise RuntimeError("stdio MCP 服务器缺少启动命令")
-        env = os.environ.copy()
-        env.update(self.server.env or {})
+        env = build_agent_subprocess_env(self.server.env)
         self.process = await asyncio.create_subprocess_exec(
             self.server.command,
             *(self.server.args or []),
@@ -241,7 +240,10 @@ class _StdioMcpSession:
                 line = await self.process.stderr.readline()
                 if not line:
                     break
-                logger.debug(f"MCP stdio[{self.server.name}] stderr: {line.decode(errors='replace').strip()}")
+                logger.debug(
+                    f"MCP stdio[{self.server.name}] stderr: "
+                    f"{line.decode('utf-8', errors='replace').strip()}"
+                )
         except asyncio.CancelledError:
             return
 

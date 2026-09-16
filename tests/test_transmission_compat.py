@@ -24,6 +24,7 @@ def _load_transmission_client_module():
         """
         测试日志桩，仅提供被客户端封装调用的方法。
         """
+
         def info(self, *_args, **_kwargs):
             """
             忽略信息日志。

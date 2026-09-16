@@ -5,7 +5,7 @@ import importlib.util
 import sys
 import threading
 from types import ModuleType
-from typing import Dict
+from typing import Dict, List, Tuple
 
 from app.runtime.compat.diagnostics import record_legacy_import
 from app.runtime.compat.manifest import (
@@ -15,6 +15,7 @@ from app.runtime.compat.manifest import (
     SYMBOL_ALIASES,
     VIRTUAL_PACKAGES,
     ModuleAlias,
+    SymbolAlias,
 )
 
 
@@ -116,6 +117,29 @@ class VirtualLegacyPackageLoader(importlib.abc.Loader):
             record_legacy_import(self.package_name)
 
 
+def detect_shadowed_exports(
+    module: ModuleType,
+    exports: Dict[str, SymbolAlias],
+) -> List[Tuple[str, str]]:
+    """返回物理模块用第二份实现遮蔽的兼容符号及其 canonical 路径。
+
+    模块级 ``__getattr__`` 只在属性查找失败时触发，物理模块自带同名定义时兼容叠加
+    完全不会被调用。重新导入同一个 canonical 对象是无害的，只有身份不同才是遮蔽。
+
+    :param module: 已执行完毕的物理模块
+    :param exports: 该模块在兼容清单中登记的符号
+    :return: ``(符号名, canonical 路径)`` 列表，无遮蔽时为空
+    """
+    shadowed = []
+    for name, symbol in exports.items():
+        if name not in module.__dict__:
+            continue
+        target = importlib.import_module(symbol.target_module)
+        if module.__dict__[name] is not getattr(target, symbol.target_name):
+            shadowed.append((name, symbol.replacement))
+    return shadowed
+
+
 class LegacySymbolOverlayLoader(importlib.abc.Loader):
     """在标准物理模块执行后叠加旧符号的惰性解析，不修改 canonical 源码。"""
 
@@ -161,6 +185,18 @@ class LegacySymbolOverlayLoader(importlib.abc.Loader):
         executor(module)
 
         exports = SYMBOL_ALIASES[self.module_name]
+        shadowed = detect_shadowed_exports(module, exports)
+        if shadowed:
+            detail = "；".join(
+                f"{self.module_name}.{name} 覆盖了 {replacement}"
+                for name, replacement in shadowed
+            )
+            raise ImportError(
+                f"模块 {self.module_name} 自带第二份实现遮蔽了兼容符号：{detail}。"
+                f"通常是把旧版本的同名目录挂载或复制到了运行目录，"
+                f"请让该包只保留不含实现的 __init__.py",
+                name=self.module_name,
+            )
         previous_getattr = module.__dict__.get("__getattr__")
         previous_dir = module.__dict__.get("__dir__")
         had_all = "__all__" in module.__dict__

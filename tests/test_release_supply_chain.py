@@ -126,8 +126,30 @@ def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> 
     assert "ARG MOVIEPILOT_PYTHON_VERSION" in free_threaded_stage
     assert 'uv python install --no-bin "${MOVIEPILOT_PYTHON_VERSION}t"' in free_threaded_stage
     assert "apt-get upgrade" not in dockerfile
+    assert "apt-get install -y --no-install-recommends \\\n    gzip \\\n" in dockerfile
+    assert "\n    libevent-2.1-7t64 \\\n" in dockerfile
     assert "\n    openssl \\\n" in dockerfile
     assert "\n    util-linux \\\n" in dockerfile
+    for package in (
+        "gzip",
+        "libde265-0",
+        "libpcre2-8-0",
+        "libsqlite3-0",
+        "nginx",
+        "nginx-common",
+        "xserver-common",
+        "xvfb",
+    ):
+        assert f"\n    {package} \\\n" in dockerfile
+
+
+def test_rclone_image_uses_cve_2026_46603_patched_build() -> None:
+    """rclone 制品必须固定到包含 x/image 漏洞修复的不可变镜像。"""
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+
+    assert "rclone/rclone:1.75.0" not in dockerfile
+    patched_rclone_image = "rclone/rclone:beta@sha256:d6f5448594ecefefcf09cfeaf85cb7a21a866328032576ce2c1813e7b59c66dc"
+    assert f"FROM {patched_rclone_image} AS rclone" in dockerfile
 
 
 def test_release_audits_locked_runtime_dependencies_before_building() -> None:

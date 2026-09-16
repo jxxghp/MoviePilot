@@ -21,12 +21,13 @@ from app.agent.policy.contracts import (
     ToolPolicyContext,
 )
 from app.agent.policy.orchestrator import DEFAULT_TOOL_POLICY_ORCHESTRATOR
+from app.agent.terminal.manager import _TerminalSessionManager
+from app.agent.terminal.ownership import current_terminal_scope
+from app.agent.terminal.session import _TerminalSession
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.catalog import ToolCatalogSnapshot
-from app.agent.tools.impl._terminal_session import (
-    _TerminalSession,
-    _TerminalSessionManager,
-)
+
+pytestmark = pytest.mark.usefixtures("terminal_scope")
 
 
 class _SlowWriteTool(MoviePilotTool):
@@ -81,11 +82,11 @@ def test_timeout_marks_unknown_external_state_for_write_tools() -> None:
 
 def test_timeout_does_not_mark_safe_reads_for_reconciliation() -> None:
     """只读工具超时不应伪造外部副作用终态。"""
-    tool = type("SafeReadTool", (), {"name": "query_personas", "args_schema": None})()
+    tool = type("SafeReadTool", (), {"name": "persona", "args_schema": None})()
     observation = DEFAULT_TOOL_POLICY_ORCHESTRATOR.start(
         context=_policy_context(),
         tool=tool,
-        arguments={},
+        arguments={"action": "list"},
     )
 
     receipt = DEFAULT_TOOL_POLICY_ORCHESTRATOR.fail(
@@ -105,7 +106,7 @@ async def test_terminal_manager_close_terminates_running_pipe_session() -> None:
         command=_shell_command("import time; time.sleep(30)"),
         use_pty=False,
     )
-    session = manager.get_session(payload["session_id"])
+    session = manager._sessions[payload["session_id"]]
 
     await manager.close()
 
@@ -122,6 +123,7 @@ async def test_terminal_manager_close_waits_for_starting_session() -> None:
     start_entered = asyncio.Event()
     allow_start = asyncio.Event()
     session = _TerminalSession(
+        owner=current_terminal_scope(),
         session_id="term-starting",
         command="sleep",
         cwd=".",
@@ -129,17 +131,16 @@ async def test_terminal_manager_close_waits_for_starting_session() -> None:
         use_pty=False,
     )
 
-    async def _start_session(*_args) -> _TerminalSession:
+    async def _start_session(*_args, **_kwargs) -> _TerminalSession:
+        """启动握手保留会话，允许传入已解析解释器而不改变关闭竞态。"""
         start_entered.set()
         await allow_start.wait()
         return session
 
     manager._start_pipe_session = _start_session
-    manager._terminate_session = AsyncMock()
+    manager._terminate_session = AsyncMock(return_value=True)
 
-    start_task = asyncio.create_task(
-        manager.start(command="sleep", use_pty=False)
-    )
+    start_task = asyncio.create_task(manager.start(command="sleep", use_pty=False))
     await start_entered.wait()
     close_task = asyncio.create_task(manager.close())
     await asyncio.sleep(0)
@@ -175,6 +176,7 @@ async def test_terminal_manager_cancellation_terminates_unregistered_session() -
     release_registration = asyncio.Event()
     termination_started = asyncio.Event()
     session = _TerminalSession(
+        owner=current_terminal_scope(),
         session_id="term-cancelled",
         command="sleep",
         cwd=".",
@@ -183,25 +185,27 @@ async def test_terminal_manager_cancellation_terminates_unregistered_session() -
     )
 
     async def _hold_registration_lock() -> None:
+        """精确阻塞会话登记，供取消路径验证尚未交付的进程归属。"""
         await session_created.wait()
         async with manager._lock:
             registration_locked.set()
             await release_registration.wait()
 
-    async def _start_session(*_args) -> _TerminalSession:
+    async def _start_session(*_args, **_kwargs) -> _TerminalSession:
+        """返回已创建但尚未登记的会话，解释器注入不影响该时序。"""
         session_created.set()
         await registration_locked.wait()
         return session
 
-    async def _terminate_session(_session: _TerminalSession) -> None:
+    async def _terminate_session(_session: _TerminalSession) -> bool:
+        """标记取消收尾已开始，避免用固定等待猜测执行顺序。"""
         termination_started.set()
+        return True
 
     lock_holder = asyncio.create_task(_hold_registration_lock())
     manager._start_pipe_session = _start_session
     manager._terminate_session = AsyncMock(side_effect=_terminate_session)
-    start_task = asyncio.create_task(
-        manager.start(command="sleep", use_pty=False)
-    )
+    start_task = asyncio.create_task(manager.start(command="sleep", use_pty=False))
     await registration_locked.wait()
     await asyncio.sleep(0)
 
@@ -296,9 +300,7 @@ async def test_agent_cache_replacement_closes_previous_subagent_middleware() -> 
     agent = MoviePilotAgent(session_id="session-1", user_id="user-1")
     old_middleware = SimpleNamespace(close=AsyncMock())
     new_middleware = SimpleNamespace(close=AsyncMock())
-    catalog = ToolCatalogSnapshot.from_tools(
-        [], plugin_revision=0, factory_revision="factory-v1"
-    )
+    catalog = ToolCatalogSnapshot.from_tools([], plugin_revision=0, factory_revision="factory-v1")
     agent._subagent_middlewares = (old_middleware,)
 
     await agent._cache_agent(
@@ -327,13 +329,11 @@ async def test_agent_execution_failure_closes_cached_subagent_middleware() -> No
     agent._should_stream = lambda: False
     agent._create_agent = AsyncMock(return_value=graph)
     agent._dispatch_execution_notice = AsyncMock()
-    agent.stream_handler = SimpleNamespace(
-        stop_streaming=AsyncMock(return_value=(False, ""))
-    )
+    agent.stream_handler = SimpleNamespace(stop_streaming=AsyncMock(return_value=(False, "")))
 
     result, _ = await agent._execute_agent([])
 
-    assert "failed" in result
+    assert result == "智能助手执行失败，请稍后重试"
     middleware.close.assert_awaited_once()
     assert agent._compiled_agent_bundle is None
     assert agent._subagent_middlewares == ()

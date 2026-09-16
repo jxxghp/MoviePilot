@@ -1,7 +1,7 @@
 import asyncio
 import inspect
 import sys
-from typing import Callable
+from typing import Callable, cast
 
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
 
@@ -23,7 +23,6 @@ from app.application.configuration import (
     reset_transfer_retry_config,
 )
 from app.application.messaging.agent import (
-    dispatch_web_agent_message_event,
     shutdown_web_agent_background_tasks,
     wait_web_agent_background_tasks,
 )
@@ -34,10 +33,13 @@ from app.application.messaging.message import (
     MessageHelper,
     stop_message,
 )
+from app.application.messaging.webagent.events import dispatch_web_agent_message_event
 from app.application.module import configure_module_runtime, reset_module_runtime
 from app.application.outbox import configure_outbox_dispatcher
+from app.application.plugin.runtime import get_existing_plugin_manager
 from app.application.security.url import close_image_proxy_block_log_coalescer
 from app.application.service import configure_service_directory, reset_service_directory
+from app.application.site.auth import normalize_site_auth_config
 from app.command import CommandChain
 from app.db.session import (
     close_database,
@@ -55,9 +57,9 @@ from app.runtime.log import logger
 from app.runtime.settings import (
     get_runtime_setting,
 )
-from app.runtime.state import SystemHelper
 from app.runtime.tasks import get_task_registry
 from app.runtime.thread import ThreadHelper
+from app.schemas.category import ClassificationFactValue, ClassificationFieldDefinition
 from app.schemas.message import Message, MessageType
 from app.schemas.types import EventType, SystemConfigKey
 from app.startup.composition.agent import (
@@ -67,9 +69,11 @@ from app.startup.composition.agent import (
 )
 from app.startup.composition.chain import (
     configure_chain_runtime_context,
+    configure_directory_classification_service,
     configure_wallpaper_services,
     reset_chain_services,
 )
+from app.startup.composition.classification import compose_classification
 from app.startup.composition.configuration import (
     compose_configuration,
     publish_configuration,
@@ -87,15 +91,19 @@ from app.startup.composition.database import (
     start_database_runtime,
     stop_database_runtime,
 )
+from app.startup.composition.enrichment import (
+    compose_classification_enrichment,
+)
 from app.startup.composition.network import (
     configure_application_network_ports,
     configure_doh_composition,
+    get_existing_doh_composition,
     reset_application_network_ports,
     stop_doh_composition,
 )
 from app.startup.composition.outbox import build_outbox_dispatcher, reset_outbox_services
 from app.startup.composition.resource import (
-    install_site_resources,
+    configure_site_resource_versions,
     reset_site_resource_composition,
 )
 from app.startup.composition.runtime import (
@@ -128,6 +136,44 @@ from app.startup.initializers.scheduler import (
 )
 
 
+def _plugin_classification_fields() -> tuple[ClassificationFieldDefinition, ...]:
+    """读取已创建插件运行时的字段快照，模块初始化阶段不提前物化管理器。"""
+    manager = get_existing_plugin_manager()
+    if manager is None:
+        return ()
+    try:
+        return cast(
+            tuple[ClassificationFieldDefinition, ...],
+            manager.get_classification_fields(),
+        )
+    except Exception as error:  # noqa: BLE001  插件字段目录故障不得阻断策略管理
+        logger.warning(f"读取插件分类字段目录失败，已忽略动态字段：{error}")
+        return ()
+
+
+def _plugin_classification_facts(
+    media: object,
+) -> dict[str, dict[str, ClassificationFactValue]]:
+    """通过已创建插件运行时校验媒体对象携带的扩展事实。"""
+    manager = get_existing_plugin_manager()
+    if manager is None:
+        return {}
+    try:
+        return cast(
+            dict[str, dict[str, ClassificationFactValue]],
+            manager.get_classification_facts(media),
+        )
+    except Exception as error:  # noqa: BLE001  插件事实不得成为媒体识别硬依赖
+        logger.warning(f"读取插件扩展分类事实失败，已按字段缺失继续：{error}")
+        return {}
+
+
+def _existing_module_manager() -> object | None:
+    """返回已创建模块管理器；测试替身或未初始化状态按无 provider 处理。"""
+    getter = getattr(ModuleManager, "get_existing_instance", None)
+    return getter() if callable(getter) else None
+
+
 def configure_runtime_data_providers() -> None:
     """在启动组合层装配模块和配置目录的运行时读取能力。"""
     configure_service_config_reader(lambda key: get_configured_system_config().get(key))
@@ -155,6 +201,7 @@ def reset_event_services() -> None:
         dispatch_web_agent_message_event,
     )
     event_manager.unregister_handler_instance_resolver("host")
+    event_manager.unregister_handler_instance_resolver("config_reload")
     event_manager.reset_error_notifier()
 
 
@@ -250,6 +297,72 @@ def get_host_event_handler_factories() -> dict[type, Callable[[], object]]:
         SubscribeChain: SubscribeChain,
         WorkflowChain: WorkflowChain,
     }
+
+
+def get_config_reload_handler_providers(
+) -> dict[type, Callable[[], object | None]]:
+    """返回未由专属运行时接管的配置重载 owner Provider。"""
+    from app.chain.transfer.facade import TransferChain
+    from app.monitor.monitor import Monitor
+    from app.runtime.state import SystemHelper
+
+    # SystemHelper 不持有外部资源；闭包为当前 lifespan 保留稳定身份。
+    system_helper = SystemHelper()
+    providers: dict[type, Callable[[], object | None]] = {
+        SystemHelper: lambda: system_helper,
+        RedisHelper: RedisHelper.get_existing_instance,
+        AsyncRedisHelper: AsyncRedisHelper.get_existing_instance,
+        TransferChain: TransferChain.get_existing_instance,
+        Monitor: Monitor.get_existing_instance,
+    }
+    doh_helper = get_existing_doh_composition()
+    if doh_helper is not None:
+        providers[type(doh_helper)] = get_existing_doh_composition
+    plugin_manager = get_existing_plugin_manager()
+    if plugin_manager is not None:
+        providers[type(plugin_manager)] = get_existing_plugin_manager
+    return providers
+
+
+def configure_config_reload_event_handler_resolver() -> None:
+    """绑定当前生命周期已拥有的配置重载实例，惰性 owner 未创建时跳过。"""
+    providers = get_config_reload_handler_providers()
+    runtime_providers = (
+        get_existing_doh_composition,
+        get_existing_plugin_manager,
+    )
+
+    def resolve(owner_class: type) -> EventHandlerBinding | None:
+        """按类型身份读取当前 owner，不在事件分发路径构造资源。"""
+        provider = providers.get(owner_class)
+        if provider is not None:
+            instance = provider()
+            if instance is not None and type(instance) is not owner_class:
+                return None
+            return EventHandlerBinding(
+                instance=instance,
+                owner_name=owner_class.__name__,
+            )
+        instance = next(
+            (
+                current
+                for runtime_provider in runtime_providers
+                if (current := runtime_provider()) is not None
+                and type(current) is owner_class
+            ),
+            None,
+        )
+        if instance is None:
+            return None
+        return EventHandlerBinding(
+            instance=instance,
+            owner_name=owner_class.__name__,
+        )
+
+    EventManager().register_handler_instance_resolver(
+        "config_reload",
+        resolve,
+    )
 
 
 def configure_host_event_handler_resolver() -> None:
@@ -348,7 +461,18 @@ def user_auth():
     if sites_helper.auth_level >= 2:
         return
     auth_conf = get_configured_system_config().get(SystemConfigKey.UserSiteAuthParams)
-    status, msg = sites_helper.check_user(**auth_conf) if auth_conf else sites_helper.check_user()
+    if get_runtime_setting("AUTH_SITE"):
+        status, msg = sites_helper.check_user()
+    else:
+        normalized_auth_conf = normalize_site_auth_config(
+            auth_conf,
+            sites_helper.get_authsites(),
+        )
+        status, msg = (
+            sites_helper.check_user(**normalized_auth_conf)
+            if normalized_auth_conf
+            else sites_helper.check_user()
+        )
     if status:
         logger.info(f"{msg} 用户认证成功")
     else:
@@ -373,15 +497,8 @@ def check_auth():
 
 
 def update_resources() -> None:
-    """安装可用资源更新，并由组合根统一决定是否重启进程。"""
-    sites_helper = SitesHelper()
-    if not install_site_resources(
-        lambda: (sites_helper.auth_version, sites_helper.indexer_version)
-    ):
-        return
-    restarted, message = SystemHelper.restart()
-    if not restarted:
-        logger.error(f"资源更新完成但自动重启失败：{message}")
+    """保留旧入口但不在启动后检查、下载或重启，资源由启动器预先应用。"""
+    return
 
 
 def close_browser_sessions() -> None:
@@ -537,6 +654,17 @@ async def _initialize_modules() -> HostRuntime:
             logger.error(f"启动失败后的数据库任务清理失败：{cleanup_error}")
         raise
     publish_configuration(configuration, legacy_settings)
+    classification = await compose_classification(
+        executor=database_runtime.worker,
+        settings=legacy_settings,
+        system_config=configuration.system_config,
+        extra_fields_provider=_plugin_classification_fields,
+        extension_facts_provider=_plugin_classification_facts,
+        enrichment=compose_classification_enrichment(
+            module_manager=_existing_module_manager,
+            plugin_manager=get_existing_plugin_manager,
+        ),
+    )
     database_services = compose_database_services(
         runtime=database_runtime,
         system_config=configuration.system_config,
@@ -549,6 +677,8 @@ async def _initialize_modules() -> HostRuntime:
         system_config=system_config,
         dependencies=runtime_dependencies,
     )
+    if agent_composition.data.invocations is not None:
+        await database_runtime.worker.run(agent_composition.data.invocations.recover_running)
     security_composition = configure_security_services()
     runtime_composition = compose_runtime(
         RuntimeInputs(
@@ -556,6 +686,8 @@ async def _initialize_modules() -> HostRuntime:
             database=database_services,
             agent=agent_composition,
             authentication=security_composition,
+            classification=classification.runtime,
+            classification_execution=classification.execution,
             dependencies=runtime_dependencies,
             tasks=get_task_registry(),
         )
@@ -585,20 +717,26 @@ async def _initialize_modules() -> HostRuntime:
     init_managed_resources()
     # 应用服务不反向依赖 Chain，由启动组合层注入壁纸来源。
     configure_wallpaper_services()
+    # 目录选择和多级路径生成复用同一活动分类策略快照。
+    configure_directory_classification_service(classification.runtime)
     # Chain 无参兼容入口由组合根明确提供依赖上下文；测试和新代码可直接注入替代上下文。
     configure_chain_runtime_context(
         dependencies=runtime_dependencies,
         system_config=system_config,
         configuration=configuration.runtime.chain,
+        classification_service=classification.execution,
+        system_service=host_runtime.system,
     )
     # 认证访问层不反向依赖数据库实现，由启动组合层注入载荷提供器。
     configure_security_access()
     # DoH
     configure_doh_composition()
     # 站点管理
-    SitesHelper()
-    # 资源适配器只负责下载安装，是否重启由启动组合层决定。
-    update_resources()
+    sites_helper = SitesHelper()
+    # 启动器已在进程拉起前应用待安装资源；这里仅注册当前版本读取器。
+    configure_site_resource_versions(
+        lambda: (sites_helper.auth_version, sites_helper.indexer_version)
+    )
     # 用户认证
     user_auth()
     # 事件错误通知由启动组合层接入消息服务。
@@ -610,6 +748,8 @@ async def _initialize_modules() -> HostRuntime:
     )
     # 宿主类处理器在启动层显式登记，事件总线不再兜底 owner_class()。
     configure_host_event_handler_resolver()
+    # 配置 owner 按各自生命周期读取当前实例，惰性资源不会因事件而物化。
+    configure_config_reload_event_handler_resolver()
     # 加载模块
     ModuleManager()
     # 启动事件消费

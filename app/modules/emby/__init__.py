@@ -9,10 +9,11 @@ from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.runtime.log import logger
 from app.modules._base.mediaserver import _MediaServerModuleBase
 from app.modules.emby.emby import Emby
-from app.schemas.types import ModuleType, MediaServerType
+from app.schemas.types import MediaServerType, MediaType, ModuleType
 
 
 class EmbyModule(_MediaServerModuleBase[Emby]):
+    """Emby 媒体服务器模块。"""
 
     # 媒体库标识（ExistMediaInfo.server_type）
     _server_type_value = "emby"
@@ -232,6 +233,8 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
         links = []
         items = self.mediaserver_latest(server=server, count=count, username=username) or []
         for item in items:
+            if item.type not in (MediaType.MOVIE.value, MediaType.TV.value):
+                continue
             if item.BackdropImageTags:
                 image_url = server_obj.get_backdrop_url(item_id=item.id,
                                                         image_tag=item.BackdropImageTags[0],

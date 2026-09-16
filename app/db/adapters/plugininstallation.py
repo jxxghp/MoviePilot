@@ -393,7 +393,12 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
                 PluginInstallation.transaction_id,
             )
             if plugin_id is not None:
-                statement = statement.where(PluginInstallation.plugin_id == plugin_id)
+                # 判据必须与 create 占位时的 func.lower 完全一致：create 认定属于同一
+                # 物理插件而拒绝建新 journal 的那一行，list 也必须查得到。大小写一旦分叉，
+                # 恢复流程会认为没有未收尾事务，而新事务又永远被那一行挡住
+                statement = statement.where(
+                    func.lower(PluginInstallation.plugin_id) == plugin_id.lower()
+                )
             return [
                 self.__to_record(row)
                 for row in session.execute(statement).scalars()

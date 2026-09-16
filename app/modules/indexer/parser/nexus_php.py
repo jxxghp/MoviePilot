@@ -109,7 +109,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         calc_ratio = 0.0 if self.download <= 0.0 else round(self.upload / self.download, 3)
         # 优先使用页面上的分享率
         self.ratio = text_tools.parse_float(ratio_match.group(1)) if (
-                ratio_match and ratio_match.group(1).strip()) else calc_ratio
+            ratio_match and ratio_match.group(1).strip()) else calc_ratio
         leeching_match = re.search(r"(Torrents leeching|下载中)[\u4E00-\u9FA5\D\s]+(\d+)[\s\S]+<", html_text)
         self.leeching = text_tools.parse_int(leeching_match.group(2)) if leeching_match and leeching_match.group(
             2).strip() else 0
@@ -319,7 +319,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                 seeding_match = re.search(r"总做种数:\s+(\d+)", seeding_sizes[0], re.IGNORECASE)
                 seeding_size_match = re.search(r"总做种体积:\s+([\d,.\s]+[KMGTPI]*B)", seeding_sizes[0], re.IGNORECASE)
                 tmp_seeding = text_tools.parse_int(seeding_match.group(1)) if (
-                        seeding_match and seeding_match.group(1)) else 0
+                    seeding_match and seeding_match.group(1)) else 0
                 tmp_seeding_size = self.num_filesize(
                     seeding_size_match.group(1).strip()) if seeding_size_match else 0
             if not self.seeding_size:

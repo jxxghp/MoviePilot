@@ -28,6 +28,7 @@ from app.application.plugin.source import (
 )
 from app.runtime.config import global_vars
 from app.runtime.extensions.plugin.sync import LocalPluginSyncService, PluginSyncService
+from app.schemas.plugin import PluginRuntimeStatus
 from app.startup.initializers import plugins as plugins_initializer
 
 REPO_URL = "https://github.com/jxxghp/MoviePilot-Plugins"
@@ -75,6 +76,42 @@ def test_market_sync_keeps_install_rollback_enabled() -> None:
     install.assert_called_once_with(plugin.id, None, False, None)
 
 
+def test_market_sync_arbitrates_online_versions_before_local_overlay() -> None:
+    """在线候选先按版本仲裁，不能因输入顺序选择旧版本。"""
+    old = SimpleNamespace(
+        id="DemoPlugin",
+        repo_url="https://example.com/old",
+        plugin_name="Demo old",
+        plugin_version="1.0.0",
+        system_version_compatible=True,
+    )
+    new = SimpleNamespace(
+        id="DemoPlugin",
+        repo_url="https://example.com/new",
+        plugin_name="Demo new",
+        plugin_version="2.0.0",
+        system_version_compatible=True,
+    )
+    install = Mock(return_value=(True, ""))
+
+    def merge_online(items, *_args):
+        return [max(items, key=lambda item: Version(item.plugin_version))]
+
+    service = PluginSyncService(
+        frozen=lambda: False,
+        installed_plugins=lambda: [old.id],
+        online_plugins=lambda: [new, old],
+        local_plugins=lambda: [],
+        merge_plugins=merge_online,
+        plugin_exists=lambda *_args: False,
+        install=install,
+        log=Mock(),
+    )
+
+    assert service.sync() == [new.id]
+    install.assert_called_once_with(new.id, None, False, None)
+
+
 def test_market_sync_restores_trusted_online_payload_after_local_source_removed() -> None:
     """本地高版本来源消失后，启动同步仍恢复已绑定的在线载荷。"""
     plugin = SimpleNamespace(
@@ -102,8 +139,8 @@ def test_market_sync_restores_trusted_online_payload_after_local_source_removed(
     install.assert_called_once_with(plugin.id, None, False, None)
 
 
-def test_market_sync_reconciles_existing_local_candidate_through_gateway() -> None:
-    """本地候选对应插件已延后激活，必须经 Gateway 协调后再启动。"""
+def test_market_sync_skips_existing_local_candidate() -> None:
+    """运行目录已有可用插件时，启动同步不因本地候选重复安装。"""
     online = SimpleNamespace(
         id="DemoPlugin",
         repo_url=REPO_URL,
@@ -130,8 +167,8 @@ def test_market_sync_reconciles_existing_local_candidate_through_gateway() -> No
         log=Mock(),
     )
 
-    assert service.sync(online_restore_plugins={"demoplugin"}) == [online.id]
-    install.assert_called_once_with(online.id, None, False, None)
+    assert service.sync(online_restore_plugins={"demoplugin"}) == []
+    install.assert_not_called()
 
 
 def test_market_sync_defers_source_selection_to_gateway() -> None:
@@ -156,7 +193,7 @@ def test_market_sync_defers_source_selection_to_gateway() -> None:
     )
 
     assert service.sync() == [local.id]
-    install.assert_called_once_with(local.id, None, False, None)
+    install.assert_called_once_with(local.id, local.repo_url, False, None)
 
 
 def test_market_sync_reports_local_install_failure() -> None:
@@ -179,11 +216,28 @@ def test_market_sync_reports_local_install_failure() -> None:
         log=Mock(),
     )
 
-    with pytest.raises(
-        RuntimeError,
-        match="延后激活的插件同步未完成：DemoPlugin",
-    ):
+    with pytest.raises(RuntimeError, match="插件同步未完成：DemoPlugin"):
         service.sync()
+
+
+def test_market_sync_stops_without_online_fallback_when_local_scan_fails() -> None:
+    """本地仓扫描失败时，启动同步不得退回在线候选。"""
+    statuses: list[tuple[str, object]] = []
+    service = PluginSyncService(
+        frozen=lambda: False,
+        installed_plugins=lambda: ["DemoPlugin"],
+        online_plugins=lambda: pytest.fail("本地扫描失败后不应读取在线候选"),
+        local_plugins=lambda: (_ for _ in ()).throw(RuntimeError("repo unavailable")),
+        merge_plugins=lambda items, *_args: items,
+        plugin_exists=lambda *_args: False,
+        install=Mock(return_value=(True, "")),
+        runtime_status_writer=lambda plugin_id, status: statuses.append((plugin_id, status)),
+        log=Mock(),
+    )
+
+    with pytest.raises(RuntimeError, match="本地插件仓读取失败"):
+        service.sync()
+    assert statuses == [("demoplugin", PluginRuntimeStatus.SYNC_FAILED)]
 
 
 def test_local_sync_matches_installed_plugin_id_case_insensitively() -> None:
@@ -272,6 +326,7 @@ async def test_market_sync_preserves_generation_priority_through_gateway(
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
     monkeypatch.setattr(
         global_vars,
@@ -294,7 +349,7 @@ async def test_market_sync_preserves_generation_priority_through_gateway(
             release_version=None,
             force=force,
             local_sync=True,
-            explicit_source=False,
+            explicit_source=True,
             startup_token=startup_token,
         )
 
@@ -331,9 +386,9 @@ async def test_market_sync_preserves_generation_priority_through_gateway(
 
     assert synced == [local.plugin_id]
     executor.execute.assert_awaited_once()
-    assert executor.execute.await_args.kwargs["local_sync"] is False
+    assert executor.execute.await_args.kwargs["local_sync"] is True
     admission = executor.execute.await_args.kwargs["admission"]
-    assert admission.candidate is online
+    assert admission.candidate is local
     assert admission.trusted_source_key == online.source_key
 
 
@@ -410,6 +465,7 @@ async def test_market_sync_blocks_activation_when_gateway_selected_local_fails(
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
     monkeypatch.setattr(
         global_vars,
@@ -468,10 +524,7 @@ async def test_market_sync_blocks_activation_when_gateway_selected_local_fails(
     )
 
     async with plugin_lifecycle.hold_startup() as startup_token:
-        with pytest.raises(
-            RuntimeError,
-            match="延后激活的插件同步未完成：DemoPlugin",
-        ):
+        with pytest.raises(RuntimeError, match="插件同步未完成：DemoPlugin"):
             await asyncio.wait_for(
                 asyncio.to_thread(service.sync, startup_token),
                 timeout=2,
@@ -556,6 +609,7 @@ async def test_market_sync_reuses_startup_lease_through_real_gateway(
         candidate_compatibility=lambda _candidate: (True, ""),
         executor=executor,
         clock=lambda: datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc),
+        source_plugin_id=lambda plugin_id: plugin_id,
     )
     monkeypatch.setattr(
         global_vars,

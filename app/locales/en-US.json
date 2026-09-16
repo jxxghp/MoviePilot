@@ -2,104 +2,174 @@
   "system": {
     "modules": {
       "BangumiModule": {
-        "name": "Bangumi"
+        "name": "Bangumi",
+        "description": "Bangumi anime data source for media identification, search, and discovery."
+      },
+      "AmllModule": {
+        "name": "AMLL TTML",
+        "description": "Uses AMLL TTML as a lyrics source for music scraping."
+      },
+      "AniListModule": {
+        "name": "AniList",
+        "description": "AniList anime data source for media identification, search, and discovery."
       },
       "DiscordModule": {
-        "name": "Discord"
+        "name": "Discord",
+        "description": "Sends system events and task results to Discord."
       },
       "DoubanModule": {
-        "name": "Douban"
+        "name": "Douban",
+        "description": "Douban data source for movie, TV, and music identification, search, and discovery lists."
       },
       "EmbyModule": {
-        "name": "Emby"
+        "name": "Emby",
+        "description": "Media-server adapter that synchronizes Emby libraries and runs refresh or playback actions."
       },
       "FanartModule": {
-        "name": "Fanart"
+        "name": "Fanart",
+        "description": "Adds Fanart.tv posters, backdrops, and artwork during media scraping."
       },
       "FeishuModule": {
-        "name": "Feishu"
+        "name": "Feishu",
+        "description": "Sends system events and task results to Feishu bots."
       },
       "FileManagerModule": {
-        "name": "File Organization"
+        "name": "File Organization",
+        "description": "Executes the file reads, copies, moves, renames, and deletions used by media organization."
       },
       "FilterModule": {
-        "name": "Filter"
+        "name": "Filter",
+        "description": "Applies filter rules, recognition terms, and release-group matching during search, download, and organization."
       },
       "ImdbModule": {
-        "name": "IMDb"
+        "name": "IMDb",
+        "description": "IMDb data source for movie and TV identification and search."
       },
       "IndexerModule": {
-        "name": "Site Indexer"
+        "name": "Site Indexer",
+        "description": "Indexes sites and searches resources, supplying parsed results to download workflows."
+      },
+      "ListenBrainzModule": {
+        "name": "ListenBrainz",
+        "description": "Supplies ListenBrainz charts and recommendation data for the music discovery page."
       },
       "JellyfinModule": {
-        "name": "Jellyfin"
+        "name": "Jellyfin",
+        "description": "Media-server adapter that synchronizes Jellyfin libraries and runs refresh or playback actions."
+      },
+      "MediaVaultModule": {
+        "name": "MediaVault",
+        "description": "Media-server adapter that connects to MediaVault and synchronizes its library."
+      },
+      "LrclibModule": {
+        "name": "LRCLIB",
+        "description": "Looks up LRCLIB lyrics during music scraping."
+      },
+      "MusicBrainzModule": {
+        "name": "MusicBrainz",
+        "description": "Core music identification data source for music search, recordings, releases, artists, and metadata."
       },
       "PlexModule": {
-        "name": "Plex"
+        "name": "Plex",
+        "description": "Media-server adapter that synchronizes Plex libraries and runs refresh or playback actions."
       },
       "PostgreSQLModule": {
-        "name": "PostgreSQL"
+        "name": "PostgreSQL",
+        "description": "Persists system settings, media, subscriptions, tasks, and other application data."
       },
       "QbittorrentModule": {
-        "name": "qBittorrent"
+        "name": "qBittorrent",
+        "description": "Downloader adapter that connects to qBittorrent and creates, pauses, and manages tasks."
       },
       "QQBotModule": {
-        "name": "QQ"
+        "name": "QQ",
+        "description": "Sends system events and task results to QQ bots."
       },
       "RedisModule": {
-        "name": "Redis Cache"
+        "name": "Redis Cache",
+        "description": "Stores cache, queues, and cross-process runtime state for scheduling and live progress."
       },
       "RtorrentModule": {
-        "name": "rTorrent"
+        "name": "rTorrent",
+        "description": "Downloader adapter that connects to rTorrent and creates, pauses, and manages tasks."
       },
       "SlackModule": {
-        "name": "Slack"
+        "name": "Slack",
+        "description": "Sends system events and task results to Slack."
       },
       "SubtitleModule": {
-        "name": "Site Subtitle"
+        "name": "Site Subtitle",
+        "description": "Searches sites for subtitles, downloads them, and feeds them into media organization."
       },
       "SynologyChatModule": {
-        "name": "Synology Chat"
+        "name": "Synology Chat",
+        "description": "Sends system events and task results to Synology Chat."
       },
       "TelegramModule": {
-        "name": "Telegram"
+        "name": "Telegram",
+        "description": "Sends system events and task results to Telegram bots."
       },
       "TheMovieDbModule": {
-        "name": "TheMovieDb"
+        "name": "TheMovieDb",
+        "description": "Core movie and TV data source for identification, search, discovery, recommendations, people, and collections."
       },
       "TheTvDbModule": {
-        "name": "TheTvDb"
+        "name": "TheTvDb",
+        "description": "TheTvDb data source for TV identification and auxiliary metadata."
+      },
+      "TheAudioDbModule": {
+        "name": "TheAudioDB",
+        "description": "TheAudioDB auxiliary data source for music identification and artist search."
       },
       "TransmissionModule": {
-        "name": "Transmission"
+        "name": "Transmission",
+        "description": "Downloader adapter that connects to Transmission and creates, pauses, and manages tasks."
       },
       "TrimeMediaModule": {
-        "name": "Trime Media"
+        "name": "Trime Media",
+        "description": "Media-server adapter that connects to Trime Media and synchronizes its library."
       },
       "UgreenModule": {
-        "name": "UGREEN"
+        "name": "UGREEN",
+        "description": "Media-server adapter that connects to UGREEN Media and synchronizes its library."
       },
       "VoceChatModule": {
-        "name": "VoceChat"
+        "name": "VoceChat",
+        "description": "Sends system events and task results to VoceChat."
       },
       "WebPushModule": {
-        "name": "WebPush"
+        "name": "WebPush",
+        "description": "Pushes system messages to users through browser Web Push."
       },
       "WechatModule": {
-        "name": "WeCom"
+        "name": "WeCom",
+        "description": "Sends system events and task results to WeCom bots."
       },
       "WechatClawBotModule": {
-        "name": "WeChat ClawBot"
+        "name": "WeChat ClawBot",
+        "description": "Sends system events and task results to WeChat ClawBot."
       },
       "ZSpaceModule": {
-        "name": "Zspace"
+        "name": "Zspace",
+        "description": "Media-server adapter that connects to Zspace and synchronizes its library."
       }
     },
     "module_test": {
       "unsupported": "Module does not support testing"
+    },
+    "storage": {
+      "local": "Local",
+      "alipan": "Aliyun Drive",
+      "u115": "115 Cloud",
+      "rclone": "RClone",
+      "alist": "OpenList",
+      "alistgo": "AList",
+      "smb": "SMB Network Share"
     }
   },
   "messages": {
+    "整理任务已清理": "The organization task has been cleared",
+    "暂无到期订阅，无需搜索": "No subscriptions are due for search",
     "调用工具失败": "Tool call failed",
     "无效的媒体来源": "Invalid media source",
     "该媒体来源不支持此音乐接口": "This media source is not supported by this music endpoint",
@@ -107,9 +177,25 @@
     "media_source 和 media_id 必须同时提供": "media_source and media_id must be provided together",
     "新增订阅时必须同时提供有效的 media_source 和 media_id": "A valid media_source and media_id must be provided together when creating a subscription",
     "更新媒体身份时必须同时提供有效的 media_source 和 media_id": "A valid media_source and media_id must be provided together when updating media identity",
+    "分类策略已被其他会话更新，请刷新后重试": "The classification policy was updated by another session. Refresh and try again",
+    "分类策略已被其他会话更新，请重新加载或合并后再发布": "The classification policy was updated by another session. Reload or merge before publishing again",
+    "分类策略校验失败": "Classification policy validation failed",
+    "分类策略转换失败": "Classification policy conversion failed",
+    "不支持的分类策略模板": "Unsupported classification policy template",
     "模块不支持测试": "Module does not support testing",
     "网络请求失败": "Network request failed",
     "TMDB请求失败": "TMDB request failed",
+    "无效的媒体类型": "Invalid media type",
+    "ListenBrainz 来源只支持音乐媒体类型": "The ListenBrainz source only supports music media",
+    "无效的音乐实体类型": "Invalid music entity type",
+    "无效的榜单周期": "Invalid chart range",
+    "无效的榜单排序": "Invalid chart sort order",
+    "新发行结果只支持专辑": "Fresh release results only support albums",
+    "无效的新发行排序": "Invalid fresh release sort order",
+    "past 和 future 不能同时为 false": "past and future cannot both be false",
+    "音乐推荐需使用 ListenBrainz 来源": "Music recommendations require a ListenBrainz source",
+    "directory_type 无效": "Invalid directory_type",
+    "storage_type 无效": "Invalid storage_type",
     "媒体服务器请求失败": "Media server request failed",
     "附件保存失败": "Failed to save attachment",
     "通知配置保存成功": "Notification configuration saved successfully",
@@ -122,6 +208,17 @@
     "当前管理用户缺少可审计身份": "The current administrator does not have an auditable identity",
     "人工复核任务不存在": "The manual review task does not exist",
     "任务添加失败": "Failed to add task",
+    "没有需要搜索的订阅": "No subscriptions need searching",
+    "这个订阅已经在搜索中，请稍候": "This subscription is already being searched. Please wait",
+    "已安排搜索，很快开始": "Search scheduled and will start soon",
+    "当前没有可检查的订阅资源": "No subscription resources are currently available to check",
+    "正在整理订阅资源 ...": "Organizing subscription resources ...",
+    "订阅资源检查完成": "Subscription resource check complete",
+    "订阅资源检查已停止，部分订阅这次未检查": "Subscription resource check stopped; some subscriptions were not checked this time",
+    "订阅资源检查结束，部分订阅没有完成": "Subscription resource check finished; some subscriptions did not complete",
+    "订阅资源检查完成，部分订阅这次未检查": "Subscription resource check complete; some subscriptions were not checked this time",
+    "订阅搜索正在处理中，本次不再重复开始": "A subscription search is already in progress. This run will not start again",
+    "订阅资源检查正在进行，本次不再重复开始": "A subscription resource check is already in progress. This run will not start again",
     "无法识别媒体信息": "Unable to recognize media information",
     "未识别到媒体信息": "Unable to recognize media information",
     "未识别到音乐信息": "Unable to recognize music information",
@@ -129,6 +226,7 @@
     "未识别到艺术家信息": "Unable to recognize artist information",
     "音乐实体类型无效，仅支持 recording 或 album": "Invalid music entity type; only recording or album is supported",
     "音乐下载只能使用音乐元数据源": "Music downloads can only use music metadata sources",
+    "艺术家合集只能使用音乐元数据源": "Artist collections can only use music metadata sources",
     "音乐重新识别只能使用音乐元数据源": "Music re-identification can only use music metadata sources",
     "读取数据库备份列表失败，请查看日志": "Failed to load database backups. Check the logs for details",
     "创建数据库备份失败，请查看日志": "Failed to create the database backup. Check the logs for details",
@@ -156,6 +254,7 @@
     "媒体ID格式无效": "Invalid media ID format",
     "MusicBrainz 只能用于音乐刮削": "MusicBrainz can only be used for music scraping",
     "音乐元数据源只能用于音乐刮削": "Music metadata sources can only be used for music scraping",
+    "艺术家合集任务添加失败": "Failed to add the artist collection download task",
     "刮削失败，无法识别音乐信息": "Scraping failed: unable to recognize music information",
     "刮削失败，无法识别媒体信息": "Scraping failed: unable to recognize media information",
     "刮削路径不存在": "Scraping path does not exist",
@@ -180,6 +279,8 @@
     "验证失败": "Verification failed",
     "没有传入仓库地址，无法正确安装插件，请检查配置": "No repository URL was provided, so the plugin cannot be installed. Please check the configuration",
     "插件分身创建成功": "Plugin clone created successfully",
+    "请至少选择一项要清理的内容": "Select at least one item to purge",
+    "默认调用目标正被并发修改，请重试": "The default call target is being modified concurrently, please retry",
     "未识别到豆瓣媒体信息": "Unable to recognize Douban media information",
     "未识别到TMDB媒体信息": "Unable to recognize TMDB media information",
     "未知的媒体ID": "Unknown media ID",
@@ -190,6 +291,7 @@
     "用户未通过认证，无法使用站点功能！": "User authentication has not passed, so site features cannot be used.",
     "该站点不支持，请检查站点域名是否正确": "This site is not supported. Please check whether the site domain is correct",
     "站点不存在": "Site does not exist",
+    "站点 {site} 未配置域名": "Site {site} does not have a configured domain",
     "CookieCloud同步任务已启动！": "CookieCloud sync task has started!",
     "站点已重置！": "Site has been reset!",
     "站点不支持索引或未通过用户认证！": "The site does not support indexing or user authentication has not passed!",
@@ -234,6 +336,7 @@
     "用户名不能为空": "Username cannot be empty",
     "用户名已被使用": "Username is already in use",
     "系统已经完成初始化": "The system has already been initialized",
+    "SUPERUSER 已由配置文件或环境变量固定，初始化用户名不能修改": "SUPERUSER is fixed by the configuration file or environment variable; the initialization username cannot be changed",
     "必须保留至少一个启用的超级管理员": "At least one active superuser must remain",
     "用户不存在": "User does not exist",
     "已存在相同名称的工作流": "A workflow with the same name already exists",
@@ -278,6 +381,38 @@
     "媒体信息识别失败": "Media information recognition failed",
     "媒体信息中没有季集信息": "Media information does not contain season and episode details",
     "文件整理模块运行失败": "File organization module failed to run",
+    "已提交重新整理，后台将自动处理": "Reorganization submitted; it will be processed in the background",
+    "整理任务已在等待重新处理": "The organization task is already waiting to be retried",
+    "这条整理任务需要先完成人工确认，再重试": "This organization task needs manual confirmation before it can be retried",
+    "这条整理任务当前无法重试，请刷新后再试": "This organization task cannot be retried right now. Refresh and try again",
+    "整理任务已提交重试，请勿重复操作": "The organization task has already been queued for retry. Do not submit it again",
+    "整理任务状态已变化，请刷新后重试": "The organization task changed state. Refresh and try again",
+    "整理任务已被其他操作放弃": "The organization task was discarded by another operation",
+    "没有找到对应的整理任务，请刷新后重试": "The organization task was not found. Refresh and try again",
+    "这条整理任务当前无法放弃，请刷新后重试": "This organization task cannot be discarded right now. Refresh and try again",
+    "整理任务正在处理中，暂时无法放弃，请稍后重试": "The organization task is still running and cannot be discarded yet. Try again later",
+    "已放弃这条失败的整理任务": "The failed organization task was discarded",
+    "整理服务没有返回有效结果，请稍后重试": "The organization service did not return a valid result. Try again later",
+    "整理服务暂时无法生成有效计划，请稍后重试": "The organization service cannot create a valid plan right now. Try again later",
+    "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试": "Unable to recognize the media. Check the media source and media ID, then try again",
+    "整理结果确认失败，后台将自动重试": "The organization result could not be confirmed. It will be retried in the background",
+    "整理任务处理失败，请稍后重试": "The organization task failed. Try again later",
+    "整理操作多次失败，请稍后重试": "The organization operation failed repeatedly. Try again later",
+    "整理任务结果暂未确认，后台将自动重试": "The organization result is not confirmed yet and will be retried in the background",
+    "提交后的相关处理未完成，系统将自动重试": "Some follow-up processing is incomplete and will be retried automatically",
+    "后台任务暂未完成，系统会自动重试": "The background task is not finished yet and will be retried automatically",
+    "整理失败，请刷新后重试": "Organization failed. Refresh and try again",
+    "整理任务暂时无法重试，请稍后重试": "The organization task cannot be retried right now. Try again later",
+    "订阅分类设置无效，请重新选择分类后重试": "The subscription classification is invalid. Select it again and try again",
+    "订阅操作失败，请刷新后重试": "The subscription operation failed. Refresh and try again",
+    "智能助手执行失败，请稍后重试": "Assistant execution failed. Try again later",
+    "消息处理失败，请稍后重试": "Message processing failed. Try again later",
+    "消息验证失败，请稍后重试": "Message verification failed. Try again later",
+    "附件读取失败，请稍后重试": "Attachment could not be read. Try again later",
+    "搜索失败，请稍后重试": "Search failed. Try again later",
+    "MCP 服务测试失败，请检查服务配置后重试": "The MCP service test failed. Check the service configuration and try again",
+    "没有可发送的浏览器通知": "No browser notification subscriptions are available",
+    "消息发送失败，请检查浏览器通知权限后重试": "Message delivery failed. Check browser notification permissions and try again",
     "缺少目录参数": "Directory parameter is missing",
     "目录不存在": "Directory does not exist",
     "没有可用于识别的样本文件": "No sample files are available for recognition",
@@ -334,6 +469,8 @@
     "微信 ClawBot 通知未启用或配置尚未保存，请先保存并启用当前渠道": "WeChat ClawBot notification is not enabled or the configuration has not been saved. Please save and enable this channel first",
     "请输入至少一个有效的站点 ID": "Enter at least one valid site ID",
     "所有订阅搜索完成": "All subscription searches are complete",
+    "没有找到这次搜索，请刷新后重试": "This search could not be found. Refresh and try again",
+    "这次搜索已经结束，暂时无法停止": "This search has already ended and cannot be stopped",
     "订阅搜索锁等待超时，已跳过本轮": "Subscription search lock timed out, this round was skipped",
     "订阅匹配锁等待超时，已跳过本轮": "Subscription matching lock timed out, this round was skipped",
     "请输入订阅 ID，多个 ID 用空格分隔，或输入 all": "Enter subscription IDs separated by spaces, or enter all",
@@ -444,6 +581,42 @@
   },
   "message_patterns": [
     {
+      "source": "{name} 未能加入整理队列，请稍后重试",
+      "target": "Could not add {name} to the organization queue. Try again later"
+    },
+    {
+      "source": "已提交 {count} 个整理任务，后台将自动处理",
+      "target": "Submitted {count} organization tasks; they will be processed in the background"
+    },
+    {
+      "source": "以下整理记录未能提交重试：{reason}",
+      "target": "The following organization records could not be queued for retry: {reason}"
+    },
+    {
+      "source": "第 {history_id} 条：{reason}",
+      "target": "Record {history_id}: {reason}"
+    },
+    {
+      "source": "已提交 {count} 条旧历史给智能助手处理",
+      "target": "Submitted {count} legacy records to the Assistant"
+    },
+    {
+      "source": "消息已发送到 {success_count} 个设备",
+      "target": "Message sent to {success_count} devices"
+    },
+    {
+      "source": "消息已发送到 {success_count} 个设备，{failure_count} 个设备发送失败",
+      "target": "Message sent to {success_count} devices; delivery failed for {failure_count} devices"
+    },
+    {
+      "source": "订阅分类无效：{reason}",
+      "target": "Invalid subscription classification: {reason}"
+    },
+    {
+      "source": "不支持的推荐来源: {source}",
+      "target": "Unsupported recommendation source: {source}"
+    },
+    {
       "source": "工具 '{tool}' 未找到",
       "target": "Tool '{tool}' was not found"
     },
@@ -482,6 +655,10 @@
     {
       "source": "站点 {site} 不存在",
       "target": "Site {site} does not exist"
+    },
+    {
+      "source": "站点 {site} 未配置域名",
+      "target": "Site {site} does not have a configured domain"
     },
     {
       "source": "站点 {site} 不支持",
@@ -676,6 +853,18 @@
       "target": "Completed searches for {count} subscriptions"
     },
     {
+      "source": "{count} 个订阅已经在搜索中，无需重复提交",
+      "target": "{count} subscriptions are already being searched. No need to submit again"
+    },
+    {
+      "source": "已安排 {queued} 个订阅搜索，另有 {ongoing} 个正在处理中",
+      "target": "Scheduled searches for {queued} subscriptions; {ongoing} are already being processed"
+    },
+    {
+      "source": "已安排 {count} 个订阅搜索，系统会依次处理",
+      "target": "Scheduled searches for {count} subscriptions. They will be processed in order"
+    },
+    {
       "source": "请输入至少一个有效的订阅 ID",
       "target": "Enter at least one valid subscription ID"
     },
@@ -866,6 +1055,10 @@
     {
       "source": "创建插件分身失败：{reason}",
       "target": "Failed to create plugin clone: {reason}"
+    },
+    {
+      "source": "实例 ID 非法：{reason}",
+      "target": "Invalid instance ID: {reason}"
     },
     {
       "source": "请先卸载该插件的分身：{instances}",
@@ -1332,6 +1525,10 @@
       "target": "Subscription search ({index}/{total}) completed"
     },
     {
+      "source": "为了避免连续访问站点，约 {seconds} 秒后继续搜索 ...",
+      "target": "To avoid repeated site requests, search will continue in about {seconds} seconds ..."
+    },
+    {
       "source": "开始刷新订阅，共 {count} 个订阅 ...",
       "target": "Starting subscription refresh, {count} subscriptions ..."
     },
@@ -1342,6 +1539,18 @@
     {
       "source": "正在匹配订阅（{index}/{total}）{name} ...",
       "target": "Matching subscription ({index}/{total}) {name} ..."
+    },
+    {
+      "source": "资源整理完成，开始检查 {count} 个订阅 ...",
+      "target": "Resource organization complete. Checking {count} subscriptions ..."
+    },
+    {
+      "source": "正在检查订阅（{index}/{total}）{name} ...",
+      "target": "Checking subscription ({index}/{total}) {name} ..."
+    },
+    {
+      "source": "已检查订阅（{index}/{total}）",
+      "target": "Checked subscription ({index}/{total})"
     },
     {
       "source": "开始更新订阅元数据，共 {count} 个订阅 ...",

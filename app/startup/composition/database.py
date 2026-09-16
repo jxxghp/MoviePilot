@@ -20,6 +20,7 @@ from app.application.maintenance import (
     DataCleanupService,
     read_cleanup_policy,
 )
+from app.application.plugin.runtime import get_existing_plugin_manager
 from app.application.plugin.transaction import (
     PluginPersistenceService,
     configure_plugin_persistence,
@@ -50,6 +51,7 @@ from app.db.engine import get_engine
 from app.db.health import probe_database
 from app.db.maintenance import DatabaseCleanupRepository
 from app.db.oper.systemconfig import SystemConfigOper
+from app.db.plugin.registry import database_handles
 from app.db.session import (
     SessionFactory,
     async_session_scope,
@@ -59,6 +61,7 @@ from app.db.uow import (
     reset_transaction_runners,
 )
 from app.db.worker import DatabaseWorker
+from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
 
@@ -199,6 +202,35 @@ def build_database_governance() -> DatabaseGovernance:
     else:
         raise RuntimeError(f"不支持的数据库类型：{dialect}")
 
+    def backup_plugin_databases() -> None:
+        """为当前已建立的 SQLite 插件库创建独立制品。"""
+        if dialect != "sqlite":
+            return
+        manager = get_existing_plugin_manager()
+        if manager is None:
+            return
+        for handle in database_handles():
+            if handle.db_path is None:
+                continue
+            version = manager.get_local_plugin_version(handle.plugin_id)
+            if not version:
+                logger.warning(
+                    "插件 %s 未找到版本，将使用无版本文件名继续备份数据库",
+                    handle.plugin_id,
+                )
+            plugin_service = DatabaseBackupService(
+                backend=SQLiteBackupBackend(handle.engine),
+                artifact_store_factory=BackupFiles,
+                policy_reader=lambda: BackupPolicy(
+                    root=get_runtime_setting("DATABASE_BACKUP_PATH") / "plugins" / handle.plugin_id,
+                    retention_days=get_runtime_setting("DB_BACKUP_RETENTION_DAYS"),
+                    max_count=get_runtime_setting("DB_BACKUP_MAX_COUNT"),
+                ),
+                target=handle.plugin_id,
+                version=version,
+            )
+            plugin_service.create()
+
     return DatabaseGovernance(
         health=DatabaseHealthService(probe_database),
         cleanup=DataCleanupService(
@@ -210,6 +242,7 @@ def build_database_governance() -> DatabaseGovernance:
             artifact_store_factory=BackupFiles,
             policy_reader=read_backup_policy,
         ),
+        plugin_backup=backup_plugin_databases,
     )
 
 

@@ -1134,6 +1134,38 @@ class LlmHelperTestCallTest(unittest.TestCase):
         self.assertEqual(calls[0].get("thinking_level"), "high")
         self.assertFalse(calls[0].get("include_thoughts"))
 
+    def test_get_llm_keeps_google_native_transport_for_compatibility_url(self):
+        """即使配置残留 Google OpenAI 兼容地址，Google provider 仍必须使用原生 SDK。"""
+        calls = []
+
+        class _FakeChatGoogleGenerativeAI:
+            def __init__(self, **kwargs):
+                calls.append(kwargs)
+                self.model = kwargs["model"]
+                self.profile = None
+
+        with patch.dict(
+            sys.modules,
+            {
+                "langchain_google_genai": SimpleNamespace(
+                    ChatGoogleGenerativeAI=_FakeChatGoogleGenerativeAI
+                )
+            },
+        ):
+            asyncio.run(
+                llm_module.LLMHelper.get_llm(
+                    provider="google",
+                    model="gemini-3.1-pro-preview",
+                    thinking_level="high",
+                    api_key="sk-test",
+                    base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+                )
+            )
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["model"], "gemini-3.1-pro-preview")
+        self.assertNotIn("base_url", calls[0])
+
     def test_get_llm_responses_protocol_forces_responses_api(self):
         """显式 responses 协议应让通用 OpenAI 兼容入口走 Responses API。"""
         calls = []
