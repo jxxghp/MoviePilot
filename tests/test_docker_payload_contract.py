@@ -1,10 +1,13 @@
 """Docker 构建输入和镜像载荷分层合同。"""
 
+import shlex
+import subprocess
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = ROOT / "docker" / "Dockerfile"
+UPDATER = ROOT / "docker" / "update.sh"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "build-v3.yml"
 BETA_WORKFLOW = ROOT / ".github" / "workflows" / "beta.yml"
 
@@ -82,13 +85,68 @@ def test_dockerfile_assigns_each_payload_to_an_independent_stage() -> None:
     assert "RUN rm -rf /app/frontend-dist" in dockerfile
 
 
-def test_plugin_runtime_updates_preserve_legacy_base_entrypoint() -> None:
-    """更新和性能覆盖镜像必须保留旧插件导入 _PluginBase 所需的兼容入口。"""
+def test_plugin_runtime_updates_preserve_host_entrypoint() -> None:
+    """更新载荷只迁移插件内容，不得覆盖新版宿主包根兼容入口。"""
     update_script = _read(ROOT / "docker" / "update.sh")
     perf_script = _read(ROOT / "scripts" / "perf" / "moviepilot_docker_ab.py")
 
-    assert 'rm -f "${stage_plugin_dir}/__init__.py"' not in update_script
-    assert "rm -f /frozen/plugins/__init__.py" not in perf_script
+    assert 'find "${APP_DIR}/app/plugins" -mindepth 1 -maxdepth 1' in update_script
+    assert '! -name "__init__.py"' in update_script
+    assert 'cp -a "${APP_DIR}/app/plugins/."' not in update_script
+    assert "find /app/app/plugins -mindepth 1 -maxdepth 1" in perf_script
+    assert "! -name '__init__.py'" in perf_script
+    assert "cp -a /app/app/plugins/." not in perf_script
+
+
+def test_update_script_keeps_new_host_entrypoint_during_runtime_migration(
+    tmp_path: Path,
+) -> None:
+    """Docker 更新脚本迁移旧插件时不得覆盖新归档中的宿主入口。"""
+    app_dir = tmp_path / "current"
+    temp_dir = tmp_path / "temp"
+    stage_app = temp_dir / "App"
+    venv_dir = tmp_path / "venv"
+    current_plugins = app_dir / "app" / "plugins"
+    stage_plugins = stage_app / "app" / "plugins"
+    current_plugins.mkdir(parents=True)
+    stage_plugins.mkdir(parents=True)
+    (current_plugins / "__init__.py").write_text("old host\n", encoding="utf-8")
+    (current_plugins / "demoplugin" / "dist").mkdir(parents=True)
+    (current_plugins / "demoplugin" / "__init__.py").write_text(
+        "plugin\n", encoding="utf-8"
+    )
+    (stage_plugins / "__init__.py").write_text("new host\n", encoding="utf-8")
+    (stage_plugins / "stale").write_text("stale\n", encoding="utf-8")
+    for name, content in (
+        ("version.py", "APP_VERSION = 'v3.1.0'\n"),
+        ("pyproject.toml", "[project]\n"),
+        ("uv.lock", "version = 1\n"),
+    ):
+        (stage_app / name).parent.mkdir(parents=True, exist_ok=True)
+        (stage_app / name).write_text(content, encoding="utf-8")
+    (temp_dir / "dist").mkdir(parents=True)
+    (temp_dir / "dist" / "index.html").write_text("ok\n", encoding="utf-8")
+    python_bin = venv_dir / "bin" / "python3"
+    python_bin.parent.mkdir(parents=True)
+    python_bin.write_text("#!/bin/sh\nprintf '%s\\n' cpython-314\n", encoding="utf-8")
+    python_bin.chmod(0o755)
+
+    script = f"""
+set -eu
+CONFIG_DIR={shlex.quote(str(tmp_path / 'config'))}
+VENV_PATH={shlex.quote(str(venv_dir))}
+GITHUB_PROXY=""
+source {shlex.quote(str(UPDATER))}
+APP_DIR={shlex.quote(str(app_dir))}
+TMP_PATH={shlex.quote(str(temp_dir))}
+download_staged_resource() {{ return 0; }}
+stage_runtime_payload
+test "$(cat {shlex.quote(str(stage_plugins / '__init__.py'))})" = "new host"
+test -f {shlex.quote(str(stage_plugins / 'demoplugin' / '__init__.py'))}
+test ! -e {shlex.quote(str(stage_plugins / 'stale'))}
+"""
+
+    subprocess.run(["bash", "-c", script], check=True)
 
 
 def test_release_workflows_pin_and_record_external_payload_identities() -> None:

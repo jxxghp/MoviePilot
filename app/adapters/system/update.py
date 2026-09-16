@@ -853,6 +853,28 @@ class SystemUpdateManager(metaclass=SingletonClass):
                 follow_symlinks=False,
             )
 
+    def _copy_plugin_runtime_payload(self, source: Path, destination: Path) -> None:
+        """
+        迁移插件运行时内容，但保留新版宿主的包根入口。
+
+        ``app/plugins/__init__.py`` 属于后端源码提供的兼容入口，不属于持久化插件；
+        旧版本该文件包含宿主实现，随插件目录迁移会遮蔽新版 SDK 的兼容符号。
+        """
+        destination.mkdir(parents=True, exist_ok=True)
+        for destination_path in destination.iterdir():
+            if destination_path.name != "__init__.py":
+                self._remove_path(destination_path)
+
+        for source_path in source.iterdir():
+            if source_path.name == "__init__.py":
+                continue
+            destination_path = destination / source_path.name
+            if source_path.is_dir() and not source_path.is_symlink():
+                shutil.copytree(source_path, destination_path, symlinks=True)
+            else:
+                shutil.copy2(source_path, destination_path, follow_symlinks=False)
+            self._preserve_tree_ownership(source_path, destination_path)
+
     @staticmethod
     def _clear_staged_native_resources(resource_dir: Path) -> None:
         """清除暂存目录中的旧平台原生站点资源。"""
@@ -921,8 +943,8 @@ class SystemUpdateManager(metaclass=SingletonClass):
         """
         解压并组装待切换的 Docker 后端、前端和插件资源载荷。
 
-        新版本归档是 Python 源码的唯一来源，旧版本目录只叠加插件和站点运行时资源，
-        避免把新版新增的应用模块覆盖掉。
+        新版本归档是 Python 源码的唯一来源，旧版本目录只迁移插件和站点运行时内容，
+        不覆盖新版的插件包根兼容入口或新增应用模块。
         """
         backend_extract = temporary_root / "backend"
         frontend_extract = temporary_root / "frontend"
@@ -942,13 +964,13 @@ class SystemUpdateManager(metaclass=SingletonClass):
         current_app = self._docker_app_dir
         current_plugins = current_app / "app" / "plugins"
         stage_plugins = stage_app / "app" / "plugins"
-        if stage_plugins.exists() or stage_plugins.is_symlink():
+        if stage_plugins.is_symlink():
             self._remove_path(stage_plugins)
+        if stage_plugins.exists() and not stage_plugins.is_dir():
+            raise RuntimeError("插件运行目录不是目录")
+        stage_plugins.mkdir(parents=True, exist_ok=True)
         if current_plugins.is_dir():
-            shutil.copytree(current_plugins, stage_plugins, symlinks=True)
-            self._preserve_tree_ownership(current_plugins, stage_plugins)
-        else:
-            stage_plugins.mkdir(parents=True, exist_ok=True)
+            self._copy_plugin_runtime_payload(current_plugins, stage_plugins)
         if not (stage_plugins / "__init__.py").is_file():
             raise RuntimeError("插件运行目录缺少 app.plugins 兼容入口")
 

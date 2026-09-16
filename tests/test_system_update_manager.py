@@ -491,6 +491,10 @@ def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugin
         archive.writestr("MoviePilot-v3.1.0/uv.lock", "version = 1\n")
         archive.writestr("MoviePilot-v3.1.0/new.py", "new\n")
         archive.writestr(
+            "MoviePilot-v3.1.0/app/plugins/__init__.py",
+            "new compatibility\n",
+        )
+        archive.writestr(
             "MoviePilot-v3.1.0/app/application/site/__init__.py",
             "",
         )
@@ -531,6 +535,9 @@ def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugin
     assert sync_calls[0][1] == {}
     assert (app_dir / "new.py").read_text(encoding="utf-8") == "new\n"
     assert not (app_dir / "old.py").exists()
+    assert (app_dir / "app" / "plugins" / "__init__.py").read_text(
+        encoding="utf-8"
+    ) == "new compatibility\n"
     assert (app_dir / "app" / "plugins" / "local_plugin.py").exists()
     assert (resource_dir / "user.sites.v3.bin").read_text(encoding="utf-8") == "old-resource\n"
     assert (resource_dir / "auth.py").read_text(encoding="utf-8") == "new-auth\n"

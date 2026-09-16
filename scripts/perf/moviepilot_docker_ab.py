@@ -106,8 +106,9 @@ FROM ${MP_SUBSTRATE} AS frozen
 
 RUN set -eux; \
     mkdir -p /frozen/plugins /frozen/site; \
-    cp -a /app/app/plugins/. /frozen/plugins/; \
-    test -f /frozen/plugins/__init__.py; \
+    find /app/app/plugins -mindepth 1 -maxdepth 1 ! -name '__init__.py' \
+      -exec cp -a '{}' /frozen/plugins/ \;; \
+    test -f /app/app/plugins/__init__.py; \
     rm -rf /frozen/plugins/__pycache__; \
     find /app/app/application/site -maxdepth 1 -type f \
       \( -name 'sites.*.so' -o -name 'user.sites.v3.bin' \) \
