@@ -248,6 +248,8 @@ class HistoryMatchMixin(_TransferOwnerBase):
                         value = MediaType(value)
                     elif field_name == "media_source" and value:
                         value = MediaSource(value)
+                    elif field_name == "apply_words":
+                        value = list(value or [])
                 except (TypeError, ValueError):
                     continue
                 setattr(download_meta, field_name, value)

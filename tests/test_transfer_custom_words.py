@@ -5,6 +5,7 @@
 返回空而静默回退全局识别词、丢失偏移。修复后由订阅链在发起下载时将完整识别词作为入参传入
 下载模块并存档（避免下载模块反查订阅的同级循环依赖），整理时优先复用该快照。
 """
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -131,6 +132,29 @@ def test_transfer_prefers_download_metadata_to_file_name():
     assert result.video_encode == "H265"
     assert result.media_source == MediaSource.TMDB
     assert result.media_id == "123"
+
+
+def test_transfer_detaches_apply_words_from_frozen_download_snapshot():
+    """恢复非空识别词时应生成普通列表，确保整理规划可以深拷贝元数据。"""
+    apply_words = ["Original => Canonical"]
+    history = _fake_download_history(
+        note={
+            "meta_info": {
+                "type": MediaType.TV.value,
+                "apply_words": apply_words,
+            },
+            "media_file_count": 1,
+        }
+    )
+
+    result = TransferChain._merge_download_meta(None, history)
+    copied = deepcopy(result)
+
+    assert result.apply_words == apply_words
+    assert type(result.apply_words) is list
+    assert copied.apply_words == apply_words
+    result.apply_words.append("Another => Value")
+    assert history.note["meta_info"]["apply_words"] == apply_words
 
 
 def test_transfer_uses_file_episode_for_multi_file_download():
