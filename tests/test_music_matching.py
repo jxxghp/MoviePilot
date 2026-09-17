@@ -110,6 +110,26 @@ def test_resource_parser_merges_subtitle_without_target_information():
     assert meta.media_id is None
 
 
+def test_resource_parser_reads_unlabelled_album_description():
+    """描述末尾的无冒号专辑字段也应保留作品证据。"""
+    description = "Apple Music ALAC 宋冬野 2026 06 29 专辑 再想想"
+    meta = MetaMusic.parse_resource(
+        "Song DongYe 2026 AppleLossless Take Another Moment", description
+    )
+    assert (meta.title, meta.album, meta.artists, meta.year) == (
+        "AppleLossless Take Another Moment", "再想想", ["Song DongYe"], 2026
+    )
+
+
+def test_album_match_uses_unlabelled_description_title_as_candidate():
+    """外文资源的中文专辑描述可形成候选，但未核验艺术家不能自动命中。"""
+    title = "Song DongYe 2026 AppleLossless Take Another Moment"
+    description = "Apple Music ALAC 宋冬野 2026 06 29 专辑 再想想"
+    target = MusicInfo(music_type="album", title="再想想", artists=["宋冬野"], year=2026)
+    result = match_music_resource(target, title, description)
+    assert (result.status, result.reason) == ("candidate", "artist_unverified")
+
+
 def test_resource_parser_preserves_title_evidence_and_parses_track_segments():
     """冲突副标题不能覆盖标题艺术家，明确的曲序段则可用于区分专辑和单曲。"""
     meta = MetaMusic.parse_resource("Artist - Album - 01 - Song [FLAC]", "演唱：Other Artist")

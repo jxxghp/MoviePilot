@@ -70,6 +70,25 @@ def test_music_manual_candidates_keep_resource_identity_separate():
     assert candidate.media_info_is_target is False
 
 
+def test_music_description_title_is_available_as_manual_candidate():
+    """描述中的明确专辑名应进入人工候选，不得绕过默认精确搜索安全边界。"""
+    chain = SearchChain()
+    target = MusicInfo(music_type="album", title="再想想", artists=["宋冬野"], year=2026)
+    torrent = TorrentInfo(
+        title="Song DongYe 2026 AppleLossless Take Another Moment",
+        description="Apple Music ALAC 宋冬野 2026 06 29 专辑 再想想",
+        category=MediaType.MUSIC.value,
+    )
+    assert chain._build_music_contexts([torrent], target, rule_groups=[]) == []
+    candidates = chain._build_music_contexts(
+        [torrent], target, rule_groups=[], include_candidates=True
+    )
+    assert len(candidates) == 1
+    assert candidates[0].match_reason == "artist_unverified"
+    assert candidates[0].meta_info.album == "再想想"
+    assert candidates[0].media_info is None
+
+
 def test_music_stream_counts_rejected_site_results():
     """分类和名称不符仍属于站点原始候选，空态应能说明为何没有最终结果。"""
     chain = SearchChain()
