@@ -334,6 +334,69 @@ def test_execution_refreshes_same_revision_after_auxiliary_facts_change() -> Non
     assert refreshed.classification.effective.rule_id == "rule.movie.jp"
 
 
+def test_execution_preserves_automatic_category_when_supplement_drops_facts() -> None:
+    """裁剪过字段的媒体再次分类时，同策略已命中的自动分类不得被兜底覆盖。"""
+    migration = migrate_legacy_category_config(
+        {
+            "movie": {},
+            "tv": {
+                "国产剧": {"origin_country": "CN,TW,HK"},
+                "未分类": None,
+            },
+        }
+    )
+    domestic = next(
+        category.id
+        for category in migration.policy.categories
+        if category.name == "国产剧"
+    )
+    service = ClassificationExecutionService(_Runtime(migration.policy))
+    source = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="35593344",
+        type=MediaType.TV,
+        title="测试剧",
+        production_countries=[{"name": "中国大陆"}],
+    )
+    classified = service.finalize(source)
+    assert classified.classification.effective.category_id == domestic
+    assert classified.classification.state == "complete"
+
+    classified.clear()
+    supplemented = service.finalize(classified)
+
+    assert supplemented.classification is not None
+    assert supplemented.classification.effective.category_id == domestic
+    assert supplemented.classification.effective.source == "automatic"
+    assert supplemented.library_category == "国产剧"
+    # 本次求值确实缺事实，推荐结果和状态仍如实记录，供预览解释差异。
+    assert supplemented.classification.state == "partial"
+    assert supplemented.classification.recommended.source == "fallback"
+
+
+def test_execution_keeps_fallback_when_complete_facts_no_longer_match() -> None:
+    """事实读齐后不再命中规则时，兜底结果必须生效而不是复用旧自动分类。"""
+    service = ClassificationExecutionService(_Runtime(_policy()))
+    source = MediaInfo(
+        media_source="douban",
+        media_id="1",
+        type=MediaType.MOVIE,
+        origin_country=["JP"],
+        genres=[{"name": "动画"}],
+    )
+    classified = service.finalize(source)
+    assert classified.classification.effective.category_id == "movie.jp"
+
+    classified.origin_country = ["US"]
+    reclassified = service.finalize(classified)
+
+    assert reclassified.classification is not None
+    assert reclassified.classification.state == "complete"
+    assert reclassified.classification.effective.category_id == "movie.other"
+    assert reclassified.classification.effective.source == "fallback"
+    assert reclassified.library_category == "其它电影"
+
+
 def test_execution_applies_manual_effective_override_without_losing_recommendation() -> None:
     """订阅或目录人工覆盖只替换 effective，仍保留自动推荐供 UI 解释。"""
     source = MediaInfo(
