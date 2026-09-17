@@ -569,7 +569,7 @@ def _degraded_automatic_selection(
         return None
     if not str(selection.category_id or "").strip():
         return None
-    return selection.model_copy(deep=True)
+    return cast(ClassificationSelection, selection.model_copy(deep=True))
 
 
 def _enum_text(value: object) -> str:
