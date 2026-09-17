@@ -9,12 +9,13 @@ from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferSettlementResult,
 )
+from app.application.transfer.workflow import TransferPlanningInput
 from app.chain.transfer.facade import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
-from app.schemas.types import MediaType
+from app.schemas.types import EventType, MediaType
 
 
 def _fileitem(*, fileid: str = "source-v1", size: int = 1024) -> FileItem:
@@ -52,6 +53,20 @@ def _result(task, *, success: bool, overwrite_skipped: bool = False) -> Transfer
     )
 
 
+def _scrape_result(task, *, need_scrape: bool = True) -> TransferInfo:
+    """构造包含目标媒体库目录的成功刮削结果。"""
+    return _result(task, success=True).model_copy(update={
+        "target_diritem": FileItem(
+            storage="local",
+            path="/library/Movie (2026)",
+            type="dir",
+            name="Movie (2026)",
+        ),
+        "file_list_new": ["/library/Movie (2026)/Movie.mkv"],
+        "need_scrape": need_scrape,
+    })
+
+
 def _compat_chain(result_factory):
     """构造只执行旧同步命令和 task-aware 结算的 TransferChain 骨架。"""
     chain = object.__new__(TransferChain)
@@ -64,6 +79,8 @@ def _compat_chain(result_factory):
     chain._queued_lease_tokens = set()
     chain._worker_state_lock = threading.RLock()
     chain.durable_event_writer = Mock()
+    chain.eventmanager = Mock()
+    chain._media_exts = (".mkv",)
     executed = []
 
     def execute(task, **_kwargs):
@@ -163,6 +180,59 @@ def test_legacy_failed_result_uses_atomic_terminal_writer() -> None:
     assert call["publish"] is None
     assert call["settlement"].outcome == "failed"
     assert call["settlement"].error == "copy failed"
+
+
+def test_legacy_success_with_scrape_dispatches_target_metadata_event() -> None:
+    """旧同步整理成功结算后仍须向目标媒体库目录发送刮削事件。"""
+    chain, executed = _compat_chain(_scrape_result)
+    write, _staged_payloads = _settlement_writer(status=True)
+    chain.durable_event_writer.transfer_result.side_effect = write
+
+    returned = _invoke(chain, _fileitem())
+
+    assert returned.success is True
+    assert executed == ["source-v1"]
+    metadata_calls = [
+        call
+        for call in chain.eventmanager.send_event.call_args_list
+        if call.args[0] == EventType.MetadataScrape
+    ]
+    assert len(metadata_calls) == 1
+    event_data = metadata_calls[0].args[1]
+    assert event_data["fileitem"].path == "/library/Movie (2026)"
+    assert event_data["file_list"] == ["/library/Movie (2026)/Movie.mkv"]
+
+
+def test_legacy_success_uses_planning_scrape_intent_when_result_omits_flag() -> None:
+    """旧 ABI 返回结果漏填刮削标记时仍遵循已冻结的规划意图。"""
+    chain, _executed = _compat_chain(
+        lambda task: _scrape_result(task, need_scrape=False)
+    )
+    execute = chain._plan_checkpoint_and_execute.side_effect
+
+    def execute_with_planning_input(task, **kwargs):
+        """给兼容结算替身绑定已持久化的刮削意图。"""
+        task.bind_planning_input(
+            TransferPlanningInput(
+                source_fileitem=task.fileitem.model_dump(mode="json"),
+                need_scrape=True,
+            )
+        )
+        return execute(task, **kwargs)
+
+    chain._plan_checkpoint_and_execute.side_effect = execute_with_planning_input
+    write, _staged_payloads = _settlement_writer(status=True)
+    chain.durable_event_writer.transfer_result.side_effect = write
+
+    returned = _invoke(chain, _fileitem())
+
+    assert returned.success is True
+    metadata_calls = [
+        call
+        for call in chain.eventmanager.send_event.call_args_list
+        if call.args[0] == EventType.MetadataScrape
+    ]
+    assert len(metadata_calls) == 1
 
 
 def test_legacy_settlement_response_loss_replays_receipt_by_same_task_id() -> None:

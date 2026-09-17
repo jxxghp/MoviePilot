@@ -61,6 +61,12 @@ class TransferPlanningOwner(_TransferOwnerBase):
     ) -> TransferPlanningInput:
         """冻结准入时已知的请求参数，供 accepted 任务跨重启重新规划。"""
         target_directory = task.target_directory
+        # 旧 ABI 允许省略 scrape，此时必须冻结目标目录开关，避免准入快照与执行检查点分叉。
+        need_scrape = (
+            bool(target_directory.scraping)
+            if task.scrape is None and target_directory is not None
+            else bool(task.scrape)
+        )
         options = {
             "scrape": task.scrape,
             "library_type_folder": task.library_type_folder,
@@ -87,7 +93,7 @@ class TransferPlanningOwner(_TransferOwnerBase):
             media_source=task.media_source.value if task.media_source else None,
             media_id=task.media_id,
             media_type=task.mtype.value if task.mtype else None,
-            need_scrape=bool(task.scrape),
+            need_scrape=need_scrape,
             need_rename=bool(target_directory.renaming) if target_directory else True,
             need_notify=bool(target_directory.notify) if target_directory else False,
             overwrite_mode=(target_directory.overwrite_mode if target_directory else None),

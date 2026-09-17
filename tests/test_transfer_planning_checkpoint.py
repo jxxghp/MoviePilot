@@ -199,6 +199,27 @@ def _bind_checkpoint(task: TransferTask, checkpoint) -> None:
     binder(checkpoint)
 
 
+@pytest.mark.parametrize(
+    ("scrape", "expected"),
+    [(None, True), (False, False), (True, True)],
+)
+def test_planning_input_freezes_effective_directory_scrape_setting(scrape, expected):
+    """旧 ABI 省略刮削参数时冻结目标目录开关，显式值仍保持原意。"""
+    task = _task()
+    task.target_directory = TransferDirectoryConf(
+        name="library",
+        transfer_type="copy",
+        library_path="/library",
+        scraping=True,
+    )
+    task.scrape = scrape
+
+    planning_input = _chain()._TransferChain__build_planning_input(task)
+
+    assert planning_input.need_scrape is expected
+    assert planning_input.options["scrape"] is scrape
+
+
 def _planned_admission(task: TransferTask, checkpoint):
     """构造仓储 checkpoint 提交后返回的冻结投影。"""
     return SimpleNamespace(
