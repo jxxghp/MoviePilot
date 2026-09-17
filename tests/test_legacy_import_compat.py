@@ -7,6 +7,7 @@ from types import ModuleType
 
 import pytest
 
+import app.startup.initializers.plugins as plugins_initializer
 from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     get_legacy_import_diagnostics,
@@ -14,8 +15,12 @@ from app.runtime.compat.diagnostics import (
     scan_plugin_legacy_imports,
 )
 from app.runtime.compat.imports import (
+    PLUGINS_PACKAGE_ROOT_BACKUP_SUFFIX,
+    PLUGINS_PACKAGE_ROOT_SOURCE,
+    detect_plugins_package_root_shadowing,
     detect_shadowed_exports,
     install_legacy_import_hook,
+    restore_plugins_package_root,
 )
 from app.runtime.compat.manifest import (
     _MESSAGE_NOTIFICATION_SYMBOL_ALIASES,
@@ -636,3 +641,102 @@ def test_sdk_plugins_module_alias_reuses_manager_module():
         )
     finally:
         reset_legacy_import_diagnostics()
+
+
+def test_plugins_package_root_source_matches_shipped_file():
+    """自愈写回的包根源码必须与后端源码提供的包根完全一致。"""
+    shipped = Path(__file__).resolve().parents[1] / "app" / "plugins" / "__init__.py"
+    assert shipped.read_text(encoding="utf-8") == PLUGINS_PACKAGE_ROOT_SOURCE
+
+
+def test_plugins_package_root_shadowing_detects_legacy_host_implementation(tmp_path):
+    """旧版本自带宿主实现的包根必须被判定为遮蔽兼容符号。"""
+    init_file = tmp_path / "__init__.py"
+    init_file.write_text(
+        "from abc import ABCMeta\n"
+        "\n"
+        "\n"
+        "class PluginChian:\n"
+        "    pass\n"
+        "\n"
+        "\n"
+        "class _PluginBase(metaclass=ABCMeta):\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    assert detect_plugins_package_root_shadowing(init_file) == [
+        "PluginChian",
+        "_PluginBase",
+    ]
+
+
+def test_plugins_package_root_shadowing_ignores_reimported_symbols(tmp_path):
+    """包根只重新导入 canonical 对象不算遮蔽，自愈必须放过它。"""
+    init_file = tmp_path / "__init__.py"
+    init_file.write_text(
+        '"""说明。"""\n'
+        "\n"
+        "from app.sdk.plugin.base import PluginChain as PluginChian\n"
+        "from app.sdk.plugin.base import _PluginBase\n",
+        encoding="utf-8",
+    )
+    assert detect_plugins_package_root_shadowing(init_file) == []
+
+
+def test_plugins_package_root_shadowing_tolerates_unreadable_source(tmp_path):
+    """包根缺失或语法错误时返回空列表，把故障留给标准导入流程。"""
+    missing_file = tmp_path / "__init__.py"
+    assert detect_plugins_package_root_shadowing(missing_file) == []
+    missing_file.write_text("class _PluginBase(\n", encoding="utf-8")
+    assert detect_plugins_package_root_shadowing(missing_file) == []
+
+
+def test_restore_plugins_package_root_backs_up_and_rewrites(tmp_path):
+    """自愈必须先备份原文件再写回只含说明的命名空间入口。"""
+    init_file = tmp_path / "__init__.py"
+    legacy_source = "class _PluginBase:\n    pass\n"
+    init_file.write_text(legacy_source, encoding="utf-8")
+    backup_file = restore_plugins_package_root(init_file)
+    assert backup_file.name == "__init__.py" + PLUGINS_PACKAGE_ROOT_BACKUP_SUFFIX
+    assert backup_file.read_text(encoding="utf-8") == legacy_source
+    assert init_file.read_text(encoding="utf-8") == PLUGINS_PACKAGE_ROOT_SOURCE
+    assert detect_plugins_package_root_shadowing(init_file) == []
+
+
+def test_startup_repairs_plugin_package_root_before_loading_plugins(tmp_path, monkeypatch):
+    """启动装配必须在导入插件前把被遮蔽的包根恢复成命名空间入口。"""
+    plugins_root = tmp_path / "app" / "plugins"
+    plugins_root.mkdir(parents=True)
+    init_file = plugins_root / "__init__.py"
+    init_file.write_text("class PluginChian:\n    pass\n", encoding="utf-8")
+    monkeypatch.setattr(
+        plugins_initializer,
+        "get_runtime_setting",
+        lambda name: str(tmp_path) if name == "ROOT_PATH" else None,
+    )
+    assert plugins_initializer.repair_plugin_package_root() == ["PluginChian"]
+    assert init_file.read_text(encoding="utf-8") == PLUGINS_PACKAGE_ROOT_SOURCE
+    assert (
+        plugins_root / ("__init__.py" + PLUGINS_PACKAGE_ROOT_BACKUP_SUFFIX)
+    ).read_text(encoding="utf-8") == "class PluginChian:\n    pass\n"
+    assert plugins_initializer.repair_plugin_package_root() == []
+
+
+def test_startup_keeps_hard_failure_when_plugin_root_is_read_only(tmp_path, monkeypatch):
+    """运行目录不可写时自愈降级为报错并返回遮蔽符号，不静默跳过。"""
+    plugins_root = tmp_path / "app" / "plugins"
+    plugins_root.mkdir(parents=True)
+    (plugins_root / "__init__.py").write_text(
+        "class _PluginBase:\n    pass\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        plugins_initializer,
+        "get_runtime_setting",
+        lambda name: str(tmp_path) if name == "ROOT_PATH" else None,
+    )
+
+    def _deny(_init_file):
+        raise OSError("Read-only file system")
+
+    monkeypatch.setattr(plugins_initializer, "restore_plugins_package_root", _deny)
+    assert plugins_initializer.repair_plugin_package_root() == ["_PluginBase"]
