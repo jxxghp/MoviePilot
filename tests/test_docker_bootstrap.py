@@ -10,6 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "docker" / "launcher.sh"
 UPDATER = ROOT / "docker" / "update.sh"
+UPDATE_WORKER = ROOT / "docker" / "update-worker.sh"
 BASE_CONTROL_FILES = ("entrypoint.sh", "update.sh", "browser.sh", "cert.sh")
 
 
@@ -940,6 +941,32 @@ def test_release_update_worker_applies_before_supervisor_shutdown() -> None:
     assert "-m app.cli apply-prepared-update" in worker
     assert "supervisorctl -c \"${SUPERVISOR_CONFIG}\" shutdown" in worker
     assert worker.index("apply-prepared-update") < worker.index("shutdown")
+
+
+def test_release_update_worker_skips_without_install_manifest(tmp_path: Path) -> None:
+    """普通 supervisor 重启误启动 worker 时，无安装清单应安全跳过。"""
+    python_bin = tmp_path / "venv" / "bin" / "python3"
+    python_bin.parent.mkdir(parents=True)
+    python_bin.write_text("#!/bin/bash\nexit 99\n", encoding="utf-8")
+    python_bin.chmod(0o755)
+
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR={shlex.quote(str(tmp_path / "config"))}
+        VENV_PATH={shlex.quote(str(tmp_path / "venv"))}
+        source {shlex.quote(str(UPDATE_WORKER))}
+        """
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", script, "update-worker-noop"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "未检测到待安装的更新清单" in result.stdout
 
 
 def test_update_reexec_uses_stable_working_directory() -> None:

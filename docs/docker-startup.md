@@ -422,7 +422,8 @@ Python lifespan 会先撤销 readiness，再按组件声明的 `stop_order` 停�
 
 ### 9.2 应用内重启
 
-普通应用重启通过本地 `supervisorctl restart all` 同时重启 Nginx 和后端。确认安装 Release 时，
+普通应用重启通过本地 `supervisorctl restart moviepilot-nginx moviepilot-backend` 同时重启 Nginx 和后端，
+避免把按需运行的更新 worker 拉起。确认安装 Release 时，
 `SystemHelper` 只启动 root `moviepilot-update-worker`；worker 先替换 `/app`、`/public` 或站点资源，
 再写入 `moviepilot.pending_supervisor_restart` 并执行 `supervisorctl shutdown`。外层 entrypoint 看到标记后
 重新执行 launcher，加载新代码。载荷替换期间外层 entrypoint、worker 的控制面调用和所有入口重入都使用 `/`

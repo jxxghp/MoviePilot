@@ -8,6 +8,7 @@ CONFIG_DIR="${CONFIG_DIR:-/config}"
 export VENV_PATH CONFIG_DIR
 SUPERVISOR_CONFIG="/etc/supervisor/supervisord.conf"
 RESTART_REQUEST_FILE="${CONFIG_DIR}/temp/moviepilot.pending_supervisor_restart"
+INSTALL_MANIFEST="${CONFIG_DIR}/temp/moviepilot-update/install.json"
 
 function INFO() {
     echo "[INFO] ${1}"
@@ -16,6 +17,11 @@ function INFO() {
 function ERROR() {
     echo "[ERROR] ${1}" >&2
 }
+
+if [ ! -f "${INSTALL_MANIFEST}" ]; then
+    INFO "→ 未检测到待安装的更新清单，跳过 Docker 更新 worker。"
+    exit 0
+fi
 
 cd /app || exit 1
 
