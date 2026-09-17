@@ -96,6 +96,10 @@ from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
 )
+from app.runtime.compat.imports import (
+    detect_plugins_package_root_shadowing,
+    restore_plugins_package_root,
+)
 from app.runtime.compat.resources import scan_plugin_resource_imports
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.plugin.database import (
@@ -420,8 +424,39 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
     )
 
 
+def repair_plugin_package_root() -> list[str]:
+    """在导入任何插件前修复被旧版本实现遮蔽的插件安装包根。
+
+    UI 内更新由替换前的旧版本执行插件目录迁移，旧版 ``app/plugins/__init__.py``
+    会随插件目录进入新版运行目录并遮蔽 SDK 兼容符号，使全部插件导入失败。运行
+    目录只读时保留既有硬报错和诊断，不静默跳过。
+
+    :return: 被遮蔽的兼容符号名，包根正常时为空列表
+    """
+    init_file = (
+        Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins" / "__init__.py"
+    )
+    shadowed = detect_plugins_package_root_shadowing(init_file)
+    if not shadowed:
+        return []
+    symbols = "、".join(shadowed)
+    try:
+        backup_file = restore_plugins_package_root(init_file)
+    except OSError as error:
+        logger.error(
+            f"插件包根 {init_file} 自带旧版实现（{symbols}）且无法自动修复：{error}"
+        )
+        return shadowed
+    logger.warning(
+        f"插件包根 {init_file} 自带旧版实现（{symbols}），"
+        f"已备份为 {backup_file.name} 并恢复为命名空间入口"
+    )
+    return shadowed
+
+
 def configure_plugin_runtime_services() -> None:
-    """在模块对象图构造前发布插件 Runtime 工厂和应用层提供器。"""
+    """在模块对象图构造前修复插件包根，并发布插件 Runtime 工厂和应用层提供器。"""
+    repair_plugin_package_root()
     configure_plugin_catalog_factory(_build_plugin_catalog)
     configure_plugin_runtime_factory(build_plugin_runtime_graph)
     configure_plugin_runtime(
