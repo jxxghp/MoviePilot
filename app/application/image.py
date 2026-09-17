@@ -2,6 +2,7 @@ import io
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Protocol
 
@@ -15,6 +16,8 @@ from app.runtime.log import logger
 
 WallpaperProvider = Callable[[], Optional[str]]
 WallpaperListProvider = Callable[[int], List[str]]
+_IMAGE_CACHE_PATH_PREFIX = "proxy_"
+_IMAGE_CACHE_HASH_LENGTH = 16
 
 
 @dataclass(frozen=True, slots=True)
@@ -373,9 +376,16 @@ class ImageHelper(metaclass=Singleton):
 
     @staticmethod
     def _prepare_cache_path(url: str) -> str:
-        """缓存路径"""
-        sanitized_path = SecurityUtils.sanitize_url_path(url)
-        cache_path = Path(sanitized_path)
+        """
+        根据图片 URL 生成缓存路径。
+
+        根路径或其他无有效文件名的 URL 使用完整 URL 的短哈希兜底，避免
+        `Path.with_suffix()` 对空路径抛出异常，并保证不同 URL 不共用该缓存名。
+        """
+        cache_path = Path(SecurityUtils.sanitize_url_path(url))
+        if not cache_path.name:
+            hash_value = sha256(url.encode()).hexdigest()[:_IMAGE_CACHE_HASH_LENGTH]
+            cache_path = Path(f"{_IMAGE_CACHE_PATH_PREFIX}{hash_value}")
         if not cache_path.suffix:
             cache_path = cache_path.with_suffix(".jpg")
         return cache_path.as_posix()

@@ -1,6 +1,7 @@
 import asyncio
 import io
 from collections.abc import Iterator, Mapping
+from hashlib import sha256
 from types import SimpleNamespace
 from typing import Any, Optional
 from unittest.mock import AsyncMock, Mock, patch
@@ -236,6 +237,21 @@ def test_async_fetch_image_with_mime_type_validates_network_content_once():
     assert result == (content, "image/png")
     get_mime_type.assert_called_once_with(content)
     assert transport.async_calls[0][0] == "https://images.example/wallpaper.png"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com",
+        "https://example.com/",
+        "https://example.com/?param=value",
+    ],
+)
+def test_prepare_cache_path_uses_url_hash_for_urls_without_path(url: str) -> None:
+    """没有有效路径的图片 URL 应生成稳定合法的缓存文件名。"""
+    expected_hash = sha256(url.encode()).hexdigest()[:16]
+
+    assert ImageHelper._prepare_cache_path(url) == f"proxy_{expected_hash}.jpg"
 
 
 def test_image_request_uses_internal_address_port_for_proxy_decision(monkeypatch):
