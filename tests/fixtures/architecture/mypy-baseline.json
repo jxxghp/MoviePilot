@@ -1282,7 +1282,7 @@
     "operator": 1
   },
   "app/domain/metainfo.py": {
-    "arg-type": 6,
+    "arg-type": 5,
     "assignment": 4,
     "no-untyped-call": 3,
     "no-untyped-def": 1,

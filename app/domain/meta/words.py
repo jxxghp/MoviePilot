@@ -129,7 +129,7 @@ class WordsMatcher(metaclass=Singleton):
         self,
         title: str,
         subtitle: Optional[str] = None,
-        custom_words: List[str] = None,
+        custom_words: Optional[List[str]] = None,
     ) -> Tuple[str, Optional[str], List[str]]:
         """
         预处理标题和副标题，支持跨字段应用集数偏移规则。
@@ -145,7 +145,7 @@ class WordsMatcher(metaclass=Singleton):
         self,
         title: str,
         subtitle: Optional[str],
-        custom_words: List[str] = None,
+        custom_words: Optional[List[str]] = None,
     ) -> Tuple[str, Optional[str], List[str]]:
         """按识别词顺序处理标题，并在需要时更新副标题中的集数。"""
         appley_words = []
