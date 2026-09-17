@@ -483,6 +483,25 @@ def test_custom_words_replace_then_episode_offset():
     assert meta.apply_words == custom_words
 
 
+def test_custom_words_episode_offset_applies_to_subtitle():
+    """标题无集数时，自定义偏移应只修改副标题中的集数而保留季数。"""
+    custom_words = [
+        "BLEACH Thousand-Year Blood War S04 => BLEACH 2004 S02 && S02 <> 1080p >> EP+40"
+    ]
+
+    with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
+        meta = MetaInfo(
+            title="BLEACH Thousand-Year Blood War S04 1080p Disney+ WEB-DL AAC 2.0 H.264-CHDWEB",
+            subtitle="死神 千年血战篇 -祸进谭- 第四季 第8集 ...",
+            custom_words=custom_words,
+        )
+
+    assert meta.begin_season == 2
+    assert meta.begin_episode == 48
+    assert meta.subtitle == "死神 千年血战篇 -祸进谭- 第四季 第48集 ..."
+    assert meta.apply_words == custom_words
+
+
 def test_get_torrent_episodes_applies_custom_words():
     """种子文件集数解析应使用订阅识别词完成跨季集数映射。"""
     custom_words = [
