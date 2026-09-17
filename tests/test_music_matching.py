@@ -156,6 +156,39 @@ def test_soundtrack_credit_does_not_change_recording_title(title):
     assert music_title_matches(MusicInfo(title=expected), title)
 
 
+@pytest.mark.parametrize("symbol", ["÷", "+", "=", "×", "−"])
+def test_symbol_only_music_title_matches_itself_and_alias(symbol):
+    """纯符号作品名不能因文本归一化为空而失去自身和别名匹配。"""
+    music = MusicInfo(title=symbol, title_aliases=["Readable Alias"])
+
+    assert music_title_matches(music, symbol)
+    assert music_title_matches(music, "Readable Alias")
+    assert not music_title_matches(music, "Different Title")
+
+
+@pytest.mark.parametrize("symbol,alias,year", [
+    ("÷", "Divide", 2017),
+    ("+", "Plus", 2011),
+    ("=", "Equals", 2021),
+    ("×", "Multiply", 2017),
+    ("−", "Subtract", 2023),
+])
+def test_symbol_only_album_matches_parsed_resource(symbol, alias, year):
+    """纯符号专辑经资源解析后仍应按原名或可信别名精确命中。"""
+    music = MusicInfo(
+        music_type="album",
+        title=symbol,
+        album=symbol,
+        title_aliases=[alias],
+        album_aliases=[alias],
+        artists=["Ed Sheeran"],
+        year=year,
+    )
+
+    resource = f"Ed Sheeran - {symbol} - {year} - FLAC 分轨"
+    assert match_music_resource(music, resource).status == "exact"
+
+
 def test_music_album_field_cannot_match_target_recording():
     """结构化资源中的所属专辑不能冒充同名目标单曲。"""
     music = MusicInfo(title="Album", artists=["Artist"])
