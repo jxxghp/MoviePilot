@@ -503,6 +503,15 @@ class LLMHelper:
     """LLM模型相关辅助功能"""
 
     _DEFAULT_MAX_INPUT_TOKENS = 256_000
+    _OPENAI_REASONING_EFFORT_ORDER = (
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    )
 
     @staticmethod
     def _positive_token_limit(value: Any) -> int | None:
@@ -621,18 +630,86 @@ class LLMHelper:
 
     @classmethod
     def _normalize_openai_reasoning_effort(
-            cls, thinking_level: str | None = None
+            cls,
+            thinking_level: str | None = None,
+            supported_efforts: set[str] | None = None,
     ) -> str | None:
         """
-        OpenAI reasoning_effort 支持更细粒度的 effort，统一做最近似映射。
+        将统一思考级别映射为 OpenAI reasoning_effort。
+
+        :param thinking_level: MoviePilot 统一思考级别
+        :param supported_efforts: 模型目录声明的可用 effort，未知时不限制
+        :return: 可发送的 reasoning_effort；不支持时返回 None
         """
         if not thinking_level or thinking_level == "auto":
             return None
         if thinking_level == "off":
-            return "none"
-        if thinking_level == "max":
-            return "xhigh"
-        return thinking_level
+            normalized_effort = "none"
+        elif thinking_level == "max":
+            normalized_effort = "xhigh"
+        else:
+            normalized_effort = thinking_level
+
+        if supported_efforts is None or normalized_effort in supported_efforts:
+            return normalized_effort
+        if normalized_effort == "none":
+            return None
+
+        effort_order = cls._OPENAI_REASONING_EFFORT_ORDER
+        try:
+            requested_index = effort_order.index(normalized_effort)
+        except ValueError:
+            return None
+
+        supported_indexes = [
+            effort_order.index(effort)
+            for effort in supported_efforts
+            if effort in effort_order and effort != "none"
+        ]
+        if not supported_indexes:
+            return None
+
+        lower_or_equal = [index for index in supported_indexes if index <= requested_index]
+        if lower_or_equal:
+            return effort_order[max(lower_or_equal)]
+        return effort_order[min(supported_indexes)]
+
+    @staticmethod
+    def _resolve_openai_reasoning_efforts(
+            model_metadata: Any,
+    ) -> set[str] | None:
+        """
+        从模型目录元数据提取 OpenAI reasoning_effort 能力。
+
+        返回 None 表示目录没有提供可判断的能力信息，空集合表示已明确
+        声明模型不支持 effort 控制。
+        """
+        if not isinstance(model_metadata, dict):
+            return None
+
+        if "reasoning_options" not in model_metadata:
+            if model_metadata.get("reasoning") is False:
+                return set()
+            return None
+
+        raw_options = model_metadata.get("reasoning_options")
+        if raw_options is None:
+            return set()
+        if not isinstance(raw_options, list):
+            return None
+
+        efforts: set[str] = set()
+        for option in raw_options:
+            if not isinstance(option, dict) or option.get("type") != "effort":
+                continue
+            values = option.get("values") or []
+            if not isinstance(values, list):
+                continue
+            for value in values:
+                normalized_value = str(value or "").strip().lower()
+                if normalized_value:
+                    efforts.add(normalized_value)
+        return efforts
 
     @classmethod
     def _build_google_thinking_kwargs(
@@ -715,7 +792,8 @@ class LLMHelper:
             cls,
             provider: str,
             model: str | None,
-            thinking_level: str | None = None
+            thinking_level: str | None = None,
+            model_metadata: Any = None,
     ) -> dict[str, Any]:
         """
         按 provider/model 生成思考模式相关参数。
@@ -746,14 +824,36 @@ class LLMHelper:
         if not model_name:
             return {}
 
-        # OpenAI 原生推理模型优先走 LangChain 内置 reasoning_effort。
-        if provider_name in {"openai", "chatgpt"} and model_name.startswith(
-                ("gpt-5", "o1", "o3", "o4")
-        ):
+        # OpenAI-compatible 端点的模型名可能是用户自定义值，不能用官方模型前缀
+        # 判断能力；已知目录能力优先约束，未知目录则保留兼容端点的透传能力。
+        if provider_name in {"openai", "chatgpt"}:
+            supported_efforts = cls._resolve_openai_reasoning_efforts(model_metadata)
+            if supported_efforts is not None and not supported_efforts:
+                if thinking_level not in {None, "auto", "off"}:
+                    logger.warning(
+                        f"模型 {model_name} 未声明 OpenAI reasoning_effort 能力，"
+                        f"忽略思考级别: {thinking_level}"
+                    )
+                return {}
+
+            requested_effort = cls._normalize_openai_reasoning_effort(thinking_level)
             openai_effort = cls._normalize_openai_reasoning_effort(
-                thinking_level
+                thinking_level,
+                supported_efforts=supported_efforts,
             )
-            return {"reasoning_effort": openai_effort} if openai_effort else {}
+            if not openai_effort:
+                return {}
+            if supported_efforts is None:
+                logger.debug(
+                    f"模型 {model_name} 未找到 reasoning_options，"
+                    f"按 OpenAI-compatible 约定透传 reasoning_effort: {openai_effort}"
+                )
+            elif requested_effort != openai_effort:
+                logger.warning(
+                    f"模型 {model_name} 不支持思考级别 {thinking_level}，"
+                    f"降级为可用级别: {openai_effort}"
+                )
+            return {"reasoning_effort": openai_effort}
 
         # Gemini 使用 google-genai / langchain-google-genai 内置思考控制参数。
         if provider_name == "google":
@@ -1262,6 +1362,7 @@ class LLMHelper:
             provider=provider_name,
             model=model_name,
             thinking_level=normalized_thinking_level,
+            model_metadata=runtime.get("model_metadata"),
         )
         use_responses_api = cls._should_use_openai_responses_api(
             provider=provider_name,
