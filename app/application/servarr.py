@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Optional, Protocol
 
-from app.application.subscription.delete import AsyncUnitOfWork
 from app.schemas.types import MediaSource
+
+if TYPE_CHECKING:
+    from app.application.subscription.delete import AsyncUnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
