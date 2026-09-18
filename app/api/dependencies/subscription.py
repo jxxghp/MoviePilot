@@ -16,6 +16,7 @@ from app.api.context import (
     get_subscription_outbox,
     get_subscription_outbox_store,
     get_subscription_repository,
+    get_subscription_session,
     get_subscription_transaction,
     get_sync_session,
     resolve_background_task_registry,
@@ -260,12 +261,14 @@ def get_servarr_subscription_batch_writer(
 
 
 def get_servarr_subscription_service(
-    async_db: AsyncSession = Depends(get_async_session),
+    async_db: AsyncSession = Depends(get_subscription_session),
     db: Session = Depends(get_sync_session),
+    unit_of_work: object = Depends(get_subscription_transaction),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> ServarrSubscriptionService:
     """组装 Servarr 兼容路由的请求级订阅数据用例。"""
     return ServarrSubscriptionService(
         async_repository=runtime.subscription.repository(async_db),
         sync_repository=runtime.subscription.repository(db),
+        unit_of_work=cast(DeleteUnitOfWork, unit_of_work),
     )

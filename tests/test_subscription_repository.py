@@ -115,6 +115,93 @@ def test_servarr_sync_lookup_reads_session_repository(db) -> None:
     assert [(item.id, item.name, item.media_id) for item in result] == [(row.id, "同步 lookup 订阅", "550")]
 
 
+def test_servarr_async_exists_reads_session_repository(db) -> None:
+    """Servarr 异步查重应从请求级订阅仓储读取命中的订阅。"""
+    row = db.add(
+        Subscribe(
+            name="异步查重订阅",
+            type=MediaType.TV.value,
+            media_source=MediaSource.TMDB.value,
+            media_id="async-servarr-exists",
+            season=1,
+        )
+    )
+
+    async def query(session: AsyncSession) -> bool:
+        """通过真实请求仓储执行 Servarr 异步查重。"""
+        service = ServarrSubscriptionService(
+            async_repository=SessionSubscriptionRepository(session),
+            sync_repository=SessionSubscriptionRepository(db.session),
+        )
+        return await service.exists(
+            media_source=MediaSource.TMDB,
+            media_id="async-servarr-exists",
+            season=1,
+        )
+
+    assert db.run_async_session(query)
+    assert row.id is not None
+
+
+def test_servarr_delete_commits_session_repository_transaction(db) -> None:
+    """Servarr 删除应提交请求仓储暂存的删除，而不是随会话关闭回滚。"""
+    row = db.add(
+        Subscribe(
+            name="待删除 Servarr 订阅",
+            type=MediaType.TV.value,
+            media_source=MediaSource.TMDB.value,
+            media_id="servarr-delete",
+            season=1,
+        )
+    )
+    subscribe_id = row.id
+
+    async def delete(session: AsyncSession) -> bool:
+        """通过真实请求仓储和 UoW 执行 Servarr 删除。"""
+        service = ServarrSubscriptionService(
+            async_repository=SessionSubscriptionRepository(session),
+            sync_repository=SessionSubscriptionRepository(db.session),
+            unit_of_work=SqlAlchemyAsyncUnitOfWork(session),
+        )
+        return await service.delete(subscribe_id)
+
+    assert db.run_async_session(delete)
+    db.session.expire_all()
+    assert db.session.get(Subscribe, subscribe_id) is None
+
+
+def test_transactional_repository_supports_servarr_async_contract(db) -> None:
+    """独立订阅仓储应提供 Servarr 查重与删除所需的异步事务能力。"""
+    row = db.add(
+        Subscribe(
+            name="独立 Servarr 订阅",
+            type=MediaType.TV.value,
+            media_source=MediaSource.TMDB.value,
+            media_id="transactional-servarr",
+            season=1,
+        )
+    )
+    subscribe_id = row.id
+    repository = TransactionalSubscriptionRepository(
+        sync_session=SessionFactory,
+        async_session=async_session_scope,
+    )
+
+    async def execute(_session: AsyncSession) -> bool:
+        """执行独立仓储的查重与删除操作。"""
+        assert await repository.async_exists(
+            media_source=MediaSource.TMDB,
+            media_id="transactional-servarr",
+            season=1,
+        ) is not None
+        await repository.async_delete(subscribe_id)
+        return True
+
+    assert db.run_async_session(execute)
+    db.session.expire_all()
+    assert db.session.get(Subscribe, subscribe_id) is None
+
+
 def test_session_repository_leaves_commit_and_rollback_to_caller(db) -> None:
     """请求级仓储只 flush 暂存记录，调用方回滚后数据库不保留该记录。"""
     db.watermark(Subscribe)
