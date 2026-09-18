@@ -183,6 +183,17 @@ class SiteParserBase(metaclass=ABCMeta):
         """
         return size_tools.parse_size(text)
 
+    def _has_valid_userid(self) -> bool:
+        """
+        判断用户 ID 是否存在且有效，避免空 ID 触发站点的无效详情/做种请求。
+        """
+        if self.userid is None:
+            return False
+        if isinstance(self.userid, str):
+            user_id = self.userid.strip()
+            return bool(user_id) and user_id != "0"
+        return bool(self.userid) and self.userid != 0
+
     def parse(self):
         """
         解析站点信息
@@ -216,13 +227,16 @@ class SiteParserBase(metaclass=ABCMeta):
                 self._parse_user_base_info(self._index_html)
             # 解析用户详细信息
             if self._user_detail_page:
-                self._parse_user_detail_info(
-                    self._get_page_content(
-                        url=urljoin(self._base_url, self._user_detail_page),
-                        params=self._user_detail_params,
-                        headers=self._user_detail_headers
+                if not self._has_valid_userid():
+                    logger.warn(f"{self._site_name} 未解析到有效用户 ID，跳过用户详情页请求")
+                else:
+                    self._parse_user_detail_info(
+                        self._get_page_content(
+                            url=urljoin(self._base_url, self._user_detail_page),
+                            params=self._user_detail_params,
+                            headers=self._user_detail_headers
+                        )
                     )
-                )
             # 解析用户未读消息
             if get_runtime_setting('SITE_MESSAGE'):
                 self._pase_unread_msgs()
@@ -291,6 +305,9 @@ class SiteParserBase(metaclass=ABCMeta):
         解析做种页面
         """
         if self._torrent_seeding_page:
+            if not self._has_valid_userid():
+                logger.warn(f"{self._site_name} 未解析到有效用户 ID，跳过做种信息请求")
+                return
             # 第一页
             next_page = self._parse_user_torrent_seeding_info(
                 self._get_page_content(
