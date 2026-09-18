@@ -16,8 +16,8 @@ from app.api.servarr import arr_add_series, arr_series_lookup
 from app.application.servarr import ServarrSubscriptionService
 from app.db.adapters.subscription import SessionSubscriptionRepository
 from app.db.models.subscribe import Subscribe
-from app.schemas.types import MediaSource, MediaType
 from app.schemas.servarr import SonarrSeason, SonarrSeries
+from app.schemas.types import MediaSource, MediaType
 
 _TVDB_ID = 454898
 _TMDB_ID = 236534
