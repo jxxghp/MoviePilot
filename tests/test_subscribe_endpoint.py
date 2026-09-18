@@ -96,6 +96,26 @@ class TestSubscribeEndpoint:
     订阅接口回归测试。
     """
 
+    def test_subscribe_fork_response_preserves_created_subscription_id(self):
+        """复用订阅的响应模型必须允许返回新建订阅 ID。"""
+        from app.api.endpoints import subscribe as subscribe_endpoint
+        from app.schemas.common import IdData
+        from app.schemas.response import Response
+
+        route = next(
+            route
+            for route in subscribe_endpoint.router.routes
+            if route.path == "/fork" and "POST" in route.methods
+        )
+        payload = Response[IdData](
+            success=True,
+            data=IdData(id=2),
+        ).model_dump()
+
+        response = route.response_model.model_validate(payload)
+
+        assert response.data.id == 2
+
     def test_read_subscribes_scopes_regular_user_and_keeps_superuser_global(self):
         """
         普通用户只能看到自己创建的订阅，超级用户保留全局视图。

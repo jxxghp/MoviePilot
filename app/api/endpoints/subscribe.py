@@ -740,7 +740,7 @@ async def subscribe_share_delete(share_id: int, _: _SchemaTokenPayload = Depends
     )
 
 
-@router.post("/fork", summary="复用订阅", response_model=_SchemaResponse[None])
+@router.post("/fork", summary="复用订阅", response_model=_SchemaResponse[_SchemaIdData])
 async def subscribe_fork(
     sub: _SchemaSubscribeShare,
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
