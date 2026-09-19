@@ -242,6 +242,21 @@ def test_imdb_episode_parser_accepts_null_optional_objects() -> None:
     assert episodes[0].plot is None
 
 
+def test_imdb_season_parser_accepts_null_episodes() -> None:
+    """季列表 GraphQL 的 episodes 为 null 时应按空列表处理。"""
+    seasons = ImdbApi._parse_seasons(
+        {
+            "titles": [
+                {
+                    "episodes": None,
+                }
+            ]
+        }
+    )
+
+    assert seasons == []
+
+
 def test_imdb_clear_cache_registers_async_cleanup_in_running_loop() -> None:
     """同步清缓存入口在异步宿主中应登记任务，并保留原同步调用约定。"""
 

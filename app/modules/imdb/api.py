@@ -508,7 +508,7 @@ class ImdbApi:
     def _parse_seasons(cls, data: Optional[dict]) -> list[ImdbSeason]:
         """解析 GraphQL 季编号列表。"""
         title = cls._first_title(data) or {}
-        values = title.get("episodes", {}).get("seasons") or []
+        values = (title.get("episodes") or {}).get("seasons") or []
         return [ImdbSeason(season=str(item["number"])) for item in values]
 
     @classmethod
