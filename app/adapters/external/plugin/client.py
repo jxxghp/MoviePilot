@@ -814,6 +814,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                 if len(skipped_examples) < 5:
                     skipped_examples.append(cls.__safe_plugin_id(plugin_id))
                 continue
+            assert isinstance(plugin_id, str)
             normalized[plugin_id] = item
             dropped_fields.update(dropped)
 
@@ -1630,7 +1631,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                 self._index_tasks[task_key] = task
 
                 def on_index_task_done(
-                    completed_task: asyncio.Future[Optional[PluginIndex]],
+                    completed_task: asyncio.Future[PluginIndexTaskResult],
                 ) -> None:
                     self._remove_index_task(task_key, completed_task)
 
