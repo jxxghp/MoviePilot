@@ -14,6 +14,7 @@ from app.adapters.cache.backends import (
     RedisBackend,
 )
 from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper, serialize
+from app.foundation.singleton import Singleton
 from app.runtime.cache import (
     AsyncFileCache,
     AsyncMemoryBackend,
@@ -898,6 +899,72 @@ def test_async_redis_helper_uses_blocking_pool_settings(monkeypatch):
     assert calls["pool"]["decode_responses"] is False
     assert calls["ping"] is True
     assert ("maxmemory-policy", "allkeys-lru") in config_calls
+
+
+def test_async_redis_helper_does_not_close_client_from_foreign_loop(monkeypatch):
+    """
+    异步 Redis 客户端按事件循环隔离，切换循环时不得跨循环关闭旧连接池。
+    """
+    singleton_key = (AsyncRedisHelper, (), frozenset())
+    monkeypatch.delitem(Singleton._instances, singleton_key, raising=False)
+    clients = []
+
+    class FakePool:
+        """记录连接池所属事件循环。"""
+
+        def __init__(self):
+            self.loop = asyncio.get_running_loop()
+            self.wrong_loop_close = False
+
+        async def aclose(self):
+            """模拟连接池关闭并校验事件循环归属。"""
+            if asyncio.get_running_loop() is not self.loop:
+                self.wrong_loop_close = True
+                raise RuntimeError("pool belongs to a different event loop")
+
+    class FakeClient:
+        """模拟带事件循环归属的异步 Redis 客户端。"""
+
+        def __init__(self, connection_pool):
+            self.connection_pool = connection_pool
+            self.loop = asyncio.get_running_loop()
+            self.wrong_loop_close = False
+            clients.append(self)
+
+        async def ping(self):
+            """模拟 Redis ping。"""
+
+        async def config_set(self, _key, _value):
+            """模拟 Redis 配置写入。"""
+
+        async def close(self):
+            """模拟客户端关闭并校验事件循环归属。"""
+            if asyncio.get_running_loop() is not self.loop:
+                self.wrong_loop_close = True
+                raise RuntimeError("client belongs to a different event loop")
+
+    def fake_from_url(_url, **_kwargs):
+        """为当前事件循环创建独立连接池。"""
+        return FakePool()
+
+    monkeypatch.setattr(
+        "app.adapters.cache.redis.AsyncBlockingConnectionPool.from_url",
+        fake_from_url,
+    )
+    monkeypatch.setattr("app.adapters.cache.redis.Redis", FakeClient)
+
+    async def connect():
+        """在当前事件循环建立异步 Redis 客户端。"""
+        return await AsyncRedisHelper()._connect()
+
+    first = asyncio.run(connect())
+    second = asyncio.run(connect())
+
+    assert first is not second
+    assert len(clients) == 2
+    assert not first.wrong_loop_close
+    assert not first.connection_pool.wrong_loop_close
+    assert second.loop is not first.loop
 
 
 def test_redis_helpers_watch_pool_settings():
