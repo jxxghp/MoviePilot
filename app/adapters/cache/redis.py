@@ -382,8 +382,12 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         self.redis_url = get_runtime_setting('CACHE_BACKEND_URL')
         self.client: Optional[Redis] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._clients: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
-        self._connect_locks: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+        self._clients: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, Redis
+        ] = weakref.WeakKeyDictionary()
+        self._connect_locks: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, asyncio.Lock
+        ] = weakref.WeakKeyDictionary()
         self._state_lock = threading.RLock()
 
     def _get_connect_lock(self, current_loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
@@ -422,7 +426,7 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         """
         current_loop = asyncio.get_running_loop()
         connect_lock = self._get_connect_lock(current_loop)
-        client = None
+        client: Optional[Redis] = None
         try:
             async with connect_lock:
                 with self._state_lock:

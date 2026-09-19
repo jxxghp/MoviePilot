@@ -10,11 +10,11 @@
   "app/adapters/cache/redis.py": {
     "arg-type": 9,
     "no-any-return": 2,
-    "no-untyped-call": 21,
-    "no-untyped-def": 16,
+    "no-untyped-call": 12,
+    "no-untyped-def": 15,
     "return-value": 2,
     "str-bytes-safe": 2,
-    "union-attr": 27
+    "union-attr": 14
   },
   "app/adapters/external/cookiecloud.py": {
     "arg-type": 1
