@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 from app.application.transfer.execution import TransferExecutionCheckpoint
 from app.application.transfer.workflow import TransferTask
-from app.chain.transfer import TransferChain
+from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.file import FileItem
