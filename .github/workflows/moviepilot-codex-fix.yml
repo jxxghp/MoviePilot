@@ -28,7 +28,7 @@ jobs:
       control_ref: main
       prompt_name: ${{ inputs.prompt_name }}
       codex_model: ${{ vars.CODEX_MODEL }}
-      codex_effort: ${{ vars.CODEX_EFFORT || 'high' }}
+      codex_effort: ${{ vars.CODEX_EFFORT || 'max' }}
       target_number: ${{ inputs.issue_number }}
       target_ref: ${{ github.ref_name }}
       target_sha: ${{ github.sha }}

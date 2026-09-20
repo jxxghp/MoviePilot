@@ -40,7 +40,7 @@ jobs:
       control_ref: main
       prompt_name: ${{ inputs.prompt_name }}
       codex_model: ${{ vars.CODEX_MODEL }}
-      codex_effort: ${{ vars.CODEX_EFFORT || 'medium' }}
+      codex_effort: ${{ vars.CODEX_EFFORT || 'max' }}
       openai_base_url: ${{ vars.OPENAI_BASE_URL }}
       publish_comments: false
       autofix_enabled: false
@@ -62,7 +62,7 @@ jobs:
       control_ref: main
       prompt_name: ${{ inputs.prompt_name }}
       codex_model: ${{ vars.CODEX_MODEL }}
-      codex_effort: ${{ vars.CODEX_EFFORT || 'medium' }}
+      codex_effort: ${{ vars.CODEX_EFFORT || 'max' }}
       openai_base_url: ${{ vars.OPENAI_BASE_URL }}
       telegram_enabled: ${{ vars.TELEGRAM_ENABLED == 'true' && vars.TELEGRAM_CHAT_ID != '' }}
       telegram_chat_id: ${{ vars.TELEGRAM_ENABLED == 'true' && vars.TELEGRAM_CHAT_ID || '' }}
