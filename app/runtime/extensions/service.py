@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, List, Optional, Type
+from typing import Any, List, Type
 
 from pydantic import ValidationError
 
