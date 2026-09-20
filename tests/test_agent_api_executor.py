@@ -1,6 +1,7 @@
 import asyncio
 import json
 from types import SimpleNamespace
+from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agent.api.executor import ApiExecutionContext, MoviePilotApiExecutor
@@ -80,6 +81,53 @@ def test_executor_keeps_non_collection_payload_unchanged_without_headers() -> No
 
     assert result == {"success": True, "message": "", "data": [{"id": 1}]}
     close.assert_awaited_once()
+
+
+def _execute_and_get_request_timeout(
+    operation_id: str,
+    *,
+    path_params: Optional[dict] = None,
+    query: Optional[dict] = None,
+) -> float:
+    """执行一个内存 API 请求并返回构造 HTTP 客户端时采用的超时。"""
+    response = SimpleNamespace(
+        status_code=200,
+        headers={},
+        json=lambda: {"success": True},
+        aclose=AsyncMock(),
+    )
+    request_factory = MagicMock(
+        return_value=SimpleNamespace(request=AsyncMock(return_value=response))
+    )
+    executor = MoviePilotApiExecutor(
+        context=ApiExecutionContext(user_id="1", username="admin", is_admin=True),
+        request_factory=request_factory,
+    )
+
+    with patch("app.agent.api.executor.create_access_token", return_value="token"):
+        asyncio.run(
+            executor.execute(
+                operation_id,
+                path_params=path_params,
+                query=query,
+            )
+        )
+
+    return request_factory.call_args.kwargs["timeout"]
+
+
+def test_executor_extends_request_timeout_only_for_search_torrents() -> None:
+    """慢速种子搜索允许等待 290 秒，其它 operation 保持原有 30 秒。"""
+    assert _execute_and_get_request_timeout(
+        "search.torrents",
+        path_params={"media_id": "1423191"},
+        query={"media_source": "themoviedb"},
+    ) == 290
+    assert _execute_and_get_request_timeout(
+        "search.title",
+        query={"keyword": "生化危机：爆发夜"},
+    ) == 30
+    assert _execute_and_get_request_timeout("subscription.list") == 30
 
 
 def test_manager_default_session_id_is_http_header_compatible() -> None:

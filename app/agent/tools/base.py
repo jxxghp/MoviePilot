@@ -611,9 +611,14 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         """子类实现具体的工具执行逻辑"""
         raise NotImplementedError
 
+    def _get_run_timeout_seconds(self, **kwargs: Any) -> Optional[float]:
+        """获取本次工具调用的等待上限，默认沿用全局配置。"""
+        del kwargs
+        return _get_tool_timeout_seconds()
+
     async def run_with_timeout(self, **kwargs) -> str:
         """按系统配置限制单个工具调用的最长执行时间。"""
-        timeout = _get_tool_timeout_seconds()
+        timeout = self._get_run_timeout_seconds(**kwargs)
         if not timeout:
             return await self.run(**kwargs)
         try:
