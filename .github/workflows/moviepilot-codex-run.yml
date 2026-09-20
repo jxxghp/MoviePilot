@@ -34,10 +34,10 @@ permissions:
 jobs:
   shadow:
     if: ${{ vars.CODEX_ENABLED == 'true' && vars.CODEX_PUBLISH_COMMENTS != 'true' }}
-    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-event.yml@4d6eb140dacb9954c761cd4cd07789523b2d76db
+    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-event.yml@8176ec49e8075b46f74c58c2f72886ac2bb92536
     with:
       control_repository: jxxghp/MoviePilot-Maintenance
-      control_ref: 4d6eb140dacb9954c761cd4cd07789523b2d76db
+      control_ref: 8176ec49e8075b46f74c58c2f72886ac2bb92536
       prompt_name: ${{ inputs.prompt_name }}
       codex_model: ${{ vars.CODEX_MODEL }}
       codex_effort: ${{ vars.CODEX_EFFORT || 'medium' }}
@@ -56,10 +56,10 @@ jobs:
 
   propose:
     if: ${{ vars.CODEX_ENABLED == 'true' && vars.CODEX_PUBLISH_COMMENTS == 'true' }}
-    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-propose.yml@4d6eb140dacb9954c761cd4cd07789523b2d76db
+    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-propose.yml@8176ec49e8075b46f74c58c2f72886ac2bb92536
     with:
       control_repository: jxxghp/MoviePilot-Maintenance
-      control_ref: 4d6eb140dacb9954c761cd4cd07789523b2d76db
+      control_ref: 8176ec49e8075b46f74c58c2f72886ac2bb92536
       prompt_name: ${{ inputs.prompt_name }}
       codex_model: ${{ vars.CODEX_MODEL }}
       codex_effort: ${{ vars.CODEX_EFFORT || 'medium' }}
