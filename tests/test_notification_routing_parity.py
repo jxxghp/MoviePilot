@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
+from app.modules.wechat import WechatModule
 from app.schemas.message import Message
+from app.schemas.system import NotificationConf
 from app.schemas.types import MessageType
 
 
@@ -175,3 +177,79 @@ def test_notification_routing_lookup_failure_sync_async_parity(monkeypatch) -> N
     async_chain.messagequeue.async_send_message.assert_not_awaited()
     assert sync_chain.messageoper.add.call_count == 1
     assert async_chain.messageoper.async_add.await_count == 1
+
+
+def test_untyped_notification_defaults_to_admin_sync_async(monkeypatch) -> None:
+    """未设置消息类型的通知应同步、异步都只查询管理员并按其设置投递。"""
+    monkeypatch.setattr(
+        "app.chain._messaging.get_notification_switch",
+        lambda _mtype: None,
+    )
+    settings = {"admin": {"wechat_userid": "admin-1"}}
+    sync_repository = _NotificationSettingsRepository(settings)
+    async_repository = _NotificationSettingsRepository(settings)
+    sync_chain = _NotificationHarness(sync_repository)
+    async_chain = _NotificationHarness(async_repository)
+    message = Message(title="工作流结果", text="执行完成")
+
+    sync_chain.post_message(message.model_copy(deep=True))
+    asyncio.run(async_chain.async_post_message(message.model_copy(deep=True)))
+
+    assert sync_repository.sync_calls == ["admin"]
+    assert async_repository.async_calls == ["admin"]
+    expected_targets = [{"wechat_userid": "admin-1"}]
+    assert [
+        item[0]["targets"]
+        for item in _delivery_snapshot(sync_chain.messagequeue.send_message)
+    ] == expected_targets
+    assert [
+        item[0]["targets"]
+        for item in _delivery_snapshot(async_chain.messagequeue.async_send_message)
+    ] == expected_targets
+
+
+def test_user_route_without_username_falls_back_to_admin(monkeypatch) -> None:
+    """用户范围通知缺少责任人时应回退管理员，不得恢复为全体广播。"""
+    monkeypatch.setattr(
+        "app.chain._messaging.get_notification_switch",
+        lambda _mtype: "user,all",
+    )
+    repository = _NotificationSettingsRepository(
+        {"admin": {"telegram_userid": "admin-1"}}
+    )
+    chain = _NotificationHarness(repository)
+
+    chain.post_message(Message(mtype=MessageType.Download, title="下载完成"))
+
+    assert repository.sync_calls == ["admin"]
+    deliveries = _delivery_snapshot(chain.messagequeue.send_message)
+    assert [item[0]["targets"] for item in deliveries] == [
+        {"telegram_userid": "admin-1"}
+    ]
+    assert [item[1] for item in deliveries] == [False]
+
+
+def test_wechat_rejects_untyped_broadcast_without_explicit_targets(monkeypatch) -> None:
+    """企业微信渠道不得把无类型且无目标的消息交给客户端默认广播。"""
+    module = WechatModule()
+    config = NotificationConf(name="wechat-test", type="wechat", enabled=True)
+    module._configs = {config.name: config}
+    client = Mock()
+    monkeypatch.setattr(module, "get_configs", lambda: {config.name: config})
+    monkeypatch.setattr(module, "get_instance", lambda _name: client)
+
+    module.post_message(
+        Message(source=config.name, title="工作流结果", text="执行完成")
+    )
+    client.send_msg.assert_not_called()
+
+    module.post_message(
+        Message(
+            source=config.name,
+            title="工作流结果",
+            text="执行完成",
+            targets={"wechat_userid": "admin-1"},
+        )
+    )
+    client.send_msg.assert_called_once()
+    assert client.send_msg.call_args.kwargs["userid"] == "admin-1"

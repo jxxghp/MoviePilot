@@ -47,3 +47,4 @@ def test_named_service_config_helpers_preserve_enabled_policy(monkeypatch) -> No
         item.name for item in get_notification_configs(include_disabled=True)
     ] == ["enabled-channel", "disabled-channel"]
     assert get_notification_switch(MessageType.Download) == "admin"
+    assert get_notification_switch(MessageType.Agent) == "admin"

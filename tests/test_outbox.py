@@ -458,6 +458,11 @@ def test_strict_notification_preserves_legacy_provider_signature(monkeypatch) ->
     chain = CommandChain()
     received = []
 
+    monkeypatch.setattr(
+        chain.user_repository,
+        "get_notification_settings",
+        lambda _username: {"telegram_userid": "admin-1"},
+    )
     def legacy_provider(message) -> None:
         """模拟只接受旧式单参数签名的第三方通知 provider。"""
         received.append((message, get_correlation_id()))
@@ -488,6 +493,11 @@ def test_strict_notification_retry_writes_history_once(monkeypatch) -> None:
     history_sources = set()
     provider_sources = []
 
+    monkeypatch.setattr(
+        chain.user_repository,
+        "get_notification_settings",
+        lambda _username: {"telegram_userid": "admin-1"},
+    )
     monkeypatch.setattr(chain.eventmanager, "send_event", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         chain.messageoper,

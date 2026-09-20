@@ -42,6 +42,10 @@ class TestSystemNotificationDispatch(unittest.TestCase):
         ), patch.object(chain.messageoper, "add"), patch.object(
             chain.eventmanager, "send_event"
         ) as send_event, patch.object(
+            chain.user_repository,
+            "get_notification_settings",
+            return_value={"telegram_userid": "admin-1"},
+        ), patch.object(
             chain.messagequeue, "send_message"
         ) as send_message:
             chain.post_message(message)

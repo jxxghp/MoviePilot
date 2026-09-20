@@ -69,48 +69,100 @@ def _notification_route_steps(
     生成同步和异步通知共用的路由状态转换。
 
     生成器只表达用户设置查询、日志和投递决策，调用方分别执行真实同步或
-    异步 I/O，避免两套外壳各自维护管理员回退和原消息投递规则。
+    异步 I/O，避免两套外壳各自维护管理员回退和原消息投递规则。没有可用的
+    用户通知设置时只记录日志，不产出无目标消息，避免渠道默认广播。
     """
     admin_sent = False
-    send_original = not action
-    for route_action in action.split(",") if action else ():
+    send_original = action is None
+    route_actions: tuple[str, ...] = ()
+    if action is not None:
+        route_actions = tuple(
+            route_action.strip() or "admin"
+            for route_action in action.split(",")
+        )
+    for route_action in route_actions:
         routed_message = copy.deepcopy(message)
         if route_action == "admin" and not admin_sent:
             settings = yield _NotificationRouteLookup(
                 username=superuser,
                 log_message=f"{routed_message.mtype} 的消息已设置发送给管理员",
             )
-            routed_message.targets = cast(dict[str, Any], settings)
             admin_sent = True
-        elif route_action == "user" and routed_message.username:
-            username = cast(str, routed_message.username)
-            settings = yield _NotificationRouteLookup(
-                username=username,
-                log_message=(
-                    f"{routed_message.mtype} 的消息已设置发送给用户 {username}"
-                ),
-            )
-            routed_message.targets = cast(dict[str, Any], settings)
             if settings is None:
-                if not admin_sent:
-                    settings = yield _NotificationRouteLookup(
-                        username=superuser,
-                        log_message=(
-                            f"用户 {username} 不存在，消息将发送给管理员"
-                        ),
-                    )
-                    routed_message.targets = cast(dict[str, Any], settings)
-                    admin_sent = True
-                else:
+                yield _NotificationRouteLog(
+                    message="管理员未配置通知渠道，消息不会广播发送"
+                )
+                continue
+            routed_message.targets = cast(dict[str, Any], settings)
+        elif route_action == "user":
+            if not routed_message.username:
+                if admin_sent:
                     yield _NotificationRouteLog(
-                        message=f"用户 {username} 不存在，消息无法发送到对应用户"
+                        message="消息未关联用户，且管理员已收到消息"
                     )
                     continue
-            elif username == superuser:
+                settings = yield _NotificationRouteLookup(
+                    username=superuser,
+                    log_message="消息未关联用户，消息将发送给管理员",
+                )
                 admin_sent = True
-        else:
+                if settings is None:
+                    yield _NotificationRouteLog(
+                        message="管理员未配置通知渠道，消息不会广播发送"
+                    )
+                    continue
+                routed_message.targets = cast(dict[str, Any], settings)
+            else:
+                username = cast(str, routed_message.username)
+                settings = yield _NotificationRouteLookup(
+                    username=username,
+                    log_message=(
+                        f"{routed_message.mtype} 的消息已设置发送给用户 {username}"
+                    ),
+                )
+                routed_message.targets = cast(dict[str, Any], settings)
+                if settings is None:
+                    if not admin_sent:
+                        settings = yield _NotificationRouteLookup(
+                            username=superuser,
+                            log_message=(
+                                f"用户 {username} 不存在，消息将发送给管理员"
+                            ),
+                        )
+                        routed_message.targets = cast(dict[str, Any], settings)
+                        admin_sent = True
+                        if settings is None:
+                            yield _NotificationRouteLog(
+                                message="管理员未配置通知渠道，消息不会广播发送"
+                            )
+                            continue
+                    else:
+                        yield _NotificationRouteLog(
+                            message=f"用户 {username} 不存在，消息无法发送到对应用户"
+                        )
+                        continue
+                elif username == superuser:
+                    admin_sent = True
+        elif route_action == "all":
             send_original = not admin_sent
             break
+        else:
+            yield _NotificationRouteLog(
+                message=f"未知通知路由 {route_action}，消息将按管理员范围发送"
+            )
+            if admin_sent:
+                continue
+            settings = yield _NotificationRouteLookup(
+                username=superuser,
+                log_message="通知路由无效，消息将发送给管理员",
+            )
+            admin_sent = True
+            if settings is None:
+                yield _NotificationRouteLog(
+                    message="管理员未配置通知渠道，消息不会广播发送"
+                )
+                continue
+            routed_message.targets = cast(dict[str, Any], settings)
         yield _NotificationRouteDelivery(
             message=routed_message,
             immediately=False,
@@ -145,10 +197,12 @@ def _render_notification_message(
 
 
 def _notification_route_action(message: Message) -> Optional[str]:
-    """仅为未绑定真实用户的业务通知读取隔离路由配置。"""
-    if message.userid or not message.mtype:
+    """为未绑定真实用户的通知确定隔离路由，缺少类型时默认仅管理员。"""
+    if message.userid:
         return None
-    return get_notification_switch(message.mtype)
+    if not message.mtype:
+        return "admin"
+    return get_notification_switch(message.mtype) or "admin"
 
 
 class MessageProcessingMixin:

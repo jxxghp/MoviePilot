@@ -182,6 +182,11 @@ def test_notification_post_message_is_persisted_without_sse_queue(monkeypatch) -
     chain = ChainBase()
 
     # messagequeue 是全局单例，用 monkeypatch 避免用例间污染
+    monkeypatch.setattr(
+        chain.user_repository,
+        "get_notification_settings",
+        lambda _username: {"telegram_userid": "admin-1"},
+    )
     send_message = Mock()
     monkeypatch.setattr(chain.messagequeue, "send_message", send_message)
     monkeypatch.setattr(chain.eventmanager, "send_event", Mock())
@@ -212,6 +217,11 @@ def test_agent_notification_post_message_is_persisted_without_sse_queue(monkeypa
     chain = ChainBase()
 
     # messagequeue 是全局单例，用 monkeypatch 避免用例间污染
+    monkeypatch.setattr(
+        chain.user_repository,
+        "get_notification_settings",
+        lambda _username: {"telegram_userid": "admin-1"},
+    )
     send_message = Mock()
     monkeypatch.setattr(chain.messagequeue, "send_message", send_message)
     monkeypatch.setattr(chain.eventmanager, "send_event", Mock())
@@ -240,6 +250,11 @@ def test_transient_notification_post_message_skips_history_but_dispatches(monkey
     chain = ChainBase()
 
     # messagequeue 是全局单例，用 monkeypatch 避免用例间污染
+    monkeypatch.setattr(
+        chain.user_repository,
+        "get_notification_settings",
+        lambda _username: {"telegram_userid": "admin-1"},
+    )
     send_message = Mock()
     monkeypatch.setattr(chain.messagequeue, "send_message", send_message)
     send_event = Mock()
