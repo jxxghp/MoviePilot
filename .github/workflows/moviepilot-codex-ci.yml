@@ -1,0 +1,45 @@
+# CI failure intake. This job has no OpenAI or Telegram secret.
+name: MoviePilot Codex CI intake
+
+on:
+  workflow_run:
+    workflows:
+      - Unit Tests
+      - Pylint Code Quality Check
+      - MoviePilot Builder v3
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Dispatch trusted Codex CI run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_WORKFLOW: moviepilot-codex-run.yml
+          TARGET_REF: ${{ github.event.repository.default_branch }}
+          SOURCE_EVENT: workflow_run
+          TARGET_KIND: ci
+          PROMPT_NAME: ci-fix
+          TARGET_BRANCH: ${{ github.event.workflow_run.head_branch || github.event.repository.default_branch }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+          TARGET_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          gh workflow run "$TARGET_WORKFLOW" \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$TARGET_REF" \
+            --field "prompt_name=$PROMPT_NAME" \
+            --field "source_event=$SOURCE_EVENT" \
+            --field "target_kind=$TARGET_KIND" \
+            --field "target_number=" \
+            --field "target_ref=$TARGET_BRANCH" \
+            --field "target_sha=$TARGET_SHA" \
+            --field "target_run_id=$TARGET_RUN_ID"

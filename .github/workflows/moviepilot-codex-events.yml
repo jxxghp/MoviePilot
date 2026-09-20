@@ -1,0 +1,41 @@
+# MoviePilot Codex event intake. This job has no OpenAI or Telegram secret.
+name: MoviePilot Codex event intake
+
+on:
+  issues:
+    types: [opened, reopened, edited]
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Dispatch trusted Codex run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_WORKFLOW: moviepilot-codex-run.yml
+          TARGET_REF: ${{ github.event.repository.default_branch }}
+          SOURCE_EVENT: ${{ github.event_name }}
+          TARGET_KIND: ${{ github.event_name == 'issues' && 'issue' || 'pull_request' }}
+          PROMPT_NAME: ${{ github.event_name == 'issues' && 'issue-triage' || 'pr-review' }}
+          TARGET_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number || '' }}
+          TARGET_BRANCH: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          gh workflow run "$TARGET_WORKFLOW" \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$TARGET_REF" \
+            --field "prompt_name=$PROMPT_NAME" \
+            --field "source_event=$SOURCE_EVENT" \
+            --field "target_kind=$TARGET_KIND" \
+            --field "target_number=$TARGET_NUMBER" \
+            --field "target_ref=$TARGET_BRANCH" \
+            --field "target_sha=$TARGET_SHA"
