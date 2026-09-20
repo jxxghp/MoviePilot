@@ -22,10 +22,10 @@ permissions:
 jobs:
   codex:
     if: ${{ vars.CODEX_ENABLED == 'true' && vars.CODEX_AUTOFIX_ENABLED == 'true' }}
-    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-fix.yml@d2c1b30435f0410251e62f747e6abf2fb48cd51b
+    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-fix.yml@main
     with:
       control_repository: jxxghp/MoviePilot-Maintenance
-      control_ref: d2c1b30435f0410251e62f747e6abf2fb48cd51b
+      control_ref: main
       prompt_name: ${{ inputs.prompt_name }}
       codex_model: ${{ vars.CODEX_MODEL }}
       codex_effort: ${{ vars.CODEX_EFFORT || 'high' }}
