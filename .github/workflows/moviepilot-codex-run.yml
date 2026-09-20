@@ -34,10 +34,10 @@ permissions:
 jobs:
   shadow:
     if: ${{ vars.CODEX_ENABLED == 'true' && vars.CODEX_PUBLISH_COMMENTS != 'true' }}
-    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-event.yml@cc2671a8bd5afe05e0c6c3b2ceb26110728da92c
+    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-event.yml@4d6eb140dacb9954c761cd4cd07789523b2d76db
     with:
       control_repository: jxxghp/MoviePilot-Maintenance
-      control_ref: cc2671a8bd5afe05e0c6c3b2ceb26110728da92c
+      control_ref: 4d6eb140dacb9954c761cd4cd07789523b2d76db
       prompt_name: ${{ inputs.prompt_name }}
       codex_model: ${{ vars.CODEX_MODEL }}
       codex_effort: ${{ vars.CODEX_EFFORT || 'medium' }}
@@ -56,16 +56,16 @@ jobs:
 
   propose:
     if: ${{ vars.CODEX_ENABLED == 'true' && vars.CODEX_PUBLISH_COMMENTS == 'true' }}
-    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-propose.yml@cc2671a8bd5afe05e0c6c3b2ceb26110728da92c
+    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-propose.yml@4d6eb140dacb9954c761cd4cd07789523b2d76db
     with:
       control_repository: jxxghp/MoviePilot-Maintenance
-      control_ref: cc2671a8bd5afe05e0c6c3b2ceb26110728da92c
+      control_ref: 4d6eb140dacb9954c761cd4cd07789523b2d76db
       prompt_name: ${{ inputs.prompt_name }}
       codex_model: ${{ vars.CODEX_MODEL }}
       codex_effort: ${{ vars.CODEX_EFFORT || 'medium' }}
       openai_base_url: ${{ vars.OPENAI_BASE_URL }}
-      telegram_enabled: ${{ vars.TELEGRAM_ENABLED == 'true' }}
-      telegram_chat_id: ${{ vars.TELEGRAM_CHAT_ID }}
+      telegram_enabled: ${{ vars.TELEGRAM_ENABLED == 'true' && vars.TELEGRAM_CHAT_ID != '' }}
+      telegram_chat_id: ${{ vars.TELEGRAM_ENABLED == 'true' && vars.TELEGRAM_CHAT_ID || '' }}
       source_event: ${{ inputs.source_event }}
       target_kind: ${{ inputs.target_kind }}
       target_number: ${{ inputs.target_number }}

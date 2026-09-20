@@ -21,18 +21,18 @@ permissions:
 
 jobs:
   codex:
-    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-fix.yml@cc2671a8bd5afe05e0c6c3b2ceb26110728da92c
+    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-fix.yml@4d6eb140dacb9954c761cd4cd07789523b2d76db
     with:
       control_repository: jxxghp/MoviePilot-Maintenance
-      control_ref: cc2671a8bd5afe05e0c6c3b2ceb26110728da92c
+      control_ref: 4d6eb140dacb9954c761cd4cd07789523b2d76db
       prompt_name: ${{ inputs.prompt_name }}
       codex_model: ${{ vars.CODEX_MODEL }}
       codex_effort: ${{ vars.CODEX_EFFORT || 'high' }}
       openai_base_url: ${{ vars.OPENAI_BASE_URL }}
       publish_comments: true
       autofix_enabled: ${{ vars.CODEX_AUTOFIX_ENABLED == 'true' }}
-      telegram_enabled: ${{ vars.TELEGRAM_ENABLED == 'true' }}
-      telegram_chat_id: ${{ vars.TELEGRAM_CHAT_ID }}
+      telegram_enabled: ${{ vars.TELEGRAM_ENABLED == 'true' && vars.TELEGRAM_CHAT_ID != '' }}
+      telegram_chat_id: ${{ vars.TELEGRAM_ENABLED == 'true' && vars.TELEGRAM_CHAT_ID || '' }}
     secrets:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       MAINTENANCE_TARGET_GH_TOKEN: ${{ secrets.MAINTENANCE_TARGET_GH_TOKEN }}
