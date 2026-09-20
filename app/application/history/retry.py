@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, Optional
 
 from app.application.configuration import TransferRetryConfig, get_transfer_retry_config
@@ -17,6 +18,8 @@ from app.runtime.log import logger
 MIN_FAILED_RETRIES = 1
 MAX_FAILED_RETRIES = 10
 FAILED_RETRY_TTL = 24 * 3600
+# 不同存储后端对秒级修改时间的浮点和序列化误差可能达到毫秒；更大的变化仍视为新版本。
+MODIFY_TIME_TOLERANCE = 1e-3
 
 # 缓存值会同时保存文件指纹，使同一路径的新版本获得独立重试预算。
 _failed_retry_counts = TTLCache(
@@ -140,14 +143,23 @@ def _is_file_version_changed(
         recorded_fingerprint: Dict[str, Any],
         current_fingerprint: Dict[str, Any],
 ) -> bool:
-    """判断两个可比文件指纹是否指向不同版本。"""
+    """判断两个可比文件指纹是否指向不同版本，忽略修改时间的毫秒级误差。"""
     for field in ("fileid", "modify_time", "size"):
         recorded_value = recorded_fingerprint.get(field)
         current_value = current_fingerprint.get(field)
         if (
                 recorded_value is not None
                 and current_value is not None
-                and recorded_value != current_value
+                and (
+                    not math.isclose(
+                        recorded_value,
+                        current_value,
+                        rel_tol=0.0,
+                        abs_tol=MODIFY_TIME_TOLERANCE,
+                    )
+                    if field == "modify_time"
+                    else recorded_value != current_value
+                )
         ):
             return True
     return False

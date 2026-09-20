@@ -591,7 +591,7 @@ class TransferExecutionOwner(_TransferOwnerBase):
                 if task.mediainfo.tmdb_id:
                     error_message = "TMDB 信息未匹配到媒体分类，无法按媒体类别整理"
                 else:
-                    error_message = "未识别到 TMDB 辅助信息，无法按媒体类别整理"
+                    error_message = "媒体识别结果未匹配到媒体分类，无法按媒体类别整理"
                 logger.error(f"{task.fileitem.name} {error_message}")
                 if task.preview:
                     return False, error_message

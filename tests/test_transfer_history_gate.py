@@ -79,6 +79,28 @@ def test_evaluate_history_gate_skips_when_success_size_unchanged():
     assert action == HistoryGateAction.SKIP
 
 
+@pytest.mark.parametrize(
+    "current_modify_time, expected",
+    [
+        (100.0005, HistoryGateAction.SKIP),
+        (100.01, HistoryGateAction.PASS_SIZE_CHANGED),
+    ],
+)
+def test_evaluate_history_gate_uses_tolerance_for_modify_time(
+        current_modify_time, expected,
+):
+    """修改时间仅有毫秒级浮点漂移时应保持原版本，明显变化仍应放行。"""
+    history = make_history(status=True, size=1024, modify_time=100.0)
+
+    action = evaluate_history_gate(
+        history,
+        file_size=1024,
+        file_modify_time=current_modify_time,
+    )
+
+    assert action == expected
+
+
 def test_evaluate_history_gate_skips_when_recorded_size_missing():
     """成功记录缺少大小信息（如蓝光目录）时无法比对，保守跳过。"""
     history = make_history(status=True, has_src_fileitem=False)
