@@ -21,10 +21,10 @@ permissions:
 
 jobs:
   codex:
-    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-fix.yml@2d9823f44bb1d31e2bbcf9bddf9d14ad2c8f35be
+    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-fix.yml@92de2d08cbea2ca60ad14c070294e07b79eaf26c
     with:
       control_repository: jxxghp/MoviePilot-Maintenance
-      control_ref: 2d9823f44bb1d31e2bbcf9bddf9d14ad2c8f35be
+      control_ref: 92de2d08cbea2ca60ad14c070294e07b79eaf26c
       prompt_name: ${{ inputs.prompt_name }}
       codex_model: ${{ vars.CODEX_MODEL }}
       codex_effort: ${{ vars.CODEX_EFFORT || 'high' }}
