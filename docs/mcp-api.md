@@ -178,6 +178,8 @@ operation ID、权限、副作用、确认、恢复、结果敏感性及精确�
 
 只允许传 `tools/list` 对应 operation 分支中声明的 `path_params`、`query` 和 `body` 字段。不得传 URL、认证头、API Token 或任意 HTTP 方法。
 
+`search.torrents` 可能按媒体标题与别名分轮搜索站点：MoviePilot 内层请求最多等待 290 秒，Agent 工具总等待上限为 300 秒，预留 10 秒处理超时与返回结果；V3 MCP 包装层继续使用原有 `mcp_proxy_timeout` 配置（默认 600 秒）。其它 operation 沿用原有超时配置。`page` / `count` 只分页已完成的搜索结果，不会缩短站点搜索过程。
+
 查询结果的兼容分页合同如下：
 
 - 原先返回完整列表、没有分页参数的接口会在端点签名、OpenAPI、Skill 和 MCP `oneOf` 中显式声明可选 `page` / `count`；`page` 必须不小于 1，`count` 范围为 1 到 200。两者都省略时仍返回原来的完整列表，不启用分页；显式传入任一参数时才分页，缺失的 `page` 按 1、缺失的 `count` 按 50 处理。FastAPI 的 `response` 注入对象不是业务输入，不会出现在 REST、Skill 或 MCP 参数中。

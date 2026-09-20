@@ -21,6 +21,7 @@ from app.schemas.types import NotificationChannel
 
 _TOOL_MESSAGE_OPERATION_MAX_CHARS = 96
 _TOOL_MESSAGE_PARAMETER_MAX_CHARS = 320
+_SEARCH_TORRENTS_TOOL_TIMEOUT_SECONDS = 300.0
 
 
 @lru_cache(maxsize=1)
@@ -126,6 +127,12 @@ class MoviePilotApiTool(MoviePilotTool):
             max_chars=_TOOL_MESSAGE_PARAMETER_MAX_CHARS,
         )
         return f"{message}，主要参数：{parameter_summary}"
+
+    def _get_run_timeout_seconds(self, **kwargs: Any) -> Optional[float]:
+        """将 search.torrents 的总工具等待时间限制为五分钟。"""
+        if kwargs.get("operation_id") == "search.torrents":
+            return _SEARCH_TORRENTS_TOOL_TIMEOUT_SECONDS
+        return super()._get_run_timeout_seconds(**kwargs)
 
     def get_mcp_input_schema(self) -> dict[str, Any]:
         """返回包含全部白名单 operation 精确参数的 MCP JSON Schema。"""

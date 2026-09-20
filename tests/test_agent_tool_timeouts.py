@@ -14,6 +14,7 @@ from app.agent.tools.base import (
     reopen_blocking_executors,
     shutdown_blocking_executors,
 )
+from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.manager import MoviePilotToolsManager
 from app.runtime.correlation import correlation_scope, get_correlation_id
 
@@ -39,6 +40,16 @@ class BlockingAgentTool(MoviePilotTool):
     async def run(self, **kwargs) -> str:
         """本测试不会直接调用该方法。"""
         return "unused"
+
+
+class SlowMoviePilotApiTool(MoviePilotApiTool):
+    """用于验证 search.torrents 的 operation 级等待上限。"""
+
+    async def run(self, **kwargs) -> str:
+        """短暂等待以区分 search.torrents 与其它 operation 的超时。"""
+        del kwargs
+        await asyncio.sleep(0.03)
+        return "finished"
 
 
 @pytest.fixture(autouse=True)
@@ -74,6 +85,21 @@ def test_http_tool_manager_uses_same_timeout_guard():
     result = asyncio.run(_call_tool())
 
     assert "工具 slow_agent_tool 执行超时" in result
+
+
+def test_moviepilot_api_extends_timeout_only_for_search_torrents(monkeypatch):
+    """search.torrents 可超过全局工具上限，其它 API operation 仍受原配置限制。"""
+    tool = SlowMoviePilotApiTool(session_id="session-1", user_id="10001")
+    monkeypatch.setattr("app.agent.tools.base._get_tool_timeout_seconds", lambda: 0.01)
+    assert tool._get_run_timeout_seconds(operation_id="search.torrents") == 300
+    assert tool._get_run_timeout_seconds(operation_id="search.title") == 0.01
+
+    async def _run_calls():
+        assert await tool.run_with_timeout(operation_id="search.torrents") == "finished"
+        with pytest.raises(ToolExecutionTimeoutError, match="超过 0.01 秒"):
+            await tool.run_with_timeout(operation_id="search.title")
+
+    asyncio.run(_run_calls())
 
 
 def test_run_blocking_keeps_bucket_slot_until_worker_finishes():
