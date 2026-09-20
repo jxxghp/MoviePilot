@@ -474,10 +474,21 @@ def test_cancel_install_returns_prepared_update_to_ready(monkeypatch, tmp_path):
     assert not manager._install_file.exists()
 
 
+@pytest.mark.parametrize(
+    ("exdev_target", "failure"),
+    [
+        (None, None),
+        ("app", None),
+        ("public", None),
+        ("app", "backup"),
+        ("public", "backup"),
+        (None, "stage"),
+    ],
+)
 def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugins(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, exdev_target, failure
 ):
-    """Docker root worker 应替换前后端目录，同时保留运行时插件和站点资源。"""
+    """Docker 更新应兼容 OverlayFS，并在备份或切换失败时保留旧载荷。"""
     manager = _docker_manager(monkeypatch, tmp_path)
     app_dir = manager._docker_app_dir
     public_dir = manager._docker_public_dir
@@ -540,7 +551,39 @@ def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugin
         lambda project_dir, **kwargs: sync_calls.append((project_dir, kwargs)),
     )
 
+    original_replace = Path.replace
+    original_copytree = update_module.shutil.copytree
+
+    def replace(source, target):
+        """模拟 OverlayFS 目录重命名限制及新载荷切换失败。"""
+        if exdev_target == "app" and source == app_dir:
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        if exdev_target == "public" and source == public_dir:
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        if failure == "stage" and source.name == "App" and target == app_dir:
+            raise OSError(errno.EIO, "stage install failed")
+        return original_replace(source, target)
+
+    def copytree(source, target, *args, **kwargs):
+        """模拟 OverlayFS 备份复制失败，确保旧目录未被删除。"""
+        if failure == "backup" and Path(target).name.endswith(".__update_previous__"):
+            raise OSError(errno.ENOSPC, "backup failed")
+        return original_copytree(source, target, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "replace", replace)
+    monkeypatch.setattr(update_module.shutil, "copytree", copytree)
+
     success, message = manager.apply_prepared_update()
+
+    if failure:
+        assert success is False
+        assert (app_dir / "old.py").read_text(encoding="utf-8") == "old\n"
+        assert (public_dir / "index.html").read_text(encoding="utf-8") == "old-front\n"
+        assert not (app_dir / "new.py").exists()
+        assert (manager._root / "prepared.json").exists()
+        assert not manager._docker_previous_app_dir.exists()
+        assert not manager._docker_previous_public_dir.exists()
+        return
 
     assert success is True
     assert message == "已下载的更新已替换到 Docker 程序目录"
