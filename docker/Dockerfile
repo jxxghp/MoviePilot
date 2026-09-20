@@ -311,6 +311,7 @@ RUN playwright install-deps chromium \
     libde265-0 \
     libpcre2-8-0 \
     libsqlite3-0 \
+    libunbound8 \
     nginx \
     nginx-common \
     xserver-common \
