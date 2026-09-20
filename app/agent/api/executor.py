@@ -15,8 +15,8 @@ from app.application.security.token import create_access_token
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
-_DEFAULT_API_REQUEST_TIMEOUT_SECONDS = 30.0
-_SEARCH_TORRENTS_REQUEST_TIMEOUT_SECONDS = 290.0
+_DEFAULT_API_REQUEST_TIMEOUT_SECONDS = 30
+_SEARCH_TORRENTS_REQUEST_TIMEOUT_SECONDS = 290
 
 
 class ApiExecutionError(RuntimeError):
