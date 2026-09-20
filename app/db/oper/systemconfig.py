@@ -40,10 +40,16 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
     def _load_snapshot_values(self, db: Optional[Session]) -> dict[str, Any]:
         """逐行读取配置并把历史非法 JSON 修复为可继续运行的空值。"""
         def load(session: Session) -> dict[str, Any]:
-            """读取原始列值，避免单条坏记录触发 SQLAlchemy JSON 反序列化。"""
+            """读取 JSON 文本，避免驱动先解码字符串标量后被再次解析。"""
             snapshot: dict[str, Any] = {}
+            statement = (
+                "SELECT id, key, CAST(value AS TEXT) AS value "
+                "FROM systemconfig ORDER BY id"
+                if session.get_bind().dialect.name == "postgresql"
+                else "SELECT id, key, value FROM systemconfig ORDER BY id"
+            )
             rows = session.execute(
-                text("SELECT id, key, value FROM systemconfig ORDER BY id")
+                text(statement)
             ).mappings()
             for row in rows:
                 key = row["key"]

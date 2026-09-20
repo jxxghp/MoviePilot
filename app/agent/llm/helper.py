@@ -534,7 +534,7 @@ class LLMHelper:
             model_profile: Any,
             runtime: dict[str, Any],
     ) -> dict[str, Any]:
-        """把当前端点的窗口事实合并到 LangChain model profile。"""
+        """合并窗口事实，未匹配端点仅在无有效配置时使用 256K 回退。"""
         profile = dict(model_profile) if isinstance(model_profile, dict) else {}
         model_record = runtime.get("model_record") or {}
         model_metadata = runtime.get("model_metadata") or {}
@@ -574,10 +574,11 @@ class LLMHelper:
                     metadata_input,
                     profile_input,
                     configured_input,
-                    cls._DEFAULT_MAX_INPUT_TOKENS,
                 )
                 if candidate is not None
             ]
+            if configured_input is None:
+                constraints.append(cls._DEFAULT_MAX_INPUT_TOKENS)
             max_input_tokens = min(constraints)
         profile["max_input_tokens"] = max_input_tokens
 

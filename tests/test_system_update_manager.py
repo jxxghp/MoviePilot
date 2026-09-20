@@ -74,6 +74,40 @@ def test_status_reads_live_auto_update_setting_without_discarding_cached_update(
         assert status.can_update is True
 
 
+def test_sync_docker_dependencies_freezes_lock_for_custom_package_index(
+    monkeypatch, tmp_path
+):
+    """自定义镜像源只替换下载地址，不应触发 uv 重新校验或更新锁文件。"""
+    manager = _docker_manager(monkeypatch, tmp_path)
+    settings = {
+        "TEMP_PATH": tmp_path / "config" / "temp",
+        "ROOT_PATH": tmp_path / "app",
+        "FRONTEND_PATH": tmp_path / "public",
+        "VENV_PATH": tmp_path / "venv",
+        "UV_BIN": tmp_path / "uv",
+        "PIP_PROXY": "https://mirror.example/simple",
+        "PROXY_HOST": "",
+    }
+    monkeypatch.setattr(update_module, "get_runtime_setting", settings.__getitem__)
+    project_dir = tmp_path / "staged"
+    project_dir.mkdir()
+    calls = []
+
+    def run(command, **kwargs):
+        """记录 uv 调用并返回成功结果。"""
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(update_module.subprocess, "run", run)
+
+    assert manager._sync_docker_dependencies(project_dir, force=True) is True
+
+    command = calls[0][0]
+    assert "--frozen" in command
+    assert "--locked" not in command
+    assert command[-2:] == ["--default-index", "https://mirror.example/simple"]
+
+
 @pytest.mark.parametrize("auto_update", [False, True])
 @pytest.mark.parametrize("auto_update_resource", [False, True])
 def test_scheduled_check_respects_independent_switches(

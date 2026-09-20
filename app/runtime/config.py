@@ -834,7 +834,7 @@ class ConfigModel(BaseModel):
     LLM_USE_PROXY: bool = True
     # LLM Base URL 预设标识，用于区分同一 Base URL 下的不同模型目录
     LLM_BASE_URL_PRESET: Optional[str] = None
-    # LLM最大上下文Token数量（K），用于目录缺失回退和未匹配兼容端点的保守上限
+    # LLM最大上下文Token数量（K），用于目录缺失回退和未匹配兼容端点的用户上限
     LLM_MAX_CONTEXT_TOKENS: int = 256
     # LLM OpenAI兼容接口请求User-Agent
     LLM_USER_AGENT: Optional[str] = None

@@ -755,7 +755,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
         return str(value or os.getenv(key, default) or default).strip()
 
     def _sync_docker_dependencies(self, project_dir: Path, *, force: bool = False) -> bool:
-        """按新后端清单同步 Docker 共享虚拟环境依赖。"""
+        """按新后端清单同步依赖，自定义包源时冻结锁文件避免重新求解。"""
         current_dir = self._docker_app_dir
         if not force and all(
             (current_dir / name).read_bytes() == (project_dir / name).read_bytes()
@@ -765,12 +765,13 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
         venv_path = self._setting_text("VENV_PATH", "/opt/venv")
         uv_bin = self._setting_text("UV_BIN", "/usr/local/bin/uv")
+        package_index = self._setting_text("PIP_PROXY")
         command = [
             uv_bin,
             "sync",
             "--project",
             str(project_dir),
-            "--locked",
+            "--frozen" if package_index else "--locked",
             "--inexact",
             "--no-dev",
             "--no-install-project",
@@ -778,7 +779,6 @@ class SystemUpdateManager(metaclass=SingletonClass):
             f"{venv_path}/bin/python3",
             *runtime_sync_arguments(),
         ]
-        package_index = self._setting_text("PIP_PROXY")
         if package_index:
             command.extend(("--default-index", package_index))
         environment = os.environ.copy()

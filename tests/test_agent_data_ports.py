@@ -377,6 +377,19 @@ def test_agent_initializer_reassembly_replaces_cached_manager(monkeypatch) -> No
     assert second_manager._data is second
 
 
+def test_agent_initializer_resolves_data_bound_manager_for_agent_task(monkeypatch) -> None:
+    """生产解析路径必须返回带数据上下文的 manager，供 agent_task 使用。"""
+    context = _context(TransactionalAgentTaskRepository(SessionFactory))
+    monkeypatch.setattr(agent_initializer, "agent_manager", None)
+    monkeypatch.setattr(agent_initializer, "_agent_data_context", None)
+    monkeypatch.setattr(agent_initializer, "_injected_agent_manager", None)
+
+    agent_initializer.configure_agent_data_context(context)
+    manager = agent_initializer._get_agent_manager()
+
+    assert manager._data is context
+
+
 def test_transactional_agent_task_repository_projects_frozen_snapshots() -> None:
     """任务写入提交后必须返回脱离 Session 的冻结快照。"""
     repository = TransactionalAgentTaskRepository(SessionFactory)

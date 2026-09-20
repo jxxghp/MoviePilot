@@ -818,7 +818,7 @@
       "source_line": 836
     },
     "LLM_MAX_CONTEXT_TOKENS": {
-      "description": "LLM最大上下文Token数量（K），用于目录缺失回退和未匹配兼容端点的保守上限",
+      "description": "LLM最大上下文Token数量（K），用于目录缺失回退和未匹配兼容端点的用户上限",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
       "source_line": 838
