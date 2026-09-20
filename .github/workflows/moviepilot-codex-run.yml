@@ -28,12 +28,16 @@ on:
 
 permissions:
   contents: read
-  issues: write
+  issues: read
   pull-requests: read
 
 jobs:
   shadow:
     if: ${{ vars.CODEX_ENABLED == 'true' && vars.CODEX_PUBLISH_COMMENTS != 'true' }}
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-event.yml@main
     with:
       control_repository: jxxghp/MoviePilot-Maintenance
@@ -56,6 +60,10 @@ jobs:
 
   propose:
     if: ${{ vars.CODEX_ENABLED == 'true' && vars.CODEX_PUBLISH_COMMENTS == 'true' }}
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
     uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-propose.yml@main
     with:
       control_repository: jxxghp/MoviePilot-Maintenance
