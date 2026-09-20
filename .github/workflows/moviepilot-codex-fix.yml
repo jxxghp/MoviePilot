@@ -29,6 +29,9 @@ jobs:
       prompt_name: ${{ inputs.prompt_name }}
       codex_model: ${{ vars.CODEX_MODEL }}
       codex_effort: ${{ vars.CODEX_EFFORT || 'high' }}
+      target_number: ${{ inputs.issue_number }}
+      target_ref: ${{ github.ref_name }}
+      target_sha: ${{ github.sha }}
       openai_base_url: ${{ vars.OPENAI_BASE_URL }}
       publish_comments: true
       autofix_enabled: ${{ vars.CODEX_AUTOFIX_ENABLED == 'true' }}
