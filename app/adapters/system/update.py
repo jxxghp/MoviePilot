@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -995,10 +996,33 @@ class SystemUpdateManager(metaclass=SingletonClass):
                 self._remove_path(current)
             previous.replace(current)
 
+    def _backup_docker_current(
+        self, current: Path, previous: Path, temporary_root: Path
+    ) -> None:
+        """
+        将 Docker 当前目录移入回滚备份，并兼容 OverlayFS 的目录重命名限制。
+
+        OverlayFS 的镜像层目录可能无法直接 ``rename`` 到 upper 层。此时先完整复制
+        到更新事务的临时目录，复制成功后再把临时备份提升为正式回滚目录，避免将未
+        完成的备份交给回滚逻辑。
+        """
+        try:
+            current.replace(previous)
+            return
+        except OSError as error:
+            if error.errno != errno.EXDEV:
+                raise
+
+        temporary_previous = temporary_root / f"{current.name}.__update_previous__"
+        shutil.copytree(current, temporary_previous, symlinks=True)
+        self._preserve_tree_ownership(current, temporary_previous)
+        temporary_previous.replace(previous)
+        self._remove_path(current)
+
     def _apply_docker_application(
         self, prepared: dict[str, Any], *, include_resources: bool
     ) -> None:
-        """原子替换 Docker 后端源码和前端静态目录，并同步依赖。"""
+        """Docker 事务替换后端源码和前端静态目录，并同步依赖。"""
         app_dir = self._docker_app_dir
         public_dir = self._docker_public_dir
         previous_app = self._docker_previous_app_dir
@@ -1027,9 +1051,11 @@ class SystemUpdateManager(metaclass=SingletonClass):
                     dependency_sync_started = True
                     self._sync_docker_dependencies(stage_app)
                 self._set_docker_pending("prepared")
-                app_dir.replace(previous_app)
+                self._backup_docker_current(app_dir, previous_app, temporary_root)
                 try:
-                    public_dir.replace(previous_public)
+                    self._backup_docker_current(
+                        public_dir, previous_public, temporary_root
+                    )
                     stage_app.replace(app_dir)
                     stage_public.replace(public_dir)
                 except OSError:
