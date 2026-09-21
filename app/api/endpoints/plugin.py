@@ -1,6 +1,7 @@
 import asyncio
 import mimetypes
 from typing import Annotated, Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 import aiofiles
 from anyio import Path as AsyncPath
@@ -155,7 +156,7 @@ def _is_plugin_auth_remote_file(plugin_id: str, filepath: str) -> bool:
         remote = provider.get("remote") or {}
         if str(remote.get("id") or "").lower() != normalized_plugin_id:
             continue
-        remote_path = str(remote.get("url") or "").lstrip("/")
+        remote_path = urlsplit(str(remote.get("url") or "")).path.lstrip("/")
         remote_path_lower = remote_path.lower()
         expected_prefix = f"plugin/file/{normalized_plugin_id}/"
         if not remote_path_lower.startswith(expected_prefix):
@@ -756,7 +757,10 @@ async def plugin_static_file(
         return StreamingResponse(
             file_generator(),
             media_type=response_type,
-            headers={"Content-Disposition": f"inline; filename={plugin_file_path.name}"},
+            headers={
+                "Content-Disposition": f"inline; filename={plugin_file_path.name}",
+                "Cache-Control": "no-cache, must-revalidate",
+            },
         )
     except Exception as e:
         logger.error(

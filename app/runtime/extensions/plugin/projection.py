@@ -2,6 +2,7 @@
 
 import inspect
 from typing import Any, Callable, Dict, List, Mapping, Optional
+from urllib.parse import urlencode
 
 from app.runtime.extensions.plugin.contracts import (
     PluginDashboardError,
@@ -177,13 +178,19 @@ class PluginProjection:
         """构造联邦远程入口描述，分身额外带出其源插件 ID。
 
         分身与本体共享同一份前端产物，只有源插件名下才有产物目录；前端联邦加载器
-        拿不到源插件 ID 就只能按分身 ID 去取，必然落空。
+        拿不到源插件 ID 就只能按分身 ID 去取，必然落空。入口 URL 同时带上插件版本，
+        让插件更新后得到新的浏览器与 Service Worker 缓存键。
         """
         if not self._remote_entry_factory:
             raise RuntimeError("插件联邦入口生成器尚未配置")
+        remote_url = self._remote_entry_factory(plugin_id, dist_path)
+        plugin_version = getattr(plugin, "plugin_version", None)
+        if plugin_version:
+            separator = "&" if "?" in remote_url else "?"
+            remote_url = f"{remote_url}{separator}{urlencode({'v': str(plugin_version)})}"
         remote: Dict[str, Any] = {
             "id": plugin_id,
-            "url": self._remote_entry_factory(plugin_id, dist_path),
+            "url": remote_url,
             "name": plugin.plugin_name,
         }
         source_plugin_id = getattr(plugin, "plugin_source_id", None)

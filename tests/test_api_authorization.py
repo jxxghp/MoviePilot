@@ -274,6 +274,34 @@ def test_plugin_static_file_requires_resource_token_by_default(monkeypatch):
     assert calls == ["resource-token"]
 
 
+def test_plugin_auth_remote_accepts_versioned_entry_url(monkeypatch):
+    """认证远程入口带缓存版本参数时仍允许匿名读取。"""
+    calls = []
+
+    class FakePluginManager:
+        """返回带版本参数的认证远程入口桩。"""
+
+        def get_plugin_auth_providers(self):
+            """返回认证远程入口列表。"""
+            return [{
+                "remote": {
+                    "id": "AuthPlugin",
+                    "url": "/plugin/file/AuthPlugin/dist/remoteEntry.js?v=1.2.3",
+                }
+            }]
+
+    monkeypatch.setattr(plugin_endpoint, "get_plugin_manager", lambda: FakePluginManager())
+    monkeypatch.setattr(plugin_endpoint, "verify_resource_token", lambda token: calls.append(token))
+
+    plugin_endpoint._verify_plugin_static_file_access(
+        plugin_id="AuthPlugin",
+        filepath="dist/remoteEntry.js",
+        resource_token=None,
+    )
+
+    assert calls == []
+
+
 def test_plugin_auth_remote_files_allow_anonymous_bootstrap(monkeypatch):
     """插件登录认证远程组件需要允许登录前匿名加载。"""
     calls = []

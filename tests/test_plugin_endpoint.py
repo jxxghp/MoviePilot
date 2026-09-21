@@ -1229,6 +1229,7 @@ def test_virtual_instance_static_file_reads_from_source_directory(tmp_path, monk
 
     assert asyncio.run(read_body()) == b"export default 'shared'"
     assert response.media_type == "application/javascript"
+    assert response.headers["cache-control"] == "no-cache, must-revalidate"
     plugin_manager.get_plugin_source_id.assert_called_once_with("DemoPluginwork")
 
 
