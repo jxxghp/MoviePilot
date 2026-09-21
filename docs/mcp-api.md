@@ -754,7 +754,7 @@ Agent 自主任务使用数据库中的整数 `task_id`。`scheduler.list` 与 `
 创建每天 20:30 执行的周期任务时，使用 `trigger_type=cron` 和 `trigger="30 20 * * *"`。
 
 `persona` 使用 `action=list|switch|update`。`list` 可按 `query` 过滤；
-`switch` 必须提供 `persona_id`；`update` 只有管理员可用，支持替换 label、
+`switch` 和 `update` 必须提供 `persona_id`，且只有系统管理员可用。`update` 支持替换 label、
 description、aliases、instructions，或通过 `append_instructions` 追加规则。旧的
 `query_personas`、`switch_persona` 和 `update_persona_definition` 不再注册。
 

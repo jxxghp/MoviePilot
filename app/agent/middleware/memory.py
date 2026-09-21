@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import re
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterable, Iterator
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
@@ -249,10 +249,16 @@ def _category_for_path(path: Path, memory_dir: Path, activity_dir: Optional[Path
     return "topic"
 
 
-def _iter_memory_files(memory_dir: str, activity_dir: Optional[str] = None) -> Iterator[Path]:
+def _iter_memory_files(
+    memory_dir: str | Path,
+    activity_dir: Optional[str | Path] = None,
+    *,
+    excluded_dirs: Optional[Iterable[str | Path]] = None,
+) -> Iterator[Path]:
     """递归枚举允许检索的 Markdown 文件，并拒绝逃逸记忆根的链接。"""
     memory_root = _memory_root(memory_dir)
     activity_root = _memory_root(activity_dir) if activity_dir else None
+    excluded_roots = tuple(_memory_root(path) for path in (excluded_dirs or ()))
     roots = [memory_root]
     if activity_root and activity_root not in roots and not _is_relative_to(activity_root, memory_root):
         roots.append(activity_root)
@@ -270,6 +276,8 @@ def _iter_memory_files(memory_dir: str, activity_dir: Optional[str] = None) -> I
                 resolved = candidate.resolve(strict=False)
                 if candidate.suffix.casefold() != ".md" or not candidate.is_file() or resolved in seen:
                     continue
+                if any(_is_relative_to(resolved, root) for root in excluded_roots):
+                    continue
                 allowed = _is_relative_to(resolved, memory_root)
                 if activity_root:
                     allowed = allowed or _is_relative_to(resolved, activity_root)
@@ -283,8 +291,10 @@ def _iter_memory_files(memory_dir: str, activity_dir: Optional[str] = None) -> I
 
 def _resolve_memory_file(
     file_path: str,
-    memory_dir: str,
-    activity_dir: Optional[str],
+    memory_dir: str | Path,
+    activity_dir: Optional[str | Path],
+    *,
+    excluded_dirs: Optional[Iterable[str | Path]] = None,
 ) -> Optional[Path]:
     """解析工具传入的记忆路径，并限制在记忆域内。"""
     memory_root = _memory_root(memory_dir)
@@ -294,6 +304,8 @@ def _resolve_memory_file(
         candidate = memory_root / candidate
     resolved = candidate.resolve(strict=False)
     if resolved.suffix.casefold() != ".md":
+        return None
+    if any(_is_relative_to(resolved, _memory_root(path)) for path in (excluded_dirs or ())):
         return None
     if _is_relative_to(resolved, memory_root):
         return resolved
@@ -336,10 +348,44 @@ def _line_entry(path: Path, category: str, line_number: int, text: str) -> dict[
     }
 
 
+def _build_memory_scopes(
+    memory_dir: str | Path,
+    activity_dir: Optional[str | Path],
+    user_memory_dir: Optional[str | Path],
+    user_activity_dir: Optional[str | Path],
+) -> list[tuple[str, Path, Optional[Path], tuple[Path, ...]]]:
+    """构造全局公共记忆与当前用户记忆的检索作用域。"""
+    global_root = _memory_root(memory_dir)
+    global_activity_root = _memory_root(activity_dir) if activity_dir else None
+    user_root = _memory_root(user_memory_dir) if user_memory_dir else None
+    if user_root:
+        current_user_activity_root = (
+            _memory_root(user_activity_dir)
+            if user_activity_dir
+            else user_root / "activity"
+        )
+    else:
+        current_user_activity_root = None
+
+    scopes: list[tuple[str, Path, Optional[Path], tuple[Path, ...]]] = [
+        (
+            "global",
+            global_root,
+            global_activity_root,
+            (global_root / "users",),
+        )
+    ]
+    if user_root and user_root != global_root:
+        scopes.append(("user", user_root, current_user_activity_root, ()))
+    return scopes
+
+
 def query_memory_files(
     memory_dir: str,
     *,
     activity_dir: Optional[str] = None,
+    user_memory_dir: Optional[str] = None,
+    user_activity_dir: Optional[str] = None,
     query: Optional[str] = None,
     category: str = "all",
     file_path: Optional[str] = None,
@@ -348,7 +394,7 @@ def query_memory_files(
     days: int = DEFAULT_SEARCH_DAYS,
     limit: Optional[int] = DEFAULT_SEARCH_LIMIT,
 ) -> dict[str, Any]:
-    """在统一记忆域内按需检索主记忆、主题记忆和活动记忆。"""
+    """在全局公共记忆与当前用户记忆作用域内按需检索。"""
     normalized_category = (category or "all").strip().casefold()
     if normalized_category not in {"all", "primary", "topic", "activity"}:
         return {
@@ -383,25 +429,48 @@ def query_memory_files(
                 "entries": [],
             }
 
-    memory_root = _memory_root(memory_dir)
-    activity_root = _memory_root(activity_dir) if activity_dir else None
+    scopes = _build_memory_scopes(
+        memory_dir,
+        activity_dir,
+        user_memory_dir,
+        user_activity_dir,
+    )
     if file_path:
-        resolved = _resolve_memory_file(file_path, memory_dir, activity_dir)
-        if resolved is None:
+        scoped_files: list[tuple[Path, str, Path, Optional[Path]]] = []
+        for scope_name, scope_root, scope_activity, excluded_dirs in scopes:
+            resolved = _resolve_memory_file(
+                file_path,
+                scope_root,
+                scope_activity,
+                excluded_dirs=excluded_dirs,
+            )
+            if resolved is not None and resolved.is_file():
+                scoped_files.append((resolved, scope_name, scope_root, scope_activity))
+                break
+        if not scoped_files:
             return {
                 "success": False,
-                "message": "file_path 必须指向记忆域内的 Markdown 文件",
+                "message": "file_path 必须指向当前可见记忆域内的 Markdown 文件",
                 "entries": [],
             }
-        files = [resolved] if resolved.is_file() else []
     else:
-        files = list(_iter_memory_files(memory_dir, activity_dir))
+        scoped_files = []
+        for scope_name, scope_root, scope_activity, excluded_dirs in scopes:
+            scoped_files.extend(
+                (path, scope_name, scope_root, scope_activity)
+                for path in _iter_memory_files(
+                    scope_root,
+                    scope_activity,
+                    excluded_dirs=excluded_dirs,
+                )
+            )
 
     category_order = {"primary": 0, "topic": 1, "activity": 2}
-    filtered_files: list[Path] = []
+    scope_order = {"global": 0, "user": 1}
+    filtered_files: list[tuple[Path, str, Path, Optional[Path]]] = []
     recent_dates = set(_iter_recent_dates(normalized_days))
-    for path in files:
-        file_category = _category_for_path(path, memory_root, activity_root)
+    for path, scope_name, scope_root, scope_activity in scoped_files:
+        file_category = _category_for_path(path, scope_root, scope_activity)
         if normalized_category != "all" and file_category != normalized_category:
             continue
         activity_date = _activity_date_from_path(path) if file_category == "activity" else None
@@ -409,12 +478,15 @@ def query_memory_files(
             continue
         if not date and file_category == "activity" and activity_date not in recent_dates:
             continue
-        filtered_files.append(path)
-    def _file_sort_key(path: Path) -> tuple[int, int, str]:
+        filtered_files.append((path, scope_name, scope_root, scope_activity))
+
+    def _file_sort_key(item: tuple[Path, str, Path, Optional[Path]]) -> tuple[int, int, int, str]:
         """为目录清单提供稳定的分类与活动日期排序键。"""
+        path, scope_name, scope_root, scope_activity = item
         activity_date = _activity_date_from_path(path)
         return (
-            category_order[_category_for_path(path, memory_root, activity_root)],
+            category_order[_category_for_path(path, scope_root, scope_activity)],
+            scope_order[scope_name],
             -int(activity_date.replace("-", "")) if activity_date else 0,
             str(path).casefold(),
         )
@@ -425,10 +497,11 @@ def query_memory_files(
         {
             "path": str(path),
             "name": path.name,
-            "category": _category_for_path(path, memory_root, activity_root),
+            "category": _category_for_path(path, scope_root, scope_activity),
+            "scope": scope_name,
             "bytes": path.stat().st_size if path.exists() else 0,
         }
-        for path in filtered_files
+        for path, scope_name, scope_root, scope_activity in filtered_files
     ]
     entries: list[dict[str, str]] = []
     total_count = 0
@@ -443,12 +516,12 @@ def query_memory_files(
             return bool(regex_pattern.search(text))
         return normalized_query.casefold() in text.casefold()
 
-    for path in filtered_files:
+    for path, scope_name, scope_root, scope_activity in filtered_files:
         content, reason = _read_search_file(path)
         if content is None:
             skipped_files.append({"path": str(path), "reason": reason or "unavailable"})
             continue
-        file_category = _category_for_path(path, memory_root, activity_root)
+        file_category = _category_for_path(path, scope_root, scope_activity)
         activity_date = _activity_date_from_path(path)
         if file_category == "activity" and activity_date:
             activity_entries = _parse_activity_entries(activity_date, content)
@@ -459,6 +532,7 @@ def query_memory_files(
                     {
                         "path": str(path),
                         "category": file_category,
+                        "scope": scope_name,
                         **item,
                         "text": item["summary"][:MAX_SEARCH_LINE_CHARS],
                     },
@@ -467,7 +541,14 @@ def query_memory_files(
             ]
         else:
             line_entries = [
-                (line_number, line, _line_entry(path, file_category, line_number, line))
+                (
+                    line_number,
+                    line,
+                    {
+                        **_line_entry(path, file_category, line_number, line),
+                        "scope": scope_name,
+                    },
+                )
                 for line_number, line in enumerate(content.splitlines(), start=1)
                 if line.strip()
             ]
@@ -490,8 +571,10 @@ def query_memory_files(
         )
     return {
         "success": True,
-        "memory_dir": str(memory_root),
-        "activity_dir": str(activity_root) if activity_root else None,
+        "memory_dir": str(scopes[0][1]),
+        "activity_dir": str(scopes[0][2]) if scopes[0][2] else None,
+        "user_memory_dir": str(scopes[1][1]) if len(scopes) > 1 else None,
+        "user_activity_dir": str(scopes[1][2]) if len(scopes) > 1 and scopes[1][2] else None,
         "query": normalized_query,
         "category": normalized_category,
         "file_path": str(file_path) if file_path else None,
@@ -500,7 +583,7 @@ def query_memory_files(
         "days": None if date else normalized_days,
         "files": file_descriptions,
         "file_count": len(file_descriptions),
-        "searched_files": [str(path) for path in filtered_files],
+        "searched_files": [str(path) for path, _scope, _root, _activity in filtered_files],
         "total_count": total_count,
         "returned_count": len(entries),
         "truncated": total_count > len(entries),
@@ -512,10 +595,19 @@ def query_memory_files(
 class _MemoryToolProvider:
     """统一记忆检索工具的异步实现。"""
 
-    def __init__(self, *, memory_dir: str, activity_dir: Optional[str]) -> None:
-        """保存受限的记忆根路径，实际文件读取在线程池中执行。"""
+    def __init__(
+        self,
+        *,
+        memory_dir: str,
+        activity_dir: Optional[str],
+        user_memory_dir: Optional[str],
+        user_activity_dir: Optional[str],
+    ) -> None:
+        """保存受限的记忆作用域，实际文件读取在线程池中执行。"""
         self._memory_dir = memory_dir
         self._activity_dir = activity_dir
+        self._user_memory_dir = user_memory_dir
+        self._user_activity_dir = user_activity_dir
 
     async def search_memory(
         self,
@@ -546,6 +638,8 @@ class _MemoryToolProvider:
                     query_memory_files,
                     self._memory_dir,
                     activity_dir=self._activity_dir,
+                    user_memory_dir=self._user_memory_dir,
+                    user_activity_dir=self._user_activity_dir,
                     query=query,
                     category=category,
                     file_path=file_path,
@@ -661,19 +755,23 @@ async def _summarize_with_llm(conversation_text: str) -> Optional[str]:
 
 
 MEMORY_SYSTEM_PROMPT = """<agent_memory>
-Only the primary memory file was loaded from the memory directory: `{memory_dir}`.
-The loaded file is shown below. Other Markdown memory files are available only through the `search_memory` tool.
+The global public memory file and the current user's memory file were loaded from the memory directory.
+Global public memory: `{memory_file}`
+Current user memory: `{user_memory_file}`
+The loaded files are shown below. Other Markdown memory files are available only through the `search_memory` tool.
 
 {agent_memory}
 </agent_memory>
 
 <memory_guidelines>
-    The memory directory is `{memory_dir}`. Use `write_file` or `edit_file` to maintain durable memory, and use `search_memory` to retrieve files that are not loaded above.
+    The global memory directory is `{memory_dir}`. The current user's memory directory is `{user_memory_dir}`.
+    Use `write_file` or `edit_file` to maintain durable memory, and use `search_memory` to retrieve files that are not loaded above.
+    Global public memory is shared by all users and may only be written by a system administrator. For a user's preference, write only to the current user's `{user_memory_file}`. Do not write another user's memory.
 
     **Memory categories:**
-    - `primary`: `{memory_file}` / `MEMORY.md`, for preferences, communication style, durable rules, and cross-task facts that should be remembered by default.
-    - `topic`: other focused Markdown files for specialized knowledge. They are never loaded automatically; call `search_memory(category="topic", ...)` when relevant.
-    - `activity`: `memory/activity/YYYY-MM-DD.md`, automatically summarized task history. It is read-only history for retrieval, retained for {retention_days} days, and is not automatically loaded. Do not manually write task history into `MEMORY.md`.
+    - `primary`: `{memory_file}` and the current user's `{user_memory_file}`, for public rules and user-specific preferences that should be remembered by default.
+    - `topic`: other focused Markdown files in the global or current user's memory scope. They are never loaded automatically; call `search_memory(category="topic", ...)` when relevant.
+    - `activity`: the global or current user's `activity/YYYY-MM-DD.md`, automatically summarized task history. It is read-only history for retrieval, retained for {retention_days} days, and is not automatically loaded. Do not manually write task history into a primary memory file.
 
     **Required task-start memory retrieval:**
     - Before executing any substantive task or calling any business, file, web, command, or external tool, first call `search_memory` to retrieve memories relevant to the user's request. This must be the first tool call for that task. If it finds nothing, continue without repeating unrelated searches.
@@ -690,9 +788,11 @@ The loaded file is shown below. Other Markdown memory files are available only t
 """
 
 MEMORY_ONBOARDING_PROMPT = """<agent_memory>
-The primary memory file is empty or does not exist.
-Memory directory: {memory_dir}
-Primary memory file: {memory_file}
+The primary memory file is empty or does not exist for the available global and current-user scopes.
+Global memory directory: {memory_dir}
+Current user memory directory: {user_memory_dir}
+Global public memory file: {memory_file}
+Current user memory file: {user_memory_file}
 Other topic and activity Markdown files are available only through the `search_memory` tool.
 </agent_memory>
 
@@ -704,11 +804,11 @@ Other topic and activity Markdown files are available only through the `search_m
     - Before executing any substantive task or calling any business, file, web, command, or external tool, first call `search_memory`; this is the first tool call for that task, even when the primary file is empty, so relevant topic or activity memory can still be found.
     - Simple greetings, acknowledgements, and answers that require no task execution do not need a search.
 
-    When a user gives a durable preference or explicitly asks to remember something, save it promptly to `{memory_file}` with `write_file` or `edit_file` after the initial memory search. Record only durable preferences and working rules; never save credentials or invent personal details.
+    When a user gives a durable preference or explicitly asks to remember something, save it promptly to the current user's `{user_memory_file}` with `write_file` or `edit_file` after the initial memory search. Only a system administrator may write global public memory at `{memory_file}`. Record only durable preferences and working rules; never save credentials or invent personal details.
 </memory_onboarding>
 
 <memory_guidelines>
-    Use `search_memory(category="topic", ...)` for focused knowledge and `search_memory(category="activity", ...)` for recent task history. Activity memory is automatically generated and read-only.
+    Use `search_memory(category="topic", ...)` for focused knowledge and `search_memory(category="activity", ...)` for recent task history in the global or current user's scope. Activity memory is automatically generated and read-only.
     Memory may refine reply style but must not override core identity, safety boundaries, or system rules.
 </memory_guidelines>
 """
@@ -717,12 +817,14 @@ Other topic and activity Markdown files are available only through the `search_m
 class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # noqa
     """统一管理主记忆、按需记忆检索与活动记忆记录。
 
-    `abefore_agent` 只加载 `MEMORY.md`，`search_memory` 递归检索其它 Markdown 文件，
-    `aafter_agent` 在启用消息上下文的会话中把本轮活动摘要写入 `memory/activity`。
+    `abefore_agent` 加载全局公共和当前用户的 `MEMORY.md`，`search_memory` 只检索
+    全局公共与当前用户作用域，`aafter_agent` 将活动摘要写入当前用户的活动目录。
 
     参数：
-        memory_dir: 统一记忆根目录。
-        activity_dir: 活动记忆目录；未提供时只启用主记忆与检索，不记录活动。
+        memory_dir: 全局公共记忆根目录。
+        activity_dir: 兼容无用户上下文时使用的全局活动记忆目录。
+        user_memory_dir: 当前用户的记忆根目录；未提供时只使用全局公共记忆。
+        user_activity_dir: 当前用户的活动记忆目录；未提供时默认为用户记忆目录下的 `activity`。
         retention_days: 活动记忆保留天数。
         stream_handler: 用于显示记忆检索工具的流式执行状态。
         task_registry: 宿主后台任务登记器。
@@ -735,6 +837,8 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
         *,
         memory_dir: str,
         activity_dir: Optional[str] = None,
+        user_memory_dir: Optional[str] = None,
+        user_activity_dir: Optional[str] = None,
         retention_days: int = DEFAULT_RETENTION_DAYS,
         stream_handler: Optional[Any] = None,
         task_registry: Optional[TaskRegistry] = None,
@@ -742,7 +846,18 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
         """初始化统一记忆中间件与按需检索工具。"""
         self.memory_dir = str(Path(memory_dir))
         self.activity_dir = str(Path(activity_dir)) if activity_dir else None
+        self.user_memory_dir = str(Path(user_memory_dir)) if user_memory_dir else None
+        self.user_activity_dir = (
+            str(Path(user_activity_dir))
+            if user_activity_dir
+            else str(Path(self.user_memory_dir) / "activity") if self.user_memory_dir else None
+        )
         self.default_memory_file = str(Path(self.memory_dir) / DEFAULT_MEMORY_FILE)
+        self.user_memory_file = (
+            str(Path(self.user_memory_dir) / DEFAULT_MEMORY_FILE)
+            if self.user_memory_dir
+            else None
+        )
         self.retention_days = retention_days
         self.stream_handler = stream_handler
         self._task_registry = task_registry or get_task_registry()
@@ -750,6 +865,8 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
         self._tool_provider = _MemoryToolProvider(
             memory_dir=self.memory_dir,
             activity_dir=self.activity_dir,
+            user_memory_dir=self.user_memory_dir,
+            user_activity_dir=self.user_activity_dir,
         )
         self.tools = [
             StructuredTool.from_function(
@@ -777,52 +894,67 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
             return MEMORY_ONBOARDING_PROMPT.format(
                 memory_dir=self.memory_dir,
                 memory_file=self.default_memory_file,
+                user_memory_dir=self.user_memory_dir or "(未启用)",
+                user_memory_file=self.user_memory_file or "(未启用)",
             )
         memory_body = "\n\n".join(
-            f"### {Path(path).name}\n**Path:** `{path}`\n\n{content}"
-            for path, content in sorted(contents.items())
+            f"### {('全局公共记忆' if path == self.default_memory_file else '当前用户记忆' if path == self.user_memory_file else Path(path).name)}\n**Path:** `{path}`\n\n{content}"
+            for path, content in sorted(
+                contents.items(),
+                key=lambda item: (
+                    0 if item[0] == self.default_memory_file else 1 if item[0] == self.user_memory_file else 2,
+                    item[0],
+                ),
+            )
             if content.strip()
         )
         if not memory_body:
             return MEMORY_ONBOARDING_PROMPT.format(
                 memory_dir=self.memory_dir,
                 memory_file=self.default_memory_file,
+                user_memory_dir=self.user_memory_dir or "(未启用)",
+                user_memory_file=self.user_memory_file or "(未启用)",
             )
         return MEMORY_SYSTEM_PROMPT.format(
             agent_memory=memory_body,
             memory_dir=self.memory_dir,
             memory_file=self.default_memory_file,
+            user_memory_dir=self.user_memory_dir or "(未启用)",
+            user_memory_file=self.user_memory_file or "(未启用)",
             retention_days=self.retention_days,
         )
 
     async def _load_primary_memory(self) -> dict[str, str]:
-        """只读取主记忆文件，拒绝把主题和活动文件自动装入上下文。"""
-        file_path = AsyncPath(self.default_memory_file)
-        if not await file_path.is_file():
-            return {}
-        try:
-            stat = await file_path.stat()
-            if stat.st_size > MAX_MEMORY_FILE_SIZE:
-                logger.warning(
-                    "Skipping primary memory file %s: too large (%d bytes, max %d)",
-                    self.default_memory_file,
-                    stat.st_size,
-                    MAX_MEMORY_FILE_SIZE,
-                )
-                return {}
-            return {
-                self.default_memory_file: await file_path.read_text(
+        """加载全局与当前用户主记忆，不把主题和活动正文自动装入上下文。"""
+        contents: dict[str, str] = {}
+        memory_files = [self.default_memory_file]
+        if self.user_memory_file:
+            memory_files.append(self.user_memory_file)
+        for memory_file in memory_files:
+            file_path = AsyncPath(memory_file)
+            if not await file_path.is_file():
+                continue
+            try:
+                stat = await file_path.stat()
+                if stat.st_size > MAX_MEMORY_FILE_SIZE:
+                    logger.warning(
+                        "Skipping primary memory file %s: too large (%d bytes, max %d)",
+                        memory_file,
+                        stat.st_size,
+                        MAX_MEMORY_FILE_SIZE,
+                    )
+                    continue
+                contents[memory_file] = await file_path.read_text(
                     encoding="utf-8",
                     errors="replace",
                 )
-            }
-        except Exception as error:
-            logger.warning(
-                "Failed to read primary memory file %s: %s",
-                self.default_memory_file,
-                summarize_error(error),
-            )
-            return {}
+            except Exception as error:
+                logger.warning(
+                    "Failed to read primary memory file %s: %s",
+                    memory_file,
+                    summarize_error(error),
+                )
+        return contents
 
     async def abefore_agent(  # noqa
         self,
@@ -860,20 +992,26 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
         """异步包装模型调用，注入主记忆和统一记忆操作规则。"""
         return await handler(self.modify_request(request))
 
+    def _get_active_activity_dir(self) -> Optional[str]:
+        """返回当前会话应写入和清理的活动记忆目录。"""
+        return self.user_activity_dir or self.activity_dir
+
     def _get_activity_path(self, date_str: str) -> AsyncPath:
         """获取指定日期的活动记忆文件路径。"""
-        if not self.activity_dir:
+        activity_dir = self._get_active_activity_dir()
+        if not activity_dir:
             raise RuntimeError("activity memory is disabled")
-        return AsyncPath(self.activity_dir) / f"{date_str}.md"
+        return AsyncPath(activity_dir) / f"{date_str}.md"
 
     async def _append_activity(self, summary: str) -> None:
-        """将活动摘要追加到统一记忆域的当日活动文件。"""
-        if not self.activity_dir:
+        """将活动摘要追加到当前作用域的当日活动文件。"""
+        activity_dir = self._get_active_activity_dir()
+        if not activity_dir:
             return
         today_str = datetime.now().strftime("%Y-%m-%d")
         now_str = datetime.now().strftime("%H:%M")
         log_path = self._get_activity_path(today_str)
-        directory = AsyncPath(self.activity_dir)
+        directory = AsyncPath(activity_dir)
         try:
             await directory.mkdir(parents=True, exist_ok=True)
             if await log_path.exists() and (await log_path.stat()).st_size >= MAX_LOG_FILE_SIZE:
@@ -897,10 +1035,11 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
             logger.warning("Failed to append activity memory: %s", summarize_error(error))
 
     async def _cleanup_old_activity(self) -> None:
-        """清理统一活动记忆域中超过保留期的日期文件。"""
-        if not self.activity_dir:
+        """清理当前作用域中超过保留期的活动日期文件。"""
+        activity_dir = self._get_active_activity_dir()
+        if not activity_dir:
             return
-        directory = AsyncPath(self.activity_dir)
+        directory = AsyncPath(activity_dir)
         if not await directory.exists():
             return
         cutoff_date = datetime.now().date() - timedelta(days=self.retention_days)
@@ -923,7 +1062,7 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
 
     def _schedule_activity_recording(self, messages: list[Any]) -> None:
         """登记后台活动摘要任务，不阻塞当前 Agent 会话结束。"""
-        if not self.activity_dir:
+        if not self._get_active_activity_dir():
             return
         task = self._task_registry.create(
             self._record_activity(messages),
@@ -1005,7 +1144,7 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
         """Agent 执行完毕后，异步登记本轮活动记忆摘要。"""
         del runtime
         messages = state.get("messages", [])
-        if messages and self.activity_dir:
+        if messages and self._get_active_activity_dir():
             self._schedule_activity_recording(list(messages))
         return None
 

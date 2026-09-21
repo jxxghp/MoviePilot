@@ -1,3 +1,4 @@
+import hashlib
 from typing import Optional, Union
 
 # 后台任务会话使用的内部占位用户ID。
@@ -25,3 +26,18 @@ def normalize_internal_user_id(
     if is_internal_user_id(userid):
         return None
     return userid
+
+
+def build_user_memory_key(userid: Optional[Union[str, int]]) -> Optional[str]:
+    """
+    为用户记忆目录生成不可逆且稳定的隔离键。
+
+    用户 ID 可能来自消息渠道，不能直接拼接进文件路径；系统内部用户不拥有
+    用户级记忆，返回 None 让调用方只使用公共记忆。
+    """
+    if userid is None or is_internal_user_id(userid):
+        return None
+    normalized = str(userid).strip()
+    if not normalized:
+        return None
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()

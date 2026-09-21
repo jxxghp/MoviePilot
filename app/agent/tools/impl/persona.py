@@ -83,9 +83,8 @@ class PersonaTool(MoviePilotTool):
     tags: list[str] = [ToolTag.Read, ToolTag.Write, ToolTag.Persona]
     description: str = (
         "Manage agent personas with one structured action. Use list to discover personas "
-        "and the active state, switch when the user explicitly requests a speaking style, "
-        "and update only for an explicit administrator request to create or rewrite a "
-        "persona definition."
+        "and the active state. Only a system administrator may switch the global active "
+        "persona or create and rewrite a persona definition."
     )
     args_schema: Type[BaseModel] = PersonaInput
 
@@ -134,16 +133,16 @@ class PersonaTool(MoviePilotTool):
         try:
             if payload.action == "list":
                 return self._list_personas(payload.query)
-            if payload.action == "switch":
-                return self._switch_persona(payload.persona_id)
             if not await self.is_admin_user():
                 return json.dumps(
                     {
                         "success": False,
-                        "message": "只有系统管理员才能更新人格定义。",
+                        "message": "只有系统管理员才能切换或更新全局人格设置。",
                     },
                     ensure_ascii=False,
                 )
+            if payload.action == "switch":
+                return self._switch_persona(payload.persona_id)
             return self._update_persona(payload)
         except Exception as error:  # noqa: BLE001
             logger.error(

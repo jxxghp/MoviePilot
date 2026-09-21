@@ -69,6 +69,37 @@ def test_memory_loads_only_primary_file(tmp_path):
     assert "first tool call" in system_text
 
 
+def test_memory_loads_global_and_current_user_primary_files_only(tmp_path):
+    """默认上下文应按全局再当前用户顺序加载，且不触及其他用户记忆。"""
+    global_memory = tmp_path / "MEMORY.md"
+    global_memory.write_text("公共规则：使用简洁风格。", encoding="utf-8")
+    user_memory_dir = tmp_path / "users" / "user-a"
+    user_memory = user_memory_dir / "MEMORY.md"
+    user_memory.parent.mkdir(parents=True)
+    user_memory.write_text("用户偏好：优先中文回答。", encoding="utf-8")
+    other_memory = tmp_path / "users" / "user-b" / "MEMORY.md"
+    other_memory.parent.mkdir(parents=True)
+    other_memory.write_text("其他用户的私密偏好。", encoding="utf-8")
+
+    middleware = MemoryMiddleware(
+        memory_dir=str(tmp_path),
+        user_memory_dir=str(user_memory_dir),
+    )
+    state_update = asyncio.run(middleware.abefore_agent({}, runtime=None, config=None))
+    prompt = middleware._format_agent_memory(
+        state_update["memory_contents"],
+        memory_empty=state_update["memory_empty"],
+    )
+
+    assert state_update["memory_contents"] == {
+        str(global_memory): "公共规则：使用简洁风格。",
+        str(user_memory): "用户偏好：优先中文回答。",
+    }
+    assert prompt.index("公共规则：使用简洁风格") < prompt.index("用户偏好：优先中文回答")
+    assert "其他用户的私密偏好" not in prompt
+    assert str(user_memory) in prompt
+
+
 def test_memory_onboarding_still_requires_search_before_task(tmp_path):
     """主记忆为空时也必须要求 Agent 在执行任务前检索其它记忆。"""
     (tmp_path / "MEDIA_RULES.md").write_text("主题记忆：偏好 HEVC。", encoding="utf-8")
@@ -124,6 +155,37 @@ def test_query_memory_files_searches_topic_and_activity_categories(tmp_path):
     assert activity_payload["entries"][0]["category"] == "activity"
     assert activity_payload["entries"][0]["summary"] == "帮用户整理了电影 A"
     assert activity_payload["entries"][0]["date"] == "2026-06-18"
+
+
+def test_query_memory_files_scopes_global_and_current_user_memory(tmp_path):
+    """检索只能看到公共记忆与当前用户记忆，不能跨用户读取。"""
+    (tmp_path / "PUBLIC_RULES.md").write_text("公共主题：优先 Remux。\n", encoding="utf-8")
+    user_memory_dir = tmp_path / "users" / "user-a"
+    (user_memory_dir / "USER_RULES.md").parent.mkdir(parents=True)
+    (user_memory_dir / "USER_RULES.md").write_text("当前用户主题：偏好 HEVC。\n", encoding="utf-8")
+    other_memory = tmp_path / "users" / "user-b" / "USER_RULES.md"
+    other_memory.parent.mkdir(parents=True)
+    other_memory.write_text("其他用户主题：偏好 AV1。\n", encoding="utf-8")
+
+    payload = query_memory_files(
+        str(tmp_path),
+        user_memory_dir=str(user_memory_dir),
+        query="偏好",
+        category="topic",
+        limit=10,
+    )
+    other_file = query_memory_files(
+        str(tmp_path),
+        user_memory_dir=str(user_memory_dir),
+        file_path=str(other_memory),
+    )
+
+    assert payload["success"] is True
+    assert {entry["text"] for entry in payload["entries"]} == {
+        "当前用户主题：偏好 HEVC。",
+    }
+    assert all(entry["scope"] == "user" for entry in payload["entries"])
+    assert other_file["success"] is False
 
 
 def test_query_memory_files_supports_regex_and_bounds_results(tmp_path):
@@ -311,6 +373,46 @@ def test_activity_memory_records_under_unified_memory_directory(tmp_path):
     log_files = list(activity_dir.glob("*.md"))
     assert len(log_files) == 1
     assert summary in log_files[0].read_text(encoding="utf-8")
+
+
+def test_activity_memory_records_under_current_user_directory(tmp_path):
+    """带用户上下文的活动摘要只能写入当前用户的活动目录。"""
+    summary = "当前用户请求整理电影，助手完成了文件处理。"
+    user_memory_dir = tmp_path / "users" / "user-a"
+    user_activity_dir = user_memory_dir / "activity"
+
+    async def _run_test():
+        middleware = MemoryMiddleware(
+            memory_dir=str(tmp_path),
+            user_memory_dir=str(user_memory_dir),
+        )
+        with patch(
+            "app.agent.middleware.memory._summarize_with_llm",
+            new=AsyncMock(return_value=summary),
+        ):
+            await middleware.aafter_agent(
+                {
+                    "messages": [
+                        HumanMessage(content="帮我整理电影"),
+                        AIMessage(
+                            content="",
+                            tool_calls=[
+                                {"name": "transfer_file", "args": {}, "id": "call_1"}
+                            ],
+                        ),
+                        ToolMessage(content='{"success": true}', tool_call_id="call_1"),
+                    ]
+                },
+                runtime=None,
+            )
+            await _wait_memory_tasks(middleware)
+
+    asyncio.run(_run_test())
+
+    log_files = list(user_activity_dir.glob("*.md"))
+    assert len(log_files) == 1
+    assert summary in log_files[0].read_text(encoding="utf-8")
+    assert not list((tmp_path / "activity").glob("*.md"))
 
 
 def test_activity_memory_skips_trivial_greeting_without_llm(tmp_path):

@@ -1867,13 +1867,17 @@ class MoviePilotAgent:
                 stream_handler=self.stream_handler,
             )
             skill_tools = list(getattr(skills_middleware, "tools", []) or [])
+            user_memory_dir = agent_runtime_manager.get_user_memory_dir(self.user_id)
+            user_activity_dir = agent_runtime_manager.get_user_activity_dir(self.user_id)
             memory_middleware = MemoryMiddleware(
                 memory_dir=str(agent_runtime_manager.memory_dir),
                 activity_dir=(
                     str(agent_runtime_manager.activity_dir)
-                    if self.has_message_context
+                    if self.has_message_context and user_memory_dir is None
                     else None
                 ),
+                user_memory_dir=str(user_memory_dir) if user_memory_dir else None,
+                user_activity_dir=str(user_activity_dir) if user_activity_dir else None,
                 stream_handler=self.stream_handler,
             )
             memory_tools = list(getattr(memory_middleware, "tools", []) or [])

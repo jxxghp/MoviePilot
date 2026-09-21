@@ -65,11 +65,29 @@ async def test_persona_switch_updates_runtime_by_alias(
         runtime_manager,
     )
 
-    payload = json.loads(await _tool().run(action="switch", persona_id="讲解"))
+    payload = json.loads(await _tool(is_admin=True).run(action="switch", persona_id="讲解"))
 
     assert payload["success"] is True
     assert payload["active_persona"] == "guide"
     assert runtime_manager.load_runtime_config().active_persona == "guide"
+
+
+@pytest.mark.anyio
+async def test_persona_switch_requires_admin(
+    monkeypatch,
+    runtime_manager: AgentRuntimeManager,
+) -> None:
+    """普通用户不能切换所有用户共享的全局人格。"""
+    monkeypatch.setattr(
+        "app.agent.tools.impl.persona.agent_runtime_manager",
+        runtime_manager,
+    )
+
+    payload = json.loads(await _tool().run(action="switch", persona_id="讲解"))
+
+    assert payload["success"] is False
+    assert "系统管理员" in payload["message"]
+    assert runtime_manager.load_runtime_config().active_persona == "default"
 
 
 @pytest.mark.anyio
@@ -139,7 +157,7 @@ async def test_persona_update_requires_admin(
     monkeypatch,
     runtime_manager: AgentRuntimeManager,
 ) -> None:
-    """普通用户可以查询和切换，但不能更新人格定义。"""
+    """普通用户可以查询，但不能更新或切换全局人格定义。"""
     monkeypatch.setattr(
         "app.agent.tools.impl.persona.agent_runtime_manager",
         runtime_manager,

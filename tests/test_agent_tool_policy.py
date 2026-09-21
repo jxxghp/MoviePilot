@@ -154,6 +154,11 @@ def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
         arguments={"action": "list"},
         requires_admin=False,
     )
+    persona_switch_policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+        tool_name="persona",
+        arguments={"action": "switch", "persona_id": "concise"},
+        requires_admin=False,
+    )
     admin_safe_policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
         tool_name="moviepilot_api",
         arguments={"operation_id": "scheduler.list"},
@@ -173,6 +178,7 @@ def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
     assert safe_policy.effect is ActionEffect.SAFE_READ
     assert safe_policy.result_sensitivity is ResultSensitivity.NORMAL
     assert safe_policy.migration_state is MigrationState.ENFORCED
+    assert persona_switch_policy.required_role is PrincipalRole.SYSTEM_ADMIN
 
     assert admin_safe_policy.effect is ActionEffect.SAFE_READ
     assert admin_safe_policy.required_role is PrincipalRole.SYSTEM_ADMIN
@@ -886,6 +892,14 @@ def test_main_agent_preserves_memory_middleware_order() -> None:
         for index, middleware in enumerate(middlewares)
         if isinstance(middleware, FinalRequestCompactionMiddleware)
     )
+    memory_middleware = middlewares[memory_index]
 
     assert policy_index == 0
     assert compaction_index > memory_index
+    assert memory_middleware.user_memory_dir == str(
+        agent_module.agent_runtime_manager.get_user_memory_dir("user-1")
+    )
+    assert memory_middleware.user_activity_dir == str(
+        agent_module.agent_runtime_manager.get_user_activity_dir("user-1")
+    )
+    assert memory_middleware.activity_dir is None

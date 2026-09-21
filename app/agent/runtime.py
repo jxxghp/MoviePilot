@@ -14,6 +14,7 @@ from typing import Any, Iterable, Optional
 import yaml
 
 from app.application.configuration import get_runtime_settings
+from app.foundation.identity import build_user_memory_key
 from app.runtime.log import logger
 
 CURRENT_PERSONA_FILE = "CURRENT_PERSONA.md"
@@ -22,6 +23,7 @@ MEMORY_DIR = "memory"
 SKILLS_DIR = "skills"
 JOBS_DIR = "jobs"
 ACTIVITY_DIR = "activity"
+USER_MEMORY_DIR = "users"
 PERSONAS_DIR = "personas"
 PERSONA_FILE = "PERSONA.md"
 SUBAGENTS_DIR = "subagents"
@@ -184,6 +186,7 @@ class AgentRuntimeConfig:
             f"- Active persona: `{self.active_persona}`",
             f"- Active persona file: `personas/{self.persona.persona_id}/{PERSONA_FILE}`",
             "- Use `persona` with `action=list` before switching when the requested speaking style is unclear.",
+            "- Only a system administrator may switch the global active persona or update persona definitions.",
             "- Subagent availability is exposed by the subagent task tools; do not rely on this runtime section as a catalog.",
             "</agent_runtime_config>",
         ]
@@ -248,6 +251,7 @@ class AgentRuntimeManager:
         self.agent_root_dir = agent_root_dir or _default_agent_root_dir()
         self.runtime_dir = self.agent_root_dir / SYSTEM_RUNTIME_DIR
         self.memory_dir = self.agent_root_dir / MEMORY_DIR
+        self.user_memory_root = self.memory_dir / USER_MEMORY_DIR
         self.skills_dir = self.agent_root_dir / SKILLS_DIR
         self.jobs_dir = self.agent_root_dir / JOBS_DIR
         # 活动记忆属于统一 memory 域；旧的 agent/activity 目录不再读取或迁移。
@@ -269,6 +273,7 @@ class AgentRuntimeManager:
         self.agent_root_dir.mkdir(parents=True, exist_ok=True)
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         self.memory_dir.mkdir(parents=True, exist_ok=True)
+        self.user_memory_root.mkdir(parents=True, exist_ok=True)
         self.skills_dir.mkdir(parents=True, exist_ok=True)
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self.activity_dir.mkdir(parents=True, exist_ok=True)
@@ -307,6 +312,28 @@ class AgentRuntimeManager:
             self._cached_config = None
             self._cached_signature_checked_at = 0.0
             self._layout_ready = False
+
+    def get_user_memory_dir(self, user_id: Optional[str]) -> Optional[Path]:
+        """
+        获取指定用户的记忆目录，不创建目录或暴露原始用户标识。
+
+        :param user_id: 由可信入口传入的用户 ID
+        :return: 用户级记忆目录；系统内部用户或空标识返回 None
+        """
+        user_key = build_user_memory_key(user_id)
+        if user_key is None:
+            return None
+        return self.user_memory_root / user_key
+
+    def get_user_activity_dir(self, user_id: Optional[str]) -> Optional[Path]:
+        """
+        获取指定用户的活动记忆目录。
+
+        :param user_id: 由可信入口传入的用户 ID
+        :return: 用户级活动记忆目录；系统内部用户或空标识返回 None
+        """
+        user_memory_dir = self.get_user_memory_dir(user_id)
+        return user_memory_dir / ACTIVITY_DIR if user_memory_dir else None
 
     def current_signature(self) -> tuple[tuple[str, int, int], ...]:
         """返回当前运行时配置文件签名，供调用方判断缓存是否仍可复用。"""
@@ -881,8 +908,9 @@ class AgentRuntimeManager:
             "1. 核心系统提示词（程序内置，不可运行时覆盖）",
             "2. `personas/<active_persona>/PERSONA.md`",
             "3. `extra_context_files`",
-            "4. `memory/MEMORY.md`（默认注入）",
-            "5. `memory/<topic>.md` 与 `memory/activity/*.md`（通过 search_memory 按需检索）",
+            "4. `memory/MEMORY.md`（全局公共记忆，默认注入）",
+            "5. `memory/users/<user-key>/MEMORY.md`（当前用户记忆，默认注入）",
+            "6. 其它主题与活动记忆（通过 search_memory 按需检索）",
             "",
             "`memory` 中的长期偏好可以细化回复方式，但不应覆盖系统核心身份、目标和安全边界。",
         ]
