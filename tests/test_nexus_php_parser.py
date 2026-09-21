@@ -61,3 +61,42 @@ def test_nexus_php_seeding_next_page_checks_userid_parameter_name():
     assert query_params["page"] == ["12"]
     assert query_params["type"] == ["seeding"]
     assert query_params["userid"] == ["12"]
+
+
+def test_nexus_php_pttime_homepage_parses_bonus_and_user_level():
+    """
+    PTT-NP 首页应从魔力值容器和 UID 标记中解析魔力值、用户等级。
+    """
+    parser = _build_parser()
+    html_text = """
+    <html>
+      <body>
+        <script>if(h&gt;=20||h&lt;5)return 'night';</script>
+        <a href="userdetails.php?id=67537" class="EliteUser_Name"><b>Opportunity</b></a>
+        [UID=67537][(初中)Elite User]
+        <span class="mr5">
+          <font class="fwb">魔力值(96.67魔力/小时)</font>
+          [<a href="mybonus.php" class="fcb">使用&amp;说明</a>]：14419.2
+        </span>
+      </body>
+    </html>
+    """
+
+    parser._parse_site_page(html_text)
+    parser._parse_user_base_info(html_text)
+
+    assert parser.bonus == 14419.2
+    assert parser.user_level == "初中"
+
+
+def test_nexus_php_bonus_fallback_ignores_unrelated_script_numbers():
+    """
+    魔力值兜底解析不得把页面脚本中的无关数字当作积分。
+    """
+    parser = _build_parser()
+
+    parser._parse_user_traffic_info(
+        "<html><body><script>if(h&gt;=20||h&lt;5)return 'night';</script></body></html>"
+    )
+
+    assert parser.bonus == 0
