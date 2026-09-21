@@ -41,6 +41,7 @@ def _build_chain(admissions) -> TransferChain:
     chain._transfer_executions.get_snapshot.side_effect = (
         lambda *, task_id: _execution_snapshot(task_id=task_id)
     )
+    chain.runtime_config = SimpleNamespace(transfer_threads=1)
     chain._worker_owner_id = "test-owner"
     chain._owned_leases = {}
     chain._queued_lease_tokens = set()
@@ -383,6 +384,40 @@ def test_replay_is_noop_without_registrations():
     chain._TransferChain__replay_pending()
 
     chain._execute_transfer.assert_not_called()
+
+
+def test_replay_waits_for_a_free_worker_capacity_slot():
+    """已有 worker 槽位被租约占用时，恢复器不得继续批量 claim。"""
+    admissions = MagicMock()
+    chain = _build_chain(admissions)
+    chain._owned_leases["running-task"] = (
+        "running-token",
+        time.monotonic() + 60,
+    )
+
+    chain._TransferChain__replay_pending()
+
+    admissions.claim_recoverable.assert_not_called()
+
+
+def test_replay_claims_only_free_worker_capacity_slots():
+    """恢复 claim 数量应受整理并发度与当前持有租约共同限制。"""
+    admissions = MagicMock()
+    admissions.claim_recoverable.return_value = []
+    chain = _build_chain(admissions)
+    chain.runtime_config.transfer_threads = 2
+    chain._owned_leases["running-task"] = (
+        "running-token",
+        time.monotonic() + 60,
+    )
+
+    chain._TransferChain__replay_pending()
+
+    admissions.claim_recoverable.assert_called_once_with(
+        owner_id="test-owner",
+        limit=1,
+        lease_seconds=120,
+    )
 
 
 def test_replay_survives_db_failure():
