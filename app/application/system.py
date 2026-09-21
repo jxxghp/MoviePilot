@@ -18,6 +18,7 @@ from app.schemas.system import SystemUpdateStatus, SystemUpdateType
 from app.schemas.types import SystemConfigKey
 
 if TYPE_CHECKING:
+    from app.application.github_auth import GithubAuthService
     from app.application.rules import AsyncRuleGroupMutationService
 
 PLUGIN_MARKET_WIKI_URL = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Wiki/main/plugin.md"
@@ -192,8 +193,9 @@ class SystemService:
         llm: LlmCapabilityPort,
         plugin_mutation: Callable[[str], AbstractContextManager[None]],
         rule_group_mutation: Callable[[], AbstractAsyncContextManager[AsyncRuleGroupMutationService]],
+        github_auth: GithubAuthService | None = None,
     ) -> None:
-        """保存由启动组合根注入的全部外部端口。"""
+        """保存由启动组合根注入的全部外部端口和 GitHub 授权服务。"""
         self.settings = settings
         self._system_config = system_config
         self._logs = logs
@@ -207,6 +209,7 @@ class SystemService:
         self._llm = llm
         self._plugin_mutation = plugin_mutation
         self._rule_group_mutation = rule_group_mutation
+        self.github_auth = github_auth
 
     async def publish_config_changed(
         self,
@@ -245,6 +248,8 @@ class SystemService:
         result = self.settings.update_many(env)
         success_updates = {key: value for key, value in result.items() if value[0]}
         failed_updates = {key: value for key, value in result.items() if value[0] is False}
+        if "GITHUB_TOKEN" in success_updates and self.github_auth is not None:
+            await self.github_auth.forget_oauth_metadata()
         if failed_updates:
             if success_updates:
                 # update_many 已经逐项提交，部分失败不能吞掉已成功配置的实时重载。

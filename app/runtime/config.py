@@ -712,8 +712,11 @@ class ConfigModel(BaseModel):
     )
 
     # ==================== Github & PIP ====================
-    # Github token，提高请求api限流阈值 ghp_****
-    GITHUB_TOKEN: Optional[str] = None
+    # Github token，提高请求api限流阈值；原文只应保留在服务端运行配置中
+    GITHUB_TOKEN: Annotated[
+        Optional[str],
+        SettingPolicy(sensitive=True),
+    ] = None
     # Github代理服务器，格式：https://mirror.ghproxy.com/
     GITHUB_PROXY: Optional[str] = ""
     # pip镜像站点，格式：https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple

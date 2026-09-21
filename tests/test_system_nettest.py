@@ -142,6 +142,29 @@ class TestNettestSecurity:
         assert resp.data["PYTHON_FREE_THREADED"]
         assert not resp.data["PYTHON_GIL_ENABLED"]
 
+    def test_get_env_setting_masks_github_token(self):
+        """系统环境快照不得把 GitHub Token 原文返回给前端。"""
+        runtime_config = SimpleNamespace(
+            snapshot=Mock(return_value={"GITHUB_TOKEN": "gho_secret_token"}),
+        )
+        runtime = SimpleNamespace(
+            system=SimpleNamespace(
+                runtime_features=lambda: {},
+            )
+        )
+        with patch.object(system_endpoint, "get_runtime_settings", return_value=runtime_config), \
+                patch.object(system_endpoint, "get_app_version", return_value="test"), \
+                patch.object(system_endpoint, "get_frontend_version", return_value="frontend-test"), \
+                patch.object(
+                    system_endpoint,
+                    "SitesHelper",
+                    return_value=SimpleNamespace(auth_version="auth", indexer_version="indexer"),
+                ):
+            resp = asyncio.run(system_endpoint.get_env_setting(_="token", runtime=runtime))
+
+        assert resp.success
+        assert resp.data["GITHUB_TOKEN"] is None
+
     def test_get_user_global_setting_reports_runtime_variant(self):
         """登录后的全局设置应提供导航所需的解释器类型。"""
         runtime_config = SimpleNamespace(

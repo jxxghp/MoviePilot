@@ -17,6 +17,7 @@ from app.api.deps import (
     get_current_active_user_async,
 )
 from app.api.endpoints import dashboard as dashboard_endpoint
+from app.api.endpoints import github as github_endpoint
 from app.api.endpoints import history as history_endpoint
 from app.api.endpoints import login as login_endpoint
 from app.api.endpoints import plugin as plugin_endpoint
@@ -60,6 +61,19 @@ def test_system_sensitive_read_endpoints_require_superuser():
     assert _dependency_of(system_endpoint.create_database_backup, "_") is get_current_active_superuser_async
     assert _dependency_of(system_endpoint.verify_database_backup, "_") is get_current_active_superuser_async
     assert _dependency_of(system_endpoint.delete_database_backup, "_") is get_current_active_superuser_async
+
+
+def test_github_token_endpoints_require_superuser():
+    """GitHub Token 状态和写入接口必须只允许管理员调用。"""
+    endpoints = [
+        github_endpoint.get_auth_status,
+        github_endpoint.start_auth,
+        github_endpoint.poll_auth,
+        github_endpoint.save_manual_token,
+        github_endpoint.clear_token,
+    ]
+    for endpoint in endpoints:
+        assert _dependency_of(endpoint, "_") is get_current_active_superuser_async
 
 
 def test_system_public_read_endpoints_require_active_user():

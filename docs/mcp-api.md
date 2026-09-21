@@ -137,23 +137,23 @@ MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。
 
 `app/agent/policy/resources/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。
 
-当前完整 FastAPI OpenAPI 包含 411 个 HTTP 操作，其中 231 个稳定业务操作进入
+当前完整 FastAPI OpenAPI 包含 421 个 HTTP 操作，其中 231 个稳定业务操作进入
 `moviepilot_api`，使用 229 个固定路由模板：228 条 OpenAPI 路由直接匹配，另有 1 条只允许
 `tmdb`、`douban`、`bangumi`、`anilist` 四个来源的受限人物作品动态路由。每个 operation
 均同时具备固定 method/path、角色权限、副作用等级、确认与恢复策略、结果敏感性、英文用途说明，
 以及可直接提交的 path/query/body JSON Schema；Skill front matter、正文 operation 章节、运行时
 注册表和 MCP `tools/list` 的 231 个 `oneOf` 分支必须完全一致。
 
-数量不相等是明确的安全与语义边界，而不是漏生成。当前 400 条路由均被审计并锁定为以下一种
+数量不相等是明确的安全与语义边界，而不是漏生成。当前 410 条路由均被审计并锁定为以下一种
 归属，审计生成器不再提供“未归类”兜底：
 
 | 归属 | 数量 | Agent 使用方式 |
 | :--- | ---: | :--- |
-| `gateway` | 217 | 通过 `moviepilot_api` 的稳定 operation 和精确参数合同调用 |
+| `gateway` | 228 | 通过 `moviepilot_api` 的稳定 operation 和精确参数合同调用 |
 | `consolidated` | 71 | 通过同领域聚合 operation 调用，不复制数据源或前端专用路由 |
 | `provider-skill` | 12 | 通过下载器或媒体服务器 Skill 调用第三方 provider API |
 | `alternate-auth-duplicate` | 11 | 使用对应 bearer-authenticated gateway operation，不暴露 API_TOKEN 兼容副本 |
-| `transport_or_identity` | 66 | 由登录、令牌、MCP、会话、回调、健康检查等宿主传输/身份边界拥有 |
+| `transport_or_identity` | 76 | 由登录、令牌、MCP、会话、回调、健康检查等宿主传输/身份边界拥有 |
 | `stream_or_binary` | 10 | 由直接客户端处理流式日志、消息、文件、图片等非结构化响应 |
 | `ui_presentation` | 13 | 由前端或插件渲染面拥有，不作为业务 Agent operation |
 
@@ -332,6 +332,28 @@ MoviePilot 也提供普通 REST API 给前端和自动化客户端使用。所�
 - 每个普通 JSON 端点都会在 OpenAPI 中声明具体的 `Response[DataModel]`，调用方可从 `/docs` 或 `/api/v1/openapi.json` 查询数据结构。
 - SSE、文件、图片、HTML、空响应，以及 OAuth2 登录、OpenAI、Anthropic、MCP JSON-RPC 等标准协议端点保持协议原生响应体；它们会在 OpenAPI 中显式声明对应的流、文件或协议模型。
 - 插件通过 `get_api()` 动态注册的 `/api/v1/plugin/...` 端点不属于主程序统一响应信封范围。插件自行声明响应模型、状态码和返回体，宿主只补充路径与鉴权依赖。
+
+#### GitHub Token 授权
+
+GitHub Token 是可选的管理员配置，可在设置页或首次初始化页通过 GitHub Device Flow 授权，
+也可以直接保存已有的 PAT。授权接口只返回脱敏状态，不会把访问 Token 或刷新 Token 放进响应。
+
+已完成初始化的实例使用登录态超级管理员接口：
+
+| 方法 | 路径 | 说明 |
+| :--- | :--- | :--- |
+| GET | `/api/v1/github/auth/status` | 查询 Token 是否已配置、是否有效、来源和脱敏摘要 |
+| POST | `/api/v1/github/auth/start` | 申请设备码；响应包含 `session_id`、`verification_uri` 和 `user_code` |
+| POST | `/api/v1/github/auth/poll` | 请求体 `{"session_id":"..."}`，轮询授权状态 |
+| POST | `/api/v1/github/auth/manual` | 请求体 `{"token":"..."}`，保存手动 PAT |
+| DELETE | `/api/v1/github/auth/token` | 清除 Token 和 OAuth 刷新元数据 |
+
+首次初始化窗口使用同样的操作，但路径前缀为 `/api/v1/login/github-auth`，例如
+`/api/v1/login/github-auth/start`；这些接口只在系统尚未创建用户时开放，初始化完成后返回
+`409`，不应作为已初始化实例的未认证管理入口。
+
+`GITHUB_TOKEN` 属于敏感运行时设置，通用环境设置接口只返回脱敏值。需要访问私有仓库或执行
+写操作时，仍须提供具备对应 GitHub 仓库权限的 Token；设备授权流程本身不替调用方扩大仓库权限。
 
 客户端可发送 `X-MoviePilot-Locale: zh-CN|zh-TW|en-US` 或 `Accept-Language`。后端会按当前请求语言直接翻译顶层 `message`；未提供语言头时使用简体中文，翻译缺失时回退原文本。SSE 和业务数据中原有的 `text_i18n`、`error_i18n` 等展示字段继续保留。
 

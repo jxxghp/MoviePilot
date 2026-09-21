@@ -14,9 +14,11 @@ from urllib.parse import urlencode
 
 import jwt
 
+from app.adapters.external.github import GITHUB_DEVICE_CLIENT_ID, GithubAuthClient
 from app.agent.llm.runtime import LLMProviderAuthError
 from app.agent.llm.session import PendingAuthSession
 from app.application.configuration import get_configured_system_config
+from app.domain.github import GithubAuthTransportError
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import SystemConfigKey
@@ -107,7 +109,7 @@ class _ProviderAuth:
 
     _CHATGPT_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 
-    _COPILOT_CLIENT_ID = "Ov23li8tweQw6odWQebz"
+    _COPILOT_CLIENT_ID = GITHUB_DEVICE_CLIENT_ID
 
     @staticmethod
     def _read_agent_config() -> dict[str, Any]:
@@ -322,30 +324,19 @@ class _ProviderAuth:
             }
 
         if provider_id == "github-copilot" and method_id == "device_code":
-            response = await self._build_async_request(
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "User-Agent": get_runtime_setting("USER_AGENT"),
-                }
-            ).post_res(
-                "https://github.com/login/device/code",
-                json={
-                    "client_id": self._COPILOT_CLIENT_ID,
-                    "scope": "read:user",
-                },
-                raise_exception=True,
-            )
-            response.raise_for_status()
-            payload = response.json()
+            try:
+                device = await GithubAuthClient().request_device_code(self._COPILOT_CLIENT_ID)
+            except GithubAuthTransportError as error:
+                raise LLMProviderAuthError(str(error)) from error
 
-            session.verification_url = payload.get("verification_uri")
-            session.user_code = payload.get("user_code")
-            session.interval_seconds = max(int(payload.get("interval") or 5), 1)
+            session.verification_url = device.verification_uri
+            session.user_code = device.user_code
+            session.interval_seconds = device.interval_seconds
+            session.expires_at = time.time() + device.expires_in
             session.instructions = f"请在 GitHub 页面输入设备码：{session.user_code}"
             session.context.update(
                 {
-                    "device_code": payload.get("device_code"),
+                    "device_code": device.device_code,
                 }
             )
             with self._lock:
@@ -511,50 +502,39 @@ class _ProviderAuth:
 
     async def _poll_copilot_device_auth(self, session: PendingAuthSession) -> None:
         """轮询 GitHub Copilot Device Auth 状态。"""
-        response = await self._build_async_request(
-            headers={
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "User-Agent": get_runtime_setting("USER_AGENT"),
-            }
-        ).post_res(
-            "https://github.com/login/oauth/access_token",
-            json={
-                "client_id": self._COPILOT_CLIENT_ID,
-                "device_code": session.context["device_code"],
-                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-            },
-            raise_exception=True,
-        )
-        response.raise_for_status()
-        payload = response.json()
+        try:
+            exchange = await GithubAuthClient().exchange_device_code(
+                self._COPILOT_CLIENT_ID,
+                session.context["device_code"],
+            )
+        except GithubAuthTransportError as error:
+            raise LLMProviderAuthError(str(error)) from error
 
-        access_token = payload.get("access_token")
-        if access_token:
+        if exchange.access_token:
             await self._mark_session_success(
                 session,
                 {
                     "type": "oauth",
                     "provider": "github-copilot",
-                    "access_token": access_token,
+                    "access_token": exchange.access_token,
                     # Copilot 设备码授权返回的是长期可复用 token，这里复用 access 字段即可。
-                    "refresh_token": access_token,
+                    "refresh_token": exchange.refresh_token or exchange.access_token,
                     "expires_at": None,
                     "label": "GitHub Copilot",
                 },
             )
             return
 
-        error = payload.get("error")
-        if error == "authorization_pending":
+        exchange_error = exchange.error
+        if exchange_error == "authorization_pending":
             session.message = "等待用户在 GitHub 页面完成授权"
             return
-        if error == "slow_down":
+        if exchange_error == "slow_down":
             session.interval_seconds = max(session.interval_seconds + 5, 10)
             session.message = "GitHub 要求降低轮询频率，稍后继续。"
             return
-        if error:
-            raise LLMProviderAuthError(f"GitHub Copilot 授权失败: {error}")
+        if exchange_error:
+            raise LLMProviderAuthError("GitHub Copilot 授权失败，请重新开始。")
 
     async def _resolve_chatgpt_oauth(self) -> dict[str, Any]:
         """解析并返回 ChatGPT OAuth 鉴权，支持自动刷新 Token。"""

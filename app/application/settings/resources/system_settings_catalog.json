@@ -17,55 +17,55 @@
       "description": "AI智能体开关",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 808
+      "source_line": 811
     },
     "AI_AGENT_GLOBAL": {
       "description": "合局AI智能体",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 810
+      "source_line": 813
     },
     "AI_AGENT_HIDE_ENTRY": {
       "description": "是否隐藏前端全局智能体入口",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 812
+      "source_line": 815
     },
     "AI_AGENT_JOB_INTERVAL": {
       "description": "AI智能体定时任务检查间隔（小时），0为不启用，默认24小时",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 861
+      "source_line": 864
     },
     "AI_AGENT_RETRY_TRANSFER": {
       "description": "AI智能体自动重试整理失败记录开关",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 865
+      "source_line": 868
     },
     "AI_AGENT_VERBOSE": {
       "description": "AI智能体啰嗦模式，开启后会回复工具调用过程",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 863
+      "source_line": 866
     },
     "AI_RECOMMEND_ENABLED": {
       "description": "是否启用AI推荐",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 852
+      "source_line": 855
     },
     "AI_RECOMMEND_MAX_ITEMS": {
       "description": "AI推荐条目数量限制",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 857
+      "source_line": 860
     },
     "AI_RECOMMEND_USER_PREFERENCE": {
       "description": "AI推荐用户偏好",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 854
+      "source_line": 857
     },
     "ALIPAN_APP_ID": {
       "description": "Alipan AppId",
@@ -77,7 +77,7 @@
       "description": "对阿里云盘进行快照对比时，是否检查文件夹的修改时间（默认关闭，因为阿里云盘目录时间不随子文件变更而更新）",
       "group": "storage",
       "source_file": "app/runtime/config.py",
-      "source_line": 801
+      "source_line": 804
     },
     "ALLOWED_HOSTS": {
       "description": "允许的域名",
@@ -137,67 +137,67 @@
       "description": "音频输入 API 密钥",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 872
+      "source_line": 875
     },
     "AUDIO_INPUT_BASE_URL": {
       "description": "音频输入基础URL",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 874
+      "source_line": 877
     },
     "AUDIO_INPUT_LANGUAGE": {
       "description": "音频输入识别语言",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 878
+      "source_line": 881
     },
     "AUDIO_INPUT_MODEL": {
       "description": "音频输入模型",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 876
+      "source_line": 879
     },
     "AUDIO_INPUT_PROVIDER": {
       "description": "音频输入提供商：openai/openai_chat_audio/mimo/minimax",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 870
+      "source_line": 873
     },
     "AUDIO_OUTPUT_API_KEY": {
       "description": "音频输出 API 密钥",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 882
+      "source_line": 885
     },
     "AUDIO_OUTPUT_BASE_URL": {
       "description": "音频输出基础URL",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 884
+      "source_line": 887
     },
     "AUDIO_OUTPUT_INCLUDE_TEXT": {
       "description": "回复语音时是否同时附带文字说明",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 890
+      "source_line": 893
     },
     "AUDIO_OUTPUT_MODEL": {
       "description": "音频输出模型",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 886
+      "source_line": 889
     },
     "AUDIO_OUTPUT_PROVIDER": {
       "description": "音频输出提供商：openai/openai_chat_audio/mimo/minimax",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 880
+      "source_line": 883
     },
     "AUDIO_OUTPUT_VOICE": {
       "description": "音频输出音色/发音人",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 888
+      "source_line": 891
     },
     "AUTH_SITE": {
       "description": "用户认证站点",
@@ -251,7 +251,7 @@
       "description": "大内存模式",
       "group": "performance",
       "source_file": "app/runtime/config.py",
-      "source_line": 742
+      "source_line": 745
     },
     "BROWSER_EMULATION": {
       "description": "仿真类型：cloakbrowser 或 flaresolverr，其他值按 cloakbrowser 处理",
@@ -659,13 +659,13 @@
       "description": "编码探测的最低置信度阈值",
       "group": "performance",
       "source_file": "app/runtime/config.py",
-      "source_line": 748
+      "source_line": 751
     },
     "ENCODING_DETECTION_PERFORMANCE_MODE": {
       "description": "是否启用编码探测的性能模式",
       "group": "performance",
       "source_file": "app/runtime/config.py",
-      "source_line": 746
+      "source_line": 749
     },
     "FANART_API_KEY": {
       "description": "Fanart API Key",
@@ -689,43 +689,43 @@
       "description": "飞书管理员 Open ID 列表，多个使用 , 分隔",
       "group": "feishu",
       "source_file": "app/runtime/config.py",
-      "source_line": 734
+      "source_line": 737
     },
     "FEISHU_APP_ID": {
       "description": "飞书应用 App ID",
       "group": "feishu",
       "source_file": "app/runtime/config.py",
-      "source_line": 726
+      "source_line": 729
     },
     "FEISHU_APP_SECRET": {
       "description": "飞书应用 App Secret",
       "group": "feishu",
       "source_file": "app/runtime/config.py",
-      "source_line": 728
+      "source_line": 731
     },
     "FEISHU_CHAT_ID": {
       "description": "飞书默认接收群聊 Chat ID",
       "group": "feishu",
       "source_file": "app/runtime/config.py",
-      "source_line": 732
+      "source_line": 735
     },
     "FEISHU_ENCRYPT_KEY": {
       "description": "飞书事件加密 Key",
       "group": "feishu",
       "source_file": "app/runtime/config.py",
-      "source_line": 738
+      "source_line": 741
     },
     "FEISHU_OPEN_ID": {
       "description": "飞书默认接收用户 Open ID",
       "group": "feishu",
       "source_file": "app/runtime/config.py",
-      "source_line": 730
+      "source_line": 733
     },
     "FEISHU_VERIFICATION_TOKEN": {
       "description": "飞书事件校验 Token",
       "group": "feishu",
       "source_file": "app/runtime/config.py",
-      "source_line": 736
+      "source_line": 739
     },
     "FLARESOLVERR_URL": {
       "description": "FlareSolverr 服务地址，例如 http://127.0.0.1:8191",
@@ -761,10 +761,10 @@
       "description": "Github代理服务器，格式：https://mirror.ghproxy.com/",
       "group": "dependencies",
       "source_file": "app/runtime/config.py",
-      "source_line": 718
+      "source_line": 721
     },
     "GITHUB_TOKEN": {
-      "description": "Github token，提高请求api限流阈值 ghp_****",
+      "description": "Github token，提高请求api限流阈值；原文只应保留在服务端运行配置中",
       "group": "dependencies",
       "source_file": "app/runtime/config.py",
       "source_line": 716
@@ -791,127 +791,127 @@
       "description": "图片代理允许访问的非公网 IP/CIDR，默认不放行任何非公网解析结果",
       "group": "security",
       "source_file": "app/runtime/config.py",
-      "source_line": 783
+      "source_line": 786
     },
     "LLM_API_KEY": {
       "description": "LLM API密钥",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 830
+      "source_line": 833
     },
     "LLM_API_PROTOCOL": {
       "description": "OpenAI兼容接口API协议：auto（自动）/ chat_completions / responses",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 820
+      "source_line": 823
     },
     "LLM_BASE_URL": {
       "description": "LLM基础URL（用于自定义API端点）",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 832
+      "source_line": 835
     },
     "LLM_BASE_URL_PRESET": {
       "description": "LLM Base URL 预设标识，用于区分同一 Base URL 下的不同模型目录",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 836
+      "source_line": 839
     },
     "LLM_MAX_CONTEXT_TOKENS": {
       "description": "LLM最大上下文Token数量（K），用于目录缺失回退和未匹配兼容端点的用户上限",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 838
+      "source_line": 841
     },
     "LLM_MAX_ITERATIONS": {
       "description": "LLM最大迭代次数",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 844
+      "source_line": 847
     },
     "LLM_MAX_TOOLS": {
       "description": "LLM工具选择中间件最大工具数量，0为不启用工具选择中间件",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 859
+      "source_line": 862
     },
     "LLM_MEMORY_RETENTION_DAYS": {
       "description": "内存记忆保留天数",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 850
+      "source_line": 853
     },
     "LLM_MODEL": {
       "description": "LLM模型名称",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 816
+      "source_line": 819
     },
     "LLM_PROVIDER": {
       "description": "LLM提供商（支持内置 provider，以及从 models.dev 动态补充的平台）",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 814
+      "source_line": 817
     },
     "LLM_SUPPORT_AUDIO_INPUT": {
       "description": "是否启用音频输入，开启后用户语音会先转写为文本再进入 Agent",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 826
+      "source_line": 829
     },
     "LLM_SUPPORT_AUDIO_OUTPUT": {
       "description": "是否启用音频输出，开启后 Agent 可在支持渠道发送语音回复",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 828
+      "source_line": 831
     },
     "LLM_SUPPORT_IMAGE_INPUT": {
       "description": "LLM是否支持图片输入，开启后消息图片会按多模态输入发送给模型",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 824
+      "source_line": 827
     },
     "LLM_TEMPERATURE": {
       "description": "LLM温度参数",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 842
+      "source_line": 845
     },
     "LLM_THINKING_LEVEL": {
       "description": "思考模式/深度配置：off/auto/minimal/low/medium/high/max/xhigh",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 818
+      "source_line": 821
     },
     "LLM_TOOL_TIMEOUT": {
       "description": "LLM工具调用超时时间（秒）",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 846
+      "source_line": 849
     },
     "LLM_USER_AGENT": {
       "description": "LLM OpenAI兼容接口请求User-Agent",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 840
+      "source_line": 843
     },
     "LLM_USE_PROXY": {
       "description": "LLM调用是否使用系统代理",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 834
+      "source_line": 837
     },
     "LLM_VERBOSE": {
       "description": "是否启用详细日志",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 848
+      "source_line": 851
     },
     "LLM_WEB_SEARCH_MODE": {
       "description": "联网搜索模式：local（本地）/ builtin（模型服务端）/ auto（自动）/ disabled（关闭）",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 822
+      "source_line": 825
     },
     "LOCAL_EXISTS_SEARCH": {
       "description": "检查本地媒体库是否存在资源开关",
@@ -995,7 +995,7 @@
       "description": "主动内存回收时间间隔（分钟），0为不启用",
       "group": "performance",
       "source_file": "app/runtime/config.py",
-      "source_line": 750
+      "source_line": 753
     },
     "META_CACHE_EXPIRE": {
       "description": "单条元数据识别缓存有效期（小时），0为自动",
@@ -1109,7 +1109,7 @@
       "description": "对OpenList进行快照对比时，是否检查文件夹的修改时间",
       "group": "storage",
       "source_file": "app/runtime/config.py",
-      "source_line": 799
+      "source_line": 802
     },
     "PACKAGE_CACHE_DAYS": {
       "description": "pip/uv 包下载缓存保留天数",
@@ -1127,19 +1127,19 @@
       "description": "PassKey 是否强制用户验证（生物识别等）",
       "group": "security",
       "source_file": "app/runtime/config.py",
-      "source_line": 789
+      "source_line": 792
     },
     "PIP_PROXY": {
       "description": "pip镜像站点，格式：https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple",
       "group": "dependencies",
       "source_file": "app/runtime/config.py",
-      "source_line": 720
+      "source_line": 723
     },
     "PLAYWRIGHT_BROWSER_TYPE": {
       "description": "Playwright浏览器类型，供智能体浏览器工具和插件直接使用 Playwright 时读取",
       "group": "storage",
       "source_file": "app/runtime/config.py",
-      "source_line": 804
+      "source_line": 807
     },
     "PLUGIN_AUTO_RELOAD": {
       "description": "是否开启插件热加载",
@@ -1187,7 +1187,7 @@
       "description": "对rclone进行快照对比时，是否检查文件夹的修改时间",
       "group": "storage",
       "source_file": "app/runtime/config.py",
-      "source_line": 797
+      "source_line": 800
     },
     "RECOGNIZE_PLUGIN_FIRST": {
       "description": "优先使用辅助识别",
@@ -1211,7 +1211,7 @@
       "description": "指定的仓库Github token，多个仓库使用,分隔，格式：{user1}/{repo1}:ghp_****,{user2}/{repo2}:github_pat_****",
       "group": "dependencies",
       "source_file": "app/runtime/config.py",
-      "source_line": 722
+      "source_line": 725
     },
     "RESOURCE_ACCESS_TOKEN_EXPIRE_SECONDS": {
       "description": "RESOURCE_TOKEN过期时间",
@@ -1247,7 +1247,7 @@
       "description": "Rust 加速总开关，free-threaded 运行时固定启用",
       "group": "performance",
       "source_file": "app/runtime/config.py",
-      "source_line": 744
+      "source_line": 747
     },
     "SCRAP_FOLLOW_TMDB": {
       "description": "新增已入库媒体是否跟随TMDB信息变化",
@@ -1289,13 +1289,13 @@
       "description": "允许的图片缓存域名",
       "group": "security",
       "source_file": "app/runtime/config.py",
-      "source_line": 754
+      "source_line": 757
     },
     "SECURITY_IMAGE_SUFFIXES": {
       "description": "允许的图片文件后缀格式",
       "group": "security",
       "source_file": "app/runtime/config.py",
-      "source_line": 785
+      "source_line": 788
     },
     "SITEDATA_REFRESH_INTERVAL": {
       "description": "站点数据刷新间隔（小时）",
@@ -1409,7 +1409,7 @@
       "description": "是否按媒体聚合整理失败通知，关闭时保持逐条发送",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 867
+      "source_line": 870
     },
     "TRANSFER_MAX_FAILED_RETRIES": {
       "description": "自动整理（目录监控、下载器轮询）遇到失败整理记录时，同一源路径允许自动重试的最大次数。 一次瞬时故障（网络抖动、TMDB 瞬断、移动失败）不该让文件永久漏整理，因此必须重试； 但永远识别不出的文件重试再多也不会成功，只会重复推送失败通知，批量导入时更会刷屏， 因此必须有界。取值区间 1-10，越界或非法值会被钳制到边界并记录 warn： 既不支持关闭重试，也不支持无限重试。整理成功或删除整理记录时计数清零。 与本项无关的是同路径新版本：已成功整理的文件源大小变化时一律放行， 由整理链的 overwrite_mode 决断是否覆盖",
@@ -1493,7 +1493,7 @@
       "description": "工作流数据共享",
       "group": "workflow",
       "source_file": "app/runtime/config.py",
-      "source_line": 793
+      "source_line": 796
     },
     "WRITE_TIMEOUT": {
       "description": "日志写入等待超时时间，单位秒",
@@ -1513,7 +1513,7 @@
       "description": "AI智能体外部MCP服务器配置",
       "enum_name": "AIAgentMcpServers",
       "source_file": "app/schemas/types.py",
-      "source_line": 410
+      "source_line": 412
     },
     "BestVersionFilterRuleGroups": {
       "description": "洗版默认过滤规则组",
@@ -1587,6 +1587,12 @@
       "source_file": "app/schemas/types.py",
       "source_line": 404
     },
+    "GithubAuth": {
+      "description": "GitHub OAuth 设备授权元数据",
+      "enum_name": "GithubAuth",
+      "source_file": "app/schemas/types.py",
+      "source_line": 410
+    },
     "IndexerSites": {
       "description": "搜索站点范围",
       "enum_name": "IndexerSites",
@@ -1597,13 +1603,13 @@
       "description": "多媒体自动分类策略及其有界历史",
       "enum_name": "MediaClassificationPolicy",
       "source_file": "app/schemas/types.py",
-      "source_line": 424
+      "source_line": 426
     },
     "MediaRecognizeShareCount": {
       "description": "共享媒体识别成功次数",
       "enum_name": "MediaRecognizeShareCount",
       "source_file": "app/schemas/types.py",
-      "source_line": 422
+      "source_line": 424
     },
     "MediaServers": {
       "description": "媒体服务器配置",
@@ -1621,7 +1627,7 @@
       "description": "通知中心清理时间",
       "enum_name": "NotificationClearBefore",
       "source_file": "app/schemas/types.py",
-      "source_line": 414
+      "source_line": 416
     },
     "NotificationSendTime": {
       "description": "通知发送时间",
@@ -1639,7 +1645,7 @@
       "description": "通知消息格式模板",
       "enum_name": "NotificationTemplates",
       "source_file": "app/schemas/types.py",
-      "source_line": 412
+      "source_line": 414
     },
     "Notifications": {
       "description": "消息通知配置",
@@ -1657,7 +1663,7 @@
       "description": "插件安装统计",
       "enum_name": "PluginInstallReport",
       "source_file": "app/schemas/types.py",
-      "source_line": 418
+      "source_line": 420
     },
     "PluginInstances": {
       "description": "共享源码插件的虚拟运行实例（已迁移到独立表，本键保留作回滚依据）",
@@ -1681,7 +1687,7 @@
       "description": "刮削开关设置",
       "enum_name": "ScrapingSwitchs",
       "source_file": "app/schemas/types.py",
-      "source_line": 416
+      "source_line": 418
     },
     "SearchFilterRuleGroups": {
       "description": "搜索默认过滤规则组",
@@ -1729,7 +1735,7 @@
       "description": "绿联影视登录会话缓存",
       "enum_name": "UgreenSessionCache",
       "source_file": "app/schemas/types.py",
-      "source_line": 420
+      "source_line": 422
     },
     "UserCustomCSS": {
       "description": "用户自定义CSS",

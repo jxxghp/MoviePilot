@@ -5,7 +5,7 @@
     "gateway": 228,
     "provider-skill": 12,
     "stream_or_binary": 10,
-    "transport_or_identity": 66,
+    "transport_or_identity": 76,
     "ui_presentation": 13
   },
   "dynamic_gateway_routes": [
@@ -21,7 +21,7 @@
   "gateway_http_route_count": 229,
   "gateway_operation_count": 231,
   "matched_gateway_http_route_count": 228,
-  "openapi_operation_count": 411,
+  "openapi_operation_count": 421,
   "operations": [
     {
       "disposition": "consolidated",
@@ -754,6 +754,66 @@
       ]
     },
     {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/github/auth/manual",
+      "reason": "GitHub Token authorization and first-run credential setup are host identity/configuration flows; they are not Agent business actions.",
+      "summary": "保存手动 GitHub Token",
+      "tags": [
+        "github"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/github/auth/poll",
+      "reason": "GitHub Token authorization and first-run credential setup are host identity/configuration flows; they are not Agent business actions.",
+      "summary": "轮询 GitHub 设备授权",
+      "tags": [
+        "github"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/github/auth/start",
+      "reason": "GitHub Token authorization and first-run credential setup are host identity/configuration flows; they are not Agent business actions.",
+      "summary": "启动 GitHub 设备授权",
+      "tags": [
+        "github"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/github/auth/status",
+      "reason": "GitHub Token authorization and first-run credential setup are host identity/configuration flows; they are not Agent business actions.",
+      "summary": "查询 GitHub Token 状态",
+      "tags": [
+        "github"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "DELETE",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/github/auth/token",
+      "reason": "GitHub Token authorization and first-run credential setup are host identity/configuration flows; they are not Agent business actions.",
+      "summary": "清除 GitHub Token",
+      "tags": [
+        "github"
+      ]
+    },
+    {
       "disposition": "gateway",
       "method": "DELETE",
       "operation_ids": [
@@ -907,6 +967,66 @@
       "path": "/api/v1/login/access-token",
       "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
       "summary": "获取token",
+      "tags": [
+        "login"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/login/github-auth/manual",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "从初始化页保存手动 GitHub Token",
+      "tags": [
+        "login"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/login/github-auth/poll",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "从初始化页轮询 GitHub 设备授权",
+      "tags": [
+        "login"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "POST",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/login/github-auth/start",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "从初始化页启动 GitHub 设备授权",
+      "tags": [
+        "login"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/login/github-auth/status",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "查询初始化阶段 GitHub Token 状态",
+      "tags": [
+        "login"
+      ]
+    },
+    {
+      "disposition": "transport_or_identity",
+      "method": "DELETE",
+      "operation_ids": [],
+      "owner": "host-runtime",
+      "path": "/api/v1/login/github-auth/token",
+      "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
+      "summary": "从初始化页清除 GitHub Token",
       "tags": [
         "login"
       ]

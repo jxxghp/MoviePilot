@@ -392,6 +392,9 @@ SYSTEMCONFIG_CONTRACTS: dict[SystemConfigKey, _SystemConfigContract] = {
     SystemConfigKey.AIAgentConfig: _internal_contract(
         "ai_agent", Optional[dict[str, JsonData]], sensitive=True
     ),
+    SystemConfigKey.GithubAuth: _internal_contract(
+        "dependencies", Optional[dict[str, JsonData]], sensitive=True
+    ),
     SystemConfigKey.AIAgentMcpServers: _contract(
         "ai_agent",
         Optional[list[AgentMcpServerConfig]],

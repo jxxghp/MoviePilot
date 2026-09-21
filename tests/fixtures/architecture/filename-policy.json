@@ -191,6 +191,11 @@
       "evidence": "路径属于内含 tmdbv3api 代码，包根已按 contained_vendor 单独登记。",
       "path": "app/modules/themoviedb/tmdbv3api/as_obj.py",
       "reason": "保留内含上游库的原始模块名以维持其内部导入。"
+    },
+    {
+      "evidence": "GitHub OAuth 授权由 API、启动组合根和现有 Copilot 登录共同调用，单独能力服务需要保持稳定的跨层导入路径。",
+      "path": "app/application/github_auth.py",
+      "reason": "GitHub Token 授权是宿主级应用能力，不属于单一 API 端点或外部适配器实现。"
     }
   ],
   "schema_version": 2,
