@@ -231,13 +231,7 @@ RUN set -eu; \
     plugin_root="$(find /tmp/plugins-src -mindepth 1 -maxdepth 1 -type d -print -quit)"; \
     test -n "${plugin_root}"; \
     mkdir -p /plugins; \
-    cp -a "${plugin_root}/plugins.v2/." /plugins/; \
-    jq -r 'to_entries[] | select(.value.v2 == true) | .key' "${plugin_root}/package.json" | awk '{print tolower($0)}' | \
-    while read -r plugin_id; do \
-        if [ ! -d "/plugins/${plugin_id}" ]; then \
-            cp -a "${plugin_root}/plugins/${plugin_id}" /plugins/; \
-        fi; \
-    done
+    cp -a "${plugin_root}/plugins.v3/." /plugins/
 
 
 # 准备站点资源

@@ -84,6 +84,13 @@ def test_dockerfile_assigns_each_payload_to_an_independent_stage() -> None:
     assert final.count("COPY --from=ffmpeg ") == 1
     assert "RUN rm -rf /app/frontend-dist" in dockerfile
 
+    plugin_stage_start = dockerfile.index("FROM prepare_payload AS prepare_plugins")
+    plugin_stage_end = dockerfile.index("# 准备站点资源", plugin_stage_start)
+    plugin_stage = dockerfile[plugin_stage_start:plugin_stage_end]
+    assert 'cp -a "${plugin_root}/plugins.v3/." /plugins/' in plugin_stage
+    assert "plugins.v2" not in plugin_stage
+    assert '"${plugin_root}/package.json"' not in plugin_stage
+
 
 def test_plugin_runtime_updates_preserve_host_entrypoint() -> None:
     """更新载荷只迁移插件内容，不得覆盖新版宿主包根兼容入口。"""
