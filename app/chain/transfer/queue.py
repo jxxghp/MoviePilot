@@ -7,7 +7,7 @@ import time
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from pydantic_core import to_jsonable_python
 
@@ -508,10 +508,13 @@ class TransferQueueOwner(_TransferOwnerBase):
         recovery_capacity = max(0, worker_capacity - owned_count)
         if recovery_capacity <= 0:
             return []
-        return self._transfer_admissions.claim_recoverable(
-            owner_id=self._worker_owner_id,
-            limit=min(self._RECOVERY_CLAIM_LIMIT, recovery_capacity),
-            lease_seconds=self._WORKER_LEASE_SECONDS,
+        return cast(
+            List[TransferAdmission],
+            self._transfer_admissions.claim_recoverable(
+                owner_id=self._worker_owner_id,
+                limit=min(self._RECOVERY_CLAIM_LIMIT, recovery_capacity),
+                lease_seconds=self._WORKER_LEASE_SECONDS,
+            ),
         )
 
     def _TransferChain__run_lease_heartbeat(self, stop_event: threading.Event) -> None:
