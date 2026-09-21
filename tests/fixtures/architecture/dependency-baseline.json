@@ -1077,8 +1077,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8822,
-  "edge_sha256": "ea9eb917411a585a43e2ac6b6b6c3b7e40a732f7fdd74f8e2979eda9183e3e69",
+  "edge_count": 8826,
+  "edge_sha256": "e29bf676c49029155ede5e6c4e1857d0e95ad7d895941469038031e1478822e2",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1658,6 +1658,8 @@
     "app.agent.prompt.transfer -> app.agent.prompt",
     "app.agent.runtime -> app.application",
     "app.agent.runtime -> app.application.configuration",
+    "app.agent.runtime -> app.foundation",
+    "app.agent.runtime -> app.foundation.identity",
     "app.agent.runtime -> app.runtime",
     "app.agent.runtime -> app.runtime.log",
     "app.agent.session -> app.agent",
@@ -1748,6 +1750,8 @@
     "app.agent.tools.base -> app.application.notification",
     "app.agent.tools.base -> app.chain",
     "app.agent.tools.base -> app.chain.base",
+    "app.agent.tools.base -> app.foundation",
+    "app.agent.tools.base -> app.foundation.identity",
     "app.agent.tools.base -> app.runtime",
     "app.agent.tools.base -> app.runtime.log",
     "app.agent.tools.base -> app.runtime.settings",
