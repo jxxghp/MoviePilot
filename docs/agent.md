@@ -12,6 +12,19 @@ MoviePilot Agent 通过模型、Skills、工具和会话状态共同完成任务
 - 计划快照随聊天消息保存，在会话图重建后恢复。用户询问进度时继续当前目标，明确开始新任务时替换计划。
 - 计划是模型记录的工作状态，不代表工具执行结果或写操作授权。仍需通过工具核实实际结果。
 
+## 代码修改与 Pull Request
+
+用户明确要求提交 PR 时，使用 `skills/submit-pull-request/SKILL.md`。该流程把 Git
+clone 作为代码修改入口：先通过 GitHub API 复用或创建当前 Token 用户的 Fork，
+再从上游基线创建隔离工作分支和本地 clone；后续 Agent 的修改与测试都必须发生在
+该 clone 中。没有本地 Git 仓库时不是降级为文件上传，而是先执行 clone。
+
+流程在提交前生成真实 Git 工作树的变更预览，并要求用户明确确认；确认后才执行本地
+`git add`、`git commit`、`git push`，最后通过 GitHub API 创建或复用 PR。提交脚本会
+重新校验上游基线、Fork parent、origin remote、文件摘要和推送后的 Commit SHA，
+不执行强制推送、合并或自动关闭 Issue。Token 只从运行时 GitHub 设置读取，不出现在
+命令行、预览和日志中；网络中断可以复用同一 payload 重试。
+
 ## 运行中补充消息
 
 WebAgent 在 Agent 正在运行时仍可提交文本和附件。宿主为每个会话生成消息 ID，先把消息放入有界 steering inbox；下一次模型调用前由中间件把它作为真实 `HumanMessage` 写入图状态，并通过当前 SSE 报告 `queued`、`applied`。提交和运行收尾共享原子边界，收尾竞态中已接受的消息会在同一 worker 内继续处理，停止会话不会继续派发新的工具动作。补充消息不会启动第二张 Agent 图，也不会替换当前输出回调。
