@@ -1186,6 +1186,7 @@ def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -
         UV_BIN="$4"
         PIP_PROXY= PROXY_HOST=
         GITHUB_PROXY= CURL_OPTIONS=
+        MOVIEPILOT_UPDATE_PENDING_FILE="$1/temp/__update_pending__"
         source {UPDATER!s}
         APP_DIR="$5"
         PUBLIC_DIR="$6"
@@ -1282,6 +1283,7 @@ def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) 
         CONFIG_DIR="$1"
         VENV_PATH="$2"
         UV_BIN="$7"
+        MOVIEPILOT_UPDATE_PENDING_FILE="$1/temp/__update_pending__"
         PIP_PROXY= PROXY_HOST= GITHUB_PROXY= CURL_OPTIONS=
         source {UPDATER!s}
         APP_DIR="$3"
@@ -1346,6 +1348,7 @@ def test_pending_dependency_update_keeps_current_payload_for_database_safety(
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
+        MOVIEPILOT_UPDATE_PENDING_FILE="$1/temp/__update_pending__"
         source {UPDATER!s}
         APP_DIR="$2"
         PUBLIC_DIR="$3"
@@ -1436,6 +1439,7 @@ def test_update_transaction_keeps_marker_when_backup_cleanup_fails(tmp_path: Pat
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
+        MOVIEPILOT_UPDATE_PENDING_FILE="$2"
         UPDATE_PENDING_FILE="$2"
         UPDATE_PREVIOUS_APP="$3"
         UPDATE_PREVIOUS_PUBLIC="$4"
@@ -1582,6 +1586,7 @@ def test_staged_payload_swap_failure_restores_previous_generation(tmp_path: Path
         CONFIG_DIR="$1"
         TMP_PATH="$2"
         PIP_PROXY= PROXY_HOST= GITHUB_PROXY= CURL_OPTIONS=
+        MOVIEPILOT_UPDATE_PENDING_FILE="$1/temp/__update_pending__"
         source {UPDATER!s}
         APP_DIR="$3"
         PUBLIC_DIR="$4"

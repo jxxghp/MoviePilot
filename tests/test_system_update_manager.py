@@ -266,6 +266,61 @@ def test_interrupted_download_becomes_retryable_failure(monkeypatch, tmp_path):
     assert "中断" in status.error
 
 
+def test_installing_application_update_converges_when_runtime_is_newer(
+    monkeypatch, tmp_path
+):
+    """当前主程序高于残留目标版本时应清理状态并恢复自动检查。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.6")
+    manager._write_item(
+        "application",
+        state="installing",
+        version="v3.0.1",
+        can_update=False,
+        can_install=False,
+    )
+    checked = []
+    monkeypatch.setattr(manager, "_check_application", lambda: checked.append(True))
+
+    status = manager.check("application")
+
+    application = next(item for item in status.updates if item.type == "application")
+    assert checked == [True]
+    assert application.state == "idle"
+    assert application.version is None
+    assert status.state == "idle"
+
+
+def test_ready_application_update_is_discarded_when_runtime_reaches_target(
+    monkeypatch, tmp_path
+):
+    """外部升级先于确认安装时应清理过期的主程序待安装包。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.1.0")
+    manager._merge_prepared_manifest(
+        {
+            "version": "v3.1.0",
+            "backend_archive": "/tmp/backend.zip",
+            "frontend_archive": "/tmp/frontend.zip",
+        }
+    )
+    manager._write_item(
+        "application",
+        state="ready",
+        version="v3.1.0",
+        can_update=False,
+        can_install=True,
+    )
+
+    status = manager.get_status()
+
+    application = next(item for item in status.updates if item.type == "application")
+    assert application.state == "idle"
+    assert application.version is None
+    assert application.can_install is False
+    assert not (manager._root / "prepared.json").exists()
+
+
 def test_ready_resource_update_clears_after_loaded_version_reaches_target(
     monkeypatch,
     tmp_path,

@@ -317,16 +317,13 @@ class SystemUpdateManager(metaclass=SingletonClass):
                         }
                     )
                     changed = True
-                elif item.get("state") == "installing" and self._is_install_applied(item, target):
-                    self._reset_item_after_install(item)
-                    changed = True
                 elif (
-                    target == _RESOURCES
-                    and item.get("state") == "ready"
+                    item.get("state") in {"installing", "ready"}
                     and self._is_install_applied(item, target)
                 ):
-                    # 容器替换或手工安装可能先让运行资源达到目标版本，需丢弃残留待安装包。
-                    self._discard_prepared_target(target)
+                    if item.get("state") == "ready":
+                        # 容器替换或手工安装可能先让运行版本达到目标，需丢弃残留待安装包。
+                        self._discard_prepared_target(target)
                     self._reset_item_after_install(item)
                     changed = True
             resources_changed = (
@@ -344,7 +341,10 @@ class SystemUpdateManager(metaclass=SingletonClass):
     def _is_install_applied(self, item: dict[str, Any], target: SystemUpdateType) -> bool:
         """判断启动器应用后的当前版本是否已经达到安装目标。"""
         if target == _APPLICATION:
-            return bool(item.get("version")) and item["version"] == get_app_version()
+            target_version = str(item.get("version") or "")
+            return bool(target_version) and compare_version(
+                get_app_version(), ">=", target_version
+            ) is True
         current_auth, current_indexer = get_resource_versions()
         checks = []
         if item.get("auth_version"):

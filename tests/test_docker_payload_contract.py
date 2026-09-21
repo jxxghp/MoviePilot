@@ -98,6 +98,18 @@ def test_plugin_runtime_updates_preserve_host_entrypoint() -> None:
     assert "cp -a /app/app/plugins/." not in perf_script
 
 
+def test_dev_update_marker_stays_with_container_payload() -> None:
+    """Dev 更新标记必须与容器载荷同层，避免持久化卷残留半完成事务。"""
+    marker = "/var/lib/moviepilot/update/__update_pending__"
+    update_script = _read(ROOT / "docker" / "update.sh")
+    launcher_script = _read(ROOT / "docker" / "launcher.sh")
+
+    assert f"MOVIEPILOT_UPDATE_PENDING_FILE:-{marker}" in update_script
+    assert f"MOVIEPILOT_UPDATE_PENDING_FILE:-{marker}" in launcher_script
+    assert "/config/temp/__update_pending__" not in update_script
+    assert "/config/temp/__update_pending__" not in launcher_script
+
+
 def test_update_script_keeps_new_host_entrypoint_during_runtime_migration(
     tmp_path: Path,
 ) -> None:
