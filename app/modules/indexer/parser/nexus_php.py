@@ -78,7 +78,8 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
             user_level = self._parse_user_level_marker(html.xpath("string(.)"), self.userid)
             if user_level:
-                self.user_level = user_level
+                # 基类为兼容旧解析器未声明 Optional[str]，保留运行时字段语义。
+                self.user_level = user_level  # type: ignore[assignment]
 
             ret = html.xpath(f'//a[contains(@href, "userdetails") and contains(@href, "{self.userid}")]//b//text()')
             if ret:
@@ -429,7 +430,8 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
         user_level = self._parse_user_level_marker(html.xpath("string(.)"), self.userid)
         if user_level:
-            self.user_level = user_level
+            # 基类为兼容旧解析器未声明 Optional[str]，保留运行时字段语义。
+            self.user_level = user_level  # type: ignore[assignment]
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
         html = etree.HTML(html_text)
