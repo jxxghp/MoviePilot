@@ -41,11 +41,15 @@ class PluginRegistry:
 
     def plugin_ids(self) -> list[str]:
         """返回保持登记顺序的插件类 ID 快照。"""
-        return list(self._classes)
+        return list(self.classes_snapshot())
 
     def running_ids(self) -> list[str]:
         """返回保持登记顺序的运行实例 ID 快照。"""
-        return list(self._running)
+        return list(self.running_snapshot())
+
+    def classes_snapshot(self) -> Dict[str, Any]:
+        """复制插件类表，避免插件重载期间迭代失效。"""
+        return dict(self._classes)
 
     def running_snapshot(self) -> Dict[str, Any]:
         """复制运行实例表，避免插件重载期间迭代失效。"""

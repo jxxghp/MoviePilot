@@ -244,7 +244,7 @@ def build_plugin_runtime(
         log=environment.logger,
     )
     catalog = PluginCatalogFacade(
-        classes=lambda: registry.classes,
+        classes=registry.classes_snapshot,
         running=lambda: registry.running,
         storage=environment.storage,
         system=environment.system,
