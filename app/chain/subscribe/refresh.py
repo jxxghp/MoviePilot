@@ -323,7 +323,13 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
                     subscribe_name=f"{subscribe.name} {meta.season}",
                     no_exists=no_exists,
                     mediakey=mediakey,
-                    begin_season=meta.begin_season,
+                    # 搜索词未带季号时识别元数据没有 begin_season，
+                    # 回落到订阅目标季以覆盖原缺失视图。
+                    begin_season=(
+                        meta.begin_season
+                        if meta.begin_season is not None
+                        else subscribe.season
+                    ),
                     total_episode=effective_total_episode,
                     start_episode=subscribe.start_episode,
                     downloaded_episodes=downloaded,
