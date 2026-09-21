@@ -378,11 +378,11 @@ def test_lifespan_settles_plugin_handlers_before_legacy_hooks(monkeypatch) -> No
 
 
 _ORDERED_SHUTDOWN_STEPS = (
+    "stop_scheduler",
     "stop_plugin_monitor",
     "backup_plugins",
     "stop_workflow",
     "stop_monitor",
-    "stop_scheduler",
     "stop_agent",
     "stop_transfer",
     "quiesce_plugins",
@@ -474,8 +474,9 @@ def test_task_registry_nonconvergence_blocks_all_dependency_release(monkeypatch)
     asyncio.run(run_lifespan())
 
     shutdown.assert_awaited_once_with(timeout_seconds=30.0)
+    _assert_completed_once(shutdown_steps["stop_scheduler"])
     for name, step in shutdown_steps.items():
-        if name == "logger":
+        if name in {"logger", "stop_scheduler"}:
             _assert_completed_once(step)
         else:
             step.assert_not_called()
@@ -533,8 +534,9 @@ def test_plugin_settlement_cannot_bypass_task_registry_shutdown_budget(
     asyncio.run(run_lifespan())
 
     shutdown.assert_awaited_once_with(timeout_seconds=30.0)
+    _assert_completed_once(shutdown_steps["stop_scheduler"])
     for name, step in shutdown_steps.items():
-        if name == "logger":
+        if name in {"logger", "stop_scheduler"}:
             _assert_completed_once(step)
         else:
             step.assert_not_called()
@@ -712,13 +714,13 @@ def test_lifecycle_manifest_declares_normal_and_safe_mode_order() -> None:
     ]
     assert normal_stop == [
         "停止信号",
+        "定时器",
         "后台任务登记器",
         "插件变更监控",
         "插件备份",
         "工作流",
         "命令服务",
         "监控器",
-        "定时器",
         "AI智能体会话",
         "整理后台服务",
         "插件事件入口",

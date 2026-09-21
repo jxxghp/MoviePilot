@@ -399,7 +399,7 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             start=lambda: initialize_task_registry(app),
             stop=lambda: stop_task_registry(app),
             start_order=5,
-            stop_order=5,
+            stop_order=6,
             start_timeout_seconds=30,
             stop_timeout_seconds=60,
             stop_failure=LifecycleFailurePolicy.FAIL_FAST,
@@ -554,7 +554,8 @@ def build_lifecycle_components(app: FastAPI) -> tuple[LifecycleComponent, ...]:
             start=init_scheduler,
             stop=stop_scheduler,
             start_order=100,
-            stop_order=50,
+            # 调度器先于任务登记器关闭，确保取消中的任务完成真实收尾后再封口。
+            stop_order=5,
             start_timeout_seconds=120,
             stop_timeout_seconds=120,
             stop_failure=LifecycleFailurePolicy.FAIL_FAST,
