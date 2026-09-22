@@ -179,7 +179,7 @@
         "bindings": [
           "import:httpx2 as httpx2"
         ],
-        "fingerprint": "a70799e9930ff79cd28ebed92836c8108cd2d18bc668e0081f68533d84f69d0d",
+        "fingerprint": "73879afc31531cc27241f21e0edf3b8e493a7d9aef973d0c2e28165d006e631d",
         "kind": "raw_transport",
         "source": "app.adapters.network.http",
         "target": "httpx2",
@@ -189,11 +189,10 @@
           "AsyncRequestUtils._dispatch_request|call:Timeout",
           "AsyncRequestUtils._make_request|call:request",
           "AsyncRequestUtils._make_request|call:request",
-          "AsyncRequestUtils.get_stream|call:AsyncClient",
-          "AsyncRequestUtils.get_stream|call:AsyncClient",
-          "AsyncRequestUtils.get_stream|call:Timeout",
-          "AsyncRequestUtils.get_stream|call:stream",
-          "AsyncRequestUtils.get_stream|call:stream",
+          "AsyncRequestUtils.get_stream._open_stream|call:AsyncClient",
+          "AsyncRequestUtils.get_stream._open_stream|call:AsyncClient",
+          "AsyncRequestUtils.get_stream._open_stream|call:Timeout",
+          "AsyncRequestUtils.get_stream._open_stream|call:stream",
           "_get_shared_async_transport|call:AsyncHTTPTransport",
           "_get_shared_async_transport|call:Limits",
           "_h2_proxy_breaker_key|call:URL"
@@ -203,14 +202,22 @@
         "bindings": [
           "from:requests.Response as Response",
           "from:requests.Session as Session",
+          "from:requests.adapters.HTTPAdapter as HTTPAdapter",
           "import:requests as requests"
         ],
-        "fingerprint": "dffac27a2e24803dd7c50b238ba44b4f106b7b105e63a487edc12258f65c710d",
+        "fingerprint": "c95df710a8536328f5ee005c0ce065b9528f2f4ebae1f077315102d8c0f4c01f",
         "kind": "raw_transport",
         "source": "app.adapters.network.http",
         "target": "requests",
         "uses": [
           "RequestUtils.__init__|call:Session",
+          "RequestUtils._close_fallback_session|call:close",
+          "RequestUtils._request_with_tls12|call:Session",
+          "RequestUtils._request_with_tls12|call:Session",
+          "RequestUtils._request_with_tls12|call:close",
+          "RequestUtils._request_with_tls12|call:close",
+          "RequestUtils._request_with_tls12|call:mount",
+          "RequestUtils._request_with_tls12|call:request",
           "RequestUtils.request|call:request",
           "RequestUtils.request|call:request"
         ]
