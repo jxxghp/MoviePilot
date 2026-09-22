@@ -230,6 +230,65 @@ def _is_deepseek_thinking_enabled(model_name: str | None, extra_body: Any) -> bo
     return False
 
 
+# Anthropic 分块协议及其兼容别名：这些分块承载供应商思考协议，
+# LangChain 在还原请求时会整体丢弃，需要兼容层原样回传。
+_THINKING_CONTENT_BLOCK_TYPES = frozenset(
+    {"thinking", "redacted_thinking", "reasoning", "reasoning_content"}
+)
+
+
+def _is_thinking_content_block(value: Any) -> bool:
+    """识别承载供应商思考协议的内容分块。"""
+    return (
+        isinstance(value, dict)
+        and str(value.get("type") or "").strip().lower()
+        in _THINKING_CONTENT_BLOCK_TYPES
+    )
+
+
+def _extract_thinking_content_blocks(content: Any) -> list[dict[str, Any]]:
+    """
+    提取内容数组中的思考分块。
+
+    部分兼容端点沿用 Anthropic 分块协议，把思考内容放在 assistant
+    `content[].thinking`，并要求后续请求原样回传；分块里的签名字段
+    由端点校验，必须按原样保留，不能在重建时丢弃或合并。
+    """
+    if not isinstance(content, list):
+        return []
+    return [dict(block) for block in content if _is_thinking_content_block(block)]
+
+
+def _restore_thinking_content_blocks(
+        payload_message: dict[str, Any],
+        message: AIMessage,
+) -> None:
+    """
+    把历史响应中的思考分块回填到续轮请求。
+
+    LangChain 在还原请求时会过滤 `thinking`/`reasoning` 分块，这里按
+    分块协议放回 assistant 内容最前，保持端点返回时的顺序；流式聚合
+    产生的裸字符串正文统一转成文本分块，避免混排分块被端点拒绝。
+    """
+    thinking_blocks = _extract_thinking_content_blocks(message.content)
+    if not thinking_blocks:
+        return
+
+    content = payload_message.get("content")
+    if isinstance(content, list):
+        text_blocks = [
+            {"type": "text", "text": block} if isinstance(block, str) else block
+            for block in content
+            if not _is_thinking_content_block(block)
+        ]
+    elif content:
+        text_blocks = [{"type": "text", "text": str(content)}]
+    else:
+        text_blocks = []
+
+    payload_message["content"] = [*thinking_blocks, *text_blocks]
+
+
 def _patch_interleaved_reasoning_request_support(
         model_cls: Any,
         *,
@@ -238,7 +297,7 @@ def _patch_interleaved_reasoning_request_support(
         normalize_deepseek_messages: bool = False,
         inject_missing_as_empty: bool = False,
 ) -> None:
-    """为兼容模型统一补回工具调用历史中的 reasoning_content。"""
+    """为兼容模型统一补回工具调用历史中的 reasoning_content 和思考分块。"""
     if getattr(model_cls, patch_marker, False):
         return
 
@@ -284,8 +343,12 @@ def _patch_interleaved_reasoning_request_support(
                     payload_message.get("role") != "assistant"
                     or index >= len(messages)
                     or not isinstance(messages[index], AIMessage)
-                    or "reasoning_content" in payload_message
             ):
+                continue
+
+            _restore_thinking_content_blocks(payload_message, messages[index])
+
+            if "reasoning_content" in payload_message:
                 continue
 
             reasoning_content = messages[index].additional_kwargs.get(
@@ -307,11 +370,14 @@ def _patch_openai_interleaved_reasoning_content_support():
     修补 OpenAI-compatible 模型的 interleaved reasoning 内容回传。
 
     小米 MiMo、部分 Kimi/GLM 等兼容端点会把思考内容放在响应顶层
-    `reasoning_content` 字段；如果下一轮请求没有把它随历史 assistant
-    消息带回，工具调用后续请求会被服务端以 400 拒绝。
+    `reasoning_content` 字段；DeepSeek 中转网关等端点则沿用 Anthropic
+    分块协议，把思考内容放在响应 `content[].thinking` 分块中。如果下一轮
+    请求没有把它们随历史 assistant 消息带回，工具调用后续请求会被服务端
+    以 400 拒绝。
 
     这里不按 provider 白名单判断，而是只在历史 AIMessage 真实保存过
-    `reasoning_content` 时回传，避免以后每接入一个同类模型都要单独适配。
+    `reasoning_content` 或思考分块时回传，避免以后每接入一个同类模型
+    都要单独适配。
     """
     try:
         import langchain_openai.chat_models.base as _openai_base
