@@ -385,11 +385,11 @@ class NexusPhpSiteUserInfo(SiteParserBase):
     @staticmethod
     def _parse_user_level_marker(page_text: str, userid: Optional[str]) -> Optional[str]:
         """
-        解析 PTT-NP 首页中的 UID 与用户等级标记。
+        解析 PTT-NP 首页中 UID 标记后的通用用户等级。
         """
         user_id_pattern = re.escape(str(userid)) if userid else r"\d+"
         user_level_match = re.search(
-            rf"\[\s*UID\s*=\s*{user_id_pattern}\s*\]\s*\[\(\s*([^\)\]]+?)\s*\)",
+            rf"\[\s*UID\s*=\s*{user_id_pattern}\s*\]\s*\[\s*\([^\)\]]+\)\s*([^\]]+?)\s*\]",
             page_text,
             flags=re.IGNORECASE,
         )
