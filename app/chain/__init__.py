@@ -624,8 +624,9 @@ class ChainBase(metaclass=ABCMeta):
                 selected_id if source == "anilist" else None,
             )
 
-        if tmdbid:
-            return "themoviedb", int(tmdbid), None, None, None
+        normalized_tmdbid = to_int(tmdbid)
+        if normalized_tmdbid:
+            return "themoviedb", normalized_tmdbid, None, None, None
         if doubanid:
             return "douban", None, str(doubanid), None, None
         if bangumiid:
