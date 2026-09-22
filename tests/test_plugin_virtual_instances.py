@@ -648,6 +648,46 @@ def test_loader_runtime_gate_only_rejects_explicit_incompatible_declarations(
     assert not PluginLoader._is_runtime_compatible(rejected)
 
 
+def test_loader_marks_incompatible_runtime_status_when_skipping(
+    tmp_path,
+    monkeypatch,
+):
+    """运行时不兼容的插件被跳过时必须留下卡片可见的状态。
+
+    启动期全量加载不会让生命周期遍历到这些插件，状态只能由加载器落记；
+    否则用户在 v3t 上只能看到一张既不运行也不解释的占位卡片。
+    """
+    from app.runtime.extensions.plugin import loader as loader_module
+
+    monkeypatch.setattr(
+        loader_module,
+        "get_runtime_setting",
+        lambda key: "v3" if key == "VERSION_FLAG" else None,
+    )
+    monkeypatch.setattr(loader_module, "is_free_threaded_runtime", lambda: True)
+
+    plugin_dir = tmp_path / "rejectedplugin"
+    plugin_dir.mkdir()
+    (plugin_dir / "__init__.py").write_text("", encoding="utf-8")
+    (plugin_dir / "package.json").write_text('{"v3t": false}', encoding="utf-8")
+
+    statuses: dict[str, PluginRuntimeStatus] = {}
+    loader = PluginLoader(
+        plugins_root=tmp_path,
+        import_preparer=lambda **_kwargs: None,
+        import_scanner=lambda **_kwargs: None,
+        runtime_status_writer=statuses.__setitem__,
+        log=_logger(),
+    )
+
+    assert loader.load(None, ["RejectedPlugin"], lambda _candidate: True) == []
+    # 安装清单里的原始大小写必须保留：卡片按该 ID 读状态
+    assert statuses == {
+        "RejectedPlugin": PluginRuntimeStatus.INCOMPATIBLE_RUNTIME
+    }
+    assert not loader.is_runtime_compatible("RejectedPlugin")
+
+
 def test_clone_service_persists_descriptor_without_copying_source_package():
     """创建分身只写实例描述和隔离配置，并始终跟随源插件版本。"""
     instances: dict[str, PluginInstance] = {}

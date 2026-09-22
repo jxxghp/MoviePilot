@@ -588,7 +588,7 @@ def configure_plugin_services() -> None:
         inventory=load_inventory,
         identity=persistence.get_identity,
         candidate_compatibility=lambda candidate: (
-            market_transport.check_plugin_system_version(candidate.dto)
+            market_transport.check_plugin_install_compatibility(candidate.dto)
         ),
         executor=command,
         clock=lambda: datetime.now(timezone.utc),

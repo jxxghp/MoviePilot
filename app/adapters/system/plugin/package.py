@@ -101,6 +101,11 @@ class PluginPackageSourcePort(Protocol):
     ) -> tuple[bool, str]:
         """校验插件声明的宿主版本约束。"""
 
+    def check_plugin_install_compatibility(
+        self, plugin_info: dict[str, Any]
+    ) -> tuple[bool, str]:
+        """校验插件与当前运行时和宿主版本是否都允许安装。"""
+
     def get_plugin_package_version(
         self, plugin_id: str, repo_url: str, package_version: Optional[str]
     ) -> Optional[str]:
@@ -729,6 +734,12 @@ class PluginPackageManager:
         """委托外部来源客户端校验宿主版本约束。"""
         return self._require_source().check_plugin_system_version(plugin_info)
 
+    def check_plugin_install_compatibility(
+        self, plugin_info: dict[str, Any]
+    ) -> tuple[bool, str]:
+        """委托外部来源客户端校验运行时与宿主版本约束。"""
+        return self._require_source().check_plugin_install_compatibility(plugin_info)
+
     def get_plugin_package_version(
         self, plugin_id: str, repo_url: str, package_version: Optional[str]
     ) -> Optional[str]:
@@ -1134,9 +1145,10 @@ class PluginPackageManager:
         )
         if not candidate:
             return False, f"未找到本地插件：{pid}"
-        compatible, message = self.check_plugin_system_version(candidate)
+        # 本地插件包走同一条准入判据：运行时不兼容要如实报，不能落到版本提示上
+        compatible, message = self.check_plugin_install_compatibility(candidate)
         if not compatible:
-            logger.debug(f"{pid} 本地插件系统版本兼容性检查失败：{message}")
+            logger.debug(f"{pid} 本地插件安装兼容性检查失败：{message}")
             return False, message
 
         raw_source_path = candidate.get("path")

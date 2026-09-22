@@ -14,12 +14,13 @@ from typing import Any, Optional
 
 from app.foundation.environment import is_free_threaded_runtime
 from app.runtime.settings import get_runtime_setting
-from app.schemas.plugin import PluginInstance
+from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 
 
 PluginImportPreparer = Callable[..., None]
 PluginImportScanner = Callable[..., None]
 PluginValidator = Callable[[Any], bool]
+PluginRuntimeStatusWriter = Callable[[str, PluginRuntimeStatus], None]
 
 
 class PluginLoader:
@@ -34,11 +35,13 @@ class PluginLoader:
         import_preparer: PluginImportPreparer,
         import_scanner: PluginImportScanner,
         log: Any,
+        runtime_status_writer: Optional[PluginRuntimeStatusWriter] = None,
     ) -> None:
-        """保存插件目录、导入前置能力和日志端口。"""
+        """保存插件目录、导入前置能力、状态回写端口和日志端口。"""
         self._plugins_root = plugins_root
         self._import_preparer = import_preparer
         self._import_scanner = import_scanner
+        self._runtime_status_writer = runtime_status_writer
         self._logger = log
 
     def load(
@@ -57,6 +60,12 @@ class PluginLoader:
             if plugin_id
             else [item.lower() for item in installed_plugins]
         )
+        # 运行目录名统一小写，而卡片按安装清单里的原始 ID 读状态，回写前要还原大小写
+        installed_ids = {
+            item.lower(): item
+            for item in ([plugin_id] if plugin_id else installed_plugins)
+            if item
+        }
         if not targets:
             self._logger.debug("没有需要加载的插件")
             return []
@@ -79,6 +88,9 @@ class PluginLoader:
             if not self._is_runtime_compatible(plugin_dir):
                 self._logger.warning(
                     f"跳过插件 {plugin_dir.name}：声明与当前运行时不兼容"
+                )
+                self._mark_incompatible_runtime(
+                    installed_ids.get(plugin_dir.name, plugin_dir.name)
                 )
                 continue
 
@@ -127,6 +139,7 @@ class PluginLoader:
             self._logger.warning(
                 f"跳过虚拟插件实例 {instance.instance_id}：声明与当前运行时不兼容"
             )
+            self._mark_incompatible_runtime(instance.instance_id)
             return []
 
         module_name = f"app.plugins.{instance.instance_id.lower()}"
@@ -173,6 +186,28 @@ class PluginLoader:
                 f"{traceback.format_exc()}"
             )
         return []
+
+    def is_runtime_compatible(self, plugin_id: str) -> bool:
+        """按插件 ID 判断运行目录载荷是否兼容当前运行时。
+
+        公开可调用：生命周期在装载结果为空时要区分"加载失败"和"运行时不兼容"，
+        两者在卡片上是完全不同的提示。
+        :param plugin_id: 物理插件 ID，大小写不敏感
+        """
+        return self._is_runtime_compatible(self._plugins_root / plugin_id.lower())
+
+    def _mark_incompatible_runtime(self, plugin_id: str) -> None:
+        """把运行时不兼容记成插件卡片可见的状态。
+
+        这些插件不会进入生命周期遍历，启动期全量加载时没有其他环节会为它们写状态；
+        缺了这一笔，用户在 v3t 上看到的就是一张既不运行也不解释的占位卡片。
+        """
+        if not self._runtime_status_writer:
+            return
+        self._runtime_status_writer(
+            plugin_id,
+            PluginRuntimeStatus.INCOMPATIBLE_RUNTIME,
+        )
 
     @staticmethod
     def _is_runtime_compatible(plugin_dir: Path) -> bool:

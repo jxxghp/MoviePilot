@@ -59,6 +59,10 @@ class PluginSystemServices:
         """补充插件条目的主程序版本兼容信息。"""
         return self.market.annotate_system_version(plugin_info)
 
+    def annotate_runtime_compatibility(self, plugin_info: dict) -> dict:
+        """补充插件条目的运行时（free-threaded）兼容信息。"""
+        return self.market.annotate_runtime_compatibility(plugin_info)
+
     def is_package_compatible(self, plugin_info: dict, package_version: str) -> bool:
         """判断插件条目是否兼容指定代际。"""
         return self.market.is_package_compatible(plugin_info, package_version)

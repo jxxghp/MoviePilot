@@ -46,6 +46,7 @@ def _lifecycle(*, plugins, running=None):
         enable_events=MagicMock(),
         disable_events=MagicMock(),
         runtime_status_writer=MagicMock(),
+        runtime_compatible=lambda _pid: True,
         database=lambda: PluginDatabase(),
         log=MagicMock(),
         event_sender=MagicMock(),

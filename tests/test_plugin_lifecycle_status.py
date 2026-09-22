@@ -32,6 +32,7 @@ def _lifecycle(
     remove_classification=None,
     enable_events=None,
     log=None,
+    runtime_compatible=True,
 ):
     """构造隔离外部事件和模块清理的生命周期实例。"""
     classes = {}
@@ -49,6 +50,7 @@ def _lifecycle(
         enable_events=enable_events or MagicMock(),
         disable_events=MagicMock(),
         runtime_status_writer=statuses.__setitem__,
+        runtime_compatible=lambda _plugin_id: runtime_compatible,
         database=lambda: PluginDatabase(),
         log=log or MagicMock(),
         event_sender=MagicMock(),
@@ -123,6 +125,20 @@ def test_lifecycle_records_load_failure_when_loader_returns_no_class():
     assert result == {"DemoPlugin": PluginRuntimeStatus.LOAD_FAILED}
     assert running == {}
     assert statuses["DemoPlugin"] is PluginRuntimeStatus.LOAD_FAILED
+
+
+def test_lifecycle_reports_incompatible_runtime_instead_of_load_failure():
+    """载荷声明与当前运行时不兼容时，卡片要显示不支持而不是加载失败。"""
+    lifecycle, _classes, running, statuses = _lifecycle(
+        plugins=[],
+        runtime_compatible=False,
+    )
+
+    result = lifecycle.start("DemoPlugin")
+
+    assert result == {"DemoPlugin": PluginRuntimeStatus.INCOMPATIBLE_RUNTIME}
+    assert running == {}
+    assert statuses["DemoPlugin"] is PluginRuntimeStatus.INCOMPATIBLE_RUNTIME
 
 
 def test_classification_registration_precedes_event_enablement():

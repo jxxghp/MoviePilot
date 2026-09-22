@@ -162,6 +162,9 @@ def build_plugin_runtime(
         plugins_root=environment.plugins_root,
         import_preparer=environment.import_preparer,
         import_scanner=environment.import_scanner,
+        # 运行时不兼容的插件不进入 lifecycle 遍历，状态只能由加载器自己落记，
+        # 否则启动期全量加载会把它们跳过得无声无息
+        runtime_status_writer=registry.set_runtime_status,
         log=environment.logger,
     )
     tools = PluginToolCatalog(max_attempts=tool_build_max_attempts)
@@ -207,6 +210,12 @@ def build_plugin_runtime(
             plugins.extend(loader.load_instance(instance, validator))
         return plugins
 
+    def runtime_compatible(plugin_id: str) -> bool:
+        """按分身归一到源插件目录后判断运行时兼容性。"""
+        instance = instances.get(plugin_id)
+        source_id = instance.source_plugin_id if instance else plugin_id
+        return loader.is_runtime_compatible(source_id)
+
     lifecycle = PluginLifecycle(
         classes=registry.classes,
         running=registry.running,
@@ -221,6 +230,7 @@ def build_plugin_runtime(
         enable_events=eventmanager.enable_event_handler,
         disable_events=eventmanager.disable_event_handler,
         runtime_status_writer=registry.set_runtime_status,
+        runtime_compatible=runtime_compatible,
         database=environment.database,
         log=environment.logger,
         event_sender=eventmanager.send_event,
@@ -232,6 +242,9 @@ def build_plugin_runtime(
         plugin_class=registry.plugin_class,
         annotate_system_version=lambda info: environment.system().annotate_system_version(
             info
+        ),
+        annotate_runtime_compatibility=lambda info: (
+            environment.system().annotate_runtime_compatibility(info)
         ),
         is_package_compatible=lambda info, version: environment.system().is_package_compatible(
             info,
