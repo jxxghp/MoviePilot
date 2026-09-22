@@ -71,6 +71,7 @@ class PluginLifecycle:
         enable_events: Callable[[Any], None],
         disable_events: Callable[[Any], None],
         runtime_status_writer: Callable[[str, PluginRuntimeStatus], None],
+        runtime_compatible: Callable[[str], bool],
         database: Callable[[], PluginDatabase],
         log: Any,
         event_sender: Callable[..., Any],
@@ -89,6 +90,7 @@ class PluginLifecycle:
         self._enable_events = enable_events
         self._disable_events = disable_events
         self._runtime_status_writer = runtime_status_writer
+        self._runtime_compatible = runtime_compatible
         self._database = database
         self._logger = log
         self._event_sender = event_sender
@@ -177,7 +179,13 @@ class PluginLifecycle:
                 for result_id in results
             ):
                 self._remove_classification(plugin_id)
-                status = PluginRuntimeStatus.LOAD_FAILED
+                # 装载结果为空有两种原因：载荷声明与当前运行时不兼容被加载器跳过，
+                # 或者真的导入失败。前者在卡片上要说明不支持，不能报成加载失败。
+                status = (
+                    PluginRuntimeStatus.LOAD_FAILED
+                    if self._runtime_compatible(plugin_id)
+                    else PluginRuntimeStatus.INCOMPATIBLE_RUNTIME
+                )
                 self._runtime_status_writer(plugin_id, status)
                 results[plugin_id] = status
             self._clear_tools()

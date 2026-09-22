@@ -21,7 +21,6 @@ from app.application.plugin.source import (
     normalize_package_generation,
 )
 from app.domain.plugin import is_plugin_generation_compatible
-from app.foundation.environment import is_free_threaded_runtime
 
 PLUGIN_V3_GENERATIONS = ("v3", "v2", "v1")
 PluginIndex: TypeAlias = Mapping[str, Mapping[str, Any]]
@@ -358,7 +357,6 @@ def _market_candidates(
             dict(raw_info),
             None if package_generation == "v1" else package_generation,
             current_generation="v3",
-            free_threaded=is_free_threaded_runtime(),
         ):
             continue
         plugin_version = raw_info.get("version")
@@ -399,7 +397,6 @@ def _local_candidate(
         dict(plugin_info),
         None if generation == "v1" else generation,
         current_generation="v3",
-        free_threaded=is_free_threaded_runtime(),
     ):
         return None
     repo_url = plugin_info.get("repo_url")

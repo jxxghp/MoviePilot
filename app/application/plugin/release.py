@@ -220,6 +220,11 @@ def _merge_market_metadata(plugin: Plugin, market_plugin: Plugin) -> Plugin:
                     market_plugin.system_version_message
                     or plugin.system_version_message
                 ),
+                # 版本历史弹窗的"更新到最新版"同样按运行时兼容状态禁用并说明原因
+                "runtime_compatible": market_plugin.runtime_compatible,
+                "runtime_message": (
+                    market_plugin.runtime_message or plugin.runtime_message
+                ),
             }
         ),
     )

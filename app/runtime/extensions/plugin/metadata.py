@@ -18,6 +18,7 @@ class PluginMetadataMapper:
         plugin_instance: Callable[[str], Optional[Any]],
         plugin_class: Callable[[str], Optional[Any]],
         annotate_system_version: Callable[[dict], dict],
+        annotate_runtime_compatibility: Callable[[dict[str, Any]], dict[str, Any]],
         is_package_compatible: Callable[[dict, str], bool],
         auth_checker: Callable[[Plugin, dict], bool],
         version_compare: Callable[[str, str, str], bool],
@@ -27,6 +28,7 @@ class PluginMetadataMapper:
         self._plugin_instance = plugin_instance
         self._plugin_class = plugin_class
         self._annotate_system_version = annotate_system_version
+        self._annotate_runtime_compatibility = annotate_runtime_compatibility
         self._is_package_compatible = is_package_compatible
         self._auth_checker = auth_checker
         self._version_compare = version_compare
@@ -44,7 +46,9 @@ class PluginMetadataMapper:
         """映射一个插件索引条目，不兼容或无权限时返回空。"""
         if not isinstance(plugin_info, dict):
             return None
-        info = self._annotate_system_version(plugin_info.copy())
+        info = self._annotate_runtime_compatibility(
+            self._annotate_system_version(plugin_info.copy())
+        )
         if not self._is_package_compatible(info, package_version or ""):
             return None
 
@@ -67,6 +71,10 @@ class PluginMetadataMapper:
         if info.get("system_version_compatible") is False:
             plugin.system_version_compatible = False
             plugin.system_version_message = info.get("system_version_message")
+        # 运行时不兼容不再把条目从目录里剔除：卡片照常显示，由前端据此禁用安装并说明原因
+        if info.get("runtime_compatible") is False:
+            plugin.runtime_compatible = False
+            plugin.runtime_message = info.get("runtime_message")
 
         plugin.state = self._state(plugin_id, instance)
         plugin.has_page = bool(

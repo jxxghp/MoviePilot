@@ -22,6 +22,7 @@ from requests import Response
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.plugin import (
     build_local_plugin_source,
+    check_plugin_runtime_compatibility,
     check_plugin_system_version,
     is_local_plugin_source,
     is_physical_plugin_id,
@@ -306,8 +307,6 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         """
         if not isinstance(plugin_info, dict):
             return False
-        if is_free_threaded_runtime() and plugin_info.get("v3t") is False:
-            return False
         if not get_runtime_setting('VERSION_FLAG'):
             return True
         current_flag = get_runtime_setting('VERSION_FLAG')
@@ -335,8 +334,6 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         除非条目显式声明 ``v3: false``；默认索引仍需先声明 ``v2: true``。
         """
         if not isinstance(plugin_info, dict):
-            return False
-        if is_free_threaded_runtime() and plugin_info.get("v3t") is False:
             return False
         current_flag = get_runtime_setting('VERSION_FLAG')
         if not current_flag:
@@ -414,6 +411,48 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         return False, (
             f"插件要求 MoviePilot 版本 {raw_specifier}，当前版本 {get_app_version()} 不满足，已拒绝安装"
         )
+
+    @staticmethod
+    def check_plugin_runtime_compatibility(
+        plugin_info: Optional[PluginPayload],
+    ) -> tuple[bool, str]:
+        """
+        检查插件声明与当前解释器运行时是否兼容，返回兼容状态和用户可读原因。
+        """
+        return check_plugin_runtime_compatibility(
+            plugin_info,
+            free_threaded=is_free_threaded_runtime(),
+        )
+
+    @classmethod
+    def annotate_plugin_runtime_compatibility(
+        cls, plugin_info: PluginPayload
+    ) -> PluginPayload:
+        """
+        为插件 package 元数据补充运行时兼容状态，便于市场展示和安装流程复用。
+        """
+        if not isinstance(plugin_info, dict):
+            return plugin_info
+
+        compatible, message = cls.check_plugin_runtime_compatibility(plugin_info)
+        plugin_info["runtime_compatible"] = compatible
+        plugin_info["runtime_message"] = message
+        return plugin_info
+
+    @classmethod
+    def check_plugin_install_compatibility(
+        cls, plugin_info: Optional[PluginPayload]
+    ) -> tuple[bool, str]:
+        """
+        安装准入的唯一兼容判据：先判运行时，再判主程序版本。
+
+        运行时不兼容先于版本判断返回，否则 v3t 上会把"该插件不支持 free-threaded"
+        报成一条与版本有关的提示。
+        """
+        compatible, message = cls.check_plugin_runtime_compatibility(plugin_info)
+        if not compatible:
+            return compatible, message
+        return cls.check_plugin_system_version(plugin_info)
 
     @classmethod
     def annotate_plugin_system_version(
@@ -531,6 +570,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                         package_version or None,
                     )
                     self.annotate_plugin_system_version(candidate)
+                    self.annotate_plugin_runtime_compatibility(candidate)
                     candidate_version = str(candidate.get("version") or "0")
 
                     existing = candidates.get(pid)
@@ -606,7 +646,13 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                                 f"插件索引条目不兼容 {get_runtime_setting('VERSION_FLAG')}"
                             )
                         self.annotate_plugin_system_version(candidate)
-                        if strict_system_version and candidate.get("system_version_compatible") is False:
+                        self.annotate_plugin_runtime_compatibility(candidate)
+                        # 运行时不兼容与代际、版本不兼容一样要投影为不可安装候选：
+                        # 本地热同步只认 compatible 位，漏掉这一位会让每次源码变更都发起一次必败安装。
+                        if candidate.get("runtime_compatible") is False:
+                            candidate["compatible"] = False
+                            candidate["skip_reason"] = candidate.get("runtime_message")
+                        elif strict_system_version and candidate.get("system_version_compatible") is False:
                             candidate["compatible"] = False
                             candidate["skip_reason"] = candidate.get("system_version_message")
                         elif not strict_system_version and is_compatible:
@@ -1905,6 +1951,17 @@ class PluginMarketClient:
         return plugin_info
 
     @staticmethod
+    def annotate_runtime_compatibility(plugin_info: PluginPayload) -> PluginPayload:
+        """补充插件声明的运行时兼容状态。"""
+        compatible, message = check_plugin_runtime_compatibility(
+            plugin_info,
+            free_threaded=is_free_threaded_runtime(),
+        )
+        plugin_info["runtime_compatible"] = compatible
+        plugin_info["runtime_message"] = message
+        return plugin_info
+
+    @staticmethod
     def is_package_compatible(
         plugin_info: PluginPayload,
         package_version: Optional[str],
@@ -1914,7 +1971,6 @@ class PluginMarketClient:
             plugin_info,
             package_version,
             current_generation=get_runtime_setting('VERSION_FLAG'),
-            free_threaded=is_free_threaded_runtime(),
         )
 
 
@@ -1984,6 +2040,21 @@ class PluginPackageSourceClient:
         plugin_info: PluginPayload,
     ) -> tuple[bool, str]:
         """校验插件声明的宿主版本约束。"""
+        return check_plugin_system_version(
+            plugin_info, current_version=get_app_version()
+        )
+
+    @staticmethod
+    def check_plugin_install_compatibility(
+        plugin_info: PluginPayload,
+    ) -> tuple[bool, str]:
+        """安装准入的唯一兼容判据：先判运行时，再判宿主版本。"""
+        compatible, message = check_plugin_runtime_compatibility(
+            plugin_info,
+            free_threaded=is_free_threaded_runtime(),
+        )
+        if not compatible:
+            return compatible, message
         return check_plugin_system_version(
             plugin_info, current_version=get_app_version()
         )

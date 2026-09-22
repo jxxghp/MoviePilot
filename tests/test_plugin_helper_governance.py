@@ -19,6 +19,7 @@ from app.adapters.system.plugin.package import (
 from app.domain.plugin import (
     build_local_plugin_source,
     build_plugin_release_install_plan,
+    check_plugin_runtime_compatibility,
     check_plugin_system_version,
     compatible_plugin_generations,
     is_plugin_generation_compatible,
@@ -179,7 +180,8 @@ def test_generation_candidate_policy_is_stable_and_deduplicated() -> None:
         ({"v2": True}, None, True),
         ({"v3": False, "v2": True}, None, False),
         ({"v3": False}, "v3", False),
-        ({"v3t": False}, "v3", False),
+        # 运行时声明不参与代际判断：v3t 由 check_plugin_runtime_compatibility 单独判定
+        ({"v3t": False}, "v3", True),
     ],
 )
 def test_generation_policy_has_one_explicit_false_rule(
@@ -187,13 +189,37 @@ def test_generation_policy_has_one_explicit_false_rule(
     generation: str | None,
     expected: bool,
 ) -> None:
-    """当前代际显式 false 和自由线程显式 false 都不得被专用索引绕过。"""
+    """当前代际显式 false 不得被专用索引绕过，运行时声明不改变代际结论。"""
     assert is_plugin_generation_compatible(
         metadata,
         generation,
         current_generation="v3",
-        free_threaded=True,
     ) is expected
+
+
+@pytest.mark.parametrize(
+    ("metadata", "free_threaded", "compatible"),
+    [
+        (object(), True, True),
+        ({}, True, True),
+        ({"v3t": True}, True, True),
+        ({"v3t": False}, True, False),
+        ({"v3t": False}, False, True),
+    ],
+)
+def test_runtime_policy_only_rejects_explicit_free_threaded_refusal(
+    metadata: object,
+    free_threaded: bool,
+    compatible: bool,
+) -> None:
+    """运行时判据只在 free-threaded 且显式声明不支持时拒绝。"""
+    result, message = check_plugin_runtime_compatibility(
+        metadata,
+        free_threaded=free_threaded,
+    )
+
+    assert result is compatible
+    assert bool(message) is not compatible
 
 
 @pytest.mark.parametrize(
@@ -219,7 +245,6 @@ def test_generation_policy_covers_all_owner_decisions(
         metadata,
         generation,
         current_generation=current,
-        free_threaded=False,
     ) is expected
 
 
