@@ -84,6 +84,16 @@ class MediaChain(ChainBase, metaclass=Singleton):
     _simplify_recognized_music_info = classmethod(  # type: ignore[var-annotated]
         MediaCatalogOwner._simplify_recognized_music_info.__func__  # type: ignore[attr-defined]
     )
+    _contains_han = staticmethod(MediaCatalogOwner._contains_han)
+    _music_artist_aliases = classmethod(  # type: ignore[var-annotated]
+        MediaCatalogOwner._music_artist_aliases.__func__  # type: ignore[attr-defined]
+    )
+    _simplify_music_artist_name = classmethod(  # type: ignore[var-annotated]
+        MediaCatalogOwner._simplify_music_artist_name.__func__  # type: ignore[attr-defined]
+    )
+    _simplify_music_artist_names = classmethod(  # type: ignore[var-annotated]
+        MediaCatalogOwner._simplify_music_artist_names.__func__  # type: ignore[attr-defined]
+    )
     _simplify_recognized_music_mapping = classmethod(  # type: ignore[var-annotated]
         MediaCatalogOwner._simplify_recognized_music_mapping.__func__  # type: ignore[attr-defined]
     )
