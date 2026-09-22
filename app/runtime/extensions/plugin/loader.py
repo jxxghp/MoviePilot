@@ -60,7 +60,7 @@ class PluginLoader:
             if plugin_id
             else [item.lower() for item in installed_plugins]
         )
-        # 运行目录名统一小写，而卡片按安装清单里的原始 ID 读状态，回写前要还原大小写
+        # 运行目录名统一小写，而卡片按调用方传入的原始 ID 读状态，回写前要还原大小写
         installed_ids = {
             item.lower(): item
             for item in ([plugin_id] if plugin_id else installed_plugins)
@@ -199,8 +199,9 @@ class PluginLoader:
     def _mark_incompatible_runtime(self, plugin_id: str) -> None:
         """把运行时不兼容记成插件卡片可见的状态。
 
-        这些插件不会进入生命周期遍历，启动期全量加载时没有其他环节会为它们写状态；
-        缺了这一笔，用户在 v3t 上看到的就是一张既不运行也不解释的占位卡片。
+        按 ID 定向装载时生命周期的空结果分支也会落同一个状态；这里补的是全量装载
+        （``plugin_id`` 为空）那条路径——它不逐个遍历目标，缺了这一笔，用户看到的
+        就是一张既不运行也不解释的占位卡片。
         """
         if not self._runtime_status_writer:
             return

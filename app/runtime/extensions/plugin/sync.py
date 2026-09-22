@@ -97,7 +97,14 @@ class PluginSyncService:
                 if getattr(plugin, "id", None)
             }
         )
-        candidates = list(candidates_by_id.values())
+        # 运行时声明不兼容的插件装不上：安装准入必然拒绝，同步失败状态会覆盖加载器写下的
+        # 不兼容状态，恢复集合还会把整个启动同步判为未完成，连带跳过依赖恢复与调度器初始化。
+        # 恢复分支同样排除——重装一个当前运行时装不上的插件不会有别的结果。
+        candidates = [
+            plugin
+            for plugin in candidates_by_id.values()
+            if plugin.runtime_compatible is not False
+        ]
         recovery_ids = {
             plugin.id.lower()
             for plugin in candidates

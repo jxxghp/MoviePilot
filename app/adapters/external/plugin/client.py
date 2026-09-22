@@ -647,7 +647,12 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                             )
                         self.annotate_plugin_system_version(candidate)
                         self.annotate_plugin_runtime_compatibility(candidate)
-                        if strict_system_version and candidate.get("system_version_compatible") is False:
+                        # 运行时不兼容与代际、版本不兼容一样要投影为不可安装候选：
+                        # 本地热同步只认 compatible 位，漏掉这一位会让每次源码变更都发起一次必败安装。
+                        if candidate.get("runtime_compatible") is False:
+                            candidate["compatible"] = False
+                            candidate["skip_reason"] = candidate.get("runtime_message")
+                        elif strict_system_version and candidate.get("system_version_compatible") is False:
                             candidate["compatible"] = False
                             candidate["skip_reason"] = candidate.get("system_version_message")
                         elif not strict_system_version and is_compatible:

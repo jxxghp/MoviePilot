@@ -251,6 +251,7 @@ async def runtime_status(
         _SchemaPluginRuntimeStatus.SYNC_FAILED,
         _SchemaPluginRuntimeStatus.BLOCKED_BY_POLICY,
         _SchemaPluginRuntimeStatus.LOAD_FAILED,
+        _SchemaPluginRuntimeStatus.INCOMPATIBLE_RUNTIME,
     }
     return _SchemaPluginRuntimeSummary(
         ready=not plugin_manager.is_plugin_settling(),
@@ -394,14 +395,14 @@ def reload_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_s
         return _SchemaResponse(success=False, message=str(error))
     if runtime_status is _SchemaPluginRuntimeStatus.ACTIVE:
         return _SchemaResponse(success=True)
-    return _SchemaResponse(
-        success=False,
-        message=(
-            "未通过用户认证，请查看日志"
-            if runtime_status is _SchemaPluginRuntimeStatus.BLOCKED_BY_POLICY
-            else "插件加载失败，请查看插件日志"
-        ),
-    )
+    if runtime_status is _SchemaPluginRuntimeStatus.BLOCKED_BY_POLICY:
+        message = "未通过用户认证，请查看日志"
+    elif runtime_status is _SchemaPluginRuntimeStatus.INCOMPATIBLE_RUNTIME:
+        # 与插件卡片保持同一说法：重载不会改变载荷自身的运行时声明
+        message = "插件声明不支持当前运行环境，请查看日志"
+    else:
+        message = "插件加载失败，请查看插件日志"
+    return _SchemaResponse(success=False, message=message)
 
 
 @router.get(

@@ -88,12 +88,15 @@ def _merge_plugin_source_metadata(plugin: Any, source_plugin: Any) -> Any:
     if repo_url:
         setattr(plugin, "repo_url", repo_url)
 
+    # 运行时兼容状态与版本兼容状态同属安装准入依据，已安装卡片据此禁用更新入口
     for attr in (
         "has_update",
         "release",
         "system_version",
         "system_version_compatible",
         "system_version_message",
+        "runtime_compatible",
+        "runtime_message",
     ):
         value = getattr(source_plugin, attr, None)
         if value is not None:
