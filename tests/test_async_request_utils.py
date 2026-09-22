@@ -1,4 +1,5 @@
 import asyncio
+import ssl
 import time
 
 import httpx2
@@ -123,6 +124,71 @@ def test_timeout_still_raises_when_raise_exception_enabled(monkeypatch):
 
     assert calls == [True]
     assert http_module._h2_proxy_allowed(PROXY, URL) is True
+
+
+def test_proxy_connect_error_retries_with_tls12(monkeypatch):
+    """代理 TLS 握手连接错误时，幂等请求应只回退一次 TLS 1.2。"""
+    calls = []
+
+    async def fake(
+        _self,
+        http2,
+        _cookies_dict,
+        _method,
+        _url,
+        _raise_exception,
+        verify=None,
+        **_kwargs,
+    ):
+        calls.append((http2, verify))
+        if verify is None:
+            raise httpx2.ConnectError("TLS handshake failed")
+        return "ok"
+
+    monkeypatch.setattr(AsyncRequestUtils, "_dispatch_request", fake)
+
+    result = asyncio.run(
+        AsyncRequestUtils(proxies={"https": PROXY}).request("get", URL)
+    )
+
+    assert result == "ok"
+    assert calls[0] == (True, None)
+    assert calls[1][0] is True
+    assert isinstance(calls[1][1], ssl.SSLContext)
+    assert calls[1][1].minimum_version is ssl.TLSVersion.TLSv1_2
+    assert calls[1][1].maximum_version is ssl.TLSVersion.TLSv1_2
+
+
+def test_stream_proxy_connect_error_retries_with_tls12(monkeypatch):
+    """流式代理 HTTPS 请求也应在握手连接错误后回退 TLS 1.2。"""
+    seen_verifies = []
+
+    def fake_transport(**kwargs):
+        verify = kwargs["verify"]
+        seen_verifies.append(verify)
+
+        async def respond(request):
+            if isinstance(verify, ssl.SSLContext):
+                return httpx2.Response(200, text="ok", request=request)
+            raise httpx2.ConnectError("TLS handshake failed")
+
+        return httpx2.MockTransport(respond)
+
+    monkeypatch.setattr(http_module, "_get_shared_async_transport", fake_transport)
+
+    async def run_stream():
+        async with AsyncRequestUtils(proxies={"https": PROXY}).get_stream(
+            URL,
+            raise_exception=True,
+        ) as response:
+            assert response is not None
+            assert await response.aread() == b"ok"
+
+    asyncio.run(run_stream())
+
+    assert len(seen_verifies) == 2
+    assert isinstance(seen_verifies[1], ssl.SSLContext)
+    assert seen_verifies[1].maximum_version is ssl.TLSVersion.TLSv1_2
 
 
 def test_post_does_not_downgrade_on_h2_failure(monkeypatch):
