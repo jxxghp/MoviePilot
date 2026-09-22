@@ -86,18 +86,29 @@ def _build_tls12_context(verify: Union[bool, str]) -> ssl.SSLContext:
     return context
 
 
-class _TLS12HttpAdapter(HTTPAdapter):
+class _TLS12HttpAdapter(HTTPAdapter):  # type: ignore[misc]
     """为 requests 的一次性回退会话注入 TLS 1.2 SSLContext。"""
 
-    def __init__(self, ssl_context: ssl.SSLContext, *args, **kwargs):
+    def __init__(
+        self,
+        ssl_context: ssl.SSLContext,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         self._ssl_context = ssl_context
         super().__init__(*args, **kwargs)
 
-    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+    def init_poolmanager(
+        self,
+        connections: int,
+        maxsize: int,
+        block: bool = False,
+        **pool_kwargs: Any,
+    ) -> None:
         pool_kwargs["ssl_context"] = self._ssl_context
-        return super().init_poolmanager(connections, maxsize, block, **pool_kwargs)
+        super().init_poolmanager(connections, maxsize, block, **pool_kwargs)
 
-    def proxy_manager_for(self, proxy, **proxy_kwargs):
+    def proxy_manager_for(self, proxy: str, **proxy_kwargs: Any) -> Any:
         proxy_kwargs["ssl_context"] = self._ssl_context
         return super().proxy_manager_for(proxy, **proxy_kwargs)
 
@@ -1438,11 +1449,11 @@ class AsyncRequestUtils:
     async def _dispatch_with_tls12(
         self,
         http2: bool,
-        cookies_dict: Optional[dict],
+        cookies_dict: Optional[dict[str, Any]],
         method: str,
         url: str,
         raise_exception: bool,
-        **kwargs,
+        **kwargs: Any,
     ) -> Optional[httpx2.Response]:
         """在代理握手失败后以 TLS 1.2 重试一次幂等请求。"""
         try:
