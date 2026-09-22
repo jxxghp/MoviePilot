@@ -22,17 +22,41 @@ class NexusPhpSiteUserInfo(SiteParserBase):
     def _parse_site_page(self, html_text: str):
         html_text = self._prepare_html_text(html_text)
 
-        user_detail = re.search(r"userdetails.php\?id=(\d+)", html_text)
-        if user_detail and user_detail.group().strip():
+        # NexusPHP v1.10+ 使用 UUID 标识用户，详情链接参数为 uuid
+        user_detail = re.search(r"userdetails\.php\?(?:id|uuid)=([0-9A-Za-z_-]+)", html_text)
+        if user_detail and user_detail.group(1).strip():
             self._user_detail_page = user_detail.group().strip().lstrip('/')
-            self.userid = user_detail.group(1)
-            self._torrent_seeding_page = f"getusertorrentlistajax.php?userid={self.userid}&type=seeding"
+            self.userid = user_detail.group(1).strip()
+            self._torrent_seeding_page = self._build_torrent_seeding_page()
         else:
             user_detail = re.search(r"(userdetails)", html_text)
             if user_detail and user_detail.group().strip():
                 self._user_detail_page = user_detail.group().strip().lstrip('/')
                 self.userid = None
                 self._torrent_seeding_page = None
+
+    @staticmethod
+    def _is_uuid(user_id: Optional[str]) -> bool:
+        """
+        判断用户标识是否为 UUID 形式。
+
+        使用 UUID 的 NexusPHP 站点将做种列表接口参数改名为 useruuid。
+        """
+        return bool(re.fullmatch(
+            r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}",
+            str(user_id or "").strip()
+        ))
+
+    def _build_torrent_seeding_page(self) -> str:
+        """
+        构造做种列表接口地址。
+
+        :return: 做种列表地址，无有效用户标识时返回空字符串
+        """
+        if not self._has_valid_userid():
+            return ""
+        user_id_param = "useruuid" if self._is_uuid(self.userid) else "userid"
+        return f"getusertorrentlistajax.php?{user_id_param}={self.userid}&type=seeding"
 
     def _parse_message_unread(self, html_text):
         """
@@ -123,21 +147,33 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             has_ucoin, self.bonus = self._parse_ucoin(html)
             if has_ucoin:
                 return
-            tmps = html.xpath('//a[contains(@href,"mybonus")]/text()') if html is not None else None
-            if tmps:
-                bonus_text = str(tmps[0]).strip()
-                bonus_match = re.search(r"([\d,.]+)", bonus_text)
+            bonus_links = html.xpath('//a[contains(@href,"mybonus")]') if html is not None else []
+            for bonus_link in bonus_links:
+                # 魔力值直接写在链接文本中
+                for bonus_text in bonus_link.xpath('text()'):
+                    bonus_match = re.search(r"([\d,.]+)", str(bonus_text).strip())
+                    if bonus_match and bonus_match.group(1).strip():
+                        self.bonus = text_tools.parse_float(bonus_match.group(1))
+                        return
+                # 数值嵌在链接内部的元素中（憨憨：<a href="mybonus.php"><div>13,853,582</div></a>）
+                bonus_text = bonus_link.xpath("string(.)").strip()
+                bonus_match = re.fullmatch(r"[\s\[(（【]*([\d][\d,.]*)[\s\])）】]*", bonus_text)
                 if bonus_match and bonus_match.group(1).strip():
                     self.bonus = text_tools.parse_float(bonus_match.group(1))
                     return
-            # PTT-NP 的 mybonus 链接文本只有“使用&说明”，数值位于同一容器的文本中。
-            bonus_links = html.xpath('//a[contains(@href,"mybonus")]') if html is not None else []
+                # PTT-NP 等站点的链接文本只有“使用&说明”，数值紧跟在链接之后
+                bonus_match = re.search(r"[：:]\s*([\d,.]+)", bonus_link.tail or "")
+                if bonus_match and bonus_match.group(1).strip():
+                    self.bonus = text_tools.parse_float(bonus_match.group(1))
+                    return
             for bonus_link in bonus_links:
-                bonus_containers = bonus_link.xpath('ancestor::*[contains(., "魔力值")][1]')
-                if not bonus_containers:
-                    bonus_containers = bonus_link.xpath('parent::*')
+                # 兜底解析链接附近容器中的魔力值，容器必须临近且文本紧凑，
+                # 避免把公告、新闻等大段文本里的无关数字当作魔力值
+                bonus_containers = bonus_link.xpath('ancestor::*[position() <= 4][contains(., "魔力值")]')
                 for bonus_container in bonus_containers:
                     bonus_text = bonus_container.xpath("string(.)")
+                    if len(bonus_text) > 200:
+                        continue
                     bonus_match = re.search(r"魔力值.*?[：:]\s*([\d,.]+)", bonus_text, flags=re.S)
                     if bonus_match and bonus_match.group(1).strip():
                         self.bonus = text_tools.parse_float(bonus_match.group(1))
@@ -264,8 +300,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
         return next_page
 
-    @staticmethod
-    def _fixup_next_page_url(next_page: str, userid: Optional[str]) -> Optional[str]:
+    def _fixup_next_page_url(self, next_page: str, userid: Optional[str]) -> Optional[str]:
         """
         修正做种下一页地址，无法补齐用户 ID 时停止翻页。
 
@@ -276,12 +311,12 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         parsed_url = urlsplit(next_page)
         query_params = dict(parse_qsl(parsed_url.query, keep_blank_values=True))
 
-        if query_params.get("userid"):
+        if any(query_params.get(key) for key in ("userid", "useruuid")):
             return next_page
         if not userid:
             return None
 
-        query_params["userid"] = userid
+        query_params["useruuid" if self._is_uuid(userid) else "userid"] = userid
         query_params.setdefault("type", "seeding")
         return urlunsplit(parsed_url._replace(query=urlencode(query_params)))
 
@@ -365,10 +400,10 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                                       'and contains(@href,"seeding")]/@href')
         csrf_text = html.xpath('//meta[@name="x-csrf"]/@content')
         if not self._torrent_seeding_page and seeding_url_text:
-            user_js = re.search(r"javascript: getusertorrentlistajax\(\s*'(\d+)", seeding_url_text[0])
+            user_js = re.search(r"javascript:\s*getusertorrentlistajax\(\s*'([^']+)'", seeding_url_text[0])
             if user_js and user_js.group(1).strip():
                 self.userid = user_js.group(1).strip()
-                self._torrent_seeding_page = f"getusertorrentlistajax.php?userid={self.userid}&type=seeding"
+                self._torrent_seeding_page = self._build_torrent_seeding_page()
         elif seeding_url_text and csrf_text:
             if csrf_text[0].strip():
                 self._torrent_seeding_page \
