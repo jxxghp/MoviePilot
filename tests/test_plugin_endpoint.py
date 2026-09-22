@@ -96,6 +96,7 @@ def _catalog_query(plugin_manager: MagicMock, persistence: MagicMock) -> PluginC
         online_candidates=plugin_manager.async_get_online_plugin_candidates,
         process_plugins=plugin_manager.process_plugins_list,
         identities=persistence.list_identities,
+        free_threaded=lambda: False,
     )
 
 
@@ -352,6 +353,7 @@ def _release_service(
         has_release_cache=plugin_helper.async_has_plugin_release_cache,
         releases=plugin_helper.async_get_plugin_release_versions,
         refresh_releases=plugin_helper.async_get_plugin_release_versions,
+        free_threaded=lambda: False,
     )
 
 

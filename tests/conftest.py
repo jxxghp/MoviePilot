@@ -227,6 +227,7 @@ def configure_plugin_system_services():
     from app.runtime.extensions.service import ServiceConfigHelper
     from app.startup.initializers.plugins import (
         _clear_plugin_default_target,
+        _read_plugin_runtime_declaration,
         _set_plugin_default_target,
     )
 
@@ -262,6 +263,7 @@ def configure_plugin_system_services():
                 logger=plugin_manager_module.logger,
                 set_default_target=_set_plugin_default_target,
                 clear_default_target=_clear_plugin_default_target,
+                runtime_declaration=_read_plugin_runtime_declaration,
             ),
             tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
         )

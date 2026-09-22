@@ -16,6 +16,7 @@ from app.application.plugin.identity import (
     normalize_physical_plugin_id,
 )
 from app.application.plugin.inventory import normalize_github_plugin_source
+from app.domain.plugin import check_plugin_runtime_compatibility
 from app.schemas.plugin import (
     Plugin,
     PluginSourceBindingStatus,
@@ -44,12 +45,26 @@ class _CatalogLoadRequest:
 def apply_declared_metadata_fallback(
     plugins: Sequence[Plugin],
     identities: Mapping[str, PluginIdentity],
+    *,
+    free_threaded: bool = False,
 ) -> list[Plugin]:
-    """用已提交快照补齐加载失败插件，不覆盖真实运行态字段。"""
+    """用已提交快照补齐加载失败插件，不覆盖真实运行态字段。
+
+    :param free_threaded: 当前是否运行在 free-threaded 解释器；已安装卡片的运行时
+        不兼容提示只能来自安装时提交的声明快照，市场候选那条标注路径要联网才有。
+    """
     result: list[Plugin] = []
     for plugin in plugins:
         identity = identities.get((plugin.id or "").lower())
         updates: dict[str, object] = {}
+        if identity is not None and identity.declared_metadata is not None:
+            compatible, message = check_plugin_runtime_compatibility(
+                identity.declared_metadata.to_json().get("runtime"),
+                free_threaded=free_threaded,
+            )
+            if not compatible:
+                updates["runtime_compatible"] = False
+                updates["runtime_message"] = message
         if plugin.installed and not plugin.is_instance:
             if identity is None:
                 updates["source_binding_status"] = PluginSourceBindingStatus.BINDING_REQUIRED
@@ -469,14 +484,16 @@ class PluginCatalogQuery:
         online_candidates: Callable[[bool], Awaitable[list[Plugin]]],
         process_plugins: Callable[[list[Plugin], list[Plugin]], list[Plugin]],
         identities: Callable[[list[str]], Awaitable[list[PluginIdentity]]],
+        free_threaded: Callable[[], bool],
     ) -> None:
-        """保存运行态目录和来源身份读取窄端口。"""
+        """保存运行态目录、来源身份读取和解释器变体判定窄端口。"""
         self._installed_plugins = installed_plugins
         self._local_plugins = local_plugins
         self._local_repo_plugins = local_repo_plugins
         self._online_candidates = online_candidates
         self._process_plugins = process_plugins
         self._identities = identities
+        self._free_threaded = free_threaded
 
     async def query(
         self, *, state: str = "all", force: bool = False
@@ -554,6 +571,7 @@ class PluginCatalogQuery:
         return apply_declared_metadata_fallback(
             plugins,
             {identity.normalized_plugin_id: identity for identity in identities},
+            free_threaded=self._free_threaded(),
         )
 
     def _prefer_bound_update(

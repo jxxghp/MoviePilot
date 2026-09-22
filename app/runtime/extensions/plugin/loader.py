@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import json
 import sys
 import threading
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Optional
 
+from app.domain.plugin import check_plugin_runtime_compatibility
 from app.foundation.environment import is_free_threaded_runtime
 from app.runtime.settings import get_runtime_setting
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
@@ -20,6 +20,15 @@ from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 PluginImportPreparer = Callable[..., None]
 PluginImportScanner = Callable[..., None]
 PluginValidator = Callable[[Any], bool]
+# 按物理插件 ID 读取安装时提交的运行时声明；未建立声明的存量安装返回空映射
+PluginRuntimeDeclarationReader = Callable[[str], Mapping[str, bool]]
+
+
+def _undeclared_runtime(_: str) -> Mapping[str, bool]:
+    """默认声明读取端口：无声明即保持历史插件可加载。"""
+    return {}
+
+
 PluginRuntimeStatusWriter = Callable[[str, PluginRuntimeStatus], None]
 
 
@@ -36,12 +45,14 @@ class PluginLoader:
         import_scanner: PluginImportScanner,
         log: Any,
         runtime_status_writer: Optional[PluginRuntimeStatusWriter] = None,
+        runtime_declaration: PluginRuntimeDeclarationReader = _undeclared_runtime,
     ) -> None:
-        """保存插件目录、导入前置能力、状态回写端口和日志端口。"""
+        """保存插件目录、导入前置能力、状态回写端口、声明读取端口和日志端口。"""
         self._plugins_root = plugins_root
         self._import_preparer = import_preparer
         self._import_scanner = import_scanner
         self._runtime_status_writer = runtime_status_writer
+        self._runtime_declaration = runtime_declaration
         self._logger = log
 
     def load(
@@ -85,7 +96,7 @@ class PluginLoader:
                     f"跳过插件目录：{plugin_dir.name}（缺少__init__.py）"
                 )
                 continue
-            if not self._is_runtime_compatible(plugin_dir):
+            if not self._is_runtime_compatible(plugin_dir.name):
                 self._logger.warning(
                     f"跳过插件 {plugin_dir.name}：声明与当前运行时不兼容"
                 )
@@ -135,7 +146,7 @@ class PluginLoader:
                 f"虚拟插件实例 {instance.instance_id} 的源码不存在：{source_dir}"
             )
             return []
-        if not self._is_runtime_compatible(source_dir):
+        if not self._is_runtime_compatible(instance.source_plugin_id):
             self._logger.warning(
                 f"跳过虚拟插件实例 {instance.instance_id}：声明与当前运行时不兼容"
             )
@@ -194,7 +205,7 @@ class PluginLoader:
         两者在卡片上是完全不同的提示。
         :param plugin_id: 物理插件 ID，大小写不敏感
         """
-        return self._is_runtime_compatible(self._plugins_root / plugin_id.lower())
+        return self._is_runtime_compatible(plugin_id)
 
     def _mark_incompatible_runtime(self, plugin_id: str) -> None:
         """把运行时不兼容记成插件卡片可见的状态。
@@ -210,20 +221,23 @@ class PluginLoader:
             PluginRuntimeStatus.INCOMPATIBLE_RUNTIME,
         )
 
-    @staticmethod
-    def _is_runtime_compatible(plugin_dir: Path) -> bool:
-        """按载荷自身 package 声明执行运行时兼容门禁，缺失声明时保持兼容。"""
-        package_file = plugin_dir / "package.json"
-        try:
-            package = json.loads(package_file.read_text(encoding="utf-8"))
-        except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
-            return True
-        if not isinstance(package, dict):
-            return True
+    def _is_runtime_compatible(self, plugin_id: str) -> bool:
+        """按安装时提交的声明快照执行运行时兼容门禁，缺失声明时保持兼容。
+
+        判据来自 ``PluginIdentity.declared_metadata`` 里随载荷一起提交的 package
+        运行时声明，而不是运行目录中的文件：插件目录里同名的 ``package.json`` 是
+        模块联邦组件的 npm manifest，既不承载代际位，也不会被安装流程写入。
+        :param plugin_id: 物理插件 ID，大小写不敏感
+        """
+        declaration = self._runtime_declaration(plugin_id.lower())
         version_flag = get_runtime_setting("VERSION_FLAG")
-        if version_flag and package.get(version_flag) is False:
+        if version_flag and declaration.get(version_flag) is False:
             return False
-        return not (is_free_threaded_runtime() and package.get("v3t") is False)
+        compatible, _ = check_plugin_runtime_compatibility(
+            declaration,
+            free_threaded=is_free_threaded_runtime(),
+        )
+        return compatible
 
     def _execute_instance_module(
         self,
