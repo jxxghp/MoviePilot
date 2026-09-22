@@ -18,7 +18,7 @@ class PluginMetadataMapper:
         plugin_instance: Callable[[str], Optional[Any]],
         plugin_class: Callable[[str], Optional[Any]],
         annotate_system_version: Callable[[dict], dict],
-        annotate_runtime_compatibility: Callable[[dict], dict],
+        annotate_runtime_compatibility: Callable[[dict[str, Any]], dict[str, Any]],
         is_package_compatible: Callable[[dict, str], bool],
         auth_checker: Callable[[Plugin, dict], bool],
         version_compare: Callable[[str, str, str], bool],
