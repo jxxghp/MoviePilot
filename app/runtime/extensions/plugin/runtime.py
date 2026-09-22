@@ -19,7 +19,10 @@ from app.runtime.extensions.plugin.contracts import supports_plugin_hook
 from app.runtime.extensions.plugin.database import PluginDatabase
 from app.runtime.extensions.plugin.dependency import PluginDependencyService
 from app.runtime.extensions.plugin.lifecycle import PluginLifecycle
-from app.runtime.extensions.plugin.loader import PluginLoader
+from app.runtime.extensions.plugin.loader import (
+    PluginLoader,
+    PluginRuntimeDeclarationReader,
+)
 from app.runtime.extensions.plugin.loglevel import PluginLogLevelControl
 from app.runtime.extensions.plugin.metadata import PluginMetadataMapper
 from app.runtime.extensions.plugin.monitor import PluginMonitorController
@@ -106,6 +109,8 @@ class PluginRuntimeEnvironment:
     # 原子写入端口，不经过按实例逐行读写的实例表端口
     set_default_target: Callable[[str, str], bool]
     clear_default_target: Callable[[str], None]
+    # 运行时兼容门禁的唯一判据来源：安装时随载荷提交的 package 运行时声明快照
+    runtime_declaration: PluginRuntimeDeclarationReader
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +170,7 @@ def build_plugin_runtime(
         # 运行时不兼容的插件不进入 lifecycle 遍历，状态只能由加载器自己落记，
         # 否则启动期全量加载会把它们跳过得无声无息
         runtime_status_writer=registry.set_runtime_status,
+        runtime_declaration=environment.runtime_declaration,
         log=environment.logger,
     )
     tools = PluginToolCatalog(max_attempts=tool_build_max_attempts)
