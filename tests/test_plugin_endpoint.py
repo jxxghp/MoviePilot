@@ -535,6 +535,7 @@ def test_runtime_status_reports_pending_and_terminal_counts():
         "NativePlugin": ("native-demo",),
         "RemovedPlugin": ("native-removed",),
     }
+    plugin_manager.get_plugin_gil_fallbacks.return_value = ["NativePlugin", "RemovedPlugin"]
     config = MagicMock()
     config.get.return_value = ["NativePlugin"]
 
@@ -552,6 +553,7 @@ def test_runtime_status_reports_pending_and_terminal_counts():
     assert result.pending_count == 2
     assert result.failed_count == 1
     assert result.restart_required_plugin_ids == ["NativePlugin"]
+    assert result.gil_enabled_plugin_ids == ["NativePlugin"]
 
 
 def test_reload_endpoint_reports_load_failure(monkeypatch):

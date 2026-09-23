@@ -259,6 +259,11 @@ async def runtime_status(
         pending_count=sum(status in pending for status in statuses.values()),
         failed_count=sum(status in failed for status in statuses.values()),
         restart_required_plugin_ids=sorted(restart_requirements),
+        gil_enabled_plugin_ids=[
+            plugin_id
+            for plugin_id in plugin_manager.get_plugin_gil_fallbacks()
+            if plugin_id.lower() in installed_plugin_ids
+        ],
     )
 
 

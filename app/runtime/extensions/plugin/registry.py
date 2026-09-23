@@ -14,6 +14,8 @@ class PluginRegistry:
         self._running: Dict[str, Any] = {}
         self._runtime_statuses: Dict[str, PluginRuntimeStatus] = {}
         self._restart_required_plugins: Dict[str, tuple[str, ...]] = {}
+        # 加载时使 free-threaded 进程回退到 GIL 的插件，只在当前进程内有效，重启后重新观察
+        self._gil_fallback_plugins: Dict[str, bool] = {}
         self._settling = False
         self._generation = 0
 
@@ -92,6 +94,17 @@ class PluginRegistry:
         """返回重启后才能完整激活的插件及原生发行包。"""
         return dict(self._restart_required_plugins)
 
+    def mark_gil_fallback(self, plugin_id: str) -> None:
+        """记录插件加载使 free-threaded 运行时回退到 GIL。"""
+        if plugin_id in self._gil_fallback_plugins:
+            return
+        self._gil_fallback_plugins[plugin_id] = True
+        self._generation += 1
+
+    def gil_fallback_snapshot(self) -> list[str]:
+        """返回当前进程内导致 GIL 回退的插件 ID，保持记录顺序。"""
+        return list(self._gil_fallback_plugins)
+
     def set_settling(self, settling: bool) -> None:
         """标记启动后的插件源码与依赖收敛任务是否仍在执行。"""
         if self._settling == settling:
@@ -117,7 +130,10 @@ class PluginRegistry:
         restart_requirement_removed = (
             self._restart_required_plugins.pop(plugin_id, None) is not None
         )
-        if status_removed or restart_requirement_removed:
+        gil_fallback_removed = (
+            self._gil_fallback_plugins.pop(plugin_id, None) is not None
+        )
+        if status_removed or restart_requirement_removed or gil_fallback_removed:
             self._generation += 1
 
     def clear(self) -> None:
@@ -125,9 +141,12 @@ class PluginRegistry:
         self._classes.clear()
         self._running.clear()
         had_runtime_state = bool(
-            self._runtime_statuses or self._restart_required_plugins
+            self._runtime_statuses
+            or self._restart_required_plugins
+            or self._gil_fallback_plugins
         )
         self._runtime_statuses.clear()
         self._restart_required_plugins.clear()
+        self._gil_fallback_plugins.clear()
         if had_runtime_state:
             self._generation += 1
