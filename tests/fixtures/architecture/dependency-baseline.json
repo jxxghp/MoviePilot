@@ -1084,8 +1084,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8872,
-  "edge_sha256": "6a3f2d8501b1c8dbfc0b4c11f3ba49495ede25a209ffd2a9fee970749d169389",
+  "edge_count": 8874,
+  "edge_sha256": "d7424a9ce34ac1c30dab0449e660632db539aaa66c1023ac68fe04f979b4efdd",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1239,6 +1239,8 @@
     "app.adapters.system.plugin.health -> app.adapters.system.package",
     "app.adapters.system.plugin.health -> app.adapters.system.plugin",
     "app.adapters.system.plugin.health -> app.adapters.system.plugin.manifest",
+    "app.adapters.system.plugin.health -> app.foundation",
+    "app.adapters.system.plugin.health -> app.foundation.environment",
     "app.adapters.system.plugin.health -> app.runtime",
     "app.adapters.system.plugin.health -> app.runtime.dependencies",
     "app.adapters.system.plugin.health -> app.runtime.dependencies.profile",
