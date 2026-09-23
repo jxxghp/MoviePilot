@@ -1,6 +1,6 @@
 ---
 name: feedback-issue
-version: 9
+version: 10
 description: >-
   Use this skill ONLY when the user EXPLICITLY requests filing an
   upstream issue for MoviePilot core, frontend, or an installed plugin,
@@ -248,12 +248,16 @@ python <skill_dir>/scripts/submit_feedback_issue.py \
 ```
 
 The script automatically imports MoviePilot's `app.runtime.config.settings`
-and reads the system-configured `GITHUB_TOKEN` / `settings.GITHUB_HEADERS`
-from the running MoviePilot environment. Do not ask the user to provide
-a GitHub token in chat, and never accept or echo a token from the user.
-When that configured token exists and has permission, the script creates
-the GitHub issue through the GitHub API. Otherwise it returns a
-`prefill_url`. 
+and reads `settings.REPO_GITHUB_HEADERS(target_repo)`, which prefers the
+repository-specific `REPO_GITHUB_TOKEN` and then the shared `GITHUB_TOKEN`.
+The shared token is populated by either GitHub Device Flow authorization or
+the settings-page manual PAT field; standard runtime token environment
+variables are the final fallback. Do not ask the user to provide a GitHub
+token or password in chat, and never accept or echo a token from the user.
+When the configured token has permission, the script creates the GitHub issue
+through the API. Otherwise it returns a `prefill_url`; report the permission
+failure and direct the administrator to authorize/configure the server token
+once, then retry without requesting credentials in chat.
 
 Relay the result:
 
