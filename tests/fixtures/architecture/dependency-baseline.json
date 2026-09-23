@@ -1084,8 +1084,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8881,
-  "edge_sha256": "700858f0eb08a886c206c9be9685964b01f0e3412bed7b1c1fa84fa343231a14",
+  "edge_count": 8891,
+  "edge_sha256": "81e5975bd9229bdcfe3994e57dc62c847af3b296b7a33b2f3b9e8457425c21f5",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4820,6 +4820,7 @@
     "app.chain.scraping -> app.chain.base",
     "app.chain.scraping -> app.chain.lyrics",
     "app.chain.scraping -> app.chain.media",
+    "app.chain.scraping -> app.chain.specials",
     "app.chain.scraping -> app.chain.storage",
     "app.chain.scraping -> app.domain",
     "app.chain.scraping -> app.domain.context",
@@ -5058,6 +5059,15 @@
     "app.chain.site -> app.schemas.notification",
     "app.chain.site -> app.schemas.site",
     "app.chain.site -> app.schemas.types",
+    "app.chain.specials -> app.chain",
+    "app.chain.specials -> app.chain._contracts",
+    "app.chain.specials -> app.domain",
+    "app.chain.specials -> app.domain.context",
+    "app.chain.specials -> app.runtime",
+    "app.chain.specials -> app.runtime.log",
+    "app.chain.specials -> app.runtime.settings",
+    "app.chain.specials -> app.schemas",
+    "app.chain.specials -> app.schemas.types",
     "app.chain.storage -> app.application",
     "app.chain.storage -> app.application.directory",
     "app.chain.storage -> app.chain",
@@ -9969,7 +9979,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1045,
+  "module_count": 1046,
   "modules": [
     "app",
     "app.adapters",
@@ -10412,6 +10422,7 @@
     "app.chain.search.subtitle",
     "app.chain.search.title",
     "app.chain.site",
+    "app.chain.specials",
     "app.chain.storage",
     "app.chain.subscribe",
     "app.chain.subscribe.completion",

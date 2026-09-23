@@ -6526,8 +6526,8 @@
         "meta",
         "season"
       ],
-      "result_contract": "str | None",
-      "result_shape": "string",
+      "result_contract": "bytes | str | None",
+      "result_shape": "text_or_bytes",
       "supports_async": true,
       "supports_sync": true,
       "timeout_policy": "caller_budget",
@@ -7454,6 +7454,26 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "tmdb_episode_external_ids": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "tmdb",
+      "input_contract": "TmdbEpisodeExternalIdsRequest",
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "episode",
+        "season",
+        "tmdbid"
+      ],
+      "result_contract": "dict",
+      "result_shape": "mapping",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "tmdb_episodes": {
       "aggregation": "ordered_list_merge",
       "error_policy": "isolate_provider",
@@ -7840,6 +7860,24 @@
       "timeout_policy": "caller_budget",
       "version": 1
     },
+    "tvdb_episode_extended": {
+      "aggregation": "first_non_empty",
+      "error_policy": "isolate_provider",
+      "execution": "sync_or_async",
+      "family": "tvdb",
+      "input_contract": "TvdbEpisodeExtendedRequest",
+      "plugin_short_circuit": true,
+      "public_to_plugins": false,
+      "required_parameters": [
+        "episode_id"
+      ],
+      "result_contract": "dict | None",
+      "result_shape": "mapping",
+      "supports_async": true,
+      "supports_sync": true,
+      "timeout_policy": "caller_budget",
+      "version": 1
+    },
     "tvdb_info": {
       "aggregation": "first_non_empty",
       "error_policy": "isolate_provider",
@@ -7981,10 +8019,10 @@
     }
   },
   "run_module": {
-    "call_count": 262,
+    "call_count": 264,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
-    "method_count": 211,
+    "method_count": 213,
     "methods": {
       "anilist_credits": [
         {
@@ -9436,6 +9474,13 @@
           "mode": "sync"
         }
       ],
+      "tmdb_episode_external_ids": [
+        {
+          "caller": "app.chain.specials",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
       "tmdb_episodes": [
         {
           "caller": "app.chain.tmdb",
@@ -9570,6 +9615,13 @@
       "tv_weekly_global": [
         {
           "caller": "app.chain.douban",
+          "count": 1,
+          "mode": "sync"
+        }
+      ],
+      "tvdb_episode_extended": [
+        {
+          "caller": "app.chain.specials",
           "count": 1,
           "mode": "sync"
         }

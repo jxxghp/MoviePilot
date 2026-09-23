@@ -1448,6 +1448,19 @@ class TmdbApi:
             logger.error(str(e))
             return {}
 
+    def get_tv_episode_external_ids(
+        self, tmdbid: int, season: int, episode: int
+    ) -> dict[str, Any]:
+        """查询 TMDb 单集的外部 ID，查询失败时返回空映射。"""
+        try:
+            external_ids = cast(Callable[..., dict[str, Any]], self.episode_obj.external_ids)
+            return external_ids(
+                tv_id=tmdbid, season_num=season, episode_num=episode
+            ) or {}
+        except Exception as err:
+            logger.error("查询 TMDb 单集外部 ID 失败：%s", err)
+            return {}
+
     def discover_movies(self, params: dict) -> List[dict]:
         """
         发现电影

@@ -166,6 +166,17 @@ class TheTvDbModule(_ModuleBase):
             logger.error(f"获取TVDB信息失败: {str(err)}")
             return None
 
+    def tvdb_episode_extended(self, episode_id: int) -> Optional[dict[str, object]]:
+        """复用当前 TVDB 会话获取单集扩展信息；未配置或失败时返回 None。"""
+        try:
+            if not get_runtime_setting("TVDB_V4_API_KEY"):
+                return None
+            result = self._handle_tvdb_call("get_episode_extended", episode_id)
+            return result if isinstance(result, dict) else None
+        except Exception as err:
+            logger.error("获取 TVDB 单集扩展信息失败：%s", err)
+            return None
+
     def tvdb_slug(self, tvdbid: int) -> Optional[str]:
         """
         获取TVDB剧集的 slug（别名），用于构建 TheTvDb 直达链接。
