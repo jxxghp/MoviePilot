@@ -91,6 +91,8 @@ class Scheduler(
         self._lock = threading.RLock()
         # 各服务的运行状态
         self._jobs = {}
+        # 热重载期间保留上一代目录，避免仪表盘暂时显示空列表。
+        self._reload_schedule_snapshot: list[Any] | None = None
         # 生命周期门禁与事件循环句柄由调度器实例独立持有。
         self._lifecycle_state = "new"
         self._registry = ExecutionRegistry(self._lock)
