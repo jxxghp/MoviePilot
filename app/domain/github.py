@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-
 # PR Skill 需要读写仓库并推送工作流文件，反馈 Skill 需要创建 Issue。
 GITHUB_DEVICE_AUTH_SCOPES = ("read:user", "repo", "workflow")
 
