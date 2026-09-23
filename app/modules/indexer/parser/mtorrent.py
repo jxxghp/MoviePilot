@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 import json
-from typing import Any, Optional, Tuple, cast
+from typing import Optional, Tuple
 from urllib.parse import urljoin
 
+from app.runtime.log import logger
 from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.domain import site as site_rules
 
 
 class MTorrentSiteUserInfo(SiteParserBase):
-    """使用 M-Team API 解析用户信息和当前做种数据。"""
-
     schema = SiteSchema.MTorrent
     request_mode = "apikey"
 
@@ -114,7 +113,7 @@ class MTorrentSiteUserInfo(SiteParserBase):
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
-        累加当前页的做种数和体积，并根据列表分页元数据继续读取。
+        解析用户做种信息
         """
         if not html_text:
             return None
@@ -145,30 +144,24 @@ class MTorrentSiteUserInfo(SiteParserBase):
         self.seeding_size += page_seeding_size
         self.seeding_info.extend(page_seeding_info)
 
-        # 用户信息解析成功后已初始化分页参数，后续页数从做种列表响应中读取。
-        torrent_params = cast(dict[str, Any], self._torrent_seeding_params)
-        page_number = int(torrent_params["pageNumber"])
-        page_size = int(torrent_params["pageSize"])
+        # 查询总做种数
+        seeder_count = 0
         try:
-            total_pages = int(seeding_data.get("totalPages") or 0)
-        except (TypeError, ValueError):
-            total_pages = 0
-        try:
-            total_torrents = int(seeding_data.get("total") or 0)
-        except (TypeError, ValueError):
-            total_torrents = 0
-
-        if total_pages:
-            has_next_page = page_number < total_pages
-        elif total_torrents:
-            has_next_page = page_number * page_size < total_torrents
-        else:
-            # 旧版响应未提供总量时，满页后再请求一次确认是否结束。
-            has_next_page = len(torrents) >= page_size
-        if not has_next_page:
+            result = self._get_page_content(
+                url=urljoin(self._base_url, "api/tracker/myPeerStatus"),
+                params={"uid": self.userid},
+            )
+            if result:
+                seeder_info = json.loads(result)
+                seeder_count = int(seeder_info.get("data", {}).get("seeder") or 0)
+        except Exception as e:
+            logger.error(f"获取做种数失败: {str(e)}")
+        if not seeder_count:
             return None
-
-        torrent_params["pageNumber"] = page_number + 1
+        if self.seeding >= seeder_count:
+            return None
+        # 还有下一页
+        self._torrent_seeding_params["pageNumber"] += 1
         return ""
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:

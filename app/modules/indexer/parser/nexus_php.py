@@ -220,6 +220,33 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                 return True, gold * 100 * 100 + silver * 100 + copper
         return False, 0.0
 
+    def _parse_seeding_pages(self) -> None:
+        """
+        优先使用完整做种列表统计，列表为空或解析不完整时回退到用户详情页统计。
+        """
+        profile_seeding = self.seeding
+        profile_seeding_size = self.seeding_size
+        profile_seeding_info = list(self.seeding_info)
+
+        # 用户详情页可能只显示部分做种记录，先暂存，避免与完整列表相加造成重复。
+        self.seeding = 0
+        self.seeding_size = 0
+        self.seeding_info.clear()
+        try:
+            # SiteParserBase keeps this legacy hook untyped.
+            super()._parse_seeding_pages()  # type: ignore[no-untyped-call]
+        except Exception:
+            self.seeding = profile_seeding
+            self.seeding_size = profile_seeding_size
+            self.seeding_info = profile_seeding_info
+            raise
+
+        if (not self.seeding or not self.seeding_size) and (profile_seeding or profile_seeding_size):
+            self.seeding = profile_seeding
+            self.seeding_size = profile_seeding_size
+            if profile_seeding_info:
+                self.seeding_info = profile_seeding_info
+
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
         做种相关信息
@@ -259,21 +286,41 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             page_seeding = 0
             page_seeding_size = 0
             page_seeding_info = []
-            # 如果 table class="torrents"，则增加table[@class="torrents"]
-            table_class = '//table[@class="torrents"]' if html.xpath('//table[@class="torrents"]') else ''
-            seeding_sizes = html.xpath(f'{table_class}//tr[position()>1]/td[{size_col}]')
-            seeding_seeders = html.xpath(f'{table_class}//tr[position()>1]/td[{seeders_col}]/b/a/text()')
-            if not seeding_seeders:
-                seeding_seeders = html.xpath(f'{table_class}//tr[position()>1]/td[{seeders_col}]//text()')
-            if seeding_sizes and seeding_seeders:
-                page_seeding = len(seeding_sizes)
-
-                for i in range(0, len(seeding_sizes)):
-                    size = self.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                    seeders = text_tools.parse_int(seeding_seeders[i])
-
+            site_domain = self._site_domain.lower().removeprefix("www.")
+            if site_domain in {"pterclub.net", "pterclub.com"}:
+                # 猫站完整做种列表按 td[2]/td[4]/td[5] 展示种子、体积和做种人数。
+                pterclub_rows = html.xpath(
+                    '//*[@id="outer"]/table/tbody/tr | //*[@id="outer"]/table/tr'
+                    '|//table[contains(concat(" ", normalize-space(@class), " "), " torrents ")]/tbody/tr'
+                    '|//table[contains(concat(" ", normalize-space(@class), " "), " torrents ")]/tr'
+                )
+                for row in pterclub_rows:
+                    columns = row.xpath('./td | ./th')
+                    if len(columns) < 5 or not columns[1].xpath('.//a'):
+                        continue
+                    size = self.num_filesize(columns[3].xpath("string(.)").strip())
+                    if not size:
+                        continue
+                    seeders = text_tools.parse_int(columns[4].xpath("string(.)").strip())
+                    page_seeding += 1
                     page_seeding_size += size
                     page_seeding_info.append([seeders, size])
+            else:
+                # 如果 table class="torrents"，则限制在种子表中，避免解析页面其他表格。
+                table_class = '//table[@class="torrents"]' if html.xpath('//table[@class="torrents"]') else ''
+                seeding_sizes = html.xpath(f'{table_class}//tr[position()>1]/td[{size_col}]')
+                seeding_seeders = html.xpath(f'{table_class}//tr[position()>1]/td[{seeders_col}]/b/a/text()')
+                if not seeding_seeders:
+                    seeding_seeders = html.xpath(f'{table_class}//tr[position()>1]/td[{seeders_col}]//text()')
+                if seeding_sizes and seeding_seeders:
+                    page_seeding = len(seeding_sizes)
+
+                    for i in range(0, len(seeding_sizes)):
+                        size = self.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
+                        seeders = text_tools.parse_int(seeding_seeders[i])
+
+                        page_seeding_size += size
+                        page_seeding_info.append([seeders, size])
 
             self.seeding += page_seeding
             self.seeding_size += page_seeding_size
@@ -345,19 +392,29 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
             # 做种体积 & 做种数
             # seeding 页面获取不到的话，此处再获取一次
-            seeding_sizes = html.xpath('//tr/td[text()="当前上传"]/following-sibling::td[1]//'
-                                       'table[tr[1][td[4 and text()="尺寸"]]]//tr[position()>1]/td[4]')
-            seeding_seeders = html.xpath('//tr/td[text()="当前上传"]/following-sibling::td[1]//'
-                                         'table[tr[1][td[5 and text()="做种者"]]]//tr[position()>1]/td[5]//text()')
-            tmp_seeding = len(seeding_sizes)
+            seeding_tables = html.xpath(
+                '//tr/td[normalize-space(.)="当前上传" or normalize-space(.)="当前做种"]'
+                '/following-sibling::td[1]//table'
+            )
+            tmp_seeding = 0
             tmp_seeding_size = 0
             tmp_seeding_info = []
-            for i in range(0, len(seeding_sizes)):
-                size = self.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                seeders = text_tools.parse_int(seeding_seeders[i])
+            for seeding_table in seeding_tables:
+                # 猫站使用“当前做种”作为面板行名；该表第 4、5 列分别是体积和做种人数。
+                seeding_rows = seeding_table.xpath('./tr | ./tbody/tr')
+                for seeding_row in seeding_rows:
+                    columns = seeding_row.xpath('./td | ./th')
+                    if len(columns) < 5:
+                        continue
+                    size = self.num_filesize(columns[3].xpath("string(.)").strip())
+                    # 无表头的做种表以有效体积列识别数据行，避免把表头计入数量。
+                    if not size:
+                        continue
+                    seeders = text_tools.parse_int(columns[4].xpath("string(.)").strip())
 
-                tmp_seeding_size += size
-                tmp_seeding_info.append([seeders, size])
+                    tmp_seeding += 1
+                    tmp_seeding_size += size
+                    tmp_seeding_info.append([seeders, size])
 
             if not self.seeding_size:
                 self.seeding_size = tmp_seeding_size

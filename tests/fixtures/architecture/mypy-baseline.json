@@ -1702,6 +1702,7 @@
   "app/modules/indexer/parser/mtorrent.py": {
     "assignment": 11,
     "empty-body": 1,
+    "index": 2,
     "no-untyped-def": 6,
     "type-arg": 1
   },

@@ -226,3 +226,82 @@ def test_nexus_php_uuid_seeding_next_page_uses_useruuid():
     assert query_params["useruuid"] == ["53d25816-f7b7-4372-b58d-6f445acfe090"]
     assert "userid" not in query_params
     assert query_params["type"] == ["seeding"]
+
+
+def test_nexus_php_pterclub_profile_parses_current_seeding_table():
+    """
+    猫站用户详情页的“当前做种”表应按第 4、5 列统计做种体积和做种人数。
+    """
+    parser = _build_parser()
+    parser.userid = "123"
+    html_text = """
+    <html><body>
+      <table><tr>
+        <td>当前做种</td>
+        <td><table><tbody>
+          <tr><td>详情</td><td><a>种子一</a></td><td>分类</td><td>1.5 TB</td><td><a>12</a></td></tr>
+          <tr><td>详情</td><td><a>种子二</a></td><td>分类</td><td>700 GB</td><td><a>3</a></td></tr>
+        </tbody></table></td>
+      </tr></table>
+    </body></html>
+    """
+
+    parser._parse_user_detail_info(html_text)
+
+    assert parser.seeding == 2
+    assert parser.seeding_size == 1.5 * 1024**4 + 700 * 1024**3
+    assert parser.seeding_info == [[12, int(1.5 * 1024**4)], [3, 700 * 1024**3]]
+
+
+def test_nexus_php_pterclub_full_seeding_list_uses_site_columns():
+    """
+    猫站完整做种页即使没有表头，也应读取第 4 列体积和第 5 列做种人数。
+    """
+    parser = _build_parser()
+    parser._site_domain = "pterclub.net"
+    parser.userid = "123"
+    html_text = """
+    <html><body>
+      <div id="outer"><table><tbody>
+        <tr><td>详情</td><td><a href="details.php?id=1">种子一</a></td><td>分类</td><td>1.5 TB</td><td><a>12</a></td></tr>
+      </tbody></table>
+      <p class="np-pager"><font class="gray">1</font><a href="getusertorrentlist.php?userid=123&type=seeding&page=2">下一页</a></p></div>
+    </body></html>
+    """
+
+    next_page = parser._parse_user_torrent_seeding_info(html_text)
+
+    assert parser.seeding == 1
+    assert parser.seeding_size == int(1.5 * 1024**4)
+    assert parser.seeding_info == [[12, int(1.5 * 1024**4)]]
+    assert next_page == "getusertorrentlist.php?userid=123&type=seeding&page=2"
+
+
+def test_nexus_php_seeding_list_replaces_profile_fallback_without_double_counting(monkeypatch):
+    """
+    做种列表成功时应覆盖详情页中的部分做种统计，避免重复累加。
+    """
+    parser = _build_parser()
+    parser.userid = "123"
+    parser._torrent_seeding_page = "getusertorrentlistajax.php?userid=123&type=seeding"
+    parser._parse_user_detail_info("""
+        <html><body><table><tr>
+          <td>当前做种</td>
+          <td><table><tbody>
+            <tr><td>详情</td><td>种子一</td><td>分类</td><td>1.5 TB</td><td>12</td></tr>
+          </tbody></table></td>
+        </tr></table></body></html>
+    """)
+    list_html = """
+    <html><body><table class="torrents">
+      <tr><td>标题</td><td>分类</td><td>大小</td><td>在做种</td></tr>
+      <tr><td>种子一</td><td>分类</td><td>500 GB</td><td><b><a>7</a></b></td></tr>
+    </table></body></html>
+    """
+    monkeypatch.setattr(parser, "_get_page_content", lambda **_: list_html)
+
+    parser._parse_seeding_pages()
+
+    assert parser.seeding == 1
+    assert parser.seeding_size == 500 * 1024**3
+    assert parser.seeding_info == [[7, 500 * 1024**3]]
