@@ -116,7 +116,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "browser-use": "3",
         "command-dispatch": "2",
         "database-operation": "9",
-        "feedback-issue": "9",
+        "feedback-issue": "10",
         "moviepilot-api": "33",
         "moviepilot-update": "5",
         "organize-files": "5",

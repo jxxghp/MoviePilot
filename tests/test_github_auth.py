@@ -51,9 +51,14 @@ class _FakeCopilotGithubClient:
 
     polled = False
 
-    async def request_device_code(self, client_id: str) -> GithubDeviceCode:
+    async def request_device_code(
+        self,
+        client_id: str,
+        scope: str = "read:user",
+    ) -> GithubDeviceCode:
         """返回公共模块规范化的设备码。"""
         assert client_id == llm_auth.GITHUB_DEVICE_CLIENT_ID
+        assert scope == "read:user"
         return GithubDeviceCode(
             "copilot-device",
             "COPI-LOT",
@@ -121,9 +126,14 @@ class _FakeTransport:
     exchanges: list[GithubTokenExchange]
     refresh_exchange: GithubTokenExchange | None = None
 
-    async def request_device_code(self, client_id: str) -> GithubDeviceCode:
+    async def request_device_code(
+        self,
+        client_id: str,
+        scope: str = "read:user",
+    ) -> GithubDeviceCode:
         """返回固定的设备码。"""
         assert client_id == "client-id"
+        assert scope == "read:user repo workflow"
         return GithubDeviceCode("device", "ABCD-EFGH", "https://github.com/login/device", 900, 5)
 
     async def exchange_device_code(self, client_id: str, device_code: str) -> GithubTokenExchange:
@@ -156,7 +166,7 @@ def _build_service(clock) -> tuple[GithubAuthService, _FakeSettings, _FakeSystem
                 access_token="gho_access_token",
                 refresh_token="refresh-old",
                 expires_in=3600,
-                scope="read:user",
+                scope="read:user repo workflow",
             ),
         ]
     )

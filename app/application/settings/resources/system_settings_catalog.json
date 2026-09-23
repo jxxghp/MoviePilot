@@ -764,7 +764,7 @@
       "source_line": 721
     },
     "GITHUB_TOKEN": {
-      "description": "Github token，提高请求api限流阈值；原文只应保留在服务端运行配置中",
+      "description": "GitHub Token 供 Agent 提交 Issue/PR 和访问 API；原文只保留在服务端运行配置中",
       "group": "dependencies",
       "source_file": "app/runtime/config.py",
       "source_line": 716

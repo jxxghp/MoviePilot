@@ -712,7 +712,7 @@ class ConfigModel(BaseModel):
     )
 
     # ==================== Github & PIP ====================
-    # Github token，提高请求api限流阈值；原文只应保留在服务端运行配置中
+    # GitHub Token 供 Agent 提交 Issue/PR 和访问 API；原文只保留在服务端运行配置中
     GITHUB_TOKEN: Annotated[
         Optional[str],
         SettingPolicy(sensitive=True),
@@ -1421,19 +1421,19 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             try:
                 parts = token_pair.split(":")
                 if len(parts) != 2:
-                    print(f"无效的令牌格式: {token_pair}")
+                    print("无效的仓库 GitHub Token 配置格式")
                     continue
                 repo_info = parts[0].strip()
                 token = parts[1].strip()
                 if not repo_info or not token:
-                    print(f"无效的令牌或仓库信息: {token_pair}")
+                    print("仓库 GitHub Token 配置缺少仓库名或 Token")
                     continue
                 headers[repo_info] = {
                     "Authorization": f"Bearer {token}",
                     "User-Agent": self.NORMAL_USER_AGENT,
                 }
-            except Exception as e:
-                print(f"处理令牌对 '{token_pair}' 时出错: {e}")
+            except Exception:
+                print("解析仓库 GitHub Token 配置失败")
         # 如果传入了指定的仓库名称，则返回该仓库的请求头信息，否则返回默认请求头
         return headers.get(repo, self.GITHUB_HEADERS)
 

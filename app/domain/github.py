@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+# PR Skill 需要读写仓库并推送工作流文件，反馈 Skill 需要创建 Issue。
+GITHUB_DEVICE_AUTH_SCOPES = ("read:user", "repo", "workflow")
+
 
 class GithubAuthTransportError(RuntimeError):
     """表示 GitHub 授权外部传输或响应协议失败。"""
@@ -48,8 +51,12 @@ class GithubUser:
 class GithubAuthPort(Protocol):
     """GitHub OAuth 外部协议所需的最小传输端口。"""
 
-    async def request_device_code(self, client_id: str) -> GithubDeviceCode:
-        """申请一个 GitHub Device Flow 设备码。"""
+    async def request_device_code(
+        self,
+        client_id: str,
+        scope: str = "read:user",
+    ) -> GithubDeviceCode:
+        """按调用方 scope 申请设备码，默认保留 Copilot 登录的只读用户权限。"""
         ...
 
     async def exchange_device_code(

@@ -19,7 +19,7 @@ class GithubTokenStatus(BaseModel):  # type: ignore[misc]
     expires_at: int | None = Field(default=None, description="Token 过期时间戳")
     needs_reauthorization: bool = Field(
         default=False,
-        description="是否需要重新授权",
+        description="Token 是否失效、临近过期或缺少 Agent 提交 Issue/PR 所需授权范围",
     )
 
 
