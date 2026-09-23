@@ -332,6 +332,9 @@ def test_download_site_subtitles_does_not_create_missing_save_folder(monkeypatch
         user_agent="MoviePilotTest",
     )
     chain.list_torrents = MagicMock(return_value=[])
+    chain.transfer_history_repository = SimpleNamespace(
+        list_by_hash=MagicMock(return_value=[]),
+    )
     chain._site_subtitle_links = MagicMock()
     context = Context(
         torrent_info=TorrentInfo(page_url="https://example.com/torrent/1"),
@@ -346,6 +349,151 @@ def test_download_site_subtitles_does_not_create_missing_save_folder(monkeypatch
     )
 
     chain._site_subtitle_links.assert_not_called()
+
+
+def test_download_site_subtitles_recreates_source_directory_and_queues_subtitle(monkeypatch):
+    """视频整理后源目录被移动清理时，应恢复目录并把新字幕交给整理队列。"""
+    accessed_paths = []
+    created_dirs = []
+    transfer_calls = []
+    operation_order = []
+    target_dir = Path("/download/影视下载/下载中/Demo.Show")
+    subtitle_item = FileItem(
+        storage="local",
+        type="file",
+        path=(target_dir / "Demo.Show.S01E01.CHS.srt").as_posix(),
+        name="Demo.Show.S01E01.CHS.srt",
+        extension="srt",
+    )
+    transfer_histories = [SimpleNamespace(
+        status=True,
+        src="/download/影视下载/下载中/Demo.Show/Demo.Show.S01E01.1080p.WEB-DL.mkv",
+        dest="/media/电视剧/Example/Season 01/Example - S01E01.mkv",
+    )]
+
+    class _FakeTorrentHelper:
+        """提供固定的多文件种子目录名。"""
+
+        def get_fileinfo_from_torrent_content(self, _content):
+            """返回多文件种子目录名。"""
+            return "Demo.Show", []
+
+    class _FakeStorageChain:
+        """模拟源目录被整理清理并能重新创建。"""
+
+        def get_file_item(self, storage, path):
+            """记录源目录检查并报告其不存在。"""
+            accessed_paths.append((storage, path))
+            return None
+
+        def get_folder(self, storage, path):
+            """仅重建原下载目录。"""
+            created_dirs.append((storage, path))
+            return FileItem(
+                storage=storage,
+                type="dir",
+                path=path.as_posix(),
+                name=path.name,
+            )
+
+        def list_files(self, _folder, recursion=False):
+            """提供字幕文件，并确认保存操作先于队列提交。"""
+            assert recursion is False
+            assert "saved" in operation_order
+            operation_order.append("list")
+            return [subtitle_item]
+
+    class _FakeTransferChain:
+        """记录标准整理队列提交。"""
+
+        def do_transfer(self, **kwargs):
+            """保存自动整理请求参数。"""
+            transfer_calls.append(kwargs)
+            operation_order.append("queued")
+            return True, "已添加到整理队列"
+
+    monkeypatch.setattr(download_subtitle, "TorrentHelper", _FakeTorrentHelper)
+    monkeypatch.setattr(download_subtitle, "StorageChain", _FakeStorageChain)
+    monkeypatch.setattr(download_subtitle.time, "sleep", lambda _seconds: None)
+    from app.chain.transfer import facade as transfer_facade
+    monkeypatch.setattr(transfer_facade, "TransferChain", _FakeTransferChain)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.runtime_config = SimpleNamespace(
+        download_subtitle=True,
+        proxy=None,
+        temporary_path=Path("/tmp/moviepilot-test"),
+        subtitle_extensions=tuple(settings.RMT_SUBEXT),
+        media_extensions=tuple(settings.RMT_MEDIAEXT),
+        user_agent="MoviePilotTest",
+    )
+    chain.list_torrents = MagicMock(return_value=[DownloaderTorrent(
+        hash="hash123",
+        downloader="qb",
+        content_path="/download/影视下载/下载中/Demo.Show",
+    )])
+    chain.transfer_history_repository = SimpleNamespace(
+        list_by_hash=MagicMock(return_value=transfer_histories),
+    )
+    chain._site_subtitle_links = MagicMock(return_value=["https://example.com/subtitle.srt"])
+
+    class _FakeResponse:
+        """为字幕下载回调提供可关闭的成功响应。"""
+
+        status_code = 200
+        content = b"subtitle-content"
+
+        def close(self):
+            """模拟释放网络响应。"""
+
+    class _FakeHttp:
+        """返回固定字幕响应，避免真实网络请求。"""
+
+        def get(self, *_args, **_kwargs):
+            """返回成功响应。"""
+            return _FakeResponse()
+
+    monkeypatch.setattr(
+        download_subtitle,
+        "_download_ports_snapshot",
+        lambda: (_FakeHttp(), object()),
+    )
+
+    def _save_response(**kwargs):
+        """记录字幕已保存到重新创建的原下载目录。"""
+        assert kwargs["working_dir_item"].path == target_dir.as_posix()
+        operation_order.append("saved")
+
+    chain._save_site_subtitle_response = MagicMock(side_effect=_save_response)
+    mediainfo = SimpleNamespace(type=MediaType.TV)
+    context = Context(
+        media_info=mediainfo,
+        torrent_info=TorrentInfo(page_url="https://example.com/torrent/1"),
+    )
+
+    chain.download_site_subtitles(
+        context=context,
+        download_dir=Path("/download/影视下载/下载中"),
+        torrent_content=b"torrent-content",
+        download_hash="hash123",
+        downloader="qb",
+    )
+
+    assert accessed_paths == [("local", target_dir)]
+    assert created_dirs == [("local", target_dir)]
+    chain.transfer_history_repository.list_by_hash.assert_called_once_with("hash123")
+    chain._site_subtitle_links.assert_called_once_with(context)
+    chain._save_site_subtitle_response.assert_called_once()
+    assert operation_order == ["saved", "list", "queued"]
+    assert len(transfer_calls) == 1
+    assert transfer_calls[0] == {
+        "fileitem": subtitle_item,
+        "mediainfo": mediainfo,
+        "mtype": MediaType.TV,
+        "downloader": "qb",
+        "download_hash": "hash123",
+        "background": True,
+    }
 
 
 def test_download_single_supplements_category_before_download_event(monkeypatch):
