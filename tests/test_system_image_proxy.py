@@ -1,5 +1,6 @@
 import asyncio
 import io
+import ipaddress
 from collections.abc import Iterator, Mapping
 from hashlib import sha256
 from types import SimpleNamespace
@@ -101,6 +102,74 @@ def test_bangumi_image_proxy_domain_is_added_to_allowlist() -> None:
             "lain.bgm.tv",
             "image-proxy.example",
         }
+
+
+def test_image_proxy_trusts_enabled_mediaserver_hosts() -> None:
+    """已启用媒体服务器的 host / play_host 应被规范化为受信主机。"""
+    confs = [
+        SimpleNamespace(config={"host": "192.168.1.10:8096", "play_host": "https://Emby.Example.com"}),
+        SimpleNamespace(config={"host": "http://jellyfin.lan"}),
+        SimpleNamespace(config=None),
+    ]
+    with patch.object(system_endpoint, "get_mediaserver_configs", return_value=confs) as getter:
+        assert system_endpoint._get_image_proxy_trusted_hosts() == {
+            "192.168.1.10:8096",
+            "emby.example.com",
+            "jellyfin.lan",
+        }
+    getter.assert_called_once_with()
+
+
+def test_image_proxy_trusted_hosts_empty_when_lookup_fails() -> None:
+    """媒体服务器配置读取失败时不信任任何主机，也不抛出异常。"""
+    with patch.object(system_endpoint, "get_mediaserver_configs", side_effect=RuntimeError("db down")):
+        assert system_endpoint._get_image_proxy_trusted_hosts() == set()
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("http://192.168.1.10:8096/Items/1/Images/Primary", True),
+        ("http://jellyfin.lan:8096/Items/1/Images/Primary", True),
+        ("http://192.168.1.10:22/poster.jpg", False),
+        ("http://192.168.1.11:8096/Items/1/Images/Primary", False),
+    ],
+)
+def test_image_proxy_allows_lan_url_only_for_trusted_mediaserver_host(url: str, expected: bool) -> None:
+    """未配置私网网段时，仅受信媒体服务器主机的内网图片可通过代理。"""
+    trusted = {"192.168.1.10:8096", "jellyfin.lan"}
+    with patch.object(
+        system_endpoint.SecurityUtils,
+        "_hostname_addresses_async",
+        new=AsyncMock(return_value=[ipaddress.ip_address("192.168.1.10")]),
+    ), patch("app.application.security.url._emit_image_proxy_block_warning", new=AsyncMock()):
+        allowed = asyncio.run(
+            system_endpoint.SecurityUtils.is_safe_image_url_async(
+                url,
+                {"image.tmdb.org"},
+                allowed_private_ranges=[],
+                trusted_hosts=trusted,
+            )
+        )
+    assert allowed is expected
+
+
+def test_fetch_image_passes_mediaserver_trusted_hosts() -> None:
+    """fetch_image 应把媒体服务器受信主机传给图片 URL 安全校验。"""
+    image_helper = Mock()
+    image_helper.async_fetch_image_with_mime_type = AsyncMock(return_value=(_image_bytes("PNG"), "image/png"))
+    is_safe = AsyncMock(return_value=True)
+    with patch.object(system_endpoint.SecurityUtils, "is_safe_image_url_async", new=is_safe), patch.object(
+        system_endpoint, "ImageHelper", return_value=image_helper
+    ), patch.object(system_endpoint, "_get_image_proxy_trusted_hosts", return_value={"192.168.1.10:8096"}):
+        response = asyncio.run(
+            system_endpoint.fetch_image(
+                url="http://192.168.1.10:8096/Items/1/Images/Primary",
+                allowed_domains={"image.tmdb.org"},
+            )
+        )
+    assert response is not None
+    assert is_safe.await_args.kwargs["trusted_hosts"] == {"192.168.1.10:8096"}
 
 
 @pytest.mark.parametrize(

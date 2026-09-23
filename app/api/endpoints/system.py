@@ -38,6 +38,7 @@ from app.application.configuration import (
 )
 from app.application.database import get_database_governance
 from app.application.image import ImageHelper
+from app.application.mediaserver import get_mediaserver_configs
 from app.application.messaging.message import MessageHelper
 from app.application.network import get_configured_network_test_service
 from app.application.rules import RuleHelper
@@ -123,6 +124,24 @@ def _get_image_proxy_allowed_domains() -> set[str]:
     return allowed_domains
 
 
+def _get_image_proxy_trusted_hosts() -> set[str]:
+    """返回已启用媒体服务器的主机（host / play_host），图片代理可直接信任。"""
+    trusted_hosts: set[str] = set()
+    try:
+        for conf in get_mediaserver_configs():
+            for key in ("host", "play_host"):
+                host = str((conf.config or {}).get(key) or "").strip()
+                if not host:
+                    continue
+                parsed = urlsplit(host if "://" in host else f"https://{host}")
+                if parsed.scheme in {"http", "https"} and parsed.netloc:
+                    trusted_hosts.add(parsed.netloc.lower())
+    except Exception as err:  # noqa: BLE001 - 配置不可用时不影响图片代理
+        logger.debug(f"读取媒体服务器配置失败，图片代理不信任任何媒体服务器主机：{err}")
+        return set()
+    return trusted_hosts
+
+
 def _database_backup_artifact_data(artifact: Any) -> _SchemaDatabaseBackupArtifactData:
     """将内部备份制品映射为不含宿主路径的 Web DTO。"""
     return _SchemaDatabaseBackupArtifactData(
@@ -203,6 +222,7 @@ async def fetch_image(
             "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES",
             [],
         ),
+        trusted_hosts=_get_image_proxy_trusted_hosts(),
     ):
         return None
 
