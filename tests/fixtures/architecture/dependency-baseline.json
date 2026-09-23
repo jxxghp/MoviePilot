@@ -1084,8 +1084,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8884,
-  "edge_sha256": "c5bb4a5912d06f6e8e6a5545d78d5e043a2994f5cf85235a87397e66bb29e0ef",
+  "edge_count": 8886,
+  "edge_sha256": "b63e0b9f2cbd5190428fc87c72bb13754f64a09381c673eed2a7674bd1ab50c8",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4513,6 +4513,8 @@
     "app.chain.download.subtitle -> app.chain.download.ports",
     "app.chain.download.subtitle -> app.chain.media",
     "app.chain.download.subtitle -> app.chain.storage",
+    "app.chain.download.subtitle -> app.chain.transfer",
+    "app.chain.download.subtitle -> app.chain.transfer.facade",
     "app.chain.download.subtitle -> app.domain",
     "app.chain.download.subtitle -> app.domain.context",
     "app.chain.download.subtitle -> app.domain.metainfo",

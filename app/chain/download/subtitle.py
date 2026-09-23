@@ -14,7 +14,6 @@ from app.application.directory import (
     build_media_download_path,
     validate_download_save_path,
 )
-from app.application.history import TransferHistorySnapshot
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.download.ports import (
@@ -41,6 +40,7 @@ from app.schemas.types import (
 )
 
 if TYPE_CHECKING:
+    from app.application.history import TransferHistorySnapshot
     from app.schemas.transfer import DownloaderTorrent
 
 
