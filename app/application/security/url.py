@@ -15,6 +15,7 @@ from anyio import Path as AsyncPath
 from cachetools import TTLCache
 
 from app.application.configuration import get_token_runtime_config
+from app.foundation.url import url_matches_trusted_hosts
 from app.runtime.coalesce import (
     CoalesceDecision,
     CoalesceSummary,
@@ -827,21 +828,9 @@ class SecurityUtils:
         allowed_private_ranges: Optional[Iterable[str]] = None,
         trusted_hosts: Optional[Iterable[str]] = None,
     ) -> bool:
-        """
-        判定 URL 是否可作为图片代理请求目标。
+        """先执行 DNS SSRF 校验，再允许精确匹配的受信主机或有效签名 URL。
 
-        `trusted_hosts` 为管理员已配置的主机（如已启用的媒体服务器），URL 的
-        netloc（含端口）或 hostname 精确命中时直接放行，不受私网拦截限制。
-
-        校验顺序：协议 + 域名 allowlist + DNS SSRF 拦截 + 非公网放行匹配；标准
-        校验失败时再用 `verify_signed_url` 兜底，允许后端预签名的媒体服务器
-        URL 跳过私网拦截。两者皆失败才视为拒绝。
-
-        拒绝路径会输出结构化阻断日志：单次拦截立即打印一条 warning，同
-        `(host, reason)` 的连续命中在 `_IMAGE_PROXY_BLOCK_LOG_WINDOW_SECONDS`
-        窗口内合并为一条聚合摘要，避免媒体详情页一次请求把日志刷爆。日志字段
-        范围严格限定为 URL、host、reason、解析 IP 与允许网段配置；cookies、
-        签名串、token、请求头等敏感材料一律不进入日志。
+        其余目标拒绝并输出限频阻断日志，日志不记录 cookies、签名串、token 或请求头。
         """
         diagnosis = await SecurityUtils.evaluate_url_safety_async(
             url,
@@ -851,7 +840,7 @@ class SecurityUtils:
         )
         if diagnosis.allowed:
             return True
-        if trusted_hosts and SecurityUtils._is_trusted_host(url, trusted_hosts):
+        if trusted_hosts and url_matches_trusted_hosts(url, trusted_hosts):
             return True
         if SecurityUtils.verify_signed_url(url) is not None:
             return True
@@ -862,18 +851,6 @@ class SecurityUtils:
             allowed_private_ranges=allowed_private_ranges,
         )
         return False
-
-    @staticmethod
-    def _is_trusted_host(url: str, trusted_hosts: Iterable[str]) -> bool:
-        """URL 的 netloc（含端口）或 hostname 是否精确命中受信主机。"""
-        try:
-            parsed_url = urlparse(url)
-        except ValueError:
-            return False
-        if parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname:
-            return False
-        trusted = {host.lower() for host in trusted_hosts}
-        return parsed_url.netloc.lower() in trusted or parsed_url.hostname in trusted
 
     @staticmethod
     def _diagnose_resolved_addresses(
