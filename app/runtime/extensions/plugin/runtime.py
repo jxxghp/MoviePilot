@@ -171,6 +171,7 @@ def build_plugin_runtime(
         # 否则启动期全量加载会把它们跳过得无声无息
         runtime_status_writer=registry.set_runtime_status,
         runtime_declaration=environment.runtime_declaration,
+        gil_fallback_recorder=registry.mark_gil_fallback,
         log=environment.logger,
     )
     tools = PluginToolCatalog(max_attempts=tool_build_max_attempts)
@@ -242,6 +243,7 @@ def build_plugin_runtime(
         event_sender=eventmanager.send_event,
         refresh_classification=refresh_classification,
         remove_classification=classification.remove,
+        gil_fallback_recorder=registry.mark_gil_fallback,
     )
     metadata = PluginMetadataMapper(
         plugin_instance=registry.instance,

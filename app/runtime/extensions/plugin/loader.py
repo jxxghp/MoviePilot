@@ -13,6 +13,11 @@ from typing import Any, Optional
 
 from app.domain.plugin import check_plugin_runtime_compatibility
 from app.foundation.environment import is_free_threaded_runtime
+from app.runtime.extensions.plugin.gil import (
+    GilFallbackRecorder,
+    attribute_gil_fallback,
+    ignore_gil_fallback,
+)
 from app.runtime.settings import get_runtime_setting
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 
@@ -46,13 +51,15 @@ class PluginLoader:
         log: Any,
         runtime_status_writer: Optional[PluginRuntimeStatusWriter] = None,
         runtime_declaration: PluginRuntimeDeclarationReader = _undeclared_runtime,
+        gil_fallback_recorder: GilFallbackRecorder = ignore_gil_fallback,
     ) -> None:
-        """保存插件目录、导入前置能力、状态回写端口、声明读取端口和日志端口。"""
+        """保存插件目录、导入前置能力、状态回写端口、声明读取端口、GIL 归因端口和日志端口。"""
         self._plugins_root = plugins_root
         self._import_preparer = import_preparer
         self._import_scanner = import_scanner
         self._runtime_status_writer = runtime_status_writer
         self._runtime_declaration = runtime_declaration
+        self._gil_fallback_recorder = gil_fallback_recorder
         self._logger = log
 
     def load(
@@ -116,7 +123,13 @@ class PluginLoader:
                     plugin_id=plugin_dir.name,
                     plugin_dir=plugin_dir,
                 )
-                module = importlib.import_module(module_name)
+                # 插件模块顶层导入原生扩展最常见，GIL 回退多发生在这一步；
+                # 全量启动时逐个模块观察，才能把回退归因到具体插件
+                with attribute_gil_fallback(
+                    installed_ids.get(plugin_dir.name, plugin_dir.name),
+                    self._gil_fallback_recorder,
+                ):
+                    module = importlib.import_module(module_name)
                 for name, candidate in module.__dict__.items():
                     if name.startswith("_") or not isinstance(candidate, type):
                         continue

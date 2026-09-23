@@ -259,6 +259,10 @@ class PluginRuntimeSummary(BaseModel):
         default_factory=list,
         description="重启后才能完整激活新原生依赖的物理插件 ID",
     )
+    gil_enabled_plugin_ids: List[str] = Field(
+        default_factory=list,
+        description="当前进程内加载时导致 free-threaded 运行时回退到 GIL 的插件 ID",
+    )
 
 
 class PluginRuntimeCommandCapability(BaseModel):  # type: ignore[misc]
