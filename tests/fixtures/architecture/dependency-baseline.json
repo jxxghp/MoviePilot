@@ -1084,8 +1084,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8881,
-  "edge_sha256": "700858f0eb08a886c206c9be9685964b01f0e3412bed7b1c1fa84fa343231a14",
+  "edge_count": 8882,
+  "edge_sha256": "fd866881390126c9f4a68c671c9641e27223e23a1b6c242c15042cb3c7d1a087",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3040,6 +3040,7 @@
     "app.api.endpoints.system -> app.application.configuration",
     "app.api.endpoints.system -> app.application.database",
     "app.api.endpoints.system -> app.application.image",
+    "app.api.endpoints.system -> app.application.mediaserver",
     "app.api.endpoints.system -> app.application.messaging",
     "app.api.endpoints.system -> app.application.messaging.message",
     "app.api.endpoints.system -> app.application.network",
