@@ -4,7 +4,7 @@ import json
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Literal, Optional, Type, Union
 
 from pydantic import BaseModel, Field, PrivateAttr
 
@@ -22,6 +22,9 @@ from app.schemas.types import NotificationChannel
 _TOOL_MESSAGE_OPERATION_MAX_CHARS = 96
 _TOOL_MESSAGE_PARAMETER_MAX_CHARS = 320
 _SEARCH_TORRENTS_TOOL_TIMEOUT_SECONDS = 300.0
+
+# API 网关顶层请求体只开放对象、数组和 system.upgrade.dev 的固定字符串。
+MoviePilotApiBody = Union[Dict[str, JsonData], list[JsonData], Literal["dev"], None]
 
 
 @lru_cache(maxsize=1)
@@ -57,13 +60,13 @@ class MoviePilotApiInput(BaseModel):  # type: ignore[misc]
         default_factory=dict,
         description="Query-string fields declared by the selected operation.",
     )
-    body: JsonData = Field(
+    body: MoviePilotApiBody = Field(
         default=None,
         description=(
-            "JSON request value declared by the selected operation and its loaded Skill contract. "
-            "Most operations use an object; a oneOf branch may require an exact scalar. "
-            "Keep objects and arrays, including nested file items, as native JSON values; "
-            "never JSON-encode them into strings."
+            "Request body declared by the selected operation and its loaded Skill contract. "
+            "Pass objects and arrays, including nested file items, as native JSON values; "
+            "pass null only when the selected operation allows it. "
+            "The only string body is the exact value 'dev' for system.upgrade.dev."
         ),
     )
 

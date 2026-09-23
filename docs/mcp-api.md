@@ -178,6 +178,8 @@ operation ID、权限、副作用、确认、恢复、结果敏感性及精确�
 
 只允许传 `tools/list` 对应 operation 分支中声明的 `path_params`、`query` 和 `body` 字段。不得传 URL、认证头、API Token 或任意 HTTP 方法。
 
+`body` 使用原生 JSON 值。对象和数组直接传入；仅在选定的 operation 允许时传 `null`。当前唯一的字符串请求体为 `system.upgrade.dev` 的固定值 `"dev"`。网关会按选定的 operation 合同校验请求体类型和字段。
+
 `search.torrents` 可能按媒体标题与别名分轮搜索站点：MoviePilot 内层请求最多等待 290 秒，Agent 工具总等待上限为 300 秒，预留 10 秒处理超时与返回结果；V3 MCP 包装层继续使用原有 `mcp_proxy_timeout` 配置（默认 600 秒）。其它 operation 沿用原有超时配置。`page` / `count` 只分页已完成的搜索结果，不会缩短站点搜索过程。
 
 查询结果的兼容分页合同如下：
