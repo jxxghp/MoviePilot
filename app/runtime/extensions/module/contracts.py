@@ -26,6 +26,7 @@ class ModuleResultShape(StrEnum):
     ANY = "any"
     LIST = "list"
     STRING = "string"
+    TEXT_OR_BYTES = "text_or_bytes"
     MAPPING = "mapping"
     BOOLEAN = "boolean"
     BYTES = "bytes"
@@ -433,8 +434,8 @@ _METHOD_CONTRACTS = {
     "metadata_nfo": ModuleMethodContract(
         family="metadata",
         input_contract="MetadataNfoRequest",
-        result_contract="str | None",
-        result_shape=ModuleResultShape.STRING,
+        result_contract="bytes | str | None",
+        result_shape=ModuleResultShape.TEXT_OR_BYTES,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("meta", "mediainfo", "season", "episode"),
     ),
@@ -468,6 +469,15 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.MAPPING,
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("tvdbid",),
+    ),
+    "tvdb_episode_extended": ModuleMethodContract(
+        family="tvdb",
+        input_contract="TvdbEpisodeExtendedRequest",
+        result_contract="dict | None",
+        result_shape=ModuleResultShape.MAPPING,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("episode_id",),
+        public_to_plugins=False,
     ),
     "tvdb_slug": ModuleMethodContract(
         family="tvdb",
@@ -1325,6 +1335,15 @@ _METHOD_CONTRACTS = {
         result_shape=ModuleResultShape.LIST,
         aggregation=ModuleResultAggregation.ORDERED_LIST_MERGE,
     ),
+    "tmdb_episode_external_ids": ModuleMethodContract(
+        family="tmdb",
+        input_contract="TmdbEpisodeExternalIdsRequest",
+        result_contract="dict",
+        result_shape=ModuleResultShape.MAPPING,
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("tmdbid", "season", "episode"),
+        public_to_plugins=False,
+    ),
     "tmdb_cache_delete": ModuleMethodContract(
         family="tmdb",
         input_contract="TmdbCacheDeleteRequest",
@@ -1606,6 +1625,7 @@ _OBSERVED_HOST_METHODS = (
     "tmdb_cache_items",
     "tmdb_collection",
     "tmdb_discover",
+    "tmdb_episode_external_ids",
     "tmdb_episodes",
     "tmdb_group_seasons",
     "tmdb_info",
@@ -1626,6 +1646,7 @@ _OBSERVED_HOST_METHODS = (
     "tv_hot",
     "tv_weekly_chinese",
     "tv_weekly_global",
+    "tvdb_episode_extended",
     "tvdb_info",
     "tvdb_slug",
     "update_recognize_cache",
@@ -1828,6 +1849,7 @@ def diagnose_module_result(method: str, result: Any) -> tuple[str, ...]:
     matches = {
         ModuleResultShape.LIST: isinstance(result, list),
         ModuleResultShape.STRING: isinstance(result, str),
+        ModuleResultShape.TEXT_OR_BYTES: isinstance(result, (str, bytes)),
         ModuleResultShape.MAPPING: isinstance(result, dict),
         ModuleResultShape.BOOLEAN: isinstance(result, bool),
         ModuleResultShape.BYTES: isinstance(result, bytes),

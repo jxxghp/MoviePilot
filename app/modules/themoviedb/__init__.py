@@ -1332,6 +1332,12 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return []
         return [_SchemaTmdbEpisode(**episode) for episode in season_info.get("episodes")]
 
+    def tmdb_episode_external_ids(
+        self, tmdbid: int, season: int, episode: int
+    ) -> dict[str, Any]:
+        """按 TMDb 默认季集编号获取单集的外部 ID。"""
+        return self.tmdb.get_tv_episode_external_ids(tmdbid, season, episode)
+
     def scheduler_job(self) -> None:
         """
         定时任务，每10分钟调用一次

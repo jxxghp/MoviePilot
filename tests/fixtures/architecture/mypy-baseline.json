@@ -879,7 +879,6 @@
     "call-arg": 1,
     "index": 1,
     "misc": 1,
-    "no-any-return": 1,
     "no-untyped-def": 14,
     "return-value": 1,
     "type-arg": 1,

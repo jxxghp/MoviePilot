@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from threading import Lock
-from typing import Any, Iterable, List, Optional, Protocol, Self, Tuple, Union
+from typing import Any, Iterable, List, Optional, Protocol, Self, Tuple, Union, cast
 
 from app.application.audio import AudioMetadataHelper
 from app.application.configuration import (
@@ -637,22 +637,29 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             mediainfo: MediaInfo,
             season: Optional[int] = None,
             episode: Optional[int] = None,
-    ) -> Optional[str]:
+    ) -> Optional[Union[bytes, str]]:
         """
-        获取NFO文件内容文本
+        获取 NFO 文件内容；仅在 Season 0 单集刮削时加载播放顺序补全。
 
         :param meta: 元数据
         :param mediainfo: 媒体信息
         :param season: 季号
         :param episode: 集号
         """
-        return self.run_module(
-            "metadata_nfo",
-            meta=meta,
-            mediainfo=mediainfo,
-            season=season,
-            episode=episode,
-        )
+        nfo_content = cast(Optional[Union[bytes, str]], self.run_module(
+            "metadata_nfo", meta=meta, mediainfo=mediainfo, season=season, episode=episode,
+        ))
+        if not nfo_content or season != 0 or episode is None:
+            return nfo_content
+        try:
+            from app.chain.specials import SpecialEpisodeOrderEnricher
+
+            return SpecialEpisodeOrderEnricher(self).enrich(
+                nfo_content, mediainfo, season, episode
+            )
+        except Exception as err:
+            logger.debug("补全 Season 0 特典播放顺序失败：%s", err)
+            return nfo_content
 
     def metadata_img(
             self,

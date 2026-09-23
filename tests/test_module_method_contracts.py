@@ -67,7 +67,12 @@ def test_contract_v2_freezes_every_observed_host_method() -> None:
     contracts = list_explicit_module_contracts()
 
     assert len(contracts) >= 211
-    host_internal_methods = {"plan_transfer", "execute_transfer_plan"}
+    host_internal_methods = {
+        "plan_transfer",
+        "execute_transfer_plan",
+        "tmdb_episode_external_ids",
+        "tvdb_episode_extended",
+    }
     for method_name, contract in contracts.items():
         assert contract.version == 1
         assert contract.input_contract != "legacy_args"
@@ -256,6 +261,12 @@ def test_lookup_contracts_separate_value_routes_from_list_aggregation() -> None:
         contract = get_module_method_contract(method)
         assert contract.aggregation is ModuleResultAggregation.FIRST_NON_EMPTY
         assert contract.result_contract
+
+    nfo = get_module_method_contract("metadata_nfo")
+    assert nfo.result_contract == "bytes | str | None"
+    assert nfo.result_shape is ModuleResultShape.TEXT_OR_BYTES
+    assert diagnose_module_result("metadata_nfo", b"<episodedetails/>") == ()
+    assert diagnose_module_result("metadata_nfo", "<episodedetails/>") == ()
 
 
 def test_legacy_category_module_methods_are_not_public_contracts() -> None:
