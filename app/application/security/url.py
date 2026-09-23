@@ -825,9 +825,13 @@ class SecurityUtils:
         url: str,
         allowed_domains: Union[Set[str], List[str]],
         allowed_private_ranges: Optional[Iterable[str]] = None,
+        trusted_hosts: Optional[Iterable[str]] = None,
     ) -> bool:
         """
         判定 URL 是否可作为图片代理请求目标。
+
+        `trusted_hosts` 为管理员已配置的主机（如已启用的媒体服务器），URL 的
+        netloc（含端口）或 hostname 精确命中时直接放行，不受私网拦截限制。
 
         校验顺序：协议 + 域名 allowlist + DNS SSRF 拦截 + 非公网放行匹配；标准
         校验失败时再用 `verify_signed_url` 兜底，允许后端预签名的媒体服务器
@@ -847,6 +851,8 @@ class SecurityUtils:
         )
         if diagnosis.allowed:
             return True
+        if trusted_hosts and SecurityUtils._is_trusted_host(url, trusted_hosts):
+            return True
         if SecurityUtils.verify_signed_url(url) is not None:
             return True
         await _emit_image_proxy_block_warning(
@@ -856,6 +862,18 @@ class SecurityUtils:
             allowed_private_ranges=allowed_private_ranges,
         )
         return False
+
+    @staticmethod
+    def _is_trusted_host(url: str, trusted_hosts: Iterable[str]) -> bool:
+        """URL 的 netloc（含端口）或 hostname 是否精确命中受信主机。"""
+        try:
+            parsed_url = urlparse(url)
+        except ValueError:
+            return False
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname:
+            return False
+        trusted = {host.lower() for host in trusted_hosts}
+        return parsed_url.netloc.lower() in trusted or parsed_url.hostname in trusted
 
     @staticmethod
     def _diagnose_resolved_addresses(
