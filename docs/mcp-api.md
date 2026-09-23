@@ -133,6 +133,18 @@ MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。
 | `mediaserver_operation` | Emby、Jellyfin、Plex、ZSpace、UGREEN、TrimeMedia、Navidrome、MediaVault 原生媒体库、搜索、播放、扫描和刷新操作 | `skills/mediaserver-operation/SKILL.md` 与 `skills/mediaserver-operation/scripts/mp-mediaserver.py` 的 `ACTIONS` |
 | `database_operation` | MoviePilot 配置数据库表清单、实时 schema、只读 SQL 和明确授权写入 | `skills/database-operation/SKILL.md` 与 `skills/database-operation/scripts/mp-db.py` 的 `ACTIONS` |
 
+`tools/list` 的工具 schema 受客户端体积预算约束：单个工具 schema 序列化后超过 4096 字节时，
+MCP 表面返回**顶层对象投影**——保留 `type`、`required` 与顶层属性（含 `operation_id` / `action` 枚举），
+去掉根级 `oneOf`/`anyOf`/`allOf` 与 `$defs`，并带上 `x-moviepilot-schema-projection` 标记。
+逐 operation 的完整合同不受影响：`GET /api/v1/mcp/tools/{tool_name}/schema` 与 `GET /api/v1/mcp/tools/{tool_name}`
+始终返回完整合同，调用失败回执仍按 selected operation 返回精确参数合同，调用侧校验与权限判定不变。
+
+需要完整 `oneOf` 的客户端可在请求中显式声明 `X-MCP-Schema-Mode: full` 请求头（或 `?schema_mode=full` 查询参数），
+此时 `tools/list` 返回未经投影的合同。原因：主流客户端（如 Codex）会在自身预算内对工具 schema 做有损压缩，
+根级 `oneOf` 会被整段替换为空对象 `{}`，严格校验的 Responses 上游随即以
+`schema must be a JSON Schema of 'type: "object"', got 'type: null'` 拒绝整个请求，
+使一次会话里所有工具调用都失败；投影让这些客户端至少保留顶层对象合同与 operation/action 发现面。
+
 这四个工具都要求管理员级 MCP 集成身份；`tools/list` 的可见性不等于绕过业务权限或写操作确认。下载器和媒体服务器工具会在一次调用内自动选择默认/唯一实例；实例不明确时，错误结果会列出可复用的精确实例名。数据库工具不接受任意连接串或凭据，脚本从 MoviePilot 运行时配置读取数据库连接。
 
 `app/agent/policy/resources/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。

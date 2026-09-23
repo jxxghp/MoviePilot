@@ -100,6 +100,7 @@ to make the directory tree look symmetrical.
 | `app/agent/policy/api.py` | Fixed `moviepilot_api` operation registry, HTTP route templates and per-operation authorization/effect policy; no arbitrary URL or method input |
 | `app/agent/policy/mcp.py` | Generated external MCP input-contract builder for the fixed API registry; owns exact English oneOf parameter projection, not runtime authorization |
 | `app/agent/tools/impl/service.py` | Admin-only external MCP wrappers for downloader, media-server and database Skill scripts; synchronous scripts run only through the Agent blocking executor |
+| `app/agent/tools/schema_budget.py` | Pure MCP `tools/list` schema size budget: oversized tool contracts are projected to a top-level object schema so clients that compact composition keywords still receive usable parameters; full contracts stay on the REST tool endpoints |
 
 `app.agent.AgentManager` remains the stable plugin-facing import and resolves lazily to
 `app.agent.manager.AgentManager`. Historical symbols formerly imported from
