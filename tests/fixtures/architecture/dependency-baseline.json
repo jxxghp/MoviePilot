@@ -43,11 +43,11 @@
       "app.application": 0,
       "app.chain": 0
     },
-    "count": 52,
+    "count": 53,
     "counts_by_kind": {
       "network_sdk": 26,
       "protocol_operation": 7,
-      "raw_transport": 19
+      "raw_transport": 20
     },
     "entries": [
       {
@@ -997,6 +997,18 @@
       },
       {
         "bindings": [
+          "import:websocket as websocket"
+        ],
+        "fingerprint": "09e1909ac750fe40b145dde8fee52eedf84aaf2123f6a1bc38109252c89d6000",
+        "kind": "raw_transport",
+        "source": "app.startup.composition.network",
+        "target": "websocket",
+        "uses": [
+          "_NetworkTestTransportAdapter.websocket.connect|call:create_connection"
+        ]
+      },
+      {
+        "bindings": [
           "import:urllib3.fields as _urllib3_fields"
         ],
         "fingerprint": "cb6f0a314aeb1e2d3e76c240aa20460ac0c36d9f5c18c1a6ea3170f64dd3366b",
@@ -1084,8 +1096,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8886,
-  "edge_sha256": "b63e0b9f2cbd5190428fc87c72bb13754f64a09381c673eed2a7674bd1ab50c8",
+  "edge_count": 8894,
+  "edge_sha256": "806dcfdaa18be4ac59b2cb802136d444473259b2614a6480c361684270dced66",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3726,8 +3738,15 @@
     "app.application.music.projection -> app.domain.context",
     "app.application.music.projection -> app.schemas",
     "app.application.music.projection -> app.schemas.types",
-    "app.application.network -> app.foundation",
-    "app.application.network -> app.foundation.url",
+    "app.application.nettest.catalogue -> app.application",
+    "app.application.nettest.catalogue -> app.application.nettest",
+    "app.application.nettest.catalogue -> app.application.nettest.domain",
+    "app.application.nettest.catalogue -> app.foundation",
+    "app.application.nettest.catalogue -> app.foundation.url",
+    "app.application.network -> app.application",
+    "app.application.network -> app.application.nettest",
+    "app.application.network -> app.application.nettest.catalogue",
+    "app.application.network -> app.application.nettest.domain",
     "app.application.notification -> app.application",
     "app.application.notification -> app.application.service",
     "app.application.notification -> app.schemas",
@@ -9284,6 +9303,7 @@
     "app.startup.composition.network -> app.application.image",
     "app.startup.composition.network -> app.application.messaging",
     "app.startup.composition.network -> app.application.messaging.ingress",
+    "app.startup.composition.network -> app.application.module",
     "app.startup.composition.network -> app.application.network",
     "app.startup.composition.network -> app.chain",
     "app.startup.composition.network -> app.chain.download",
@@ -9974,7 +9994,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1045,
+  "module_count": 1048,
   "modules": [
     "app",
     "app.adapters",
@@ -10263,6 +10283,9 @@
     "app.application.music",
     "app.application.music.catalog",
     "app.application.music.projection",
+    "app.application.nettest",
+    "app.application.nettest.catalogue",
+    "app.application.nettest.domain",
     "app.application.network",
     "app.application.notification",
     "app.application.outbox",
