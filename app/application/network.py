@@ -2,10 +2,10 @@
 
 from collections.abc import Collection, Mapping
 from time import monotonic
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, cast
 from urllib.parse import urljoin, urlparse
 
-from app.application.nettest.catalogue import build_network_rules
+from app.application.nettest.catalogue import build_network_rules as _build_network_rules
 from app.application.nettest.domain import (
     NetworkTestLogger,
     NetworkTestResponse,
@@ -18,6 +18,20 @@ from app.application.nettest.domain import (
 
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _MAX_REDIRECTS = 3
+
+__all__ = [
+    "NetworkTestLogger",
+    "NetworkTestResponse",
+    "NetworkTestResult",
+    "NetworkTestRule",
+    "NetworkTestService",
+    "NetworkTestTarget",
+    "NetworkTestTransport",
+    "SettingsReader",
+    "configure_network_test_service",
+    "get_configured_network_test_service",
+    "reset_network_test_service",
+]
 
 
 class NetworkTestService:
@@ -133,7 +147,10 @@ class NetworkTestService:
         }
         request = getattr(self._transport, "request", None)
         if callable(request):
-            return await request(method, url, json_body=json_body, **options)
+            return cast(
+                Optional[NetworkTestResponse],
+                await request(method, url, json_body=json_body, **options),
+            )
         if method == "GET":
             return await self._transport.get(url, **options)
         return None
@@ -273,7 +290,7 @@ class NetworkTestService:
 
     def _build_rules(self) -> tuple[NetworkTestRule, ...]:
         """根据当前部署设置和已启用模块构建唯一网络测试目录。"""
-        return build_network_rules(self._settings, self._enabled_module_ids)
+        return _build_network_rules(self._settings, self._enabled_module_ids)
 
 
 _configured_network_test_service: Optional[NetworkTestService] = None
