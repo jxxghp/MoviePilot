@@ -760,8 +760,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1045 |
-| 内部导入边 | 8,886 |
+| Python 模块 | 1048 |
+| 内部导入边 | 8,894 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |
@@ -771,7 +771,7 @@ flowchart LR
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 
-整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列，宿主依赖边增至 8,886，未新增 SCC。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。当前 `app.startup.lifecycle` 为 566、`app.factory` 为 578、`app.main` 为 580。性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
+整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。宿主依赖边现为 8,894，未新增 SCC。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。当前 `app.startup.lifecycle` 为 566、`app.factory` 为 578、`app.main` 为 580。性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
 
 架构专项验证分为两个 CI 投影：`Check event semantic policy` 先运行依赖、Adapter、出口和 Event
 语义门禁，`Check host architecture snapshot` 再执行快照测试及一次
