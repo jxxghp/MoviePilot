@@ -71,13 +71,15 @@ class _NetworkTestTransportAdapter:
         user_agent: Optional[str] = None,
     ) -> Optional[NetworkTestResponse]:
         """使用固定超时、证书校验和手动重定向策略请求目标。"""
-        return await self.request(
-            "GET",
-            url,
-            proxy=proxy,
-            headers=headers,
-            user_agent=user_agent,
-        )
+        response = await AsyncRequestUtils(
+            proxies=proxy,
+            headers=dict(headers) if headers else None,
+            timeout=10,
+            ua=user_agent or "",
+            verify=True,
+            follow_redirects=False,
+        ).get_res(url, allow_redirects=False)
+        return cast(Optional[NetworkTestResponse], response)
 
     async def request(
         self,
@@ -90,22 +92,33 @@ class _NetworkTestTransportAdapter:
         json_body: Optional[Mapping[str, Any]] = None,
     ) -> Optional[NetworkTestResponse]:
         """按请求规则发送 HTTP 请求并保持证书校验与重定向关闭。"""
-        request_kwargs: dict[str, Any] = {}
-        if json_body is not None:
-            request_kwargs["json"] = dict(json_body)
-        response = await AsyncRequestUtils(
+        if method.upper() == "GET":
+            return await self.get(
+                url,
+                proxy=proxy,
+                headers=headers,
+                user_agent=user_agent,
+            )
+        request = AsyncRequestUtils(
             proxies=proxy,
             headers=dict(headers) if headers else None,
             timeout=10,
             ua=user_agent or "",
             verify=True,
             follow_redirects=False,
-        ).request(
-            method=method,
-            url=url,
-            follow_redirects=False,
-            **request_kwargs,
         )
+        if method.upper() == "POST":
+            response = await request.post_res(
+                url,
+                json=dict(json_body) if json_body is not None else None,
+                allow_redirects=False,
+            )
+        else:
+            response = await request.request(
+                method=method,
+                url=url,
+                follow_redirects=False,
+            )
         return cast(Optional[NetworkTestResponse], response)
 
     async def websocket(
@@ -154,7 +167,7 @@ def _read_network_test_setting(key: str, default: Any = None) -> Any:
 
 def _list_enabled_network_module_ids() -> tuple[str, ...]:
     """按模块运行时的当前配置投影网络相关的已启用宿主模块。"""
-    from app.runtime.extensions.module.manager import ModuleManager
+    from app.application.module import ModuleManager
 
     return tuple(spec.id for spec in ModuleManager().list_enabled_specs())
 

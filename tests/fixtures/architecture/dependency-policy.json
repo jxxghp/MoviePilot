@@ -156,8 +156,9 @@
         "classification": "approved_exception",
         "reason_code": "streaming_protocol",
         "owner": "$source",
-        "reason": "产品长连接或 SCGI/XML-RPC transport 由该协议模块精确持有。",
+        "reason": "产品长连接与 WSS 连通探测由协议适配器精确持有，SCGI/XML-RPC transport 由对应模块持有。",
         "facts": [
+          {"source": "app.startup.composition.network", "target": "websocket", "kind": "raw_transport", "fingerprint": "09e1909ac750fe40b145dde8fee52eedf84aaf2123f6a1bc38109252c89d6000"},
           {"source": "app.modules.qqbot.gateway", "target": "websocket", "kind": "raw_transport", "fingerprint": "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae"},
           {"source": "app.modules.rtorrent.rtorrent", "target": "socket.create_connection", "kind": "protocol_operation", "fingerprint": "878114d6b1bda091bd3b3d8aa819831d84381682feba78267592d2593295af90"},
           {"source": "app.modules.rtorrent.rtorrent", "target": "xmlrpc.client.ServerProxy", "kind": "protocol_operation", "fingerprint": "2ac64b5670c930bc28bb2135cc4b73891c1cae01a74a9586f74e302878c45c85"},

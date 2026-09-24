@@ -52,6 +52,7 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.modules.webpush", "pywebpush"),
     },
     "streaming_protocol": {
+        ("app.startup.composition.network", "websocket"),
         ("app.modules.qqbot.gateway", "websocket"),
         ("app.modules.rtorrent.rtorrent", "socket.create_connection"),
         ("app.modules.rtorrent.rtorrent", "xmlrpc.client.ServerProxy"),
@@ -137,6 +138,7 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.transmission.transmission", "transmission_rpc"): "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf",
     ("app.modules.webpush", "pywebpush"): "389c73b06150e3d5bcaf31f35a25178873d2ed38ef9a28354cb9bab691eeab76",
     ("app.modules.wechat.wechatbot", "websocket"): "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
+    ("app.startup.composition.network", "websocket"): "09e1909ac750fe40b145dde8fee52eedf84aaf2123f6a1bc38109252c89d6000",
     ("app.modules.zspace.zspace", "requests"): "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51",
     ("app.startup.lifecycle", "urllib3"): "cb6f0a314aeb1e2d3e76c240aa20460ac0c36d9f5c18c1a6ea3170f64dd3366b",
     ("app.testing.network", "socket.getaddrinfo"): "ebf33718b54c81e1f575401da4a0bef5aa0e1ddc284e201f557897feeca71c6d",

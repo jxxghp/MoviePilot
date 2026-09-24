@@ -1,12 +1,12 @@
-"""执行受限网络连通性探测并管理其应用服务生命周期。"""
+"""受控外部网络探测应用服务。"""
 
 from collections.abc import Collection, Mapping
 from time import monotonic
 from typing import Any, Callable, Optional
 from urllib.parse import urljoin, urlparse
 
-from .catalogue import build_network_rules
-from .domain import (
+from app.application.nettest.catalogue import build_network_rules
+from app.application.nettest.domain import (
     NetworkTestLogger,
     NetworkTestResponse,
     NetworkTestResult,
