@@ -167,9 +167,9 @@ def _read_network_test_setting(key: str, default: Any = None) -> Any:
 
 def _list_enabled_network_module_ids() -> tuple[str, ...]:
     """按模块运行时的当前配置投影网络相关的已启用宿主模块。"""
-    from app.application.module import ModuleManager
+    from app.application.module import get_module_manager
 
-    return tuple(spec.id for spec in ModuleManager().list_enabled_specs())
+    return tuple(spec.id for spec in get_module_manager().list_enabled_specs())
 
 
 class _ImageTransportAdapter:
