@@ -259,10 +259,10 @@ class MetaVideo(MetaBase):
         media_exts: list,
         state: _VideoParseState,
     ) -> None:
-        """按固定优先级处理词元，并标记当前词元是否为输入末尾。"""
+        """按固定优先级处理单个词元，首个命中的阶段终止后续识别。"""
         if self.__init_part(token, tokens, state):
             return
-        if self.__init_name(token, media_exts, state, tokens.cur() is None):
+        if self.__init_name(token, media_exts, state):
             return
         if self.__init_year(token, state):
             return
@@ -336,7 +336,6 @@ class MetaVideo(MetaBase):
         token: Optional[str],
         media_exts: list,
         state: _VideoParseState,
-        is_last_token: bool,
     ) -> bool:
         """
         识别名称，并只忽略原始文件名末尾的媒体扩展名。
@@ -425,8 +424,7 @@ class MetaVideo(MetaBase):
                 # 后缀名不要
                 suffix = f".{token.lower()}"
                 if (
-                    is_last_token
-                    and suffix in media_exts
+                    suffix in media_exts
                     and (self.org_string or "").lower().endswith(suffix)
                 ):
                     return False
