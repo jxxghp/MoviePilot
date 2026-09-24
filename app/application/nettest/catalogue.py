@@ -314,7 +314,7 @@ def _build_external_media_rules(settings: SettingsReader) -> list[NetworkTestRul
         NetworkTestRule(
             id="acoustid_api",
             name="AcoustID 音频识别",
-            icon="site",
+            icon="acoustid",
             url=(f"https://api.acoustid.org/v2/lookup?client={settings('ACOUSTID_API_KEY', '')}&format=json"),
             proxy=True,
             allowed_redirect_prefixes=("https://api.acoustid.org/",),
@@ -324,7 +324,7 @@ def _build_external_media_rules(settings: SettingsReader) -> list[NetworkTestRul
         NetworkTestRule(
             id="anilist_api",
             name="AniList 番剧元数据",
-            icon="bangumi",
+            icon="anilist",
             url=("https://graphql.anilist.co/?query=%7B%20Media%28id%3A1%29%20%7Bid%7D%20%7D"),
             proxy=True,
             allowed_redirect_prefixes=("https://graphql.anilist.co/",),
@@ -333,7 +333,7 @@ def _build_external_media_rules(settings: SettingsReader) -> list[NetworkTestRul
         NetworkTestRule(
             id="anilist_trace",
             name="trace.moe 番剧识别",
-            icon="bangumi",
+            icon="tracemoe",
             url="https://trace.moe",
             proxy=True,
             allowed_redirect_prefixes=("https://trace.moe/",),
@@ -342,7 +342,7 @@ def _build_external_media_rules(settings: SettingsReader) -> list[NetworkTestRul
         NetworkTestRule(
             id="imdb_api",
             name="IMDb 元数据",
-            icon="tmdb",
+            icon="imdb",
             url="https://v2.sg.media-imdb.com/suggestion/x/inception.json",
             proxy=True,
             allowed_redirect_prefixes=("https://v2.sg.media-imdb.com/",),
@@ -351,7 +351,7 @@ def _build_external_media_rules(settings: SettingsReader) -> list[NetworkTestRul
         NetworkTestRule(
             id="imdb_graphql",
             name="IMDb GraphQL 服务",
-            icon="tmdb",
+            icon="imdb",
             url="https://caching.graphql.imdb.com",
             proxy=True,
             allowed_redirect_prefixes=("https://caching.graphql.imdb.com/",),
@@ -366,7 +366,7 @@ def _build_music_service_rules() -> list[NetworkTestRule]:
         NetworkTestRule(
             id="musicbrainz_api",
             name="MusicBrainz 音乐信息",
-            icon="site",
+            icon="musicbrainz",
             url=("https://musicbrainz.org/ws/2/recording?query=recording%3Aradiohead&fmt=json"),
             proxy=True,
             allowed_redirect_prefixes=("https://musicbrainz.org/",),
@@ -375,7 +375,7 @@ def _build_music_service_rules() -> list[NetworkTestRule]:
         NetworkTestRule(
             id="listenbrainz_api",
             name="ListenBrainz 音乐统计",
-            icon="site",
+            icon="listenbrainz",
             url=("https://api.listenbrainz.org/1/stats/sitewide/artists?range=all_time&count=1"),
             proxy=True,
             allowed_redirect_prefixes=("https://api.listenbrainz.org/",),
@@ -384,7 +384,7 @@ def _build_music_service_rules() -> list[NetworkTestRule]:
         NetworkTestRule(
             id="theaudiodb_api",
             name="TheAudioDB 音乐信息",
-            icon="site",
+            icon="theaudiodb",
             url=("https://www.theaudiodb.com/api/v1/json/2/searchalbum.php?s=radiohead"),
             proxy=True,
             allowed_redirect_prefixes=("https://www.theaudiodb.com/",),
