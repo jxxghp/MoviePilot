@@ -401,7 +401,7 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `media_source`；当 `title` 为含目录的媒体文件路径时，会合并父目录中的名称、年份等信息 |
 | GET | `/api/v1/media/recognize_file` | 识别文件路径，参数：`path`，可选 `media_source` |
 | GET | `/api/v1/media/{media_id}` | 按原生 ID 查询影视或音乐详情；必填参数：`media_source`、`type_name`，其中 `media_source` 与路径中的 `media_id` 组成统一媒体身份，`type_name` 支持电影、电视剧和音乐 |
-| POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧/音乐）。音乐会按策略处理音频标签、封面和歌词 |
+| POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧/音乐）和 TMDB `episode_group`。剧集组用于指定电视剧的季集顺序；音乐会按策略处理音频标签、封面和歌词 |
 | POST | `/api/v1/transfer/manual/target-path` | 按源文件与目录配置匹配手动整理目标路径；请求体为 `ManualTransferItem`，该接口不执行媒体识别 |
 | POST | `/api/v1/transfer/manual/history` | 查询文件、批量文件或目录命中的成功整理历史摘要，用于进入手动整理界面时显示重新整理状态 |
 | POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源；`logids` 会先还原为同一个显式文件批次，多首音乐因而共享专辑识别上下文；音乐请求未传 `music_type` 时，目录按 `album`、文件按 `recording` 解释；可用最多三项的 `music_release_regions`（ISO 3166-1）和 `music_release_scripts`（ISO 15924）仅覆盖本次 MusicBrainz 发行版本排序，省略时继承系统设置；命中持久失败历史，且未指定媒体身份、未开启 `reorganize` 时，由调度器重试原计划（包括 `logid` 历史入口）；显式重整先校验并放弃确定失败任务，再清理旧目标和记录；旧版失败历史仍清理后重试；`reorganize=true` 时清理命中的成功历史和非移动模式旧目标后重新整理 |

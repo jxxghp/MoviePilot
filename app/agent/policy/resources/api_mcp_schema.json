@@ -8958,6 +8958,18 @@
           "additionalProperties": false,
           "description": "Filters and control values for media.scrape. Generate or refresh metadata for one storage item. Use only the named fields below.",
           "properties": {
+            "episode_group": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "TMDB episode-group identifier used for alternate episode ordering.",
+              "title": "Episode Group"
+            },
             "media_id": {
               "anyOf": [
                 {

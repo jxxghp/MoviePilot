@@ -8,14 +8,14 @@ from app.domain.context import Context, MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.context import MusicInfo
-from app.schemas import FileItem, MediaType
-from app.schemas.types import MediaSource
+from app.schemas.file import FileItem
+from app.schemas.types import MediaSource, MediaType
 
 
 def test_scrape_uses_explicit_media_source_and_id() -> None:
-    """手动刮削应使用请求指定的数据源原生ID，并传给后续刮削流程。"""
-    fileitem = FileItem(storage="alist", path="/movies/Test Movie (2026).mkv", type="file")
-    media_info = MediaInfo(title="测试电影", type=MediaType.MOVIE)
+    """手动刮削应将 TMDB 剧集组与原生媒体身份传给识别流程。"""
+    fileitem = FileItem(storage="alist", path="/tv/Test Show S01E01.mkv", type="file")
+    media_info = MediaInfo(title="测试剧集", type=MediaType.TV)
     chain = Mock()
     chain.recognize_media.return_value = media_info
 
@@ -27,20 +27,22 @@ def test_scrape_uses_explicit_media_source_and_id() -> None:
         result = scrape(
             fileitem=fileitem,
             storage="alist",
-            media_source=MediaSource.Douban,
+            media_source=MediaSource.TMDB,
             media_id="123456",
-            type_name=MediaType.MOVIE,
+            type_name=MediaType.TV,
+            episode_group="group-1",
             _=Mock(),
         )
 
     assert result.success is True
     chain.recognize_by_path.assert_not_called()
     recognize_kwargs = chain.recognize_media.call_args.kwargs
-    assert recognize_kwargs["media_source"] == MediaSource.Douban
+    assert recognize_kwargs["media_source"] == MediaSource.TMDB
     assert recognize_kwargs["media_id"] == "123456"
-    assert recognize_kwargs["mtype"] == MediaType.MOVIE
+    assert recognize_kwargs["mtype"] == MediaType.TV
+    assert recognize_kwargs["episode_group"] == "group-1"
     chain.obtain_images.assert_called_once_with(mediainfo=media_info)
-    assert media_info.scrape_source == MediaSource.Douban
+    assert media_info.scrape_source == MediaSource.TMDB
     scrape_kwargs = scraping_chain.scrape_metadata.call_args.kwargs
     assert scrape_kwargs["fileitem"] is fileitem
     assert scrape_kwargs["mediainfo"] is media_info
@@ -48,7 +50,7 @@ def test_scrape_uses_explicit_media_source_and_id() -> None:
 
 
 def test_scrape_keeps_automatic_recognition_compatible() -> None:
-    """未指定媒体ID时应继续按路径识别，并允许仅限定请求级数据源。"""
+    """未指定媒体ID时按路径识别也应使用请求指定的数据源和剧集组。"""
     fileitem = FileItem(storage="alist", path="/tv/Test Show S01E01.mkv", type="file")
     meta_info = MetaBase("Test Show S01E01")
     media_info = MediaInfo(title="测试剧集", type=MediaType.TV)
@@ -63,18 +65,20 @@ def test_scrape_keeps_automatic_recognition_compatible() -> None:
         result = scrape(
             fileitem=fileitem,
             storage="alist",
-            media_source=MediaSource.Bangumi,
+            media_source=MediaSource.TMDB,
+            episode_group="group-1",
             _=Mock(),
         )
 
     assert result.success is True
     chain.recognize_by_path.assert_called_once_with(
         fileitem.path,
-        media_source=MediaSource.Bangumi,
+        media_source=MediaSource.TMDB,
+        episode_group="group-1",
         obtain_images=True,
     )
     chain.recognize_media.assert_not_called()
-    assert media_info.scrape_source == MediaSource.Bangumi
+    assert media_info.scrape_source == MediaSource.TMDB
     scraping_chain.scrape_metadata.assert_called_once_with(
         fileitem=fileitem,
         meta=meta_info,
