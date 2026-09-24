@@ -92,6 +92,148 @@ def _resolve_torrent_content_dir(
     return storage, content_dir
 
 
+def _resolve_site_subtitle_target_dir(
+    *,
+    download_dir: Path,
+    folder_name: str,
+    download_hash: Optional[str],
+    downloader: Optional[str],
+    list_torrents: Callable[..., Optional[List[DownloaderTorrent]]],
+) -> Tuple[Optional[str], Optional[Path]]:
+    """结合下载器当前内容路径解析站点字幕的原下载目录。"""
+    file_uri = FileURI.from_uri(download_dir.as_posix())
+    storage = file_uri.storage or "local"
+    if not file_uri.path:
+        logger.error("下载目录路径为空，无法保存字幕")
+        return None, None
+    content_storage, content_dir = _resolve_torrent_content_dir(
+        list_torrents,
+        download_hash=download_hash,
+        downloader=downloader,
+        default_storage=storage,
+    )
+    if content_dir:
+        storage = content_storage or storage
+        download_dir = content_dir
+    return storage, download_dir / folder_name
+
+
+def _get_completed_transfer_histories(
+    repository: Any,
+    download_hash: Optional[str],
+) -> Optional[List[TransferHistorySnapshot]]:
+    """读取同一下载任务已成功整理的源文件与目标文件对应关系。"""
+    if not download_hash:
+        return []
+    try:
+        return [
+            history
+            for history in repository.list_by_hash(download_hash)
+            if history.status and history.src and history.dest
+        ]
+    except Exception as err:
+        logger.debug(f"查询下载任务整理历史失败：{str(err)}")
+        return None
+
+
+def _prepare_site_subtitle_directory(
+    *,
+    storage_chain: StorageChain,
+    storage: str,
+    target_dir: Path,
+    transfer_history_repository: Any,
+    download_hash: Optional[str],
+) -> Tuple[Optional[_SchemaFileItem], bool]:
+    """等待下载目录或为已整理任务恢复空目录，仅返回字幕落盘所需状态。"""
+    working_dir_item = None
+    video_already_transferred = False
+    for attempt in range(30):
+        found = storage_chain.get_file_item(storage, target_dir)
+        if found:
+            working_dir_item = found
+            histories = _get_completed_transfer_histories(
+                transfer_history_repository,
+                download_hash,
+            )
+            video_already_transferred = bool(histories)
+            break
+        if attempt == 0:
+            histories = _get_completed_transfer_histories(
+                transfer_history_repository,
+                download_hash,
+            )
+            if histories:
+                try:
+                    working_dir_item = storage_chain.get_folder(storage, target_dir)
+                except Exception as err:
+                    logger.error(f"重建已整理任务下载目录失败：{target_dir} - {err}")
+                video_already_transferred = bool(histories)
+                if working_dir_item:
+                    logger.info(f"下载源目录已被整理清理，重建下载目录以保存字幕：{target_dir}")
+                    break
+        time.sleep(1)
+    if not working_dir_item:
+        histories = _get_completed_transfer_histories(
+            transfer_history_repository,
+            download_hash,
+        )
+        if histories:
+            try:
+                working_dir_item = storage_chain.get_folder(storage, target_dir)
+            except Exception as err:
+                logger.error(f"重建已整理任务下载目录失败：{target_dir} - {err}")
+            video_already_transferred = bool(histories)
+            if working_dir_item:
+                logger.info(f"下载源目录已被整理清理，重建下载目录以保存字幕：{target_dir}")
+    return working_dir_item, video_already_transferred
+
+
+def _enqueue_completed_site_subtitles(
+    *,
+    storage_chain: StorageChain,
+    working_dir_item: _SchemaFileItem,
+    context: Context,
+    download_hash: Optional[str],
+    downloader: Optional[str],
+    is_subtitle_file: Callable[[str], bool],
+) -> None:
+    """把已整理任务下载目录中的站点字幕送入标准整理队列。"""
+    try:
+        subtitle_items = [
+            item
+            for item in storage_chain.list_files(working_dir_item, recursion=False) or []
+            if item.type == "file"
+            and is_subtitle_file(item.name or Path(item.path).name)
+        ]
+    except Exception as err:
+        logger.error(f"读取已整理下载目录中的字幕文件失败：{err}")
+        return
+    if not subtitle_items:
+        return
+
+    from app.chain.transfer.facade import TransferChain
+
+    mediainfo = context.media_info
+    media_type = getattr(mediainfo, "type", None)
+    if media_type in (None, MediaType.UNKNOWN):
+        media_type = getattr(context.meta_info, "type", None)
+    transfer_chain = TransferChain()
+    for subtitle_item in subtitle_items:
+        try:
+            success, message = transfer_chain.do_transfer(
+                fileitem=subtitle_item,
+                mediainfo=mediainfo,
+                mtype=media_type,
+                downloader=downloader,
+                download_hash=download_hash,
+                background=True,
+            )
+            if not success:
+                logger.warn(f"站点字幕加入整理队列失败：{subtitle_item.path} - {message}")
+        except Exception as err:
+            logger.error(f"站点字幕加入整理队列异常：{subtitle_item.path} - {err}", exc_info=True)
+
+
 class DownloadSubtitleOwner(_DownloadOwnerBase):
     """字幕获取、解压和存储 owner。"""
 
@@ -133,23 +275,6 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             Path(file_name).suffix.lower()
             in get_chain_runtime_config_snapshot().subtitle_extensions
         )
-
-    def _get_completed_transfer_histories(
-        self,
-        download_hash: Optional[str],
-    ) -> Optional[List[TransferHistorySnapshot]]:
-        """读取同一下载任务已成功整理的源文件与目标文件对应关系。"""
-        if not download_hash:
-            return []
-        try:
-            return [
-                history
-                for history in self.transfer_history_repository.list_by_hash(download_hash)
-                if history.status and history.src and history.dest
-            ]
-        except Exception as err:
-            logger.debug(f"查询下载任务整理历史失败：{str(err)}")
-            return None
 
     @classmethod
     def _get_subtitle_working_dir(
@@ -546,51 +671,6 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             except Exception as err:
                 logger.error(f"删除临时文件失败：{str(err)}")
 
-    def _enqueue_recreated_site_subtitles(
-        self,
-        *,
-        storage_chain: StorageChain,
-        working_dir_item: _SchemaFileItem,
-        context: Context,
-        download_hash: Optional[str],
-        downloader: Optional[str],
-    ) -> None:
-        """把恢复目录中的站点字幕逐个送入标准整理队列。"""
-        try:
-            subtitle_items = [
-                item
-                for item in storage_chain.list_files(working_dir_item, recursion=False) or []
-                if item.type == "file"
-                and self._is_subtitle_file(item.name or Path(item.path).name)
-            ]
-        except Exception as err:
-            logger.error(f"读取恢复下载目录中的字幕文件失败：{err}")
-            return
-        if not subtitle_items:
-            return
-
-        from app.chain.transfer.facade import TransferChain
-
-        mediainfo = context.media_info
-        media_type = getattr(mediainfo, "type", None)
-        if media_type in (None, MediaType.UNKNOWN):
-            media_type = getattr(context.meta_info, "type", None)
-        transfer_chain = TransferChain()
-        for subtitle_item in subtitle_items:
-            try:
-                success, message = transfer_chain.do_transfer(
-                    fileitem=subtitle_item,
-                    mediainfo=mediainfo,
-                    mtype=media_type,
-                    downloader=downloader,
-                    download_hash=download_hash,
-                    background=True,
-                )
-                if not success:
-                    logger.warn(f"站点字幕加入整理队列失败：{subtitle_item.path} - {message}")
-            except Exception as err:
-                logger.error(f"站点字幕加入整理队列异常：{subtitle_item.path} - {err}", exc_info=True)
-
     def download_site_subtitles(
             self,
             context: Context,
@@ -600,12 +680,7 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             downloader: Optional[str] = None,
     ) -> None:
         """
-        添加下载任务成功后，从站点下载字幕，保存到下载目录
-        :param context:  上下文，包括识别信息、媒体信息、种子信息
-        :param download_dir:  下载目录
-        :param torrent_content: 种子内容，如果是种子文件，则为文件内容，否则为种子字符串
-        :param download_hash: 下载器任务 Hash，用于查询实际内容路径
-        :param downloader: 下载器名称
+        从站点下载字幕并保存；已整理任务的字幕会加入标准整理队列。
         """
         if not self.runtime_config.download_subtitle:
             return
@@ -626,56 +701,23 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         )
         # 文件保存目录，如果是单文件种子，则folder_name是空，此时文件保存目录就是下载目录
         storage_chain = StorageChain()
-        # 等待原下载目录出现；已成功整理而源目录被移动清理时，只恢复空下载目录供字幕落盘。
-        working_dir_item = None
-        video_already_transferred = False
-        # split download_dir into storage and path
-        fileURI = FileURI.from_uri(download_dir.as_posix())
-        storage = fileURI.storage or "local"
-        if not fileURI.path:
-            logger.error("下载目录路径为空，无法保存字幕")
-            return
-        download_dir = Path(fileURI.path)
-        content_storage, content_dir = _resolve_torrent_content_dir(
-            self.list_torrents,
+        storage, target_dir = _resolve_site_subtitle_target_dir(
+            download_dir=download_dir,
+            folder_name=folder_name,
             download_hash=download_hash,
             downloader=downloader,
-            default_storage=storage,
+            list_torrents=self.list_torrents,
         )
-        if content_dir:
-            storage = content_storage or storage
-            download_dir = content_dir
-        target_dir = download_dir / folder_name
-        transfer_histories: Optional[List[TransferHistorySnapshot]] = None
-        for attempt in range(30):
-            found = storage_chain.get_file_item(storage, target_dir)
-            if found:
-                working_dir_item = found
-                transfer_histories = self._get_completed_transfer_histories(download_hash)
-                video_already_transferred = bool(transfer_histories)
-                break
-            if attempt == 0:
-                transfer_histories = self._get_completed_transfer_histories(download_hash)
-                if transfer_histories:
-                    try:
-                        working_dir_item = storage_chain.get_folder(storage, target_dir)
-                    except Exception as err:
-                        logger.error(f"重建已整理任务下载目录失败：{target_dir} - {err}")
-                    video_already_transferred = bool(transfer_histories)
-                    if working_dir_item:
-                        logger.info(f"下载源目录已被整理清理，重建下载目录以保存字幕：{target_dir}")
-                        break
-            time.sleep(1)
-        if not working_dir_item:
-            transfer_histories = self._get_completed_transfer_histories(download_hash)
-            if transfer_histories:
-                try:
-                    working_dir_item = storage_chain.get_folder(storage, target_dir)
-                except Exception as err:
-                    logger.error(f"重建已整理任务下载目录失败：{target_dir} - {err}")
-                video_already_transferred = bool(transfer_histories)
-                if working_dir_item:
-                    logger.info(f"下载源目录已被整理清理，重建下载目录以保存字幕：{target_dir}")
+        if not storage or not target_dir:
+            return
+        # 等待原下载目录出现；已成功整理时只恢复字幕落盘目录，不恢复视频文件。
+        working_dir_item, video_already_transferred = _prepare_site_subtitle_directory(
+            storage_chain=storage_chain,
+            storage=storage,
+            target_dir=target_dir,
+            transfer_history_repository=getattr(self, "transfer_history_repository", None),
+            download_hash=download_hash,
+        )
         if not working_dir_item:
             logger.error(f"下载目录不存在，无法保存字幕：{target_dir}")
             return
@@ -714,14 +756,18 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
             finally:
                 _close_download_response(ret)
         if not video_already_transferred:
-            transfer_histories = self._get_completed_transfer_histories(download_hash)
+            transfer_histories = _get_completed_transfer_histories(
+                getattr(self, "transfer_history_repository", None),
+                download_hash,
+            )
             video_already_transferred = bool(transfer_histories)
         if video_already_transferred:
-            self._enqueue_recreated_site_subtitles(
+            _enqueue_completed_site_subtitles(
                 storage_chain=storage_chain,
                 working_dir_item=working_dir_item,
                 context=context,
                 download_hash=download_hash,
                 downloader=downloader,
+                is_subtitle_file=self._is_subtitle_file,
             )
         logger.info(f"{torrent.page_url} 页面字幕下载完成")
