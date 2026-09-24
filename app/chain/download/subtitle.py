@@ -203,7 +203,7 @@ def _enqueue_completed_site_subtitles(
             item
             for item in storage_chain.list_files(working_dir_item, recursion=False) or []
             if item.type == "file"
-            and is_subtitle_file(item.name or Path(item.path).name)
+            and is_subtitle_file(item.name or Path(item.path or "").name)
         ]
     except Exception as err:
         logger.error(f"读取已整理下载目录中的字幕文件失败：{err}")
