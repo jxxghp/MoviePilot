@@ -14764,7 +14764,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List approved built-in network-test targets without exposing their request URLs. Method: GET. Path: /api/v1/system/nettest/targets. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List approved network-test targets with sanitized destination addresses, without exposing request paths, query parameters, or credentials. Method: GET. Path: /api/v1/system/nettest/targets. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "system.network.targets",
@@ -14773,7 +14773,7 @@
         },
         "query": {
           "additionalProperties": false,
-          "description": "Filters and control values for system.network.targets. List approved built-in network-test targets without exposing their request URLs. Use only the named fields below.",
+          "description": "Filters and control values for system.network.targets. List approved network-test targets with sanitized destination addresses, without exposing request paths, query parameters, or credentials. Use only the named fields below.",
           "properties": {
             "count": {
               "anyOf": [

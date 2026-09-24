@@ -263,7 +263,7 @@ class TestNettestSecurity:
         assert resp.success
         assert any(item["id"] == "pip_proxy" for item in resp.data)
         assert any(item["id"] == "github_proxy_web" for item in resp.data)
-        assert all(set(item) == {"id", "name", "icon"} for item in resp.data)
+        assert all(set(item) == {"id", "name", "address", "icon"} for item in resp.data)
 
     def test_nettest_blocks_unknown_target_before_transport(self):
         """未知目标在应用服务目录匹配阶段即返回，不得触发传输端口。"""

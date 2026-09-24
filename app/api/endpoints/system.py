@@ -880,13 +880,21 @@ async def nettest_targets(
     """
     获取网络测试目标。
 
-    这里只返回前端渲染所需的最小信息，避免把可请求 URL、内容校验规则和
-    跳转白名单暴露给客户端。
+    这里只返回前端渲染所需的最小信息；展示地址只包含来源主机，隐藏请求路径、
+    查询参数和凭据，内容校验规则与跳转白名单也不会暴露给客户端。
     """
     targets = get_configured_network_test_service().list_targets()
     return _SchemaResponse(
         success=True,
-        data=[{"id": item.id, "name": item.name, "icon": item.icon} for item in targets],
+        data=[
+            {
+                "id": item.id,
+                "name": item.name,
+                "address": item.address,
+                "icon": item.icon,
+            }
+            for item in targets
+        ],
     )
 
 
