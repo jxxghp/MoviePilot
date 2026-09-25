@@ -370,6 +370,60 @@ def test_sync_targets_one_server_without_excluding_other_enabled_servers(monkeyp
     assert excluded_server_calls == [["plex-a", "plex-b"]]
 
 
+def test_sync_preserves_cached_rows_when_plex_item_timeout_aborts_library(database):
+    """Plex 条目读取超时中止同步时，应保留上一轮缓存而不执行陈旧数据清理。"""
+    with database() as session:
+        session.add(
+            MediaServerItem(
+                server="plex",
+                library="movies",
+                item_id="not-reached-before-timeout",
+                item_type="电影",
+                title="已有媒体",
+                lst_mod_date="2026-05-01 00:00:00",
+            )
+        )
+        session.commit()
+
+    chain = object.__new__(MediaServerChain)
+    chain.librarys = lambda _server: [SimpleNamespace(id="movies", name="电影库")]
+    chain.media_count = lambda _server: 1
+    chain.items_count = lambda **_kwargs: pytest.fail("整服统计存在时不应逐库计数")
+
+    def items_with_timeout(**_kwargs):
+        """模拟 Plex 已返回部分条目后，分页请求最终仍超时。"""
+        yield schemas.MediaServerItem(
+            server="plex",
+            library="movies",
+            item_id="received-before-timeout",
+            item_type="Movie",
+            title="已读取媒体",
+        )
+        raise TimeoutError("Plex read timeout")
+
+    chain.items = items_with_timeout
+    chain.episodes = lambda *_args, **_kwargs: []
+    chain.media_server_repository = TransactionalMediaServerRepository(database)
+
+    with (
+        patch.object(
+            MEDIA_SERVER_CHAIN_MODULE,
+            "get_mediaserver_configs",
+            return_value=[SimpleNamespace(name="plex", enabled=True, sync_libraries=["all"])],
+        ),
+        pytest.raises(TimeoutError, match="Plex read timeout"),
+    ):
+        chain.sync()
+
+    with database() as session:
+        item_ids = {
+            item.item_id
+            for item in session.query(MediaServerItem).filter(MediaServerItem.server == "plex").all()
+        }
+
+    assert item_ids == {"not-reached-before-timeout", "received-before-timeout"}
+
+
 def test_sync_partial_commit_preserves_stale_rows_until_next_run(
     database,
     monkeypatch,

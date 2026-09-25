@@ -1,6 +1,7 @@
 import json
+import time
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
 from plexapi.exceptions import NotFound
@@ -22,14 +23,34 @@ from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.schemas.types import MediaSource, MediaType
 
+PLEX_LIBRARY_SYNC_PAGE_SIZE = 50
+PLEX_SYNC_TIMEOUT_MAX_ATTEMPTS = 3
+PLEX_SYNC_TIMEOUT_RETRY_DELAY_SECONDS = 1
+
 
 class Plex:
+    """Plex 媒体服务器客户端，负责连接管理和媒体库数据读取。"""
+
     _plex = None
     _request_utils = None
     _sync_libraries: List[str] = []
 
     def __init__(self, host: Optional[str] = None, token: Optional[str] = None, play_host: Optional[str] = None,
-                 sync_libraries: list = None, **kwargs):
+                 sync_libraries: Optional[list[str]] = None, timeout: Optional[int] = 30, **kwargs: Any) -> None:
+        """初始化 Plex 连接和单次请求超时配置。
+
+        :param host: Plex 服务地址
+        :param token: Plex 访问令牌
+        :param play_host: 用于生成播放链接的外网地址
+        :param sync_libraries: 需要同步的媒体库 ID
+        :param timeout: Plex 请求超时时间，单位为秒
+        """
+        try:
+            self._timeout = int(timeout or 30)
+        except (TypeError, ValueError):
+            self._timeout = 30
+        if self._timeout <= 0:
+            self._timeout = 30
         if not host or not token:
             logger.error("Plex服务器配置不完整！")
             return
@@ -42,7 +63,7 @@ class Plex:
         self._token = token
         if self._host and self._token:
             try:
-                self._plex = PlexServer(self._host, self._token)
+                self._plex = PlexServer(self._host, self._token, timeout=self._timeout)
                 self._libraries = self._plex.library.sections()
             except Exception as e:
                 self._plex = None
@@ -66,7 +87,7 @@ class Plex:
         重连
         """
         try:
-            self._plex = PlexServer(self._host, self._token)
+            self._plex = PlexServer(self._host, self._token, timeout=self._timeout)
             self._libraries = self._plex.library.sections()
         except Exception as e:
             self._plex = None
@@ -84,7 +105,7 @@ class Plex:
         try:
             account = MyPlexAccount(username=username, password=password, remember=False)
             if account:
-                plex = PlexServer(self._host, account.authToken)
+                plex = PlexServer(self._host, account.authToken, timeout=self._timeout)
                 if not plex:
                     return None
                 return account.authToken, account.username
@@ -687,33 +708,92 @@ class Plex:
     def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0, limit: Optional[int] = -1) \
             -> Generator[MediaServerItem | None, Any, None]:
         """
-        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+        分页获取媒体服务器项目列表；超时会有限重试，重试耗尽时中止同步。
 
         :param parent: 媒体库ID，用于标识要获取的媒体库
         :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
-        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
+        :param limit: 本次调用的最大项目数；None 或 -1 表示从起始索引开始读取整个媒体库
 
         :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
         """
         if not parent or not self._plex:
             return None
+        plex = self._plex
         try:
-            section = self._plex.library.sectionByID(int(parent))
-            if section:
-                if limit is None or limit == -1:
-                    items = section.all()
-                else:
-                    items = section.all(container_start=start_index, container_size=limit, maxresults=limit)
+            section = self._retry_timeout(
+                lambda: plex.library.sectionByID(int(parent)),
+                f"获取媒体库 {parent}",
+            )
+            if not section:
+                return None
+
+            if limit is None or limit == -1:
+                fetch_all = True
+                page_size = PLEX_LIBRARY_SYNC_PAGE_SIZE
+            else:
+                fetch_all = False
+                if limit <= 0:
+                    return None
+                page_size = limit
+            page_start = max(start_index or 0, 0)
+            while True:
+                items = self._retry_timeout(
+                    lambda: section.all(
+                        container_start=page_start,
+                        container_size=page_size,
+                        maxresults=page_size,
+                    ),
+                    f"读取媒体库 {parent} 的第 {page_start} 项分页",
+                )
+                if not items:
+                    break
+
                 for item in items:
-                    try:
-                        if not item:
-                            continue
-                        yield self.__build_media_server_item(item)
-                    except Exception as e:
-                        logger.error(f"处理媒体项目时出错：{str(e)}, 跳过此项目")
+                    if not item:
                         continue
+                    try:
+                        media_item = self._retry_timeout(
+                            lambda: self.__build_media_server_item(item),
+                            f"处理媒体项目 {getattr(item, 'key', '')}",
+                        )
+                    except Exception as err:
+                        if self._is_timeout_exception(err):
+                            raise
+                        logger.error(f"处理媒体项目时出错：{str(err)}, 跳过此项目")
+                        continue
+                    if media_item is not None:
+                        yield media_item
+
+                if not fetch_all or len(items) < page_size:
+                    break
+                page_start += len(items)
         except Exception as err:
+            if self._is_timeout_exception(err):
+                raise
             logger.error(f"获取媒体库列表出错：{str(err)}")
+        return None
+
+    @staticmethod
+    def _is_timeout_exception(error: Exception) -> bool:
+        """识别 PlexAPI 底层 HTTP 客户端抛出的超时异常。"""
+        return any("timeout" in exception_type.__name__.casefold() for exception_type in type(error).__mro__)
+
+    @staticmethod
+    def _retry_timeout(operation: Callable[[], Any], description: str) -> Any:
+        """对 Plex 同步中的超时操作重试，耗尽后向上传递失败以保留旧缓存。"""
+        for attempt in range(PLEX_SYNC_TIMEOUT_MAX_ATTEMPTS):
+            try:
+                return operation()
+            except Exception as err:
+                if not Plex._is_timeout_exception(err):
+                    raise
+                if attempt + 1 == PLEX_SYNC_TIMEOUT_MAX_ATTEMPTS:
+                    logger.error(f"Plex {description}连续超时，已重试 {attempt} 次：{str(err)}")
+                    raise
+                logger.warning(
+                    f"Plex {description}请求超时，准备第 {attempt + 1} 次重试：{str(err)}"
+                )
+                time.sleep(PLEX_SYNC_TIMEOUT_RETRY_DELAY_SECONDS)
         return None
 
     def get_webhook_message(self, form: Any) -> Optional[_SchemaWebhookEventInfo]:

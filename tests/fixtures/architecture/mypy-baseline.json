@@ -1917,13 +1917,13 @@
   },
   "app/modules/plex/plex.py": {
     "arg-type": 2,
-    "assignment": 3,
+    "assignment": 2,
     "misc": 1,
     "no-any-return": 1,
-    "no-untyped-def": 10,
+    "no-untyped-def": 9,
     "operator": 5,
     "return-value": 1,
-    "type-arg": 4,
+    "type-arg": 3,
     "union-attr": 4,
     "var-annotated": 3
   },
