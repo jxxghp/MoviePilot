@@ -697,7 +697,7 @@ class TorrentHelper:
         if torrent_year and torrent_year in target_years:
             return True, f"资源年份 {torrent_year}"
 
-        for field in ("imdb_id", "tvdb_id", "douban_id", "bangumi_id"):
+        for field in ("tmdb_id", "imdb_id", "tvdb_id", "douban_id", "bangumi_id"):
             target_id = getattr(target_mediainfo, field, None)
             candidate_id = getattr(candidate_mediainfo, field, None)
             if target_id and candidate_id and str(target_id) == str(candidate_id):
