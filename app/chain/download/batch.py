@@ -231,13 +231,9 @@ class DownloadBatchOwner(_DownloadOwnerBase):
                         # 种子季是需要季或者子集
                         if set(torrent_season).issubset(set(need_season)):
                             # 分集洗版的整包只有全部目标集均可升级时才可整体下载；多季包无法用单季允许集证明安全。
-                            if context.allowed_episodes is not None:
-                                if len(torrent_season) != 1:
-                                    continue
-                                required_episodes = __get_required_episodes(need_mid, torrent_season[0])
-                                if not required_episodes or __apply_allowed_episodes(required_episodes, context) \
-                                        != required_episodes:
-                                    continue
+                            required_episodes = __get_required_episodes(need_mid, torrent_season[0])
+                            if not _selection.allows_full_season(torrent_season, required_episodes, context):
+                                continue
                             complete_coverage_matched = False
                             if len(torrent_season) == 1:
                                 # 只有一季的可能是命名错误，需要打开种子鉴别，只有实际集数大于等于总集数才下载
@@ -267,9 +263,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
                                 if not torrent_episodes:
                                     continue
                                 torrent_episodes_set = set(torrent_episodes)
-                                if context.allowed_episodes is not None \
-                                        and __apply_allowed_episodes(torrent_episodes_set, context) \
-                                        != torrent_episodes_set:
+                                if not _selection.allows_full_pack(torrent_episodes_set, context):
                                     continue
                                 # 更新集数范围
                                 begin_ep = min(torrent_episodes)
@@ -394,12 +388,9 @@ class DownloadBatchOwner(_DownloadOwnerBase):
                             if __requires_complete_coverage(missing_info):
                                 # 完整覆盖任务要求候选集数覆盖目标范围，允许资源包含范围外的额外集。
                                 required_episodes = __get_required_episodes(need_mid, season_number)
-                                match_episodes = required_episodes.issubset(candidate_episodes) \
-                                    if required_episodes else False
-                                if match_episodes and context.allowed_episodes is not None:
-                                    # 完整覆盖不能绕过按集准入，整包内每一集都必须获准。
-                                    match_episodes = __apply_allowed_episodes(candidate_episodes, context) \
-                                        == candidate_episodes
+                                match_episodes = bool(required_episodes) \
+                                    and required_episodes.issubset(candidate_episodes) \
+                                    and _selection.allows_full_pack(candidate_episodes, context)
                             else:
                                 # 普通缺集下载保持原语义：候选自身必须是所需集的子集。
                                 match_episodes = candidate_episodes.issubset(effective_need)
