@@ -24,6 +24,8 @@ register_channel_admin_resolver(
 
 
 class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
+    """解析 VoceChat 入站消息并发送渠道通知。"""
+
     # 管理员配置键，与渠道 resolver 保持一致
     _admin_config_key = "VOCECHAT_ADMINS"
     _IMAGE_SUFFIXES = (
@@ -61,6 +63,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
 
     @staticmethod
     def get_name() -> str:
+        """获取模块名称"""
         return "VoceChat"
 
     @staticmethod
@@ -85,9 +88,11 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
         return 4
 
     def stop(self):
+        """VoceChat 客户端无需额外停止操作"""
         pass
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """VoceChat 不提供额外的模块初始化设置"""
         pass
 
     @staticmethod
@@ -157,7 +162,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
             if from_uid is None:
                 return None
             actor_userid = f"UID#{from_uid}"
-            channel_id = client_config.config.get("channel_id")
+            channel_id = client_config.config.get("VOCECHAT_CHANNEL_ID")
             if gid and str(gid) == str(channel_id):
                 # 来自监听频道的消息
                 userid = f"GID#{gid}"
@@ -192,6 +197,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
     def _extract_images(
         cls, detail: dict
     ) -> Optional[List[IncomingMessage.MessageImage]]:
+        """从 VoceChat 文件消息中提取图片引用"""
         content_type = detail.get("content_type") or ""
         if content_type != "vocechat/file":
             return None
@@ -244,6 +250,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
 
     @classmethod
     def _extract_audio_refs(cls, detail: dict) -> Optional[List[str]]:
+        """从 VoceChat 文件消息中提取音频引用"""
         content_type = detail.get("content_type") or ""
         if content_type != "vocechat/file":
             return None
@@ -277,6 +284,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
     def _extract_files(
         cls, detail: dict
     ) -> Optional[List[IncomingMessage.MessageAttachment]]:
+        """从 VoceChat 文件消息中提取普通附件"""
         content_type = detail.get("content_type") or ""
         if content_type != "vocechat/file":
             return None
@@ -375,6 +383,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
                                          userid=userid, link=message.link)
 
     def register_commands(self, commands: Dict[str, dict]):
+        """VoceChat 不支持注册命令菜单"""
         pass
 
     def download_vocechat_image_to_data_url(self, image_ref: str, source: str) -> Optional[str]:
