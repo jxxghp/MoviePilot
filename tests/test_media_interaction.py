@@ -7,8 +7,9 @@ import pytest
 from app.chain.message import MessageChain
 from app.chain.interaction import MediaInteractionChain
 from app.runtime.events import EventManager
-from app.domain.context import Context, MediaInfo, TorrentInfo
+from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
 from app.application.messaging.interaction import InteractionContext
 from app.application.messaging.media import media_interaction_manager
 from app.application.messaging.plugin import (
@@ -16,7 +17,14 @@ from app.application.messaging.plugin import (
     plugin_input_interaction_manager,
 )
 from app.schemas import IncomingMessage, TransferDirectoryConf  # pylint: disable=no-name-in-module
-from app.schemas.types import EventType, MediaSource, MediaType, NotificationChannel
+from app.schemas.types import (
+    MUSIC_ENTITY_ALBUM,
+    MUSIC_ENTITY_RECORDING,
+    EventType,
+    MediaSource,
+    MediaType,
+    NotificationChannel,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -43,6 +51,196 @@ def _build_meta(name: str) -> MetaBase:
     meta.name = name
     meta.begin_season = 1
     return meta
+
+
+@pytest.mark.parametrize(
+    ("text", "action", "query"),
+    [
+        ("音乐 搜索 周杰伦 晴天", "MusicSearch", "周杰伦 晴天"),
+        ("搜歌 周杰伦 晴天", "MusicSearch", "周杰伦 晴天"),
+        ("下载音乐 周杰伦 晴天", "MusicReSearch", "周杰伦 晴天"),
+        ("订阅音乐 周杰伦 晴天", "MusicSubscribe", "周杰伦 晴天"),
+        ("音乐 洗版 周杰伦 晴天", "MusicReSubscribe", "周杰伦 晴天"),
+    ],
+)
+def test_resolve_explicit_music_message_actions(text, action, query):
+    """显式音乐前缀应路由到相应音乐操作并保留检索词。"""
+    assert MediaInteractionChain._resolve_action(text) == (action, query)
+
+
+def test_message_routes_music_search_when_agent_is_disabled():
+    """未启用智能助手时，消息渠道音乐搜索应创建音乐候选交互。"""
+    chain = MessageChain()
+    chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=False)
+    candidates = [
+        MusicInfo(
+            media_source=MediaSource.MusicBrainz,
+            media_id="recording-1",
+            title="晴天",
+            artists=["周杰伦"],
+        ),
+        MusicInfo(
+            media_source=MediaSource.MusicBrainz,
+            media_id="album-1",
+            music_type=MUSIC_ENTITY_ALBUM,
+            title="叶惠美",
+            artists=["周杰伦"],
+        ),
+    ]
+
+    with (
+        patch(
+            "app.chain.interaction.MediaChain.search_music",
+            return_value=candidates,
+        ) as search_music,
+        patch(
+            "app.chain.interaction.MediaInteractionChain._render_interaction"
+        ),
+    ):
+        chain._handle_message_core(
+            channel=NotificationChannel.Wechat,
+            source="wechat-test",
+            userid="music-user",
+            username="tester",
+            text="音乐 搜索 周杰伦 晴天",
+        )
+
+    search_music.assert_called_once_with(
+        query="周杰伦 晴天",
+        limit=20,
+        music_types=(MUSIC_ENTITY_RECORDING, MUSIC_ENTITY_ALBUM),
+    )
+    request = media_interaction_manager.get_by_user("music-user")
+    assert request is not None
+    assert request.action == "MusicSearch"
+    assert request.keyword == "周杰伦 晴天"
+    assert request.items == candidates
+
+
+def test_music_candidates_are_presented_as_text_for_plain_message_channel():
+    """不支持媒体卡片的消息渠道应以编号文本展示单曲和专辑候选。"""
+    chain = MediaInteractionChain()
+    request = media_interaction_manager.create_or_replace(
+        user_id="music-user",
+        channel=NotificationChannel.Wechat,
+        source="wechat-test",
+        username="tester",
+        action="MusicSearch",
+        keyword="周杰伦 晴天",
+        title="周杰伦 晴天",
+        meta=MetaMusic.parse_query("周杰伦 晴天"),
+        items=[
+            MusicInfo(title="晴天", artists=["周杰伦"]),
+            MusicInfo(
+                music_type=MUSIC_ENTITY_ALBUM,
+                title="叶惠美",
+                artists=["周杰伦"],
+            ),
+        ],
+    )
+
+    with patch.object(chain, "post_message") as post_message:
+        chain._post_medias_message(
+            request=request,
+            channel=NotificationChannel.Wechat,
+            source="wechat-test",
+            userid="music-user",
+        )
+
+    notification = post_message.call_args.args[0]
+    assert "请回复对应数字选择" in notification.title
+    assert notification.buttons is None
+    assert "1. [单曲] 晴天 — 周杰伦" in notification.text
+    assert "2. [专辑] 叶惠美 — 周杰伦" in notification.text
+
+
+def test_music_subscription_selection_preserves_selected_music_type():
+    """选择音乐专辑创建订阅时应将实体类型传给订阅链。"""
+    chain = MediaInteractionChain()
+    album = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="album-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="叶惠美",
+        artists=["周杰伦"],
+    )
+    request = media_interaction_manager.create_or_replace(
+        user_id="music-user",
+        channel=NotificationChannel.Wechat,
+        source="wechat-test",
+        username="tester",
+        action="MusicSubscribe",
+        keyword="周杰伦 叶惠美",
+        title="叶惠美",
+        meta=MetaMusic.parse_query("周杰伦 叶惠美"),
+        items=[album],
+    )
+
+    with (
+        patch(
+            "app.chain.interaction.DownloadChain.get_no_exists_info",
+            return_value=(False, None),
+        ),
+        patch("app.chain.interaction.SubscribeChain.add") as add_subscribe,
+        patch.object(chain.user_repository, "find_name_by_bindings", return_value=None),
+    ):
+        chain.handle_text_interaction(
+            channel=NotificationChannel.Wechat,
+            source="wechat-test",
+            userid="music-user",
+            username="tester",
+            text="1",
+        )
+
+    assert request.current_media is album
+    assert add_subscribe.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
+
+
+def test_auto_download_fallback_subscription_preserves_music_type():
+    """音乐自动下载未完成时补建订阅应保留单曲或专辑实体类型。"""
+    chain = MediaInteractionChain()
+    album = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="album-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="叶惠美",
+        artists=["周杰伦"],
+    )
+    request = media_interaction_manager.create_or_replace(
+        user_id="music-user",
+        channel=NotificationChannel.Wechat,
+        source="wechat-test",
+        username="tester",
+        action="MusicSearch",
+        keyword="周杰伦 叶惠美",
+        title="叶惠美",
+        meta=MetaMusic.parse_query("周杰伦 叶惠美"),
+        items=[album],
+    )
+    request.current_media = album
+
+    with (
+        patch(
+            "app.chain.interaction.DownloadChain.get_no_exists_info",
+            return_value=(False, None),
+        ),
+        patch(
+            "app.chain.interaction.DownloadChain.batch_download",
+            return_value=([], [object()]),
+        ),
+        patch("app.chain.interaction.SubscribeChain.add") as add_subscribe,
+        patch.object(chain.user_repository, "find_name_by_bindings", return_value=None),
+    ):
+        chain._auto_download(
+            request=request,
+            cache_list=[],
+            channel=NotificationChannel.Wechat,
+            source="wechat-test",
+            userid="music-user",
+            username="tester",
+        )
+
+    assert add_subscribe.call_args.kwargs["music_type"] == MUSIC_ENTITY_ALBUM
 
 
 def _build_context(title: str = "星际穿越") -> Context:

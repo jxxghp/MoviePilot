@@ -841,12 +841,7 @@
     "no-any-return": 28
   },
   "app/chain/interaction.py": {
-    "arg-type": 4,
-    "assignment": 1,
-    "no-untyped-call": 1,
-    "return-value": 1,
-    "union-attr": 16,
-    "var-annotated": 1
+    "no-untyped-call": 1
   },
   "app/chain/mediaserver.py": {
     "arg-type": 3,

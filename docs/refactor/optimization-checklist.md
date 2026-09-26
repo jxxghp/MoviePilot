@@ -94,7 +94,7 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 1048 / 8,894 | `dependency-baseline.json` 当前快照；系统设置合同按 `app.application.settings` 包组织，系统设置 API 端点独立按 `app.api.endpoints.settings` 归档；已整理下载的站点字幕经 `app.chain.transfer` 自动整理队列完成命名与归档；网络连通性检测按 `app.application.nettest` 归档 |
+| 宿主 Python 模块 / 内部依赖边 | 1050 / 8,915 | `dependency-baseline.json` 当前快照；系统设置合同按 `app.application.settings` 包组织，系统设置 API 端点独立按 `app.api.endpoints.settings` 归档；消息音乐交互由音乐解析/展示与订阅协调 owner 处理；已整理下载的站点字幕经 `app.chain.transfer` 自动整理队列完成命名与归档；网络连通性检测按 `app.application.nettest` 归档 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -102,7 +102,7 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 305,884 行 | 排除 `app/plugins/**`；61 个文件超过 1,000 行，11 个超过 2,000 行 |
 | 长方法 | 290 个超过 80 行 | AST 统计排除 `app/plugins/**`；65 个超过 150 行，21 个超过 250 行 |
-| 全量 mypy 历史债务 | 9,293 / 506 文件 | 删除独立活动日志中间件后的现状基线；canonical Facade 与 endpoint 类型边界已补齐，低水位只允许继续下降 |
+| 全量 mypy 历史债务 | 9,270 / 506 文件 | 删除独立活动日志中间件后的现状基线；消息媒体交互类型债务已清零，canonical Facade 与 endpoint 类型边界已补齐，低水位只允许继续下降 |
 | Ruff 历史诊断 | 516 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率固定基线 | Application 80.00%，Domain 80.00% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
