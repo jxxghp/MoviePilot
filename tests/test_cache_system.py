@@ -23,7 +23,7 @@ from app.runtime.cache import (
     TTLCache,
     cached,
 )
-from app.runtime.config import settings
+from app.runtime.config import ConfigModel, settings
 
 
 def test_file_backend_items_keep_relative_keys_and_bytes(tmp_path):
@@ -977,6 +977,14 @@ def test_redis_helpers_watch_pool_settings():
     assert "CACHE_REDIS_POOL_TIMEOUT" in AsyncRedisHelper.CONFIG_WATCH
     assert "BIG_MEMORY_MODE" in RedisHelper.CONFIG_WATCH
     assert "BIG_MEMORY_MODE" in AsyncRedisHelper.CONFIG_WATCH
+
+
+def test_redis_pool_defaults_cover_startup_concurrency():
+    """Redis 默认连接池应为启动期并发读写留出容量和等待时间。"""
+    config = ConfigModel()
+
+    assert config.CACHE_REDIS_MAX_CONNECTIONS == 512
+    assert config.CACHE_REDIS_POOL_TIMEOUT == 10
 
 
 def test_async_file_backend_missing_region_has_no_items(tmp_path):
