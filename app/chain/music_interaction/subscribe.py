@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
-from app.chain._music_interaction import (
+from app.chain.download import DownloadChain
+from app.chain.music_interaction.music import (
     media_exists_retry_prompt,
     selected_music_type,
 )
-from app.chain.download import DownloadChain
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo, MusicInfo
 from app.schemas.message import Message

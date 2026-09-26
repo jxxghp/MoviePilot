@@ -94,7 +94,7 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 1050 / 8,915 | `dependency-baseline.json` 当前快照；系统设置合同按 `app.application.settings` 包组织，系统设置 API 端点独立按 `app.api.endpoints.settings` 归档；消息音乐交互由音乐解析/展示与订阅协调 owner 处理；已整理下载的站点字幕经 `app.chain.transfer` 自动整理队列完成命名与归档；网络连通性检测按 `app.application.nettest` 归档 |
+| 宿主 Python 模块 / 内部依赖边 | 1051 / 8,917 | `dependency-baseline.json` 当前快照；系统设置合同按 `app.application.settings` 包组织，系统设置 API 端点独立按 `app.api.endpoints.settings` 归档；消息音乐交互由 `app.chain.music_interaction` 包中的音乐解析/展示与订阅协调模块处理；已整理下载的站点字幕经 `app.chain.transfer` 自动整理队列完成命名与归档；网络连通性检测按 `app.application.nettest` 归档 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |

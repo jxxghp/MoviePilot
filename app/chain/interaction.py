@@ -8,8 +8,10 @@ from app.application.messaging.media import (
     media_interaction_manager,
 )
 from app.application.torrent.download import TorrentHelper
-from app.chain._interaction_subscribe import subscribe_media
-from app.chain._music_interaction import (
+from app.chain.base import ChainBase
+from app.chain.download import DownloadChain
+from app.chain.media import MediaChain
+from app.chain.music_interaction.music import (
     format_music_candidate,
     media_exists_retry_prompt,
     post_music_candidates,
@@ -17,9 +19,7 @@ from app.chain._music_interaction import (
     search_music_candidates,
     selected_music_type,
 )
-from app.chain.base import ChainBase
-from app.chain.download import DownloadChain
-from app.chain.media import MediaChain
+from app.chain.music_interaction.subscribe import subscribe_media
 from app.chain.search.facade import SearchChain
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain import episode as episode_rules
