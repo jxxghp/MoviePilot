@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from app.application.history import DownloadHistorySnapshot
 from app.application.transfer.workflow import TransferTask
 from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
@@ -11,8 +13,18 @@ from app.schemas.file import FileItem
 from app.schemas.types import MediaSource, MediaType
 
 
-def test_download_history_type_wins_over_monitor_type_hint(monkeypatch):
-    """TMDB 影视 ID 冲突时，按下载历史保存的类型查询，不被目录提示改写。"""
+@pytest.mark.parametrize(
+    ("history_type", "expected_type"),
+    [
+        (MediaType.TV.value, MediaType.TV),
+        (MediaType.UNKNOWN.value, MediaType.MOVIE),
+        ("invalid", MediaType.MOVIE),
+    ],
+)
+def test_download_history_type_wins_over_monitor_type_hint(
+        monkeypatch, history_type: str, expected_type: MediaType
+):
+    """TMDB 影视 ID 冲突时优先使用下载历史类型，并为无效类型保留调用提示。"""
     recognized_media = MediaInfo(type=MediaType.TV, title="兰香如故", year="2026")
     recognition_calls = []
 
@@ -55,7 +67,7 @@ def test_download_history_type_wins_over_monitor_type_hint(monkeypatch):
         download_history=DownloadHistorySnapshot(
             id=1,
             path="/downloads/兰香如故.S01E32.mkv",
-            type=MediaType.TV.value,
+            type=history_type,
             title="兰香如故",
             media_source=MediaSource.TMDB,
             media_id="282326",
@@ -67,6 +79,6 @@ def test_download_history_type_wins_over_monitor_type_hint(monkeypatch):
 
     assert not state
     assert "已在整理队列中" in message
-    assert recognition_calls[0]["mtype"] == MediaType.TV
+    assert recognition_calls[0]["mtype"] == expected_type
     assert recognition_calls[0]["media_source"] == MediaSource.TMDB
     assert recognition_calls[0]["media_id"] == "282326"
