@@ -1520,6 +1520,122 @@ def test_batch_download_complete_coverage_ignores_allowed_episode_narrowing(monk
     chain.download_single.assert_not_called()
 
 
+def test_batch_download_skips_multi_episode_pack_outside_upgrade_allowlist(monkeypatch):
+    """分集洗版只允许 E20/E21 时，已达上限的 E01-E03 整包不得进入下载器。"""
+    _FakeBatchTorrentHelper.episodes = [1, 2, 3]
+    monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(download_selection, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(eventmanager, "send_event", lambda *args, **kwargs: None)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
+    chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
+    chain.download_single = MagicMock(return_value="hash")
+
+    context = _build_tv_context(episode_list=[1, 2, 3])
+    context.allowed_episodes = {20, 21}
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(season=1, episodes=list(range(1, 22)), total_episode=21),
+    )
+
+    downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
+
+    assert downloads == []
+    assert lefts == no_exists
+    chain.download_single.assert_not_called()
+
+
+def test_batch_download_complete_coverage_pack_respects_upgrade_allowlist(monkeypatch):
+    """完整覆盖任务不能让部分剧集获准的显式整包绕过分集洗版限制。"""
+    _FakeBatchTorrentHelper.episodes = []
+    monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(download_selection, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(eventmanager, "send_event", lambda *args, **kwargs: None)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
+    chain.download_single = MagicMock(return_value="hash")
+
+    context = _build_tv_context(episode_list=[1, 2, 3])
+    context.allowed_episodes = {3}
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(
+            season=1,
+            episodes=[],
+            total_episode=3,
+            require_complete_coverage=True,
+        ),
+    )
+
+    downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
+
+    assert downloads == []
+    assert lefts == no_exists
+    chain.download_single.assert_not_called()
+
+
+def test_batch_download_skips_unlabelled_full_pack_outside_upgrade_allowlist(monkeypatch):
+    """标题无集号的整季包也不能绕过分集洗版的允许集下载已达上限剧集。"""
+    _FakeBatchTorrentHelper.episodes = [1, 2, 3]
+    monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(download_selection, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(eventmanager, "send_event", lambda *args, **kwargs: None)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
+    chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
+    chain.download_single = MagicMock(return_value="hash")
+
+    context = _build_tv_context()
+    context.allowed_episodes = {3}
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(season=1, episodes=[], total_episode=3),
+    )
+
+    downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
+
+    assert downloads == []
+    assert lefts == no_exists
+    chain.download_torrent.assert_not_called()
+    chain.download_single.assert_not_called()
+
+
+@pytest.mark.parametrize("torrent_episodes, downloaded", [([1, 2, 3], True), ([1, 2, 3, 4], False)])
+def test_batch_download_unlabelled_full_pack_checks_actual_episode_allowlist(
+    monkeypatch, torrent_episodes, downloaded
+):
+    """整季目标均获准时可下载，但种子文件多出未获准剧集时须跳过。"""
+    _FakeBatchTorrentHelper.episodes = torrent_episodes
+    monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(download_selection, "TorrentHelper", _FakeBatchTorrentHelper)
+    monkeypatch.setattr(eventmanager, "send_event", lambda *args, **kwargs: None)
+
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.eventmanager = MagicMock()
+    chain.eventmanager.send_event.return_value = None
+    chain.download_torrent = MagicMock(return_value=(b"torrent-content", "", ["demo.mkv"]))
+    chain.download_single = MagicMock(return_value="hash")
+
+    context = _build_tv_context()
+    context.allowed_episodes = {1, 2, 3}
+    no_exists = _tv_no_exists(
+        1,
+        NotExistMediaInfo(season=1, episodes=[], total_episode=3),
+    )
+
+    downloads, lefts = chain.batch_download(contexts=[context], no_exists=no_exists)
+
+    assert downloads == ([context] if downloaded else [])
+    assert lefts == ({} if downloaded else no_exists)
+    assert chain.download_single.call_count == int(downloaded)
+
+
 def test_batch_download_keeps_count_check_without_complete_coverage(monkeypatch):
     """
     普通整季缺失仍沿用数量判断，避免完整覆盖语义影响非严格场景。
