@@ -11,6 +11,8 @@ from app.schemas.types import ModuleType
 
 
 class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
+    """解析 VoceChat 入站消息并发送渠道通知。"""
+
     _IMAGE_SUFFIXES = (
         ".png",
         ".jpg",
@@ -46,6 +48,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
 
     @staticmethod
     def get_name() -> str:
+        """获取模块名称"""
         return "VoceChat"
 
     @staticmethod
@@ -70,6 +73,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
         return 4
 
     def stop(self):
+        """VoceChat 客户端无需额外停止操作"""
         pass
 
     def test(self) -> Optional[Tuple[bool, str]]:
@@ -85,6 +89,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """VoceChat 不提供额外的模块初始化设置"""
         pass
 
     @staticmethod
@@ -180,7 +185,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
                 text = content
             # 用户ID
             gid = msg_body.get("target", {}).get("gid")
-            channel_id = client_config.config.get("channel_id")
+            channel_id = client_config.config.get("VOCECHAT_CHANNEL_ID")
             if gid and str(gid) == str(channel_id):
                 # 来自监听频道的消息
                 userid = f"GID#{gid}"
@@ -211,6 +216,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
     def _extract_images(
         cls, detail: dict
     ) -> Optional[List[CommingMessage.MessageImage]]:
+        """从 VoceChat 文件消息中提取图片引用"""
         content_type = detail.get("content_type") or ""
         if content_type != "vocechat/file":
             return None
@@ -263,6 +269,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
 
     @classmethod
     def _extract_audio_refs(cls, detail: dict) -> Optional[List[str]]:
+        """从 VoceChat 文件消息中提取音频引用"""
         content_type = detail.get("content_type") or ""
         if content_type != "vocechat/file":
             return None
@@ -296,6 +303,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
     def _extract_files(
         cls, detail: dict
     ) -> Optional[List[CommingMessage.MessageAttachment]]:
+        """从 VoceChat 文件消息中提取普通附件"""
         content_type = detail.get("content_type") or ""
         if content_type != "vocechat/file":
             return None
@@ -394,6 +402,7 @@ class VoceChatModule(_ModuleBase, _MessageBase[VoceChat]):
                                          userid=userid, link=message.link)
 
     def register_commands(self, commands: Dict[str, dict]):
+        """VoceChat 不支持注册命令菜单"""
         pass
 
     def download_vocechat_image_to_data_url(self, image_ref: str, source: str) -> Optional[str]:
