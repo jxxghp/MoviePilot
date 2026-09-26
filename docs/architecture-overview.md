@@ -771,7 +771,7 @@ flowchart LR
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 
-整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。未启用智能助手的消息音乐交互由 `app.chain.music_interaction` 包中的解析展示与订阅协调模块处理；宿主依赖边现为 8,917，音乐交互包未新增 SCC。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。当前 `app.startup.lifecycle` 为 569、`app.factory` 为 581、`app.main` 为 583。性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
+整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。未启用智能助手的消息音乐交互由 `app.chain.music_interaction` 包中的解析展示与订阅协调模块处理；宿主依赖边现为 8,917，音乐交互包未新增 SCC。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。当前 `app.startup.lifecycle` 为 572、`app.factory` 为 584、`app.main` 为 586。性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
 
 架构专项验证分为两个 CI 投影：`Check event semantic policy` 先运行依赖、Adapter、出口和 Event
 语义门禁，`Check host architecture snapshot` 再执行快照测试及一次
